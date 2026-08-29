@@ -1,0 +1,64 @@
+module test.claim.semantic_conformance_subjects_witness
+
+import std.types { String, NonEmptyStr, Bool }
+import gunbc.semantic_conformance {
+  BehaviorSubject,
+  PrimarySemanticAuthority, AuthoredExpectedOutcome, AlgebraicLaw, MetamorphicRelation,
+  RoundTripLaw, ExternalTargetContract,
+  ExpectedOutcome, ExpectsValue, ExpectsRefusal, ExpectsEffectOrder,
+  ContractFacet, RefusalBehaviorFacet, ValueResultFacet, EffectOrderingFacet, ResolutionBehaviorFacet,
+}
+import gunbc.semantic_conformance_subjects {
+  cross_module_exhaustiveness_subject,
+  cross_module_exhaustiveness_provider_fixture,
+  cross_module_exhaustiveness_incomplete_consumer_fixture,
+  cross_module_exhaustiveness_complete_consumer_fixture,
+  cross_module_exhaustiveness_widened_provider_fixture,
+}
+
+// The subject expects a REFUSAL under the v2 non-exhaustiveness identity, on the refusal facet.
+// This is the shape check on the authored row: an authored subject silently flipped to expecting a
+// value, or re-keyed off the refusal facet, is a different claim wearing this one's name.
+test fn exhaustiveness_subject_expects_the_named_refusal() -> Bool {
+  match cross_module_exhaustiveness_subject.expected {
+    ExpectsRefusal { diagnostic_identity: id } =>
+      id == ("infer_match_non_exhaustive" as NonEmptyStr)
+    ExpectsValue { digest: _ } => false
+    ExpectsEffectOrder { ordered: _ } => false
+  }
+    && match cross_module_exhaustiveness_subject.subject_id.facet {
+      RefusalBehaviorFacet => true
+      ValueResultFacet => false
+      EffectOrderingFacet => false
+      ResolutionBehaviorFacet => false
+    }
+}
+
+// THE FIXTURES CARRY THE DISCRIMINATION THE SUBJECT CLAIMS, checked on the source text itself:
+// the provider declares Gamma; the incomplete consumer matches Alpha and Beta and NOT Gamma with
+// no catch-all; the complete control does match Gamma; the widened provider declares Delta and the
+// complete control does not. Mutating any fixture toward vacuity -- adding the Gamma arm to the
+// incomplete consumer, or dropping Delta from the widened provider -- goes red here.
+test fn exhaustiveness_fixtures_discriminate() -> Bool {
+  contains(cross_module_exhaustiveness_provider_fixture, "| Gamma")
+    && contains(cross_module_exhaustiveness_incomplete_consumer_fixture, "Alpha => true")
+    && contains(cross_module_exhaustiveness_incomplete_consumer_fixture, "Beta => false")
+    && !contains(cross_module_exhaustiveness_incomplete_consumer_fixture, "Gamma =>")
+    && !contains(cross_module_exhaustiveness_incomplete_consumer_fixture, "_ =>")
+    && contains(cross_module_exhaustiveness_complete_consumer_fixture, "Gamma =>")
+    && contains(cross_module_exhaustiveness_widened_provider_fixture, "| Delta")
+    && !contains(cross_module_exhaustiveness_complete_consumer_fixture, "Delta")
+}
+
+// The authority is AUTHORED -- the arm check is what a reviewer would otherwise eyeball, and it
+// goes red if the subject is ever re-based on an observation-shaped authority smuggled through a
+// refactor of the coproduct.
+test fn exhaustiveness_authority_is_authored() -> Bool {
+  match cross_module_exhaustiveness_subject.authority {
+    AuthoredExpectedOutcome { statement: _ } => true
+    AlgebraicLaw { law: _, structure: _ } => false
+    MetamorphicRelation { relation: _ } => false
+    RoundTripLaw { forward: _, backward: _ } => false
+    ExternalTargetContract { contract: _, citation: _ } => false
+  }
+}

@@ -25,6 +25,9 @@ import gunbc.semantic_conformance {
   CoverageStanding, CoveragePopulationUnmeasured, CoveragePopulationMeasuredComplete,
   ExitGateVerdict, ExitGateOpen, ExitGateBlocked,
   ConformanceAdmission, ConformanceAdmitted, ConformanceRefused,
+  OmittedArmTripleHeld, OmittedArmVerdict, OmittedArmHeld, OmittedArmFailedOpen, OmittedArmUnobserved,
+  FixtureObservation, FixtureRejectedWith, FixtureAccepted,
+  omitted_arm_triple,
   admit_conformance,
   classify_differential_record,
   disposition_blocks_cutover,
@@ -458,6 +461,80 @@ test fn two_authorities_disagreeing_about_one_subject_conflict() -> Bool {
 // its counts carried. The revision is asserted to survive into BOTH arms, because the field is what
 // XL-4 cross-checks a generation against and an admission that lost its subject tree would be a
 // receipt about nothing.
+fn held_verdict(tree: FloorDiscoveryTreeId) -> OmittedArmVerdict {
+  omitted_arm_triple(
+    judged_generation_tree: tree,
+    required_identity: nes(s: "infer_match_non_exhaustive"),
+    incomplete: FixtureRejectedWith { diagnostic_identity: nes(s: "infer_match_non_exhaustive") },
+    complete_control: FixtureAccepted,
+    widened: FixtureRejectedWith { diagnostic_identity: nes(s: "infer_match_non_exhaustive") }
+  )
+}
+
+fn verdict_is_held(v: OmittedArmVerdict) -> Bool {
+  match v {
+    OmittedArmHeld { held: _ } => true
+    OmittedArmFailedOpen { judged_generation_tree: _, detail: _ } => false
+    OmittedArmUnobserved { reason: _ } => false
+  }
+}
+
+fn verdict_is_failed_open(v: OmittedArmVerdict) -> Bool {
+  match v {
+    OmittedArmHeld { held: _ } => false
+    OmittedArmFailedOpen { judged_generation_tree: _, detail: _ } => true
+    OmittedArmUnobserved { reason: _ } => false
+  }
+}
+
+// EACH LEG OF THE TRIPLE DISCRIMINATES: the held pattern holds only on
+// reject-with-identity / accept / reject-with-identity, and each single-leg deviation lands in
+// FailedOpen -- including the reject-everything checker, which only the complete control catches,
+// and the wrong-identity rejection, which a presence/absence check would wave through.
+test fn omitted_arm_triple_holds_only_on_the_exact_pattern() -> Bool {
+  match fixture_tree() {
+    Absent => false
+    Present { value: tree } =>
+      verdict_is_held(v: held_verdict(tree: tree))
+        && verdict_is_failed_open(
+          v: omitted_arm_triple(
+            judged_generation_tree: tree,
+            required_identity: nes(s: "infer_match_non_exhaustive"),
+            incomplete: FixtureAccepted,
+            complete_control: FixtureAccepted,
+            widened: FixtureRejectedWith { diagnostic_identity: nes(s: "infer_match_non_exhaustive") }
+          )
+        )
+        && verdict_is_failed_open(
+          v: omitted_arm_triple(
+            judged_generation_tree: tree,
+            required_identity: nes(s: "infer_match_non_exhaustive"),
+            incomplete: FixtureRejectedWith { diagnostic_identity: nes(s: "infer_match_non_exhaustive") },
+            complete_control: FixtureRejectedWith { diagnostic_identity: nes(s: "infer_match_non_exhaustive") },
+            widened: FixtureRejectedWith { diagnostic_identity: nes(s: "infer_match_non_exhaustive") }
+          )
+        )
+        && verdict_is_failed_open(
+          v: omitted_arm_triple(
+            judged_generation_tree: tree,
+            required_identity: nes(s: "infer_match_non_exhaustive"),
+            incomplete: FixtureRejectedWith { diagnostic_identity: nes(s: "infer_match_non_exhaustive") },
+            complete_control: FixtureAccepted,
+            widened: FixtureAccepted
+          )
+        )
+        && verdict_is_failed_open(
+          v: omitted_arm_triple(
+            judged_generation_tree: tree,
+            required_identity: nes(s: "infer_match_non_exhaustive"),
+            incomplete: FixtureRejectedWith { diagnostic_identity: nes(s: "some_other_diagnostic") },
+            complete_control: FixtureAccepted,
+            widened: FixtureRejectedWith { diagnostic_identity: nes(s: "infer_match_non_exhaustive") }
+          )
+        )
+  }
+}
+
 test fn admission_is_derived_from_the_gate_and_carries_the_revision() -> Bool {
   match fixture_tree() {
     Absent => false
@@ -465,6 +542,7 @@ test fn admission_is_derived_from_the_gate_and_carries_the_revision() -> Bool {
       match admit_conformance(
         source_revision: fixture_rev(s: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"),
         source_tree: tree,
+        omitted_arm: held_verdict(tree: tree),
         dispositions: [Conforms, LegacyV1Defect { detail: nes(s: "probe divergence") }],
         route: EvaluatorOffPromotedRoute,
         coverage: [measured(area: CompilerClosureMechanism)],
@@ -473,6 +551,7 @@ test fn admission_is_derived_from_the_gate_and_carries_the_revision() -> Bool {
         ConformanceAdmitted {
           source_revision: r,
           source_tree: _,
+          omitted_arm: _,
           judged_route: _,
           subject_count: n,
           producer: _
@@ -480,6 +559,7 @@ test fn admission_is_derived_from_the_gate_and_carries_the_revision() -> Bool {
         ConformanceRefused {
           source_revision: _,
           source_tree: _,
+          omitted_arm: _,
           judged_route: _,
           blocking_dispositions: _,
           unmeasured_areas: _,
@@ -489,6 +569,7 @@ test fn admission_is_derived_from_the_gate_and_carries_the_revision() -> Bool {
         && match admit_conformance(
           source_revision: fixture_rev(s: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"),
           source_tree: tree,
+          omitted_arm: held_verdict(tree: tree),
           dispositions: [NativeV2Defect { detail: nes(s: "blocks") }],
           route: EvaluatorOffPromotedRoute,
           coverage: [unmeasured(area: RequiredV2TestClaim)],
@@ -497,6 +578,7 @@ test fn admission_is_derived_from_the_gate_and_carries_the_revision() -> Bool {
           ConformanceAdmitted {
             source_revision: _,
             source_tree: _,
+            omitted_arm: _,
             judged_route: _,
             subject_count: _,
             producer: _
@@ -504,11 +586,80 @@ test fn admission_is_derived_from_the_gate_and_carries_the_revision() -> Bool {
           ConformanceRefused {
             source_revision: r,
             source_tree: _,
+            omitted_arm: _,
             judged_route: _,
             blocking_dispositions: b,
             unmeasured_areas: u,
             producer: _
           } => r == fixture_rev(s: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa") && b == 1 && u == 1
+        }
+  }
+}
+
+// A CLEAN GATE WITH A FAILED-OPEN OR UNOBSERVED OMITTED ARM REFUSES: this is XL-4's nameable
+// refusal cause, and it must not be manufacturable as Admitted even when every disposition
+// conforms and every area is measured. The FailedOpen refusal counts as a blocking disposition;
+// the Unobserved refusal counts as an unmeasured area -- they are different facts.
+test fn a_failed_open_omitted_arm_refuses_a_clean_gate() -> Bool {
+  match fixture_tree() {
+    Absent => false
+    Present { value: tree } =>
+      match admit_conformance(
+        source_revision: fixture_rev(s: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"),
+        source_tree: tree,
+        omitted_arm: OmittedArmFailedOpen {
+          judged_generation_tree: tree,
+          detail: nes(s: "incomplete cross-module match accepted")
+        },
+        dispositions: [Conforms],
+        route: EvaluatorOffPromotedRoute,
+        coverage: [measured(area: CompilerClosureMechanism)],
+        producer: fixture_ref(name: "fixture_admission_producer")
+      ) {
+        ConformanceAdmitted {
+          source_revision: _,
+          source_tree: _,
+          omitted_arm: _,
+          judged_route: _,
+          subject_count: _,
+          producer: _
+        } => false
+        ConformanceRefused {
+          source_revision: _,
+          source_tree: _,
+          omitted_arm: v,
+          judged_route: _,
+          blocking_dispositions: b,
+          unmeasured_areas: _,
+          producer: _
+        } => verdict_is_failed_open(v: v) && b == 1
+      }
+        && match admit_conformance(
+          source_revision: fixture_rev(s: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"),
+          source_tree: tree,
+          omitted_arm: OmittedArmUnobserved { reason: nes(s: "candidate not yet judged") },
+          dispositions: [Conforms],
+          route: EvaluatorOffPromotedRoute,
+          coverage: [measured(area: CompilerClosureMechanism)],
+          producer: fixture_ref(name: "fixture_admission_producer")
+        ) {
+          ConformanceAdmitted {
+            source_revision: _,
+            source_tree: _,
+            omitted_arm: _,
+            judged_route: _,
+            subject_count: _,
+            producer: _
+          } => false
+          ConformanceRefused {
+            source_revision: _,
+            source_tree: _,
+            omitted_arm: _,
+            judged_route: _,
+            blocking_dispositions: b,
+            unmeasured_areas: u,
+            producer: _
+          } => b == 0 && u == 1
         }
   }
 }

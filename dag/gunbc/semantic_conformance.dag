@@ -514,6 +514,88 @@ fn conformance_exit_gate(
   )
 }
 
+// THE OMITTED-ARM CONJUNCT, exposed as a TYPED field rather than entailed (manager ruling relayed
+// by XL-4, 2026-08-29): a fail-open on the cross-module exhaustiveness subject must be NAMEABLE by
+// the consumer's refusal cause, and under entailment it would be indistinguishable from any other
+// blocking disposition. The split into two types is the structural half: the ADMITTED arm carries
+// only OmittedArmTripleHeld, so an admission asserting a fail-open is not writable; the REFUSED arm
+// carries the full verdict, which is where FailedOpen and Unobserved live. The judged subject is
+// the CANDIDATE generation, joined on its tree object -- the same join key as source_tree, so the
+// consumer's cross-check is one identity discipline, not two.
+type OmittedArmTripleHeld {
+  judged_generation_tree: FloorDiscoveryTreeId
+  incomplete_rejection_identity: NonEmptyStr
+  widened_rejection_identity: NonEmptyStr
+}
+
+type OmittedArmVerdict
+  = OmittedArmHeld { held: OmittedArmTripleHeld }
+  | OmittedArmFailedOpen { judged_generation_tree: FloorDiscoveryTreeId, detail: NonEmptyStr }
+  | OmittedArmUnobserved { reason: NonEmptyStr }
+
+type FixtureObservation
+  = FixtureRejectedWith { diagnostic_identity: NonEmptyStr }
+  | FixtureAccepted
+
+// THE TRIPLE IS DERIVED FROM THREE OBSERVATIONS, never authored: (a) the incomplete consumer
+// fixture must be REJECTED with the non-exhaustiveness identity, (b) the complete control must be
+// ACCEPTED, (c) the widened provider with no consumer edit must be REJECTED with the same
+// identity. Any other pattern is FailedOpen with the direction named -- including a checker that
+// rejects everything, which (b) exists to catch.
+fn omitted_arm_triple(
+  judged_generation_tree: FloorDiscoveryTreeId,
+  required_identity: NonEmptyStr,
+  incomplete: FixtureObservation,
+  complete_control: FixtureObservation,
+  widened: FixtureObservation
+) -> OmittedArmVerdict {
+  match incomplete {
+    FixtureAccepted =>
+      OmittedArmFailedOpen {
+        judged_generation_tree: judged_generation_tree,
+        detail: "the incomplete cross-module match was accepted" as NonEmptyStr
+      }
+    FixtureRejectedWith { diagnostic_identity: incomplete_id } =>
+      if incomplete_id != required_identity {
+        OmittedArmFailedOpen {
+          judged_generation_tree: judged_generation_tree,
+          detail: "the incomplete fixture was rejected under a different diagnostic identity" as NonEmptyStr
+        }
+      } else {
+        match complete_control {
+          FixtureRejectedWith { diagnostic_identity: _ } =>
+            OmittedArmFailedOpen {
+              judged_generation_tree: judged_generation_tree,
+              detail: "the complete control was rejected: the checker refuses the shape, not the omission" as NonEmptyStr
+            }
+          FixtureAccepted =>
+            match widened {
+              FixtureAccepted =>
+                OmittedArmFailedOpen {
+                  judged_generation_tree: judged_generation_tree,
+                  detail: "the widened provider was accepted with no consumer edit: exhaustiveness judged against a stale declaration" as NonEmptyStr
+                }
+              FixtureRejectedWith { diagnostic_identity: widened_id } =>
+                if widened_id != required_identity {
+                  OmittedArmFailedOpen {
+                    judged_generation_tree: judged_generation_tree,
+                    detail: "the widened fixture was rejected under a different diagnostic identity" as NonEmptyStr
+                  }
+                } else {
+                  OmittedArmHeld {
+                    held: OmittedArmTripleHeld {
+                      judged_generation_tree: judged_generation_tree,
+                      incomplete_rejection_identity: incomplete_id,
+                      widened_rejection_identity: widened_id
+                    }
+                  }
+                }
+            }
+        }
+      }
+  }
+}
+
 // THE ADMISSION CARRIER XL-4's GENERATION RECEIPT TYPES AGAINST (hand-off owed per XL-N manager
 // ruling, 2026-08-29; revision-join ruling relayed by XL-4 the same day). A generation is admitted
 // against a conformance judgment OF A NAMED TREE, and the join key is the TREE object: squash-merge
@@ -528,6 +610,7 @@ type ConformanceAdmission
   = ConformanceAdmitted {
       source_revision: CommitSha,
       source_tree: FloorDiscoveryTreeId,
+      omitted_arm: OmittedArmTripleHeld,
       judged_route: PromotedRoute,
       subject_count: Int,
       producer: DeclarationRef
@@ -535,6 +618,7 @@ type ConformanceAdmission
   | ConformanceRefused {
       source_revision: CommitSha,
       source_tree: FloorDiscoveryTreeId,
+      omitted_arm: OmittedArmVerdict,
       judged_route: PromotedRoute,
       blocking_dispositions: Int,
       unmeasured_areas: Int,
@@ -544,6 +628,7 @@ type ConformanceAdmission
 fn admit_conformance(
   source_revision: CommitSha,
   source_tree: FloorDiscoveryTreeId,
+  omitted_arm: OmittedArmVerdict,
   dispositions: List<ConformanceDisposition>,
   route: PromotedRoute,
   coverage: List<CoverageStanding>,
@@ -551,17 +636,42 @@ fn admit_conformance(
 ) -> ConformanceAdmission {
   match conformance_exit_gate(dispositions: dispositions, route: route, coverage: coverage) {
     ExitGateOpen =>
-      ConformanceAdmitted {
-        source_revision: source_revision,
-        source_tree: source_tree,
-        judged_route: route,
-        subject_count: list_length(items: dispositions),
-        producer: producer
+      match omitted_arm {
+        OmittedArmHeld { held: held } =>
+          ConformanceAdmitted {
+            source_revision: source_revision,
+            source_tree: source_tree,
+            omitted_arm: held,
+            judged_route: route,
+            subject_count: list_length(items: dispositions),
+            producer: producer
+          }
+        OmittedArmFailedOpen { judged_generation_tree: _, detail: _ } =>
+          ConformanceRefused {
+            source_revision: source_revision,
+            source_tree: source_tree,
+            omitted_arm: omitted_arm,
+            judged_route: route,
+            blocking_dispositions: 1,
+            unmeasured_areas: 0,
+            producer: producer
+          }
+        OmittedArmUnobserved { reason: _ } =>
+          ConformanceRefused {
+            source_revision: source_revision,
+            source_tree: source_tree,
+            omitted_arm: omitted_arm,
+            judged_route: route,
+            blocking_dispositions: 0,
+            unmeasured_areas: 1,
+            producer: producer
+          }
       }
     ExitGateBlocked { blocking_dispositions: b, unmeasured_areas: u } =>
       ConformanceRefused {
         source_revision: source_revision,
         source_tree: source_tree,
+        omitted_arm: omitted_arm,
         judged_route: route,
         blocking_dispositions: b,
         unmeasured_areas: u,
