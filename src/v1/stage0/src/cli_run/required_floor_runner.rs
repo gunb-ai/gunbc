@@ -2238,10 +2238,22 @@ pub(crate) fn install_pure_producer_share(prepared: &PreparedRepository) -> Resu
                 // duplicate, cap) — the roster promised a servable producer, so a silent
                 // decline would relocate the fill onto the first toucher. Stop the line.
                 if !stored {
+                    let detail = match v1_interpreter::cross_claim_take_last_unportable() {
+                        Some((_, refusal)) => format!(
+                            "ServeCacheValueNotPortable path={} kind={}",
+                            if refusal.path_into_value.is_empty() {
+                                "<root>".to_string()
+                            } else {
+                                refusal.path_into_value
+                            },
+                            refusal.encountered_kind
+                        ),
+                        None => "duplicate key or entry cap".to_string(),
+                    };
                     return Err(format!(
                         "REQUIRED-FLOOR REFUSAL cause=PureProducerShareWarmNotStored \
                          producer={qualified} — the rostered producer evaluated but its value \
-                         was refused by the cross-claim store"
+                         was refused by the cross-claim store: {detail}"
                     ));
                 }
                 eprintln!(

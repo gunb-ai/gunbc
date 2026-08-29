@@ -1328,13 +1328,108 @@ enum PortableValue {
         variant_name: String,
         fields: Vec<(String, PortableValue)>,
     },
-    /// A module-scope fn value, carried by its shared resolved-graph `Node`. See
-    /// `portable_value_from_ctx`: portable by reference, never by content.
-    Fn(Rc<Node>),
 }
 
-fn portable_value_from_ctx(ctx: &InterpContext, value: &Value) -> Option<PortableValue> {
-    Some(match value {
+/// Structural equality over portable values — the cross-claim tier's verification relation.
+/// `Fn` compares by shared-graph identity (the same relation the memo key uses); floats by
+/// bits, so a NaN-carrying argument row still verifies against itself.
+fn portable_value_eq(a: &PortableValue, b: &PortableValue) -> bool {
+    match (a, b) {
+        (PortableValue::Null, PortableValue::Null) | (PortableValue::Unit, PortableValue::Unit) => {
+            true
+        }
+        (PortableValue::Bool(x), PortableValue::Bool(y)) => x == y,
+        (PortableValue::Int(x), PortableValue::Int(y)) => x == y,
+        (PortableValue::Float(x), PortableValue::Float(y)) => x.to_bits() == y.to_bits(),
+        (PortableValue::Str(x), PortableValue::Str(y)) => x == y,
+        (PortableValue::List(xs), PortableValue::List(ys)) => {
+            xs.len() == ys.len() && xs.iter().zip(ys).all(|(x, y)| portable_value_eq(x, y))
+        }
+        (PortableValue::Map(xs), PortableValue::Map(ys)) => {
+            xs.len() == ys.len()
+                && xs.iter().zip(ys).all(|((xk, xv), (yk, yv))| {
+                    portable_value_eq(xk, yk) && portable_value_eq(xv, yv)
+                })
+        }
+        (PortableValue::Set(x), PortableValue::Set(y)) => x == y,
+        (
+            PortableValue::Record {
+                type_name: tx,
+                fields: fx,
+            },
+            PortableValue::Record {
+                type_name: ty,
+                fields: fy,
+            },
+        ) => {
+            tx == ty
+                && fx.len() == fy.len()
+                && fx
+                    .iter()
+                    .zip(fy)
+                    .all(|((kx, vx), (ky, vy))| kx == ky && portable_value_eq(vx, vy))
+        }
+        (
+            PortableValue::Variant {
+                type_name: tx,
+                variant_name: vx,
+                fields: fx,
+            },
+            PortableValue::Variant {
+                type_name: ty,
+                variant_name: vy,
+                fields: fy,
+            },
+        ) => {
+            tx == ty
+                && vx == vy
+                && fx.len() == fy.len()
+                && fx
+                    .iter()
+                    .zip(fy)
+                    .all(|((kx, vxv), (ky, vyv))| kx == ky && portable_value_eq(vxv, vyv))
+        }
+        _ => false,
+    }
+}
+
+/// The full argument row in portable form, or `None` when any argument is not portable —
+/// such a call can be neither verified nor stored.
+fn portable_args_from_ctx(
+    ctx: &InterpContext,
+    args: &[(Option<String>, Value)],
+) -> Option<Vec<(Option<String>, PortableValue)>> {
+    let mut out = Vec::with_capacity(args.len());
+    for (name, value) in args {
+        out.push((name.clone(), portable_value_from_ctx(ctx, value)?));
+    }
+    Some(out)
+}
+
+/// A typed reification refusal: the first non-portable child, named by its path into the
+/// value and the kind encountered. Publication into the cross-claim store is TOTAL — a value
+/// is either fully reified or refused HERE, never discovered unportable at retrieval.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ServeCacheValueNotPortable {
+    pub path_into_value: String,
+    pub encountered_kind: &'static str,
+}
+
+fn portable_value_from_ctx_at(
+    ctx: &InterpContext,
+    value: &Value,
+    path: &mut String,
+) -> Result<PortableValue, ServeCacheValueNotPortable> {
+    macro_rules! descend {
+        ($seg:expr, $inner:expr) => {{
+            let len_before = path.len();
+            path.push_str(&$seg);
+            let out = portable_value_from_ctx_at(ctx, $inner, path);
+            path.truncate(len_before);
+            out?
+        }};
+    }
+    Ok(match value {
         Value::Null => PortableValue::Null,
         Value::Unit => PortableValue::Unit,
         Value::Bool(b) => PortableValue::Bool(*b),
@@ -1343,8 +1438,8 @@ fn portable_value_from_ctx(ctx: &InterpContext, value: &Value) -> Option<Portabl
         Value::Str(s) => PortableValue::Str(s.rc()),
         Value::List(items) => {
             let mut out = Vec::with_capacity(items.len());
-            for item in items.iter() {
-                out.push(portable_value_from_ctx(ctx, item)?);
+            for (i, item) in items.iter().enumerate() {
+                out.push(descend!(format!("[{i}]"), item));
             }
             PortableValue::List(out)
         }
@@ -1352,8 +1447,8 @@ fn portable_value_from_ctx(ctx: &InterpContext, value: &Value) -> Option<Portabl
             let mut out = Vec::with_capacity(m.len());
             for (k, v) in m.iter() {
                 out.push((
-                    portable_value_from_ctx(ctx, &k.key)?,
-                    portable_value_from_ctx(ctx, v)?,
+                    descend!(".<map-key>".to_string(), &k.key),
+                    descend!(".<map-value>".to_string(), v),
                 ));
             }
             PortableValue::Map(out)
@@ -1362,10 +1457,11 @@ fn portable_value_from_ctx(ctx: &InterpContext, value: &Value) -> Option<Portabl
         Value::Record { type_name, fields } => {
             let mut out = Vec::with_capacity(fields.len());
             for (k, v) in fields.iter() {
-                out.push((ctx.resolve(*k), portable_value_from_ctx(ctx, v)?));
+                let name = ctx.resolve(*k).to_string();
+                out.push((name.clone(), descend!(format!(".{name}"), v)));
             }
             PortableValue::Record {
-                type_name: ctx.resolve(*type_name),
+                type_name: ctx.resolve(*type_name).to_string(),
                 fields: out,
             }
         }
@@ -1376,21 +1472,32 @@ fn portable_value_from_ctx(ctx: &InterpContext, value: &Value) -> Option<Portabl
         } => {
             let mut out = Vec::with_capacity(fields.len());
             for (k, v) in fields.iter() {
-                out.push((ctx.resolve(*k), portable_value_from_ctx(ctx, v)?));
+                let name = ctx.resolve(*k).to_string();
+                out.push((name.clone(), descend!(format!(".{name}"), v)));
             }
             PortableValue::Variant {
-                type_name: ctx.resolve(*type_name),
-                variant_name: ctx.resolve(*variant_name),
+                type_name: ctx.resolve(*type_name).to_string(),
+                variant_name: ctx.resolve(*variant_name).to_string(),
                 fields: out,
             }
         }
-        // A bare `Fn` is portable BY REFERENCE: its `Node` lives in the prepared resolved
-        // graph that every claim frame shares (the same fact `fn_ptr` keying rests on), and
-        // it carries no `Symbol` and no `Env`. A `Closure` stays refused — its captured `Env`
-        // chain is a frame-local structure, not a content snapshot.
-        Value::Fn { node } => PortableValue::Fn(Rc::clone(node)),
-        Value::Closure { .. } => return None,
+        Value::Closure { .. } => {
+            return Err(ServeCacheValueNotPortable {
+                path_into_value: path.clone(),
+                encountered_kind: "Closure",
+            })
+        }
+        Value::Fn { .. } => {
+            return Err(ServeCacheValueNotPortable {
+                path_into_value: path.clone(),
+                encountered_kind: "OriginBoundNode",
+            })
+        }
     })
+}
+
+fn portable_value_from_ctx(ctx: &InterpContext, value: &Value) -> Option<PortableValue> {
+    portable_value_from_ctx_at(ctx, value, &mut String::new()).ok()
 }
 
 fn value_from_portable_ctx(ctx: &InterpContext, portable: &PortableValue) -> Value {
@@ -1418,14 +1525,20 @@ fn value_from_portable_ctx(ctx: &InterpContext, portable: &PortableValue) -> Val
             map_value(fields)
         }
         PortableValue::Set(members) => Value::Set(members.clone()),
+        // FIELDS ARE RE-SORTED UNDER THE CONSUMING INTERNER. `fields_get` binary-searches on
+        // the Symbol ORDINAL, and ordinals are per-interner encounter order — a vector sorted
+        // under frame A's ordinals is unsorted under frame B's, so every field read misses
+        // ("no field 'produced_decl_support' on type 'TargetModel'", six emit reds on run
+        // 33269961629). Reification is not complete until the value satisfies the consuming
+        // frame's own representation invariants, order included.
         PortableValue::Record { type_name, fields } => Value::Record {
             type_name: ctx.sym(type_name),
-            fields: Rc::new(
+            fields: Rc::new(sorted_fields(
                 fields
                     .iter()
                     .map(|(k, v)| (ctx.sym(k), value_from_portable_ctx(ctx, v)))
                     .collect(),
-            ),
+            )),
         },
         PortableValue::Variant {
             type_name,
@@ -1434,26 +1547,44 @@ fn value_from_portable_ctx(ctx: &InterpContext, portable: &PortableValue) -> Val
         } => Value::Variant {
             type_name: ctx.sym(type_name),
             variant_name: ctx.sym(variant_name),
-            fields: Rc::new(
+            // Sorted for the same reason as the Record arm above.
+            fields: Rc::new(sorted_fields(
                 fields
                     .iter()
                     .map(|(k, v)| (ctx.sym(k), value_from_portable_ctx(ctx, v)))
                     .collect(),
-            ),
-        },
-        PortableValue::Fn(node) => Value::Fn {
-            node: Rc::clone(node),
+            )),
         },
     }
 }
 
+thread_local! {
+    /// The most recent typed store refusal, retained for the warm path's line-stop message.
+    static CROSS_CLAIM_LAST_UNPORTABLE: RefCell<Option<(String, ServeCacheValueNotPortable)>> =
+        const { RefCell::new(None) };
+}
+
+/// The most recent typed store refusal `(producer bare name, refusal)`, taken (cleared).
+pub fn cross_claim_take_last_unportable() -> Option<(String, ServeCacheValueNotPortable)> {
+    CROSS_CLAIM_LAST_UNPORTABLE.with(|c| c.borrow_mut().take())
+}
+
 #[derive(Default)]
 struct CrossClaimPureMemo {
-    map: HashMap<(usize, u64), PortableValue>,
+    /// Hash-bucketed like the eval-frame memo, and served ONLY after the stored call's
+    /// argument row verifies structurally equal in portable (interner-free) form — a hash
+    /// collision degrades to recompute, never to a wrong value. This is not hypothetical:
+    /// served-on-hash-alone, main's floor produced six emit failures whose served values
+    /// belonged to OTHER calls of the same producer (no field 'produced_decl_support' on
+    /// type 'TargetModel', run 33269961629).
+    map: HashMap<(usize, u64), Vec<(Vec<(Option<String>, PortableValue)>, PortableValue)>>,
     /// Stores refused because the map was at `CROSS_CLAIM_PURE_MEMO_ENTRY_CAP`. Counted,
     /// never silent: an over-cap producer simply recomputes, and the count is readable by
     /// the receipt so a saturated memo is visible rather than inferred from missing hits.
     overflow: u64,
+    /// Stores refused because the value failed TOTAL reification (`ServeCacheValueNotPortable`).
+    /// Counted, and the most recent refusal is retained for the warm path's diagnostics.
+    unportable_refusals: u64,
 }
 
 /// Byte-bounded admission for the cross-claim tier (the "conscious provider row" the
@@ -1526,6 +1657,17 @@ pub fn cross_claim_pure_memo_counts() -> (usize, u64) {
         let m = m.borrow();
         (m.map.len(), m.overflow)
     })
+}
+
+fn cross_claim_portable_args_match(
+    stored: &[(Option<String>, PortableValue)],
+    args: &[(Option<String>, PortableValue)],
+) -> bool {
+    stored.len() == args.len()
+        && stored
+            .iter()
+            .zip(args.iter())
+            .all(|((sn, sv), (an, av))| sn == an && portable_value_eq(sv, av))
 }
 
 fn cross_claim_pure_admitted(func_name: &str) -> bool {
@@ -1669,15 +1811,32 @@ fn try_cross_claim_pure_memo(
     }
     let args_hash = cross_claim_args_hash(ctx, args)?;
     let memo_key = (Rc::as_ptr(fn_node) as usize, args_hash);
-    if let Some(v) = ctx.cross_claim_hit_cache.borrow().get(&memo_key) {
-        return Some(v.clone());
+    // The per-ctx hit cache is verified the same way the global bucket is: hash first, then
+    // the full portable argument row, so an intra-frame hash collision cannot alias either.
+    let portable_args = portable_args_from_ctx(ctx, args)?;
+    if let Some(v) = ctx.cross_claim_hit_cache.borrow().get(&memo_key).and_then(
+        |entries: &Vec<(Vec<(Option<String>, PortableValue)>, Value)>| {
+            entries.iter().find_map(|(stored_args, v)| {
+                cross_claim_portable_args_match(stored_args, &portable_args).then(|| v.clone())
+            })
+        },
+    ) {
+        return Some(v);
     }
-    let portable = CROSS_CLAIM_PURE_MEMO.with(|m| m.borrow().map.get(&memo_key).cloned())?;
+    let portable = CROSS_CLAIM_PURE_MEMO.with(|m| {
+        m.borrow().map.get(&memo_key).and_then(|bucket| {
+            bucket.iter().find_map(|(stored_args, stored)| {
+                cross_claim_portable_args_match(stored_args, &portable_args).then(|| stored.clone())
+            })
+        })
+    })?;
     cross_claim_observe_hit(func_name);
     let value = value_from_portable_ctx(ctx, &portable);
     ctx.cross_claim_hit_cache
         .borrow_mut()
-        .insert(memo_key, value.clone());
+        .entry(memo_key)
+        .or_default()
+        .push((portable_args, value.clone()));
     Some(value)
 }
 
@@ -1700,19 +1859,38 @@ fn store_cross_claim_pure_memo(
         return;
     };
     let memo_key = (Rc::as_ptr(fn_node) as usize, args_hash);
-    let Some(portable) = portable_value_from_ctx(ctx, result) else {
+    let Some(portable_args) = portable_args_from_ctx(ctx, args) else {
         return;
+    };
+    let portable = match portable_value_from_ctx_at(ctx, result, &mut String::new()) {
+        Ok(p) => p,
+        Err(refusal) => {
+            // TOTAL publication check: the first origin-bound child refuses the whole store,
+            // typed and located, and is retained so the warm path can stop the line with the
+            // exact path instead of a bare "not stored".
+            CROSS_CLAIM_LAST_UNPORTABLE
+                .with(|c| *c.borrow_mut() = Some((func_name.to_string(), refusal)));
+            CROSS_CLAIM_PURE_MEMO.with(|m| m.borrow_mut().unportable_refusals += 1);
+            return;
+        }
     };
     let stored = CROSS_CLAIM_PURE_MEMO.with(|m| {
         let mut m = m.borrow_mut();
-        if m.map.contains_key(&memo_key) {
-            return false;
+        if let Some(bucket) = m.map.get(&memo_key) {
+            if bucket.iter().any(|(stored_args, _)| {
+                cross_claim_portable_args_match(stored_args, &portable_args)
+            }) {
+                return false;
+            }
         }
         if m.map.len() >= CROSS_CLAIM_PURE_MEMO_ENTRY_CAP {
             m.overflow += 1;
             return false;
         }
-        m.map.insert(memo_key, portable);
+        m.map
+            .entry(memo_key)
+            .or_default()
+            .push((portable_args, portable));
         true
     });
     if stored {
@@ -1777,13 +1955,12 @@ mod cross_claim_memo_tests {
         InterpContext::new(&graph, Rc::new(HashMap::new()), ExecutionMode::Hermetic)
     }
 
-    // A module-scope `fn` value is portable BY REFERENCE — target models carry emit
-    // transforms as fn references, and refusing them (the pre-share behavior) silently
-    // excluded every `TargetModel` from the cross-claim tier. A `Closure` stays refused:
-    // its captured `Env` chain is frame-local.
+    // RED1 (operator ruling, 2026-08-29): a value carrying an origin-bound fn ANYWHERE
+    // refuses at PUBLICATION with the exact path — never admitted and later discovered as
+    // a no-such-field at retrieval (six emit reds on run 33269961629 were this class).
     #[test]
-    fn a_fn_valued_field_round_trips_and_a_closure_refuses() {
-        use super::{portable_value_from_ctx, value_from_portable_ctx, Env};
+    fn an_origin_bound_fn_refuses_at_store_with_its_path() {
+        use super::{portable_value_from_ctx_at, Env};
         let ctx = fresh_ctx();
         let fn_node = make_expr_node(
             Rc::new(crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic),
@@ -1801,24 +1978,107 @@ mod cross_claim_memo_tests {
                 },
             )]),
         };
-        let portable = portable_value_from_ctx(&ctx, &with_fn).expect("Fn field is portable");
-        let ctx_b = fresh_ctx();
-        match value_from_portable_ctx(&ctx_b, &portable) {
-            Value::Record { fields, .. } => match &fields[0].1 {
-                Value::Fn { node } => assert!(Rc::ptr_eq(node, &fn_node)),
-                other => panic!("expected Fn back, got {other:?}"),
-            },
-            other => panic!("expected Record, got {other:?}"),
-        }
-        let with_closure = Value::Closure {
-            params: vec![],
-            body: fn_node,
-            env: Env::empty(),
+        let refusal = portable_value_from_ctx_at(&ctx, &with_fn, &mut String::new())
+            .expect_err("a fn-carrying record must refuse reification");
+        assert_eq!(refusal.path_into_value, ".transform");
+        assert_eq!(refusal.encountered_kind, "OriginBoundNode");
+
+        // RED2: contamination several levels down names the whole path.
+        let nested = Value::Record {
+            type_name: ctx.sym("Outer"),
+            fields: Rc::new(vec![(
+                ctx.sym("a"),
+                list_value(vec![Value::Record {
+                    type_name: ctx.sym("Inner"),
+                    fields: Rc::new(vec![(
+                        ctx.sym("function"),
+                        Value::Closure {
+                            params: vec![],
+                            body: fn_node,
+                            env: Env::empty(),
+                        },
+                    )]),
+                }]),
+            )]),
         };
+        let refusal = portable_value_from_ctx_at(&ctx, &nested, &mut String::new())
+            .expect_err("nested contamination must refuse");
+        assert_eq!(refusal.path_into_value, ".a[0].function");
+        assert_eq!(refusal.encountered_kind, "Closure");
+    }
+
+    // RED3: the same argument row under a DIFFERENT producer identity (a re-prepared
+    // subject builds new fn nodes) MISSES — emitter implementation identity is part of the
+    // key, so a stale subject's value can never serve a new subject's call.
+    #[test]
+    fn the_same_args_under_a_different_fn_identity_miss() {
+        use super::{store_cross_claim_pure_memo, try_cross_claim_pure_memo};
+        super::clear_cross_claim_pure_memos();
+        let ctx = fresh_ctx();
+        let mk = || {
+            make_expr_node(
+                Rc::new(
+                    crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic,
+                ),
+                Rc::new(ExprData::NoExprData),
+                Rc::new(im_vec![]),
+                None,
+                no_span(),
+            )
+        };
+        let fn_a = mk();
+        let fn_b = mk();
+        let args = [(None, list_value(vec![Value::Int(7)]))];
+        store_cross_claim_pure_memo(&ctx, &fn_a, "prepare_grammar", &args, &Value::Int(1), None);
         assert!(
-            portable_value_from_ctx(&ctx, &with_closure).is_none(),
-            "a captured environment must never cross frames"
+            try_cross_claim_pure_memo(&ctx, &fn_a, "prepare_grammar", &args).is_some(),
+            "control: the storing identity serves"
         );
+        let ctx_fresh = fresh_ctx();
+        assert!(
+            try_cross_claim_pure_memo(&ctx_fresh, &fn_b, "prepare_grammar", &args).is_none(),
+            "a different fn identity must miss"
+        );
+        super::clear_cross_claim_pure_memos();
+    }
+
+    // GREEN control beside RED1, and the regression control for the field-ORDER defect: a
+    // fully portable record stored from frame A must have EVERY field readable in frame B
+    // through `fields_get` — which binary-searches on the consuming interner's Symbol
+    // ordinals, so a reconstruction that preserves frame A's field order is unsorted in
+    // frame B and misses every lookup (the actual mechanism behind run 33269961629's
+    // "no field 'produced_decl_support' on type 'TargetModel'").
+    #[test]
+    fn every_field_of_a_served_record_resolves_under_a_reordered_interner() {
+        use super::{fields_get, portable_value_from_ctx, value_from_portable_ctx};
+        let ctx_a = fresh_ctx();
+        // Field names interned in one order in frame A...
+        let value = Value::Record {
+            type_name: ctx_a.sym("TargetModelish"),
+            fields: Rc::new(super::sorted_fields(vec![
+                (ctx_a.sym("zeta"), Value::Int(1)),
+                (ctx_a.sym("alpha"), Value::Int(2)),
+                (ctx_a.sym("midfield"), Value::Int(3)),
+            ])),
+        };
+        let portable = portable_value_from_ctx(&ctx_a, &value).expect("portable");
+
+        let ctx_b = fresh_ctx();
+        // ...and pre-interned in a DIFFERENT order in frame B, so B's ordinals disagree
+        // with A's field order.
+        let _ = ctx_b.sym("alpha");
+        let _ = ctx_b.sym("midfield");
+        let _ = ctx_b.sym("zeta");
+        let served = value_from_portable_ctx(&ctx_b, &portable);
+        let Value::Record { fields, .. } = &served else {
+            panic!("expected Record, got {served:?}");
+        };
+        for (name, want) in [("zeta", 1), ("alpha", 2), ("midfield", 3)] {
+            match fields_get(fields, ctx_b.sym(name)) {
+                Some(Value::Int(got)) => assert_eq!(*got, want, "{name}"),
+                other => panic!("field '{name}' must resolve via fields_get, got {other:?}"),
+            }
+        }
     }
 
     // Regression for gunbc#8505: the cross-claim `prepare_grammar` memo cached a raw
@@ -2756,7 +3016,9 @@ pub struct InterpContext {
     /// a `PortableValue` re-interns and re-allocates the whole structure, so a hot producer
     /// served on every call would pay that per CALL; this bounds it to once per frame. Keyed
     /// identically to the global tier; lives and dies with the frame.
-    cross_claim_hit_cache: std::cell::RefCell<HashMap<(usize, u64), Value>>,
+    cross_claim_hit_cache: std::cell::RefCell<
+        HashMap<(usize, u64), Vec<(Vec<(Option<String>, PortableValue)>, Value)>>,
+    >,
     mutation_counters: std::cell::RefCell<MutationCounters>,
     symbols: RefCell<SymbolInterner>,
     published_mock_keys: RefCell<Option<Rc<std::collections::HashSet<String>>>>,
