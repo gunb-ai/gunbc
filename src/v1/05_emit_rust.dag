@@ -233,6 +233,11 @@ fn render_rust_type(n: Node, shared_types: Set<String>, source_indices: Map<Stri
 // `Rc<dyn Fn(ResolvedTree) -> Rc<Outcome<Rc<Medium>>>>` -- the inner binding dropped (E0107 missing
 // generics for struct `Medium`, v2.compiler.compile stage_translate). The callable template and the
 // void arm are the same rows render_node_type consumes; only the per-position renderer changes.
+// Named rather than inlined because `if x == Variant {` parses as a record literal in .dag.
+fn rust_type_node_is_arrow(n: Node) -> Bool {
+  n.connective == Arrow
+}
+
 fn render_rust_arrow_type(n: Node, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, emit_info: EmitGraphInfo) -> String {
   let repr = target_callable(target: Rust)
   let param_strs = n.params |> map(p => render_rust_type(n: param_node_type_expr(n: p), shared_types: shared_types, source_indices: source_indices, emit_info: emit_info))
@@ -261,7 +266,7 @@ fn render_rust_type_without_applied_binding(n: Node, shared_types: Set<String>, 
   if is_host_diagnostics_carrier_type(n: n, source_indices: source_indices) {
     return render_rust_diagnostics_carrier_applied(shared_types: shared_types)
   }
-  if n.connective == Arrow {
+  if rust_type_node_is_arrow(n: n) {
     render_rust_arrow_type(n: n, shared_types: shared_types, source_indices: source_indices, emit_info: emit_info)
   } else if n.connective == NoConnective && n.children |> count > 0 && !is_container_type(name: authored_name_at(source_indices: source_indices, node: n)) && closed_alias_peels_zero_param(env: emit_info.fn_type_env, n: n) {
     // A ZERO-PARAMETER ALIAS NEVER TAKES THE ARGUMENTS OF WHAT IT ABBREVIATES. The resolver hands an
