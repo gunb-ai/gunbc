@@ -187,3 +187,22 @@ test fn w_realized_seam_keeps_its_declaration_and_delegates_to_the_bridge() -> B
     ["has no realization for this target"]
   )
 }
+
+// is_empty HAD NO RUST REALIZATION AT ALL, and the class-B repair is what made that visible rather
+// than what caused it. Before it, `xs |> is_empty` emitted `v1_rt::is_empty(..)` -- a symbol the
+// seed does not define -- and appeared in the census as 5 x E0425. After it, the same 5 sites
+// became typed refusals: correct in KIND, and still 5 errors. A conversion is not a repair, so this
+// row exists to pin the actual realization.
+//
+// THE ROW IS A TARGET FACT, NOT EMITTER CODE. is_empty is an algebra template over FreeMonoid whose
+// Rust realization is Vec::is_empty, exactly as count's is Vec::len -- so it belongs in
+// rust_simple_method_specs beside count, and nothing in 05_emit_rust learns a new name. The
+// negative assertion is the refusal message, because that is precisely the state this row leaves.
+test fn w_is_empty_lowers_to_its_rust_realization_not_a_refusal() -> Bool {
+  compile_dag_rust_emit_check(
+    "module test.claim.is_empty_probe\nimport std.types { Int, Bool }\nimport std.occurrence_identity { OccurrenceId }\nimport v2.std.algebra { FreeMonoid, is_empty }\nfn probe(xs: FreeMonoid<Int>) -> Bool { xs |> is_empty }\n",
+    "src/test_claim_is_empty_probe.rs",
+    [".is_empty()"],
+    ["v1_rt::is_empty(", "neither a resolved callable receiver field"]
+  )
+}
