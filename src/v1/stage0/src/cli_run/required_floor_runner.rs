@@ -2593,10 +2593,66 @@ pub fn run_required_floor(
     // three members and every one of them is now measured and adjudicated here. The two earlier
     // warms were previously reported and never judged, which made two of the three modeled walls
     // decorative — permanently green by construction and citable as coverage (review 55338).
+    // THE POOL-ROOT INDEX, WARMED BY CALLING THE DECLARED PRODUCER ONCE. `module_path_index` is
+    // also built per POOL ROOT on demand by the decl-facts reflection seam, keyed on the root a
+    // claim asks for, so the witness-roots warm above cannot reach it. Under the gate-bounded
+    // subject the `src/v2/lens` root's 1.07s fill landed on whichever
+    // `lens_module_gate_witness` live claim ran first and interrupted it at the 500ms ceiling —
+    // three claims in three consecutive runs as each victim was withheld (CI 92cc92e, 0829ad8,
+    // 154fb1f; claim-cost receipts), the positional bill `floor_cost_debt`'s header describes.
+    // The key is not a literal here: the warm evaluates the same declaration the consumers
+    // evaluate, `lens_registry_completeness_live_facts`, in that module's own scope, so the
+    // root comes from `lens_registry_completeness_pool_roots` and the key is identical by
+    // construction. A subject that does not carry the module carries no consumer either, so the
+    // warm is skipped there — printed, not silent — and a producer that fails to evaluate stops
+    // the line rather than leaving the fill to a claim.
+    const LENS_REGISTRY_COMPLETENESS_MODULE: &str = "v2.lens.registry.completeness";
+    let lens_pool_root_warm = match floor_authority_frame(
+        &prepared,
+        LENS_REGISTRY_COMPLETENESS_MODULE,
+    ) {
+        Ok(frame) => {
+            let (evaluated, warm) = observe_shared_build(false, "floor-preparation", || {
+                v1_interpreter::run_in_context(
+                    &frame,
+                    "v2.lens.registry.completeness.lens_registry_completeness_live_facts",
+                    false,
+                )
+            });
+            if let Err(e) = evaluated {
+                return Err(format!(
+                    "REQUIRED-FLOOR REFUSAL cause=PoolRootIndexWarmFailed \
+                     producer=v2.lens.registry.completeness.lens_registry_completeness_live_facts \
+                     — {e}"
+                ));
+            }
+            eprintln!(
+                "[floor-phase] phase=pool-root-index-warm state=completed cpu_ms={} wall_ms={} \
+                 rss_growth_bytes={} producer={}.lens_registry_completeness_live_facts provenance={}",
+                warm.cpu_ms,
+                warm.wall_ms,
+                warm.rss_growth_bytes,
+                LENS_REGISTRY_COMPLETENESS_MODULE,
+                warm.provenance.render(),
+            );
+            Some(warm)
+        }
+        Err(why) => {
+            eprintln!(
+                "[floor-phase] phase=pool-root-index-warm state=skipped module={} — the subject \
+                 does not carry the producer, so it carries no consumer of that key either: {why}",
+                LENS_REGISTRY_COMPLETENESS_MODULE
+            );
+            None
+        }
+    };
     let mut shared_build_warms: Vec<(&'static str, SharedBuildObservation)> = vec![
         ("ModulePathIndexBuild", module_path_index_warm),
         ("SharedModuleIndexBuild", shared_index_warm),
     ];
+    if let Some(warm) = lens_pool_root_warm {
+        shared_build_warms.push(("ModulePathIndexBuild/lens-pool-roots", warm));
+    }
     shared_build_warms.push((
         "BareReferenceEdgeIndexBuild/source-roots",
         warm_bare_reference_edge_index(&process_shared_index(source_roots))?,
