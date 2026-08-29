@@ -1,0 +1,22 @@
+module test.manual.rlm0_join_probe
+
+import std.types { String }
+import gunbc.roadmap_validation_oracle { ValidationOracleRef, OracleObservation, OracleFound, OracleMissing, OracleAmbiguous, OracleDependsOnUnpinnedOracle }
+import gunbc.roadmap_belt_actuate { belt_oracle_observe_in_worktree }
+import gunbc.roadmap_launch_canary { roadmap_launch_canary_oracle_entry, roadmap_launch_canary_oracle_function, roadmap_launch_canary_criteria_digest_hex }
+
+fn rlm0_join_probe_oracle_identity() -> String {
+  match belt_oracle_observe_in_worktree(
+    worktree: ".",
+    oracle: ValidationOracleRef { entry: roadmap_launch_canary_oracle_entry, function: roadmap_launch_canary_oracle_function },
+  ) {
+    OracleFound { oracle: _, identity } => join(["oracle_source_identity=", identity.digest as String], "")
+    OracleMissing { oracle: _, detail } => join(["MISSING:", detail], "")
+    OracleAmbiguous { oracle: _, declaration_count: _ } => "AMBIGUOUS"
+    OracleDependsOnUnpinnedOracle { oracle: _, imports: _ } => "UNPINNED"
+  }
+}
+
+fn rlm0_join_probe_criteria_digest() -> String {
+  join(["criteria_digest_hex=", roadmap_launch_canary_criteria_digest_hex()], "")
+}
