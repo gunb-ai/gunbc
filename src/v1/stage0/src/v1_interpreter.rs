@@ -17630,8 +17630,15 @@ mod resolve_host_tool_program_tests {
         }
     }
 
+    // The root carries the process id: `temp_dir()` is the HOST's shared /tmp on a self-hosted
+    // runner, so a fixed name collides with the directory another runner slot (another uid)
+    // left behind, and the write below then refuses with PermissionDenied on a test that never
+    // touched that directory (observed on the first CI run of this crate's unit tests).
     fn isolated_probe_root(label: &str) -> PathBuf {
-        std::env::temp_dir().join(format!("gunbc_resolve_host_tool_{label}"))
+        std::env::temp_dir().join(format!(
+            "gunbc_resolve_host_tool_{label}_{}",
+            std::process::id()
+        ))
     }
 
     #[test]
