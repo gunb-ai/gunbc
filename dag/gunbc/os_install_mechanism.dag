@@ -190,7 +190,9 @@ fn solve_delivery_from_capability_row(
   match solve_boot_artifact_delivery(
     ev: BootDeliveryEvidence {
       row: row,
+      profile: AccessProfileNotLookedUp { endpoint: bmc_access_standing_endpoint(live_access: live_access) },
       live_access: live_access,
+      preference: PreferStandardRedfishThenOemThenNetwork,
       redfish_media: none,
       megarac_media: none,
       nbd_proxy: none,
