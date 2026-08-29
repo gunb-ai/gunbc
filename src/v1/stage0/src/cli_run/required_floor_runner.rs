@@ -2365,12 +2365,16 @@ pub fn run_required_floor(
     // policy module's own closure -- a few dozen modules -- so the gate's authority is the .dag
     // roster and not a Rust mirror of it. The same roster is decoded again below from the full
     // hermetic frame for site disposition; the two reads are one function in one module.
+    // ONE ENTRY INDEX FOR BOTH CLOSURES: building it is the expensive part (~75-110s on the
+    // 4,260-module corpus, measured 2026-08-29), so it is built once here and lent to the
+    // policy-closure prepare and the gate-closure prepare alike.
+    let gate_entry_index = build_multi_entry_index(source_roots);
     let required_gate_prefixes = {
         let policy_seed = [REQUIRED_FLOOR_POLICY_MODULE.to_string()];
         let (policy_prepared, _) = prepare_repository_closure(
             source_roots,
             &floor_prepared_subject_exclusions(),
-            Some(&policy_seed),
+            Some((&gate_entry_index, &policy_seed)),
         )?;
         let policy_scope = claim_scope_for(&policy_prepared, REQUIRED_FLOOR_POLICY_MODULE)?;
         let policy_frame = evaluation_frame(
@@ -2387,8 +2391,9 @@ pub fn run_required_floor(
     let (prepared, prepared_sources) = prepare_repository_closure(
         source_roots,
         &floor_prepared_subject_exclusions(),
-        Some(&required_gate_prefixes),
+        Some((&gate_entry_index, &required_gate_prefixes)),
     )?;
+    drop(gate_entry_index);
     // The bytes behind the sidecar candidates, captured here because `prepared_sources` is
     // moved into the guard on the next line and the barren check needs content, not paths.
     // Restricted to the candidate set rather than the whole inventory: the `.dag` predicate is

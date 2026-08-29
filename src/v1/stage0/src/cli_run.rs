@@ -36273,12 +36273,12 @@ pub fn assemble_prepared_subject(
 pub fn assemble_prepared_subject_closure(
     source_roots: &[String],
     exclude_substrings: &[String],
-    closure_seed_prefixes: Option<&[String]>,
+    closure: Option<(&MultiEntryIndex, &[String])>,
 ) -> Result<PreparedSubject, String> {
     let full_index = build_module_index(source_roots);
-    let index: ModuleSourceIndex = match closure_seed_prefixes {
+    let index: ModuleSourceIndex = match closure {
         None => full_index,
-        Some(prefixes) => {
+        Some((entry_index, prefixes)) => {
             let started = std::time::Instant::now();
             // THE CLOSURE IS THE LOADER'S BOTH-CLOSURE, NOT THE IMPORT HEADERS. A module in
             // this corpus may carry no `import` line at all and still depend on another
@@ -36294,12 +36294,10 @@ pub fn assemble_prepared_subject_closure(
                 .collect();
             let seeds = seed_paths.len();
             let mut keep: HashSet<String> = HashSet::new();
-            if seeds > 0 {
-                let entry_index = build_multi_entry_index(source_roots);
-                for path in &seed_paths {
-                    collect_both_closure_module_names_for_entry(&entry_index, path, &mut keep)
-                        .map_err(|e| format!("REQUIRED-FLOOR REFUSAL cause=GateClosureUnresolvable entry={path} — {e}"))?;
-                }
+            for path in &seed_paths {
+                collect_both_closure_module_names_for_entry(entry_index, path, &mut keep).map_err(
+                    |e| format!("REQUIRED-FLOOR REFUSAL cause=GateClosureUnresolvable entry={path} — {e}"),
+                )?;
             }
             if seeds == 0 {
                 return Err(format!(
@@ -36420,10 +36418,9 @@ pub fn prepare_repository_once(
 pub fn prepare_repository_closure(
     source_roots: &[String],
     exclude_substrings: &[String],
-    closure_seed_prefixes: Option<&[String]>,
+    closure: Option<(&MultiEntryIndex, &[String])>,
 ) -> Result<(PreparedRepository, Vec<PreparedSourceView>), String> {
-    let subject =
-        assemble_prepared_subject_closure(source_roots, exclude_substrings, closure_seed_prefixes)?;
+    let subject = assemble_prepared_subject_closure(source_roots, exclude_substrings, closure)?;
     // THE SUBJECT IS STATED BY THE REFUSAL ITSELF, not only by the success path.
     //
     // The digest and the two counts are computed above, BEFORE the gate that can reject.
