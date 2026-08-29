@@ -285,9 +285,29 @@ pub(crate) fn languages_decl_records_inner() -> Vec<LanguagesDeclConsumerRecord>
     records
 }
 
+static LANGUAGES_DECL_RECORDS: OnceLock<Vec<LanguagesDeclConsumerRecord>> = OnceLock::new();
+
 pub(crate) fn languages_decl_records_cached() -> &'static [LanguagesDeclConsumerRecord] {
-    static RECORDS: OnceLock<Vec<LanguagesDeclConsumerRecord>> = OnceLock::new();
-    RECORDS.get_or_init(languages_decl_records_inner)
+    LANGUAGES_DECL_RECORDS.get_or_init(languages_decl_records_inner)
+}
+
+/// Whether the process-wide census has already been built — PROVENANCE for the floor's
+/// preparation warm (`FloorPreparationPhase` `LanguagesConsumerCensusBuild`), so a warm that
+/// finds the artifact already in hand reports `already-warm-on-entry` instead of a zero build.
+pub(crate) fn languages_decl_records_already_built() -> bool {
+    LANGUAGES_DECL_RECORDS.get().is_some()
+}
+
+/// Whether the floor's prepared subject carries the authority the census reads. The inventory
+/// form panics on its absence by design (a census with no authority has no rows to answer for),
+/// so the preparation warm asks first and skips, printed, rather than stopping a subject that
+/// carries no consumer of the census at all.
+pub(crate) fn languages_census_subject_carries_authority() -> bool {
+    floor_prepared_inventory_snapshot().is_some_and(|inventory| {
+        inventory
+            .iter()
+            .any(|e| e.source.path.replace('\\', "/") == LANGUAGES_AUTHORITY_REL)
+    })
 }
 
 pub(crate) fn languages_decl_record_for(
