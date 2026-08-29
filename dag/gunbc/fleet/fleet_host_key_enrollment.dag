@@ -54,8 +54,10 @@ import gunbc.fleet_ssh_access { fleet_automation_ssh_key, fleet_automation_privk
 //     what the carrier already forbids). The srv5/srv6 DGX Spark units are the intended
 //     inhabitant (gunbc.spark.dgx_procurement carries their cited CR1000A reservations,
 //     and the slot->box assignment IS decided — dgx_spark_router_binding_operator_allocation,
-//     SPARK-ALLOC-LAND-0 2026-08-07, ascending address order: srv5->192.168.1.222,
-//     srv6->192.168.1.223). They stay ScannedFirstContact here NOT because the binding is
+//     SPARK-ALLOC-LAND-0 2026-08-07, ascending address order as it then stood; the units
+//     moved to their wireless interfaces on 2026-08-27 and the addresses are now
+//     srv5->192.168.1.226, srv6->192.168.1.225 — the join is to a box, not a number, so the
+//     allocation is unaffected). They stay ScannedFirstContact here NOT because the binding is
 //     open (it is not) but because the anchored-enrollment JOIN has not been PERFORMED: no
 //     one has yet enrolled a Spark host key, observed the MAC at that address, and matched
 //     it against the cited reservation row. IndependentlyAnchored would be a claim about
@@ -129,19 +131,19 @@ data fleet_host_key_enrollments: List<KnownHostKeyRow> = [
   },
   KnownHostKeyRow {
     host: "srv5" as HostIdentity,
-    endpoint: "192.168.1.222",
+    endpoint: "192.168.1.226",
     key_type: "ssh-ed25519",
     public_key_base64: "AAAAC3NzaC1lZDI1NTE5AAAAICIFwSNG7dFfeQLdMR70e/xbYdfGO9O/ArmOkB33kG/T",
     sha256_fingerprint: "SHA256:AnxYhYR+Cz5EbOCVxirsoZlUwLRENLJmeNyk0ukD/s4",
-    provenance: ScannedFirstContact { scanned_from: "192.168.1.222 via ssh-keyscan -t ed25519; slot->box IS decided (srv5->192.168.1.222, SPARK-ALLOC-LAND-0 2026-08-07) and a CR1000A reservation is cited, but the anchored-enrollment join (enrolled key + MAC-at-address + reservation match) has not been performed, so this stays first-contact until bold-eagle runs that join and flips it to IndependentlyAnchored" as NonEmptyStr },
+    provenance: ScannedFirstContact { scanned_from: "originally 192.168.1.222 via ssh-keyscan -t ed25519; ADDRESS MOVED to 192.168.1.226 on 2026-08-27 (SPARK-WIFI-0, reservation re-keyed to the wireless MAC). The key is unchanged and was re-scanned at the new address: SHA256:AnxYhYR+Cz5EbOCVxirsoZlUwLRENLJmeNyk0ukD/s4 matched the enrolled value exactly, which is what establishes that .226 is the same box .222 was. THAT IS CONTINUITY EVIDENCE AND NOT THE ANCHOR, and the distinction is the whole reason this arm does not change: re-scanning a first-contact key at a new address reproduces whatever the first contact established, so if the original scan had been intercepted this match would reproduce the interception rather than detect it. The anchored-enrollment join (enrolled key + independently observed MAC-at-address + cited reservation match) still has not been performed, so this stays first-contact" as NonEmptyStr },
   },
   KnownHostKeyRow {
     host: "srv6" as HostIdentity,
-    endpoint: "192.168.1.223",
+    endpoint: "192.168.1.225",
     key_type: "ssh-ed25519",
     public_key_base64: "AAAAC3NzaC1lZDI1NTE5AAAAIEnpVavWbt8VTjUMprf+CbKCw0tS2nQIVuN49Ob5gEsc",
     sha256_fingerprint: "SHA256:Y5wB4G/qZFXZBaXbjWdK/HtWJP2pUgupsyjwBPehqMs",
-    provenance: ScannedFirstContact { scanned_from: "192.168.1.223 via ssh-keyscan -t ed25519; slot->box IS decided (srv6->192.168.1.223, SPARK-ALLOC-LAND-0 2026-08-07) and a CR1000A reservation is cited, but the anchored-enrollment join (enrolled key + MAC-at-address + reservation match) has not been performed, so this stays first-contact until bold-eagle runs that join and flips it to IndependentlyAnchored" as NonEmptyStr },
+    provenance: ScannedFirstContact { scanned_from: "originally 192.168.1.223 via ssh-keyscan -t ed25519; ADDRESS MOVED to 192.168.1.225 on 2026-08-27 (SPARK-WIFI-0, reservation re-keyed to the wireless MAC). The key is unchanged and was re-scanned at the new address: SHA256:Y5wB4G/qZFXZBaXbjWdK/HtWJP2pUgupsyjwBPehqMs matched the enrolled value exactly, which is what establishes that .225 is the same box .223 was. THAT IS CONTINUITY EVIDENCE AND NOT THE ANCHOR, for the reason given on the srv5 row: a re-scan reproduces the first contact rather than corroborating it. The anchored-enrollment join still has not been performed, so this stays first-contact" as NonEmptyStr },
   },
 ]
 
