@@ -281,8 +281,8 @@ pub struct FinitelySupportedFunction<K, V> {
     pub insert: Rc<dyn Fn(K, V) -> Rc<FinitelySupportedFunction<K, V>>>,
     pub merge:
         Rc<dyn Fn(Rc<FinitelySupportedFunction<K, V>>) -> Rc<FinitelySupportedFunction<K, V>>>,
-    pub map_keys: Rc<dyn Fn() -> Rc<FreeMonoid<K>>>,
-    pub map_values: Rc<dyn Fn() -> Rc<FreeMonoid<V>>>,
+    pub map_keys: Rc<dyn Fn() -> Rc<Vec<K>>>,
+    pub map_values: Rc<dyn Fn() -> Rc<Vec<V>>>,
     pub map_has: Rc<dyn Fn(K) -> bool>,
     pub contains_key: Rc<dyn Fn(K) -> bool>,
     pub size: Rc<dyn Fn() -> i64>,
