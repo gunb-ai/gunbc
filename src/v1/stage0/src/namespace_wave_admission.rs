@@ -367,7 +367,70 @@ pub struct TransitionAdmission {
 /// the shape the paragraph above records for the first 53. Removed by the trigger they were
 /// authored with. The roster is EMPTY and empty is not permissive: a run carrying a real
 /// namespace delta still refuses it as UNADJUDICATED until its author adds a row here.
-pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[];
+/// FOURTH ENTRY, SAME RULE (2026-08-29, gunbc#9675). The four `rust_source_prefix_*` constants
+/// moved from `gunbc.stage0_rust_source_lifecycle_scaffold` to `gunbc.rust_item_host_observation`
+/// -- the namespace table there needs the tooling prefix, and importing it the other way closes
+/// the cycle scaffold -> seed_growth_admission -> host_observation. Every spelling that bound to
+/// the old declarer now binds to the new one: six `TargetChanged` rows, each naming the exact
+/// module, enclosing declaration and leaf, blast radius 0 on every one. These rows go STALE the
+/// moment #9675 merges (base and head then both carry the relocation) and are removed by that
+/// trigger, exactly as the three shrinks above were.
+pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
+    TransitionAdmission {
+        label: "rust-source-prefix-relocation-01",
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.stage0_rust_product_reachability",
+            in_declaration: "path_is_test_harness",
+            spelling: "rust_source_prefix_stage0_test",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "rust-source-prefix-relocation-02",
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.stage0_rust_product_reachability",
+            in_declaration: "path_is_test_harness",
+            spelling: "rust_source_prefix_test_harness",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "rust-source-prefix-relocation-03",
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.stage0_rust_source_lifecycle_scaffold",
+            in_declaration: "rust_source_discovery_prefix_hints",
+            spelling: "rust_source_prefix_stage0_example",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "rust-source-prefix-relocation-04",
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.stage0_rust_source_lifecycle_scaffold",
+            in_declaration: "rust_source_discovery_prefix_hints",
+            spelling: "rust_source_prefix_stage0_test",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "rust-source-prefix-relocation-05",
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.stage0_rust_source_lifecycle_scaffold",
+            in_declaration: "rust_source_discovery_prefix_hints",
+            spelling: "rust_source_prefix_test_harness",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "rust-source-prefix-relocation-06",
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.stage0_rust_source_lifecycle_scaffold",
+            in_declaration: "rust_source_discovery_prefix_hints",
+            spelling: "rust_source_prefix_tooling",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+];
 
 /// The denominators a green must name (DESIGN §5). A run that cannot say what it covered is
 /// an instrument failure wearing coverage's clothes.
