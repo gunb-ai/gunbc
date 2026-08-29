@@ -36607,29 +36607,54 @@ pub struct ReferenceClosureIndex {
     pub refs_by_module: HashMap<String, std::collections::BTreeSet<String>>,
 }
 
+/// THE PREPARED SUBJECTS ONE FLOOR PROCESS BUILDS, BY DESIGN: the policy module's own closure
+/// (a few dozen modules, from which the gate roster is decoded) and the gate closure that
+/// roster bounds. Two, not one, since the roster that bounds preparation has to be read before
+/// preparation exists; and two, not N, because a subject per claim would be the corpus walk per
+/// row the index exists to avoid. An architecture fact, not a measurement.
+const FLOOR_PREPARED_SUBJECTS_PER_PROCESS: usize = 2;
+
 thread_local! {
-    static REFERENCE_CLOSURE_INDEX: std::cell::RefCell<Option<Rc<ReferenceClosureIndex>>> =
-        const { std::cell::RefCell::new(None) };
+    static REFERENCE_CLOSURE_INDEXES: std::cell::RefCell<Vec<(String, Rc<ReferenceClosureIndex>)>> =
+        const { std::cell::RefCell::new(Vec::new()) };
 }
 
 fn reference_closure_index(
     prepared: &PreparedRepository,
 ) -> Result<Rc<ReferenceClosureIndex>, String> {
-    // ONE PREPARED SUBJECT PER PROCESS is the architecture of this fold, so the index is built
-    // once and reused across all 10,444 claims -- rebuilding it per claim would be a corpus walk
-    // per row. That assumption is CHECKED rather than assumed: a later call seeing a different
-    // module population refuses instead of silently answering from the first subject's index.
-    if let Some(existing) = REFERENCE_CLOSURE_INDEX.with(|c| c.borrow().clone()) {
-        if existing.module_count != prepared.graph.modules.len() {
-            return Err(format!(
-                "CLAIM-SCOPE REFUSAL cause=ReferenceIndexSubjectChanged \
-                 built_for_modules={} observed_modules={} — the reference closure index is built \
-                 once per prepared subject and this process prepared a second one",
-                existing.module_count,
-                prepared.graph.modules.len()
-            ));
-        }
+    // ONE INDEX PER PREPARED SUBJECT, KEYED BY THE SUBJECT'S OWN DIGEST, so the index a scope
+    // consults was built from the graph that scope is over -- by construction, not by a
+    // module-count coincidence (the previous check: two subjects of equal size would have
+    // shared one index). Built once per subject and reused across every claim in it.
+    //
+    // The population of subjects is bounded by `FLOOR_PREPARED_SUBJECTS_PER_PROCESS`; a third
+    // distinct subject refuses, because that is the per-claim-preparation shape and the cost
+    // wall against it is this check, not the log line.
+    if let Some(existing) = REFERENCE_CLOSURE_INDEXES.with(|c| {
+        c.borrow()
+            .iter()
+            .find(|(digest, _)| *digest == prepared.subject_digest)
+            .map(|(_, index)| index.clone())
+    }) {
         return Ok(existing);
+    }
+    let built_so_far: Vec<(String, usize)> = REFERENCE_CLOSURE_INDEXES.with(|c| {
+        c.borrow()
+            .iter()
+            .map(|(digest, index)| (digest.clone(), index.module_count))
+            .collect()
+    });
+    if built_so_far.len() >= FLOOR_PREPARED_SUBJECTS_PER_PROCESS {
+        return Err(format!(
+            "CLAIM-SCOPE REFUSAL cause=ReferenceIndexSubjectChanged \
+             built_for_subjects={:?} observed_subject=({}, modules={}) — a floor process \
+             prepares at most {} subjects (policy closure, gate closure) and this one prepared \
+             another; a subject per claim is the corpus walk per row this index exists to avoid",
+            built_so_far,
+            prepared.subject_digest,
+            prepared.graph.modules.len(),
+            FLOOR_PREPARED_SUBJECTS_PER_PROCESS
+        ));
     }
     let started = std::time::Instant::now();
     // TWO PASSES, BECAUSE THE CLASSIFICATION IS ONLY DECIDABLE ONCE EVERY DECLARATION IS KNOWN.
@@ -36752,12 +36777,16 @@ fn reference_closure_index(
         refs_by_module,
     });
     eprintln!(
-        "[floor-phase] phase=reference-closure-index state=completed wall_ms={} modules={} names={}",
+        "[floor-phase] phase=reference-closure-index state=completed wall_ms={} modules={} names={} subject={}",
         started.elapsed().as_millis(),
         index.module_count,
-        index.decl_index.len()
+        index.decl_index.len(),
+        prepared.subject_digest
     );
-    REFERENCE_CLOSURE_INDEX.with(|c| *c.borrow_mut() = Some(index.clone()));
+    REFERENCE_CLOSURE_INDEXES.with(|c| {
+        c.borrow_mut()
+            .push((prepared.subject_digest.clone(), index.clone()))
+    });
     Ok(index)
 }
 
