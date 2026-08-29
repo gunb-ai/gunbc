@@ -674,7 +674,7 @@ fn floor_cost_debt_censored_chunk_02() -> List<String> {
 // NO SECOND DECLINE ARM IS MINTED FOR THIS. A disposition names an admission outcome; evidence
 // strength is a different axis, and giving the host a second arm to branch on would make it
 // re-decide a question the roster already answers. The split is carried where the fact lives.
-// THE GATE-BOUNDED SUBJECT (2026-08-29, #9663). Ten claims that completed inside the 500ms
+// THE GATE-BOUNDED SUBJECT (2026-08-29, #9663). Fourteen claims that completed inside the 500ms
 // ceiling on the whole-tree subject are INTERRUPTED-BEFORE-VERDICT on the gate closure, on the
 // GitHub runner and on srv2 alike, run after run (e8effe8, 1f4bda9, 92cc92e; srv2 lane 12).
 // The subject changed what is warm before they run, not what they assert; the marginal cost is
@@ -682,9 +682,13 @@ fn floor_cost_debt_censored_chunk_02() -> List<String> {
 // widened past. Same containment, same exit: a warm for the artifacts they first-touch. Two
 // `lens_module_gate_witness` live claims were here for one run each: their whole cost was the
 // 1.07s pool-root `module_path_index` fill (measured 1076ms with fill 1070ms), which the floor now
-// warms in preparation from the declared producer, so they left as the exit was built.
+// warms in preparation from the declared producer, so they left as the exit was built. The four
+// `bootstrap_footprint_anchor` rows are a different shape: 474-505ms CPU on three consecutive CI
+// runs (0829ad8, 154fb1f, f462bc9 claim-cost receipts), no fill billed to them, so the ceiling
+// itself is what decides them, run by run, by which runner slot the job landed on. That is not a
+// verdict about the claim; it is withheld here until the ceiling stops deciding.
 fn floor_cost_debt_proven_chunk_12() -> List<String> {
-  Cons { head: "v2.test.claim.enforcement.cost_coverage_witness.cost_coverage_dag_logic_has_three_fn_bodies", tail: Cons { head: "v2.test.claim.enforcement.cost_coverage_witness.cost_coverage_file_row_totality_holds_on_smoke", tail: Cons { head: "v2.test.claim.enforcement.cost_coverage_witness.cost_coverage_v2_ingested_body_is_not_decl_facts_skeleton", tail: Cons { head: "v2.test.claim.identity_captured_navigation_roster_gate.green_control_sanctioned_reader_body_not_flagged", tail: Cons { head: "v2.test.claim.provenance.loaded_carrier_receipts.a_real_loaded_compilation_is_reachable_without_reading_the_live_tree_holds", tail: Cons { head: "v2.test.claim.provenance.loaded_carrier_receipts.a_record_type_declaration_does_not_reach_the_index_while_a_fn_does_holds", tail: Cons { head: "v2.test.claim.provenance.loaded_carrier_receipts.function_bodies_are_token_level_in_the_normalized_carrier_holds", tail: Cons { head: "v2.test.execution.emit_ingest_grammar_relation_round_trip.same_grammar_parse_ingest_bridge_holds", tail: Cons { head: "v2.test.manual.kotlin_grammar_claim.kotlin_grammar_parse_accepted", tail: Cons { head: "v2.test.manual.nominal_distinctness_cross_call.nominal_distinct_control_compiles_ok", tail: Empty {} } } } } } } } } } }
+  Cons { head: "v2.test.manual.bootstrap_footprint_anchor.bootstrap_footprint_canonical_holds", tail: Cons { head: "v2.test.manual.bootstrap_footprint_anchor.bootstrap_footprint_non_canonical_violates", tail: Cons { head: "v2.test.manual.bootstrap_footprint_anchor.bootstrap_footprint_bad_content_hash_violates", tail: Cons { head: "v2.test.manual.bootstrap_footprint_anchor.bootstrap_footprint_bad_runtime_same_identity_violates", tail: Cons { head: "v2.test.claim.enforcement.cost_coverage_witness.cost_coverage_dag_logic_has_three_fn_bodies", tail: Cons { head: "v2.test.claim.enforcement.cost_coverage_witness.cost_coverage_file_row_totality_holds_on_smoke", tail: Cons { head: "v2.test.claim.enforcement.cost_coverage_witness.cost_coverage_v2_ingested_body_is_not_decl_facts_skeleton", tail: Cons { head: "v2.test.claim.identity_captured_navigation_roster_gate.green_control_sanctioned_reader_body_not_flagged", tail: Cons { head: "v2.test.claim.provenance.loaded_carrier_receipts.a_real_loaded_compilation_is_reachable_without_reading_the_live_tree_holds", tail: Cons { head: "v2.test.claim.provenance.loaded_carrier_receipts.a_record_type_declaration_does_not_reach_the_index_while_a_fn_does_holds", tail: Cons { head: "v2.test.claim.provenance.loaded_carrier_receipts.function_bodies_are_token_level_in_the_normalized_carrier_holds", tail: Cons { head: "v2.test.execution.emit_ingest_grammar_relation_round_trip.same_grammar_parse_ingest_bridge_holds", tail: Cons { head: "v2.test.manual.kotlin_grammar_claim.kotlin_grammar_parse_accepted", tail: Cons { head: "v2.test.manual.nominal_distinctness_cross_call.nominal_distinct_control_compiles_ok", tail: Empty {} } } } } } } } } } } } } } }
 }
 
 fn floor_cost_debt_proven_chunks() -> List<List<String>> {
