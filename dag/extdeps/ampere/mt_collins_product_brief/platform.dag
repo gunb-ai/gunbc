@@ -2,7 +2,7 @@ module extdeps.ampere.mt_collins_product_brief.platform
 
 import std.types { String, NonEmptyStr, Int }
 import std.nat { Nat }
-import std.measure { MegatransfersPerSecond, megatransfers_per_second }
+import std.measure { MegatransfersPerSecond, megatransfers_per_second, Millimeter, millimeter }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.ampere.mt_collins_product_brief.subject { MtCollinsPublicProductBrief, mt_collins_public_product_brief }
 
@@ -57,3 +57,42 @@ data mt_collins_platform_model_scope: ExternalModelScope = ExternalModelScope {
 }
 
 data extdeps_model_scope: ExternalModelScope = mt_collins_platform_model_scope
+
+// ---------------------------------------------------------------------------------------------
+// CHASSIS VARIANTS AND DEPTH. The public 2022 V2 collateral states one 2U chassis at
+// 33.36 x 17.24 x 1.7 inches; the liquidation market ships a 1U variant (chassis part
+// 1A624RA00-600-G, FRU-read from a held unit). Depth is the load-bearing figure for rack
+// planning: both variants are ~850mm-class - far deeper than commodity 1U - so cabinet
+// admission needs 42-48in / 1200mm depth, and sliding rail kits capped near 29in chassis
+// length are excluded. Each row declares its provenance grade; the measured row is an
+// operator tape measure, approximate to roughly a centimetre, superseded by a datasheet
+// figure for the 1U chassis if one ever surfaces.
+// ---------------------------------------------------------------------------------------------
+
+
+type MtCollinsDimensionProvenance
+  = CitedCollateral
+  | OperatorMeasuredApproximate
+
+type MtCollinsChassisVariant {
+  chassis_part_number: NonEmptyStr
+  rack_units: Nat
+  overall_depth: Millimeter
+  depth_provenance: MtCollinsDimensionProvenance
+}
+
+data mt_collins_chassis_2u: MtCollinsChassisVariant = MtCollinsChassisVariant {
+  chassis_part_number: "unstated in the public collateral",
+  rack_units: 2,
+  overall_depth: millimeter(count: 847),
+  depth_provenance: CitedCollateral,
+}
+
+data mt_collins_chassis_1u: MtCollinsChassisVariant = MtCollinsChassisVariant {
+  chassis_part_number: "1A624RA00-600-G",
+  rack_units: 1,
+  overall_depth: millimeter(count: 857),
+  depth_provenance: OperatorMeasuredApproximate,
+}
+
+data chassis_depth_note: String = "The 2U depth is the collateral's 33.36in converted (847mm). The 1U depth is ~33.75in (857mm) by operator tape measure 2026-08-29 on the held unit - approximate, not a datasheet figure, and within 10mm of the 2U depth: the 1U variant is the same very deep chassis, not a shortened one. Mounting-ear positions and rail-member part numbers remain unmeasured."
