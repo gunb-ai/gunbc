@@ -2589,10 +2589,10 @@ pub fn run_required_floor(
     // normalizes the two spellings, so when the roots coincide the second call is a memo hit and
     // reports `provenance=already-warm-on-entry` — which is PROVENANCE (where the build was
     // triggered), never ownership (what is charged for it).
-    // ONE COLLECTION, ONE REFUSAL, ALL THREE DECLARED PHASES. `FloorPreparationPhase` is closed at
-    // three members and every one of them is now measured and adjudicated here. The two earlier
-    // warms were previously reported and never judged, which made two of the three modeled walls
-    // decorative — permanently green by construction and citable as coverage (review 55338).
+    // ONE COLLECTION, ONE REFUSAL, EVERY DECLARED PHASE. `FloorPreparationPhase` is closed and
+    // every member of it is measured and adjudicated here. The two earliest warms were once
+    // reported and never judged, which made two of the modeled walls decorative — permanently
+    // green by construction and citable as coverage (review 55338).
     // THE POOL-ROOT INDEX, WARMED BY CALLING THE DECLARED PRODUCER ONCE. `module_path_index` is
     // also built per POOL ROOT on demand by the decl-facts reflection seam, keyed on the root a
     // claim asks for, so the witness-roots warm above cannot reach it. Under the gate-bounded
@@ -2646,12 +2646,54 @@ pub fn run_required_floor(
             None
         }
     };
+    // THE LANGUAGES CONSUMER CENSUS, WARMED BY CALLING THE DECLARED PRODUCER ONCE — the same
+    // repair as the three above, and the fourth artifact this repository has measured being
+    // billed to a first toucher. `languages_decl_records_cached` is a process-wide `OnceLock`
+    // over a token scan of every `.dag` and `.rs` file in the tree, built once; on main runs
+    // 33251451113 and 33246969960 (`required_floor_claim_cost.tsv`) the whole build landed on
+    // `v2.test.languages_consumer_census.corpus.rust_language_external_consumer
+    // corpus_rust_language_has_external_consumer` at 412ms against the 500ms
+    // `required_floor_claim_cpu_safety_limit_ms` — red on any runner a fifth slower — while its
+    // sibling in the same file, reading the identical memo milliseconds later, measured 0ms.
+    // The `OnceLock` miss is not bracketed by `record_shared_artifact_fill_cpu`, so
+    // `run_claim_measured` could not net it either; paying it here is the ONE mechanism, and a
+    // second bracket beside this warm would be the two-homes fork
+    // `gunbc.census_memo_seed_growth` already refuses. Skipped, printed, when the subject does
+    // not carry the authority the census reads (`std.languages`, `LANGUAGES_AUTHORITY_REL`): a subject without it
+    // carries no consumer of it either, and the census panics on that absence by design.
+    let languages_census_warm = if languages_census_subject_carries_authority() {
+        let (decl_rows, warm) = observe_shared_build(
+            languages_decl_records_already_built(),
+            "floor-preparation",
+            || languages_decl_records_cached().len(),
+        );
+        eprintln!(
+            "[floor-phase] phase=languages-consumer-census-warm state=completed cpu_ms={} \
+             wall_ms={} rss_growth_bytes={} decl_rows={} provenance={}",
+            warm.cpu_ms,
+            warm.wall_ms,
+            warm.rss_growth_bytes,
+            decl_rows,
+            warm.provenance.render(),
+        );
+        Some(warm)
+    } else {
+        eprintln!(
+            "[floor-phase] phase=languages-consumer-census-warm state=skipped — the subject does \
+             not carry {}, so it carries no consumer of the census either",
+            LANGUAGES_AUTHORITY_REL
+        );
+        None
+    };
     let mut shared_build_warms: Vec<(&'static str, SharedBuildObservation)> = vec![
         ("ModulePathIndexBuild", module_path_index_warm),
         ("SharedModuleIndexBuild", shared_index_warm),
     ];
     if let Some(warm) = lens_pool_root_warm {
         shared_build_warms.push(("ModulePathIndexBuild/lens-pool-roots", warm));
+    }
+    if let Some(warm) = languages_census_warm {
+        shared_build_warms.push(("LanguagesConsumerCensusBuild", warm));
     }
     shared_build_warms.push((
         "BareReferenceEdgeIndexBuild/source-roots",
