@@ -5,6 +5,8 @@ import std.execution_mode { ExecutionMode, Hermetic, Wet }
 import std.primitive_projection { PrimitiveIdentity, primitive_identity_slug }
 import v2.compiler.effect_demand {
   AgreedDemand,
+  effect_demand_compiler_entry_module,
+  effect_demand_compiler_origin_population,
   BoundCompilerInput,
   DemandReceipt,
   EmittedRealizationCensus,
@@ -440,4 +442,12 @@ test fn effect_demand_witness_receipt_count_is_derived_from_identities() -> Bool
       left: effect_demand_probe_receipt_modeled,
       right: effect_demand_probe_receipt_short
     )
+}
+
+data effect_demand_compiler_entry_identity_probe_note: String = "REGRESSION CONTROL FOR A DEFECT THIS SLICE SHIPPED AND THEN MEASURED. The compile-origin entry identity was authored as v2.compiler.00_compile, derived from the file path src/v2/compiler/00_compile.dag; the module DECLARES v2.compiler.compile, the numeric prefix being a filename ordering convention. A reachability walk seeded on the path-derived spelling has an EMPTY root set and answers NONE for every question -- the shape of a pass with the content of nothing -- which is how the error survived being looked at. The row is asserted here rather than left unconsumed both because an unread data row is dead data and because the assertion is what makes the path-derived spelling unable to return silently."
+
+test fn effect_demand_witness_compiler_entry_identity_is_the_declared_module() -> Bool {
+  (effect_demand_compiler_entry_module == "v2.compiler.compile")
+    && effect_demand_population_admits_promotion(population: effect_demand_compiler_origin_population)
+    && (length(xs: effect_demand_population_rows(population: effect_demand_compiler_origin_population)) == 0)
 }
