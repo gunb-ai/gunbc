@@ -1325,7 +1325,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       identity: "rn_7KWZQ2VBNM4XCT0RDPLHGJ86Y1",
       id: "compute-exact-work-contract",
       owner: "compute",
-      path: "docs/plans/execution-spine-design.md",
+      path: "dag/gunbc/fabric/fabric_ci_program.dag",
       t: fields(
         headline: "One way to ask for work to be done, with the subject pinned exactly",
         boundary: "A request names the exact tree it applies to, the operation, the inputs it declares and the outputs it promises, the toolchain and environment it needs, its resource envelope, and which providers may serve it. The answer is one of a fixed set of endings: succeeded, failed, refused by the infrastructure, cancelled, or refused because what came back did not match the outputs declared. A branch name or a working directory is not a subject.",
@@ -1340,7 +1340,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       identity: "rn_1MDQX8ZTVK5NBW3RCPHJLG024Y",
       id: "compute-artifact-return-and-materialization",
       owner: "compute",
-      path: "docs/plans/execution-spine-design.md",
+      path: "dag/gunbc/fabric/fabric_ci_program.dag",
       t: fields(
         headline: "Work that cannot hand back what it produced has not succeeded",
         boundary: "Every output a computation declared comes back identified by its content, with its size and what produced it, through a manifest the caller can read. Whether those bytes are then copied into a working tree is a separate and explicit step. Work that produces files may only run where its outputs can be returned; a provider that cannot return them offers checking only, and refuses producing work before it starts rather than after.",
@@ -1356,7 +1356,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       identity: "rn_5PZBW1KVNT7XCQ3RDMHJLG0946",
       id: "compute-deduplication-and-admission",
       owner: "compute",
-      path: "docs/plans/execution-spine-design.md",
+      path: "dag/gunbc/fabric/fabric_ci_program.dag",
       t: fields(
         headline: "Identical work runs once and is handed to everyone who asked for it",
         boundary: "Two requests naming the same computation are the same work: one producer runs and everyone else attaches to its result as a consumer. The fabric decides what may run — how many cold builds a machine carries at once, what the compile pool's total demand may be, which host serves a request, and what order competing work is served in — and tells a caller which of those it is waiting on. A caller never starts something merely because it cannot tell whether somebody else is already producing it.",
@@ -1372,7 +1372,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       identity: "rn_0LNVJ4CQ8ZRHT2XBWD6PGK9YFS",
       id: "ci-owned-execution",
       owner: "ci-control",
-      path: "docs/plans/ci-process-end-to-end.md",
+      path: "dag/gunbc/fabric/fabric_ci_program.dag",
       t: fields(
         headline: "Run the required checks on our own machines, from a subject we hold ourselves",
         boundary: "Seeing a new commit creates a durable piece of work of our own, identified by the exact base, head, and combined commit under test. One machine holds it under a lease for the whole run, and the run ends in one typed result we keep. Starting, queueing and handing out the work involve no third-party workflow and no registered runner. The old floor is quarry and shadow oracle, not the template: obligations port only when a disagreement proves they carry a real property, and its batches, ordering, settlement and status vocabulary are not inherited.",

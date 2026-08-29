@@ -1,0 +1,277 @@
+module test.claim.fabric.fabric_required_build_work_witness_test
+
+import std.types { Bool, NonEmptyStr }
+import extdeps.git.object_store { GitObjectId, git_sha1_object_id }
+import product.fabric.identity { WorkKey }
+import gunbc.fabric_witness_run {
+  RequiredBuildSource, ExactGitSource, MovingGitRef, WorkingDirectorySource,
+  GitCommitTreeVerified, GitCommitTreeMismatch, verify_git_commit_tree,
+  RequiredBuildEnvironmentEntry, RequiredBuildExecutionSpec,
+  RequiredBuildWorkBinding, RequiredBuildWorkBound, RequiredBuildWorkRefused,
+  RequiredBuildMovingRefRefused, RequiredBuildWorkingDirectoryRefused,
+  RequiredBuildCoordinateMissing,
+  bind_required_witnesses_build_work, build_lane_run_command, witnesses_lane_run_command,
+  required_witnesses_build_work,
+}
+
+test fn production_required_witnesses_build_work_is_possessed() -> Bool {
+  match exact_source(tree_hex: "c8983a3d8412a5e37a309b2d90ceafc698856619") {
+    Absent => false
+    Present { value: source } => match required_witnesses_build_work(source: source) {
+      RequiredBuildWorkBound { work: _, source_tree_digest: _, environment_materialization_digest: _ } => true
+      RequiredBuildWorkRefused { cause: _ } => false
+    }
+  }
+}
+
+fn fixture_oid(hex: NonEmptyStr) -> GitObjectId? {
+  git_sha1_object_id(hex: hex)
+}
+
+fn fixture_spec(
+  source: RequiredBuildSource,
+  command_mutated: Bool,
+  environment_value: NonEmptyStr,
+  toolchain: NonEmptyStr,
+  output: NonEmptyStr,
+) -> RequiredBuildExecutionSpec {
+  RequiredBuildExecutionSpec {
+    source: source,
+    checkout_materialization: ["actions/checkout@v4", "fetch-depth=0", "verify-HEAD-tree"],
+    toolchain_provenance: [toolchain, "component:rustfmt"],
+    executable_provenance: ["cargo-build:--release --bins", "target/release/claim_executor"],
+    command: if command_mutated { witnesses_lane_run_command() } else { build_lane_run_command() },
+    environment: [RequiredBuildEnvironmentEntry { name: "RUSTUP_TOOLCHAIN", value: environment_value }],
+    cache_policy: ["setup-rust-cache=false", "persistent-host-cargo-home", "step-reuse-permitted"],
+    permitted_credential_refs: ["github.actions.checkout-token"],
+    output_manifest: [output, "required-build-lane-log"],
+    terminal_result_manifest: ["required-ci-exit-status", "required-ci-terminal-summary"],
+  }
+}
+
+fn exact_source(tree_hex: NonEmptyStr) -> RequiredBuildSource? {
+  match fixture_oid(hex: "e9eaa579ed0b6585a48965842b43ee09af5671a1") {
+    Absent => none
+    Present { value: commit } => match fixture_oid(hex: tree_hex) {
+      Absent => none
+      Present { value: tree } => match verify_git_commit_tree(commit: commit, declared_tree: tree, observed_commit_tree: tree) {
+        GitCommitTreeMismatch { commit: _, declared_tree: _, observed_commit_tree: _ } => none
+        GitCommitTreeVerified { subject } => Present { value: ExactGitSource { subject: subject } }
+      }
+    }
+  }
+}
+
+test fn mismatched_commit_tree_refuses_before_source_construction() -> Bool {
+  match fixture_oid(hex: "e9eaa579ed0b6585a48965842b43ee09af5671a1") {
+    Absent => false
+    Present { value: commit } => match fixture_oid(hex: "c8983a3d8412a5e37a309b2d90ceafc698856619") {
+      Absent => false
+      Present { value: declared_tree } => match fixture_oid(hex: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa") {
+        Absent => false
+        Present { value: observed_commit_tree } => match verify_git_commit_tree(commit: commit, declared_tree: declared_tree, observed_commit_tree: observed_commit_tree) {
+          GitCommitTreeMismatch { commit: _, declared_tree: _, observed_commit_tree: _ } => true
+          GitCommitTreeVerified { subject: _ } => false
+        }
+      }
+    }
+  }
+}
+
+fn binding_key(binding: RequiredBuildWorkBinding) -> WorkKey? {
+  match binding {
+    RequiredBuildWorkRefused { cause: _ } => none
+    RequiredBuildWorkBound { work, source_tree_digest: _, environment_materialization_digest: _ } => Present { value: work.id.key }
+  }
+}
+
+fn bound_for(source: RequiredBuildSource, command_mutated: Bool, environment_value: NonEmptyStr, toolchain: NonEmptyStr, output: NonEmptyStr) -> RequiredBuildWorkBinding {
+  bind_required_witnesses_build_work(
+    principal: "gunbc",
+    spec: fixture_spec(source: source, command_mutated: command_mutated, environment_value: environment_value, toolchain: toolchain, output: output),
+  )
+}
+
+test fn identical_semantic_inputs_derive_identical_work_identity() -> Bool {
+  match exact_source(tree_hex: "c8983a3d8412a5e37a309b2d90ceafc698856619") {
+    Absent => false
+    Present { value: source } => {
+      let left = bound_for(source: source, command_mutated: false, environment_value: "1.93.0", toolchain: "rust:1.93.0", output: "required-ci-summary")
+      let right = bound_for(source: source, command_mutated: false, environment_value: "1.93.0", toolchain: "rust:1.93.0", output: "required-ci-summary")
+      binding_key(binding: left) == binding_key(binding: right)
+    }
+  }
+}
+
+fn identity_changes(left: RequiredBuildWorkBinding, right: RequiredBuildWorkBinding) -> Bool {
+  binding_key(binding: left) != binding_key(binding: right)
+}
+
+test fn one_command_word_changes_work_identity() -> Bool {
+  match exact_source(tree_hex: "c8983a3d8412a5e37a309b2d90ceafc698856619") {
+    Absent => false
+    Present { value: source } => identity_changes(
+      left: bound_for(source: source, command_mutated: false, environment_value: "1.93.0", toolchain: "rust:1.93.0", output: "required-ci-summary"),
+      right: bound_for(source: source, command_mutated: true, environment_value: "1.93.0", toolchain: "rust:1.93.0", output: "required-ci-summary"),
+    )
+  }
+}
+
+test fn one_environment_entry_changes_work_identity() -> Bool {
+  match exact_source(tree_hex: "c8983a3d8412a5e37a309b2d90ceafc698856619") {
+    Absent => false
+    Present { value: source } => identity_changes(
+      left: bound_for(source: source, command_mutated: false, environment_value: "1.93.0", toolchain: "rust:1.93.0", output: "required-ci-summary"),
+      right: bound_for(source: source, command_mutated: false, environment_value: "1.93.1", toolchain: "rust:1.93.0", output: "required-ci-summary"),
+    )
+  }
+}
+
+test fn separator_in_list_value_cannot_collapse_work_identity() -> Bool {
+  match exact_source(tree_hex: "c8983a3d8412a5e37a309b2d90ceafc698856619") {
+    Absent => false
+    Present { value: source } => {
+      let base = fixture_spec(source: source, command_mutated: false, environment_value: "1.93.0", toolchain: "rust:1.93.0", output: "required-ci-summary")
+      let split = RequiredBuildExecutionSpec {
+        source: base.source,
+        checkout_materialization: ["a", "b"],
+        toolchain_provenance: base.toolchain_provenance,
+        executable_provenance: base.executable_provenance,
+        command: base.command,
+        environment: base.environment,
+        cache_policy: base.cache_policy,
+        permitted_credential_refs: base.permitted_credential_refs,
+        output_manifest: base.output_manifest,
+        terminal_result_manifest: base.terminal_result_manifest,
+      }
+      let joined = RequiredBuildExecutionSpec {
+        source: base.source,
+        checkout_materialization: ["a\u{1e}b"],
+        toolchain_provenance: base.toolchain_provenance,
+        executable_provenance: base.executable_provenance,
+        command: base.command,
+        environment: base.environment,
+        cache_policy: base.cache_policy,
+        permitted_credential_refs: base.permitted_credential_refs,
+        output_manifest: base.output_manifest,
+        terminal_result_manifest: base.terminal_result_manifest,
+      }
+      identity_changes(
+        left: bind_required_witnesses_build_work(principal: "gunbc", spec: split),
+        right: bind_required_witnesses_build_work(principal: "gunbc", spec: joined),
+      )
+    }
+  }
+}
+
+test fn environment_name_value_boundaries_cannot_collapse_work_identity() -> Bool {
+  match exact_source(tree_hex: "c8983a3d8412a5e37a309b2d90ceafc698856619") {
+    Absent => false
+    Present { value: source } => {
+      let base = fixture_spec(source: source, command_mutated: false, environment_value: "1.93.0", toolchain: "rust:1.93.0", output: "required-ci-summary")
+      let value_contains_equals = RequiredBuildExecutionSpec {
+        source: base.source,
+        checkout_materialization: base.checkout_materialization,
+        toolchain_provenance: base.toolchain_provenance,
+        executable_provenance: base.executable_provenance,
+        command: base.command,
+        environment: [RequiredBuildEnvironmentEntry { name: "a", value: "b=c" }],
+        cache_policy: base.cache_policy,
+        permitted_credential_refs: base.permitted_credential_refs,
+        output_manifest: base.output_manifest,
+        terminal_result_manifest: base.terminal_result_manifest,
+      }
+      let name_contains_equals = RequiredBuildExecutionSpec {
+        source: base.source,
+        checkout_materialization: base.checkout_materialization,
+        toolchain_provenance: base.toolchain_provenance,
+        executable_provenance: base.executable_provenance,
+        command: base.command,
+        environment: [RequiredBuildEnvironmentEntry { name: "a=b", value: "c" }],
+        cache_policy: base.cache_policy,
+        permitted_credential_refs: base.permitted_credential_refs,
+        output_manifest: base.output_manifest,
+        terminal_result_manifest: base.terminal_result_manifest,
+      }
+      identity_changes(
+        left: bind_required_witnesses_build_work(principal: "gunbc", spec: value_contains_equals),
+        right: bind_required_witnesses_build_work(principal: "gunbc", spec: name_contains_equals),
+      )
+    }
+  }
+}
+
+test fn verified_tree_changes_work_identity() -> Bool {
+  match exact_source(tree_hex: "c8983a3d8412a5e37a309b2d90ceafc698856619") {
+    Absent => false
+    Present { value: left_source } => match exact_source(tree_hex: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa") {
+      Absent => false
+      Present { value: right_source } => identity_changes(
+        left: bound_for(source: left_source, command_mutated: false, environment_value: "1.93.0", toolchain: "rust:1.93.0", output: "required-ci-summary"),
+        right: bound_for(source: right_source, command_mutated: false, environment_value: "1.93.0", toolchain: "rust:1.93.0", output: "required-ci-summary"),
+      )
+    }
+  }
+}
+
+test fn toolchain_identity_changes_work_identity() -> Bool {
+  match exact_source(tree_hex: "c8983a3d8412a5e37a309b2d90ceafc698856619") {
+    Absent => false
+    Present { value: source } => identity_changes(
+      left: bound_for(source: source, command_mutated: false, environment_value: "1.93.0", toolchain: "rust:1.93.0", output: "required-ci-summary"),
+      right: bound_for(source: source, command_mutated: false, environment_value: "1.93.0", toolchain: "rust:1.94.0", output: "required-ci-summary"),
+    )
+  }
+}
+
+test fn output_declaration_changes_work_identity() -> Bool {
+  match exact_source(tree_hex: "c8983a3d8412a5e37a309b2d90ceafc698856619") {
+    Absent => false
+    Present { value: source } => identity_changes(
+      left: bound_for(source: source, command_mutated: false, environment_value: "1.93.0", toolchain: "rust:1.93.0", output: "required-ci-summary"),
+      right: bound_for(source: source, command_mutated: false, environment_value: "1.93.0", toolchain: "rust:1.93.0", output: "required-ci-summary-v2"),
+    )
+  }
+}
+
+test fn moving_branch_refuses_before_work_construction() -> Bool {
+  match bound_for(source: MovingGitRef { ref_name: "main" }, command_mutated: false, environment_value: "1.93.0", toolchain: "rust:1.93.0", output: "required-ci-summary") {
+    RequiredBuildWorkRefused { cause: RequiredBuildMovingRefRefused { ref_name: _ } } => true
+    RequiredBuildWorkRefused { cause: _ } => false
+    RequiredBuildWorkBound { work: _, source_tree_digest: _, environment_materialization_digest: _ } => false
+  }
+}
+
+test fn working_directory_refuses_before_work_construction() -> Bool {
+  match bound_for(source: WorkingDirectorySource { path: "." }, command_mutated: false, environment_value: "1.93.0", toolchain: "rust:1.93.0", output: "required-ci-summary") {
+    RequiredBuildWorkRefused { cause: RequiredBuildWorkingDirectoryRefused { path: _ } } => true
+    RequiredBuildWorkRefused { cause: _ } => false
+    RequiredBuildWorkBound { work: _, source_tree_digest: _, environment_materialization_digest: _ } => false
+  }
+}
+
+test fn missing_required_coordinate_refuses_instead_of_defaulting() -> Bool {
+  match exact_source(tree_hex: "c8983a3d8412a5e37a309b2d90ceafc698856619") {
+    Absent => false
+    Present { value: source } => {
+      let base = fixture_spec(source: source, command_mutated: false, environment_value: "1.93.0", toolchain: "rust:1.93.0", output: "required-ci-summary")
+      let missing = RequiredBuildExecutionSpec {
+        source: base.source,
+        checkout_materialization: base.checkout_materialization,
+        toolchain_provenance: [],
+        executable_provenance: base.executable_provenance,
+        command: base.command,
+        environment: base.environment,
+        cache_policy: base.cache_policy,
+        permitted_credential_refs: base.permitted_credential_refs,
+        output_manifest: base.output_manifest,
+        terminal_result_manifest: base.terminal_result_manifest,
+      }
+      match bind_required_witnesses_build_work(principal: "gunbc", spec: missing) {
+        RequiredBuildWorkRefused { cause: RequiredBuildCoordinateMissing { coordinate } } => coordinate == "toolchain-provenance"
+        RequiredBuildWorkRefused { cause: _ } => false
+        RequiredBuildWorkBound { work: _, source_tree_digest: _, environment_materialization_digest: _ } => false
+      }
+    }
+  }
+}

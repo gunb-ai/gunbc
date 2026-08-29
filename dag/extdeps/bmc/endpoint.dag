@@ -18,7 +18,7 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 // extdeps.firmware.openbmc.subject already records — not deepened here.
 type BmcProtocol = Redfish | Ipmi
 
-type BmcFirmwareFamily = | OpenBmc
+type BmcFirmwareFamily = | OpenBmc | AmiMegaRac
 
 type BmcEndpoint {
   host: NonEmptyStr

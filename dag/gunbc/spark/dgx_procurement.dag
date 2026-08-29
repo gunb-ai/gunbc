@@ -46,10 +46,14 @@ type HardwareProcurementIntent {
   ordered_note: NonEmptyStr
 }
 
-// The two static reservations the operator authored on the CR1000A, transcribed verbatim from the router table they supplied (spark-a3ee 192.168.1.222 4C:BB:47:E8:A3:EE / spark-3bd5 192.168.1.223 4C:BB:47:E8:3B:D5; both MACs independently ARP-confirmed on the LAN). These are OBSERVED ROUTER FACTS and nothing more. The reservation labels are vendor-derived from the MAC tail -- they are the units' factory hotspot SSIDs -- which makes them display aliases of the box, NOT fleet identity: a label that the vendor generated cannot decide which fleet subject a machine serves, and reading one as if it could is the same presentation-as-identity error the collector-observation carrier below exists to prevent. So the join to a slot is never inferred from a label: it is the explicit OperatorAllocation recorded below.
+// The two static reservations the operator authored on the CR1000A, transcribed from the router table they supplied. These are OBSERVED ROUTER FACTS and nothing more. The reservation labels are vendor-derived from the MAC tail -- they are the units' factory hotspot SSIDs -- which makes them display aliases of the box, NOT fleet identity: a label that the vendor generated cannot decide which fleet subject a machine serves, and reading one as if it could is the same presentation-as-identity error the collector-observation carrier below exists to prevent. So the join to a slot is never inferred from a label: it is the explicit OperatorAllocation recorded below.
+//
+// SPARK-WIFI-0 (2026-08-27). THE BOUND INTERFACE IS NOW THE RADIO, NOT THE RJ-45, and both the MAC and the address moved with it. The operator moved both units onto the LAN's wireless SSID and unplugged both ethernet cables (the motivating constraint: one cable served two boxes, so only one Spark could be on the network at a time -- on wifi both are up simultaneously). A DHCP reservation is keyed on MAC and a radio carries its own, so the ethernet-keyed rows this module used to hold could not follow the units across the medium change; they now name dead ports. The wifi MACs below were read from the hosts themselves rather than off the router table -- `/sys/class/net/wlP9s9/address` cross-checked against `ethtool -P`, which reports the PERMANENT address, so these are the hardware MACs and not a NetworkManager clone (`802-11-wireless.cloned-mac-address` is unset on both and `wifi.scan-rand-mac-address=no` is configured globally). That check is load-bearing rather than ceremonial: a randomized MAC would make the reservation bind to an address that changes under the fleet, which is the failure this row exists to prevent.
+//
+// AND THE PRIOR ROWS WERE NOT STATIC RESERVATIONS AT ALL, which is a correction to this module rather than a refresh of it. When the router table was read on 2026-08-27, the pre-existing 192.168.1.222 / 192.168.1.223 entries showed Lease Type DYNAMIC with a live countdown (86400s term), not Static -- so the addresses this module has asserted since 2026-08-07 as "static reservations the operator authored" were ordinary DHCP leases that happened to keep landing on the same numbers. Nothing was ever pinned. The claim was strictly stronger than the observation behind it, and the derived `dgx_spark_arrival_standing` inherited that overstatement, since it reads each row as "a Static, Active reservation the operator read off the CR1000A". The rows below ARE Static -- the operator authored them on 2026-08-27, and the router now reports Lease Type Static with expiry Never for both -- so the type is honest for the first time here. The general lesson is the one the module already carries about stored-vs-derived flags: this file cannot observe the router, so every row in it is a transcription, and a transcription can silently upgrade a fact's strength unless the source column is transcribed too.
 data spark_a3ee_reservation: Cr1000aDhcpLeaseRow = Cr1000aDhcpLeaseRow {
-  mac_address: "4C:BB:47:E8:A3:EE" as MacAddress,
-  ipv4_address: ipv4_address(octet1: 192, octet2: 168, octet3: 1, octet4: 222),
+  mac_address: "F0:68:E3:B3:1A:40" as MacAddress,
+  ipv4_address: ipv4_address(octet1: 192, octet2: 168, octet3: 1, octet4: 226),
   lease: StaticDhcpReservation {
     reservation_label: "spark-a3ee" as NonEmptyStr,
     status: Active,
@@ -57,13 +61,16 @@ data spark_a3ee_reservation: Cr1000aDhcpLeaseRow = Cr1000aDhcpLeaseRow {
 }
 
 data spark_3bd5_reservation: Cr1000aDhcpLeaseRow = Cr1000aDhcpLeaseRow {
-  mac_address: "4C:BB:47:E8:3B:D5" as MacAddress,
-  ipv4_address: ipv4_address(octet1: 192, octet2: 168, octet3: 1, octet4: 223),
+  mac_address: "F0:68:E3:31:AB:E6" as MacAddress,
+  ipv4_address: ipv4_address(octet1: 192, octet2: 168, octet3: 1, octet4: 225),
   lease: StaticDhcpReservation {
     reservation_label: "spark-3bd5" as NonEmptyStr,
     status: Active,
   },
 }
+
+// The ethernet MACs the rows above used to carry, kept because they are what the vendor labels are derived from and because the next reader will otherwise re-derive the label/MAC correspondence and conclude the rows are mistyped: spark-a3ee's RJ-45 is 4C:BB:47:E8:A3:EE and spark-3bd5's is 4C:BB:47:E8:3B:D5. THE LABEL NOW NAMES A DIFFERENT INTERFACE THAN THE ROW BINDS, and that is the strongest available statement of the point the paragraph above makes in the abstract: `spark-a3ee` is the tail of an ethernet MAC that no longer appears anywhere in this module's bound facts. A label was never identity; now it is not even a MAC the fleet uses. Both ports read NO-CARRIER as of 2026-08-27 and are expected to stay that way.
+data dgx_spark_ethernet_macs_note: String = "🟡 dissolve-on: spark-a3ee RJ-45 4C:BB:47:E8:A3:EE (was 192.168.1.222); spark-3bd5 RJ-45 4C:BB:47:E8:3B:D5 (was 192.168.1.223). Both unplugged 2026-08-27, both carrier=0, neither address held by anything afterwards. Retained as the provenance of the vendor labels, NOT as a second address authority -- no consumer reads this row, and a consumer that wanted an ethernet address would be asking for a port that is deliberately dark. THIS IS A PROSE SCAFFOLD STANDING WHERE A MODELED FACT BELONGS, and it is marked rather than quietly kept: a host having two interfaces with two MACs on two media is exactly the per-host interface roster that does not exist yet (host_network_diagnosis.InterfaceObservation is a shape with no live producer, and MacAddress is still the anemic NonEmptyStr brand in extdeps.dhcp.v4 whose dissolution to extdeps/network/mac.dag is unwritten). DISSOLVES WHEN the interface roster lands and these two MACs become ordinary retired-attachment rows keyed by (host, interface) rather than a sentence -- Phase 0/1 of docs/plans/host-network-attachment-converge-design.md."
 
 data observed_dgx_spark_router_reservations: List<Cr1000aDhcpLeaseRow> = [
   spark_a3ee_reservation,
@@ -112,10 +119,21 @@ fn router_binding_identity(binding: DgxSparkRouterBinding) -> HostIdentity {
   }
 }
 
+// SPARK-WIFI-0 (2026-08-27). The basis sentence below is a RECEIPT OF A PAST DECISION and is deliberately left
+// as it was written, including the two addresses that are no longer current. Rewriting it to match today's
+// addresses would be the more tempting edit and the wrong one: it would present the 2026-08-07 decision as
+// though it had been taken on facts that did not exist yet, which is precisely the "attributable rather than
+// looking like a measurement" property the row was created to hold. What the addresses moving DOES cost is the
+// tie-break's descriptive force -- srv5 now holds .226 and srv6 holds .225, so ascending address order would
+// today select the opposite pairing. That does not reopen the decision. The allocation joined srv5 to a BOX
+// (the unit whose vendor label is spark-a3ee), not to a number; the box is unchanged, so the join is unchanged,
+// and the ordering rationale was only ever a coin-flip's justification rather than a rule anything re-evaluates.
+// A reader who finds the basis and the current addresses disagreeing has found exactly what this comment says
+// they will find, which is the difference between a stale row and a dated one.
 data dgx_spark_router_binding_operator_allocation: OperatorAllocation = OperatorAllocation {
   decided_by: "bold-eagle-107 (operator-delegated: 'the 5, 6 decision is arbitrary - just make it yourself')",
   decided_on: "2026-08-07",
-  basis: "Ascending address order: srv5 takes spark-a3ee (192.168.1.222) and srv6 takes spark-3bd5 (192.168.1.223). An arbitrary tie-break between two identical units, recorded so the choice is attributable rather than appearing to be a fact someone measured.",
+  basis: "Ascending address order: srv5 takes spark-a3ee (192.168.1.222) and srv6 takes spark-3bd5 (192.168.1.223). An arbitrary tie-break between two identical units, recorded so the choice is attributable rather than appearing to be a fact someone measured. ADDRESSES SUPERSEDED 2026-08-27 (SPARK-WIFI-0): the units moved to the wireless interface and the reservations re-keyed to the radio MACs, so srv5/spark-a3ee is now 192.168.1.226 and srv6/spark-3bd5 is now 192.168.1.225. The slot-to-box join this row records is unaffected -- it binds an identity to a unit, not to an address -- and the ascending-order phrasing is preserved as written rather than restated against the new addresses, which it no longer describes.",
 }
 
 data srv5_router_binding: DgxSparkRouterBinding = SlotAssigned {
@@ -161,7 +179,7 @@ data dgx_spark_procurement_intent: HardwareProcurementIntent = HardwareProcureme
   vendor_catalog: nvidia_dgx_spark_4tb_catalog,
   unit_count: 2,
   reserved_identities: dgx_spark_reserved_identities(),
-  ordered_note: "2x NVIDIA DGX Spark ordered. Both units arrived and are live on the operator LAN, each holding a Static, Active CR1000A reservation (spark-a3ee 192.168.1.222 and spark-3bd5 192.168.1.223, MACs ARP-confirmed). Arrival is derived by dgx_spark_arrival_standing from those observed rows. srv5/srv6 slot assignment is recorded by dgx_spark_router_binding_operator_allocation, not inferred from router labels.",
+  ordered_note: "2x NVIDIA DGX Spark ordered. Both units arrived and are live on the operator LAN, each holding a Static, Active CR1000A reservation keyed to its WIRELESS interface (spark-a3ee 192.168.1.226 F0:68:E3:B3:1A:40 and spark-3bd5 192.168.1.225 F0:68:E3:31:AB:E6; both MACs read from the hosts as permanent hardware addresses, both ethernet ports unplugged and dark since 2026-08-27). Arrival is derived by dgx_spark_arrival_standing from those observed rows. srv5/srv6 slot assignment is recorded by dgx_spark_router_binding_operator_allocation, not inferred from router labels -- and note the labels are ethernet-MAC-derived, so they no longer share a tail with the MAC the row binds.",
 }
 
 type DgxSparkDeployment {

@@ -51,9 +51,13 @@ import std.types { String, List }
 // §6 receipt, and this is that failure repeated. Raised in review 55836.
 //
 // THE SPLIT FOLLOWS THE PRECEDENT ALREADY IN THE TREE: `tools.build_step` constructs Nodes and
-// `v2.workflow.build_step_emit` serializes them. Node construction lives here; the workflow
-// authority serializes and REFUSES emission if serialization does not accept, so a gate that
-// cannot be rendered cannot be published as an empty step.
+// the workflow layer serializes them through `v2.workflow.bash_command_fold_serialize`
+// `bash_fold_serialize_program` (the serializer module that used to sit beside it,
+// `v2.workflow.build_step_emit`, lost its production consumer to the typed transport flip
+// recorded in `tools.build_step_transport` `bst_typed_transport_doc` and was deleted). Node
+// construction lives here; the workflow authority serializes and REFUSES emission if
+// serialization does not accept, so a gate that cannot be rendered cannot be published as an
+// empty step.
 //
 // WHAT THE SEMANTICS MUST STAY, because they are ruled and measured rather than chosen:
 // the comparison is `!= success` and never an enumeration of bad states. A production run
