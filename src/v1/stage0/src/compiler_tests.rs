@@ -1041,7 +1041,10 @@ mod compiler_tests {
                 // DISCRIMINATING CONTROL for the occurrence ratchet (codex reviews
                 // 45464 and 45491). A (module, method, receiver_shape) key bounds
                 // WHERE an unresolved call may live but not HOW MANY, and the rows
-                // are not singletons — v2.compiler.tokenize admits seven `apply`.
+                // need not be singletons (the multi-occurrence rows this once named
+                // were deleted at zero observed — see frontier_occurrence_budget_note —
+                // so the control takes whichever row survives and counts against
+                // its declared receiver shape rather than against Primitive()).
                 // The comparison is EQUALITY, not a ceiling: a ceiling lets seven
                 // shrink to six and a seventh come back silently, which is a static
                 // limit rather than a ratchet. Equality is safe because the check runs
@@ -1050,15 +1053,17 @@ mod compiler_tests {
                 // never runs its rows. Exercised at the mechanism so the boundary is
                 // exact on both sides.
                 let budget_row = rows.iter()
-                    .find(|r| r.receiver_shape == "Primitive()")
-                    .expect("expected at least one anonymous-receiver row to bound");
+                    .next()
+                    .expect("the frontier must hold at least one row to bound");
                 let probe_span = || std::rc::Rc::new(crate::std_types::SourceSpan {
                     file: "probe.dag".to_string(), start: 0, end: 0,
                 });
                 let unestablished_at = |n: usize| {
                     std::rc::Rc::new((0..n).map(|_| std::rc::Rc::new(crate::v1_std_core::ErrorNode {
-                        diagnostic: std::rc::Rc::new(crate::v1_std_core::CompilerDiagnostic::ReceiverTypeUnestablished {
+                        diagnostic: std::rc::Rc::new(crate::v1_std_core::CompilerDiagnostic::MethodExistenceFrontierAdmitted {
                             method: budget_row.method.clone(),
+                            receiver_type: budget_row.receiver_shape.clone(),
+                            trigger: String::new(),
                             span: probe_span(),
                         }),
                         module_name: budget_row.module_name.clone(),
@@ -1599,6 +1604,7 @@ mod compiler_tests {
     }
 
     #[test]
+    #[ignore = "live-corpus: prepares or builds over the live tree (minutes per test); the receipts lane runs these with --ignored, the required unit run does not"]
     fn contracts_sidecar_wired_into_emit_scope() {
         // Discriminating witness: AnthropicChatMessage is declared in
         // extdeps.llm.anthropic; its tag = "role" wire_contract lives in the
@@ -1674,6 +1680,7 @@ mod compiler_tests {
     }
 
     #[test]
+    #[ignore = "live-corpus: prepares or builds over the live tree (minutes per test); the receipts lane runs these with --ignored, the required unit run does not"]
     fn self_resolve_all_modules() {
         let result = std::thread::Builder::new()
             .stack_size(64 * 1024 * 1024)
@@ -1706,6 +1713,7 @@ mod compiler_tests {
     }
 
     #[test]
+    #[ignore = "live-corpus: prepares or builds over the live tree (minutes per test); the receipts lane runs these with --ignored, the required unit run does not"]
     fn self_compile_all_modules() {
         let result = std::thread::Builder::new()
             .stack_size(64 * 1024 * 1024)

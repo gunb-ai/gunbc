@@ -58,7 +58,7 @@ type OfflineLocalRecipeRow {
 data offline_local_recipes: List<OfflineLocalRecipeRow> = [
   OfflineLocalRecipeRow {
     policy: "wet_integration_offline_note",
-    subject: RecipeEntry { path: "dag/test/claim/host_effect_apply_witness_test.dag" },
+    subject: RecipeEntry { path: "dag/test/claim/host/host_effect_apply_witness_test.dag" },
     selection: RecipeCallerChosen,
     mode: Wet
   },
@@ -70,7 +70,7 @@ data offline_local_recipes: List<OfflineLocalRecipeRow> = [
   },
   OfflineLocalRecipeRow {
     policy: "wet_integration_offline_note",
-    subject: RecipeEntry { path: "dag/test/claim/ci_deploy_observed_wet_test.dag" },
+    subject: RecipeEntry { path: "dag/test/claim/ci/ci_deploy_observed_wet_test.dag" },
     selection: RecipeCallerChosen,
     mode: Wet
   },
@@ -315,7 +315,7 @@ type OfflineRecipeDefectRow {
 data offline_recipe_consumer_defects: List<OfflineRecipeDefectRow> = [
   OfflineRecipeDefectRow {
     policy: "wet_integration_offline_note",
-    entry: "dag/test/claim/ci_deploy_observed_wet_test.dag",
+    entry: "dag/test/claim/ci/ci_deploy_observed_wet_test.dag",
     defect: RecipeUnrunnable {
       detail: "the documented recipe is `claim_batch --wet --source-root dag --source-root src/v2 --entry <entry> per file` and names no function. claim_batch requires a function selection and refuses the invocation outright: `--entry dag/test/claim/ci_deploy_observed_wet_test.dag has no --function or --functions`. Measured by execution; the refusal is a property of the RECIPE SHAPE, so it holds for all four entries this policy covers, and the entry named here is the one it was measured on. The typed rows carry RecipeCallerChosen, which renders a runnable command once a function is chosen -- the prose form could not."
     },

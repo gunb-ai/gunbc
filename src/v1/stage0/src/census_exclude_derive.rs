@@ -2,13 +2,13 @@
 //!
 //! Pattern rows (`whole_tree_resolve_exclusion_substrings`) plus fixed-point
 //! transitive-importer closure of strict-resolve failures form the probe authority.
-//! Historical pin `docs/probes/census_extra_excludes.txt` is a drift witness only.
 //!
 //! Dissolve-on: strict whole-tree walk greens without host fixed-point closure
 //! (namespace terminal + FilePath grounding); derived probe exclusion moves to a
 //! `.dag` authority row with this module as thin projection only — deletes with the
-//! historical 83-row drift pin and `witness_exclusion_single_authority_reconciliation_note`
-//! parallel-list scaffold in `ci_layer_roots.dag`.
+//! `witness_exclusion_single_authority_reconciliation_note` parallel-list scaffold in
+//! `ci_layer_roots.dag`. (The historical 83-row drift pin under docs/probes was deleted
+//! by #9132 with every other transcription; nothing here reads it any more.)
 //!
 //! Cascade semantics (sunny-wolf-225 resolution):
 //! - (i) Silent live-importer loss → typed refusal.
@@ -22,9 +22,6 @@ use im::HashMap;
 
 use crate::v1_interpreter::ExecutionMode;
 
-pub const PINNED_ORACLE_EXCLUDES_REL: &str = "docs/probes/census_extra_excludes.txt";
-pub const PINNED_COORDINATION_REL: &str = "docs/probes/still-hawk-row-coordination.txt";
-pub const PINNED_ORACLE_SEEDS_REL: &str = "docs/probes/census_extra_excludes_seeds.txt";
 pub const DERIVATION_ALGO_VERSION: &str = "census_exclude_derive_v1";
 
 const MAX_CONVERGENCE_ROUNDS: u32 = 120;
@@ -46,59 +43,7 @@ pub struct DerivedExcludeClosure {
     pub memo_content_hash: String,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct SetSymmetryDiff {
-    pub only_left: Vec<String>,
-    pub only_right: Vec<String>,
-}
-
-impl SetSymmetryDiff {
-    pub fn is_empty(&self) -> bool {
-        self.only_left.is_empty() && self.only_right.is_empty()
-    }
-}
-
 static DERIVED_CLOSURE_MEMO: OnceLock<Result<DerivedExcludeClosure, String>> = OnceLock::new();
-
-/// Load a git-readable module-path list (one path per line, `#` comments skipped).
-pub fn load_module_path_list(rel: &str, workspace_root: &Path) -> Result<BTreeSet<String>, String> {
-    let path = workspace_root.join(rel);
-    let content = std::fs::read_to_string(&path)
-        .map_err(|e| format!("module path list: failed to read {}: {e}", path.display()))?;
-    let mut paths = BTreeSet::new();
-    for line in content.lines() {
-        let line = line.trim();
-        if line.is_empty() || line.starts_with('#') {
-            continue;
-        }
-        paths.insert(line.to_string());
-    }
-    Ok(paths)
-}
-
-/// Historical 83-row pin (stern-newt @ eaf13cd3c0) — drift witness, not authority.
-pub fn load_pinned_oracle_module_paths(workspace_root: &Path) -> Result<BTreeSet<String>, String> {
-    let paths = load_module_path_list(PINNED_ORACLE_EXCLUDES_REL, workspace_root)?;
-    if paths.is_empty() {
-        return Err(format!(
-            "pinned oracle: {PINNED_ORACLE_EXCLUDES_REL} contains no module paths (fail-closed)"
-        ));
-    }
-    Ok(paths)
-}
-
-/// Set equality witness helper for historical drift pin.
-pub fn symmetric_module_path_diff(
-    left: &BTreeSet<String>,
-    right: &BTreeSet<String>,
-) -> SetSymmetryDiff {
-    let only_left: Vec<String> = left.difference(right).cloned().collect();
-    let only_right: Vec<String> = right.difference(left).cloned().collect();
-    SetSymmetryDiff {
-        only_left,
-        only_right,
-    }
-}
 
 fn normalize_repo_path(path: &str) -> String {
     path.replace('\\', "/")
@@ -356,33 +301,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn pinned_oracle_loads_eighty_three_paths() {
-        let ws = workspace_root_from_manifest_dir(Path::new(env!("CARGO_MANIFEST_DIR")));
-        let paths = load_pinned_oracle_module_paths(&ws).expect("pinned oracle paths");
-        assert_eq!(
-            paths.len(),
-            83,
-            "docs/probes/census_extra_excludes.txt must enumerate 83 module paths"
-        );
-        assert!(paths.contains("src/v2/compiler/00_compile.dag"));
-        assert!(paths.contains("src/v2/compiler/03_ingest.dag"));
-    }
-
-    #[test]
-    fn pinned_seeds_are_subset_of_oracle() {
-        let ws = workspace_root_from_manifest_dir(Path::new(env!("CARGO_MANIFEST_DIR")));
-        let oracle = load_pinned_oracle_module_paths(&ws).expect("oracle");
-        let seeds = load_module_path_list(PINNED_ORACLE_SEEDS_REL, &ws).expect("seeds");
-        assert_eq!(seeds.len(), 27, "seeds file must enumerate 27 module paths");
-        let diff = symmetric_module_path_diff(&seeds, &oracle);
-        assert!(
-            diff.only_left.is_empty(),
-            "seeds must be subset of oracle; only in seeds: {:?}",
-            diff.only_left
-        );
-    }
-
-    #[test]
     fn refuse_silent_live_importer_loss_refuses_unreceipted_drop() {
         let mut before = BTreeSet::new();
         before.insert("src/v2/compiler/04_infer.dag".to_string());
@@ -438,33 +356,17 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "manual: whole-tree strict-resolve fixed-point (~minutes); classifies drift vs historical 83-pin"]
-    fn derived_closure_drift_report_vs_historical_pin() {
+    #[ignore = "manual: whole-tree strict-resolve fixed-point (~minutes)"]
+    fn derived_closure_strict_resolves_green() {
         let ws = workspace_root_from_manifest_dir(Path::new(env!("CARGO_MANIFEST_DIR")));
         let roots = super::super::default_source_roots();
         let derived = derive_census_exclude_closure(&ws, &roots).expect("derive");
-        let historical = load_pinned_oracle_module_paths(&ws).expect("historical pin");
-        let diff = symmetric_module_path_diff(&derived.module_paths, &historical);
         eprintln!(
             "derived rounds={} module_paths={} live_importer_rows={}",
             derived.convergence_rounds,
             derived.module_paths.len(),
             derived.live_importers_excluded.len()
         );
-        if !diff.only_left.is_empty() {
-            eprintln!(
-                "only in derived ({}): {:?}",
-                diff.only_left.len(),
-                diff.only_left
-            );
-        }
-        if !diff.only_right.is_empty() {
-            eprintln!(
-                "only in historical pin ({}): {:?}",
-                diff.only_right.len(),
-                diff.only_right
-            );
-        }
         super::super::whole_tree_resolved_ctx(
             &roots,
             &exclusion_substrings_with_derived(&derived.module_paths),
