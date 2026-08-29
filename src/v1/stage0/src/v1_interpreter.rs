@@ -1497,9 +1497,15 @@ thread_local! {
         const { RefCell::new(None) };
 }
 
+/// Clears the stored values, the installed roster and the observer together: the tier's
+/// lifetime is ONE prepared execution frame (called from register/clear of the floor's
+/// prepared authority), and an admission roster outliving the subject it was declared
+/// against would let a later, differently-prepared evaluation store under it.
 pub fn clear_cross_claim_pure_memos() {
     CROSS_CLAIM_PURE_MEMO.with(|m| *m.borrow_mut() = CrossClaimPureMemo::default());
     CROSS_CLAIM_FN_KEEPALIVE.with(|k| k.borrow_mut().clear());
+    CROSS_CLAIM_PURE_ROSTER.with(|r| r.borrow_mut().clear());
+    CROSS_CLAIM_SHARE_OBSERVER.with(|o| *o.borrow_mut() = None);
 }
 
 /// Install the declared producer roster (bare fn names). Replaces any previous roster; the
