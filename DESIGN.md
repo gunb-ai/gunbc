@@ -191,6 +191,7 @@ One row per class, each carrying its recognition rule and its receipts, in [docs
 - `execution_provenance_loss`
 - `remediation_mutated_view`
 - `diagnostic_name_mechanism_silent`
+- `identity_absent_graph_traversal`
 
 ## Building & checks
 
