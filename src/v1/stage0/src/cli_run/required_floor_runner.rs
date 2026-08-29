@@ -2236,6 +2236,110 @@ pub(crate) fn floor_authority_frame(
     ))
 }
 
+/// Install the cross-claim pure-producer share for one prepared floor subject: decode the
+/// declared roster, install admission and the shared-fill observer, and warm every nullary
+/// row so its fill is billed to preparation. FAIL-CLOSED at every arm: the roster module is
+/// a declared closure seed (`REQUIRED_FLOOR_RUNTIME_AUTHORITY_MODULES`), so a subject that
+/// cannot frame it, a roster that cannot decode, a warm row whose module is gone, a warm
+/// that fails to evaluate, and a warm whose value the store refuses each stop the line — a
+/// skip at any of these arms would leave admission empty while CI reads green, memoizing
+/// nothing (a green over a flag that never ran).
+pub(crate) fn install_pure_producer_share(prepared: &PreparedRepository) -> Result<(), String> {
+    const FLOOR_PURE_PRODUCER_SHARE_MODULE: &str = "v2.workflow.floor_pure_producer_share";
+    const CROSS_CLAIM_SHARE_CACHE: &str = "cross_claim_pure_share";
+    let roster_frame =
+        floor_authority_frame(prepared, FLOOR_PURE_PRODUCER_SHARE_MODULE).map_err(|why| {
+            format!(
+                "REQUIRED-FLOOR REFUSAL cause=PureProducerShareRosterOutsidePreparedSubject \
+                 module={FLOOR_PURE_PRODUCER_SHARE_MODULE} — the roster is a declared closure \
+                 seed and must be in every required-floor subject: {why}"
+            )
+        })?;
+    let warm_rows = floor_decode_module_prefix_roster(
+        &roster_frame,
+        &format!("{FLOOR_PURE_PRODUCER_SHARE_MODULE}.floor_cross_claim_pure_producers_warm"),
+    )?;
+    let claim_forced_rows = floor_decode_module_prefix_roster(
+        &roster_frame,
+        &format!(
+            "{FLOOR_PURE_PRODUCER_SHARE_MODULE}.floor_cross_claim_pure_producers_claim_forced"
+        ),
+    )?;
+    let bare = |qualified: &String| {
+        qualified
+            .rsplit('.')
+            .next()
+            .unwrap_or(qualified.as_str())
+            .to_string()
+    };
+    v1_interpreter::install_cross_claim_pure_share_roster(
+        warm_rows
+            .iter()
+            .map(&bare)
+            .chain(claim_forced_rows.iter().map(&bare)),
+    );
+    v1_interpreter::install_cross_claim_share_observer(Some(
+        v1_interpreter::CrossClaimShareObserver {
+            on_fill_begin: Box::new(crate::cli_run::shared_fill::begin_fill),
+            on_fill: Box::new(|name, inclusive_wall, self_wall| {
+                crate::cli_run::shared_fill::record_fill(
+                    CROSS_CLAIM_SHARE_CACHE,
+                    name,
+                    inclusive_wall as u64,
+                );
+                crate::cli_run::record_shared_artifact_fill_wall(self_wall);
+            }),
+            on_fill_abandon: Box::new(crate::cli_run::shared_fill::abandon_fill),
+            on_hit: Box::new(|name| {
+                crate::cli_run::shared_fill::record_hit(CROSS_CLAIM_SHARE_CACHE, name)
+            }),
+        },
+    ));
+    for qualified in &warm_rows {
+        let module = match qualified.rsplit_once('.') {
+            Some((module, _)) => module.to_string(),
+            None => qualified.clone(),
+        };
+        // A warm row whose module the subject no longer carries is a STALE ROW, not a
+        // narrower subject: the subject is the gate closure plus the declared seeds, so the
+        // row outlived its consumers and must be deleted, never silently unwarmed.
+        let producer_frame = floor_authority_frame(prepared, &module).map_err(|why| {
+            format!(
+                "REQUIRED-FLOOR REFUSAL cause=PureProducerShareProducerModuleOutsideSubject \
+                 producer={qualified} — the rostered producer's module is not in the prepared \
+                 subject; delete the stale roster row or restore its consumers: {why}"
+            )
+        })?;
+        let warm_started = std::time::Instant::now();
+        match v1_interpreter::warm_cross_claim_pure_producer(&producer_frame, qualified) {
+            Ok(stored) => {
+                // `stored=false` means the value was refused by the store (unportable,
+                // duplicate, cap) — the roster promised a servable producer, so a silent
+                // decline would relocate the fill onto the first toucher. Stop the line.
+                if !stored {
+                    return Err(format!(
+                        "REQUIRED-FLOOR REFUSAL cause=PureProducerShareWarmNotStored \
+                         producer={qualified} — the rostered producer evaluated but its value \
+                         was refused by the cross-claim store"
+                    ));
+                }
+                eprintln!(
+                    "[floor-phase] phase=pure-producer-share-warm state=completed \
+                     producer={qualified} wall_ms={}",
+                    warm_started.elapsed().as_millis()
+                );
+            }
+            Err(why) => {
+                return Err(format!(
+                    "REQUIRED-FLOOR REFUSAL cause=PureProducerShareWarmFailed \
+                     producer={qualified} — {why}"
+                ));
+            }
+        }
+    }
+    Ok(())
+}
+
 pub(crate) fn floor_decode_module_prefix_roster(
     hermetic: &v1_interpreter::InterpContext,
     qualified_name: &str,
@@ -2687,110 +2791,12 @@ pub fn run_required_floor(
     };
     // THE CROSS-CLAIM PURE-PRODUCER SHARE — install the declared roster, wire its fills and
     // hits into the shared-fill ledger, and warm the preparation-forceable rows so their
-    // fills land outside the fold. The roster is `v2.workflow.floor_pure_producer_share`;
-    // Rust consumes it and decides nothing. A subject that does not carry the roster module
-    // carries no rostered producer either, so the whole mechanism is skipped there, printed.
-    const FLOOR_PURE_PRODUCER_SHARE_MODULE: &str = "v2.workflow.floor_pure_producer_share";
-    const CROSS_CLAIM_SHARE_CACHE: &str = "cross_claim_pure_share";
-    match floor_authority_frame(&prepared, FLOOR_PURE_PRODUCER_SHARE_MODULE) {
-        Ok(roster_frame) => {
-            let warm_rows = floor_decode_module_prefix_roster(
-                &roster_frame,
-                &format!(
-                    "{FLOOR_PURE_PRODUCER_SHARE_MODULE}.floor_cross_claim_pure_producers_warm"
-                ),
-            )?;
-            let claim_forced_rows = floor_decode_module_prefix_roster(
-                &roster_frame,
-                &format!(
-                    "{FLOOR_PURE_PRODUCER_SHARE_MODULE}.floor_cross_claim_pure_producers_claim_forced"
-                ),
-            )?;
-            let bare = |qualified: &String| {
-                qualified
-                    .rsplit('.')
-                    .next()
-                    .unwrap_or(qualified.as_str())
-                    .to_string()
-            };
-            v1_interpreter::install_cross_claim_pure_share_roster(
-                warm_rows
-                    .iter()
-                    .map(&bare)
-                    .chain(claim_forced_rows.iter().map(&bare)),
-            );
-            v1_interpreter::install_cross_claim_share_observer(Some(
-                v1_interpreter::CrossClaimShareObserver {
-                    on_fill_begin: Box::new(crate::cli_run::shared_fill::begin_fill),
-                    on_fill: Box::new(|name, inclusive_wall, self_wall| {
-                        crate::cli_run::shared_fill::record_fill(
-                            CROSS_CLAIM_SHARE_CACHE,
-                            name,
-                            inclusive_wall as u64,
-                        );
-                        crate::cli_run::record_shared_artifact_fill_wall(self_wall);
-                    }),
-                    on_fill_abandon: Box::new(crate::cli_run::shared_fill::abandon_fill),
-                    on_hit: Box::new(|name| {
-                        crate::cli_run::shared_fill::record_hit(CROSS_CLAIM_SHARE_CACHE, name)
-                    }),
-                },
-            ));
-            for qualified in &warm_rows {
-                // A warm row names its module before its declaration; a subject carrying the
-                // roster but not a producer's module carries no consumer of that producer.
-                let module = match qualified.rsplit_once('.') {
-                    Some((module, _)) => module.to_string(),
-                    None => qualified.clone(),
-                };
-                let producer_frame = match floor_authority_frame(&prepared, &module) {
-                    Ok(frame) => frame,
-                    Err(why) => {
-                        eprintln!(
-                            "[floor-phase] phase=pure-producer-share-warm state=skipped \
-                             producer={qualified} — the subject does not carry {module}: {why}"
-                        );
-                        continue;
-                    }
-                };
-                let warm_started = std::time::Instant::now();
-                match v1_interpreter::warm_cross_claim_pure_producer(&producer_frame, qualified) {
-                    Ok(stored) => {
-                        // `stored=false` here means the value was refused by the store
-                        // (unportable, duplicate, cap) — the roster promised a servable
-                        // producer, so a silent decline would relocate the fill onto the
-                        // first toucher. Stop the line instead.
-                        if !stored {
-                            return Err(format!(
-                                "REQUIRED-FLOOR REFUSAL cause=PureProducerShareWarmNotStored \
-                                 producer={qualified} — the rostered producer evaluated but \
-                                 its value was refused by the cross-claim store"
-                            ));
-                        }
-                        eprintln!(
-                            "[floor-phase] phase=pure-producer-share-warm state=completed \
-                             producer={qualified} wall_ms={}",
-                            warm_started.elapsed().as_millis()
-                        );
-                    }
-                    Err(why) => {
-                        return Err(format!(
-                            "REQUIRED-FLOOR REFUSAL cause=PureProducerShareWarmFailed \
-                             producer={qualified} — {why}"
-                        ));
-                    }
-                }
-            }
-        }
-        Err(why) => {
-            eprintln!(
-                "[floor-phase] phase=pure-producer-share-warm state=skipped module={} — the \
-                 subject does not carry the roster, so it carries no rostered producer either: \
-                 {why}",
-                FLOOR_PURE_PRODUCER_SHARE_MODULE
-            );
-        }
-    }
+    // fills land outside the fold (`install_pure_producer_share`). The roster module is a
+    // REQUIRED_FLOOR_RUNTIME_AUTHORITY_MODULES closure seed, so its absence from the
+    // prepared subject is drift, and the install REFUSES rather than skipping — a silent
+    // skip would relocate every warm fill onto the first toucher, the exact
+    // nondeterministic charge this mechanism deletes.
+    install_pure_producer_share(&prepared)?;
     let mut shared_build_warms: Vec<(&'static str, SharedBuildObservation)> = vec![
         ("ModulePathIndexBuild", module_path_index_warm),
         ("SharedModuleIndexBuild", shared_index_warm),
@@ -5267,5 +5273,94 @@ pub(crate) fn required_floor_disposition_matched_prefix(
         RequiredFloorDisposition::Planned
         | RequiredFloorDisposition::DeclinedOutsideRequiredGate
         | RequiredFloorDisposition::DeclinedCostDebt => "",
+    }
+}
+
+#[cfg(test)]
+mod pure_producer_share_tests {
+    use super::*;
+    use std::rc::Rc;
+
+    /// A minimal PreparedRepository over in-memory sources — the same graph shape the floor
+    /// prepares, without the corpus. Only the fields `install_pure_producer_share` reaches
+    /// carry content.
+    fn prepared_from(sources: &[(&str, &str)]) -> PreparedRepository {
+        let files: Vec<Rc<crate::v1_compiler_compile::SourceFile>> = sources
+            .iter()
+            .map(|(path, content)| {
+                Rc::new(crate::v1_compiler_compile::SourceFile {
+                    path: path.to_string(),
+                    content: content.to_string(),
+                })
+            })
+            .collect();
+        let result = crate::v1_compiler_compile::compile_to_resolved(Rc::new(files.into()));
+        let graph = result.graph.as_ref().expect("fixture graph").clone();
+        PreparedRepository {
+            graph,
+            source_indices: result.source_indices.clone(),
+            subject_digest: "fixture".to_string(),
+            modules_resolved: sources.len(),
+            modules_excluded: 0,
+            witness_files: Vec::new(),
+            test_decl_free_paths: Vec::new(),
+        }
+    }
+
+    /// THE CLOSURE RED the review asked for: a prepared subject WITHOUT the roster module
+    /// must REFUSE, never skip — a skip leaves admission empty while the floor reads green,
+    /// memoizing nothing.
+    #[test]
+    fn a_subject_without_the_roster_module_refuses_never_skips() {
+        v1_interpreter::clear_cross_claim_pure_memos();
+        let prepared = prepared_from(&[(
+            "workspace/src/other.dag",
+            "module fixture.other\nfn check() -> Bool { true }\n",
+        )]);
+        let err = install_pure_producer_share(&prepared)
+            .expect_err("a subject without the roster must refuse");
+        assert!(
+            err.contains("PureProducerShareRosterOutsidePreparedSubject"),
+            "refusal must name the cause: {err}"
+        );
+        v1_interpreter::clear_cross_claim_pure_memos();
+    }
+
+    /// Positive control: a subject carrying the roster module warms its nullary rows into
+    /// the cross-claim store.
+    #[test]
+    fn a_carried_roster_warms_and_stores_its_nullary_rows() {
+        v1_interpreter::clear_cross_claim_pure_memos();
+        let prepared = prepared_from(&[(
+            "workspace/src/v2/workflow/floor_pure_producer_share.dag",
+            "module v2.workflow.floor_pure_producer_share\n\
+             fn tm_local() -> Bool { true }\n\
+             data floor_cross_claim_pure_producers_warm: List<String> = [\"v2.workflow.floor_pure_producer_share.tm_local\"]\n\
+             data floor_cross_claim_pure_producers_claim_forced: List<String> = [\"v2.workflow.floor_pure_producer_share.tm_local\"]\n",
+        )]);
+        install_pure_producer_share(&prepared).expect("carried roster installs and warms");
+        let (stores, overflow) = v1_interpreter::cross_claim_pure_memo_counts();
+        assert_eq!(overflow, 0);
+        assert!(stores >= 1, "the warm must land in the store, got {stores}");
+        v1_interpreter::clear_cross_claim_pure_memos();
+    }
+
+    /// A warm row naming a producer the subject cannot resolve stops the line.
+    #[test]
+    fn a_stale_warm_row_stops_the_line() {
+        v1_interpreter::clear_cross_claim_pure_memos();
+        let prepared = prepared_from(&[(
+            "workspace/src/v2/workflow/floor_pure_producer_share.dag",
+            "module v2.workflow.floor_pure_producer_share\n\
+             data floor_cross_claim_pure_producers_warm: List<String> = [\"v2.workflow.floor_pure_producer_share.tm_gone\"]\n\
+             data floor_cross_claim_pure_producers_claim_forced: List<String> = []\n",
+        )]);
+        let err = install_pure_producer_share(&prepared)
+            .expect_err("a stale warm row must stop the line");
+        assert!(
+            err.contains("PureProducerShareWarmFailed"),
+            "refusal must name the cause: {err}"
+        );
+        v1_interpreter::clear_cross_claim_pure_memos();
     }
 }
