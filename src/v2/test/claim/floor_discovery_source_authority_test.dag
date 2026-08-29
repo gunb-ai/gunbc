@@ -140,3 +140,26 @@ test fn one_violation_among_many_sources_stops_the_line() -> Bool {
     AcceptedRows { rows: _ } => false
   }
 }
+
+// THE LIVE SPECIMEN THE FLOOR'S FIRST RUN OF THIS AUTHORITY REFUSED (run 33267373258): a `String`
+// data row whose value quotes a wire-contract declaration. The declared type is `String`, so it
+// is not a wire-contract decl and must enroll as an ordinary module; the positive control beside
+// it is a real `CoproductWireContract` row at a non-`_contracts.dag` path, which must refuse.
+data fdsa_quoted_wire_contract_content: String = "module m\n\ndata src: String = \"data x: CoproductWireContract = { coproduct: \\\"X\\\" }\"\n"
+data fdsa_real_wire_contract_content: String = "module m\n\ndata x: CoproductWireContract = { coproduct: \"X\", encoding: UntaggedVariant }\n"
+
+test fn quoted_wire_contract_in_a_string_row_is_not_a_wire_contract_decl() -> Bool {
+  match fdsa_finalize_one(entry: fdsa_misplaced_entry, content: fdsa_quoted_wire_contract_content) {
+    AcceptedRows { rows: rows } => length(xs: rows) == 0
+    RefusedReason { reason: _ } => false
+  }
+}
+
+test fn real_wire_contract_row_outside_contracts_sidecar_refuses() -> Bool {
+  match fdsa_finalize_one(entry: fdsa_misplaced_entry, content: fdsa_real_wire_contract_content) {
+    RefusedReason { reason: reason } =>
+      string_contains(s: reason, pattern: "_contracts.dag")
+        && string_contains(s: reason, pattern: fdsa_misplaced_entry)
+    AcceptedRows { rows: _ } => false
+  }
+}

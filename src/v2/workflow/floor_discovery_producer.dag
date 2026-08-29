@@ -115,11 +115,55 @@ fn floor_discovery_path_excluded(path: String, exclude_substrings: List<String>)
   )
 }
 
+fn floor_discovery_before_first_equals(s: String) -> String {
+  fold(
+    split(s: s, delimiter: "="),
+    init: "__NONE__",
+    f: fn(acc, seg) {
+      if acc == "__NONE__" {
+        seg
+      } else {
+        acc
+      }
+    }
+  )
+}
+
+fn floor_discovery_after_first_colon(s: String) -> String {
+  fold(
+    split(s: s, delimiter: ":"),
+    init: "__SKIP__",
+    f: fn(acc, seg) {
+      if acc == "__SKIP__" {
+        "__TAKE_NEXT__"
+      } else if acc == "__TAKE_NEXT__" {
+        seg
+      } else {
+        acc
+      }
+    }
+  )
+}
+
+// THE DECLARED TYPE OF A `data name: Type = value` LINE: the text between the first `:` and the
+// first `=`. It is read as a token, never searched for as a substring, because the first floor
+// run that consumed this fold (gunbc#9685, run 33267373258) refused
+// src/v2/test/claim/long/cwc_resolution_probe_test.dag -- a `String` data row whose VALUE is
+// probe source text spelling `: CoproductWireContract`. A substring test cannot tell a
+// declaration from a quotation of one; the declared-type position can.
+fn floor_discovery_data_line_declared_type(trimmed: String) -> String {
+  trim(
+    floor_discovery_before_first_equals(
+      s: floor_discovery_after_first_colon(s: trimmed)
+    )
+  )
+}
+
 fn floor_discovery_line_has_wire_contract_decl(line: String) -> Bool {
   let trimmed = trim(line)
   if starts_with(s: trimmed, prefix: "data ") {
-    string_contains(s: trimmed, pattern: ": CoproductWireContract")
-      || string_contains(s: trimmed, pattern: ": VariantEncoding")
+    let declared = floor_discovery_data_line_declared_type(trimmed: trimmed)
+    (declared == "CoproductWireContract") || (declared == "VariantEncoding")
   } else {
     false
   }
