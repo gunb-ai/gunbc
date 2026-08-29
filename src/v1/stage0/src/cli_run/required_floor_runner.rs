@@ -3323,6 +3323,7 @@ pub fn run_required_floor(
     // list in Rust. A changed operation or ground blocks below instead of being silently held
     // by an identity-only row whose original fact no longer applies.
     let mut expectations_outside_gate = 0usize;
+    let mut expectations_withheld_cost_debt = 0usize;
     let route_gap_expectations: HashMap<String, FloorRouteGapExpectation> = {
         let value = v1_interpreter::run_in_context(
             &hermetic,
@@ -3391,6 +3392,13 @@ pub fn run_required_floor(
                 expectations_outside_gate += 1;
                 continue;
             }
+            // COST DEBT WINS here too: the roster this joins has already had its cost-debt
+            // rows withheld (`suppress_withheld`), so an expectation located on one of them is
+            // dormant with its row, not absent from the roster.
+            if cost_debt_roster.contains(identity.as_str()) {
+                expectations_withheld_cost_debt += 1;
+                continue;
+            }
             if !route_gap_roster.contains(identity.as_str()) {
                 return Err(format!(
                     "floor_route_gap_expectations: located identity is absent from derived roster: {identity}"
@@ -3410,6 +3418,12 @@ pub fn run_required_floor(
         }
         out
     };
+    if expectations_withheld_cost_debt > 0 {
+        eprintln!(
+            "[floor-cost-debt] floor_route_gap_expectations: {expectations_withheld_cost_debt} \
+             expectation(s) dormant because the cost-debt roster withholds their identity"
+        );
+    }
     if expectations_outside_gate > 0 {
         eprintln!(
             "[floor-required-gate] floor_route_gap_expectations: {expectations_outside_gate} \
@@ -4708,12 +4722,33 @@ pub fn run_required_floor(
     // BLOCKING, unlike the withhold itself. A withheld row is declared debt; a stale row is a
     // roster that has stopped describing the tree, and the contract's monotone claim is only
     // worth anything while its universe is the discovered one.
+    //
+    // OUTSIDE THE GATE IS NOT STALE. A cost-debt row whose module the gate never loads was
+    // never planned for the same reason the expected-red and route-gap rows above were
+    // withheld: this run's universe is the gate closure, not the tree. Counted, never silent
+    // (measured 2026-08-29: 122 such rows on the first gate-bounded fold, every one in a
+    // module outside the gate).
     {
+        let mut cost_debt_outside_gate = 0usize;
         let mut stale: Vec<&String> = cost_debt_roster
             .iter()
             .filter(|q| reverse_joins_answerable && !cost_debt_seen.contains(*q))
+            .filter(|q| {
+                let inside = identity_inside_required_gate(q.as_str());
+                if !inside {
+                    cost_debt_outside_gate += 1;
+                }
+                inside
+            })
             .collect();
         stale.sort();
+        if cost_debt_outside_gate > 0 {
+            eprintln!(
+                "[floor-required-gate] floor_cost_debt: {cost_debt_outside_gate} enrolled \
+                 identity(ies) withheld from the staleness join because their module is outside \
+                 the required gate and was never loaded"
+            );
+        }
         for identity in stale {
             outcome.stale_cost_debt.push(format!(
                 "{identity} is enrolled in v2.workflow.floor_cost_debt but was not planned, so \
