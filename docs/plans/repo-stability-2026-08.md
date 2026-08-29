@@ -247,3 +247,47 @@ window; the extraction recipe is in the split commits' messages.
   discovery, diff observation, resource sampling). cli_run.rs 50,536 → 38,636
   lines, 26 submodules. Remainder: ~450 fns of mixed verbs/helpers plus ~350
   embedded test fns; further carving is ordinary follow-up, no core left.
+
+## The dependency map (2026-08-29, standing — replaces re-deriving this in chat)
+
+The interpreter has four roles: R1 witness executor · R2 orchestration executor
+· R3 v2's executor (v2 stages are .dag, so v2 compiles by being interpreted) ·
+R4 the host-effect seam (builtin handlers). Emitting .dag→Rust does NOT need
+the interpreter (the v1 passes are native); interpretation is only evaluation
+without emission. Three separable decisions:
+
+1. REALIZATION STORE (backport of v2.std.materialize's model into a v1-host
+   persistent content-keyed store; digest authority already shared via
+   std.content_hash/fnv1a64). No dependency on the interpreter either way —
+   the interpreter becomes a CLIENT. Gives fast interpreted execution, CI in
+   minutes, fast v2 compile loop. v2 SELF-HOST DEPENDS ON THIS AND NOT ON
+   DECISIONS 2-3.
+2. NATIVE PRODUCERS PER FAMILY (emit witnesses etc. into content-addressed
+   native bundles; store's producer flips per family; interpreter drains).
+   Optional per family; needs emitter perf + diagnostics work.
+3. DELETE THE EVAL LOOP (only after 2 completes everywhere; R4 survives as the
+   runtime library with a new caller; may never be worth taking to zero — a
+   bounded evaluator for bootstrap/dev is near-free).
+
+digest authority ──► store ──► fast interpreted execution ◄── v2 self-host
+                      ├──► native producers per family
+                      └──────────┴──► interpreter drains ──► (optional) delete
+                                        eval loop; keep effect runtime
+
+## The one execution test (anti-planning: build this, then judge the plan)
+
+SUBJECT: persist the process-shared index's derived facts across processes,
+keyed on content digest. Concretely: module path index + module graph facts
+(and optionally the typed-module cache) in cli_run/entry_resolve.rs get a
+disk-backed store under target/ keyed on (source file digests, binary identity).
+ACCEPTANCE, binary and pre-registered: on an unchanged tree, the SECOND
+`gunbc run --source-root dag --source-root src/v2 --entry dag/std/abi.dag`
+completes in <10s (cold today: ~81–99s), AND the warm facts are byte-identical
+to cold-derived facts (the §5 purity oracle, asserted by execution). A miss
+(any file changed) re-derives fail-closed. If the warm run is not <10s or the
+oracle disagrees, the store thesis as specified is refuted and the plan gets
+rewritten before anything else is built on it.
+WHY THIS ONE: smallest end-to-end existence proof of the store (one producer,
+one consumer, one oracle); kills the measured entry-independent pool tax; the
+same mechanism CI-minutes and the v2 loop need; ~a day; pass/fail visible in
+one command run twice.
