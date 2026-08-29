@@ -206,3 +206,34 @@ test fn w_is_empty_lowers_to_its_rust_realization_not_a_refusal() -> Bool {
     ["v1_rt::is_empty(", "neither a resolved callable receiver field"]
   )
 }
+
+// THE NEGATIVE IDENTITY CONTROL FOR THE is_empty ROW, and it caught a live hole rather than
+// confirming a safe one. Adding is_empty to rust_simple_method_specs put a new spelling in front of
+// the two rust_method_templates lookups -- and those lookups are keyed on the bare name with no
+// receiver check, so a fn-typed record field named is_empty was captured by the target template and
+// emitted as `recv.is_empty()` instead of `(recv.is_empty)(..)`. That is class B surviving one
+// layer up: the class-B repair fixed the algebra FALLBACK and left the tables in front of it.
+//
+// The same hole existed for count, first, join, split, take, skip, last, chars and enumerate before
+// is_empty was ever added; this row is the one that made it executable.
+test fn w_callable_field_named_is_empty_is_not_captured_by_the_target_template() -> Bool {
+  compile_dag_rust_emit_check(
+    "module test.claim.is_empty_field_probe\nimport std.types { Bool, Int }\ntype Probe { is_empty: fn(Int) -> Bool }\nfn probe(p: Probe, n: Int) -> Bool { p.is_empty(n) }\n",
+    "src/test_claim_is_empty_field_probe.rs",
+    [".is_empty)("],
+    ["p.is_empty()"]
+  )
+}
+
+// THE SAME CONTROL FOR A SPELLING THAT WAS ALREADY IN THE TABLE. count has had a template since
+// before this change, so if the hole were specific to is_empty this row would be green on main and
+// green here. It is not: it is the pre-existing instance of the class, and it is enrolled so the
+// repair is measured against the whole table rather than the row that exposed it.
+test fn w_callable_field_named_count_is_not_captured_by_the_target_template() -> Bool {
+  compile_dag_rust_emit_check(
+    "module test.claim.count_field_probe\nimport std.types { Int }\ntype Counter { count: fn(Int) -> Int }\nfn probe(c: Counter, n: Int) -> Int { c.count(n) }\n",
+    "src/test_claim_count_field_probe.rs",
+    [".count)("],
+    ["c.count()"]
+  )
+}

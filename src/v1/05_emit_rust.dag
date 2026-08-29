@@ -10402,7 +10402,10 @@ fn emit_typed_method_call(method_call_node: Node, receiver: Node, method: String
       let method_name = if method_name_raw == "length" {
         if is_string_typed_expr(e: receiver, source_indices: scope.type_env.source_indices) { "string_length" } else { "count" }
       } else { method_name_raw }
-      if method_name == "fold" {
+      let algebra_field_call = rust_callable_field_method_call(method_name: method_name, receiver: receiver, args: args, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
+      if algebra_field_call != none {
+        match algebra_field_call { Present { value: field_call } => field_call  Absent => "" }
+      } else if method_name == "fold" {
         emit_rust_fold_method_call(method_call_node: method_call_node, fold_accumulator_type: fold_accumulator_type, result_type: result_type, receiver: receiver, args: args, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
       } else if method_name == "sort_by" {
         emit_rust_sort_by_method_call(receiver: receiver, args: args, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
@@ -10448,7 +10451,12 @@ fn emit_typed_method_call(method_call_node: Node, receiver: Node, method: String
     }
     }
     PlainMethodSemantics =>
-      if method == "get" && is_collection_typed_expr(texpr: receiver, source_indices: scope.type_env.source_indices) {
+      if rust_callable_field_method_call(method_name: method, receiver: receiver, args: args, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info) != none {
+        match rust_callable_field_method_call(method_name: method, receiver: receiver, args: args, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info) {
+          Present { value: field_call } => field_call
+          Absent => ""
+        }
+      } else if method == "get" && is_collection_typed_expr(texpr: receiver, source_indices: scope.type_env.source_indices) {
         emit_rust_get_method_call(receiver: receiver, args: args, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
       } else {
       let recv_str = emit_typed_expr(texpr: receiver, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
@@ -10987,6 +10995,28 @@ fn rust_record_field_needs_fn_rc(scope: InferScope, struct_name: String, field_n
 // The rt_functions() name guard that stood here is gone: the ONE caller now passes
 // `runtime_bridge` from the resolution that decided it, so this answers only the question it is
 // named for -- does the receiver have a callable field by this name.
+// THE RECEIVER'S OWN CALLABLE FIELD OUTRANKS EVERY NAME-KEYED TABLE, and this is the same class as
+// class B one layer up. That repair stopped the algebra FALLBACK from asserting a v1_rt bridge for
+// a fn-typed record field, but left the two rust_method_templates lookups in front of it keyed on
+// the bare spelling -- so a field named count, first, join, split, take, skip, last, chars,
+// enumerate or is_empty was still captured by a target template and emitted as `recv.count()`
+// rather than `(recv.count)(..)`. Adding the is_empty row to rust_simple_method_specs is what made
+// this urgent: it put a brand-new spelling in front of that table, and the spelling most likely to
+// name a predicate field.
+//
+// A receiver that genuinely has a fn-typed field of this name is answering with its OWN structure,
+// which no global roster can outrank -- so the check goes before the tables rather than after them,
+// and one helper serves both arms so the two cannot drift.
+fn rust_callable_field_method_call(method_name: String, receiver: Node, args: List<Node>, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo) -> String? {
+  if rust_receiver_has_callable_method_field(receiver: receiver, method_name: method_name, scope: scope) {
+    let recv_str = emit_typed_expr_base(texpr: receiver, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
+    let arg_strs = args |> map(a => emit_cloned_arg(texpr: arg_value(n: a), registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info))
+    Present { value: concat("(", recv_str, ".", emit_ident(name: method_name, target: Rust), ")(", arg_strs |> join(separator: ", "), ")") }
+  } else {
+    none
+  }
+}
+
 fn rust_receiver_has_callable_method_field(receiver: Node, method_name: String, scope: InferScope) -> Bool {
   let receiver_type = resolved_type(n: receiver)
   let receiver_type_name = authored_name_at(source_indices: scope.type_env.source_indices, node: receiver_type)
