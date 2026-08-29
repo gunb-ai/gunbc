@@ -1,0 +1,178 @@
+module test.claim.spark.spark_training_ready_witness_test
+
+import std.types { String, Bool, List, NonEmptyStr, Int }
+import product.placement_supply { HostIdentity }
+import gunbc.fleet_intent_network { operator_host_srv5, operator_host_srv6 }
+import gunbc.spark.serving_terminal_health {
+  SparkServingProbeCapture,
+  ProbeNeverRan,
+  ProbeFailed,
+  ProbeAnswered,
+}
+import gunbc.spark.training_ready {
+  SparkServingAbsence,
+  ServingAbsent,
+  ServingStillPresent,
+  ServingAbsenceUnobserved,
+  SparkServingRetirementObservation,
+  SparkUnifiedPoolObservation,
+  SparkTrainingReadiness,
+  SparkTrainingReady,
+  SparkTrainingNotReady,
+  spark_training_readiness,
+  spark_serving_absence_from_probe,
+  spark_serving_absence_is_established,
+}
+
+data spark_training_ready_witness_note: String = "SPARK-PAIR-0 P0. The readiness gate's discriminating evidence. Every red here is a state the corpus can author — an unreached probe read as absence, a pool measured before the retirement, a serving cell presented as trainable — so none of these claims is green by construction."
+
+fn w_absent(subject: NonEmptyStr) -> SparkServingAbsence {
+  ServingAbsent { evidence: subject }
+}
+
+fn w_retired_srv6() -> SparkServingRetirementObservation {
+  SparkServingRetirementObservation {
+    host: operator_host_srv6,
+    endpoint: w_absent(subject: "endpoint refused" as NonEmptyStr),
+    process: w_absent(subject: "no ollama process" as NonEmptyStr),
+    unit: w_absent(subject: "unit not-found" as NonEmptyStr),
+  }
+}
+
+fn w_pool(host: HostIdentity, bytes: Int, after: Bool) -> SparkUnifiedPoolObservation {
+  SparkUnifiedPoolObservation {
+    host: host,
+    free_bytes: bytes,
+    observed_after_retirement: after,
+    producer: "w-fixture" as NonEmptyStr,
+  }
+}
+
+fn w_is_ready(r: SparkTrainingReadiness) -> Bool {
+  match r {
+    SparkTrainingReady { proof: _ } => true
+    SparkTrainingNotReady { cause: _ } => false
+  }
+}
+
+test fn w_a_fully_retired_training_cell_is_ready() -> Bool {
+  w_is_ready(r: spark_training_readiness(
+    retirement: w_retired_srv6(),
+    pool: w_pool(host: operator_host_srv6, bytes: 100000000000, after: true),
+  ))
+}
+
+// THE POSITIVE CONTROL'S MIRROR: THE SERVING CELL IS NEVER READY.
+//
+// srv5's retirement observation is deliberately WELL-FORMED and fully absent here. If role were not
+// consulted, this input would be indistinguishable from srv6's and would pass. It refuses on role
+// alone, which is what "srv5 is statically reserved" has to mean to be worth anything.
+test fn w_a_serving_cell_refuses_even_with_a_perfect_retirement_observation() -> Bool {
+  !w_is_ready(r: spark_training_readiness(
+    retirement: SparkServingRetirementObservation {
+      host: operator_host_srv5,
+      endpoint: w_absent(subject: "endpoint refused" as NonEmptyStr),
+      process: w_absent(subject: "no ollama process" as NonEmptyStr),
+      unit: w_absent(subject: "unit not-found" as NonEmptyStr),
+    },
+    pool: w_pool(host: operator_host_srv5, bytes: 100000000000, after: true),
+  ))
+}
+
+// AN UNREACHED PROBE IS NOT ABSENCE, AND THIS IS THE CLAIM THAT COSTS THE MOST TO GET WRONG.
+//
+// The subject is read one axis at a time so that a single silent axis refuses. Each of the three
+// runs here leaves exactly one subject Unobserved and the other two positively absent, so a
+// readiness rule that required only "no subject is StillPresent" would pass all three.
+test fn w_an_unobserved_subject_refuses_on_every_axis() -> Bool {
+  let unobserved = ServingAbsenceUnobserved { cause: "ssh timed out" as NonEmptyStr }
+  let pool = w_pool(host: operator_host_srv6, bytes: 100000000000, after: true)
+  !w_is_ready(r: spark_training_readiness(
+      retirement: SparkServingRetirementObservation {
+        host: operator_host_srv6,
+        endpoint: unobserved,
+        process: w_absent(subject: "p" as NonEmptyStr),
+        unit: w_absent(subject: "u" as NonEmptyStr),
+      },
+      pool: pool,
+    ))
+    && !w_is_ready(r: spark_training_readiness(
+      retirement: SparkServingRetirementObservation {
+        host: operator_host_srv6,
+        endpoint: w_absent(subject: "e" as NonEmptyStr),
+        process: unobserved,
+        unit: w_absent(subject: "u" as NonEmptyStr),
+      },
+      pool: pool,
+    ))
+    && !w_is_ready(r: spark_training_readiness(
+      retirement: SparkServingRetirementObservation {
+        host: operator_host_srv6,
+        endpoint: w_absent(subject: "e" as NonEmptyStr),
+        process: w_absent(subject: "p" as NonEmptyStr),
+        unit: unobserved,
+      },
+      pool: pool,
+    ))
+}
+
+test fn w_a_still_serving_endpoint_refuses() -> Bool {
+  !w_is_ready(r: spark_training_readiness(
+    retirement: SparkServingRetirementObservation {
+      host: operator_host_srv6,
+      endpoint: ServingStillPresent { evidence: "0.12.11" as NonEmptyStr },
+      process: w_absent(subject: "p" as NonEmptyStr),
+      unit: w_absent(subject: "u" as NonEmptyStr),
+    },
+    pool: w_pool(host: operator_host_srv6, bytes: 100000000000, after: true),
+  ))
+}
+
+// A POOL READ BEFORE THE RETIREMENT DESCRIBES A MACHINE THAT WAS STILL SERVING.
+//
+// Nothing about the number itself distinguishes the two reads -- this input carries the same byte
+// count as the passing case and differs only in when it was taken. That is why the ordering is a
+// field the producer must answer for rather than something the gate could infer.
+test fn w_a_pool_measured_before_the_retirement_refuses() -> Bool {
+  !w_is_ready(r: spark_training_readiness(
+    retirement: w_retired_srv6(),
+    pool: w_pool(host: operator_host_srv6, bytes: 100000000000, after: false),
+  ))
+}
+
+test fn w_a_pool_measured_on_another_host_refuses() -> Bool {
+  !w_is_ready(r: spark_training_readiness(
+    retirement: w_retired_srv6(),
+    pool: w_pool(host: operator_host_srv5, bytes: 100000000000, after: true),
+  ))
+}
+
+test fn w_a_non_positive_pool_refuses_rather_than_offering_nothing() -> Bool {
+  !w_is_ready(r: spark_training_readiness(
+    retirement: w_retired_srv6(),
+    pool: w_pool(host: operator_host_srv6, bytes: 0, after: true),
+  ))
+}
+
+// THE DECODER SAYS ONLY WHAT THE CAPTURE SUPPORTS.
+//
+// ProbeFailed is the arm that establishes absence, and it is the counter-intuitive one: the probe
+// ran and was refused, which is exactly the evidence wanted. ProbeNeverRan looks similar at the
+// call site and establishes nothing. ProbeAnswered is the loud arm.
+test fn w_absence_is_decoded_from_the_capture_and_not_from_emptiness() -> Bool {
+  spark_serving_absence_is_established(
+    a: spark_serving_absence_from_probe(
+      subject: "endpoint" as NonEmptyStr,
+      capture: ProbeFailed { exit_code: 7, stderr: "connection refused" },
+    ))
+    && !spark_serving_absence_is_established(
+      a: spark_serving_absence_from_probe(
+        subject: "endpoint" as NonEmptyStr,
+        capture: ProbeNeverRan { cause: "host unreachable" as NonEmptyStr },
+      ))
+    && !spark_serving_absence_is_established(
+      a: spark_serving_absence_from_probe(
+        subject: "endpoint" as NonEmptyStr,
+        capture: ProbeAnswered { stdout: "0.12.11" },
+      ))
+}

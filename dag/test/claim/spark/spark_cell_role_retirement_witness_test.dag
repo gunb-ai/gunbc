@@ -1,0 +1,217 @@
+module test.claim.spark.spark_cell_role_retirement_witness_test
+
+import std.types { String, Bool, List, NonEmptyStr }
+import product.placement_supply { HostIdentity }
+import gunbc.fleet_intent_network { operator_host_srv5, operator_host_srv6 }
+import gunbc.spark.cell_role {
+  SparkCellRole,
+  SparkServingCell,
+  SparkTrainingCell,
+  spark_cell_role_of,
+  spark_cell_role_eq,
+  spark_serving_cell_hosts,
+  spark_training_cell_hosts,
+  spark_host_offerable_for_training,
+}
+import gunbc.spark.serving_desired { spark_serving_desired_hosts }
+import gunbc.spark.serving_membership {
+  SparkServingMember,
+  SparkServingResourceAddress,
+  SparkServingRuntimeRootAddress,
+  SparkServingUserUnitAddress,
+  SparkServingUserUnitRegistrationAddress,
+  SparkServingUserUnitEnablementAddress,
+  SparkServingUserUnitActivityAddress,
+  SparkServingModelSlotAddress,
+  SparkServingLingerAddress,
+  spark_serving_primary_model_slot,
+  spark_serving_address_is_role_scoped,
+  spark_serving_role_scoped_members,
+  spark_serving_baseline_members,
+}
+import gunbc.spark.serving_member_realization {
+  spark_serving_retirement_effects_for_address,
+  SparkServingRetirementRemedyPresent,
+  SparkServingRetirementRemedyRefused,
+  spark_serving_retirement_effects_include,
+}
+import gunbc.spark.serving_realization {
+  SparkServingRetirementEffect,
+  StopUserUnit,
+  DisableUserUnit,
+  RemoveUserUnitFile,
+  ReloadUserManagerAfterRemoval,
+  spark_serving_retirement_effect_mutates_host,
+}
+import gunbc.ownership { Owned }
+
+data spark_cell_role_retirement_witness_note: String = "SPARK-PAIR-0 P0. The discriminating evidence for role separation and real serving retirement. Every claim here is written so that reverting the role assignment, or restoring the empty removal remedy, turns it red — an assertion that passes under both the old and the new model would be measuring nothing."
+
+fn w_serving_addresses() -> List<SparkServingResourceAddress> {
+  [
+    SparkServingUserUnitActivityAddress,
+    SparkServingUserUnitEnablementAddress,
+    SparkServingUserUnitAddress,
+    SparkServingUserUnitRegistrationAddress,
+  ]
+}
+
+fn w_baseline_addresses() -> List<SparkServingResourceAddress> {
+  [
+    SparkServingRuntimeRootAddress,
+    SparkServingModelSlotAddress { slot: spark_serving_primary_model_slot },
+    SparkServingLingerAddress,
+  ]
+}
+
+fn w_member(host: HostIdentity, address: SparkServingResourceAddress) -> SparkServingMember {
+  SparkServingMember {
+    host: host,
+    principal: "gunbc-automation" as NonEmptyStr,
+    address: address,
+    state_digest: "w-state" as NonEmptyStr,
+    ownership: Owned,
+  }
+}
+
+fn w_retirement_effects(address: SparkServingResourceAddress) -> List<SparkServingRetirementEffect> {
+  match spark_serving_retirement_effects_for_address(address: address) {
+    SparkServingRetirementRemedyPresent { effects: es } => es
+    SparkServingRetirementRemedyRefused { cause: _ } => []
+  }
+}
+
+// THE ROLES ARE DISJOINT AND TOTAL OVER THE TWO SPARKS.
+//
+// A cell holding both roles has no constructor, so this claim cannot be about that -- it is about
+// the ASSIGNMENT, where the same host appearing in both rosters is still writable. It is the
+// assignment, not the type, that this checks.
+test fn w_spark_roles_are_disjoint_over_the_assignment() -> Bool {
+  length(spark_serving_cell_hosts()) == 1
+    && length(spark_training_cell_hosts()) == 1
+    && any(spark_serving_cell_hosts(), h => h as String == operator_host_srv5 as String)
+    && any(spark_training_cell_hosts(), h => h as String == operator_host_srv6 as String)
+    && !any(spark_serving_cell_hosts(), h => h as String == operator_host_srv6 as String)
+    && !any(spark_training_cell_hosts(), h => h as String == operator_host_srv5 as String)
+}
+
+// A HOST NOBODY ASSIGNED HAS NO ROLE, WHICH IS NOT A ROLE.
+//
+// The falsifier for a defaulting lookup: if the fold answered SparkServingCell for an unknown host,
+// every machine in the fleet would be a serving cell and this goes red.
+test fn w_unassigned_host_has_no_spark_role() -> Bool {
+  match spark_cell_role_of(host: "srv1" as HostIdentity) {
+    Absent => true
+    Present { value: _ } => false
+  }
+}
+
+// SERVING DESIRED STATE IS SRV5 ALONE, AND IT GOT THERE BY PROJECTION.
+//
+// This is the claim that goes red the moment srv6's role is reverted to SparkServingCell -- which is
+// the point. Nothing here names srv6 as excluded; the roster simply is what the role authority says,
+// so a role change moves it without this file being touched.
+test fn w_serving_desired_hosts_are_the_serving_cells() -> Bool {
+  length(spark_serving_desired_hosts) == 1
+    && any(spark_serving_desired_hosts, h => h as String == operator_host_srv5 as String)
+    && !any(spark_serving_desired_hosts, h => h as String == operator_host_srv6 as String)
+}
+
+test fn w_serving_cell_is_not_offerable_to_the_training_fabric() -> Bool {
+  !spark_host_offerable_for_training(host: operator_host_srv5)
+    && spark_host_offerable_for_training(host: operator_host_srv6)
+    && !spark_host_offerable_for_training(host: "srv1" as HostIdentity)
+}
+
+// THE FOUR SERVICE ADDRESSES RETIRE; THE THREE BASELINE ADDRESSES REFUSE.
+//
+// The discriminating half is the refusal, not the presence. A retirement map that answered the empty
+// list for the baseline addresses -- the shape this change replaced -- would satisfy any claim that
+// only asked the service addresses for their remedies, because the baseline arms would be quietly
+// well-typed and empty. Asking them explicitly is what makes the old shape unable to pass.
+test fn w_every_service_address_retires_with_exactly_one_operation() -> Bool {
+  all(w_serving_addresses(), a =>
+    match spark_serving_retirement_effects_for_address(address: a) {
+      SparkServingRetirementRemedyPresent { effects: es } => length(es) == 1
+      SparkServingRetirementRemedyRefused { cause: _ } => false
+    })
+}
+
+test fn w_every_baseline_address_refuses_retirement() -> Bool {
+  all(w_baseline_addresses(), a =>
+    match spark_serving_retirement_effects_for_address(address: a) {
+      SparkServingRetirementRemedyPresent { effects: _ } => false
+      SparkServingRetirementRemedyRefused { cause: c } => length(c as String) > 0
+    })
+}
+
+// THE REMEDIES ARE THE ONES THE HOST ACTUALLY NEEDS, EACH AT ITS OWN ADDRESS.
+//
+// Stop answers activity and disable answers enablement, and the pair is asserted separately in both
+// directions: an implementation that stopped without disabling would leave a unit that returns at
+// the next boot, and one that disabled without stopping would leave a live server holding the pool.
+// Both are green under a single fused `disable --now`, which is why neither is checked by presence
+// alone.
+test fn w_activity_retires_by_stop_and_not_by_disable() -> Bool {
+  let es = w_retirement_effects(address: SparkServingUserUnitActivityAddress)
+  spark_serving_retirement_effects_include(effects: es, needle: StopUserUnit)
+    && !spark_serving_retirement_effects_include(effects: es, needle: DisableUserUnit)
+    && !spark_serving_retirement_effects_include(effects: es, needle: RemoveUserUnitFile)
+}
+
+test fn w_enablement_retires_by_disable_and_not_by_stop() -> Bool {
+  let es = w_retirement_effects(address: SparkServingUserUnitEnablementAddress)
+  spark_serving_retirement_effects_include(effects: es, needle: DisableUserUnit)
+    && !spark_serving_retirement_effects_include(effects: es, needle: StopUserUnit)
+}
+
+test fn w_content_retires_by_file_removal_and_registration_by_reload() -> Bool {
+  let content = w_retirement_effects(address: SparkServingUserUnitAddress)
+  let registration = w_retirement_effects(address: SparkServingUserUnitRegistrationAddress)
+  spark_serving_retirement_effects_include(effects: content, needle: RemoveUserUnitFile)
+    && !spark_serving_retirement_effects_include(effects: content, needle: ReloadUserManagerAfterRemoval)
+    && spark_serving_retirement_effects_include(effects: registration, needle: ReloadUserManagerAfterRemoval)
+    && !spark_serving_retirement_effects_include(effects: registration, needle: RemoveUserUnitFile)
+}
+
+// NO RETIREMENT EFFECT IS A NO-OP, WHICH IS WHY THE VOCABULARY HAS NO RETAIN ARM.
+//
+// The first draft of this type carried three effects that mutated nothing, so that every address
+// would have a non-empty remedy. This claim is the wall against reintroducing them: an effect that
+// mutates nothing cannot produce a planned execution, and a plan row is non-empty in executions by
+// construction, so such an effect could only be honoured by weakening that invariant.
+test fn w_every_retirement_effect_mutates_the_host() -> Bool {
+  all(
+    [StopUserUnit, DisableUserUnit, RemoveUserUnitFile, ReloadUserManagerAfterRemoval],
+    e => spark_serving_retirement_effect_mutates_host(effect: e),
+  )
+}
+
+// THE SPLIT PARTITIONS THE ROSTER -- NEITHER SIDE IS EMPTY AND NOTHING IS IN BOTH.
+//
+// A scope function that answered one way for everything would leave one of these lists empty, and a
+// retirement over it would either remove nothing or remove the cache. Both are checked because the
+// two failures have opposite consequences and a single count would catch neither.
+test fn w_the_address_scope_partitions_the_member_roster() -> Bool {
+  let members = concat(
+    map(w_serving_addresses(), a => w_member(host: operator_host_srv6, address: a)),
+    map(w_baseline_addresses(), a => w_member(host: operator_host_srv6, address: a)),
+  )
+  let role_scoped = spark_serving_role_scoped_members(members: members)
+  let baseline = spark_serving_baseline_members(members: members)
+  length(role_scoped) == 4
+    && length(baseline) == 3
+    && length(role_scoped) + length(baseline) == length(members)
+    && all(role_scoped, m => spark_serving_address_is_role_scoped(address: m.address))
+    && all(baseline, m => !spark_serving_address_is_role_scoped(address: m.address))
+}
+
+// THE MODEL AND THE RUNTIME SURVIVE THE RETIREMENT, AND THEY SURVIVE IT BY NOT BEING ASKED.
+//
+// This is the claim that keeps "retained cache" from becoming a polite word for a step that ran and
+// did nothing: the baseline addresses produce no retirement remedy at all, so there is no operation
+// whose failure could be swallowed and no receipt that could report a deletion as retention.
+test fn w_retained_cache_is_absent_from_the_retirement_rather_than_a_no_op_within_it() -> Bool {
+  all(w_baseline_addresses(), a => length(w_retirement_effects(address: a)) == 0)
+    && all(w_serving_addresses(), a => length(w_retirement_effects(address: a)) == 1)
+}

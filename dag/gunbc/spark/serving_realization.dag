@@ -394,6 +394,115 @@ type ServingInstallEffect
   | GrantContainerRuntimeAccess
   | RunContainerAsOwnUser
 
+// RETIREMENT IS A SIBLING VOCABULARY, NOT MORE ARMS ON THE INSTALL SUM.
+//
+// Every constructor above is an install: write, reload, enable, start, materialize. That is not an
+// accident of what has been needed so far -- it is what the type is FOR. `realization_install_effects`
+// answers "what does choosing UserUnitRealization cost in privilege", and
+// `realization_privileged_effect_count` ranks realizations by folding that answer. Both questions
+// presume the effects are the price of STANDING A SERVICE UP. A `StopUserUnit` arm would appear in
+// neither list for any realization, so every realization would carry arms unreachable for it, and
+// the privilege count -- the thing that decides which realization wins -- would be folding over a
+// sum half of whose members can never be selected. That is the state-space conflation the ledger
+// names, reached by widening rather than by a boolean pair.
+//
+// So retirement gets its own closed sum, and the two are joined at the level that actually selects
+// between them: a member ACTION. An add or a change realizes install effects; a removal realizes
+// retirement effects. Nothing returns a list that could contain both, which is the property that
+// makes the old `-> []` removal arm unwritable rather than merely wrong -- it is not that the list
+// is now non-empty, it is that the remove arm no longer has the install list's type to return an
+// empty one of.
+//
+// THERE IS NO RETAIN ARM, AND ITS ABSENCE IS THE CORRECTION THAT SHAPED THIS TYPE.
+//
+// The first draft had three: RetainRuntimeClosureAsCache, RetainModelArtifactAsCache,
+// RetainLingerForOwnAccount -- effects that mutate nothing, minted so that every serving member
+// address would have a non-empty retirement remedy and the old `-> []` would stay unwritable. That
+// was the empty list wearing a name. An effect that performs no operation cannot produce a planned
+// execution, and the plan row is non-empty in executions by construction, so those three arms could
+// only have been honoured by weakening that invariant -- trading a real guarantee for a cosmetic
+// one.
+//
+// The actual defect was upstream: the runtime closure, the pulled model blob and account linger were
+// never serving-role facts. They are host baseline and retained cache, and they were only reachable
+// here because one membership roster held all seven addresses. Retirement's subject is the SERVICE:
+// what is running, what returns after a reboot, what definition the manager holds. Those are four
+// addresses and every one of them has a real operation.
+//
+// So the bytes survive srv6's retirement because nothing ever asks for their removal -- they are not
+// in the serving role's population -- rather than because a retirement effect politely declined to
+// act on them. gunbc.spark.serving_membership carries that split, and reaching this map with a
+// baseline address is a refusal there, not a no-op here.
+type SparkServingRetirementEffect
+  = StopUserUnit
+  | DisableUserUnit
+  | RemoveUserUnitFile
+  | ReloadUserManagerAfterRemoval
+
+// THE ORDER IS THE INSTALL ORDER REVERSED, AND IT IS NOT DECORATION.
+//
+// Stop precedes disable precedes remove-file precedes reload. Every adjacent pair is load-bearing:
+// removing the unit file before stopping leaves a running process the manager can no longer name;
+// reloading before the file is gone re-reads a definition that still exists. The install schedule
+// derives its order from the resources' requires/establishes facts, and the retirement order is the
+// same relation read backwards -- an effect may not run until the effects that depend on what it
+// removes have already run.
+//
+// The retain arms come last and their relative order carries no claim, because they mutate nothing.
+fn realization_retirement_effects(realization: SparkServingRealization) -> List<SparkServingRetirementEffect> {
+  match realization {
+    UserUnitRealization =>
+      [StopUserUnit, DisableUserUnit, RemoveUserUnitFile, ReloadUserManagerAfterRemoval,
+       RetainModelArtifactAsCache, RetainRuntimeClosureAsCache, RetainLingerForOwnAccount]
+    SystemUnitRealization => []
+    RootlessContainerRealization => []
+  }
+}
+
+// A RETAIN EFFECT MUTATES NOTHING, AND THE POST-APPLY OBSERVATION MUST KNOW WHICH ONES THOSE ARE.
+//
+// This is what stops "retained cache" from becoming the absorbing arm it would otherwise be. The
+// readiness proof asks whether serving is terminally absent; it may count a retain effect as having
+// nothing to verify on the host, and it may NOT extend that to a mutating effect that silently did
+// nothing. The distinction is a property of the effect, declared here, rather than a judgement the
+// verifier makes about a result it received.
+fn spark_serving_retirement_effect_mutates_host(effect: SparkServingRetirementEffect) -> Bool {
+  match effect {
+    StopUserUnit => true
+    DisableUserUnit => true
+    RemoveUserUnitFile => true
+    ReloadUserManagerAfterRemoval => true
+  }
+}
+
+fn spark_serving_retirement_effect_wire(effect: SparkServingRetirementEffect) -> String {
+  match effect {
+    StopUserUnit => "stop-user-unit"
+    DisableUserUnit => "disable-user-unit"
+    RemoveUserUnitFile => "remove-user-unit-file"
+    ReloadUserManagerAfterRemoval => "reload-user-manager-after-removal"
+  }
+}
+
+// THE ONE PLACE THE TWO VOCABULARIES MEET, AND IT IS A SUM RATHER THAN A UNION.
+//
+// A planned row carries effects, and after this change a row's effects are either all installs or
+// all retirements -- never mixed, because the member ACTION that produced them was either an add /
+// change or a removal. This sum exists so the plan can carry both kinds of row without either
+// vocabulary having to grow arms for the other, and so the wire rendering of a plan says which kind
+// each effect was rather than flattening both into one namespace of strings where `start-user-unit`
+// and `stop-user-unit` look like members of the same closed set.
+type SparkServingPlannedEffect
+  = PlannedInstallEffect { install: ServingInstallEffect }
+  | PlannedRetirementEffect { retirement: SparkServingRetirementEffect }
+
+fn spark_serving_planned_effect_is_retirement(e: SparkServingPlannedEffect) -> Bool {
+  match e {
+    PlannedInstallEffect { install: _ } => false
+    PlannedRetirementEffect { retirement: _ } => true
+  }
+}
+
 // PRESERVED FOR THE ORDERING FOLD, and now a projection rather than an authority. It answers for
 // the DEFAULT actor -- the named serving account -- because effect_requires_escalation needs an
 // actor and the ranking question presumes one. Root would rank every realization at zero, which is

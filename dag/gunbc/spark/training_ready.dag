@@ -1,0 +1,180 @@
+module gunbc.spark.training_ready
+
+import std.types { String, Bool, List, NonEmptyStr, Int }
+import product.placement_supply { HostIdentity }
+import gunbc.spark.cell_role {
+  SparkCellRole,
+  SparkServingCell,
+  SparkTrainingCell,
+  spark_cell_role_of,
+  spark_cell_role_eq,
+}
+import gunbc.spark.serving_terminal_health {
+  SparkServingProbeCapture,
+  ProbeNeverRan,
+  ProbeFailed,
+  ProbeAnswered,
+}
+
+data spark_training_ready_authority_note: String = "SPARK-PAIR-0 P0. The gate between a host that no longer serves and a host the training fabric may offer. SparkTrainingReadyProof is sole_constructor and has exactly one producer, so a training offer, a capacity measurement or a trainer launch cannot be written against a Spark whose serving retirement was never terminally observed."
+
+// RETIREMENT IS NOT PROVED BY A PROBE THAT FAILED TO RUN.
+//
+// This is the empty-observation narrow at its most expensive, because here the narrow arm is the one
+// that reads as good news. "I could not reach the endpoint" and "the endpoint refused the
+// connection" both produce no serving response, and only the second is evidence that nothing is
+// listening. A retirement verified by the first would hand the trainer a host with a live Ollama
+// server still holding the unified pool -- and the symptom would be an out-of-memory failure inside
+// a training run, attributed to the recipe.
+//
+// So absence is a POSITIVE observation with its own arms. A refused connection is evidence. A probe
+// that never ran, or that answered, is not -- and answering is the loud case: something is still
+// serving.
+type SparkServingAbsence
+  = ServingAbsenceUnobserved { cause: NonEmptyStr }
+  | ServingStillPresent { evidence: NonEmptyStr }
+  | ServingAbsent { evidence: NonEmptyStr }
+
+// THE THREE SUBJECTS ARE READ SEPARATELY BECAUSE THEY FAIL SEPARATELY.
+//
+// A stopped process with the unit still enabled comes back at the next boot; a removed unit file
+// with the process still running leaves a server the manager can no longer name; an endpoint that
+// still answers means neither of the first two happened where it mattered. Each is its own read with
+// its own capture, and the proof requires all three -- one fused "is it retired" observation would
+// let any one of them stand in for the other two.
+type SparkServingRetirementObservation sole_constructor {
+  host: HostIdentity
+  endpoint: SparkServingAbsence
+  process: SparkServingAbsence
+  unit: SparkServingAbsence
+}
+
+fn spark_serving_absence_is_established(a: SparkServingAbsence) -> Bool {
+  match a {
+    ServingAbsent { evidence: _ } => true
+    ServingStillPresent { evidence: _ } => false
+    ServingAbsenceUnobserved { cause: _ } => false
+  }
+}
+
+// A CONNECTION-REFUSED CAPTURE IS THE ONE FAILURE THAT PROVES SOMETHING.
+//
+// ProbeFailed carries an exit code and stderr from a probe that ran and got an answer -- and for a
+// dial against a port with no listener, that answer IS the evidence. ProbeNeverRan carries a cause
+// for a probe that did not execute, which establishes nothing about the host. ProbeAnswered means a
+// server responded, which is the loud arm: the retirement did not happen.
+//
+// The decoder says only what the capture supports, which is the law the capture type exists to
+// enforce, and it is why this function cannot be collapsed into "non-empty stdout is bad".
+fn spark_serving_absence_from_probe(
+  subject: NonEmptyStr,
+  capture: SparkServingProbeCapture,
+) -> SparkServingAbsence {
+  match capture {
+    ProbeNeverRan { cause: c } =>
+      ServingAbsenceUnobserved {
+        cause: join([subject as String, ": the probe never ran — ", c as String], "") as NonEmptyStr,
+      }
+    ProbeAnswered { stdout: out } =>
+      ServingStillPresent {
+        evidence: join([subject as String, ": answered — ", out], "") as NonEmptyStr,
+      }
+    ProbeFailed { exit_code: code, stderr: err } =>
+      ServingAbsent {
+        evidence: join([subject as String, ": probe ran and was refused, exit ", to_string(code), " — ", err], "") as NonEmptyStr,
+      }
+  }
+}
+
+// MEASURED, AND TIED TO THE OBSERVATION THAT MEASURED IT.
+//
+// A catalogued 128 GB is a fact about the product NVIDIA sells, not about how much of this machine's
+// pool is free right now, and the difference is the whole reason this carrier exists rather than a
+// constant. The bytes come from a read on the host, after the retirement, so the number describes a
+// pool the serving process has already let go of. Reading it before would measure the wrong machine
+// state and would be indistinguishable in the type.
+type SparkUnifiedPoolObservation sole_constructor {
+  host: HostIdentity
+  free_bytes: Int
+  observed_after_retirement: Bool
+  producer: NonEmptyStr
+}
+
+// THE PROOF, SOLE-CONSTRUCTOR AND SINGLE-PRODUCER.
+//
+// It carries what a downstream consumer needs and cannot obtain for itself: which host, and how much
+// pool was actually free once serving let go. Everything else it establishes is carried by the fact
+// that the value EXISTS -- role is training, all three retirement subjects were positively observed
+// absent, and the pool was measured afterwards.
+//
+// This is the shape gunbc.spark.serving_terminal_health already uses for SparkServingServedProof,
+// and it is reused rather than re-invented for the reason §3 gives: the two are one concept -- a
+// value whose existence is the evidence, produced by exactly one decision procedure -- pointed at
+// opposite ends of a host's serving life.
+type SparkTrainingReadyProof sole_constructor {
+  host: HostIdentity
+  free_pool_bytes: Int
+}
+
+type SparkTrainingReadiness
+  = SparkTrainingReady { proof: SparkTrainingReadyProof }
+  | SparkTrainingNotReady { cause: NonEmptyStr }
+
+// EVERY REFUSAL ARM NAMES WHICH SUBJECT REFUSED. A single "not ready" would make the operator's next
+// action a guess between four different mornings: reassign the role, re-run the retirement, re-probe
+// a subject that was never read, or re-measure the pool.
+fn spark_training_readiness(
+  retirement: SparkServingRetirementObservation,
+  pool: SparkUnifiedPoolObservation,
+) -> SparkTrainingReadiness {
+  match spark_cell_role_of(host: retirement.host) {
+    Absent =>
+      SparkTrainingNotReady {
+        cause: "spark_training_ready: the host holds no Spark cell role, so nothing assigned it to training" as NonEmptyStr,
+      }
+    Present { value: role } =>
+      if !spark_cell_role_eq(a: role, b: SparkTrainingCell) {
+        SparkTrainingNotReady {
+          cause: "spark_training_ready: the host's role is serving — a serving cell is statically reserved and never becomes training capacity by observation" as NonEmptyStr,
+        }
+      } else if pool.host as String != retirement.host as String {
+        SparkTrainingNotReady {
+          cause: "spark_training_ready: the pool measurement and the retirement observation name different hosts — a capacity read from one machine cannot admit another" as NonEmptyStr,
+        }
+      } else if !spark_serving_absence_is_established(a: retirement.endpoint) {
+        SparkTrainingNotReady {
+          cause: "spark_training_ready: the serving endpoint was not positively observed absent" as NonEmptyStr,
+        }
+      } else if !spark_serving_absence_is_established(a: retirement.process) {
+        SparkTrainingNotReady {
+          cause: "spark_training_ready: the serving process was not positively observed absent" as NonEmptyStr,
+        }
+      } else if !spark_serving_absence_is_established(a: retirement.unit) {
+        SparkTrainingNotReady {
+          cause: "spark_training_ready: the serving unit was not positively observed absent" as NonEmptyStr,
+        }
+      } else if !pool.observed_after_retirement {
+        SparkTrainingNotReady {
+          cause: "spark_training_ready: the unified pool was measured before the retirement, so it describes a machine that was still serving" as NonEmptyStr,
+        }
+      } else if pool.free_bytes <= 0 {
+        SparkTrainingNotReady {
+          cause: "spark_training_ready: the measured free pool is not positive — a non-positive capacity is a failed read, never an offer of nothing" as NonEmptyStr,
+        }
+      } else {
+        SparkTrainingReady {
+          proof: SparkTrainingReadyProof {
+            host: retirement.host,
+            free_pool_bytes: pool.free_bytes,
+          },
+        }
+      }
+  }
+}
+
+fn spark_training_ready_proof(readiness: SparkTrainingReadiness) -> SparkTrainingReadyProof? {
+  match readiness {
+    SparkTrainingReady { proof: p } => Present { value: p }
+    SparkTrainingNotReady { cause: _ } => none
+  }
+}
