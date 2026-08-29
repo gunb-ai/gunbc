@@ -1,0 +1,28 @@
+module gunbc.fabric_ci_program
+
+import std.types { List, NonEmptyStr }
+
+// THE LIVING FABRIC-CI-1 AUTHORITY. These are gate predicates, not progress claims. There is no
+// Done/green/status field: a gate may acquire standing only from an executed receipt, and no such
+// receipt join exists at FCI-0. Keeping the predicate while omitting standing is the honest state.
+type FabricCiGate {
+  id: NonEmptyStr
+  owned_question: NonEmptyStr
+  exit_predicate: NonEmptyStr
+  positive_control: NonEmptyStr
+  discriminating_mutations: List<NonEmptyStr>
+  frozen_output_identities: List<NonEmptyStr>
+  non_goals: List<NonEmptyStr>
+}
+
+fn fabric_ci_gates() -> List<FabricCiGate> {
+  [
+    FabricCiGate { id: "FCI-0", owned_question: "What exactly will the fabric run?", exit_predicate: "The fabric possesses one exact required-witnesses-build Work carrying every execution-defining coordinate; moving or incomplete subjects refuse.", positive_control: "Identical semantic inputs derive the identical WorkKey and Work digest.", discriminating_mutations: ["command-word", "environment-entry", "verified-tree", "toolchain-identity", "output-declaration"], frozen_output_identities: ["WorkKey", "work-digest", "source-tree-digest", "environment-materialization-digest"], non_goals: ["ExecutionGrant", "executor", "process-start", "cell-realization", "workflow-cutover"] },
+    FabricCiGate { id: "FCI-1", owned_question: "Can declared outputs be returned and materialized exactly?", exit_predicate: "Every declared output returns by content identity and missing or corrupt output refuses.", positive_control: "One producing operation returns and materializes every declared output.", discriminating_mutations: ["missing-output", "corrupt-output", "provider-without-return"], frozen_output_identities: ["output-manifest", "materialization-receipt"], non_goals: ["deduplication", "grant-issuance", "process-start"] },
+    FabricCiGate { id: "FCI-2", owned_question: "Which sole grant authorizes this Work?", exit_predicate: "Selection, reservation and commitment yield exactly one fenced ExecutionGrant for the exact Work.", positive_control: "One admitted offer yields one committed grant.", discriminating_mutations: ["duplicate-grant", "expired-reservation", "work-mismatch"], frozen_output_identities: ["ExecutionGrant", "lease-epoch"], non_goals: ["process-start", "GitHub-conclusion"] },
+    FabricCiGate { id: "FCI-3", owned_question: "What causes the target process?", exit_predicate: "A persistent executor re-reads the committed Grant before starting; absent, corrupt or expired Grant yields zero target processes.", positive_control: "One live committed grant starts exactly one target process.", discriminating_mutations: ["grant-removed", "grant-corrupt", "grant-expired"], frozen_output_identities: ["attempt-identity", "process-observation"], non_goals: ["GitHub-conclusion", "multiple-host-scheduling"] },
+    FabricCiGate { id: "FCI-4", owned_question: "What terminal result did execution produce?", exit_predicate: "The attempt reaches exactly one typed terminal result without collapsing infrastructure refusal into work failure.", positive_control: "A successful process produces one terminal result.", discriminating_mutations: ["work-failed", "infrastructure-refused", "cancelled"], frozen_output_identities: ["terminal-result", "attempt-receipt"], non_goals: ["GitHub Checks publication"] },
+    FabricCiGate { id: "FCI-5", owned_question: "Is the receipt admissible for the exact Grant and Work?", exit_predicate: "Only an authorized, fenced receipt matching the Work outputs is admitted.", positive_control: "A matching authorized receipt is admitted.", discriminating_mutations: ["foreign-attester", "wrong-grant", "wrong-output"], frozen_output_identities: ["admitted-receipt"], non_goals: ["GitHub-trigger-ownership"] },
+    FabricCiGate { id: "FCI-6", owned_question: "How does the admitted receipt determine the required check?", exit_predicate: "The GitHub conclusion derives only from the admitted receipt and every absent or refused observation fails closed.", positive_control: "An admitted successful receipt yields the expected successful conclusion.", discriminating_mutations: ["receipt-absent", "receipt-refused", "receipt-subject-mismatch"], frozen_output_identities: ["required-check-conclusion"], non_goals: ["direct-process-execution-by-Actions"] },
+  ]
+}
