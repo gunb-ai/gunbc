@@ -1047,7 +1047,7 @@ fn witness_admission_fixture_exclusion_substrings() -> List<String> {
 
 
 
-data witness_exclusion_single_authority_reconciliation_note: String = "Single-authority reconciliation (module-identity-storage-binding Phase 0(b) follow-on; the prior note's dissolve-on FIRED 2026-07-22 via the group-of-units ruling): witness_exclusion_frontier is the ONE typed discovery-exclusion roster — every row carries pattern, consumer classification (the std.witness_admission WitnessConsumerCadence authority, no minted twin), reason, and dissolve_on. The former parallel lists witness_admission_offline_exclusion_substrings / witness_admission_fixture_exclusion_substrings are now DERIVED projections (classification filters) — the hand-kept containment alignment they needed is unwritable, so the old one-way-containment witness dissolved with them; v2.test.claim.witness_exclusion_reconciliation_test now witnesses row well-formedness (no DiscoverySelection row; NoConsumer only for the synthetic admission RED-control path; nonempty reason and dissolve_on per row) and explicit-roster consistency (BinWitnessWet / rehomed / substrate-long-lane rows name files the corresponding rosters actually run). As of 2026-08-03 it is a PATH POLICY roster: exact witness admission moved to gunbc.explicit_witness_admission at function grain and a QuarantineProbeExpectRed row here is refused outright, because a substring pattern can only be checked for containment against a schedule row and containment is not identity. whole_tree_resolve_exclusion_substrings stays the ONE concat(witness_exclusion_substrings(), whole_tree_strict_resolve_exclusion_substrings) pattern authority in .dag; the host projection in cli_run.rs parses the frontier rows with the real front-end and must stay list-identical (Rust unit test witness_whole_tree_resolve_exclusion_matches_concat_authority). Strict-walk probe bins consume whole_tree_probe_exclusion_substrings() — pattern rows ∪ host-derived module-path closure (census_exclude_derive) with LiveImporterExclusion receipts; docs/probes/census_extra_excludes.txt is a historical drift witness only (not authority). The roster is enrolled in gunbc.roster_registry as a DeclaredFrontier group. Dissolves when the enforcement-intent registry absorbs the roster or floor admission consumes per-row cost and consumer declarations directly."
+data witness_exclusion_single_authority_reconciliation_note: String = "Single-authority reconciliation (module-identity-storage-binding Phase 0(b) follow-on; the prior note's dissolve-on FIRED 2026-07-22 via the group-of-units ruling): witness_exclusion_frontier is the ONE typed discovery-exclusion roster — every row carries pattern, consumer classification (the std.witness_admission WitnessConsumerCadence authority, no minted twin), reason, and dissolve_on. The former parallel lists witness_admission_offline_exclusion_substrings / witness_admission_fixture_exclusion_substrings are now DERIVED projections (classification filters) — the hand-kept containment alignment they needed is unwritable, so the old one-way-containment witness dissolved with them; v2.test.claim.witness_exclusion_reconciliation_test now witnesses row well-formedness (no DiscoverySelection row; NoConsumer only for the synthetic admission RED-control path; nonempty reason and dissolve_on per row) and explicit-roster consistency (BinWitnessWet / rehomed / substrate-long-lane rows name files the corresponding rosters actually run). As of 2026-08-03 it is a PATH POLICY roster: exact witness admission moved to gunbc.explicit_witness_admission at function grain and a QuarantineProbeExpectRed row here is refused outright, because a substring pattern can only be checked for containment against a schedule row and containment is not identity. whole_tree_resolve_exclusion_substrings stays the ONE concat(witness_exclusion_substrings(), whole_tree_strict_resolve_exclusion_substrings) pattern authority in .dag; the host projection in cli_run.rs parses the frontier rows with the real front-end and must stay list-identical (Rust unit test witness_whole_tree_resolve_exclusion_matches_concat_authority). Strict-walk probe bins consume whole_tree_probe_exclusion_substrings() — pattern rows ∪ host-derived module-path closure (census_exclude_derive) with LiveImporterExclusion receipts. The roster is enrolled in gunbc.roster_registry as a DeclaredFrontier group. Dissolves when the enforcement-intent registry absorbs the roster or floor admission consumes per-row cost and consumer declarations directly."
 
 data witness_admission_offline_note: String = "Phase 0(b) admission invariant (module-identity-storage-binding): operator-ruled OFFLINE exclusion substrings whose witness rows carry OfflineLocalRecipe consumers — documented local recipes in the paired exclusion notes (wet_integration_offline_note, enforcement_coverage_exclusion_note, accumulator_copy_roster_gate_exclusion_note, lever_a_local_receipt_witness_exclusion_note, long_lane_exclusion_note). Dissolves when each row graduates to a scheduled CI consumer or deletes. STANDING, 2026-08-25: the recipes are now typed rows in gunbc.offline_local_recipe (five of the six policies; identity_captured_navigation deliberately owns none, its exclusion being deleted rather than repaired by gunbc#9206). The GRADUATION arm of the dissolution above currently names no destination -- no scheduled cadence has existed since the floor cut -- so the arm actioned per policy is either delete, or the typed carrier plus its declared defect roster, never a graduation nobody can perform."
 
@@ -1169,7 +1169,7 @@ data bin_witness_wet_entries: List<ScheduleWitnessEntry> = [
   bin_wet(entry: "dag/test/claim/typed_witness_invocation_test.dag", f: "typed_is_nonempty_positive_holds"),
   bin_wet(entry: "dag/test/claim/typed_witness_invocation_test.dag", f: "typed_is_nonempty_zero_byte_red_control_holds"),
   bin_wet(entry: "dag/test/claim/namespace_structural_root_exposure_generated_witness_test.dag", f: "namespace_structural_root_exposure_generated_witness_holds"),
-  bin_wet(entry: "dag/test/claim/roadmap_belt_actuate_witness_test.dag", f: ""),
+  bin_wet(entry: "dag/test/claim/roadmap/roadmap_belt_actuate_witness_test.dag", f: ""),
   bin_wet(entry: "dag/test/claim/typed_witness_invocation_test.dag", f: "typed_gunbc_cli_run_claim_holds"),
   bin_wet(entry: "dag/test/claim/typed_witness_invocation_test.dag", f: "typed_claim_batch_pooled_argv_shape_holds"),
   bin_wet(entry: "dag/test/claim/typed_witness_invocation_test.dag", f: "typed_claim_batch_pooled_run_red_control_holds"),
@@ -1185,13 +1185,13 @@ data bin_witness_wet_entries: List<ScheduleWitnessEntry> = [
   bin_wet(entry: "dag/test/claim/dag_compile_clean_shard_totality_witness_test.dag", f: "compile_clean_shard_roster_is_well_formed"),
   bin_wet(entry: "dag/test/claim/dag_compile_clean_shard_totality_witness_test.dag", f: "compile_clean_shard_totality_algebra_holds"),
   bin_wet(entry: "dag/test/claim/dag_compile_clean_seam_witness_test.dag", f: "cross_shard_seam_algebra_holds"),
-  bin_wet(entry: "dag/test/claim/srv3_install_media_fetch_real_execution_witness_test.dag", f: "install_media_hash_matches_true_by_real_execution"),
-  bin_wet(entry: "dag/test/claim/srv3_install_media_fetch_real_execution_witness_test.dag", f: "install_media_hash_matches_false_on_wrong_hash_by_real_execution"),
-  bin_wet(entry: "dag/test/claim/srv3_install_media_fetch_real_execution_witness_test.dag", f: "observe_install_media_fetch_covers_absent_verified_and_mismatch_by_real_execution"),
-  bin_wet(entry: "dag/test/claim/srv3_seeded_install_media_real_execution_witness_test.dag", f: "install_media_remaster_ensure_grub_cmdline_inserts_by_real_execution"),
+  bin_wet(entry: "dag/test/claim/srv3/srv3_install_media_fetch_real_execution_witness_test.dag", f: "install_media_hash_matches_true_by_real_execution"),
+  bin_wet(entry: "dag/test/claim/srv3/srv3_install_media_fetch_real_execution_witness_test.dag", f: "install_media_hash_matches_false_on_wrong_hash_by_real_execution"),
+  bin_wet(entry: "dag/test/claim/srv3/srv3_install_media_fetch_real_execution_witness_test.dag", f: "observe_install_media_fetch_covers_absent_verified_and_mismatch_by_real_execution"),
+  bin_wet(entry: "dag/test/claim/srv3/srv3_seeded_install_media_real_execution_witness_test.dag", f: "install_media_remaster_ensure_grub_cmdline_inserts_by_real_execution"),
   bin_wet(entry: "dag/test/claim/http_client_get_real_execution_witness_test.dag", f: "http_client_get_roundtrip_by_real_execution"),
   bin_wet(entry: "dag/test/claim/http_client_get_real_execution_witness_test.dag", f: "http_client_get_missing_target_red_control_by_real_execution"),
-  bin_wet(entry: "dag/test/claim/host_build_cache_provision_real_execution_witness_test.dag", f: "provision_read_back_failure_not_converged_by_real_execution"),
+  bin_wet(entry: "dag/test/claim/host/host_build_cache_provision_real_execution_witness_test.dag", f: "provision_read_back_failure_not_converged_by_real_execution"),
   bin_wet(entry: "dag/test/claim/materialized_ssh_key_file_real_execution_witness_test.dag", f: "witness_ssh_key_bracket_write_owner_only_shreds_and_not_under_target"),
   bin_wet(entry: "dag/test/claim/materialized_ssh_key_file_real_execution_witness_test.dag", f: "witness_write_owner_only_refuses_when_path_already_exists"),
   bin_wet(entry: "dag/test/claim/repo_local_git_config_real_execution_witness_test.dag", f: "repo_local_git_config_actuator_sets_local_bindings_by_real_execution"),
@@ -1207,9 +1207,9 @@ data bin_witness_wet_entries: List<ScheduleWitnessEntry> = [
   bin_wet(entry: "dag/test/claim/proc_self_cgroup_real_execution_witness_test.dag", f: "bash_assign_from_source_refuses_malformed_shell_holds"),
   bin_wet(entry: "dag/test/claim/proc_self_cgroup_real_execution_witness_test.dag", f: "bash_assign_from_source_observed_shell_holds"),
   bin_wet(entry: "dag/test/claim/stage0_rust_host_observation_live_witness_test.dag", f: "live_rust_observation_matches_actions_subject"),
-  bin_wet(entry: "dag/test/claim/roadmap_receipt_continuity_live_witness_test.dag", f: "live_roadmap_acceptance_history_integrity_holds"),
-  bin_wet(entry: "dag/test/claim/host_effect_plan_real_execution_witness_test.dag", f: "host_effect_plan_shell_witness_holds_by_real_execution"),
-  bin_wet(entry: "dag/test/claim/host_effect_plan_real_execution_witness_test.dag", f: "host_effect_plan_shell_failure_reason_carries_exit_code_by_real_execution"),
+  bin_wet(entry: "dag/test/claim/roadmap/roadmap_receipt_continuity_live_witness_test.dag", f: "live_roadmap_acceptance_history_integrity_holds"),
+  bin_wet(entry: "dag/test/claim/host/host_effect_plan_real_execution_witness_test.dag", f: "host_effect_plan_shell_witness_holds_by_real_execution"),
+  bin_wet(entry: "dag/test/claim/host/host_effect_plan_real_execution_witness_test.dag", f: "host_effect_plan_shell_failure_reason_carries_exit_code_by_real_execution"),
   bin_wet(entry: "dag/test/claim/effect_plan_bash_materialize_real_execution_witness_test.dag", f: "effect_plan_bash_two_declared_operations_execute"),
   bin_wet(entry: "dag/test/claim/effect_plan_bash_materialize_real_execution_witness_test.dag", f: "effect_plan_bash_fail_fast_prevents_later_operation_execution"),
   bin_wet(entry: "dag/test/claim/effect_plan_bash_materialize_real_execution_witness_test.dag", f: "effect_plan_bash_metachar_and_newline_cannot_open_a_statement"),
@@ -1217,8 +1217,8 @@ data bin_witness_wet_entries: List<ScheduleWitnessEntry> = [
   bin_wet(entry: "dag/test/claim/transport_script_stdin_byte_fidelity_witness_test.dag", f: "transport_script_stdin_fidelity_is_independent_of_terminal_newline"),
   bin_wet(entry: "dag/test/claim/push_event_witness_wet_test.dag", f: "witness_push_before_from_fixture_file"),
   bin_wet(entry: "dag/test/claim/push_event_witness_wet_test.dag", f: "witness_push_before_payload_read_refused_on_missing_path"),
-  bin_wet(entry: "dag/test/claim/host_cli_dependency_wet_witness_test.dag", f: "observe_echo_wet_posix_command_v_check_does_not_crash"),
-  bin_wet(entry: "dag/test/claim/host_cli_dependency_wet_witness_test.dag", f: "observe_npm_wet_posix_command_v_check_does_not_crash"),
+  bin_wet(entry: "dag/test/claim/host/host_cli_dependency_wet_witness_test.dag", f: "observe_echo_wet_posix_command_v_check_does_not_crash"),
+  bin_wet(entry: "dag/test/claim/host/host_cli_dependency_wet_witness_test.dag", f: "observe_npm_wet_posix_command_v_check_does_not_crash"),
   bin_wet(entry: "dag/test/claim/stage0_rust_maintenance_census_report_live_witness_test.dag", f: "maintenance_census_report_positive_control_derives_from_current_head")
 ]
 
@@ -1625,18 +1625,6 @@ data falsifier_substrate_long_lane_rows: List<SubstrateLongLaneRow> = [
     dissolution: unbound_dissolution(description: "eval lands under gunbc_ci_fast_lane_witness_eval_budget on a measured run and re-enrolls per-PR discovery, or deletes as duplicate of a faster receipt")
   },
   SubstrateLongLaneRow {
-    entry: "dag/test/claim/long/generated_artifact_drift_fixed_point_witness_test.dag",
-    function: "witness_committed_is_fixed_point",
-    reason: "ReadsLiveTree fixed-point receipt: reads every committed artifact from disk and asserts artifact_generate reproduces bytes byte-for-byte. Its input is therefore the live tree rather than its own source, so its eval cost is not bounded by anything the fast lane can see — that is what disqualifies it from the fast lane, independent of any single measurement. Measured 1005ms warm on srv_fleet_arm64 (witness_row_cost_basis) and 5004ms in falsifier discovery-corpus batch 1 (run 30550328673, BudgetExceeded); those two figures differ in CLOCK (wall receipt vs CPU kill path), host, head and route at once, so the gap is an observation and not a diagnosis. WHY they differ is adjudicated once, in fixed_point_witness_long_lane_note (dag/test/claim/generated_artifact_drift_test.dag), NOT here: this field carries the enrollment fact and that note carries the cause, so the two cannot drift (DESIGN 3 — the earlier text of this field duplicated the diagnosis and both copies said host contention, which is false on a thread-CPU clock; corrected 2026-08-04)",
-    dissolution: unbound_dissolution(description: "eval lands under gunbc_ci_fast_lane_witness_eval_budget on a measured cold run and re-enrolls per-PR discovery, or deletes as duplicate of a faster receipt")
-  },
-  SubstrateLongLaneRow {
-    entry: "dag/test/claim/long/generated_artifact_drift_fixed_point_witness_test.dag",
-    function: "witness_committed_fixed_point_red_control",
-    reason: "RED control paired with witness_committed_is_fixed_point (same file, same Filesystem.Read + artifact_generate cost shape)",
-    dissolution: unbound_dissolution(description: "eval lands under gunbc_ci_fast_lane_witness_eval_budget on a measured cold run and re-enrolls per-PR discovery, or deletes as duplicate of a faster receipt")
-  },
-  SubstrateLongLaneRow {
     entry: "src/v2/test/claim/long/production_qualification_origin_probe_witness_test.dag",
     function: "witness_production_qualification_origin_probe_admission_holds",
     reason: "production_qualification_origin_probe_admission_holds() walks fn_arrow_decl_facts_live() and exceeded 5000ms fast-lane budget on PR CI (d3fb2fed): eval-budget routing only — planted closed-subject witnesses stay per-PR discovery",
@@ -1739,7 +1727,7 @@ data falsifier_substrate_long_lane_rows: List<SubstrateLongLaneRow> = [
     dissolution: unbound_dissolution(description: "eval lands under gunbc_ci_fast_lane_witness_eval_budget on a measured cold run and re-enrolls per-PR discovery; row deletes with the long-lane file")
   },
   SubstrateLongLaneRow {
-    entry: "dag/test/claim/roadmap_program_view_live_corpus_receipt_test.dag",
+    entry: "dag/test/claim/roadmap/roadmap_program_view_live_corpus_receipt_test.dag",
     function: "live_roadmap_program_view_corpus_projection_receipt",
     reason: "LIVE-AUTHORITY INTEGRATION RECEIPT (operator verdict 2026-08-05, PR #7822): exercises the full declared roadmap closure through gunbc.roadmap_program_view — evidentiary wiring receipt enrolled on the corpus/integration lane for its integration role, not because eval cost exceeds the per-PR business budget. Business algebra stays on planted fixtures in roadmap_program_view_witness_test.dag",
     dissolution: unbound_dissolution(description: "replaced by a cheaper structural wiring receipt that covers the same live-authority join, or live roadmap projection integration receipts become unnecessary")

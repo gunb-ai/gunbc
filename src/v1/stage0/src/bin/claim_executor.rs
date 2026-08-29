@@ -594,384 +594,6 @@ fn run() -> Result<ExitCode, ExitCode> {
         // The subject is the SAME PRODUCER the cargo board runs
         // (cli_run::compile_entry_emission, which `gunbc compile --entry` also calls), so
         // a green here and an emitting board are one fact rather than two.
-        if required_ci_phase_selected(RequiredCiPhase::V2Emission, required_ci_lane) {
-            eprintln!("required-ci: phase v2-emission (the v2 compiler entry, full closure)");
-
-            // THE PHASE'S DISCRIMINATING EVIDENCE, RUN BEFORE THE PRODUCER IT VOUCHES FOR.
-            //
-            // This selftest was reachable only through a standalone flag no workflow invoked, so
-            // the phase below ran a producer whose REFUSAL had never once been shown to fire. A
-            // green emission then established that the emitter emitted, not that it still refuses
-            // what it must -- specification-without-execution, and DESIGN 4b(4) is explicit that a
-            // class's discriminating RED and positive control stay ENROLLED as the evidence the
-            // rung is real. Unenrolled evidence is not weaker evidence; it is none.
-            //
-            // It runs FIRST because it is cheap (two fixtures, measured under a second) and
-            // because a producer green means nothing if the red fixture stopped refusing.
-            {
-                let failures = v1_compiler::cli_run::run_required_v2_emission_selftest();
-                for failure in &failures {
-                    eprintln!("required-ci: v2-emission-selftest FAIL {failure}");
-                }
-                if failures.is_empty() {
-                    eprintln!(
-                        "required-ci: v2-emission-selftest OK red fixture refused on the annotation cause, green fixture emitted"
-                    );
-                } else {
-                    phase_failures.push(format!(
-                        "v2-emission-selftest ({} evidence failure(s))",
-                        failures.len()
-                    ));
-                }
-            }
-            match v1_compiler::cli_run::run_required_v2_emission(&source_roots) {
-                Ok(runs) => {
-                    let mut not_completed = 0usize;
-                    for run in &runs {
-                        eprintln!("{}", run.measurement_line("required-ci: v2-emission"));
-                        match &run.disposition {
-                            v1_compiler::cli_run::CompileDisposition::Completed { .. } => {}
-                            v1_compiler::cli_run::CompileDisposition::Refused { phase, cause } => {
-                                not_completed += 1;
-                                eprintln!(
-                                    "required-ci: v2-emission EmissionRefused {} phase={phase} cause={cause}",
-                                    run.subject.receipt()
-                                );
-                            }
-                            v1_compiler::cli_run::CompileDisposition::NotExecuted {
-                                earlier_phase,
-                                cause,
-                            } => {
-                                not_completed += 1;
-                                eprintln!(
-                                    "required-ci: v2-emission EmissionNotExecuted {} earlier_phase={earlier_phase} cause={cause}",
-                                    run.subject.receipt()
-                                );
-                            }
-                        }
-                    }
-                    if not_completed > 0 {
-                        phase_failures.push(format!("v2-emission ({not_completed} not completed)"));
-                    }
-                }
-                Err(e) => {
-                    eprintln!(
-                        "required-ci: v2-emission EmissionNotExecuted earlier_phase=roster cause={e}"
-                    );
-                    phase_failures.push(format!("v2-emission roster: {e}"));
-                }
-            }
-            ran.push("v2-emission");
-        }
-
-        // PHASE — the emitted closure, COMPILED.
-        //
-        // WHAT IT ANSWERS THAT THE PHASE ABOVE DOES NOT. `v2-emission` stops at the emitter:
-        // its own header names what it cannot see, and the first item is "a rustc error in the
-        // emitted tree (nothing here compiles the emission)". DESIGN's declared rung drop --
-        // "A BLOCKING EMIT-STAGE DIAGNOSTIC CAN SIT ON MAIN INDEFINITELY WITH NO REQUIRED
-        // PHASE THAT FAILS" -- names a required phase that emits over a closure and compiles it
-        // as its restoration trigger. This is that phase.
-        //
-        // THE PHASE ESTABLISHES ITS OWN DISCRIMINATING RED, EVERY RUN. A cargo verdict that is
-        // green because nothing was measured is the decoration DESIGN 4b calls worse than
-        // absent, so a green baseline alone is NOT a pass here: the run injects one fault into
-        // one emitted file, requires it to fail alone, restores the bytes and requires the
-        // green back. `emit_compile_outcome_passed` is that conjunction, and every
-        // non-discriminating mutation arm stops the line with its own typed cause.
-        if required_ci_phase_selected(RequiredCiPhase::EmitCompile, required_ci_lane) {
-            eprintln!(
-                "required-ci: phase emit-compile (one entry's emitted closure, compiled, \
-                 with its own mutation-established red)"
-            );
-            match v1_compiler::cli_run::required_ci_emit_compile_probe_root().and_then(|root| {
-                v1_compiler::cli_run::run_required_emit_compile(&source_roots, &root)
-                    .map(|outcomes| (outcomes, root))
-            }) {
-                Ok((outcomes, probe_root)) => {
-                    let mut not_passed = 0usize;
-                    for outcome in &outcomes {
-                        eprintln!(
-                            "required-ci: emit-compile {}",
-                            v1_compiler::cli_run::emit_compile_outcome_summary(outcome)
-                        );
-                        if !v1_compiler::cli_run::emit_compile_outcome_passed(outcome) {
-                            not_passed += 1;
-                            if let v1_compiler::cli_run::EmitCompileOutcome::Measured {
-                                baseline,
-                                ..
-                            } = outcome
-                            {
-                                for line in
-                                    v1_compiler::cli_run::cargo_verdict_stderr_tail(baseline)
-                                        .lines()
-                                {
-                                    eprintln!("required-ci: emit-compile cargo| {line}");
-                                }
-                            }
-                        }
-                    }
-                    // THE COUNT IS OF DECLARED MEMBERS, NOT OF SURVIVORS. A phase that reported
-                    // how many entries passed would read identically whether the roster held
-                    // ten members or one, which is the coverage-moves-unnoticed failure the
-                    // roster row refuses by construction.
-                    eprintln!(
-                        "required-ci: emit-compile declared={} passed={} not_clean={not_passed}",
-                        outcomes.len(),
-                        outcomes.len() - not_passed
-                    );
-                    // ONE REPORT, BOTH SURFACES. See `emit_compile_report`: the remainder is
-                    // identities rather than a percentage, and a remainder that could not be
-                    // persisted stops the line.
-                    let (report, retention_error) = v1_compiler::cli_run::emit_compile_report(
-                        &outcomes,
-                        &source_roots,
-                        &probe_root,
-                        "required-ci: emit-compile",
-                    );
-                    for line in report {
-                        eprintln!("{line}");
-                    }
-                    if let Some(err) = retention_error {
-                        phase_failures
-                            .push(format!("emit-compile (remainder not retained: {err})"));
-                    }
-                    if not_passed > 0 {
-                        phase_failures.push(format!(
-                            "emit-compile ({not_passed} entry/entries not clean)"
-                        ));
-                    }
-                }
-                // A ROSTER THAT NAMES NOTHING IS NOT A CLEAN RUN. Reporting zero entries
-                // compiled as a pass is the empty-observation narrow.
-                Err(e) => {
-                    eprintln!("required-ci: emit-compile roster refused: {e}");
-                    phase_failures.push(format!("emit-compile roster: {e}"));
-                }
-            }
-            ran.push("emit-compile");
-        }
-
-        // PHASE — the derived stage0 partition's crate boundary.
-        //
-        // WHAT IT ANSWERS, and it is deliberately not what a reader assumes from the name: the
-        // committed `lib.rs` and `Cargo.toml` of the seven partition crates are exactly what
-        // `v1.compiler.stage0_crates` renders from the authority. It is a DRIFT question, not a
-        // compile question, and the two are independent — the incident that produced this phase
-        // was a stale AUTHORITY, whose projection was byte-perfect and did not compile. So this
-        // phase is necessary and NOT sufficient; the compile half is the partition crates being
-        // built, which `-p v1-compiler --bins` does not reach (a `-p` selector scopes `--bins`
-        // to that one package, and these are separate packages).
-        //
-        // A CARRIER REFUSAL IS NOT A CLEAN RUN. The outcome type reaches every verdict THROUGH
-        // the rendered population, so `refused before rendering` cannot inhabit the same arm as
-        // `rendered, nothing drifted`. Reporting a zero here without that distinction is the
-        // execution-provenance loss DESIGN names: an unreached observation reading as a pass.
-        if required_ci_phase_selected(RequiredCiPhase::PartitionCrates, required_ci_lane) {
-            eprintln!(
-                "required-ci: phase partition-crates (the derived stage0 partition's boundary files)"
-            );
-            match v1_compiler::cli_run::run_partition_crate_boundary(false) {
-                v1_compiler::cli_run::PartitionCrateBoundaryOutcome::CarrierRefused { cause } => {
-                    eprintln!(
-                        "required-ci: partition-crates CarrierRefused cause={cause} \
-                         (the authority declined to render; nothing was compared)"
-                    );
-                    phase_failures.push(format!("partition-crates carrier refused: {cause}"));
-                }
-                outcome @ v1_compiler::cli_run::PartitionCrateBoundaryOutcome::Rendered {
-                    ..
-                } => {
-                    let divergent = outcome.divergent();
-                    if let v1_compiler::cli_run::PartitionCrateBoundaryOutcome::Rendered {
-                        files,
-                        ..
-                    } = &outcome
-                    {
-                        eprintln!(
-                            "required-ci: partition-crates rendered={} matches={} drifted={} absent={}",
-                            files.len(),
-                            files.len() - divergent.len(),
-                            divergent
-                                .iter()
-                                .filter(|f| f.disposition()
-                                    == v1_compiler::cli_run::BoundaryFileDisposition::Drifted)
-                                .count(),
-                            divergent
-                                .iter()
-                                .filter(|f| f.disposition()
-                                    == v1_compiler::cli_run::BoundaryFileDisposition::Absent)
-                                .count(),
-                        );
-                    }
-                    for file in &divergent {
-                        eprintln!(
-                            "required-ci: partition-crates {} {}",
-                            file.disposition().name(),
-                            file.path
-                        );
-                    }
-                    if !divergent.is_empty() {
-                        // THE REFUSAL NAMES A ROUTE THAT EXISTS. The header on these files used
-                        // to name `regen_stage0`, deleted 2026-08-20, so the only move the stop
-                        // offered was unavailable and the author hand-edited instead.
-                        eprintln!(
-                            "required-ci: partition-crates these are GENERATED projections of \
-                             v2.workflow.rust_crate_partition — do not hand-edit; regenerate with: {}",
-                            v1_compiler::cli_run::PARTITION_CRATE_PRODUCING_COMMAND
-                        );
-                        phase_failures.push(format!(
-                            "partition-crates ({} boundary file(s) not derived)",
-                            divergent.len()
-                        ));
-                    }
-                }
-            }
-
-            // THE SECOND CONJUNCT, AND IT RUNS WHATEVER THE FIRST ANSWERED. Drift being clean
-            // says the projection matches its authority; it says NOTHING about the authority
-            // being complete. The defect this phase exists for had drift ZERO across four
-            // projection links and did not compile, so a drift-only phase reports green on it.
-            //
-            // PLACEMENT IS LOAD-BEARING, and this sat inside the `Rendered` arm first: a
-            // `CarrierRefused` returned before the compile, so the one state where the authority
-            // is most suspect was the one state that skipped the completeness check. The two
-            // conjuncts are independent in both directions, so neither may gate the other.
-            let packages = v1_compiler::cli_run::partition_package_names();
-            let compile = v1_compiler::cli_run::compile_partition_crates(&packages);
-            eprintln!(
-                "required-ci: partition-crates compile {}",
-                compile.summary()
-            );
-            if !compile.passed() {
-                if let v1_compiler::cli_run::PartitionCompileOutcome::Completed {
-                    stderr_tail,
-                    ..
-                } = &compile
-                {
-                    for line in stderr_tail.lines() {
-                        eprintln!("required-ci: partition-crates cargo| {line}");
-                    }
-                }
-                phase_failures.push(format!("partition-crates compile: {}", compile.summary()));
-            }
-            ran.push("partition-crates");
-        }
-
-        // PHASE — the committed generated-artifact population, adjudicated against its
-        // authority. Independent of everything above it; runs whatever they answered.
-        //
-        // WHY THIS PHASE EXISTS. The generated-artifact drift gates went out with the
-        // 2026-08-15 floor cut and sit on the re-add queue that cut declared. In the interval,
-        // `DESIGN.md` and `ROADMAP.md` -- projections of `gunbc.design_document` and
-        // `gunbc.roadmap_authority` -- were maintained BY HAND in lockstep with their
-        // authorities, and gunbc#9392 found the accumulated result the only way an unguarded
-        // artifact is ever found: by accident, 2198 characters into the drift. The producer was
-        // never missing; the caller was.
-        //
-        // ONE POPULATION, NOT A SAMPLE. The roster is asked of the authority
-        // (`committed_generated_artifact_paths`), so an artifact added to the registry is
-        // enrolled here with no edit to this file, and the two counts below -- verdicts reached
-        // and members left unanswered -- are printed side by side so a run that asked nothing
-        // cannot render as a run that found nothing.
-        if required_ci_phase_selected(RequiredCiPhase::GeneratedArtifact, required_ci_lane) {
-            eprintln!(
-                "required-ci: phase generated-artifact (every committed projection vs its authority)"
-            );
-            let outcome = v1_compiler::cli_run::run_generated_artifact_boundary(&source_roots);
-            // THE PHASE'S VERDICT IS THE CARRIER'S, NOT A SECOND DEFINITION OF CLEAN. The two
-            // reporting branches below name WHAT went wrong; whether anything did is decided by
-            // `boundary_is_clean` alone, so a state neither branch happens to describe -- an
-            // empty population being the one review found -- cannot pass by falling between
-            // them. A second predicate here is exactly the fork that lets a ledger and a gate
-            // disagree about one run.
-            let failures_before = phase_failures.len();
-            match &outcome {
-                v1_compiler::cli_run::GeneratedArtifactBoundaryOutcome::CarrierRefused {
-                    cause,
-                } => {
-                    eprintln!(
-                        "required-ci: generated-artifact CarrierRefused cause={cause} \
-                         (the authority declined to answer; nothing was compared)"
-                    );
-                    phase_failures.push(format!("generated-artifact carrier refused: {cause}"));
-                }
-                v1_compiler::cli_run::GeneratedArtifactBoundaryOutcome::Adjudicated {
-                    artifacts,
-                    unadjudicated,
-                } => {
-                    let divergent = v1_compiler::cli_run::boundary_divergent(&outcome);
-                    eprintln!(
-                        "required-ci: generated-artifact rostered={} adjudicated={} matches={} \
-                         drifted={} absent={} unadjudicated={}",
-                        artifacts.len() + unadjudicated.len(),
-                        artifacts.len(),
-                        artifacts.len() - divergent.len(),
-                        divergent
-                            .iter()
-                            .filter(|a| v1_compiler::cli_run::artifact_disposition(a)
-                                == v1_compiler::cli_run::ArtifactDisposition::Drifted)
-                            .count(),
-                        divergent
-                            .iter()
-                            .filter(|a| v1_compiler::cli_run::artifact_disposition(a)
-                                == v1_compiler::cli_run::ArtifactDisposition::Absent)
-                            .count(),
-                        unadjudicated.len(),
-                    );
-                    for a in &divergent {
-                        eprintln!(
-                            "required-ci: generated-artifact {} {}",
-                            v1_compiler::cli_run::artifact_disposition_name(
-                                v1_compiler::cli_run::artifact_disposition(a)
-                            ),
-                            a.path
-                        );
-                    }
-                    for u in unadjudicated {
-                        eprintln!(
-                            "required-ci: generated-artifact UNADJUDICATED {} — {}",
-                            u.path, u.cause
-                        );
-                    }
-                    if !divergent.is_empty() {
-                        // THE REFUSAL NAMES A ROUTE THAT EXISTS -- the same discipline the
-                        // partition-crate header had to learn after it named a producer that had
-                        // been deleted. A stop whose only sanctioned move is unavailable does not
-                        // stop the line, it launders a hand edit.
-                        eprintln!(
-                            "required-ci: generated-artifact these are GENERATED projections of \
-                             their .dag authorities — do not hand-edit; regenerate with: {}",
-                            v1_compiler::cli_run::GENERATED_ARTIFACT_PRODUCING_COMMAND
-                        );
-                        phase_failures.push(format!(
-                            "generated-artifact ({} projection(s) not derived)",
-                            divergent.len()
-                        ));
-                    }
-                    if !unadjudicated.is_empty() {
-                        // KEPT SEPARATE FROM DRIFT. An unanswered member is not a clean member,
-                        // and it is not a drifted one either: it is a defect in the authority or
-                        // in this bridge, and it ranks differently from work an author does now.
-                        phase_failures.push(format!(
-                            "generated-artifact ({} rostered artifact(s) reached no verdict)",
-                            unadjudicated.len()
-                        ));
-                    }
-                }
-            }
-            if !v1_compiler::cli_run::boundary_is_clean(&outcome)
-                && phase_failures.len() == failures_before
-            {
-                eprintln!(
-                    "required-ci: generated-artifact REFUSED — the outcome is not clean and no \
-                     branch above named why. Reporting the refusal rather than the silence"
-                );
-                phase_failures.push("generated-artifact (not clean, unnamed cause)".to_string());
-            }
-            ran.push("generated-artifact");
-        }
-
         // PHASE 4 — the witness floor. Independent; runs whatever happened above.
         if required_ci_phase_selected(RequiredCiPhase::Floor, required_ci_lane) {
             eprintln!("required-ci: phase floor (one prepared subject, one fold)");
@@ -1401,10 +1023,6 @@ enum RequiredCiPhase {
     Parse,
     NamespaceWaveAdmission,
     Regen,
-    V2Emission,
-    EmitCompile,
-    PartitionCrates,
-    GeneratedArtifact,
     Floor,
 }
 
@@ -1414,10 +1032,6 @@ impl RequiredCiPhase {
             RequiredCiPhase::Parse => "parse",
             RequiredCiPhase::NamespaceWaveAdmission => "namespace-wave-admission",
             RequiredCiPhase::Regen => "regen",
-            RequiredCiPhase::V2Emission => "v2-emission",
-            RequiredCiPhase::EmitCompile => "emit-compile",
-            RequiredCiPhase::PartitionCrates => "partition-crates",
-            RequiredCiPhase::GeneratedArtifact => "generated-artifact",
             RequiredCiPhase::Floor => "floor",
         }
     }
@@ -1437,37 +1051,22 @@ impl RequiredCiPhase {
             // question one parse already reached.
             RequiredCiPhase::NamespaceWaveAdmission => RequiredCiLane::Witnesses,
             RequiredCiPhase::Regen => RequiredCiLane::Build,
-            RequiredCiPhase::V2Emission => RequiredCiLane::Build,
-            // THE SECOND HALF OF THE SAME QUESTION, so it rides beside the emission it
-            // extends: v2-emission asks whether the emitter produced a tree, this asks
-            // whether the tree it produced compiles. Its cost is a cargo build over one
-            // emitted closure against the dependency graph this lane's own first step has
-            // already compiled -- it shares that target directory and that profile
-            // deliberately, so the arm compiles the emitted crate and nothing else.
-            RequiredCiPhase::EmitCompile => RequiredCiLane::Build,
-            // A DRIFT COMPARISON OVER DERIVED RUST, so it belongs beside regen and
-            // v2-emission rather than beside the witness corpus. The two lanes carry no
-            // `needs` edge, so this costs nothing until the build lane exceeds the floor's
-            // wall clock; beside the floor it would be pure addition to the critical path.
-            RequiredCiPhase::PartitionCrates => RequiredCiLane::Build,
-            // THE SAME QUESTION AS PARTITION-CRATES OVER A DIFFERENT POPULATION -- does a
-            // committed projection still equal what its authority generates -- so it sits in
-            // the same lane for the same reason. It resolves one .dag closure and evaluates a
-            // pure projection per rostered artifact; no build, no subprocess.
-            RequiredCiPhase::GeneratedArtifact => RequiredCiLane::Build,
             RequiredCiPhase::Floor => RequiredCiLane::Witnesses,
         }
     }
 }
 
-const REQUIRED_CI_PHASES: [RequiredCiPhase; 8] = [
+// THE REQUIRED GATE IS FOUR PHASES, BY OPERATOR RULING (2026-08-29, the CI bankruptcy). The
+// four that used to sit here beside them -- v2-emission, emit-compile, partition-crates and
+// generated-artifact -- were 43 of the build lane's 57 wall minutes on the last green run and
+// none of them is the compiler floor. They are still runnable as receipts through their own
+// standalone modes on this binary (`--required-v2-emission`, `--required-emit-compile`,
+// `--required-partition-crates`, `--required-generated-artifact`); what changed is that no
+// merge waits on them. The drop is declared in `gunbc.rung_drop` `required_gate_bankruptcy`.
+const REQUIRED_CI_PHASES: [RequiredCiPhase; 4] = [
     RequiredCiPhase::Parse,
     RequiredCiPhase::NamespaceWaveAdmission,
     RequiredCiPhase::Regen,
-    RequiredCiPhase::V2Emission,
-    RequiredCiPhase::EmitCompile,
-    RequiredCiPhase::PartitionCrates,
-    RequiredCiPhase::GeneratedArtifact,
     RequiredCiPhase::Floor,
 ];
 
@@ -1573,12 +1172,14 @@ fn report_required_floor_outcome(outcome: &v1_compiler::cli_run::RequiredFloorOu
     // rather than left for a reader to discover it was never claimed.
     eprintln!(
         "required-floor: offered={} routed={} declined_long={} declined_fixture={} \
-         — every discovered site is exactly one of these, and no `*_test.dag` \
-         entry offered zero sites (BarrenTestSidecar refuses upstream of this line)",
+         declined_outside_required_gate={} — every discovered site is exactly one of these, \
+         and no `*_test.dag` entry offered zero sites (BarrenTestSidecar refuses upstream of \
+         this line)",
         outcome.sites_offered,
         outcome.claims_planned,
         outcome.declined_long_module,
-        outcome.declined_fixture_member
+        outcome.declined_fixture_member,
+        outcome.declined_outside_required_gate
     );
     // WHY route_gap IS NOW SPELLED route_gap_unenrolled, AND WHY route_gap_held JOINS IT HERE.
     // The old field printed `outcome.route_gap.len()` under the bare name `route_gap` — the
