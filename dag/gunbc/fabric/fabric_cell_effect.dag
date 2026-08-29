@@ -2,9 +2,16 @@ module gunbc.fabric_cell_effect
 
 import std.types { String, List, Bool, Int, NonEmptyStr, list_length }
 import std.disposition { Disposition, SingleAuthority }
-import extdeps.exec.command { ArgvCommand }
-import extdeps.tools.mkdir { mkdir_exact_command }
+import extdeps.systemd.unit_file {
+  SystemdSliceDirective,
+  slice_memory_max,
+  slice_memory_high,
+  slice_memory_swap_max,
+  slice_tasks_max,
+  slice_cpu_weight,
+}
 import gunbc.build_cache_instance { RunnerSlotIdentity }
+import gunbc.runner_slot_allocation { gunbc_runner_slot_desired }
 import gunbc.membership_reconcile {
   MemberAction,
   MemberAdded,
@@ -22,6 +29,7 @@ import gunbc.fabric_cell_converge {
   FabricCellResourceBoundaryAddress,
   fabric_cell_root_path,
   fabric_cell_attempt_root_path,
+  fabric_cell_slice_name,
   fabric_cell_resource_address_wire,
 }
 
@@ -33,46 +41,82 @@ data fabric_cell_effect_authority_disposition: Disposition = SingleAuthority
 // own words that its host-effect realization is absent. So this is the family's first realization
 // surface, and it is closed rather than open because an effect nobody enumerated is an effect
 // nobody reviewed.
-type FabricCellEffect = FabricCellDirectoryCreate { path: NonEmptyStr, command: ArgvCommand }
+//
+// NO EFFECT IN THIS SUM CARRIES BYTES AN UNPRIVILEGED PRINCIPAL AUTHORED, AND THAT IS A RULING,
+// NOT A STYLE (parent veto, warm-seal-35, 2026-08-29). An earlier cut of this realization staged a
+// rendered slice unit file under a job-user-writable directory and granted a privileged copy of it
+// into /etc/systemd/system. Exact-argv sudoers matching is no defense there, because the argv is
+// constant and the CONTENT is the payload: any CI job on the host could rewrite the staged bytes
+// and obtain arbitrary root-owned unit content -- root escalation reachable from a pull request.
+// So every effect here is a TYPED TUPLE: a path with an ownership class, or a slice name with its
+// directive words. The privileged executor derives the bytes itself, under its own authority, from
+// words the sudoers grant pins exactly.
+//
+// WHO OWNS WHAT, FROM THE SAME RULING. The cell substrate -- the base directory and the cell root
+// -- is root-owned: a job-user-owned cell root would let any CI job mutate or delete the cell,
+// and FCI-1's release-does-not-mutate-the-substrate control would become unfalsifiable in the
+// wrong direction. The job user is delegated exactly ONE writable directory, the attempt root
+// beneath the cell, and that delegation is an explicit arm here rather than inherited from how
+// the GitHub slot family happens to own its directories.
+type FabricCellSubstrateOwner
+  = CellSubstrateRootOwned
+  | CellAttemptWriterOwned
 
-// THE CREATE IS THE EXACT FORM AND NOT -p, AND THAT IS THE WHOLE SAFETY CONTENT OF THIS FUNCTION.
-// extdeps.tools.mkdir's own annotation calls -p an ENSURE rather than a CREATE, because a missing
-// parent is not an error to it. /opt/fabric-cells is classified Ensured by
-// gunbc.fabric_cell_subject -- required present, never created by this family -- so -p here would
-// have the cell family silently create the exact directory its ownership model says is not its to
-// make, and nothing would report it. The exact form turns a missing base directory into a non-zero
-// exit instead of a fabricated parent chain.
-fn fabric_cell_directory_create(path: String) -> FabricCellEffect {
-  FabricCellDirectoryCreate {
-    path: path as NonEmptyStr,
-    command: mkdir_exact_command(path: path),
+type FabricCellEffect
+  = FabricCellDirectoryEnsure { path: NonEmptyStr, owner: FabricCellSubstrateOwner }
+  | FabricCellSliceEnsure { slice_unit: NonEmptyStr, directives: List<SystemdSliceDirective> }
+
+fn fabric_cell_directory_ensure(path: String, owner: FabricCellSubstrateOwner) -> FabricCellEffect {
+  FabricCellDirectoryEnsure { path: path as NonEmptyStr, owner: owner }
+}
+
+// THE BOUNDARY IS REALIZED FROM TYPED DIRECTIVE WORDS, NOT FROM A REFUSAL AND NOT FROM A FILE.
+//
+// An earlier revision of this module refused the boundary address outright, carrying a
+// `fabric_cell_boundary_missing_directives` roster that named MemorySwapMax, TasksMax and CPUWeight
+// as unmodeled in extdeps.systemd.unit_file. That premise was STALE, not a vocabulary gap: the
+// directive-value-grain lane had already landed all three mints (`slice_memory_swap_max`,
+// `slice_tasks_max`, `slice_cpu_weight`), and the refusal survived on a comment asserting the
+// two-arm shape the tree no longer had. Keeping it would be a wall whose RED names a state that
+// cannot occur -- permanently red by staleness, the mirror of the permanently-green decoration
+// DESIGN 4b forbids.
+//
+// FIVE DIRECTIVES, ZERO LITERALS. Every magnitude comes from gunbc_runner_slot_desired -- the same
+// row fabric_cell_resource_boundary_state_digest renders into the desired member digest -- so the
+// directives this effect applies and the digest reconcile compares are two projections of one
+// authority and cannot disagree by drift.
+//
+// WHY DIRECTIVES AND NOT A SystemdUnitFile: the effect's production realization is
+// `systemctl set-property <slice> <Property>=<value>...` -- systemd renders and owns the persisted
+// drop-in itself, so the privileged boundary is crossed by exactly these typed words and by no
+// authored file bytes (see the closed-sum note above). A unit-file carrier here would be a
+// representation of an artifact nothing constructs.
+fn fabric_cell_slice_desired_directives() -> List<SystemdSliceDirective> {
+  let desired = gunbc_runner_slot_desired()
+  [
+    slice_memory_max(bytes: desired.memory_max),
+    slice_memory_high(bytes: desired.memory_high),
+    slice_memory_swap_max(bytes: desired.memory_swap_max),
+    slice_tasks_max(count: desired.tasks_max),
+    slice_cpu_weight(weight: desired.cpu_weight),
+  ]
+}
+
+fn fabric_cell_slice_ensure(slot: RunnerSlotIdentity) -> FabricCellEffect {
+  FabricCellSliceEnsure {
+    slice_unit: fabric_cell_slice_name(slot: slot) as NonEmptyStr,
+    directives: fabric_cell_slice_desired_directives(),
   }
 }
 
-// THE THREE DIRECTIVES THIS FAMILY NEEDS AND systemd's MODELED VOCABULARY DOES NOT CARRY.
-// extdeps.systemd.unit_file SystemdSliceDirective has exactly two arms -- SliceMemoryMax and
-// SliceMemoryHigh -- while fabric_cell_resource_boundary_state_digest declares five values. The
-// three below have no modeled directive, so the boundary cannot be realized without either
-// rendering raw text (which gunbc.build_cache_ensure argues against at length) or growing a fork
-// another lane is actively shrinking.
-//
-// THEY ARE THREE DIFFERENT VALUE GRAINS, WHICH IS WHY THIS IS NOT ONE ROW. MemorySwapMax is a byte
-// magnitude and sits inside gunbc.systemd_directive_value_grain's stated scope, whose terminal
-// shape replaces the stringly `bytes` field with a modeled magnitude. TasksMax is a count or the
-// literal infinity, and CPUWeight is a bounded weight; neither is a byte magnitude and neither is
-// in that roster's stated scope, so two of the three have no owner today.
-data fabric_cell_boundary_missing_directives: List<String> = [
-  "MemorySwapMax (byte magnitude; inside gunbc.systemd_directive_value_grain scope)",
-  "TasksMax (count or infinity; unscoped)",
-  "CPUWeight (bounded weight; unscoped)",
-]
-
 // EVERY REFUSAL THIS REALIZATION CAN PRODUCE, TYPED AND LOCATED. A Bool or a dropped effect would
-// make one silence answer for a vocabulary gap, an ownership wall, a duplicate key and an
-// unclassifiable change -- four causes with four different owners and four different remedies.
+// make one silence answer for an ownership wall, a duplicate key and an unclassifiable change --
+// causes with different owners and different remedies. A fifth arm,
+// BoundaryDirectiveVocabularyIncomplete, is DELETED rather than retained empty: its premise (three
+// slice directives unmodeled in extdeps.systemd.unit_file) was stale, and per DESIGN 4b(4) the
+// witness rows that expected it flipped to positive controls asserting the boundary realizes.
 type FabricCellRealizationRefusal
-  = BoundaryDirectiveVocabularyIncomplete { address_wire: String, missing: List<String> }
-  | CellTeardownRefusedByOwnership { address_wire: String, cause: TeardownRefusalCause }
+  = CellTeardownRefusedByOwnership { address_wire: String, cause: TeardownRefusalCause }
   | CellRosterDuplicateKey { address_wire: String }
   | CellChangeNotYetRealizable { address_wire: String }
   | CellTeardownNotYetRealizable { address_wire: String }
@@ -85,9 +129,8 @@ type FabricCellAddressRealization
 // decides WHETHER there is one. Neither axis is collapsed into the other, so a new address and a
 // new action each fail to compile here rather than inheriting an arm that happened to fit.
 //
-// TEARDOWN AND CHANGE REFUSE RATHER THAN BEING REALIZED, and they refuse for a different reason
-// than the boundary does. The boundary is blocked on a vocabulary gap that is decidable and
-// buildable. Teardown of a cell root is a DESTRUCTIVE effect on a directory that may hold live
+// TEARDOWN AND CHANGE REFUSE RATHER THAN BEING REALIZED, while every ADDITION now realizes.
+// Teardown of a cell root is a DESTRUCTIVE effect on a directory that may hold live
 // attempt state, and change realization is gunbc.change_realization's question -- it classifies a
 // MemberChanged by whether the runtime address survived, and this family has not yet declared its
 // staged intermediates. Realizing either by guessing is how a safe transformation acquires an
@@ -101,19 +144,20 @@ fn fabric_cell_address_realization(
       match m.address {
         FabricCellRootAddress =>
           AddressRealizable {
-            effect: fabric_cell_directory_create(path: fabric_cell_root_path(slot: m.slot)),
+            effect: fabric_cell_directory_ensure(
+              path: fabric_cell_root_path(slot: m.slot),
+              owner: CellSubstrateRootOwned,
+            ),
           }
         FabricCellAttemptRootAddress =>
           AddressRealizable {
-            effect: fabric_cell_directory_create(path: fabric_cell_attempt_root_path(slot: m.slot)),
+            effect: fabric_cell_directory_ensure(
+              path: fabric_cell_attempt_root_path(slot: m.slot),
+              owner: CellAttemptWriterOwned,
+            ),
           }
         FabricCellResourceBoundaryAddress =>
-          AddressRefused {
-            refusal: BoundaryDirectiveVocabularyIncomplete {
-              address_wire: fabric_cell_resource_address_wire(address: m.address),
-              missing: fabric_cell_boundary_missing_directives,
-            },
-          }
+          AddressRealizable { effect: fabric_cell_slice_ensure(slot: m.slot) }
       }
     MemberChanged { at: _, from: _, to: m } =>
       AddressRefused {
@@ -194,10 +238,10 @@ fn fabric_cell_plan_effects(
 }
 
 // THE EFFECTS ARE STILL CONSTRUCTED ON THE REFUSED PATH AND THEN NOT RETURNED, WHICH IS
-// DELIBERATE. Building them costs nothing, and it means the create construction -- including its
-// exact-form mkdir -- is exercised by every plan rather than only by the plans that survive. A
-// realization surface that is only built once the vocabulary lands would be a surface nobody had
-// run.
+// DELIBERATE. Building them costs nothing, and it means the ensure construction -- the ownership
+// classing and the directive rendering -- is exercised by every plan rather than only by the plans
+// that survive. A realization surface that is only built once its walls lift would be a surface
+// nobody had run.
 fn fabric_cell_realization(
   actions: List<MemberAction<FabricCellMember, String>>,
 ) -> FabricCellRealization {

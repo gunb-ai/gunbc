@@ -49,13 +49,25 @@ test fn witness_rendered_grants_carry_no_wildcard() -> Bool {
 // THE FACTOR IS ASSERTED IN TWO PIECES RATHER THAN AS ONE PRODUCT, because `slots * 4` alone would
 // stay green if the two halves drifted in opposite directions -- four directory operations and no
 // transitions counts the same as two and two. Splitting them means each half has to be right.
+// THE FABRIC CELL CONTRIBUTES ITS OWN DERIVED TERM, GROUNDED IN THE FABRIC AUTHORITIES RATHER THAN
+// A LITERAL. A fabric host adds one base-directory ensure plus, per fabric slot: two directory
+// ensures (root-owned cell root, delegated attempt root), one set-property grant per desired slice
+// directive, and one slice start. Both factors come from the authorities that decide them --
+// fabric_execution_slot_identities and fabric_cell_slice_desired_directives -- so a second fabric
+// cell or a sixth directive moves this row without an edit, and a roster that dropped the fabric
+// grants goes red.
 test fn witness_population_tracks_the_slot_roster() -> Bool {
   let slots = desired_runner_slot_members(deploy: srv3_runner_host_deploy).length()
   let activation = runner_slot_activation_operations(deploy: srv3_runner_host_deploy).length()
+  let fabric_slots = fabric_cell_host_slots(deploy: srv3_runner_host_deploy).length()
+  let directives = fabric_cell_slice_desired_directives().length()
+  let fabric_expected = 1 + fabric_slots * (2 + directives + 1)
   runner_host_privileged_operations(deploy: srv3_runner_host_deploy).length()
-    == (slots * 4) + 4
+    == (slots * 4) + 4 + fabric_expected
+    && fabric_cell_privileged_operations(deploy: srv3_runner_host_deploy).length() == fabric_expected
     && activation == slots * 2
     && slots > 0
+    && fabric_slots > 0
 }
 
 // THE JOIN, ASSERTED THROUGH THE PRODUCTION PATH. This is the witness the module exists for: the
