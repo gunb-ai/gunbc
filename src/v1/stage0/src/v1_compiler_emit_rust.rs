@@ -221,9 +221,10 @@ pub use crate::v1_std_core::{
     transport_stdin, transport_tls_posture, tuple_type_name, with_required_cardinality,
 };
 pub use crate::v1_std_core::{
-    CallSemantics, CallTargetIdentity, Cardinality, CompilerDiagnostic, Connective, ErrorNode,
-    ExprData, FieldAccessStyle, FieldSummary, FieldValueShape, InferredNode, MatchPattern,
-    MethodSemantics, NewlineIndex, Node, StringPart, TextFile, UnaryOpKind, VarBindingKind,
+    CallSemantics, CallTargetIdentity, Cardinality, CompilerDiagnostic, Connective,
+    DeclaredCallableIdentity, ErrorNode, ExprData, FieldAccessStyle, FieldSummary, FieldValueShape,
+    InferredNode, MatchPattern, MethodSemantics, NewlineIndex, Node, StringPart, TextFile,
+    UnaryOpKind, VarBindingKind,
 };
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
@@ -20684,10 +20685,9 @@ pub fn call_semantics_target(cs: Option<Rc<CallSemantics>>) -> Rc<CallTargetIden
 
 pub fn call_target_runtime_primitive_name(target: Rc<CallTargetIdentity>) -> Option<String> {
     match (*target.clone()).clone() {
-        CallTargetIdentity::RuntimePrimitiveCall {
-            primitive_name: primitive_name,
-            ..
-        } => Some(primitive_name.clone()),
+        CallTargetIdentity::RuntimePrimitiveCall { primitive_name, .. } => {
+            Some(primitive_name.clone())
+        }
         CallTargetIdentity::SourceDeclarationCall { .. } => None,
         CallTargetIdentity::CallableTargetUndetermined => None,
     }
@@ -20695,6 +20695,23 @@ pub fn call_target_runtime_primitive_name(target: Rc<CallTargetIdentity>) -> Opt
 
 pub fn call_target_is_runtime_primitive(target: Rc<CallTargetIdentity>) -> bool {
     (call_target_runtime_primitive_name(target.clone()) != None)
+}
+
+pub fn call_target_projected_declaration(
+    target: Rc<CallTargetIdentity>,
+) -> Option<Rc<DeclaredCallableIdentity>> {
+    match (*target.clone()).clone() {
+        CallTargetIdentity::RuntimePrimitiveCall { projected_from, .. } => projected_from.clone(),
+        CallTargetIdentity::SourceDeclarationCall { .. } => None,
+        CallTargetIdentity::CallableTargetUndetermined => None,
+    }
+}
+
+pub fn rust_runtime_primitive_has_bridge(primitive_name: String) -> bool {
+    v1_rt::map_contains_key(
+        &crate::extdeps_languages_rust_emit::rt_functions(),
+        primitive_name.clone(),
+    )
 }
 
 pub fn emit_rust_expr_call(
@@ -22242,7 +22259,8 @@ pub fn emit_typed_call(
             Some(primitive_name) => primitive_name.clone(),
             None => "".to_string(),
         };
-        let is_rt = ((callee_is_function_value.clone() == false) && target_is_runtime.clone());
+        let is_rt = (((callee_is_function_value.clone() == false) && target_is_runtime.clone())
+            && rust_runtime_primitive_has_bridge(runtime_primitive_name.clone()));
         let is_rt_ref_map = (is_rt.clone()
             && v1_rt::map_contains_key(
                 &crate::extdeps_languages_rust_emit::rt_ref_map_functions(),
@@ -22406,11 +22424,33 @@ pub fn emit_typed_call(
                     )
                 }
                 CallTargetIdentity::RuntimePrimitiveCall {
-                    primitive_name: _, ..
-                } => crate::v1_compiler_emit::emit_error_expr(
-                    "runtime call target lost its bridge identity".to_string(),
-                    RenderTarget::Rust,
-                ),
+                    primitive_name: unbridged_primitive,
+                    projected_from,
+                    ..
+                } => {
+                    match projected_from.clone() {
+                        Some(declared) => {
+                            if (declared.owner_module_path.clone() == scope.module_name.clone()) {
+                                crate::v1_compiler_emit::emit_ident(
+                                    declared.decl_name.clone(),
+                                    RenderTarget::Rust,
+                                )
+                            } else {
+                                v1_rt::concat(v1_rt::concat(v1_rt::concat("crate::".to_string(), crate::v1_compiler_emit_core_support::module_to_filename(declared.owner_module_path.clone())), "::".to_string()), crate::v1_compiler_emit::emit_ident(declared.decl_name.clone(), RenderTarget::Rust))
+                            }
+                        }
+                        None => crate::v1_compiler_emit::emit_error_expr(
+                            v1_rt::concat(
+                                v1_rt::concat(
+                                    "primitive ".to_string(),
+                                    unbridged_primitive.clone(),
+                                ),
+                                " has no v1_rt realization and no declaration to emit".to_string(),
+                            ),
+                            RenderTarget::Rust,
+                        ),
+                    }
+                }
             }
         };
         let func_name = if callee_self_capture.clone() {
@@ -25091,7 +25131,7 @@ if rust_method_template_result_wraps_in_rc(method_name.clone()) {
                                                         raw.clone()
                                                     }
 },
-    None => emit_rust_generic_method_call(method_name.clone(), receiver.clone(), args.clone(), result_type.clone(), true, registry.clone(), scope.clone(), depth.clone(), shared_types.clone(), emit_info.clone()),
+    None => emit_rust_generic_method_call(method_name.clone(), receiver.clone(), args.clone(), result_type.clone(), rust_runtime_primitive_has_bridge(method_name.clone()), registry.clone(), scope.clone(), depth.clone(), shared_types.clone(), emit_info.clone()),
 }
                                                         }
                                                     }

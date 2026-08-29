@@ -53,8 +53,7 @@ pub use crate::v1_compiler_infer_sigs::{
     decide_callable_candidates, lookup_resolved_sig, parent_closure_callable_candidates,
 };
 pub use crate::v1_compiler_infer_sigs::{
-    CallableCandidate, CallableIdentity, DeclaredCallableIdentity, FuncSigLookup, ResolvedFuncEnv,
-    ResolvedFuncSig,
+    CallableCandidate, CallableIdentity, FuncSigLookup, ResolvedFuncEnv, ResolvedFuncSig,
 };
 pub use crate::v1_compiler_infer_types::{
     child_type_node, emit_map_has, enrich_kernel_type, instantiate_algebra_type,
@@ -81,8 +80,9 @@ pub use crate::v1_std_core::{
     with_required_cardinality,
 };
 pub use crate::v1_std_core::{
-    CallTargetIdentity, Cardinality, Connective, ErrorNode, FieldAccessStyle, FieldSummary,
-    FieldValueShape, InferredNode, MethodSemantics, NewlineIndex, Node,
+    CallTargetIdentity, Cardinality, Connective, DeclaredCallableIdentity, ErrorNode,
+    FieldAccessStyle, FieldSummary, FieldValueShape, InferredNode, MethodSemantics, NewlineIndex,
+    Node,
 };
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
@@ -209,6 +209,7 @@ pub fn resolved_declaration_call_target(
                         crate::std_primitive_projection::primitive_identity_runtime_name(
                             row.primitive.clone(),
                         ),
+                    projected_from: None,
                 })
             }
             ProjectionFidelity::ModeledProjection => {
@@ -217,6 +218,7 @@ pub fn resolved_declaration_call_target(
                         crate::std_primitive_projection::primitive_identity_runtime_name(
                             row.primitive.clone(),
                         ),
+                    projected_from: Some(declared.clone()),
                 })
             }
             ProjectionFidelity::DivergentProjection { divergence: _, .. } => {
@@ -252,6 +254,7 @@ pub fn builtin_call_target_or_undetermined(func_name: String) -> Rc<CallTargetId
     match crate::v1_compiler_infer_method::infer_builtin_call_type(func_name.clone()) {
         Some(_) => Rc::new(CallTargetIdentity::RuntimePrimitiveCall {
             primitive_name: func_name.clone(),
+            projected_from: None,
         }),
         None => Rc::new(CallTargetIdentity::CallableTargetUndetermined),
     }
@@ -267,7 +270,7 @@ pub fn callable_lookup_over_candidates(
             sig: sig.clone(),
             declared: Rc::new(DeclaredCallableIdentity {
                 owner_module_path: func_env.name.clone(),
-                decl_name: name.clone(),
+                decl_name: crate::v1_std_core::qualified_last_segment(name.clone()),
             }),
         }),
         None => {
@@ -616,7 +619,7 @@ pub fn borrowed_census_callable_candidate(
             identity: Rc::new(CallableIdentity::DeclaredCallable {
                 identity: Rc::new(DeclaredCallableIdentity {
                     owner_module_path: candidate.module_path.clone(),
-                    decl_name: name.clone(),
+                    decl_name: crate::v1_std_core::qualified_last_segment(name.clone()),
                 }),
             }),
             sig: Rc::new(ResolvedFuncSig {
@@ -699,7 +702,9 @@ pub fn func_sig_from_global_bare(type_env: Rc<TypeEnv>, name: String) -> Rc<Func
                                         }),
                                         declared: Rc::new(DeclaredCallableIdentity {
                                             owner_module_path: bd.owner_module_path.clone(),
-                                            decl_name: name.clone(),
+                                            decl_name: crate::v1_std_core::qualified_last_segment(
+                                                name.clone(),
+                                            ),
                                         }),
                                     })
                                 } else {
@@ -730,7 +735,10 @@ pub fn func_sig_from_global_bare(type_env: Rc<TypeEnv>, name: String) -> Rc<Func
                                             }),
                                             declared: Rc::new(DeclaredCallableIdentity {
                                                 owner_module_path: bd.owner_module_path.clone(),
-                                                decl_name: name.clone(),
+                                                decl_name:
+                                                    crate::v1_std_core::qualified_last_segment(
+                                                        name.clone(),
+                                                    ),
                                             }),
                                         })
                                     }
