@@ -1,8 +1,7 @@
 module gunbc.spark.training_ready
 
 import std.types { String, Bool, List, NonEmptyStr }
-import std.nat { Nat }
-import std.measure { ByteSize, byte_size, byte_size_count }
+import std.measure { ByteSize, byte_size_count }
 import product.placement_supply { HostIdentity, host_identity_eq }
 import gunbc.spark.cell_role {
   SparkCellRole,
@@ -131,16 +130,23 @@ type SparkUnifiedPoolObservation sole_constructor {
 
 // THE NUMBER MUST ARRIVE WITH THE READ THAT PRODUCED IT.
 //
-// A free integer is a number somebody typed. The capture is what makes it a measurement, so the producer
-// takes both and refuses the pairing that would let a fabricated figure through: a capture that did
-// not answer cannot carry a byte count, whatever integer is passed beside it.
+// A quantity with no read behind it is a number somebody typed. The capture is what makes it a
+// measurement, so the producer takes both and refuses the pairing that would let a fabricated figure
+// through: a capture that did not answer cannot carry a byte count, whatever ByteSize is passed
+// beside it.
+//
+// THE PARAMETER IS ALREADY A ByteSize, LIFTED AT THE PARSE BOUNDARY RATHER THAN HERE. An earlier
+// shape took a Nat and wrapped it in byte_size on the way in, which put the flat scalar one call
+// deeper than it needed to go for no gain -- pairing a ByteSize with the capture forbids fabrication
+// exactly as well, and the caller that reads MemAvailable is the one place a raw count legitimately
+// exists. Lifting there keeps the unlifted form to the single site that parses it.
 type SparkUnifiedPoolReading
   = SparkUnifiedPoolRead { observation: SparkUnifiedPoolObservation }
   | SparkUnifiedPoolUnread { cause: NonEmptyStr }
 
 fn spark_unified_pool_observation_from_capture(
   host: HostIdentity,
-  free_bytes: Nat,
+  free_pool: ByteSize,
   capture: SparkServingProbeCapture,
   observed_after_retirement: Bool,
 ) -> SparkUnifiedPoolReading {
@@ -157,7 +163,7 @@ fn spark_unified_pool_observation_from_capture(
       SparkUnifiedPoolRead {
         observation: SparkUnifiedPoolObservation {
           host: host,
-          free_pool: byte_size(count: free_bytes),
+          free_pool: free_pool,
           observed_after_retirement: observed_after_retirement,
           producer: join(["free-pool read: ", out], "") as NonEmptyStr,
         },

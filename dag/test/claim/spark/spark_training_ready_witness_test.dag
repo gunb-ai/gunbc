@@ -1,7 +1,7 @@
 module test.claim.spark.spark_training_ready_witness_test
 
 import std.types { String, Bool, List, NonEmptyStr }
-import std.nat { Nat }
+import std.measure { ByteSize, byte_size }
 import product.placement_supply { HostIdentity }
 import gunbc.fleet_intent_network { operator_host_srv5, operator_host_srv6 }
 import gunbc.spark.serving_terminal_health {
@@ -92,10 +92,10 @@ fn w_retired_unit_silent() -> SparkServingRetirementObservation {
   )
 }
 
-fn w_pool_or_refused(host: HostIdentity, bytes: Nat, after: Bool) -> SparkUnifiedPoolObservation? {
+fn w_pool_or_refused(host: HostIdentity, free_pool: ByteSize, after: Bool) -> SparkUnifiedPoolObservation? {
   match spark_unified_pool_observation_from_capture(
     host: host,
-    free_bytes: bytes,
+    free_pool: free_pool,
     capture: ProbeAnswered { stdout: "MemAvailable" },
     observed_after_retirement: after,
   ) {
@@ -107,10 +107,10 @@ fn w_pool_or_refused(host: HostIdentity, bytes: Nat, after: Bool) -> SparkUnifie
 fn w_readiness(
   retirement: SparkServingRetirementObservation,
   host: HostIdentity,
-  bytes: Nat,
+  free_pool: ByteSize,
   after: Bool,
 ) -> Bool {
-  match w_pool_or_refused(host: host, bytes: bytes, after: after) {
+  match w_pool_or_refused(host: host, free_pool: free_pool, after: after) {
     Absent => false
     Present { value: pool } =>
       match spark_training_readiness(retirement: retirement, pool: pool) {
@@ -121,7 +121,7 @@ fn w_readiness(
 }
 
 test fn w_a_fully_retired_training_cell_is_ready() -> Bool {
-  w_readiness(retirement: w_retired_srv6(), host: operator_host_srv6, bytes: 100000000000, after: true)
+  w_readiness(retirement: w_retired_srv6(), host: operator_host_srv6, free_pool: byte_size(count: 100000000000), after: true)
 }
 
 // THE POSITIVE CONTROL'S MIRROR: THE SERVING CELL IS NEVER READY.
@@ -133,16 +133,16 @@ test fn w_a_serving_cell_refuses_even_with_a_perfect_retirement_observation() ->
   !w_readiness(
     retirement: w_retired(host: operator_host_srv5),
     host: operator_host_srv5,
-    bytes: 100000000000,
+    free_pool: byte_size(count: 100000000000),
     after: true,
   )
 }
 
 // AN UNREACHED PROBE IS NOT ABSENCE, AND THIS IS THE CLAIM THAT COSTS THE MOST TO GET WRONG.
 test fn w_an_unobserved_subject_refuses_on_every_axis() -> Bool {
-  !w_readiness(retirement: w_retired_endpoint_silent(), host: operator_host_srv6, bytes: 100000000000, after: true)
-    && !w_readiness(retirement: w_retired_process_silent(), host: operator_host_srv6, bytes: 100000000000, after: true)
-    && !w_readiness(retirement: w_retired_unit_silent(), host: operator_host_srv6, bytes: 100000000000, after: true)
+  !w_readiness(retirement: w_retired_endpoint_silent(), host: operator_host_srv6, free_pool: byte_size(count: 100000000000), after: true)
+    && !w_readiness(retirement: w_retired_process_silent(), host: operator_host_srv6, free_pool: byte_size(count: 100000000000), after: true)
+    && !w_readiness(retirement: w_retired_unit_silent(), host: operator_host_srv6, free_pool: byte_size(count: 100000000000), after: true)
 }
 
 // A SERVER THAT ANSWERED IS THE LOUD ARM: the retirement did not happen.
@@ -155,7 +155,7 @@ test fn w_a_still_serving_endpoint_refuses() -> Bool {
       unit_capture: w_refused_capture(detail: "unit not-found"),
     ),
     host: operator_host_srv6,
-    bytes: 100000000000,
+    free_pool: byte_size(count: 100000000000),
     after: true,
   )
 }
@@ -165,22 +165,22 @@ test fn w_a_still_serving_endpoint_refuses() -> Bool {
 // This input carries the same byte count as the passing case and differs only in when it was taken,
 // which is why the ordering is a field the producer answers for rather than something inferable.
 test fn w_a_pool_measured_before_the_retirement_refuses() -> Bool {
-  !w_readiness(retirement: w_retired_srv6(), host: operator_host_srv6, bytes: 100000000000, after: false)
+  !w_readiness(retirement: w_retired_srv6(), host: operator_host_srv6, free_pool: byte_size(count: 100000000000), after: false)
 }
 
 test fn w_a_pool_measured_on_another_host_refuses() -> Bool {
-  !w_readiness(retirement: w_retired_srv6(), host: operator_host_srv5, bytes: 100000000000, after: true)
+  !w_readiness(retirement: w_retired_srv6(), host: operator_host_srv5, free_pool: byte_size(count: 100000000000), after: true)
 }
 
 test fn w_a_non_positive_pool_refuses_rather_than_offering_nothing() -> Bool {
-  !w_readiness(retirement: w_retired_srv6(), host: operator_host_srv6, bytes: 0, after: true)
+  !w_readiness(retirement: w_retired_srv6(), host: operator_host_srv6, free_pool: byte_size(count: 0), after: true)
 }
 
 // A CAPTURE THAT DID NOT ANSWER CANNOT CARRY A BYTE COUNT, whatever integer is passed beside it.
 test fn w_a_pool_number_without_a_read_is_refused() -> Bool {
   match spark_unified_pool_observation_from_capture(
     host: operator_host_srv6,
-    free_bytes: 100000000000,
+    free_pool: byte_size(count: 100000000000),
     capture: ProbeNeverRan { cause: "ssh timed out" as NonEmptyStr },
     observed_after_retirement: true,
   ) {
