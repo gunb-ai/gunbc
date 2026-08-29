@@ -1,7 +1,8 @@
 module extdeps.bmc.access_profile
 
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import std.types { Bool, EpochMs, List, NonEmptyStr, String }
+import std.types { Bool, EpochMs, Int, List, NonEmptyStr, String }
+import v2.std.algebra { filter }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
 import std.credentials { FactoryLogin }
@@ -9,6 +10,7 @@ import extdeps.bmc.endpoint { BmcEndpoint, BmcFirmwareFamily }
 import extdeps.boards.types { BaseboardModel }
 import extdeps.firmware.types { FirmwareSemanticVersion }
 import extdeps.bmc.capability { BmcFirmwareVersion, bmc_firmware_version_eq }
+import extdeps.bmc.redfish_virtual_media { RedfishVirtualMediaProbe }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -77,10 +79,22 @@ type BmcAccessProfile {
   oem_parameters: List<BmcOemParameter>
 }
 
+// What the endpoint SAID it is, read at discovery: the board and chassis from
+// FRU/Chassis, the family and exact firmware from the Manager. This is the key
+// a profile lookup binds against — all of it, not the firmware alone, so a
+// same-version endpoint cannot be paired with an unrelated board's profile.
+type BmcObservedIdentity {
+  baseboard: BaseboardModel
+  chassis_part_number: NonEmptyStr?
+  firmware: BmcFirmwareVersion
+}
+
 type BmcAccessObservation {
   endpoint: BmcEndpoint
+  identity: BmcObservedIdentity
   firmware: BmcFirmwareVersion
   discovered_surfaces: List<BmcAccessSurface>
+  redfish_virtual_media_probe: RedfishVirtualMediaProbe
   successful_read_surfaces: List<BmcAccessSurface>
   successful_write_surfaces: List<BmcAccessSurface>
   observed_at: EpochMs
@@ -93,6 +107,62 @@ type BmcAccessObservationStanding
   = BmcAccessObserved { observation: BmcAccessObservation }
   | BmcAccessUnobserved { endpoint: BmcEndpoint }
 
+fn optional_part_number_matches(profile: NonEmptyStr?, observed: NonEmptyStr?) -> Bool {
+  match profile {
+    Absent => true
+    Present { value: p } =>
+      match observed {
+        Absent => false
+        Present { value: o } => p == o
+      }
+  }
+}
+
+// The profile key binds baseboard, chassis variant where the profile names
+// one, and exact firmware (family and version). Equal firmware alone is not a
+// binding.
+fn bmc_access_profile_key_matches(key: BmcAccessProfileKey, identity: BmcObservedIdentity) -> Bool {
+  key.baseboard == identity.baseboard
+    && optional_part_number_matches(profile: key.chassis_part_number, observed: identity.chassis_part_number)
+    && bmc_firmware_version_eq(a: key.firmware, b: identity.firmware)
+}
+
+// The total lookup, refusing on both sides of uniqueness like
+// extdeps.bmc.capability bmc_firmware_capability_row_for. AccessProfileNotLookedUp
+// is the honest standing of a path that never ran the lookup at all
+// (gunbc.os_install_mechanism's frozen projection); it is distinct from an
+// endpoint whose identity WAS read and matched nothing.
+type BmcAccessProfileStanding
+  = AccessProfileKnown { profile: BmcAccessProfile, provenance: DeclarationRef }
+  | AccessProfileUncatalogued { observed_identity: BmcObservedIdentity }
+  | AccessProfileAmbiguous { observed_identity: BmcObservedIdentity, count: Int }
+  | AccessProfileIdentityMismatch { profile: BmcAccessProfileKey, observed: BmcObservedIdentity }
+  | AccessProfileNotLookedUp { endpoint: BmcEndpoint }
+
+type BmcAccessProfileCatalogRow {
+  profile: BmcAccessProfile
+  provenance: DeclarationRef
+}
+
+fn bmc_access_profile_for(
+  identity: BmcObservedIdentity,
+  catalog: List<BmcAccessProfileCatalogRow>,
+) -> BmcAccessProfileStanding {
+  let hits = catalog |> filter(row => bmc_access_profile_key_matches(key: row.profile.key, identity: identity))
+  let n = count(hits)
+  if n == 0 {
+    AccessProfileUncatalogued { observed_identity: identity }
+  } else if n == 1 {
+    fold(
+      hits,
+      init: AccessProfileUncatalogued { observed_identity: identity },
+      f: (_acc, row) => AccessProfileKnown { profile: row.profile, provenance: row.provenance },
+    )
+  } else {
+    AccessProfileAmbiguous { observed_identity: identity, count: n }
+  }
+}
+
 fn bmc_surface_in(surfaces: List<BmcAccessSurface>, surface: BmcAccessSurface) -> Bool {
   fold(surfaces, init: false, f: (acc, s) => acc || s == surface)
 }
@@ -104,15 +174,15 @@ type BmcSurfaceEligibility
   = SurfaceEligible
   | SurfaceAbsentFromProfile
   | SurfaceAbsentFromLiveObservation
-  | SurfaceProfileObservationFirmwareMismatch { profile: BmcFirmwareVersion, observed: BmcFirmwareVersion }
+  | SurfaceProfileObservationIdentityMismatch { profile: BmcAccessProfileKey, observed: BmcObservedIdentity }
 
 fn bmc_surface_eligibility(
   profile: BmcAccessProfile,
   observation: BmcAccessObservation,
   surface: BmcAccessSurface,
 ) -> BmcSurfaceEligibility {
-  if bmc_firmware_version_eq(a: profile.key.firmware, b: observation.firmware) == false {
-    SurfaceProfileObservationFirmwareMismatch { profile: profile.key.firmware, observed: observation.firmware }
+  if bmc_access_profile_key_matches(key: profile.key, identity: observation.identity) == false {
+    SurfaceProfileObservationIdentityMismatch { profile: profile.key, observed: observation.identity }
   } else if bmc_surface_in(surfaces: profile.candidate_surfaces, surface: surface) == false {
     SurfaceAbsentFromProfile
   } else if bmc_surface_in(surfaces: observation.discovered_surfaces, surface: surface) == false {

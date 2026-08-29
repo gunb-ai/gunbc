@@ -2,6 +2,16 @@ module gunbc.machine_intake_staging
 
 import std.types { Bool, EpochMs, List, NonEmptyStr, String, list_length }
 import product.placement_supply { HostIdentity }
+import gunbc.boot_artifact_delivery {
+  BootArtifactDelivery,
+  MegaRacRestRemoteMedia,
+  OpenBmcConfigfsUsbGadget,
+  OpenBmcNbdProxyWebsocket,
+  PxeChainBoot,
+  RedfishVirtualMediaPull,
+  UefiHttpBoot,
+}
+import extdeps.bmc.virtual_media { MegaRacShareCifs, MegaRacShareNfs }
 
 data machine_intake_staging_note: String = "AN ABSTRACT STAGING SERVICE, NOT srv2 (machine-intake ruling 2026-08-29, operational answer (b)). srv2 is today's candidate realization of IntakeStagingService, not the permanent identity of that service, and the workflow does not bake it in: the service is named by its required capabilities, and a host becomes its realization only after an observation shows it actually provides them. A cheap dedicated always-on management box is the preferable terminal realization — intake must stay available while production nodes reboot, are reimaged, leave the fleet or are under repair, and it gives the BMC network, artifact store, receipt collector and power-meter integrations a stable home — but that is a REALIZATION MIGRATION, not a workflow change, and the MVP does not block on buying it. Current-state discrepancy the ruling requires be resolved by observation, not prose: gunbc.bmc_virtual_media's concrete srv4 configfs plan names srv1 as its NBD server, while the brief says srv2 is today's staging host. Neither is chosen here; intake_staging_realization_today is StagingUnobserved until the staging-service observation runs and binds whichever host is actually serving artifacts."
 
@@ -10,6 +20,7 @@ type IntakeStagingCapability
   | BmcManagementReachability
   | HttpArtifactDelivery
   | NfsArtifactDelivery
+  | CifsShareDelivery
   | NbdArtifactDelivery
   | PxeArtifactDelivery
   | DhcpDnsObservation
@@ -83,3 +94,24 @@ fn bind_intake_staging(
 }
 
 data intake_staging_realization_today: IntakeStagingRealization = StagingUnobserved
+
+// PROTOCOL-SPECIFIC STAGING REQUIREMENTS DERIVE FROM THE CHOSEN DELIVERY
+// (ruling §3): the generic roster above never establishes a transport-specific
+// staging path by accident. A Redfish pull needs an HTTPS listener; the MegaRAC
+// remote-media path needs the share protocol the BMC will mount; the two
+// OpenBMC transports need an NBD export; UEFI HTTP needs HTTP; PXE needs the
+// DHCP/DNS observation plus HTTP for the chain loader and artifact.
+fn staging_capabilities_required_for(delivery: BootArtifactDelivery) -> List<IntakeStagingCapability> {
+  match delivery {
+    RedfishVirtualMediaPull { params: _ } => [HttpArtifactDelivery]
+    MegaRacRestRemoteMedia { params: p } =>
+      match p.share_type {
+        MegaRacShareNfs => [NfsArtifactDelivery]
+        MegaRacShareCifs => [CifsShareDelivery]
+      }
+    OpenBmcNbdProxyWebsocket { params: _ } => [NbdArtifactDelivery]
+    OpenBmcConfigfsUsbGadget { params: _ } => [NbdArtifactDelivery]
+    UefiHttpBoot { params: _ } => [HttpArtifactDelivery]
+    PxeChainBoot { evidence: _ } => [DhcpDnsObservation, PxeArtifactDelivery, HttpArtifactDelivery]
+  }
+}

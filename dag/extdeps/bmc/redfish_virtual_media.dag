@@ -137,6 +137,35 @@ fn redfish_virtual_media_is_detached(observation: RedfishVirtualMediaObservation
   observation.connected_via == ConnectedViaNotConnected && observation.inserted == false
 }
 
+// HOW FAR A LIVE PROBE OF THE VIRTUALMEDIA SURFACE GOT (machine-intake ruling
+// 2026-08-29 §2). 'Surface discovered' is too coarse to plan on: a collection
+// that is served, a member that is readable, an InsertMedia action that is
+// advertised, and a transfer protocol the member admits are four different
+// facts, and only the last two together admit a candidate PLAN. The arms
+// above TransferProtocolAdmitted are execution receipts — insert, consumption,
+// eject-and-detach — which no probe establishes and only a boot attempt does.
+// OperationRefused is an authenticated refusal of an advertised action; it is
+// not absence and it is not unreached.
+type RedfishVirtualMediaProbe
+  = ProbeUnreached
+  | ObservedAbsent
+  | CollectionDiscovered
+  | ResourceReadable
+  | InsertMediaActionAdvertised
+  | TransferProtocolAdmitted { protocol: RedfishVirtualMediaTransferProtocol }
+  | InsertSucceeded
+  | EjectSucceededAndDetached
+  | OperationRefused
+
+fn redfish_virtual_media_probe_admits_plan(probe: RedfishVirtualMediaProbe) -> Bool {
+  match probe {
+    TransferProtocolAdmitted { protocol: _ } => true
+    InsertSucceeded => true
+    EjectSucceededAndDetached => true
+    _ => false
+  }
+}
+
 // ComputerSystem.Boot.HttpBootUri — the UEFI HTTP boot target's artifact
 // address. It is a Boot property, not a VirtualMedia one, and is modeled beside
 // the media shapes because the machine-intake ruling treats it as a peer

@@ -10,6 +10,22 @@ import gunbc.auth.access_token_source { AccessEnsurePlan }
 import extdeps.bmc.openbmc { openbmc_factory_login }
 import extdeps.boards.asrock_rack { asrock_altrad8ud_redfish_system_id }
 
+// QUARANTINED LEGACY LIFECYCLE (machine-intake ruling 2026-08-29, answer (b)).
+// FactoryDefault -> CredentialsRotated -> OsInstalled -> FabricJoined is a
+// SYNTHETIC progression: the pure functions below advance it to steady state
+// without consuming any receipt producer. It is retained as legacy vocabulary
+// and is explicitly NON-AUTHORITATIVE for machine intake. Standing conditions:
+// no new producer or consumer may be added to BmcOnboardingPhase; no
+// BmcOnboardingPhase, BmcLifecycleState or FabricJoined value may construct an
+// IntakePhaseStanding, an intake receipt, a disposition or a fleet admission
+// (test.claim.bmc_onboarding_quarantine_witness_test executes that the steady
+// state satisfies zero intake phases); the split of this module's BMC-security,
+// OS-provisioning and fabric-join content into the three intake transactions
+// (gunbc.machine_intake_phase) must land before the effectful intake executor
+// or before any live producer for BmcSecure, OsInstalled or
+// ServiceRuntimeAdmitted; and that migration terminates by DELETING this
+// lifecycle after its consumers move, never by keeping it as a second lifecycle
+// beside the three transactions.
 type BmcOnboardingPhase =
     FactoryDefault
   | CredentialsRotated

@@ -20,7 +20,7 @@ import extdeps.bmc.capability {
   firmware_has_capability,
   catalog_has_vm_capable_firmware,
 }
-import extdeps.bmc.access_profile { BmcAccessObservationStanding, BmcAccessUnobserved }
+import extdeps.bmc.access_profile { AccessProfileNotLookedUp, BmcAccessObservationStanding, BmcAccessObserved, BmcAccessUnobserved }
 import extdeps.boards.asrock_rack {
   asrock_altrad8ud_1l2t_bmc_firmware_capability_catalog,
   asrock_altrad8ud_shipped_bmc_firmware_capabilities,
@@ -44,8 +44,9 @@ import gunbc.boot_artifact_delivery {
   BootArtifactDelivery,
   BootDeliveryCandidateVerdict,
   BootDeliveryEvidence,
+  BootDeliveryPlanned,
   BootDeliveryRefused,
-  BootDeliverySelected,
+  PreferStandardRedfishThenOemThenNetwork,
   DeliveryNoBootSourceOverride,
   DeliveryNoEligibleTransport,
   FirmwareTransitionAmbiguous,
@@ -74,7 +75,7 @@ import gunbc.install_transport_qualification {
   configfs_transport_requirements_all,
 }
 
-data os_install_mechanism_frozen_note: String = "FROZEN X UNDER A LIVE Y (DESIGN §3 replacement migration, machine-intake ruling 2026-08-29 §14 'generalize toward BootArtifactDelivery; do not create a second solver'). gunbc.boot_artifact_delivery is the ONE delivery solver. OsInstallMechanism survives only as the purpose-specialized PROJECTION of its result that these consumers still read: gunbc.os_install fleet_install_server_specs, gunbc.srv3_os_install_actuate_scope, gunbc.nbd_proxy_virtual_media_install and their witnesses. No new arm, row or consumer may be added here. solve_delivery_from_capability_row and solve_install_mechanism_from_evidence keep their signatures so their consumers keep compiling, and hand the delivery question to Y with the ONLY live-surface standing X can honestly assert — BmcAccessUnobserved — because nothing on X's path observes an endpoint's served surfaces. Consequence, executed by the witnesses: every host row here now refuses. srv1/srv2 used to SELECT NbdProxyVirtualMediaInstall from an attested 2.07.00 capability row; under the ruling's intersection rule that was establishment-by-catalog, and they now refuse with InstallVirtualMediaLiveSurfaceUnestablished carrying the considered set. Deliveries Y can select but X cannot represent (configfs gadget, UEFI HTTP) project to InstallDeliveryOutsideLegacyMechanism rather than to a nearest arm. DISSOLVES WHEN the three production consumers above read BootDeliverySolution directly; then OsInstallMechanism, both solve_* wrappers, the srv*_install_mechanism_solution rows and this note are DELETED together (the srv3_install_mechanism_board_default_residue row below has its own, older, GENERATED-REGISTRY-0 trigger and is retired by that and nothing else)."
+data os_install_mechanism_frozen_note: String = "FROZEN X UNDER A LIVE Y (DESIGN §3 replacement migration, machine-intake ruling 2026-08-29 §14 'generalize toward BootArtifactDelivery; do not create a second solver'). gunbc.boot_artifact_delivery is the ONE delivery solver. OsInstallMechanism survives only as the purpose-specialized PROJECTION of its result that these consumers still read: gunbc.os_install fleet_install_server_specs, gunbc.srv3_os_install_actuate_scope, gunbc.nbd_proxy_virtual_media_install and their witnesses. No new arm, row or consumer may be added here. solve_delivery_from_capability_row and solve_install_mechanism_from_evidence keep their signatures so their consumers keep compiling, and hand the delivery question to Y with the ONLY standings X can honestly assert — AccessProfileNotLookedUp and BmcAccessUnobserved — because nothing on X's path looks up an access profile or observes an endpoint's served surfaces. Consequence, executed by the witnesses: every host row here now refuses. srv1/srv2 used to SELECT NbdProxyVirtualMediaInstall from an attested 2.07.00 capability row; under the ruling's intersection rule that was establishment-by-catalog, and they now refuse with InstallVirtualMediaLiveSurfaceUnestablished carrying the considered set. Deliveries Y can select but X cannot represent (configfs gadget, UEFI HTTP) project to InstallDeliveryOutsideLegacyMechanism rather than to a nearest arm. DISSOLVES WHEN the three production consumers above read BootDeliverySolution directly; then OsInstallMechanism, both solve_* wrappers, the srv*_install_mechanism_solution rows and this note are DELETED together (the srv3_install_mechanism_board_default_residue row below has its own, older, GENERATED-REGISTRY-0 trigger and is retired by that and nothing else)."
 
 type OsInstallMechanism
   = VirtualMediaInstall
@@ -186,7 +187,7 @@ fn solve_delivery_from_capability_row(
   firmware_transition: FirmwareTransitionStanding,
 ) -> OsInstallMechanismSolution {
   match solve_boot_artifact_delivery(
-    evidence: BootDeliveryEvidence {
+    ev: BootDeliveryEvidence {
       row: row,
       live_access: live_access,
       redfish_media: none,
@@ -198,7 +199,7 @@ fn solve_delivery_from_capability_row(
       network_boot: network_boot,
     },
   ) {
-    BootDeliverySelected { delivery: d, considered: _ } =>
+    BootDeliveryPlanned { delivery: d, considered: _ } =>
       match d {
         RedfishVirtualMediaPull { params: _ } => OsInstallMechanismSelected { mechanism: VirtualMediaInstall }
         OpenBmcNbdProxyWebsocket { params: _ } => OsInstallMechanismSelected { mechanism: NbdProxyVirtualMediaInstall }
@@ -225,6 +226,13 @@ fn solve_delivery_from_capability_row(
             )
           }
       }
+  }
+}
+
+fn bmc_access_standing_endpoint(live_access: BmcAccessObservationStanding) -> BmcEndpoint {
+  match live_access {
+    BmcAccessUnobserved { endpoint: e } => e
+    BmcAccessObserved { observation: o } => o.endpoint
   }
 }
 

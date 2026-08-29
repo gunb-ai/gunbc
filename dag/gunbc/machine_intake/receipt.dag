@@ -17,7 +17,7 @@ import extdeps.toolchain.types { Architecture }
 import gunbc.machine_intake_subject { IntakeAttemptId, MachineIntakeSubject, QualificationSubject, UnitKey }
 import gunbc.machine_intake_phase { IntakePhase, QualificationRefusalOwner, intake_phase_label, refusal_owner_label }
 
-data machine_intake_receipt_note: String = "THE RECEIPT SPINE (machine-intake ruling 2026-08-29 §12). Every phase emits one normalized envelope plus references to raw evidence by digest. Required properties, each a field or a function here: canonical content digest (intake_receipt_digest); attempt identity and exact qualification subject; tool, agent, artifact and policy identities; start and end times; raw evidence references by digest; explicit success or typed refusal with its owner; a hash-chain link for immutable attempt ordering (receipt_chain_is_linked); executor/staging identity; and NO credentials or one-time callback tokens in durable output — IntakeAttemptNonce has no field on IntakeReceiptEnvelope, and the boot attestation that consumes the nonce is a separate carrier whose durable projection is the envelope, so the exclusion is structural rather than a redaction step. The JSON on the wire (schema gunbc.machine-intake.receipt/v1, the /srv/bmc/intake/attempts/<id>/phase/*.json layout in the design doc) is an OBSERVATION TRANSPORT that ingests into these carriers; it is not a second decision authority."
+data machine_intake_receipt_note: String = "THE RECEIPT SPINE (machine-intake ruling 2026-08-29 §12). Every phase emits one normalized envelope plus references to raw evidence by digest. Required properties, each a field or a function here: canonical content digest (intake_receipt_digest); attempt identity and exact qualification subject; tool, agent, artifact and policy identities; start and end times; raw evidence references by digest; explicit success or typed refusal with its owner; a hash-chain link for immutable attempt ordering (validate_intake_receipt_ledger, the sole constructor of the ledger admission reads); executor/staging identity; and NO credentials or one-time callback tokens in durable output — IntakeAttemptNonce has no field on IntakeReceiptEnvelope, and the boot attestation that consumes the nonce is a separate carrier whose durable projection is the envelope, so the exclusion is structural rather than a redaction step. The JSON on the wire (schema gunbc.machine-intake.receipt/v1, the /srv/bmc/intake/attempts/<id>/phase/*.json layout in the design doc) is an OBSERVATION TRANSPORT that ingests into these carriers; it is not a second decision authority."
 
 type IntakeReceiptSchema = | MachineIntakeReceiptV1
 
@@ -91,9 +91,17 @@ fn receipt_previous_atom(previous: ContentHash?) -> Fnv1a64Structural {
   }
 }
 
-// The canonical digest: every field folds in, so a changed subject, phase,
-// producer, policy, evidence set, result or chain link is a different receipt.
-fn intake_receipt_digest(envelope: IntakeReceiptEnvelope) -> ContentHash {
+// STRUCTURAL FINGERPRINT, NOT A CRYPTOGRAPHIC RECEIPT IDENTITY (ruling
+// 2026-08-29 receipt-spine correction). This folds every field through the
+// compiler's fnv1a64 structural hash so an in-substrate ledger can be checked
+// for linkage; it is not collision-resistant and establishes no security
+// property. The durable producer — the executor writing
+// gunbc.machine-intake.receipt/v1 JSON — emits SHA-256 over canonical bytes and
+// carries Sha256Digest at the chain boundary; a chain link field therefore
+// holds a ContentHash of either family, and validation compares through
+// compare_content_hash, which refuses cross-family pairs rather than reading
+// them as different. Until that executor lands, only structural links exist.
+fn intake_receipt_structural_fingerprint(envelope: IntakeReceiptEnvelope) -> ContentHash {
   let head = content_hash_combine_structural(
     content_hash_atom(value: intake_receipt_schema_wire(schema: envelope.schema)),
     content_hash_combine_structural(
@@ -143,33 +151,105 @@ fn content_hash_equal(left: ContentHash, right: ContentHash) -> Bool {
   }
 }
 
-type ReceiptChainFold {
-  linked: Bool
-  previous: ContentHash?
+// A VALIDATED LEDGER IS THE ONLY INPUT TO ADMISSION (ruling 2026-08-29,
+// receipt-spine blocker). derive_fleet_admission used to accept a raw list,
+// so a set of disconnected genesis receipts was admissible and the chain
+// validator was decoration. The sole constructor below establishes exactly one
+// genesis, every predecessor link, one exact MachineIntakeSubject including
+// the attempt id, and monotone receipt times. Duplicate phases are admitted
+// and resolved LAST-WINS in order, so a later refusal supersedes an earlier
+// success (and vice versa on a retried phase): that is the retry semantics,
+// executed by the disposition witness. A .dag record literal can still spell
+// a ValidatedIntakeReceiptLedger — the corpus-wide construction gap — so the
+// guarantee is that no DERIVATION produces one except validate_intake_receipt_ledger.
+type ValidatedIntakeReceiptLedger {
+  subject: MachineIntakeSubject
+  ordered_receipts: List<IntakeReceiptEnvelope>
+  terminal_fingerprint: ContentHash
 }
 
-// Each receipt's previous_receipt must be the digest of the receipt before
-// it; the first is genesis. A chain that skips or reorders is not an attempt
-// history, and no phase standing may be derived from it.
-fn receipt_chain_is_linked(receipts: List<IntakeReceiptEnvelope>) -> Bool {
-  let folded = fold(
-    receipts,
-    init: ReceiptChainFold { linked: true, previous: none },
-    f: fn(acc, r) {
-      let link_ok = match acc.previous {
-        Absent => match r.previous_receipt {
-          Absent => true
-          Present { value: _ } => false
-        }
-        Present { value: expected } => match r.previous_receipt {
-          Absent => false
-          Present { value: got } => content_hash_equal(left: expected, right: got)
-        }
+type IntakeLedgerRefusalCause
+  = LedgerEmpty
+  | LedgerMultipleGenesis { index: Int }
+  | LedgerBrokenLink { index: Int }
+  | LedgerSubjectMismatch { index: Int }
+  | LedgerNonMonotoneTime { index: Int }
+
+type IntakeLedgerValidation
+  = LedgerValidated { ledger: ValidatedIntakeReceiptLedger }
+  | LedgerRefused { cause: IntakeLedgerRefusalCause }
+
+type LedgerFold {
+  index: Int
+  refusal: IntakeLedgerRefusalCause?
+  previous: ContentHash?
+  last_started: Int
+}
+
+fn same_intake_subject(left: MachineIntakeSubject, right: MachineIntakeSubject) -> Bool {
+  (left.attempt_id as NonEmptyStr) == (right.attempt_id as NonEmptyStr)
+    && (left.subject.unit_key as NonEmptyStr) == (right.subject.unit_key as NonEmptyStr)
+    && content_hash_equal(left: left.subject.assembly_manifest_digest, right: right.subject.assembly_manifest_digest)
+    && content_hash_equal(left: left.subject.firmware_manifest_digest, right: right.subject.firmware_manifest_digest)
+}
+
+fn ledger_link_refusal(acc: LedgerFold, r: IntakeReceiptEnvelope) -> IntakeLedgerRefusalCause? {
+  match acc.previous {
+    Absent =>
+      match r.previous_receipt {
+        Absent => none
+        Present { value: _ } => Present { value: LedgerBrokenLink { index: acc.index } }
       }
-      ReceiptChainFold { linked: acc.linked && link_ok, previous: Present { value: intake_receipt_digest(envelope: r) } }
-    },
-  )
-  folded.linked
+    Present { value: expected } =>
+      match r.previous_receipt {
+        Absent => Present { value: LedgerMultipleGenesis { index: acc.index } }
+        Present { value: got } =>
+          if content_hash_equal(left: expected, right: got) { none } else { Present { value: LedgerBrokenLink { index: acc.index } } }
+      }
+  }
+}
+
+fn ledger_step(acc: LedgerFold, r: IntakeReceiptEnvelope, head: MachineIntakeSubject) -> LedgerFold {
+  match acc.refusal {
+    Present { value: _ } => acc
+    Absent => {
+      let refusal = if same_intake_subject(left: head, right: r.subject) == false {
+        Present { value: LedgerSubjectMismatch { index: acc.index } }
+      } else if r.started_at < acc.last_started {
+        Present { value: LedgerNonMonotoneTime { index: acc.index } }
+      } else {
+        ledger_link_refusal(acc: acc, r: r)
+      }
+      LedgerFold {
+        index: acc.index + 1,
+        refusal: refusal,
+        previous: Present { value: intake_receipt_structural_fingerprint(envelope: r) },
+        last_started: r.started_at,
+      }
+    }
+  }
+}
+
+fn validate_intake_receipt_ledger(receipts: List<IntakeReceiptEnvelope>) -> IntakeLedgerValidation {
+  match receipts.first() {
+    Absent => LedgerRefused { cause: LedgerEmpty }
+    Present { value: head } => {
+      let folded = fold(
+        receipts,
+        init: LedgerFold { index: 0, refusal: none, previous: none, last_started: 0 },
+        f: fn(acc, r) { ledger_step(acc: acc, r: r, head: head.subject) },
+      )
+      match folded.refusal {
+        Present { value: cause } => LedgerRefused { cause: cause }
+        Absent =>
+          match folded.previous {
+            Present { value: terminal } =>
+              LedgerValidated { ledger: ValidatedIntakeReceiptLedger { subject: head.subject, ordered_receipts: receipts, terminal_fingerprint: terminal } }
+            Absent => LedgerRefused { cause: LedgerEmpty }
+          }
+      }
+    }
+  }
 }
 
 // THE NONCE. Each attempt mints a one-time callback token and places it in

@@ -14,21 +14,33 @@ import extdeps.bmc.capability {
   CapabilityNbdProxyVirtualMedia,
   CapabilityOemRemoteMedia,
   CapabilityVirtualMedia,
-  bmc_firmware_version_eq,
   firmware_has_capability,
 }
 import extdeps.bmc.virtual_media { ConfigfsGadgetParams, MegaRacRemoteMediaParams, NbdProxyWebsocatParams, RedfishVirtualMediaParams }
 import extdeps.bmc.access_profile {
+  AccessProfileAmbiguous,
+  AccessProfileIdentityMismatch,
+  AccessProfileKnown,
+  AccessProfileNotLookedUp,
+  AccessProfileUncatalogued,
   BmcAccessObservation,
   BmcAccessObservationStanding,
   BmcAccessObserved,
+  BmcAccessProfile,
+  BmcAccessProfileStanding,
   BmcAccessSurface,
   BmcAccessUnobserved,
+  BmcSurfaceEligibility,
+  SurfaceAbsentFromLiveObservation,
+  SurfaceAbsentFromProfile,
+  SurfaceEligible,
   SurfaceOemNbdWebsocket,
   SurfaceOemRestRemoteMedia,
+  SurfaceProfileObservationIdentityMismatch,
   SurfaceRedfishVirtualMedia,
-  bmc_surface_in,
+  bmc_surface_eligibility,
 }
+import extdeps.bmc.redfish_virtual_media { RedfishVirtualMediaProbe, redfish_virtual_media_probe_admits_plan }
 import gunbc.install_transport_qualification {
   ConfigfsTransportRequirement,
   ReinstallPathEstablished,
@@ -253,9 +265,12 @@ type BootDeliveryCandidate
 type BootDeliveryCandidateStanding
   = CandidateEligible
   | CandidateCapabilityAbsent
+  | CandidateProfileUnestablished { standing: BmcAccessProfileStanding }
   | CandidateLiveSurfaceUnobserved { endpoint: BmcEndpoint }
+  | CandidateSurfaceAbsentFromProfile { surface: BmcAccessSurface }
   | CandidateLiveSurfaceAbsent { surface: BmcAccessSurface }
-  | CandidateLiveSurfaceStale { observed: BmcFirmwareVersion, row: BmcFirmwareVersion }
+  | CandidateProfileObservationIdentityMismatch { surface: BmcAccessSurface }
+  | CandidateRedfishProbeBelowPlanFloor { probe: RedfishVirtualMediaProbe }
   | CandidateParamsAbsent
   | CandidateConfigfsUnestablished { missing: List<ConfigfsTransportRequirement> }
   | CandidateConfigfsRefused { observed_absent: List<ConfigfsTransportRequirement> }
@@ -271,9 +286,31 @@ type BootDeliveryCandidateVerdict {
 // by omitting an argument. Optional params are the staging-side bindings a
 // transport needs; a transport whose surface is live but whose params are
 // absent is CandidateParamsAbsent, not silently selected.
+// THE PREFERENCE IS POLICY, NOT SOURCE ORDER (ruling §2). When several
+// transports are eligible the choice among them is a named policy input; a
+// solver that took the first eligible branch would be carrying policy in its
+// arm order, invisible to anyone reading the result.
+type BootDeliveryPreference
+  = PreferStandardRedfishThenOemThenNetwork
+
+fn boot_delivery_preference_order(preference: BootDeliveryPreference) -> List<BootDeliveryCandidate> {
+  match preference {
+    PreferStandardRedfishThenOemThenNetwork => [
+      CandidateRedfishVirtualMedia,
+      CandidateMegaRacRestRemoteMedia,
+      CandidateOpenBmcNbdProxyWebsocket,
+      CandidateOpenBmcConfigfsUsbGadget,
+      CandidateUefiHttpBoot,
+      CandidatePxeChainBoot,
+    ]
+  }
+}
+
 type BootDeliveryEvidence {
   row: BmcFirmwareCapabilityRow
+  profile: BmcAccessProfileStanding
   live_access: BmcAccessObservationStanding
+  preference: BootDeliveryPreference
   redfish_media: RedfishVirtualMediaParams?
   megarac_media: MegaRacRemoteMediaParams?
   nbd_proxy: NbdProxyWebsocatParams?
@@ -287,28 +324,51 @@ type BootDeliveryRefusalCause
   = DeliveryNoBootSourceOverride { firmware: BmcFirmwareVersion }
   | DeliveryNoEligibleTransport { firmware: BmcFirmwareVersion, considered: List<BootDeliveryCandidateVerdict> }
 
+// PLANNED, NOT ESTABLISHED. A planned delivery is a candidate the profile and
+// the live probe admit; insert, host consumption, eject and detach are
+// established only by execution receipts (the boot-delivery and cleanup
+// phases of gunbc.machine_intake_phase), never by this solver.
 type BootDeliverySolution
-  = BootDeliverySelected { delivery: BootArtifactDelivery, considered: List<BootDeliveryCandidateVerdict> }
+  = BootDeliveryPlanned { delivery: BootArtifactDelivery, considered: List<BootDeliveryCandidateVerdict> }
   | BootDeliveryRefused { cause: BootDeliveryRefusalCause }
 
-// The intersection rule for a VM-shaped candidate: the row must NAME the
-// capability, the endpoint must have been OBSERVED at the row's firmware, and
-// the observation must have DISCOVERED the surface. Three separate refusals.
-fn live_surface_standing(
-  row: BmcFirmwareCapabilityRow,
+// The intersection rule for a surface-shaped candidate (ruling §2): the row
+// must NAME the capability, the profile lookup must have BOUND this endpoint's
+// identity to a catalogued profile, the endpoint must have been OBSERVED, and
+// extdeps.bmc.access_profile bmc_surface_eligibility must admit the surface
+// from profile ∩ observation. Each failure is its own standing; the producer
+// read here is BmcAccessProfile × BmcAccessObservation, not a capability row
+// dressed as one.
+fn surface_candidate_standing(
+  profile: BmcAccessProfileStanding,
   live_access: BmcAccessObservationStanding,
   surface: BmcAccessSurface,
 ) -> BootDeliveryCandidateStanding {
-  match live_access {
-    BmcAccessUnobserved { endpoint: e } => CandidateLiveSurfaceUnobserved { endpoint: e }
-    BmcAccessObserved { observation: o } =>
-      if bmc_firmware_version_eq(a: o.firmware, b: row.firmware) == false {
-        CandidateLiveSurfaceStale { observed: o.firmware, row: row.firmware }
-      } else if bmc_surface_in(surfaces: o.discovered_surfaces, surface: surface) == false {
-        CandidateLiveSurfaceAbsent { surface: surface }
-      } else {
-        CandidateEligible
+  match profile {
+    AccessProfileKnown { profile: p, provenance: _ } =>
+      match live_access {
+        BmcAccessUnobserved { endpoint: e } => CandidateLiveSurfaceUnobserved { endpoint: e }
+        BmcAccessObserved { observation: o } =>
+          match bmc_surface_eligibility(profile: p, observation: o, surface: surface) {
+            SurfaceEligible => CandidateEligible
+            SurfaceAbsentFromProfile => CandidateSurfaceAbsentFromProfile { surface: surface }
+            SurfaceAbsentFromLiveObservation => CandidateLiveSurfaceAbsent { surface: surface }
+            SurfaceProfileObservationIdentityMismatch { profile: _, observed: _ } => CandidateProfileObservationIdentityMismatch { surface: surface }
+          }
       }
+    _ => CandidateProfileUnestablished { standing: profile }
+  }
+}
+
+fn redfish_probe_standing(live_access: BmcAccessObservationStanding) -> BootDeliveryCandidateStanding {
+  match live_access {
+    BmcAccessObserved { observation: o } =>
+      if redfish_virtual_media_probe_admits_plan(probe: o.redfish_virtual_media_probe) {
+        CandidateEligible
+      } else {
+        CandidateRedfishProbeBelowPlanFloor { probe: o.redfish_virtual_media_probe }
+      }
+    BmcAccessUnobserved { endpoint: e } => CandidateLiveSurfaceUnobserved { endpoint: e }
   }
 }
 
@@ -316,15 +376,21 @@ fn redfish_virtual_media_candidate(ev: BootDeliveryEvidence) -> BootDeliveryCand
   if firmware_has_capability(row: ev.row, cap: CapabilityVirtualMedia) == false {
     CandidateCapabilityAbsent
   } else {
-    let standing = live_surface_standing(row: ev.row, live_access: ev.live_access, surface: SurfaceRedfishVirtualMedia)
-    let eligible = standing == CandidateEligible
-    if eligible {
-      match ev.redfish_media {
-        Absent => CandidateParamsAbsent
-        Present { value: _ } => CandidateEligible
-      }
-    } else {
+    let standing = surface_candidate_standing(profile: ev.profile, live_access: ev.live_access, surface: SurfaceRedfishVirtualMedia)
+    let surface_ok = standing == CandidateEligible
+    if surface_ok == false {
       standing
+    } else {
+      let probe = redfish_probe_standing(live_access: ev.live_access)
+      let probe_ok = probe == CandidateEligible
+      if probe_ok == false {
+        probe
+      } else {
+        match ev.redfish_media {
+          Absent => CandidateParamsAbsent
+          Present { value: _ } => CandidateEligible
+        }
+      }
     }
   }
 }
@@ -333,9 +399,9 @@ fn nbd_proxy_websocket_candidate(ev: BootDeliveryEvidence) -> BootDeliveryCandid
   if firmware_has_capability(row: ev.row, cap: CapabilityNbdProxyVirtualMedia) == false {
     CandidateCapabilityAbsent
   } else {
-    let standing = live_surface_standing(row: ev.row, live_access: ev.live_access, surface: SurfaceOemNbdWebsocket)
-    let eligible = standing == CandidateEligible
-    if eligible {
+    let standing = surface_candidate_standing(profile: ev.profile, live_access: ev.live_access, surface: SurfaceOemNbdWebsocket)
+    let surface_ok = standing == CandidateEligible
+    if surface_ok {
       match ev.nbd_proxy {
         Absent => CandidateParamsAbsent
         Present { value: _ } => CandidateEligible
@@ -353,9 +419,9 @@ fn megarac_rest_remote_media_candidate(ev: BootDeliveryEvidence) -> BootDelivery
   if firmware_has_capability(row: ev.row, cap: CapabilityOemRemoteMedia) == false {
     CandidateCapabilityAbsent
   } else {
-    let standing = live_surface_standing(row: ev.row, live_access: ev.live_access, surface: SurfaceOemRestRemoteMedia)
-    let eligible = standing == CandidateEligible
-    if eligible {
+    let standing = surface_candidate_standing(profile: ev.profile, live_access: ev.live_access, surface: SurfaceOemRestRemoteMedia)
+    let surface_ok = standing == CandidateEligible
+    if surface_ok {
       match ev.megarac_media {
         Absent => CandidateParamsAbsent
         Present { value: _ } => CandidateEligible
@@ -430,53 +496,75 @@ fn candidate_is_eligible(verdicts: List<BootDeliveryCandidateVerdict>, candidate
   fold(verdicts, init: false, f: (acc, v) => acc || (v.candidate == candidate && v.standing == CandidateEligible))
 }
 
-// Builds the selected arm from the params its candidate already proved
-// present. The Absent branches are unreachable once the candidate is eligible;
-// they refuse rather than fabricate so that invariant is executed, not assumed.
+// Builds one candidate's arm from the params its verdict already proved
+// present; Absent here is unreachable once the candidate is eligible and
+// refuses rather than fabricates so that invariant is executed, not assumed.
+fn build_boot_artifact_delivery(ev: BootDeliveryEvidence, candidate: BootDeliveryCandidate) -> BootArtifactDelivery? {
+  match candidate {
+    CandidateRedfishVirtualMedia =>
+      match ev.redfish_media {
+        Present { value: p } => Present { value: RedfishVirtualMediaPull { params: p } }
+        Absent => none
+      }
+    CandidateMegaRacRestRemoteMedia =>
+      match ev.megarac_media {
+        Present { value: p } => Present { value: MegaRacRestRemoteMedia { params: p } }
+        Absent => none
+      }
+    CandidateOpenBmcNbdProxyWebsocket =>
+      match ev.nbd_proxy {
+        Present { value: p } => Present { value: OpenBmcNbdProxyWebsocket { params: p } }
+        Absent => none
+      }
+    CandidateOpenBmcConfigfsUsbGadget =>
+      match ev.configfs_params {
+        Present { value: p } => Present { value: OpenBmcConfigfsUsbGadget { params: p } }
+        Absent => none
+      }
+    CandidateUefiHttpBoot =>
+      match ev.uefi_http {
+        UefiHttpDeliveryEstablished { params: p, evidence: _ } => Present { value: UefiHttpBoot { params: p } }
+        UefiHttpDeliveryUnestablished { missing: _ } => none
+      }
+    CandidatePxeChainBoot =>
+      match ev.network_boot {
+        NetworkBootDeliveryEstablished { evidence: e } => Present { value: PxeChainBoot { evidence: e } }
+        NetworkBootDeliveryUnestablished { missing: _ } => none
+      }
+  }
+}
+
+// The first candidate in the POLICY's order that is eligible; the policy is
+// read from the evidence, so the order is a visible input, not source order.
 fn select_boot_artifact_delivery(
   ev: BootDeliveryEvidence,
   verdicts: List<BootDeliveryCandidateVerdict>,
 ) -> BootDeliverySolution {
-  if candidate_is_eligible(verdicts: verdicts, candidate: CandidateRedfishVirtualMedia) {
-    match ev.redfish_media {
-      Present { value: p } => BootDeliverySelected { delivery: RedfishVirtualMediaPull { params: p }, considered: verdicts }
-      Absent => BootDeliveryRefused { cause: DeliveryNoEligibleTransport { firmware: ev.row.firmware, considered: verdicts } }
-    }
-  } else if candidate_is_eligible(verdicts: verdicts, candidate: CandidateMegaRacRestRemoteMedia) {
-    match ev.megarac_media {
-      Present { value: p } => BootDeliverySelected { delivery: MegaRacRestRemoteMedia { params: p }, considered: verdicts }
-      Absent => BootDeliveryRefused { cause: DeliveryNoEligibleTransport { firmware: ev.row.firmware, considered: verdicts } }
-    }
-  } else if candidate_is_eligible(verdicts: verdicts, candidate: CandidateOpenBmcNbdProxyWebsocket) {
-    match ev.nbd_proxy {
-      Present { value: p } => BootDeliverySelected { delivery: OpenBmcNbdProxyWebsocket { params: p }, considered: verdicts }
-      Absent => BootDeliveryRefused { cause: DeliveryNoEligibleTransport { firmware: ev.row.firmware, considered: verdicts } }
-    }
-  } else if candidate_is_eligible(verdicts: verdicts, candidate: CandidateOpenBmcConfigfsUsbGadget) {
-    match ev.configfs_params {
-      Present { value: p } => BootDeliverySelected { delivery: OpenBmcConfigfsUsbGadget { params: p }, considered: verdicts }
-      Absent => BootDeliveryRefused { cause: DeliveryNoEligibleTransport { firmware: ev.row.firmware, considered: verdicts } }
-    }
-  } else if candidate_is_eligible(verdicts: verdicts, candidate: CandidateUefiHttpBoot) {
-    match ev.uefi_http {
-      UefiHttpDeliveryEstablished { params: p, evidence: _ } => BootDeliverySelected { delivery: UefiHttpBoot { params: p }, considered: verdicts }
-      UefiHttpDeliveryUnestablished { missing: _ } => BootDeliveryRefused { cause: DeliveryNoEligibleTransport { firmware: ev.row.firmware, considered: verdicts } }
-    }
-  } else if candidate_is_eligible(verdicts: verdicts, candidate: CandidatePxeChainBoot) {
-    match ev.network_boot {
-      NetworkBootDeliveryEstablished { evidence: e } => BootDeliverySelected { delivery: PxeChainBoot { evidence: e }, considered: verdicts }
-      NetworkBootDeliveryUnestablished { missing: _ } => BootDeliveryRefused { cause: DeliveryNoEligibleTransport { firmware: ev.row.firmware, considered: verdicts } }
-    }
-  } else {
-    BootDeliveryRefused { cause: DeliveryNoEligibleTransport { firmware: ev.row.firmware, considered: verdicts } }
+  let chosen = fold(
+    boot_delivery_preference_order(preference: ev.preference),
+    init: none,
+    f: (acc, candidate) => match acc {
+      Present { value: _ } => acc
+      Absent =>
+        if candidate_is_eligible(verdicts: verdicts, candidate: candidate) {
+          build_boot_artifact_delivery(ev: ev, candidate: candidate)
+        } else {
+          none
+        }
+    },
+  )
+  match chosen {
+    Present { value: d } => BootDeliveryPlanned { delivery: d, considered: verdicts }
+    Absent => BootDeliveryRefused { cause: DeliveryNoEligibleTransport { firmware: ev.row.firmware, considered: verdicts } }
   }
 }
 
 // THE SOLVER. Boot-source override gates every arm (each drives the host
 // through a BMC one-shot target); then the candidates are judged in the
-// ruling's platform-mapping order and the first eligible one is built. Every
-// arm is reached from something the evidence NAMES, never from the absence of
-// another arm: the else is a refusal carrying every candidate's standing.
+// evidence's preference policy order and the first eligible one is built.
+// Every arm is reached from something the evidence NAMES, never from the
+// absence of another arm: the else is a refusal carrying every candidate's
+// standing.
 fn solve_boot_artifact_delivery(ev: BootDeliveryEvidence) -> BootDeliverySolution {
   if firmware_has_capability(row: ev.row, cap: CapabilityBootSourceOverride) == false {
     BootDeliveryRefused { cause: DeliveryNoBootSourceOverride { firmware: ev.row.firmware } }

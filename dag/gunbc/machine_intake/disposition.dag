@@ -25,10 +25,11 @@ import gunbc.machine_intake_receipt {
   IntakeReceiptEnvelope,
   ReceiptRefused,
   ReceiptSatisfied,
-  intake_receipt_digest,
+  ValidatedIntakeReceiptLedger,
+  intake_receipt_structural_fingerprint,
 }
 
-data machine_intake_disposition_note: String = "ADMITTED IS DERIVED, NEVER AUTHORED (machine-intake ruling 2026-08-29 §11). The three top-level arms are kept and each preserves WHY it was reached. FleetAdmissionStanding is derived from phase receipts: identity bound, BMC secured, prior-life boundary, boot delivery, diagnostic boot attested, inventory conformant, memory qualified, subsystems qualified, arrival soak, OS provisioned, placement qualified, cleanup confirmed, AND the qualification subject still current. A hand-authored strategy.foo_held_unit = Admitted row cannot substitute for those producers because the only path to FleetAdmissible is derive_fleet_admission over receipts whose subject matches. RUNG, honestly: this is mechanically preventable, not structurally impossible — .dag record literals are public, so an Admitted { admission_receipt: FleetAdmissionReceipt { ... } } literal can still be WRITTEN; what the construction guarantees is that no derivation produces it without the receipts, and what the witness executes is that the derivation refuses on each missing phase. The construction wall over the literal is the corpus-wide gap docs/plans/hollow-alias-construction-wall.md names, the same row as ValidatedBmcFanCurve; this module claims no more than that."
+data machine_intake_disposition_note: String = "ADMITTED IS DERIVED, NEVER AUTHORED (machine-intake ruling 2026-08-29 §11). The three top-level arms are kept and each preserves WHY it was reached. FleetAdmissionStanding is derived from phase receipts: identity bound, BMC secured, prior-life boundary, boot delivery, diagnostic boot attested, inventory conformant, memory qualified, subsystems qualified, arrival soak, OS provisioned, placement qualified, cleanup confirmed, AND the qualification subject still current. A hand-authored strategy.foo_held_unit = Admitted row cannot substitute for those producers because the only path to FleetAdmissible is derive_fleet_admission over a ValidatedIntakeReceiptLedger — one genesis, every link checked, one subject and attempt — whose receipts' subject matches. RUNG, honestly: this is mechanically preventable, not structurally impossible — .dag record literals are public, so an Admitted { admission_receipt: FleetAdmissionReceipt { ... } } literal can still be WRITTEN; what the construction guarantees is that no derivation produces it without the receipts, and what the witness executes is that the derivation refuses on each missing phase. The construction wall over the literal is the corpus-wide gap docs/plans/hollow-alias-construction-wall.md names, the same row as ValidatedBmcFanCurve; this module claims no more than that."
 
 type IntakePhaseStanding
   = PhaseSatisfiedByReceipt { receipt: ContentHash }
@@ -56,7 +57,7 @@ fn phase_standing(
       if receipt_is_for_phase(receipt: r, phase: phase) == false {
         acc
       } else {
-        let digest = intake_receipt_digest(envelope: r)
+        let digest = intake_receipt_structural_fingerprint(envelope: r)
         match compare_qualification_subject(admitted: subject, observed: r.subject.subject) {
           SubjectStale { unit_changed: u, assembly_changed: a, firmware_changed: f } =>
             match acc {
@@ -124,15 +125,18 @@ fn merge_subject_currency(left: SubjectCurrency, right: SubjectCurrency) -> Subj
   }
 }
 
-// The admission predicate, as a fold over the required roster. The subject
-// handed in is the one OBSERVED NOW (the last identity read), and it is
-// compared against the subject each receipt was produced for; a receipt from
-// before a repair is a mismatch, not a satisfaction.
+// The admission predicate, as a fold over the required roster, reading ONLY
+// a validated ledger (one genesis, linked, one subject and attempt, monotone)
+// — a raw receipt list has no entry here. The subject handed in is the one
+// OBSERVED NOW (the last identity read), and it is compared against the
+// subject each receipt was produced for; a receipt from before a repair is a
+// mismatch, not a satisfaction.
 fn derive_fleet_admission(
   observed_subject: QualificationSubject,
-  receipts: List<IntakeReceiptEnvelope>,
+  ledger: ValidatedIntakeReceiptLedger,
   now: EpochMs,
 ) -> FleetAdmissionStanding {
+  let receipts = ledger.ordered_receipts
   let folded = fold(
     fleet_admission_required_phases,
     init: AdmissionFold { satisfied: [], missing: [], refused: [], subject_mismatched: [], subject_currency: SubjectCurrent },

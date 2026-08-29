@@ -21,7 +21,13 @@ data bmc_subject: MtCollinsPublicProductBrief = mt_collins_public_product_brief
 // with no Redfish endpoint on that build. Factory login and API contract rows live with
 // the stack (extdeps.bmc.megarac), not here - this row only binds platform to family so
 // a workflow holding a Mt. Collins knows which access authority applies.
-data mt_collins_bmc_firmware: BmcFirmwareFamily = AmiMegaRac
+type MtCollinsBmcImplementationExpected {
+  family: BmcFirmwareFamily
+}
+
+data mt_collins_bmc_implementation_expected: MtCollinsBmcImplementationExpected = MtCollinsBmcImplementationExpected { family: AmiMegaRac }
+
+data mt_collins_bmc_expectation_provenance_note: String = "EXPECTATION, NOT AN UPSTREAM FACT (machine-intake ruling 2026-08-29 §1, on gunbc#9690). This module's external authority is Ampere's public product page, which does not state the BMC firmware product; the family here was established by one operator execution against one held unit, which is an OBSERVATION, and an observation rendered as an extdeps row is the provenance inversion DESIGN §3 names. So the row is typed as what it is — what a workflow holding a Mt. Collins should EXPECT to find — and the observation that would confirm or contradict it is a workflow-layer gunbc.machine_intake_access BmcImplementationObserved receipt keyed to unit, attempt, endpoint, time and raw Manager-response evidence. No such receipt is authored yet: the raw producer output of the 2026-08-29 run (Manager Manufacturer/Model/FirmwareVersion payload, both VirtualMedia discovery routes, service roster) was not preserved, and the ruling forbids seeding it from memory. The two prose notes below remain as the only record of that run until an attempt re-observes the unit."
 
 data mt_collins_bmc_no_redfish_observation: String = "BUILD-SCOPED: GET /redfish/v1 returns 404 on this shipping build (firmware revision 0.32, probed 2026-08-29); the service roster is web/kvm/cd-media/hd-media/ssh with no Redfish service present. This is the build-grain carrier the family module's protocol floor points at - family-level Redfish support is an AMI marketing claim, decided per build here."
 

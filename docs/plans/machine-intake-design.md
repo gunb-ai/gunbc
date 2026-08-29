@@ -4,7 +4,16 @@ Operator ruling of 2026-08-29, transcribed as the authority for the `gunbc.machi
 lane. The `.dag` modules cite this document; this document does not restate what they declare.
 Where a section below names a type, the type is the authority and this is its rationale.
 
-Status: **INTAKE-0 and the BOOT-DELIVERY-0 modeling landed** (gunbc#TBD). Executed
+Status: **INTAKE-0 and the BOOT-DELIVERY-0 modeling landed** (gunbc#9690), reworked under the
+operator's second ruling of 2026-08-29: the Mt. Collins family binding is an EXPECTATION
+(`MtCollinsBmcImplementationExpected`) until a workflow-layer `BmcImplementationObserved`
+receipt exists; the one solver reads `BmcAccessProfile × BmcAccessObservation` through a total
+profile lookup (`BmcAccessProfileStanding`), plans the Redfish arm only at
+`TransferProtocolAdmitted` or above on the probe ladder, and takes its transport preference as an
+explicit policy input; `derive_fleet_admission` consumes only a `ValidatedIntakeReceiptLedger`
+(one genesis, linked, one subject and attempt, monotone); the in-substrate receipt hash is named
+a structural fingerprint, with SHA-256 reserved for the durable producer; and
+`gunbc.bmc_onboarding` is quarantined as non-authoritative legacy vocabulary. Executed
 Mt. Collins and ASRock boots reaching the nonce-bound intake-agent callback are BOOT-DELIVERY-0's
 acceptance and are still owed; INTAKE-AGENT-0, MEMORY-0 and SOAK-ADMISSION-0 are unbuilt.
 
@@ -103,7 +112,9 @@ Platform mapping:
 | Firmware with all network-boot requirements established | PxeChainBoot |
 
 `gunbc.os_install_mechanism` is now a frozen projection of the delivery solver; its consumers
-migrate to `BootDeliverySolution` and it is then deleted (its frozen note carries the trigger).
+migrate to `BootDeliverySolution` and it is then deleted (its frozen note carries the trigger). A
+`BootDeliveryPlanned` result is a candidate PLAN — insert, host consumption, eject and detach are
+established only by execution receipts.
 
 ## 4. The workflow: one `MachineIntake`, three transactions
 

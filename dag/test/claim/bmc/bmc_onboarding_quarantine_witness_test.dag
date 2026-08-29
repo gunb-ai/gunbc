@@ -1,0 +1,27 @@
+module test.claim.bmc_onboarding_quarantine_witness_test
+
+import std.types { Bool, List }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import gunbc.bmc_onboarding { BmcLifecycleState, FabricJoined, bmc_factory_state, bmc_onboard_to_steady_state }
+import gunbc.machine_intake_receipt { LedgerEmpty, LedgerRefused, LedgerValidated, validate_intake_receipt_ledger }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE QUARANTINE, EXECUTED (machine-intake ruling 2026-08-29, answer (b)). The
+// legacy lifecycle advances to FabricJoined from the factory state with no
+// receipt producer consumed at all — that is exactly why it may not stand in
+// for intake. The only input fleet admission accepts is a validated receipt
+// ledger, and the steady state produces none: with zero receipts there is no
+// ledger to validate, so the steady-state machine satisfies zero intake phases.
+// There is deliberately no function from BmcLifecycleState to any intake
+// carrier for this witness to call; what it executes is that reaching the
+// legacy terminal contributes nothing an admission derivation can read.
+test fn onboarding_steady_state_satisfies_zero_intake_phases() -> Bool {
+  let steady = bmc_onboard_to_steady_state(s: bmc_factory_state())
+  let legacy_terminal_reached = steady.phase == FabricJoined
+  let no_ledger = match validate_intake_receipt_ledger(receipts: []) {
+    LedgerRefused { cause: c } => c == LedgerEmpty
+    LedgerValidated { ledger: _ } => false
+  }
+  legacy_terminal_reached && no_ledger
+}
