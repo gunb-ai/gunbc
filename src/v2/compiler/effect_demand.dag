@@ -1,6 +1,7 @@
 module v2.compiler.effect_demand
 
 import std.decl_ref { DeclarationRef }
+import std.types { CommitSha }
 import std.execution_mode { ExecutionMode, Wet, execution_mode_eq }
 import std.primitive_projection { PrimitiveIdentity, primitive_identity_slug }
 import v2.std.algebra { Cons, Empty, any, fold_list, length, list_reverse }
@@ -489,7 +490,7 @@ type DemandProducer
   | EmittedRealizationCensus
 
 type DemandReceipt {
-  source_revision: String
+  source_revision: CommitSha
   entry_identity: String
   producer: DemandProducer
   instrument_identity: String
@@ -747,11 +748,11 @@ type EvidenceStanding
 
 data effect_demand_local_gate_note: String = "THIS IS A LOCAL EVIDENCE GATE, NOT PROMOTION. Compiler-generation promotion -- PromotionDecision, ActiveCompiler, RecoveryGeneration, ChangedSuccessorReceipt -- is owned by one lane, and an earlier revision of this function was named promotion_admitted and crossed that boundary by name and by scope: a reader could have taken its true for a generation flip. It is demoted to what it actually decides, which is whether XL-1's effect-demand EVIDENCE is admissible as ONE CONJUNCT of a promotion that lane alone composes. The result is a typed standing rather than a Bool so a refusal names the conjunct that failed instead of collapsing eleven distinct deficits into one false. Every conjunct is a fact about a measurement rather than a property of a declaration, and each closes a way the previous gate could be satisfied by writing something: BOTH ROOT SETS RESOLVE NON-EMPTY, because an empty root set returns a clean NONE for every question and this module already shipped one; NO UNRESOLVED INDIRECT EDGES on either side, because a walk that could not follow a dispatch it saw has a known hole and its silence is not a zero; SAME REVISION AND SAME ENTRY, because two receipts about different trees agree by coincidence; TWO DISTINCT PRODUCERS, because one instrument agreeing with itself is not agreement; ZERO DISAGREEMENT IN BOTH DIRECTIONS, kept as two conjuncts because realized-only is the emergency and modeled-only is not; THE SUBJECT DENOMINATOR COMPLETE, because a lower bound cannot refuse what it did not look at; AND THE DISPOSITION CENSUS SOUND, because a population every row of which is undispositioned is not admissible however well it was measured."
 
-data effect_demand_evidence_revision_note: String = "BOTH ARMS CARRY THE SOURCE REVISION, because the consumer of this standing is another lane's generation receipt, which must cross-check the revision this evidence was measured over against the revision of the compiler generation it is deciding. Carrying the revision only on the input receipts would make the admitted arm a bare token a consumer could pair with any generation -- an admission about revision A silently standing in for revision B. The admitted arm names the one revision both receipts agreed on; the refused arm names the LEFT receipt's revision as the subject the refusal is about, since on a revision mismatch there is no single revision and the left receipt is the modeled side."
+data effect_demand_evidence_revision_note: String = "BOTH ARMS CARRY THE SOURCE REVISION AS std.types CommitSha, the one type every Git-head consumer names, because a bare String here was a hollow-alias fork on the exact field another lane joins against its generation revision. CommitSha names a COMMIT; a tree digest is a different concept with its own authority (v2.workflow.floor_discovery FloorDiscoveryTreeId over GitObjectId) and is not smuggled into this field. BOTH ARMS CARRY THE SOURCE REVISION, because the consumer of this standing is another lane's generation receipt, which must cross-check the revision this evidence was measured over against the revision of the compiler generation it is deciding. Carrying the revision only on the input receipts would make the admitted arm a bare token a consumer could pair with any generation -- an admission about revision A silently standing in for revision B. The admitted arm names the one revision both receipts agreed on; the refused arm names the LEFT receipt's revision as the subject the refusal is about, since on a revision mismatch there is no single revision and the left receipt is the modeled side."
 
 type EffectDemandEvidenceStanding
-  = EffectDemandEvidenceAdmitted { source_revision: String }
-  | EffectDemandEvidenceRefused { source_revision: String, conjunct: Symbol }
+  = EffectDemandEvidenceAdmitted { source_revision: CommitSha }
+  | EffectDemandEvidenceRefused { source_revision: CommitSha, conjunct: Symbol }
 
 fn effect_demand_local_gate(
   left: DemandReceipt,
@@ -865,13 +866,6 @@ fn seam_binding_is_ambiguous(seam: SeamStanding, registry: List<SeamRuntimeBindi
 
 fn seam_realization(seam: SeamStanding, registry: List<SeamRuntimeBinding>) -> SeamRealization {
   seam_realization_for(projection: seam.projection, registry: registry)
-}
-
-fn seam_is_unrealized(seam: SeamStanding, registry: List<SeamRuntimeBinding>) -> Bool {
-  match seam_realization(seam: seam, registry: registry) {
-    SeamUnrealized => true,
-    SeamRealizedByBridge { bridge } => false
-  }
 }
 
 fn seam_is_unrostered(seam: SeamStanding) -> Bool {

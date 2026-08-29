@@ -77,15 +77,11 @@ fn floor_join_string_eq(a: String, b: String) -> Bool {
   a == b
 }
 
-fn floor_join_add_unseen(acc: List<String>, item: String) -> List<String> {
-  if contains(xs: acc, item: item, eq: floor_join_string_eq) { acc } else { Cons { head: item, tail: acc } }
-}
-
 fn floor_join_seam_modules(roster: List<SeamStanding>) -> List<String> {
   list_reverse(xs: fold_list(
     xs: roster,
     empty: Empty,
-    cons: fn(acc, seam) { floor_join_add_unseen(acc: acc, item: seam.seam_module) }
+    cons: fn(acc, seam) { if contains(xs: acc, item: seam.seam_module, eq: floor_join_string_eq) { acc } else { Cons { head: seam.seam_module, tail: acc } } }
   ))
 }
 
@@ -194,6 +190,19 @@ fn floor_join_refuse(state: FloorJoinFoldState, cause: FloorStandingJoinRefusal)
 
 data effect_demand_floor_join_memo_note: String = "ONE CLOSURE WALK PER ENTRY, NOT PER CLAIM. The floor discovers several claims per entry file -- five figures of claims over four figures of entries -- and the closure is a fact about the ENTRY, so walking it once per claim would pay the breadth-first walk a multiple of the times the population warrants. DESIGN's bare-minimum-cost rule admits no 'n is small here', so the reach verdict is memoized on the normalized entry path in the fold state and the first refusal stays sticky while the fold runs to the end, exactly as the discovery census does."
 
+fn floor_join_reach_memoized(
+  memo: Map<String, Bool>,
+  entry: String,
+  edges: List<ModuleDependencyEdge>,
+  nodes: List<ModuleDeclarationFact>,
+  seam_paths: List<String>
+) -> Bool {
+  match map_lookup_where_rejected_unreachable(m: memo, key: entry) {
+    Present { value: cached } => cached,
+    Absent => floor_join_entry_reaches_seam(entry_path: entry, edges: edges, nodes: nodes, seam_paths: seam_paths)
+  }
+}
+
 fn floor_join_fold_row(
   state: FloorJoinFoldState,
   row: FloorDiscoveryRow,
@@ -206,10 +215,7 @@ fn floor_join_fold_row(
   match map_lookup_where_rejected_unreachable(m: path_to_module, key: entry) {
     Absent => floor_join_refuse(state: state, cause: EntryPathUndeclared { entry_path: row.entry, function: row.function }),
     Present { value: module } => {
-      let reaches = match map_lookup_where_rejected_unreachable(m: state.reach_memo, key: entry) {
-        Present { value: cached } => cached,
-        Absent => floor_join_entry_reaches_seam(entry_path: entry, edges: edges, nodes: nodes, seam_paths: seam_paths)
-      }
+      let reaches = floor_join_reach_memoized(memo: state.reach_memo, entry: entry, edges: edges, nodes: nodes, seam_paths: seam_paths)
       let memo = map_insert(state.reach_memo, entry, reaches)
       if !reaches {
         FloorJoinFoldState { rows_reversed: state.rows_reversed, seen: state.seen, reach_memo: memo, refusal: state.refusal }
