@@ -7,7 +7,7 @@ import extdeps.pricing.hetzner_dedicated {
   hetzner_dedicated_setup_fee_micros,
 }
 import extdeps.pricing.ubicloud { ubicloud_premium_standard_2_price }
-import std.currency { Usd }
+import extdeps.currency.currency { Usd }
 import std.measure {
   MoneyPerMinute,
   billing_month_as_hour_count,

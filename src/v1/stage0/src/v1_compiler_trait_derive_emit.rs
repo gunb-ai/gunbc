@@ -23,12 +23,11 @@ pub use crate::extdeps_languages_rust_emit::{
     rust_supplemental_impls_bool_coproduct, rust_supplemental_impls_group_completion,
     rust_trait_derive_attr_from_traits, rust_trait_derive_spelling,
 };
+pub use crate::std_content_hash::Fnv1a64Structural;
 pub use crate::std_decl_ref::DeclarationRef;
 pub use crate::std_dissolution::unbound_dissolution;
 pub use crate::std_dissolution::DissolutionCondition;
 use crate::std_dissolution::DissolutionCondition::*;
-pub use crate::std_syntax::BinOp;
-use crate::std_syntax::BinOp::*;
 pub use crate::std_trait_derive_shape::ReprGroundingDeriveElemShape;
 use crate::std_trait_derive_shape::ReprGroundingDeriveElemShape::{
     ReprDeriveElemKernelInt, ReprDeriveElemNullaryEnumCopy, ReprDeriveElemPayloadCoproduct,
@@ -52,14 +51,11 @@ use crate::v1_std_core::Connective::{Arrow, NoConnective};
 use crate::v1_std_core::ContainerSpellingVerdict::{
     ContainerSpellingDeclared, ContainerSpellingUnknown, NotAContainerSpelling,
 };
-use crate::v1_std_core::MatchPattern::*;
-use crate::v1_std_core::UnaryOpKind::*;
 pub use crate::v1_std_core::{
     authored_container_spelling_verdict, authored_name_at, generic_param_name_at,
     param_node_type_expr, qualified_last_segment,
 };
 pub use crate::v1_std_core::{Connective, ContainerSpellingVerdict, NewlineIndex, Node};
-pub use crate::v1_std_core::{MatchPattern, UnaryOpKind};
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};

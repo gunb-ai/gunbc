@@ -1,7 +1,7 @@
 module gunbc.fabric_floor_dispatch
 
 import std.types { Int, List, NonEmptyStr, Timestamp }
-import std.currency { Usd }
+import extdeps.currency.currency { Usd }
 import std.measure { MoneyAmountMicro, MoneyPerSecond }
 import product.fabric.identity { FabricIdentity, DemandKey, WorkKey }
 import product.fabric.demand { Demand, BudgetAccountId, ObservationReceiptRef }

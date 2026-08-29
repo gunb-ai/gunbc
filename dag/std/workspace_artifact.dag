@@ -1,0 +1,69 @@
+module std.workspace_artifact
+
+import std.types { String, List }
+
+// THE SHAPE OF A TOOL'S FILESYSTEM FOOTPRINT, agnostic over which tool.
+//
+// Onboarding a concept (an extdeps product, a repo tool) includes declaring what files and
+// directories it introduces into a working tree, what each one means, and the REASON the
+// repository does or does not track it. The declarations live with their producers — an
+// extdeps module declares its own product's footprint beside its citation, a repo tool
+// declares its own outputs — and consumers (the .gitignore projection, deploy scoping,
+// hygiene lenses) fold over the join. This module owns only the shape; it enumerates no
+// concrete product (extdeps hub rule: agnostic shapes only).
+
+// WHY a path is untracked — the fact the old model kept only as per-group prose. A closed
+// vocabulary so a census over reasons is a fold, not a text scan. SupersededAuthority names
+// the canonical home that replaced the ignored path, so "this directory is dead, its facts
+// live at X" is data rather than a comment.
+type IgnoreReason
+  = RegenerableFromSource
+  | LocalCacheState
+  | PerDeveloperState
+  | HostOsMetadata
+  | SessionRuntimeState
+  | MayContainSecrets
+  | OutsideSubstrate
+  | SupersededAuthority { canonical: String }
+
+fn ignore_reason_label(r: IgnoreReason) -> String {
+  match r {
+    RegenerableFromSource => "regenerable from committed source"
+    LocalCacheState => "local cache; not project state"
+    PerDeveloperState => "per-developer state; not shared"
+    HostOsMetadata => "host OS metadata; not project state"
+    SessionRuntimeState => "session/runtime state; not source-of-truth"
+    MayContainSecrets => "may contain secrets; never committed"
+    OutsideSubstrate => "outside the committed substrate"
+    SupersededAuthority { canonical: c } => concat("superseded; canonical home: ", c)
+  }
+}
+
+// One file, directory, or glob a producer introduces. `pattern` is gitignore-grammar for now
+// (trailing `/` = directory, leading `/` = repo-root anchor, `*` = glob); decomposing the
+// pattern grammar into typed grain/anchor is a later step against extdeps.git.gitignore.
+// `meaning` says what the path IS — the "what does this X introduce" half of onboarding.
+type WorkspaceArtifact {
+  pattern: String
+  meaning: String
+  reason: IgnoreReason
+}
+
+// Who introduces the artifacts: a cited upstream product (the extdeps module that declares
+// the footprint carries the real citation anchor; `upstream` here is the rendered pointer),
+// or a tool of the repository itself, named by the module that owns it.
+type FootprintProvenance
+  = CitedUpstream { display: String, upstream: String }
+  | RepoTool { display: String, owner_module: String }
+
+type WorkspaceFootprint {
+  provenance: FootprintProvenance
+  artifacts: List<WorkspaceArtifact>
+}
+
+fn footprint_display(p: FootprintProvenance) -> String {
+  match p {
+    CitedUpstream { display: d, upstream: u } => concat(d, concat(" [cited: ", concat(u, "]")))
+    RepoTool { display: d, owner_module: m } => concat(d, concat(" [owner: ", concat(m, "]")))
+  }
+}

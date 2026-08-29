@@ -17,6 +17,7 @@ import extdeps.github.github { github_https_clone_url }
 import gunbc.roadmap_dashboard_instance { srv1_live_dashboard_instance }
 import gunbc.live_deploy.spec {
   OwnedArtifactKind,
+  PublicationHelperTimerUnit,
   GunbcSourceTree,
   ServeBinary,
   DispatchWorktreeRoot,
@@ -210,12 +211,20 @@ test fn only_an_exact_read_back_reports_success() -> Bool {
 //
 // Asserted as a filtered SEQUENCE rather than absolute indices, so inserting an unrelated member
 // leaves this green while a genuine reordering reds it.
+//
+// THE PUBLICATION HELPER JOINED THE SEQUENCE RATHER THAN BEING TAGGED OUT OF IT, and it sits
+// BEFORE the belt for the same class of reason the remote does: its member's apply creates the
+// request spool the belt writes into, so a belt tick ordered first would write into a directory
+// that does not exist and report a spool refusal on every fresh deploy. It sits AFTER the binary
+// because its unit's ExecStart invokes that binary. Tagging it "" would have left the strongest
+// available ordering claim silent about the one member most recently added to this order.
 
 fn ordering_tag(kind: OwnedArtifactKind) -> String {
   match kind {
     GunbcSourceTree => "tree"
     ServeBinary => "binary"
     DeployedTreeRemoteUnit => "remote"
+    PublicationHelperTimerUnit => "publication"
     BeltTimerUnit => "belt"
     TailscaleServeMapping => "route"
     DispatchWorktreeRoot => ""
@@ -240,5 +249,5 @@ fn ordered_tags() -> List<String> {
 }
 
 test fn the_remote_converges_after_its_inputs_and_before_the_belt() -> Bool {
-  join(ordered_tags(), ",") == "tree,binary,remote,belt,route"
+  join(ordered_tags(), ",") == "tree,binary,remote,publication,belt,route"
 }

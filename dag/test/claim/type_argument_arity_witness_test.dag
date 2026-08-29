@@ -1,0 +1,92 @@
+module test.claim.type_argument_arity_witness
+
+import std.types { String, Bool, Int, List }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import tools.multi_module_compile_fixture {
+  MultiModuleCompileFixture,
+  MultiModuleCompileFixtureOutcome,
+  FixtureInstrumentRefused,
+  FixtureCompileRefused,
+  FixtureCompileCompleted,
+  FixtureSource,
+  fixture_source,
+  compile_fixture,
+  fixture_blocking_rows,
+  fixture_has_class
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE SUBJECT. v1.compiler.infer alias_chain_type_arg_subst folded a generic declaration's
+// PARAMETERS against a use site's supplied TYPE ARGUMENTS positionally and absorbed a
+// disagreement in BOTH directions: a surplus argument was never read, and a missing argument
+// left its parameter unsubstituted so the expanded record kept a type-variable field. Neither
+// state produced a diagnostic anywhere, so a correct application and an arity-wrong one
+// compiled identically -- the floor band's exact-bijection rule failing silently, which
+// DESIGN section 4b calls a below-baseline safety regression rather than a missing feature.
+//
+// The one call site that noticed widened a `lossy` flag that stood the field-presence wall
+// DOWN instead of refusing -- the absorbing fallback of DESIGN section 5, whose deficit
+// frequency is zero by construction. That flag is deleted with this wall (section 4b(4)
+// dissolution on climb: the proof replaces the degradation rather than accumulating beside it),
+// and the evidence that the higher rung is real is exactly the two REDs and the control below.
+//
+// WHY THE ISOLATED FIXTURE. The RED is an invalid program, so it is authorable only where a
+// fixture hands source to the compiler -- never in the accepted corpus. A single module
+// expresses the whole subject, but tools.multi_module_compile_fixture is used rather than the
+// live-tree census because it compiles a caller-authored manifest in isolation, which is what
+// lets this witness declare SubstrateInputsOnly truthfully and therefore actually execute on
+// the required floor.
+
+
+data surplus_source: String = "module ta.entry\ntype TaBoxed<T> { item: T }\ntype TaPair<A, B> { left: A, right: B }\nfn ta_surplus(b: TaBoxed<Int, String>) -> Int { b.item }\n"
+data deficit_source: String = "module ta.entry\ntype TaBoxed<T> { item: T }\ntype TaPair<A, B> { left: A, right: B }\nfn ta_deficit(p: TaPair<Int>) -> Int { p.left }\n"
+data green_source: String = "module ta.entry\ntype TaBoxed<T> { item: T }\ntype TaPair<A, B> { left: A, right: B }\nfn ta_one(b: TaBoxed<Int>) -> Int { b.item }\nfn ta_two(p: TaPair<Int, String>) -> Int { p.left }\n"
+
+fn arity_run(source: String) -> MultiModuleCompileFixtureOutcome {
+  compile_fixture(MultiModuleCompileFixture {
+    sources: [fixture_source("ta/entry.dag", source)],
+    entry: "ta/entry.dag"
+  })
+}
+
+fn refused_with_class(o: MultiModuleCompileFixtureOutcome, wanted: String) -> Bool {
+  match o {
+    FixtureCompileRefused { module_count: n, diagnostics: rows, source_digest: sd, compiler_digest: cd } =>
+      fixture_has_class(rows, wanted) && count(fixture_blocking_rows(rows)) > 0,
+    FixtureCompileCompleted { module_count: n, emitted_files: files, diagnostics: rows, source_digest: sd, compiler_digest: cd } => false,
+    FixtureInstrumentRefused { cause: c } => false
+  }
+}
+
+fn completed_with_no_diagnostics(o: MultiModuleCompileFixtureOutcome) -> Bool {
+  match o {
+    FixtureCompileCompleted { module_count: n, emitted_files: files, diagnostics: rows, source_digest: sd, compiler_digest: cd } =>
+      count(rows) == 0 && count(files) > 0 && n > 0,
+    FixtureCompileRefused { module_count: n, diagnostics: rows, source_digest: sd, compiler_digest: cd } => false,
+    FixtureInstrumentRefused { cause: c } => false
+  }
+}
+
+// DISCRIMINATING RED, DIRECTION ONE: more type arguments than the declaration has parameters.
+// The class name is asserted, not merely "something refused" -- a typo in the fixture source
+// would satisfy the weaker reading.
+test fn surplus_type_argument_refuses() -> Bool {
+  refused_with_class(arity_run(surplus_source), "TypeArgumentArityMismatch")
+}
+
+// DISCRIMINATING RED, DIRECTION TWO: fewer type arguments than parameters. Authored separately
+// from the surplus arm because the two absorbed through DIFFERENT mechanisms -- the surplus
+// argument was never read, the missing one left a parameter unsubstituted -- so one arm is not
+// evidence about the other.
+test fn deficit_type_argument_refuses() -> Bool {
+  refused_with_class(arity_run(deficit_source), "TypeArgumentArityMismatch")
+}
+
+// THE POSITIVE CONTROL. The same declarations applied at their declared arity compile clean --
+// zero diagnostics of ANY severity. Without this the REDs above are satisfied by a wall that
+// refuses every generic application.
+test fn matched_type_argument_arity_compiles_clean() -> Bool {
+  completed_with_no_diagnostics(arity_run(green_source))
+    && !refused_with_class(arity_run(green_source), "TypeArgumentArityMismatch")
+}

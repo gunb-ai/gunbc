@@ -4,6 +4,7 @@
 // src/extdeps_cargo.rs
 // src/extdeps_cargo_version.rs
 // src/extdeps_container_oci_digest.rs
+// src/extdeps_currency_currency.rs
 // src/extdeps_external_authority.rs
 // src/extdeps_languages_dag_emit.rs
 // src/extdeps_languages_dag_syntax.rs
@@ -41,7 +42,6 @@
 // src/std_computation.rs
 // src/std_constructors.rs
 // src/std_content_hash.rs
-// src/std_currency.rs
 // src/std_decl_ref.rs
 // src/std_disposition.rs
 // src/std_dissolution.rs
@@ -50,7 +50,6 @@
 // src/std_error_primitives.rs
 // src/std_execution_mode.rs
 // src/std_graph.rs
-// src/std_http_path.rs
 // src/std_induction.rs
 // src/std_integer.rs
 // src/std_interface_summary.rs
@@ -80,6 +79,7 @@
 // src/std_types.rs
 // src/std_unicode_types.rs
 // src/std_witness_admission.rs
+// src/std_workspace_artifact.rs
 // src/v1_compiler_annotation_bind.rs
 // src/v1_compiler_artifact.rs
 // src/v1_compiler_closure_stub_v2_std_integer_rust.rs

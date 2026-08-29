@@ -1869,7 +1869,8 @@ mod tests {
     // Test-only mirror of gunbc.ci_materialization obligation subject rows. Production
     // parses transported obligations from WalkPlan.finalization; this module is the
     // checkable drift receipt (review 48261 / 48570).
-    const TEST_COMPILE_ANCHOR_OBLIGATION_ENTRY: &str = "dag/tools/floor_effect_gate_witness.dag";
+    const TEST_COMPILE_ANCHOR_OBLIGATION_ENTRY: &str =
+        "dag/gunbc/instruments/floor_effect_gate_witness.dag";
     const TEST_COMPILE_ANCHOR_OBLIGATION_FUNCTION: &str = "dag_compile_clean_gate_passes";
     const TEST_NATIVE_BUNDLE_OBLIGATION_ENTRY: &str =
         "src/v2/test/claim/execution/native_selected_witness_bundle_production.dag";

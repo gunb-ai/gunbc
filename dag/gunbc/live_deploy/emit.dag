@@ -41,7 +41,7 @@ import extdeps.systemd.unit_file {
   SystemdInstallSection, NotInstallable, Installable,
   SystemdUnitDirective, Description, After, Wants,
   SystemdServiceDirective, ServiceType, ExecStart, Restart,
-  Environment, EnvironmentFile, WorkingDirectory, ServiceUser, ServiceGroup,
+  Environment, EnvironmentFile, EnvironmentFileIfPresent, WorkingDirectory, ServiceUser, ServiceGroup,
   SystemdTimerDirective, TimerUnit, OnCalendar, OnBootSec, OnUnitInactiveSec,
   AccuracySec, RandomizedDelaySec, Persistent,
   SystemdInstallDirective, WantedBy,
@@ -53,11 +53,15 @@ import gunbc.live_deploy.spec {
   DeploymentDependencyStep,
   EnsuredSubject, EnsuredPackage, EnsuredHostDirectory, ensured_subject_identity,
   DeploymentArtifactStep,
-  ServeBinary, GunbcSourceTree, DispatchWorktreeRoot, AttemptStateRoot, SystemdUnit, BeltTimerUnit, FleetConvergeTimerUnit, TailscaleServeMapping, DeployedTreeRemoteUnit,
+  ServeBinary, GunbcSourceTree, DispatchWorktreeRoot, AttemptStateRoot, SystemdUnit, BeltTimerUnit, FleetConvergeTimerUnit, TailscaleServeMapping, DeployedTreeRemoteUnit, PublicationHelperTimerUnit,
   deployment_belt_service_unit_name,
   deployment_tree_remote_unit_name,
   deployment_belt_timer_unit_name,
   deployment_belt_service_unit_path,
+  deployment_publication_service_unit_name,
+  deployment_publication_timer_unit_name,
+  deployment_publication_service_unit_path,
+  deployment_credential_env_path,
   deployment_fleet_converge_service_unit_name,
   deployment_fleet_converge_timer_unit_name,
   deployment_fleet_converge_service_unit_path,
@@ -69,7 +73,13 @@ import gunbc.live_deploy.spec {
   TeardownDisposition, TeardownActs, TeardownRefuses,
   tree_sync_unit_path,
 }
-import gunbc.host_layout { belt_spawn_workdir_env_var, instance_receipts_dir }
+import gunbc.host_layout {
+  belt_spawn_workdir_env_var,
+  instance_receipts_dir,
+  publication_spool_root,
+  publication_request_dir,
+  publication_answer_dir,
+}
 import gunbc.host_axis_caps {
   deploy_memory_cap_apply_script_for_host,
   deploy_memory_cap_script_author_precedes_shadow_revert,
@@ -364,6 +374,130 @@ fn emit_belt_service_unit_doc(spec: DeploymentSpec) -> Doc {
     ],
     install: NotInstallable,
   }))
+}
+
+// THE PUBLICATION HELPER: THE ONLY UNIT IN THIS DEPLOYMENT THAT BINDS A CREDENTIAL, AND THE ONLY
+// ONE WHOSE User= IS NOT THE SERVICE PRINCIPAL. gunbc.live_deploy.spec deployment_credential_env_path
+// carries the full argument for why that pairing is the boundary rather than the file being one;
+// what this emission adds is the enforcement, and it is worth stating what each line is doing:
+//
+// User=/Group= name the publication principal, so the credential file this unit reads is owned by
+// an account the service user is not. EnvironmentFileIfPresent is the `-` prefixed form, so an
+// absent file leaves the unit startable and the helper answers with a recorded refusal naming the
+// variable -- the located refusal is a FEATURE, and the required form would replace it with a unit
+// that will not start. Type=oneshot with no Restart, because a run either answers its spool or
+// reports why it could not, and the timer is what asks again.
+//
+// THERE IS NO Environment= LINE AND NO SPAWN ROOT. The belt unit carries GUNBC_BELT_SPAWN_WORKDIR
+// because a tick creates worktrees and launches provider sessions; this unit reads documents and
+// writes documents, so it is handed one argument -- the instance root whose spool it answers -- and
+// nothing that would let it act on a tree.
+fn emit_publication_service_unit_doc(spec: DeploymentSpec) -> Doc {
+  let svc = spec.service
+  doc_text(text: serialize_systemd_unit_file(file: ServiceUnitFile {
+    unit: [
+      Description { text: "gunbc roadmap publication helper (answers publication requests under its own principal)" as NonEmptyStr },
+      After { target: "network-online.target" as NonEmptyStr },
+      Wants { target: "network-online.target" as NonEmptyStr },
+    ],
+    service: [
+      ServiceType { mode: "oneshot" as NonEmptyStr },
+      ServiceUser { name: spec.names.publication_principal },
+      ServiceGroup { name: spec.names.publication_principal },
+      WorkingDirectory { path: svc.repo_root },
+      EnvironmentFileIfPresent { path: deployment_credential_env_path(names: spec.names) },
+      ExecStart { command: join([
+        svc.serve_binary as String,
+        " run --source-root dag --source-root src/v2",
+        " --entry dag/gunbc/roadmap/roadmap_publication_helper.dag",
+        " --function publication_helper_run_once_cli",
+        " --arg instance_root=", svc.instance_root as String,
+      ], "") as NonEmptyStr },
+    ],
+    install: NotInstallable,
+  }))
+}
+
+// THE HELPER'S CADENCE MIRRORS THE BELT'S, and the mirroring is load-bearing rather than tidy: a
+// publication request is written by a belt tick and answered by a helper run, so the two cadences
+// compose into the latency an operator actually sees. Equal periods make that one tick of extra
+// latency; a slower helper would make the belt's own cadence meaningless for this pass.
+//
+// OnUnitInactiveSec for the same reason belt_tick_cadence_note gives: it measures from when the
+// previous run FINISHED, so a run that outlasts the period cannot schedule its own successor. A
+// helper run performs one network read per unanswered request, so that property matters here for
+// the same reason it matters there.
+fn emit_publication_timer_unit_doc(spec: DeploymentSpec) -> Doc {
+  doc_text(text: serialize_systemd_unit_file(file: TimerUnitFile {
+    unit: [Description { text: "gunbc roadmap publication helper cadence" as NonEmptyStr }],
+    timer: [
+      TimerUnit { target: deployment_publication_service_unit_name(names: spec.names) },
+      OnBootSec { duration: "2min" as NonEmptyStr },
+      OnUnitInactiveSec { duration: belt_tick_cadence as NonEmptyStr },
+      AccuracySec { duration: "5s" as NonEmptyStr },
+    ],
+    install: Installable { directives: [WantedBy { target: "timers.target" as NonEmptyStr }] },
+  }))
+}
+
+fn apply_publication_service_unit_write_step(spec: DeploymentSpec) -> PipelineStep {
+  deploy_raw(command: deploy_stage_write_command(
+    stage_name: deployment_publication_service_unit_name(names: spec.names) as String,
+    content: render(doc: emit_publication_service_unit_doc(spec: spec), proto: live_deploy_protocol),
+  ))
+}
+
+fn apply_publication_timer_unit_write_step(spec: DeploymentSpec) -> PipelineStep {
+  deploy_raw(command: deploy_stage_write_command(
+    stage_name: deployment_publication_timer_unit_name(names: spec.names) as String,
+    content: render(doc: emit_publication_timer_unit_doc(spec: spec), proto: live_deploy_protocol),
+  ))
+}
+
+// THE TWO SPOOL DIRECTORIES CARRY OPPOSITE PERMISSIONS, AND THAT IS THE WHOLE ENFORCEMENT.
+//
+// requests/ is owned by the publication principal with the SERVICE user's group and mode 0730:
+// group write plus group search, and NO group read. The service user can therefore CREATE a request
+// and cannot list the directory, read another request, or replace one it did not name; the helper,
+// as owner, can do all three.
+//
+// answers/ is owned by the publication principal outright at 0755. The service user can read an
+// answer -- a publication receipt carries no secret -- and cannot write one. That asymmetry is what
+// makes a forged answer unwritable rather than merely unlikely: an answer the service user could
+// create would be a publication receipt the belt then copies to the attempt's own address as though
+// GitHub had been asked, which is the fabricated-plausible-output failure with a filesystem write
+// standing in for a network read.
+//
+// THE MODE IS STATED RATHER THAN DERIVED, and install_d_mode_undeviated_note already records that
+// this is the open frontier: a member's mode should be derived from which principals need which
+// verbs on it. These two are the first members in this emitter whose modes are NOT the shared 0755
+// constant, and they are stated here with the dependents that force them written above -- which is
+// the input that derivation will eventually consume, not a second convention beside it.
+data publication_spool_request_mode: NonEmptyStr = "0730"
+
+data publication_spool_answer_mode: NonEmptyStr = "0755"
+
+fn apply_publication_spool_steps(spec: DeploymentSpec) -> List<PipelineStep> {
+  [
+    deploy_raw(command: install_directory_owned_command(
+      mode: publication_spool_answer_mode,
+      owner: spec.names.publication_principal,
+      group: spec.names.publication_principal,
+      path: publication_spool_root(instance_root: spec.service.instance_root as String),
+    )),
+    deploy_raw(command: install_directory_owned_command(
+      mode: publication_spool_request_mode,
+      owner: spec.names.publication_principal,
+      group: spec.service.service_user,
+      path: publication_request_dir(instance_root: spec.service.instance_root as String),
+    )),
+    deploy_raw(command: install_directory_owned_command(
+      mode: publication_spool_answer_mode,
+      owner: spec.names.publication_principal,
+      group: spec.names.publication_principal,
+      path: publication_answer_dir(instance_root: spec.service.instance_root as String),
+    )),
+  ]
 }
 
 fn emit_belt_timer_unit_doc(spec: DeploymentSpec) -> Doc {
@@ -762,6 +896,26 @@ fn emit_artifact_upsert(art: DeploymentArtifactStep, spec: DeploymentSpec, revis
       deploy_raw(command: systemctl_enable_command(unit: spec.service.unit_name, privileged: true)),
       deploy_raw(command: systemctl_restart_command(unit: spec.service.unit_name, privileged: true)),
     ]
+    PublicationHelperTimerUnit => concat(
+      apply_publication_spool_steps(spec: spec),
+      [
+        apply_publication_service_unit_write_step(spec: spec),
+        apply_publication_timer_unit_write_step(spec: spec),
+        deploy_raw(command: deploy_stage_install_command(
+          stage_name: deployment_publication_service_unit_name(names: spec.names) as String,
+          mode: install_file_shared_mode,
+          dest: deployment_publication_service_unit_path(names: spec.names) as String,
+        )),
+        deploy_raw(command: deploy_stage_install_command(
+          stage_name: deployment_publication_timer_unit_name(names: spec.names) as String,
+          mode: install_file_shared_mode,
+          dest: art.path as String,
+        )),
+        deploy_raw(command: systemctl_daemon_reload_command(privileged: true)),
+        deploy_raw(command: systemctl_enable_command(unit: deployment_publication_timer_unit_name(names: spec.names), privileged: true)),
+        deploy_raw(command: systemctl_restart_command(unit: deployment_publication_timer_unit_name(names: spec.names), privileged: true)),
+      ]
+    )
     BeltTimerUnit => [
       deploy_raw(command: install_d_owned_command(
         spec: spec,
@@ -835,6 +989,16 @@ fn emit_artifact_teardown(art: DeploymentArtifactStep, spec: DeploymentSpec) -> 
         deploy_raw(command: gunbc.live_deploy.operations.rm_force_command(paths: [
           art.path as String,
           deployment_fleet_converge_service_unit_path(names: spec.names) as String,
+        ])),
+        deploy_raw(command: systemctl_daemon_reload_command(privileged: true)),
+      ]
+    )
+    PublicationHelperTimerUnit => concat(
+      systemctl_disable_now_if_present_steps(unit: deployment_publication_timer_unit_name(names: spec.names), privileged: true),
+      [
+        deploy_raw(command: gunbc.live_deploy.operations.rm_force_command(paths: [
+          art.path as String,
+          deployment_publication_service_unit_path(names: spec.names) as String,
         ])),
         deploy_raw(command: systemctl_daemon_reload_command(privileged: true)),
       ]

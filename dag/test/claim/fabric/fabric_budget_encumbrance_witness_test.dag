@@ -2,7 +2,7 @@ module test.claim.fabric_budget_encumbrance_witness
 
 import std.types { NonEmptyStr, Bool, Int, List }
 import std.measure { money_amount_micro, money_amount_micro_count }
-import std.currency { Usd, Eur }
+import extdeps.currency.currency { Usd, Eur }
 import std.nat { Nat }
 import extdeps.accounting.budget { Appropriation }
 import extdeps.accounting.encumbrance { EncumbranceLedger, ExceedsAppropriation, UnknownEncumbrance, ExpenditureExceedsEncumbrance, AlreadyTerminal, DuplicateReference }

@@ -814,7 +814,7 @@ test fn the_three_not_evaluated_causes_are_not_collapsed() -> Bool {
 test fn the_ratchet_runner_has_no_executing_consumer_today() -> Bool {
   match emit_ratchet_runner_execution_standing(cadence: emit_ratchet_runner_cadence) {
     UnexecutedDeferredWitness { entry: e, function: f } =>
-      e == "dag/tools/emit_subject_clean_ratchet.dag" && f == "observe"
+      e == "dag/gunbc/instruments/emit_subject_clean_ratchet.dag" && f == "observe"
     WitnessHasExecutingConsumer { cadence: _ } => false
     LegacyFrozenPathDeferral { entry: _, function: _ } => false
     UnclassifiedPathDeferral { entry: _, function: _ } => false

@@ -21,7 +21,7 @@ import product.fabric.execution {
   Attempt, ExecutionAttemptLineage,
   InitialAttempt, InfrastructureRetry, CapabilityEscalation, RequestedReexecution,
 }
-import product.fabric.work { ExecutionRequirements, Shape, HardRequirements }
+import product.fabric.work { ExecutionRequirements, Shape, HardRequirements, CustomerExecutableCapacity }
 import product.fabric.isolation { shared_kernel_sandbox_profile }
 import product.fabric.envelope { ResourceEnvelope }
 import product.fabric.demand { Demand, AdmissionTerms, BuyTerms, SatisfactionRequirement }
@@ -29,7 +29,7 @@ import product.fabric.identity {
   FabricIdentity, ExecutionAttemptKey, DemandKey, WorkKey, fabric_identity_eq,
 }
 import std.content_hash { ContentHash, content_hash_of_value }
-import std.currency { Usd }
+import extdeps.currency.currency { Usd }
 import std.measure { money_amount_micro, hardware_thread_count }
 import std.nat { Nat }
 import std.types { NonEmptyStr, Bool, List }
@@ -53,6 +53,7 @@ fn dp(n: Nat) -> DropoutPermille? {
 }
 
 data fixture_requirements: ExecutionRequirements = ExecutionRequirements {
+  capacity_class: CustomerExecutableCapacity,
   shape: Shape {
     hard: HardRequirements { threads: hardware_thread_count(count: 8) },
     envelope: ResourceEnvelope { cpu: none, gpu: none, memory: none, storage: none, network: none },

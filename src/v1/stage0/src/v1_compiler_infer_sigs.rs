@@ -7,21 +7,15 @@ use self::FuncSigLookup::*;
 use self::NoDerivableSigReason::*;
 pub use crate::std_induction::SubValueRelation;
 use crate::std_induction::SubValueRelation::*;
-pub use crate::std_syntax::BinOp;
-use crate::std_syntax::BinOp::*;
 pub use crate::v1_compiler_infer_occurrence_binding::module_path_owner_binding_decide;
 pub use crate::v1_compiler_infer_occurrence_binding::ModulePathBindingProjection;
 use crate::v1_compiler_infer_occurrence_binding::ModulePathBindingProjection::*;
 pub use crate::v1_compiler_infer_types::emit_map_has;
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
-use crate::v1_std_core::Cardinality::*;
 use crate::v1_std_core::CompilerDiagnostic::MissingAnnotation;
 use crate::v1_std_core::ExprData::ExprCall;
-use crate::v1_std_core::InferredNode::*;
-use crate::v1_std_core::MatchPattern::*;
 pub use crate::v1_std_core::{authored_name_at, expr_call_func_at, make_error_node, no_span};
-pub use crate::v1_std_core::{Cardinality, InferredNode, MatchPattern};
 pub use crate::v1_std_core::{
     CompilerDiagnostic, DeclaredFuncSig, ErrorNode, ExprData, NewlineIndex, Node,
 };

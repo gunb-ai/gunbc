@@ -1,0 +1,883 @@
+module product.fabric.contention
+
+import std.types { Bool, Int, List, NonEmptyStr }
+import std.algebra { BoundedLattice, Ordering }
+import extdeps.currency.currency { CurrencyCode }
+import std.measure {
+  MoneyAmountMicro, money_amount_micro, money_amount_micro_count,
+  Second, second, second_count,
+}
+import std.pareto {
+  AxisComparison, Better, Same, Worse,
+  HigherIsBetter,
+  axis_comparison,
+}
+import product.fabric.identity { FabricIdentity, DemandKey, OfferKey, fabric_identity_eq }
+import product.fabric.demand { Demand }
+import product.fabric.supply {
+  SupplierOffer, GrantDuration, ExactGrantDuration, EstimatedGrantDuration,
+  UnobservedGrantDuration,
+  DemandOfferAffordability,
+  Affordable, AffordableUnderEstimate,
+  QuoteExceedsMaximumBuyOrder, QuoteCurrencyMismatch,
+  QuoteNotPriceableWithoutDuration,
+  QuotedTotalDerived, QuotedTotalNeedsDuration,
+  offer_affordability_for, offer_quoted_total_for_grant,
+  billed_seconds,
+}
+
+// WHICH DEMAND WINS SCARCE CAPACITY. THE MIRROR OF SUPPLY SELECTION, AND THE
+// HALF THAT WAS MISSING.
+//
+// product.fabric.supply answers one question: given ONE demand, which offers
+// can serve it and which of those it can afford. That is the supply side of the
+// posted-offer market. Nothing in the fabric answered the demand side -- given
+// ONE offer with capacity for one grant, and several demands that all want it,
+// which demand gets it -- and scarce is the normal state, not the edge case. So
+// two demands could be admitted against the same last slot and nothing in the
+// model preferred either: the choice fell to whichever caller happened to fold
+// first, and an ordering produced by evaluation order is not an ordering, it is
+// an accident that stays stable until it does not.
+//
+// THIS IS A PEER OF SupplySelectionPolicy, NOT A SECOND MEMBER OF IT. The two
+// policies take different inputs and return different carriers -- one ranks
+// offers for a demand and consults shape, trust domain, capabilities and price;
+// the other ranks demands for an offer and consults none of those, because
+// admission has already decided them. Collapsing them into one axis is what
+// left the demand side with no vocabulary at all.
+
+// THE RANKING IS DERIVED, NEVER DECLARED.
+//
+// The field this module replaces was `AdmissionTerms.priority_class`, a String
+// a requester typed. The reason it is gone rather than typed harder is that a
+// requester is the party with the least knowledge of the whole population and
+// the most incentive to claim precedence, so any field on which they may state
+// their own rank is fail-open by shape -- the same argument
+// gunbc.fabric_capacity_class_gap makes for refusing to put a capacity class on
+// the supplier's own offer.
+//
+// So the ranking key is a DERIVATION over facts both sides already state: the
+// buyer's ceiling (reservation_price) against the supplier's ask for this grant
+// (offer_quoted_total_for_grant). It is a fact about a PAIR, never a property
+// of the demand alone.
+//
+// IT IS BUYER HEADROOM, AND CALLING IT THE FABRIC'S MARGIN WAS AN OVERCLAIM.
+// An earlier revision of this note said the difference "is the arbitrage this
+// business is". Review 56530 caught that, and it is right: reservation_price is
+// the MOST a buyer will pay, and nothing in this model establishes that the
+// buyer is charged it. product.fabric.demand's own header is explicit that
+// three monetary facts stay separate -- the liability RESERVED, the cost used
+// to COMPARE, and the amount SETTLED -- and warns that conflating them is the
+// defect the note exists to prevent. There is no settlement rule anywhere in
+// the fabric, so what the buyer actually pays is unmodeled, and a quantity
+// described as revenue while no rule produces it is exactly that conflation.
+//
+// The quantity itself is not invented. It is the difference of two modeled
+// facts and it means one specific thing: how much room there is between what
+// this offer asks and what this buyer would tolerate. That is what it is now
+// named, and every claim about what the fabric earns is withdrawn from this
+// module.
+//
+// WHY THIS IS NAMED AND NOT REFUSED, WHERE THE OPPORTUNITY COST IS REFUSED --
+// and the difference is the whole reason the two are treated differently.
+// A missing fact forces a refusal when it can CHANGE THE ORDERING. The
+// opportunity-cost fact does: whether a freed remainder is resellable decides
+// between the rate ordering and the total ordering, so a fold that guessed
+// would emit a winner it knows may be wrong, and that case refuses.
+//
+// A settlement rule does not, under either rule anyone has proposed. If the
+// buyer pays the ASK, the fabric's own take is the same whichever admissible
+// buyer wins, so it is indifferent on revenue and ranking by headroom allocates
+// to the buyer who values the capacity most. If the buyer pays their
+// RESERVATION PRICE, headroom IS the fabric's take and ranking by it maximises
+// revenue directly. Under one the ordering is optimal, under the other the
+// fabric is indifferent between orderings -- so no settlement rule anyone has
+// named makes headroom-ranking the WRONG order. Refusing on a fact that cannot
+// change the answer would be the purity trap rather than fail-closed: unbounded
+// work priced in elegance, refusing every field forever while the deficit it
+// names moves nothing.
+//
+// NEXT-RUNG TRIGGER: a settlement authority stating what a winning buyer is
+// charged. When it lands, this ranking is re-derived from the charge rather
+// than from the ceiling, and this note retires -- not because headroom was
+// wrong, but because the fabric will finally be able to say what it earns.
+//
+// THAT PAIRING IS THE POINT, AND IT IS WHY THE MARGIN IS NOT PRECOMPUTED ON THE
+// DEMAND. Billing mode decides what a bidder is worth. A ninety-second job
+// costs ninety seconds on continuous owned capacity, a full billed hour on an
+// hourly supplier that rounds up, and something between the two on a per-minute
+// one. The SAME two demands can therefore rank in OPPOSITE orders against two
+// different offers, and any design that scored a demand once and reused the
+// score across offers would be silently wrong in exactly the cross-mode case
+// the fleet is about to have. offer_quoted_total_for_grant already models the
+// quantum; this module's job is to not throw that away by ranking one step too
+// early.
+//
+// THE COMPARATOR IS MARGIN PER BILLED SECOND, NOT MARGIN. That distinction was
+// missed by the first cut of this module and it matters exactly where the mode
+// argument above matters. What an offer actually sells is OCCUPANCY, so the
+// question a scarce offer asks is not which buyer pays the larger margin but
+// which buyer pays the larger margin FOR THE CAPACITY THEY CONSUME. On
+// continuous capacity the offer is released the instant the grant ends and can
+// serve again, so a 90-second job earning 110 beats a 300-second job earning
+// 200: it earns more per second and hands back 210 seconds. Ranking those two
+// by total margin picks the second and is wrong.
+//
+// AND THE DENOMINATOR IS BILLED SECONDS RATHER THAN ELAPSED ONES, WHICH IS WHAT
+// MAKES THIS ONE DERIVATION INSTEAD OF A MODE SWITCH. Under an hourly quantum
+// two jobs of 90 and 300 seconds both consume one whole billed hour -- the
+// supplier rounds up, so occupancy inside that hour is not divisible and not
+// resellable. Their denominators are therefore EQUAL, the rate ordering
+// collapses exactly onto the total-margin ordering, and the hourly answer falls
+// out of the same expression that gives the continuous one. There is no arm on
+// billing mode here, and there must not be: a policy that branched on the
+// quantum would be a second authority for a fact billed_seconds already states.
+//
+// The alternative -- compare total margin always -- is the hourly answer
+// applied to every mode, which is the same class of error the two-mode witness
+// catches one layer up, committed one layer down. It happens to agree with this
+// one whenever the billed durations match, which is why a suite that only
+// exercised equal-duration bidders would not have caught it.
+type DemandSelectionPolicy =
+  | HighestBuyerHeadroomPerBilledSecondForOneOffer
+
+// A DECLARED CONTINGENCY: WHAT THIS COMPARATOR DOES WHEN THE QUOTE IS ZERO, AND
+// WHY THAT ANSWER IS NOT UNCONDITIONALLY RIGHT.
+//
+// On a paid-through offer -- an hour already bought, whose cash is sunk and
+// whose marginal cost for the remainder is nothing -- the cost term vanishes and
+// the margin becomes the bid itself. The ordering then reduces to bid per billed
+// second, so a short cheap job outranks a long expensive one even though the
+// long one earns strictly more cash on an offer that costs nothing to run.
+// witnessed executably in test.claim.fabric_contention_witness_test as
+// a_zero_quote_ranks_by_bid_rate_and_the_larger_total_bid_loses.
+//
+// THAT IS RIGHT IF THE FREED REMAINDER CAN BE SOLD AND WRONG IF IT EXPIRES
+// UNSOLD. Preferring the rate takes the short job and keeps the rest of the
+// paid-through interval available; that is the better trade exactly when
+// another demand can use it. If nothing can -- the hour lapses idle -- then no
+// alternative use is displaced, the only question is which single demand earns
+// most before it expires, and the answer is TOTAL margin.
+//
+// So the correct comparator here is a function of whether a feasible
+// alternative use exists, which is an OPPORTUNITY COST and which nothing in
+// this model can currently state. supply.dag's own note already enumerates it
+// among the inputs selection would need, including the arm where there is no
+// feasible alternative use and the arm where the alternative is simply UNREAD
+// -- so unknown does not silently become zero. This module cannot decide it
+// from what it has.
+//
+// WHY IT IS DECLARED RATHER THAN GUARDED. An arm switching on "is the remainder
+// sellable" would have to read a fact with no carrier, so it could only be fed
+// by a caller-supplied flag -- a requester-stated input on the exact axis this
+// module deleted priority_class to remove, and one no witness could exercise
+// honestly. Rate-preferring is also the conservative default of the two: it
+// keeps capacity available rather than committing it, so being wrong costs an
+// unsold remainder rather than a displaced buyer.
+//
+// NEXT-RUNG TRIGGER, owned by the supply lane: an opportunity-cost carrier that
+// can state whether a feasible alternative use exists for a freed remainder.
+// When it lands, the zero-quote arm is decided from it rather than defaulted,
+// and the witness above becomes the discriminating pair for that decision
+// rather than the record of an open question.
+
+// WHAT THIS POLICY IS NOT, DECLARED SO NOBODY LATER READS IT AS ONE. It selects
+// among the demands contending for ONE offer, greedily. That is not a fleet-wide
+// allocation: a demand that wins offer A here might have been better served by
+// offer B, leaving A for a buyer who has no alternative, and a sequence of
+// locally best choices can total less than the best assignment. Answering that
+// needs a carrier this model does not have -- the simultaneous field of every
+// open demand against every open offer, which nothing in the fabric assembles,
+// because DemandPopulation is sealed per core and offers are not rostered at
+// all. NEXT-RUNG TRIGGER: a carrier holding that joint field; until it exists,
+// the honest scope is one offer, and stating that is what keeps per-offer
+// selection from being mistaken for an allocator.
+
+// WHY THIS IS A RANKING AND NOT std.pareto's DOMINANCE, since the spine is
+// right there and this module borrows its vocabulary. std.pareto answers which
+// candidates are NON-DOMINATED, which is the right answer when the question is
+// which options deserve consideration. One grant of scarce capacity goes to
+// exactly one demand, and a Pareto front of two is not a winner -- picking from
+// it would put the real decision below the spine where nothing names it. What
+// is borrowed is the ORIENTATION vocabulary: the sense in which more headroom
+// is better is stated once, in std.pareto's AxisGoal, rather than re-coined here.
+// THE RATES ARE COMPARED BY CROSS-MULTIPLICATION, NEVER BY DIVIDING FIRST.
+//
+// headroom_a / billed_a against headroom_b / billed_b is decided exactly by
+// headroom_a * billed_b against headroom_b * billed_a. Dividing first would round,
+// and rounding here does not merely blur a close call: two genuinely different
+// rates that round to the same integer become a TIE, which this module reports
+// as a refusal, so the arithmetic shortcut would manufacture unresolvable
+// contention out of demands the policy can in fact separate. It would also
+// round in the wrong direction for the fabric -- integer division floors, so
+// the cheaper-per-second bidder is the one whose advantage disappears.
+fn rate_ordering(
+  headroom_a: MoneyAmountMicro, billed_a: Second,
+  headroom_b: MoneyAmountMicro, billed_b: Second,
+) -> Ordering {
+  let left = money_amount_micro_count(m: headroom_a) * second_count(s: billed_b)
+  let right = money_amount_micro_count(m: headroom_b) * second_count(s: billed_a)
+  if left < right { Less } else if left > right { Greater } else { Equal }
+}
+
+fn headroom_rate_comparison(
+  headroom_a: MoneyAmountMicro, billed_a: Second,
+  headroom_b: MoneyAmountMicro, billed_b: Second,
+) -> AxisComparison {
+  axis_comparison(
+    goal: HigherIsBetter,
+    value_order: rate_ordering(
+      headroom_a: headroom_a, billed_a: billed_a,
+      headroom_b: headroom_b, billed_b: billed_b,
+    ),
+  )
+}
+
+// OCCUPANCY PROVENANCE, AND THE AUTHORITY IT IS READ FROM.
+//
+// The denominator this policy ranks by is BILLED SECONDS, which is derived from
+// the grant's duration. A duration is not always a measured quantity -- a
+// caller may only have an estimate -- so the denominator is not always a
+// measured quantity either, and a rank computed from a projected denominator is
+// a weaker claim than one computed from a known denominator. Collapsing the two
+// would be a guess wearing a derivation: comparable, orderable, and wrong in a
+// way nothing downstream could detect.
+//
+// THIS IS READ FROM GrantDuration'S OWN ARMS, AND AN EARLIER CUT READ IT FROM
+// THE WRONG PLACE. That cut inferred estimate-ness from the AFFORDABILITY
+// verdict, on the reasoning that AffordableUnderEstimate marks a projection.
+// It does mark one -- for AFFORDABILITY. offer_affordability_for answers plain
+// Affordable for an EstimatedGrantDuration whenever the quote is
+// QuotedFlatPerGrant, and that is CORRECT there, because a flat per-grant quote
+// does not depend on how long the grant runs. The occupancy denominator does.
+// So that pair produced a projected denominator carrying a verdict that said
+// nothing had been projected -- one authority borrowed to answer for another's
+// question, with both halves individually true and only the arrow between them
+// invented.
+//
+// The duration coproduct is the authority for how well the duration is known,
+// and it is matched directly here.
+//
+// THE MATCH IS DELIBERATE WHERE A CALL WOULD HAVE DONE, AND IT WORKED. An
+// earlier cut of this fold classified by calling the accessor that extracts the
+// seconds, which was shorter. Matching meant that when supply.dag gained a third
+// arm -- an unobserved duration, which the fleet needed and which had no
+// spelling in GrantDuration at the time -- THIS FOLD STOPPED COMPILING and
+// somebody had to decide what contention does with a duration nobody measured. A
+// call would have kept working and kept answering with a number, which is the
+// absorbing fallback: the fold always returns something, so the measurement
+// deficit never surfaces and never ranks for fixing.
+//
+// THE TRIGGER FIRED. The arm landed with the supply lane's partiality work, this
+// fold refused to compile exactly as designed, and the prescribed outcome -- a
+// refusal to rank rather than a substituted worst case -- is what the projection
+// below now produces. The refusal arm was NOT modeled ahead of the carrier,
+// because a refusal for a state with no spelling would have been permanently
+// unreachable and would have read as coverage; it is modeled now because the
+// state exists and is reachable.
+//
+// THAT REACHABILITY IS NOT OBVIOUS AND IS WORTH STATING, because the natural
+// assumption is that an unmeasured duration cannot get this far. It can. A
+// QuotedFlatPerGrant quote prices the grant whole, so supply.dag totals it with
+// no duration at all and screens it Affordable -- deliberately, per its own
+// annotation. So a flat-priced, affordable, entirely unmeasured grant arrives
+// here on a live path: priced fine, and rankable by nothing, because the
+// occupancy denominator is what needs the measurement and the price never did.
+type OccupancyBasis
+  = MeasuredOccupancy
+  | ProjectedOccupancy
+
+// THE TRIGGER ABOVE HAS FIRED, AND THIS IS THE FOLD IT NAMED. The unobserved
+// arm landed on GrantDuration, this fold stopped compiling, and the outcome the
+// annotation prescribed -- refuse to rank rather than substitute a worst case --
+// is what it now produces.
+//
+// The projection returns the seconds and the basis TOGETHER because they are one
+// fact read off one arm. Answering them as two values a caller pairs up would
+// let a measured duration be labelled projected, which is the authority
+// substitution the annotation above already caught once: both halves true and
+// only the arrow between them invented. Paired in the carrier, that state has no
+// spelling.
+//
+// The obligation travels out of the unobserved arm unchanged. Nothing here
+// authors a reason, because the supplier of the duration already stated one and
+// a second wording would be a second authority for one fact.
+type GrantDurationObservation
+  = DurationObserved { seconds: Second, basis: OccupancyBasis }
+  | DurationUnobserved { obligation: NonEmptyStr }
+
+fn grant_duration_observation(duration: GrantDuration) -> GrantDurationObservation {
+  match duration {
+    ExactGrantDuration { seconds: s } =>
+      DurationObserved { seconds: s, basis: MeasuredOccupancy }
+    EstimatedGrantDuration { seconds: s } =>
+      DurationObserved { seconds: s, basis: ProjectedOccupancy }
+    UnobservedGrantDuration { obligation: why } =>
+      DurationUnobserved { obligation: why }
+  }
+}
+
+// OccupancyBasis IS AN EVIDENCE GRADE, SO IT INHABITS THE LATTICE RATHER THAN
+// CARRYING A HAND-ROLLED COMBINE.
+//
+// An earlier cut answered basis_is_measured(b) -> Bool and combined two bases by
+// conjoining the Bools. Review 56516 called for a canonical combination surface
+// instead, and it is right about the shape even though the type is not
+// substrate and lives in this module: what the fold actually wants is a MEET on
+// a two-point evidence lattice, and std.algebra already models BoundedLattice.
+// std.termination's DescentEvidence is the precedent -- evidence-graded,
+// fail-closed at the bottom -- and std.computation_identity says in its own
+// header that it mirrors it. Reaching for a Bool here re-coined the meet under
+// another name, which is the operation-by-inhabitance point of DESIGN section 4:
+// the combination comes from the algebra the type inhabits, not from a
+// per-consumer predicate.
+//
+// The orientation is what makes the bottom fail-closed. MeasuredOccupancy is
+// TOP and ProjectedOccupancy is BOTTOM, so combining a measured denominator
+// with a projected one yields PROJECTED: evidence degrades to the weakest
+// member, and no fold over a field can report a stronger basis than its worst
+// candidate. The join is present because a BoundedLattice has one; this module
+// consumes only the meet, since taking the BEST evidence in a field would be
+// exactly the overclaim the meet exists to prevent.
+fn occupancy_basis_meet(a: OccupancyBasis, b: OccupancyBasis) -> OccupancyBasis {
+  match a {
+    ProjectedOccupancy => ProjectedOccupancy
+    MeasuredOccupancy => match b {
+      MeasuredOccupancy => MeasuredOccupancy
+      ProjectedOccupancy => ProjectedOccupancy
+    }
+  }
+}
+
+fn occupancy_basis_join(a: OccupancyBasis, b: OccupancyBasis) -> OccupancyBasis {
+  match a {
+    MeasuredOccupancy => MeasuredOccupancy
+    ProjectedOccupancy => match b {
+      MeasuredOccupancy => MeasuredOccupancy
+      ProjectedOccupancy => ProjectedOccupancy
+    }
+  }
+}
+
+data occupancy_basis_bounded_lattice: BoundedLattice<OccupancyBasis> = {
+  meet: occupancy_basis_meet
+  join: occupancy_basis_join
+  top: MeasuredOccupancy
+  bottom: ProjectedOccupancy
+}
+
+// ADMISSION IS THE WALL, AND IT IS THE ONLY ROUTE INTO RANKING.
+//
+// gunbc.fabric_witness_run has carried the standing claim in prose since the
+// floor's admission terms were written: a priority class orders demands that
+// can all be afforded, it does not admit one that cannot. That claim was a
+// comment beside a string, and a string-equality witness beside it asserted
+// nothing about the ordering because there was no ordering to assert about.
+//
+// It is now structural. Ranking does not take a Demand. It takes an
+// AdmittedDemand, which has no cross-module literal and exactly one route into
+// existence -- admit_demand_for_offer, which mints it only after the pair has
+// cleared BOTH ceilings. There is no spelling in which a caller ranks a demand
+// it has not first shown affordable, so the escape this fold could have opened
+// is not refused, it is unwritable.
+//
+// TWO CEILINGS, NOT ONE, and the second is a demand-side fact supply.dag does
+// not screen. maximum_buy_order is the ceiling on a single grant's liability
+// and offer_affordability_for enforces it. reservation_price is the most this
+// buyer will pay at all, and nothing consulted it before this module: a demand
+// could be "affordable" under a generous per-grant ceiling while the quote sat
+// above the price the buyer actually named. Enforcing it here is also what
+// makes the headroom REPRESENTABLE -- reservation minus projected is a
+// MoneyAmountMicro over Nat, so a pair that would produce a negative margin has
+// no admitted form rather than an underflowing one.
+//
+// THE OFFER IDENTITY TRAVELS ON THE RECORD because headroom is a fact about a
+// pair. Without it a caller could contend for offer B with margins honestly
+// derived against cheaper offer A and every value would be individually true;
+// select_demand_for_offer refuses a field whose members do not all name the
+// same offer, which is a check that has something to check precisely because
+// the mint recorded what it judged.
+//
+// billed_occupancy IS THE DENOMINATOR, AND IT IS STORED RATHER THAN RE-DERIVED
+// AT COMPARISON TIME because it is a fact about the same pair the margin is a
+// fact about. A comparison that recomputed it would need the offer and the
+// duration back, which is a second account of what this mint already judged and
+// free to disagree with it.
+type AdmittedDemand<P> sole_constructor {
+  demand: Demand<P>
+  offer: FabricIdentity<P, OfferKey>
+  projected_total: MoneyAmountMicro
+  buyer_headroom: MoneyAmountMicro
+  billed_occupancy: Second
+  occupancy_basis: OccupancyBasis
+  affordability: DemandOfferAffordability
+}
+
+// QuoteExceedsReservationPrice is this module's own arm rather than a fifth arm
+// on DemandOfferAffordability, because it is a BUYER-POLICY refusal about a
+// price the buyer named and supply.dag deliberately takes no demand carrier at
+// all -- it receives scalars precisely so that supply never imports demand.
+// Adding the arm there would put a demand fact in the supply vocabulary and
+// invert that edge.
+//
+// GrantOccupiesNoBilledTime IS A REFUSAL, NOT A DEGENERATE ADMISSION. A grant
+// billed zero seconds -- a zero-length grant on continuous capacity -- has no
+// rate: every such candidate cross-multiplies to zero against every other and
+// the field collapses into one undifferentiated tie, which this module would
+// then report as unresolvable contention. That is a fabricated verdict about
+// buyers who are perfectly distinguishable; the honest answer is that a grant
+// consuming no capacity is not contending for capacity, and whoever built it
+// has a duration defect to fix rather than an auction to run.
+//
+// DemandNotRankableWithoutDuration IS THE ARM BESIDE IT, AND KEEPING THEM APART
+// IS THE POINT. Both say the fold will not rank this pair, and their remedies
+// are opposite: a grant billing zero seconds is a duration DEFECT in whoever
+// built it, while an unmeasured grant is a duration nobody has OBSERVED, and the
+// second is repaired by measuring the job rather than by fixing anything. One
+// arm serving both would answer every unmeasured grant with a refusal that reads
+// as legitimate and names the wrong repair -- the worse failure, because a
+// caller acting on it looks for a bug that is not there.
+//
+// ONE ARM SERVES BOTH ROUTES INTO IT, and that is not the same collapse. A rate
+// quote refuses because no total can be derived; a flat quote totals fine and
+// refuses because no occupancy can be. Different stages, one underlying fact --
+// nobody measured the grant -- and one remedy. A second arm per route would be a
+// second name for one concept.
+//
+// The obligation is carried rather than authored. Whichever authority hit the
+// absence stated what would resolve it, and restating it here in this module's
+// own words would be a second account of one fact, free to drift from the first.
+type DemandAdmission<P>
+  = DemandAdmitted { admitted: AdmittedDemand<P> }
+  | DemandNotAffordable { refusal: DemandOfferAffordability }
+  | QuoteExceedsReservationPrice { quoted: MoneyAmountMicro, reservation: MoneyAmountMicro }
+  | GrantOccupiesNoBilledTime { duration: Second }
+  | DemandNotRankableWithoutDuration { obligation: NonEmptyStr }
+
+// The affordability verdict travels onto the admitted record rather than being
+// collapsed to a Bool, because affordable-under-a-known-total and
+// affordable-under-a-projected-one are different facts a later decision receipt
+// must be able to tell apart: an estimate's error is inherited by the
+// projection, so a contention won on a projected margin is a weaker claim than
+// one won on an exact price, and a receipt that cannot say which was which
+// cannot be audited afterwards.
+fn admit_demand_for_offer<P>(
+  demand: Demand<P>,
+  offer: SupplierOffer<P>,
+  duration: GrantDuration,
+) -> DemandAdmission<P> {
+  let affordability = offer_affordability_for(
+    offer: offer,
+    maximum_buy_order: demand.admission.buy.maximum_buy_order,
+    budget_currency: demand.admission.buy.currency,
+    duration: duration,
+  )
+  match affordability {
+    QuoteExceedsMaximumBuyOrder { quoted: _, maximum: _ } =>
+      DemandNotAffordable { refusal: affordability }
+    QuoteCurrencyMismatch { quoted: _, budgeted: _ } =>
+      DemandNotAffordable { refusal: affordability }
+    QuoteNotPriceableWithoutDuration { obligation: why } =>
+      DemandNotRankableWithoutDuration { obligation: why }
+    Affordable =>
+      admit_screened_pair(demand: demand, offer: offer, duration: duration, affordability: affordability)
+    AffordableUnderEstimate { duration_seconds: _, projected_total: _ } =>
+      admit_screened_pair(demand: demand, offer: offer, duration: duration, affordability: affordability)
+  }
+}
+
+// WHERE THE PARTIALITY IS RESOLVED, AND IT IS RESOLVED ONCE. Two facts about
+// this pair can be absent, and both are absent for the SAME underlying reason:
+// nobody measured how long the grant runs. The duration yields no seconds, and a
+// rate quote yields no total. They are answered here, together, so that
+// admit_priced_pair below receives values rather than possibilities.
+//
+// THE ALTERNATIVE WAS TO MATCH INSIDE admit_priced_pair, and it is worse for a
+// reason that is about scope rather than taste: an admission fold holding a
+// duration it cannot read has to invent something to say about it, and every
+// candidate -- zero, the estimate, a substituted worst case -- is the fabrication
+// the unobserved arm exists to prevent. Resolving here means the fold below
+// cannot be reached with an unmeasured grant at all, so there is no arm to get
+// wrong.
+//
+// THE QuotedTotalNeedsDuration ARM CANNOT BE REACHED FROM HERE, because the
+// observation above has already established a bound and a rate quote totals over
+// any bound. It is answered rather than dropped, since offer_quoted_total_for_grant
+// is a shared authority and another caller can reach it with a raw unobserved
+// duration -- the same reason product.fabric.selection gives for answering the
+// unreachable priceability arm in its own screen. Both routes carry the
+// obligation their own authority stated, and neither invents one.
+fn admit_screened_pair<P>(
+  demand: Demand<P>,
+  offer: SupplierOffer<P>,
+  duration: GrantDuration,
+  affordability: DemandOfferAffordability,
+) -> DemandAdmission<P> {
+  match grant_duration_observation(duration: duration) {
+    DurationUnobserved { obligation: why } =>
+      DemandNotRankableWithoutDuration { obligation: why }
+    DurationObserved { seconds: s, basis: b } =>
+      match offer_quoted_total_for_grant(
+        quote: offer.quote,
+        duration: duration,
+        quantum: offer.billing_quantum,
+      ) {
+        QuotedTotalNeedsDuration { obligation: why } =>
+          DemandNotRankableWithoutDuration { obligation: why }
+        QuotedTotalDerived { amount: projected } =>
+          admit_priced_pair(
+            demand: demand,
+            offer: offer,
+            observed_seconds: s,
+            basis: b,
+            projected: projected,
+            affordability: affordability,
+          )
+      }
+  }
+}
+
+// THE AFFORDABILITY ARMS ARE MATCHED AT THE CALL SITE RATHER THAN COLLAPSED TO A
+// BOOL, and the reason is a state that does not exist yet.
+//
+// An earlier cut asked affordability_admits(a) -> Bool and branched on it. The
+// full verdict still travelled onto the refusal, so nothing was lost TODAY --
+// which is exactly why the shape is worth removing before it costs something.
+// std.pareto deleted pair_dominates for the neighbouring reason: a Bool over a
+// coproduct invites a consumer to read one arm's meaning into another's.
+//
+// The concrete cost is the arm arriving with the supply lane's priceability
+// work: an affordability verdict meaning THE SCREEN COULD NOT BE RUN, because a
+// rate quote times an unobserved duration is not a number. Under a Bool the
+// path of least resistance is to answer false, which files it as one more way
+// of being unaffordable -- and it is not. Unaffordable means the buyer's
+// ceiling is too low and the remedy is a bigger budget; unpriceable means
+// nobody measured the job and the remedy is a measurement. Matching here means
+// that arm cannot be added without this fold failing to compile and somebody
+// choosing which outcome it produces.
+fn admit_priced_pair<P>(
+  demand: Demand<P>,
+  offer: SupplierOffer<P>,
+  observed_seconds: Second,
+  basis: OccupancyBasis,
+  projected: MoneyAmountMicro,
+  affordability: DemandOfferAffordability,
+) -> DemandAdmission<P> {
+  let reservation = demand.admission.buy.reservation_price
+  let occupancy = second(count: billed_seconds(
+    seconds: second_count(s: observed_seconds),
+    quantum_seconds: second_count(s: offer.billing_quantum),
+  ))
+  if money_amount_micro_count(m: projected) > money_amount_micro_count(m: reservation) {
+    QuoteExceedsReservationPrice { quoted: projected, reservation: reservation }
+  } else if second_count(s: occupancy) == 0 {
+    GrantOccupiesNoBilledTime { duration: observed_seconds }
+  } else {
+    DemandAdmitted {
+      admitted: AdmittedDemand {
+        demand: demand,
+        offer: offer.id,
+        projected_total: projected,
+        buyer_headroom: money_amount_micro(
+          count: money_amount_micro_count(m: reservation) - money_amount_micro_count(m: projected),
+        ),
+        billed_occupancy: occupancy,
+        occupancy_basis: basis,
+        affordability: affordability,
+      },
+    }
+  }
+}
+
+fn admitted_demand<P>(a: AdmittedDemand<P>) -> Demand<P> {
+  a.demand
+}
+
+fn admitted_buyer_headroom<P>(a: AdmittedDemand<P>) -> MoneyAmountMicro {
+  a.buyer_headroom
+}
+
+fn admitted_billed_occupancy<P>(a: AdmittedDemand<P>) -> Second {
+  a.billed_occupancy
+}
+
+fn admitted_occupancy_basis<P>(a: AdmittedDemand<P>) -> OccupancyBasis {
+  a.occupancy_basis
+}
+
+fn admitted_projected_total<P>(a: AdmittedDemand<P>) -> MoneyAmountMicro {
+  a.projected_total
+}
+
+fn admitted_affordability<P>(a: AdmittedDemand<P>) -> DemandOfferAffordability {
+  a.affordability
+}
+
+fn admitted_identity<P>(a: AdmittedDemand<P>) -> FabricIdentity<P, DemandKey> {
+  a.demand.id
+}
+
+// TIED IS ITS OWN ANSWER, NOT A DEGENERATE WIN.
+//
+// Two demands offering the same margin against this offer are genuinely
+// indistinguishable to this policy, and every tie-break the model could reach
+// for today is a fabrication: submitted_at is a Timestamp, which std.types
+// aliases to String and which carries no ordering, and a DemandKey is a branded
+// string whose collation says nothing about desert. Returning one of them
+// anyway would be fabricated plausible output at the exact point the fabric
+// decides who gets paid capacity. The tie is reported instead, and the caller
+// -- which knows things this policy does not, such as whether it may simply run
+// both, or whether one demand is its own -- decides.
+type DemandPrecedence
+  = LeftPrecedes
+  | RightPrecedes
+  | TiedUnderPolicy
+
+fn compare_admitted<P>(left: AdmittedDemand<P>, right: AdmittedDemand<P>) -> DemandPrecedence {
+  match headroom_rate_comparison(
+    headroom_a: left.buyer_headroom, billed_a: left.billed_occupancy,
+    headroom_b: right.buyer_headroom, billed_b: right.billed_occupancy,
+  ) {
+    Better => LeftPrecedes
+    Worse => RightPrecedes
+    Same => TiedUnderPolicy
+  }
+}
+
+// THE DUPLICATE ARM IS NOT DEFENSIVE, AND WITHOUT IT THE TIE SWEEP HAS A HOLE
+// SHAPED EXACTLY LIKE THE DEFECT IT CLOSES.
+//
+// ties_with_leader excludes the leader from the field by IDENTITY, which is the
+// only honest way to say "not itself". A field carrying one demand twice
+// therefore has its second copy excluded as though it were the leader, so a
+// perfect tie between a demand and itself is silently resolved rather than
+// refused -- first-one-wins reappearing inside the pass written to remove it.
+// std.pareto refuses a duplicate candidate identity for the same reason and
+// calls it the sentinel-through-presence-test shape. Refusing here also refuses
+// the real thing a duplicate means: the same demand was admitted twice against
+// one grant of capacity, and conserving supply is the whole point of contending
+// for it.
+type ContentionRefusal<P>
+  = DemandsIndistinguishable { tied: List<FabricIdentity<P, DemandKey>> }
+  | DuplicateCandidateIdentity { duplicated: List<FabricIdentity<P, DemandKey>> }
+  | CandidatesJudgedAgainstDifferentOffers {
+      contended: FabricIdentity<P, OfferKey>
+      mismatched: List<FabricIdentity<P, DemandKey>>
+    }
+  | OrderingContingentOnUnreadOpportunityCost {
+      leads_on_rate: FabricIdentity<P, DemandKey>
+      outbid_on_total: List<FabricIdentity<P, DemandKey>>
+    }
+
+fn candidate_occurrences<P>(
+  candidates: List<AdmittedDemand<P>>,
+  wanted: FabricIdentity<P, DemandKey>,
+) -> Int {
+  fold(candidates, init: 0, f: fn(acc, c) {
+    if fabric_identity_eq(left: admitted_identity(a: c), right: wanted) { acc + 1 } else { acc }
+  })
+}
+
+fn duplicated_candidates<P>(
+  candidates: List<AdmittedDemand<P>>,
+) -> List<FabricIdentity<P, DemandKey>> {
+  candidates
+    |> filter(c => candidate_occurrences(candidates: candidates, wanted: admitted_identity(a: c)) > 1)
+    |> map(c => admitted_identity(a: c))
+}
+
+// THE EMPTY CASE KEEPS ITS OWN ARM, for the reason arbitration.dag already
+// gives about an empty release plan: nothing admissible and a refusal are
+// different facts with different repairs. No demand could clear this offer is
+// an ordinary market outcome -- the capacity goes unsold, and the remedy is
+// more demand or a cheaper offer -- while a refusal means the policy could not
+// decide among demands that did clear it.
+// A CONTINGENT ORDERING REFUSES. IT DOES NOT SELECT AND ANNOTATE.
+//
+// This clause has been rewritten twice and the history is the argument, so it
+// is kept rather than replaced. The first cut selected by rate and recorded the
+// contingency in prose. Review 56501 objected that a fold defaulting while
+// acknowledging it lacks the deciding fact emits a possibly-wrong winner with
+// no signal; the second cut answered by carrying OrderingStanding on the
+// verdict, so a consumer could SEE that the decision turned on an unread fact.
+// Review 56522 objected that reporting uncertainty is not the same as being
+// fail-closed, and it is right: a consumer may ignore an annotation, and a
+// grant issued off an annotated verdict spends real capacity on a winner this
+// module knows may be the wrong one.
+//
+// THE ARGUMENT THAT SETTLED IT IS SYMMETRY WITH THE AUTHORITY THIS MODULE
+// CONSUMES. product.fabric.supply faced the same choice and made the opposite
+// call to the one this module first made: its own header enumerates what
+// selection would need -- availability interval, the supplier's own tariff,
+// paid-through commitment state, transition costs, and the alternative uses
+// that give an opportunity cost its value -- and concludes that the fold "is
+// honest as a screen and would be a lie as a selector". It stayed a screen. A
+// demand-side fold that ships a selector on the SAME missing fact is not
+// entitled to a different answer.
+//
+// AND MY OWN COUNTER-ARGUMENT WAS FACTUALLY WRONG, which is what unblocked
+// this. I argued that refusing on an absent opportunity cost refuses ALWAYS,
+// because the fact is absent always. The fact is absent always; it only MATTERS
+// when the two orderings disagree, and the detector built for the annotation
+// decides exactly that. Measured on this module's own witnesses: the continuous
+// flagship case -- 110 over 90 seconds against 100 over 300 -- has no candidate
+// with a greater total, so it is UNCONTESTED and still selects. The refusal is
+// narrow by construction, not total.
+//
+// SO THE CONTINGENT VERDICT NOW HAS NO SPELLING. DemandSelected carries no
+// standing field, because it can only be issued when no candidate would have
+// won on totals; the contingent case is a typed refusal naming both answers.
+// That is construction over validation: a consumer cannot ignore an annotation
+// that does not exist.
+//
+// WHAT THE REFUSAL BUYS BEYOND HONESTY, and it is the part that gets the gap
+// closed. A default zeroes the deficit's frequency by construction -- the fold
+// always answers, so nobody counts how often the missing carrier changed the
+// outcome, and it never ranks for building. A typed refusal naming the demands
+// makes that frequency observable, which is what turns "we should model
+// opportunity cost" into a number somebody can act on.
+//
+// NEXT-RUNG TRIGGER, unchanged and now load-bearing rather than decorative: the
+// supply lane's opportunity-cost carrier, including its no-feasible-alternative
+// and UNREAD arms. When it lands, this refusal becomes a decision -- resell the
+// remainder and prefer the rate, or let it lapse and prefer the total -- and
+// the arm retires into an answer rather than being deleted.
+fn candidates_with_greater_total_headroom<P>(
+  winner: AdmittedDemand<P>,
+  field: List<AdmittedDemand<P>>,
+) -> List<FabricIdentity<P, DemandKey>> {
+  field
+    |> filter(c => money_amount_micro_count(m: c.buyer_headroom)
+                     > money_amount_micro_count(m: winner.buyer_headroom))
+    |> map(c => admitted_identity(a: c))
+}
+
+// THE SELECTION CARRIES THE BASIS OF THE WHOLE FIELD, NOT OF ITS WINNER.
+//
+// A decision is only as measured as the comparison that produced it. The winner
+// may carry an exact duration and still have beaten a rival whose denominator
+// was projected -- in which case the RANKING rested on a projection even though
+// the selected demand did not, and a consumer reading the winner's own basis
+// would conclude the opposite. So the basis reported here is measured only when
+// EVERY candidate's was, which is the question a consumer of the verdict is
+// actually asking: how much do I trust this ordering.
+//
+// It is reported rather than refused because an estimate is frequently all
+// anyone has, and refusing every projected field would make the fold useless at
+// exactly the moment it is needed. What must not happen is the projection going
+// unrecorded -- that is the fabricated-plausible-output failure, since a
+// projected ordering and a measured one would then be indistinguishable at the
+// only place a later reader looks.
+type ContentionOutcome<P>
+  = NoAdmissibleDemand
+  | DemandSelected { winner: AdmittedDemand<P>, basis: OccupancyBasis }
+  | ContentionRefused { refusal: ContentionRefusal<P> }
+
+// The fold is the lattice's own meet over the field, seeded at TOP. An empty
+// field never reaches here -- select_from_field answers NoAdmissibleDemand
+// first -- so the seed is the identity of the meet rather than a claim about
+// nothing.
+fn field_occupancy_basis<P>(field: List<AdmittedDemand<P>>) -> OccupancyBasis {
+  fold(field, init: occupancy_basis_bounded_lattice.top, f: fn(acc, c) {
+    occupancy_basis_bounded_lattice.meet(acc, c.occupancy_basis)
+  })
+}
+
+fn candidates_for_other_offers<P>(
+  contended: FabricIdentity<P, OfferKey>,
+  candidates: List<AdmittedDemand<P>>,
+) -> List<FabricIdentity<P, DemandKey>> {
+  candidates
+    |> filter(c => !fabric_identity_eq(left: c.offer, right: contended))
+    |> map(c => admitted_identity(a: c))
+}
+
+fn leader_step<P>(leader: AdmittedDemand<P>, challenger: AdmittedDemand<P>) -> AdmittedDemand<P> {
+  match compare_admitted(left: leader, right: challenger) {
+    LeftPrecedes => leader
+    RightPrecedes => challenger
+    TiedUnderPolicy => leader
+  }
+}
+
+// THE TIE SWEEP IS A SECOND PASS OVER THE WHOLE FIELD, NOT A FLAG THE LEADER
+// FOLD SETS.
+//
+// leader_step keeps the incumbent on a tie, which alone would let the
+// first-visited of two equal demands win silently -- the accident this module
+// exists to remove, reintroduced inside it. What makes the outcome invariant
+// under candidate order is that the leader is afterwards compared against every
+// candidate: anything not strictly behind it is a tie, and a nonempty tie set
+// refuses. std.pareto's field fold makes the same move for the same reason --
+// accumulate every challenge rather than latching the first, so the standing
+// cannot depend on visit order.
+fn ties_with_leader<P>(
+  leader: AdmittedDemand<P>,
+  field: List<AdmittedDemand<P>>,
+) -> List<FabricIdentity<P, DemandKey>> {
+  field
+    |> filter(c => !fabric_identity_eq(left: admitted_identity(a: c), right: admitted_identity(a: leader)))
+    |> filter(c => match compare_admitted(left: leader, right: c) {
+         LeftPrecedes => false
+         RightPrecedes => true
+         TiedUnderPolicy => true
+       })
+    |> map(c => admitted_identity(a: c))
+}
+
+fn select_from_field<P>(field: List<AdmittedDemand<P>>) -> ContentionOutcome<P> {
+  match field {
+    Empty {} => NoAdmissibleDemand
+    Cons { head: first, tail: rest } => {
+      let leader = fold(rest, init: first, f: fn(acc, c) { leader_step(leader: acc, challenger: c) })
+      let tied = ties_with_leader(leader: leader, field: field)
+      if (tied |> count) > 0 {
+        ContentionRefused {
+          refusal: DemandsIndistinguishable {
+            tied: concat([admitted_identity(a: leader)], tied),
+          },
+        }
+      } else {
+        match candidates_with_greater_total_headroom(winner: leader, field: field) {
+          Cons { head: h, tail: t } =>
+            ContentionRefused {
+              refusal: OrderingContingentOnUnreadOpportunityCost {
+                leads_on_rate: admitted_identity(a: leader),
+                outbid_on_total: concat([h], t),
+              },
+            }
+          Empty {} =>
+            DemandSelected { winner: leader, basis: field_occupancy_basis(field: field) }
+        }
+      }
+    }
+  }
+}
+
+// THE ANSWER TO "WHICH DEMAND WINS SCARCE CAPACITY", AND THE ONLY PLACE IT IS
+// ANSWERED.
+//
+// Every candidate has already been shown to clear this offer's price by
+// construction, so nothing here consults ceilings, currencies, shapes, trust
+// domains or capabilities -- deciding any of those a second time would be a
+// second authority for a verdict supply.dag already owns. What this fold owns,
+// and nothing else does, is the comparison BETWEEN buyers.
+fn select_demand_for_offer<P>(
+  contended: FabricIdentity<P, OfferKey>,
+  candidates: List<AdmittedDemand<P>>,
+) -> ContentionOutcome<P> {
+  let mismatched = candidates_for_other_offers(contended: contended, candidates: candidates)
+  let duplicated = duplicated_candidates(candidates: candidates)
+  if (mismatched |> count) > 0 {
+    ContentionRefused {
+      refusal: CandidatesJudgedAgainstDifferentOffers {
+        contended: contended,
+        mismatched: mismatched,
+      },
+    }
+  } else if (duplicated |> count) > 0 {
+    ContentionRefused { refusal: DuplicateCandidateIdentity { duplicated: duplicated } }
+  } else {
+    select_from_field(field: candidates)
+  }
+}

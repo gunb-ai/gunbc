@@ -12,7 +12,7 @@ module test.claim.fabric_contention_witness_test
 
 import std.nat { Nat }
 import std.types { Bool, List, NonEmptyStr }
-import std.currency { Usd }
+import extdeps.currency.currency { Usd }
 import std.measure {
   MoneyAmountMicro, MoneyPerSecond, MoneyPerHour, MoneyOnce, Second,
   money_amount_micro, money_amount_micro_count, second, second_count,

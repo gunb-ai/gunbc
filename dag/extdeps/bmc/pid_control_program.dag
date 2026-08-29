@@ -319,5 +319,5 @@ fn decimal_measures_agree<Q, S>(a: Measure<Q, S, ExactDecimal>, b: Measure<Q, S,
 fn curve_points_agree(a: DemandCurvePoint, b: DemandCurvePoint) -> Bool {
   a.index == b.index
     && decimal_measures_agree(a: a.reading, b: b.reading)
-    && decimal_measures_agree(a: a.output, b: b.output)
+    && exact_decimal_equal(a: a.output.magnitude, b: b.output.magnitude)
 }

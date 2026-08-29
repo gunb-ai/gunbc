@@ -4,8 +4,8 @@ module extdeps.entropy
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import std.dissolution { DissolutionCondition, unbound_dissolution }
 import std.disposition { Disposition, RealizationDispatch, Scaffold, SingleAuthority }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
 import std.types { Int }
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -52,12 +52,37 @@ data entropy_read_password_shell_emit_scaffold: Disposition = Scaffold {
 
 data entropy_read_password_shell_emit_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: extdeps.entropy Urandom.ReadPassword — the character-class draws, exact-length refusals, concatenation, and truncation remain an opaque shell transport string. DISSOLVES WHEN the ReadPassword process is modeled as Bash grammar Nodes and its transport is derived through v2.workflow.bash_emit bash_emit_program (or a typed host-effect realization), leaving no hand-authored medium-as-string process logic in this operation.")
 
+// A PIPELINE REPORTS ITS LAST STAGE'S STATUS, AND base64 SUCCEEDS ON EMPTY INPUT.
+//
+// The argv was `head -c {count} /dev/urandom | base64 -w 0`, so a failing `head` was reported
+// as EXIT 0 WITH EMPTY OUTPUT -- a successful entropy draw that drew nothing, and the `nonzero`
+// arm could never fire for the stage that actually knows. That is DESIGN section 5's fabricated
+// plausible output on the one operation whose fake is indistinguishable from the real one by
+// inspection: a consumer cannot tell an empty draw from a short one.
+//
+// MEASURED, not inferred from the shape: `sh -c 'head -c 16 /nonexistent | base64 -w 0'` exits
+// 0, and base64 of empty input succeeds. `set -o pipefail` is NOT the remedy -- /bin/sh is dash
+// here and aborts on it rather than accepting it, also measured -- so the status is captured
+// from the producing stage directly, following the in-tree exemplar extdeps.rust.rustc. The
+// bytes travel through a file rather than a shell variable because command substitution strips
+// NULs and trailing newlines and would corrupt the draw.
+//
+// THE ReadPassword HALF THIS PARAGRAPH DEFERRED HAS SINCE BEEN REPAIRED ON MAIN by #9526, and the
+// sentence is corrected here rather than left standing, because a deferral naming a live defect is
+// read as a live defect. What it said: ReadPassword built its components with unchecked
+// `$(tr ... | head -c1)` substitutions, so a failing component silently yielded a SHORTER password
+// rather than a refusal. #9526 closed exactly that, asserting each component's length and exiting
+// nonzero when it is short. The two repairs are COMPLEMENTARY rather than overlapping -- this one
+// captures a producing stage's exit status through a pipe, that one checks the length of a command
+// substitution's result -- and they collided here only because both added a dissolution row to the
+// same region and the same import at different positions.
+data urandom_read_bytes_shell_emit_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "dissolve-on: Urandom.ReadBytes / Urandom.ReadPassword transport argv -- hand-authored shell program expanded as a string literal to capture the producing stage's exit status; this edits the failure arm of an EXISTING transport and adds no new emission site, per the gunbc.githooks_pre_push_emit precedent. DISSOLVES WHEN bash-emit (#5828 / ROADMAP 6-shell-slice0 / shell-to-intent Phase 2) realizes these operations through orchestration emit or typed host_effect_apply without a medium-as-string scaffold.")
 service Urandom {
   operation ReadBytes {
     input { count: Int }
     output { octets_b64: String from "stdout" }
     readonly
-    transport shell { argv: ["sh", "-c", "head -c {count} /dev/urandom | base64 -w 0"] }
+    transport shell { argv: ["sh", "-c", "d=$(mktemp -d) || exit 1; head -c {count} /dev/urandom > \"$d/b\"; rc=$?; if [ $rc -eq 0 ]; then base64 -w 0 < \"$d/b\"; rc=$?; fi; rm -rf \"$d\"; exit $rc"] }
     exit {
       0 => Unit
       nonzero => String "Urandom.ReadBytes: /dev/urandom or base64 failed"

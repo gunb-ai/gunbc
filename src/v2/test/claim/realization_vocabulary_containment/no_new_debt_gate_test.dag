@@ -43,7 +43,7 @@ data ts0_census_effect_plan_bash_materialize_edge: RealizationVocabImportEdge = 
 }
 
 data ts0_census_build_step_edge: RealizationVocabImportEdge = RealizationVocabImportEdge {
-  importer_path: "dag/tools/build_step.dag",
+  importer_path: "dag/gunbc/instruments/build_step.dag",
   vocab_module: bash_build_module
 }
 
@@ -186,7 +186,7 @@ data ts0_frozen_facts_union: List<LayerImportFact> = [
   },
   LayerImportFact {
     layer: LayerPrefixStd,
-    path: "dag/tools/build_step.dag",
+    path: "dag/gunbc/instruments/build_step.dag",
     import_module: bash_build_module
   }
 ]

@@ -1,6 +1,6 @@
 module extdeps.pricing.object_storage
 
-import std.currency { CurrencyCode, Usd }
+import extdeps.currency.currency { CurrencyCode, Usd }
 import std.measure { money_amount_micro, money_rate_micros }
 import extdeps.pricing.billing_units {
   MoneyPerMillionRequests,

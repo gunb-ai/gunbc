@@ -17,7 +17,7 @@ import std.logic { Bool }
 import std.types { Int, List, NonEmptyStr, list_length }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.nat { Nat }
-import std.currency { Usd }
+import extdeps.currency.currency { Usd }
 import std.measure {
   MoneyAmountMicro, money_amount_micro, MoneyPerSecond, MoneyOnce,
   Second, second, HardwareThreadCount, hardware_thread_count,

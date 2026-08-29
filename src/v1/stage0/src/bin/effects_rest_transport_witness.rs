@@ -7,12 +7,12 @@ use std::rc::Rc;
 
 use v1_compiler::cli_run::workspace_root;
 use v1_compiler::cli_run::{collect_rest_transport_operations, DeclaredRestTransportOp};
+use v1_compiler::extdeps_uri_path::PathTemplate;
 use v1_compiler::extdeps_uri_path::{parse_path_template, PathTemplateParseResult};
 use v1_compiler::std_effects::{
     derive_op_effect, generate_idempotency_obligations, is_idempotent_effect, DeriveOpEffectResult,
     EffectShape, HttpMethod,
 };
-use v1_compiler::std_http_path::PathTemplate;
 use v1_compiler::v1_compiler_parse::parse;
 use v1_compiler::v1_compiler_tokenize::tokenize;
 use v1_compiler::v1_std_core::{build_newline_index, NewlineIndex, Node};

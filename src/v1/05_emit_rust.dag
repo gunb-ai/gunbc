@@ -1,5 +1,7 @@
 module v1.compiler.emit_rust
 
+import std.occurrence_identity { OccurrenceSynthetic }
+
 import extdeps.languages.rust.capabilities { phantom_opaque_carrier_derive_traits }
 
 import std.algebra { trim }
@@ -1424,7 +1426,7 @@ fn render_rust_alias_rhs_type(n: Node, generic_param_names: List<String>, shared
 }
 
 fn type_variable_node(id: String) -> Node {
-  Node { name: "", span: no_span(), ident_span: none, children: [], connective: NoConnective, params: [], inferred: Present { value: TypeVariable { id: id } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+  Node { occurrence_identity: OccurrenceSynthetic, name: "", span: no_span(), ident_span: none, children: [], connective: NoConnective, params: [], inferred: Present { value: TypeVariable { id: id } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
 }
 
 fn is_type_variable(inferred: InferredNode) -> Bool {
@@ -4057,6 +4059,13 @@ type ReferenceDerivedUseLinePlan {
   rows: List<ReferenceDerivedCandidateRow>
 }
 
+// The final use-line authority is one module's emitted item text, at exact identifier grain.
+// Source references can lower without a provider path: std.algebra's empty_map calls become
+// v1_rt::rc_empty_map, while its OptionalOf/Present spellings induced the unrelated parent
+// Optional through the closure-global variant map. Neither name occurs in the emitted items, so
+// neither can justify a use-line. A real qualified constructor emits Parent::Variant and keeps
+// Parent; anonymous record heads likewise occur in the emitted text. This observation is
+// module-local and deliberately never asks variant_to_enum who owns a name.
 fn reference_derived_use_line_plan(items: List<Node>, unlisted_type_names: List<String>, this_module_name: String, registry: Map<String, ItemInfo>, emit_info: EmitGraphInfo, local_type_names: List<String>, already_imported_names: List<String>, export_sets: Map<String, Map<String, Bool>>, typed_modules: List<TypedModule>, source_indices: Map<String, NewlineIndex>, module_index: ModuleIndex, shared_types: Set<String>, emitted_source: String) -> ReferenceDerivedUseLinePlan {
   {
     let module_source = match typed_modules |> filter(tm => authored_name_at(source_indices: source_indices, node: tm.module) == this_module_name) |> first {
@@ -4076,6 +4085,7 @@ fn reference_derived_use_line_plan(items: List<Node>, unlisted_type_names: List<
           || emitter_attested_anon_heads |> any(h => h == name)
           || (emitted_source_tokens |> any(t => t == name)))
       |> filter(name => !reference_is_host_realized_builtin(name: name))
+      |> filter(name => emitted_source_tokens |> any(token => token == name))
     let local_decl_names = items |> flat_map(item =>
       let nm = authored_name_at(source_indices: source_indices, node: item)
       if nm == "" { [] } else { [nm] }
@@ -9591,7 +9601,7 @@ fn fill_default_args(ordered: List<Node>, callee: ItemInfo?, registry: Map<Strin
         else { param_node_default_value(n: p) != none }
       )
       let default_args = missing_with_defaults |> map(p =>
-        make_arg_node(name: Present { value: param_node_name_at(n: p, source_indices: scope.type_env.source_indices) }, value: param_node_default_value(n: p).value, span: p.span, name_span: p.span)
+        make_arg_node(occurrence_identity: OccurrenceSynthetic, name: Present { value: param_node_name_at(n: p, source_indices: scope.type_env.source_indices) }, value: param_node_default_value(n: p).value, span: p.span, name_span: p.span)
       )
       concat(ordered, default_args)
     Absent => ordered
@@ -9613,7 +9623,7 @@ fn fill_op_default_args(ordered: List<Node>, op_params: List<Node>, registry: Ma
       Present { value: arg } => [arg]
       Absent =>
         if param_node_default_value(n: p) != none {
-          [make_arg_node(name: Present { value: pname }, value: param_node_default_value(n: p).value, span: p.span, name_span: p.span)]
+          [make_arg_node(occurrence_identity: OccurrenceSynthetic, name: Present { value: pname }, value: param_node_default_value(n: p).value, span: p.span, name_span: p.span)]
         } else { [] }
     }
   )

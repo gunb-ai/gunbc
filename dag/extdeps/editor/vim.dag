@@ -1,0 +1,24 @@
+module extdeps.editor.vim
+
+import std.types { String, List }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+import std.workspace_artifact { WorkspaceFootprint, WorkspaceArtifact, CitedUpstream, PerDeveloperState }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "vim.org"
+  }
+}
+
+// WORKSPACE FOOTPRINT. Vim writes swap files beside edited files.
+fn vim_swap_footprint() -> WorkspaceFootprint {
+  WorkspaceFootprint {
+    provenance: CitedUpstream { display: "Vim editor state", upstream: "vim.org" },
+    artifacts: [
+      WorkspaceArtifact { pattern: "*.swp", meaning: "swap file for an open buffer", reason: PerDeveloperState },
+      WorkspaceArtifact { pattern: "*.swo", meaning: "secondary swap file", reason: PerDeveloperState }
+    ]
+  }
+}

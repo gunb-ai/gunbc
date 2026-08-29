@@ -1,7 +1,7 @@
 module gunbc.roadmap_serve
 
 import std.types { String, Int, Bool, List, CommitSha, HttpMethod, GET, POST, HttpStatus }
-import std.http_path { PathParamBinding, path_param_value }
+import extdeps.uri_path { PathParamBinding, path_param_value }
 import std.markup { Fragment }
 import std.disposition { Disposition, Scaffold, RealizationDispatch }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
@@ -58,6 +58,7 @@ import gunbc.roadmap_belt_actuate {
   DispatchDisabled, DispatchNodeAlreadyDone, DispatchObserveRefused, DispatchAuthorityRefused, DispatchSpawnFailed,
   DispatchStaleSession, DispatchSessionLivenessUnobserved,
   DispatchRevisionDrifted, DispatchRevisionUnobserved,
+  DispatchTransitionInhibited,
   DispatchSessionMultiplicityConflict,
   belt_dispatch_node, belt_dispatch_node_for_instance,
   belt_dispatch_result_json_value,
@@ -270,6 +271,7 @@ fn belt_dispatch_status(r: BeltDispatchResult) -> HttpStatus {
     DispatchStaleSession { node_id: _, session_name: _, detail: _ } => 409
     DispatchRevisionDrifted { node_id: _, desired: _, local: _ } => 409
     DispatchRevisionUnobserved { node_id: _, cause: _ } => 503
+    DispatchTransitionInhibited { node_id: _, reason: _ } => 409
     DispatchSessionMultiplicityConflict { node_id: _, session_names: _, session_count: _ } => 409
     DispatchSessionLivenessUnobserved { node_id: _, session_name: _, reason: _ } => 503
   }

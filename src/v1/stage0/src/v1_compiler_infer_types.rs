@@ -16,6 +16,8 @@ pub use crate::std_algebra::{algebra_templates_for_profile, kernel_algebra_profi
 pub use crate::std_algebra::{
     AlgebraFieldTemplate, AlgebraProfile, AlgebraTypeTemplate, ContainerSource,
 };
+pub use crate::std_occurrence_identity::NodeOccurrenceIdentity;
+use crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic;
 use crate::std_syntax::AlgebraFieldKind::AlgAdd;
 use crate::std_syntax::AlgebraFieldKind::{
     AlgCompare, AlgJoin, AlgMeet, AlgMul, AlgQuotient, AlgReciprocal, AlgRemainder,
@@ -42,8 +44,6 @@ use crate::v1_std_core::ContainerSpellingVerdict::{
 use crate::v1_std_core::ExprData::{ExprError, ExprLiteral, NoExprData};
 use crate::v1_std_core::ExprErrorKind::{InternalExprError, SemanticExprError};
 use crate::v1_std_core::InferredNode::{CompilerError, Resolved, TypeVariable};
-use crate::v1_std_core::MatchPattern::*;
-use crate::v1_std_core::UnaryOpKind::*;
 pub use crate::v1_std_core::{
     authored_container_spelling_verdict, authored_name_at, bool_type, default_ident_span,
     error_type, find_child_named, float_type, has_inferred, int_type, is_compiler_error,
@@ -56,7 +56,6 @@ pub use crate::v1_std_core::{
     Cardinality, CompilerDiagnostic, Connective, ContainerSpellingVerdict, ErrorNode, ExprData,
     ExprErrorKind, InferredNode, NewlineIndex, Node,
 };
-pub use crate::v1_std_core::{MatchPattern, UnaryOpKind};
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
@@ -71,6 +70,7 @@ pub fn is_type_variable(inferred: Rc<InferredNode>) -> bool {
 
 pub fn type_variable_node(id: String) -> Rc<Node> {
     Rc::new(Node {
+        occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
         name: "".to_string(),
         span: crate::v1_std_core::no_span(),
         ident_span: None,
@@ -229,6 +229,7 @@ pub fn reground_alias_carrier_identity(
         && is_declared_container_alias_spelling(n.name.clone()))
     {
         Rc::new(Node {
+            occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
             name: n.name.clone(),
             span: n.span.clone(),
             ident_span: Some(crate::v1_std_core::kernel_span(n.name.clone())),
@@ -260,6 +261,7 @@ pub fn structural_carrier_template_name(
     if (n.name.clone() != "".to_string()) {
         canonical_template_name(
             Rc::new(Node {
+                occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
                 name: n.name.clone(),
                 span: n.span.clone(),
                 ident_span: Some(crate::v1_std_core::kernel_span(n.name.clone())),
@@ -412,11 +414,13 @@ pub fn bare_map_node() -> Option<Rc<Node>> {
     match crate::std_types::container_param_name("Map".to_string(), 0) {
         Some(key_id) => match crate::std_types::container_param_name("Map".to_string(), 1) {
             Some(val_id) => Some(Rc::new(Node {
+                occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
                 name: "Map".to_string(),
                 span: crate::v1_std_core::no_span(),
                 ident_span: Some(crate::v1_std_core::no_span()),
                 children: Rc::new(vec![
                     Rc::new(Node {
+                        occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
                         name: key_id.clone(),
                         span: crate::v1_std_core::no_span(),
                         ident_span: Some(crate::v1_std_core::no_span()),
@@ -439,6 +443,7 @@ pub fn bare_map_node() -> Option<Rc<Node>> {
                         ident: None,
                     }),
                     Rc::new(Node {
+                        occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
                         name: val_id.clone(),
                         span: crate::v1_std_core::no_span(),
                         ident_span: Some(crate::v1_std_core::no_span()),
@@ -485,10 +490,12 @@ pub fn bare_map_node() -> Option<Rc<Node>> {
 pub fn bare_set_node() -> Option<Rc<Node>> {
     match crate::std_types::container_param_name("Set".to_string(), 0) {
         Some(elem_id) => Some(Rc::new(Node {
+            occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
             name: "Set".to_string(),
             span: crate::v1_std_core::no_span(),
             ident_span: Some(crate::v1_std_core::no_span()),
             children: Rc::new(vec![Rc::new(Node {
+                occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
                 name: elem_id.clone(),
                 span: crate::v1_std_core::no_span(),
                 ident_span: Some(crate::v1_std_core::no_span()),
@@ -552,6 +559,7 @@ pub fn missing_kernel_container_profile_type(kind_name: String) -> Rc<Node> {
             kind_name.clone(),
         );
         Rc::new(Node {
+            occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
             name: "".to_string(),
             span: crate::v1_std_core::no_span(),
             ident_span: None,
@@ -597,6 +605,7 @@ pub fn kernel_record_type_note() -> String {
 
 pub fn make_kernel_record_field(field_name: String, field_type: Rc<Node>) -> Rc<Node> {
     Rc::new(Node {
+        occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
         name: field_name.clone(),
         span: crate::v1_std_core::kernel_span(field_name.clone()),
         ident_span: Some(crate::v1_std_core::kernel_span(field_name.clone())),
@@ -622,6 +631,7 @@ pub fn make_kernel_record_field(field_name: String, field_type: Rc<Node>) -> Rc<
 
 pub fn make_kernel_record_type(type_name: String, fields: Rc<Vec<Rc<Node>>>) -> Rc<Node> {
     Rc::new(Node {
+        occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
         name: type_name.clone(),
         span: crate::v1_std_core::kernel_span(type_name.clone()),
         ident_span: Some(crate::v1_std_core::kernel_span(type_name.clone())),
@@ -647,10 +657,12 @@ pub fn make_container_type(kind_name: String, element: Rc<Node>) -> Rc<KernelTyp
     match crate::std_types::container_param_name(kind_name.clone(), 0) {
         Some(param_name) => Rc::new(KernelTypeBuild {
             ty: Rc::new(Node {
+                occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
                 name: kind_name.clone(),
                 span: crate::v1_std_core::kernel_span(kind_name.clone()),
                 ident_span: Some(crate::v1_std_core::kernel_span(kind_name.clone())),
                 children: Rc::new(vec![Rc::new(Node {
+                    occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
                     name: param_name.clone(),
                     span: crate::v1_std_core::kernel_span(param_name.clone()),
                     ident_span: Some(crate::v1_std_core::kernel_span(param_name.clone())),
@@ -703,11 +715,15 @@ pub fn make_map_type(key: Rc<Node>, value: Rc<Node>) -> Rc<KernelTypeBuild> {
         Some(key_name) => match crate::std_types::container_param_name("Map".to_string(), 1) {
             Some(val_name) => Rc::new(KernelTypeBuild {
                 ty: Rc::new(Node {
+                    occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
                     name: "Map".to_string(),
                     span: crate::v1_std_core::kernel_span("Map".to_string()),
                     ident_span: Some(crate::v1_std_core::kernel_span("Map".to_string())),
                     children: Rc::new(vec![
                         Rc::new(Node {
+                            occurrence_identity: Rc::new(
+                                NodeOccurrenceIdentity::OccurrenceSynthetic,
+                            ),
                             name: key_name.clone(),
                             span: crate::v1_std_core::kernel_span(key_name.clone()),
                             ident_span: Some(crate::v1_std_core::kernel_span(key_name.clone())),
@@ -728,6 +744,9 @@ pub fn make_map_type(key: Rc<Node>, value: Rc<Node>) -> Rc<KernelTypeBuild> {
                             ident: None,
                         }),
                         Rc::new(Node {
+                            occurrence_identity: Rc::new(
+                                NodeOccurrenceIdentity::OccurrenceSynthetic,
+                            ),
                             name: val_name.clone(),
                             span: crate::v1_std_core::kernel_span(val_name.clone()),
                             ident_span: Some(crate::v1_std_core::kernel_span(val_name.clone())),
@@ -785,6 +804,7 @@ pub fn make_map_type(key: Rc<Node>, value: Rc<Node>) -> Rc<KernelTypeBuild> {
 
 pub fn make_callable_type(func_params: Rc<Vec<Rc<Node>>>, ret: Rc<Node>) -> Rc<Node> {
     Rc::new(Node {
+        occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
         name: "Callable".to_string(),
         span: crate::v1_std_core::kernel_span("Callable".to_string()),
         ident_span: Some(crate::v1_std_core::kernel_span("Callable".to_string())),
@@ -808,11 +828,13 @@ pub fn make_callable_type(func_params: Rc<Vec<Rc<Node>>>, ret: Rc<Node>) -> Rc<N
 
 pub fn make_tuple_type(first: Rc<Node>, second: Rc<Node>) -> Rc<Node> {
     Rc::new(Node {
+        occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
         name: "".to_string(),
         span: crate::v1_std_core::no_span(),
         ident_span: None,
         children: Rc::new(vec![
             Rc::new(Node {
+                occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
                 name: "first".to_string(),
                 span: crate::v1_std_core::kernel_span("first".to_string()),
                 ident_span: Some(crate::v1_std_core::kernel_span("first".to_string())),
@@ -835,6 +857,7 @@ pub fn make_tuple_type(first: Rc<Node>, second: Rc<Node>) -> Rc<Node> {
                 ident: None,
             }),
             Rc::new(Node {
+                occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
                 name: "second".to_string(),
                 span: crate::v1_std_core::kernel_span("second".to_string()),
                 ident_span: Some(crate::v1_std_core::kernel_span("second".to_string())),
@@ -876,6 +899,7 @@ pub fn make_tuple_type(first: Rc<Node>, second: Rc<Node>) -> Rc<Node> {
 
 pub fn algebra_value_field(name: String, type_node: Rc<Node>) -> Rc<Node> {
     Rc::new(Node {
+        occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
         name: name.clone(),
         span: crate::v1_std_core::kernel_span(name.clone()),
         ident_span: Some(crate::v1_std_core::kernel_span(name.clone())),
@@ -909,6 +933,7 @@ pub fn algebra_method_field(
             let mut __result = Vec::new();
             for t in param_types.iter().cloned() {
                 __result.push(crate::v1_std_core::make_param_node(
+                    Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
                     "_".to_string(),
                     t.clone(),
                     None,
@@ -920,6 +945,7 @@ pub fn algebra_method_field(
         });
         let callable = make_callable_type(params.clone(), return_type.clone());
         Rc::new(Node {
+            occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
             name: name.clone(),
             span: crate::v1_std_core::kernel_span(name.clone()),
             ident_span: Some(crate::v1_std_core::kernel_span(name.clone())),
@@ -950,6 +976,7 @@ pub fn enrich_base_with_fields(
     fields: Rc<Vec<Rc<Node>>>,
 ) -> Rc<Node> {
     Rc::new(Node {
+        occurrence_identity: base.occurrence_identity.clone(),
         name: name.clone(),
         span: base.span.clone(),
         ident_span: base.ident_span.clone(),
@@ -977,6 +1004,7 @@ pub fn placeholder_type_node(name: String) -> Rc<Node> {
 
 pub fn nominal_type_ref(name: String) -> Rc<Node> {
     crate::v1_std_core::leaf_node_with_span(
+        Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
         name.clone(),
         crate::v1_std_core::kernel_span(name.clone()),
     )
@@ -1146,6 +1174,7 @@ pub fn instantiate_algebra_type(
                             let mut __result = Vec::new();
                             for pn in param_nodes.iter().cloned() {
                                 __result.push(crate::v1_std_core::make_param_node(
+                                    Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
                                     "_".to_string(),
                                     pn.clone(),
                                     None,
@@ -1851,6 +1880,7 @@ pub fn apply_type_substitution(
                             let mut __result = Vec::new();
                             for pn in param_nodes.iter().cloned() {
                                 __result.push(crate::v1_std_core::make_param_node(
+                                    Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
                                     "_".to_string(),
                                     pn.clone(),
                                     None,

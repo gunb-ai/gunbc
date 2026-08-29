@@ -9,6 +9,8 @@ import std.os.types {
 }
 
 import extdeps.external_authority { ExternalAuthority }
+import std.types { String, List }
+import std.workspace_artifact { WorkspaceFootprint, WorkspaceArtifact, CitedUpstream, HostOsMetadata }
 import extdeps.uri { Uri, Https }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
@@ -31,5 +33,15 @@ data windows_11_24h2_catalog: WindowsDistributionCatalogRow = WindowsDistributio
 fn windows_distribution_catalog_row(distro: WindowsDistribution) -> WindowsDistributionCatalogRow {
   match distro {
     Windows1124H2Build26100 => windows_11_24h2_catalog
+  }
+}
+
+// WORKSPACE FOOTPRINT. Explorer writes thumbnail caches into browsed directories.
+fn explorer_thumbnail_footprint() -> WorkspaceFootprint {
+  WorkspaceFootprint {
+    provenance: CitedUpstream { display: "Windows Explorer cache", upstream: "microsoft.com (Explorer thumbnail cache)" },
+    artifacts: [
+      WorkspaceArtifact { pattern: "Thumbs.db", meaning: "Explorer thumbnail cache", reason: HostOsMetadata }
+    ]
   }
 }

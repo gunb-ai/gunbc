@@ -1,6 +1,6 @@
 # Resource budget tree — grounding notes
 
-Carriers: [dag/extdeps/accounting/budget.dag](../../dag/extdeps/accounting/budget.dag) (the §3 authority), [dag/product/budget_tree.dag](../../dag/product/budget_tree.dag) (the memory instantiation). Roadmap node: §1 `1-budget-tree`. PR #5582.
+Carriers: [dag/extdeps/accounting/budget.dag](../../dag/extdeps/accounting/budget.dag) (the §3 authority), [dag/gunbc/product/budget_tree.dag](../../dag/gunbc/product/budget_tree.dag) (the memory instantiation). Roadmap node: §1 `1-budget-tree`. PR #5582.
 
 Rationale is homed here, not in-file: ctrl#1793 strips `.dag` comments tree-wide, so a comment-heavy carrier would red main when that wall lands. These are the planning-level grounding facts the carrier cannot carry; the model itself lives on the carrier (§6).
 

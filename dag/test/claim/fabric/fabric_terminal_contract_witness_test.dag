@@ -3,7 +3,7 @@ module test.claim.fabric_terminal_contract_witness
 import std.types { NonEmptyStr, String, Bool, Int }
 import std.measure { money_amount_micro, money_amount_micro_count, hardware_thread_count, second, Second, MoneyRate }
 import std.content_hash { content_hash_of_value }
-import std.currency { Usd }
+import extdeps.currency.currency { Usd }
 import product.fabric.identity { FabricIdentity, fabric_identity_key, DemandKey, WorkKey }
 import product.fabric.work { CapacityClass, ControlPlaneCapacity, Shape, HardRequirements, Work, WorkContract, ExecutionRequirements, WorkStep, derive_work_key, work_for, ReceiptSatisfiable, IdempotentUnderKey, OpaqueEffects }
 import product.fabric.demand { Demand, AdmissionTerms, BuyTerms, SatisfactionRequirement, demand_work, demand_reservation_price, demand_maximum_buy_order }
@@ -490,24 +490,23 @@ test fn a_receipt_from_another_principal_is_not_the_same_attempt() -> Bool {
   admission_label(r: foreign_principal_receipt) == "different-attempt"
 }
 
+data granted_lease_receipt: Receipt<NonEmptyStr> = Receipt {
+  id: FabricIdentity { principal: "operator", key: "receipt-ok" },
+  attempt: first_attempt.id,
+  lease: lease_gen_9,
+  payload: ExecutionReceipt {
+    step_id: "floor",
+    outputs: content_hash_of_value(value: "outputs-ok"),
+    billable: second(count: 10),
+    completed_at: "2026-08-18T01:00:00Z",
+  },
+}
+
 // The positive control. Without it every refusal above is satisfied by an
 // admission function that refuses everything.
 
 test fn a_receipt_from_the_granted_lease_is_admissible() -> Bool {
-  match admit_receipt_for_grant(
-    r: Receipt {
-      id: FabricIdentity { principal: "operator", key: "receipt-ok" },
-      attempt: first_attempt.id,
-      lease: lease_gen_9,
-      payload: ExecutionReceipt {
-        step_id: "floor",
-        outputs: content_hash_of_value(value: "outputs-ok"),
-        billable: second(count: 10),
-        completed_at: "2026-08-18T01:00:00Z",
-      },
-    },
-    g: fixture_grant,
-  ) {
+  match admit_receipt_for_grant(r: granted_lease_receipt, g: fixture_grant) {
     ReceiptAdmissible => true
     ReceiptFromDifferentLease => false
     ReceiptFromDifferentAttempt => false

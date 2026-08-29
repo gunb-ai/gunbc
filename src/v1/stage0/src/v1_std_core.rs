@@ -29,7 +29,8 @@ use crate::std_algebra::CostShape::*;
 pub use crate::std_algebra::{AlgebraFieldTemplate, CollectionSizeEffect, CostShape};
 pub use crate::std_induction::SubValueRelation;
 use crate::std_induction::SubValueRelation::*;
-use crate::std_occurrence_identity::OccurrenceRole::*;
+use crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic;
+pub use crate::std_occurrence_identity::OccurrenceId;
 use crate::std_occurrence_identity::OccurrenceTransportRefusal::{
     DuplicateAuthoredOccurrenceIdentity, DuplicateSuppliedCandidateIdentity,
     InconsistentOccurrenceContainment, MissingAuthoredOccurrenceIdentity,
@@ -40,9 +41,9 @@ pub use crate::std_occurrence_identity::{
     occurrence_id_allocator_advance_to,
 };
 pub use crate::std_occurrence_identity::{
-    AuthoredTokenOrdinalSpace, OccurrenceIdAllocator, OccurrenceTransportRefusal,
+    AuthoredTokenOrdinalSpace, NodeOccurrenceIdentity, OccurrenceIdAllocator,
+    OccurrenceTransportRefusal,
 };
-pub use crate::std_occurrence_identity::{OccurrenceId, OccurrenceRole};
 pub use crate::std_source_annotation::AnnotationAttachmentRefusal;
 use crate::std_source_annotation::AnnotationAttachmentRefusal::*;
 pub use crate::std_source_annotation::{
@@ -642,6 +643,12 @@ pub enum CompilerDiagnostic {
         argument: String,
         span: Rc<SourceSpan>,
     },
+    TypeArgumentArityMismatch {
+        type_name: String,
+        supplied: i64,
+        declared: i64,
+        span: Rc<SourceSpan>,
+    },
     OccurrenceTransportViolation {
         refusal: Rc<OccurrenceTransportRefusal>,
     },
@@ -779,6 +786,7 @@ pub fn diagnostic_to_span(d: Rc<CompilerDiagnostic>) -> Rc<SourceSpan> {
         CompilerDiagnostic::CallArgumentDuplicate { span: s, .. } => s.clone(),
         CompilerDiagnostic::CallPositionalDeficit { span: s, .. } => s.clone(),
         CompilerDiagnostic::CallNamedArgOnFunctionValue { span: s, .. } => s.clone(),
+        CompilerDiagnostic::TypeArgumentArityMismatch { span: s, .. } => s.clone(),
         CompilerDiagnostic::OccurrenceTransportViolation {
             refusal: refusal, ..
         } => match occurrence_transport_refusal_diagnostic_span(refusal.clone()) {
@@ -840,6 +848,7 @@ pub fn diagnostic_to_message(d: Rc<CompilerDiagnostic>) -> String {
     CompilerDiagnostic::CallArgumentDuplicate { callee: c, argument: a, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("call shape mismatch calling '".to_string(), c.clone()), "': argument '".to_string()), a.clone()), "' supplied more than once".to_string()),
     CompilerDiagnostic::CallPositionalDeficit { callee: c, parameter: p, supplied: s, required: r, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("call shape mismatch calling '".to_string(), c.clone()), "': missing required argument '".to_string()), p.clone()), "' (".to_string()), (s.clone()).to_string()), " of ".to_string()), (r.clone()).to_string()), " required argument(s) supplied)".to_string()),
     CompilerDiagnostic::CallNamedArgOnFunctionValue { callee: c, argument: a, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("call shape mismatch calling function value '".to_string(), c.clone()), "': named argument '".to_string()), a.clone()), "' is not supported — use positional arguments".to_string()),
+    CompilerDiagnostic::TypeArgumentArityMismatch { type_name: t, supplied: s, declared: d, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("type argument arity mismatch applying '".to_string(), t.clone()), "': ".to_string()), (s.clone()).to_string()), " type argument(s) supplied, ".to_string()), (d.clone()).to_string()), " type parameter(s) declared".to_string()),
     CompilerDiagnostic::OccurrenceTransportViolation { refusal: refusal, .. } => occurrence_transport_refusal_diagnostic_message(refusal.clone()),
     CompilerDiagnostic::ContainerSpellingUnrecognized { name: n, container_leaf: leaf, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("unrecognized container spelling '".to_string(), n.clone()), "': its last segment '".to_string()), leaf.clone()), "' names a container, but no arity is declared for '".to_string()), n.clone()), "' in std.types container_type_arity — declare the row or spell the container by a declared name".to_string()),
     CompilerDiagnostic::ServiceConfigReferenceJudgmentDeferred { field: f, referenced_name: n, trigger: t, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("service config field '".to_string(), f.clone()), "' carries the reference '".to_string()), n.clone()), "', and the reference judgment does not yet run on this field -- ".to_string()), t.clone()), ". This is a counted deferral, not a pass: nothing has established that '".to_string()), n.clone()), "' names anything".to_string()),
@@ -859,7 +868,7 @@ pub fn is_where_refinement_unenforced_advisory_reason(reason: String) -> bool {
 pub fn compiler_diagnostic_seed_projection_note() -> String {
     thread_local! {
         static CACHED: String = {
-            "HAND-RUST GATE receipt for the CompilerDiagnostic seed projection (codex reviews 45469, 45481). Adding a variant to this coproduct forces arms in two TOTAL matches in the hand-maintained seed transport, cli_run.rs's compile_clean_diagnostic_histogram_key and its method-name extractor; without them the seed does not compile, so the arms are the mechanical consequence of the .dag change, not host-side capability someone chose to write in Rust. THIS IS A DIFFERENT CLASS FROM THE GATE'S USUAL SUBJECT and the distinction is the whole receipt: the gate's other explicit deferrals — the emit-surface retirement rows — are DECISION SURFACES that could live in .dag and are deferred for a stated reason, so they owe a dissolution schedule of their own. This clause used to name cli_run::selection_control_input_sources alongside them; that symbol was DELETED with affected-set selection (2026-08-15), so the deferral it recorded was discharged by deletion rather than by a schedule, and the citation was left naming nothing — the DESIGN section 3 stale-citation class, inside a receipt whose own argument is that an unverifiable figure rots silently. An exhaustiveness arm owes none, because it cannot live anywhere but the seed's projection of the coproduct, and it disappears exactly when the seed does. CHECKABLE RECEIPT for the FIVE variants this lane adds (MethodNotFound, MethodExistenceUndecided, MethodExistenceFrontierAdmitted, ReceiverTypeUnestablished, FrontierOccurrenceBudgetExceeded). It read SIX until the unjudged conformance advisory was excluded from this PR (codex review 45767); DeclaredTypeConformanceUnjudged and its arms are gone with it, which is why the figures below moved again. Two commands, and the receipt is exactly their output — EACH FIGURE NAMES THE COMMAND THAT PRODUCES IT, because a number with no command behind it cannot be checked and rots silently. (a) `grep -cE '^(pub )?fn ' src/v1/stage0/src/cli_run.rs` is 747 at origin/main and 747 on this branch, so the hand-Rust CARRIER census is FLAT. (b) `git diff --numstat origin/main -- src/v1/stage0/src/cli_run.rs` is 23 added / 0 removed, and `git diff origin/main -- src/v1/stage0/src/cli_run.rs | grep -cE '^\\+.*\\bfn '` is 0, so every added line is inside an existing fn and none declares one. The 23 lines are the five diagnostic arms plus the advisory-classification entries described next. THE NUMBERS IN A RECEIPT MUST TRACK THE DIFF THEY CERTIFY: this row read five variants and 13 lines after a sixth variant landed (codex review 45501), and then read a fn census of 742 that NO command reproduced — 501 bare `fn` and 245 `pub fn` on either side, never 742 — so the figure certifying that hand-Rust had not grown was itself unverifiable. A receipt whose number cannot be re-derived is indistinguishable from one that is wrong. Re-derive all three figures from the commands above whenever this coproduct changes, rather than carrying them forward. THE ADVISORY CLASSIFICATION IS PART OF THIS RECEIPT AND WAS THE DEFECT IT ALMOST HID: compile_clean_diagnostic_is_advisory is a CLOSED ALLOWLIST, not the complement of is_hard, so the two non-blocking variants this lane adds were counted by NEITHER predicate — rendered to the terminal while the gate reported zero of them. The residue was described as counted while nothing in the repository counted it, and the population figures quoted in review came from a grep over log text rather than from any mechanism (found by executing the gate before and after and seeing its advisory total sit unchanged at 4590 while the printed population halved). Adding a non-blocking variant to the coproduct therefore obliges a matching entry in that allowlist, or the frontier it represents is invisible to the gate that is supposed to bound it. Lane: compiler-static-failure-closure (v1-method-existence-wall / v1-declared-type-conformance-wall). Dissolves with the seed itself, ROADMAP hand-MAINTAINED to zero at v2 self-host; no separate trigger, because there is no separable work to schedule. Not migration debt and not a delete candidate. SECOND LANE, SECOND EXPANSION (review 55680, finding 2). ImportShadowedByLocalDefinition is a SIXTH variant, added by a different lane for the import-shadow wall, and it forces one arm in each of the same two total matches. The five-variant figures above were measured against THAT lane's base and do not reproduce here -- (a) alone now answers 884 rather than 747 -- which is the rot this receipt exists to make visible: a figure survives its own truth by naming a command nobody re-runs. RE-MEASURED ON THIS HEAD, same three commands: (a) `grep -cE '^(pub )?fn ' src/v1/stage0/src/cli_run.rs` is 884 at origin/main and 884 on this branch, so the hand-Rust CARRIER census is FLAT. (b) `git diff --numstat origin/main -- src/v1/stage0/src/cli_run.rs` is 4 added / 0 removed. (c) `git diff origin/main -- src/v1/stage0/src/cli_run.rs | grep -cE '^\\+.*\\bfn '` is 0, so every added line sits inside an existing fn and none declares one. The 4 lines are this variant's two arms, one per total match, as rustfmt renders them. NO HOST CAPABILITY IS ADDED: both arms are the mechanical consequence of the .dag coproduct gaining a member, and they disappear exactly when the seed does. THIRD LANE, THIRD EXPANSION (codex review 56224, finding 1). DataReferenceVisibilityBudgetExceeded and ParameterDefaultFormNotAdmitted are a SEVENTH and EIGHTH variant, added by the typed-data-reference-refusal lane so that the three terminal arms of v1.compiler.emit_rust validate_workflow_param_defaults stop rendering three distinct causes as InternalError. Each forces one arm in each of the same two total matches. THE PRIOR LANE'S FIGURES DO NOT REPRODUCE HERE AND ARE NOT AMENDED: 884 was that lane's base, this lane's base is 890, and a receipt that edited the earlier number in place would destroy the evidence that a figure moves per lane -- which is the entire argument this row makes. RE-MEASURED ON THIS HEAD, same three commands: (a) `grep -cE '^(pub )?fn ' src/v1/stage0/src/cli_run.rs` is 890 at origin/main and 890 on this branch, so the hand-Rust CARRIER census is FLAT. (b) `git diff --numstat origin/main -- src/v1/stage0/src/cli_run.rs` is 8 added / 0 removed. (c) `git diff origin/main -- src/v1/stage0/src/cli_run.rs | grep -cE '^\\+.*\\bfn '` is 0, so every added line sits inside an existing fn and none declares one. The 8 lines are this lane's FOUR arms -- two variants, one arm each in both total matches -- as rustfmt renders them across braced blocks. WHY EIGHT LINES FOR FOUR ARMS AND NOT FOUR: three of the four arms exceed the line width once the variant name is spelled, so rustfmt renders them as braced blocks; the count is a property of the formatter, not of added capability, which is exactly why (c) is measured beside it rather than inferred from (b). THE THIRTEEN LINES IN v1_std_core.rs ARE NOT PART OF THIS RECEIPT AND MUST NOT BE ADDED TO IT: that file is the GENERATED mirror of this module, emitted by required-regen from the .dag authority above, so its growth is authored here in .dag and is not hand-Rust surface. Counting it would be the same category error as counting compiler_tests.rs, which the plan projection already rules out for the same reason. FOURTH LANE, FOURTH EXPANSION (duplicate-declaration wall, 2026-08-27). DuplicateDeclaration is a NINTH variant, added so that v1.compiler.resolve check_duplicate_declarations can refuse a module declaring one name twice -- a state the compiler previously ACCEPTED with zero diagnostics while the symbol index silently kept the last declaration. It forces one arm in each of the same two total matches. THE PRIOR LANE'S FIGURES DO NOT REPRODUCE HERE AND ARE NOT AMENDED: 890 was that lane's base, this lane's base is 895. THIS LANE CHANGES THE RECEIPT'S NAMED COMMANDS, AND THE REASON IS THIS ROW'S OWN ARGUMENT TURNED ON ITSELF (codex review 56644). Every prior lane wrote `origin/main` as the comparison base. A DIFF HAS TWO SIDES AND ONLY ONE OF THEM IS THIS BRANCH: origin/main moves under other people's merges, so a receipt keyed to the MOVING ref reports a figure that changes without anyone touching the change it certifies. Measured here rather than argued: this lane's diff was 2 added / 0 removed when authored, and hours later the same `git diff --numstat origin/main` command answered 6 added / 64 removed -- the 64 removals being main's work, not this branch's, and the figure now describing a diff nobody authored. That is exactly the rot this row exists to make visible, arriving through the ref rather than through the number, which is why it survived three lanes: each author re-measured honestly and the command was already wrong. THE REPAIR IS A STABLE BASE: every figure below is measured against `$(git merge-base origin/main HEAD)`, which is this branch's own fork point and does not move, and the base commit is NAMED so the reading is reproducible after a later merge -- ddb7f533e4. RE-MEASURED ON THIS HEAD against that base: (a) `git show $(git merge-base origin/main HEAD):src/v1/stage0/src/cli_run.rs | grep -cE '^(pub )?fn '` is 895 and `grep -cE '^(pub )?fn ' src/v1/stage0/src/cli_run.rs` is 895, so the hand-Rust CARRIER census is FLAT. (b) `git diff --numstat $(git merge-base origin/main HEAD) -- src/v1/stage0/src/cli_run.rs` is 2 added / 0 removed. (c) `git diff $(git merge-base origin/main HEAD) -- src/v1/stage0/src/cli_run.rs | grep -cE '^\\+.*\\bfn '` is 0, so every added line sits inside an existing fn and none declares one. The 2 lines are this variant's two arms, one per total match, each short enough that rustfmt renders it on one line -- which is why the per-arm line count differs from the prior lane's and is measured rather than inherited. THE EARLIER LANES' FIGURES ARE NOT RE-BASED OR AMENDED: they were correct against the main they named at the time, and rewriting them would destroy the evidence that a receipt keyed to a moving ref decays, which is the whole finding here. What changes is the command the NEXT lane runs. THE NEW VARIANT IS BLOCKING and carries no arm in is_error_diagnostic or is_interpreter_blocking_diagnostic: both answer true by default and it is listed as an exception in neither, which is the intended reading -- a duplicate declaration must stop the line, since every realization downstream of it is built on whichever definition happened to survive. NEITHER NEW VARIANT IS NON-BLOCKING, so the advisory-allowlist obligation this row records does not fire: is_interpreter_blocking_diagnostic answers true by default and neither variant is listed as an exception, which is correct -- both replace a blocking InternalError at a refusal site, and the witness measures the ambiguity arm as one BLOCKING AmbiguousReference row rather than an advisory one. FOURTH LANE, FOURTH EXPANSION (codex review 56887). ModuleFilenameCollision is a NINTH variant, added by the module-filename-collision lane so that two modules whose names differ only by a dot-versus-underscore refuse at emit instead of overwriting one emitted file silently. It forces one arm in each of the same two total matches. THE PRIOR LANE'S FIGURES DO NOT REPRODUCE HERE AND ARE NOT AMENDED, for the reason the third lane already gives: 890 was that lane's base, this lane's base is 896, and editing an earlier number in place would destroy the evidence that a figure moves per lane. RE-MEASURED ON THIS HEAD against origin/main 9538523a3c, same three commands: (a) `grep -cE '^(pub )?fn ' src/v1/stage0/src/cli_run.rs` is 896 at origin/main and 896 on this branch, so the hand-Rust CARRIER census is FLAT. (b) `git diff --numstat origin/main -- src/v1/stage0/src/cli_run.rs` is 2 added / 0 removed. (c) `git diff origin/main -- src/v1/stage0/src/cli_run.rs | grep -cE '^\\+.*\\bfn '` is 0, so both added lines sit inside existing fns and neither declares one. The 2 lines are this lane's TWO arms, one per total match; both render on a single line, which is why this lane's line count is 2 where the third lane's four arms cost 8 -- the difference is rustfmt's wrapping of longer variant names, not added capability. THE VARIANT IS BLOCKING, so the advisory-allowlist obligation this row records does not fire: is_interpreter_blocking_diagnostic answers true by default and ModuleFilenameCollision is not listed as an exception, which is correct -- a collision silently overwrites an emitted file, and an advisory would be the fail-open the diagnostic exists to close. DISSOLUTION: this lane mints NO separate trigger and inherits the one this row already carries -- the arms are the mechanical consequence of the .dag coproduct gaining a member, they cannot live anywhere but the seed's projection of it, and they disappear exactly when the seed does, at the ROADMAP row v1-zero-hand-maintained-rust.".to_string()
+            "HAND-RUST GATE receipt for the CompilerDiagnostic seed projection (codex reviews 45469, 45481). Adding a variant to this coproduct forces arms in two TOTAL matches in the hand-maintained seed transport, cli_run.rs's compile_clean_diagnostic_histogram_key and its method-name extractor; without them the seed does not compile, so the arms are the mechanical consequence of the .dag change, not host-side capability someone chose to write in Rust. THIS IS A DIFFERENT CLASS FROM THE GATE'S USUAL SUBJECT and the distinction is the whole receipt: the gate's other explicit deferrals — the emit-surface retirement rows — are DECISION SURFACES that could live in .dag and are deferred for a stated reason, so they owe a dissolution schedule of their own. This clause used to name cli_run::selection_control_input_sources alongside them; that symbol was DELETED with affected-set selection (2026-08-15), so the deferral it recorded was discharged by deletion rather than by a schedule, and the citation was left naming nothing — the DESIGN section 3 stale-citation class, inside a receipt whose own argument is that an unverifiable figure rots silently. An exhaustiveness arm owes none, because it cannot live anywhere but the seed's projection of the coproduct, and it disappears exactly when the seed does. CHECKABLE RECEIPT for the FIVE variants this lane adds (MethodNotFound, MethodExistenceUndecided, MethodExistenceFrontierAdmitted, ReceiverTypeUnestablished, FrontierOccurrenceBudgetExceeded). It read SIX until the unjudged conformance advisory was excluded from this PR (codex review 45767); DeclaredTypeConformanceUnjudged and its arms are gone with it, which is why the figures below moved again. Two commands, and the receipt is exactly their output — EACH FIGURE NAMES THE COMMAND THAT PRODUCES IT, because a number with no command behind it cannot be checked and rots silently. (a) `grep -cE '^(pub )?fn ' src/v1/stage0/src/cli_run.rs` is 747 at origin/main and 747 on this branch, so the hand-Rust CARRIER census is FLAT. (b) `git diff --numstat origin/main -- src/v1/stage0/src/cli_run.rs` is 23 added / 0 removed, and `git diff origin/main -- src/v1/stage0/src/cli_run.rs | grep -cE '^\\+.*\\bfn '` is 0, so every added line is inside an existing fn and none declares one. The 23 lines are the five diagnostic arms plus the advisory-classification entries described next. THE NUMBERS IN A RECEIPT MUST TRACK THE DIFF THEY CERTIFY: this row read five variants and 13 lines after a sixth variant landed (codex review 45501), and then read a fn census of 742 that NO command reproduced — 501 bare `fn` and 245 `pub fn` on either side, never 742 — so the figure certifying that hand-Rust had not grown was itself unverifiable. A receipt whose number cannot be re-derived is indistinguishable from one that is wrong. Re-derive all three figures from the commands above whenever this coproduct changes, rather than carrying them forward. THE ADVISORY CLASSIFICATION IS PART OF THIS RECEIPT AND WAS THE DEFECT IT ALMOST HID: compile_clean_diagnostic_is_advisory is a CLOSED ALLOWLIST, not the complement of is_hard, so the two non-blocking variants this lane adds were counted by NEITHER predicate — rendered to the terminal while the gate reported zero of them. The residue was described as counted while nothing in the repository counted it, and the population figures quoted in review came from a grep over log text rather than from any mechanism (found by executing the gate before and after and seeing its advisory total sit unchanged at 4590 while the printed population halved). Adding a non-blocking variant to the coproduct therefore obliges a matching entry in that allowlist, or the frontier it represents is invisible to the gate that is supposed to bound it. Lane: compiler-static-failure-closure (v1-method-existence-wall / v1-declared-type-conformance-wall). Dissolves with the seed itself, ROADMAP hand-MAINTAINED to zero at v2 self-host; no separate trigger, because there is no separable work to schedule. Not migration debt and not a delete candidate. SECOND LANE, SECOND EXPANSION (review 55680, finding 2). ImportShadowedByLocalDefinition is a SIXTH variant, added by a different lane for the import-shadow wall, and it forces one arm in each of the same two total matches. The five-variant figures above were measured against THAT lane's base and do not reproduce here -- (a) alone now answers 884 rather than 747 -- which is the rot this receipt exists to make visible: a figure survives its own truth by naming a command nobody re-runs. RE-MEASURED ON THIS HEAD, same three commands: (a) `grep -cE '^(pub )?fn ' src/v1/stage0/src/cli_run.rs` is 884 at origin/main and 884 on this branch, so the hand-Rust CARRIER census is FLAT. (b) `git diff --numstat origin/main -- src/v1/stage0/src/cli_run.rs` is 4 added / 0 removed. (c) `git diff origin/main -- src/v1/stage0/src/cli_run.rs | grep -cE '^\\+.*\\bfn '` is 0, so every added line sits inside an existing fn and none declares one. The 4 lines are this variant's two arms, one per total match, as rustfmt renders them. NO HOST CAPABILITY IS ADDED: both arms are the mechanical consequence of the .dag coproduct gaining a member, and they disappear exactly when the seed does. THIRD LANE, THIRD EXPANSION (codex review 56224, finding 1). DataReferenceVisibilityBudgetExceeded and ParameterDefaultFormNotAdmitted are a SEVENTH and EIGHTH variant, added by the typed-data-reference-refusal lane so that the three terminal arms of v1.compiler.emit_rust validate_workflow_param_defaults stop rendering three distinct causes as InternalError. Each forces one arm in each of the same two total matches. THE PRIOR LANE'S FIGURES DO NOT REPRODUCE HERE AND ARE NOT AMENDED: 884 was that lane's base, this lane's base is 890, and a receipt that edited the earlier number in place would destroy the evidence that a figure moves per lane -- which is the entire argument this row makes. RE-MEASURED ON THIS HEAD, same three commands: (a) `grep -cE '^(pub )?fn ' src/v1/stage0/src/cli_run.rs` is 890 at origin/main and 890 on this branch, so the hand-Rust CARRIER census is FLAT. (b) `git diff --numstat origin/main -- src/v1/stage0/src/cli_run.rs` is 8 added / 0 removed. (c) `git diff origin/main -- src/v1/stage0/src/cli_run.rs | grep -cE '^\\+.*\\bfn '` is 0, so every added line sits inside an existing fn and none declares one. The 8 lines are this lane's FOUR arms -- two variants, one arm each in both total matches -- as rustfmt renders them across braced blocks. WHY EIGHT LINES FOR FOUR ARMS AND NOT FOUR: three of the four arms exceed the line width once the variant name is spelled, so rustfmt renders them as braced blocks; the count is a property of the formatter, not of added capability, which is exactly why (c) is measured beside it rather than inferred from (b). THE THIRTEEN LINES IN v1_std_core.rs ARE NOT PART OF THIS RECEIPT AND MUST NOT BE ADDED TO IT: that file is the GENERATED mirror of this module, emitted by required-regen from the .dag authority above, so its growth is authored here in .dag and is not hand-Rust surface. Counting it would be the same category error as counting compiler_tests.rs, which the plan projection already rules out for the same reason. FOURTH LANE, FOURTH EXPANSION (duplicate-declaration wall, 2026-08-27). DuplicateDeclaration is a NINTH variant, added so that v1.compiler.resolve check_duplicate_declarations can refuse a module declaring one name twice -- a state the compiler previously ACCEPTED with zero diagnostics while the symbol index silently kept the last declaration. It forces one arm in each of the same two total matches. THE PRIOR LANE'S FIGURES DO NOT REPRODUCE HERE AND ARE NOT AMENDED: 890 was that lane's base, this lane's base is 895. THIS LANE CHANGES THE RECEIPT'S NAMED COMMANDS, AND THE REASON IS THIS ROW'S OWN ARGUMENT TURNED ON ITSELF (codex review 56644). Every prior lane wrote `origin/main` as the comparison base. A DIFF HAS TWO SIDES AND ONLY ONE OF THEM IS THIS BRANCH: origin/main moves under other people's merges, so a receipt keyed to the MOVING ref reports a figure that changes without anyone touching the change it certifies. Measured here rather than argued: this lane's diff was 2 added / 0 removed when authored, and hours later the same `git diff --numstat origin/main` command answered 6 added / 64 removed -- the 64 removals being main's work, not this branch's, and the figure now describing a diff nobody authored. That is exactly the rot this row exists to make visible, arriving through the ref rather than through the number, which is why it survived three lanes: each author re-measured honestly and the command was already wrong. THE REPAIR IS A STABLE BASE: every figure below is measured against `$(git merge-base origin/main HEAD)`, which is this branch's own fork point and does not move, and the base commit is NAMED so the reading is reproducible after a later merge -- ddb7f533e4. RE-MEASURED ON THIS HEAD against that base: (a) `git show $(git merge-base origin/main HEAD):src/v1/stage0/src/cli_run.rs | grep -cE '^(pub )?fn '` is 895 and `grep -cE '^(pub )?fn ' src/v1/stage0/src/cli_run.rs` is 895, so the hand-Rust CARRIER census is FLAT. (b) `git diff --numstat $(git merge-base origin/main HEAD) -- src/v1/stage0/src/cli_run.rs` is 2 added / 0 removed. (c) `git diff $(git merge-base origin/main HEAD) -- src/v1/stage0/src/cli_run.rs | grep -cE '^\\+.*\\bfn '` is 0, so every added line sits inside an existing fn and none declares one. The 2 lines are this variant's two arms, one per total match, each short enough that rustfmt renders it on one line -- which is why the per-arm line count differs from the prior lane's and is measured rather than inherited. THE EARLIER LANES' FIGURES ARE NOT RE-BASED OR AMENDED: they were correct against the main they named at the time, and rewriting them would destroy the evidence that a receipt keyed to a moving ref decays, which is the whole finding here. What changes is the command the NEXT lane runs. THE NEW VARIANT IS BLOCKING and carries no arm in is_error_diagnostic or is_interpreter_blocking_diagnostic: both answer true by default and it is listed as an exception in neither, which is the intended reading -- a duplicate declaration must stop the line, since every realization downstream of it is built on whichever definition happened to survive. NEITHER NEW VARIANT IS NON-BLOCKING, so the advisory-allowlist obligation this row records does not fire: is_interpreter_blocking_diagnostic answers true by default and neither variant is listed as an exception, which is correct -- both replace a blocking InternalError at a refusal site, and the witness measures the ambiguity arm as one BLOCKING AmbiguousReference row rather than an advisory one. FOURTH LANE, FOURTH EXPANSION (codex review 56887). ModuleFilenameCollision is a NINTH variant, added by the module-filename-collision lane so that two modules whose names differ only by a dot-versus-underscore refuse at emit instead of overwriting one emitted file silently. It forces one arm in each of the same two total matches. THE PRIOR LANE'S FIGURES DO NOT REPRODUCE HERE AND ARE NOT AMENDED, for the reason the third lane already gives: 890 was that lane's base, this lane's base is 896, and editing an earlier number in place would destroy the evidence that a figure moves per lane. RE-MEASURED ON THIS HEAD against origin/main 9538523a3c, same three commands: (a) `grep -cE '^(pub )?fn ' src/v1/stage0/src/cli_run.rs` is 896 at origin/main and 896 on this branch, so the hand-Rust CARRIER census is FLAT. (b) `git diff --numstat origin/main -- src/v1/stage0/src/cli_run.rs` is 2 added / 0 removed. (c) `git diff origin/main -- src/v1/stage0/src/cli_run.rs | grep -cE '^\\+.*\\bfn '` is 0, so both added lines sit inside existing fns and neither declares one. The 2 lines are this lane's TWO arms, one per total match; both render on a single line, which is why this lane's line count is 2 where the third lane's four arms cost 8 -- the difference is rustfmt's wrapping of longer variant names, not added capability. THE VARIANT IS BLOCKING, so the advisory-allowlist obligation this row records does not fire: is_interpreter_blocking_diagnostic answers true by default and ModuleFilenameCollision is not listed as an exception, which is correct -- a collision silently overwrites an emitted file, and an advisory would be the fail-open the diagnostic exists to close. DISSOLUTION: this lane mints NO separate trigger and inherits the one this row already carries -- the arms are the mechanical consequence of the .dag coproduct gaining a member, they cannot live anywhere but the seed's projection of it, and they disappear exactly when the seed does, at the ROADMAP row v1-zero-hand-maintained-rust. FIFTH LANE, FIFTH EXPANSION (type-argument-arity wall, 2026-08-27). TypeArgumentArityMismatch is a TENTH variant, added so that v1.compiler.infer refuses a generic application whose supplied type-argument count disagrees with the declaration's parameter count -- a state alias_chain_type_arg_subst previously absorbed in BOTH directions with no diagnostic anywhere, so a correct application and an arity-wrong one compiled identically at the floor band. It forces one arm in each of the same two total matches. THE PRIOR LANES' FIGURES DO NOT REPRODUCE HERE AND ARE NOT AMENDED, for the reason the third lane already gives. RE-MEASURED ON THIS HEAD against the STABLE base `$(git merge-base origin/main HEAD)`, which the fourth lane's repair installed and which is 42eed29357 here: (a) `git show $(git merge-base origin/main HEAD):src/v1/stage0/src/cli_run.rs | grep -cE '^(pub )?fn '` is 896 and `grep -cE '^(pub )?fn ' src/v1/stage0/src/cli_run.rs` is 896, so the hand-Rust CARRIER census is FLAT. (b) `git diff --numstat $(git merge-base origin/main HEAD) -- src/v1/stage0/src/cli_run.rs` is 2 added / 0 removed. (c) `git diff $(git merge-base origin/main HEAD) -- src/v1/stage0/src/cli_run.rs | grep -cE '^\\+.*\\bfn '` is 0, so both added lines sit inside existing fns and neither declares one. The 2 lines are this lane's TWO arms, one per total match, each rendered on one line. THE VARIANT IS BLOCKING and carries no arm in is_error_diagnostic or is_interpreter_blocking_diagnostic: both answer true by default and it is listed as an exception in neither, which is the intended reading -- an application bound at the wrong arity leaves a declared type parameter standing for nothing, and every judgment downstream of it is made against a hole. The advisory-allowlist obligation this row records therefore does not fire. DISSOLUTION: inherited, not minted, exactly as the fourth lane's.".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
@@ -1007,6 +1016,7 @@ pub struct DeclaredFuncEnv {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Node {
+    pub occurrence_identity: Rc<NodeOccurrenceIdentity>,
     pub name: String,
     pub ident: Option<i64>,
     pub span: Rc<SourceSpan>,
@@ -1047,12 +1057,14 @@ pub fn empty_node_list() -> Rc<Vec<Rc<Node>>> {
 }
 
 pub fn make_expr_node(
+    occurrence_identity: Rc<NodeOccurrenceIdentity>,
     expr_data: Rc<ExprData>,
     children: Rc<Vec<Rc<Node>>>,
     inferred: Option<Rc<InferredNode>>,
     span: Rc<SourceSpan>,
 ) -> Rc<Node> {
     Rc::new(Node {
+        occurrence_identity: occurrence_identity.clone(),
         name: "".to_string(),
         span: span.clone(),
         ident_span: None,
@@ -1075,6 +1087,7 @@ pub fn make_expr_node(
 }
 
 pub fn make_named_expr_node(
+    occurrence_identity: Rc<NodeOccurrenceIdentity>,
     name: String,
     expr_data: Rc<ExprData>,
     children: Rc<Vec<Rc<Node>>>,
@@ -1083,6 +1096,7 @@ pub fn make_named_expr_node(
     name_span: Rc<SourceSpan>,
 ) -> Rc<Node> {
     Rc::new(Node {
+        occurrence_identity: occurrence_identity.clone(),
         name: name.clone(),
         span: span.clone(),
         ident_span: default_ident_span(name.clone(), name_span.clone()),
@@ -1104,8 +1118,13 @@ pub fn make_named_expr_node(
     })
 }
 
-pub fn make_pattern_binder_declaration_node(name: String, span: Rc<SourceSpan>) -> Rc<Node> {
+pub fn make_pattern_binder_declaration_node(
+    occurrence_identity: Rc<NodeOccurrenceIdentity>,
+    name: String,
+    span: Rc<SourceSpan>,
+) -> Rc<Node> {
     make_named_expr_node(
+        occurrence_identity.clone(),
         name.clone(),
         Rc::new(ExprData::NoExprData),
         Rc::new(vec![]),
@@ -1116,11 +1135,13 @@ pub fn make_pattern_binder_declaration_node(name: String, span: Rc<SourceSpan>) 
 }
 
 pub fn make_expr_error_node(
+    occurrence_identity: Rc<NodeOccurrenceIdentity>,
     kind: ExprErrorKind,
     message: String,
     span: Rc<SourceSpan>,
 ) -> Rc<Node> {
     Rc::new(Node {
+        occurrence_identity: occurrence_identity.clone(),
         name: "".to_string(),
         span: span.clone(),
         ident_span: None,
@@ -1149,6 +1170,7 @@ pub fn make_expr_error_node(
 }
 
 pub fn make_arg_node(
+    occurrence_identity: Rc<NodeOccurrenceIdentity>,
     name: Option<String>,
     value: Rc<Node>,
     span: Rc<SourceSpan>,
@@ -1160,6 +1182,7 @@ pub fn make_arg_node(
             None => "".to_string(),
         };
         Rc::new(Node {
+            occurrence_identity: occurrence_identity.clone(),
             name: arg_name.clone(),
             span: span.clone(),
             ident_span: default_ident_span(arg_name.clone(), name_span.clone()),
@@ -1183,6 +1206,7 @@ pub fn make_arg_node(
 }
 
 pub fn make_arm_node(
+    occurrence_identity: Rc<NodeOccurrenceIdentity>,
     pattern: Rc<MatchPattern>,
     guard: Option<Rc<Node>>,
     body: Rc<Node>,
@@ -1194,6 +1218,7 @@ pub fn make_arm_node(
             None => Rc::new(vec![body.clone()]),
         };
         Rc::new(Node {
+            occurrence_identity: occurrence_identity.clone(),
             name: "".to_string(),
             span: span.clone(),
             ident_span: None,
@@ -1217,12 +1242,14 @@ pub fn make_arm_node(
 }
 
 pub fn make_resource_use_node(
+    occurrence_identity: Rc<NodeOccurrenceIdentity>,
     name: String,
     resource: Rc<Node>,
     span: Rc<SourceSpan>,
     name_span: Rc<SourceSpan>,
 ) -> Rc<Node> {
     Rc::new(Node {
+        occurrence_identity: occurrence_identity.clone(),
         name: name.clone(),
         span: span.clone(),
         ident_span: default_ident_span(name.clone(), name_span.clone()),
@@ -1255,6 +1282,7 @@ pub fn resource_use_resource(n: Rc<Node>) -> Rc<Node> {
     match n.children.clone().first().cloned() {
         Some(v) => v.clone(),
         None => make_expr_error_node(
+            Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
             ExprErrorKind::InternalExprError,
             "malformed resource-use: missing resource".to_string(),
             n.span.clone(),
@@ -1263,12 +1291,14 @@ pub fn resource_use_resource(n: Rc<Node>) -> Rc<Node> {
 }
 
 pub fn make_field_init_node(
+    occurrence_identity: Rc<NodeOccurrenceIdentity>,
     name: String,
     value: Rc<Node>,
     span: Rc<SourceSpan>,
     name_span: Rc<SourceSpan>,
 ) -> Rc<Node> {
     Rc::new(Node {
+        occurrence_identity: occurrence_identity.clone(),
         name: name.clone(),
         span: span.clone(),
         ident_span: default_ident_span(name.clone(), name_span.clone()),
@@ -1291,12 +1321,14 @@ pub fn make_field_init_node(
 }
 
 pub fn make_field_binding_node(
+    occurrence_identity: Rc<NodeOccurrenceIdentity>,
     field_name: String,
     binding: Rc<MatchPattern>,
     span: Rc<SourceSpan>,
     name_span: Rc<SourceSpan>,
 ) -> Rc<Node> {
     Rc::new(Node {
+        occurrence_identity: occurrence_identity.clone(),
         name: field_name.clone(),
         span: span.clone(),
         ident_span: default_ident_span(field_name.clone(), name_span.clone()),
@@ -1332,8 +1364,13 @@ pub fn field_binding_pattern(n: Rc<Node>) -> Rc<MatchPattern> {
     }
 }
 
-pub fn make_text_part_node(text: String, span: Rc<SourceSpan>) -> Rc<Node> {
+pub fn make_text_part_node(
+    occurrence_identity: Rc<NodeOccurrenceIdentity>,
+    text: String,
+    span: Rc<SourceSpan>,
+) -> Rc<Node> {
     Rc::new(Node {
+        occurrence_identity: occurrence_identity.clone(),
         name: "".to_string(),
         span: span.clone(),
         ident_span: None,
@@ -1359,8 +1396,13 @@ pub fn make_text_part_node(text: String, span: Rc<SourceSpan>) -> Rc<Node> {
     })
 }
 
-pub fn make_interp_part_node(expr: Rc<Node>, span: Rc<SourceSpan>) -> Rc<Node> {
+pub fn make_interp_part_node(
+    occurrence_identity: Rc<NodeOccurrenceIdentity>,
+    expr: Rc<Node>,
+    span: Rc<SourceSpan>,
+) -> Rc<Node> {
     Rc::new(Node {
+        occurrence_identity: occurrence_identity.clone(),
         name: "".to_string(),
         span: span.clone(),
         ident_span: None,
@@ -1383,6 +1425,7 @@ pub fn make_interp_part_node(expr: Rc<Node>, span: Rc<SourceSpan>) -> Rc<Node> {
 }
 
 pub fn make_param_node(
+    occurrence_identity: Rc<NodeOccurrenceIdentity>,
     name: String,
     type_expr: Rc<Node>,
     default_value: Option<Rc<Node>>,
@@ -1395,6 +1438,7 @@ pub fn make_param_node(
             None => Rc::new(vec![type_expr.clone()]),
         };
         Rc::new(Node {
+            occurrence_identity: occurrence_identity.clone(),
             name: name.clone(),
             span: span.clone(),
             ident_span: default_ident_span(name.clone(), name_span.clone()),
@@ -1418,6 +1462,7 @@ pub fn make_param_node(
 }
 
 pub fn make_resolved_param_node(
+    occurrence_identity: Rc<NodeOccurrenceIdentity>,
     name: String,
     type_expr: Rc<Node>,
     default_value: Option<Rc<Node>>,
@@ -1431,6 +1476,7 @@ pub fn make_resolved_param_node(
             None => Rc::new(vec![type_expr.clone()]),
         };
         Rc::new(Node {
+            occurrence_identity: occurrence_identity.clone(),
             name: name.clone(),
             span: span.clone(),
             ident_span: default_ident_span(name.clone(), name_span.clone()),
@@ -1544,6 +1590,7 @@ pub fn param_node_type_expr(n: Rc<Node>) -> Rc<Node> {
     match n.children.clone().first().cloned() {
         Some(v) => v.clone(),
         None => make_expr_error_node(
+            Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
             ExprErrorKind::InternalExprError,
             "malformed param: missing type_expr".to_string(),
             n.span.clone(),
@@ -1564,11 +1611,12 @@ pub fn param_node_span(n: Rc<Node>) -> Rc<SourceSpan> {
 }
 
 pub fn make_field_node(
+    occurrence_identity: Rc<NodeOccurrenceIdentity>,
     name: String,
     type_expr: Rc<Node>,
     cardinality: Cardinality,
     default_value: Option<Rc<Node>>,
-    from_key: Option<String>,
+    from_key_properties: Rc<Vec<Rc<Node>>>,
     span: Rc<SourceSpan>,
     name_span: Rc<SourceSpan>,
 ) -> Rc<Node> {
@@ -1577,35 +1625,8 @@ pub fn make_field_node(
             Some(dv) => Rc::new(vec![type_expr.clone(), dv.clone()]),
             None => Rc::new(vec![type_expr.clone()]),
         };
-        let props = match from_key.clone() {
-            Some(fk) => Rc::new(vec![make_field_init_node(
-                "from_key".to_string(),
-                Rc::new(Node {
-                    name: fk.clone(),
-                    span: no_span(),
-                    ident_span: default_ident_span(fk.clone(), no_span()),
-                    children: Rc::new(vec![]),
-                    connective: Connective::NoConnective,
-                    params: Rc::new(vec![]),
-                    inferred: None,
-                    return_cardinality: Cardinality::Required,
-                    uses: Rc::new(vec![]),
-                    body: None,
-                    transport: None,
-                    properties: Rc::new(vec![]),
-                    type_annotation: None,
-                    is_self_recursive: false,
-                    has_non_tail_self_call: false,
-                    match_pattern: None,
-                    expr_data: Rc::new(ExprData::NoExprData),
-                    ident: None,
-                }),
-                no_span(),
-                no_span(),
-            )]),
-            None => Rc::new(vec![]),
-        };
         Rc::new(Node {
+            occurrence_identity: occurrence_identity.clone(),
             name: name.clone(),
             span: span.clone(),
             ident_span: default_ident_span(name.clone(), name_span.clone()),
@@ -1617,7 +1638,7 @@ pub fn make_field_node(
             uses: Rc::new(vec![]),
             body: None,
             transport: None,
-            properties: v1_rt::concat(props.clone(), type_expr.properties.clone()),
+            properties: v1_rt::concat(from_key_properties.clone(), type_expr.properties.clone()),
             type_annotation: None,
             is_self_recursive: false,
             has_non_tail_self_call: false,
@@ -1639,6 +1660,7 @@ pub fn field_node_type_expr(n: Rc<Node>) -> Rc<Node> {
     match n.children.clone().first().cloned() {
         Some(v) => v.clone(),
         None => make_expr_error_node(
+            Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
             ExprErrorKind::InternalExprError,
             "malformed field: missing type_expr".to_string(),
             n.span.clone(),
@@ -1677,12 +1699,14 @@ pub fn field_node_span(n: Rc<Node>) -> Rc<SourceSpan> {
 }
 
 pub fn make_variant_node(
+    occurrence_identity: Rc<NodeOccurrenceIdentity>,
     name: String,
     fields: Rc<Vec<Rc<Node>>>,
     span: Rc<SourceSpan>,
     name_span: Rc<SourceSpan>,
 ) -> Rc<Node> {
     Rc::new(Node {
+        occurrence_identity: occurrence_identity.clone(),
         name: name.clone(),
         span: span.clone(),
         ident_span: default_ident_span(name.clone(), name_span.clone()),
@@ -1917,6 +1941,7 @@ pub fn expr_child_at(texpr: Rc<Node>, index: i64, role: String) -> Rc<Node> {
     {
         Some(v) => v.clone(),
         None => make_expr_error_node(
+            Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
             ExprErrorKind::InternalExprError,
             v1_rt::concat("malformed node: missing ".to_string(), role.clone()),
             texpr.span.clone(),
@@ -1942,6 +1967,7 @@ pub fn arg_value(n: Rc<Node>) -> Rc<Node> {
     match n.children.clone().first().cloned() {
         Some(v) => v.clone(),
         None => make_expr_error_node(
+            Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
             ExprErrorKind::InternalExprError,
             "malformed arg: missing value".to_string(),
             n.span.clone(),
@@ -1968,6 +1994,7 @@ pub fn arm_body(n: Rc<Node>) -> Rc<Node> {
     match n.children.clone().last().cloned() {
         Some(v) => v.clone(),
         None => make_expr_error_node(
+            Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
             ExprErrorKind::InternalExprError,
             "malformed arm: missing body".to_string(),
             n.span.clone(),
@@ -1986,6 +2013,7 @@ pub fn field_init_node_value(n: Rc<Node>) -> Rc<Node> {
     match n.children.clone().first().cloned() {
         Some(v) => v.clone(),
         None => make_expr_error_node(
+            Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
             ExprErrorKind::InternalExprError,
             "malformed field-init: missing value".to_string(),
             n.span.clone(),
@@ -2565,12 +2593,14 @@ pub fn transport_tls_key() -> String {
 }
 
 pub fn make_transport_node(
+    occurrence_identity: Rc<NodeOccurrenceIdentity>,
     properties: Rc<Vec<Rc<Node>>>,
     children: Rc<Vec<Rc<Node>>>,
     body: Option<Rc<Node>>,
     span: Rc<SourceSpan>,
 ) -> Rc<Node> {
     Rc::new(Node {
+        occurrence_identity: occurrence_identity.clone(),
         name: "".to_string(),
         span: span.clone(),
         ident_span: None,
@@ -2592,11 +2622,21 @@ pub fn make_transport_node(
     })
 }
 
-pub fn local_transport_node(span: Rc<SourceSpan>) -> Rc<Node> {
-    make_transport_node(Rc::new(vec![]), Rc::new(vec![]), None, span.clone())
+pub fn local_transport_node(
+    occurrence_identity: Rc<NodeOccurrenceIdentity>,
+    span: Rc<SourceSpan>,
+) -> Rc<Node> {
+    make_transport_node(
+        occurrence_identity.clone(),
+        Rc::new(vec![]),
+        Rc::new(vec![]),
+        None,
+        span.clone(),
+    )
 }
 
 pub fn rest_transport_node(
+    occurrence_identity: Rc<NodeOccurrenceIdentity>,
     base_url: Rc<Node>,
     auth_props: Rc<Vec<Rc<Node>>>,
     headers: Rc<Vec<Rc<Node>>>,
@@ -2610,6 +2650,7 @@ pub fn rest_transport_node(
     {
         let zero_span = no_span();
         let url_field = make_field_init_node(
+            Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
             transport_url_key(),
             base_url.clone(),
             zero_span.clone(),
@@ -2617,6 +2658,7 @@ pub fn rest_transport_node(
         );
         let method_props = match method.clone() {
             Some(m) => Rc::new(vec![make_field_init_node(
+                Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
                 transport_method_key(),
                 m.clone(),
                 zero_span.clone(),
@@ -2626,6 +2668,7 @@ pub fn rest_transport_node(
         };
         let path_props = match path.clone() {
             Some(p) => Rc::new(vec![make_field_init_node(
+                Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
                 transport_path_template_key(),
                 p.clone(),
                 zero_span.clone(),
@@ -2635,6 +2678,7 @@ pub fn rest_transport_node(
         };
         let query_props = match query.clone() {
             Some(q) => Rc::new(vec![make_field_init_node(
+                Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
                 transport_query_key(),
                 q.clone(),
                 zero_span.clone(),
@@ -2644,6 +2688,7 @@ pub fn rest_transport_node(
         };
         let body_props = match request_body.clone() {
             Some(b) => Rc::new(vec![make_field_init_node(
+                Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
                 transport_body_key(),
                 b.clone(),
                 zero_span.clone(),
@@ -2653,6 +2698,7 @@ pub fn rest_transport_node(
         };
         let rf_props = match response_format.clone() {
             Some(rf) => Rc::new(vec![make_field_init_node(
+                Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
                 transport_response_format_key(),
                 rf.clone(),
                 zero_span.clone(),
@@ -2682,11 +2728,18 @@ pub fn rest_transport_node(
             ),
             headers.clone(),
         );
-        make_transport_node(props.clone(), Rc::new(vec![]), None, span.clone())
+        make_transport_node(
+            occurrence_identity.clone(),
+            props.clone(),
+            Rc::new(vec![]),
+            None,
+            span.clone(),
+        )
     }
 }
 
 pub fn shell_transport_node(
+    occurrence_identity: Rc<NodeOccurrenceIdentity>,
     argv: Rc<Vec<Rc<Node>>>,
     env: Rc<Vec<Rc<Node>>>,
     stdin: Option<Rc<Node>>,
@@ -2694,6 +2747,7 @@ pub fn shell_transport_node(
 ) -> Rc<Node> {
     {
         let shell_marker = Rc::new(Node {
+            occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
             name: "".to_string(),
             span: span.clone(),
             ident_span: None,
@@ -2716,6 +2770,7 @@ pub fn shell_transport_node(
         let zero_span = no_span();
         let stdin_props = match stdin.clone() {
             Some(s) => Rc::new(vec![make_field_init_node(
+                Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
                 transport_stdin_key(),
                 s.clone(),
                 zero_span.clone(),
@@ -2725,6 +2780,7 @@ pub fn shell_transport_node(
         };
         let all_props = v1_rt::concat(env.clone(), stdin_props.clone());
         Rc::new(Node {
+            occurrence_identity: occurrence_identity.clone(),
             name: "".to_string(),
             span: span.clone(),
             ident_span: None,
@@ -2748,12 +2804,14 @@ pub fn shell_transport_node(
 }
 
 pub fn file_transport_node(
+    occurrence_identity: Rc<NodeOccurrenceIdentity>,
     base_path: Rc<Node>,
     verb: Option<Rc<Node>>,
     span: Rc<SourceSpan>,
 ) -> Rc<Node> {
     {
         let path_field = make_field_init_node(
+            Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
             transport_path_key(),
             base_path.clone(),
             no_span(),
@@ -2763,6 +2821,7 @@ pub fn file_transport_node(
             Some(verb_expr) => Rc::new(vec![
                 path_field.clone(),
                 make_field_init_node(
+                    Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
                     transport_verb_key(),
                     verb_expr.clone(),
                     no_span(),
@@ -2771,7 +2830,13 @@ pub fn file_transport_node(
             ]),
             None => Rc::new(vec![path_field.clone()]),
         };
-        make_transport_node(props.clone(), Rc::new(vec![]), None, span.clone())
+        make_transport_node(
+            occurrence_identity.clone(),
+            props.clone(),
+            Rc::new(vec![]),
+            None,
+            span.clone(),
+        )
     }
 }
 
@@ -3204,6 +3269,7 @@ pub fn transport_env(
 
 pub fn map_children(node: Rc<Node>, transform: impl Fn(Rc<Node>) -> Rc<Node> + Clone) -> Rc<Node> {
     Rc::new(Node {
+        occurrence_identity: node.occurrence_identity.clone(),
         name: node.name.clone(),
         ident: node.ident.clone(),
         span: node.span.clone(),
@@ -3584,6 +3650,7 @@ pub fn service_config_properties(
     {
         let zero_span = no_span();
         let ep_prop = Rc::new(vec![make_field_init_node(
+            Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
             service_config_field_property_name(ServiceConfigField::SvcEndpoint),
             endpoint.clone(),
             zero_span.clone(),
@@ -3591,6 +3658,7 @@ pub fn service_config_properties(
         )]);
         let auth_prop = match auth.clone() {
             Some(a) => Rc::new(vec![make_field_init_node(
+                Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
                 service_config_field_property_name(ServiceConfigField::SvcAuth),
                 a.clone(),
                 zero_span.clone(),
@@ -3600,6 +3668,7 @@ pub fn service_config_properties(
         };
         let auth_input_prop = match auth_input.clone() {
             Some(ai) => Rc::new(vec![make_field_init_node(
+                Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
                 service_config_field_property_name(ServiceConfigField::SvcAuthInput),
                 ai.clone(),
                 zero_span.clone(),
@@ -3609,6 +3678,7 @@ pub fn service_config_properties(
         };
         let auth_source_prop = match auth_source.clone() {
             Some(src) => Rc::new(vec![make_field_init_node(
+                Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
                 service_config_field_property_name(ServiceConfigField::SvcAuthSource),
                 src.clone(),
                 zero_span.clone(),
@@ -3618,6 +3688,7 @@ pub fn service_config_properties(
         };
         let rate_prop = match rate_limit.clone() {
             Some(r) => Rc::new(vec![make_field_init_node(
+                Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
                 service_config_field_property_name(ServiceConfigField::SvcRateLimit),
                 r.clone(),
                 zero_span.clone(),
@@ -3712,12 +3783,14 @@ pub fn service_config_auth_source(
 }
 
 pub fn module_node(
+    occurrence_identity: Rc<NodeOccurrenceIdentity>,
     name: String,
     imports: Rc<Vec<Rc<Node>>>,
     items: Rc<Vec<Rc<Node>>>,
     span: Rc<SourceSpan>,
 ) -> Rc<Node> {
     Rc::new(Node {
+        occurrence_identity: occurrence_identity.clone(),
         name: name.clone(),
         span: span.clone(),
         ident_span: default_ident_span(name.clone(), span.clone()),
@@ -3740,6 +3813,7 @@ pub fn module_node(
 }
 
 pub fn import_node(
+    occurrence_identity: Rc<NodeOccurrenceIdentity>,
     module_path: String,
     is_all: bool,
     specific_names: Rc<Vec<Rc<Node>>>,
@@ -3749,6 +3823,7 @@ pub fn import_node(
     {
         let wildcard_marker = if is_all.clone() {
             Some(Rc::new(Node {
+                occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
                 name: "".to_string(),
                 span: span.clone(),
                 ident_span: None,
@@ -3772,6 +3847,7 @@ pub fn import_node(
             None
         };
         Rc::new(Node {
+            occurrence_identity: occurrence_identity.clone(),
             name: module_path.clone(),
             span: span.clone(),
             ident_span: Some(name_span.clone()),
@@ -3819,8 +3895,13 @@ pub fn module_items(n: Rc<Node>) -> Rc<Vec<Rc<Node>>> {
     n.children.clone()
 }
 
-pub fn leaf_node_with_span(name: String, span: Rc<SourceSpan>) -> Rc<Node> {
+pub fn leaf_node_with_span(
+    occurrence_identity: Rc<NodeOccurrenceIdentity>,
+    name: String,
+    span: Rc<SourceSpan>,
+) -> Rc<Node> {
     Rc::new(Node {
+        occurrence_identity: occurrence_identity.clone(),
         name: name.clone(),
         span: span.clone(),
         ident_span: default_ident_span(name.clone(), span.clone()),
@@ -3857,6 +3938,7 @@ pub fn unit_type() -> Rc<Node> {
     thread_local! {
             static CACHED: Rc<Node> = {
                 Rc::new(Node {
+        occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
         name: "Unit".to_string(),
         span: kernel_span("Unit".to_string()),
         ident_span: Some(kernel_span("Unit".to_string())),
@@ -3885,6 +3967,7 @@ pub fn bool_type() -> Rc<Node> {
     thread_local! {
             static CACHED: Rc<Node> = {
                 Rc::new(Node {
+        occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
         name: "Bool".to_string(),
         span: kernel_span("Bool".to_string()),
         ident_span: Some(kernel_span("Bool".to_string())),
@@ -3913,6 +3996,7 @@ pub fn string_type() -> Rc<Node> {
     thread_local! {
             static CACHED: Rc<Node> = {
                 Rc::new(Node {
+        occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
         name: "String".to_string(),
         span: kernel_span("String".to_string()),
         ident_span: Some(kernel_span("String".to_string())),
@@ -3941,6 +4025,7 @@ pub fn hash_type() -> Rc<Node> {
     thread_local! {
             static CACHED: Rc<Node> = {
                 Rc::new(Node {
+        occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
         name: "Hash".to_string(),
         span: kernel_span("Hash".to_string()),
         ident_span: Some(kernel_span("Hash".to_string())),
@@ -3969,6 +4054,7 @@ pub fn int_type() -> Rc<Node> {
     thread_local! {
             static CACHED: Rc<Node> = {
                 Rc::new(Node {
+        occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
         name: "Int".to_string(),
         span: kernel_span("Int".to_string()),
         ident_span: Some(kernel_span("Int".to_string())),
@@ -3997,6 +4083,7 @@ pub fn float_type() -> Rc<Node> {
     thread_local! {
             static CACHED: Rc<Node> = {
                 Rc::new(Node {
+        occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
         name: "Float".to_string(),
         span: kernel_span("Float".to_string()),
         ident_span: Some(kernel_span("Float".to_string())),
@@ -4025,6 +4112,7 @@ pub fn none_type() -> Rc<Node> {
     thread_local! {
             static CACHED: Rc<Node> = {
                 Rc::new(Node {
+        occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
         name: "None".to_string(),
         span: kernel_span("None".to_string()),
         ident_span: Some(kernel_span("None".to_string())),
@@ -4062,6 +4150,7 @@ pub fn error_type() -> Rc<Node> {
     thread_local! {
             static CACHED: Rc<Node> = {
                 Rc::new(Node {
+        occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
         name: "".to_string(),
         span: no_span(),
         ident_span: None,
@@ -4366,6 +4455,7 @@ pub fn pre_intern_tokens(tokens: Rc<Vec<Rc<Token>>>, table: Rc<InternTable>) -> 
 
 pub fn with_optional_cardinality(n: Rc<Node>) -> Rc<Node> {
     Rc::new(Node {
+        occurrence_identity: n.occurrence_identity.clone(),
         name: n.name.clone(),
         ident: n.ident.clone(),
         span: n.span.clone(),
@@ -4389,6 +4479,7 @@ pub fn with_optional_cardinality(n: Rc<Node>) -> Rc<Node> {
 
 pub fn with_required_cardinality(n: Rc<Node>) -> Rc<Node> {
     Rc::new(Node {
+        occurrence_identity: n.occurrence_identity.clone(),
         name: n.name.clone(),
         ident: n.ident.clone(),
         span: n.span.clone(),

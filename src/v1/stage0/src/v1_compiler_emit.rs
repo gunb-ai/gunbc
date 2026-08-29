@@ -9,6 +9,7 @@ use self::FileResultChannel::*;
 use self::FileVerb::*;
 use self::FuncBodyShape::*;
 use self::JsonFragmentsAccum::*;
+use self::TargetEmissionMode::*;
 use self::TcoExprShape::*;
 use self::TransportBindingRefusal::*;
 pub use crate::extdeps_languages_go_emit::go_method_templates_flat;
@@ -16,6 +17,8 @@ pub use crate::extdeps_languages_python_emit::python_method_templates_flat;
 pub use crate::extdeps_languages_rust_emit::rust_method_templates;
 use crate::std_induction::SubValueRelation::SubValueUnknown;
 pub use crate::std_induction::{InductiveField, SubValueRelation};
+pub use crate::std_occurrence_identity::NodeOccurrenceIdentity;
+use crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic;
 use crate::std_syntax::AlgebraFieldKind::*;
 use crate::std_syntax::BinOp::NullCoalesce;
 use crate::std_syntax::BinOp::*;
@@ -44,6 +47,7 @@ pub use crate::v1_compiler_infer::InferScope;
 pub use crate::v1_compiler_infer::{build_params_scope, call_param_caller_labels, extend_scope};
 pub use crate::v1_compiler_infer_emit_info::{EmitGraphInfo, TypeSummary};
 use crate::v1_compiler_infer_env::GlobalBareLookupState::*;
+pub use crate::v1_compiler_infer_env::UnitVariantContribution;
 pub use crate::v1_compiler_infer_env::{authored_name, empty_symbol_index};
 pub use crate::v1_compiler_infer_env::{GlobalBareLookupState, TypeBinding, TypeEnv};
 pub use crate::v1_compiler_infer_items::{ItemInfo, ResolvedGraph, TypedModule};
@@ -587,6 +591,10 @@ pub fn empty_emit_scope() -> Rc<InferScope> {
             source_visible_names: v1_rt::rc_empty_map::<String, bool>(),
             authored_import_names: v1_rt::rc_empty_map::<String, bool>(),
             symbol_index: crate::v1_compiler_infer_env::empty_symbol_index(),
+            unit_variant_index: v1_rt::rc_empty_map::<
+                String,
+                Rc<HashMap<String, Rc<UnitVariantContribution>>>,
+            >(),
         }),
         func_env: Rc::new(ResolvedFuncEnv {
             name: "".to_string(),
@@ -2085,7 +2093,10 @@ pub fn has_service_items(typed: Rc<ResolvedGraph>) -> bool {
 
 pub fn service_fallback_transport(item: Rc<Node>) -> Rc<Node> {
     if (item.transport.clone() == None) {
-        crate::v1_std_core::local_transport_node(item.span.clone())
+        crate::v1_std_core::local_transport_node(
+            Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
+            item.span.clone(),
+        )
     } else {
         item.transport.clone().clone().unwrap()
     }
@@ -4940,46 +4951,69 @@ pub fn unmodeled_file_transport_operation_diagnostics(
     }
 }
 
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+)]
+#[serde(tag = "_variant")]
+pub enum TargetEmissionMode {
+    RealizesTransports,
+    SerializesSubstrate,
+}
+
+pub fn target_emission_mode(target: RenderTarget) -> TargetEmissionMode {
+    match target.clone() {
+        RenderTarget::Rust => TargetEmissionMode::RealizesTransports,
+        RenderTarget::Python => TargetEmissionMode::RealizesTransports,
+        RenderTarget::Go => TargetEmissionMode::RealizesTransports,
+        RenderTarget::Dag => TargetEmissionMode::SerializesSubstrate,
+    }
+}
+
 pub fn unmodeled_file_transport_diagnostics(
     typed: Rc<ResolvedGraph>,
     target: RenderTarget,
 ) -> Rc<Vec<Rc<ErrorNode>>> {
-    Rc::new({
-        let mut __result = Vec::new();
-        for tm in typed.modules.clone().iter().cloned() {
-            __result.extend(
-                (*Rc::new({
-                    let mut __result = Vec::new();
-                    for item in Rc::new({
+    match target_emission_mode(target.clone()) {
+        TargetEmissionMode::SerializesSubstrate => Rc::new(vec![]),
+        TargetEmissionMode::RealizesTransports => Rc::new({
+            let mut __result = Vec::new();
+            for tm in typed.modules.clone().iter().cloned() {
+                __result.extend(
+                    (*Rc::new({
                         let mut __result = Vec::new();
-                        for item in tm.items.clone().iter().cloned() {
-                            if crate::v1_compiler_emit_core_support::is_service_item(item.clone()) {
-                                __result.push(item);
+                        for item in Rc::new({
+                            let mut __result = Vec::new();
+                            for item in tm.items.clone().iter().cloned() {
+                                if crate::v1_compiler_emit_core_support::is_service_item(
+                                    item.clone(),
+                                ) {
+                                    __result.push(item);
+                                }
                             }
+                            __result
+                        })
+                        .iter()
+                        .cloned()
+                        {
+                            __result.extend(
+                                (*unmodeled_file_transport_operation_diagnostics(
+                                    tm.clone(),
+                                    item.clone(),
+                                    target.clone(),
+                                ))
+                                .iter()
+                                .cloned(),
+                            );
                         }
                         __result
-                    })
+                    }))
                     .iter()
-                    .cloned()
-                    {
-                        __result.extend(
-                            (*unmodeled_file_transport_operation_diagnostics(
-                                tm.clone(),
-                                item.clone(),
-                                target.clone(),
-                            ))
-                            .iter()
-                            .cloned(),
-                        );
-                    }
-                    __result
-                }))
-                .iter()
-                .cloned(),
-            );
-        }
-        __result
-    })
+                    .cloned(),
+                );
+            }
+            __result
+        }),
+    }
 }
 
 pub fn emit_unmodeled_file_transport_refusal_with_cause(
@@ -7404,3 +7438,7 @@ pub struct ExprCatBinding;
 pub struct ExprCatService;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct ExprCatNone;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct RealizesTransports;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct SerializesSubstrate;

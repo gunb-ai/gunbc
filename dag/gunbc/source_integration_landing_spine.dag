@@ -535,10 +535,13 @@ fn landing_alternative_for_choice(
     NativeScmSecondContinuationOption =>
       Present { value: options.second_option.alternative }
     NativeScmAdditionalContinuationOption { index } =>
-      list_at_optional(
+      match list_at_optional(
         xs: options.additional_options,
         index: index,
-      ) |> map(option => option.alternative)
+      ) {
+        Present { value: option } => Present { value: option.alternative }
+        Absent => Absent {}
+      }
   }
 }
 

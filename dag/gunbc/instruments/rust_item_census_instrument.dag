@@ -1,0 +1,204 @@
+module tools.rust_item_census_instrument
+
+import extdeps.filesystem.filesystem_io { Filesystem }
+import gunbc.rust_item_host_observation {
+  LiveHandRustObservation,
+  LiveHandRustObserved,
+  LiveHandRustHostRefused,
+  RustFileScanRefused,
+  RustItemChangeObservation,
+  RustItemChangeObserved,
+  RustItemChangeHostRefused,
+  RustItemChangeScanRefused,
+  RustItemChangeUnattributed,
+  current_rust_item_change_observation,
+  observe_current_live_hand_rust
+}
+import gunbc.rust_item_identity { RustItemIdentity, rust_item_identity_key }
+import gunbc.rust_item_scan { RustFileScan, RustFileScanned }
+import gunbc.capability_origin { no_admission_evidence }
+import gunbc.seed_growth_admission {
+  SeedGrowthAdmissionComplete,
+  SeedGrowthAdmissionRefused,
+  SeedGrowthAdmissionVerdict,
+  seed_growth_admit_change
+}
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import std.types { Bool, Int, List, String }
+import v2.std.algebra { length, list_append, list_map }
+
+// THE NAMED INSTRUMENT FOR THE ITEM-GRAIN CENSUS.
+//
+//   gunbc run --source-root dag --source-root src/v2 \
+//     --entry dag/gunbc/instruments/rust_item_census_instrument.dag --function census \
+//     --arg report=/tmp/seed-growth.txt
+//
+// DESIGN's standing rule is name the instrument, never transcribe its output, and until this module
+// landed there was no instrument to name: scripts/rust_item_census.py was deleted by gunbc#9132 and
+// nothing replaced it, so every hand-item and hand-LOC figure quoted in a seed-growth receipt since
+// then named nothing that could produce it. This is the producer those figures may cite.
+//
+// THE REPORT IS WRITTEN RATHER THAN RETURNED because `gunbc run` maps a returned value to an exit
+// status and has no value-printing verb -- the same wall tools.emission_entry_instrument records.
+//
+// THE EXIT STATUS REPORTS THE SUBJECT HERE, AND THAT IS A DELIBERATE DIFFERENCE from the emission
+// instrument beside it, whose status reports the instrument. This one is an ADMISSION verdict: its
+// whole purpose is to stop a line, so a run that completes and finds an unjustified addition must
+// not exit zero. A run that could not observe at all also exits nonzero, and the report names which
+// of the two happened -- the distinction is carried in the text rather than in the status, because
+// an admission gate that exited zero on an unobservable change would be the empty-observation
+// narrow arriving through the exit code.
+data rust_item_census_instrument_note: String = "Named instrument for the item-grain Rust census. Writes the merge-base-to-HEAD change population, the live hand-Rust population, and the seed-growth admission verdict computed from them. Exit status is the ADMISSION verdict, not the instrument's own completion: an unjustified addition and an unobservable change both exit nonzero, and the report says which."
+
+fn item_row(item: RustItemIdentity) -> String {
+  concat(
+    rust_item_identity_key(item: item),
+    concat("\tstart=", concat(item.start_line as String, concat("\tloc=", item.loc as String)))
+  )
+}
+
+fn section(title: String, rows: List<String>) -> List<String> {
+  list_append(
+    left: [concat(title, concat(" (", concat(length(xs: rows) as String, ")")))],
+    right: rows
+  )
+}
+
+fn change_rows(change: RustItemChangeObservation) -> List<String> {
+  match change {
+    RustItemChangeObserved {
+      added_hand_items: added,
+      modified_hand_items: modified,
+      deleted_hand_items: deleted,
+      generated_changes: generated
+    } =>
+      list_append(
+        left: list_append(
+          left: section(title: "added-hand-items", rows: list_map(xs: added, f: fn(i) { item_row(item: i) })),
+          right: section(title: "modified-hand-items", rows: list_map(xs: modified, f: fn(i) { item_row(item: i) }))
+        ),
+        right: list_append(
+          left: section(title: "deleted-hand-items", rows: list_map(xs: deleted, f: fn(i) { item_row(item: i) })),
+          right: section(title: "generated-path-changes", rows: generated)
+        )
+      )
+    RustItemChangeUnattributed { repo_path: path, line: line, detail: detail } =>
+      ["change-observation REFUSED: unattributed", concat(path, concat(":", concat(line as String, concat(" ", detail))))]
+    RustItemChangeScanRefused { repo_path: path, line: line, line_text: text, detail: detail } =>
+      [
+        "change-observation REFUSED: source not readable at item grain",
+        concat(path, concat(":", concat(line as String, concat(" ", detail)))),
+        concat("  line: ", text)
+      ]
+    RustItemChangeHostRefused { detail: detail } =>
+      ["change-observation REFUSED: host", detail]
+  }
+}
+
+fn scan_refusal_row(scan: RustFileScan) -> String {
+  match scan {
+    RustFileScanRefused { repo_path: path, line: line, line_text: text, detail: detail } =>
+      concat(path, concat(":", concat(line as String, concat(" ", concat(detail, concat(" -- line: ", text))))))
+    RustFileScanned { repo_path: path, items: _, macro_regions: _, line_count: _ } => path
+  }
+}
+
+fn live_rows(live: LiveHandRustObservation) -> List<String> {
+  match live {
+    LiveHandRustObserved { items: items, unscannable: unscannable } =>
+      list_append(
+        left: [concat("live-hand-items (", concat(length(xs: items) as String, ")"))],
+        right: section(
+          title: "live-files-not-readable-at-item-grain",
+          rows: list_map(xs: unscannable, f: fn(s) { scan_refusal_row(scan: s) })
+        )
+      )
+    LiveHandRustHostRefused { detail: detail } => ["live-observation REFUSED: host", detail]
+  }
+}
+
+fn verdict_rows(verdict: SeedGrowthAdmissionVerdict) -> List<String> {
+  match verdict {
+    SeedGrowthAdmissionComplete {
+      justified_items: justified,
+      modified_items_requiring_disposition: modified,
+      stale_justifications: stale,
+      duplicate_justifications: duplicates,
+      uncitable_items: uncitable
+    } =>
+      list_append(
+        left: list_append(
+          left: ["admission: COMPLETE"],
+          right: list_append(
+            left: section(title: "justified-additions", rows: justified),
+            right: section(title: "modified-items-requiring-disposition", rows: modified)
+          )
+        ),
+        right: list_append(
+          left: section(title: "stale-justifications", rows: stale),
+          right: list_append(
+            left: section(title: "duplicate-justifications", rows: duplicates),
+            right: section(title: "uncitable-items", rows: uncitable)
+          )
+        )
+      )
+    SeedGrowthAdmissionRefused { unjustified_additions: unjustified, detail: detail } =>
+      list_append(
+        left: ["admission: REFUSED", detail],
+        right: section(title: "unjustified-additions", rows: unjustified)
+      )
+  }
+}
+
+fn verdict_is_complete(verdict: SeedGrowthAdmissionVerdict) -> Bool {
+  match verdict {
+    SeedGrowthAdmissionComplete {
+      justified_items: _,
+      modified_items_requiring_disposition: _,
+      stale_justifications: _,
+      duplicate_justifications: _,
+      uncitable_items: _
+    } => true
+    SeedGrowthAdmissionRefused { unjustified_additions: _, detail: _ } => false
+  }
+}
+
+fn census_report_text(
+  change: RustItemChangeObservation,
+  live: LiveHandRustObservation,
+  verdict: SeedGrowthAdmissionVerdict
+) -> String {
+  concat(
+    join(
+      list_append(
+        left: list_append(left: change_rows(change: change), right: live_rows(live: live)),
+        right: verdict_rows(verdict: verdict)
+      ),
+      "\n"
+    ),
+    "\n"
+  )
+}
+
+fn census(report: String) -> ProcessExit {
+  if report == "" {
+    exit_failure(reason: "census: --arg report=<path> is required — the census is written, not printed")
+  } else {
+    let change = current_rust_item_change_observation()
+    let live = observe_current_live_hand_rust()
+    let verdict = seed_growth_admit_change(change: change, live: live, bridges: [], evidence: no_admission_evidence())
+    let write = Filesystem.Write(path: report, content: census_report_text(change: change, live: live, verdict: verdict))
+    if !write.success {
+      exit_failure(reason: concat("census: could not write the report to ", report))
+    } else if verdict_is_complete(verdict: verdict) {
+      ExitSuccess
+    } else {
+      exit_failure(
+        reason: concat(
+          "census: seed-growth admission refused — the report at ",
+          concat(report, " names the additions or the refusal")
+        )
+      )
+    }
+  }
+}

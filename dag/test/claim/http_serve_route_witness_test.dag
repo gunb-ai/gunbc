@@ -13,7 +13,7 @@ import extdeps.uri_path {
   MalformedPathTemplate,
   parse_path_template,
 }
-import std.http_path { PathTemplate, PathParamBinding }
+import extdeps.uri_path { PathTemplate, PathParamBinding }
 import gunbc.node_http_server_emit { emit_path_template_regex_source }
 import std.types { String, Bool, List, Int, HttpMethod, GET, POST }
 
