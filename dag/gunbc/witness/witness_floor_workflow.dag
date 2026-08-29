@@ -1509,7 +1509,8 @@ fn required_lanes_run_id_expression() -> String {
 // The first cut of this function nested `concat` over string literals and handed the result to
 // a RunStep -- the medium-as-string violation DESIGN 2/3 names, raised in review 55836. Node
 // construction lives in `gunbc.required_lanes_gate`; this function is the realization edge,
-// following the `tools.build_step` -> `v2.workflow.build_step_emit` precedent already in tree.
+// following the `tools.build_step` -> `v2.workflow.bash_command_fold_serialize` precedent
+// already in tree.
 //
 // THE REJECTED ARM REFUSES RATHER THAN RENDERING NOTHING, AND IT IS NOW BUILT FROM THE SAME
 // GRAMMAR AS THE GATE. It was a raw shell String here -- an executable program spelled as text,
