@@ -12,7 +12,7 @@ This document is the finding and the receipt. The change itself is in
 
 ## The measurement
 
-Counted with the floor's own rule (`cli_run` `witness_file_from_source`: a column-zero
+Counted with the floor's former Rust scanner (a column-zero
 `test fn `, and a column-zero `data … LiveTreeDisposition … ReadsLiveTree`), on `4cec10f66a3`:
 
 | population | identities | files |
@@ -59,7 +59,7 @@ did not need a new lane. It needed the stale prediction deleted.
 
 `reads_live_tree` was derived twice, by methods that cannot agree except by coincidence:
 
-- `cli_run` `witness_file_from_source` — a **syntactic text scan** for the declaration line.
+- the former `cli_run` floor scanner — a **syntactic text scan** for the declaration line.
 - `cli_run` `reads_live_tree_effective` — reads the same declaration, then falls through to
   `effect_reach_derived_reads_live_tree_for_entry`, a **semantic effect-reachability derivation**
   over the entry's import closure.
@@ -218,3 +218,99 @@ whereas a route-gapped identity stays in the subject, executes, and reports.
 Converting those entries into `floor_route_gap` rows is the obvious next step and is deliberately
 **not** in this change: it should follow the measurement that proves the route-gap mechanism
 behaves as designed on the population it was built for, not precede it.
+
+---
+
+## The same failure one level up: the projection's denominator (2026-08-29, `nimble-ibex-902`)
+
+The population above was lost *inside* the projection — discovered, declined, never run. The
+sequel is the population lost *before* it: identities that never reached the projection at all,
+so no partition over "offered" could speak for them.
+
+### The two mechanisms that removed them
+
+`assemble_prepared_subject_closure` drops modules two ways, and a witness declared in a dropped
+module was neither planned nor declined:
+
+- **the exclusion substrings**, whose entry-grain receipt (`collect_deferred_discovery_rows`)
+  existed but was never joined to the disposition population at identity grain; and
+- **the gate closure** introduced by the 2026-08-29 gate cut (§4b rung drop *Required gate
+  reduced to the compiler floor*). Only modules in the transitive closure of the gate seeds are
+  prepared, so `declined_outside_required_gate` — which reads two figures — can only ever speak
+  for modules that *reached* the index.
+
+### The subject universe, measured
+
+Counted with the floor's own rule (a column-zero `test fn ` / `test data `) over `dag/` and
+`src/v2`: **13,975 distinct declared identities**, in 1,759 files, with **zero** duplicate
+identities and **zero** module-name collisions. So the gap between the declared corpus and the
+floor's `offered` was never duplication; it was two silent removals. The live figures are the
+run's own, not this document's: `required-floor: declared=… offered=… declined_outside_gate_closure=…`.
+
+### What changed
+
+**Hand-Rust receipt.** The receipt is a roster row, not this paragraph:
+`gunbc.floor_population_projection_seed_growth`, enrolled in
+`gunbc.seed_growth_admission seed_growth_justification_roster` — item delta, admitted
+modifications, owning lane (`v1-hand-queue-drain`), dissolution trigger, and the boundary chain
+live there, where the census reads them. **Full-index retention (review 57430):** the discovery
+fold consumes the prepared full-index views by value inside its own phase — the intermediate
+`FloorDiscoverySource` vector is deleted — and the phase's completion line prints
+`full_inventory_release_rss_kb_before` / `_trim_reclaimed_kb` / `_rss_kb_after` through the
+floor's existing statm/malloc_trim instruments, so the run itself states that outside-closure
+bytes end with the phase rather than surviving into claim execution.
+
+1. **The universe is the declared population, answered by one authority.** The floor folds
+   `v2.workflow.floor_discovery_producer` (`discover_floor_rows_for_source`) over preparation's
+   FULL module index rather than over the prepared closure alone, and classifies each returned
+   identity against the prepared closure and the exclusion map: an identity whose module
+   preparation dropped carries `DeclinedOutsideGateClosure` or
+   `DeclinedDiscoveryExcluded { matched_substring }` — two arms on the authority that already
+   existed, not a second status vocabulary. No Rust rescan stands beside the producer; gunbc#9685's
+   single-discovery-authority cut holds for the whole corpus, not only for the prepared subject.
+   The gate-closure population keeps its own arm rather than folding into
+   `DeclinedOutsideRequiredGate`: the two are removed by different mechanisms, restored by
+   different triggers, and differ by two orders of magnitude, and the first is the rung drop's
+   subject.
+
+   **The consequence, stated rather than discovered later:** the producer's per-file refusals —
+   misplaced `test` decl, barren sidecar, misplaced wire contract, malformed
+   `live_tree_disposition` row — now stop the required floor for ANY module under the source
+   roots, not only for one the gate closure admitted. That is a real widening of what this lane
+   refuses over. It is survivable today because the corpus carries none of those violations
+   (measured 2026-08-29: zero `test`-marked decls outside a `*_test.dag` sidecar, zero barren
+   sidecars), and the first violation authored anywhere in the tree will red this lane rather
+   than the one that owns the file.
+2. **The partition is an identity join, not a count equality.** The old check was
+   `offered == routed + declined_long + declined_fixture + declined_outside_gate +
+   declined_cost_debt`, which DESIGN §5 names by shape: green over a projection that drops one
+   identity and writes another twice, since every count still agrees. It is now the same
+   reconciliation the terminal ledger uses, through the same function
+   (`reconcile_identity_population`), refusing as `FloorDispositionJoinInexact` with the offending
+   identities named. Its calibration pair is enrolled beside the terminal-ledger one.
+3. **The counters are derived from the rows** instead of accumulated beside them, and duplicate
+   detection moved from the *planned* subset to the *whole declared* population — a duplicate
+   whose first site declined used to pass unnoticed.
+4. **The artifact carries two axes, never folded.** The disposition TSV gains an `outcome`
+   column, joined from the terminal ledger through `claim_disposition`; an identity that never
+   ran reads `not_executed`, which is a statement rather than a blank.
+
+### Two axes deliberately NOT built, and what each needs first
+
+Both were in the commissioning brief and both would have meant *authoring* the authority they
+claim to join to (§3), so they are named here as triggers rather than improvised:
+
+- **semantic producer / retire-with-producer.** No authority in the tree maps a witness identity
+  to the producer whose behavior it witnesses. Trigger: a modeled producer binding on the witness
+  carrier itself, at which point the join is a lookup rather than a classification.
+- **the Rust `#[ignore]` roster.** A different universe with no roster authority and no identity
+  grain shared with `.dag` witnesses. Trigger: an enumerated, typed roster of ignored Rust tests
+  with a stated reason per row — the same shape `floor_cost_debt` already has for its population.
+
+### One inert wall found on the way
+
+`gunbc.discovery_census` claims, twice and in prose, that its wildcard-free matches make a new
+`RequiredFloorDisposition` arm *fail to compile*. `DeclinedOutsideRequiredGate` had already been
+added without either match acquiring an arm, and nothing refused — the module's own witness is
+outside the gate closure, so no executing path typechecks it. The arms are added here and the
+claim is restated at its honest rung, with the trigger recorded in the module.
