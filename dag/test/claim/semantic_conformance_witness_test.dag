@@ -339,6 +339,26 @@ test fn a_dropped_effect_is_a_host_realization_defect() -> Bool {
   )
 }
 
+// THE THIRD RECEIPT MUTATION, added after a mutation control exposed its absence: with the length
+// check deleted from effect_receipts_agree, the DROP witness above stays green (the containment
+// join already refuses a missing expected entry), so the length conjunct's only discriminating
+// input is an EXTRA effect the authority never ordered -- the exfiltration direction, and the more
+// dangerous one. This witness is what makes that conjunct's RED reachable.
+test fn an_extra_unexpected_effect_is_a_host_realization_defect() -> Bool {
+  is_host_realization_defect(
+    d: classify_differential_record(
+      record: effect_record(
+        receipt: [
+          effect(name: "open", ordinal: 0),
+          effect(name: "write", ordinal: 1),
+          effect(name: "exfiltrate", ordinal: 2),
+        ]
+      ),
+      route: EvaluatorOnPromotedRoute
+    )
+  )
+}
+
 fn measured(area: CoverageArea) -> CoverageStanding {
   CoveragePopulationMeasuredComplete {
     area: area,
