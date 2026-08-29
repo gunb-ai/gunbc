@@ -1,7 +1,7 @@
 module v2.test.claim.native_loop_model_test
 
 import std.algebra { Empty }
-import std.types { Bool }
+import std.types { Bool, String }
 import v2.compiler.native_loop {
   CompileRequest,
   CompilerGenerationMatches,
@@ -196,8 +196,9 @@ test fn native_loop_generation_mismatch_refuses() -> Bool {
   ) { NativeRequestRefused { reason: NativeRefusedCompilerGenerationMismatch } => true _ => false }
 }
 
+data native_loop_v1_path_independence_note: String = "The two calls below are definitionally identical: NativeRequestObservation has no PATH or v1 field, so changing a v1 binary cannot enter this decision."
+
 test fn native_loop_v1_path_state_is_not_an_input() -> Bool {
-  // The two calls are definitionally identical: NativeRequestObservation has no PATH or v1 field.
   native_request_admit(request: fixture_request(), observation: admitted_observation())
     == native_request_admit(request: fixture_request(), observation: admitted_observation())
 }
