@@ -233,6 +233,34 @@ fn render_rust_type(n: Node, shared_types: Set<String>, source_indices: Map<Stri
 // `Rc<dyn Fn(ResolvedTree) -> Rc<Outcome<Rc<Medium>>>>` -- the inner binding dropped (E0107 missing
 // generics for struct `Medium`, v2.compiler.compile stage_translate). The callable template and the
 // void arm are the same rows render_node_type consumes; only the per-position renderer changes.
+// AN ARROW POSITION DEVIATES FROM THE TARGET-GENERIC RENDERER ONLY FOR THE TWO SHAPES THAT RENDERER
+// CANNOT SPELL, AND THIS GATE IS MEASURED, NOT ASSUMED. The first cut routed EVERY arrow position
+// through render_rust_type, and the regenerated seed then emitted 2790 rustc refusals on the
+// 00_compile closure where the committed bytes had 15: the Rust renderer realizes a v2-declared
+// Symbol/String structurally (Rc<Vector<i64>>, E0308 by the hundreds) and renders an out-of-scope
+// type variable as `_` (E0121 inside fn signatures) -- spellings the generic renderer had been
+// supplying at those positions, and which nothing in this change set out to alter. So a position
+// takes the Rust renderer only when its subtree carries an applied-type binding the generic
+// renderer would drop (the `Rc<Medium>` E0107 class) or is itself a zero-parameter alias carrying
+// its right-hand side's children (the `CompileLensOutcome<..>` E0107 class); every other position
+// renders exactly as before this change. The deviation set is therefore the defect set.
+fn render_rust_arrow_position(n: Node, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, emit_info: EmitGraphInfo) -> String {
+  let is_bare_zero_param_alias = n.connective == NoConnective && n.children |> count > 0 && closed_alias_peels_zero_param(env: emit_info.fn_type_env, n: n)
+  if type_node_carries_applied_binding(n: n, source_indices: source_indices) || is_bare_zero_param_alias {
+    render_rust_type(n: n, shared_types: shared_types, source_indices: source_indices, emit_info: emit_info)
+  } else {
+    render_node_type(n: n, target: Rust, shared_types: shared_types, source_indices: source_indices)
+  }
+}
+
+fn type_node_carries_applied_binding(n: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
+  let own = match find_property(props: n.properties, prop_name: "__applied_type_args", source_indices: source_indices) {
+    Present { value: applied } => applied.children |> count > 0
+    Absent => false
+  }
+  own || n.children |> any(c => type_node_carries_applied_binding(n: child_type_node(ch: c), source_indices: source_indices))
+}
+
 // Named rather than inlined because `if x == Variant {` parses as a record literal in .dag.
 fn rust_type_node_is_arrow(n: Node) -> Bool {
   n.connective == Arrow
@@ -240,11 +268,11 @@ fn rust_type_node_is_arrow(n: Node) -> Bool {
 
 fn render_rust_arrow_type(n: Node, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, emit_info: EmitGraphInfo) -> String {
   let repr = target_callable(target: Rust)
-  let param_strs = n.params |> map(p => render_rust_type(n: param_node_type_expr(n: p), shared_types: shared_types, source_indices: source_indices, emit_info: emit_info))
+  let param_strs = n.params |> map(p => render_rust_arrow_position(n: param_node_type_expr(n: p), shared_types: shared_types, source_indices: source_indices, emit_info: emit_info))
   let param_str = param_strs |> join(separator: repr.param_separator)
   let spec = language_spec(target: Rust)
   let ret_str = match n.inferred {
-    Present { value: Resolved { node: rt } } => render_rust_type(n: rt, shared_types: shared_types, source_indices: source_indices, emit_info: emit_info)
+    Present { value: Resolved { node: rt } } => render_rust_arrow_position(n: rt, shared_types: shared_types, source_indices: source_indices, emit_info: emit_info)
     _ => spec.void_type
   }
   match spec.callable_type_template {

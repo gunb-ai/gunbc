@@ -320,7 +320,7 @@ test fn w_zero_param_alias_in_an_arrow_return_renders_without_its_rhs_arguments(
 // honours the binding and must be what an arrow's positions render through.
 test fn w_arrow_return_type_keeps_its_applied_binding() -> Bool {
   compile_dag_rust_emit_check(
-    "module test.claim.arrow_binding_probe\nimport std.types { Int, String }\nimport v2.std.diagnostic { Outcome }\ntype Box2<T> { v: T }\nfn probe() -> fn(Int) -> Outcome<Box2<String>> { fn(n) { Outcome::Accepted { value: Box2 { v: \"x\" } } } }\n",
+    "module test.claim.arrow_binding_probe\nimport std.types { Int, String }\nimport v2.std.diagnostic { Outcome, Accepted }\ntype Box2<T> { v: T }\nfn probe() -> fn(Int) -> Outcome<Box2<String>> { fn(n) { Accepted { value: Box2 { v: \"x\" } } } }\n",
     "src/test_claim_arrow_binding_probe.rs",
     ["Box2<String>"],
     ["Rc<Box2>>"]
