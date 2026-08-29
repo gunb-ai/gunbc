@@ -100,8 +100,9 @@ fn origin_is_independent(o: ExpectedValueOrigin) -> Bool {
 
 fn origin_is_unmeasured(o: ExpectedValueOrigin) -> Bool {
   match o {
+    IndependentOfImplementation { authority: _, judged_against_closure: _ } => false
+    DerivedThroughEvaluatorUnderTest { deriving_producer: _, judged_against_closure: _ } => false
     OriginUnmeasured { reason: _ } => true
-    _ => false
   }
 }
 
@@ -116,8 +117,9 @@ type AuditRefusalCause
 
 fn basis_is_available(b: AuditDerivationBasis) -> Bool {
   match b {
+    DerivedFromReferenceClosure { relation_producer: _ } => true
+    DerivedFromAuthoredAuthorityBinding { binding_producer: _ } => true
     BasisUnavailable { reason: _ } => false
-    _ => true
   }
 }
 

@@ -155,17 +155,20 @@ fn observed_result_eq(a: ObservedResult, b: ObservedResult) -> Bool {
     ProducedValue { digest: da } =>
       match b {
         ProducedValue { digest: db } => da == db
-        _ => false
+        RefusedWithDiagnostic { diagnostic_identity: _ } => false
+        NotRun => false
       }
     RefusedWithDiagnostic { diagnostic_identity: ia } =>
       match b {
+        ProducedValue { digest: _ } => false
         RefusedWithDiagnostic { diagnostic_identity: ib } => ia == ib
-        _ => false
+        NotRun => false
       }
     NotRun =>
       match b {
+        ProducedValue { digest: _ } => false
+        RefusedWithDiagnostic { diagnostic_identity: _ } => false
         NotRun => true
-        _ => false
       }
   }
 }
@@ -177,16 +180,18 @@ fn observed_satisfies_expected(expected: ExpectedOutcome, observed: ObservedResu
       observed_result_eq(a: observed, b: RefusedWithDiagnostic { diagnostic_identity: i })
     ExpectsEffectOrder { ordered: _ } =>
       match observed {
+        ProducedValue { digest: _ } => true
+        RefusedWithDiagnostic { diagnostic_identity: _ } => true
         NotRun => false
-        _ => true
       }
   }
 }
 
 fn observed_was_run(observed: ObservedResult) -> Bool {
   match observed {
+    ProducedValue { digest: _ } => true
+    RefusedWithDiagnostic { diagnostic_identity: _ } => true
     NotRun => false
-    _ => true
   }
 }
 
@@ -226,7 +231,8 @@ fn effect_receipt_matches_expected_order(
   match expected {
     ExpectsEffectOrder { ordered: ordered } =>
       effect_receipts_agree(expected: ordered, receipt: receipt)
-    _ => true
+    ExpectsValue { digest: _ } => true
+    ExpectsRefusal { diagnostic_identity: _ } => true
   }
 }
 
@@ -345,17 +351,20 @@ fn expected_outcome_eq(a: ExpectedOutcome, b: ExpectedOutcome) -> Bool {
     ExpectsValue { digest: da } =>
       match b {
         ExpectsValue { digest: db } => da == db
-        _ => false
+        ExpectsRefusal { diagnostic_identity: _ } => false
+        ExpectsEffectOrder { ordered: _ } => false
       }
     ExpectsRefusal { diagnostic_identity: ia } =>
       match b {
+        ExpectsValue { digest: _ } => false
         ExpectsRefusal { diagnostic_identity: ib } => ia == ib
-        _ => false
+        ExpectsEffectOrder { ordered: _ } => false
       }
     ExpectsEffectOrder { ordered: oa } =>
       match b {
+        ExpectsValue { digest: _ } => false
+        ExpectsRefusal { diagnostic_identity: _ } => false
         ExpectsEffectOrder { ordered: ob } => effect_receipts_agree(expected: oa, receipt: ob)
-        _ => false
       }
   }
 }
