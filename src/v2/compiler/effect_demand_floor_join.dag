@@ -1,0 +1,314 @@
+module v2.compiler.effect_demand_floor_join
+
+import std.content_hash { ContentHash, content_hash_of_value, serialize_content_hash }
+import std.types { NonEmptyStr }
+import gunbc.ci_layer_roots { witness_exclusion_substrings }
+import v2.compiler.effect_demand { SeamStanding, effect_demand_seam_roster }
+import v2.lens.module_graph {
+  ModuleDeclarationFact,
+  ModuleDependencyEdge,
+  dependency_closure,
+  dependency_resolution_facts_live,
+  map_lookup_where_rejected_unreachable,
+  module_declaration_facts_live,
+  strip_leading_dot_slash
+}
+import v2.std.algebra { Cons, Empty, any, contains, fold_list, length, list_reverse }
+import v2.std.collection { List, Map, empty_map, map_insert }
+import v2.std.integer { Int }
+import v2.std.logic { Bool }
+import v2.std.optional { Absent, Optional, Present }
+import v2.std.text { String }
+import v2.workflow.floor_discovery { FloorDiscoveryRow }
+import v2.workflow.floor_discovery_producer {
+  FloorDiscoveryAccepted,
+  FloorDiscoveryProducerResult,
+  FloorDiscoveryRefused,
+  discover_floor_corpus_rows_from_host_facts
+}
+import v2.workflow.required_floor {
+  DeclinedCostDebt,
+  DeclinedFixtureMember,
+  DeclinedLongModule,
+  DeclinedOutsideRequiredGate,
+  Planned,
+  RequiredFloorDisposition,
+  required_floor_site_disposition
+}
+
+data effect_demand_floor_join_note: String = "THE INSTRUMENT, NAMED, THAT A COMMITTED TABLE ONCE STOOD IN FOR. XL-1 needs one population: every claim the required floor discovers whose entry's dependency closure reaches a whole-body self-call seam, joined to the floor's own standing for that claim. An earlier revision committed that population as a TSV -- the output of an instrument standing where the instrument should be named (DESIGN section 6), and a second representation of what required_floor_site_disposition already derives (DESIGN section 3). This module is the producer. Three authorities, none re-coined: the discovery walk is v2.workflow.floor_discovery_producer's, the closure is v2.lens.module_graph's dependency_closure over the same import-and-reference edge family claim_scope_for walks, and the standing is v2.workflow.required_floor's required_floor_site_disposition, called with the dotted module.function identity the cost-debt roster keys on. A consumer re-derives from this entry point and joins by identity; the digest is how two derivations know they saw one population. WHAT THE STANDING IS AND IS NOT: it is the floor's SCHEDULER standing -- planned, or declined for a named reason -- and it is not a cutover disposition, which another lane owns. Reading FloorDeclinedLongModule as 'too expensive to run' is wrong on its face: that arm declines by authored module prefix, and the corpus records a member whose cost justification lapsed."
+
+type FloorStandingJoinRow {
+  claim_identity: String
+  module_path: String
+  entry_path: String
+  function: String
+  disposition: RequiredFloorDisposition
+}
+
+type FloorStandingCounts {
+  offered: Int
+  planned: Int
+  declined_long_module: Int
+  declined_fixture_member: Int
+  declined_outside_required_gate: Int
+  declined_cost_debt: Int
+}
+
+data effect_demand_floor_join_refusal_note: String = "EVERY WAY THE POPULATION CAN BE WRONG IS AN ARM, AND NONE OF THEM IS A SKIP. An entry the walk found but no declaration fact names is not dropped: dropping it would shrink the denominator by exactly the rows most likely to be mis-homed, in the direction that under-reports. Two rows with one identity are not deduplicated, because the identity is what the join is keyed on and a silent merge would make the floor's standing answerable twice. And an empty population is refused rather than hashed, because a digest over nothing is a digest a consumer can match by also seeing nothing. One thing IS a skip, and is named as such: an entry whose closure reaches no seam is not in the population by definition, so it is neither a row nor a refusal."
+
+type FloorStandingJoinRefusal
+  = DiscoveryRefused { reason: String }
+  | EntryPathUndeclared { entry_path: String, function: String }
+  | DuplicateClaimIdentity { claim_identity: String }
+  | JoinPopulationEmpty
+
+type FloorStandingJoin
+  = FloorStandingJoined {
+      rows: List<FloorStandingJoinRow>
+      counts: FloorStandingCounts
+      digest: String
+      seam_modules: List<String>
+      owned_data_records_supplied: Int
+    }
+  | FloorStandingJoinRefused { cause: FloorStandingJoinRefusal }
+
+fn floor_join_string_eq(a: String, b: String) -> Bool {
+  a == b
+}
+
+fn floor_join_add_unseen(acc: List<String>, item: String) -> List<String> {
+  if contains(xs: acc, item: item, eq: floor_join_string_eq) { acc } else { Cons { head: item, tail: acc } }
+}
+
+fn floor_join_seam_modules(roster: List<SeamStanding>) -> List<String> {
+  list_reverse(xs: fold_list(
+    xs: roster,
+    empty: Empty,
+    cons: fn(acc, seam) { floor_join_add_unseen(acc: acc, item: seam.seam_module) }
+  ))
+}
+
+fn floor_join_seam_paths(nodes: List<ModuleDeclarationFact>, seam_modules: List<String>) -> List<String> {
+  list_reverse(xs: fold_list(
+    xs: nodes,
+    empty: Empty,
+    cons: fn(acc, node) {
+      if contains(xs: seam_modules, item: node.module, eq: floor_join_string_eq) {
+        Cons { head: strip_leading_dot_slash(s: node.path), tail: acc }
+      } else {
+        acc
+      }
+    }
+  ))
+}
+
+fn floor_join_path_to_module(nodes: List<ModuleDeclarationFact>) -> Map<String, String> {
+  fold_list(
+    xs: nodes,
+    empty: empty_map(),
+    cons: fn(acc, node) { map_insert(acc, strip_leading_dot_slash(s: node.path), node.module) }
+  )
+}
+
+fn floor_join_entry_reaches_seam(
+  entry_path: String,
+  edges: List<ModuleDependencyEdge>,
+  nodes: List<ModuleDeclarationFact>,
+  seam_paths: List<String>
+) -> Bool {
+  any(
+    xs: dependency_closure(entry_path: entry_path, edges: edges, nodes: nodes),
+    predicate: fn(path) { contains(xs: seam_paths, item: strip_leading_dot_slash(s: path), eq: floor_join_string_eq) }
+  )
+}
+
+fn floor_join_disposition_name(d: RequiredFloorDisposition) -> String {
+  match d {
+    Planned => "planned",
+    DeclinedLongModule { matched_prefix } => "declined_long_module",
+    DeclinedFixtureMember { matched_prefix } => "declined_fixture_member",
+    DeclinedOutsideRequiredGate => "declined_outside_required_gate",
+    DeclinedCostDebt => "declined_cost_debt"
+  }
+}
+
+fn floor_join_counts_zero() -> FloorStandingCounts {
+  FloorStandingCounts {
+    offered: 0,
+    planned: 0,
+    declined_long_module: 0,
+    declined_fixture_member: 0,
+    declined_outside_required_gate: 0,
+    declined_cost_debt: 0
+  }
+}
+
+fn floor_join_counts_add(c: FloorStandingCounts, d: RequiredFloorDisposition) -> FloorStandingCounts {
+  match d {
+    Planned => FloorStandingCounts { offered: c.offered + 1, planned: c.planned + 1, declined_long_module: c.declined_long_module, declined_fixture_member: c.declined_fixture_member, declined_outside_required_gate: c.declined_outside_required_gate, declined_cost_debt: c.declined_cost_debt },
+    DeclinedLongModule { matched_prefix } => FloorStandingCounts { offered: c.offered + 1, planned: c.planned, declined_long_module: c.declined_long_module + 1, declined_fixture_member: c.declined_fixture_member, declined_outside_required_gate: c.declined_outside_required_gate, declined_cost_debt: c.declined_cost_debt },
+    DeclinedFixtureMember { matched_prefix } => FloorStandingCounts { offered: c.offered + 1, planned: c.planned, declined_long_module: c.declined_long_module, declined_fixture_member: c.declined_fixture_member + 1, declined_outside_required_gate: c.declined_outside_required_gate, declined_cost_debt: c.declined_cost_debt },
+    DeclinedOutsideRequiredGate => FloorStandingCounts { offered: c.offered + 1, planned: c.planned, declined_long_module: c.declined_long_module, declined_fixture_member: c.declined_fixture_member, declined_outside_required_gate: c.declined_outside_required_gate + 1, declined_cost_debt: c.declined_cost_debt },
+    DeclinedCostDebt => FloorStandingCounts { offered: c.offered + 1, planned: c.planned, declined_long_module: c.declined_long_module, declined_fixture_member: c.declined_fixture_member, declined_outside_required_gate: c.declined_outside_required_gate, declined_cost_debt: c.declined_cost_debt + 1 }
+  }
+}
+
+fn floor_join_counts(rows: List<FloorStandingJoinRow>) -> FloorStandingCounts {
+  fold_list(xs: rows, empty: floor_join_counts_zero(), cons: fn(acc, row) { floor_join_counts_add(c: acc, d: row.disposition) })
+}
+
+data effect_demand_floor_join_digest_note: String = "THE DIGEST IS OVER IDENTITY AND STANDING, IN PRODUCER ORDER, and order is part of it on purpose. Two consumers re-deriving from this producer over one tree walk the same discovery order, so their digests agree; a consumer that reordered rows and still matched would be matching a weaker fact than the one carried. What the digest deliberately does NOT cover is the entry path or the module path, because those are the KEYS the identity was built from and a change to either already changes the identity."
+
+fn floor_join_digest_text(rows: List<FloorStandingJoinRow>) -> String {
+  fold_list(
+    xs: rows,
+    empty: "",
+    cons: fn(acc, row) {
+      concat(concat(concat(concat(acc, row.claim_identity), "\t"), floor_join_disposition_name(d: row.disposition)), "\n")
+    }
+  )
+}
+
+fn floor_join_digest(rows: List<FloorStandingJoinRow>) -> String {
+  serialize_content_hash(hash: content_hash_of_value(value: floor_join_digest_text(rows: rows) as NonEmptyStr))
+}
+
+type FloorJoinFoldState {
+  rows_reversed: List<FloorStandingJoinRow>
+  seen: Map<String, Bool>
+  reach_memo: Map<String, Bool>
+  refusal: Optional<FloorStandingJoinRefusal>
+}
+
+fn floor_join_fold_zero() -> FloorJoinFoldState {
+  FloorJoinFoldState { rows_reversed: Empty, seen: empty_map(), reach_memo: empty_map(), refusal: Absent }
+}
+
+fn floor_join_refuse(state: FloorJoinFoldState, cause: FloorStandingJoinRefusal) -> FloorJoinFoldState {
+  match state.refusal {
+    Present { value } => state,
+    Absent => FloorJoinFoldState { rows_reversed: state.rows_reversed, seen: state.seen, reach_memo: state.reach_memo, refusal: Present { value: cause } }
+  }
+}
+
+data effect_demand_floor_join_memo_note: String = "ONE CLOSURE WALK PER ENTRY, NOT PER CLAIM. The floor discovers several claims per entry file -- five figures of claims over four figures of entries -- and the closure is a fact about the ENTRY, so walking it once per claim would pay the breadth-first walk a multiple of the times the population warrants. DESIGN's bare-minimum-cost rule admits no 'n is small here', so the reach verdict is memoized on the normalized entry path in the fold state and the first refusal stays sticky while the fold runs to the end, exactly as the discovery census does."
+
+fn floor_join_fold_row(
+  state: FloorJoinFoldState,
+  row: FloorDiscoveryRow,
+  path_to_module: Map<String, String>,
+  edges: List<ModuleDependencyEdge>,
+  nodes: List<ModuleDeclarationFact>,
+  seam_paths: List<String>
+) -> FloorJoinFoldState {
+  let entry = strip_leading_dot_slash(s: row.entry)
+  match map_lookup_where_rejected_unreachable(m: path_to_module, key: entry) {
+    Absent => floor_join_refuse(state: state, cause: EntryPathUndeclared { entry_path: row.entry, function: row.function }),
+    Present { value: module } => {
+      let reaches = match map_lookup_where_rejected_unreachable(m: state.reach_memo, key: entry) {
+        Present { value: cached } => cached,
+        Absent => floor_join_entry_reaches_seam(entry_path: entry, edges: edges, nodes: nodes, seam_paths: seam_paths)
+      }
+      let memo = map_insert(state.reach_memo, entry, reaches)
+      if !reaches {
+        FloorJoinFoldState { rows_reversed: state.rows_reversed, seen: state.seen, reach_memo: memo, refusal: state.refusal }
+      } else {
+        let identity = concat(concat(module, "."), row.function)
+        match map_lookup_where_rejected_unreachable(m: state.seen, key: identity) {
+          Present { value: dup } => floor_join_refuse(state: FloorJoinFoldState { rows_reversed: state.rows_reversed, seen: state.seen, reach_memo: memo, refusal: state.refusal }, cause: DuplicateClaimIdentity { claim_identity: identity }),
+          Absent => FloorJoinFoldState {
+            rows_reversed: Cons {
+              head: FloorStandingJoinRow {
+                claim_identity: identity,
+                module_path: module,
+                entry_path: row.entry,
+                function: row.function,
+                disposition: required_floor_site_disposition(module_path: module, identity: identity)
+              },
+              tail: state.rows_reversed
+            },
+            seen: map_insert(state.seen, identity, true),
+            reach_memo: memo,
+            refusal: state.refusal
+          }
+        }
+      }
+    }
+  }
+}
+
+fn effect_demand_floor_join(
+  discovered: List<FloorDiscoveryRow>,
+  nodes: List<ModuleDeclarationFact>,
+  edges: List<ModuleDependencyEdge>,
+  seam_modules: List<String>,
+  owned_data_records_supplied: Int
+) -> FloorStandingJoin {
+  let path_to_module = floor_join_path_to_module(nodes: nodes)
+  let seam_paths = floor_join_seam_paths(nodes: nodes, seam_modules: seam_modules)
+  let folded = fold_list(
+    xs: discovered,
+    empty: floor_join_fold_zero(),
+    cons: fn(acc, row) { floor_join_fold_row(state: acc, row: row, path_to_module: path_to_module, edges: edges, nodes: nodes, seam_paths: seam_paths) }
+  )
+  match folded.refusal {
+    Present { value: cause } => FloorStandingJoinRefused { cause: cause },
+    Absent => {
+      let rows = list_reverse(xs: folded.rows_reversed)
+      if length(xs: rows) == 0 {
+        FloorStandingJoinRefused { cause: JoinPopulationEmpty }
+      } else {
+        FloorStandingJoined {
+          rows: rows,
+          counts: floor_join_counts(rows: rows),
+          digest: floor_join_digest(rows: rows),
+          seam_modules: seam_modules,
+          owned_data_records_supplied: owned_data_records_supplied
+        }
+      }
+    }
+  }
+}
+
+data effect_demand_floor_join_live_basis_note: String = "THE LIVE SHELL STATES ITS OWN POPULATION BASIS INSTEAD OF HIDING IT. The floor's discovery admits two kinds of witness: test-marked functions found by the source walk, and Bool-valued owned data declarations supplied to the producer as OwnedDataDeclRecord rows by the host's own scan. No substrate producer of those records exists today, so this shell supplies none and says so in owned_data_records_supplied, which the joined result carries. A consumer that needs the owned-data witnesses in the population is reading a stated lower bound, not a silent one, and the digest is over exactly the basis the result names."
+
+fn effect_demand_floor_join_live(
+  source_roots: List<String>,
+  exclude_substrings: List<String>
+) -> FloorStandingJoin {
+  match discover_floor_corpus_rows_from_host_facts(source_roots: source_roots, exclude_substrings: exclude_substrings, owned_data_records: Empty) {
+    FloorDiscoveryRefused { reason } => FloorStandingJoinRefused { cause: DiscoveryRefused { reason: reason } },
+    FloorDiscoveryAccepted { rows } => effect_demand_floor_join(
+      discovered: rows,
+      nodes: module_declaration_facts_live(pool_roots: source_roots),
+      edges: dependency_resolution_facts_live(pool_roots: source_roots, importer_roots: source_roots, exclude_substrings: exclude_substrings),
+      seam_modules: floor_join_seam_modules(roster: effect_demand_seam_roster),
+      owned_data_records_supplied: 0
+    )
+  }
+}
+
+data effect_demand_floor_join_live_default_note: String = "THE DEFAULT LIVE ENTRY BINDS THE FLOOR'S OWN ROOTS AND EXCLUSIONS, not a copy of them. The required floor's Rust runner parses witness_exclusion_substrings out of gunbc.ci_layer_roots; this shell reads the same declaration through an import, so the two cannot drift apart without a resolve refusal, and a discovery refusal here over a test-marked declaration outside a *_test.dag file is the same refusal the floor would raise, not a defect in this producer. The digest entry returns text so a consumer can quote it: a digest on success, or the refusal in the same words the join carries."
+
+data effect_demand_floor_join_source_roots: List<String> = ["dag", "src/v2"]
+
+fn effect_demand_floor_join_live_default() -> FloorStandingJoin {
+  effect_demand_floor_join_live(source_roots: effect_demand_floor_join_source_roots, exclude_substrings: witness_exclusion_substrings())
+}
+
+fn effect_demand_floor_join_digest_text(join: FloorStandingJoin) -> String {
+  match join {
+    FloorStandingJoinRefused { cause } => match cause {
+      DiscoveryRefused { reason } => concat("refused: discovery: ", reason),
+      EntryPathUndeclared { entry_path, function } => concat(concat(concat("refused: entry path undeclared: ", entry_path), " fn "), function),
+      DuplicateClaimIdentity { claim_identity } => concat("refused: duplicate claim identity: ", claim_identity),
+      JoinPopulationEmpty => "refused: join population empty"
+    },
+    FloorStandingJoined { rows, counts, digest, seam_modules, owned_data_records_supplied } => concat("digest=", digest)
+  }
+}
+
+fn effect_demand_floor_join_digest_live() -> String {
+  effect_demand_floor_join_digest_text(join: effect_demand_floor_join_live_default())
+}
