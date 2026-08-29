@@ -336,6 +336,7 @@ test fn w_rostered_identity_declines_for_cost_debt() -> Bool {
     identity: "dag.test.claim.lifecycle_survivor_corpus_census.no_raw_lifecycle_string_survivors_remain"
   ) {
     DeclinedCostDebt => true
+    DeclinedOutsideRequiredGate => false
     DeclinedOutsideGateClosure => false
     DeclinedDiscoveryExcluded { matched_substring: _ } => false
     Planned => false
