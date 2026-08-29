@@ -31,6 +31,7 @@ import std.primitive_projection {
   primitive_length, primitive_map_insert, primitive_map_get, primitive_empty_map,
   primitive_decl_facts, primitive_export_signature_facts, primitive_data_decl_type_facts,
   primitive_concept_decl_facts, primitive_concept_decl_facts_live,
+  primitive_symbol_lexeme, primitive_symbol_intern_lexeme,
 }
 
 data primitive_identity_d0_scope_note: String = "D0 is NOT terminal acceptance and does NOT close the subject universe. Landed and executing: join mechanism across five carriers, five refusal variants typed, three refusal detectors executing with witnesses (see primitive_d0_refusal_execution_note), derived census across all five surfaces including InterpreterDispatch from gunbc.v1_interpreter_primitive_surface. D1 (interpreter-primitive-roster consumption): measurement scaffold deleted; primitive_surface_census_derived reads the roster authority. Population-wide identity join closure remains the terminal acceptance bar."
@@ -1316,6 +1317,21 @@ data primitive_concept_decl_facts_traversal: PrimitiveTraversalOrderFact = Primi
 
 data primitive_concept_decl_facts_live_traversal: PrimitiveTraversalOrderFact = PrimitiveTraversalOrderFact { primitive: primitive_concept_decl_facts_live, order: SourcePreservingOrder }
 
+// THE TWO SYMBOL BRIDGES TRAVERSE NOTHING, and OrderFreeResult is the honest arm rather than the
+// convenient one. Both are scalar: symbol_lexeme maps one Symbol to its text and
+// symbol_intern_lexeme is its inverse, so there is no collection to walk and the result is a
+// function of the input alone -- it cannot depend on an order because no order is consulted. That
+// is a different statement from HostUnspecifiedOrder, which would claim a real traversal whose
+// order the host does not pin, and asserting it here would fabricate a leak the primitive cannot
+// have. Adding these rows is an OBLIGATION of declaring the primitives, not bookkeeping beside it:
+// v2.lens.determinism closes its denominator over primitive_declared_definitions, so a primitive
+// with no traversal fact makes the closure false. That is how this was found -- nine reach_witness
+// rows went red, including determinism_denominator_is_closed_on_declared_primitives, the row whose
+// entire job is to notice exactly this.
+data primitive_symbol_lexeme_traversal: PrimitiveTraversalOrderFact = PrimitiveTraversalOrderFact { primitive: primitive_symbol_lexeme, order: OrderFreeResult }
+
+data primitive_symbol_intern_lexeme_traversal: PrimitiveTraversalOrderFact = PrimitiveTraversalOrderFact { primitive: primitive_symbol_intern_lexeme, order: OrderFreeResult }
+
 data primitive_projection_traversal_facts: List<PrimitiveTraversalOrderFact> = [
   primitive_length_traversal,
   primitive_map_insert_traversal,
@@ -1326,6 +1342,8 @@ data primitive_projection_traversal_facts: List<PrimitiveTraversalOrderFact> = [
   primitive_data_decl_type_facts_traversal,
   primitive_concept_decl_facts_traversal,
   primitive_concept_decl_facts_live_traversal,
+  primitive_symbol_lexeme_traversal,
+  primitive_symbol_intern_lexeme_traversal,
 ]
 
 fn primitive_declared_traversal_facts() -> List<PrimitiveTraversalOrderFact> {

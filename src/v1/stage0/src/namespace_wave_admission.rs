@@ -367,7 +367,66 @@ pub struct TransitionAdmission {
 /// the shape the paragraph above records for the first 53. Removed by the trigger they were
 /// authored with. The roster is EMPTY and empty is not permissive: a run carrying a real
 /// namespace delta still refuses it as UNADJUDICATED until its author adds a row here.
-pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[];
+/// FOURTH TRANSITION (2026-08-29, gunbc#9665 / issue #9664). `DeclaredCallableIdentity` moved
+/// from `v1.compiler.infer_sigs` to `v1.std.core`, so every binding of that spelling inside
+/// `v1.compiler.infer_lookup` reports `TargetChanged`. The move is not cosmetic and not
+/// avoidable by re-spelling: `v1.std.core`'s own `CallTargetIdentity` now CARRIES a
+/// `DeclaredCallableIdentity` on its `RuntimePrimitiveCall` arm -- the declaration a runtime
+/// target was projected from, which is what lets Rust emission fall back to the declaration
+/// when its registry has no bridge for the primitive instead of inventing `v1_rt::length`.
+/// `v1.compiler.infer_sigs` imports `v1.std.core`, so the type could not stay where it was
+/// without a cycle, and re-declaring the pair in `v1.std.core` beside the original is the
+/// second-representation defect DESIGN §3 forbids -- the type's own note already says so, and
+/// that note travelled with the declaration.
+///
+/// FOUR ROWS, ONE PER BINDING SITE, and they are enumerated rather than matched by a module
+/// pattern because the roster's own rule is that its population is an enumeration and never a
+/// predicate. The two `membership` deltas this change also produces
+/// (`v1.compiler.emit_rust -> std.decl_ref` and `-> std.primitive_projection`) are
+/// `ExplicitlyEvaluatedZeroDelta` and auto-admit, so they are deliberately absent here.
+///
+/// DISSOLVE-ON: this PR merging. Once `DeclaredCallableIdentity` is declared in `v1.std.core`
+/// on main, the merge base and head both carry it, no run can produce these deltas, and all
+/// four report stale -- which refuses every unrelated PR in the repository, exactly the shape
+/// the three shrinks above record. Remove them by that trigger, not by reinterpreting it.
+pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
+    TransitionAdmission {
+        label: "DeclaredCallableIdentity hoist to v1.std.core 2026-08-29",
+        subject: AdmissionSubject::Binding {
+            module: "v1.compiler.infer_lookup",
+            in_declaration: "borrowed_census_callable_candidate",
+            spelling: "DeclaredCallableIdentity",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "DeclaredCallableIdentity hoist to v1.std.core 2026-08-29",
+        subject: AdmissionSubject::Binding {
+            module: "v1.compiler.infer_lookup",
+            in_declaration: "callable_lookup_over_candidates",
+            spelling: "DeclaredCallableIdentity",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "DeclaredCallableIdentity hoist to v1.std.core 2026-08-29",
+        subject: AdmissionSubject::Binding {
+            module: "v1.compiler.infer_lookup",
+            in_declaration: "func_sig_from_global_bare",
+            spelling: "DeclaredCallableIdentity",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "DeclaredCallableIdentity hoist to v1.std.core 2026-08-29",
+        subject: AdmissionSubject::Binding {
+            module: "v1.compiler.infer_lookup",
+            in_declaration: "resolved_declaration_call_target",
+            spelling: "DeclaredCallableIdentity",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+];
 
 /// The denominators a green must name (DESIGN §5). A run that cannot say what it covered is
 /// an instrument failure wearing coverage's clothes.
