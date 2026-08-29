@@ -226,39 +226,23 @@ fn render_rust_type(n: Node, shared_types: Set<String>, source_indices: Map<Stri
   }
 }
 
-// AN ARROW TYPE'S PARAMETERS AND RETURN ARE RUST TYPES, SO THEY RENDER THROUGH THE RUST RENDERER.
+// AN ARROW TYPE'S POSITIONS RENDER THROUGH THE ONE RENDERER FN-SIGNATURE POSITIONS ALREADY USE.
 // Every Arrow reaching render_rust_type used to fall through to the target-generic render_node_type,
 // which renders a node by name and CHILDREN only and never reads the `__applied_type_args` binding
-// the Rust renderers exist to honour. So `fn(ResolvedTree) -> Outcome<Medium<String>>` came out as
-// `Rc<dyn Fn(ResolvedTree) -> Rc<Outcome<Rc<Medium>>>>` -- the inner binding dropped (E0107 missing
-// generics for struct `Medium`, v2.compiler.compile stage_translate). The callable template and the
-// void arm are the same rows render_node_type consumes; only the per-position renderer changes.
-// AN ARROW POSITION DEVIATES FROM THE TARGET-GENERIC RENDERER ONLY FOR THE TWO SHAPES THAT RENDERER
-// CANNOT SPELL, AND THIS GATE IS MEASURED, NOT ASSUMED. The first cut routed EVERY arrow position
-// through render_rust_type, and the regenerated seed then emitted 2790 rustc refusals on the
-// 00_compile closure where the committed bytes had 15: the Rust renderer realizes a v2-declared
-// Symbol/String structurally (Rc<Vector<i64>>, E0308 by the hundreds) and renders an out-of-scope
-// type variable as `_` (E0121 inside fn signatures) -- spellings the generic renderer had been
-// supplying at those positions, and which nothing in this change set out to alter. So a position
-// takes the Rust renderer only when its subtree carries an applied-type binding the generic
-// renderer would drop (the `Rc<Medium>` E0107 class) or is itself a zero-parameter alias carrying
-// its right-hand side's children (the `CompileLensOutcome<..>` E0107 class); every other position
-// renders exactly as before this change. The deviation set is therefore the defect set.
+// the Rust renderers exist to honour: `fn(ResolvedTree) -> Outcome<Medium<String>>` came out as
+// `Rc<dyn Fn(ResolvedTree) -> Rc<Outcome<Rc<Medium>>>>` (E0107, v2.compiler.compile stage_translate).
+// Two earlier cuts each introduced a SECOND per-position renderer beside the parameter side's:
+// routing every position through render_rust_type rendered a fn-scope generic by its erased
+// inference (`Outcome<compile_error!("UNRESOLVED_CompilerError")>`, v2.std.staging then_outcome),
+// and a gate that admitted only applied-binding subtrees kept that defect for exactly those
+// subtrees while re-opening `Rc<Medium>` for the rest. The parameter side of the same arrow --
+// emit_rust_param_type's `impl Fn(A) -> Rc<Outcome<C>>` -- had rendered both shapes correctly all
+// along, through render_rust_fn_sig_type in the fn's generic scope. An arrow's return is not a
+// different kind of type from an arrow's parameter, so both positions ask that renderer, and the
+// defect set is whatever that renderer gets wrong, which the parameter side already measures.
+// The callable template and the void arm are the same rows render_node_type consumes.
 fn render_rust_arrow_position(n: Node, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, emit_info: EmitGraphInfo) -> String {
-  let is_bare_zero_param_alias = n.connective == NoConnective && n.children |> count > 0 && closed_alias_peels_zero_param(env: emit_info.fn_type_env, n: n)
-  if type_node_carries_applied_binding(n: n, source_indices: source_indices) || is_bare_zero_param_alias {
-    render_rust_type(n: n, shared_types: shared_types, source_indices: source_indices, emit_info: emit_info)
-  } else {
-    render_node_type(n: n, target: Rust, shared_types: shared_types, source_indices: source_indices)
-  }
-}
-
-fn type_node_carries_applied_binding(n: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
-  let own = match find_property(props: n.properties, prop_name: "__applied_type_args", source_indices: source_indices) {
-    Present { value: applied } => applied.children |> count > 0
-    Absent => false
-  }
-  own || n.children |> any(c => type_node_carries_applied_binding(n: child_type_node(ch: c), source_indices: source_indices))
+  render_rust_fn_sig_type(n: n, generic_param_names: emit_info.fn_generic_param_names, shared_types: shared_types, source_indices: source_indices, variant_to_enum: emit_info.variant_to_enum, env: emit_info.fn_type_env)
 }
 
 // Named rather than inlined because `if x == Variant {` parses as a record literal in .dag.
@@ -1284,7 +1268,7 @@ fn render_rust_decl_type(n: Node, generic_param_names: List<String>, shared_type
       } else if type_node_has_unbound_type_variable(n: n, generic_param_names: generic_param_names, source_indices: source_indices) {
         "_"
       } else {
-        render_rust_type_with_applied_binding(n: n, shared_types: shared_types, source_indices: source_indices, env: env)
+        render_rust_type_with_applied_binding_in_scope(n: n, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, env: env)
       }
   }
 }
@@ -3858,6 +3842,12 @@ fn local_coproduct_variant_names(items: List<Node>, source_indices: Map<String, 
 //
 // THE PARENT MAY BE UNRESOLVABLE, AND THAT IS ITS OWN ARM RATHER THAN A COLLAPSE INTO
 // CandidateRegistryAbsent. Reaching the unresolvable case means: THIS IS KNOWN TO BE A VARIANT and
+// A KNOWN VARIANT IS KNOWN BY SPELLING ACROSS THE WHOLE CORPUS, AND A TYPE POSITION CANNOT HOLD A
+// VARIANT. `Determinism` is a type in std.determinism and a variant of v2.lens.registry's enum; a
+// module whose `classification: std.determinism.Determinism` field reached this arm was delegated
+// to an enum it never referenced and lost its type import (E0425, v2.std.determinism). A name that
+// occurs in one of this module's TYPE positions therefore never takes the variant arm; the registry
+// arm decides it, with the export proof unchanged.
 // its parent is not established. Registry-absent says something else entirely -- that the bare-name
 // REGISTRY holds no entry -- which is a statement about a different map, reached by a different
 // route, with a different remedy, and a reader auditing it would go looking at the registry where
@@ -3903,8 +3893,8 @@ type ReferenceDerivedCandidateRow {
 // emitted before; the census takes the same rows and counts them. Byte-identity of the emitted crate
 // is therefore STRUCTURAL rather than asserted: the emitted use-lines cannot move unless this
 // function's answer moves, because there is no second copy of the decision to drift from.
-fn reference_derived_candidate_disposition(name: String, this_module_name: String, registry: Map<String, ItemInfo>, export_sets: Map<String, Map<String, Bool>>, typed_modules: List<TypedModule>, source_indices: Map<String, NewlineIndex>, module_index: ModuleIndex, type_summaries: Map<String, TypeSummary>, variant_to_enum: Map<String, String>) -> ReferenceDerivedCandidateDisposition {
-  if is_known_variant(type_summaries: type_summaries, name: name) {
+fn reference_derived_candidate_disposition(name: String, this_module_name: String, registry: Map<String, ItemInfo>, export_sets: Map<String, Map<String, Bool>>, typed_modules: List<TypedModule>, source_indices: Map<String, NewlineIndex>, module_index: ModuleIndex, type_summaries: Map<String, TypeSummary>, variant_to_enum: Map<String, String>, in_type_position: Bool) -> ReferenceDerivedCandidateDisposition {
+  if is_known_variant(type_summaries: type_summaries, name: name) && !in_type_position {
     match map_get(variant_to_enum, name) {
       Present { value: parent } =>
         if parent == "" { CandidateVariantParentUnresolved }
@@ -4182,6 +4172,7 @@ fn reference_derived_use_line_plan(items: List<Node>, unlisted_type_names: List<
     let value_names = unique_strings(items: items |> flat_map(item => collect_value_ref_names(n: item, source_indices: source_indices, type_summaries: emit_info.type_summaries, variant_to_enum: emit_info.variant_to_enum)))
     let item_emit_surface_names = items |> flat_map(item => collect_item_emit_surface_names(item: item, source_indices: source_indices, emit_info: emit_info))
     let type_surface_names = unique_strings(items: item_emit_surface_names)
+    let type_position_set = type_surface_names |> fold(init: empty_map(), f: (acc, nm) => map_insert(acc, nm, true))
     let field_surface_names = collect_items_field_import_surface_names(surface_names: item_emit_surface_names, emit_info: emit_info)
     let variant_payload_structs = expand_variant_payload_struct_imports(names: type_surface_names, type_summaries: emit_info.type_summaries, variant_to_enum: emit_info.variant_to_enum)
     let emitter_attested_anon_heads = unique_strings(items: items |> flat_map(item => collect_anonymous_record_lit_heads(n: item, source_indices: source_indices, type_summaries: emit_info.type_summaries)))
@@ -4210,7 +4201,7 @@ fn reference_derived_use_line_plan(items: List<Node>, unlisted_type_names: List<
         [ReferenceDerivedCandidateRow {
           module_name: this_module_name,
           name: name,
-          disposition: reference_derived_candidate_disposition(name: name, this_module_name: this_module_name, registry: registry, export_sets: export_sets, typed_modules: typed_modules, source_indices: source_indices, module_index: module_index, type_summaries: emit_info.type_summaries, variant_to_enum: emit_info.variant_to_enum)
+          disposition: reference_derived_candidate_disposition(name: name, this_module_name: this_module_name, registry: registry, export_sets: export_sets, typed_modules: typed_modules, source_indices: source_indices, module_index: module_index, type_summaries: emit_info.type_summaries, variant_to_enum: emit_info.variant_to_enum, in_type_position: emit_map_has(m: type_position_set, key: name))
         }]
       }
     )
@@ -4234,7 +4225,7 @@ fn reference_derived_use_line_plan(items: List<Node>, unlisted_type_names: List<
       let block_lines = if block == "" { [] } else { block |> split(delimiter: "\n") }
       let emitted_here = block_lines |> flat_map(l => imported_names_in_use_line(line: l))
       let fallback = names |> flat_map(nm =>
-        if (emitted_here |> any(e => e == nm)) || is_known_variant(type_summaries: emit_info.type_summaries, name: nm) {
+        if (emitted_here |> any(e => e == nm)) || (is_known_variant(type_summaries: emit_info.type_summaries, name: nm) && !emit_map_has(m: type_position_set, key: nm)) {
           []
         } else if provider_proven_exports_symbol(name: nm, provider_module: provider, export_sets: export_sets, typed_modules: typed_modules, source_indices: source_indices, module_index: module_index) {
           [concat(rust_visibility_prefix(), concat("use crate::", concat(module_to_filename(name: provider), concat("::", concat(emit_import_name(n: nm, registry: registry), ";")))))]
@@ -4245,36 +4236,71 @@ fn reference_derived_use_line_plan(items: List<Node>, unlisted_type_names: List<
       concat(block_lines, fallback)
     )
     let names_already_in_lines = lines |> flat_map(l => imported_names_in_use_line(line: l))
-    let qualified_lines = qualified_type_reference_use_lines(names: type_surface_names, this_module_name: this_module_name, already: already, names_already_in_lines: names_already_in_lines, registry: registry, export_sets: export_sets, typed_modules: typed_modules, source_indices: source_indices, module_index: module_index)
-    ReferenceDerivedUseLinePlan { lines: concat(lines, qualified_lines), rows: rows }
+    let qualified_rows = qualified_type_reference_rows(names: type_surface_names |> filter(nm => emit_map_has(m: emitted_source_token_set, key: qualified_last_segment(name: nm))), this_module_name: this_module_name, already: already, names_already_in_lines: names_already_in_lines, registry: registry, export_sets: export_sets, typed_modules: typed_modules, source_indices: source_indices, module_index: module_index)
+    let qualified_lines = qualified_type_reference_use_lines(rows: qualified_rows, registry: registry)
+    ReferenceDerivedUseLinePlan { lines: concat(lines, qualified_lines), rows: concat(rows, qualified_rows) }
   }
 }
 
 // A QUALIFIED TYPE REFERENCE REACHES EMISSION AS ITS LEAF AND NEEDS THE LEAF'S USE-LINE. The type
-// renderers spell `std.determinism.Determinism` as bare `Determinism` (rust_fn_sig_leaf_name), and
-// the surface walk collects the DOTTED spelling -- which is never an identifier token in the emitted
-// source, so the candidate filter dropped it before any disposition was assigned and the module
-// referenced a name it never imported (E0425 cannot find type `Determinism`, v2.std.determinism,
-// two sites). The qualifier IS the provider the author named, so the line is synthesized from it
+// renderers spell `std.determinism.Determinism` as bare `Determinism` (rust_fn_sig_leaf_name). A
+// reference the resolver binds reaches the surface walk as that leaf and is decided by the
+// bare-name route above; a reference the resolver leaves authored reaches it in its DOTTED spelling
+// -- never an identifier token in the emitted source, so the candidate filter dropped it before any
+// disposition was assigned. This route decides the dotted ones. (The v2.std.determinism E0425 that
+// motivated it was the OTHER case, measured by tracing this route's inputs: the leaf arrived bare
+// and the bare-name route classified it as the v2.lens.registry VARIANT of the same spelling; that
+// is the type-position exemption in reference_derived_candidate_disposition, not this route.) The qualifier IS the provider the author named, so the line is synthesized from it
 // directly -- under the same construction wall every other synthesized use-line passes:
 // provider_proven_exports_symbol must hold for the leaf on that module, or nothing is emitted and
 // the name stays a loud unresolved symbol. A first cut keyed this on the qualified item-registry
 // overlay instead; that overlay carries no row for the reference and the cut was a measured
 // NON-EVENT (falsifier m12 reddened nothing; the two sites stayed), so it is replaced, not kept.
-fn qualified_type_reference_use_lines(names: List<String>, this_module_name: String, already: Map<String, Bool>, names_already_in_lines: List<String>, registry: Map<String, ItemInfo>, export_sets: Map<String, Map<String, Bool>>, typed_modules: List<TypedModule>, source_indices: Map<String, NewlineIndex>, module_index: ModuleIndex) -> List<String> {
+// THE SURFACE WALK ALSO COLLECTS QUALIFIED VALUE HEADS, AND THOSE ARE NOT THIS ROUTE'S. The first
+// regeneration of this function synthesized `pub use crate::v2_std_nat::Succ;` for every
+// `v2.std.nat.Succ { prev: .. }` record literal (E0603, sixteen sites): a variant reaches the surface
+// walk in the same dotted spelling as a type, and Rust admits a variant only through its parent
+// enum, which the value route already imports. So the leaf must be a TYPE the registry declares in
+// the named qualifier before any line is synthesized; every other qualified name is the value
+// route's, and this route says nothing about it. Each decision this route does take is a census row
+// beside the bare-name rows -- the qualified spelling is the row's name, so the two never collide.
+fn qualified_type_reference_rows(names: List<String>, this_module_name: String, already: Map<String, Bool>, names_already_in_lines: List<String>, registry: Map<String, ItemInfo>, export_sets: Map<String, Map<String, Bool>>, typed_modules: List<TypedModule>, source_indices: Map<String, NewlineIndex>, module_index: ModuleIndex) -> List<ReferenceDerivedCandidateRow> {
   let leaves_done = names_already_in_lines |> fold(init: empty_map(), f: (acc, nm) => map_insert(acc, nm, true))
-  unique_strings(items: names |> flat_map(name =>
+  names |> flat_map(name =>
     if !string_contains(s: name, pattern: ".") { [] } else {
       let leaf = qualified_last_segment(name: name)
       let segments = name |> split(delimiter: ".")
       let qualifier = segments |> take(n: (segments |> count) - 1) |> join(separator: ".")
       if qualifier == this_module_name || emit_map_has(m: already, key: leaf) || emit_map_has(m: leaves_done, key: leaf) || is_kernel_type(name: leaf) {
         []
-      } else if provider_proven_exports_symbol(name: leaf, provider_module: qualifier, export_sets: export_sets, typed_modules: typed_modules, source_indices: source_indices, module_index: module_index) {
-        [concat(rust_visibility_prefix(), "use crate::", module_to_filename(name: qualifier), "::", emit_import_name(n: leaf, registry: registry), ";")]
       } else {
-        []
+        match map_get(registry, leaf) {
+          Absent => [ReferenceDerivedCandidateRow { module_name: this_module_name, name: name, disposition: CandidateRegistryAbsent }]
+          Present { value: info } =>
+            if !(registry_row_is_type_declared_in(info: info, module_name: qualifier)) {
+              []
+            } else if provider_proven_exports_symbol(name: leaf, provider_module: qualifier, export_sets: export_sets, typed_modules: typed_modules, source_indices: source_indices, module_index: module_index) {
+              [ReferenceDerivedCandidateRow { module_name: this_module_name, name: name, disposition: CandidateSurvived { provider_module: qualifier } }]
+            } else {
+              [ReferenceDerivedCandidateRow { module_name: this_module_name, name: name, disposition: CandidateExportProofFailed { provider_module: qualifier } }]
+            }
+        }
       }
+    }
+  )
+}
+
+// Named because `info.kind == TypeItem` is a comparison the .dag surface reads as a record literal.
+fn registry_row_is_type_declared_in(info: ItemInfo, module_name: String) -> Bool {
+  if info.module_name != module_name { false } else { match info.kind { TypeItem => true  _ => false } }
+}
+
+fn qualified_type_reference_use_lines(rows: List<ReferenceDerivedCandidateRow>, registry: Map<String, ItemInfo>) -> List<String> {
+  unique_strings(items: rows |> flat_map(r =>
+    match r.disposition {
+      CandidateSurvived { provider_module: provider } =>
+        [concat(rust_visibility_prefix(), "use crate::", module_to_filename(name: provider), "::", emit_import_name(n: qualified_last_segment(name: r.name), registry: registry), ";")]
+      _ => []
     }
   ))
 }
@@ -6574,7 +6600,16 @@ fn emit_struct_from_children(name: String, type_params: String, generic_param_na
 
 data render_rust_type_applied_binding_env_note: String = "Construction wall for the zero-parameter-alias applied-argument class (E0107 'type alias takes 0 generic arguments but N were supplied'). A reference to a closed alias arrives at the emitter carrying the RESOLVED DEFINITION's type arguments as its children while its authored spelling is still the alias name, so a renderer that prints name-plus-children emits ClosedCarrierAlias<Q, S, M> for a Rust alias declared with no parameters. Four renderers already refuse that shape by asking the single peel authority closed_alias_peel_verdict: render_rust_applied_type, render_rust_decl_type, render_rust_fn_sig_type and render_rust_alias_rhs_type. This function is the fifth path, and it did NOT lack the guard -- it reached render_rust_applied_type, which asked, and was answered with an EMPTY TypeEnv this function constructed inline plus an empty_emit_graph_info() it passed to render_rust_type. An empty env resolves no binding, and the peel predicate renders 'I could not look this up' identically to 'this declaration has parameters' -- the state-space conflation DESIGN section 5 names, failing open into the widened applied form rather than refusing. Every one of this function's callers already holds the TypeEnv it was discarding, so the fix is to stop discarding it: the peel authority stays the single authority and is simply answered truthfully. Measured on the src/v2/compiler/03_ingest.dag closure. The next rung is upstream and not taken here: an alias reference that preserved its AUTHORED arity would make the bad shape unwritable rather than merely refused, at which point no renderer would need to ask at all."
 
+// THE FN'S GENERIC SCOPE MUST SURVIVE THIS HOP. render_rust_decl_type reaches here from a fn
+// signature carrying generic_param_names, and the EmitGraphInfo rebuilt below used to carry an
+// empty scope, so a fn-scope generic inside an arrow return (`fn(A) -> Outcome<C>`) rendered as
+// `_` (E0121) or by its erased inference; the parameter side of the same arrow rendered `C`.
+// The scope-free spelling stays for the callers that have no fn scope (fields, data, wire rows).
 fn render_rust_type_with_applied_binding(n: Node, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, env: TypeEnv) -> String {
+  render_rust_type_with_applied_binding_in_scope(n: n, generic_param_names: [], shared_types: shared_types, source_indices: source_indices, env: env)
+}
+
+fn render_rust_type_with_applied_binding_in_scope(n: Node, generic_param_names: List<String>, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, env: TypeEnv) -> String {
   if is_host_text_carrier_type(n: n, source_indices: source_indices) { return rust_carrier_optional_wrap(n: n, rendered: "String") }
   match find_property(props: n.properties, prop_name: "__applied_type_args", source_indices: source_indices) {
     Present { value: applied } =>
@@ -6585,15 +6620,15 @@ fn render_rust_type_with_applied_binding(n: Node, shared_types: Set<String>, sou
           if outer_name != applied_name {
             render_rust_shared_type_with_optional(n: n, type_name: outer_name, rendered: outer_name, shared_types: shared_types)
           } else {
-            render_rust_applied_type_shared(n: applied, generic_param_names: [], shared_types: shared_types, source_indices: source_indices, variant_to_enum: empty_map(), env: env)
+            render_rust_applied_type_shared(n: applied, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, variant_to_enum: empty_map(), env: env)
           }
         } else {
-          render_rust_applied_type_shared(n: applied, generic_param_names: [], shared_types: shared_types, source_indices: source_indices, variant_to_enum: empty_map(), env: env)
+          render_rust_applied_type_shared(n: applied, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, variant_to_enum: empty_map(), env: env)
         }
       } else {
-        render_rust_type(n: n, shared_types: shared_types, source_indices: source_indices, emit_info: emit_info_with_fn_type_context(emit_info: empty_emit_graph_info(), generic_param_names: [], env: env))
+        render_rust_type(n: n, shared_types: shared_types, source_indices: source_indices, emit_info: emit_info_with_fn_type_context(emit_info: empty_emit_graph_info(), generic_param_names: generic_param_names, env: env))
       }
-    Absent => render_rust_type(n: n, shared_types: shared_types, source_indices: source_indices, emit_info: emit_info_with_fn_type_context(emit_info: empty_emit_graph_info(), generic_param_names: [], env: env))
+    Absent => render_rust_type(n: n, shared_types: shared_types, source_indices: source_indices, emit_info: emit_info_with_fn_type_context(emit_info: empty_emit_graph_info(), generic_param_names: generic_param_names, env: env))
   }
 }
 
