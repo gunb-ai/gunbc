@@ -1,0 +1,129 @@
+module test.fixture.v1_consumer_census.specimens
+
+import std.types { List, String, NonEmptyStr }
+import std.decl_ref { DeclarationRef, decl_ref }
+import gunbc.replacement_cut { BoundaryConsumer, ConsumerDisposition, RetainSameContract, ReplacedByY, Retire, Covered, CoverageOpen }
+import gunbc.v1_consumer_census {
+  V1ConsumerRow, V1UncitableConsumer, ConsumerPopulation, DiscoveryProducer, discovery_producer,
+  PopulationMeasuredComplete, PopulationMeasuredLowerBound, PopulationUnmeasured,
+  WorkflowArgv, RustUseEdge, V1HostedCiBinary, V1RuntimeBridge, V1CompilerCrate
+}
+
+// CONTROLLED POPULATIONS FOR THE CONSUMER CENSUS'S REFUSALS. Every assertion in the paired witness
+// runs TWICE: once over the clean population, which must hold, and once over a population carrying
+// exactly one planted violation, which must not. Both halves are load-bearing and the clean half is
+// the one most often skipped -- a planted red with no positive control on the same plant proves the
+// assertion can fail, never that it fails FOR THE PLANTED REASON.
+//
+// WHY A FIXTURE AND NOT THE LIVE ROSTER. The live roster is honestly PopulationMeasuredLowerBound
+// with blocking rows, so it makes the admission gate false today -- and an assertion that reads
+// false on the live tree cannot tell 'the gate refuses correctly' from 'the gate is stuck off'. The
+// fixture supplies the ADMITTED case, which exists nowhere in this repository yet and has no other
+// way to be executed before the cutover. DESIGN section 4b: a state unrepresentable in the accepted
+// corpus may still be representable as source handed to the compiler by a fixture, and where it
+// is, declining the evidence is specification-without-execution.
+
+fn v1cc_fixture_nes(s: String) -> NonEmptyStr { s as NonEmptyStr }
+
+data fixture_producer: DiscoveryProducer = discovery_producer(
+  instrument: "hand-authored fixture; no tree was measured",
+  command: "none -- this row is a controlled specimen and must never be read as a live observation",
+  source_revision: "fixture",
+)
+
+data consumer_one: DeclarationRef = decl_ref(module_path: "test.fixture.consumer", decl_name: "one")
+data consumer_two: DeclarationRef = decl_ref(module_path: "test.fixture.consumer", decl_name: "two")
+data old_authority: DeclarationRef = decl_ref(module_path: "test.fixture.old_root", decl_name: "authority")
+
+data fixture_native_successor: String = "test.fixture.native successor_target"
+data fixture_unrealized_successor: String = "test.fixture.native successor_that_was_never_built"
+
+fn v1cc_fixture_row(consumer: DeclarationRef, disposition: ConsumerDisposition) -> V1ConsumerRow {
+  {
+    boundary: BoundaryConsumer { consumer: consumer, consumed_old_authority: old_authority, disposition: disposition },
+    medium: WorkflowArgv,
+    subject: V1HostedCiBinary,
+    discovered_by: fixture_producer,
+  }
+}
+
+// THE CLEAN ROSTER: two consumers, both discharged, no blocking row, every successor realized.
+data clean_rows: List<V1ConsumerRow> = [
+  v1cc_fixture_row(consumer: consumer_one, disposition: ReplacedByY { new_authority: v1cc_fixture_nes(s: fixture_native_successor) }),
+  v1cc_fixture_row(consumer: consumer_two, disposition: Retire { reason: v1cc_fixture_nes(s: "controlled specimen: the fixture declares no other consumer of this subject") }),
+]
+
+data clean_discovered: List<String> = [
+  "test.fixture.consumer.one -> test.fixture.old_root.authority",
+  "test.fixture.consumer.two -> test.fixture.old_root.authority",
+]
+
+data clean_realized: List<String> = [ fixture_native_successor ]
+
+data clean_population: ConsumerPopulation = PopulationMeasuredComplete {
+  rows: clean_rows,
+  joined_media: [ WorkflowArgv, RustUseEdge ],
+}
+
+// PLANT ONE -- a discovered relation with no row. The roster is unchanged; the discovery population
+// gains a third relation. This is the shape of the real failure: nobody edits the census, the tree
+// grows a consumer, and the census cannot notice.
+data planted_undisposed_discovered: List<String> = [
+  "test.fixture.consumer.one -> test.fixture.old_root.authority",
+  "test.fixture.consumer.two -> test.fixture.old_root.authority",
+  "test.fixture.consumer.three -> test.fixture.old_root.authority",
+]
+
+// PLANT TWO -- a row naming a relation the discovery population does not contain.
+data planted_stale_discovered: List<String> = [
+  "test.fixture.consumer.one -> test.fixture.old_root.authority",
+]
+
+// PLANT THREE -- a successor claimed and never built. The row is well-formed; the only thing wrong
+// is that the authority it names is absent from the realized population, a fact this module cannot
+// write. This is the plant that proves a disposition cannot be made true by editing it.
+data planted_unrealized_rows: List<V1ConsumerRow> = [
+  v1cc_fixture_row(consumer: consumer_one, disposition: ReplacedByY { new_authority: v1cc_fixture_nes(s: fixture_unrealized_successor) }),
+]
+
+data planted_unrealized_population: ConsumerPopulation = PopulationMeasuredComplete {
+  rows: planted_unrealized_rows,
+  joined_media: [ WorkflowArgv ],
+}
+
+// PLANT FOUR -- the same clean rows, filed as a LOWER BOUND with nothing uncitable. Only the
+// completeness arm differs; the gate must refuse. This is the plant that distinguishes 'nothing
+// blocks' from 'nothing blocks among what was measured'.
+data planted_lower_bound_population: ConsumerPopulation = PopulationMeasuredLowerBound {
+  rows: clean_rows,
+  uncitable: [],
+  missing_basis: "controlled specimen: the rows are the clean ones and only the completeness arm differs",
+}
+
+// PLANT FIVE -- an unmeasured population. Zero rows, zero blocking rows, and the gate must refuse.
+data planted_unmeasured_population: ConsumerPopulation = PopulationUnmeasured {
+  reason: "controlled specimen: nothing was measured",
+}
+
+// PLANT SIX -- one retained consumer with CoverageOpen inside an otherwise complete, fully realized
+// population. The blocking arm exercised independently of the completeness arm.
+data planted_blocking_rows: List<V1ConsumerRow> = [
+  v1cc_fixture_row(consumer: consumer_one, disposition: RetainSameContract { justification: v1cc_fixture_nes(s: "controlled specimen: a creditor that has not been paid"), coverage: CoverageOpen }),
+]
+
+data planted_blocking_population: ConsumerPopulation = PopulationMeasuredComplete {
+  rows: planted_blocking_rows,
+  joined_media: [ WorkflowArgv ],
+}
+
+// PLANT SEVEN -- a retained consumer whose coverage IS claimed, so it does not block, but the
+// covering authority is not realized. Coverage is a successor claim too, and refusal three must
+// reach it through the Covered arm and not only through ReplacedByY.
+data planted_covered_unrealized_rows: List<V1ConsumerRow> = [
+  v1cc_fixture_row(consumer: consumer_one, disposition: RetainSameContract { justification: v1cc_fixture_nes(s: "controlled specimen"), coverage: Covered { by: v1cc_fixture_nes(s: fixture_unrealized_successor) } }),
+]
+
+data planted_covered_unrealized_population: ConsumerPopulation = PopulationMeasuredComplete {
+  rows: planted_covered_unrealized_rows,
+  joined_media: [ WorkflowArgv ],
+}

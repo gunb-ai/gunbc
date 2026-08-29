@@ -1,0 +1,123 @@
+module test.claim.v1_witness_census_witness_test
+
+import std.types { Bool }
+import gunbc.replacement_cut { EvidenceDisposition, ReenrollAgainstY, ReplaceEvidence, RetireEvidence, EvidenceUndecided }
+import gunbc.v1_witness_census {
+  v1_claim_live_population,
+  v1_every_claim_accounted, v1_every_claim_row_is_in_roster, v1_claim_native_targets_are_distinct,
+  v1_every_claim_red_control_is_distinct, v1_no_fixture_member_carries_a_disposition,
+  v1_claim_conservation_holds, v1_native_roster, v1_claim_evidence_rows,
+  claim_population_is_complete, claim_population_rows
+}
+import test.fixture.v1_witness_census.specimens {
+  clean_rows, clean_roster, clean_population,
+  planted_unaccounted_roster,
+  planted_fabricated_rows, planted_fabricated_roster, planted_fabricated_population,
+  planted_merged_rows, planted_merged_roster, planted_merged_population,
+  planted_self_control_rows, planted_self_control_roster, planted_self_control_population,
+  planted_fixture_member_rows, planted_fixture_member_roster, planted_fixture_member_population,
+  planted_unmeasured_population
+}
+
+// WHAT THIS WITNESS ESTABLISHES. Not that the repository's claims are conserved -- the live roster
+// is unmeasured, and this file says so in its last assertion rather than hiding it. What it
+// establishes is that the conservation wall DISCRIMINATES in all five directions, each against a
+// planted loss and a positive control on the same plant.
+
+fn lost_subject_is_caught() -> Bool {
+  v1_every_claim_accounted(roster: clean_roster, rows: clean_rows)
+    && !v1_every_claim_accounted(roster: planted_unaccounted_roster, rows: clean_rows)
+}
+
+fn fabricated_subject_is_caught() -> Bool {
+  v1_every_claim_row_is_in_roster(roster: clean_roster, rows: clean_rows)
+    && !v1_every_claim_row_is_in_roster(roster: planted_fabricated_roster, rows: planted_fabricated_rows)
+}
+
+fn merged_target_is_caught() -> Bool {
+  v1_claim_native_targets_are_distinct(rows: clean_rows)
+    && !v1_claim_native_targets_are_distinct(rows: planted_merged_rows)
+}
+
+fn self_referential_red_control_is_caught() -> Bool {
+  v1_every_claim_red_control_is_distinct(rows: clean_rows)
+    && !v1_every_claim_red_control_is_distinct(rows: planted_self_control_rows)
+}
+
+fn fixture_member_with_a_disposition_is_caught() -> Bool {
+  v1_no_fixture_member_carries_a_disposition(rows: clean_rows)
+    && !v1_no_fixture_member_carries_a_disposition(rows: planted_fixture_member_rows)
+}
+
+// THE GATE HOLDS OVER THE CLEAN ACCOUNTING AND REFUSES EACH PLANT THROUGH THE WHOLE FUNCTION, not
+// only through the direction that catches it. A direction that discriminates in isolation and is
+// then dropped from the conjunction is a wall with a door in it.
+fn the_gate_refuses_every_plant() -> Bool {
+  v1_claim_conservation_holds(population: clean_population, roster: clean_roster)
+    && !v1_claim_conservation_holds(population: clean_population, roster: planted_unaccounted_roster)
+    && !v1_claim_conservation_holds(population: planted_fabricated_population, roster: planted_fabricated_roster)
+    && !v1_claim_conservation_holds(population: planted_merged_population, roster: planted_merged_roster)
+    && !v1_claim_conservation_holds(population: planted_self_control_population, roster: planted_self_control_roster)
+    && !v1_claim_conservation_holds(population: planted_fixture_member_population, roster: planted_fixture_member_roster)
+}
+
+fn the_gate_refuses_an_unmeasured_roster() -> Bool {
+  !v1_claim_conservation_holds(population: planted_unmeasured_population, roster: [])
+    && count(claim_population_rows(p: planted_unmeasured_population)) == 0
+}
+
+// THE NATIVE ROSTER IS EXACTLY THE SURVIVING AND REPLACING TARGETS: over the clean accounting, two
+// of three rows survive into it and the retired one does not. Derived from the same dispositions
+// the gate reads, so it cannot be curated apart from them.
+fn the_native_roster_is_derived() -> Bool {
+  count(v1_native_roster(rows: clean_rows)) == count(clean_rows) - 1
+    && count(v1_native_roster(rows: planted_merged_rows)) == count(planted_merged_rows)
+}
+
+fn evidence_is_reenroll(e: EvidenceDisposition) -> Bool {
+  match e {
+    ReenrollAgainstY { evidence: _, surviving_claim: _ } => true
+    ReplaceEvidence { old_evidence: _, new_evidence: _ } => false
+    RetireEvidence { evidence: _, retired_subject: _, retirement_reason: _ } => false
+    EvidenceUndecided { evidence: _ } => false
+  }
+}
+
+fn evidence_is_undecided(e: EvidenceDisposition) -> Bool {
+  match e {
+    ReenrollAgainstY { evidence: _, surviving_claim: _ } => false
+    ReplaceEvidence { old_evidence: _, new_evidence: _ } => false
+    RetireEvidence { evidence: _, retired_subject: _, retirement_reason: _ } => false
+    EvidenceUndecided { evidence: _ } => true
+  }
+}
+
+// THE PROJECTION INTO THE EXACT CARRIER IS TOTAL AND NEVER UNDECIDED: three rows in, three
+// evidence rows out, exactly one of them ReenrollAgainstY, and none EvidenceUndecided -- because
+// this census has no undecided arm to project from, and a projection that manufactured one would
+// hand the exact cut an open decision this census already closed.
+fn the_evidence_projection_is_total() -> Bool {
+  let rows = v1_claim_evidence_rows(rows: clean_rows)
+  count(rows) == count(clean_rows)
+    && count(rows |> filter(e => evidence_is_reenroll(e: e))) == 1
+    && count(rows |> filter(e => evidence_is_undecided(e: e))) == 0
+}
+
+// THE LIVE POPULATION IS HONESTLY UNMEASURED. The one assertion about the real tree, and it asserts
+// the census's own admission rather than a result. If someone lands a ClaimRosterComplete here
+// without a floor run producing it, this goes red -- the correct response to a roster typed in.
+fn the_live_roster_is_declared_unmeasured() -> Bool {
+  !claim_population_is_complete(p: v1_claim_live_population)
+    && !v1_claim_conservation_holds(population: v1_claim_live_population, roster: [])
+}
+
+test fn witness_census_catches_a_lost_subject() -> Bool { lost_subject_is_caught() }
+test fn witness_census_catches_a_fabricated_subject() -> Bool { fabricated_subject_is_caught() }
+test fn witness_census_catches_a_merged_target() -> Bool { merged_target_is_caught() }
+test fn witness_census_catches_a_self_referential_red_control() -> Bool { self_referential_red_control_is_caught() }
+test fn witness_census_catches_a_fixture_member_with_a_disposition() -> Bool { fixture_member_with_a_disposition_is_caught() }
+test fn witness_census_gate_refuses_every_plant() -> Bool { the_gate_refuses_every_plant() }
+test fn witness_census_gate_refuses_an_unmeasured_roster() -> Bool { the_gate_refuses_an_unmeasured_roster() }
+test fn witness_census_native_roster_is_derived() -> Bool { the_native_roster_is_derived() }
+test fn witness_census_evidence_projection_is_total() -> Bool { the_evidence_projection_is_total() }
+test fn witness_census_live_roster_is_declared_unmeasured() -> Bool { the_live_roster_is_declared_unmeasured() }

@@ -1,0 +1,111 @@
+module test.claim.v1_consumer_census_witness_test
+
+import std.types { Bool }
+import gunbc.replacement_cut { BoundaryCensus, ConsumersEnumerated, BoundaryDeclaredEmpty }
+import gunbc.v1_consumer_census {
+  v1_consumers, v1_uncitable_consumers, v1_consumer_population,
+  v1_every_discovered_consumer_disposed, v1_every_row_names_a_live_consumer, v1_every_claimed_successor_is_realized,
+  v1_bankruptcy_transaction_admitted, v1_blocking_consumer_count, v1_consumer_member_count,
+  v1_boundary_census, consumer_population_is_complete, consumer_population_rows, consumer_population_uncitable
+}
+import test.fixture.v1_consumer_census.specimens {
+  clean_rows, clean_discovered, clean_realized, clean_population,
+  planted_undisposed_discovered, planted_stale_discovered,
+  planted_unrealized_rows, planted_unrealized_population,
+  planted_lower_bound_population, planted_unmeasured_population,
+  planted_blocking_population, planted_covered_unrealized_rows, planted_covered_unrealized_population
+}
+
+// WHAT THIS WITNESS ESTABLISHES, AND WHAT IT DOES NOT.
+//
+// It does NOT measure the repository. The live roster in gunbc.v1_consumer_census is a hand sweep
+// over seven per-medium producers, and no assertion here would move if a new v1 consumer were
+// authored tomorrow. Saying that first is the point: a green witness beside a census is exactly the
+// artifact a reader mistakes for 'the census is verified'.
+//
+// What it DOES establish is that the census's refusals DISCRIMINATE -- each goes red on the state
+// it exists to catch, and green on the same fixture with that one state removed. Every assertion
+// below is therefore a PAIR, and the green half is not decoration: a predicate that returned false
+// unconditionally would pass every red-only probe in this file, the positive-control-on-the-plant
+// gap this repository has already filed twice.
+//
+// NO ASSERTION COMPARES ANYTHING TO A LITERAL COUNT. Every number is a fold over a population
+// compared to another fold over the same population, so adding a row cannot make this file stale
+// and no assertion can be silenced by editing a number.
+
+fn undisposed_consumer_is_caught() -> Bool {
+  v1_every_discovered_consumer_disposed(discovered: clean_discovered, rows: clean_rows)
+    && !v1_every_discovered_consumer_disposed(discovered: planted_undisposed_discovered, rows: clean_rows)
+}
+
+fn stale_row_is_caught() -> Bool {
+  v1_every_row_names_a_live_consumer(discovered: clean_discovered, rows: clean_rows)
+    && !v1_every_row_names_a_live_consumer(discovered: planted_stale_discovered, rows: clean_rows)
+}
+
+// A DISPOSITION CANNOT BE MADE TRUE BY EDITING IT, through BOTH arms that carry a successor: the
+// ReplacedByY authority and the Covered coverage claim. A refusal that reached only one of them
+// would leave the other as the place an author types a name nothing realizes.
+fn unrealized_successor_claim_is_caught() -> Bool {
+  v1_every_claimed_successor_is_realized(rows: clean_rows, realized: clean_realized)
+    && !v1_every_claimed_successor_is_realized(rows: planted_unrealized_rows, realized: clean_realized)
+    && !v1_every_claimed_successor_is_realized(rows: planted_covered_unrealized_rows, realized: clean_realized)
+}
+
+// THE ADMISSION GATE REFUSES AN UNMEASURED POPULATION AND A LOWER-BOUND ONE, and admits the
+// complete one. The populations differ ONLY in the completeness arm -- same rows, same successors.
+fn admission_reads_completeness() -> Bool {
+  v1_bankruptcy_transaction_admitted(population: clean_population, realized: clean_realized)
+    && !v1_bankruptcy_transaction_admitted(population: planted_lower_bound_population, realized: clean_realized)
+    && !v1_bankruptcy_transaction_admitted(population: planted_unmeasured_population, realized: clean_realized)
+}
+
+fn admission_refuses_a_blocking_consumer() -> Bool {
+  !v1_bankruptcy_transaction_admitted(population: planted_blocking_population, realized: clean_realized)
+    && consumer_population_is_complete(p: planted_blocking_population)
+}
+
+fn admission_refuses_an_unrealized_successor() -> Bool {
+  !v1_bankruptcy_transaction_admitted(population: planted_unrealized_population, realized: clean_realized)
+    && !v1_bankruptcy_transaction_admitted(population: planted_covered_unrealized_population, realized: clean_realized)
+    && consumer_population_is_complete(p: planted_unrealized_population)
+}
+
+// THE PROJECTION INTO THE EXACT CARRIER ENUMERATES EXACTLY THE ROWS IT WAS GIVEN, and never the
+// declared-empty arm: a census with rows that projected to BoundaryDeclaredEmpty would hand the
+// exact cut a clean boundary over a population it was told about.
+fn boundary_census_enumerates_the_rows() -> Bool {
+  match v1_boundary_census(rows: clean_rows) {
+    ConsumersEnumerated { consumers: cs } => count(cs) == count(clean_rows)
+    BoundaryDeclaredEmpty { basis: _ } => false
+  }
+}
+
+// THE LIVE TREE REFUSES, AND FOR THE REASONS THE CENSUS RECORDS. Stated as a conjunction because
+// 'the gate is false' is also what a broken gate returns: the population is a lower bound AND there
+// is at least one blocking consumer AND not every consumer blocks AND the uncitable list is
+// non-empty -- four independent facts whose conjunction is what 'XL-5 has not run yet' means.
+fn the_live_transaction_refuses_for_recorded_reasons() -> Bool {
+  !consumer_population_is_complete(p: v1_consumer_population)
+    && v1_blocking_consumer_count() > 0
+    && v1_blocking_consumer_count() < v1_consumer_member_count()
+    && count(consumer_population_uncitable(p: v1_consumer_population)) > 0
+}
+
+// THE ROSTER AND THE POPULATION NAME ONE LIST. Two declarations naming one list can disagree in
+// exactly one way -- an author filing a row and forgetting the population -- which would leave a
+// consumer recorded and unread by the gate.
+fn the_live_population_carries_the_whole_roster() -> Bool {
+  count(v1_consumers) == count(consumer_population_rows(p: v1_consumer_population))
+    && count(v1_uncitable_consumers) == count(consumer_population_uncitable(p: v1_consumer_population))
+}
+
+test fn consumer_census_catches_an_undisposed_consumer() -> Bool { undisposed_consumer_is_caught() }
+test fn consumer_census_catches_a_stale_row() -> Bool { stale_row_is_caught() }
+test fn consumer_census_catches_an_unrealized_successor_claim() -> Bool { unrealized_successor_claim_is_caught() }
+test fn consumer_census_admission_reads_completeness() -> Bool { admission_reads_completeness() }
+test fn consumer_census_admission_refuses_a_blocking_consumer() -> Bool { admission_refuses_a_blocking_consumer() }
+test fn consumer_census_admission_refuses_an_unrealized_successor() -> Bool { admission_refuses_an_unrealized_successor() }
+test fn consumer_census_boundary_census_enumerates_the_rows() -> Bool { boundary_census_enumerates_the_rows() }
+test fn consumer_census_live_transaction_refuses_for_recorded_reasons() -> Bool { the_live_transaction_refuses_for_recorded_reasons() }
+test fn consumer_census_live_population_carries_the_whole_roster() -> Bool { the_live_population_carries_the_whole_roster() }
