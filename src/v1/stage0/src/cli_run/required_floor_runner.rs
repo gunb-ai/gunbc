@@ -2388,10 +2388,20 @@ pub fn run_required_floor(
             "v2.workflow.required_floor.required_gate_prefixes",
         )?
     };
+    // THE POLICY MODULE IS ALWAYS IN THE SUBJECT: the floor evaluates its rosters (expected
+    // red, route gap, cost debt, the gate itself) in a frame over the prepared graph, and a
+    // gate roster that happened not to reach `v2.workflow.required_floor` refused with
+    // EntryModuleOutsidePreparedSubject (measured 2026-08-29). It is a seed, not a gate row:
+    // its own witnesses are admitted or declined by the roster like every other module's.
+    let closure_seeds: Vec<String> = required_gate_prefixes
+        .iter()
+        .cloned()
+        .chain(std::iter::once(REQUIRED_FLOOR_POLICY_MODULE.to_string()))
+        .collect();
     let (prepared, prepared_sources) = prepare_repository_closure(
         source_roots,
         &floor_prepared_subject_exclusions(),
-        Some((&gate_entry_index, &required_gate_prefixes)),
+        Some((&gate_entry_index, &closure_seeds)),
     )?;
     drop(gate_entry_index);
     // The bytes behind the sidecar candidates, captured here because `prepared_sources` is
