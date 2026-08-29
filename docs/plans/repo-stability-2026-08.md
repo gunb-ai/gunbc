@@ -176,3 +176,133 @@ stops contaminating sessions with dead premises.
   count unchanged vs main (164). NEXT CANDIDATE ROUND: delete the 48 stale
   authority-only plan carriers themselves (imports/rosters/doc_graph edits), and
   the docs/plans doc-to-doc islands.
+
+## Finding — per-invocation whole-tree pool tax (2026-08-28, CORRECTED same day)
+
+AN EARLIER REVISION OF THIS SECTION CLAIMED A CWD-GATED SWITCH (identical trees
+<0.5s outside a checkout) AND IS REPLACED WHOLE: those fast controls were
+PANICS — `repo_relative_path_normalized` aborts on roots outside the process
+workspace root, and the discarded stderr was misread as fast success. The
+fabricated-fast twin of execution-provenance loss. `git rev-parse` is workspace
+discovery only, not a heavy-work toggle.
+
+ESTABLISHED by succeeding runs (entry compiled, NoSuchFunction reached) over
+subset roots inside the workspace, entry `std/abi.dag` (imports nothing):
+140 modules 3.5s · 1637 39s · 2962 (dag) 63s · 4308 (dag+src/v2) 81–99s.
+LINEAR at ~20–25ms per POOL module, paid per process invocation, independent of
+the entry (widest closure 110s vs smallest 81s on the same roots).
+
+MECHANISM (gdb stacks + code read; all hand-Rust in src/v1/stage0/src/cli_run.rs):
+`resolve_entry_graph` routes every run through the process shared index
+(`try_process_shared_index_for_pool`); building it (`new_multi_entry_index_shell`)
+EAGERLY constructs `build_module_graph_facts_live` — a tolerant parse of EVERY
+pool module (`reference_resolution_facts`, `module_declaration_facts`, import +
+strict-reference adjacency at two tiers) — plus `build_module_path_index`,
+another whole-pool parse. Hot leaves: `v1_std_core::build_newline_index`
+(im::Vector push_back per element — plain-Vec shape) and `v1_std_core::intern`
+String clones in `pre_intern_tokens`.
+
+WHY THE FACTS EXIST (per the in-code comment block): loader-tier adjacency and
+selection-tier adjacency (affected-set selection). A single-entry run needs at
+most one entry's loader closure; it pays both tiers over the whole pool. The
+facts ARE memoized (thread-local MODULE_GRAPH_FACTS_CACHE / PROCESS_RESOLVE_INDEX),
+so one process pays once — but every PROCESS pays cold, and CI phases,
+emit-compile entries, and belt ticks are one process per invocation.
+
+RELATION TO .dag: acknowledged hand-Rust area — 🟡 dissolve-on markers cite the
+cli-run hollowing plan (`dag/gunbc/plans/cli_run_hollowing_plan.dag`,
+`gunbc.cli_run_hand_rust_area_ledger`); `import_closure_live_paths` labels
+itself "Host realization of v2.lens.module_graph.import_closure_live"; path
+admission modeled by `gunbc.cli_run_repo_grant`. The MODEL is .dag; the
+execution that costs the time is hand-Rust.
+
+NOT ESTABLISHED: the floor's 22-min `compile.reconcile`
+(`typecheck_with_census_extra`, ~300ms/module) is a separate larger cost, not
+attributed here. REPRO: in-workspace subset roots (untracked dirs), success
+judged by the NoSuchFunction cause line, never by wall time with output
+discarded; gdb -p <pid> -batch -ex "thread apply all bt" during the slow window.
+
+## cli_run.rs decomposition (started 2026-08-28, branch claude/repo-stability-priorities-frtsy4)
+
+50,536 → 46,443 lines; 13 clusters moved to src/v1/stage0/src/cli_run/ submodules
+(pure code motion, build-verified, smoke-tested): test_migration, compile_clean,
+non_fold_residue, class_b_census, languages_census, external_authority,
+inert_carrier, witness_gates, emit_host, complexity_gates, doc_graph,
+declared_refs, census_heads. Mechanics: submodule carries `use super::*` + the
+parent's use-header; parent re-exports `pub(crate) use <mod>::*` (paths stable);
+bin-consumed fns get explicit `pub use`; private moved items widen to pub(crate);
+eight report/plan types widened for the private-interface lint (CI: -D warnings).
+lib.rs is generated and untouched — submodule declarations live in cli_run.rs,
+matching the existing pattern (declaration_index, phase_profile, ...).
+
+DELIBERATELY NOT MOVED YET, to avoid conflicting with in-flight operator work:
+the resolver/index core (resolve_entry_*, build_module_*, import_closure_*,
+whole_tree_*, the shared-index thread_locals — the pool-tax subject) and the
+floor runner (floor_*, run_required_*, budget/accounting). Move each in a quiet
+window; the extraction recipe is in the split commits' messages.
+- 2026-08-28 (later): the two deferred cores are moved with operator approval —
+  entry_resolve (75 items, ~2.5k lines: shared index, resolve store, module
+  graph facts, path index, typed-module cache) and required_floor_runner
+  (49 items, ~4.8k lines: run_required_floor, claim eval/measurement,
+  discovery, diff observation, resource sampling). cli_run.rs 50,536 → 38,636
+  lines, 26 submodules. Remainder: ~450 fns of mixed verbs/helpers plus ~350
+  embedded test fns; further carving is ordinary follow-up, no core left.
+
+## The dependency map (2026-08-29, standing — replaces re-deriving this in chat)
+
+The interpreter has four roles: R1 witness executor · R2 orchestration executor
+· R3 v2's executor (v2 stages are .dag, so v2 compiles by being interpreted) ·
+R4 the host-effect seam (builtin handlers). Emitting .dag→Rust does NOT need
+the interpreter (the v1 passes are native); interpretation is only evaluation
+without emission. Three separable decisions:
+
+1. REALIZATION STORE (backport of v2.std.materialize's model into a v1-host
+   persistent content-keyed store; digest authority already shared via
+   std.content_hash/fnv1a64). No dependency on the interpreter either way —
+   the interpreter becomes a CLIENT. Gives fast interpreted execution, CI in
+   minutes, fast v2 compile loop. v2 SELF-HOST DEPENDS ON THIS AND NOT ON
+   DECISIONS 2-3.
+2. NATIVE PRODUCERS PER FAMILY (emit witnesses etc. into content-addressed
+   native bundles; store's producer flips per family; interpreter drains).
+   Optional per family; needs emitter perf + diagnostics work.
+3. DELETE THE EVAL LOOP (only after 2 completes everywhere; R4 survives as the
+   runtime library with a new caller; may never be worth taking to zero — a
+   bounded evaluator for bootstrap/dev is near-free).
+
+digest authority ──► store ──► fast interpreted execution ◄── v2 self-host
+                      ├──► native producers per family
+                      └──────────┴──► interpreter drains ──► (optional) delete
+                                        eval loop; keep effect runtime
+
+## The one execution test (anti-planning: build this, then judge the plan)
+
+SUBJECT: persist the process-shared index's derived facts across processes,
+keyed on content digest. Concretely: module path index + module graph facts
+(and optionally the typed-module cache) in cli_run/entry_resolve.rs get a
+disk-backed store under target/ keyed on (source file digests, binary identity).
+ACCEPTANCE, binary and pre-registered: on an unchanged tree, the SECOND
+`gunbc run --source-root dag --source-root src/v2 --entry dag/std/abi.dag`
+completes in <10s (cold today: ~81–99s), AND the warm facts are byte-identical
+to cold-derived facts (the §5 purity oracle, asserted by execution). A miss
+(any file changed) re-derives fail-closed. If the warm run is not <10s or the
+oracle disagrees, the store thesis as specified is refuted and the plan gets
+rewritten before anything else is built on it.
+WHY THIS ONE: smallest end-to-end existence proof of the store (one producer,
+one consumer, one oracle); kills the measured entry-independent pool tax; the
+same mechanism CI-minutes and the v2 loop need; ~a day; pass/fail visible in
+one command run twice.
+- 2026-08-29: REGRESSION PINNED BY BISECT — main's converge actuator dies with
+  `trim expects a string argument, got Null`. First bad commit: 655f82a74
+  (#9344, "Carry occurrence identity on every semantic v1 Node"). Mechanics at
+  the crash site (dag/gunbc/repo/repo_local_git_config.dag observe_binding_at_repo):
+  the effect result of git.Core.ConfigLocalGetInRepo reads `.success` fine
+  (the branch is taken) but `.value` comes back Null — a record-field read on
+  an effect result resolving to Null post-#9344, so the suspect is field
+  lookup / effect-result decode interacting with the new occurrence identity.
+  Repro: build any commit >= 655f82a74, run
+  `gunbc run --source-root dag --source-root src/v2 --entry
+  dag/gunbc/repo/repo_local_git_config.dag --function converge`.
+  Likely blast radius: any interpreted entry reading effect-result fields
+  (belt, deploys, gates). Not fixed here — #9344 is the operator's own thread.
+  Also fixed forward on this branch: #9656 omitted TypeEnv.unit_variant_index
+  in six bin/infer_semantics_witness.rs literals (main's full build is red).
