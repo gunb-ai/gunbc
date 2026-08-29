@@ -7233,11 +7233,16 @@ fn rust_body_is_bare_self_call(name: String, body: Node, source_indices: Map<Str
 // key. This asks the same registry the CALL SITES ask, so a seam's declaration is suppressed here
 // exactly when a call to it lowers to a bridge, and the two answers cannot drift.
 //
-// SUPPRESSION, NOT DELEGATION, IS THE REALIZED ARM. Emitting a forwarding body would require this
-// seam to reconstruct the signature in target types, which is the cementing the suppressed
-// precedent avoids; and the declaration has no honest caller anyway, because every call to a
-// realized primitive routes to the bridge. If some path ever misses that routing, the result is an
-// unresolved symbol -- loud, located, and fixable -- rather than a silent nonterminating call.
+// THE REALIZED ARM EMITS NOTHING SPECIAL, AND THAT IS THE POINT. It first SUPPRESSED the
+// declaration, on the reasoning that a realized primitive's calls all route to the bridge so the
+// declaration has no honest caller. Measured, that was wrong twice over: other modules still
+// `use crate::v2_std_compilers_lexing::symbol_lexeme`, so removing the item left 10 dangling
+// imports (E0432) that the suppression itself created; and the reasoning that made suppression
+// look safe is exactly the reasoning that makes it unnecessary. A realized seam's body IS a call
+// to itself, and resolution already routes that call through the roster to the bridge -- so
+// ordinary emission writes `v1_rt::symbol_lexeme(sym)` as the body with no help from here.
+// Suppression was solving a problem resolution had already solved, and paying for it with the
+// import surface. The wall's whole job is the UNREALIZED arm.
 // THE PRIMITIVE A DECLARATION PROJECTS, WHICH IS NOT ITS OWN NAME. A seam's declaration name and
 // the primitive it realizes are different facts, and keying realization on the declaration name
 // was a defect measured rather than reasoned: v2.std.collection empty_map_primitive_delegate is
@@ -7256,7 +7261,7 @@ fn rust_host_seam_declaration_emit(module_path: String, name: String, body: Node
   if rust_body_is_bare_self_call(name: name, body: body, source_indices: source_indices) == false {
     none
   } else if rust_runtime_primitive_has_bridge(primitive_name: rust_seam_primitive_name(module_path: module_path, name: name)) {
-    Present { value: "" }
+    none
   } else {
     Present { value: concat(
       "compile_error!(\"host seam '", name, "' has no realization for this target: its whole body is a self-call, ",

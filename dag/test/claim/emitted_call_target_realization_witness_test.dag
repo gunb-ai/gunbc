@@ -144,3 +144,19 @@ test fn w_rostered_seam_resolves_realization_through_its_primitive_not_its_decl_
     ["has no realization for this target"]
   )
 }
+
+// A REALIZED SEAM KEEPS ITS DECLARATION, and this row exists because removing it was a defect I
+// shipped. The wall first suppressed a realized seam's item, reasoning that every call to a
+// realized primitive routes to the bridge so nothing calls the declaration. Other modules still
+// IMPORT it, so 10 unresolved imports (E0432) appeared in the emitted closure -- created by the
+// suppression, not found by it. The same reasoning that made suppression look safe is what makes
+// it unnecessary: the seam's body is a self-call, resolution routes it through the roster to the
+// bridge, and ordinary emission writes the delegation by itself.
+test fn w_realized_seam_keeps_its_declaration_and_delegates_to_the_bridge() -> Bool {
+  compile_dag_rust_emit_check(
+    "module test.claim.realized_seam_probe\nimport std.types { String }\nimport v2.std.node { Symbol }\nimport v2.std.compilers.lexing { symbol_lexeme }\nfn probe(sym: Symbol) -> String { symbol_lexeme(sym: sym) }\n",
+    "src/test_claim_realized_seam_probe.rs",
+    ["v1_rt::symbol_lexeme("],
+    ["has no realization for this target"]
+  )
+}
