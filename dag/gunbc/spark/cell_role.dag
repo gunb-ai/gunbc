@@ -1,7 +1,7 @@
 module gunbc.spark.cell_role
 
 import std.types { String, Bool, List, NonEmptyStr }
-import product.placement_supply { HostIdentity }
+import product.placement_supply { HostIdentity, host_identity_eq }
 import gunbc.fleet_intent_network { operator_host_srv5, operator_host_srv6 }
 
 data spark_cell_role_authority_note: String = "SPARK-PAIR-0 P0. The single authority for what each DGX Spark unit is FOR. Desired serving hosts and, later, the training offer roster are both projections of this one assignment — neither authors a host list of its own. Role is a sum rather than a pair of predicates, so a cell holding both roles has no constructor to be written with."
@@ -90,7 +90,7 @@ fn spark_cell_role_wire(role: SparkCellRole) -> String {
 // can only appear in a roster by having been assigned.
 fn spark_cell_role_of(host: HostIdentity) -> SparkCellRole? {
   fold(spark_cell_role_assignments, init: none, f: fn(acc, a) {
-    if a.host as String == host as String { Present { value: a.role } } else { acc }
+    if host_identity_eq(a: a.host, b: host) { Present { value: a.role } } else { acc }
   })
 }
 

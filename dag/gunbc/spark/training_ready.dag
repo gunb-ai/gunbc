@@ -1,7 +1,7 @@
 module gunbc.spark.training_ready
 
 import std.types { String, Bool, List, NonEmptyStr, Int }
-import product.placement_supply { HostIdentity }
+import product.placement_supply { HostIdentity, host_identity_eq }
 import gunbc.spark.cell_role {
   SparkCellRole,
   SparkServingCell,
@@ -137,7 +137,7 @@ fn spark_training_readiness(
         SparkTrainingNotReady {
           cause: "spark_training_ready: the host's role is serving — a serving cell is statically reserved and never becomes training capacity by observation" as NonEmptyStr,
         }
-      } else if pool.host as String != retirement.host as String {
+      } else if !host_identity_eq(a: pool.host, b: retirement.host) {
         SparkTrainingNotReady {
           cause: "spark_training_ready: the pool measurement and the retirement observation name different hosts — a capacity read from one machine cannot admit another" as NonEmptyStr,
         }
