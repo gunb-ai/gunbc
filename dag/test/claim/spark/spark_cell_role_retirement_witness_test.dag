@@ -199,14 +199,24 @@ test fn w_content_retires_by_file_removal_and_registration_by_reload() -> Bool {
 // before remove-file before reload. Every adjacent pair is load-bearing -- removing the unit file
 // before stopping leaves a running process the manager can no longer name, and reloading before the
 // file is gone re-reads a definition that still exists.
+fn w_effect_at_is(
+  seq: List<SparkServingRetirementEffect>,
+  index: Int,
+  expected: SparkServingRetirementEffect,
+) -> Bool {
+  match seq.skip(n: index).first() {
+    Absent => false
+    Present { value: e } => e == expected
+  }
+}
+
 test fn w_the_retirement_sequence_is_the_install_order_reversed() -> Bool {
   let seq = realization_retirement_effects(realization: UserUnitRealization)
   length(seq) == 4
-    && all(seq, e => spark_serving_retirement_effects_include(effects: seq, needle: e))
-    && spark_serving_retirement_effects_include(effects: seq, needle: StopUserUnit)
-    && spark_serving_retirement_effects_include(effects: seq, needle: DisableUserUnit)
-    && spark_serving_retirement_effects_include(effects: seq, needle: RemoveUserUnitFile)
-    && spark_serving_retirement_effects_include(effects: seq, needle: ReloadUserManagerAfterRemoval)
+    && w_effect_at_is(seq: seq, index: 0, expected: StopUserUnit)
+    && w_effect_at_is(seq: seq, index: 1, expected: DisableUserUnit)
+    && w_effect_at_is(seq: seq, index: 2, expected: RemoveUserUnitFile)
+    && w_effect_at_is(seq: seq, index: 3, expected: ReloadUserManagerAfterRemoval)
 }
 
 // THE SPLIT PARTITIONS THE ROSTER -- NEITHER SIDE IS EMPTY AND NOTHING IS IN BOTH.
