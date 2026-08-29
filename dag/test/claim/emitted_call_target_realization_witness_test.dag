@@ -109,8 +109,24 @@ test fn w_unrealized_self_call_seam_refuses_instead_of_emitting_recursion() -> B
   compile_dag_rust_emit_check(
     "module test.claim.unrealized_seam_probe\nimport std.types { String }\nfn declared_seam_without_realization(x: String) -> String { declared_seam_without_realization(x: x) }\nfn probe(x: String) -> String { declared_seam_without_realization(x: x) }\n",
     "src/test_claim_unrealized_seam_probe.rs",
-    ["has no realization for this target"],
-    ["pub fn declared_seam_without_realization"]
+    ["unrealized host seam", "panic!"],
+    ["declared_seam_without_realization(x)"]
+  )
+}
+
+// THE REFUSAL KEEPS THE SIGNATURE AND THE CRATE KEEPS COMPILING. This is the row that separates the
+// two refusal FORMS, and it is the whole point of the correction: compile_error! fails the entire
+// crate, which is wrong for a seam nobody calls, because rustc's denominator is the whole emitted
+// crate while the demand denominator is the entry-reachable closure. Five unreachable seams took
+// the crate down under the old form. The declaration must therefore still be emitted, with its
+// parameters and return type intact, so that dependent modules resolve and only an actual call
+// fails.
+test fn w_unrealized_seam_refusal_preserves_the_declaration_signature() -> Bool {
+  compile_dag_rust_emit_check(
+    "module test.claim.unrealized_seam_shape_probe\nimport std.types { String }\nfn seam_with_no_realization(x: String) -> String { seam_with_no_realization(x: x) }\n",
+    "src/test_claim_unrealized_seam_shape_probe.rs",
+    ["pub fn seam_with_no_realization", "-> String", "panic!"],
+    ["compile_error!"]
   )
 }
 

@@ -7233,6 +7233,16 @@ fn rust_body_is_bare_self_call(name: String, body: Node, source_indices: Map<Str
 // key. This asks the same registry the CALL SITES ask, so a seam's declaration is suppressed here
 // exactly when a call to it lowers to a bridge, and the two answers cannot drift.
 //
+// THE REFUSAL IS A BODY, NOT A compile_error!, AND THE DENOMINATOR IS WHY. This wall first emitted
+// compile_error! for every unrealized seam, which fails the WHOLE crate. That form assumes every
+// seam it refuses is one somebody calls -- and it is not: rustc type-checks the entire emitted
+// crate, including declarations imported but never invoked, so the refusal denominator is strictly
+// larger than the entry-reachable execution closure. Five unreachable seams took the crate down.
+// A panic body preserves the signature, compiles, and still fails loudly if anything actually calls
+// it, which moves the refusal from the crate to the one declaration that earned it. Reachability is
+// then a separate question answered by a separate instrument, and an entry-rooted pruner can
+// replace the body later without revisiting this decision.
+//
 // THE REALIZED ARM EMITS NOTHING SPECIAL, AND THAT IS THE POINT. It first SUPPRESSED the
 // declaration, on the reasoning that a realized primitive's calls all route to the bridge so the
 // declaration has no honest caller. Measured, that was wrong twice over: other modules still
@@ -7257,18 +7267,9 @@ fn rust_seam_primitive_name(module_path: String, name: String) -> String {
   }
 }
 
-fn rust_host_seam_declaration_emit(module_path: String, name: String, body: Node, source_indices: Map<String, NewlineIndex>) -> String? {
-  if rust_body_is_bare_self_call(name: name, body: body, source_indices: source_indices) == false {
-    none
-  } else if rust_runtime_primitive_has_bridge(primitive_name: rust_seam_primitive_name(module_path: module_path, name: name)) {
-    none
-  } else {
-    Present { value: concat(
-      "compile_error!(\"host seam '", name, "' has no realization for this target: its whole body is a self-call, ",
-      "so emitting it would produce a compiling, nonterminating function. Give it a row in ",
-      "extdeps.languages.rust.emit rt_function_registry and a body in v1.runtime_rust.\");\n"
-    ) }
-  }
+fn rust_host_seam_is_unrealized(module_path: String, name: String, body: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
+  rust_body_is_bare_self_call(name: name, body: body, source_indices: source_indices)
+    && rust_runtime_primitive_has_bridge(primitive_name: rust_seam_primitive_name(module_path: module_path, name: name)) == false
 }
 
 fn emit_fn_def(name: String, params: List<Node>, inferred: Node, body: Node, registry: Map<String, ItemInfo>, scope: InferScope, shared_types: Set<String>, emit_info: EmitGraphInfo) -> String {
@@ -7277,13 +7278,6 @@ fn emit_fn_def(name: String, params: List<Node>, inferred: Node, body: Node, reg
   if host_text_op != none {
     return match host_text_op {
       Present { value: op_fn } => op_fn
-      Absent => ""
-    }
-  }
-  let host_seam_emit = rust_host_seam_declaration_emit(module_path: scope.module_name, name: name, body: body, source_indices: si)
-  if host_seam_emit != none {
-    return match host_seam_emit {
-      Present { value: seam_emit } => seam_emit
       Absent => ""
     }
   }
@@ -7365,6 +7359,15 @@ fn emit_fn_def(name: String, params: List<Node>, inferred: Node, body: Node, reg
   let depth = 0
   let use_tco = is_tco_eligible(name: name, body: body, registry: registry, source_indices: si)
   let needs_stacker = is_self_recursive(name: name, body: body, registry: registry, source_indices: si) && use_tco == false
+  if rust_host_seam_is_unrealized(module_path: scope.module_name, name: name, body: body, source_indices: si) {
+    let kw = rust_items().func_keyword
+    return concat(rust_visibility_prefix(), kw, " ", emit_ident(name: name, target: Rust), type_params_str, "(", params_str, ")", ret_str, " {\n",
+      make_indent(level: 1),
+      "panic!(\"unrealized host seam '", name, "' in ", scope.module_name,
+      ": this declaration's whole body is a self-call, so it has no behaviour on this target. ",
+      "It compiles as a refusal rather than as recursion. Give it a row in ",
+      "extdeps.languages.rust.emit rt_function_registry and a body in v1.runtime_rust, or delete its consumers.\")\n}")
+  }
   if use_tco {
     let tco_params_str = emit_tco_params(params: value_params, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: si, variant_to_enum: emit_info.variant_to_enum, env: scope.type_env)
     let body_str = emit_typed_tco_body(texpr: body, fn_name: name, params: value_params, registry: registry, scope: body_scope, depth: depth + 1, shared_types: shared_types, emit_info: body_emit_info)
