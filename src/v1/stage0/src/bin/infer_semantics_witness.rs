@@ -341,6 +341,10 @@ fn empty_type_env() -> Rc<TypeEnv> {
         intern_table: v1_compiler::v1_std_core::empty_intern_table(),
         source_visible_names: Rc::new(im::HashMap::new()),
         symbol_index: v1_compiler::v1_compiler_infer_env::empty_symbol_index(),
+        unit_variant_index: v1_compiler::v1_rt::rc_empty_map::<
+            String,
+            Rc<HashMap<String, Rc<v1_compiler::v1_compiler_infer_env::UnitVariantContribution>>>,
+        >(),
     })
 }
 
@@ -1081,6 +1085,15 @@ fn optional_match_exhaustiveness_reports_missing_absent() {
             intern_table: v1_compiler::v1_std_core::empty_intern_table(),
             source_visible_names: Rc::new(im::HashMap::new()),
             symbol_index: v1_compiler::v1_compiler_infer_env::empty_symbol_index(),
+            unit_variant_index: v1_compiler::v1_rt::rc_empty_map::<
+                String,
+                Rc<
+                    HashMap<
+                        String,
+                        Rc<v1_compiler::v1_compiler_infer_env::UnitVariantContribution>,
+                    >,
+                >,
+            >(),
         }),
         zero_span(),
         "test".to_string(),
@@ -1110,6 +1123,15 @@ fn optional_match_exhaustiveness_rejects_some_and_none() {
             intern_table: v1_compiler::v1_std_core::empty_intern_table(),
             source_visible_names: Rc::new(im::HashMap::new()),
             symbol_index: v1_compiler::v1_compiler_infer_env::empty_symbol_index(),
+            unit_variant_index: v1_compiler::v1_rt::rc_empty_map::<
+                String,
+                Rc<
+                    HashMap<
+                        String,
+                        Rc<v1_compiler::v1_compiler_infer_env::UnitVariantContribution>,
+                    >,
+                >,
+            >(),
         }),
         zero_span(),
         "test".to_string(),
@@ -1139,6 +1161,15 @@ fn optional_match_exhaustiveness_accepts_present_and_absent() {
             intern_table: v1_compiler::v1_std_core::empty_intern_table(),
             source_visible_names: Rc::new(im::HashMap::new()),
             symbol_index: v1_compiler::v1_compiler_infer_env::empty_symbol_index(),
+            unit_variant_index: v1_compiler::v1_rt::rc_empty_map::<
+                String,
+                Rc<
+                    HashMap<
+                        String,
+                        Rc<v1_compiler::v1_compiler_infer_env::UnitVariantContribution>,
+                    >,
+                >,
+            >(),
         }),
         zero_span(),
         "test".to_string(),
@@ -1276,6 +1307,10 @@ fn resolve_node_uses_node_name_for_lookup() {
         intern_table: user_intern.table.clone(),
         source_visible_names: Rc::new(im::HashMap::new()),
         symbol_index: v1_compiler::v1_compiler_infer_env::empty_symbol_index(),
+        unit_variant_index: v1_compiler::v1_rt::rc_empty_map::<
+            String,
+            Rc<HashMap<String, Rc<v1_compiler::v1_compiler_infer_env::UnitVariantContribution>>>,
+        >(),
     });
 
     let result = resolve_node(node_ref, env, "test".to_string());
@@ -1999,6 +2034,10 @@ fn resolve_applied_generic_struct_expands_to_conj_for_field_lookup() {
         intern_table: box_intern.table.clone(),
         source_visible_names: Rc::new(im::HashMap::new()),
         symbol_index: v1_compiler::v1_compiler_infer_env::empty_symbol_index(),
+        unit_variant_index: v1_compiler::v1_rt::rc_empty_map::<
+            String,
+            Rc<HashMap<String, Rc<v1_compiler::v1_compiler_infer_env::UnitVariantContribution>>>,
+        >(),
     });
 
     let box_nat = container_node("Box".to_string(), leaf_node("Nat".to_string()));
