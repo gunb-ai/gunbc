@@ -1,0 +1,10 @@
+module test.fixture.import_binding_probe.sealed_field
+
+// Half of a DISCRIMINATING pair for import-binding selection.  Its twin
+// test.fixture.import_binding_probe.open_field declares the SAME type name with a
+// DIFFERENT field name, and that is the entire point: a field name is something the
+// sole_constructor wall cannot see, so a diagnostic naming sealed_tag or open_tag
+// reports which DECLARATION the name resolved to and nothing else.  A pair that
+// differed in the property under test (one sealed, one not) would leave every outcome
+// consistent with a resolver defect OR a wall defect; this pair cannot.
+type FieldShape sole_constructor { sealed_tag: Int }
