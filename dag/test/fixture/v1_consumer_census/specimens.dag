@@ -28,7 +28,8 @@ fn v1cc_fixture_nes(s: String) -> NonEmptyStr { s as NonEmptyStr }
 data fixture_producer: DiscoveryProducer = discovery_producer(
   instrument: "hand-authored fixture; no tree was measured",
   command: "none -- this row is a controlled specimen and must never be read as a live observation",
-  source_revision: "fixture",
+  source_revision: "0000000000000000000000000000000000000000",
+  source_tree_hex: "0000000000000000000000000000000000000000",
 )
 
 // EVERY CITATION HERE NAMES A DECLARATION THAT EXISTS, and it is this module's own. The required
