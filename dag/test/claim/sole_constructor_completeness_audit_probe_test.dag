@@ -1,4 +1,4 @@
-module test.claim.sole_constructor_completeness_audit_probe
+module test.claim.sole_constructor_completeness_audit_probe_test
 
 import gunbc.compile_diagnostic_census {
   CompileDiagnosticCensus,
