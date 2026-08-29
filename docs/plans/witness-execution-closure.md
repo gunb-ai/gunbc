@@ -328,7 +328,20 @@ fields, coproduct arms and bodies of items that already existed. Its disposition
 payload this section supplies: the `.dag` authority is
 `v2.workflow.required_floor` `RequiredFloorDisposition` — the two new arms land there, in the model,
 and the seed realizes them — so the capability origin is `ModeledCapability` and not a capability
-originated in Rust. The current boundary is the required floor's projection.
+originated in Rust.
+
+The rest of that arm's payload, stated rather than left to a reader to reconstruct. The modified
+items are `PreparedSubject`, `PreparedRepository`, `assemble_prepared_subject_closure`,
+`prepare_repository_closure` and `run_required_floor`, and what they gained is TRANSPORT: they
+carry full-index source views to the already-modeled producer and release them before claim
+execution. Rust is still needed at that boundary because it owns repository acquisition and
+invokes the interpreter; it defines neither the declaration grammar nor discovery policy, both of
+which moved to `.dag` in gunbc#9685 and stay there. **Current boundary:** the required floor's
+projection. **Owning lane:** `v1-hand-queue-drain`. **Deletion trigger:** that lane's emitted-v2
+replacement of required-floor orchestration — when repository acquisition and producer invocation
+are performed by the emitted workflow, these five modifications delete with the host instead of
+moving into another Rust census. That is an explicit deferral of the transport boundary, not a
+claim that this surface is generated or already dissolved.
 
 No `SeedGrowthJustification` row is owed, because that roster names *added* declarations and this
 change adds none. And no before/after item or LOC figures are typed into this document

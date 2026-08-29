@@ -2367,7 +2367,6 @@ pub fn run_required_floor(
         .iter()
         .map(|view| view.module_path.clone())
         .collect();
-    let discovery_exclusions = prepared.discovery_exclusions.clone();
     // THE FULL INVENTORY IS MOVED OUT, NOT BORROWED, AND IT DIES WITH THE FOLD IT FEEDS.
     //
     // Out-of-closure sources are held by NOTHING else: the prepared graph is the gate closure, so
@@ -2376,9 +2375,11 @@ pub fn run_required_floor(
     // longest phase of the program, in the one lane `v2.workflow.required_floor`
     // `RequiredFloorGrowthBudgetStanding` records as having NO MEASURED MEMORY MARGIN — growth
     // there owes a named payment, and "the discovery fold needed the bytes for a moment" is not
-    // one. So `take` empties the field rather than cloning from it, and `discovery_sources` is
-    // dropped the moment the fold has produced its rows (below, at the `drop` beside `files`).
-    // What survives is the roster: paths, module names and function names, never bytes.
+    // one. So `take` empties both fields rather than cloning from them, the views are CONSUMED
+    // into the fold's own rows, and `discovery_sources` is dropped the moment those rows are
+    // classified (below, beside `files`). What survives is the roster: paths, module names and
+    // function names, never bytes.
+    let discovery_exclusions = std::mem::take(&mut prepared.discovery_exclusions);
     let discovery_sources: Vec<FloorDiscoverySource> = std::mem::take(&mut prepared.full_inventory)
         .into_iter()
         .map(|view| FloorDiscoverySource {
@@ -2387,6 +2388,8 @@ pub fn run_required_floor(
             source: view.source,
         })
         .collect();
+    // Counted before the release below, so the receipt can still state its denominator.
+    let discovery_source_count = discovery_sources.len();
     let _floor_prepared_guard = register_floor_prepared_authority_guard(prepared_sources);
     // WARM THE MODULE-PATH INDEX HERE, because otherwise ONE ARBITRARY CLAIM PAYS FOR IT.
     //
@@ -3002,7 +3005,6 @@ pub fn run_required_floor(
         }
     }
     files.sort_by(|a, b| a.path.cmp(&b.path));
-    let discovery_source_count = discovery_sources.len();
     // THE CORPUS IS RELEASED HERE. `module_for_path` borrowed from `discovery_sources`, so the
     // drop waits for the last row to be classified and not one statement longer; every later
     // consumer reads `files`, which carries names and no bytes. Same discipline the policy scope
