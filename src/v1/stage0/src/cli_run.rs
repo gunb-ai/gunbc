@@ -113,6 +113,7 @@ pub(crate) mod materialization_provider_consumer;
 pub mod namespace_wave_admission;
 #[path = "phase_profile.rs"]
 mod phase_profile;
+pub(crate) mod pool_acquire;
 #[path = "required_regen_host.rs"]
 mod required_regen_host;
 // The `gunbc test <label>` seam. Wired by `#[path] mod` rather than as a `pub mod` in lib.rs so
@@ -13703,8 +13704,9 @@ fn parse_module_heads_for_pool_census(
     source: Rc<v1_compiler_compile::SourceFile>,
 ) -> Result<(Rc<Node>, Rc<NewlineIndex>), String> {
     note_source_hash(index, &source);
-    let tokens = v1_compiler_tokenize::tokenize(source.content.clone(), source.path.clone());
-    let nl_index = build_newline_index(source.path.clone(), source.content.clone());
+    // One acquisition, not one per walk -- see `cli_run::pool_acquire`.
+    let tokens = pool_acquire::tokens_for(&source.path, &source.content);
+    let nl_index = pool_acquire::newline_index_for(&source.path, &source.content);
     let current_table = index.intern_table.borrow().clone();
     let single_si: Rc<HashMap<String, Rc<NewlineIndex>>> = Rc::new({
         let mut m = HashMap::new();
