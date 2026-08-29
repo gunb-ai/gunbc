@@ -1,0 +1,19 @@
+module extdeps.firmware.megarac.subject
+
+import std.types { String }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.ami.com/megarac/"
+  }
+}
+
+data megarac_subject_note: String = "AMI MEGARAC, THE PROPRIETARY BMC FIRMWARE PRODUCT LINE, on the extdeps.firmware.openbmc.subject pattern: this module is the SUBJECT the MegaRAC-shaped facts under extdeps.bmc are about. NAMING, JOINING A RECORDED DEBT RATHER THAN MINTING A NEW ONE: extdeps.bmc.endpoint carries AmiMegaRac as an arm of the closed BmcFirmwareFamily enum, the same section-3 nickname pattern the openbmc subject module already records for its OpenBmc arm - a generic hub enumerating concrete independently governed products. That consolidation (enum arms to subject authorities) is one job across both arms and their dispatch call sites; this module extends the population of the ALREADY-DECLARED debt row by one arm instead of leaving the new arm's subject unmodeled, and nothing here gained a third spelling."
+
+type AmiMegaRacProduct
+  = | MegaRacStack
+
+data megarac_stack: AmiMegaRacProduct = MegaRacStack

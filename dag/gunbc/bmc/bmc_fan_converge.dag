@@ -147,7 +147,7 @@ import product.cooling_qualification {
   cooling_catalog_refusal_reason,
   installed_cooling_verdict_for_host,
 }
-import extdeps.bmc.endpoint { BmcFirmwareFamily, OpenBmc }
+import extdeps.bmc.endpoint { BmcFirmwareFamily, OpenBmc, AmiMegaRac }
 import std.content_hash {
   ContentHash,
   content_hash_atom,
@@ -393,6 +393,7 @@ fn bmc_firmware_family_content_hash(
 ) -> ContentHash {
   match family {
     OpenBmc => content_hash_atom(value: "OpenBmc"),
+    AmiMegaRac => content_hash_atom(value: "AmiMegaRac"),
   }
 }
 
