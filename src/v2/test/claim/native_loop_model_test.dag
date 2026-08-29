@@ -3,202 +3,77 @@ module v2.test.claim.native_loop_model_test
 import std.algebra { Empty }
 import std.types { Bool, String }
 import v2.compiler.native_loop {
-  CompileRequest,
-  CompilerGenerationMatches,
-  CompilerGenerationMismatch,
-  CompilerSourceIdentity,
-  EffectDemandStanding,
-  EmittedTargetBuildAccepted,
-  EmittedTargetBuildRefused,
-  EntryAbsent,
-  EntryAmbiguous,
+  CompileAccepted,
+  CompileRefused,
   EntryIdentity,
-  EntryResolved,
+  ExecuteAccepted,
+  ExecuteRefused,
   ExecuteRequest,
-  HostEffectAdmitted,
-  HostEffectUndeclared,
-  HostProcessDemand,
-  NativeRefusedCompilerGenerationMismatch,
-  NativeRefusedEntryAbsent,
-  NativeRefusedEntryAmbiguous,
-  NativeRefusedMalformedSource,
-  NativeRefusedRequiredTestRosterIncomplete,
-  NativeRefusedSelectedTest,
-  NativeRefusedTargetBuild,
-  NativeRefusedUndeclaredEffect,
+  NativeCompileResponse,
+  NativeExecuteResponse,
   NativeRequest,
-  NativeRequestAdmitted,
   NativeRequestDecode,
+  NativeRequestDecoded,
+  NativeRequestDecodeRefusedMalformedJson,
   NativeRequestDecodeRefusedUnknownAction,
-  NativeRequestObservation,
-  NativeRequestRefused,
-  NoHostEffectDemanded,
-  RequiredTestRosterComplete,
-  RequiredTestRosterMissingIdentity,
-  RequirementRevision,
-  SourceAccepted,
-  SourceMalformed,
+  NativeResponse,
+  NativeTestResponse,
+  OutputDirectory,
   SourceRootIdentity,
-  native_request_admit,
-  SelectedTestRefused,
-  SelectedTestsAccepted,
+  TestAccepted,
+  TestRefused,
+  TestRequest,
+  TestRosterIdentity,
 }
 import v2.std.optional { Absent }
 
-fn fixture_entry() -> EntryIdentity { EntryIdentity { value: "fixture.entry" } }
-
-fn fixture_request() -> NativeRequest {
-  ExecuteRequest {
-    source_roots: [SourceRootIdentity { value: "src/v2" }],
-    entry: fixture_entry(),
-    inputs: Empty
-  }
+fn fixture_execute_request() -> NativeRequest {
+  ExecuteRequest { source_roots: [SourceRootIdentity { value: "src/v2" }], entry: EntryIdentity { value: "fixture.entry" }, inputs: Empty }
 }
 
-fn admitted_observation() -> NativeRequestObservation {
-  NativeRequestObservation {
-    entry: EntryResolved { entry: fixture_entry() },
-    source: SourceAccepted,
-    roster: RequiredTestRosterComplete { discovered: [fixture_entry()] },
-    selected_tests: SelectedTestsAccepted,
-    target_build: EmittedTargetBuildAccepted,
-    effects: NoHostEffectDemanded,
-    generation: CompilerGenerationMatches {
-      embedded_source: CompilerSourceIdentity { value: "source-a" },
-      required_revision: RequirementRevision { value: "revision-a" }
-    }
-  }
+fn fixture_test_request() -> NativeRequest {
+  TestRequest { source_roots: [SourceRootIdentity { value: "src/v2" }], roster_identity: TestRosterIdentity { value: "required-v2" }, optional_subject_selection: Absent }
 }
 
-test fn native_loop_positive_control_admits() -> Bool {
-  match native_request_admit(request: fixture_request(), observation: admitted_observation()) {
-    NativeRequestAdmitted { request: _ } => true
-    NativeRequestRefused { reason: _ } => false
-  }
+test fn native_loop_execute_request_schema_constructs() -> Bool {
+  match fixture_execute_request() { ExecuteRequest { source_roots: _, entry: _, inputs: _ } => true _ => false }
 }
 
-test fn native_loop_unknown_action_tag_refuses() -> Bool {
+test fn native_loop_test_request_schema_constructs() -> Bool {
+  match fixture_test_request() { TestRequest { source_roots: _, roster_identity: _, optional_subject_selection: _ } => true _ => false }
+}
+
+test fn native_loop_decode_success_carries_request() -> Bool {
+  let decoded: NativeRequestDecode = NativeRequestDecoded { request: fixture_execute_request() }
+  match decoded { NativeRequestDecoded { request: ExecuteRequest { source_roots: _, entry: _, inputs: _ } } => true _ => false }
+}
+
+test fn native_loop_unknown_action_tag_is_uninhabited_as_request() -> Bool {
   let decoded: NativeRequestDecode = NativeRequestDecodeRefusedUnknownAction { action: "serve" }
-  match decoded {
-    NativeRequestDecodeRefusedUnknownAction { action: _ } => true
-    _ => false
-  }
+  match decoded { NativeRequestDecodeRefusedUnknownAction { action: _ } => true _ => false }
 }
 
-test fn native_loop_absent_entry_refuses() -> Bool {
-  let o = admitted_observation()
-  match native_request_admit(
-    request: fixture_request(),
-    observation: NativeRequestObservation {
-      entry: EntryAbsent { requested: fixture_entry() }, source: o.source, roster: o.roster, selected_tests: o.selected_tests,
-      target_build: o.target_build, effects: o.effects, generation: o.generation
-    }
-  ) { NativeRequestRefused { reason: NativeRefusedEntryAbsent } => true _ => false }
+test fn native_loop_malformed_json_has_distinct_decode_refusal() -> Bool {
+  let decoded: NativeRequestDecode = NativeRequestDecodeRefusedMalformedJson
+  match decoded { NativeRequestDecodeRefusedMalformedJson => true _ => false }
 }
 
-test fn native_loop_ambiguous_entry_refuses() -> Bool {
-  let o = admitted_observation()
-  match native_request_admit(
-    request: fixture_request(),
-    observation: NativeRequestObservation {
-      entry: EntryAmbiguous { requested: fixture_entry(), candidates: [fixture_entry(), fixture_entry()] },
-      source: o.source, roster: o.roster, selected_tests: o.selected_tests, target_build: o.target_build,
-      effects: o.effects, generation: o.generation
-    }
-  ) { NativeRequestRefused { reason: NativeRefusedEntryAmbiguous } => true _ => false }
+test fn native_loop_compile_response_schema_is_typed() -> Bool {
+  let accepted: NativeResponse = NativeCompileResponse { response: CompileAccepted { output_directory: OutputDirectory { value: "target/native" } } }
+  let refused: NativeResponse = NativeCompileResponse { response: CompileRefused }
+  match accepted { NativeCompileResponse { response: CompileAccepted { output_directory: _ } } => match refused { NativeCompileResponse { response: CompileRefused } => true _ => false } _ => false }
 }
 
-test fn native_loop_malformed_source_refuses() -> Bool {
-  let o = admitted_observation()
-  match native_request_admit(
-    request: fixture_request(),
-    observation: NativeRequestObservation {
-      entry: o.entry, source: SourceMalformed { source_root: SourceRootIdentity { value: "broken" } },
-      roster: o.roster, selected_tests: o.selected_tests, target_build: o.target_build, effects: o.effects, generation: o.generation
-    }
-  ) { NativeRequestRefused { reason: NativeRefusedMalformedSource } => true _ => false }
+test fn native_loop_test_response_schema_is_typed() -> Bool {
+  let accepted: NativeResponse = NativeTestResponse { response: TestAccepted { roster_identity: TestRosterIdentity { value: "required-v2" } } }
+  let refused: NativeResponse = NativeTestResponse { response: TestRefused }
+  match accepted { NativeTestResponse { response: TestAccepted { roster_identity: _ } } => match refused { NativeTestResponse { response: TestRefused } => true _ => false } _ => false }
 }
 
-test fn native_loop_emitted_rust_build_failure_refuses() -> Bool {
-  let o = admitted_observation()
-  match native_request_admit(
-    request: fixture_request(),
-    observation: NativeRequestObservation {
-      entry: o.entry, source: o.source, roster: o.roster,
-      selected_tests: o.selected_tests,
-      target_build: EmittedTargetBuildRefused { diagnostic: "rustc-e0308" },
-      effects: o.effects, generation: o.generation
-    }
-  ) { NativeRequestRefused { reason: NativeRefusedTargetBuild } => true _ => false }
+test fn native_loop_execute_response_schema_is_typed() -> Bool {
+  let accepted: NativeResponse = NativeExecuteResponse { response: ExecuteAccepted { value: Empty } }
+  let refused: NativeResponse = NativeExecuteResponse { response: ExecuteRefused }
+  match accepted { NativeExecuteResponse { response: ExecuteAccepted { value: _ } } => match refused { NativeExecuteResponse { response: ExecuteRefused } => true _ => false } _ => false }
 }
 
-test fn native_loop_required_test_identity_loss_refuses() -> Bool {
-  let o = admitted_observation()
-  match native_request_admit(
-    request: fixture_request(),
-    observation: NativeRequestObservation {
-      entry: o.entry, source: o.source,
-      roster: RequiredTestRosterMissingIdentity { missing: fixture_entry() },
-      selected_tests: o.selected_tests,
-      target_build: o.target_build, effects: o.effects, generation: o.generation
-    }
-  ) { NativeRequestRefused { reason: NativeRefusedRequiredTestRosterIncomplete } => true _ => false }
-}
-
-test fn native_loop_one_selected_test_failure_refuses() -> Bool {
-  let o = admitted_observation()
-  match native_request_admit(
-    request: fixture_request(),
-    observation: NativeRequestObservation {
-      entry: o.entry, source: o.source, roster: o.roster,
-      selected_tests: SelectedTestRefused { identity: fixture_entry() },
-      target_build: o.target_build, effects: o.effects, generation: o.generation
-    }
-  ) { NativeRequestRefused { reason: NativeRefusedSelectedTest } => true _ => false }
-}
-
-test fn native_loop_undeclared_effect_refuses() -> Bool {
-  let o = admitted_observation()
-  let demand = HostProcessDemand { operation: "fixture-process", effect_receipt_required: true }
-  match native_request_admit(
-    request: fixture_request(),
-    observation: NativeRequestObservation {
-      entry: o.entry, source: o.source, roster: o.roster, selected_tests: o.selected_tests, target_build: o.target_build,
-      effects: HostEffectUndeclared { demand: demand }, generation: o.generation
-    }
-  ) { NativeRequestRefused { reason: NativeRefusedUndeclaredEffect } => true _ => false }
-}
-
-test fn native_loop_admitted_effect_positive_control_admits() -> Bool {
-  let o = admitted_observation()
-  let demand = HostProcessDemand { operation: "fixture-process", effect_receipt_required: true }
-  match native_request_admit(
-    request: fixture_request(),
-    observation: NativeRequestObservation {
-      entry: o.entry, source: o.source, roster: o.roster, selected_tests: o.selected_tests, target_build: o.target_build,
-      effects: HostEffectAdmitted { demand: demand }, generation: o.generation
-    }
-  ) { NativeRequestAdmitted { request: _ } => true _ => false }
-}
-
-test fn native_loop_generation_mismatch_refuses() -> Bool {
-  let o = admitted_observation()
-  match native_request_admit(
-    request: fixture_request(),
-    observation: NativeRequestObservation {
-      entry: o.entry, source: o.source, roster: o.roster, selected_tests: o.selected_tests, target_build: o.target_build,
-      effects: o.effects,
-      generation: CompilerGenerationMismatch {
-        embedded_source: CompilerSourceIdentity { value: "source-a" },
-        required_revision: RequirementRevision { value: "revision-b" }
-      }
-    }
-  ) { NativeRequestRefused { reason: NativeRefusedCompilerGenerationMismatch } => true _ => false }
-}
-
-data native_loop_v1_path_independence_note: String = "The two calls below are definitionally identical: NativeRequestObservation has no PATH or v1 field, so changing a v1 binary cannot enter this decision."
-
-test fn native_loop_v1_path_state_is_not_an_input() -> Bool {
-  native_request_admit(request: fixture_request(), observation: admitted_observation())
-    == native_request_admit(request: fixture_request(), observation: admitted_observation())
-}
+data native_loop_schema_only_test_note: String = "These controls execute only the request/response/decode schema. They deliberately do not simulate entry, source, build, roster, selected-test, effect, generation, or PATH admission. Those falsifiers cannot honestly execute until the decision consumes XL-1's single effect-demand authority."

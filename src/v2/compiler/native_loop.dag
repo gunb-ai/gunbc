@@ -1,38 +1,23 @@
 module v2.compiler.native_loop
 
 import std.algebra { FreeMonoid }
-import std.types { Bool, NonEmptyStr, String }
+import std.types { NonEmptyStr, String }
 import v2.std.collection { List }
 import v2.std.compilers.target_model { TargetModel }
 import v2.std.node { Node }
 import v2.std.optional { Optional }
 
-data native_loop_scope_note: String = "XL-2 MODEL ONLY. This is the typed boundary of the minimal native compile/test/execute loop. It is deliberately not a CLI: there are no flags, argv policy, clap concepts, claim_batch or claim_executor compatibility, caching, remote execution, or PATH lookup. JSON is the wire realization of NativeRequest, never a second request authority. Compile reuses v2.compiler.compile in TranslateTo mode; execute reuses it in Eval mode; tests consume the dependency-derived required TestClaim roster and its TestClaimRun verdicts. Those calls are not wired in this serial-gate slice. A host process is demand on XL-1's single admitted boundary, represented below only as HostProcessDemand; this module neither realizes nor dispatches it."
+data native_loop_scope_note: String = "XL-2 SCHEMA ONLY. This module declares the typed request, response, and decode boundary of the minimal native compile/test/execute loop. It is deliberately not a CLI: there are no flags, argv policy, clap concepts, claim_batch or claim_executor compatibility, caching, remote execution, or PATH lookup. JSON is the wire realization of NativeRequest, never a second request authority. Admission and realization are absent until XL-1's v2.compiler.effect_demand authority can be consumed directly; this module owns no effect-operation identity, effect evidence, or caller-authorable admission arm."
 
 type SourceRootIdentity { value: NonEmptyStr }
 type EntryIdentity { value: NonEmptyStr }
 type TestRosterIdentity { value: NonEmptyStr }
-type RequirementRevision { value: NonEmptyStr }
-type CompilerSourceIdentity { value: NonEmptyStr }
 type OutputDirectory { value: NonEmptyStr }
 
 type NativeRequest
-  = CompileRequest {
-      source_roots: List<SourceRootIdentity>,
-      entry: EntryIdentity,
-      target: TargetModel,
-      output_directory: OutputDirectory
-    }
-  | TestRequest {
-      source_roots: List<SourceRootIdentity>,
-      roster_identity: TestRosterIdentity,
-      optional_subject_selection: Optional<EntryIdentity>
-    }
-  | ExecuteRequest {
-      source_roots: List<SourceRootIdentity>,
-      entry: EntryIdentity,
-      inputs: FreeMonoid<Node>
-    }
+  = CompileRequest { source_roots: List<SourceRootIdentity>, entry: EntryIdentity, target: TargetModel, output_directory: OutputDirectory }
+  | TestRequest { source_roots: List<SourceRootIdentity>, roster_identity: TestRosterIdentity, optional_subject_selection: Optional<EntryIdentity> }
+  | ExecuteRequest { source_roots: List<SourceRootIdentity>, entry: EntryIdentity, inputs: FreeMonoid<Node> }
 
 // The decoder owns tag recognition. An unknown JSON action can never inhabit NativeRequest.
 type NativeRequestDecode
@@ -40,141 +25,13 @@ type NativeRequestDecode
   | NativeRequestDecodeRefusedUnknownAction { action: String }
   | NativeRequestDecodeRefusedMalformedJson
 
-type EntryResolution
-  = EntryResolved { entry: EntryIdentity }
-  | EntryAbsent { requested: EntryIdentity }
-  | EntryAmbiguous { requested: EntryIdentity, candidates: List<EntryIdentity> }
-
-type SourceStanding
-  = SourceAccepted
-  | SourceMalformed { source_root: SourceRootIdentity }
-
-type RequiredTestRosterStanding
-  = RequiredTestRosterComplete { discovered: List<EntryIdentity> }
-  | RequiredTestRosterMissingIdentity { missing: EntryIdentity }
-
-type SelectedTestStanding
-  = SelectedTestsAccepted
-  | SelectedTestRefused { identity: EntryIdentity }
-
-type EmittedTargetBuildStanding
-  = EmittedTargetBuildAccepted
-  | EmittedTargetBuildRefused { diagnostic: NonEmptyStr }
-
-type HostProcessDemand {
-  operation: NonEmptyStr,
-  effect_receipt_required: Bool
-}
-
-type EffectDemandStanding
-  = NoHostEffectDemanded
-  | HostEffectAdmitted { demand: HostProcessDemand }
-  | HostEffectUndeclared { demand: HostProcessDemand }
-
-type CompilerGenerationStanding
-  = CompilerGenerationMatches {
-      embedded_source: CompilerSourceIdentity,
-      required_revision: RequirementRevision
-    }
-  | CompilerGenerationMismatch {
-      embedded_source: CompilerSourceIdentity,
-      required_revision: RequirementRevision
-    }
-
-type NativeRequestObservation {
-  entry: EntryResolution,
-  source: SourceStanding,
-  roster: RequiredTestRosterStanding,
-  selected_tests: SelectedTestStanding,
-  target_build: EmittedTargetBuildStanding,
-  effects: EffectDemandStanding,
-  generation: CompilerGenerationStanding
-}
-
-type NativeRequestRefusal
-  = NativeRefusedEntryAbsent
-  | NativeRefusedEntryAmbiguous
-  | NativeRefusedMalformedSource
-  | NativeRefusedTargetBuild
-  | NativeRefusedRequiredTestRosterIncomplete
-  | NativeRefusedSelectedTest
-  | NativeRefusedUndeclaredEffect
-  | NativeRefusedCompilerGenerationMismatch
-
-type NativeRequestAdmission
-  = NativeRequestAdmitted { request: NativeRequest }
-  | NativeRequestRefused { reason: NativeRequestRefusal }
-
-fn native_request_admit(
-  request: NativeRequest,
-  observation: NativeRequestObservation
-) -> NativeRequestAdmission {
-  match observation.generation {
-    CompilerGenerationMismatch { embedded_source: _, required_revision: _ } =>
-      NativeRequestRefused { reason: NativeRefusedCompilerGenerationMismatch }
-    CompilerGenerationMatches { embedded_source: _, required_revision: _ } =>
-      match observation.source {
-        SourceMalformed { source_root: _ } =>
-          NativeRequestRefused { reason: NativeRefusedMalformedSource }
-        SourceAccepted => match observation.entry {
-          EntryAbsent { requested: _ } =>
-            NativeRequestRefused { reason: NativeRefusedEntryAbsent }
-          EntryAmbiguous { requested: _, candidates: _ } =>
-            NativeRequestRefused { reason: NativeRefusedEntryAmbiguous }
-          EntryResolved { entry: _ } => match observation.roster {
-            RequiredTestRosterMissingIdentity { missing: _ } =>
-              NativeRequestRefused { reason: NativeRefusedRequiredTestRosterIncomplete }
-            RequiredTestRosterComplete { discovered: _ } => match observation.selected_tests {
-              SelectedTestRefused { identity: _ } =>
-                NativeRequestRefused { reason: NativeRefusedSelectedTest }
-              SelectedTestsAccepted => match observation.target_build {
-                EmittedTargetBuildRefused { diagnostic: _ } =>
-                  NativeRequestRefused { reason: NativeRefusedTargetBuild }
-                EmittedTargetBuildAccepted => match observation.effects {
-                  HostEffectUndeclared { demand: _ } =>
-                    NativeRequestRefused { reason: NativeRefusedUndeclaredEffect }
-                  NoHostEffectDemanded => NativeRequestAdmitted { request: request }
-                  HostEffectAdmitted { demand: _ } => NativeRequestAdmitted { request: request }
-                }
-              }
-            }
-          }
-        }
-      }
-  }
-}
-
-type CompileResponse
-  = CompileAccepted { output_directory: OutputDirectory }
-  | CompileRefused { reason: NativeRequestRefusal }
-
-type TestResponse
-  = TestAccepted { roster_identity: TestRosterIdentity }
-  | TestRefused { reason: NativeRequestRefusal }
-
-type ExecuteResponse
-  = ExecuteAccepted { value: Node }
-  | ExecuteRefused { reason: NativeRequestRefusal }
+type CompileResponse = CompileAccepted { output_directory: OutputDirectory } | CompileRefused
+type TestResponse = TestAccepted { roster_identity: TestRosterIdentity } | TestRefused
+type ExecuteResponse = ExecuteAccepted { value: Node } | ExecuteRefused
 
 type NativeResponse
   = NativeCompileResponse { response: CompileResponse }
   | NativeTestResponse { response: TestResponse }
   | NativeExecuteResponse { response: ExecuteResponse }
 
-type TargetBuildInvocation { operation: NonEmptyStr }
-
-type NativeBuildPlan {
-  compile: NativeRequest,
-  target_build: TargetBuildInvocation
-}
-
-fn native_build_after_compile(request: NativeRequest) -> NativeBuildPlan {
-  NativeBuildPlan {
-    compile: request,
-    target_build: TargetBuildInvocation { operation: "invoke-declared-target-build" }
-  }
-}
-
-data native_loop_generation_identity_note: String = "The emitted binary embeds CompilerSourceIdentity and RequirementRevision. Admission compares those identities before source acquisition, compilation, test discovery, evaluation, or host-effect demand may run. Process exit is derived from NativeResponse after this typed decision; it is never an input to it. No v1 executable identity or PATH observation occurs in this model, so changing a v1 binary cannot change any request verdict."
-
-data native_loop_test_discovery_note: String = "Required-test discovery is a projection of required test declarations in the dependency-aware workflow closure. TestRequest supplies only the identity of that derived roster and an optional subject restriction; it cannot supply members. A newly required test declaration therefore changes the projection without a second enrollment list. RequiredTestRosterMissingIdentity is the typed disagreement between the derived declaration population and an observed roster, never a caller-authored skip."
+data native_loop_deferred_admission_note: String = "The semantic refusal reasons and the decision that produces these response variants land only by consuming XL-1 EffectDemandEvidenceAdmission and its realization receipt. The nine XL-2 falsifiers remain required-gate obligations, but this schema slice claims no executing evidence for them. Build ordering, derived test discovery, compiler generation identity comparison, process-exit projection, and the src/v1-absent exit gate likewise remain outside this carrier-only slice."
