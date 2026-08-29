@@ -13,7 +13,7 @@ import v2.extdeps.languages.bash_build {
 }
 import v2.std.node { Node }
 
-// Shell text emission for build-artifact verification lives in v2.workflow.build_step_emit (grammar-row serializer via bash_command_fold_serialize.bash_fold_serialize_program). This module retains Node stmt construction only.
+// Shell text emission for build-artifact verification no longer has a production consumer: the typed transport flip recorded in tools.build_step_transport bst_typed_transport_doc (#6457) dissolved it, and its serializer module v2.workflow.build_step_emit was deleted in #9680. This module retains Node stmt construction only; test fixtures serialize its Nodes through v2.workflow.bash_command_fold_serialize.
 type BuildArtifact {
   path: Node
   name: String
