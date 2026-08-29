@@ -1,0 +1,1028 @@
+module test.claim.generation_admission_changed_successor_witness
+
+import v2.compiler.self_host.generation {
+  ArtifactMaterialized,
+  ArtifactNotMaterialized,
+  CandidateGeneration,
+  GeneratedArtifactIdentity,
+  GenerationIdentity,
+  SeedGeneration,
+  SuccessorGeneration,
+  observed_artifact_digest
+}
+import v2.compiler.self_host.promotion_admission {
+  BehaviorAgrees,
+  BehaviorDiverges,
+  BehavioralCorpus,
+  BehavioralEquivalenceReceipt,
+  BuildFailed,
+  BuildGreen,
+  BuildOutcome,
+  BuildReceipt,
+  DiscriminatingFaultReceipt,
+  EquivalenceOutcome,
+  FaultCaught,
+  GenerationProvenanceReceipt,
+  Observed,
+  ObservationUnavailable,
+  ObservedVerdict,
+  SelfHostCandidate
+}
+import v2.workflow.bootstrap {
+  ActiveCompilerAdmitted,
+  ActiveCompilerStanding,
+  ActiveCompilerUnavailable,
+  AdmissionAuthority,
+  ChangedOutputAbsent,
+  ChangedOutputObserved,
+  ChangedOutputOutcome,
+  ChangedSuccessorReceipt,
+  CompilerRequirementRevision,
+  ConformanceReceipt,
+  DeterminismUnwitnessed,
+  DeterminismWitnessed,
+  FallbackObserved,
+  FixedPointReceipt,
+  GenerationAdmissionRequest,
+  NoFallbackObserved,
+  PromotionAdmitted,
+  PromotionDecision,
+  PromotionDenied,
+  RecoveryRetained,
+  RecoveryUnavailable,
+  RequirementBindingReceipt,
+  active_compiler_standing,
+  admit_generation,
+  generation_admission_carries,
+  requirement_revision_changed_axes
+}
+import v2.std.algebra { length }
+import v2.std.logic { Bool }
+import v2.std.node { Hash, Symbol, symbol_identity_digest }
+import v2.std.optional { Absent, Present }
+import std.content_hash { sha512_hex_digest }
+
+// Test-side collapse to Bool, at the assertion boundary rather than on the
+// admission API -- the same predicate-dissolution rule the reproduction battery
+// follows (review 51217).
+fn ga_admitted(d: PromotionDecision) -> Bool {
+  match d {
+    PromotionAdmitted { admission: _ } => true
+    PromotionDenied { causes: _ } => false
+  }
+}
+
+fn ga_denied_causes(d: PromotionDecision) -> Int {
+  match d {
+    PromotionAdmitted { admission: _ } => 0
+    PromotionDenied { causes: cs } => length(xs: cs)
+  }
+}
+
+fn ga_artifact(hex: String) -> GeneratedArtifactIdentity {
+  match sha512_hex_digest(hex: hex) {
+    Present { value: d } =>
+      ArtifactMaterialized { digest: observed_artifact_digest(observed: d) }
+    Absent => ArtifactNotMaterialized
+  }
+}
+
+data ga_seed_artifact_hex: String = "1f0d3a5c7e9b2d4f6a8c0e1b3d5f7a9c1e3b5d7f9a1c3e5b7d9f1a3c5e7b9d1f3a5c7e9b2d4f6a8c0e1b3d5f7a9c1e3b5d7f9a1c3e5b7d9f1a3c5e7b9d1f3a5c"
+
+data ga_candidate_artifact_hex: String = "2a4c6e8b0d2f4a6c8e0b2d4f6a8c0e2b4d6f8a0c2e4b6d8f0a2c4e6b8d0f2a4c6e8b0d2f4a6c8e0b2d4f6a8c0e2b4d6f8a0c2e4b6d8f0a2c4e6b8d0f2a4c6e8b"
+
+data ga_successor_artifact_hex: String = "3b5d7f9a1c3e5b7d9f1a3c5e7b9d1f3a5c7e9b1d3f5a7c9e1b3d5f7a9c1e3b5d7f9a1c3e5b7d9f1a3c5e7b9d1f3a5c7e9b1d3f5a7c9e1b3d5f7a9c1e3b5d7f9a"
+
+data ga_changed_artifact_hex: String = "4c6e8b0d2f4a6c8e0b2d4f6a8c0e2b4d6f8a0c2e4b6d8f0a2c4e6b8d0f2a4c6e8b0d2f4a6c8e0b2d4f6a8c0e2b4d6f8a0c2e4b6d8f0a2c4e6b8d0f2a4c6e8b0d"
+
+data ga_auditor_artifact_hex: String = "5d7f9a1c3e5b7d9f1a3c5e7b9d1f3a5c7e9b1d3f5a7c9e1b3d5f7a9c1e3b5d7f9a1c3e5b7d9f1a3c5e7b9d1f3a5c7e9b1d3f5a7c9e1b3d5f7a9c1e3b5d7f9a1c"
+
+fn ga_digest(label: String) -> Hash {
+  symbol_identity_digest(sym: label)
+}
+
+fn ga_identity(closure_label: String, artifact_hex: String) -> GenerationIdentity {
+  GenerationIdentity {
+    producer_compiler: ga_digest(label: "producer-compiler"),
+    source_closure: ga_digest(label: closure_label),
+    target_model: ga_digest(label: "target-model-rust"),
+    toolchain: ga_digest(label: "toolchain-pinned"),
+    build_configuration: ga_digest(label: "build-config-release"),
+    materialized_artifact: ga_artifact(hex: artifact_hex)
+  }
+}
+
+fn ga_seed_identity() -> GenerationIdentity {
+  ga_identity(closure_label: "seed-closure", artifact_hex: ga_seed_artifact_hex)
+}
+
+fn ga_candidate_identity() -> GenerationIdentity {
+  ga_identity(closure_label: "candidate-closure", artifact_hex: ga_candidate_artifact_hex)
+}
+
+fn ga_successor_identity() -> GenerationIdentity {
+  ga_identity(closure_label: "successor-closure", artifact_hex: ga_successor_artifact_hex)
+}
+
+// The CHANGED successor is a fourth generation, not the reproduction successor
+// under another name: it is what the candidate produces after the requirement
+// revision moves, so its source closure and artifact both differ.
+fn ga_changed_identity() -> GenerationIdentity {
+  ga_identity(closure_label: "changed-successor-closure", artifact_hex: ga_changed_artifact_hex)
+}
+
+// The admitting authority is a generation that is neither the candidate nor either
+// successor. That is the whole content of "an authority other than the thing being
+// promoted admits it" -- an authority identity equal to a subject is the
+// self-authorization the wall refuses.
+fn ga_authority_identity() -> GenerationIdentity {
+  ga_identity(closure_label: "auditor-closure", artifact_hex: ga_auditor_artifact_hex)
+}
+
+fn ga_seed() -> SeedGeneration {
+  SeedGeneration { identity: ga_seed_identity() }
+}
+
+fn ga_candidate() -> CandidateGeneration {
+  CandidateGeneration { identity: ga_candidate_identity(), produced_by_seed: ga_seed() }
+}
+
+fn ga_successor() -> SuccessorGeneration {
+  SuccessorGeneration {
+    identity: ga_successor_identity(),
+    produced_by_candidate: ga_candidate()
+  }
+}
+
+fn ga_changed_successor() -> SuccessorGeneration {
+  SuccessorGeneration {
+    identity: ga_changed_identity(),
+    produced_by_candidate: ga_candidate()
+  }
+}
+
+data ga_corpus_cases: Int = 10
+
+fn ga_corpus() -> BehavioralCorpus {
+  BehavioralCorpus {
+    identity: "std-logic-classical-truth-table",
+    expected_cases: ga_corpus_cases
+  }
+}
+
+fn ga_build(subject: GenerationIdentity, outcome: ObservedVerdict<BuildOutcome>) -> BuildReceipt {
+  BuildReceipt { subject: subject, outcome: outcome }
+}
+
+fn ga_equivalence(subject: GenerationIdentity) -> BehavioralEquivalenceReceipt {
+  BehavioralEquivalenceReceipt {
+    subject: subject,
+    oracle: ga_seed_identity(),
+    corpus: ga_corpus(),
+    cases_compared: ga_corpus_cases,
+    outcome: Observed { value: BehaviorAgrees }
+  }
+}
+
+fn ga_reproduction() -> SelfHostCandidate {
+  SelfHostCandidate {
+    candidate: ga_candidate(),
+    successor: ga_successor(),
+    candidate_build: ga_build(
+      subject: ga_candidate_identity(),
+      outcome: Observed { value: BuildGreen }
+    ),
+    successor_build: ga_build(
+      subject: ga_successor_identity(),
+      outcome: Observed { value: BuildGreen }
+    ),
+    candidate_equivalence: ga_equivalence(subject: ga_candidate_identity()),
+    successor_equivalence: ga_equivalence(subject: ga_successor_identity()),
+    discriminating_fault: DiscriminatingFaultReceipt {
+      subject: ga_candidate_identity(),
+      corpus: ga_corpus(),
+      planted_fault: "classical_and-returns-or",
+      outcome: Observed { value: FaultCaught }
+    },
+    candidate_provenance: GenerationProvenanceReceipt {
+      subject: ga_candidate_identity(),
+      producer: ga_seed_identity()
+    },
+    successor_provenance: GenerationProvenanceReceipt {
+      subject: ga_successor_identity(),
+      producer: ga_candidate_identity()
+    }
+  }
+}
+
+// toolchain_context is the SAME digest the generation identity's toolchain axis
+// carries. That join is what makes "the toolchain moved but the receipt did not"
+// decidable rather than a matter of reading two unrelated fields.
+fn ga_requirements(roster_label: String, source_label: String) -> CompilerRequirementRevision {
+  CompilerRequirementRevision {
+    source_revision: source_label,
+    language_model_revision: ga_digest(label: "language-model-r1"),
+    target_model_revision: ga_digest(label: "target-model-r1"),
+    effect_closure_digest: ga_digest(label: "effect-closure-r1"),
+    conformance_roster_digest: ga_digest(label: roster_label),
+    toolchain_context: ga_digest(label: "toolchain-pinned")
+  }
+}
+
+fn ga_parent_requirements() -> CompilerRequirementRevision {
+  ga_requirements(roster_label: "roster-r1", source_label: "source-r1")
+}
+
+// ONE axis moves. The declared delta is deliberately minimal: a single controlled
+// requirement change with an observable consequence is the brief's exercise, and a
+// broad delta would let a successor pass on an unrelated axis moving.
+fn ga_successor_requirements() -> CompilerRequirementRevision {
+  ga_requirements(roster_label: "roster-r2", source_label: "source-r2")
+}
+
+fn ga_conformance(
+  subject: GenerationIdentity,
+  requirements: CompilerRequirementRevision,
+  outcome: ObservedVerdict<EquivalenceOutcome>
+) -> ConformanceReceipt {
+  ConformanceReceipt {
+    subject: subject,
+    roster_digest: requirements.conformance_roster_digest,
+    corpus: ga_corpus(),
+    cases_compared: ga_corpus_cases,
+    outcome: outcome
+  }
+}
+
+fn ga_changed_receipt_with(
+  successor: SuccessorGeneration,
+  successor_requirements: CompilerRequirementRevision,
+  changed_source_observed: ObservedVerdict<ChangedOutputOutcome>,
+  successor_build_outcome: ObservedVerdict<BuildOutcome>,
+  conformance_outcome: ObservedVerdict<EquivalenceOutcome>,
+  compiled_further: ObservedVerdict<BuildOutcome>
+) -> ChangedSuccessorReceipt {
+  ChangedSuccessorReceipt {
+    parent: ga_candidate(),
+    successor: successor,
+    parent_requirements: RequirementBindingReceipt {
+      subject: ga_candidate_identity(),
+      requirements: ga_parent_requirements()
+    },
+    successor_requirements: RequirementBindingReceipt {
+      subject: successor.identity,
+      requirements: successor_requirements
+    },
+    changed_source_observed: changed_source_observed,
+    successor_build: ga_build(subject: successor.identity, outcome: successor_build_outcome),
+    successor_conformance: ga_conformance(
+      subject: successor.identity,
+      requirements: successor_requirements,
+      outcome: conformance_outcome
+    ),
+    compiled_further: compiled_further
+  }
+}
+
+fn ga_changed_receipt() -> ChangedSuccessorReceipt {
+  ga_changed_receipt_with(
+    successor: ga_changed_successor(),
+    successor_requirements: ga_successor_requirements(),
+    changed_source_observed: Observed {
+      value: ChangedOutputObserved { at_case: "emitted-module-header-r2" }
+    },
+    successor_build_outcome: Observed { value: BuildGreen },
+    conformance_outcome: Observed { value: BehaviorAgrees },
+    compiled_further: Observed { value: BuildGreen }
+  )
+}
+
+// Determinism is UNWITNESSED in the ordinary fixture, so the stage digests are never
+// consulted and the fixed point rests on the behavioral receipts alone. Any witness
+// that means to consult them says so by calling the _with form -- the same
+// say-it-at-the-call-site rule the corpus fixtures follow.
+fn ga_fixed_point_with(determinism_witnessed: Bool, right: GenerationIdentity) -> FixedPointReceipt {
+  FixedPointReceipt {
+    left: ga_candidate_identity(),
+    right: right,
+    determinism: if determinism_witnessed {
+      DeterminismWitnessed { at_build_configuration: ga_digest(label: "build-config-release") }
+    } else {
+      DeterminismUnwitnessed { cause: ^build_directory_embedded_in_artifact }
+    }
+  }
+}
+
+fn ga_fixed_point() -> FixedPointReceipt {
+  ga_fixed_point_with(determinism_witnessed: false, right: ga_successor_identity())
+}
+
+fn ga_request_with(
+  reproduction: SelfHostCandidate,
+  changed: ChangedSuccessorReceipt,
+  fixed_point: FixedPointReceipt,
+  recovery_identity: GenerationIdentity,
+  recovery_available: Bool,
+  previous_active: GenerationIdentity,
+  authority: GenerationIdentity,
+  fallback_stage: Symbol,
+  fallback_observed: Bool
+) -> GenerationAdmissionRequest {
+  GenerationAdmissionRequest {
+    reproduction: reproduction,
+    changed_successor: changed,
+    fixed_point: fixed_point,
+    recovery: if recovery_available {
+      RecoveryRetained { identity: recovery_identity }
+    } else {
+      RecoveryUnavailable { cause: ^recovery_artifact_not_retained }
+    },
+    previous_active: previous_active,
+    authority: AdmissionAuthority { identity: authority },
+    fallback: if fallback_observed {
+      FallbackObserved { at_stage: fallback_stage }
+    } else {
+      NoFallbackObserved
+    }
+  }
+}
+
+// THE POSITIVE CONTROL. Every obligation met: the candidate reproduces the seed's
+// behavior with a caught planted fault, the changed successor is produced under a
+// genuinely moved requirement revision, its changed output is observed, it builds,
+// it conforms to the NEW roster, and it compiles a further input; the recovery
+// generation is the previous active one and is neither subject; the admitting
+// authority is a fourth generation; no v1 fallback was observed.
+fn ga_admissible_request() -> GenerationAdmissionRequest {
+  ga_request_with(
+    reproduction: ga_reproduction(),
+    changed: ga_changed_receipt(),
+    fixed_point: ga_fixed_point(),
+    recovery_identity: ga_seed_identity(),
+    recovery_available: true,
+    previous_active: ga_seed_identity(),
+    authority: ga_authority_identity(),
+    fallback_stage: ^stage_unused,
+    fallback_observed: false
+  )
+}
+
+// Every fixture artifact must actually mint. A 130-character hex string minted
+// ArtifactNotMaterialized silently, the admissible request refused, and all twenty
+// refusal witnesses stayed green over a fixture that could never admit -- coverage by
+// vacancy. This is the control that makes the positive control's green load-bearing.
+fn ga_materialized(hex: String) -> Bool {
+  match ga_artifact(hex: hex) {
+    ArtifactMaterialized { digest: _ } => true
+    ArtifactNotMaterialized => false
+  }
+}
+
+test fn ga_fixture_artifacts_all_materialize() -> Bool {
+  ga_materialized(hex: ga_seed_artifact_hex)
+    && ga_materialized(hex: ga_candidate_artifact_hex)
+    && ga_materialized(hex: ga_successor_artifact_hex)
+    && ga_materialized(hex: ga_changed_artifact_hex)
+    && ga_materialized(hex: ga_auditor_artifact_hex)
+}
+
+test fn ga_complete_receipts_admit() -> Bool {
+  ga_admitted(d: admit_generation(request: ga_admissible_request()))
+}
+
+// The positive control is only worth what its discrimination is worth: a request
+// that admits while carrying zero causes must go red on ONE perturbation at a
+// time, which is what every witness below does.
+test fn ga_admissible_request_carries_no_causes() -> Bool {
+  ga_denied_causes(d: admit_generation(request: ga_admissible_request())) == 0
+}
+
+test fn ga_admitted_request_yields_active_compiler() -> Bool {
+  match active_compiler_standing(decision: admit_generation(request: ga_admissible_request())) {
+    ActiveCompilerAdmitted { active: _ } => true
+    ActiveCompilerUnavailable { reason: _, causes: _ } => false
+  }
+}
+
+// FALSIFIER 1 -- REPRODUCTION-ONLY PROMOTION. The successor reproduces the parent:
+// the requirement revision did not move. This is the class the whole module exists
+// for, and every other check in the bundle still passes, so a green here would mean
+// the changed-successor obligation is decorative.
+fn ga_reproduction_only_request() -> GenerationAdmissionRequest {
+  ga_request_with(
+    reproduction: ga_reproduction(),
+    changed: ga_changed_receipt_with(
+      successor: ga_changed_successor(),
+      successor_requirements: ga_parent_requirements(),
+      changed_source_observed: Observed {
+        value: ChangedOutputObserved { at_case: "emitted-module-header-r2" }
+      },
+      successor_build_outcome: Observed { value: BuildGreen },
+      conformance_outcome: Observed { value: BehaviorAgrees },
+      compiled_further: Observed { value: BuildGreen }
+    ),
+    fixed_point: ga_fixed_point(),
+    recovery_identity: ga_seed_identity(),
+    recovery_available: true,
+    previous_active: ga_seed_identity(),
+    authority: ga_authority_identity(),
+    fallback_stage: ^stage_unused,
+    fallback_observed: false
+  )
+}
+
+test fn ga_reproduction_only_refuses() -> Bool {
+  generation_admission_carries(
+    decision: admit_generation(request: ga_reproduction_only_request()),
+    cause: ^refusal_successor_requirements_unchanged
+  )
+}
+
+// The derivation, checked directly: two revisions that differ on two axes report
+// exactly those two, and two identical revisions report none. Without this the
+// refusal above could hold for the wrong reason.
+test fn ga_requirement_delta_is_derived_not_declared() -> Bool {
+  (length(
+    xs: requirement_revision_changed_axes(
+      left: ga_parent_requirements(),
+      right: ga_successor_requirements()
+    )
+  ) == 2)
+    && (length(
+      xs: requirement_revision_changed_axes(
+        left: ga_parent_requirements(),
+        right: ga_parent_requirements()
+      )
+    ) == 0)
+}
+
+// FALSIFIER 2 -- DECLARED CHANGE, UNOBSERVED OUTPUT. The requirements moved and the
+// successor's output did not. A declared delta with no observable consequence is an
+// assertion about intent, and admitting on it is precisely reading the author's
+// claim as the evidence.
+test fn ga_changed_requirements_without_observed_output_refuses() -> Bool {
+  generation_admission_carries(
+    decision: admit_generation(
+      request: ga_request_with(
+        reproduction: ga_reproduction(),
+        changed: ga_changed_receipt_with(
+          successor: ga_changed_successor(),
+          successor_requirements: ga_successor_requirements(),
+          changed_source_observed: Observed { value: ChangedOutputAbsent },
+          successor_build_outcome: Observed { value: BuildGreen },
+          conformance_outcome: Observed { value: BehaviorAgrees },
+          compiled_further: Observed { value: BuildGreen }
+        ),
+        fixed_point: ga_fixed_point(),
+        recovery_identity: ga_seed_identity(),
+        recovery_available: true,
+        previous_active: ga_seed_identity(),
+        authority: ga_authority_identity(),
+        fallback_stage: ^stage_unused,
+        fallback_observed: false
+      )
+    ),
+    cause: ^refusal_changed_output_not_observed
+  )
+}
+
+// A stage that never ran is its OWN refusal, never an empty success. It must not
+// render as the ChangedOutputAbsent above either -- different owner, different
+// repair -- so this witness asserts the unavailable cause specifically.
+test fn ga_unobserved_change_comparison_refuses_as_unavailable() -> Bool {
+  generation_admission_carries(
+    decision: admit_generation(
+      request: ga_request_with(
+        reproduction: ga_reproduction(),
+        changed: ga_changed_receipt_with(
+          successor: ga_changed_successor(),
+          successor_requirements: ga_successor_requirements(),
+          changed_source_observed: ObservationUnavailable {
+            cause: ^changed_output_comparison_never_ran
+          },
+          successor_build_outcome: Observed { value: BuildGreen },
+          conformance_outcome: Observed { value: BehaviorAgrees },
+          compiled_further: Observed { value: BuildGreen }
+        ),
+        fixed_point: ga_fixed_point(),
+        recovery_identity: ga_seed_identity(),
+        recovery_available: true,
+        previous_active: ga_seed_identity(),
+        authority: ga_authority_identity(),
+        fallback_stage: ^stage_unused,
+        fallback_observed: false
+      )
+    ),
+    cause: ^refusal_receipt_observation_unavailable
+  )
+}
+
+// FALSIFIER 3 -- THE CHANGED SUCCESSOR CANNOT BUILD. The fixed point holds, the
+// delta is real and observable, and the thing that would carry the project forward
+// does not exist.
+test fn ga_changed_successor_build_failure_refuses() -> Bool {
+  generation_admission_carries(
+    decision: admit_generation(
+      request: ga_request_with(
+        reproduction: ga_reproduction(),
+        changed: ga_changed_receipt_with(
+          successor: ga_changed_successor(),
+          successor_requirements: ga_successor_requirements(),
+          changed_source_observed: Observed {
+            value: ChangedOutputObserved { at_case: "emitted-module-header-r2" }
+          },
+          successor_build_outcome: Observed { value: BuildFailed { cause: ^rustc_type_error } },
+          conformance_outcome: Observed { value: BehaviorAgrees },
+          compiled_further: Observed { value: BuildGreen }
+        ),
+        fixed_point: ga_fixed_point(),
+        recovery_identity: ga_seed_identity(),
+        recovery_available: true,
+        previous_active: ga_seed_identity(),
+        authority: ga_authority_identity(),
+        fallback_stage: ^stage_unused,
+        fallback_observed: false
+      )
+    ),
+    cause: ^refusal_build_not_green
+  )
+}
+
+// FALSIFIER 4 -- BUILDS, DOES NOT CONFORM. Conformance is measured against the NEW
+// roster, so this cannot be satisfied by agreeing with the parent.
+test fn ga_changed_successor_conformance_failure_refuses() -> Bool {
+  generation_admission_carries(
+    decision: admit_generation(
+      request: ga_request_with(
+        reproduction: ga_reproduction(),
+        changed: ga_changed_receipt_with(
+          successor: ga_changed_successor(),
+          successor_requirements: ga_successor_requirements(),
+          changed_source_observed: Observed {
+            value: ChangedOutputObserved { at_case: "emitted-module-header-r2" }
+          },
+          successor_build_outcome: Observed { value: BuildGreen },
+          conformance_outcome: Observed { value: BehaviorDiverges { at_case: "classical_or-4" } },
+          compiled_further: Observed { value: BuildGreen }
+        ),
+        fixed_point: ga_fixed_point(),
+        recovery_identity: ga_seed_identity(),
+        recovery_available: true,
+        previous_active: ga_seed_identity(),
+        authority: ga_authority_identity(),
+        fallback_stage: ^stage_unused,
+        fallback_observed: false
+      )
+    ),
+    cause: ^refusal_conformance_diverged_from_roster
+  )
+}
+
+// FALSIFIER 5 -- BUILDS AND CONFORMS, COMPILES NOTHING. "The binary exists" and
+// "the binary consumed an input it was not built from" are different facts; only
+// the second is fix-forward.
+test fn ga_changed_successor_that_compiles_nothing_refuses() -> Bool {
+  generation_admission_carries(
+    decision: admit_generation(
+      request: ga_request_with(
+        reproduction: ga_reproduction(),
+        changed: ga_changed_receipt_with(
+          successor: ga_changed_successor(),
+          successor_requirements: ga_successor_requirements(),
+          changed_source_observed: Observed {
+            value: ChangedOutputObserved { at_case: "emitted-module-header-r2" }
+          },
+          successor_build_outcome: Observed { value: BuildGreen },
+          conformance_outcome: Observed { value: BehaviorAgrees },
+          compiled_further: Observed { value: BuildFailed { cause: ^further_input_refused } }
+        ),
+        fixed_point: ga_fixed_point(),
+        recovery_identity: ga_seed_identity(),
+        recovery_available: true,
+        previous_active: ga_seed_identity(),
+        authority: ga_authority_identity(),
+        fallback_stage: ^stage_unused,
+        fallback_observed: false
+      )
+    ),
+    cause: ^refusal_successor_did_not_compile_further_input
+  )
+}
+
+// FALSIFIER 6 -- CONFORMANCE CREDITED AGAINST A ROSTER IT WAS NOT MEASURED ON.
+// The receipt is internally consistent and green; only the roster digest join
+// catches it, which is why the digest is carried on the receipt rather than
+// inferred from the revision at read time.
+test fn ga_conformance_measured_on_other_roster_refuses() -> Bool {
+  generation_admission_carries(
+    decision: admit_generation(
+      request: ga_request_with(
+        reproduction: ga_reproduction(),
+        changed: ChangedSuccessorReceipt {
+          parent: ga_candidate(),
+          successor: ga_changed_successor(),
+          parent_requirements: RequirementBindingReceipt {
+            subject: ga_candidate_identity(),
+            requirements: ga_parent_requirements()
+          },
+          successor_requirements: RequirementBindingReceipt {
+            subject: ga_changed_identity(),
+            requirements: ga_successor_requirements()
+          },
+          changed_source_observed: Observed {
+            value: ChangedOutputObserved { at_case: "emitted-module-header-r2" }
+          },
+          successor_build: ga_build(
+            subject: ga_changed_identity(),
+            outcome: Observed { value: BuildGreen }
+          ),
+          successor_conformance: ga_conformance(
+            subject: ga_changed_identity(),
+            requirements: ga_parent_requirements(),
+            outcome: Observed { value: BehaviorAgrees }
+          ),
+          compiled_further: Observed { value: BuildGreen }
+        },
+        fixed_point: ga_fixed_point(),
+        recovery_identity: ga_seed_identity(),
+        recovery_available: true,
+        previous_active: ga_seed_identity(),
+        authority: ga_authority_identity(),
+        fallback_stage: ^stage_unused,
+        fallback_observed: false
+      )
+    ),
+    cause: ^refusal_conformance_roster_not_declared_revision
+  )
+}
+
+// FALSIFIER 7 -- TOOLCHAIN MOVED, RECEIPT DID NOT. The requirement revision names a
+// toolchain the generation identity did not build with. Without the axis join this
+// is two unrelated fields that never disagree.
+fn ga_moved_toolchain_requirements() -> CompilerRequirementRevision {
+  CompilerRequirementRevision {
+    source_revision: "source-r2",
+    language_model_revision: ga_digest(label: "language-model-r1"),
+    target_model_revision: ga_digest(label: "target-model-r1"),
+    effect_closure_digest: ga_digest(label: "effect-closure-r1"),
+    conformance_roster_digest: ga_digest(label: "roster-r2"),
+    toolchain_context: ga_digest(label: "toolchain-MOVED")
+  }
+}
+
+test fn ga_toolchain_moved_without_new_receipt_refuses() -> Bool {
+  generation_admission_carries(
+    decision: admit_generation(
+      request: ga_request_with(
+        reproduction: ga_reproduction(),
+        changed: ga_changed_receipt_with(
+          successor: ga_changed_successor(),
+          successor_requirements: ga_moved_toolchain_requirements(),
+          changed_source_observed: Observed {
+            value: ChangedOutputObserved { at_case: "emitted-module-header-r2" }
+          },
+          successor_build_outcome: Observed { value: BuildGreen },
+          conformance_outcome: Observed { value: BehaviorAgrees },
+          compiled_further: Observed { value: BuildGreen }
+        ),
+        fixed_point: ga_fixed_point(),
+        recovery_identity: ga_seed_identity(),
+        recovery_available: true,
+        previous_active: ga_seed_identity(),
+        authority: ga_authority_identity(),
+        fallback_stage: ^stage_unused,
+        fallback_observed: false
+      )
+    ),
+    cause: ^refusal_requirement_toolchain_axis_unbound
+  )
+}
+
+// FALSIFIER 8 -- THE CANDIDATE ADMITS ITSELF.
+test fn ga_candidate_as_own_authority_refuses() -> Bool {
+  generation_admission_carries(
+    decision: admit_generation(
+      request: ga_request_with(
+        reproduction: ga_reproduction(),
+        changed: ga_changed_receipt(),
+        fixed_point: ga_fixed_point(),
+        recovery_identity: ga_seed_identity(),
+        recovery_available: true,
+        previous_active: ga_seed_identity(),
+        authority: ga_candidate_identity(),
+        fallback_stage: ^stage_unused,
+        fallback_observed: false
+      )
+    ),
+    cause: ^refusal_admission_authority_is_subject
+  )
+}
+
+// One link further down: the successor the candidate produced is not an independent
+// authority over the chain that produced it.
+test fn ga_successor_as_authority_refuses() -> Bool {
+  generation_admission_carries(
+    decision: admit_generation(
+      request: ga_request_with(
+        reproduction: ga_reproduction(),
+        changed: ga_changed_receipt(),
+        fixed_point: ga_fixed_point(),
+        recovery_identity: ga_seed_identity(),
+        recovery_available: true,
+        previous_active: ga_seed_identity(),
+        authority: ga_successor_identity(),
+        fallback_stage: ^stage_unused,
+        fallback_observed: false
+      )
+    ),
+    cause: ^refusal_admission_authority_is_subject
+  )
+}
+
+// FALSIFIER 9 -- NO RECOVERY PATH.
+test fn ga_recovery_unavailable_refuses() -> Bool {
+  generation_admission_carries(
+    decision: admit_generation(
+      request: ga_request_with(
+        reproduction: ga_reproduction(),
+        changed: ga_changed_receipt(),
+        fixed_point: ga_fixed_point(),
+        recovery_identity: ga_seed_identity(),
+        recovery_available: false,
+        previous_active: ga_seed_identity(),
+        authority: ga_authority_identity(),
+        fallback_stage: ^stage_unused,
+        fallback_observed: false
+      )
+    ),
+    cause: ^refusal_recovery_path_unavailable
+  )
+}
+
+// A recovery path that IS the thing being promoted recovers nothing. It is retained,
+// it is present, and it dies with the generation it is supposed to recover from.
+test fn ga_recovery_naming_the_candidate_refuses() -> Bool {
+  generation_admission_carries(
+    decision: admit_generation(
+      request: ga_request_with(
+        reproduction: ga_reproduction(),
+        changed: ga_changed_receipt(),
+        fixed_point: ga_fixed_point(),
+        recovery_identity: ga_candidate_identity(),
+        recovery_available: true,
+        previous_active: ga_candidate_identity(),
+        authority: ga_authority_identity(),
+        fallback_stage: ^stage_unused,
+        fallback_observed: false
+      )
+    ),
+    cause: ^refusal_recovery_path_is_promotion_subject
+  )
+}
+
+// A retained generation that is not what was active before is not a rollback target.
+test fn ga_recovery_not_retaining_previous_active_refuses() -> Bool {
+  generation_admission_carries(
+    decision: admit_generation(
+      request: ga_request_with(
+        reproduction: ga_reproduction(),
+        changed: ga_changed_receipt(),
+        fixed_point: ga_fixed_point(),
+        recovery_identity: ga_authority_identity(),
+        recovery_available: true,
+        previous_active: ga_seed_identity(),
+        authority: ga_authority_identity(),
+        fallback_stage: ^stage_unused,
+        fallback_observed: false
+      )
+    ),
+    cause: ^refusal_recovery_does_not_retain_previous_active
+  )
+}
+
+// FALSIFIER 10 -- A v1 FALLBACK WAS TAKEN. Every other receipt is green; the chain
+// reached its result by dropping back to the seed pipeline at one stage, which makes
+// the whole bundle evidence about a different compiler.
+test fn ga_v1_fallback_after_genesis_refuses() -> Bool {
+  generation_admission_carries(
+    decision: admit_generation(
+      request: ga_request_with(
+        reproduction: ga_reproduction(),
+        changed: ga_changed_receipt(),
+        fixed_point: ga_fixed_point(),
+        recovery_identity: ga_seed_identity(),
+        recovery_available: true,
+        previous_active: ga_seed_identity(),
+        authority: ga_authority_identity(),
+        fallback_stage: ^stage_self1_emit,
+        fallback_observed: true
+      )
+    ),
+    cause: ^refusal_v1_fallback_observed_after_genesis
+  )
+}
+
+// FALSIFIER 11 -- ARTIFACT THAT CANNOT BE REHASHED. The changed successor's artifact
+// was never materialized, so no digest can be recomputed from it. Unbuilt is refused
+// by name rather than read as "nothing to compare, therefore fine".
+fn ga_unmaterialized_changed_successor() -> SuccessorGeneration {
+  SuccessorGeneration {
+    identity: GenerationIdentity {
+      producer_compiler: ga_digest(label: "producer-compiler"),
+      source_closure: ga_digest(label: "changed-successor-closure"),
+      target_model: ga_digest(label: "target-model-rust"),
+      toolchain: ga_digest(label: "toolchain-pinned"),
+      build_configuration: ga_digest(label: "build-config-release"),
+      materialized_artifact: ArtifactNotMaterialized
+    },
+    produced_by_candidate: ga_candidate()
+  }
+}
+
+test fn ga_unmaterialized_changed_successor_refuses() -> Bool {
+  generation_admission_carries(
+    decision: admit_generation(
+      request: ga_request_with(
+        reproduction: ga_reproduction(),
+        changed: ga_changed_receipt_with(
+          successor: ga_unmaterialized_changed_successor(),
+          successor_requirements: ga_successor_requirements(),
+          changed_source_observed: Observed {
+            value: ChangedOutputObserved { at_case: "emitted-module-header-r2" }
+          },
+          successor_build_outcome: Observed { value: BuildGreen },
+          conformance_outcome: Observed { value: BehaviorAgrees },
+          compiled_further: Observed { value: BuildGreen }
+        ),
+        fixed_point: ga_fixed_point(),
+        recovery_identity: ga_seed_identity(),
+        recovery_available: true,
+        previous_active: ga_seed_identity(),
+        authority: ga_authority_identity(),
+        fallback_stage: ^stage_unused,
+        fallback_observed: false
+      )
+    ),
+    cause: ^refusal_artifact_not_materialized
+  )
+}
+
+// FALSIFIER 12 -- A CHANGED SUCCESSOR SPLICED FROM A DIFFERENT CHAIN. Its receipts
+// all join internally; nothing but the parent join proves it descends from the
+// candidate under promotion.
+fn ga_foreign_parent_changed_successor() -> SuccessorGeneration {
+  SuccessorGeneration {
+    identity: ga_changed_identity(),
+    produced_by_candidate: CandidateGeneration {
+      identity: ga_authority_identity(),
+      produced_by_seed: ga_seed()
+    }
+  }
+}
+
+test fn ga_changed_successor_from_foreign_parent_refuses() -> Bool {
+  generation_admission_carries(
+    decision: admit_generation(
+      request: ga_request_with(
+        reproduction: ga_reproduction(),
+        changed: ga_changed_receipt_with(
+          successor: ga_foreign_parent_changed_successor(),
+          successor_requirements: ga_successor_requirements(),
+          changed_source_observed: Observed {
+            value: ChangedOutputObserved { at_case: "emitted-module-header-r2" }
+          },
+          successor_build_outcome: Observed { value: BuildGreen },
+          conformance_outcome: Observed { value: BehaviorAgrees },
+          compiled_further: Observed { value: BuildGreen }
+        ),
+        fixed_point: ga_fixed_point(),
+        recovery_identity: ga_seed_identity(),
+        recovery_available: true,
+        previous_active: ga_seed_identity(),
+        authority: ga_authority_identity(),
+        fallback_stage: ^stage_unused,
+        fallback_observed: false
+      )
+    ),
+    cause: ^refusal_changed_successor_parent_not_candidate
+  )
+}
+
+// FALSIFIER 13 -- THE FIXED POINT IS CONSULTED ONLY UNDER WITNESSED DETERMINISM.
+// Two witnesses, one mechanism, in both directions. Witnessed determinism over two
+// disagreeing stage identities must refuse; the SAME disagreement with determinism
+// unwitnessed must NOT produce that cause, because two digests from a pipeline whose
+// determinism was never established are not comparable. Without the second half the
+// gate would be indistinguishable from an unconditional digest check.
+test fn ga_witnessed_determinism_stage_disagreement_refuses() -> Bool {
+  generation_admission_carries(
+    decision: admit_generation(
+      request: ga_request_with(
+        reproduction: ga_reproduction(),
+        changed: ga_changed_receipt(),
+        fixed_point: ga_fixed_point_with(
+          determinism_witnessed: true,
+          right: ga_successor_identity()
+        ),
+        recovery_identity: ga_seed_identity(),
+        recovery_available: true,
+        previous_active: ga_seed_identity(),
+        authority: ga_authority_identity(),
+        fallback_stage: ^stage_unused,
+        fallback_observed: false
+      )
+    ),
+    cause: ^refusal_fixed_point_stages_disagree
+  )
+}
+
+test fn ga_unwitnessed_determinism_does_not_consult_digests() -> Bool {
+  !generation_admission_carries(
+    decision: admit_generation(
+      request: ga_request_with(
+        reproduction: ga_reproduction(),
+        changed: ga_changed_receipt(),
+        fixed_point: ga_fixed_point_with(
+          determinism_witnessed: false,
+          right: ga_successor_identity()
+        ),
+        recovery_identity: ga_seed_identity(),
+        recovery_available: true,
+        previous_active: ga_seed_identity(),
+        authority: ga_authority_identity(),
+        fallback_stage: ^stage_unused,
+        fallback_observed: false
+      )
+    ),
+    cause: ^refusal_fixed_point_stages_disagree
+  )
+}
+
+// Witnessed determinism over AGREEING stage identities admits, which is what keeps
+// the two witnesses above from being satisfiable by a gate that always refuses.
+test fn ga_witnessed_determinism_agreeing_stages_admit() -> Bool {
+  ga_admitted(
+    d: admit_generation(
+      request: ga_request_with(
+        reproduction: ga_reproduction(),
+        changed: ga_changed_receipt(),
+        fixed_point: ga_fixed_point_with(
+          determinism_witnessed: true,
+          right: ga_candidate_identity()
+        ),
+        recovery_identity: ga_seed_identity(),
+        recovery_available: true,
+        previous_active: ga_seed_identity(),
+        authority: ga_authority_identity(),
+        fallback_stage: ^stage_unused,
+        fallback_observed: false
+      )
+    )
+  )
+}
+
+// FALSIFIER 14 -- A STALE RECEIPT REUSED ACROSS A MOVED INPUT. The requirement
+// binding is about the parent while the generation it is joined to is the successor,
+// which is the "input digest changed, old receipt reused" shape.
+test fn ga_requirement_receipt_about_other_generation_refuses() -> Bool {
+  generation_admission_carries(
+    decision: admit_generation(
+      request: ga_request_with(
+        reproduction: ga_reproduction(),
+        changed: ChangedSuccessorReceipt {
+          parent: ga_candidate(),
+          successor: ga_changed_successor(),
+          parent_requirements: RequirementBindingReceipt {
+            subject: ga_candidate_identity(),
+            requirements: ga_parent_requirements()
+          },
+          successor_requirements: RequirementBindingReceipt {
+            subject: ga_candidate_identity(),
+            requirements: ga_successor_requirements()
+          },
+          changed_source_observed: Observed {
+            value: ChangedOutputObserved { at_case: "emitted-module-header-r2" }
+          },
+          successor_build: ga_build(
+            subject: ga_changed_identity(),
+            outcome: Observed { value: BuildGreen }
+          ),
+          successor_conformance: ga_conformance(
+            subject: ga_changed_identity(),
+            requirements: ga_successor_requirements(),
+            outcome: Observed { value: BehaviorAgrees }
+          ),
+          compiled_further: Observed { value: BuildGreen }
+        },
+        fixed_point: ga_fixed_point(),
+        recovery_identity: ga_seed_identity(),
+        recovery_available: true,
+        previous_active: ga_seed_identity(),
+        authority: ga_authority_identity(),
+        fallback_stage: ^stage_unused,
+        fallback_observed: false
+      )
+    ),
+    cause: ^refusal_stale_receipt_subject
+  )
+}

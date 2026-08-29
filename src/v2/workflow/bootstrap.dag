@@ -8,6 +8,8 @@ import v2.std.algebra {
   bag_eq,
   contains,
   fold_list,
+  freemonoid_empty,
+  length,
   list_snoc_item,
   unique
 }
@@ -26,7 +28,54 @@ import v2.extdeps.runtimes.v2_evaluator {
 }
 import v2.std.diagnostic { Correction, Diagnostic, Extent, Locus, NoCorrectionReason, Outcome, Accepted, Rejected, None, diagnostics_singleton }
 import v2.std.witness { Holds, Violates, Witness }
-import std.types { NonEmptyStr }
+import std.types { CommitSha, NonEmptyStr }
+import v2.compiler.self_host.generation {
+  ArtifactMaterialized,
+  ArtifactNotMaterialized,
+  CandidateGeneration,
+  GenerationIdentity,
+  SuccessorGeneration,
+  generation_axis_symbol,
+  generation_identity_mismatched_axes
+}
+import v2.compiler.self_host.promotion_admission {
+  AdmissionAuthorityIsSubject,
+  BehaviorAgrees,
+  BehaviorDiverges,
+  BehavioralCorpus,
+  BuildFailed,
+  BuildGreen,
+  BuildOutcome,
+  BuildReceipt,
+  ChangedOutputNotObserved,
+  ChangedSuccessorParentNotCandidate,
+  ConformanceDivergedFromRoster,
+  ConformanceRosterNotDeclaredRevision,
+  CorpusPopulationMismatch,
+  EmptyBehavioralCorpus,
+  EquivalenceOutcome,
+  FixedPointStagesDisagree,
+  Observed,
+  ObservationUnavailable,
+  ObservedVerdict,
+  PromotionRefusalCause,
+  ReceiptObservationUnavailable,
+  RecoveryDoesNotRetainPreviousActive,
+  RecoveryPathIsPromotionSubject,
+  RecoveryPathUnavailable,
+  RequirementToolchainAxisUnbound,
+  SelfHostCandidate,
+  SuccessorDidNotCompileFurtherInput,
+  SuccessorRequirementsUnchanged,
+  V1FallbackObservedAfterGenesis,
+  artifact_causes,
+  build_receipt_causes,
+  concat_causes,
+  promotion_refusal_cause_symbol,
+  promotion_refusal_causes,
+  stale_causes_for
+}
+import v2.std.integer { Int }
 
 data v2_stage0_hash: Hash = v2_stage0_hash
 data v2_stage1_hash: Hash = v2_stage1_hash
@@ -816,3 +865,682 @@ data bootstrap_plan_fixpt_witness: Witness<FixptStage1Stage2> = match bootstrap_
   Accepted { value: bp, diagnostics: _ } => bootstrap_fixpt_witness(f: bp.fixpt)
   Rejected { diagnostics: nd } => Violates { diagnostic: nd.head }
 }
+
+// ============================================================================
+// RECEIPT-BACKED GENERATION ADMISSION: THE CHANGED SUCCESSOR.
+//
+// Everything above this line admits a candidate that REPRODUCES the seed's
+// behavior. That is necessary and it is not sufficient, and the gap is not a
+// refinement of the bar -- it is a different claim. A compiler that only ever
+// reproduces itself has demonstrated that it can read the source it was built
+// from. It has demonstrated nothing about reading a source it was NOT built
+// from, which is the only capability that makes the previous generation
+// releasable: once a requirement revision moves, fix-forward needs a compiler
+// that can consume the CHANGED input, and reproduction evidence is silent
+// about that. Rollback and fix-forward are different guarantees; retaining an
+// emitted-source history gives the first and does not give the second.
+//
+// So promotion here consumes the reproduction outcome above AND a changed
+// successor receipt, and the two are joined rather than alternated: a chain
+// that reproduces but cannot build a changed successor refuses, and a chain
+// that builds a changed successor without a reproduction fixed point refuses.
+//
+// THE DECLARED DELTA IS NOT THE EVIDENCE. A requirement revision is authored,
+// so a delta derived from two authored revisions establishes only that someone
+// SAID the requirements moved. What admits is the observation that the
+// successor's output actually differs on the changed surface, plus conformance
+// measured against the NEW roster. The declared delta is the necessary
+// precondition that makes those observations interpretable, never a substitute
+// for them.
+// ============================================================================
+
+// Six axes again, and for the same reason generation identity has six: a single
+// opaque requirements digest can report THAT the bar moved and cannot report
+// WHICH obligation moved, so every per-axis control collapses into one
+// indistinguishable refusal. Each field is the digest of the authority that owns
+// that fact, not a prose description of it, so the delta is one comparison per
+// axis rather than a reader's judgement.
+//
+// source_revision is the repository's CommitSha (std.types), not a structural Hash:
+// it is JOINED against upstream evidence (XL-1 EffectDemandEvidenceStanding, XL-3
+// ConformanceAdmission) that carries the git revision it was measured on, and a
+// join across two revision encodings is a join that never fires.
+//
+// toolchain_context is a Hash rather than a label deliberately: it is JOINED
+// against the generation identity's toolchain axis below. A prose toolchain
+// string beside an unrelated toolchain digest is two authorities for one fact,
+// and the failure it admits is precisely the brief's -- a toolchain that moved
+// while the receipt that vouched for it did not.
+type CompilerRequirementRevision {
+  source_revision: CommitSha
+  language_model_revision: Hash
+  target_model_revision: Hash
+  effect_closure_digest: Hash
+  conformance_roster_digest: Hash
+  toolchain_context: Hash
+}
+
+type RequirementAxis
+  = SourceRevisionAxis
+  | LanguageModelRevisionAxis
+  | TargetModelRevisionAxis
+  | EffectClosureAxis
+  | ConformanceRosterAxis
+  | ToolchainContextAxis
+
+data requirement_axes: List<RequirementAxis> = [
+  SourceRevisionAxis,
+  LanguageModelRevisionAxis,
+  TargetModelRevisionAxis,
+  EffectClosureAxis,
+  ConformanceRosterAxis,
+  ToolchainContextAxis
+]
+
+fn requirement_axis_agrees(
+  left: CompilerRequirementRevision,
+  right: CompilerRequirementRevision,
+  axis: RequirementAxis
+) -> Bool {
+  match axis {
+    SourceRevisionAxis => left.source_revision == right.source_revision
+    LanguageModelRevisionAxis => left.language_model_revision == right.language_model_revision
+    TargetModelRevisionAxis => left.target_model_revision == right.target_model_revision
+    EffectClosureAxis => left.effect_closure_digest == right.effect_closure_digest
+    ConformanceRosterAxis => left.conformance_roster_digest == right.conformance_roster_digest
+    ToolchainContextAxis => left.toolchain_context == right.toolchain_context
+  }
+}
+
+fn requirement_axis_symbol(axis: RequirementAxis) -> Symbol {
+  match axis {
+    SourceRevisionAxis => ^requirement_axis_source_revision
+    LanguageModelRevisionAxis => ^requirement_axis_language_model_revision
+    TargetModelRevisionAxis => ^requirement_axis_target_model_revision
+    EffectClosureAxis => ^requirement_axis_effect_closure
+    ConformanceRosterAxis => ^requirement_axis_conformance_roster
+    ToolchainContextAxis => ^requirement_axis_toolchain_context
+  }
+}
+
+// The CHANGED axes, derived. Nothing authors this list: a bundle cannot claim a
+// delta its two revisions do not exhibit, and cannot hide one they do.
+fn requirement_revision_changed_axes(
+  left: CompilerRequirementRevision,
+  right: CompilerRequirementRevision
+) -> List<RequirementAxis> {
+  fold_list(
+    xs: requirement_axes,
+    empty: freemonoid_empty(),
+    cons: fn(acc, axis) {
+      if requirement_axis_agrees(left: left, right: right, axis: axis) {
+        acc
+      } else {
+        list_snoc_item(xs: acc, item: axis)
+      }
+    }
+  )
+}
+
+// A generation's requirements are a receipt joined on the generation, not a field
+// the generation asserts about itself. Same discipline as every other receipt in
+// this module: the subject is checked against the identity admission already fixed,
+// so requirements carried over from an earlier compiler refuse as stale and name
+// the axis that moved.
+type RequirementBindingReceipt {
+  subject: GenerationIdentity
+  requirements: CompilerRequirementRevision
+}
+
+// Conformance is measured against the DECLARED ROSTER of the requirement revision
+// in force, not against a previous generation. That is what distinguishes it from
+// BehavioralEquivalenceReceipt above, which is a two-generation agreement fact: a
+// changed successor is EXPECTED to disagree with its parent on the changed surface,
+// so joining it to an oracle generation would refuse exactly the successor that
+// proves the capability. The roster digest is carried so a receipt cannot be
+// measured against one roster and credited against another.
+type ConformanceReceipt {
+  subject: GenerationIdentity
+  roster_digest: Hash
+  corpus: BehavioralCorpus
+  cases_compared: Int
+  outcome: ObservedVerdict<EquivalenceOutcome>
+}
+
+// The observation that the change is REAL in the output, distinguished from the
+// two states that are not it. ChangedOutputAbsent is the reproduction-only case
+// and refuses by name. It is deliberately not folded into the unavailable arm:
+// "we ran the comparison and the output did not move" and "we never ran the
+// comparison" have different owners and different repairs.
+type ChangedOutputOutcome
+  = ChangedOutputObserved { at_case: String }
+  | ChangedOutputAbsent
+
+// A successor produced under CHANGED requirements. parent_requirements and
+// successor_requirements are receipts about the two generations rather than bare
+// revisions, so the delta is anchored to the generations the rest of admission
+// already joined on.
+//
+// compiled_further is the second half of the brief's capability, and it is not
+// redundant with successor_build: "the successor binary exists" and "the successor
+// consumed a valid input it was not built from" are different facts, and only the
+// second is fix-forward. A successor that builds and cannot compile anything is
+// exactly the artifact a partially emitted compiler produces.
+type ChangedSuccessorReceipt {
+  parent: CandidateGeneration
+  successor: SuccessorGeneration
+  parent_requirements: RequirementBindingReceipt
+  successor_requirements: RequirementBindingReceipt
+  changed_source_observed: ObservedVerdict<ChangedOutputOutcome>
+  successor_build: BuildReceipt
+  successor_conformance: ConformanceReceipt
+  compiled_further: ObservedVerdict<BuildOutcome>
+}
+
+// THE FIXED POINT, WITH BYTE IDENTITY KEPT IN ITS PLACE.
+//
+// This module's opening note refuses byte identity as the admission criterion and
+// that stands: a byte-identical-but-wrong generation must not be admitted, and a
+// cleaner-emitting behaviorally-identical one must not be refused. What is added
+// here is narrower. Artifact-digest equality between the two self-hosted stages is
+// a DETERMINISM observation about one build pipeline, and it is admissible as such
+// only when determinism itself was witnessed -- a Rust debug binary embeds its build
+// directory (gunbc#8181), so two equal digests across different build locations are
+// not comparable and two unequal ones are not a divergence.
+//
+// Hence the gate: with DeterminismUnwitnessed the digest comparison is never
+// consulted and the stage agreement rests on the behavioral receipts alone. It can
+// only ever ADD a refusal, never supply an admission the behavior did not.
+type DeterminismWitness
+  = DeterminismWitnessed { at_build_configuration: Hash }
+  | DeterminismUnwitnessed { cause: Symbol }
+
+type FixedPointReceipt {
+  left: GenerationIdentity
+  right: GenerationIdentity
+  determinism: DeterminismWitness
+}
+
+// The retained known-good path. It is a SEPARATE generation from everything in the
+// promotion, and it is checked to be separate: naming the candidate or the successor
+// as the recovery is a recovery path that dies with the thing it is supposed to
+// recover from.
+type RecoveryGeneration
+  = RecoveryRetained { identity: GenerationIdentity }
+  | RecoveryUnavailable { cause: Symbol }
+
+// v1 fallback is an OBSERVATION with three states, not a Bool. "No fallback was
+// observed" and "we did not look" are the same value in a Bool and different facts
+// here, and the second must not admit.
+type FallbackObservation
+  = NoFallbackObserved
+  | FallbackObserved { at_stage: Symbol }
+
+// WHO ADMITS. The brief's condition is that an authority other than the candidate
+// admits the candidate, and the only way to make that decidable is to carry the
+// admitting authority's own generation identity and join it against the subject.
+// Without it, "the candidate did not admit itself" is a claim about a process no
+// value records.
+type AdmissionAuthority {
+  identity: GenerationIdentity
+}
+
+type GenerationAdmissionRequest {
+  reproduction: SelfHostCandidate
+  changed_successor: ChangedSuccessorReceipt
+  fixed_point: FixedPointReceipt
+  recovery: RecoveryGeneration
+  previous_active: GenerationIdentity
+  authority: AdmissionAuthority
+  fallback: FallbackObservation
+}
+
+// A requirement binding is joined on its subject like every other receipt, and then
+// on the ONE axis it shares with generation identity. The toolchain appears in both
+// carriers -- as a declared requirement and as a built fact -- and if they are never
+// compared the requirement revision can move its toolchain while the identity that
+// vouched for the build did not, which is a receipt about a toolchain nobody built
+// with.
+fn requirement_binding_causes(
+  receipt: Symbol,
+  r: RequirementBindingReceipt,
+  expected: GenerationIdentity
+) -> List<PromotionRefusalCause> {
+  let stale = stale_causes_for(receipt: receipt, subject: r.subject, expected: expected)
+  if r.requirements.toolchain_context == expected.toolchain {
+    stale
+  } else {
+    list_snoc_item(xs: stale, item: RequirementToolchainAxisUnbound { receipt: receipt })
+  }
+}
+
+// Conformance carries the same empty-corpus and population joins as equivalence --
+// a roster of zero cases is agreement over nothing, and a run that compared a
+// different number of cases than the roster declares did not execute the roster it
+// names -- plus the roster-digest join that keeps the receipt from being credited
+// against a revision it was not measured against.
+fn conformance_receipt_causes(
+  receipt: Symbol,
+  r: ConformanceReceipt,
+  expected: GenerationIdentity,
+  declared: CompilerRequirementRevision
+) -> List<PromotionRefusalCause> {
+  let stale = stale_causes_for(receipt: receipt, subject: r.subject, expected: expected)
+  let rostered = if r.roster_digest == declared.conformance_roster_digest {
+    stale
+  } else {
+    list_snoc_item(
+      xs: stale,
+      item: ConformanceRosterNotDeclaredRevision { receipt: receipt }
+    )
+  }
+  let declared_population = if r.corpus.expected_cases <= 0 {
+    list_snoc_item(xs: rostered, item: EmptyBehavioralCorpus { receipt: receipt })
+  } else {
+    rostered
+  }
+  let sized = if r.cases_compared == r.corpus.expected_cases {
+    declared_population
+  } else {
+    list_snoc_item(
+      xs: declared_population,
+      item: CorpusPopulationMismatch {
+        receipt: receipt,
+        expected: r.corpus.expected_cases,
+        compared: r.cases_compared
+      }
+    )
+  }
+  match r.outcome {
+    ObservationUnavailable { cause: c } =>
+      list_snoc_item(
+        xs: sized,
+        item: ReceiptObservationUnavailable { receipt: receipt, cause: c }
+      )
+    Observed { value: v } =>
+      match v {
+        BehaviorAgrees => sized
+        BehaviorDiverges { at_case: a } =>
+          list_snoc_item(
+            xs: sized,
+            item: ConformanceDivergedFromRoster { receipt: receipt, at_case: a }
+          )
+      }
+  }
+}
+
+fn changed_output_causes(
+  receipt: Symbol,
+  o: ObservedVerdict<ChangedOutputOutcome>
+) -> List<PromotionRefusalCause> {
+  match o {
+    ObservationUnavailable { cause: c } =>
+      [ReceiptObservationUnavailable { receipt: receipt, cause: c }]
+    Observed { value: v } =>
+      match v {
+        ChangedOutputObserved { at_case: _ } => freemonoid_empty()
+        ChangedOutputAbsent => [ChangedOutputNotObserved { receipt: receipt }]
+      }
+  }
+}
+
+fn compiled_further_causes(
+  receipt: Symbol,
+  o: ObservedVerdict<BuildOutcome>
+) -> List<PromotionRefusalCause> {
+  match o {
+    ObservationUnavailable { cause: c } =>
+      [ReceiptObservationUnavailable { receipt: receipt, cause: c }]
+    Observed { value: v } =>
+      match v {
+        BuildGreen => freemonoid_empty()
+        BuildFailed { cause: _ } =>
+          [SuccessorDidNotCompileFurtherInput { receipt: receipt }]
+      }
+  }
+}
+
+// THE CHANGED-SUCCESSOR OBLIGATION, ASSEMBLED.
+//
+// The order the causes are gathered in is not the order they are checked in --
+// every one is computed -- so a bundle that fails five ways reports five causes
+// rather than the first. That is deliberate: the operator restarting a stopped
+// line analyses the whole stop, and a first-cause-only refusal makes the analysis
+// iterative for no reason.
+fn changed_successor_causes(
+  r: ChangedSuccessorReceipt,
+  declared_parent: CandidateGeneration
+) -> List<PromotionRefusalCause> {
+  let parent_identity = r.parent.identity
+  let successor_identity = r.successor.identity
+  let parent_join = if length(
+    xs: generation_identity_mismatched_axes(
+      left: declared_parent.identity,
+      right: parent_identity
+    )
+  ) == 0 && length(
+    xs: generation_identity_mismatched_axes(
+      left: declared_parent.identity,
+      right: r.successor.produced_by_candidate.identity
+    )
+  ) == 0 {
+    freemonoid_empty()
+  } else {
+    [ChangedSuccessorParentNotCandidate]
+  }
+  let changed = if length(
+    xs: requirement_revision_changed_axes(
+      left: r.parent_requirements.requirements,
+      right: r.successor_requirements.requirements
+    )
+  ) == 0 {
+    [SuccessorRequirementsUnchanged]
+  } else {
+    freemonoid_empty()
+  }
+  concat_causes(
+    parts: [
+      parent_join,
+      changed,
+      artifact_causes(receipt: ^subject_changed_successor, identity: successor_identity),
+      requirement_binding_causes(
+        receipt: ^receipt_parent_requirements,
+        r: r.parent_requirements,
+        expected: parent_identity
+      ),
+      requirement_binding_causes(
+        receipt: ^receipt_successor_requirements,
+        r: r.successor_requirements,
+        expected: successor_identity
+      ),
+      changed_output_causes(
+        receipt: ^receipt_changed_source_observation,
+        o: r.changed_source_observed
+      ),
+      build_receipt_causes(
+        receipt: ^receipt_changed_successor_build,
+        r: r.successor_build,
+        expected: successor_identity
+      ),
+      conformance_receipt_causes(
+        receipt: ^receipt_changed_successor_conformance,
+        r: r.successor_conformance,
+        expected: successor_identity,
+        declared: r.successor_requirements.requirements
+      ),
+      compiled_further_causes(
+        receipt: ^receipt_changed_successor_compiled_further,
+        o: r.compiled_further
+      )
+    ]
+  )
+}
+
+// The fixed point is consulted for its DIGEST only under a witnessed determinism
+// arm; unwitnessed, the two stages' agreement rests entirely on the behavioral
+// receipts the reproduction bundle already carries, and this contributes nothing.
+// It can add a refusal. It can never supply an admission.
+fn fixed_point_causes(f: FixedPointReceipt) -> List<PromotionRefusalCause> {
+  match f.determinism {
+    DeterminismUnwitnessed { cause: _ } => freemonoid_empty()
+    DeterminismWitnessed { at_build_configuration: _ } =>
+      fold_list(
+        xs: generation_identity_mismatched_axes(left: f.left, right: f.right),
+        empty: freemonoid_empty(),
+        cons: fn(acc, axis) {
+          list_snoc_item(
+            xs: acc,
+            item: FixedPointStagesDisagree { axis: generation_axis_symbol(axis: axis) }
+          )
+        }
+      )
+  }
+}
+
+// A recovery path that IS one of the generations under promotion recovers nothing,
+// and a recovery path that does not retain what was active before is not a rollback
+// target. Both are checked here rather than left to the operator, because both are
+// satisfiable by an author who wants the promotion to pass.
+fn recovery_retained_causes(
+  retained: GenerationIdentity,
+  previous_active: GenerationIdentity,
+  candidate: GenerationIdentity,
+  successor: GenerationIdentity
+) -> List<PromotionRefusalCause> {
+  let not_subject = if length(
+    xs: generation_identity_mismatched_axes(left: retained, right: candidate)
+  ) == 0 {
+    [RecoveryPathIsPromotionSubject { subject: ^subject_candidate }]
+  } else if length(
+    xs: generation_identity_mismatched_axes(left: retained, right: successor)
+  ) == 0 {
+    [RecoveryPathIsPromotionSubject { subject: ^subject_successor }]
+  } else {
+    freemonoid_empty()
+  }
+  let retains = if length(
+    xs: generation_identity_mismatched_axes(left: retained, right: previous_active)
+  ) == 0 {
+    freemonoid_empty()
+  } else {
+    [RecoveryDoesNotRetainPreviousActive]
+  }
+  concat_causes(parts: [not_subject, retains])
+}
+
+fn recovery_causes(
+  recovery: RecoveryGeneration,
+  previous_active: GenerationIdentity,
+  candidate: GenerationIdentity,
+  successor: GenerationIdentity
+) -> List<PromotionRefusalCause> {
+  match recovery {
+    RecoveryUnavailable { cause: c } => [RecoveryPathUnavailable { cause: c }]
+    RecoveryRetained { identity: r } =>
+      recovery_retained_causes(
+        retained: r,
+        previous_active: previous_active,
+        candidate: candidate,
+        successor: successor
+      )
+  }
+}
+
+fn fallback_causes(f: FallbackObservation) -> List<PromotionRefusalCause> {
+  match f {
+    NoFallbackObserved => freemonoid_empty()
+    FallbackObserved { at_stage: s } => [V1FallbackObservedAfterGenesis { at_stage: s }]
+  }
+}
+
+// The candidate may not be its own admitting authority, and neither may the
+// successor it produced -- a successor admitting the chain that produced it is the
+// same self-authorization one link further down.
+fn authority_causes(
+  authority: AdmissionAuthority,
+  candidate: GenerationIdentity,
+  successor: GenerationIdentity
+) -> List<PromotionRefusalCause> {
+  if length(
+    xs: generation_identity_mismatched_axes(left: authority.identity, right: candidate)
+  ) == 0 {
+    [AdmissionAuthorityIsSubject { subject: ^subject_candidate }]
+  } else if length(
+    xs: generation_identity_mismatched_axes(left: authority.identity, right: successor)
+  ) == 0 {
+    [AdmissionAuthorityIsSubject { subject: ^subject_successor }]
+  } else {
+    freemonoid_empty()
+  }
+}
+
+fn generation_admission_causes(
+  request: GenerationAdmissionRequest
+) -> List<PromotionRefusalCause> {
+  let candidate_identity = request.reproduction.candidate.identity
+  let successor_identity = request.reproduction.successor.identity
+  concat_causes(
+    parts: [
+      promotion_refusal_causes(c: request.reproduction),
+      changed_successor_causes(
+        r: request.changed_successor,
+        declared_parent: request.reproduction.candidate
+      ),
+      fixed_point_causes(f: request.fixed_point),
+      recovery_causes(
+        recovery: request.recovery,
+        previous_active: request.previous_active,
+        candidate: candidate_identity,
+        successor: successor_identity
+      ),
+      fallback_causes(f: request.fallback),
+      authority_causes(
+        authority: request.authority,
+        candidate: candidate_identity,
+        successor: successor_identity
+      )
+    ]
+  )
+}
+
+// THE WALL. GenerationAdmission is sole_constructor and this module mints it at
+// exactly one site -- the arm below where the cause list is empty. Nothing outside
+// this module can author one, so an ActiveCompiler cannot be assembled by a caller
+// who merely believes the receipts were fine. The invalid state has no constructor
+// rather than being validated after the fact (DESIGN 4b rung 4 for the
+// self-authorized-promotion class; the receipt CONTENTS remain rung 2-3, since a
+// receipt still reports an observation made outside the model).
+type GenerationAdmission sole_constructor {
+  promoted: SuccessorGeneration
+  changed_successor: ChangedSuccessorReceipt
+  recovery: GenerationIdentity
+  previous_active: GenerationIdentity
+  admitted_by: AdmissionAuthority
+}
+
+type PromotionDecision
+  = PromotionAdmitted { admission: GenerationAdmission }
+  | PromotionDenied { causes: List<PromotionRefusalCause> }
+
+// Admission is again the ABSENCE of every cause. The recovery identity is
+// re-derived from the retained arm rather than copied from the request, so an
+// admission cannot carry a recovery the causes never inspected; the unavailable
+// arm is unreachable here because recovery_causes already refused it, and it
+// refuses under its own name rather than fabricating an identity.
+fn admit_generation(request: GenerationAdmissionRequest) -> PromotionDecision {
+  let causes = generation_admission_causes(request: request)
+  if length(xs: causes) == 0 {
+    match request.recovery {
+      RecoveryRetained { identity: r } =>
+        PromotionAdmitted {
+          admission: GenerationAdmission {
+            promoted: request.reproduction.successor,
+            changed_successor: request.changed_successor,
+            recovery: r,
+            previous_active: request.previous_active,
+            admitted_by: request.authority
+          }
+        }
+      RecoveryUnavailable { cause: c } =>
+        PromotionDenied { causes: [RecoveryPathUnavailable { cause: c }] }
+    }
+  } else {
+    PromotionDenied { causes: causes }
+  }
+}
+
+// The compiler every downstream consumer is required to route through. It is
+// sole_constructor and minted only from an admitted decision, so "which compiler is
+// authoritative" cannot be answered by a path lookup, an environment default, or a
+// caller's assertion -- the only value that answers it carries the admission that
+// produced it.
+type ActiveCompiler sole_constructor {
+  generation: SuccessorGeneration
+  admission: GenerationAdmission
+}
+
+// A standing rather than an optional. "No compiler has been admitted" is a state
+// with a located reason, not an absence: an Absent would tell a consumer to look
+// elsewhere, and looking elsewhere is the v1 fallback this program exists to close.
+type ActiveCompilerStanding
+  = ActiveCompilerAdmitted { active: ActiveCompiler }
+  | ActiveCompilerUnavailable { reason: Symbol, causes: List<PromotionRefusalCause> }
+
+fn active_compiler_standing(decision: PromotionDecision) -> ActiveCompilerStanding {
+  match decision {
+    PromotionAdmitted { admission: a } =>
+      ActiveCompilerAdmitted {
+        active: ActiveCompiler { generation: a.promoted, admission: a }
+      }
+    PromotionDenied { causes: cs } =>
+      ActiveCompilerUnavailable {
+        reason: ^active_compiler_promotion_denied,
+        causes: cs
+      }
+  }
+}
+
+fn generation_admission_carries(decision: PromotionDecision, cause: Symbol) -> Bool {
+  match decision {
+    PromotionAdmitted { admission: _ } => false
+    PromotionDenied { causes: cs } =>
+      fold_list(
+        xs: cs,
+        empty: false,
+        cons: fn(acc, c) { acc || promotion_refusal_cause_symbol(c: c) == cause }
+      )
+  }
+}
+
+// ============================================================================
+// THE BOOTSTRAP CHAIN'S BINDING TO GENERATION ADMISSION.
+//
+// Everything above this line models the bootstrap PLAN -- which stage consumes
+// what, which produces what, and that stage1 and stage2 pin the same digest. A
+// plan is a statement about a shape. It is not a statement that any of it ran,
+// and it cannot answer the only question a consumer actually asks: WHICH
+// COMPILER IS AUTHORITATIVE RIGHT NOW.
+//
+// That question is answered by v2.compiler.self_host.promotion_admission and by
+// nothing here. This module deliberately does not restate the admission rules --
+// a second bootstrap ledger with its own notion of promotion is the fork DESIGN
+// section 3 exists to prevent, and the failure mode is specific rather than
+// stylistic: two authorities for "is this generation admitted" diverge on the
+// first requirement change, and the plan-shaped one always looks satisfied
+// because a plan cannot fail. What this module contributes is the BINDING: the
+// bootstrap chain either produced an admission request or it did not, and the
+// second state is named.
+//
+// THE DIRECTION IS FAIL-CLOSED AND CURRENTLY REFUSES. No native v2 generation
+// chain has been executed, so the observation below is BootstrapChainNotExecuted
+// and the standing is unavailable with a located reason. That is the correct
+// value, not a placeholder: a consumer asking for the active compiler today gets
+// a refusal it must handle, never a path lookup, an environment default, or the
+// v1 seed standing in silently.
+//
+// RUNG (DESIGN 4b): the self-authorized-promotion class is at rung 4 --
+// ActiveCompiler is sole_constructor and reachable only through an admitted
+// decision, so an unadmitted active compiler has no constructor. The chain
+// BINDING is at rung 1: nothing yet forces a consumer to read this standing
+// rather than resolve a compiler some other way. NEXT-RUNG TRIGGER: the capability
+// that compile, test, execute and CI entry all resolve their compiler through an
+// ActiveCompiler value -- not the landing of any single call site, since a route
+// that closes one door while the others stay open restores nothing.
+type BootstrapGenerationChainObservation
+  = BootstrapChainExecuted { request: GenerationAdmissionRequest }
+  | BootstrapChainNotExecuted { cause: Symbol }
+
+fn bootstrap_active_compiler_standing_of(
+  observation: BootstrapGenerationChainObservation
+) -> ActiveCompilerStanding {
+  match observation {
+    BootstrapChainExecuted { request: r } =>
+      active_compiler_standing(decision: admit_generation(request: r))
+    BootstrapChainNotExecuted { cause: c } =>
+      ActiveCompilerUnavailable { reason: c, causes: [] }
+  }
+}
+
+data bootstrap_generation_chain: BootstrapGenerationChainObservation = BootstrapChainNotExecuted { cause: ^bootstrap_native_generation_chain_not_executed }
+
+data bootstrap_active_compiler_standing: ActiveCompilerStanding = bootstrap_active_compiler_standing_of(observation: bootstrap_generation_chain)

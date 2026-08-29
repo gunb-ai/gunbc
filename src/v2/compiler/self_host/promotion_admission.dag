@@ -14,7 +14,7 @@ import v2.std.algebra { fold_list, freemonoid_empty, length, list_snoc_item }
 import v2.std.collection { List }
 import v2.std.integer { Int }
 import v2.std.logic { Bool }
-import v2.std.node { Symbol }
+import v2.std.node { Hash, Symbol }
 import v2.std.text { String }
 
 // WHAT THIS MODULE DELIBERATELY CANNOT DO.
@@ -192,6 +192,19 @@ type PromotionRefusalCause
   | SuccessorNotProducedByCandidate
   | CorpusMismatchAcrossReceipts { receipt: Symbol }
   | CorpusPopulationMismatch { receipt: Symbol, expected: Int, compared: Int }
+  | RequirementToolchainAxisUnbound { receipt: Symbol }
+  | SuccessorRequirementsUnchanged
+  | ChangedOutputNotObserved { receipt: Symbol }
+  | ConformanceDivergedFromRoster { receipt: Symbol, at_case: String }
+  | ConformanceRosterNotDeclaredRevision { receipt: Symbol }
+  | SuccessorDidNotCompileFurtherInput { receipt: Symbol }
+  | ChangedSuccessorParentNotCandidate
+  | RecoveryPathUnavailable { cause: Symbol }
+  | RecoveryPathIsPromotionSubject { subject: Symbol }
+  | RecoveryDoesNotRetainPreviousActive
+  | V1FallbackObservedAfterGenesis { at_stage: Symbol }
+  | AdmissionAuthorityIsSubject { subject: Symbol }
+  | FixedPointStagesDisagree { axis: Symbol }
 
 type PromotionOutcome
   = Promoted { successor: SuccessorGeneration, cases_compared: Int }
@@ -536,6 +549,25 @@ fn promotion_refusal_cause_symbol(c: PromotionRefusalCause) -> Symbol {
     CorpusMismatchAcrossReceipts { receipt: _ } => ^refusal_corpus_mismatch_across_receipts
     CorpusPopulationMismatch { receipt: _, expected: _, compared: _ } =>
       ^refusal_corpus_population_mismatch
+    RequirementToolchainAxisUnbound { receipt: _ } =>
+      ^refusal_requirement_toolchain_axis_unbound
+    SuccessorRequirementsUnchanged => ^refusal_successor_requirements_unchanged
+    ChangedOutputNotObserved { receipt: _ } => ^refusal_changed_output_not_observed
+    ConformanceDivergedFromRoster { receipt: _, at_case: _ } =>
+      ^refusal_conformance_diverged_from_roster
+    ConformanceRosterNotDeclaredRevision { receipt: _ } =>
+      ^refusal_conformance_roster_not_declared_revision
+    SuccessorDidNotCompileFurtherInput { receipt: _ } =>
+      ^refusal_successor_did_not_compile_further_input
+    ChangedSuccessorParentNotCandidate => ^refusal_changed_successor_parent_not_candidate
+    RecoveryPathUnavailable { cause: _ } => ^refusal_recovery_path_unavailable
+    RecoveryPathIsPromotionSubject { subject: _ } =>
+      ^refusal_recovery_path_is_promotion_subject
+    RecoveryDoesNotRetainPreviousActive => ^refusal_recovery_does_not_retain_previous_active
+    V1FallbackObservedAfterGenesis { at_stage: _ } =>
+      ^refusal_v1_fallback_observed_after_genesis
+    AdmissionAuthorityIsSubject { subject: _ } => ^refusal_admission_authority_is_subject
+    FixedPointStagesDisagree { axis: _ } => ^refusal_fixed_point_stages_disagree
   }
 }
 
