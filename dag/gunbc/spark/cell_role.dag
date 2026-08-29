@@ -90,15 +90,7 @@ fn spark_cell_role_wire(role: SparkCellRole) -> String {
 // can only appear in a roster by having been assigned.
 fn spark_cell_role_of(host: HostIdentity) -> SparkCellRole? {
   fold(spark_cell_role_assignments, init: none, f: fn(acc, a) {
-    match acc {
-      Present { value: found } => Present { value: found }
-      Absent =>
-        if a.host as String == host as String {
-          Present { value: a.role }
-        } else {
-          none
-        }
-    }
+    if a.host as String == host as String { Present { value: a.role } } else { acc }
   })
 }
 

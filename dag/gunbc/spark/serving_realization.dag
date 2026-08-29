@@ -447,13 +447,10 @@ type SparkServingRetirementEffect
 // derives its order from the resources' requires/establishes facts, and the retirement order is the
 // same relation read backwards -- an effect may not run until the effects that depend on what it
 // removes have already run.
-//
-// The retain arms come last and their relative order carries no claim, because they mutate nothing.
 fn realization_retirement_effects(realization: SparkServingRealization) -> List<SparkServingRetirementEffect> {
   match realization {
     UserUnitRealization =>
-      [StopUserUnit, DisableUserUnit, RemoveUserUnitFile, ReloadUserManagerAfterRemoval,
-       RetainModelArtifactAsCache, RetainRuntimeClosureAsCache, RetainLingerForOwnAccount]
+      [StopUserUnit, DisableUserUnit, RemoveUserUnitFile, ReloadUserManagerAfterRemoval]
     SystemUnitRealization => []
     RootlessContainerRealization => []
   }
