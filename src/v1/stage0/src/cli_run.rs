@@ -35656,6 +35656,16 @@ pub struct PreparedRepository {
     /// Every source in the module index, including modules outside this prepared closure and
     /// sources removed by discovery exclusions. The required floor folds the one modeled
     /// discovery producer over this full population before classifying each resulting identity.
+    ///
+    /// IT IS MOVED OUT, NOT READ IN PLACE, and the field is empty for the rest of the run. Out-of-
+    /// closure sources are held by nothing else — the prepared graph is the gate closure — so
+    /// these `Rc`s are the only thing keeping the rest of the corpus alive, and leaving them here
+    /// would restore corpus-scale retention across the longest phase of the program. That is
+    /// growth in the lane `v2.workflow.required_floor` `RequiredFloorGrowthBudgetStanding`
+    /// records as having no measured memory margin, so it owes a named payment; taking the field
+    /// and dropping it when the fold ends is the alternative to owing one. See the `std::mem::take`
+    /// in `run_required_floor` and the measured release on the discovery-authority phase line
+    /// (`full_inventory_release_rss_kb_before` / `_trim_reclaimed_kb` / `_rss_kb_after`).
     pub full_inventory: Vec<PreparedSourceView>,
     /// Modules that reached the requested closure but preparation excluded, paired with the
     /// exact substring that matched. Absence from both this map and `inventory` means outside
