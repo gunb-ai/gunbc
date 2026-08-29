@@ -1,0 +1,46 @@
+module gunbc.floor_cost_debt_standing_seed_growth
+
+import gunbc.roadmap_model { RoadmapNodeId }
+import gunbc.seed_growth { SeedGrowthJustification }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+
+// FORWARD-FREEZE RECEIPT for the cost-debt roster's STANDING partition: the reverse join deciding
+// what each enrolled identity is to this run, against the declared universe rather than against
+// the spelling of its name.
+//
+// WHY THIS IS A SECOND ROW BESIDE gunbc.floor_cost_debt_seed_growth AND NOT AN EDIT TO IT. That
+// row justifies the FORWARD direction -- the build-loop branch that declines a rostered site at
+// build rather than skipping it at execution -- and its trigger retires when the self-emitted
+// claim executor consumes required_floor_site_disposition directly. This row justifies the
+// REVERSE direction, which asks a different question of different inputs (the declared identity
+// population and preparation's disposition rows, neither of which the forward branch reads) and
+// retires on a different condition. Folding them would give one trigger two capabilities, so the
+// first to be satisfied would retire an obligation it does not cover -- the grain mismatch
+// DESIGN section 4b(3) names as the review tell for a trigger naming less than it restores. The
+// roster already carries one row per capability at this boundary (floor_non_verdict,
+// floor_route_gap, floor_cost_debt, floor_population_projection), which is the pattern rather
+// than a fork.
+//
+// WHAT THE HAND ITEMS ACTUALLY ARE. `partition_cost_debt_roster` is a free function, not a method
+// and not inline in the fold, for the reason its neighbour `reconcile_identity_population` states
+// in its own doc comment: the test that proves it must call the production code, because an
+// earlier draft of that test carried its own copy of the loop and would have kept passing while
+// production drifted arbitrarily far from it. `CostDebtRosterStanding` is the closed sum it
+// returns; the arms exist so that "declared but never offered" and "no such declaration" cannot
+// be represented by one value, which is the whole defect being repaired.
+//
+// WHAT IS NOT GROWN: no roster, no policy, no status vocabulary, and no roster line. The declared
+// population and the disposition rows both come from gunbc#9684's projection; the withheld set is
+// the fold's own; v2.workflow.floor_cost_debt remains the sole authority for WHICH identities are
+// enrolled. The Rust decides nothing about membership -- it reports what the three modeled
+// populations already say about each row.
+data floor_cost_debt_standing_seed_growth_justification: SeedGrowthJustification = SeedGrowthJustification {
+  hand_authored_declarations: [
+    DeclarationRef { module_path: "v1_compiler.cli_run", decl_name: "partition_cost_debt_roster", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run", decl_name: "CostDebtRosterStanding", field: WholeDeclaration }
+  ],
+  reason: "WHY RUST IS STILL NEEDED: the required floor executes in the seed, and this is the seam where the modeled roster meets preparation's own account of what it loaded. The declared identity population and the disposition rows are produced inside v1_compiler.cli_run run_required_floor and never leave it, so a join over them must stand at that boundary or the boundary keeps the weaker check. The check being replaced was already Rust; the substrate cannot yet observe it, because no emitted workflow performs repository acquisition or preparation.\n\nWHAT IT REPAIRS, and it is a fail-open rather than an accounting gap. The reverse join decided whether an unseen enrolled identity was merely outside the gate by prefix-matching its module path against v2.workflow.required_floor required_gate_prefixes -- a NAME test consulting nothing else. A module name cannot distinguish an identity this run's gate never loaded from an identity the tree does not declare at all, so an enrolled row naming a nonexistent identity -- a typo, a renamed or deleted witness, a fabricated line -- prefix-missed the gate, was counted as outside-the-gate, and refused nothing. That is the exact hole the reverse join exists to close, in its own words: the cheapest way to fake a green run is enrolling an identity that does not exist. The 2026-08-29 gate cut reopened it across the whole non-gate namespace, which is now the majority of the corpus, and 122 enrolled rows sat in that arm on the first gate-bounded fold with nothing able to tell a real one from a fabricated one.\n\nWHY IT COULD NOT BE FIXED BEFORE gunbc#9684: the repair needs a DECLARED population to join against, and until that change the floor's universe was the offered subset. The discriminator is now the disposition preparation derived from what it actually loaded.\n\nWHY THE RED IS A PAIR AND NOT A SINGLE PROBE: two enrolled identities in one non-gate module, neither withheld, differing ONLY in whether the tree declares them -- the undeclared one must refuse and the declared one must not. A repair that refused both would close the hole by breaking the 122 legitimate rows, and nothing except the declared join separates them, so a single-sided probe would pass over a fix that is wrong in the expensive direction. Verified by mutation: restoring the name-derived semantics reds three of the four new tests and leaves the untouched withheld-precedence arm green.\n\nWHY IT IS ADMITTED AGAINST THE v1 FREEZE: gunbc.v1_maintenance_standing v1_seed_standing admits work serving the v2 self-host program. This restores a refusal the roster's own contract claims to perform and had stopped performing, and a roster whose anti-fabrication wall is open is not a monotone debt contract but a permission slip. It adds no language behavior, no compatibility route, no escape hatch, no seed feature, no emitted public surface, and no toggle that suppresses the refusal.\n\nBOTH REFUSING ARMS REMAIN GUARDED by the pre-existing reverse_joins_answerable predicate, so a halted run -- whose population is truncated -- still reports rather than answering delete-the-row over a denominator it could not observe. That guard is not new here; preserving it is the point, since the partition's planning-time inputs would survive an execution halt and it would have been easy to conclude the guard was unnecessary.",
+  owning_dissolution_lane: "v1-hand-queue-drain" as RoadmapNodeId,
+  trigger: "Delete the seed declarations when the roster's reverse join is performed in .dag -- a modeled fold over v2.workflow.floor_cost_debt's roster, the declared identity population and the disposition rows, returning the modeled standing -- with the v1 floor bridge hollowed so the seed no longer holds those three populations privately (docs/plans/cli-run-hollowing-plan.md reaching the required-floor orchestration phase). NOT retired by the cost-debt roster reaching zero, and NOT by the undeclared arm being empty on any number of runs: an empty arm still needs the wall that keeps it empty, and a trigger satisfied by the population emptying would delete the mechanism while leaving the capability unowned.",
+  current_boundary: "v2.workflow.floor_cost_debt floor_cost_debt_roster -> v1_compiler.cli_run run_required_floor (declared identity set, withheld set, disposition rows) -> v1_compiler.cli_run partition_cost_debt_roster -> v1_compiler.cli_run CostDebtRosterStanding -> v2.workflow.required_floor RequiredFloorDisposition"
+}
