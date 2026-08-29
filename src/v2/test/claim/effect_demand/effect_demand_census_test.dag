@@ -20,6 +20,9 @@ import v2.compiler.effect_demand {
   seam_is_unrealized,
   seam_is_unrostered,
   seam_realization_for,
+  seam_is_realized,
+  seam_binding_is_ambiguous,
+  SeamRuntimeBindingAmbiguous,
   seam_unrealized_without_executed_evidence,
   seam_unrostered_rows,
   DemandAgreement,
@@ -31,7 +34,10 @@ import v2.compiler.effect_demand {
   RootsResolvedNonEmpty,
   RootResolutionStanding,
   effect_demand_execute_origin_population,
-  effect_demand_promotion_admitted,
+  effect_demand_local_gate,
+  effect_demand_local_gate_holds,
+  EffectDemandEvidenceAdmitted,
+  EffectDemandEvidenceRefused,
   effect_demand_realization_key,
   effect_demand_population_subject_is_complete,
   effect_demand_compiler_entry_module,
@@ -562,7 +568,7 @@ test fn effect_demand_witness_equal_count_substitution_refuses() -> Bool {
     )
 }
 
-data effect_demand_promotion_probe_note: String = "PROMOTION MUST BE UNAVAILABLE TO A WORLD THAT ONLY LOOKS FINISHED. The admitted world carries two distinct producers, resolved non-empty roots, no unresolved indirect edges, matching revision and entry, agreeing membership, no disagreement in either direction, a complete subject and a sound census. Each refused world below breaks exactly one of those and nothing else -- an empty root set, an unresolved indirect edge, one producer twice, and an incomplete subject -- so a conjunct that stopped being checked would show up here as a world that promotes when it must not."
+data effect_demand_local_gate_probe_note: String = "THE LOCAL GATE MUST REFUSE A WORLD THAT ONLY LOOKS FINISHED, and it is a LOCAL gate: promotion is another lane's composition, and this result is one conjunct of it. The admitted world carries two distinct producers, resolved non-empty roots, no unresolved indirect edges, matching revision and entry, agreeing membership, no disagreement in either direction, a complete subject and a sound census. Each refused world below breaks exactly one of those and nothing else -- an empty root set, an unresolved indirect edge, one producer twice, and an incomplete subject -- so a conjunct that stopped being checked would show up here as a world the gate admits when it must not."
 
 data effect_demand_probe_empty_agreement: DemandAgreement = effect_demand_agreement(
   modeled: effect_demand_probe_agreed_keys,
@@ -590,57 +596,69 @@ data effect_demand_probe_receipt_unresolved_edges: DemandReceipt = effect_demand
   unresolved: ["dispatch_through_stored_callable"]
 )
 
-test fn effect_demand_witness_promotion_admitted_on_complete_evidence() -> Bool {
-  effect_demand_promotion_admitted(
+test fn effect_demand_witness_local_gate_admits_complete_evidence() -> Bool {
+  effect_demand_local_gate_holds(standing: effect_demand_local_gate(
     left: effect_demand_probe_receipt_modeled,
     right: effect_demand_probe_receipt_realized,
     population: effect_demand_probe_complete_population,
     agreement: effect_demand_probe_empty_agreement,
     census_is_sound: true
-  )
+  ))
 }
 
-test fn effect_demand_witness_promotion_refuses_an_empty_root_set() -> Bool {
-  !effect_demand_promotion_admitted(
+test fn effect_demand_witness_local_gate_refuses_an_empty_root_set() -> Bool {
+  match effect_demand_local_gate(
     left: effect_demand_probe_receipt_modeled,
     right: effect_demand_probe_receipt_empty_roots,
     population: effect_demand_probe_complete_population,
     agreement: effect_demand_probe_empty_agreement,
     census_is_sound: true
-  )
+  ) {
+    EffectDemandEvidenceAdmitted { source_revision } => false,
+    EffectDemandEvidenceRefused { source_revision, conjunct } => conjunct == ^right_roots_unresolved
+  }
 }
 
-test fn effect_demand_witness_promotion_refuses_unresolved_indirect_edges() -> Bool {
-  !effect_demand_promotion_admitted(
+test fn effect_demand_witness_local_gate_refuses_unresolved_indirect_edges() -> Bool {
+  match effect_demand_local_gate(
     left: effect_demand_probe_receipt_modeled,
     right: effect_demand_probe_receipt_unresolved_edges,
     population: effect_demand_probe_complete_population,
     agreement: effect_demand_probe_empty_agreement,
     census_is_sound: true
-  )
+  ) {
+    EffectDemandEvidenceAdmitted { source_revision } => false,
+    EffectDemandEvidenceRefused { source_revision, conjunct } => conjunct == ^right_unresolved_indirect_edges
+  }
 }
 
-test fn effect_demand_witness_promotion_refuses_one_producer_twice() -> Bool {
-  !effect_demand_promotion_admitted(
+test fn effect_demand_witness_local_gate_refuses_one_producer_twice() -> Bool {
+  match effect_demand_local_gate(
     left: effect_demand_probe_receipt_realized,
     right: effect_demand_probe_receipt_realized,
     population: effect_demand_probe_complete_population,
     agreement: effect_demand_probe_empty_agreement,
     census_is_sound: true
-  )
+  ) {
+    EffectDemandEvidenceAdmitted { source_revision } => false,
+    EffectDemandEvidenceRefused { source_revision, conjunct } => conjunct == ^one_producer_twice
+  }
 }
 
-test fn effect_demand_witness_promotion_refuses_an_incomplete_subject() -> Bool {
-  !effect_demand_promotion_admitted(
+test fn effect_demand_witness_local_gate_refuses_an_incomplete_subject() -> Bool {
+  match effect_demand_local_gate(
     left: effect_demand_probe_receipt_modeled,
     right: effect_demand_probe_receipt_realized,
     population: effect_demand_probe_lower_bound,
     agreement: effect_demand_probe_empty_agreement,
     census_is_sound: true
-  )
+  ) {
+    EffectDemandEvidenceAdmitted { source_revision } => false,
+    EffectDemandEvidenceRefused { source_revision, conjunct } => conjunct == ^subject_incomplete
+  }
 }
 
-data effect_demand_live_standing_probe_note: String = "The live compiler-origin standing must NOT be promotable, and this asserts it as a fact rather than leaving it to prose. Its population is a lower bound and its evidence is a single realization-side producer, so the honest answer today is no."
+data effect_demand_live_standing_probe_note: String = "The live compiler-origin standing must NOT be admissible at the local gate, and this asserts it as a fact rather than leaving it to prose. Its population is a lower bound and its evidence is a single realization-side producer, so the honest answer today is no."
 
 test fn effect_demand_witness_live_compiler_origin_is_not_promotable() -> Bool {
   !effect_demand_population_subject_is_complete(population: effect_demand_compiler_origin_population)
@@ -654,6 +672,7 @@ test fn effect_demand_witness_realization_keys_on_the_projected_primitive() -> B
     registry: [SeamRuntimeBinding { primitive: primitive_identity_slug(name: "empty_map"), bridge: "rc_empty_map" }]
   ) {
     SeamRealizedByBridge { bridge } => bridge == "rc_empty_map",
+    SeamRuntimeBindingAmbiguous { primitive, bridges } => false,
     SeamUnrealized => false
   }
 }
@@ -664,6 +683,7 @@ test fn effect_demand_witness_declaration_name_is_not_the_realization_key() -> B
     registry: [SeamRuntimeBinding { primitive: primitive_identity_slug(name: "empty_map"), bridge: "rc_empty_map" }]
   ) {
     SeamRealizedByBridge { bridge } => false,
+    SeamRuntimeBindingAmbiguous { primitive, bridges } => false,
     SeamUnrealized => true
   }
 }
@@ -674,6 +694,7 @@ test fn effect_demand_witness_an_unrostered_seam_cannot_resolve_a_realization() 
     registry: [SeamRuntimeBinding { primitive: primitive_identity_slug(name: "empty_map"), bridge: "rc_empty_map" }]
   ) {
     SeamRealizedByBridge { bridge } => false,
+    SeamRuntimeBindingAmbiguous { primitive, bridges } => false,
     SeamUnrealized => true
   }
 }
@@ -681,7 +702,7 @@ test fn effect_demand_witness_an_unrostered_seam_cannot_resolve_a_realization() 
 test fn effect_demand_witness_executed_evidence_implies_unrealized() -> Bool {
   !any(
     xs: effect_demand_seam_roster,
-    predicate: fn(seam) { seam_has_executed_evidence(seam: seam) && !seam_is_unrealized(seam: seam, registry: effect_demand_seam_runtime_registry) }
+    predicate: fn(seam) { seam_has_executed_evidence(seam: seam) && seam_is_realized(seam: seam, registry: effect_demand_seam_runtime_registry) }
   )
 }
 
@@ -695,14 +716,14 @@ test fn effect_demand_witness_unrostered_implies_unrealized() -> Bool {
 test fn effect_demand_witness_derived_seams_are_a_strict_subset_of_unrealized() -> Bool {
   !any(
     xs: seam_unrealized_without_executed_evidence(roster: effect_demand_seam_roster, registry: effect_demand_seam_runtime_registry),
-    predicate: fn(seam) { !seam_is_unrealized(seam: seam, registry: effect_demand_seam_runtime_registry) || seam_has_executed_evidence(seam: seam) }
+    predicate: fn(seam) { seam_is_realized(seam: seam, registry: effect_demand_seam_runtime_registry) || seam_has_executed_evidence(seam: seam) }
   )
 }
 
 test fn effect_demand_witness_a_realized_seam_carries_no_refusal_evidence() -> Bool {
   !any(
     xs: effect_demand_seam_roster,
-    predicate: fn(seam) { !seam_is_unrealized(seam: seam, registry: effect_demand_seam_runtime_registry) && seam_has_executed_evidence(seam: seam) }
+    predicate: fn(seam) { seam_is_realized(seam: seam, registry: effect_demand_seam_runtime_registry) && seam_has_executed_evidence(seam: seam) }
   )
 }
 
@@ -725,6 +746,7 @@ test fn effect_demand_witness_roster_realization_comes_from_the_registry() -> Bo
     registry: Empty
   ) {
     SeamRealizedByBridge { bridge } => false,
+    SeamRuntimeBindingAmbiguous { primitive, bridges } => false,
     SeamUnrealized => true
   }
 }
@@ -739,8 +761,64 @@ test fn effect_demand_witness_registry_binds_each_realized_seam_to_its_cited_bri
     predicate: fn(cited) {
       match seam_realization_for(projection: ProjectedPrimitive { primitive: cited.primitive }, registry: effect_demand_seam_runtime_registry) {
         SeamRealizedByBridge { bridge } => bridge != cited.bridge,
+        SeamRuntimeBindingAmbiguous { primitive, bridges } => true,
         SeamUnrealized => true
       }
     }
   )
+}
+
+test fn effect_demand_witness_two_bridges_for_one_primitive_select_none() -> Bool {
+  match seam_realization_for(
+    projection: ProjectedPrimitive { primitive: primitive_identity_slug(name: "empty_map") },
+    registry: [
+      SeamRuntimeBinding { primitive: primitive_identity_slug(name: "empty_map"), bridge: "rc_empty_map" },
+      SeamRuntimeBinding { primitive: primitive_identity_slug(name: "empty_map"), bridge: "a_second_claimant" }
+    ]
+  ) {
+    SeamRealizedByBridge { bridge } => false,
+    SeamRuntimeBindingAmbiguous { primitive, bridges } => length(xs: bridges) == 2,
+    SeamUnrealized => false
+  }
+}
+
+test fn effect_demand_witness_an_ambiguous_binding_is_neither_realized_nor_unrealized() -> Bool {
+  !any(
+    xs: [SeamStanding {
+      declaration: "empty_map_primitive_delegate",
+      seam_module: "v2.std.collection",
+      projection: ProjectedPrimitive { primitive: primitive_identity_slug(name: "empty_map") },
+      emitted_rust_identity: "v2_std_collection.rs::empty_map_primitive_delegate",
+      evidence: SeamEvidenceDerivedNotExercised { reason: ^synthetic_control_row }
+    }],
+    predicate: fn(seam) {
+      seam_is_realized(seam: seam, registry: [
+        SeamRuntimeBinding { primitive: primitive_identity_slug(name: "empty_map"), bridge: "rc_empty_map" },
+        SeamRuntimeBinding { primitive: primitive_identity_slug(name: "empty_map"), bridge: "a_second_claimant" }
+      ]) || seam_is_unrealized(seam: seam, registry: [
+        SeamRuntimeBinding { primitive: primitive_identity_slug(name: "empty_map"), bridge: "rc_empty_map" },
+        SeamRuntimeBinding { primitive: primitive_identity_slug(name: "empty_map"), bridge: "a_second_claimant" }
+      ])
+    }
+  )
+}
+
+test fn effect_demand_witness_the_authored_registry_binds_at_most_one_bridge_per_seam() -> Bool {
+  !any(
+    xs: effect_demand_seam_roster,
+    predicate: fn(seam) { seam_binding_is_ambiguous(seam: seam, registry: effect_demand_seam_runtime_registry) }
+  )
+}
+
+test fn effect_demand_witness_admitted_standing_carries_the_agreed_revision() -> Bool {
+  match effect_demand_local_gate(
+    left: effect_demand_probe_receipt_modeled,
+    right: effect_demand_probe_receipt_realized,
+    population: effect_demand_probe_complete_population,
+    agreement: effect_demand_probe_empty_agreement,
+    census_is_sound: true
+  ) {
+    EffectDemandEvidenceAdmitted { source_revision } => source_revision == effect_demand_probe_receipt_modeled.source_revision,
+    EffectDemandEvidenceRefused { source_revision, conjunct } => false
+  }
 }
