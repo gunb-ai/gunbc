@@ -36299,6 +36299,39 @@ pub fn assemble_prepared_subject_closure(
                     |e| format!("REQUIRED-FLOOR REFUSAL cause=GateClosureUnresolvable entry={path} — {e}"),
                 )?;
             }
+            // CONTAINMENT ANCESTORS, TO A FIXPOINT. Under containment-tree resolution a module
+            // sees the declarations of the modules that contain it by name (`a.b.c` sees `a.b`),
+            // and a test that imports only `x.module_refs` still binds `x`'s types that way. The
+            // entry loader's both-closure does not add those ancestors (measured 2026-08-29: 206
+            // unresolved names, all in modules importing a child of the declaring module), so
+            // every ancestor that exists as a module joins the closure with its own closure.
+            loop {
+                let mut ancestors: Vec<String> = Vec::new();
+                for name in &keep {
+                    let mut cut = name.as_str();
+                    while let Some(i) = cut.rfind('.') {
+                        cut = &cut[..i];
+                        if !keep.contains(cut) && full_index.contains_key(cut) {
+                            ancestors.push(cut.to_string());
+                        }
+                    }
+                }
+                if ancestors.is_empty() {
+                    break;
+                }
+                ancestors.sort();
+                ancestors.dedup();
+                for name in ancestors {
+                    let path = full_index[&name].path.replace('\\', "/");
+                    collect_both_closure_module_names_for_entry(entry_index, &path, &mut keep)
+                        .map_err(|e| {
+                            format!(
+                                "REQUIRED-FLOOR REFUSAL cause=GateClosureUnresolvable entry={path} — {e}"
+                            )
+                        })?;
+                    keep.insert(name);
+                }
+            }
             if seeds == 0 {
                 return Err(format!(
                     "REQUIRED-FLOOR REFUSAL cause=GateClosureEmpty — no module under the source \
