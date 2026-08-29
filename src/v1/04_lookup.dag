@@ -257,13 +257,22 @@ fn builtin_is_a_rival_authority(declared: List<CallableCandidate>) -> Bool {
 // The runtime NAME comes from the roster row's primitive identity, never from the call's leaf
 // spelling. That is the whole repair: a bare `contains` resolving to a v2 declaration no longer
 // reaches the bridge merely because `contains` is also a v1_rt name.
+//
+// ONLY ModeledProjection CARRIES `projected_from`, AND THE FIDELITY DISTINCTION IS WHY.
+// `projected_from` is what an emitter falls back to when its own runtime has no realization for
+// the primitive, so it is only sound where the declaration's body is real code -- which is
+// precisely what ModeledProjection means. A HostRealizedSeam body is a SELF-CALL by construction
+// (decl_facts is `decl_facts(pool_roots: pool_roots)`), so emitting it would produce a
+// well-formed, compiling, NONTERMINATING function: silent wrongness, strictly worse than the
+// unresolved-symbol refusal it would replace. A seam with no realization in the target has no
+// honest lowering at all, so it carries nothing and reaches emission's refusal arm.
 fn resolved_declaration_call_target(declared: DeclaredCallableIdentity) -> CallTargetIdentity {
   match primitive_projection_row_for_declaration(
     declaration: decl_ref(module_path: declared.owner_module_path, decl_name: declared.decl_name)
   ) {
     Present { value: row } =>
       match row.fidelity {
-        HostRealizedSeam => RuntimePrimitiveCall { primitive_name: primitive_identity_runtime_name(identity: row.primitive), projected_from: Present { value: declared } }
+        HostRealizedSeam => RuntimePrimitiveCall { primitive_name: primitive_identity_runtime_name(identity: row.primitive), projected_from: none }
         ModeledProjection => RuntimePrimitiveCall { primitive_name: primitive_identity_runtime_name(identity: row.primitive), projected_from: Present { value: declared } }
         DivergentProjection { divergence: _ } =>
           SourceDeclarationCall { owner_module_path: declared.owner_module_path, decl_name: declared.decl_name }
