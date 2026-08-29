@@ -5,8 +5,6 @@ use self::NrdfcParsed::*;
 pub use crate::gunbc_namespace_reference_derived_closure_admission::assess_reference_binding_observation;
 pub use crate::gunbc_namespace_reference_derived_closure_admission::ReferenceDerivedClosureAdmission;
 use crate::gunbc_namespace_reference_derived_closure_admission::ReferenceDerivedClosureAdmission::*;
-pub use crate::std_algebra::FreeMonoid;
-pub use crate::std_occurrence_binding::{BindingCandidate, OccurrenceBinding};
 use crate::std_occurrence_binding_candidates::DeclarationExposureGrounding::ModuleLocalMemberExposure;
 pub use crate::std_occurrence_binding_candidates::{
     DeclarationExposureGrounding, OccurrenceBindingCandidateInputs,

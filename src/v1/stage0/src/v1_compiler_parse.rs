@@ -17,8 +17,6 @@ use crate::std_occurrence_identity::OccurrenceCategory::{
     CallableOccurrence, FieldOccurrence, LexicalValueOccurrence, MethodOccurrence,
     NamespaceSegmentOccurrence, TypeOccurrence,
 };
-pub use crate::std_occurrence_identity::OccurrenceRole;
-use crate::std_occurrence_identity::OccurrenceRole::*;
 pub use crate::std_occurrence_identity::{
     alloc_occurrence_id, authored_token_ordinal_space_from_allocator,
     node_occurrence_identity_minted, occurrence_id_allocator_advance_to,

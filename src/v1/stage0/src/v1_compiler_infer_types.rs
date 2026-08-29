@@ -44,8 +44,6 @@ use crate::v1_std_core::ContainerSpellingVerdict::{
 use crate::v1_std_core::ExprData::{ExprError, ExprLiteral, NoExprData};
 use crate::v1_std_core::ExprErrorKind::{InternalExprError, SemanticExprError};
 use crate::v1_std_core::InferredNode::{CompilerError, Resolved, TypeVariable};
-use crate::v1_std_core::MatchPattern::*;
-use crate::v1_std_core::UnaryOpKind::*;
 pub use crate::v1_std_core::{
     authored_container_spelling_verdict, authored_name_at, bool_type, default_ident_span,
     error_type, find_child_named, float_type, has_inferred, int_type, is_compiler_error,
@@ -58,7 +56,6 @@ pub use crate::v1_std_core::{
     Cardinality, CompilerDiagnostic, Connective, ContainerSpellingVerdict, ErrorNode, ExprData,
     ExprErrorKind, InferredNode, NewlineIndex, Node,
 };
-pub use crate::v1_std_core::{MatchPattern, UnaryOpKind};
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
