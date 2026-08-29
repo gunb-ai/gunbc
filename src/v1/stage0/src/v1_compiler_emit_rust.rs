@@ -64,7 +64,7 @@ pub use crate::v1_compiler_closure_stub_v2_std_text_rust::closure_stub_v2_std_te
 pub use crate::v1_compiler_coercion::decl_identity_file;
 pub use crate::v1_compiler_coercion::{
     coerce_primitive_type, is_copy, lookup_checkpoint, rust_seed_host_numeric_alias,
-    type_reference_decl_file,
+    target_callable, type_reference_decl_file,
 };
 pub use crate::v1_compiler_compiler_tests_rust::compiler_tests_source;
 use crate::v1_compiler_emit::BoundOperation::{
@@ -184,7 +184,7 @@ use crate::v1_std_core::CompilerDiagnostic::{
     InternalError, ParameterDefaultFormNotAdmitted, ReferenceDerivedImportExportUnproven,
     ReferenceDerivedImportProviderUnknown, UnlistedImportUse,
 };
-use crate::v1_std_core::Connective::{Conj, Disj, NoConnective};
+use crate::v1_std_core::Connective::{Arrow, Conj, Disj, NoConnective};
 use crate::v1_std_core::ExprData::{
     ExprBinOp, ExprBlock, ExprCall, ExprCast, ExprError, ExprFieldAccess, ExprForEach, ExprIf,
     ExprIndex, ExprLambda, ExprLet, ExprListLit, ExprLiteral, ExprMatch, ExprMethodCall,
@@ -319,6 +319,74 @@ pub fn render_rust_type(
     }
 }
 
+pub fn rust_type_node_is_arrow(n: Rc<Node>) -> bool {
+    (n.connective.clone() == Connective::Arrow)
+}
+
+pub fn render_rust_arrow_type(
+    n: Rc<Node>,
+    shared_types: Rc<BTreeSet<String>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    emit_info: Rc<EmitGraphInfo>,
+) -> String {
+    {
+        let repr = crate::v1_compiler_coercion::target_callable(RenderTarget::Rust);
+        let param_strs = Rc::new({
+            let mut __result = Vec::new();
+            for p in n.params.clone().iter().cloned() {
+                __result.push(render_rust_type(
+                    crate::v1_std_core::param_node_type_expr(p.clone()),
+                    shared_types.clone(),
+                    source_indices.clone(),
+                    emit_info.clone(),
+                ));
+            }
+            __result
+        });
+        let param_str = param_strs.clone().join(&repr.param_separator.clone());
+        let spec = crate::v1_compiler_emit_core_support::language_spec(RenderTarget::Rust);
+        let ret_str = match n.inferred.clone().as_deref().cloned() {
+            Some(InferredNode::Resolved { node: rt, .. }) => render_rust_type(
+                rt.clone(),
+                shared_types.clone(),
+                source_indices.clone(),
+                emit_info.clone(),
+            ),
+            _ => spec.void_type.clone(),
+        };
+        match spec.callable_type_template.clone() {
+            Some(t) => v1_rt::replace(
+                v1_rt::replace(t.clone(), "{params}".to_string(), param_str.clone()),
+                "{return}".to_string(),
+                ret_str.clone(),
+            ),
+            None => {
+                if (ret_str.clone() == "".to_string()) {
+                    v1_rt::replace(
+                        v1_rt::replace(
+                            repr.template.clone(),
+                            v1_rt::concat(repr.return_separator.clone(), "{return}".to_string()),
+                            "".to_string(),
+                        ),
+                        "{params}".to_string(),
+                        param_str.clone(),
+                    )
+                } else {
+                    v1_rt::replace(
+                        v1_rt::replace(
+                            repr.template.clone(),
+                            "{params}".to_string(),
+                            param_str.clone(),
+                        ),
+                        "{return}".to_string(),
+                        ret_str.clone(),
+                    )
+                }
+            }
+        }
+    }
+}
+
 pub fn render_rust_type_without_applied_binding(
     n: Rc<Node>,
     shared_types: Rc<BTreeSet<String>>,
@@ -342,121 +410,49 @@ pub fn render_rust_type_without_applied_binding(
         if is_host_diagnostics_carrier_type(n.clone(), source_indices.clone()) {
             return render_rust_diagnostics_carrier_applied(shared_types.clone());
         }
-        if (((n.connective.clone() == Connective::NoConnective)
-            && ((n.children.clone().len() as i64) > 0))
-            && !crate::std_types::is_container_type(crate::v1_std_core::authored_name_at(
-                source_indices.clone(),
-                n.clone(),
-            )))
-        {
-            render_rust_applied_via_emit_info(
+        if rust_type_node_is_arrow(n.clone()) {
+            render_rust_arrow_type(
                 n.clone(),
                 shared_types.clone(),
                 source_indices.clone(),
                 emit_info.clone(),
             )
         } else {
-            if crate::v1_compiler_infer_types::node_is_set_collection(
-                n.clone(),
-                source_indices.clone(),
-            ) {
-                match n.children.clone().first().cloned() {
-                    Some(elem_child) => {
-                        let elem_node =
-                            crate::v1_compiler_infer_types::child_type_node(elem_child.clone());
-                        let elem_is_type_var = if (elem_node.inferred.clone() != None) {
-                            is_type_variable(elem_node.inferred.clone().clone().unwrap())
-                        } else {
-                            false
-                        };
-                        if elem_is_type_var.clone() {
-                            emit_rust_compile_error_expr("Set element type unresolved".to_string())
-                        } else {
-                            if !rust_btree_set_element_ord_eligible(
-                                elem_node.clone(),
-                                source_indices.clone(),
-                                emit_info.clone(),
-                            ) {
-                                {
-                                    let elem_name = crate::v1_std_core::authored_name_at(
-                                        source_indices.clone(),
-                                        elem_node.clone(),
-                                    );
-                                    emit_rust_compile_error_expr(v1_rt::concat(
-                                        v1_rt::concat(
-                                            "Set element type ".to_string(),
-                                            elem_name.clone(),
-                                        ),
-                                        " is not Ord-eligible for BTreeSet".to_string(),
-                                    ))
-                                }
-                            } else {
-                                crate::v1_compiler_emit::render_node_type(
-                                    n.clone(),
-                                    RenderTarget::Rust,
-                                    shared_types.clone(),
-                                    source_indices.clone(),
-                                )
-                            }
-                        }
-                    }
-                    None => emit_rust_compile_error_expr("Set missing element type".to_string()),
+            if ((((n.connective.clone() == Connective::NoConnective)
+                && ((n.children.clone().len() as i64) > 0))
+                && !crate::std_types::is_container_type(crate::v1_std_core::authored_name_at(
+                    source_indices.clone(),
+                    n.clone(),
+                )))
+                && closed_alias_peels_zero_param(emit_info.fn_type_env.clone(), n.clone()))
+            {
+                {
+                    let leaf = crate::v1_std_core::qualified_last_segment(
+                        crate::v1_std_core::authored_name_at(source_indices.clone(), n.clone()),
+                    );
+                    render_rust_shared_type_with_optional(
+                        n.clone(),
+                        leaf.clone(),
+                        leaf.clone(),
+                        shared_types.clone(),
+                    )
                 }
             } else {
-                if crate::v1_compiler_infer_types::node_is_keyed_collection(
-                    n.clone(),
-                    source_indices.clone(),
-                ) {
-                    match n.children.clone().first().cloned() {
-                        Some(key_child) => {
-                            let key_node =
-                                crate::v1_compiler_infer_types::child_type_node(key_child.clone());
-                            let val_node =
-                                match n.children.clone().iter().cloned().skip(1 as usize).next() {
-                                    Some(val_child) => {
-                                        crate::v1_compiler_infer_types::child_type_node(
-                                            val_child.clone(),
-                                        )
-                                    }
-                                    None => type_variable_node("map_value".to_string()),
-                                };
-                            let key_str = render_rust_type(
-                                key_node.clone(),
-                                shared_types.clone(),
-                                source_indices.clone(),
-                                emit_info.clone(),
-                            );
-                            let val_str = render_rust_type(
-                                val_node.clone(),
-                                shared_types.clone(),
-                                source_indices.clone(),
-                                emit_info.clone(),
-                            );
-                            let tn = crate::v1_std_core::authored_name_at(
-                                source_indices.clone(),
-                                n.clone(),
-                            );
-                            let base = crate::v1_compiler_emit::emit_map_type(
-                                key_str.clone(),
-                                val_str.clone(),
-                                RenderTarget::Rust,
-                            );
-                            render_rust_shared_type_with_optional(
-                                n.clone(),
-                                tn.clone(),
-                                base.clone(),
-                                shared_types.clone(),
-                            )
-                        }
-                        None => crate::v1_compiler_emit::render_node_type(
-                            n.clone(),
-                            RenderTarget::Rust,
-                            shared_types.clone(),
-                            source_indices.clone(),
-                        ),
-                    }
+                if (((n.connective.clone() == Connective::NoConnective)
+                    && ((n.children.clone().len() as i64) > 0))
+                    && !crate::std_types::is_container_type(crate::v1_std_core::authored_name_at(
+                        source_indices.clone(),
+                        n.clone(),
+                    )))
+                {
+                    render_rust_applied_via_emit_info(
+                        n.clone(),
+                        shared_types.clone(),
+                        source_indices.clone(),
+                        emit_info.clone(),
+                    )
                 } else {
-                    if crate::v1_compiler_infer_types::node_is_element_collection(
+                    if crate::v1_compiler_infer_types::node_is_set_collection(
                         n.clone(),
                         source_indices.clone(),
                     ) {
@@ -465,60 +461,178 @@ pub fn render_rust_type_without_applied_binding(
                                 let elem_node = crate::v1_compiler_infer_types::child_type_node(
                                     elem_child.clone(),
                                 );
-                                let inner_str = render_rust_type(
-                                    elem_node.clone(),
-                                    shared_types.clone(),
-                                    source_indices.clone(),
-                                    emit_info.clone(),
-                                );
-                                let tn = crate::v1_std_core::authored_name_at(
-                                    source_indices.clone(),
-                                    n.clone(),
-                                );
-                                let base = crate::v1_compiler_emit::emit_container(
-                                    tn.clone(),
-                                    inner_str.clone(),
-                                    RenderTarget::Rust,
-                                );
-                                render_rust_shared_type_with_optional(
-                                    n.clone(),
-                                    tn.clone(),
-                                    base.clone(),
-                                    shared_types.clone(),
-                                )
-                            }
-                            None => crate::v1_compiler_emit::render_node_type(
-                                n.clone(),
-                                RenderTarget::Rust,
-                                shared_types.clone(),
-                                source_indices.clone(),
-                            ),
-                        }
-                    } else {
-                        {
-                            let tn = crate::v1_std_core::authored_name_at(
-                                source_indices.clone(),
-                                n.clone(),
-                            );
-                            if type_node_has_unbound_type_variable(
-                                n.clone(),
-                                emit_info.fn_generic_param_names.clone(),
-                                source_indices.clone(),
-                            ) {
-                                "_".to_string()
-                            } else {
-                                if is_host_text_carrier_type(n.clone(), source_indices.clone()) {
-                                    rust_carrier_optional_wrap(
-                                        n.clone(),
-                                        render_rust_text_carrier(shared_types.clone()),
+                                let elem_is_type_var = if (elem_node.inferred.clone() != None) {
+                                    is_type_variable(elem_node.inferred.clone().clone().unwrap())
+                                } else {
+                                    false
+                                };
+                                if elem_is_type_var.clone() {
+                                    emit_rust_compile_error_expr(
+                                        "Set element type unresolved".to_string(),
                                     )
                                 } else {
-                                    crate::v1_compiler_emit::render_node_type(
+                                    if !rust_btree_set_element_ord_eligible(
+                                        elem_node.clone(),
+                                        source_indices.clone(),
+                                        emit_info.clone(),
+                                    ) {
+                                        {
+                                            let elem_name = crate::v1_std_core::authored_name_at(
+                                                source_indices.clone(),
+                                                elem_node.clone(),
+                                            );
+                                            emit_rust_compile_error_expr(v1_rt::concat(
+                                                v1_rt::concat(
+                                                    "Set element type ".to_string(),
+                                                    elem_name.clone(),
+                                                ),
+                                                " is not Ord-eligible for BTreeSet".to_string(),
+                                            ))
+                                        }
+                                    } else {
+                                        crate::v1_compiler_emit::render_node_type(
+                                            n.clone(),
+                                            RenderTarget::Rust,
+                                            shared_types.clone(),
+                                            source_indices.clone(),
+                                        )
+                                    }
+                                }
+                            }
+                            None => {
+                                emit_rust_compile_error_expr("Set missing element type".to_string())
+                            }
+                        }
+                    } else {
+                        if crate::v1_compiler_infer_types::node_is_keyed_collection(
+                            n.clone(),
+                            source_indices.clone(),
+                        ) {
+                            match n.children.clone().first().cloned() {
+                                Some(key_child) => {
+                                    let key_node = crate::v1_compiler_infer_types::child_type_node(
+                                        key_child.clone(),
+                                    );
+                                    let val_node = match n
+                                        .children
+                                        .clone()
+                                        .iter()
+                                        .cloned()
+                                        .skip(1 as usize)
+                                        .next()
+                                    {
+                                        Some(val_child) => {
+                                            crate::v1_compiler_infer_types::child_type_node(
+                                                val_child.clone(),
+                                            )
+                                        }
+                                        None => type_variable_node("map_value".to_string()),
+                                    };
+                                    let key_str = render_rust_type(
+                                        key_node.clone(),
+                                        shared_types.clone(),
+                                        source_indices.clone(),
+                                        emit_info.clone(),
+                                    );
+                                    let val_str = render_rust_type(
+                                        val_node.clone(),
+                                        shared_types.clone(),
+                                        source_indices.clone(),
+                                        emit_info.clone(),
+                                    );
+                                    let tn = crate::v1_std_core::authored_name_at(
+                                        source_indices.clone(),
+                                        n.clone(),
+                                    );
+                                    let base = crate::v1_compiler_emit::emit_map_type(
+                                        key_str.clone(),
+                                        val_str.clone(),
+                                        RenderTarget::Rust,
+                                    );
+                                    render_rust_shared_type_with_optional(
+                                        n.clone(),
+                                        tn.clone(),
+                                        base.clone(),
+                                        shared_types.clone(),
+                                    )
+                                }
+                                None => crate::v1_compiler_emit::render_node_type(
+                                    n.clone(),
+                                    RenderTarget::Rust,
+                                    shared_types.clone(),
+                                    source_indices.clone(),
+                                ),
+                            }
+                        } else {
+                            if crate::v1_compiler_infer_types::node_is_element_collection(
+                                n.clone(),
+                                source_indices.clone(),
+                            ) {
+                                match n.children.clone().first().cloned() {
+                                    Some(elem_child) => {
+                                        let elem_node =
+                                            crate::v1_compiler_infer_types::child_type_node(
+                                                elem_child.clone(),
+                                            );
+                                        let inner_str = render_rust_type(
+                                            elem_node.clone(),
+                                            shared_types.clone(),
+                                            source_indices.clone(),
+                                            emit_info.clone(),
+                                        );
+                                        let tn = crate::v1_std_core::authored_name_at(
+                                            source_indices.clone(),
+                                            n.clone(),
+                                        );
+                                        let base = crate::v1_compiler_emit::emit_container(
+                                            tn.clone(),
+                                            inner_str.clone(),
+                                            RenderTarget::Rust,
+                                        );
+                                        render_rust_shared_type_with_optional(
+                                            n.clone(),
+                                            tn.clone(),
+                                            base.clone(),
+                                            shared_types.clone(),
+                                        )
+                                    }
+                                    None => crate::v1_compiler_emit::render_node_type(
                                         n.clone(),
                                         RenderTarget::Rust,
                                         shared_types.clone(),
                                         source_indices.clone(),
-                                    )
+                                    ),
+                                }
+                            } else {
+                                {
+                                    let tn = crate::v1_std_core::authored_name_at(
+                                        source_indices.clone(),
+                                        n.clone(),
+                                    );
+                                    if type_node_has_unbound_type_variable(
+                                        n.clone(),
+                                        emit_info.fn_generic_param_names.clone(),
+                                        source_indices.clone(),
+                                    ) {
+                                        "_".to_string()
+                                    } else {
+                                        if is_host_text_carrier_type(
+                                            n.clone(),
+                                            source_indices.clone(),
+                                        ) {
+                                            rust_carrier_optional_wrap(
+                                                n.clone(),
+                                                render_rust_text_carrier(shared_types.clone()),
+                                            )
+                                        } else {
+                                            crate::v1_compiler_emit::render_node_type(
+                                                n.clone(),
+                                                RenderTarget::Rust,
+                                                shared_types.clone(),
+                                                source_indices.clone(),
+                                            )
+                                        }
+                                    }
                                 }
                             }
                         }
@@ -1120,6 +1234,11 @@ pub fn rust_witness_carrier_from_type_node(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Option<String> {
     {
+        if ((type_node.inferred.clone() != None)
+            && crate::v1_std_core::is_compiler_error(type_node.inferred.clone().clone().unwrap()))
+        {
+            return None;
+        }
         if type_node_has_unbound_type_variable(
             type_node.clone(),
             emit_info.fn_generic_param_names.clone(),
@@ -2857,7 +2976,11 @@ pub fn render_rust_alias_rhs_type(
                         n.clone(),
                         shared_types.clone(),
                         source_indices.clone(),
-                        crate::v1_compiler_infer_emit_info::empty_emit_graph_info(),
+                        crate::v1_compiler_infer_emit_info::emit_info_with_fn_type_context(
+                            crate::v1_compiler_infer_emit_info::empty_emit_graph_info(),
+                            generic_param_names.clone(),
+                            scope.type_env.clone(),
+                        ),
                     )
                 }
             }
@@ -8198,6 +8321,8 @@ pub fn reference_derived_use_line_plan(
         });
         let type_surface_names =
             crate::v1_compiler_emit_core_support::unique_strings(item_emit_surface_names.clone());
+        let qualified_surface_leaves =
+            qualified_type_surface_leaf_candidates(type_surface_names.clone(), registry.clone());
         let field_surface_names = collect_items_field_import_surface_names(
             item_emit_surface_names.clone(),
             emit_info.clone(),
@@ -8255,8 +8380,14 @@ pub fn reference_derived_use_line_plan(
                         v1_rt::concat(
                             v1_rt::concat(
                                 v1_rt::concat(
-                                    v1_rt::concat(unlisted_type_names.clone(), value_names.clone()),
-                                    type_surface_names.clone(),
+                                    v1_rt::concat(
+                                        v1_rt::concat(
+                                            unlisted_type_names.clone(),
+                                            value_names.clone(),
+                                        ),
+                                        type_surface_names.clone(),
+                                    ),
+                                    qualified_surface_leaves.clone(),
                                 ),
                                 field_surface_names.clone(),
                             ),
@@ -8448,6 +8579,52 @@ v1_rt::concat(block_lines.clone(), fallback.clone())
             rows: rows.clone(),
         })
     }
+}
+
+pub fn qualified_type_surface_leaf_candidates(
+    names: Rc<Vec<String>>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
+) -> Rc<Vec<String>> {
+    Rc::new({
+        let mut __result = Vec::new();
+        for name in names.iter().cloned() {
+            __result.extend(
+                (*if !v1_rt::string_contains(&name, ".".to_string()) {
+                    Rc::new(vec![])
+                } else {
+                    {
+                        let leaf = crate::v1_std_core::qualified_last_segment(name.clone());
+                        match v1_rt::map_get(&registry, name.clone()) {
+                            Some(qualified_info) => {
+                                if is_duplicate_qualified_item_registry_marker(
+                                    qualified_info.clone(),
+                                ) {
+                                    Rc::new(vec![])
+                                } else {
+                                    match v1_rt::map_get(&registry, leaf.clone()) {
+                                        Some(bare_info) => {
+                                            if (bare_info.module_name.clone()
+                                                == qualified_info.module_name.clone())
+                                            {
+                                                Rc::new(vec![leaf.clone()])
+                                            } else {
+                                                Rc::new(vec![])
+                                            }
+                                        }
+                                        None => Rc::new(vec![]),
+                                    }
+                                }
+                            }
+                            None => Rc::new(vec![]),
+                        }
+                    }
+                })
+                .iter()
+                .cloned(),
+            );
+        }
+        __result
+    })
 }
 
 pub fn reference_derived_use_lines(
@@ -23179,12 +23356,22 @@ pub fn lambda_param_type_strs(
                                     ) {
                                         None
                                     } else {
-                                        Some(render_rust_type(
-                                            param_type.clone(),
-                                            shared_types.clone(),
-                                            source_indices.clone(),
-                                            emit_info.clone(),
-                                        ))
+                                        {
+                                            let rendered = render_rust_type(
+                                                param_type.clone(),
+                                                shared_types.clone(),
+                                                source_indices.clone(),
+                                                emit_info.clone(),
+                                            );
+                                            if rust_fold_rendered_type_has_any_spurious_generic(
+                                                rendered.clone(),
+                                                emit_info.fn_generic_param_names.clone(),
+                                            ) {
+                                                None
+                                            } else {
+                                                Some(rendered.clone())
+                                            }
+                                        }
                                     }
                                 }
                             }
@@ -23549,9 +23736,16 @@ pub fn emit_rust_fold_method_call(
                         acc_type.clone(),
                         scope.type_env.clone().source_indices.clone(),
                     ));
-                if (((is_under_resolved_map.clone() || is_under_resolved_list.clone())
+                let is_under_resolved_generic = type_node_has_closure_unbound_generic_atom(
+                    acc_type.clone(),
+                    emit_info.fn_generic_param_names.clone(),
+                    scope.type_env.clone(),
+                    scope.type_env.clone().source_indices.clone(),
+                );
+                if ((((is_under_resolved_map.clone() || is_under_resolved_list.clone())
                     || is_under_resolved_set.clone())
                     || is_under_resolved_non_collection.clone())
+                    || is_under_resolved_generic.clone())
                 {
                     match contextual_acc_type.clone() {
                         Some(concrete_type) => concrete_type.clone(),
@@ -24807,6 +25001,14 @@ pub fn emit_rust_generic_method_call(
     }
 }
 
+pub fn rust_unrealized_service_op_refusal(
+    service_name: String,
+    method: String,
+    module_name: String,
+) -> String {
+    v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("panic!(\"unrealized host seam: service op ".to_string(), service_name.clone()), ".".to_string()), method.clone()), " in ".to_string()), module_name.clone()), ": the Rust realization binds a service only through an async fn parameter, and this function declares none\")".to_string())
+}
+
 pub fn emit_typed_method_call(
     method_call_node: Rc<Node>,
     receiver: Rc<Node>,
@@ -24827,152 +25029,168 @@ pub fn emit_typed_method_call(
                 op_params,
                 ..
             } => {
-                let var_name =
-                    crate::v1_compiler_emit_core_support::service_var_name(svc_name.clone());
-                let si = scope.type_env.clone().source_indices.clone();
-                let filled_args = fill_op_default_args(
-                    args.clone(),
-                    op_params.clone(),
-                    registry.clone(),
-                    scope.clone(),
-                    depth.clone(),
-                    shared_types.clone(),
-                    emit_info.clone(),
-                );
-                let optional_param_set = Rc::new({
-                    let mut __result = Vec::new();
-                    for p in op_params.iter().cloned() {
-                        if (crate::v1_std_core::param_node_type_expr(p.clone())
-                            .return_cardinality
-                            .clone()
-                            == Cardinality::CardOptional)
-                        {
-                            __result.push(p);
-                        }
-                    }
-                    __result
-                })
-                .iter()
-                .cloned()
-                .fold(
-                    v1_rt::rc_empty_map::<String, bool>(),
-                    |acc: Rc<HashMap<String, bool>>, p: Rc<Node>| {
-                        v1_rt::rc_map_insert(
-                            acc,
-                            crate::v1_std_core::param_node_name_at(p.clone(), si.clone()),
-                            true,
-                        )
-                    },
-                );
-                let json_param_set = Rc::new({
-                    let mut __result = Vec::new();
-                    for p in op_params.iter().cloned() {
-                        if (crate::v1_compiler_coercion::coerce_primitive_type(
-                            RenderTarget::Rust,
-                            crate::v1_std_core::authored_name_at(
-                                si.clone(),
-                                crate::v1_std_core::param_node_type_expr(p.clone()),
-                            ),
-                            crate::v1_compiler_coercion::type_reference_decl_file(
-                                crate::v1_std_core::param_node_type_expr(p.clone()),
-                            ),
-                        ) == "serde_json::Value".to_string())
-                        {
-                            __result.push(p);
-                        }
-                    }
-                    __result
-                })
-                .iter()
-                .cloned()
-                .fold(
-                    v1_rt::rc_empty_map::<String, bool>(),
-                    |acc: Rc<HashMap<String, bool>>, p: Rc<Node>| {
-                        v1_rt::rc_map_insert(
-                            acc,
-                            crate::v1_std_core::param_node_name_at(p.clone(), si.clone()),
-                            true,
-                        )
-                    },
-                );
-                let arg_strs = Rc::new({
-                    let mut __result = Vec::new();
-                    for a in filled_args.iter().cloned() {
-                        __result.push({
-                            let arg_str = emit_typed_expr(
-                                crate::v1_std_core::arg_value(a.clone()),
-                                registry.clone(),
-                                scope.clone(),
-                                depth.clone(),
-                                shared_types.clone(),
-                                emit_info.clone(),
-                                1024,
-                            );
-                            let aname = match crate::v1_std_core::arg_name_at(a.clone(), si.clone())
-                            {
-                                Some(n) => n.clone(),
-                                None => "".to_string(),
-                            };
-                            let param_is_json = match v1_rt::map_get(&json_param_set, aname.clone())
-                            {
-                                Some(_) => true,
-                                None => false,
-                            };
-                            let param_is_optional =
-                                match v1_rt::map_get(&optional_param_set, aname.clone()) {
-                                    Some(_) => true,
-                                    None => false,
-                                };
-                            let needs_optional = (param_is_optional.clone()
-                                && (is_already_optional(
-                                    crate::v1_std_core::arg_value(a.clone()),
-                                    emit_info.clone(),
-                                    scope.clone(),
-                                ) == false));
-                            let coerced = if (param_is_json.clone()
-                                && is_string_typed_expr(
-                                    crate::v1_std_core::arg_value(a.clone()),
-                                    si.clone(),
-                                )) {
-                                v1_rt::concat(
-                                    v1_rt::concat(
-                                        "serde_json::from_str(&".to_string(),
-                                        arg_str.clone(),
-                                    ),
-                                    ").unwrap()".to_string(),
-                                )
-                            } else {
-                                arg_str.clone()
-                            };
-                            if needs_optional.clone() {
-                                v1_rt::concat(
-                                    v1_rt::concat("Some(".to_string(), coerced.clone()),
-                                    ")".to_string(),
-                                )
-                            } else {
-                                coerced.clone()
+                if !crate::v1_compiler_infer_service::is_typed_service_call_receiver(
+                    receiver.clone(),
+                    scope.type_env.clone().source_indices.clone(),
+                ) {
+                    rust_unrealized_service_op_refusal(
+                        svc_name.clone(),
+                        method.clone(),
+                        scope.module_name.clone(),
+                    )
+                } else {
+                    {
+                        let var_name = crate::v1_compiler_emit_core_support::service_var_name(
+                            svc_name.clone(),
+                        );
+                        let si = scope.type_env.clone().source_indices.clone();
+                        let filled_args = fill_op_default_args(
+                            args.clone(),
+                            op_params.clone(),
+                            registry.clone(),
+                            scope.clone(),
+                            depth.clone(),
+                            shared_types.clone(),
+                            emit_info.clone(),
+                        );
+                        let optional_param_set = Rc::new({
+                            let mut __result = Vec::new();
+                            for p in op_params.iter().cloned() {
+                                if (crate::v1_std_core::param_node_type_expr(p.clone())
+                                    .return_cardinality
+                                    .clone()
+                                    == Cardinality::CardOptional)
+                                {
+                                    __result.push(p);
+                                }
                             }
+                            __result
+                        })
+                        .iter()
+                        .cloned()
+                        .fold(
+                            v1_rt::rc_empty_map::<String, bool>(),
+                            |acc: Rc<HashMap<String, bool>>, p: Rc<Node>| {
+                                v1_rt::rc_map_insert(
+                                    acc,
+                                    crate::v1_std_core::param_node_name_at(p.clone(), si.clone()),
+                                    true,
+                                )
+                            },
+                        );
+                        let json_param_set = Rc::new({
+                            let mut __result = Vec::new();
+                            for p in op_params.iter().cloned() {
+                                if (crate::v1_compiler_coercion::coerce_primitive_type(
+                                    RenderTarget::Rust,
+                                    crate::v1_std_core::authored_name_at(
+                                        si.clone(),
+                                        crate::v1_std_core::param_node_type_expr(p.clone()),
+                                    ),
+                                    crate::v1_compiler_coercion::type_reference_decl_file(
+                                        crate::v1_std_core::param_node_type_expr(p.clone()),
+                                    ),
+                                ) == "serde_json::Value".to_string())
+                                {
+                                    __result.push(p);
+                                }
+                            }
+                            __result
+                        })
+                        .iter()
+                        .cloned()
+                        .fold(
+                            v1_rt::rc_empty_map::<String, bool>(),
+                            |acc: Rc<HashMap<String, bool>>, p: Rc<Node>| {
+                                v1_rt::rc_map_insert(
+                                    acc,
+                                    crate::v1_std_core::param_node_name_at(p.clone(), si.clone()),
+                                    true,
+                                )
+                            },
+                        );
+                        let arg_strs = Rc::new({
+                            let mut __result = Vec::new();
+                            for a in filled_args.iter().cloned() {
+                                __result.push({
+                                    let arg_str = emit_typed_expr(
+                                        crate::v1_std_core::arg_value(a.clone()),
+                                        registry.clone(),
+                                        scope.clone(),
+                                        depth.clone(),
+                                        shared_types.clone(),
+                                        emit_info.clone(),
+                                        1024,
+                                    );
+                                    let aname = match crate::v1_std_core::arg_name_at(
+                                        a.clone(),
+                                        si.clone(),
+                                    ) {
+                                        Some(n) => n.clone(),
+                                        None => "".to_string(),
+                                    };
+                                    let param_is_json =
+                                        match v1_rt::map_get(&json_param_set, aname.clone()) {
+                                            Some(_) => true,
+                                            None => false,
+                                        };
+                                    let param_is_optional =
+                                        match v1_rt::map_get(&optional_param_set, aname.clone()) {
+                                            Some(_) => true,
+                                            None => false,
+                                        };
+                                    let needs_optional = (param_is_optional.clone()
+                                        && (is_already_optional(
+                                            crate::v1_std_core::arg_value(a.clone()),
+                                            emit_info.clone(),
+                                            scope.clone(),
+                                        ) == false));
+                                    let coerced = if (param_is_json.clone()
+                                        && is_string_typed_expr(
+                                            crate::v1_std_core::arg_value(a.clone()),
+                                            si.clone(),
+                                        )) {
+                                        v1_rt::concat(
+                                            v1_rt::concat(
+                                                "serde_json::from_str(&".to_string(),
+                                                arg_str.clone(),
+                                            ),
+                                            ").unwrap()".to_string(),
+                                        )
+                                    } else {
+                                        arg_str.clone()
+                                    };
+                                    if needs_optional.clone() {
+                                        v1_rt::concat(
+                                            v1_rt::concat("Some(".to_string(), coerced.clone()),
+                                            ")".to_string(),
+                                        )
+                                    } else {
+                                        coerced.clone()
+                                    }
+                                });
+                            }
+                            __result
                         });
-                    }
-                    __result
-                });
-                let args_str = arg_strs.clone().join(&", ".to_string());
-                v1_rt::concat(
-                    v1_rt::concat(
+                        let args_str = arg_strs.clone().join(&", ".to_string());
                         v1_rt::concat(
                             v1_rt::concat(
-                                v1_rt::concat(var_name.clone(), ".".to_string()),
-                                crate::v1_compiler_emit::emit_ident(
-                                    method.clone(),
-                                    RenderTarget::Rust,
+                                v1_rt::concat(
+                                    v1_rt::concat(
+                                        v1_rt::concat(var_name.clone(), ".".to_string()),
+                                        crate::v1_compiler_emit::emit_ident(
+                                            method.clone(),
+                                            RenderTarget::Rust,
+                                        ),
+                                    ),
+                                    "(".to_string(),
                                 ),
+                                args_str.clone(),
                             ),
-                            "(".to_string(),
-                        ),
-                        args_str.clone(),
-                    ),
-                    ").await?".to_string(),
-                )
+                            ").await?".to_string(),
+                        )
+                    }
+                }
             }
             MethodSemantics::AlgebraMethodSemantics {
                 method_def,
