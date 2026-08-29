@@ -1,6 +1,6 @@
 module gunbc.semantic_conformance
 
-import std.types { String, NonEmptyStr, Bool, Int, List, list_length }
+import std.types { String, NonEmptyStr, Bool, Int, List, CommitSha, list_length }
 import std.decl_ref { DeclarationRef, declaration_ref_eq }
 import extdeps.external_authority { ExternalAuthority }
 import std.primitive_projection { PrimitiveIdentity }
@@ -49,7 +49,7 @@ type PrimarySemanticAuthority
 type SupplementaryObservation
   = V2EvaluatorObservation { observed: NonEmptyStr }
   | LegacyV1Observation { observed: NonEmptyStr }
-  | PreviouslyRecordedOutput { observed: NonEmptyStr, recorded_at_revision: NonEmptyStr }
+  | PreviouslyRecordedOutput { observed: NonEmptyStr, recorded_at_revision: CommitSha }
 
 // The expectation the authority yields. It is carried beside the authority rather than derived from
 // it inside this module, because deriving it would require executing the law, and a carrier that
@@ -212,7 +212,7 @@ type CoverageStanding
   | CoveragePopulationMeasuredComplete {
       area: CoverageArea,
       members: List<DeclarationRef>,
-      measured_revision: NonEmptyStr,
+      measured_revision: CommitSha,
       producer: DeclarationRef
     }
 
@@ -523,13 +523,13 @@ fn conformance_exit_gate(
 // gate's counted blockers, so a refusal is a located, countable diagnostic rather than an absence.
 type ConformanceAdmission
   = ConformanceAdmitted {
-      source_revision: NonEmptyStr,
+      source_revision: CommitSha,
       judged_route: PromotedRoute,
       subject_count: Int,
       producer: DeclarationRef
     }
   | ConformanceRefused {
-      source_revision: NonEmptyStr,
+      source_revision: CommitSha,
       judged_route: PromotedRoute,
       blocking_dispositions: Int,
       unmeasured_areas: Int,
@@ -537,7 +537,7 @@ type ConformanceAdmission
     }
 
 fn admit_conformance(
-  source_revision: NonEmptyStr,
+  source_revision: CommitSha,
   dispositions: List<ConformanceDisposition>,
   route: PromotedRoute,
   coverage: List<CoverageStanding>,

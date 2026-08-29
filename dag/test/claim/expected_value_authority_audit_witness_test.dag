@@ -1,6 +1,6 @@
 module test.claim.expected_value_authority_audit_witness
 
-import std.types { String, NonEmptyStr, Bool, Int, List, list_length }
+import std.types { String, NonEmptyStr, Bool, Int, List, CommitSha, list_length }
 import std.decl_ref { DeclarationRef, decl_ref }
 import gunbc.semantic_conformance { AuthoredExpectedOutcome }
 import gunbc.expected_value_authority_audit {
@@ -16,6 +16,8 @@ import gunbc.expected_value_authority_audit {
 }
 
 fn nes(s: String) -> NonEmptyStr { s as NonEmptyStr }
+
+fn fixture_rev(s: String) -> CommitSha { s as CommitSha }
 
 fn fixture_claim(name: String) -> DeclarationRef {
   decl_ref(module_path: "fixture.expected_value_audit", decl_name: name)
@@ -62,7 +64,7 @@ fn measured(rows: List<AuditRow>) -> AuditPartition {
   PartitionMeasured {
     rows: rows,
     subject_universe: nes(s: "fixture universe"),
-    measured_revision: nes(s: "fixture-revision"),
+    measured_revision: fixture_rev(s: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"),
     producer: fixture_claim(name: "fixture_producer"),
     command: nes(s: "fixture command"),
   }

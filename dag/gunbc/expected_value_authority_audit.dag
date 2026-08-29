@@ -1,6 +1,6 @@
 module gunbc.expected_value_authority_audit
 
-import std.types { String, NonEmptyStr, Bool, Int, List, list_length }
+import std.types { String, NonEmptyStr, Bool, Int, List, CommitSha, list_length }
 import std.decl_ref { DeclarationRef, declaration_ref_eq }
 import gunbc.semantic_conformance { PrimarySemanticAuthority }
 
@@ -72,7 +72,7 @@ type AuditPartition
   | PartitionMeasured {
       rows: List<AuditRow>,
       subject_universe: NonEmptyStr,
-      measured_revision: NonEmptyStr,
+      measured_revision: CommitSha,
       producer: DeclarationRef,
       command: NonEmptyStr
     }
