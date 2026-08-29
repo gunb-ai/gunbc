@@ -10246,6 +10246,19 @@ fn emit_rust_first_method_call(receiver: Node, registry: Map<String, ItemInfo>, 
 // method's NAME appears in `rt_functions()`, which is the same leaf-spelling re-lookup the call
 // path above removed: a record field holding a callable named `contains` lost to the bridge
 // roster purely on spelling.
+//
+// ONE CALLER DID NOT KNOW, AND SAID `true` ANYWAY. The algebra fallback in emit_typed_method_call
+// hardcoded runtime_bridge: true, and tier0 method resolution resolves an ordinary fn-typed RECORD
+// FIELD through lookup_field_in_product -- so `algebra.step(..)` arrived as AlgebraMethodSemantics
+// with the field node as its method_def, took that fallback, and emitted `v1_rt::step`. The
+// callable-field arm directly below exists for exactly that receiver and was unreachable, because
+// it is guarded on runtime_bridge == false. 65 E0425s in the v2 compiler closure -- `member`,
+// `apply`, `is_empty`, `step`, `init`, `allocate_literal` and friends -- were that one `true`.
+//
+// It now passes the realization question, keyed on the same registry as the plain-call seam
+// (rust_runtime_primitive_has_bridge), so a method that IS a bridge still lowers to one, a
+// callable field lowers as a field, and a name that is neither reaches the loud refusal below
+// instead of a fabricated v1_rt symbol.
 fn emit_rust_generic_method_call(method_name: String, receiver: Node, args: List<Node>, result_type: InferredNode?, runtime_bridge: Bool, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo) -> String {
   let function_name = method_name
   if runtime_bridge == false && rust_receiver_has_callable_method_field(receiver: receiver, method_name: function_name, scope: scope) {
@@ -10348,7 +10361,7 @@ fn emit_typed_method_call(method_call_node: Node, receiver: Node, method: String
               rust_shared_wrap_ctor(inner_expr: raw)
             } else { raw }
           Absent =>
-            emit_rust_generic_method_call(method_name: method_name, receiver: receiver, args: args, result_type: result_type, runtime_bridge: true, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
+            emit_rust_generic_method_call(method_name: method_name, receiver: receiver, args: args, result_type: result_type, runtime_bridge: rust_runtime_primitive_has_bridge(primitive_name: method_name), registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
         }
       }
     }
