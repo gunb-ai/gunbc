@@ -4,6 +4,7 @@ module test.claim.semantic_conformance_witness
 // else's closure, so bare references would not bind.
 import std.types { String, NonEmptyStr, Bool, Int, List }
 import std.decl_ref { DeclarationRef, decl_ref }
+import std.primitive_projection { primitive_identity_slug }
 import gunbc.semantic_conformance {
   PrimarySemanticAuthority, AuthoredExpectedOutcome,
   ExpectedOutcome, ExpectsValue, ExpectsRefusal, ExpectsEffectOrder,
@@ -16,9 +17,13 @@ import gunbc.semantic_conformance {
   DifferentialRecord,
   ConformanceDisposition, Conforms, NativeV2Defect, V2EvaluatorDefect, HostRealizationDefect,
   SemanticAuthorityMissing, WitnessDefect, LegacyV1Defect,
+  ContractFacet, ValueResultFacet, RefusalBehaviorFacet, EffectOrderingFacet,
+  BehaviorSubjectIdentity,
   PromotedRoute, EvaluatorOnPromotedRoute, EvaluatorOffPromotedRoute,
   CoverageStanding, CoveragePopulationUnmeasured, CoveragePopulationMeasuredComplete,
   ExitGateVerdict, ExitGateOpen, ExitGateBlocked,
+  ConformanceAdmission, ConformanceAdmitted, ConformanceRefused,
+  admit_conformance,
   classify_differential_record,
   disposition_blocks_cutover,
   conformance_exit_gate,
@@ -44,9 +49,13 @@ fn fixture_expected() -> ExpectedOutcome {
   ExpectsValue { digest: nes(s: "authority-value") }
 }
 
+fn fixture_identity(consumer: String, facet: ContractFacet) -> BehaviorSubjectIdentity {
+  BehaviorSubjectIdentity { retained_consumer: fixture_ref(name: consumer), facet: facet }
+}
+
 fn fixture_subject() -> BehaviorSubject {
   BehaviorSubject {
-    subject_id: nes(s: "fixture.subject.one"),
+    subject_id: fixture_identity(consumer: "subject_one", facet: ValueResultFacet),
     authority: fixture_authority(),
     authority_producer: fixture_ref(name: "authored_authority_producer"),
     expected: fixture_expected(),
@@ -236,7 +245,7 @@ test fn a_subject_with_no_primary_authority_is_authority_missing_and_blocks() ->
     d: classify_differential_record(
       record: DifferentialRecord {
         binding: AuthorityMissing {
-          subject_id: nes(s: "fixture.subject.undeclared"),
+          subject_id: fixture_identity(consumer: "undeclared_subject", facet: RefusalBehaviorFacet),
           area: CompilerClosureMechanism,
         },
         native_v2: right(),
@@ -248,18 +257,20 @@ test fn a_subject_with_no_primary_authority_is_authority_missing_and_blocks() ->
     )
   )
     && disposition_blocks_cutover(
-      disposition: SemanticAuthorityMissing { subject_id: nes(s: "fixture.subject.undeclared") },
+      disposition: SemanticAuthorityMissing {
+        subject_id: fixture_identity(consumer: "undeclared_subject", facet: RefusalBehaviorFacet)
+      },
       route: EvaluatorOffPromotedRoute
     )
 }
 
 fn effect(name: String, ordinal: Int) -> EffectReceiptEntry {
-  EffectReceiptEntry { operation: fixture_ref(name: name), ordinal: ordinal }
+  EffectReceiptEntry { operation: primitive_identity_slug(name: name), ordinal: ordinal }
 }
 
 fn ordered_effect_subject() -> BehaviorSubject {
   BehaviorSubject {
-    subject_id: nes(s: "fixture.subject.effects"),
+    subject_id: fixture_identity(consumer: "effect_subject", facet: EffectOrderingFacet),
     authority: fixture_authority(),
     authority_producer: fixture_ref(name: "authored_authority_producer"),
     expected: ExpectsEffectOrder {
@@ -382,7 +393,7 @@ test fn a_blocking_disposition_shuts_a_fully_measured_gate() -> Bool {
 
 fn subject_with(id: String, expected: ExpectedOutcome) -> BehaviorSubject {
   BehaviorSubject {
-    subject_id: nes(s: id),
+    subject_id: fixture_identity(consumer: id, facet: ValueResultFacet),
     authority: fixture_authority(),
     authority_producer: fixture_ref(name: "authored_authority_producer"),
     expected: expected,
@@ -406,4 +417,46 @@ test fn two_authorities_disagreeing_about_one_subject_conflict() -> Bool {
       a: subject_with(id: "s", expected: ExpectsValue { digest: nes(s: "a") }),
       b: subject_with(id: "t", expected: ExpectsRefusal { diagnostic_identity: nes(s: "a") })
     )
+}
+
+// ADMISSION IS DERIVED FROM THE GATE, in both directions: the same inputs that open the gate admit,
+// and one blocking disposition or one unmeasured area flips the constructor to the refusal arm with
+// its counts carried. The revision is asserted to survive into BOTH arms, because the field is what
+// XL-4 cross-checks a generation against and an admission that lost its subject tree would be a
+// receipt about nothing.
+test fn admission_is_derived_from_the_gate_and_carries_the_revision() -> Bool {
+  match admit_conformance(
+    source_revision: nes(s: "fixture-rev-a"),
+    dispositions: [Conforms, LegacyV1Defect { detail: nes(s: "probe divergence") }],
+    route: EvaluatorOffPromotedRoute,
+    coverage: [measured(area: CompilerClosureMechanism)],
+    producer: fixture_ref(name: "fixture_admission_producer")
+  ) {
+    ConformanceAdmitted { source_revision: r, judged_route: _, subject_count: n, producer: _ } =>
+      r == nes(s: "fixture-rev-a") && n == 2
+    ConformanceRefused {
+      source_revision: _,
+      judged_route: _,
+      blocking_dispositions: _,
+      unmeasured_areas: _,
+      producer: _
+    } => false
+  }
+    && match admit_conformance(
+      source_revision: nes(s: "fixture-rev-a"),
+      dispositions: [NativeV2Defect { detail: nes(s: "blocks") }],
+      route: EvaluatorOffPromotedRoute,
+      coverage: [unmeasured(area: RequiredV2TestClaim)],
+      producer: fixture_ref(name: "fixture_admission_producer")
+    ) {
+      ConformanceAdmitted { source_revision: _, judged_route: _, subject_count: _, producer: _ } =>
+        false
+      ConformanceRefused {
+        source_revision: r,
+        judged_route: _,
+        blocking_dispositions: b,
+        unmeasured_areas: u,
+        producer: _
+      } => r == nes(s: "fixture-rev-a") && b == 1 && u == 1
+    }
 }

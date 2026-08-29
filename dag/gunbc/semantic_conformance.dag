@@ -3,6 +3,7 @@ module gunbc.semantic_conformance
 import std.types { String, NonEmptyStr, Bool, Int, List, list_length }
 import std.decl_ref { DeclarationRef, declaration_ref_eq }
 import extdeps.external_authority { ExternalAuthority }
+import std.primitive_projection { PrimitiveIdentity }
 
 // CONFORMANCE, NOT EQUIVALENCE, AND THE DIFFERENCE IS THE WHOLE MODULE.
 //
@@ -74,8 +75,14 @@ type LegacyObservation
   = LegacyRun { result: ObservedResult }
   | LegacyNotConsulted
 
+// THE OPERATION IDENTITY IS XL-1's, NOT A LOCAL COINAGE (boundary ruling, XL-N manager
+// 2026-08-29): what an effect operation IS belongs to std.primitive_projection, the identity
+// vocabulary the effect-demand census keys on. This lane owns only the ORDER a receipt must
+// satisfy, so the entry adds exactly one fact -- the ordinal -- to an identity it imports. A
+// DeclarationRef-typed operation field here would have been a second naming scheme for a fact
+// the primitive-projection authority already owns.
 type EffectReceiptEntry {
-  operation: DeclarationRef
+  operation: PrimitiveIdentity
   ordinal: Int
 }
 
@@ -88,13 +95,72 @@ type CoverageArea
   | HostEffectAdmissionAndReceiptOrdering
   | Xl2NativeInterface
 
+// SUBJECT IDENTITY IS DERIVED, NOT MINTED (boundary ruling, XL-N manager 2026-08-29). The
+// conformance universe is keyed on the RETAINED portion of the interpreter replacement boundary:
+// XL-5 produces the exact retained-consumer population that discharges
+// gunbc.replacement_cut RegisteredCutRemeasureRequired for cut-v1-interpreter, and a behavior
+// subject here is one retained consumer crossed with one facet of its contract. The facet axis is
+// this lane's own: which ASPECT of the contract the authority speaks to. The two universes are
+// related and not equal -- one consumer yields many subjects, and no subject exists for a consumer
+// XL-5 retires -- which is why the consumer field is a DeclarationRef into THEIR population rather
+// than a name this module could invent. Until that population lands, only synthetic fixture refs
+// inhabit it.
+type ContractFacet
+  = ValueResultFacet
+  | RefusalBehaviorFacet
+  | EffectOrderingFacet
+  | ResolutionBehaviorFacet
+
+type BehaviorSubjectIdentity {
+  retained_consumer: DeclarationRef
+  facet: ContractFacet
+}
+
+fn behavior_subject_identity_eq(a: BehaviorSubjectIdentity, b: BehaviorSubjectIdentity) -> Bool {
+  declaration_ref_eq(a: a.retained_consumer, b: b.retained_consumer)
+    && contract_facet_eq(a: a.facet, b: b.facet)
+}
+
+fn contract_facet_eq(a: ContractFacet, b: ContractFacet) -> Bool {
+  match a {
+    ValueResultFacet =>
+      match b {
+        ValueResultFacet => true
+        RefusalBehaviorFacet => false
+        EffectOrderingFacet => false
+        ResolutionBehaviorFacet => false
+      }
+    RefusalBehaviorFacet =>
+      match b {
+        ValueResultFacet => false
+        RefusalBehaviorFacet => true
+        EffectOrderingFacet => false
+        ResolutionBehaviorFacet => false
+      }
+    EffectOrderingFacet =>
+      match b {
+        ValueResultFacet => false
+        RefusalBehaviorFacet => false
+        EffectOrderingFacet => true
+        ResolutionBehaviorFacet => false
+      }
+    ResolutionBehaviorFacet =>
+      match b {
+        ValueResultFacet => false
+        RefusalBehaviorFacet => false
+        EffectOrderingFacet => false
+        ResolutionBehaviorFacet => true
+      }
+  }
+}
+
 // A subject either HAS a primary authority or it is a discovered member of the coverage roster with
 // none. The second arm is why SemanticAuthorityMissing is a reachable disposition rather than a
 // decoration: BehaviorSubject cannot be constructed without an authority, so the missing case must
 // enter the judgment as its own binding, discovered from the roster rather than authored as a
 // half-filled subject.
 type BehaviorSubject {
-  subject_id: NonEmptyStr
+  subject_id: BehaviorSubjectIdentity
   authority: PrimarySemanticAuthority
   authority_producer: DeclarationRef
   expected: ExpectedOutcome
@@ -103,7 +169,7 @@ type BehaviorSubject {
 
 type SubjectAuthorityBinding
   = AuthorityBound { subject: BehaviorSubject }
-  | AuthorityMissing { subject_id: NonEmptyStr, area: CoverageArea }
+  | AuthorityMissing { subject_id: BehaviorSubjectIdentity, area: CoverageArea }
 
 type DifferentialRecord {
   binding: SubjectAuthorityBinding
@@ -122,8 +188,8 @@ type ConformanceDisposition
   | NativeV2Defect { detail: NonEmptyStr }
   | V2EvaluatorDefect { detail: NonEmptyStr }
   | HostRealizationDefect { detail: NonEmptyStr }
-  | SemanticAuthorityMissing { subject_id: NonEmptyStr }
-  | SemanticAuthorityConflict { subject_id: NonEmptyStr, detail: NonEmptyStr }
+  | SemanticAuthorityMissing { subject_id: BehaviorSubjectIdentity }
+  | SemanticAuthorityConflict { subject_id: BehaviorSubjectIdentity, detail: NonEmptyStr }
   | WitnessDefect { detail: NonEmptyStr }
   | LegacyV1Defect { detail: NonEmptyStr }
   | Unclassified { detail: NonEmptyStr }
@@ -202,7 +268,7 @@ fn observed_was_run(observed: ObservedResult) -> Bool {
 // what makes a reordered receipt a HostRealizationDefect rather than a shorter list that happens to
 // agree.
 fn effect_entry_eq(a: EffectReceiptEntry, b: EffectReceiptEntry) -> Bool {
-  declaration_ref_eq(a: a.operation, b: b.operation) && a.ordinal == b.ordinal
+  a.operation.slug == b.operation.slug && a.ordinal == b.ordinal
 }
 
 fn effect_receipt_contains_entry(
@@ -342,7 +408,7 @@ fn classify_differential_record(
 // can see. Same id and the SAME expectation is not a conflict but a duplicate authority row, which
 // is a different defect with a different remedy and is left to the roster's own admission.
 fn subjects_conflict(a: BehaviorSubject, b: BehaviorSubject) -> Bool {
-  a.subject_id == b.subject_id
+  behavior_subject_identity_eq(a: a.subject_id, b: b.subject_id)
     && !expected_outcome_eq(a: a.expected, b: b.expected)
 }
 
@@ -445,6 +511,55 @@ fn conformance_exit_gate(
       }
     }
   )
+}
+
+// THE ADMISSION CARRIER XL-4's GENERATION RECEIPT TYPES AGAINST (hand-off owed per XL-N manager
+// ruling, 2026-08-29). A generation is admitted against a conformance judgment OF A NAMED TREE:
+// source_revision is the revision the dispositions and coverage were measured at, and it is the
+// field XL-4 cross-checks against the generation's own revision -- an admission for one tree says
+// nothing about another. Admission is DERIVED from the exit gate, never authored: the only
+// constructor path offered is admit_conformance, so a ConformanceAdmitted value entails that the
+// gate computation ran over the carried inputs. The refusal arm carries the same revision plus the
+// gate's counted blockers, so a refusal is a located, countable diagnostic rather than an absence.
+type ConformanceAdmission
+  = ConformanceAdmitted {
+      source_revision: NonEmptyStr,
+      judged_route: PromotedRoute,
+      subject_count: Int,
+      producer: DeclarationRef
+    }
+  | ConformanceRefused {
+      source_revision: NonEmptyStr,
+      judged_route: PromotedRoute,
+      blocking_dispositions: Int,
+      unmeasured_areas: Int,
+      producer: DeclarationRef
+    }
+
+fn admit_conformance(
+  source_revision: NonEmptyStr,
+  dispositions: List<ConformanceDisposition>,
+  route: PromotedRoute,
+  coverage: List<CoverageStanding>,
+  producer: DeclarationRef
+) -> ConformanceAdmission {
+  match conformance_exit_gate(dispositions: dispositions, route: route, coverage: coverage) {
+    ExitGateOpen =>
+      ConformanceAdmitted {
+        source_revision: source_revision,
+        judged_route: route,
+        subject_count: list_length(items: dispositions),
+        producer: producer
+      }
+    ExitGateBlocked { blocking_dispositions: b, unmeasured_areas: u } =>
+      ConformanceRefused {
+        source_revision: source_revision,
+        judged_route: route,
+        blocking_dispositions: b,
+        unmeasured_areas: u,
+        producer: producer
+      }
+  }
 }
 
 // THE CEILING OF THE DISJOINTNESS CLAIM, STATED RATHER THAN CLAIMED GREEN. The wall that a
