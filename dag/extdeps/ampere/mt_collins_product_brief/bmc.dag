@@ -1,0 +1,28 @@
+module extdeps.ampere.mt_collins_product_brief.bmc
+
+import std.types { String }
+import extdeps.bmc.endpoint { BmcFirmwareFamily, AmiMegaRac }
+import extdeps.ampere.mt_collins_product_brief.subject { MtCollinsPublicProductBrief, mt_collins_public_product_brief }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https,
+    locator: "amperecomputing.com/customer-connect/products/mt-collins",
+  }
+}
+
+data bmc_subject: MtCollinsPublicProductBrief = mt_collins_public_product_brief
+
+// The management stack shipping on the Foxconn Mt. Collins build, established by
+// execution against a held unit 2026-08-29 (FRU-confirmed board): AMI MegaRAC, reached
+// over IPMI lanplus and the proprietary REST surface modeled in extdeps.bmc.megarac,
+// with no Redfish endpoint on that build. Factory login and API contract rows live with
+// the stack (extdeps.bmc.megarac), not here - this row only binds platform to family so
+// a workflow holding a Mt. Collins knows which access authority applies.
+data mt_collins_bmc_firmware: BmcFirmwareFamily = AmiMegaRac
+
+data mt_collins_bmc_no_redfish_observation: String = "BUILD-SCOPED: GET /redfish/v1 returns 404 on this shipping build (firmware revision 0.32, probed 2026-08-29); the service roster is web/kvm/cd-media/hd-media/ssh with no Redfish service present. This is the build-grain carrier the family module's protocol floor points at - family-level Redfish support is an AMI marketing claim, decided per build here."
+
+data mt_collins_bmc_provenance_note: String = "Grounded by execution, not collateral: the public Ampere/Foxconn documents for Mt. Collins do not state the BMC firmware product. Scope is the observed shipping build; a re-flashed unit would change the family row for that unit - though as of 2026-08-29 no OpenBMC machine layer exists for Mt. Collins: upstream and Ampere-fork meta-ampere carry meta-jade, meta-jefferson and meta-mitchell only, so an OpenBMC Collins is a porting project (the fork ships a porting_guide.md), not a flash, which is why fleet workflows read the family from the unit's intake receipt when present and fall back to this platform default only for an unprobed unit."

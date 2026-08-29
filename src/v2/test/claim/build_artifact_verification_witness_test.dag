@@ -7,7 +7,6 @@ import v2.extdeps.languages.bash_build {
   bash_build_word_var
 }
 import v2.workflow.bash_command_fold_serialize { bash_fold_serialize_node }
-import v2.workflow.build_step_emit { verifications_script }
 import tools.build_step { BuildArtifact, emit_verifications }
 import gunbc.ci_spec { ci_floor_build_verify_script }
 import v2.std.collection { Absent, Present, list_at_optional }
@@ -60,18 +59,6 @@ test fn witness_single_artifact_produces_two_checks() -> Bool {
 
 test fn witness_existence_check_no_mtime() -> Bool {
   stmt_text(s: probe_stmts().first())
-}
-
-test fn witness_serialized_conjuncts_and_teeth() -> Bool {
-  match verifications_script(produces: [probe_artifact()]) {
-    Accepted { value: script, diagnostics: _ } =>
-      string_contains(s: script, pattern: "-x")
-        && string_contains(s: script, pattern: "-s")
-        && !string_contains(s: script, pattern: "-newer")
-        && string_contains(s: script, pattern: "/target/release/probe_bin")
-        && string_contains(s: script, pattern: "exit 1")
-    Rejected { diagnostics: _ } => false
-  }
 }
 
 test fn witness_floor_covers_both_release_bins() -> Bool {

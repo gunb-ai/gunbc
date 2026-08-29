@@ -5,6 +5,7 @@ import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import extdeps.bmc.endpoint { BmcFirmwareFamily, BmcProtocol }
 import std.credentials { FactoryLogin }
+import extdeps.bmc.megarac { megarac_factory_login, megarac_supported_protocols_floor }
 import std.types { List }
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -26,20 +27,28 @@ type RedfishHostStorageVisibility =
 
 data openbmc_redfish_host_storage_visibility: RedfishHostStorageVisibility = HostStorageBlind
 
+// FAMILY-FLOOR answer, matching megarac_supported_protocols_floor: Redfish presence is
+// per ODM build, so the family-grain guarantee on Redfish host-storage enumeration is
+// none - blind. A build that ships Redfish answers at its own build grain.
+data megarac_host_storage_visibility: RedfishHostStorageVisibility = HostStorageBlind
+
 fn bmc_firmware_factory_login(family: BmcFirmwareFamily) -> FactoryLogin {
   match family {
     OpenBmc => openbmc_factory_login
+    AmiMegaRac => megarac_factory_login
   }
 }
 
 fn bmc_firmware_supported_protocols(family: BmcFirmwareFamily) -> List<BmcProtocol> {
   match family {
     OpenBmc => openbmc_supported_protocols
+    AmiMegaRac => megarac_supported_protocols_floor
   }
 }
 
 fn bmc_firmware_host_storage_visibility(family: BmcFirmwareFamily) -> RedfishHostStorageVisibility {
   match family {
     OpenBmc => openbmc_redfish_host_storage_visibility
+    AmiMegaRac => megarac_host_storage_visibility
   }
 }
