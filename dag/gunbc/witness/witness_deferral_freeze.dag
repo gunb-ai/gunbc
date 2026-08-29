@@ -192,28 +192,12 @@ data frozen_path_deferrals: List<FrozenPathDeferral> = [
       "artifact_fs_eviction_of_empty_receipt_deletes_nothing"
     ]
   },
-  FrozenPathDeferral { entry: "dag/test/claim/ci_deploy_observed_wet_test.dag", functions: ["ci_deploy_observed_wet_witnesses"] },
   FrozenPathDeferral {
     entry: "dag/test/claim/deploy_access_privilege_witness_test.dag",
     functions: [
       "witness_modeled_unprivileged_fixture_is_denied",
       "witness_unprivileged_mutation_refused_before_shell",
       "witness_unprivileged_mutation_directive_is_refused_terminal"
-    ]
-  },
-  FrozenPathDeferral {
-    entry: "dag/test/claim/host_effect_apply_witness_test.dag",
-    functions: [
-      "witness_redfish_on_bmc_unimplemented_fails_closed",
-      "witness_redfish_on_hostos_typed_mismatch", "witness_shell_on_bmc_typed_mismatch",
-      "witness_incompatible_is_refused_terminal",
-      "witness_ssh_empty_script_fails_closed",
-      "witness_identity_evidence_derives_oneshot_drive",
-      "witness_converge_loop_evidence_derives_converge_drive",
-      "witness_arbitrary_non_idempotent_derives_oneshot_not_redrive",
-      "witness_lattice_breaking_shape_derives_oneshot_not_redrive",
-      "witness_converge_plan_fail_closed_on_knob_frontier",
-      "witness_converge_plan_on_bmc_typed_mismatch", "witness_converge_plan_redrives_on_frontier"
     ]
   },
   FrozenPathDeferral { entry: "dag/test/claim/lever_a_local_receipt_witness_test.dag", functions: ["lever_a_local_receipts_hold"] },
@@ -248,23 +232,6 @@ data frozen_path_deferrals: List<FrozenPathDeferral> = [
   FrozenPathDeferral { entry: "dag/test/claim/long/commit_witness_claim_roster_witness_test.dag", functions: ["commit_witness_claim_roster_holds"] },
   FrozenPathDeferral { entry: "dag/test/claim/long/import_closure_live_test.dag", functions: ["dag_import_closure_live_witness_bundle_holds"] },
   FrozenPathDeferral { entry: "dag/test/claim/long/reference_closure_equivalence_test.dag", functions: ["reference_closure_b2_safety_wall_holds"] },
-  FrozenPathDeferral {
-    entry: "dag/test/claim/srv3_host_effect_apply_witness_test.dag",
-    functions: [
-      "witness_srv3_receipt_emit_apply_converges_in_process",
-      "witness_bmcweb_token_extract_ssh_transport_refuses_typed",
-      "witness_bmcweb_session_login_argv_uses_curl_authority_not_serialize_bash",
-      "witness_srv3_typed_effect_on_bmc_refuses_typed",
-      "witness_srv3_typed_reconcile_ssh_transport_refuses_typed",
-      "witness_srv3_nbd_proxy_apply_foreign_port_refuses_at_apply_time",
-      "witness_srv3_nbd_proxy_apply_stale_matching_drains_not_foreign_kill",
-      "witness_srv3_nbd_proxy_websocat_argv_materializes_token_not_shell_env_ref",
-      "witness_srv3_nbd_proxy_serve_session_binding_carries_lease",
-      "witness_srv3_nbd_proxy_on_bmc_refuses_typed",
-      "srv3_typed_receipt_emit_realizes_in_process_not_shell",
-      "srv3_typed_receipt_carrier_holds_lines", "shell_bash_runner_still_present_for_p5b"
-    ]
-  },
   FrozenPathDeferral { entry: "src/v2/test/claim/complexity/accumulator_copy_roster_gate_lean_bash_test.dag", functions: ["roster_lean_zero_suspects_within_ratchet", "roster_bash_zero_suspects_within_ratchet"] },
   FrozenPathDeferral {
     entry: "src/v2/test/claim/complexity/accumulator_copy_roster_gate_std_test.dag",
@@ -681,16 +648,6 @@ data frozen_path_deferrals: List<FrozenPathDeferral> = [
       "ts_import_emit_other_path_discriminates_holds",
       "ts_import_emit_missing_qn_fails_closed_holds",
       "ts_import_emit_empty_names_fails_closed_holds"
-    ]
-  },
-  FrozenPathDeferral {
-    entry: "src/v2/test/claim/identity_captured_navigation/long/roster_gate_test.dag",
-    functions: [
-      "roster_dag_language_model_zero_suspects_within_ratchet",
-      "roster_body_lowering_fold_zero_suspects_within_ratchet",
-      "roster_ingest_stage_zero_suspects_within_ratchet",
-      "roster_parse_stage_zero_suspects_within_ratchet",
-      "roster_accumulator_copy_analyze_zero_suspects_within_ratchet"
     ]
   },
   FrozenPathDeferral {
