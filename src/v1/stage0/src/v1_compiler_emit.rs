@@ -9,6 +9,7 @@ use self::FileResultChannel::*;
 use self::FileVerb::*;
 use self::FuncBodyShape::*;
 use self::JsonFragmentsAccum::*;
+use self::TargetEmissionMode::*;
 use self::TcoExprShape::*;
 use self::TransportBindingRefusal::*;
 pub use crate::extdeps_languages_go_emit::go_method_templates_flat;
@@ -4950,46 +4951,69 @@ pub fn unmodeled_file_transport_operation_diagnostics(
     }
 }
 
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+)]
+#[serde(tag = "_variant")]
+pub enum TargetEmissionMode {
+    RealizesTransports,
+    SerializesSubstrate,
+}
+
+pub fn target_emission_mode(target: RenderTarget) -> TargetEmissionMode {
+    match target.clone() {
+        RenderTarget::Rust => TargetEmissionMode::RealizesTransports,
+        RenderTarget::Python => TargetEmissionMode::RealizesTransports,
+        RenderTarget::Go => TargetEmissionMode::RealizesTransports,
+        RenderTarget::Dag => TargetEmissionMode::SerializesSubstrate,
+    }
+}
+
 pub fn unmodeled_file_transport_diagnostics(
     typed: Rc<ResolvedGraph>,
     target: RenderTarget,
 ) -> Rc<Vec<Rc<ErrorNode>>> {
-    Rc::new({
-        let mut __result = Vec::new();
-        for tm in typed.modules.clone().iter().cloned() {
-            __result.extend(
-                (*Rc::new({
-                    let mut __result = Vec::new();
-                    for item in Rc::new({
+    match target_emission_mode(target.clone()) {
+        TargetEmissionMode::SerializesSubstrate => Rc::new(vec![]),
+        TargetEmissionMode::RealizesTransports => Rc::new({
+            let mut __result = Vec::new();
+            for tm in typed.modules.clone().iter().cloned() {
+                __result.extend(
+                    (*Rc::new({
                         let mut __result = Vec::new();
-                        for item in tm.items.clone().iter().cloned() {
-                            if crate::v1_compiler_emit_core_support::is_service_item(item.clone()) {
-                                __result.push(item);
+                        for item in Rc::new({
+                            let mut __result = Vec::new();
+                            for item in tm.items.clone().iter().cloned() {
+                                if crate::v1_compiler_emit_core_support::is_service_item(
+                                    item.clone(),
+                                ) {
+                                    __result.push(item);
+                                }
                             }
+                            __result
+                        })
+                        .iter()
+                        .cloned()
+                        {
+                            __result.extend(
+                                (*unmodeled_file_transport_operation_diagnostics(
+                                    tm.clone(),
+                                    item.clone(),
+                                    target.clone(),
+                                ))
+                                .iter()
+                                .cloned(),
+                            );
                         }
                         __result
-                    })
+                    }))
                     .iter()
-                    .cloned()
-                    {
-                        __result.extend(
-                            (*unmodeled_file_transport_operation_diagnostics(
-                                tm.clone(),
-                                item.clone(),
-                                target.clone(),
-                            ))
-                            .iter()
-                            .cloned(),
-                        );
-                    }
-                    __result
-                }))
-                .iter()
-                .cloned(),
-            );
-        }
-        __result
-    })
+                    .cloned(),
+                );
+            }
+            __result
+        }),
+    }
 }
 
 pub fn emit_unmodeled_file_transport_refusal_with_cause(
@@ -7414,3 +7438,7 @@ pub struct ExprCatBinding;
 pub struct ExprCatService;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct ExprCatNone;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct RealizesTransports;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct SerializesSubstrate;
