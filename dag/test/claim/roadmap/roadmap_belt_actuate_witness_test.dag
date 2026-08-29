@@ -96,20 +96,11 @@ import gunbc.roadmap_belt_actuate {
   BeltStopResult, StopDisabled,
   BeltNodeLookup, NodeFound, NodeMissing, AuthorityProjectionRefused,
   belt_find_node_in,
-  belt_node_session_liveness,
-  BeltSessionLiveness, BeltSessionRunning, BeltSessionStaleTerminal,
-  BeltSessionLivenessUnobserved, BeltSessionAbsent,
-  BeltDispatchResult, DispatchSpawned, DispatchAlreadyLive, DispatchDisabled, DispatchNodeNotFound,
-  DispatchNodeAlreadyDone, DispatchObserveRefused, DispatchAuthorityRefused, DispatchSpawnFailed,
-  DispatchStaleSession, DispatchSessionLivenessUnobserved,
-  BeltSessionMultiplicityConflict,
+  BeltSpawnOutcome, Spawned, SpawnFailed, SpawnNotAdmitted,
+  belt_spawn_outcome_json,
   belt_tick_classify_sessions,
-  BeltRevisionAdmitted, BeltRevisionRefusedDrifted, BeltRevisionRefusedUnobserved,
-  belt_revision_admission,
-  DispatchRevisionDrifted, DispatchRevisionUnobserved,
   belt_dispatch_result_ok,
   belt_dispatch_status_label,
-  belt_dispatch_result_json_value,
   belt_dispatch_provider_label,
   belt_dispatch_ok_status_labels,
   DispatchLabelBandRow, belt_dispatch_label_band_rows, label_band_rows_cover,
@@ -139,8 +130,19 @@ import gunbc.roadmap_belt_actuate {
   belt_tick_receipt_from_result,
   belt_tick_empty_reconcile,
   BeltTickResult,
-  Running,
   srv1_live_dashboard_instance,
+}
+import gunbc.roadmap_belt { ManualReady }
+import gunbc.roadmap_launch_admission {
+  LaunchRefusal,
+  LaunchInstanceActuationRefused, LaunchTransitionInhibited, LaunchRevisionUnobserved, LaunchRevisionDrift,
+  LaunchAuthorityUnobserved, LaunchNodeUnknown, LaunchNodeSuperseded, LaunchAlreadyAccepted, LaunchReviewRequired,
+  LaunchSizeMissing, LaunchExecutionContractMissing, LaunchDependenciesBlocked, LaunchSessionsUnobservable,
+  LaunchAlreadyLive, LaunchStaleSession, LaunchLivenessUnobserved, LaunchSessionMultiplicityConflict,
+  LaunchNoCapacity, LaunchCauseNotPermitted, LaunchGateNotEvaluated,
+  LaunchSessionsObserved,
+  LaunchGateVerdict, GatePassed, GateRefused, GateNotReached,
+  launch_gate_live, launch_gate_revision,
 }
 import gunbc.roadmap_dashboard_instance {
   DashboardInstanceResolved,
@@ -244,6 +246,7 @@ fn is_spawn_failed(o: BeltSpawnOutcome) -> Bool {
   match o {
     SpawnFailed { node_id: _, step: _, detail: _, provider: _ } => true
     Spawned { node_id: _, session_name: _, provider: _ } => false
+    SpawnNotAdmitted { node_id: _, refusal: _ } => false
   }
 }
 
@@ -503,145 +506,157 @@ test fn witness_find_node_first_wins_on_duplicate() -> Bool {
 // worker evidence is the placeholder whose own reason reads "tmux name presence does not
 // observe pane liveness or exit". They therefore pinned the defect: a retained dead pane
 // answered live, DispatchAlreadyLive returned through the accepted band, and the operator
-// got a positive acknowledgement with no agent. Both are replaced rather than kept beside
-// the new ones, because the true arm asserted the exact behaviour that is now wrong.
+// got a positive acknowledgement with no agent. RLM-1 re-homed the per-node verdict into the
+// shared launch admission's no-live-attempt gate (launch_gate_live); these witnesses follow it.
+fn live_gate(live: List<DispatchLiveSession>, node_id: String) -> LaunchGateVerdict {
+  launch_gate_live(sessions: LaunchSessionsObserved { live: live }, node_id: node_id)
+}
+
 test fn witness_node_session_running_is_live() -> Bool {
-  match belt_node_session_liveness(
+  match live_gate(
     live: [live_session_with_process(
       node_id: "a",
       process: WorkerProcessRunning { command: "codex" as NonEmptyStr },
     )],
     node_id: "a",
   ) {
-    BeltSessionRunning { session_name: _, command: c } => c == "codex"
+    GateRefused { refusal } => match refusal { LaunchAlreadyLive { session_name: sn } => sn == "gunbc-dispatch-a" _ => false }
     _ => false
   }
 }
 
 test fn witness_node_session_absent_is_not_live() -> Bool {
-  match belt_node_session_liveness(
+  match live_gate(
     live: [live_session_with_process(
       node_id: "a",
       process: WorkerProcessRunning { command: "codex" as NonEmptyStr },
     )],
     node_id: "b",
   ) {
-    BeltSessionAbsent => true
+    GatePassed => true
     _ => false
   }
 }
 
 // THE DISCRIMINATING RED for the dead-pane defect: a present session whose pane exited is
-// NOT live, so it cannot suppress a spawn. Under the prior any(node_id) check this returned
-// true and the click was answered "already_live".
+// NOT live, so it cannot answer AlreadyLive -- and it cannot pass either.
 test fn witness_retained_dead_pane_is_not_live() -> Bool {
-  match belt_node_session_liveness(
+  match live_gate(
     live: [live_session_with_process(
       node_id: "a",
       process: WorkerProcessExited { exit_code: 0, last_command: "codex" },
     )],
     node_id: "a",
   ) {
-    BeltSessionStaleTerminal { session_name: _, detail: _ } => true
+    GateRefused { refusal } => match refusal { LaunchStaleSession { session_name: _, detail: _ } => true _ => false }
     _ => false
   }
 }
 
 // The honest third state refuses in BOTH directions: it is not live (so it never reports a
-// running agent) and it is not the absent path either — the dispatch fold routes it to
-// DispatchSessionLivenessUnobserved rather than spawning blind.
+// running agent) and it is not the absent path either.
 test fn witness_unobserved_liveness_is_not_live() -> Bool {
-  match belt_node_session_liveness(
+  match live_gate(
     live: [live_session(node_id: "a", verdict: Converged)],
     node_id: "a",
   ) {
-    BeltSessionLivenessUnobserved { session_name: _, reason: _ } => true
+    GateRefused { refusal } => match refusal { LaunchLivenessUnobserved { session_name: _, reason: _ } => true _ => false }
     _ => false
   }
 }
 
 test fn witness_session_liveness_is_four_valued() -> Bool {
-  let running = belt_node_session_liveness(
+  let running = live_gate(
     live: [live_session_with_process(
       node_id: "a",
       process: WorkerProcessRunning { command: "codex" as NonEmptyStr },
     )],
     node_id: "a",
   )
-  let dead = belt_node_session_liveness(
+  let dead = live_gate(
     live: [live_session_with_process(
       node_id: "a",
       process: WorkerProcessExited { exit_code: 3, last_command: "codex" },
     )],
     node_id: "a",
   )
-  let unobserved = belt_node_session_liveness(
+  let unobserved = live_gate(
     live: [live_session(node_id: "a", verdict: Converged)],
     node_id: "a",
   )
-  let absent = belt_node_session_liveness(live: [], node_id: "a")
-  (match running { BeltSessionRunning { session_name: _, command: c } => c == "codex" _ => false })
-    && (match dead { BeltSessionStaleTerminal { session_name: _, detail: d } => string_contains(s: d, pattern: "status 3") _ => false })
-    && (match unobserved { BeltSessionLivenessUnobserved { session_name: _, reason: _ } => true _ => false })
-    && (match absent { BeltSessionAbsent => true _ => false })
+  let absent = live_gate(live: [], node_id: "a")
+  (match running { GateRefused { refusal } => match refusal { LaunchAlreadyLive { session_name: _ } => true _ => false } _ => false })
+    && (match dead { GateRefused { refusal } => match refusal { LaunchStaleSession { session_name: _, detail: d } => string_contains(s: d, pattern: "status 3") _ => false } _ => false })
+    && (match unobserved { GateRefused { refusal } => match refusal { LaunchLivenessUnobserved { session_name: _, reason: _ } => true _ => false } _ => false })
+    && (match absent { GatePassed => true _ => false })
+}
+
+fn not_admitted(r: LaunchRefusal) -> BeltSpawnOutcome {
+  SpawnNotAdmitted { node_id: "a", refusal: r }
 }
 
 // The stale and unobserved arms must never reach the ok band — an accepted no-op is the
 // failure this change exists to remove, and the band is the single ok-authority.
 test fn witness_stale_session_is_never_ok() -> Bool {
-  !belt_dispatch_result_ok(r: DispatchStaleSession { node_id: "a", session_name: "s", detail: "d" })
-    && !belt_dispatch_result_ok(r: DispatchSessionLivenessUnobserved { node_id: "a", session_name: "s", reason: "r" })
-    && belt_dispatch_status_label(r: DispatchStaleSession { node_id: "a", session_name: "s", detail: "d" }) == "stale_session"
+  !belt_dispatch_result_ok(r: not_admitted(r: LaunchStaleSession { session_name: "s", detail: "d" }))
+    && !belt_dispatch_result_ok(r: not_admitted(r: LaunchLivenessUnobserved { session_name: "s", reason: "r" }))
+    && belt_dispatch_status_label(r: not_admitted(r: LaunchStaleSession { session_name: "s", detail: "d" })) == "stale_session"
 }
 
 test fn witness_dispatch_result_ok_spawned_and_live() -> Bool {
-  belt_dispatch_result_ok(r: DispatchSpawned { node_id: "a", session_name: "gunbc-dispatch-a", provider: "codex" })
-    && belt_dispatch_result_ok(r: DispatchAlreadyLive { node_id: "a", session_name: "gunbc-dispatch-a" })
+  belt_dispatch_result_ok(r: Spawned { node_id: "a", session_name: "gunbc-dispatch-a", provider: "codex" })
+    && belt_dispatch_result_ok(r: not_admitted(r: LaunchAlreadyLive { session_name: "gunbc-dispatch-a" }))
 }
 
 test fn witness_dispatch_result_refusals_not_ok() -> Bool {
-  !belt_dispatch_result_ok(r: DispatchDisabled { node_id: "a", instance_id: "preview", reason: "observe-only" })
-    && !belt_dispatch_result_ok(r: DispatchNodeNotFound { node_id: "a" })
-    && !belt_dispatch_result_ok(r: DispatchNodeAlreadyDone { node_id: "a" })
-    && !belt_dispatch_result_ok(r: DispatchObserveRefused { node_id: "a", reason: "x" })
-    && !belt_dispatch_result_ok(r: DispatchSpawnFailed { node_id: "a", step: "git", detail: "x", provider: "codex" })
+  !belt_dispatch_result_ok(r: not_admitted(r: LaunchInstanceActuationRefused { instance_id: "preview", reason: "observe-only" }))
+    && !belt_dispatch_result_ok(r: not_admitted(r: LaunchNodeUnknown))
+    && !belt_dispatch_result_ok(r: not_admitted(r: LaunchAlreadyAccepted))
+    && !belt_dispatch_result_ok(r: not_admitted(r: LaunchSessionsUnobservable { reason: "x" }))
+    && !belt_dispatch_result_ok(r: SpawnFailed { node_id: "a", step: "git", detail: "x", provider: "codex" })
+    && !belt_dispatch_result_ok(r: not_admitted(r: LaunchDependenciesBlocked { blockers: ["p"] }))
+    && !belt_dispatch_result_ok(r: not_admitted(r: LaunchNoCapacity { occupied: 3, max_concurrent: 3 }))
 }
 
-fn status_label_glued_to_ok(r: BeltDispatchResult) -> Bool {
+fn status_label_glued_to_ok(r: BeltSpawnOutcome) -> Bool {
   let ok = belt_dispatch_result_ok(r: r)
   let label_in_ok_set = any(belt_dispatch_ok_status_labels(), l => l == belt_dispatch_status_label(r: r))
   ok == label_in_ok_set
 }
 
 test fn witness_dispatch_status_labels_glued_to_ok_set() -> Bool {
-  status_label_glued_to_ok(r: DispatchSpawned { node_id: "a", session_name: "s", provider: "codex" })
-    && status_label_glued_to_ok(r: DispatchAlreadyLive { node_id: "a", session_name: "s" })
-    && status_label_glued_to_ok(r: DispatchDisabled { node_id: "a", instance_id: "preview", reason: "observe-only" })
-    && status_label_glued_to_ok(r: DispatchNodeNotFound { node_id: "a" })
-    && status_label_glued_to_ok(r: DispatchNodeAlreadyDone { node_id: "a" })
-    && status_label_glued_to_ok(r: DispatchObserveRefused { node_id: "a", reason: "x" })
-    && status_label_glued_to_ok(r: DispatchSpawnFailed { node_id: "a", step: "git", detail: "x", provider: "codex" })
+  status_label_glued_to_ok(r: Spawned { node_id: "a", session_name: "s", provider: "codex" })
+    && status_label_glued_to_ok(r: not_admitted(r: LaunchAlreadyLive { session_name: "s" }))
+    && status_label_glued_to_ok(r: not_admitted(r: LaunchInstanceActuationRefused { instance_id: "preview", reason: "observe-only" }))
+    && status_label_glued_to_ok(r: not_admitted(r: LaunchNodeUnknown))
+    && status_label_glued_to_ok(r: not_admitted(r: LaunchAlreadyAccepted))
+    && status_label_glued_to_ok(r: not_admitted(r: LaunchSessionsUnobservable { reason: "x" }))
+    && status_label_glued_to_ok(r: SpawnFailed { node_id: "a", step: "git", detail: "x", provider: "codex" })
+    && all(belt_dispatch_result_exemplars(), r => status_label_glued_to_ok(r: r))
 }
 
 test fn witness_dispatch_status_labels_pin_wire_contract() -> Bool {
-  belt_dispatch_status_label(r: DispatchSpawned { node_id: "a", session_name: "s", provider: "codex" }) == "spawned"
-    && belt_dispatch_status_label(r: DispatchAlreadyLive { node_id: "a", session_name: "s" }) == "already_live"
-    && belt_dispatch_status_label(r: DispatchDisabled { node_id: "a", instance_id: "preview", reason: "observe-only" }) == "disabled"
-    && belt_dispatch_status_label(r: DispatchNodeNotFound { node_id: "a" }) == "node_not_found"
-    && belt_dispatch_status_label(r: DispatchNodeAlreadyDone { node_id: "a" }) == "already_done_signed_off"
-    && belt_dispatch_status_label(r: DispatchObserveRefused { node_id: "a", reason: "x" }) == "observe_refused"
-    && belt_dispatch_status_label(r: DispatchAuthorityRefused { node_id: "a", detail: "x" }) == "authority_refused"
-    && belt_dispatch_status_label(r: DispatchSpawnFailed { node_id: "a", step: "git", detail: "x", provider: "codex" }) == "spawn_failed"
+  belt_dispatch_status_label(r: Spawned { node_id: "a", session_name: "s", provider: "codex" }) == "spawned"
+    && belt_dispatch_status_label(r: not_admitted(r: LaunchAlreadyLive { session_name: "s" })) == "already_live"
+    && belt_dispatch_status_label(r: not_admitted(r: LaunchInstanceActuationRefused { instance_id: "preview", reason: "observe-only" })) == "disabled"
+    && belt_dispatch_status_label(r: not_admitted(r: LaunchNodeUnknown)) == "node_not_found"
+    && belt_dispatch_status_label(r: not_admitted(r: LaunchAlreadyAccepted)) == "already_done_signed_off"
+    && belt_dispatch_status_label(r: not_admitted(r: LaunchSessionsUnobservable { reason: "x" })) == "observe_refused"
+    && belt_dispatch_status_label(r: not_admitted(r: LaunchAuthorityUnobserved { detail: "x" })) == "authority_refused"
+    && belt_dispatch_status_label(r: SpawnFailed { node_id: "a", step: "git", detail: "x", provider: "codex" }) == "spawn_failed"
+    && belt_dispatch_status_label(r: not_admitted(r: LaunchDependenciesBlocked { blockers: ["p"] })) == "dependencies_blocked"
+    && belt_dispatch_status_label(r: not_admitted(r: LaunchExecutionContractMissing { reason: "r" })) == "execution_contract_missing"
+    && belt_dispatch_status_label(r: not_admitted(r: LaunchCauseNotPermitted { cause: gunbc.roadmap_launch_admission.Timer, mode: ManualReady })) == "cause_not_permitted_by_mode"
 }
 
 test fn witness_fresh_spawn_wire_names_selected_provider() -> Bool {
   string_contains(
-    s: serialize_json(v: belt_dispatch_result_json_value(
-      r: DispatchSpawned { node_id: "a", session_name: "s", provider: "codex" })),
+    s: serialize_json(v: belt_spawn_outcome_json(
+      o: Spawned { node_id: "a", session_name: "s", provider: "codex" })),
     pattern: "\"provider\": \"codex\"")
     && string_contains(
-      s: serialize_json(v: belt_dispatch_result_json_value(
-        r: DispatchSpawnFailed { node_id: "a", step: "codex-auth", detail: "not logged in", provider: "codex" })),
+      s: serialize_json(v: belt_spawn_outcome_json(
+        o: SpawnFailed { node_id: "a", step: "codex-auth", detail: "not logged in", provider: "codex" })),
       pattern: "\"provider\": \"codex\"")
 }
 
@@ -654,8 +669,16 @@ fn band_key_for_label(label: String) -> String {
 }
 
 test fn witness_band_fold_pins_operator_vocabulary() -> Bool {
-  belt_dispatch_label_band_rows().length() == 14
+  belt_dispatch_label_band_rows().length() == 22
     && band_key_for_label(label: "stale_session") == "loud"
+    && band_key_for_label(label: "dependencies_blocked") == "fail"
+    && band_key_for_label(label: "execution_contract_missing") == "fail"
+    && band_key_for_label(label: "size_missing") == "fail"
+    && band_key_for_label(label: "review_required") == "fail"
+    && band_key_for_label(label: "node_superseded") == "fail"
+    && band_key_for_label(label: "no_capacity") == "fail"
+    && band_key_for_label(label: "cause_not_permitted_by_mode") == "fail"
+    && band_key_for_label(label: "gate_not_evaluated") == "loud"
     && band_key_for_label(label: "session_liveness_unobserved") == "loud"
     && band_key_for_label(label: "deployed_revision_drifted") == "loud"
     && band_key_for_label(label: "deployed_revision_unobserved") == "loud"
@@ -692,23 +715,31 @@ data d4_exemplar_reconcile_note: String = "D4: belt_dispatch_result_exemplars is
 fn d4_wire_contract_labels() -> List<String> {
   [
     "spawned",
-    "already_live",
-    "disabled",
-    "node_not_found",
-    "already_done_signed_off",
-    "observe_refused",
-    "authority_refused",
     "spawn_failed",
+    "disabled",
+    "deployment_transition_inhibited",
+    "deployed_revision_unobserved",
+    "deployed_revision_drifted",
+    "authority_refused",
+    "node_not_found",
+    "node_superseded",
+    "already_done_signed_off",
+    "review_required",
+    "size_missing",
+    "execution_contract_missing",
+    "dependencies_blocked",
+    "observe_refused",
+    "already_live",
     "stale_session",
     "session_liveness_unobserved",
-    "deployed_revision_drifted",
-    "deployed_revision_unobserved",
-    "deployment_transition_inhibited",
     "session_multiplicity_conflict",
+    "no_capacity",
+    "cause_not_permitted_by_mode",
+    "gate_not_evaluated",
   ]
 }
 
-fn d4_exemplars_reconcile(exemplars: List<BeltDispatchResult>) -> Bool {
+fn d4_exemplars_reconcile(exemplars: List<BeltSpawnOutcome>) -> Bool {
   map(exemplars, r => belt_dispatch_status_label(r: r)) == d4_wire_contract_labels()
 }
 
@@ -717,14 +748,14 @@ test fn witness_exemplar_roster_reconciles_variant_set() -> Bool {
     && belt_dispatch_all_status_labels() == d4_wire_contract_labels()
 }
 
-fn d4_exemplars_missing_one() -> List<BeltDispatchResult> {
+fn d4_exemplars_missing_one() -> List<BeltSpawnOutcome> {
   [
-    DispatchSpawned { node_id: "a", session_name: "s", provider: "codex" },
-    DispatchAlreadyLive { node_id: "a", session_name: "s" },
-    DispatchDisabled { node_id: "a", instance_id: "preview", reason: "observe-only" },
-    DispatchNodeNotFound { node_id: "a" },
-    DispatchNodeAlreadyDone { node_id: "a" },
-    DispatchObserveRefused { node_id: "a", reason: "x" },
+    Spawned { node_id: "a", session_name: "s", provider: "codex" },
+    not_admitted(r: LaunchAlreadyLive { session_name: "s" }),
+    not_admitted(r: LaunchInstanceActuationRefused { instance_id: "preview", reason: "observe-only" }),
+    not_admitted(r: LaunchNodeUnknown),
+    not_admitted(r: LaunchAlreadyAccepted),
+    not_admitted(r: LaunchSessionsUnobservable { reason: "x" }),
   ]
 }
 
@@ -1163,7 +1194,7 @@ test fn observe_refused_spawn_does_not_zero_verify_pass() -> Bool {
   let result = BeltTickResult {
     observe_refused: true,
     observe_refusal_reason: "belt_observe: tmux ls failed; session containers are unknowable",
-    reconcile: belt_tick_empty_reconcile(state: Running),
+    reconcile: belt_tick_empty_reconcile(state: ManualReady),
     spawn_outcomes: [],
     teardown_outcomes: [],
     verify_outcomes: [
@@ -1193,7 +1224,7 @@ test fn observe_refused_with_empty_verify_is_deferred_not_recorded() -> Bool {
   let result = BeltTickResult {
     observe_refused: true,
     observe_refusal_reason: "tmux refused",
-    reconcile: belt_tick_empty_reconcile(state: Running),
+    reconcile: belt_tick_empty_reconcile(state: ManualReady),
     spawn_outcomes: [],
     teardown_outcomes: [],
     verify_outcomes: [
@@ -1238,7 +1269,7 @@ test fn verification_presentation_decouples_verify_from_spawn_observe_refusal() 
     result: BeltTickResult {
       observe_refused: true,
       observe_refusal_reason: "belt_observe: tmux ls failed; session containers are unknowable",
-      reconcile: belt_tick_empty_reconcile(state: Running),
+      reconcile: belt_tick_empty_reconcile(state: ManualReady),
       spawn_outcomes: [],
       teardown_outcomes: [],
       verify_outcomes: [
@@ -1355,9 +1386,12 @@ test fn observe_only_instance_refuses_dispatch_and_stop() -> Bool {
     node_id: "namespace-canonical-binding",
   )
   match dispatched {
-    DispatchDisabled { node_id, instance_id, reason: _ } =>
+    SpawnNotAdmitted { node_id, refusal } =>
       node_id == "namespace-canonical-binding"
-        && instance_id == (preview.instance_id as String)
+        && (match refusal {
+          LaunchInstanceActuationRefused { instance_id, reason: _ } => instance_id == (preview.instance_id as String)
+          _ => false
+        })
     _ => false
   }
     && match stopped {
@@ -1779,29 +1813,30 @@ test fn an_unsettled_receipt_is_re_observed_rather_than_halting_the_row() -> Boo
 data revision_gate_witness_scope_note: String = "Projection-grain only; the live gate is owed a wet srv1 receipt."
 
 test fn witness_revision_refusals_are_never_ok() -> Bool {
-  !belt_dispatch_result_ok(r: DispatchRevisionDrifted { node_id: "a", desired: "aaa", local: "bbb" })
-    && !belt_dispatch_result_ok(r: DispatchRevisionUnobserved { node_id: "a", cause: "no git" })
+  !belt_dispatch_result_ok(r: not_admitted(r: LaunchRevisionDrift { desired: "aaa", local: "bbb" }))
+    && !belt_dispatch_result_ok(r: not_admitted(r: LaunchRevisionUnobserved { cause: "no git" }))
 }
 
 test fn witness_revision_refusal_labels_pin_wire_contract() -> Bool {
-  belt_dispatch_status_label(r: DispatchRevisionDrifted { node_id: "a", desired: "aaa", local: "bbb" }) == "deployed_revision_drifted"
-    && belt_dispatch_status_label(r: DispatchRevisionUnobserved { node_id: "a", cause: "no git" }) == "deployed_revision_unobserved"
-    && status_label_glued_to_ok(r: DispatchRevisionDrifted { node_id: "a", desired: "aaa", local: "bbb" })
-    && status_label_glued_to_ok(r: DispatchRevisionUnobserved { node_id: "a", cause: "no git" })
+  belt_dispatch_status_label(r: not_admitted(r: LaunchRevisionDrift { desired: "aaa", local: "bbb" })) == "deployed_revision_drifted"
+    && belt_dispatch_status_label(r: not_admitted(r: LaunchRevisionUnobserved { cause: "no git" })) == "deployed_revision_unobserved"
+    && status_label_glued_to_ok(r: not_admitted(r: LaunchRevisionDrift { desired: "aaa", local: "bbb" }))
+    && status_label_glued_to_ok(r: not_admitted(r: LaunchRevisionUnobserved { cause: "no git" }))
 }
 
 test fn witness_drift_receipt_names_both_revisions() -> Bool {
-  let wire = serialize_json(v: belt_dispatch_result_json_value(
-    r: DispatchRevisionDrifted { node_id: "a", desired: "deadbeef", local: "cafebabe" }))
-  string_contains(s: wire, pattern: "\"desired\": \"deadbeef\"")
-    && string_contains(s: wire, pattern: "\"local\": \"cafebabe\"")
+  let wire = serialize_json(v: belt_spawn_outcome_json(
+    o: not_admitted(r: LaunchRevisionDrift { desired: "deadbeef", local: "cafebabe" })))
+  string_contains(s: wire, pattern: "desired=deadbeef")
+    && string_contains(s: wire, pattern: "local=cafebabe")
+    && string_contains(s: wire, pattern: "\"status\": \"deployed_revision_drifted\"")
 }
 
 test fn witness_unobserved_receipt_names_its_cause() -> Bool {
   string_contains(
-    s: serialize_json(v: belt_dispatch_result_json_value(
-      r: DispatchRevisionUnobserved { node_id: "a", cause: "HEAD undecodable" })),
-    pattern: "\"cause\": \"HEAD undecodable\"")
+    s: serialize_json(v: belt_spawn_outcome_json(
+      o: not_admitted(r: LaunchRevisionUnobserved { cause: "HEAD undecodable" }))),
+    pattern: "HEAD undecodable")
 }
 
 // Handback items 3 and 4 (review artifact 51237).
@@ -1816,10 +1851,21 @@ fn dup_stale() -> DispatchLiveSession {
     node_id: "a", process: WorkerProcessExited { exit_code: 0, last_command: "codex" })
 }
 
+fn multiplicity_count(v: LaunchGateVerdict) -> Int {
+  match v {
+    GateRefused { refusal } => match refusal { LaunchSessionMultiplicityConflict { session_names: _, session_count: n } => n _ => 0 }
+    _ => 0
+  }
+}
+
 test fn witness_two_sessions_for_one_node_refuse_and_name_both() -> Bool {
-  match belt_node_session_liveness(live: [dup_running(), dup_stale()], node_id: "a") {
-    BeltSessionMultiplicityConflict { session_names: names, session_count: n } =>
-      n == 2 && string_contains(s: names, pattern: ",")
+  match live_gate(live: [dup_running(), dup_stale()], node_id: "a") {
+    GateRefused { refusal } =>
+      match refusal {
+        LaunchSessionMultiplicityConflict { session_names: names, session_count: n } =>
+          n == 2 && string_contains(s: names, pattern: ",")
+        _ => false
+      }
     _ => false
   }
 }
@@ -1827,11 +1873,9 @@ test fn witness_two_sessions_for_one_node_refuse_and_name_both() -> Bool {
 // THE DISCRIMINATING ONE: under first() these two orders answered Running and
 // StaleTerminal respectively — same observation, different verdict, no signal.
 test fn witness_multiplicity_verdict_is_order_independent() -> Bool {
-  let forward = belt_node_session_liveness(live: [dup_running(), dup_stale()], node_id: "a")
-  let reverse = belt_node_session_liveness(live: [dup_stale(), dup_running()], node_id: "a")
-  (match forward { BeltSessionMultiplicityConflict { session_names: _, session_count: a } =>
-    match reverse { BeltSessionMultiplicityConflict { session_names: _, session_count: b } => a == b _ => false }
-    _ => false })
+  let a = multiplicity_count(v: live_gate(live: [dup_running(), dup_stale()], node_id: "a"))
+  let b = multiplicity_count(v: live_gate(live: [dup_stale(), dup_running()], node_id: "a"))
+  a == 2 && a == b
 }
 
 fn witness_oid_or_refuse(hex: String) -> GitObjectId? {
@@ -1844,23 +1888,23 @@ data witness_local_hex: String = "2222222222222222222222222222222222222222"
 // The gate itself, not its output arms: deleting the fleet_revision_standing match
 // would leave every constructed-arm witness green, so drive the fold directly.
 test fn witness_revision_admission_fold_drives_all_three_arms() -> Bool {
-  let unobserved = belt_revision_admission(
-    standing: RevisionUnobserved { cause: "HEAD undecodable" })
+  let unobserved = launch_gate_revision(
+    revision: RevisionUnobserved { cause: "HEAD undecodable" })
   match witness_oid_or_refuse(hex: witness_desired_hex) {
     Present { value: d_oid } =>
       match witness_oid_or_refuse(hex: witness_local_hex) {
         Present { value: l_oid } => {
-          let converged = belt_revision_admission(
-            standing: RevisionConverged { revision: d_oid })
-          let drifted = belt_revision_admission(
-            standing: RevisionDrifted { desired: d_oid, local: l_oid })
-          (match converged { BeltRevisionAdmitted { revision: _ } => true _ => false })
+          let converged = launch_gate_revision(
+            revision: RevisionConverged { revision: d_oid })
+          let drifted = launch_gate_revision(
+            revision: RevisionDrifted { desired: d_oid, local: l_oid })
+          (match converged { GatePassed => true _ => false })
             && (match drifted {
-              BeltRevisionRefusedDrifted { desired: d, local: l } => d != l
+              GateRefused { refusal } => match refusal { LaunchRevisionDrift { desired: d, local: l } => d != l _ => false }
               _ => false
             })
             && (match unobserved {
-              BeltRevisionRefusedUnobserved { cause: c } => c == "HEAD undecodable"
+              GateRefused { refusal } => match refusal { LaunchRevisionUnobserved { cause: c } => c == "HEAD undecodable" _ => false }
               _ => false
             })
         }

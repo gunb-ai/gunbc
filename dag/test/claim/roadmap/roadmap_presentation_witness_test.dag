@@ -21,13 +21,22 @@ import gunbc.roadmap_workflow_stage {
 import gunbc.worker_lifecycle {
   WorkerProcessEvidence, WorkerProcessExited, WorkerProcessRunning,
 }
+import gunbc.roadmap_belt { ManualReady }
+import gunbc.roadmap_launch_admission {
+  LaunchAdmission, LaunchAdmitted, LaunchRefused, LaunchIdentity, Operator,
+  LaunchDependenciesBlocked, LaunchGraphProjected,
+}
+import test.claim.roadmap.roadmap_launch_admission_fixture {
+  launch_fixture_standing_clear, launch_fixture_doc,
+}
 import gunbc.roadmap_presentation {
   ActivityView, NoActiveWork, ActiveWork, ActiveWorkRefused, LegacySupersedableAttempt,
   CompletedWork, ActivityUnobservable,
   WorkAttemptFacts, NoActiveAttempt, AttemptUnobservable,
   activity_view_of,
   ActivityAttention, ActivityRoutine, ActivityAnomalous,
-  ActionAvailability, ActionUnavailable, AvailableAsOverride, ActionAvailable,
+  ActionAvailability, ActionUnavailable, ActionAvailable,
+  LaunchRowContext,
   ActionPriority, PrimaryAction, SecondaryAction, DiagnosticAction,
   WorkActionKind, DispatchAction, ClearSessionAction,
   WorkAction, ActionView,
@@ -250,30 +259,43 @@ test fn witness_all_complete_ledger_is_terminal_not_active() -> Bool {
   }
 }
 
-// The two-axis discrimination over the TYPED scheduling position: a SchedulingReady row's dispatch is Available AND Primary; an upcoming/unplanned row's dispatch is the preserved manual override — fully operable, but AvailableAsOverride and Secondary. The RED control is the conjunction: if availability implied priority (the A1 ten-equal-pills defect), the override arm would surface as primary and the second assertion fails; if the override were dropped entirely (losing the deliberate out-of-order path), the secondary list would be empty and it also fails.
-test fn witness_ready_dispatch_is_primary_override_is_secondary() -> Bool {
-  let ready_view = action_view(scheduling: SchedulingReady, lifecycle: OpenLifecycle)
-  let blocked_view = action_view(scheduling: SchedulingUpcoming { blockers: ["a2-parent-1"] }, lifecycle: OpenLifecycle)
+fn fx_admitted(node_id: String) -> LaunchAdmission {
+  LaunchAdmitted { identity: LaunchIdentity { node_id: node_id, cause: Operator, mode: ManualReady, instance_id: "fixture", revision: "fixture" } }
+}
+
+fn fx_blocked() -> LaunchAdmission {
+  LaunchRefused { refusal: LaunchDependenciesBlocked { blockers: ["a2-parent-1"] } }
+}
+
+// RLM-1: the dispatch action is the launch admission's projection. An admitted row's dispatch is Available AND
+// Primary; a refused row's dispatch is Unavailable and Secondary, carrying the refusal's wire label and reason
+// -- there is no override arm left to render a blocked row as operable.
+test fn witness_admitted_dispatch_is_primary_refused_is_unavailable() -> Bool {
+  let ready_view = action_view(lifecycle: OpenLifecycle, admission: fx_admitted(node_id: "a2-row"))
+  let blocked_view = action_view(lifecycle: OpenLifecycle, admission: fx_blocked())
   let ready_ok = match ready_view.primary_action {
     Present { value: a } =>
       match a.kind { DispatchAction => true ClearSessionAction => false }
-        && match a.availability { ActionAvailable => true AvailableAsOverride => false ActionUnavailable => false }
+        && match a.availability { ActionAvailable => true ActionUnavailable => false }
+        && a.label == "admitted"
     Absent => false
   }
   let blocked_primary_empty = match blocked_view.primary_action {
     Absent => true
     Present { value: _ } => false
   }
-  let blocked_has_override = fold(blocked_view.secondary_actions, init: false, f: (acc, a) =>
+  let blocked_unavailable = fold(blocked_view.secondary_actions, init: false, f: (acc, a) =>
     acc || (match a.kind { DispatchAction => true ClearSessionAction => false }
-      && match a.availability { AvailableAsOverride => true ActionAvailable => false ActionUnavailable => false }
-      && match a.priority { SecondaryAction => true PrimaryAction => false DiagnosticAction => false }))
-  ready_ok && blocked_primary_empty && blocked_has_override
+      && match a.availability { ActionUnavailable => true ActionAvailable => false }
+      && match a.priority { SecondaryAction => true PrimaryAction => false DiagnosticAction => false }
+      && a.label == "dependencies_blocked"
+      && string_contains(s: a.detail, pattern: "a2-parent-1")))
+  ready_ok && blocked_primary_empty && blocked_unavailable
 }
 
 test fn witness_done_and_superseded_rows_offer_no_dispatch() -> Bool {
-  count(dispatch_action(scheduling: SchedulingReady, lifecycle: DoneLifecycle)) == 0
-    && count(dispatch_action(scheduling: SchedulingReady, lifecycle: SupersededLifecycle)) == 0
+  count(dispatch_action(lifecycle: DoneLifecycle, admission: fx_admitted(node_id: "a2-row"))) == 0
+    && count(dispatch_action(lifecycle: SupersededLifecycle, admission: fx_admitted(node_id: "a2-row"))) == 0
 }
 
 data cleanup_from_admission_note: String = "The session action derives from the OBSERVED cleanup admission and from nothing else (operator blocker 4, 2026-08-01). The prior constructor minted an ActionAvailable ClearSessionAction whenever the activity arm looked active/refused/completed — availability inferred from presentation state, exactly the fabrication the two-axis note forbids in the other direction. The discriminating trio: an allowed observed cleanup is Available and Diagnostic; an observed-but-disallowed cleanup is ActionUnavailable (this arm's first real consumer) while KEEPING its label and detail so the refusal is legible; no observed cleanup action is NoSessionAction, not an empty-labeled button. The RED: the deleted arm — action_view over any activity yields no ClearSessionAction — is asserted directly, so reintroducing the fabrication reds."
@@ -285,14 +307,14 @@ test fn witness_session_action_derives_from_observed_admission() -> Bool {
   let allowed_ok = match allowed {
     SessionAction { kind, availability, priority, label, detail: _ } =>
       match kind { ClearSessionAction => true DispatchAction => false }
-        && match availability { ActionAvailable => true AvailableAsOverride => false ActionUnavailable => false }
+        && match availability { ActionAvailable => true ActionUnavailable => false }
         && match priority { DiagnosticAction => true PrimaryAction => false SecondaryAction => false }
         && label == "clear"
     NoSessionAction => false
   }
   let disallowed_ok = match disallowed {
     SessionAction { kind: _, availability, priority: _, label, detail } =>
-      match availability { ActionUnavailable => true ActionAvailable => false AvailableAsOverride => false }
+      match availability { ActionUnavailable => true ActionAvailable => false }
         && label == "clear" && detail == "pane still running"
     NoSessionAction => false
   }
@@ -313,9 +335,9 @@ fn action_view_has_no_clear(v: ActionView) -> Bool {
 }
 
 test fn witness_action_view_never_fabricates_cleanup() -> Bool {
-  action_view_has_no_clear(v: action_view(scheduling: SchedulingReady, lifecycle: OpenLifecycle))
-    && action_view_has_no_clear(v: action_view(scheduling: SchedulingUpcoming { blockers: [] }, lifecycle: OpenLifecycle))
-    && action_view_has_no_clear(v: action_view(scheduling: SchedulingReady, lifecycle: ReviewLifecycle))
+  action_view_has_no_clear(v: action_view(lifecycle: OpenLifecycle, admission: fx_admitted(node_id: "a2-row")))
+    && action_view_has_no_clear(v: action_view(lifecycle: OpenLifecycle, admission: fx_blocked()))
+    && action_view_has_no_clear(v: action_view(lifecycle: ReviewLifecycle, admission: fx_blocked()))
 }
 
 data session_facts_decided_note: String = "The decided session line and title detail (operator blocker 5): the client formerly concatenated 'session · present — ' + process_state and its own provider-facts title in TypeScript — a second prose authority. Both strings are now decided here and the witness pins them, including the empty-process-detail arm (no dangling separator)."
@@ -382,14 +404,24 @@ fn fx_row_edges() -> List<RoadmapEdge> {
   ]
 }
 
+fn fx_row_launch(nodes: List<RoadmapNode>, edges: List<RoadmapEdge>) -> LaunchRowContext {
+  LaunchRowContext {
+    standing: launch_fixture_standing_clear(mode: ManualReady),
+    graph: LaunchGraphProjected { doc: launch_fixture_doc(nodes: nodes, edges: edges) },
+    merged: [],
+  }
+}
+
 fn fx_row(activity: ActivityView) -> WorkRowView {
   let nodes = fx_row_nodes()
   match nodes.first() {
     Present { value: rn } =>
-      work_row_view(rn: rn, nodes: nodes, edges: fx_row_edges(), merged: [], activity: activity)
+      work_row_view(rn: rn, nodes: nodes, edges: fx_row_edges(), merged: [], activity: activity,
+        launch: fx_row_launch(nodes: nodes, edges: fx_row_edges()))
     Absent => work_row_view(
       rn: gunbc.roadmap_authority.authored(identity: "rnfx_A2PRES0000000000000009", id: "a2-unreachable", done: false, content: "unreachable"),
-      nodes: [], edges: [], merged: [], activity: activity)
+      nodes: [], edges: [], merged: [], activity: activity,
+      launch: fx_row_launch(nodes: [], edges: []))
   }
 }
 

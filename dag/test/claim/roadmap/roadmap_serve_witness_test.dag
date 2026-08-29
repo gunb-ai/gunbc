@@ -22,12 +22,15 @@ import gunbc.roadmap_serve {
   belt_dispatch_status,
 }
 import gunbc.roadmap_belt_actuate {
-  BeltDispatchResult,
-  DispatchSpawned, DispatchAlreadyLive, DispatchNodeNotFound,
-  DispatchDisabled, DispatchNodeAlreadyDone, DispatchObserveRefused, DispatchAuthorityRefused, DispatchSpawnFailed,
-  DispatchStaleSession, DispatchSessionLivenessUnobserved,
-  DispatchRevisionDrifted, DispatchRevisionUnobserved,
-  DispatchSessionMultiplicityConflict,
+  BeltSpawnOutcome, Spawned, SpawnFailed, SpawnNotAdmitted,
+  belt_dispatch_result_exemplars,
+}
+import gunbc.roadmap_launch_admission {
+  LaunchRefusal,
+  LaunchInstanceActuationRefused, LaunchTransitionInhibited, LaunchRevisionUnobserved, LaunchRevisionDrift,
+  LaunchAuthorityUnobserved, LaunchNodeUnknown, LaunchAlreadyAccepted, LaunchSessionsUnobservable,
+  LaunchAlreadyLive, LaunchStaleSession, LaunchLivenessUnobserved, LaunchSessionMultiplicityConflict,
+  LaunchDependenciesBlocked, LaunchExecutionContractMissing,
 }
 import gunbc.roadmap_dashboard_instance { srv2_preview_dashboard_instance }
 import test.claim.live_deploy.deploy_release_fixture { deploy_witness_release_revision }
@@ -160,21 +163,29 @@ test fn witness_405_response_carries_allowed() -> Bool {
 
 data status_map_red_note: String = "The 404/409/503/502 rows are the REDs a lazy 200-or-500 collapse would fail (parent review 2026-07-20): each refusal variant must map to ITS status, so a collapse of any arm reds exactly one witness row below.\n\nTHIS PIN WENT STALE WHILE THE PROTECTION IT DESCRIBES READ AS INTACT (review artifact 51368). Five arms were added with explicit status mappings — stale session, revision drift, multiplicity conflict, liveness unobserved, revision unobserved — and this witness still pinned the original eight, so a regression mapping any new arm to 200 would have stayed green. The note claimed a total protection the assertion no longer provided, which is worse than an absent pin: a reader checking whether the mapping is guarded finds a sentence saying yes.\n\nThe label, band, exemplar and button rosters were all swept when those arms landed. This one was missed because it lives in a different witness module and is keyed by CONSTRUCTED variants rather than by a roster the compiler counts — nothing here goes non-exhaustive when an arm appears. That asymmetry is the actual defect; until belt_dispatch_status_total is derived from the exemplar roster the way the label set is, this assertion has to be swept by hand alongside it."
 
+fn na(r: LaunchRefusal) -> BeltSpawnOutcome { SpawnNotAdmitted { node_id: "n", refusal: r } }
+
+fn status_is_typed(s: Int) -> Bool {
+  s == 200 || s == 403 || s == 404 || s == 409 || s == 502 || s == 503
+}
+
 test fn witness_dispatch_status_total() -> Bool {
-  belt_dispatch_status(r: DispatchSpawned { node_id: "n", session_name: "s", provider: "codex" }) == 200
-    && belt_dispatch_status(r: DispatchAlreadyLive { node_id: "n", session_name: "s" }) == 200
-    && belt_dispatch_status(r: DispatchDisabled { node_id: "n", instance_id: "i", reason: "r" }) == 403
-    && belt_dispatch_status(r: DispatchNodeNotFound { node_id: "n" }) == 404
-    && belt_dispatch_status(r: DispatchNodeAlreadyDone { node_id: "n" }) == 409
-    && belt_dispatch_status(r: DispatchObserveRefused { node_id: "n", reason: "r" }) == 503
-    && belt_dispatch_status(r: DispatchAuthorityRefused { node_id: "n", detail: "d" }) == 503
-    && belt_dispatch_status(r: DispatchSpawnFailed { node_id: "n", step: "git", detail: "d", provider: "codex" }) == 502
-    && belt_dispatch_status(r: DispatchStaleSession { node_id: "n", session_name: "s", detail: "d" }) == 409
-    && belt_dispatch_status(r: DispatchRevisionDrifted { node_id: "n", desired: "a", local: "b" }) == 409
-    && belt_dispatch_status(
-      r: DispatchSessionMultiplicityConflict { node_id: "n", session_names: "s1, s2", session_count: 2 }) == 409
-    && belt_dispatch_status(r: DispatchSessionLivenessUnobserved { node_id: "n", session_name: "s", reason: "r" }) == 503
-    && belt_dispatch_status(r: DispatchRevisionUnobserved { node_id: "n", cause: "c" }) == 503
+  belt_dispatch_status(r: Spawned { node_id: "n", session_name: "s", provider: "codex" }) == 200
+    && belt_dispatch_status(r: na(r: LaunchAlreadyLive { session_name: "s" })) == 200
+    && belt_dispatch_status(r: na(r: LaunchInstanceActuationRefused { instance_id: "i", reason: "r" })) == 403
+    && belt_dispatch_status(r: na(r: LaunchNodeUnknown)) == 404
+    && belt_dispatch_status(r: na(r: LaunchAlreadyAccepted)) == 409
+    && belt_dispatch_status(r: na(r: LaunchSessionsUnobservable { reason: "r" })) == 503
+    && belt_dispatch_status(r: na(r: LaunchAuthorityUnobserved { detail: "d" })) == 503
+    && belt_dispatch_status(r: SpawnFailed { node_id: "n", step: "git", detail: "d", provider: "codex" }) == 502
+    && belt_dispatch_status(r: na(r: LaunchStaleSession { session_name: "s", detail: "d" })) == 409
+    && belt_dispatch_status(r: na(r: LaunchRevisionDrift { desired: "a", local: "b" })) == 409
+    && belt_dispatch_status(r: na(r: LaunchSessionMultiplicityConflict { session_names: "s1, s2", session_count: 2 })) == 409
+    && belt_dispatch_status(r: na(r: LaunchLivenessUnobserved { session_name: "s", reason: "r" })) == 503
+    && belt_dispatch_status(r: na(r: LaunchRevisionUnobserved { cause: "c" })) == 503
+    && belt_dispatch_status(r: na(r: LaunchDependenciesBlocked { blockers: ["p"] })) == 409
+    && belt_dispatch_status(r: na(r: LaunchExecutionContractMissing { reason: "r" })) == 409
+    && all(belt_dispatch_result_exemplars(), r => status_is_typed(s: belt_dispatch_status(r: r)))
 }
 
 test fn witness_preview_dispatch_refuses_before_effects() -> Bool {
@@ -187,7 +198,7 @@ test fn witness_preview_dispatch_refuses_before_effects() -> Bool {
   )
   r.status == 403
     && string_contains(s: r.body, pattern: "\"status\": \"disabled\"")
-    && string_contains(s: r.body, pattern: "\"instance\": \"srv2-preview-codex-feedback-v0\"")
+    && string_contains(s: r.body, pattern: "srv2-preview-codex-feedback-v0")
     && string_contains(s: r.body, pattern: "before observation, provider preflight, or worktree creation")
 }
 

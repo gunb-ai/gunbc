@@ -21,6 +21,12 @@ import gunbc.roadmap_dispatch_environment {
   DispatchEnvironmentAdmission, EnvironmentAdmitted, EnvironmentRefused,
   dispatch_environment_admission_decision,
 }
+import gunbc.roadmap_belt { ManualReady }
+import gunbc.roadmap_launch_admission {
+  LaunchAdmission, LaunchAdmitted, LaunchRefused, LaunchExecutionContractMissing, LaunchGraphProjected, Operator,
+  launch_admission,
+}
+import test.claim.roadmap.roadmap_launch_admission_fixture { launch_fixture_standing_clear }
 import gunbc.roadmap_launch_canary {
   roadmap_launch_canary_parent_id, roadmap_launch_canary_child_id,
   roadmap_launch_canary_parent_identity, roadmap_launch_canary_child_identity,
@@ -249,10 +255,12 @@ test fn witness_canary_contract_closes_with_pinnable_oracle() -> Bool {
     })
 }
 
-// Falsifier (d), RECORDED AS A FINDING: a node with an unspecified execution contract and every
-// dependency closed is admitted to the Ready frontier by gunbc.roadmap_spawner, while
-// gunbc.roadmap_dispatch_environment refuses the same contract. This row pins today's split so
-// RLM-1's single admission can be shown to collapse it; it is not a patch to admission.
+// Falsifier (d), the RLM-0 FINDING, now a REGRESSION CONTROL (RLM-1): a node with an unspecified
+// execution contract and every dependency closed is still on gunbc.roadmap_spawner's Ready frontier
+// (the frontier is a graph position, not a launch verdict) and gunbc.roadmap_dispatch_environment
+// still refuses the contract -- but the LAUNCH question now has one answer, from
+// gunbc.roadmap_launch_admission, and it refuses ExecutionContractMissing before any environment
+// probe. Two producers, one verdict; the split RLM-0 recorded is closed by the single admission.
 test fn finding_unspecified_contract_is_ready_but_environment_refuses() -> Bool {
   let unbound = canary_node(
     identity: roadmap_launch_canary_child_identity,
@@ -267,9 +275,21 @@ test fn finding_unspecified_contract_is_ready_but_environment_refuses() -> Bool 
     receipts: [],
     validation_summary: "",
   )
+  let admission = launch_admission(
+    cause: Operator,
+    standing: launch_fixture_standing_clear(mode: ManualReady),
+    graph: LaunchGraphProjected { doc: doc },
+    merged: [],
+    node_id: roadmap_launch_canary_child_node_id() as String,
+    reserved: 0,
+  )
   frontier_admits
     && (match environment {
       EnvironmentRefused { receipts: _, validation_summary: _, reason: _ } => true
       EnvironmentAdmitted { receipts: _, validation_summary: _ } => false
+    })
+    && (match admission {
+      LaunchRefused { refusal } => match refusal { LaunchExecutionContractMissing { reason: _ } => true _ => false }
+      LaunchAdmitted { identity: _ } => false
     })
 }

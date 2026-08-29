@@ -6,7 +6,11 @@ import gunbc.roadmap_execution_contract { ExecutionContractUnspecified }
 import std.markup { Fragment, Element, FragmentText, attr }
 import extdeps.languages.html { try_serialize_html_source, EmitOk, EmitRejected }
 import gunbc.roadmap_focus { RoadmapFocus, NoFocus }
+import gunbc.roadmap_belt { ManualReady }
+import gunbc.roadmap_launch_admission { LaunchHostStanding, LaunchAdmitted, LaunchIdentity, Operator }
+import test.claim.roadmap.roadmap_launch_admission_fixture { launch_fixture_standing_clear, launch_fixture_with_contract, launch_fixture_doc }
 import gunbc.roadmap_page {
+  roadmap_page_launch, roadmap_daily_workspace_page_launch,
   roadmap_page_for_authority,
   roadmap_page_for_doc,
   roadmap_page,
@@ -157,12 +161,14 @@ fn depth_chain_html(fuel: Int) -> HtmlEmitResult {
   let parent = gunbc.roadmap_authority.authored(identity: "rnfx_716835YJMPRW9JAC4H1Z", id: "p", done: false, content: "parent-node")
   let child = gunbc.roadmap_authority.authored(identity: "rnfx_DY971T4PDGRTPY6WDHDR", id: "c", done: false, content: "child-node-title")
   let edge = RoadmapEdge { child: child.node, parent: parent.node }
-  try_serialize_html_source(node: nodes_ul(items: [parent], nodes: [parent, child], edges: [edge], merged: [], fuel: fuel))
+  try_serialize_html_source(node: nodes_ul(items: [parent], nodes: [parent, child], edges: [edge], merged: [], fuel: fuel,
+    launch: gunbc.roadmap_page.page_launch_context(doc: launch_fixture_doc(nodes: [parent, child], edges: [edge]), merged: [], launch: dispatch_doc_standing())))
 }
 
 fn bold_title_html() -> HtmlEmitResult {
   let rn = gunbc.roadmap_authority.authored(identity: "rnfx_4JKJ1ZMAYSR30YJW8T8B", id: "bold1", done: false, content: "**bold** item")
-  try_serialize_html_source(node: nodes_ul(items: [rn], nodes: [rn], edges: [], merged: [], fuel: 0))
+  try_serialize_html_source(node: nodes_ul(items: [rn], nodes: [rn], edges: [], merged: [], fuel: 0,
+    launch: gunbc.roadmap_page.page_launch_context(doc: launch_fixture_doc(nodes: [rn], edges: []), merged: [], launch: dispatch_doc_standing())))
 }
 
 test fn witness_bold_title_renders_strong() -> Bool {
@@ -189,25 +195,31 @@ test fn witness_depth_cap_fails_honest() -> Bool {
   }
 }
 
+data dispatch_doc_standing_note: String = "RLM-1: the dispatch fixtures render against a fabricated CLEAR host standing (actuating instance, transition clear, revision converged, no live sessions, ManualReady), so what the button shows is the launch admission's verdict over the NODE alone. The unobserved static standing would refuse every row at the instance gate and hide the node-level distinctions these witnesses exist to pin."
+
+fn dispatch_doc_standing() -> LaunchHostStanding {
+  launch_fixture_standing_clear(mode: ManualReady)
+}
+
 fn dispatch_doc_html_for(rn: RoadmapNode) -> HtmlEmitResult {
   let sec = RoadmapSection { title: "Belt", elements: [ section_group(label: "", nodes: [rn], edges: []) ] }
   let doc = RoadmapDocument { preamble: [], lead_lanes: [], sections: [sec] }
-  try_serialize_html_source(node: roadmap_page(doc: doc, merged: []))
+  try_serialize_html_source(node: roadmap_page_launch(doc: doc, merged: [], launch: dispatch_doc_standing()))
 }
 
 fn dispatch_doc_html_for_with_merged(rn: RoadmapNode, merged: List<Int>) -> HtmlEmitResult {
   let sec = RoadmapSection { title: "Belt", elements: [ section_group(label: "", nodes: [rn], edges: []) ] }
   let doc = RoadmapDocument { preamble: [], lead_lanes: [], sections: [sec] }
-  try_serialize_html_source(node: roadmap_page(doc: doc, merged: merged))
+  try_serialize_html_source(node: roadmap_page_launch(doc: doc, merged: merged, launch: dispatch_doc_standing()))
 }
 
 fn ready_dispatch_node() -> RoadmapNode {
-  gunbc.roadmap_authority.authored_wi(identity: "rnfx_7KPP33Y7P6BH9CBVKZ03", id: "disp1",
+  launch_fixture_with_contract(rn: gunbc.roadmap_authority.authored_wi(identity: "rnfx_7KPP33Y7P6BH9CBVKZ03", id: "disp1",
     done: false,
     content: "dispatch-me",
     intricacy: IntricacyLow,
     volume: VolumeSmall,
-    repo: "gunbc")
+    repo: "gunbc"))
 }
 
 fn unsized_open_dispatch_node() -> RoadmapNode {
@@ -231,7 +243,7 @@ fn signed_off_dispatch_node() -> RoadmapNode {
 fn dispatch_doc_page(rn: RoadmapNode) -> Fragment {
   let sec = RoadmapSection { title: "Belt", elements: [ section_group(label: "", nodes: [rn], edges: []) ] }
   let doc = RoadmapDocument { preamble: [], lead_lanes: [], sections: [sec] }
-  roadmap_page(doc: doc, merged: [])
+  roadmap_page_launch(doc: doc, merged: [], launch: dispatch_doc_standing())
 }
 
 data server_zero_furniture_note: String = "The attention rule's server half (A2): a rendered row carries NO workflow furniture — no pre-rendered stage chips, no lamp strip, no hidden progress container, no 'waiting' text. Activity DOM exists only when the client paints it from the decided /workflow.json view of a live attempt. The former version of this witness pinned the seven server-rendered pending chips as a POSITIVE; the same patterns are now the discriminating negatives, so reintroducing preloaded furniture reds here."
@@ -313,29 +325,37 @@ test fn witness_signed_off_node_doc_has_no_button() -> Bool {
   }
 }
 
+// RLM-1: a review row is NOT relaunchable by an ordinary click. The button renders, disabled, carrying
+// the admission's wire label -- the same word POST /dispatch answers -- and no override arm exists.
 test fn witness_merged_pr_is_review_evidence_not_acceptance() -> Bool {
-  let node = gunbc.roadmap_authority.derivable_wi(identity: "rnfx_0RXWPCEK3N82T9871CXP", id: "disp-review",
+  let node = launch_fixture_with_contract(rn: gunbc.roadmap_authority.derivable_wi(identity: "rnfx_0RXWPCEK3N82T9871CXP", id: "disp-review",
     prs: [7301],
     title: "review-me",
     description: "",
     intricacy: IntricacyLow,
     volume: VolumeSmall,
-    repo: "gunbc")
+    repo: "gunbc"))
   match dispatch_doc_html_for_with_merged(rn: node, merged: [7301]) {
     EmitRejected { reason: _ } => false
     EmitOk { html: h } =>
       string_contains(s: h, pattern: "class=\"status status-review\"")
         && string_contains(s: h, pattern: "<button class=\"dispatch-btn action-secondary\"")
-        && string_contains(s: h, pattern: "data-availability=\"override\"")
+        && string_contains(s: h, pattern: "data-availability=\"unavailable\"")
+        && string_contains(s: h, pattern: "data-launch=\"review_required\"")
+        && string_contains(s: h, pattern: "disabled=\"\"")
+        && !string_contains(s: h, pattern: "data-availability=\"override\"")
   }
 }
 
-test fn witness_unsized_open_node_keeps_manual_dispatch() -> Bool {
+// RLM-1: the unsized row's manual out-of-order dispatch is GONE; the button is disabled with SizeMissing.
+test fn witness_unsized_open_node_dispatch_refused_size_missing() -> Bool {
   match dispatch_doc_html_for(rn: unsized_open_dispatch_node()) {
     EmitRejected { reason: _ } => false
     EmitOk { html: h } =>
       string_contains(s: h, pattern: "class=\"workflow-controls\"")
         && string_contains(s: h, pattern: "<button class=\"dispatch-btn action-secondary\"")
+        && string_contains(s: h, pattern: "data-launch=\"size_missing\"")
+        && string_contains(s: h, pattern: "disabled=\"\"")
   }
 }
 
@@ -360,12 +380,12 @@ fn blocked_dispatch_workspace_html() -> HtmlEmitResult {
   let model_blocker = gunbc.roadmap_authority.authored(identity: "rnfx_2R3ZJWEHE8BDYVGJ82Z9", id: "disp-model-blocker",
     done: false,
     content: "model prerequisite")
-  let blocked = gunbc.roadmap_authority.authored_wi(identity: "rnfx_VRBYQ6ZVRKNMCNVXFCG6", id: "disp-blocked",
+  let blocked = launch_fixture_with_contract(rn: gunbc.roadmap_authority.authored_wi(identity: "rnfx_VRBYQ6ZVRKNMCNVXFCG6", id: "disp-blocked",
     done: false,
     content: "blocked work",
     intricacy: IntricacyLow,
     volume: VolumeSmall,
-    repo: "gunbc")
+    repo: "gunbc"))
   let edges = [
     RoadmapEdge { child: blocked.node, parent: policy_blocker.node },
     RoadmapEdge { child: blocked.node, parent: model_blocker.node },
@@ -375,10 +395,13 @@ fn blocked_dispatch_workspace_html() -> HtmlEmitResult {
     elements: [ section_group(label: "", nodes: [policy_blocker, model_blocker, blocked], edges: edges) ],
   }
   let doc = RoadmapDocument { preamble: [], lead_lanes: [], sections: [sec] }
-  try_serialize_html_source(node: roadmap_daily_workspace_page(doc: doc, merged: []))
+  try_serialize_html_source(node: roadmap_daily_workspace_page_launch(doc: doc, merged: [], launch: dispatch_doc_standing()))
 }
 
-test fn witness_upcoming_node_keeps_manual_out_of_order_dispatch() -> Bool {
+// RLM-1 red control (d, page half): the blocked child renders NO ordinary Launch -- the button is
+// disabled and carries the admission's DependenciesBlocked label naming the exact parents; the
+// override arm that used to make it operable is gone.
+test fn witness_upcoming_node_dispatch_refused_dependencies_blocked() -> Bool {
   match blocked_dispatch_workspace_html() {
     EmitRejected { reason: _ } => false
     EmitOk { html: h } =>
@@ -386,7 +409,10 @@ test fn witness_upcoming_node_keeps_manual_out_of_order_dispatch() -> Bool {
         && string_contains(s: h, pattern: "data-node=\"disp-blocked\"")
         && string_contains(s: h, pattern: "class=\"workflow-controls\"")
         && string_contains(s: h, pattern: "<button class=\"dispatch-btn action-secondary\"")
-        && string_contains(s: h, pattern: "data-availability=\"override\"")
+        && string_contains(s: h, pattern: "data-availability=\"unavailable\"")
+        && string_contains(s: h, pattern: "data-launch=\"dependencies_blocked\"")
+        && string_contains(s: h, pattern: "disp-policy-blocker, disp-model-blocker")
+        && !string_contains(s: h, pattern: "data-availability=\"override\"")
   }
 }
 
@@ -559,8 +585,8 @@ fn parity_specimen_view(activity: gunbc.roadmap_presentation.ActivityView) -> gu
     superseded_by: "",
     activity: activity,
     action: gunbc.roadmap_presentation.action_view(
-      scheduling: gunbc.roadmap_presentation.SchedulingReady,
-      lifecycle: gunbc.roadmap_presentation.OpenLifecycle),
+      lifecycle: gunbc.roadmap_presentation.OpenLifecycle,
+      admission: LaunchAdmitted { identity: LaunchIdentity { node_id: "parity-specimen", cause: Operator, mode: ManualReady, instance_id: "fixture", revision: "fixture" } }),
     supporting_facts: [],
     disclosure: gunbc.roadmap_presentation.NoDisclosure,
   }
