@@ -331,24 +331,27 @@ test fn w_arrow_return_type_keeps_its_applied_binding() -> Bool {
   )
 }
 
-// QUALIFIED TYPE REFERENCE, POSITIVE CONTROL ONLY. A field typed `std.determinism.Determinism` with
-// no import renders as bare `Determinism` and must earn `use crate::std_determinism::{Determinism};`.
-// The defect that opened this class (v2.std.determinism, E0425 x2 on the whole closure) fires only
-// when the pool also carries a coproduct with a VARIANT spelled `Determinism` (v2.lens.registry
-// LensIdV0): the bare-name disposition classified the type-position leaf as that variant. This
-// harness cannot carry that pool -- it refuses any probe whose closure includes such a module with
-// NoSuchVariable (reproduced with a data-free fixture coproduct; the same probe compiles and earns
-// the line from the CLI), so this row is satisfied by the unfixed emitter too and is NOT the class's
-// discriminating red. That red is a_known_variant_spelling_in_a_type_position_takes_the_registry_arm
-// in src/v1/tests/claim/reference_derived_disposition_census_witness_test.dag (the disposition at
+// QUALIFIED TYPE REFERENCE, POSITIVE CONTROL ONLY. A field typed by a dotted, unimported provider
+// name renders as its bare leaf and must earn the leaf's use-line from the provider the author
+// named. The defect that opened this class (v2.std.determinism, E0425 x2 on the whole closure)
+// fires only when the pool also carries a coproduct with a VARIANT spelled `Determinism`
+// (v2.lens.registry LensIdV0): the bare-name disposition classified the type-position leaf as that
+// variant. This harness cannot carry that specimen at all -- its pool is the probe's DECLARED
+// import closure, so a provider referenced only by a dotted name is absent (hard diagnostic), and
+// std.determinism itself references std.perturbation the same way -- so this row uses std.decl_ref
+// with a sibling import to bring the provider into the pool, and is satisfied by the unfixed
+// emitter too. The class's discriminating red is
+// a_known_variant_spelling_in_a_type_position_takes_the_registry_arm in
+// src/v1/tests/claim/reference_derived_disposition_census_witness_test.dag (the disposition at
 // function grain, red by construction on the variant arm) together with the closure count of the
-// use-line in v2_std_determinism.rs.
+// use-line in v2_std_determinism.rs. The expected line is spelled as two substrings because a
+// `{Name}` inside a .dag string literal is read as an interpolation of that name.
 test fn w_qualified_type_reference_earns_the_leaf_use_line() -> Bool {
   compile_dag_rust_emit_check(
-    "module test.claim.qualified_type_ref_probe\nimport std.types { String }\ntype Fact { signature: String, classification: std.determinism.Determinism }\nfn probe(f: Fact) -> std.determinism.Determinism { f.classification }\n",
+    "module test.claim.qualified_type_ref_probe\nimport std.types { String }\nimport std.decl_ref { DeclField }\ntype Fact { signature: String, r: std.decl_ref.DeclarationRef }\nfn probe(f: Fact) -> std.decl_ref.DeclarationRef { f.r }\n",
     "src/test_claim_qualified_type_ref_probe.rs",
-    ["use crate::std_determinism::{Determinism};"],
-    ["std.determinism.Determinism"]
+    ["use crate::std_decl_ref::{", "DeclarationRef};"],
+    ["std.decl_ref.DeclarationRef"]
   )
 }
 
