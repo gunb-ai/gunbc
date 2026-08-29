@@ -4,6 +4,7 @@ import std.types { String, NonEmptyStr, Bool, Int, List, CommitSha, list_length 
 import std.decl_ref { DeclarationRef, declaration_ref_eq }
 import extdeps.external_authority { ExternalAuthority }
 import std.primitive_projection { PrimitiveIdentity }
+import v2.workflow.floor_discovery { FloorDiscoveryTreeId }
 
 // CONFORMANCE, NOT EQUIVALENCE, AND THE DIFFERENCE IS THE WHOLE MODULE.
 //
@@ -514,22 +515,26 @@ fn conformance_exit_gate(
 }
 
 // THE ADMISSION CARRIER XL-4's GENERATION RECEIPT TYPES AGAINST (hand-off owed per XL-N manager
-// ruling, 2026-08-29). A generation is admitted against a conformance judgment OF A NAMED TREE:
-// source_revision is the revision the dispositions and coverage were measured at, and it is the
-// field XL-4 cross-checks against the generation's own revision -- an admission for one tree says
-// nothing about another. Admission is DERIVED from the exit gate, never authored: the only
+// ruling, 2026-08-29; revision-join ruling relayed by XL-4 the same day). A generation is admitted
+// against a conformance judgment OF A NAMED TREE, and the join key is the TREE object: squash-merge
+// rewrites commit SHAs, so source_tree (FloorDiscoveryTreeId over GitObjectId -- the existing
+// authority, not a fresh coinage) is what XL-4 cross-checks, while source_revision (CommitSha)
+// rides beside it as the informational head the measurement ran at. A commit-only mismatch is not
+// a refusal; a tree mismatch is. Admission is DERIVED from the exit gate, never authored: the only
 // constructor path offered is admit_conformance, so a ConformanceAdmitted value entails that the
 // gate computation ran over the carried inputs. The refusal arm carries the same revision plus the
 // gate's counted blockers, so a refusal is a located, countable diagnostic rather than an absence.
 type ConformanceAdmission
   = ConformanceAdmitted {
       source_revision: CommitSha,
+      source_tree: FloorDiscoveryTreeId,
       judged_route: PromotedRoute,
       subject_count: Int,
       producer: DeclarationRef
     }
   | ConformanceRefused {
       source_revision: CommitSha,
+      source_tree: FloorDiscoveryTreeId,
       judged_route: PromotedRoute,
       blocking_dispositions: Int,
       unmeasured_areas: Int,
@@ -538,6 +543,7 @@ type ConformanceAdmission
 
 fn admit_conformance(
   source_revision: CommitSha,
+  source_tree: FloorDiscoveryTreeId,
   dispositions: List<ConformanceDisposition>,
   route: PromotedRoute,
   coverage: List<CoverageStanding>,
@@ -547,6 +553,7 @@ fn admit_conformance(
     ExitGateOpen =>
       ConformanceAdmitted {
         source_revision: source_revision,
+        source_tree: source_tree,
         judged_route: route,
         subject_count: list_length(items: dispositions),
         producer: producer
@@ -554,6 +561,7 @@ fn admit_conformance(
     ExitGateBlocked { blocking_dispositions: b, unmeasured_areas: u } =>
       ConformanceRefused {
         source_revision: source_revision,
+        source_tree: source_tree,
         judged_route: route,
         blocking_dispositions: b,
         unmeasured_areas: u,
