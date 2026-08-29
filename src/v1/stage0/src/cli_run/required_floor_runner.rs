@@ -2217,6 +2217,25 @@ pub(crate) fn floor_value_constructor(v: &v1_interpreter::Value) -> &'static str
 /// discharged, admitting its witnesses to the ordinary population is the intended result, not an
 /// error. A decode that FAILS still refuses — a failed read and a legitimately empty roster are
 /// different states, and only the first is a defect.
+/// A hermetic frame over ONE module's exact scope, for evaluating that module's own
+/// declarations by name. The floor's rosters live in the policy module and are read from its
+/// scope; every other authority the floor evaluates by name (`gunbc.output_policy`,
+/// `v2.workflow.floor_naming_hygiene`) is read from its own module's scope, never from the
+/// policy module's — whether the policy module's closure happens to reach a module is a fact
+/// about the corpus, not about the question being asked.
+pub(crate) fn floor_authority_frame(
+    prepared: &PreparedRepository,
+    module_path: &str,
+) -> Result<v1_interpreter::InterpContext, String> {
+    let scope = claim_scope_for(prepared, module_path)?;
+    Ok(evaluation_frame(
+        &scope,
+        v1_interpreter::ExecutionMode::Hermetic,
+        None,
+        None,
+    ))
+}
+
 pub(crate) fn floor_decode_module_prefix_roster(
     hermetic: &v1_interpreter::InterpContext,
     qualified_name: &str,
@@ -2772,7 +2791,16 @@ pub fn run_required_floor(
     // The output policy is installed FROM the prepared subject. Resolving
     // `dag/gunbc/output_policy.dag` on its own cost a separate whole-entry resolve to read
     // five channel decisions out of a world this function had already built.
-    install_output_policy_in(&hermetic, source_roots);
+    //
+    // IN ITS OWN MODULE'S SCOPE, not the policy module's. A by-name evaluation of
+    // `gunbc.output_policy.resolve_channel_policy` is a question about that module, so the
+    // frame it runs in is that module's exact scope. Under the whole-tree subject the policy
+    // module's reference closure happened to reach `gunbc.output_policy`; under the
+    // gate-bounded subject it does not, and the bare name refused with "no declaration named
+    // 'resolve_channel_policy' in this execution's loaded index" (measured 2026-08-29, twice,
+    // with the module present in the subject both times). The scope was the coincidence.
+    let output_policy_frame = floor_authority_frame(&prepared, "gunbc.output_policy")?;
+    install_output_policy_in(&output_policy_frame, source_roots);
 
     // ── 3. the claim roster, projected from the prepared inventory ───────────────────────
     //
@@ -2859,8 +2887,12 @@ pub fn run_required_floor(
     // while saying nothing about
     // it. A file that claims the `*_test.dag` place and enrolls nothing is a witness nobody asked
     // and everybody reads as covered.
+    // Same rule as the output policy above: the naming-hygiene predicates are
+    // `v2.workflow.floor_naming_hygiene`'s declarations, evaluated in that module's scope.
+    let naming_hygiene_frame =
+        floor_authority_frame(&prepared, "v2.workflow.floor_naming_hygiene")?;
     let barren_test_sidecars = floor_barren_test_sidecars(
-        &hermetic,
+        &naming_hygiene_frame,
         &prepared.test_decl_free_paths,
         &barren_candidate_sources,
     )?;
