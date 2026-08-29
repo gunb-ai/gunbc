@@ -18,7 +18,7 @@ pub use crate::v1_compiler_infer_env::{
     is_recursive_type_by_name, is_recursive_type_for, lookup_type, lookup_type_by_name,
     lookup_type_for, type_ref_measure_binding_authority,
 };
-pub use crate::v1_compiler_infer_env::{TypeBinding, TypeEnv};
+pub use crate::v1_compiler_infer_env::{TypeBinding, TypeEnv, UnitVariantContribution};
 pub use crate::v1_compiler_infer_types::{
     child_type_node, is_declared_container_alias_spelling, is_type_expr_annotation,
     node_is_keyed_collection, resolved_type,
@@ -63,95 +63,39 @@ use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
 use std::rc::Rc;
 
-pub fn is_unit_variant_node(variant: Rc<Node>) -> bool {
-    ((variant.children.clone().len() as i64) == 0)
-}
-
-pub fn unit_variant_in_coproduct(
-    env: Rc<TypeEnv>,
-    ty: Rc<Node>,
-    variant_name: String,
-) -> Option<Rc<Node>> {
-    match ty.connective.clone() {
-        Connective::Disj => {
-            ty.children
-                .clone()
-                .iter()
-                .cloned()
-                .fold(None, |acc: _, v: Rc<Node>| {
-                    if (acc.clone() != None) {
-                        acc.clone()
-                    } else {
-                        if ((crate::v1_std_core::authored_name_at(
-                            env.source_indices.clone(),
-                            v.clone(),
-                        ) == variant_name.clone())
-                            && is_unit_variant_node(v.clone()))
-                        {
-                            Some(v.clone())
-                        } else {
-                            None
-                        }
-                    }
-                })
-        }
-        _ => None,
-    }
-}
-
-pub fn structural_type_for_variant_lookup(env: Rc<TypeEnv>, ty: Rc<Node>) -> Rc<Node> {
-    if ((ty.connective.clone() == Connective::NoConnective) && (ty.inferred.clone() != None)) {
-        match ty.inferred.clone().as_deref().cloned() {
-            Some(InferredNode::Resolved { node: target, .. }) => target.clone(),
-            _ => ty,
-        }
-    } else {
-        ty
-    }
-}
-
 pub fn lookup_unit_variant_phantom_type(
     env: Rc<TypeEnv>,
     variant_name: String,
 ) -> Option<Rc<Node>> {
-    {
-        let matches = collect_unit_variant_phantom_matches(env.clone(), variant_name.clone());
-        if ((matches.clone().len() as i64) == 1) {
-            match matches.clone().first().cloned() {
-                Some(variant) => Some(variant.clone()),
-                None => None,
+    match v1_rt::map_get(&env.unit_variant_index.clone(), variant_name.clone()) {
+        Some(contribs) => {
+            let total = Rc::new(v1_rt::map_values(&contribs))
+                .iter()
+                .cloned()
+                .fold(0, |acc: i64, c: Rc<UnitVariantContribution>| {
+                    (acc + c.count.clone())
+                });
+            if (total.clone() == 1) {
+                match Rc::new({
+                    let mut __result = Vec::new();
+                    for c in Rc::new(v1_rt::map_values(&contribs)).iter().cloned() {
+                        if (c.count.clone() == 1) {
+                            __result.push(c);
+                        }
+                    }
+                    __result
+                })
+                .first()
+                .cloned()
+                {
+                    Some(single) => Some(single.variant.clone()),
+                    None => None,
+                }
+            } else {
+                None
             }
-        } else {
-            None
         }
-    }
-}
-
-pub fn collect_unit_variant_phantom_matches(
-    env: Rc<TypeEnv>,
-    variant_name: String,
-) -> Rc<Vec<Rc<Node>>> {
-    {
-        let direct_bindings = env.parents.clone().iter().cloned().fold(
-            env.str_bindings.clone(),
-            |acc: Rc<HashMap<String, Rc<TypeBinding>>>, parent: Rc<TypeEnv>| {
-                v1_rt::rc_map_merge(parent.str_bindings.clone(), acc)
-            },
-        );
-        Rc::new(v1_rt::map_values(&direct_bindings))
-            .iter()
-            .cloned()
-            .fold(
-                Rc::new(vec![]),
-                |acc: Rc<Vec<Rc<Node>>>, binding: Rc<TypeBinding>| match unit_variant_in_coproduct(
-                    env.clone(),
-                    structural_type_for_variant_lookup(env.clone(), binding.resolved.clone()),
-                    variant_name.clone(),
-                ) {
-                    Some(variant) => v1_rt::concat(acc.clone(), Rc::new(vec![variant.clone()])),
-                    None => acc.clone(),
-                },
-            )
+        None => None,
     }
 }
 

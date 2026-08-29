@@ -48,59 +48,30 @@ import std.induction { SubValueUnknown }
 import v1.compiler.infer_env {
   TypeEnv, TypeBinding, lookup_type, lookup_type_by_name, lookup_type_for, is_recursive_type, is_recursive_type_by_name, is_recursive_type_for, authored_name,
   env_with_type_variable_bindings, bare_name_miss_diagnostic,
-  type_ref_measure_binding_authority
+  type_ref_measure_binding_authority,
+  UnitVariantContribution
 }
 
-fn is_unit_variant_node(variant: Node) -> Bool {
-  (variant.children |> count) == 0
-}
-
-fn unit_variant_in_coproduct(env: TypeEnv, ty: Node, variant_name: String) -> Node? {
-  match ty.connective {
-    Disj =>
-      fold(ty.children, init: none, f: (acc, v) =>
-        if acc != none { acc }
-        else if authored_name_at(source_indices: env.source_indices, node: v) == variant_name && is_unit_variant_node(variant: v) {
-          Present { value: v }
-        } else { none }
-      )
-    _ => none
-  }
-}
-
-fn structural_type_for_variant_lookup(env: TypeEnv, ty: Node) -> Node {
-  if ty.connective == NoConnective && ty.inferred != none {
-    match ty.inferred {
-      Present { value: Resolved { node: target } } => target
-      _ => ty
-    }
-  } else { ty }
-}
-
+// Phantom unit-variant resolution reads the env's precomputed unit_variant_index (built and
+// maintained beside visible_str_bindings in v1.compiler.infer_env). The former shape re-merged
+// every parent's str_bindings and re-scanned every visible binding PER LOOKUP — one call per
+// bare-variant reference over an environment of thousands — measured 2026-08-28 at ~66% of the
+// whole-corpus compile.reconcile wall (92 of 148 gdb stack samples over strict preparation).
+// The contract is unchanged: exactly one visible unit variant with this name resolves; zero or
+// several refuse. Duplicate variant names within one coproduct keep count > 1 and refuse, as
+// the scan's multiple appended matches did.
 fn lookup_unit_variant_phantom_type(env: TypeEnv, variant_name: String) -> Node? {
-  let matches = collect_unit_variant_phantom_matches(env: env, variant_name: variant_name)
-  if matches |> count == 1 {
-    match matches |> first {
-      Present { value: variant } => Present { value: variant }
-      Absent => none
-    }
-  } else { none }
-}
-
-fn collect_unit_variant_phantom_matches(env: TypeEnv, variant_name: String) -> List<Node> {
-  let direct_bindings = fold(env.parents, init: env.str_bindings, f: (acc, parent) =>
-    map_merge(parent.str_bindings, acc)
-  )
-  fold(direct_bindings |> map_values, init: [], f: (acc, binding) =>
-    match unit_variant_in_coproduct(
-      env: env,
-      ty: structural_type_for_variant_lookup(env: env, ty: binding.resolved),
-      variant_name: variant_name
-    ) {
-      Present { value: variant } => concat(acc, [variant])
-      Absent => acc
-    }
-  )
+  match map_get(env.unit_variant_index, variant_name) {
+    Present { value: contribs } =>
+      let total = fold(contribs |> map_values, init: 0, f: (acc, c) => acc + c.count)
+      if total == 1 {
+        match filter(contribs |> map_values, c => c.count == 1) |> first {
+          Present { value: single } => Present { value: single.variant }
+          Absent => none
+        }
+      } else { none }
+    Absent => none
+  }
 }
 
 fn is_width_nat_type_literal(n: Node) -> Bool {
