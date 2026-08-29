@@ -3126,11 +3126,12 @@ pub fn run_required_floor(
     let mut planned_identities: HashSet<String> = HashSet::new();
     let mut cost_debt_seen: HashSet<String> = HashSet::new();
     let mut outcome_withheld_cost_debt: Vec<String> = Vec::new();
-    // THE POPULATION, AT IDENTITY GRAIN. It accumulates the sites this loop offers and then the
-    // identities preparation dropped, so by the join below it is every DECLARED witness identity
-    // in the tree. Both counts (`sites_offered`, `declared_identities`) are read off it rather
-    // than maintained beside it: a count and a population kept in step by hand are two
-    // computations of one fact, and the count is the weaker one.
+    // THE POPULATION, AT IDENTITY GRAIN. The discovery authority above answered over the FULL
+    // module index, so this loop sees every DECLARED witness identity in the tree and classifies
+    // each one — the prepared closure and the exclusion map decide which are offered and which
+    // carry a preparation-stage decline. Both counts (`sites_offered`, `declared_identities`) are
+    // read off this set rather than maintained beside it: a count and a population kept in step
+    // by hand are two computations of one fact, and the count is the weaker one.
     let mut declared_identity_set: HashSet<String> = HashSet::new();
     let mut sites_offered = 0usize;
     let mut disposition_rows: Vec<RequiredFloorDispositionRow> = Vec::new();

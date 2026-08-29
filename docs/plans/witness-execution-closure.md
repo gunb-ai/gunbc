@@ -249,13 +249,27 @@ run's own, not this document's: `required-floor: declared=… offered=… declin
 
 ### What changed
 
-1. **The universe is the declared population.** Preparation now emits one
-   `RequiredFloorDisposition` row for every identity it drops —
-   `DeclinedOutsideGateClosure` and `DeclinedDiscoveryExcluded { matched_substring }`, two arms
-   on the authority that already existed, not a second status vocabulary. The gate-closure
-   population keeps its own arm rather than folding into `DeclinedOutsideRequiredGate`: the two
-   are removed by different mechanisms, restored by different triggers, and differ by two orders
-   of magnitude, and the first is the rung drop's subject.
+1. **The universe is the declared population, answered by one authority.** The floor folds
+   `v2.workflow.floor_discovery_producer` (`discover_floor_rows_for_source`) over preparation's
+   FULL module index rather than over the prepared closure alone, and classifies each returned
+   identity against the prepared closure and the exclusion map: an identity whose module
+   preparation dropped carries `DeclinedOutsideGateClosure` or
+   `DeclinedDiscoveryExcluded { matched_substring }` — two arms on the authority that already
+   existed, not a second status vocabulary. No Rust rescan stands beside the producer; gunbc#9685's
+   single-discovery-authority cut holds for the whole corpus, not only for the prepared subject.
+   The gate-closure population keeps its own arm rather than folding into
+   `DeclinedOutsideRequiredGate`: the two are removed by different mechanisms, restored by
+   different triggers, and differ by two orders of magnitude, and the first is the rung drop's
+   subject.
+
+   **The consequence, stated rather than discovered later:** the producer's per-file refusals —
+   misplaced `test` decl, barren sidecar, misplaced wire contract, malformed
+   `live_tree_disposition` row — now stop the required floor for ANY module under the source
+   roots, not only for one the gate closure admitted. That is a real widening of what this lane
+   refuses over. It is survivable today because the corpus carries none of those violations
+   (measured 2026-08-29: zero `test`-marked decls outside a `*_test.dag` sidecar, zero barren
+   sidecars), and the first violation authored anywhere in the tree will red this lane rather
+   than the one that owns the file.
 2. **The partition is an identity join, not a count equality.** The old check was
    `offered == routed + declined_long + declined_fixture + declined_outside_gate +
    declined_cost_debt`, which DESIGN §5 names by shape: green over a projection that drops one
