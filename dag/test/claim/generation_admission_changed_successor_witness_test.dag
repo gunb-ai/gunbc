@@ -60,7 +60,9 @@ import v2.std.algebra { length }
 import v2.std.logic { Bool }
 import v2.std.node { Hash, Symbol, symbol_identity_digest }
 import v2.std.optional { Absent, Present }
-import std.content_hash { sha512_hex_digest }
+import std.content_hash { Sha1Digest, sha512_hex_digest }
+import extdeps.git.object_store { GitObjectId, GitSha1ObjectId }
+import v2.workflow.floor_discovery { floor_discovery_tree_id }
 
 // Test-side collapse to Bool, at the assertion boundary rather than on the
 // admission API -- the same predicate-dissolution rule the reproduction battery
@@ -218,15 +220,35 @@ fn ga_reproduction() -> SelfHostCandidate {
 // toolchain_context is the SAME digest the generation identity's toolchain axis
 // carries. That join is what makes "the toolchain moved but the receipt did not"
 // decidable rather than a matter of reading two unrelated fields.
-fn ga_requirements(roster_label: String, source_label: String) -> CompilerRequirementRevision {
+fn ga_tree(hex: String) -> GitObjectId {
+  GitSha1ObjectId { digest: Sha1Digest { hex: hex } }
+}
+
+data ga_tree_r1_hex: String = "1111111111111111111111111111111111111111"
+data ga_tree_r2_hex: String = "2222222222222222222222222222222222222222"
+
+fn ga_requirements_on(
+  roster_label: String,
+  source_label: String,
+  tree_hex: String
+) -> CompilerRequirementRevision {
   CompilerRequirementRevision {
     source_revision: source_label,
+    source_tree: floor_discovery_tree_id(object_id: ga_tree(hex: tree_hex)),
     language_model_revision: ga_digest(label: "language-model-r1"),
     target_model_revision: ga_digest(label: "target-model-r1"),
     effect_closure_digest: ga_digest(label: "effect-closure-r1"),
     conformance_roster_digest: ga_digest(label: roster_label),
     toolchain_context: ga_digest(label: "toolchain-pinned")
   }
+}
+
+fn ga_requirements(roster_label: String, source_label: String) -> CompilerRequirementRevision {
+  ga_requirements_on(
+    roster_label: roster_label,
+    source_label: source_label,
+    tree_hex: if source_label == "source-r1" { ga_tree_r1_hex } else { ga_tree_r2_hex }
+  )
 }
 
 fn ga_parent_requirements() -> CompilerRequirementRevision {
@@ -456,6 +478,46 @@ test fn ga_requirement_delta_is_derived_not_declared() -> Bool {
     ) == 0)
 }
 
+// A COMMIT-ONLY DIFFERENCE IS NOT A DELTA. Squash-merge rewrites every commit id, so a
+// requirement revision whose commit moved while its tree, roster and every other axis
+// stayed put has not changed -- and a chain built on it is reproduction-only. The join
+// key is the tree; the commit is carried beside it and consulted by nothing here.
+test fn ga_commit_only_difference_is_not_a_requirement_change() -> Bool {
+  let rewritten = ga_requirements_on(
+    roster_label: "roster-r1",
+    source_label: "source-r1-REWRITTEN-BY-SQUASH",
+    tree_hex: ga_tree_r1_hex
+  )
+  (length(
+    xs: requirement_revision_changed_axes(left: ga_parent_requirements(), right: rewritten)
+  ) == 0)
+    && generation_admission_carries(
+      decision: admit_generation(
+        request: ga_request_with(
+          reproduction: ga_reproduction(),
+          changed: ga_changed_receipt_with(
+            successor: ga_changed_successor(),
+            successor_requirements: rewritten,
+            changed_source_observed: Observed {
+              value: ChangedOutputObserved { at_case: "emitted-module-header-r2" }
+            },
+            successor_build_outcome: Observed { value: BuildGreen },
+            conformance_outcome: Observed { value: BehaviorAgrees },
+            compiled_further: Observed { value: BuildGreen }
+          ),
+          fixed_point: ga_fixed_point(),
+          recovery_identity: ga_seed_identity(),
+          recovery_available: true,
+          previous_active: ga_seed_identity(),
+          authority: ga_authority_identity(),
+          fallback_stage: ^stage_unused,
+          fallback_observed: false
+        )
+      ),
+      cause: ^refusal_successor_requirements_unchanged
+    )
+}
+
 // FALSIFIER 2 -- DECLARED CHANGE, UNOBSERVED OUTPUT. The requirements moved and the
 // successor's output did not. A declared delta with no observable consequence is an
 // assertion about intent, and admitting on it is precisely reading the author's
@@ -662,6 +724,7 @@ test fn ga_conformance_measured_on_other_roster_refuses() -> Bool {
 fn ga_moved_toolchain_requirements() -> CompilerRequirementRevision {
   CompilerRequirementRevision {
     source_revision: "source-r2",
+    source_tree: floor_discovery_tree_id(object_id: ga_tree(hex: ga_tree_r2_hex)),
     language_model_revision: ga_digest(label: "language-model-r1"),
     target_model_revision: ga_digest(label: "target-model-r1"),
     effect_closure_digest: ga_digest(label: "effect-closure-r1"),

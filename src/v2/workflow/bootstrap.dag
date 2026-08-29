@@ -29,6 +29,8 @@ import v2.extdeps.runtimes.v2_evaluator {
 import v2.std.diagnostic { Correction, Diagnostic, Extent, Locus, NoCorrectionReason, Outcome, Accepted, Rejected, None, diagnostics_singleton }
 import v2.std.witness { Holds, Violates, Witness }
 import std.types { CommitSha, NonEmptyStr }
+import extdeps.git.object_store { git_object_id_eq }
+import v2.workflow.floor_discovery { FloorDiscoveryTreeId }
 import v2.compiler.self_host.generation {
   ArtifactMaterialized,
   ArtifactNotMaterialized,
@@ -901,10 +903,14 @@ data bootstrap_plan_fixpt_witness: Witness<FixptStage1Stage2> = match bootstrap_
 // that fact, not a prose description of it, so the delta is one comparison per
 // axis rather than a reader's judgement.
 //
-// source_revision is the repository's CommitSha (std.types), not a structural Hash:
-// it is JOINED against upstream evidence (XL-1 EffectDemandEvidenceStanding, XL-3
-// ConformanceAdmission) that carries the git revision it was measured on, and a
-// join across two revision encodings is a join that never fires.
+// TWO source coordinates, one join key. source_tree is the FloorDiscoveryTreeId the
+// generation was produced over and is the ONLY source fact the delta and the upstream
+// cross-checks (XL-1 EffectDemandEvidenceStanding, XL-3 ConformanceAdmission) join on.
+// source_revision is the CommitSha that measurement ran at and is informational:
+// squash-merge rewrites every commit id, so a commit is not a stable identity across
+// the merge and a commit-only mismatch is never a refusal. Carrying the commit
+// beside the tree keeps the run locatable without letting a rewritten id masquerade
+// as a source change (ruling msg_120bdb6d).
 //
 // toolchain_context is a Hash rather than a label deliberately: it is JOINED
 // against the generation identity's toolchain axis below. A prose toolchain
@@ -913,6 +919,7 @@ data bootstrap_plan_fixpt_witness: Witness<FixptStage1Stage2> = match bootstrap_
 // while the receipt that vouched for it did not.
 type CompilerRequirementRevision {
   source_revision: CommitSha
+  source_tree: FloorDiscoveryTreeId
   language_model_revision: Hash
   target_model_revision: Hash
   effect_closure_digest: Hash
@@ -921,7 +928,7 @@ type CompilerRequirementRevision {
 }
 
 type RequirementAxis
-  = SourceRevisionAxis
+  = SourceTreeAxis
   | LanguageModelRevisionAxis
   | TargetModelRevisionAxis
   | EffectClosureAxis
@@ -929,7 +936,7 @@ type RequirementAxis
   | ToolchainContextAxis
 
 data requirement_axes: List<RequirementAxis> = [
-  SourceRevisionAxis,
+  SourceTreeAxis,
   LanguageModelRevisionAxis,
   TargetModelRevisionAxis,
   EffectClosureAxis,
@@ -943,7 +950,8 @@ fn requirement_axis_agrees(
   axis: RequirementAxis
 ) -> Bool {
   match axis {
-    SourceRevisionAxis => left.source_revision == right.source_revision
+    SourceTreeAxis =>
+      git_object_id_eq(left: left.source_tree.object_id, right: right.source_tree.object_id)
     LanguageModelRevisionAxis => left.language_model_revision == right.language_model_revision
     TargetModelRevisionAxis => left.target_model_revision == right.target_model_revision
     EffectClosureAxis => left.effect_closure_digest == right.effect_closure_digest
@@ -954,7 +962,7 @@ fn requirement_axis_agrees(
 
 fn requirement_axis_symbol(axis: RequirementAxis) -> Symbol {
   match axis {
-    SourceRevisionAxis => ^requirement_axis_source_revision
+    SourceTreeAxis => ^requirement_axis_source_tree
     LanguageModelRevisionAxis => ^requirement_axis_language_model_revision
     TargetModelRevisionAxis => ^requirement_axis_target_model_revision
     EffectClosureAxis => ^requirement_axis_effect_closure
