@@ -37192,16 +37192,19 @@ const REQUIRED_FLOOR_POLICY_MODULE: &str = "v2.workflow.required_floor";
 /// Modules the required floor's own runner evaluates BY NAME, outside any gate roster: the
 /// policy module (its rosters, via `floor_decode_module_prefix_roster`), the discovery authority
 /// (`discover_floor_rows_for_source` / `floor_discovery_finalize_source_outcomes`, qualified —
-/// the floor's roster IS that fold's answer), and the output policy (`resolve_channel_policy` /
-/// `resolve_shell_trace_stream_policy`, bare, from `install_output_policy_in`). Every one is a
-/// closure seed of the gate-bounded prepared subject; a new by-name evaluation adds its module
-/// here or refuses at its own call site. `v2.workflow.floor_naming_hygiene` is reached through
-/// the producer's import closure rather than asked directly: the barren-sidecar question the
-/// runner used to put to it is one arm of the producer's per-file fold.
-const REQUIRED_FLOOR_RUNTIME_AUTHORITY_MODULES: [&str; 3] = [
+/// the floor's roster IS that fold's answer), the output policy (`resolve_channel_policy` /
+/// `resolve_shell_trace_stream_policy`, bare, from `install_output_policy_in`), and the
+/// cross-claim pure-producer share roster (`floor_cross_claim_pure_producers_warm` /
+/// `..._claim_forced`, via `install_pure_producer_share`). Every one is a closure seed of the
+/// gate-bounded prepared subject; a new by-name evaluation adds its module here or refuses at
+/// its own call site. `v2.workflow.floor_naming_hygiene` is reached through the producer's
+/// import closure rather than asked directly: the barren-sidecar question the runner used to
+/// put to it is one arm of the producer's per-file fold.
+const REQUIRED_FLOOR_RUNTIME_AUTHORITY_MODULES: [&str; 4] = [
     REQUIRED_FLOOR_POLICY_MODULE,
     "v2.workflow.floor_discovery_producer",
     "gunbc.output_policy",
+    "v2.workflow.floor_pure_producer_share",
 ];
 
 /// THE REQUIRED FLOOR, AS ONE ATTEMPT.
