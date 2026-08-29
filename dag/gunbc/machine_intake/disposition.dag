@@ -110,9 +110,11 @@ type AdmissionFold {
   subject_currency: SubjectCurrency
 }
 
-// The union of the axes that moved across every mismatched receipt: a ledger
-// holding one pre-DIMM-swap receipt and one pre-BIOS-flash receipt reports both
-// axes, because both re-qualification scopes are owed. Never a constant.
+// The union of the axes that moved across every mismatched receipt. A
+// validated ledger carries one subject, so today the union is over one
+// subject's currency; the fold still merges rather than overwriting so the
+// answer stays correct if the ledger ever admits retries under a superseded
+// subject. Never a constant.
 fn merge_subject_currency(left: SubjectCurrency, right: SubjectCurrency) -> SubjectCurrency {
   match left {
     SubjectCurrent => right

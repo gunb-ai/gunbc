@@ -291,7 +291,7 @@ type BootDeliveryCandidateVerdict {
 // solver that took the first eligible branch would be carrying policy in its
 // arm order, invisible to anyone reading the result.
 type BootDeliveryPreference
-  = PreferStandardRedfishThenOemThenNetwork
+  = | PreferStandardRedfishThenOemThenNetwork
 
 fn boot_delivery_preference_order(preference: BootDeliveryPreference) -> List<BootDeliveryCandidate> {
   match preference {

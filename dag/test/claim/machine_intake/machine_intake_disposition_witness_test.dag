@@ -288,9 +288,11 @@ fn currency_of(standing: FleetAdmissionStanding?) -> SubjectCurrency? {
 
 // REVIEW 57434 CONTROL — the reported currency is the axes that actually moved,
 // never a constant: a firmware-only re-flash reports firmware_changed and NOT
-// assembly_changed; a ledger mixing a pre-swap and a pre-flash receipt reports
-// both. The fabricated `{ assembly_changed: true }` this replaces would fail
-// the first half.
+// assembly_changed; a ledger produced before BOTH a DIMM swap and a re-flash
+// reports both. The fabricated `{ assembly_changed: true }` this replaces
+// would fail both halves. (A validated ledger carries exactly one subject, so
+// receipts of two different stale subjects cannot share a ledger — that case
+// refuses at validation, see mixed_attempt_ids_on_one_subject_are_refused.)
 test fn stale_currency_names_the_axes_that_moved() -> Bool {
   let flash_only = match currency_of(standing: admission_over(subject: subject_after_flash, receipts: full_ledger(subject: subject_before))) {
     Present { value: c } =>
@@ -300,10 +302,7 @@ test fn stale_currency_names_the_axes_that_moved() -> Bool {
       }
     Absent => false
   }
-  let phase_a = Arrival { phase: BootDeliveryEstablish }
-  let phase_b = Arrival { phase: MemoryAuthoritativeQualify }
-  let mixed = [satisfied_receipt(phase: phase_a, subject: subject_before, previous: none), satisfied_receipt(phase: phase_b, subject: subject_after, previous: none)]
-  let both = match currency_of(standing: admission_over(subject: subject_after_flash, receipts: mixed)) {
+  let both = match currency_of(standing: admission_over(subject: subject_after_flash, receipts: full_ledger(subject: subject_after))) {
     Present { value: c } =>
       match c {
         SubjectStale { unit_changed: u, assembly_changed: a, firmware_changed: f } => u == false && a == true && f == true
