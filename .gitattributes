@@ -28,6 +28,7 @@ dag/examples/js_site/generated/home.html merge=generated-artifact
 dag/examples/js_site/generated/home.tsx merge=generated-artifact
 dag/gunbc/stage0/stage0_crate_layout_generated.dag merge=generated-artifact
 dag/gunbc/stage0/stage0_crate_partition_generated.dag merge=generated-artifact
+docs/design-ledgers.md merge=generated-artifact
 docs/plans/budget-tree.md merge=generated-artifact
 docs/plans/ci-humming.md merge=generated-artifact
 docs/plans/cli-run-hollowing-plan.md merge=generated-artifact

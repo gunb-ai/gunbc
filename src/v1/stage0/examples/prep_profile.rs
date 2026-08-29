@@ -13,6 +13,10 @@ fn main() {
             prepared.modules_resolved,
             prepared.modules_excluded
         ),
-        Err(e) => eprintln!("prep refused in {:?}: {}", t.elapsed(), &e[..e.len().min(2000)]),
+        Err(e) => eprintln!(
+            "prep refused in {:?}: {}",
+            t.elapsed(),
+            &e[..e.len().min(2000)]
+        ),
     }
 }
