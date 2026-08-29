@@ -870,6 +870,14 @@ fn seam_realization(seam: SeamStanding, registry: List<SeamRuntimeBinding>) -> S
   seam_realization_for(projection: seam.projection, registry: registry)
 }
 
+fn seam_is_unrealized(seam: SeamStanding, registry: List<SeamRuntimeBinding>) -> Bool {
+  match seam_realization(seam: seam, registry: registry) {
+    SeamRealizedByBridge { bridge } => false,
+    SeamRuntimeBindingAmbiguous { primitive, bridges } => false,
+    SeamUnrealized => true
+  }
+}
+
 fn seam_is_unrostered(seam: SeamStanding) -> Bool {
   match seam.projection {
     SeamUnrostered => true,
