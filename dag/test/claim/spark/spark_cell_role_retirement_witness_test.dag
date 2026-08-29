@@ -25,7 +25,6 @@ import gunbc.spark.serving_membership {
   SparkServingModelSlotAddress,
   SparkServingLingerAddress,
   spark_serving_primary_model_slot,
-  spark_serving_address_is_role_scoped,
   spark_serving_role_scoped_members,
   spark_serving_baseline_members,
   spark_serving_membership_reconcile,
@@ -41,11 +40,13 @@ import gunbc.spark.serving_member_realization {
 }
 import gunbc.spark.serving_realization {
   SparkServingRetirementEffect,
+  SparkServingRealization,
+  UserUnitRealization,
+  realization_retirement_effects,
   StopUserUnit,
   DisableUserUnit,
   RemoveUserUnitFile,
   ReloadUserManagerAfterRemoval,
-  spark_serving_retirement_effect_mutates_host,
 }
 import gunbc.ownership { Owned }
 import gunbc.membership_reconcile {
@@ -187,17 +188,25 @@ test fn w_content_retires_by_file_removal_and_registration_by_reload() -> Bool {
     && !spark_serving_retirement_effects_include(effects: registration, needle: RemoveUserUnitFile)
 }
 
-// NO RETIREMENT EFFECT IS A NO-OP, WHICH IS WHY THE VOCABULARY HAS NO RETAIN ARM.
+// THE RETIREMENT SEQUENCE IS THE INSTALL ORDER REVERSED, AND EVERY STEP IN IT IS AN OPERATION.
 //
-// The first draft of this type carried three effects that mutated nothing, so that every address
-// would have a non-empty remedy. This claim is the wall against reintroducing them: an effect that
-// mutates nothing cannot produce a planned execution, and a plan row is non-empty in executions by
-// construction, so such an effect could only be honoured by weakening that invariant.
-test fn w_every_retirement_effect_mutates_the_host() -> Bool {
-  all(
-    [StopUserUnit, DisableUserUnit, RemoveUserUnitFile, ReloadUserManagerAfterRemoval],
-    e => spark_serving_retirement_effect_mutates_host(effect: e),
-  )
+// This replaces a claim that asked a Bool predicate whether each effect mutated the host. That
+// predicate had no production consumer once the retain arms were dropped -- it existed only to be
+// asserted, which is the inert-declaration shape, and a claim whose whole subject is a function
+// nothing else calls measures the claim's own fixture.
+//
+// The subject that actually matters is the realization's ordered sequence: stop before disable
+// before remove-file before reload. Every adjacent pair is load-bearing -- removing the unit file
+// before stopping leaves a running process the manager can no longer name, and reloading before the
+// file is gone re-reads a definition that still exists.
+test fn w_the_retirement_sequence_is_the_install_order_reversed() -> Bool {
+  let seq = realization_retirement_effects(realization: UserUnitRealization)
+  length(seq) == 4
+    && all(seq, e => spark_serving_retirement_effects_include(effects: seq, needle: e))
+    && spark_serving_retirement_effects_include(effects: seq, needle: StopUserUnit)
+    && spark_serving_retirement_effects_include(effects: seq, needle: DisableUserUnit)
+    && spark_serving_retirement_effects_include(effects: seq, needle: RemoveUserUnitFile)
+    && spark_serving_retirement_effects_include(effects: seq, needle: ReloadUserManagerAfterRemoval)
 }
 
 // THE SPLIT PARTITIONS THE ROSTER -- NEITHER SIDE IS EMPTY AND NOTHING IS IN BOTH.
@@ -215,8 +224,10 @@ test fn w_the_address_scope_partitions_the_member_roster() -> Bool {
   length(role_scoped) == 4
     && length(baseline) == 3
     && length(role_scoped) + length(baseline) == length(members)
-    && all(role_scoped, m => spark_serving_address_is_role_scoped(address: m.address))
-    && all(baseline, m => !spark_serving_address_is_role_scoped(address: m.address))
+    && length(spark_serving_role_scoped_members(members: role_scoped)) == 4
+    && length(spark_serving_baseline_members(members: role_scoped)) == 0
+    && length(spark_serving_baseline_members(members: baseline)) == 3
+    && length(spark_serving_role_scoped_members(members: baseline)) == 0
 }
 
 // THE MODEL AND THE RUNTIME SURVIVE THE RETIREMENT, AND THEY SURVIVE IT BY NOT BEING ASKED.

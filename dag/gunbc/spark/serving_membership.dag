@@ -90,23 +90,24 @@ fn spark_serving_address_scope(address: SparkServingResourceAddress) -> SparkSer
   }
 }
 
-fn spark_serving_address_is_role_scoped(address: SparkServingResourceAddress) -> Bool {
-  match spark_serving_address_scope(address: address) {
-    SparkServingRoleScoped => true
-    SparkHostBaselineScoped => false
-  }
-}
-
 // THE DESIRED POPULATION OF A HOST THAT NO LONGER SERVES. Baseline members stay desired, so the
 // reconcile proposes nothing for them; the four serving-role members leave desired state, so the
 // reconcile proposes exactly four removals. The retirement is a set difference over one roster
 // rather than a second code path, which is why nothing here needs a "retirement mode".
 fn spark_serving_baseline_members(members: List<SparkServingMember>) -> List<SparkServingMember> {
-  flat_map(members, m => if spark_serving_address_is_role_scoped(address: m.address) { [] } else { [m] })
+  flat_map(members, m =>
+    match spark_serving_address_scope(address: m.address) {
+      SparkHostBaselineScoped => [m]
+      SparkServingRoleScoped => []
+    })
 }
 
 fn spark_serving_role_scoped_members(members: List<SparkServingMember>) -> List<SparkServingMember> {
-  flat_map(members, m => if spark_serving_address_is_role_scoped(address: m.address) { [m] } else { [] })
+  flat_map(members, m =>
+    match spark_serving_address_scope(address: m.address) {
+      SparkServingRoleScoped => [m]
+      SparkHostBaselineScoped => []
+    })
 }
 
 type SparkServingMemberAt = String
