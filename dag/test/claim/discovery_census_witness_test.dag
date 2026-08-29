@@ -28,7 +28,7 @@ import gunbc.discovery_census {
 }
 import v2.workflow.required_floor {
   RequiredFloorDisposition,
-  Planned, DeclinedLongModule, DeclinedFixtureMember, DeclinedCostDebt,
+  Planned, DeclinedLongModule, DeclinedFixtureMember, DeclinedOutsideRequiredGate, DeclinedCostDebt,
   required_floor_site_disposition,
 }
 import v2.workflow.floor_terminal_ledger { ClaimDisposition, Passed }
@@ -70,11 +70,11 @@ fn live_tree_site(module_path: String, function: String) -> DiscoveredSite {
 // balance whether or not the census could classify a withheld row at all.
 fn mixed_sites() -> List<DiscoveredSite> {
   [
-    hermetic_site(module_path: "test.claim.alpha_witness", function: "w_alpha"),
-    hermetic_site(module_path: "test.claim.alpha_witness", function: "w_beta"),
+    hermetic_site(module_path: "v2.test.claim.alpha_witness", function: "w_alpha"),
+    hermetic_site(module_path: "v2.test.claim.alpha_witness", function: "w_beta"),
     hermetic_site(module_path: "test.claim.long.slow_witness", function: "w_slow"),
     live_tree_site(module_path: "v2.test.fixture.walk_plan_stage.common", function: "w_member"),
-    live_tree_site(module_path: "test.claim.reads_tree_witness", function: "w_reads"),
+    live_tree_site(module_path: "v2.test.claim.reads_tree_witness", function: "w_reads"),
     hermetic_site(
       module_path: "dag.test.claim.lifecycle_survivor_corpus_census",
       function: "no_raw_lifecycle_string_survivors_remain"
@@ -205,6 +205,7 @@ test fn w_fixture_home_declines_with_its_matched_prefix() -> Bool {
     DeclinedFixtureMember { matched_prefix: p } => p == "v2.test.fixture.walk_plan_stage."
     Planned => false
     DeclinedLongModule { matched_prefix: _ } => false
+    DeclinedOutsideRequiredGate => false
     DeclinedCostDebt => false
   }
 }
@@ -217,6 +218,7 @@ test fn w_long_home_module_declines_with_its_matched_prefix() -> Bool {
     DeclinedLongModule { matched_prefix: p } => p == "test.claim.long."
     Planned => false
     DeclinedFixtureMember { matched_prefix: _ } => false
+    DeclinedOutsideRequiredGate => false
     DeclinedCostDebt => false
   }
 }
@@ -226,22 +228,40 @@ test fn w_long_home_module_declines_with_its_matched_prefix() -> Bool {
 // control beside the decline above: without it the decline could pass under a `contains` test.
 test fn w_long_home_is_a_prefix_not_a_substring() -> Bool {
   match required_floor_site_disposition(
-    module_path: "test.claim.not_test_claim_long.witness",
-    identity: "test.claim.not_test_claim_long.witness.a_claim"
+    module_path: "v2.test.claim.not_test_claim_long.witness",
+    identity: "v2.test.claim.not_test_claim_long.witness.a_claim"
   ) {
     Planned => true
     DeclinedLongModule { matched_prefix: _ } => false
     DeclinedFixtureMember { matched_prefix: _ } => false
+    DeclinedOutsideRequiredGate => false
     DeclinedCostDebt => false
   }
 }
 
 test fn w_site_is_planned_when_no_home_matched() -> Bool {
   match required_floor_site_disposition(
-    module_path: "test.claim.ordinary_witness",
-    identity: "test.claim.ordinary_witness.a_claim"
+    module_path: "v2.test.claim.ordinary_witness",
+    identity: "v2.test.claim.ordinary_witness.a_claim"
   ) {
     Planned => true
+    DeclinedLongModule { matched_prefix: _ } => false
+    DeclinedFixtureMember { matched_prefix: _ } => false
+    DeclinedOutsideRequiredGate => false
+    DeclinedCostDebt => false
+  }
+}
+
+// THE GATE DECLINES ON THE AUTHORED MODULE NAME, and a product witness that is neither long nor
+// a fixture member lands here rather than in Planned. This is the RED for the 2026-08-29 static
+// required gate: before the arm existed this site was planned.
+test fn w_site_outside_the_required_gate_is_declined() -> Bool {
+  match required_floor_site_disposition(
+    module_path: "test.claim.live_deploy.some_product_witness",
+    identity: "test.claim.live_deploy.some_product_witness.a_claim"
+  ) {
+    DeclinedOutsideRequiredGate => true
+    Planned => false
     DeclinedLongModule { matched_prefix: _ } => false
     DeclinedFixtureMember { matched_prefix: _ } => false
     DeclinedCostDebt => false
@@ -261,10 +281,12 @@ test fn w_counts_partition_the_offered_population() -> Bool {
     && (counts.planned == 3)
     && (counts.declined_long_module == 1)
     && (counts.declined_fixture_member == 1)
+    && (counts.declined_outside_required_gate == 0)
     && (counts.declined_cost_debt == 1)
     && (counts.offered ==
         counts.planned + counts.declined_long_module
           + counts.declined_fixture_member
+          + counts.declined_outside_required_gate
           + counts.declined_cost_debt)
 }
 
@@ -309,6 +331,7 @@ test fn w_unrostered_sibling_in_the_same_module_is_planned() -> Bool {
     identity: "dag.test.claim.lifecycle_survivor_corpus_census.a_sibling_the_roster_does_not_hold"
   ) {
     Planned => true
+    DeclinedOutsideRequiredGate => false
     DeclinedCostDebt => false
     DeclinedLongModule { matched_prefix: _ } => false
     DeclinedFixtureMember { matched_prefix: _ } => false
@@ -326,6 +349,7 @@ test fn w_home_decline_outranks_cost_debt() -> Bool {
     identity: "dag.test.claim.lifecycle_survivor_corpus_census.no_raw_lifecycle_string_survivors_remain"
   ) {
     DeclinedLongModule { matched_prefix: p } => p == "test.claim.long."
+    DeclinedOutsideRequiredGate => false
     DeclinedCostDebt => false
     Planned => false
     DeclinedFixtureMember { matched_prefix: _ } => false
@@ -395,8 +419,8 @@ test fn w_duplicate_identity_refuses_even_when_declined() -> Bool {
 // every module that appears twice.
 test fn w_two_functions_in_one_module_are_two_identities() -> Bool {
   match discovery_census(sites: [
-    hermetic_site(module_path: "test.claim.alpha_witness", function: "w_alpha"),
-    hermetic_site(module_path: "test.claim.alpha_witness", function: "w_beta")
+    hermetic_site(module_path: "v2.test.claim.alpha_witness", function: "w_alpha"),
+    hermetic_site(module_path: "v2.test.claim.alpha_witness", function: "w_beta")
   ]) {
     CensusAccepted { rows: rows } => (rows |> count) == 2
     CensusRefused { cause: _ } => false

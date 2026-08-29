@@ -45041,7 +45041,74 @@ pub fn assemble_prepared_subject(
     source_roots: &[String],
     exclude_substrings: &[String],
 ) -> Result<PreparedSubject, String> {
-    let index = build_module_index(source_roots);
+    assemble_prepared_subject_closure(source_roots, exclude_substrings, None)
+}
+
+/// THE GATE PREPARES ITS OWN IMPORT CLOSURE, NOT THE CORPUS. Strict preparation was 27 of the
+/// floor lane's 68 wall minutes on the last green run, single-threaded, and it was denominated
+/// in every module under the source roots regardless of which claims the floor then planned --
+/// so a static gate over the claim roster alone would have bought ~18 minutes of 68. With
+/// `closure_seed_prefixes` given, the subject is the transitive import closure of every module
+/// whose authored name carries one of those prefixes, read off the `import` headers the parse
+/// sweep already accepted; everything else under the roots is excluded and COUNTED, one line,
+/// so a closure that quietly grew back to the corpus is visible in the run's own announcement.
+///
+/// The seed roster is the same `v2.workflow.required_floor.required_gate_prefixes` the site
+/// disposition reads: one authority decides both what is planned and what is prepared, which is
+/// what keeps a witness admitted by one and unresolvable by the other from being writable.
+pub fn assemble_prepared_subject_closure(
+    source_roots: &[String],
+    exclude_substrings: &[String],
+    closure_seed_prefixes: Option<&[String]>,
+) -> Result<PreparedSubject, String> {
+    let full_index = build_module_index(source_roots);
+    let index: ModuleSourceIndex = match closure_seed_prefixes {
+        None => full_index,
+        Some(prefixes) => {
+            let started = std::time::Instant::now();
+            let mut keep: HashSet<String> = HashSet::new();
+            let mut stack: Vec<String> = full_index
+                .keys()
+                .filter(|m| prefixes.iter().any(|p| m.starts_with(p.as_str())))
+                .cloned()
+                .collect();
+            let seeds = stack.len();
+            while let Some(m) = stack.pop() {
+                if !keep.insert(m.clone()) {
+                    continue;
+                }
+                if let Some(sf) = full_index.get(&m) {
+                    for imported in extract_import_paths(&sf.content) {
+                        if !keep.contains(&imported) && full_index.contains_key(&imported) {
+                            stack.push(imported);
+                        }
+                    }
+                }
+            }
+            if seeds == 0 {
+                return Err(format!(
+                    "REQUIRED-FLOOR REFUSAL cause=GateClosureEmpty — no module under the source \
+                     roots carries any of the {} required-gate prefixes, so the prepared subject \
+                     would be empty",
+                    prefixes.len()
+                ));
+            }
+            eprintln!(
+                "[floor-phase] phase=gate-closure state=completed wall_ms={} prefixes={} seeds={} \
+                 closure={} outside_closure={} corpus={}",
+                started.elapsed().as_millis(),
+                prefixes.len(),
+                seeds,
+                keep.len(),
+                full_index.len() - keep.len(),
+                full_index.len()
+            );
+            full_index
+                .into_iter()
+                .filter(|(m, _)| keep.contains(m))
+                .collect()
+        }
+    };
     let total = index.len();
     let mut witness_files: Vec<InventoryWitnessFile> = Vec::new();
     let mut test_decl_free_paths: Vec<String> = Vec::new();
@@ -45129,7 +45196,18 @@ pub fn prepare_repository_once(
     source_roots: &[String],
     exclude_substrings: &[String],
 ) -> Result<(PreparedRepository, Vec<PreparedSourceView>), String> {
-    let subject = assemble_prepared_subject(source_roots, exclude_substrings)?;
+    prepare_repository_closure(source_roots, exclude_substrings, None)
+}
+
+/// `prepare_repository_once` over the import closure of a seed-prefix roster; see
+/// `assemble_prepared_subject_closure`.
+pub fn prepare_repository_closure(
+    source_roots: &[String],
+    exclude_substrings: &[String],
+    closure_seed_prefixes: Option<&[String]>,
+) -> Result<(PreparedRepository, Vec<PreparedSourceView>), String> {
+    let subject =
+        assemble_prepared_subject_closure(source_roots, exclude_substrings, closure_seed_prefixes)?;
     // THE SUBJECT IS STATED BY THE REFUSAL ITSELF, not only by the success path.
     //
     // The digest and the two counts are computed above, BEFORE the gate that can reject.
@@ -45759,6 +45837,12 @@ pub enum RequiredFloorDisposition {
     /// but corrupting. See `v2.workflow.required_floor` `fixture_home_prefixes` for the full
     /// argument and the dissolution condition.
     DeclinedFixtureMember { matched_prefix: String },
+    /// The site's authored module name matches no `required_gate_prefixes()` row. The required
+    /// gate is a STATIC roster (operator ruling 2026-08-29, the CI bankruptcy): everything
+    /// outside it is declined here, counted, and reported in the disposition TSV, never
+    /// silently skipped. It is the fourth decline and precedes cost debt for the same reason
+    /// the home declines do -- a site the gate never admits must not surface as a cost row.
+    DeclinedOutsideRequiredGate,
     /// Declined because the qualified identity is enrolled in `v2.workflow.floor_cost_debt`:
     /// it PASSES and costs more than `required_floor_claim_cpu_safety_limit_ms` allows, so it is
     /// withheld from execution until made cheap. Carries no payload — the roster is the
@@ -45928,6 +46012,8 @@ pub struct RequiredFloorOutcome {
     /// prefix. Unlike the two neighbours, these identities DO have an executing consumer —
     /// the plan recipes that drive them — so this count is not a coverage gap.
     pub declined_fixture_member: usize,
+    /// Sites whose module matches no `required_gate_prefixes()` row (the static required gate).
+    pub declined_outside_required_gate: usize,
     pub claims_planned: usize,
     pub claims_executed: usize,
     pub receipt_identities: usize,
@@ -47026,8 +47112,34 @@ pub fn run_required_floor(
     // ── 1. read once, prepare once ────────────────────────────────────────────────────────
     set_phase(FloorPhase::Resolve, "required-floor preparation");
     let prepare_started = std::time::Instant::now();
-    let (prepared, prepared_sources) =
-        prepare_repository_once(source_roots, &floor_prepared_subject_exclusions())?;
+    // THE ROSTER THAT BOUNDS PREPARATION IS READ BEFORE PREPARATION, from a frame over the
+    // policy module's own closure -- a few dozen modules -- so the gate's authority is the .dag
+    // roster and not a Rust mirror of it. The same roster is decoded again below from the full
+    // hermetic frame for site disposition; the two reads are one function in one module.
+    let required_gate_prefixes = {
+        let policy_seed = [REQUIRED_FLOOR_POLICY_MODULE.to_string()];
+        let (policy_prepared, _) = prepare_repository_closure(
+            source_roots,
+            &floor_prepared_subject_exclusions(),
+            Some(&policy_seed),
+        )?;
+        let policy_scope = claim_scope_for(&policy_prepared, REQUIRED_FLOOR_POLICY_MODULE)?;
+        let policy_frame = evaluation_frame(
+            &policy_scope,
+            v1_interpreter::ExecutionMode::Hermetic,
+            None,
+            None,
+        );
+        floor_decode_module_prefix_roster(
+            &policy_frame,
+            "v2.workflow.required_floor.required_gate_prefixes",
+        )?
+    };
+    let (prepared, prepared_sources) = prepare_repository_closure(
+        source_roots,
+        &floor_prepared_subject_exclusions(),
+        Some(&required_gate_prefixes),
+    )?;
     // The bytes behind the sidecar candidates, captured here because `prepared_sources` is
     // moved into the guard on the next line and the barren check needs content, not paths.
     // Restricted to the candidate set rather than the whole inventory: the `.dag` predicate is
@@ -47454,6 +47566,16 @@ pub fn run_required_floor(
         &hermetic,
         "v2.workflow.required_floor.fixture_home_prefixes",
     )?;
+    let required_gate_prefixes = floor_decode_module_prefix_roster(
+        &hermetic,
+        "v2.workflow.required_floor.required_gate_prefixes",
+    )?;
+    if required_gate_prefixes.is_empty() {
+        return Err("REQUIRED-FLOOR REFUSAL cause=RequiredGateRosterEmpty — \
+                    v2.workflow.required_floor.required_gate_prefixes admits nothing, so the \
+                    floor would plan zero claims and green over an empty population"
+            .to_string());
+    }
     // THE LINE STOPS BEFORE THE PARTITION IS COMPUTED, because a barren entry is invisible to
     // the partition by construction — it contributes no SITE, so `offered` cannot report it and
     // `offered == routed + declined_long + declined_fixture + declined_cost_debt` stays exact
@@ -47569,6 +47691,7 @@ pub fn run_required_floor(
     let mut planned_identities: HashSet<String> = HashSet::new();
     let mut long_declined = 0usize;
     let mut fixture_declined = 0usize;
+    let mut outside_gate_declined = 0usize;
     let mut cost_debt_declined = 0usize;
     let mut cost_debt_seen: HashSet<String> = HashSet::new();
     let mut outcome_withheld_cost_debt: Vec<String> = Vec::new();
@@ -47585,6 +47708,9 @@ pub fn run_required_floor(
         let fixture_prefix = fixture_home_prefixes
             .iter()
             .find(|prefix| file.module_path.starts_with(prefix.as_str()));
+        let inside_required_gate = required_gate_prefixes
+            .iter()
+            .any(|prefix| file.module_path.starts_with(prefix.as_str()));
         let path_is_long = is_long_home_path(&file.path);
         let storage_agreement = long_home_storage_agreement(path_is_long, long_home);
         for function in &file.functions {
@@ -47638,6 +47764,16 @@ pub fn run_required_floor(
                 });
                 continue;
             }
+            // THE FOURTH DECLINE, AFTER COST DEBT so a rostered identity outside the gate still
+            // enters `cost_debt_seen` and the roster's staleness check keeps its meaning.
+            if !inside_required_gate {
+                outside_gate_declined += 1;
+                disposition_rows.push(RequiredFloorDispositionRow {
+                    identity,
+                    disposition: RequiredFloorDisposition::DeclinedOutsideRequiredGate,
+                });
+                continue;
+            }
             // ONE EXECUTABLE CLAIM PER QUALIFIED IDENTITY, REFUSED HERE AND NAMED.
             //
             // The deleted manifest carried this invariant and refused BEFORE running anything,
@@ -47685,10 +47821,17 @@ pub fn run_required_floor(
     // it is the construction's own statement of what it guarantees, and it fails loudly the
     // first time an edit adds a third arm that quietly swallows rows, which is precisely how
     // the live-tree decline arrived and stayed invisible.
-    if sites_offered != claims.len() + long_declined + fixture_declined + cost_debt_declined {
+    if sites_offered
+        != claims.len()
+            + long_declined
+            + fixture_declined
+            + outside_gate_declined
+            + cost_debt_declined
+    {
         return Err(format!(
             "REQUIRED-FLOOR REFUSAL cause=SitePartitionInexact offered={sites_offered} \
              routed={} declined_long={long_declined} declined_fixture={fixture_declined} \
+             declined_outside_gate={outside_gate_declined} \
              declined_cost_debt={cost_debt_declined} — every \
              discovered site must be either routed to a claim or declined with a stated \
              disposition; a gap here is a roster that narrowed without saying so",
@@ -47697,13 +47840,15 @@ pub fn run_required_floor(
     }
     eprintln!(
         "[floor-phase] phase=site-projection state=completed wall_ms={} sites={} files={} \
-         claims={} declined_long={} declined_fixture={} declined_cost_debt={}",
+         claims={} declined_long={} declined_fixture={} declined_outside_gate={} \
+         declined_cost_debt={}",
         projection_started.elapsed().as_millis(),
         sites_offered,
         files.len(),
         claims.len(),
         long_declined,
         fixture_declined,
+        outside_gate_declined,
         cost_debt_declined
     );
 
@@ -48161,6 +48306,7 @@ pub fn run_required_floor(
         sites_offered,
         declined_long_module: long_declined,
         declined_fixture_member: fixture_declined,
+        declined_outside_required_gate: outside_gate_declined,
         claims_planned,
         claims_executed: 0,
         receipt_identities: 0,
@@ -49589,6 +49735,7 @@ fn required_floor_disposition_label(disposition: &RequiredFloorDisposition) -> &
         RequiredFloorDisposition::Planned => "planned",
         RequiredFloorDisposition::DeclinedLongModule { .. } => "declined_long_module",
         RequiredFloorDisposition::DeclinedFixtureMember { .. } => "declined_fixture_member",
+        RequiredFloorDisposition::DeclinedOutsideRequiredGate => "declined_outside_required_gate",
         RequiredFloorDisposition::DeclinedCostDebt => "declined_cost_debt",
     }
 }
@@ -49597,7 +49744,9 @@ fn required_floor_disposition_matched_prefix(disposition: &RequiredFloorDisposit
     match disposition {
         RequiredFloorDisposition::DeclinedLongModule { matched_prefix }
         | RequiredFloorDisposition::DeclinedFixtureMember { matched_prefix } => matched_prefix,
-        RequiredFloorDisposition::Planned | RequiredFloorDisposition::DeclinedCostDebt => "",
+        RequiredFloorDisposition::Planned
+        | RequiredFloorDisposition::DeclinedOutsideRequiredGate
+        | RequiredFloorDisposition::DeclinedCostDebt => "",
     }
 }
 
@@ -49675,22 +49824,25 @@ fn write_required_floor_disposition_tsv(
     let mut declined_long = 0usize;
     let mut declined_fixture = 0usize;
     let mut declined_cost_debt = 0usize;
+    let mut declined_outside_gate = 0usize;
     for row in rows {
         match &row.disposition {
             RequiredFloorDisposition::Planned => planned += 1,
             RequiredFloorDisposition::DeclinedLongModule { .. } => declined_long += 1,
             RequiredFloorDisposition::DeclinedFixtureMember { .. } => declined_fixture += 1,
+            RequiredFloorDisposition::DeclinedOutsideRequiredGate => declined_outside_gate += 1,
             RequiredFloorDisposition::DeclinedCostDebt => declined_cost_debt += 1,
         }
     }
     writeln!(
         file,
         "# summary\ttotal={}\tplanned={}\tdeclined_long_module={}\tdeclined_fixture_member={}\
-         \tdeclined_cost_debt={}",
+         \tdeclined_outside_required_gate={}\tdeclined_cost_debt={}",
         rows.len(),
         planned,
         declined_long,
         declined_fixture,
+        declined_outside_gate,
         declined_cost_debt
     )
     .map_err(|e| format!("write_required_floor_disposition_tsv: write {path}: {e}"))?;
