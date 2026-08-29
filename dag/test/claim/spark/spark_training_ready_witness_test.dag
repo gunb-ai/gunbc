@@ -22,44 +22,105 @@ import gunbc.spark.training_ready {
   spark_training_readiness,
   spark_serving_absence_from_probe,
   spark_serving_absence_is_established,
+  spark_serving_retirement_observation_from_probes,
+  spark_unified_pool_observation_from_capture,
+  SparkUnifiedPoolReading,
+  SparkUnifiedPoolRead,
+  SparkUnifiedPoolUnread,
 }
 
 data spark_training_ready_witness_note: String = "SPARK-PAIR-0 P0. The readiness gate's discriminating evidence. Every red here is a state the corpus can author — an unreached probe read as absence, a pool measured before the retirement, a serving cell presented as trainable — so none of these claims is green by construction."
 
-fn w_absent(subject: NonEmptyStr) -> SparkServingAbsence {
-  ServingAbsent { evidence: subject }
+// THE FIXTURES GO THROUGH THE PRODUCERS, BECAUSE THE CARRIERS REFUSED TO BE FABRICATED.
+//
+// The first draft of this file constructed SparkServingRetirementObservation and
+// SparkUnifiedPoolObservation directly and did not compile: both are sole_constructor, and the
+// compiler refused construction outside their defining module. That refusal is the wall doing its
+// job on its own witness, and the repair is the right one -- a fixture now assembles the same
+// probe captures a real run would, so these claims exercise the decode path rather than asserting
+// past it.
+fn w_refused_capture(detail: String) -> SparkServingProbeCapture {
+  ProbeFailed { exit_code: 7, stderr: detail }
+}
+
+fn w_retired(host: HostIdentity) -> SparkServingRetirementObservation {
+  spark_serving_retirement_observation_from_probes(
+    host: host,
+    endpoint_capture: w_refused_capture(detail: "connection refused"),
+    process_capture: w_refused_capture(detail: "no such process"),
+    unit_capture: w_refused_capture(detail: "unit not-found"),
+  )
 }
 
 fn w_retired_srv6() -> SparkServingRetirementObservation {
-  SparkServingRetirementObservation {
-    host: operator_host_srv6,
-    endpoint: w_absent(subject: "endpoint refused" as NonEmptyStr),
-    process: w_absent(subject: "no ollama process" as NonEmptyStr),
-    unit: w_absent(subject: "unit not-found" as NonEmptyStr),
-  }
+  w_retired(host: operator_host_srv6)
 }
 
-fn w_pool(host: HostIdentity, bytes: Int, after: Bool) -> SparkUnifiedPoolObservation {
-  SparkUnifiedPoolObservation {
+// ONE AXIS SILENT, THE OTHER TWO POSITIVELY ABSENT. The axis under test is handed a capture that
+// never ran, so a rule requiring only "no axis answered" would pass all three of these. Three
+// fixtures rather than one parameterised by axis name: selecting on a string would put a second,
+// stringly spelling of the axis beside the three fields that already name them.
+fn w_silent_capture() -> SparkServingProbeCapture {
+  ProbeNeverRan { cause: "ssh timed out" as NonEmptyStr }
+}
+
+fn w_retired_endpoint_silent() -> SparkServingRetirementObservation {
+  spark_serving_retirement_observation_from_probes(
+    host: operator_host_srv6,
+    endpoint_capture: w_silent_capture(),
+    process_capture: w_refused_capture(detail: "no such process"),
+    unit_capture: w_refused_capture(detail: "unit not-found"),
+  )
+}
+
+fn w_retired_process_silent() -> SparkServingRetirementObservation {
+  spark_serving_retirement_observation_from_probes(
+    host: operator_host_srv6,
+    endpoint_capture: w_refused_capture(detail: "connection refused"),
+    process_capture: w_silent_capture(),
+    unit_capture: w_refused_capture(detail: "unit not-found"),
+  )
+}
+
+fn w_retired_unit_silent() -> SparkServingRetirementObservation {
+  spark_serving_retirement_observation_from_probes(
+    host: operator_host_srv6,
+    endpoint_capture: w_refused_capture(detail: "connection refused"),
+    process_capture: w_refused_capture(detail: "no such process"),
+    unit_capture: w_silent_capture(),
+  )
+}
+
+fn w_pool_or_refused(host: HostIdentity, bytes: Int, after: Bool) -> SparkUnifiedPoolObservation? {
+  match spark_unified_pool_observation_from_capture(
     host: host,
     free_bytes: bytes,
+    capture: ProbeAnswered { stdout: "MemAvailable" },
     observed_after_retirement: after,
-    producer: "w-fixture" as NonEmptyStr,
+  ) {
+    SparkUnifiedPoolRead { observation: o } => Present { value: o }
+    SparkUnifiedPoolUnread { cause: _ } => none
   }
 }
 
-fn w_is_ready(r: SparkTrainingReadiness) -> Bool {
-  match r {
-    SparkTrainingReady { proof: _ } => true
-    SparkTrainingNotReady { cause: _ } => false
+fn w_readiness(
+  retirement: SparkServingRetirementObservation,
+  host: HostIdentity,
+  bytes: Int,
+  after: Bool,
+) -> Bool {
+  match w_pool_or_refused(host: host, bytes: bytes, after: after) {
+    Absent => false
+    Present { value: pool } =>
+      match spark_training_readiness(retirement: retirement, pool: pool) {
+        SparkTrainingReady { proof: _ } => true
+        SparkTrainingNotReady { cause: _ } => false
+      }
   }
 }
 
 test fn w_a_fully_retired_training_cell_is_ready() -> Bool {
-  w_is_ready(r: spark_training_readiness(
-    retirement: w_retired_srv6(),
-    pool: w_pool(host: operator_host_srv6, bytes: 100000000000, after: true),
-  ))
+  w_readiness(retirement: w_retired_srv6(), host: operator_host_srv6, bytes: 100000000000, after: true)
 }
 
 // THE POSITIVE CONTROL'S MIRROR: THE SERVING CELL IS NEVER READY.
@@ -68,97 +129,66 @@ test fn w_a_fully_retired_training_cell_is_ready() -> Bool {
 // consulted, this input would be indistinguishable from srv6's and would pass. It refuses on role
 // alone, which is what "srv5 is statically reserved" has to mean to be worth anything.
 test fn w_a_serving_cell_refuses_even_with_a_perfect_retirement_observation() -> Bool {
-  !w_is_ready(r: spark_training_readiness(
-    retirement: SparkServingRetirementObservation {
-      host: operator_host_srv5,
-      endpoint: w_absent(subject: "endpoint refused" as NonEmptyStr),
-      process: w_absent(subject: "no ollama process" as NonEmptyStr),
-      unit: w_absent(subject: "unit not-found" as NonEmptyStr),
-    },
-    pool: w_pool(host: operator_host_srv5, bytes: 100000000000, after: true),
-  ))
+  !w_readiness(
+    retirement: w_retired(host: operator_host_srv5),
+    host: operator_host_srv5,
+    bytes: 100000000000,
+    after: true,
+  )
 }
 
 // AN UNREACHED PROBE IS NOT ABSENCE, AND THIS IS THE CLAIM THAT COSTS THE MOST TO GET WRONG.
-//
-// The subject is read one axis at a time so that a single silent axis refuses. Each of the three
-// runs here leaves exactly one subject Unobserved and the other two positively absent, so a
-// readiness rule that required only "no subject is StillPresent" would pass all three.
 test fn w_an_unobserved_subject_refuses_on_every_axis() -> Bool {
-  let unobserved = ServingAbsenceUnobserved { cause: "ssh timed out" as NonEmptyStr }
-  let pool = w_pool(host: operator_host_srv6, bytes: 100000000000, after: true)
-  !w_is_ready(r: spark_training_readiness(
-      retirement: SparkServingRetirementObservation {
-        host: operator_host_srv6,
-        endpoint: unobserved,
-        process: w_absent(subject: "p" as NonEmptyStr),
-        unit: w_absent(subject: "u" as NonEmptyStr),
-      },
-      pool: pool,
-    ))
-    && !w_is_ready(r: spark_training_readiness(
-      retirement: SparkServingRetirementObservation {
-        host: operator_host_srv6,
-        endpoint: w_absent(subject: "e" as NonEmptyStr),
-        process: unobserved,
-        unit: w_absent(subject: "u" as NonEmptyStr),
-      },
-      pool: pool,
-    ))
-    && !w_is_ready(r: spark_training_readiness(
-      retirement: SparkServingRetirementObservation {
-        host: operator_host_srv6,
-        endpoint: w_absent(subject: "e" as NonEmptyStr),
-        process: w_absent(subject: "p" as NonEmptyStr),
-        unit: unobserved,
-      },
-      pool: pool,
-    ))
+  !w_readiness(retirement: w_retired_endpoint_silent(), host: operator_host_srv6, bytes: 100000000000, after: true)
+    && !w_readiness(retirement: w_retired_process_silent(), host: operator_host_srv6, bytes: 100000000000, after: true)
+    && !w_readiness(retirement: w_retired_unit_silent(), host: operator_host_srv6, bytes: 100000000000, after: true)
 }
 
+// A SERVER THAT ANSWERED IS THE LOUD ARM: the retirement did not happen.
 test fn w_a_still_serving_endpoint_refuses() -> Bool {
-  !w_is_ready(r: spark_training_readiness(
-    retirement: SparkServingRetirementObservation {
+  !w_readiness(
+    retirement: spark_serving_retirement_observation_from_probes(
       host: operator_host_srv6,
-      endpoint: ServingStillPresent { evidence: "0.12.11" as NonEmptyStr },
-      process: w_absent(subject: "p" as NonEmptyStr),
-      unit: w_absent(subject: "u" as NonEmptyStr),
-    },
-    pool: w_pool(host: operator_host_srv6, bytes: 100000000000, after: true),
-  ))
+      endpoint_capture: ProbeAnswered { stdout: "0.12.11" },
+      process_capture: w_refused_capture(detail: "no such process"),
+      unit_capture: w_refused_capture(detail: "unit not-found"),
+    ),
+    host: operator_host_srv6,
+    bytes: 100000000000,
+    after: true,
+  )
 }
 
 // A POOL READ BEFORE THE RETIREMENT DESCRIBES A MACHINE THAT WAS STILL SERVING.
 //
-// Nothing about the number itself distinguishes the two reads -- this input carries the same byte
-// count as the passing case and differs only in when it was taken. That is why the ordering is a
-// field the producer must answer for rather than something the gate could infer.
+// This input carries the same byte count as the passing case and differs only in when it was taken,
+// which is why the ordering is a field the producer answers for rather than something inferable.
 test fn w_a_pool_measured_before_the_retirement_refuses() -> Bool {
-  !w_is_ready(r: spark_training_readiness(
-    retirement: w_retired_srv6(),
-    pool: w_pool(host: operator_host_srv6, bytes: 100000000000, after: false),
-  ))
+  !w_readiness(retirement: w_retired_srv6(), host: operator_host_srv6, bytes: 100000000000, after: false)
 }
 
 test fn w_a_pool_measured_on_another_host_refuses() -> Bool {
-  !w_is_ready(r: spark_training_readiness(
-    retirement: w_retired_srv6(),
-    pool: w_pool(host: operator_host_srv5, bytes: 100000000000, after: true),
-  ))
+  !w_readiness(retirement: w_retired_srv6(), host: operator_host_srv5, bytes: 100000000000, after: true)
 }
 
 test fn w_a_non_positive_pool_refuses_rather_than_offering_nothing() -> Bool {
-  !w_is_ready(r: spark_training_readiness(
-    retirement: w_retired_srv6(),
-    pool: w_pool(host: operator_host_srv6, bytes: 0, after: true),
-  ))
+  !w_readiness(retirement: w_retired_srv6(), host: operator_host_srv6, bytes: 0, after: true)
+}
+
+// A CAPTURE THAT DID NOT ANSWER CANNOT CARRY A BYTE COUNT, whatever integer is passed beside it.
+test fn w_a_pool_number_without_a_read_is_refused() -> Bool {
+  match spark_unified_pool_observation_from_capture(
+    host: operator_host_srv6,
+    free_bytes: 100000000000,
+    capture: ProbeNeverRan { cause: "ssh timed out" as NonEmptyStr },
+    observed_after_retirement: true,
+  ) {
+    SparkUnifiedPoolUnread { cause: _ } => true
+    SparkUnifiedPoolRead { observation: _ } => false
+  }
 }
 
 // THE DECODER SAYS ONLY WHAT THE CAPTURE SUPPORTS.
-//
-// ProbeFailed is the arm that establishes absence, and it is the counter-intuitive one: the probe
-// ran and was refused, which is exactly the evidence wanted. ProbeNeverRan looks similar at the
-// call site and establishes nothing. ProbeAnswered is the loud arm.
 test fn w_absence_is_decoded_from_the_capture_and_not_from_emptiness() -> Bool {
   spark_serving_absence_is_established(
     a: spark_serving_absence_from_probe(
