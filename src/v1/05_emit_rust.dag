@@ -258,6 +258,13 @@ fn render_rust_arrow_type(n: Node, shared_types: Set<String>, source_indices: Ma
   }
 }
 
+// ZERO-PARAMETER ALIAS AT THE EXPRESSION-TYPE POSITION (the closed_alias_peels_zero_param arm below):
+// A ZERO-PARAMETER ALIAS NEVER TAKES THE ARGUMENTS OF WHAT IT ABBREVIATES. The resolver hands an
+// alias reference back carrying its right-hand side's children, and rendering name-plus-children
+// wrote `CompileLensOutcome<Rc<Witness<Rc<Node>>>>` for `type CompileLensOutcome =
+// Outcome<Witness<Node>>` (E0107, and the E0391 variance cycle rustc reports beside it). The
+// fn-signature renderer already answers this position bare via closed_alias_peels_zero_param;
+// this is the same verdict asked at the expression-type position.
 fn render_rust_type_without_applied_binding(n: Node, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, emit_info: EmitGraphInfo) -> String {
   if is_host_text_carrier_type(n: n, source_indices: source_indices) { return rust_carrier_optional_wrap(n: n, rendered: "String") }
   if is_host_optional_carrier_type(n: n, source_indices: source_indices) {
@@ -269,12 +276,6 @@ fn render_rust_type_without_applied_binding(n: Node, shared_types: Set<String>, 
   if rust_type_node_is_arrow(n: n) {
     render_rust_arrow_type(n: n, shared_types: shared_types, source_indices: source_indices, emit_info: emit_info)
   } else if n.connective == NoConnective && n.children |> count > 0 && !is_container_type(name: authored_name_at(source_indices: source_indices, node: n)) && closed_alias_peels_zero_param(env: emit_info.fn_type_env, n: n) {
-    // A ZERO-PARAMETER ALIAS NEVER TAKES THE ARGUMENTS OF WHAT IT ABBREVIATES. The resolver hands an
-    // alias reference back carrying its right-hand side's children, and rendering name-plus-children
-    // wrote `CompileLensOutcome<Rc<Witness<Rc<Node>>>>` for `type CompileLensOutcome =
-    // Outcome<Witness<Node>>` (E0107, and the E0391 variance cycle rustc reports beside it). The
-    // fn-signature renderer already answers this position bare via closed_alias_peels_zero_param;
-    // this is the same verdict asked at the expression-type position.
     let leaf = qualified_last_segment(name: authored_name_at(source_indices: source_indices, node: n))
     render_rust_shared_type_with_optional(n: n, type_name: leaf, rendered: leaf, shared_types: shared_types)
   } else if n.connective == NoConnective && n.children |> count > 0 && !is_container_type(name: authored_name_at(source_indices: source_indices, node: n)) {
@@ -1388,6 +1389,10 @@ Fix: route on the TERMINAL segment via qualified_last_segment (v1.std.core, the 
 
 The v2 corpus authors qualified names in type position only rarely today, which is why one line carried this much weight; the point of fixing the renderer rather than editing that one declaration is that the next qualified name must not reintroduce it (DESIGN: do not cement the seed's accidents)."
 
+// THE FINAL else ARM CARRIES THE MODULE ENV:
+// The env travels: an alias right-hand side that is an Arrow renders its return through
+// render_rust_type, and the zero-param-alias verdict there is asked of emit_info.fn_type_env. An
+// empty env answered ClosedAliasBindingAbsent for every alias and the arm could never fire.
 fn render_rust_alias_rhs_type(n: Node, generic_param_names: List<String>, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, scope: InferScope, imports: List<Node>, registry: Map<String, ItemInfo>, module_name: String, export_sets: Map<String, Map<String, Bool>>, typed_modules: List<TypedModule>, module_index: ModuleIndex, variant_to_enum: Map<String, String>) -> String {
   if is_where_refinement_type(ty: n) {
     match n.children |> first {
@@ -1479,9 +1484,6 @@ fn render_rust_alias_rhs_type(n: Node, generic_param_names: List<String>, shared
       }
     }
   } else {
-    // The env travels: an alias right-hand side that is an Arrow renders its return through
-    // render_rust_type, and the zero-param-alias verdict there is asked of emit_info.fn_type_env. An
-    // empty env answered ClosedAliasBindingAbsent for every alias and the arm could never fire.
     render_rust_type(n: n, shared_types: shared_types, source_indices: source_indices, emit_info: emit_info_with_fn_type_context(emit_info: empty_emit_graph_info(), generic_param_names: generic_param_names, env: scope.type_env))
   }
 }
@@ -9979,6 +9981,14 @@ fn lambda_scope_from_children(scope: InferScope, params: List<String>, param_nod
   )
 }
 
+// THE RENDERED-STRING ADMISSION ON AN INFERRED PARAMETER TYPE:
+// The same admission the fold arm applies to its element annotation
+// (fold_elem_type_str): a rendered `FreeMonoid<T>` whose T is no fn generic names a
+// type this closure cannot spell, and an annotation that names it is refused by rustc
+// (E0425 cannot find type `T`, v2.lens.mandatory_tag on the 00_compile closure). The
+// node-grain check above missed it because the formal's spelling resolves to SOME
+// binding in the whole-pool env; the rendered-string check is the one authority both
+// arms consult, so the two cannot disagree.
 fn lambda_param_type_strs(params: List<String>, param_nodes: List<Node>, fallback_types: List<String>, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, emit_info: EmitGraphInfo, fold_acc_uses_fallback: Bool, type_env: TypeEnv) -> List<String> {
   params |> enumerate |> map(pair =>
     let idx = pair.first
@@ -9997,13 +10007,6 @@ fn lambda_param_type_strs(params: List<String>, param_nodes: List<Node>, fallbac
               } else if type_node_has_closure_unbound_generic_atom(n: param_type, generic_param_names: emit_info.fn_generic_param_names, env: type_env, source_indices: source_indices) {
                 none
               } else {
-                // The same admission the fold arm applies to its element annotation
-                // (fold_elem_type_str): a rendered `FreeMonoid<T>` whose T is no fn generic names a
-                // type this closure cannot spell, and an annotation that names it is refused by rustc
-                // (E0425 cannot find type `T`, v2.lens.mandatory_tag on the 00_compile closure). The
-                // node-grain check above missed it because the formal's spelling resolves to SOME
-                // binding in the whole-pool env; the rendered-string check is the one authority both
-                // arms consult, so the two cannot disagree.
                 let rendered = render_rust_type(n: param_type, shared_types: shared_types, source_indices: source_indices, emit_info: emit_info)
                 if rust_fold_rendered_type_has_any_spurious_generic(type_str: rendered, generic_param_names: emit_info.fn_generic_param_names) { none }
                 else { Present { value: rendered } }
@@ -10092,6 +10095,15 @@ fn emit_typed_fold_lambda(lambda_expr: Node, acc_type_str: String, elem_type_str
 // instead would restate it, and would then have to be kept in step with any future change to the strip
 // -- reintroducing the shape of this defect while fixing this instance of it. `_` is also the device
 // already used for elem_render_has_spurious_generic a few bindings earlier.
+// THE UNDER-RESOLVED-GENERIC ACCUMULATOR ARM (is_under_resolved_generic below):
+// A DECLARATION'S OWN PARAMETER NAMES ARE NOT A RESOLVED ACCUMULATOR. fold_accumulator_type can
+// arrive as the container declaration's parametric shape -- Map<K, V> with K and V the
+// declaration's formals, bound to nothing at this call -- and the four shape tests above all
+// read that as resolved (two children, neither unit-like). The init arm then wrote the formals
+// straight into a turbofish, `v1_rt::rc_empty_map::<K, V>()`, four sites on the 00_compile
+// closure (v2.lens.unit_modeling) while the lambda beside it had already fallen back to `_`.
+// The contextual method result type IS the resolved accumulator here, so a shape whose atoms are
+// unbound in the closure scope is under-resolved exactly like an empty one.
 fn emit_rust_fold_method_call(method_call_node: Node, fold_accumulator_type: Node?, result_type: InferredNode?, receiver: Node, args: List<Node>, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo) -> String {
   let recv_str = emit_typed_iter_owned_receiver(receiver: receiver, downstream: args, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
   let elem_type_str = collection_element_type(receiver_type: receiver.inferred, shared_types: shared_types, source_indices: scope.type_env.source_indices, emit_info: emit_info, type_env: scope.type_env)
@@ -10106,14 +10118,6 @@ fn emit_rust_fold_method_call(method_call_node: Node, fold_accumulator_type: Nod
       let is_under_resolved_list = node_is_element_collection(n: acc_type, source_indices: scope.type_env.source_indices) && !node_is_set_collection(n: acc_type, source_indices: scope.type_env.source_indices) && acc_type.children |> count == 0
       let is_under_resolved_set = node_is_set_collection(n: acc_type, source_indices: scope.type_env.source_indices) && (acc_type.children |> count == 0 || acc_children_have_unit)
       let is_under_resolved_non_collection = !node_is_keyed_collection(n: acc_type, source_indices: scope.type_env.source_indices) && !node_is_element_collection(n: acc_type, source_indices: scope.type_env.source_indices) && !node_is_collection(n: acc_type, source_indices: scope.type_env.source_indices)
-      // A DECLARATION'S OWN PARAMETER NAMES ARE NOT A RESOLVED ACCUMULATOR. fold_accumulator_type can
-      // arrive as the container declaration's parametric shape -- Map<K, V> with K and V the
-      // declaration's formals, bound to nothing at this call -- and the four shape tests above all
-      // read that as resolved (two children, neither unit-like). The init arm then wrote the formals
-      // straight into a turbofish, `v1_rt::rc_empty_map::<K, V>()`, four sites on the 00_compile
-      // closure (v2.lens.unit_modeling) while the lambda beside it had already fallen back to `_`.
-      // The contextual method result type IS the resolved accumulator here, so a shape whose atoms are
-      // unbound in the closure scope is under-resolved exactly like an empty one.
       let is_under_resolved_generic = type_node_has_closure_unbound_generic_atom(n: acc_type, generic_param_names: emit_info.fn_generic_param_names, env: scope.type_env, source_indices: scope.type_env.source_indices)
       if is_under_resolved_map || is_under_resolved_list || is_under_resolved_set || is_under_resolved_non_collection || is_under_resolved_generic {
         match contextual_acc_type {
