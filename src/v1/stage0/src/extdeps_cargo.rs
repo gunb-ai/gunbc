@@ -12,7 +12,12 @@ pub use crate::extdeps_cargo_version::{
 pub use crate::extdeps_external_authority::ExternalAuthority;
 use crate::extdeps_uri::UriScheme::Https;
 pub use crate::extdeps_uri::{Uri, UriScheme};
-pub use crate::std_types::{FilePathParts, NonEmptyStr};
+pub use crate::std_types::{FilePathParts, List, NonEmptyStr};
+use crate::std_workspace_artifact::FootprintProvenance::CitedUpstream;
+use crate::std_workspace_artifact::IgnoreReason::{LocalCacheState, RegenerableFromSource};
+pub use crate::std_workspace_artifact::{
+    FootprintProvenance, IgnoreReason, WorkspaceArtifact, WorkspaceFootprint,
+};
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
 use crate::NonEmptyBTreeSet;
@@ -245,6 +250,37 @@ pub fn cargo_environment_variable_name(variable: CargoEnvironmentVariable) -> St
         CargoEnvironmentVariable::CargoBuildJobsEnv => "CARGO_BUILD_JOBS".to_string(),
         CargoEnvironmentVariable::RustcWrapperEnv => "RUSTC_WRAPPER".to_string(),
     }
+}
+
+pub fn cargo_workspace_footprint(
+    target_dir_patterns: Rc<Vec<String>>,
+    cargo_home_pattern: String,
+) -> Rc<WorkspaceFootprint> {
+    Rc::new(WorkspaceFootprint {
+        provenance: Rc::new(FootprintProvenance::CitedUpstream {
+            display: "Cargo build artifacts".to_string(),
+            upstream: "doc.rust-lang.org/cargo/".to_string(),
+        }),
+        artifacts: v1_rt::concat(
+            Rc::new({
+                let mut __result = Vec::new();
+                for p in target_dir_patterns.iter().cloned() {
+                    __result.push(Rc::new(WorkspaceArtifact {
+                        pattern: p.clone(),
+                        meaning: "cargo build output tree (compiled artifacts, incremental state)"
+                            .to_string(),
+                        reason: Rc::new(IgnoreReason::RegenerableFromSource),
+                    }));
+                }
+                __result
+            }),
+            Rc::new(vec![Rc::new(WorkspaceArtifact {
+                pattern: cargo_home_pattern.clone(),
+                meaning: "CARGO_HOME registry/cache; may include git checkouts".to_string(),
+                reason: Rc::new(IgnoreReason::LocalCacheState),
+            })]),
+        ),
+    })
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]

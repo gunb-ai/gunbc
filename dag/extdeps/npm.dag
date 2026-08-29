@@ -1,6 +1,7 @@
 module extdeps.npm
 
 import std.types { NonEmptyStr, String, Bool, List, Int }
+import std.workspace_artifact { WorkspaceFootprint, WorkspaceArtifact, CitedUpstream, RegenerableFromSource }
 import std.integer { UInt8 }
 import std.encoding { base64_decode, base64_encode, Standard }
 import std.content_hash {
@@ -942,5 +943,16 @@ fn npm_decode_package_lock_text(text: String) -> NpmPackageLockParse {
             cause: "lock root is not an object" as NonEmptyStr,
           }
       }
+  }
+}
+
+// WORKSPACE FOOTPRINT. npm install materializes the dependency tree under node_modules/;
+// it is a projection of the committed lockfile, never source.
+fn node_modules_footprint() -> WorkspaceFootprint {
+  WorkspaceFootprint {
+    provenance: CitedUpstream { display: "npm installed dependency tree", upstream: "docs.npmjs.com/cli/configuring-npm/folders" },
+    artifacts: [
+      WorkspaceArtifact { pattern: "node_modules/", meaning: "installed packages materialized from the lockfile", reason: RegenerableFromSource }
+    ]
   }
 }

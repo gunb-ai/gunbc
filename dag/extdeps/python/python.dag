@@ -1,6 +1,7 @@
 module extdeps.python
 
-import std.types { FilePath }
+import std.types { FilePath, String, List }
+import std.workspace_artifact { WorkspaceFootprint, WorkspaceArtifact, CitedUpstream, RegenerableFromSource }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 
@@ -25,5 +26,18 @@ service python.Interpreter {
       0 => Unit
       nonzero => String "python3 script exited nonzero"
     }
+  }
+}
+
+// WORKSPACE FOOTPRINT. Running any Python script leaves CPython's bytecode cache in the
+// tree (PEP 3147 __pycache__ directories, plus legacy .pyc). A fact about the interpreter,
+// not about any script.
+fn cpython_bytecode_footprint() -> WorkspaceFootprint {
+  WorkspaceFootprint {
+    provenance: CitedUpstream { display: "CPython bytecode cache", upstream: "python.org/peps/pep-3147" },
+    artifacts: [
+      WorkspaceArtifact { pattern: "__pycache__/", meaning: "PEP 3147 per-directory bytecode cache", reason: RegenerableFromSource },
+      WorkspaceArtifact { pattern: "*.pyc", meaning: "compiled bytecode (legacy layout)", reason: RegenerableFromSource }
+    ]
   }
 }
