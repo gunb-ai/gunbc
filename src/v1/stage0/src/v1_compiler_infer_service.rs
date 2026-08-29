@@ -3,8 +3,6 @@
 
 pub use crate::std_occurrence_identity::NodeOccurrenceIdentity;
 use crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic;
-pub use crate::std_syntax::BinOp;
-use crate::std_syntax::BinOp::*;
 pub use crate::std_types::SourceSpan;
 pub use crate::v1_compiler_infer_items::inferred_to_outputs;
 use crate::v1_compiler_infer_items::ItemKind::FuncItem;

@@ -30,7 +30,7 @@ pub use crate::std_algebra::{AlgebraFieldTemplate, CollectionSizeEffect, CostSha
 pub use crate::std_induction::SubValueRelation;
 use crate::std_induction::SubValueRelation::*;
 use crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic;
-use crate::std_occurrence_identity::OccurrenceRole::*;
+pub use crate::std_occurrence_identity::OccurrenceId;
 use crate::std_occurrence_identity::OccurrenceTransportRefusal::{
     DuplicateAuthoredOccurrenceIdentity, DuplicateSuppliedCandidateIdentity,
     InconsistentOccurrenceContainment, MissingAuthoredOccurrenceIdentity,
@@ -44,7 +44,6 @@ pub use crate::std_occurrence_identity::{
     AuthoredTokenOrdinalSpace, NodeOccurrenceIdentity, OccurrenceIdAllocator,
     OccurrenceTransportRefusal,
 };
-pub use crate::std_occurrence_identity::{OccurrenceId, OccurrenceRole};
 pub use crate::std_source_annotation::AnnotationAttachmentRefusal;
 use crate::std_source_annotation::AnnotationAttachmentRefusal::*;
 pub use crate::std_source_annotation::{

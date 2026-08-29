@@ -5,8 +5,6 @@ use self::NodeLookupStatus::*;
 use self::PatternSubject::*;
 pub use crate::std_occurrence_identity::NodeOccurrenceIdentity;
 use crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic;
-pub use crate::std_syntax::BinOp;
-use crate::std_syntax::BinOp::*;
 pub use crate::std_syntax::LiteralValue;
 use crate::std_syntax::LiteralValue::LitBool;
 use crate::std_syntax::LiteralValue::*;
@@ -28,8 +26,6 @@ use crate::v1_std_core::Connective::{Disj, NoConnective};
 use crate::v1_std_core::ExprData::NoExprData;
 use crate::v1_std_core::InferredNode::{CompilerError, Resolved, TypeVariable};
 use crate::v1_std_core::MatchPattern::LitPattern;
-pub use crate::v1_std_core::UnaryOpKind;
-use crate::v1_std_core::UnaryOpKind::*;
 pub use crate::v1_std_core::{
     arm_pattern, authored_name_at, error_type, find_child_named, generic_param_name_at,
     is_compiler_error, kernel_span, make_error_node, no_span, none_type,
