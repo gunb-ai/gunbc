@@ -1,0 +1,14 @@
+module test.claim.fabric.fabric_ci_program_witness_test
+
+import std.types { Bool }
+import gunbc.fabric_ci_program { fabric_ci_gates }
+
+test fn fabric_ci_program_declares_signed_gate_boundaries() -> Bool {
+  let gates = fabric_ci_gates()
+  gates.length() == 7
+    && any(gates, g => g.id == "FCI-1" && any(g.discriminating_mutations, mutation => mutation == "unbounded-cell"))
+    && any(gates, g => g.id == "FCI-4" && any(g.discriminating_mutations, mutation => mutation == "duplicate-receipt") && any(g.discriminating_mutations, mutation => mutation == "failed-sanitation"))
+    && any(gates, g => g.id == "FCI-5" && any(g.frozen_output_identities, identity => identity == "shadow-job"))
+    && any(gates, g => g.id == "FCI-6" && any(g.discriminating_mutations, mutation => mutation == "direct-invocation-present"))
+    && all(gates, g => g.exit_predicate != "" && g.positive_control != "")
+}
