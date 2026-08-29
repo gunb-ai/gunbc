@@ -61,8 +61,11 @@ import v2.std.logic { Bool }
 import v2.std.node { Hash, Symbol, symbol_identity_digest }
 import v2.std.optional { Absent, Present }
 import std.content_hash { Sha1Digest, sha512_hex_digest }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.git.object_store { GitObjectId, GitSha1ObjectId }
 import v2.workflow.floor_discovery { floor_discovery_tree_id }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 // Test-side collapse to Bool, at the assertion boundary rather than on the
 // admission API -- the same predicate-dissolution rule the reproduction battery
