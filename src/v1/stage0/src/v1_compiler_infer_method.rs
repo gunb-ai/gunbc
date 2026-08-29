@@ -91,14 +91,6 @@ pub fn list_of_element(element: Rc<Node>) -> Rc<Node> {
         .clone()
 }
 
-pub fn seed_node_map(key: String, value: Rc<Node>) -> Rc<HashMap<String, Rc<Node>>> {
-    v1_rt::rc_map_insert(
-        v1_rt::rc_empty_map::<String, Rc<Node>>(),
-        key.clone(),
-        value.clone(),
-    )
-}
-
 pub fn builtin_kernel_seed_diagnostics() -> Rc<Vec<Rc<ErrorNode>>> {
     v1_rt::concat(
         v1_rt::concat(
@@ -161,523 +153,145 @@ pub fn observe_declared_import_closure_symbol_binding_row_note() -> String {
 }
 
 pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<Node>>> {
-    {
-        let m = seed_node_map("count".to_string(), int_type());
-        let m = v1_rt::rc_map_insert(m.clone(), "string_length".to_string(), int_type());
-        let m = v1_rt::rc_map_insert(m.clone(), "code_point".to_string(), int_type());
-        let m = v1_rt::rc_map_insert(m.clone(), "to_int".to_string(), int_type());
-        let m = v1_rt::rc_map_insert(m.clone(), "scan_while".to_string(), int_type());
-        let m = v1_rt::rc_map_insert(m.clone(), "scan_string_end".to_string(), int_type());
-        let m = v1_rt::rc_map_insert(m.clone(), "scan_to_eol".to_string(), int_type());
-        let m = v1_rt::rc_map_insert(m.clone(), "skip_horizontal_ws".to_string(), int_type());
-        let m = v1_rt::rc_map_insert(
-            m.clone(),
-            "parse_int".to_string(),
-            crate::v1_std_core::with_optional_cardinality(int_type()),
-        );
-        let m = v1_rt::rc_map_insert(m.clone(), "char_at".to_string(), string_type());
-        let m = v1_rt::rc_map_insert(m.clone(), "substring".to_string(), string_type());
-        let m = v1_rt::rc_map_insert(m.clone(), "from_code_point".to_string(), string_type());
-        let m = v1_rt::rc_map_insert(m.clone(), "chars_to_string".to_string(), string_type());
-        let m = v1_rt::rc_map_insert(
-            m.clone(),
-            "record_source_chars_index_lookup".to_string(),
-            unit_type(),
-        );
-        let m = v1_rt::rc_map_insert(
-            m.clone(),
-            "resolution_silent_pick_is_enabled".to_string(),
-            bool_type(),
-        );
-        let m = v1_rt::rc_map_insert(
-            m.clone(),
-            "name_resolution_policy_is_namespace_only".to_string(),
-            bool_type(),
-        );
-        let m = v1_rt::rc_map_insert(
-            m.clone(),
-            "type_ref_hit_ne_bind_measure_active".to_string(),
-            bool_type(),
-        );
-        let m = v1_rt::rc_map_insert(
-            m.clone(),
-            "resolution_silent_pick_record_global_bare_lcp_pick".to_string(),
-            unit_type(),
-        );
-        let m = v1_rt::rc_map_insert(
-            m.clone(),
-            "resolution_silent_pick_record_global_bare_lcp_tie".to_string(),
-            unit_type(),
-        );
-        let m = v1_rt::rc_map_insert(
-            m.clone(),
-            "resolution_silent_pick_record_fn_parent_first_hit".to_string(),
-            unit_type(),
-        );
-        let m = v1_rt::rc_map_insert(m.clone(), "to_string".to_string(), string_type());
-        let m = v1_rt::rc_map_insert(m.clone(), "discriminant".to_string(), string_type());
-        let m = v1_rt::rc_map_insert(m.clone(), "concat".to_string(), string_type());
-        let m = v1_rt::rc_map_insert(m.clone(), "map_insert".to_string(), map_of_type_variables());
-        let m = v1_rt::rc_map_insert(m.clone(), "map_merge".to_string(), map_of_type_variables());
-        let m = v1_rt::rc_map_insert(m.clone(), "with".to_string(), map_of_type_variables());
-        let set_ty = crate::v1_compiler_infer_types::make_container_type(
-            "Set".to_string(),
-            type_variable_node("set_elem".to_string()),
-        )
-        .ty
-        .clone();
-        let m = v1_rt::rc_map_insert(m.clone(), "empty_set".to_string(), set_ty.clone());
-        let m = v1_rt::rc_map_insert(m.clone(), "set_insert".to_string(), set_ty.clone());
-        let m = v1_rt::rc_map_insert(m.clone(), "set_union".to_string(), set_ty.clone());
-        let m = v1_rt::rc_map_insert(m.clone(), "map_contains_key".to_string(), bool_type());
-        let m = v1_rt::rc_map_insert(m.clone(), "map_has".to_string(), bool_type());
-        let m = v1_rt::rc_map_insert(m.clone(), "map_is_empty".to_string(), bool_type());
-        let m = v1_rt::rc_map_insert(m.clone(), "rc_ptr_eq".to_string(), bool_type());
-        let m = v1_rt::rc_map_insert(m.clone(), "rc_vec_ptr_eq".to_string(), bool_type());
-        let m = v1_rt::rc_map_insert(m.clone(), "set_contains".to_string(), bool_type());
-        let m = v1_rt::rc_map_insert(
-            m.clone(),
-            "lookup".to_string(),
-            crate::v1_std_core::with_optional_cardinality(type_variable_node(
-                "map_value".to_string(),
-            )),
-        );
-        let m = v1_rt::rc_map_insert(
-            m.clone(),
-            "map_get".to_string(),
-            crate::v1_std_core::with_optional_cardinality(type_variable_node(
-                "map_value".to_string(),
-            )),
-        );
-        let m = v1_rt::rc_map_insert(
-            m.clone(),
-            "Some".to_string(),
-            crate::v1_std_core::with_optional_cardinality(type_variable_node(
-                "some_inner".to_string(),
-            )),
-        );
-        let m = v1_rt::rc_map_insert(
-            m.clone(),
-            "map_keys".to_string(),
-            list_of_type_variable("collection_element".to_string()),
-        );
-        let m = v1_rt::rc_map_insert(
-            m.clone(),
-            "sorted_map_keys".to_string(),
-            list_of_type_variable("collection_element".to_string()),
-        );
-        let m = v1_rt::rc_map_insert(
-            m.clone(),
-            "map_values".to_string(),
-            list_of_type_variable("collection_element".to_string()),
-        );
-        let m = v1_rt::rc_map_insert(
-            m.clone(),
-            "get".to_string(),
-            crate::v1_std_core::with_optional_cardinality(type_variable_node(
-                "collection_element".to_string(),
-            )),
-        );
-        let m = v1_rt::rc_map_insert(
-            m.clone(),
-            "reverse".to_string(),
-            list_of_type_variable("collection_element".to_string()),
-        );
-        let m = v1_rt::rc_map_insert(
-            m.clone(),
-            "list_push".to_string(),
-            list_of_type_variable("collection_element".to_string()),
-        );
-        let m = v1_rt::rc_map_insert(m.clone(), "hash_combine".to_string(), hash_type());
-        let m = v1_rt::rc_map_insert(m.clone(), "atom_identity_hash".to_string(), hash_type());
-        let m = v1_rt::rc_map_insert(m.clone(), "trace_mark".to_string(), unit_type());
-        let m = v1_rt::rc_map_insert(
-            m.clone(),
-            "observed_peak_resident_bytes".to_string(),
-            int_type(),
-        );
-        let m = v1_rt::rc_map_insert(
-            m.clone(),
-            "observed_monotonic_nanos".to_string(),
-            int_type(),
-        );
-        let m = v1_rt::rc_map_insert(m.clone(), "string_contains".to_string(), bool_type());
-        let m = v1_rt::rc_map_insert(m.clone(), "length".to_string(), int_type());
-        let m = v1_rt::rc_map_insert(m.clone(), "starts_with".to_string(), bool_type());
-        let m = v1_rt::rc_map_insert(m.clone(), "replace".to_string(), string_type());
-        let m = v1_rt::rc_map_insert(
-            m.clone(),
-            "filesystem_read".to_string(),
-            filesystem_read_result_type(),
-        );
-        let m = v1_rt::rc_map_insert(
-            m.clone(),
-            "toolchain_home_interference_probe".to_string(),
-            type_variable_node("toolchain_interference_probe_result".to_string()),
-        );
-        let m = v1_rt::rc_map_insert(
-            m.clone(),
-            "emit_host_run_transport".to_string(),
-            type_variable_node("emit_host_run_transport_result".to_string()),
-        );
-        let m = v1_rt::rc_map_insert(
-            m.clone(),
-            "emit_host_run_transport_cached".to_string(),
-            type_variable_node("emit_host_run_transport_result".to_string()),
-        );
-        let m = v1_rt::rc_map_insert(
-            m.clone(),
-            "emit_host_native_cache_evict".to_string(),
-            bool_type(),
-        );
-        let m = v1_rt::rc_map_insert(
-            m.clone(),
-            "contiguous_loop_elementwise_kernel".to_string(),
-            list_of_type_variable("collection_element".to_string()),
-        );
-        let m = v1_rt::rc_map_insert(
-            m.clone(),
-            "contiguous_loop_elementwise_float_kernel".to_string(),
-            list_of_type_variable("collection_element".to_string()),
-        );
-        let m = v1_rt::rc_map_insert(
-            m.clone(),
-            "shell_materialize_operation_argv".to_string(),
-            type_variable_node("argv_materialization_result".to_string()),
-        );
-        let m = v1_rt::rc_map_insert(
-            m.clone(),
-            "shell_transport_operation_rows".to_string(),
-            list_of_type_variable("shell_transport_operation_row_elem".to_string()),
-        );
-        let m = v1_rt::rc_map_insert(
-            m.clone(),
-            "namespace_structural_observation_admissions".to_string(),
-            list_of_type_variable("ordinary_compile_structural_admission_elem".to_string()),
-        );
-        let m = v1_rt::rc_map_insert(
-            m.clone(),
-            "extdeps_shape_transport_policy_facts_for_qualified_name".to_string(),
-            type_variable_node("extdeps_module_facts_record".to_string()),
-        );
-        let m = v1_rt::rc_map_insert(
-            m.clone(),
-            "extdeps_qualified_name_resolves_in_derived_module_set".to_string(),
-            bool_type(),
-        );
-        let m = v1_rt::rc_map_insert(
-            m.clone(),
-            "extdeps_external_authority_facts_for_qualified_name".to_string(),
-            type_variable_node("extdeps_external_authority_module_facts_record".to_string()),
-        );
-        let m = v1_rt::rc_map_insert(
-            m.clone(),
-            "extdeps_external_authority_live_clean_tree_holds".to_string(),
-            bool_type(),
-        );
-        let m = v1_rt::rc_map_insert(
-            m.clone(),
-            "extdeps_external_authority_live_roster_module_count".to_string(),
-            int_type(),
-        );
-        let m = v1_rt::rc_map_insert(
-            m.clone(),
-            "seed_runner_bool_false_failure_detail".to_string(),
-            string_type(),
-        );
-        let m = v1_rt::rc_map_insert(m.clone(), "doc_graph_orphan_count".to_string(), int_type());
-        let m = v1_rt::rc_map_insert(
-            m.clone(),
-            "doc_graph_admitted_root_count".to_string(),
-            int_type(),
-        );
-        let m = v1_rt::rc_map_insert(
-            m.clone(),
-            "doc_graph_dangling_link_count".to_string(),
-            int_type(),
-        );
-        let m = v1_rt::rc_map_insert(m.clone(), "doc_graph_doc_count".to_string(), int_type());
-        let m = v1_rt::rc_map_insert(
-            m.clone(),
-            "compile_dag_rust_emit_check".to_string(),
-            bool_type(),
-        );
-        let m = v1_rt::rc_map_insert(
-            m.clone(),
-            "compile_dag_diagnostic_census".to_string(),
-            type_variable_node("compile_diagnostic_census_result".to_string()),
-        );
-        let m = v1_rt::rc_map_insert(
-            m.clone(),
-            "compile_dag_multi_module_fixture".to_string(),
-            type_variable_node("multi_module_compile_fixture_result".to_string()),
-        );
-        let m = v1_rt::rc_map_insert(
-            m.clone(),
-            "observe_declared_import_closure_symbol_binding".to_string(),
-            type_variable_node("declared_import_closure_binding_result".to_string()),
-        );
-        let m = v1_rt::rc_map_insert(
-            m.clone(),
-            "class_b_import_closure_gate_not_affected_skip".to_string(),
-            bool_type(),
-        );
-        let m = v1_rt::rc_map_insert(
-            m.clone(),
-            "witness_layer_roots_compile_clean_check".to_string(),
-            bool_type(),
-        );
-        let m = v1_rt::rc_map_insert(
-            m.clone(),
-            "witness_layer_roots_compile_clean_emit_check".to_string(),
-            bool_type(),
-        );
-        let m = v1_rt::rc_map_insert(
-            m.clone(),
-            "install_or_consume_floor_compile_clean_gate_receipt".to_string(),
-            type_variable_node("gate_receipt_result".to_string()),
-        );
-        let m = v1_rt::rc_map_insert(
-            m.clone(),
-            "record_generated_artifact_drift_gate_failure_detail".to_string(),
-            unit_type(),
-        );
-        let m = v1_rt::rc_map_insert(
-            m.clone(),
-            "record_generated_artifact_drift_gate_clean".to_string(),
-            unit_type(),
-        );
-        let m = v1_rt::rc_map_insert(
-            m.clone(),
-            "consume_generated_artifact_drift_gate_receipt".to_string(),
-            type_variable_node("gate_receipt_result".to_string()),
-        );
-        let m = v1_rt::rc_map_insert(
-            m.clone(),
-            "witness_compile_clean_cli_floor_verdicts_agree".to_string(),
-            bool_type(),
-        );
-        let m = v1_rt::rc_map_insert(
-            m.clone(),
-            "test_migration_debt_module_names".to_string(),
-            list_of_type_variable("test_migration_debt_module_name_elem".to_string()),
-        );
-        let m = v1_rt::rc_map_insert(
-            m.clone(),
-            "test_migration_legacy_behavior_ids".to_string(),
-            list_of_type_variable("test_migration_legacy_behavior_id_elem".to_string()),
-        );
-        let m = v1_rt::rc_map_insert(
-            m.clone(),
-            "test_migration_witness_behavior_ids".to_string(),
-            list_of_type_variable("test_migration_witness_behavior_id_elem".to_string()),
-        );
-        let m = v1_rt::rc_map_insert(
-            m.clone(),
-            "test_migration_behavior_discovery_holds".to_string(),
-            bool_type(),
-        );
-        let m = v1_rt::rc_map_insert(
-            m.clone(),
-            "inert_carrier_names_live".to_string(),
-            list_of_type_variable("inert_carrier_name_elem".to_string()),
-        );
-        let m = v1_rt::rc_map_insert(
-            m.clone(),
-            "inert_carrier_declared_count".to_string(),
-            int_type(),
-        );
-        let m = v1_rt::rc_map_insert(m.clone(), "non_fold_residue_count".to_string(), int_type());
-        let m = v1_rt::rc_map_insert(
-            m.clone(),
-            "non_fold_residue_unrostered_count".to_string(),
-            int_type(),
-        );
-        let m = v1_rt::rc_map_insert(
-            m.clone(),
-            "non_fold_residue_stale_roster_count".to_string(),
-            int_type(),
-        );
-        let m = v1_rt::rc_map_insert(
-            m.clone(),
-            "non_fold_residue_coproduct_universe_count".to_string(),
-            int_type(),
-        );
-        let m = v1_rt::rc_map_insert(
-            m.clone(),
-            "parse_stage0_cargo_manifest_bins".to_string(),
-            type_variable_node("cargo_manifest_bin_parse".to_string()),
-        );
-        let m = v1_rt::rc_map_insert(
-            m.clone(),
-            "parse_roadmap_acceptance_event_history_jsonl".to_string(),
-            type_variable_node("roadmap_acceptance_event_history_parse".to_string()),
-        );
-        let m = v1_rt::rc_map_insert(
-            m.clone(),
-            "project_roadmap_acceptance_event_history_from_authority_text_host".to_string(),
-            type_variable_node("roadmap_acceptance_history_projection".to_string()),
-        );
-        let m = v1_rt::rc_map_insert(
-            m.clone(),
-            "commit_witness_claim_roster_unresolvable_count".to_string(),
-            int_type(),
-        );
-        let m = v1_rt::rc_map_insert(
-            m.clone(),
-            "commit_witness_claim_pair_resolvable".to_string(),
-            bool_type(),
-        );
-        let m = v1_rt::rc_map_insert(
-            m.clone(),
-            "non_fold_residue_wildcard_red_fixture_holds".to_string(),
-            bool_type(),
-        );
-        let m = v1_rt::rc_map_insert(
-            m.clone(),
-            "non_fold_residue_total_fold_green_fixture_holds".to_string(),
-            bool_type(),
-        );
-        let m = v1_rt::rc_map_insert(
-            m.clone(),
-            "non_fold_residue_roster_red_fixture_holds".to_string(),
-            bool_type(),
-        );
-        let m = v1_rt::rc_map_insert(
-            m.clone(),
-            "non_fold_residue_synthetic_unrostered_red_holds".to_string(),
-            bool_type(),
-        );
-        let m = v1_rt::rc_map_insert(
-            m.clone(),
-            "complexity_linearity_syntactic_finding_count".to_string(),
-            int_type(),
-        );
-        let m = v1_rt::rc_map_insert(
-            m.clone(),
-            "complexity_linearity_wildcard_facts".to_string(),
-            list_of_type_variable("complexity_linearity_wildcard_fact_elem".to_string()),
-        );
-        let m = v1_rt::rc_map_insert(
-            m.clone(),
-            "complexity_linearity_syntactic_site_fired".to_string(),
-            bool_type(),
-        );
-        let m = v1_rt::rc_map_insert(
-            m.clone(),
-            "fallback_arm_census_facts".to_string(),
-            list_of_type_variable("fallback_arm_census_fact_elem".to_string()),
-        );
-        let m = v1_rt::rc_map_insert(
-            m.clone(),
-            "fallback_arm_census_class_count".to_string(),
-            int_type(),
-        );
-        let m = v1_rt::rc_map_insert(
-            m.clone(),
-            "fallback_arm_census_total".to_string(),
-            int_type(),
-        );
-        let m = v1_rt::rc_map_insert(
-            m.clone(),
-            "fallback_arm_census_reconciliation_holds".to_string(),
-            bool_type(),
-        );
-        let m = v1_rt::rc_map_insert(
-            m.clone(),
-            "census_corpus_roots_follow_layer_authority".to_string(),
-            bool_type(),
-        );
-        let m = v1_rt::rc_map_insert(
-            m.clone(),
-            "transport_script_position_facts_for_path".to_string(),
-            list_of_type_variable("transport_script_position_fact_elem".to_string()),
-        );
-        let m = v1_rt::rc_map_insert(
-            m.clone(),
-            "layer_import_facts".to_string(),
-            list_of_type_variable("layer_import_fact_elem".to_string()),
-        );
-        let m = v1_rt::rc_map_insert(
-            m.clone(),
-            "import_resolution_facts".to_string(),
-            list_of_type_variable("import_resolution_fact_elem".to_string()),
-        );
-        let m = v1_rt::rc_map_insert(
-            m.clone(),
-            "reference_resolution_facts".to_string(),
-            list_of_type_variable("import_resolution_fact_elem".to_string()),
-        );
-        let m = v1_rt::rc_map_insert(
-            m.clone(),
-            "dependency_resolution_facts".to_string(),
-            list_of_type_variable("module_dependency_edge_elem".to_string()),
-        );
-        let m = v1_rt::rc_map_insert(
-            m.clone(),
-            "module_declaration_facts".to_string(),
-            list_of_type_variable("module_declaration_fact_elem".to_string()),
-        );
-        let m = v1_rt::rc_map_insert(
-            m.clone(),
-            "concept_decl_facts".to_string(),
-            list_of_type_variable("concept_decl_elem".to_string()),
-        );
-        let m = v1_rt::rc_map_insert(
-            m.clone(),
-            "decl_facts".to_string(),
-            list_of_type_variable("decl_fact_elem".to_string()),
-        );
-        let m = v1_rt::rc_map_insert(
-            m.clone(),
-            "export_signature_facts".to_string(),
-            list_of_type_variable("decl_fact_elem".to_string()),
-        );
-        let m = v1_rt::rc_map_insert(
-            m.clone(),
-            "data_decl_type_facts".to_string(),
-            list_of_type_variable("data_decl_type_fact_elem".to_string()),
-        );
-        let m = v1_rt::rc_map_insert(
-            m.clone(),
-            "fact_cardinality_decl_facts".to_string(),
-            list_of_type_variable("fact_cardinality_decl_fact_elem".to_string()),
-        );
-        let m = v1_rt::rc_map_insert(
-            m.clone(),
-            "languages_consumer_census_data_decl_count".to_string(),
-            int_type(),
-        );
-        let m = v1_rt::rc_map_insert(
-            m.clone(),
-            "languages_consumer_census_per_language_row_count".to_string(),
-            int_type(),
-        );
-        let m = v1_rt::rc_map_insert(
-            m.clone(),
-            "languages_consumer_census_format_row_count".to_string(),
-            int_type(),
-        );
-        let m = v1_rt::rc_map_insert(
-            m.clone(),
-            "languages_consumer_census_external_consumer_count".to_string(),
-            int_type(),
-        );
-        let m = v1_rt::rc_map_insert(
-            m.clone(),
-            "languages_consumer_census_is_composition_only".to_string(),
-            bool_type(),
-        );
-        let m = v1_rt::rc_map_insert(
-            m.clone(),
-            "languages_consumer_census_has_external_consumer".to_string(),
-            bool_type(),
-        );
-        let m = v1_rt::rc_map_insert(m.clone(), "is_xid_start".to_string(), bool_type());
-        let m = v1_rt::rc_map_insert(m.clone(), "is_xid_continue".to_string(), bool_type());
-        let m = v1_rt::rc_map_insert(m.clone(), "is_emoji_ident".to_string(), bool_type());
-        m.clone()
+    thread_local! {
+        static CACHED: Rc<HashMap<String, Rc<Node>>> = {
+            let mut __m = HashMap::new();
+            __m.insert("count".to_string(), int_type());
+            __m.insert("string_length".to_string(), int_type());
+            __m.insert("code_point".to_string(), int_type());
+            __m.insert("to_int".to_string(), int_type());
+            __m.insert("scan_while".to_string(), int_type());
+            __m.insert("scan_string_end".to_string(), int_type());
+            __m.insert("scan_to_eol".to_string(), int_type());
+            __m.insert("skip_horizontal_ws".to_string(), int_type());
+            __m.insert("parse_int".to_string(), crate::v1_std_core::with_optional_cardinality(int_type()));
+            __m.insert("char_at".to_string(), string_type());
+            __m.insert("substring".to_string(), string_type());
+            __m.insert("from_code_point".to_string(), string_type());
+            __m.insert("chars_to_string".to_string(), string_type());
+            __m.insert("record_source_chars_index_lookup".to_string(), unit_type());
+            __m.insert("resolution_silent_pick_is_enabled".to_string(), bool_type());
+            __m.insert("name_resolution_policy_is_namespace_only".to_string(), bool_type());
+            __m.insert("type_ref_hit_ne_bind_measure_active".to_string(), bool_type());
+            __m.insert("resolution_silent_pick_record_global_bare_lcp_pick".to_string(), unit_type());
+            __m.insert("resolution_silent_pick_record_global_bare_lcp_tie".to_string(), unit_type());
+            __m.insert("resolution_silent_pick_record_fn_parent_first_hit".to_string(), unit_type());
+            __m.insert("to_string".to_string(), string_type());
+            __m.insert("discriminant".to_string(), string_type());
+            __m.insert("concat".to_string(), string_type());
+            __m.insert("map_insert".to_string(), map_of_type_variables());
+            __m.insert("map_merge".to_string(), map_of_type_variables());
+            __m.insert("with".to_string(), map_of_type_variables());
+            __m.insert("empty_set".to_string(), crate::v1_compiler_infer_types::make_container_type("Set".to_string(), type_variable_node("set_elem".to_string())).ty.clone());
+            __m.insert("set_insert".to_string(), crate::v1_compiler_infer_types::make_container_type("Set".to_string(), type_variable_node("set_elem".to_string())).ty.clone());
+            __m.insert("set_union".to_string(), crate::v1_compiler_infer_types::make_container_type("Set".to_string(), type_variable_node("set_elem".to_string())).ty.clone());
+            __m.insert("map_contains_key".to_string(), bool_type());
+            __m.insert("map_has".to_string(), bool_type());
+            __m.insert("map_is_empty".to_string(), bool_type());
+            __m.insert("rc_ptr_eq".to_string(), bool_type());
+            __m.insert("rc_vec_ptr_eq".to_string(), bool_type());
+            __m.insert("set_contains".to_string(), bool_type());
+            __m.insert("lookup".to_string(), crate::v1_std_core::with_optional_cardinality(type_variable_node("map_value".to_string())));
+            __m.insert("map_get".to_string(), crate::v1_std_core::with_optional_cardinality(type_variable_node("map_value".to_string())));
+            __m.insert("Some".to_string(), crate::v1_std_core::with_optional_cardinality(type_variable_node("some_inner".to_string())));
+            __m.insert("map_keys".to_string(), list_of_type_variable("collection_element".to_string()));
+            __m.insert("sorted_map_keys".to_string(), list_of_type_variable("collection_element".to_string()));
+            __m.insert("map_values".to_string(), list_of_type_variable("collection_element".to_string()));
+            __m.insert("get".to_string(), crate::v1_std_core::with_optional_cardinality(type_variable_node("collection_element".to_string())));
+            __m.insert("reverse".to_string(), list_of_type_variable("collection_element".to_string()));
+            __m.insert("list_push".to_string(), list_of_type_variable("collection_element".to_string()));
+            __m.insert("hash_combine".to_string(), hash_type());
+            __m.insert("atom_identity_hash".to_string(), hash_type());
+            __m.insert("trace_mark".to_string(), unit_type());
+            __m.insert("observed_peak_resident_bytes".to_string(), int_type());
+            __m.insert("observed_monotonic_nanos".to_string(), int_type());
+            __m.insert("string_contains".to_string(), bool_type());
+            __m.insert("length".to_string(), int_type());
+            __m.insert("starts_with".to_string(), bool_type());
+            __m.insert("replace".to_string(), string_type());
+            __m.insert("filesystem_read".to_string(), filesystem_read_result_type());
+            __m.insert("toolchain_home_interference_probe".to_string(), type_variable_node("toolchain_interference_probe_result".to_string()));
+            __m.insert("emit_host_run_transport".to_string(), type_variable_node("emit_host_run_transport_result".to_string()));
+            __m.insert("emit_host_run_transport_cached".to_string(), type_variable_node("emit_host_run_transport_result".to_string()));
+            __m.insert("emit_host_native_cache_evict".to_string(), bool_type());
+            __m.insert("contiguous_loop_elementwise_kernel".to_string(), list_of_type_variable("collection_element".to_string()));
+            __m.insert("contiguous_loop_elementwise_float_kernel".to_string(), list_of_type_variable("collection_element".to_string()));
+            __m.insert("shell_materialize_operation_argv".to_string(), type_variable_node("argv_materialization_result".to_string()));
+            __m.insert("shell_transport_operation_rows".to_string(), list_of_type_variable("shell_transport_operation_row_elem".to_string()));
+            __m.insert("namespace_structural_observation_admissions".to_string(), list_of_type_variable("ordinary_compile_structural_admission_elem".to_string()));
+            __m.insert("extdeps_shape_transport_policy_facts_for_qualified_name".to_string(), type_variable_node("extdeps_module_facts_record".to_string()));
+            __m.insert("extdeps_qualified_name_resolves_in_derived_module_set".to_string(), bool_type());
+            __m.insert("extdeps_external_authority_facts_for_qualified_name".to_string(), type_variable_node("extdeps_external_authority_module_facts_record".to_string()));
+            __m.insert("extdeps_external_authority_live_clean_tree_holds".to_string(), bool_type());
+            __m.insert("extdeps_external_authority_live_roster_module_count".to_string(), int_type());
+            __m.insert("seed_runner_bool_false_failure_detail".to_string(), string_type());
+            __m.insert("doc_graph_orphan_count".to_string(), int_type());
+            __m.insert("doc_graph_admitted_root_count".to_string(), int_type());
+            __m.insert("doc_graph_dangling_link_count".to_string(), int_type());
+            __m.insert("doc_graph_doc_count".to_string(), int_type());
+            __m.insert("compile_dag_rust_emit_check".to_string(), bool_type());
+            __m.insert("compile_dag_diagnostic_census".to_string(), type_variable_node("compile_diagnostic_census_result".to_string()));
+            __m.insert("compile_dag_multi_module_fixture".to_string(), type_variable_node("multi_module_compile_fixture_result".to_string()));
+            __m.insert("observe_declared_import_closure_symbol_binding".to_string(), type_variable_node("declared_import_closure_binding_result".to_string()));
+            __m.insert("class_b_import_closure_gate_not_affected_skip".to_string(), bool_type());
+            __m.insert("witness_layer_roots_compile_clean_check".to_string(), bool_type());
+            __m.insert("witness_layer_roots_compile_clean_emit_check".to_string(), bool_type());
+            __m.insert("install_or_consume_floor_compile_clean_gate_receipt".to_string(), type_variable_node("gate_receipt_result".to_string()));
+            __m.insert("record_generated_artifact_drift_gate_failure_detail".to_string(), unit_type());
+            __m.insert("record_generated_artifact_drift_gate_clean".to_string(), unit_type());
+            __m.insert("consume_generated_artifact_drift_gate_receipt".to_string(), type_variable_node("gate_receipt_result".to_string()));
+            __m.insert("witness_compile_clean_cli_floor_verdicts_agree".to_string(), bool_type());
+            __m.insert("test_migration_debt_module_names".to_string(), list_of_type_variable("test_migration_debt_module_name_elem".to_string()));
+            __m.insert("test_migration_legacy_behavior_ids".to_string(), list_of_type_variable("test_migration_legacy_behavior_id_elem".to_string()));
+            __m.insert("test_migration_witness_behavior_ids".to_string(), list_of_type_variable("test_migration_witness_behavior_id_elem".to_string()));
+            __m.insert("test_migration_behavior_discovery_holds".to_string(), bool_type());
+            __m.insert("inert_carrier_names_live".to_string(), list_of_type_variable("inert_carrier_name_elem".to_string()));
+            __m.insert("inert_carrier_declared_count".to_string(), int_type());
+            __m.insert("non_fold_residue_count".to_string(), int_type());
+            __m.insert("non_fold_residue_unrostered_count".to_string(), int_type());
+            __m.insert("non_fold_residue_stale_roster_count".to_string(), int_type());
+            __m.insert("non_fold_residue_coproduct_universe_count".to_string(), int_type());
+            __m.insert("parse_stage0_cargo_manifest_bins".to_string(), type_variable_node("cargo_manifest_bin_parse".to_string()));
+            __m.insert("parse_roadmap_acceptance_event_history_jsonl".to_string(), type_variable_node("roadmap_acceptance_event_history_parse".to_string()));
+            __m.insert("project_roadmap_acceptance_event_history_from_authority_text_host".to_string(), type_variable_node("roadmap_acceptance_history_projection".to_string()));
+            __m.insert("commit_witness_claim_roster_unresolvable_count".to_string(), int_type());
+            __m.insert("commit_witness_claim_pair_resolvable".to_string(), bool_type());
+            __m.insert("non_fold_residue_wildcard_red_fixture_holds".to_string(), bool_type());
+            __m.insert("non_fold_residue_total_fold_green_fixture_holds".to_string(), bool_type());
+            __m.insert("non_fold_residue_roster_red_fixture_holds".to_string(), bool_type());
+            __m.insert("non_fold_residue_synthetic_unrostered_red_holds".to_string(), bool_type());
+            __m.insert("complexity_linearity_syntactic_finding_count".to_string(), int_type());
+            __m.insert("complexity_linearity_wildcard_facts".to_string(), list_of_type_variable("complexity_linearity_wildcard_fact_elem".to_string()));
+            __m.insert("complexity_linearity_syntactic_site_fired".to_string(), bool_type());
+            __m.insert("fallback_arm_census_facts".to_string(), list_of_type_variable("fallback_arm_census_fact_elem".to_string()));
+            __m.insert("fallback_arm_census_class_count".to_string(), int_type());
+            __m.insert("fallback_arm_census_total".to_string(), int_type());
+            __m.insert("fallback_arm_census_reconciliation_holds".to_string(), bool_type());
+            __m.insert("census_corpus_roots_follow_layer_authority".to_string(), bool_type());
+            __m.insert("transport_script_position_facts_for_path".to_string(), list_of_type_variable("transport_script_position_fact_elem".to_string()));
+            __m.insert("layer_import_facts".to_string(), list_of_type_variable("layer_import_fact_elem".to_string()));
+            __m.insert("import_resolution_facts".to_string(), list_of_type_variable("import_resolution_fact_elem".to_string()));
+            __m.insert("reference_resolution_facts".to_string(), list_of_type_variable("import_resolution_fact_elem".to_string()));
+            __m.insert("dependency_resolution_facts".to_string(), list_of_type_variable("module_dependency_edge_elem".to_string()));
+            __m.insert("module_declaration_facts".to_string(), list_of_type_variable("module_declaration_fact_elem".to_string()));
+            __m.insert("concept_decl_facts".to_string(), list_of_type_variable("concept_decl_elem".to_string()));
+            __m.insert("decl_facts".to_string(), list_of_type_variable("decl_fact_elem".to_string()));
+            __m.insert("export_signature_facts".to_string(), list_of_type_variable("decl_fact_elem".to_string()));
+            __m.insert("data_decl_type_facts".to_string(), list_of_type_variable("data_decl_type_fact_elem".to_string()));
+            __m.insert("fact_cardinality_decl_facts".to_string(), list_of_type_variable("fact_cardinality_decl_fact_elem".to_string()));
+            __m.insert("languages_consumer_census_data_decl_count".to_string(), int_type());
+            __m.insert("languages_consumer_census_per_language_row_count".to_string(), int_type());
+            __m.insert("languages_consumer_census_format_row_count".to_string(), int_type());
+            __m.insert("languages_consumer_census_external_consumer_count".to_string(), int_type());
+            __m.insert("languages_consumer_census_is_composition_only".to_string(), bool_type());
+            __m.insert("languages_consumer_census_has_external_consumer".to_string(), bool_type());
+            __m.insert("is_xid_start".to_string(), bool_type());
+            __m.insert("is_xid_continue".to_string(), bool_type());
+            __m.insert("is_emoji_ident".to_string(), bool_type());
+            Rc::new(__m)
+        };
     }
+    CACHED.with(|c: &Rc<HashMap<String, Rc<Node>>>| c.clone())
 }
 
 pub fn infer_builtin_call_type(name: String) -> Option<Rc<Node>> {

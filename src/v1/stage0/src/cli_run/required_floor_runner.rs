@@ -2217,6 +2217,25 @@ pub(crate) fn floor_value_constructor(v: &v1_interpreter::Value) -> &'static str
 /// discharged, admitting its witnesses to the ordinary population is the intended result, not an
 /// error. A decode that FAILS still refuses — a failed read and a legitimately empty roster are
 /// different states, and only the first is a defect.
+/// A hermetic frame over ONE module's exact scope, for evaluating that module's own
+/// declarations by name. The floor's rosters live in the policy module and are read from its
+/// scope; every other authority the floor evaluates by name (`gunbc.output_policy`,
+/// `v2.workflow.floor_naming_hygiene`) is read from its own module's scope, never from the
+/// policy module's — whether the policy module's closure happens to reach a module is a fact
+/// about the corpus, not about the question being asked.
+pub(crate) fn floor_authority_frame(
+    prepared: &PreparedRepository,
+    module_path: &str,
+) -> Result<v1_interpreter::InterpContext, String> {
+    let scope = claim_scope_for(prepared, module_path)?;
+    Ok(evaluation_frame(
+        &scope,
+        v1_interpreter::ExecutionMode::Hermetic,
+        None,
+        None,
+    ))
+}
+
 pub(crate) fn floor_decode_module_prefix_roster(
     hermetic: &v1_interpreter::InterpContext,
     qualified_name: &str,
@@ -2361,8 +2380,62 @@ pub fn run_required_floor(
     // ── 1. read once, prepare once ────────────────────────────────────────────────────────
     set_phase(FloorPhase::Resolve, "required-floor preparation");
     let prepare_started = std::time::Instant::now();
-    let (prepared, prepared_sources) =
-        prepare_repository_once(source_roots, &floor_prepared_subject_exclusions())?;
+    // THE ROSTER THAT BOUNDS PREPARATION IS READ BEFORE PREPARATION, from a frame over the
+    // policy module's own closure -- a few dozen modules -- so the gate's authority is the .dag
+    // roster and not a Rust mirror of it. The same roster is decoded again below from the full
+    // hermetic frame for site disposition; the two reads are one function in one module.
+    // ONE ENTRY INDEX FOR BOTH CLOSURES: building it is the expensive part (~75-110s on the
+    // 4,260-module corpus, measured 2026-08-29), so it is built once here and lent to the
+    // policy-closure prepare and the gate-closure prepare alike.
+    let gate_entry_index = build_multi_entry_index(source_roots);
+    let required_gate_prefixes = {
+        let policy_seed = [REQUIRED_FLOOR_POLICY_MODULE.to_string()];
+        let (policy_prepared, _) = prepare_repository_closure(
+            source_roots,
+            &floor_prepared_subject_exclusions(),
+            Some((&gate_entry_index, &policy_seed)),
+        )?;
+        let policy_scope = claim_scope_for(&policy_prepared, REQUIRED_FLOOR_POLICY_MODULE)?;
+        let policy_frame = evaluation_frame(
+            &policy_scope,
+            v1_interpreter::ExecutionMode::Hermetic,
+            None,
+            None,
+        );
+        floor_decode_module_prefix_roster(
+            &policy_frame,
+            "v2.workflow.required_floor.required_gate_prefixes",
+        )?
+    };
+    // THE FLOOR'S OWN AUTHORITIES ARE ALWAYS IN THE SUBJECT: the floor evaluates its rosters
+    // (expected red, route gap, cost debt, the gate itself) in a frame over the prepared graph,
+    // and a gate roster that happened not to reach `v2.workflow.required_floor` refused with
+    // EntryModuleOutsidePreparedSubject (measured 2026-08-29). They are seeds, not gate rows:
+    // their own witnesses are admitted or declined by the roster like every other module's.
+    //
+    // The roster names every module the floor's Rust reaches BY NAME outside the gate roster.
+    // Under the whole-tree subject these resolved by pool-membership coincidence -- the
+    // flat bare-name channel found `resolve_channel_policy` because the whole corpus was
+    // loaded, not because anything in the policy closure references `gunbc.output_policy`
+    // (measured 2026-08-29: the first gate-bounded run refused at output-policy install with
+    // "no declaration named 'resolve_channel_policy' in this execution's loaded index").
+    // Making the dependency a declared seed is the honest form; a module evaluated by name
+    // and absent from this list refuses loudly at its own call site, never silently.
+    let closure_seeds: Vec<String> = required_gate_prefixes
+        .iter()
+        .cloned()
+        .chain(
+            REQUIRED_FLOOR_RUNTIME_AUTHORITY_MODULES
+                .iter()
+                .map(|m| m.to_string()),
+        )
+        .collect();
+    let (prepared, prepared_sources) = prepare_repository_closure(
+        source_roots,
+        &floor_prepared_subject_exclusions(),
+        Some((&gate_entry_index, &closure_seeds)),
+    )?;
+    drop(gate_entry_index);
     // The bytes behind the sidecar candidates, captured here because `prepared_sources` is
     // moved into the guard on the next line and the barren check needs content, not paths.
     // Restricted to the candidate set rather than the whole inventory: the `.dag` predicate is
@@ -2520,10 +2593,66 @@ pub fn run_required_floor(
     // three members and every one of them is now measured and adjudicated here. The two earlier
     // warms were previously reported and never judged, which made two of the three modeled walls
     // decorative — permanently green by construction and citable as coverage (review 55338).
+    // THE POOL-ROOT INDEX, WARMED BY CALLING THE DECLARED PRODUCER ONCE. `module_path_index` is
+    // also built per POOL ROOT on demand by the decl-facts reflection seam, keyed on the root a
+    // claim asks for, so the witness-roots warm above cannot reach it. Under the gate-bounded
+    // subject the `src/v2/lens` root's 1.07s fill landed on whichever
+    // `lens_module_gate_witness` live claim ran first and interrupted it at the 500ms ceiling —
+    // three claims in three consecutive runs as each victim was withheld (CI 92cc92e, 0829ad8,
+    // 154fb1f; claim-cost receipts), the positional bill `floor_cost_debt`'s header describes.
+    // The key is not a literal here: the warm evaluates the same declaration the consumers
+    // evaluate, `lens_registry_completeness_live_facts`, in that module's own scope, so the
+    // root comes from `lens_registry_completeness_pool_roots` and the key is identical by
+    // construction. A subject that does not carry the module carries no consumer either, so the
+    // warm is skipped there — printed, not silent — and a producer that fails to evaluate stops
+    // the line rather than leaving the fill to a claim.
+    const LENS_REGISTRY_COMPLETENESS_MODULE: &str = "v2.lens.registry.completeness";
+    let lens_pool_root_warm = match floor_authority_frame(
+        &prepared,
+        LENS_REGISTRY_COMPLETENESS_MODULE,
+    ) {
+        Ok(frame) => {
+            let (evaluated, warm) = observe_shared_build(false, "floor-preparation", || {
+                v1_interpreter::run_in_context(
+                    &frame,
+                    "v2.lens.registry.completeness.lens_registry_completeness_live_facts",
+                    false,
+                )
+            });
+            if let Err(e) = evaluated {
+                return Err(format!(
+                    "REQUIRED-FLOOR REFUSAL cause=PoolRootIndexWarmFailed \
+                     producer=v2.lens.registry.completeness.lens_registry_completeness_live_facts \
+                     — {e}"
+                ));
+            }
+            eprintln!(
+                "[floor-phase] phase=pool-root-index-warm state=completed cpu_ms={} wall_ms={} \
+                 rss_growth_bytes={} producer={}.lens_registry_completeness_live_facts provenance={}",
+                warm.cpu_ms,
+                warm.wall_ms,
+                warm.rss_growth_bytes,
+                LENS_REGISTRY_COMPLETENESS_MODULE,
+                warm.provenance.render(),
+            );
+            Some(warm)
+        }
+        Err(why) => {
+            eprintln!(
+                "[floor-phase] phase=pool-root-index-warm state=skipped module={} — the subject \
+                 does not carry the producer, so it carries no consumer of that key either: {why}",
+                LENS_REGISTRY_COMPLETENESS_MODULE
+            );
+            None
+        }
+    };
     let mut shared_build_warms: Vec<(&'static str, SharedBuildObservation)> = vec![
         ("ModulePathIndexBuild", module_path_index_warm),
         ("SharedModuleIndexBuild", shared_index_warm),
     ];
+    if let Some(warm) = lens_pool_root_warm {
+        shared_build_warms.push(("ModulePathIndexBuild/lens-pool-roots", warm));
+    }
     shared_build_warms.push((
         "BareReferenceEdgeIndexBuild/source-roots",
         warm_bare_reference_edge_index(&process_shared_index(source_roots))?,
@@ -2718,7 +2847,16 @@ pub fn run_required_floor(
     // The output policy is installed FROM the prepared subject. Resolving
     // `dag/gunbc/output_policy.dag` on its own cost a separate whole-entry resolve to read
     // five channel decisions out of a world this function had already built.
-    install_output_policy_in(&hermetic, source_roots);
+    //
+    // IN ITS OWN MODULE'S SCOPE, not the policy module's. A by-name evaluation of
+    // `gunbc.output_policy.resolve_channel_policy` is a question about that module, so the
+    // frame it runs in is that module's exact scope. Under the whole-tree subject the policy
+    // module's reference closure happened to reach `gunbc.output_policy`; under the
+    // gate-bounded subject it does not, and the bare name refused with "no declaration named
+    // 'resolve_channel_policy' in this execution's loaded index" (measured 2026-08-29, twice,
+    // with the module present in the subject both times). The scope was the coincidence.
+    let output_policy_frame = floor_authority_frame(&prepared, "gunbc.output_policy")?;
+    install_output_policy_in(&output_policy_frame, source_roots);
 
     // ── 3. the claim roster, projected from the prepared inventory ───────────────────────
     //
@@ -2789,14 +2927,28 @@ pub fn run_required_floor(
         &hermetic,
         "v2.workflow.required_floor.fixture_home_prefixes",
     )?;
+    let required_gate_prefixes = floor_decode_module_prefix_roster(
+        &hermetic,
+        "v2.workflow.required_floor.required_gate_prefixes",
+    )?;
+    if required_gate_prefixes.is_empty() {
+        return Err("REQUIRED-FLOOR REFUSAL cause=RequiredGateRosterEmpty — \
+                    v2.workflow.required_floor.required_gate_prefixes admits nothing, so the \
+                    floor would plan zero claims and green over an empty population"
+            .to_string());
+    }
     // THE LINE STOPS BEFORE THE PARTITION IS COMPUTED, because a barren entry is invisible to
     // the partition by construction — it contributes no SITE, so `offered` cannot report it and
     // `offered == routed + declined_long + declined_fixture + declined_cost_debt` stays exact
     // while saying nothing about
     // it. A file that claims the `*_test.dag` place and enrolls nothing is a witness nobody asked
     // and everybody reads as covered.
+    // Same rule as the output policy above: the naming-hygiene predicates are
+    // `v2.workflow.floor_naming_hygiene`'s declarations, evaluated in that module's scope.
+    let naming_hygiene_frame =
+        floor_authority_frame(&prepared, "v2.workflow.floor_naming_hygiene")?;
     let barren_test_sidecars = floor_barren_test_sidecars(
-        &hermetic,
+        &naming_hygiene_frame,
         &prepared.test_decl_free_paths,
         &barren_candidate_sources,
     )?;
@@ -2887,6 +3039,24 @@ pub fn run_required_floor(
     // SUPPRESSION IS COUNTED, NEVER SILENT. A roster quietly shrinking is how a skip list is
     // born, so the count is printed per roster and the population is recoverable by intersecting
     // the two authorities. This is a narrowing of what those joins observe, declared as one.
+    //
+    // THE REQUIRED GATE IS THE SECOND SUCH MECHANISM, same shape, same accounting. A module
+    // outside the gate roster is never loaded into the prepared subject, so none of its
+    // identities can execute, so an enrollment naming one asserts something this run cannot
+    // observe. Measured 2026-08-29 on the first gate-bounded fold: 39 expected-red rows, every
+    // one in a module outside the gate, refused as ExpectedRedIdentityDidNotExecute. They are
+    // not stale -- they are out of this run's scope -- and the receipts workflow that runs the
+    // whole corpus is where their standing is decided. Withheld here, counted per roster, and
+    // observable again the moment the gate roster admits their module.
+    let identity_inside_required_gate = |identity: &str| -> bool {
+        let module_path = match identity.rfind('.') {
+            Some(dot) => &identity[..dot],
+            None => identity,
+        };
+        required_gate_prefixes
+            .iter()
+            .any(|prefix| module_path.starts_with(prefix.as_str()))
+    };
     let suppress_withheld = |roster: &mut HashSet<String>, name: &str| {
         let before = roster.len();
         roster.retain(|identity| !cost_debt_roster.contains(identity));
@@ -2898,12 +3068,24 @@ pub fn run_required_floor(
                  and becomes observable again when they leave that roster"
             );
         }
+        let before = roster.len();
+        roster.retain(|identity| identity_inside_required_gate(identity));
+        let outside_gate = before - roster.len();
+        if outside_gate > 0 {
+            eprintln!(
+                "[floor-required-gate] {name}: {outside_gate} enrolled identity(ies) suppressed \
+                 because their module is outside the required gate and was never loaded; their \
+                 enrollment is dormant, not deleted, and becomes observable again when the gate \
+                 roster admits the module or in the whole-corpus receipts run"
+            );
+        }
     };
 
     let mut claims: Vec<RequiredFloorClaim> = Vec::new();
     let mut planned_identities: HashSet<String> = HashSet::new();
     let mut long_declined = 0usize;
     let mut fixture_declined = 0usize;
+    let mut outside_gate_declined = 0usize;
     let mut cost_debt_declined = 0usize;
     let mut cost_debt_seen: HashSet<String> = HashSet::new();
     let mut outcome_withheld_cost_debt: Vec<String> = Vec::new();
@@ -2920,6 +3102,9 @@ pub fn run_required_floor(
         let fixture_prefix = fixture_home_prefixes
             .iter()
             .find(|prefix| file.module_path.starts_with(prefix.as_str()));
+        let inside_required_gate = required_gate_prefixes
+            .iter()
+            .any(|prefix| file.module_path.starts_with(prefix.as_str()));
         let path_is_long = is_long_home_path(&file.path);
         let storage_agreement = long_home_storage_agreement(path_is_long, long_home);
         for function in &file.functions {
@@ -2973,6 +3158,16 @@ pub fn run_required_floor(
                 });
                 continue;
             }
+            // THE FOURTH DECLINE, AFTER COST DEBT so a rostered identity outside the gate still
+            // enters `cost_debt_seen` and the roster's staleness check keeps its meaning.
+            if !inside_required_gate {
+                outside_gate_declined += 1;
+                disposition_rows.push(RequiredFloorDispositionRow {
+                    identity,
+                    disposition: RequiredFloorDisposition::DeclinedOutsideRequiredGate,
+                });
+                continue;
+            }
             // ONE EXECUTABLE CLAIM PER QUALIFIED IDENTITY, REFUSED HERE AND NAMED.
             //
             // The deleted manifest carried this invariant and refused BEFORE running anything,
@@ -3020,10 +3215,17 @@ pub fn run_required_floor(
     // it is the construction's own statement of what it guarantees, and it fails loudly the
     // first time an edit adds a third arm that quietly swallows rows, which is precisely how
     // the live-tree decline arrived and stayed invisible.
-    if sites_offered != claims.len() + long_declined + fixture_declined + cost_debt_declined {
+    if sites_offered
+        != claims.len()
+            + long_declined
+            + fixture_declined
+            + outside_gate_declined
+            + cost_debt_declined
+    {
         return Err(format!(
             "REQUIRED-FLOOR REFUSAL cause=SitePartitionInexact offered={sites_offered} \
              routed={} declined_long={long_declined} declined_fixture={fixture_declined} \
+             declined_outside_gate={outside_gate_declined} \
              declined_cost_debt={cost_debt_declined} — every \
              discovered site must be either routed to a claim or declined with a stated \
              disposition; a gap here is a roster that narrowed without saying so",
@@ -3032,13 +3234,15 @@ pub fn run_required_floor(
     }
     eprintln!(
         "[floor-phase] phase=site-projection state=completed wall_ms={} sites={} files={} \
-         claims={} declined_long={} declined_fixture={} declined_cost_debt={}",
+         claims={} declined_long={} declined_fixture={} declined_outside_gate={} \
+         declined_cost_debt={}",
         projection_started.elapsed().as_millis(),
         sites_offered,
         files.len(),
         claims.len(),
         long_declined,
         fixture_declined,
+        outside_gate_declined,
         cost_debt_declined
     );
 
@@ -3174,6 +3378,8 @@ pub fn run_required_floor(
     // the .dag authority; this decode reads the detail rather than authoring a second identity
     // list in Rust. A changed operation or ground blocks below instead of being silently held
     // by an identity-only row whose original fact no longer applies.
+    let mut expectations_outside_gate = 0usize;
+    let mut expectations_withheld_cost_debt = 0usize;
     let route_gap_expectations: HashMap<String, FloorRouteGapExpectation> = {
         let value = v1_interpreter::run_in_context(
             &hermetic,
@@ -3235,6 +3441,20 @@ pub fn run_required_floor(
                     ));
                 }
             };
+            // SAME WITHHOLDING AS THE ROSTER IT JOINS. The roster above has already had its
+            // outside-gate rows withheld (counted), so an expectation located on one of them
+            // is out of scope for this run, not absent from the roster.
+            if !identity_inside_required_gate(identity.as_str()) {
+                expectations_outside_gate += 1;
+                continue;
+            }
+            // COST DEBT WINS here too: the roster this joins has already had its cost-debt
+            // rows withheld (`suppress_withheld`), so an expectation located on one of them is
+            // dormant with its row, not absent from the roster.
+            if cost_debt_roster.contains(identity.as_str()) {
+                expectations_withheld_cost_debt += 1;
+                continue;
+            }
             if !route_gap_roster.contains(identity.as_str()) {
                 return Err(format!(
                     "floor_route_gap_expectations: located identity is absent from derived roster: {identity}"
@@ -3254,6 +3474,18 @@ pub fn run_required_floor(
         }
         out
     };
+    if expectations_withheld_cost_debt > 0 {
+        eprintln!(
+            "[floor-cost-debt] floor_route_gap_expectations: {expectations_withheld_cost_debt} \
+             expectation(s) dormant because the cost-debt roster withholds their identity"
+        );
+    }
+    if expectations_outside_gate > 0 {
+        eprintln!(
+            "[floor-required-gate] floor_route_gap_expectations: {expectations_outside_gate} \
+             expectation(s) withheld because their identity's module is outside the required gate"
+        );
+    }
 
     // THE TWO ROSTERS MAY NOT NAME THE SAME IDENTITY, and this refusal is the reason the split
     // between them stays a split rather than decaying back into the conflation it was created
@@ -3496,6 +3728,7 @@ pub fn run_required_floor(
         sites_offered,
         declined_long_module: long_declined,
         declined_fixture_member: fixture_declined,
+        declined_outside_required_gate: outside_gate_declined,
         claims_planned,
         claims_executed: 0,
         receipt_identities: 0,
@@ -4545,12 +4778,33 @@ pub fn run_required_floor(
     // BLOCKING, unlike the withhold itself. A withheld row is declared debt; a stale row is a
     // roster that has stopped describing the tree, and the contract's monotone claim is only
     // worth anything while its universe is the discovered one.
+    //
+    // OUTSIDE THE GATE IS NOT STALE. A cost-debt row whose module the gate never loads was
+    // never planned for the same reason the expected-red and route-gap rows above were
+    // withheld: this run's universe is the gate closure, not the tree. Counted, never silent
+    // (measured 2026-08-29: 122 such rows on the first gate-bounded fold, every one in a
+    // module outside the gate).
     {
+        let mut cost_debt_outside_gate = 0usize;
         let mut stale: Vec<&String> = cost_debt_roster
             .iter()
             .filter(|q| reverse_joins_answerable && !cost_debt_seen.contains(*q))
+            .filter(|q| {
+                let inside = identity_inside_required_gate(q.as_str());
+                if !inside {
+                    cost_debt_outside_gate += 1;
+                }
+                inside
+            })
             .collect();
         stale.sort();
+        if cost_debt_outside_gate > 0 {
+            eprintln!(
+                "[floor-required-gate] floor_cost_debt: {cost_debt_outside_gate} enrolled \
+                 identity(ies) withheld from the staleness join because their module is outside \
+                 the required gate and was never loaded"
+            );
+        }
         for identity in stale {
             outcome.stale_cost_debt.push(format!(
                 "{identity} is enrolled in v2.workflow.floor_cost_debt but was not planned, so \
@@ -4851,6 +5105,7 @@ pub(crate) fn required_floor_disposition_label(
         RequiredFloorDisposition::Planned => "planned",
         RequiredFloorDisposition::DeclinedLongModule { .. } => "declined_long_module",
         RequiredFloorDisposition::DeclinedFixtureMember { .. } => "declined_fixture_member",
+        RequiredFloorDisposition::DeclinedOutsideRequiredGate => "declined_outside_required_gate",
         RequiredFloorDisposition::DeclinedCostDebt => "declined_cost_debt",
     }
 }
@@ -4861,6 +5116,8 @@ pub(crate) fn required_floor_disposition_matched_prefix(
     match disposition {
         RequiredFloorDisposition::DeclinedLongModule { matched_prefix }
         | RequiredFloorDisposition::DeclinedFixtureMember { matched_prefix } => matched_prefix,
-        RequiredFloorDisposition::Planned | RequiredFloorDisposition::DeclinedCostDebt => "",
+        RequiredFloorDisposition::Planned
+        | RequiredFloorDisposition::DeclinedOutsideRequiredGate
+        | RequiredFloorDisposition::DeclinedCostDebt => "",
     }
 }

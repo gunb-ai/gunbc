@@ -370,6 +370,7 @@ mod terminal_ledger_publish_law {
     }
 
     #[test]
+    #[ignore = "live-corpus: prepares or builds over the live tree (minutes per test); the receipts lane runs these with --ignored, the required unit run does not"]
     fn an_honest_population_publishes_a_ledger_the_grammar_can_read_back() {
         let rows = vec![
             row("test.claim.a.holds", "returned-true", "passed"),
@@ -410,6 +411,7 @@ mod terminal_ledger_publish_law {
     }
 
     #[test]
+    #[ignore = "live-corpus: prepares or builds over the live tree (minutes per test); the receipts lane runs these with --ignored, the required unit run does not"]
     fn an_unpublished_run_is_shaped_as_unbound_rather_than_carrying_a_fake_commit() {
         let rows = vec![row("test.claim.a.holds", "returned-true", "passed")];
         let published = publish_terminal_ledger(
@@ -436,6 +438,7 @@ mod terminal_ledger_publish_law {
     /// independent derivations; a row where they disagree must refuse, and the diagnosis must
     /// survive naming the offending identity.
     #[test]
+    #[ignore = "live-corpus: prepares or builds over the live tree (minutes per test); the receipts lane runs these with --ignored, the required unit run does not"]
     fn a_disposition_that_disagrees_with_its_tag_refuses_and_keeps_the_rows() {
         let rows = vec![
             row("test.claim.a.holds", "returned-true", "passed"),
@@ -482,6 +485,7 @@ mod terminal_ledger_publish_law {
     /// Every `ClaimOutcome` arm maps to a tag the module recognises. A tag this seed spells
     /// wrongly refuses the whole ledger, so this is the cheapest place to find out.
     #[test]
+    #[ignore = "live-corpus: prepares or builds over the live tree (minutes per test); the receipts lane runs these with --ignored, the required unit run does not"]
     fn every_terminal_tag_this_seed_can_emit_is_one_the_grammar_admits() {
         let rows = vec![
             row("test.claim.pass", "returned-true", "passed"),
