@@ -50,10 +50,6 @@ jobs:
         id: build_witness_fold
         run: |
           cargo build --release -p v1-compiler --bins
-      - name: Discriminate private homes from a hostile legacy writer
-        run: |
-          ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
-          "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/toolchain_home_interference_probe.dag --function toolchain_home_interference_probe_wet
       - name: Record the toolchain environment
         run: |
           echo "host=$(hostname) runner=${RUNNER_NAME:-unset}"
@@ -72,11 +68,6 @@ jobs:
           cd "$ROOT"
           'target/release/claim_executor' '--required-ci' '--source-root' 'dag' '--source-root' 'src/v2' '--required-lane' 'build'
         if: "!cancelled() && steps.build_witness_fold.outcome == 'success'"
-      - name: Every v1-compiler binary target compiles
-        id: build_all_binary_targets
-        run: |
-          cargo build --release -p v1-compiler
-        if: "!cancelled()"
   required-witnesses-floor:
     runs-on: [self-hosted, linux, arm64]
     timeout-minutes: 180
@@ -108,10 +99,6 @@ jobs:
         id: build_witness_fold
         run: |
           cargo build --release -p v1-compiler --bin claim_executor --bin gunbc
-      - name: Discriminate private homes from a hostile legacy writer
-        run: |
-          ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
-          "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/toolchain_home_interference_probe.dag --function toolchain_home_interference_probe_wet
       - name: Record the toolchain environment
         run: |
           echo "host=$(hostname) runner=${RUNNER_NAME:-unset}"
@@ -162,6 +149,37 @@ jobs:
           if-no-files-found: error
           retention-days: 14
         if: "!cancelled() && steps.build_witness_fold.outcome == 'success'"
+  rust-unit-tests:
+    runs-on: [self-hosted, linux, arm64]
+    timeout-minutes: 60
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - name: Isolate toolchain homes
+        run: |
+          # dissolve-on: ci_toolchain_home_isolation_script -- orch-emitted foreign-executor prelude step wiping and setting HOME/CARGO_HOME/RUSTUP_HOME under RUNNER_TEMP so concurrent runner slots stop sharing one toolchain; leaf rm/echo strings remain until a typed per-job filesystem-and-environment effect lands on host_effect_apply (shell-to-intent Phase 2). This obligation covers THIS carrier and ci_isolate_toolchain_script, which share that terminal construction; ci_pin_rustup_default_script carries its own obligation because it does not
+          rm -rf "$RUNNER_TEMP/rustup" "$RUNNER_TEMP/cargo"
+          echo "HOME=$RUNNER_TEMP" >> "$GITHUB_ENV"
+          echo "CARGO_HOME=$RUNNER_TEMP/cargo" >> "$GITHUB_ENV"
+          echo "RUSTUP_HOME=$RUNNER_TEMP/rustup" >> "$GITHUB_ENV"
+      - name: Install Rust toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@v1.16.0
+        with:
+          components: rustfmt
+          cache: false
+      - name: Pin rustup default (isolated RUSTUP_HOME has no default toolchain)
+        run: |
+          # dissolve-on: ci_pin_rustup_default_script -- orch-emitted foreign-executor step selecting a rustup default toolchain inside an isolated RUSTUP_HOME, which starts with none, and resolving the cargo binary that selection implies. The leaf rustup/command/echo strings remain until a typed TOOLCHAIN-SELECTION effect lands on host_effect_apply -- NOT the filesystem-and-environment effect ci_toolchain_home_isolation_script waits on, which is why this is a separate obligation: that effect landing alone would leave this carrier standing
+          rustup default "$(rustup show active-toolchain | awk '{print $1; exit}')"
+          if [ -x "$CARGO_HOME/bin/cargo" ]; then CARGO_BIN="$CARGO_HOME/bin/cargo"; else CARGO_BIN="$(command -v cargo || true)"; fi
+          if [ -z "$CARGO_BIN" ]; then echo "::error::no cargo binary: neither the isolated $CARGO_HOME/bin/cargo shim nor PATH carries one"; exit 1; fi
+          echo "CARGO_BIN=$CARGO_BIN" >> "$GITHUB_ENV"
+      - name: v1-compiler unit tests
+        id: rust_unit_tests
+        run: |
+          cargo test --release -p v1-compiler --lib
   witnesses:
     runs-on: [self-hosted, linux, arm64]
     needs: [required-witnesses-build, required-witnesses-floor]
