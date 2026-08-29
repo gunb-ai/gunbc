@@ -3322,6 +3322,7 @@ pub fn run_required_floor(
     // the .dag authority; this decode reads the detail rather than authoring a second identity
     // list in Rust. A changed operation or ground blocks below instead of being silently held
     // by an identity-only row whose original fact no longer applies.
+    let mut expectations_outside_gate = 0usize;
     let route_gap_expectations: HashMap<String, FloorRouteGapExpectation> = {
         let value = v1_interpreter::run_in_context(
             &hermetic,
@@ -3383,6 +3384,13 @@ pub fn run_required_floor(
                     ));
                 }
             };
+            // SAME WITHHOLDING AS THE ROSTER IT JOINS. The roster above has already had its
+            // outside-gate rows withheld (counted), so an expectation located on one of them
+            // is out of scope for this run, not absent from the roster.
+            if !identity_inside_required_gate(identity.as_str()) {
+                expectations_outside_gate += 1;
+                continue;
+            }
             if !route_gap_roster.contains(identity.as_str()) {
                 return Err(format!(
                     "floor_route_gap_expectations: located identity is absent from derived roster: {identity}"
@@ -3402,6 +3410,12 @@ pub fn run_required_floor(
         }
         out
     };
+    if expectations_outside_gate > 0 {
+        eprintln!(
+            "[floor-required-gate] floor_route_gap_expectations: {expectations_outside_gate} \
+             expectation(s) withheld because their identity's module is outside the required gate"
+        );
+    }
 
     // THE TWO ROSTERS MAY NOT NAME THE SAME IDENTITY, and this refusal is the reason the split
     // between them stays a split rather than decaying back into the conflation it was created
