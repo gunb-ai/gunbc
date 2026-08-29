@@ -107,8 +107,46 @@ type VarBindingKind
 // where the declaration and the primitive genuinely disagree and the declaration is what was
 // called. CallableTargetUndetermined is a refusal-bearing residue -- it is not permission for
 // emission to fall back to a name lookup, and emission refuses on it.
+// THE DECLARED HALF OF AN IDENTITY, HOISTED SO THE RESOLVED ARM CAN CARRY IT WITHOUT
+// CARRYING THE BUILTIN ARM.
+//
+// `decide_callable_candidates` proves a builtin never answers -- it can make a population
+// ambiguous and on its own hands the call back to the known-builtin bridge -- so the owner a
+// resolution binds is ALWAYS a declared one. Spelling FuncSigResolved's owner as
+// CallableIdentity would therefore admit a state the decision already ruled out, and spelling
+// it as a loose owner/decl String pair beside DeclaredCallable would be a second representation
+// of the pair v1.compiler.sigs already owns (DESIGN section 3). One record, two consumers.
+//
+// It is declared HERE rather than in v1.compiler.sigs, its former home, because
+// CallTargetIdentity below carries one and this module sits under that one. Re-spelling the pair
+// in either direction to avoid the import would fork it.
+type DeclaredCallableIdentity {
+  owner_module_path: String
+  decl_name: String
+}
+
+// A PRIMITIVE'S IDENTITY AND ITS PER-TARGET REALIZATION ARE TWO FACTS, AND `projected_from`
+// IS WHAT KEEPS THEM APART.
+//
+// The resolver knows both halves at once: that this call resolved to declaration D, and that
+// std.primitive_projection says D projects primitive P. It used to record only P, and every
+// emitter then had to assume P has a bridge in ITS runtime. That assumption is false and was
+// fabricating: v2.std.algebra length is a ModeledProjection of the `length` primitive, the Rust
+// registry has no `length` row (its list realization is `count`, its string realization is
+// `string_length`), and 05_emit_rust rendered `v1_rt::length` -- a symbol that does not exist in
+// the seed -- at 73 sites. That is DESIGN section 5 fabricated-plausible-output: the emitter
+// produced a well-formed call to nothing and only rustc refused, downstream of every gate we own.
+//
+// Which realization a target has is a REALIZATION fact and belongs peripheral to the target
+// (DESIGN section 3: the dispatch that selects a realization is itself realization), so the
+// resolver states only what it knows and carries the declaration alongside. An emitter routes to
+// the bridge when its own registry has the primitive, falls back to the declaration when one was
+// projected, and REFUSES otherwise -- it never invents a runtime symbol from a name.
+//
+// `projected_from` is Absent exactly when the target came from builtin resolution, where no
+// declaration answered and there is nothing to fall back to.
 type CallTargetIdentity
-  = RuntimePrimitiveCall { primitive_name: String }
+  = RuntimePrimitiveCall { primitive_name: String, projected_from: DeclaredCallableIdentity? }
   | SourceDeclarationCall { owner_module_path: String, decl_name: String }
   | CallableTargetUndetermined
 

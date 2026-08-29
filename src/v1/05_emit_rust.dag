@@ -18,7 +18,7 @@ import v1.std.core {
   ExprCast, ExprForEach, ExprIndex, ExprSlice, ExprReturn, make_expr_node, FieldSummary,
   StoredField, EnumAccessor, OptionalUnwrap, TupleFirst, TupleSecond, OptionalValue,
   VarBindingKind, LocalValueBinding, FunctionValueBinding, VariantValueBinding,
-  MatchBoundBinding, CallTargetIdentity, RuntimePrimitiveCall, SourceDeclarationCall, CallableTargetUndetermined,
+  MatchBoundBinding, CallTargetIdentity, DeclaredCallableIdentity, RuntimePrimitiveCall, SourceDeclarationCall, CallableTargetUndetermined,
   CallSemantics, PlainCallSemantics, LookupCallSemantics, FunctionValueCallSemantics, MethodSemantics,
   PlainMethodSemantics, AlgebraMethodSemantics, ServiceMethodSemantics, MatchPattern,
   field_binding_pattern, TextFile, ErrorNode, make_error_node, InternalError,
@@ -8769,8 +8769,16 @@ fn rust_runtime_bridge_passes_receiver_by_ref(function_name: String) -> Bool {
 // rt_bridge_function_names ever becomes hand-authored rather than derived from
 // rt_function_registry, a miss stops meaning "spelled the same" and this arm
 // becomes a fabrication, so that change invalidates this argument.
-// An unknown name cannot reach either use of the result, which a reader of this
-// function alone cannot see. THE MECHANISM CHANGED WITH CallTargetIdentity and
+// AN UNKNOWN NAME COULD REACH THIS, AND DID -- the claim that stood here was false and the
+// receipt is worth keeping. `length` is a primitive with a projection row and NO row in
+// rt_function_registry, so it arrived as a runtime primitive, missed rt_bridge_function_names,
+// took the identity arm, and emitted `v1_rt::length` at 73 sites in the v2 compiler closure --
+// a symbol the seed does not define. The Absent arm was never the defect: the derivation
+// argument below is sound for every name the registry HOLDS, and the hole was that nothing
+// checked membership first. `rust_runtime_primitive_has_bridge` is now that check, asked before
+// this function is reached, so the Absent arm's premise -- this primitive is in the registry and
+// merely spelled the same -- is established rather than assumed.
+// THE MECHANISM CHANGED WITH CallTargetIdentity and
 // the argument is restated rather than kept, because the old wording named the
 // two name-matching guards that no longer exist: emit_typed_call consumed
 // runtime_name only inside `if is_rt`, and is_rt was
@@ -8881,8 +8889,11 @@ fn emit_rust_empty_set_expr(set_type: Node, shared_types: Set<String>, source_in
 // The method roster had no template on that path -- nothing was lowered by it -- so its wrap was
 // unpaired by construction. The repair is to pair each wrap with the roster that produced the text
 // beside it, and at the plain-call position to derive the gate from the SAME predicate that chose
-// the emission form (rust_plain_call_emits_as_runtime_bridge, read by emit_typed_call for is_rt and
-// by emit_typed_call_expr for the wrap), so no second opinion about the form exists to drift.
+// the emission form. That fusion is now stated on the PRIMITIVE's identity rather than the leaf
+// spelling: emit_typed_call's is_rt and emit_typed_call_expr's wrap both key on the target's
+// runtime_primitive_name, and both ask the same registry, so no second opinion about the form
+// exists to drift. rust_plain_call_emits_as_runtime_bridge below is the older leaf-spelling
+// statement of that predicate and has no caller.
 // RUNG (DESIGN 4b): this moves the plain-call half of the class from silent wrongness -- emitted,
 // compiled by us, refused only by rustc downstream -- to STRUCTURALLY IMPOSSIBLE for the
 // cross-roster direction specifically: after this change no method-roster row can reach a plain
@@ -8958,7 +8969,7 @@ fn call_semantics_target(cs: CallSemantics?) -> CallTargetIdentity {
 
 fn call_target_runtime_primitive_name(target: CallTargetIdentity) -> String? {
   match target {
-    RuntimePrimitiveCall { primitive_name: primitive_name } => Present { value: primitive_name }
+    RuntimePrimitiveCall { primitive_name: primitive_name, projected_from: _ } => Present { value: primitive_name }
     SourceDeclarationCall { owner_module_path: _, decl_name: _ } => none
     CallableTargetUndetermined => none
   }
@@ -8966,6 +8977,26 @@ fn call_target_runtime_primitive_name(target: CallTargetIdentity) -> String? {
 
 fn call_target_is_runtime_primitive(target: CallTargetIdentity) -> Bool {
   call_target_runtime_primitive_name(target: target) != none
+}
+
+// THE DECLARATION A RUNTIME TARGET WAS PROJECTED FROM, WHICH IS THE ONLY HONEST ROUTE WHEN THIS
+// TARGET HAS NO ROW IN THIS TARGET'S RUNTIME REGISTRY. Absent means builtin resolution produced
+// the target and no declaration ever answered, so there is nothing to fall back to and the one
+// remaining arm is a refusal.
+fn call_target_projected_declaration(target: CallTargetIdentity) -> DeclaredCallableIdentity? {
+  match target {
+    RuntimePrimitiveCall { primitive_name: _, projected_from: projected_from } => projected_from
+    SourceDeclarationCall { owner_module_path: _, decl_name: _ } => none
+    CallableTargetUndetermined => none
+  }
+}
+
+// THE REALIZATION HALF OF THE DECISION, ASKED OF THE PRIMITIVE'S OWN IDENTITY RATHER THAN THE
+// AUTHORED LEAF SPELLING. `rt_functions()` is derived from rt_function_registry, so membership
+// here is exactly `this primitive has a v1_rt realization`. A target that is a runtime primitive
+// but has no row is NOT a bridge call, and treating it as one is what emitted `v1_rt::length`.
+fn rust_runtime_primitive_has_bridge(primitive_name: String) -> Bool {
+  map_contains_key(rt_functions(), primitive_name)
 }
 
 fn emit_rust_expr_call(expr: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo) -> String {
@@ -9535,6 +9566,7 @@ fn emit_typed_call(func: String, args: List<Node>, callee_is_function_value: Boo
     Absent => ""
   }
   let is_rt = callee_is_function_value == false && target_is_runtime
+    && rust_runtime_primitive_has_bridge(primitive_name: runtime_primitive_name)
   let is_rt_ref_map = is_rt && map_contains_key(rt_ref_map_functions(), runtime_primitive_name)
   let arg_strs = filled_args |> enumerate |> map(pair =>
     let idx = pair.first
@@ -9574,8 +9606,14 @@ fn emit_typed_call(func: String, args: List<Node>, callee_is_function_value: Boo
         else { concat("crate::", module_to_filename(name: owner), "::", emit_ident(name: decl, target: Rust)) }
       CallableTargetUndetermined =>
         emit_error_expr(message: "call target identity was not established before Rust emission", target: Rust)
-      RuntimePrimitiveCall { primitive_name: _ } =>
-        emit_error_expr(message: "runtime call target lost its bridge identity", target: Rust)
+      RuntimePrimitiveCall { primitive_name: unbridged_primitive, projected_from: projected_from } =>
+        match projected_from {
+          Present { value: declared } =>
+            if declared.owner_module_path == scope.module_name { emit_ident(name: declared.decl_name, target: Rust) }
+            else { concat("crate::", module_to_filename(name: declared.owner_module_path), "::", emit_ident(name: declared.decl_name, target: Rust)) }
+          Absent =>
+            emit_error_expr(message: concat("primitive ", unbridged_primitive, " has no v1_rt realization and no declaration to emit"), target: Rust)
+        }
     } }
   let func_name = if callee_self_capture { concat(func_ident, ".clone()") } else { func_ident }
   let call_str = if is_rt && func == "concat" && all_args |> count > 2 {
