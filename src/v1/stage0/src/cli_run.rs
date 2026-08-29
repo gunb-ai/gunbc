@@ -16315,6 +16315,111 @@ pub fn reconcile_identity_population<'a>(
     (missing, foreign, duplicated)
 }
 
+/// How one enrolled `v2.workflow.floor_cost_debt` identity relates to this run.
+///
+/// The roster's reverse join must answer questions a single boolean cannot separate, and
+/// conflating two of them is what this type exists to make unwritable.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CostDebtRosterStanding {
+    /// Withheld for cost: the operative debt. This is the only arm that may be counted as debt.
+    Withheld,
+    /// Declared by the tree, but preparation never offered it — its module is outside the gate
+    /// closure or was excluded from discovery. It withholds NOTHING on this run, so it is not
+    /// debt; it is kept as the record that the identity was once measured expensive, and it
+    /// becomes observable again the moment the gate admits its module.
+    OutsideThisRunsUniverse,
+    /// The tree declares no such identity. A roster line naming it withholds nothing and never
+    /// can, so it REFUSES.
+    Undeclared,
+    /// Declared and offered, but not withheld — renamed, or declined for a home reason that
+    /// outranks cost debt. Also REFUSES: the roster has stopped describing the tree.
+    DeclaredButNotWithheld,
+}
+
+/// Partition the cost-debt roster by DISPOSITION, which is the single authority for what this
+/// run did with each identity.
+///
+/// WHY THIS IS NOT A NAME TEST, which is the defect it replaces. The previous filter asked only
+/// whether an unseen roster identity's module path prefix-matched `required_gate_prefixes`, and
+/// counted every miss as "outside the gate". A module NAME cannot distinguish "declared, but this
+/// run's gate never loaded it" from "no such declaration anywhere", so an identity that does not
+/// exist — a typo, a renamed or deleted witness, a fabricated line — was silently absorbed into
+/// the outside-gate count and refused nothing. That is the hole the reverse join exists to close;
+/// its own comment names it ("the cheapest way to fake a green run: enrolling an identity that
+/// does not exist would otherwise cost nothing"), and the 2026-08-29 gate cut reopened it across
+/// the whole non-gate namespace, which is now the majority of the corpus.
+///
+/// WHY THE DISPOSITION IS THE *SOLE* INPUT, and why an earlier draft of this function was wrong.
+/// That draft consulted the fold's withheld set FIRST and fell back to the disposition, which
+/// made two structures answer one question — the §3 defect this repair exists to close, rebuilt
+/// inside the repair. It was not hypothetical: its test asserted that a withheld identity with NO
+/// disposition row is `Withheld`, blessing exactly the divergence the join should refuse. Since
+/// gunbc#9684 every declared identity carries exactly one disposition, so the disposition index
+/// is total over the declared universe and a separate declared-set parameter would be a third
+/// representation of the same fact. The withheld set is still computed for execution accounting,
+/// and it is RECONCILED against this classification rather than consulted by it — see
+/// `reconcile_withheld_against_dispositions`.
+pub fn partition_cost_debt_roster<'a>(
+    roster: &'a HashSet<String>,
+    dispositions: &HashMap<String, RequiredFloorDisposition>,
+) -> Vec<(&'a str, CostDebtRosterStanding)> {
+    let mut rows: Vec<(&str, CostDebtRosterStanding)> = roster
+        .iter()
+        .map(|identity| {
+            let q = identity.as_str();
+            let standing = match dispositions.get(q) {
+                None => CostDebtRosterStanding::Undeclared,
+                Some(RequiredFloorDisposition::DeclinedCostDebt) => {
+                    CostDebtRosterStanding::Withheld
+                }
+                Some(RequiredFloorDisposition::DeclinedOutsideGateClosure)
+                | Some(RequiredFloorDisposition::DeclinedDiscoveryExcluded { .. }) => {
+                    CostDebtRosterStanding::OutsideThisRunsUniverse
+                }
+                Some(_) => CostDebtRosterStanding::DeclaredButNotWithheld,
+            };
+            (q, standing)
+        })
+        .collect();
+    rows.sort_unstable_by(|a, b| a.0.cmp(b.0));
+    rows
+}
+
+/// The execution-accounting set and the disposition projection must name the SAME identities.
+///
+/// `cost_debt_seen` is accumulated by the build loop as it declines sites; the disposition rows
+/// are the projection of that same loop. They are two observations of one act, so they agree by
+/// construction or something is wrong with the loop — and a silent disagreement would be exactly
+/// the kind of drift `partition_cost_debt_roster` no longer permits itself. Rather than let one
+/// paper over the other, this returns both directions of the difference for the caller to refuse
+/// on.
+///
+/// Returns (withheld-without-a-cost-debt-disposition, cost-debt-dispositioned-but-not-withheld).
+pub fn reconcile_withheld_against_dispositions<'a>(
+    withheld: &'a HashSet<String>,
+    dispositions: &'a HashMap<String, RequiredFloorDisposition>,
+) -> (Vec<&'a str>, Vec<&'a str>) {
+    let mut withheld_without_disposition: Vec<&str> = withheld
+        .iter()
+        .map(|q| q.as_str())
+        .filter(|q| {
+            !matches!(
+                dispositions.get(*q),
+                Some(RequiredFloorDisposition::DeclinedCostDebt)
+            )
+        })
+        .collect();
+    let mut dispositioned_without_withhold: Vec<&str> = dispositions
+        .iter()
+        .filter(|(_, d)| matches!(d, RequiredFloorDisposition::DeclinedCostDebt))
+        .map(|(q, _)| q.as_str())
+        .filter(|q| !withheld.contains(*q))
+        .collect();
+    withheld_without_disposition.sort_unstable();
+    dispositioned_without_withhold.sort_unstable();
+    (withheld_without_disposition, dispositioned_without_withhold)
+}
+
 /// One terminal row per PLANNED identity, mirroring `v2.workflow.floor_terminal_ledger`
 /// `ClaimTerminalRow`. v2 owns the evidence schema, its completeness law and the artifact's
 /// lifecycle; this side preserves the raw terminal fact it already holds. It does NOT yet
@@ -37087,16 +37192,19 @@ const REQUIRED_FLOOR_POLICY_MODULE: &str = "v2.workflow.required_floor";
 /// Modules the required floor's own runner evaluates BY NAME, outside any gate roster: the
 /// policy module (its rosters, via `floor_decode_module_prefix_roster`), the discovery authority
 /// (`discover_floor_rows_for_source` / `floor_discovery_finalize_source_outcomes`, qualified —
-/// the floor's roster IS that fold's answer), and the output policy (`resolve_channel_policy` /
-/// `resolve_shell_trace_stream_policy`, bare, from `install_output_policy_in`). Every one is a
-/// closure seed of the gate-bounded prepared subject; a new by-name evaluation adds its module
-/// here or refuses at its own call site. `v2.workflow.floor_naming_hygiene` is reached through
-/// the producer's import closure rather than asked directly: the barren-sidecar question the
-/// runner used to put to it is one arm of the producer's per-file fold.
-const REQUIRED_FLOOR_RUNTIME_AUTHORITY_MODULES: [&str; 3] = [
+/// the floor's roster IS that fold's answer), the output policy (`resolve_channel_policy` /
+/// `resolve_shell_trace_stream_policy`, bare, from `install_output_policy_in`), and the
+/// cross-claim pure-producer share roster (`floor_cross_claim_pure_producers_warm` /
+/// `..._claim_forced`, via `install_pure_producer_share`). Every one is a closure seed of the
+/// gate-bounded prepared subject; a new by-name evaluation adds its module here or refuses at
+/// its own call site. `v2.workflow.floor_naming_hygiene` is reached through the producer's
+/// import closure rather than asked directly: the barren-sidecar question the runner used to
+/// put to it is one arm of the producer's per-file fold.
+const REQUIRED_FLOOR_RUNTIME_AUTHORITY_MODULES: [&str; 4] = [
     REQUIRED_FLOOR_POLICY_MODULE,
     "v2.workflow.floor_discovery_producer",
     "gunbc.output_policy",
+    "v2.workflow.floor_pure_producer_share",
 ];
 
 /// THE REQUIRED FLOOR, AS ONE ATTEMPT.
@@ -37754,6 +37862,193 @@ mod required_floor_disposition_and_storage_agreement_law {
             vec!["m.a"],
             "the doubly-dispositioned identity must be named"
         );
+    }
+
+    // ── the cost-debt roster's standing: the disposition is the sole classifier ────────────
+
+    fn ident_set(names: &[&str]) -> HashSet<String> {
+        names.iter().map(|s| s.to_string()).collect()
+    }
+
+    fn disp_map(
+        rows: &[(&str, RequiredFloorDisposition)],
+    ) -> HashMap<String, RequiredFloorDisposition> {
+        rows.iter()
+            .map(|(q, d)| (q.to_string(), d.clone()))
+            .collect()
+    }
+
+    fn standing_of(
+        rows: &[(&str, CostDebtRosterStanding)],
+        identity: &str,
+    ) -> Option<CostDebtRosterStanding> {
+        rows.iter().find(|(q, _)| *q == identity).map(|(_, s)| *s)
+    }
+
+    /// THE DISCRIMINATING RED, and the reason this function exists.
+    ///
+    /// `gate.miss.no_such_witness` is enrolled and NOTHING DECLARES IT — a typo, a rename, or a
+    /// fabricated line in a module outside the gate. Under the previous name-derived filter it
+    /// prefix-missed `required_gate_prefixes`, was counted as outside-the-gate, and refused
+    /// nothing: a roster line naming an identity that does not exist rode out green. It must now
+    /// be `Undeclared`, which is a refusing arm.
+    ///
+    /// The sibling `gate.miss.real_witness` is the control: same module, same prefix miss — and it
+    /// IS declared, so it must land in the non-refusing `OutsideThisRunsUniverse` arm. A fix that
+    /// refused both would close the hole by breaking the 122 legitimate rows, and the two rows
+    /// differ ONLY in whether a disposition exists, so nothing but that join can tell them apart.
+    #[test]
+    fn an_undeclared_roster_identity_outside_the_gate_refuses_while_its_declared_sibling_does_not()
+    {
+        let roster = ident_set(&["gate.miss.no_such_witness", "gate.miss.real_witness"]);
+        let dispositions = disp_map(&[(
+            "gate.miss.real_witness",
+            RequiredFloorDisposition::DeclinedOutsideGateClosure,
+        )]);
+
+        let rows = partition_cost_debt_roster(&roster, &dispositions);
+
+        assert_eq!(
+            standing_of(&rows, "gate.miss.no_such_witness"),
+            Some(CostDebtRosterStanding::Undeclared),
+            "an enrolled identity the tree does not declare must refuse, not be absorbed into \
+             the outside-gate count"
+        );
+        assert_eq!(
+            standing_of(&rows, "gate.miss.real_witness"),
+            Some(CostDebtRosterStanding::OutsideThisRunsUniverse),
+            "a declared identity whose module the gate never loaded withholds nothing but is \
+             not stale: it must NOT refuse"
+        );
+    }
+
+    /// THE DISPOSITION IS THE SOLE CLASSIFIER, and this test is the REVERSE of one an earlier
+    /// draft carried.
+    ///
+    /// That draft consulted the fold's withheld set first and asserted that a withheld identity
+    /// with NO disposition row is `Withheld` — blessing a divergence between two structures that
+    /// answer one question, which is the §3 defect this whole repair exists to close, rebuilt
+    /// inside the repair. An identity with no disposition is `Undeclared` and refuses, whatever
+    /// any other structure believes about it; a missing or mismatched disposition must never take
+    /// precedence over the join.
+    #[test]
+    fn a_missing_disposition_refuses_and_is_never_overridden_by_another_structure() {
+        let roster = ident_set(&["m.no_row"]);
+        let dispositions = disp_map(&[]);
+
+        let rows = partition_cost_debt_roster(&roster, &dispositions);
+
+        assert_eq!(
+            standing_of(&rows, "m.no_row"),
+            Some(CostDebtRosterStanding::Undeclared),
+            "no disposition means undeclared, even for an identity another structure calls withheld"
+        );
+    }
+
+    /// Only `DeclinedCostDebt` is debt. A declared identity carrying any other disposition was
+    /// offered and not withheld, so it refuses — the pre-existing stale arm, preserved.
+    #[test]
+    fn only_the_cost_debt_disposition_counts_as_withheld() {
+        let roster = ident_set(&["m.debt", "m.long_home", "m.planned"]);
+        let dispositions = disp_map(&[
+            ("m.debt", RequiredFloorDisposition::DeclinedCostDebt),
+            (
+                "m.long_home",
+                RequiredFloorDisposition::DeclinedLongModule {
+                    matched_prefix: "m.".to_string(),
+                },
+            ),
+            ("m.planned", RequiredFloorDisposition::Planned),
+        ]);
+
+        let rows = partition_cost_debt_roster(&roster, &dispositions);
+
+        assert_eq!(
+            standing_of(&rows, "m.debt"),
+            Some(CostDebtRosterStanding::Withheld)
+        );
+        assert_eq!(
+            standing_of(&rows, "m.long_home"),
+            Some(CostDebtRosterStanding::DeclaredButNotWithheld)
+        );
+        assert_eq!(
+            standing_of(&rows, "m.planned"),
+            Some(CostDebtRosterStanding::DeclaredButNotWithheld)
+        );
+    }
+
+    /// The partition must be TOTAL and DISJOINT over the roster: one standing per enrolled
+    /// identity, none invented, none dropped. An arm that double-counted would inflate or deflate
+    /// the debt figure while every individual row looked right.
+    #[test]
+    fn every_enrolled_identity_gets_exactly_one_standing() {
+        let roster = ident_set(&["a.debt", "b.undeclared", "c.outside", "d.not_withheld"]);
+        let dispositions = disp_map(&[
+            ("a.debt", RequiredFloorDisposition::DeclinedCostDebt),
+            (
+                "c.outside",
+                RequiredFloorDisposition::DeclinedOutsideGateClosure,
+            ),
+            ("d.not_withheld", RequiredFloorDisposition::Planned),
+        ]);
+
+        let rows = partition_cost_debt_roster(&roster, &dispositions);
+
+        assert_eq!(
+            rows.len(),
+            roster.len(),
+            "one standing per enrolled identity"
+        );
+        let named: HashSet<&str> = rows.iter().map(|(q, _)| *q).collect();
+        assert_eq!(named.len(), rows.len(), "no identity may appear twice");
+        for identity in &roster {
+            assert!(
+                named.contains(identity.as_str()),
+                "{identity} lost its standing"
+            );
+        }
+        assert_eq!(
+            standing_of(&rows, "b.undeclared"),
+            Some(CostDebtRosterStanding::Undeclared)
+        );
+    }
+
+    /// The execution-accounting set and the disposition projection are two observations of one
+    /// act, so a disagreement is a defect in the build loop and must REFUSE rather than let
+    /// either side paper over the other. Both directions are reported: a withhold with no
+    /// cost-debt disposition, and a cost-debt disposition with no withhold.
+    #[test]
+    fn withheld_and_disposition_disagreement_is_reported_in_both_directions() {
+        let withheld = ident_set(&["m.agreed", "m.withheld_only"]);
+        let dispositions = disp_map(&[
+            ("m.agreed", RequiredFloorDisposition::DeclinedCostDebt),
+            (
+                "m.disposition_only",
+                RequiredFloorDisposition::DeclinedCostDebt,
+            ),
+            ("m.withheld_only", RequiredFloorDisposition::Planned),
+        ]);
+
+        let (withheld_without_disposition, dispositioned_without_withhold) =
+            reconcile_withheld_against_dispositions(&withheld, &dispositions);
+
+        assert_eq!(withheld_without_disposition, vec!["m.withheld_only"]);
+        assert_eq!(dispositioned_without_withhold, vec!["m.disposition_only"]);
+    }
+
+    /// The agreeing case reports nothing, so the refusal above cannot fire on a healthy run.
+    #[test]
+    fn withheld_and_disposition_agreement_reports_no_difference() {
+        let withheld = ident_set(&["m.a", "m.b"]);
+        let dispositions = disp_map(&[
+            ("m.a", RequiredFloorDisposition::DeclinedCostDebt),
+            ("m.b", RequiredFloorDisposition::DeclinedCostDebt),
+            ("m.other", RequiredFloorDisposition::Planned),
+        ]);
+
+        let (left, right) = reconcile_withheld_against_dispositions(&withheld, &dispositions);
+
+        assert!(left.is_empty() && right.is_empty());
     }
 
     /// A row for an identity nothing declared is the other direction of the same join: a
