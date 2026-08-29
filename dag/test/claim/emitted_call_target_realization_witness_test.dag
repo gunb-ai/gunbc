@@ -1,0 +1,91 @@
+module test.claim.emitted_call_target_realization_witness_test
+
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data emitted_call_target_realization_witness_note: String = "PERMANENT REGRESSION CONTROLS for the three emission defects that stood between the v2 compiler closure and a Rust crate rustc would accept (gunbc#9664 milestones 1 and 2). All three are one family -- emission ASSERTING a realization it had not established -- and each row here is the discriminating RED for one of them, paired with a boundary control that would go red if the repair had over-reached in the opposite direction.\n\nMEASURED POPULATIONS on the emitted closure at main 6447dd4, by `gunbc compile --entry src/v2/compiler/00_compile.dag --target rust` then `cargo check`: 260 coded errors, 254 of them E0425. Class C 102 (98 `v2` + 4 `std`), length 73, class B 65 (member 11, apply 11, is_empty 5, allocate_literal 4, step 3, init 3, and a tail of ones and twos).\n\nWHY THESE ARE NOT A SNAPSHOT. Each class's positive and negative assertion differ only in the fact the repair added, so no single edit satisfies both directions. The C rows would flip if decl_name reverted to the authored spelling; the length rows would flip if the registry membership gate were removed OR if the declaration fallback were extended to seams; the B rows would flip if runtime_bridge went back to a literal. The boundary controls (empty_map, a real bridge method) would flip if any of the three repairs had instead stopped emission reaching v1_rt at all.\n\nDISSOLVE-ON: never. Emission may change target SPELLING, but it may never again name a runtime symbol it has not established exists.";
+
+// CLASS C, THE DISCRIMINATING RED. A qualified call carried the whole dotted path as its
+// declaration name, so emission produced `crate::v2_std_collection::v2.std.collection.map_get(..)`
+// -- the module prefix correct and the identifier a dotted path Rust reads as field access on an
+// undefined value `v2`. map_get is the specimen because it is also DivergentProjection, so this
+// row proves the qualified path reaches the DECLARATION and not the bridge.
+test fn w_qualified_call_emits_only_the_declaration_last_segment() -> Bool {
+  compile_dag_rust_emit_check(
+    "module test.claim.qualified_call_probe\nimport std.types { Int, String, Map }\nimport std.occurrence_identity { OccurrenceId }\nimport v2.std.diagnostic { Outcome }\nimport v2.std.optional { Optional }\nfn probe(m: Map<String, Int>) -> Outcome<Optional<Int>> { v2.std.collection.map_get(m: m, key: \"key\") }\n",
+    "src/test_claim_qualified_call_probe.rs",
+    ["crate::v2_std_collection::map_get("],
+    ["::v2.std.collection", "v2.std.collection.map_get("]
+  )
+}
+
+// LENGTH, THE DISCRIMINATING RED. v2.std.algebra length is a ModeledProjection of the `length`
+// primitive and rt_function_registry has no `length` row, so emission took the identity arm of
+// rust_runtime_bridge_name and wrote `v1_rt::length` -- a symbol the seed does not define -- at
+// 73 sites. The declaration has a real fold body, so it is what a call must reach.
+test fn w_unbridged_modeled_primitive_emits_its_declaration() -> Bool {
+  compile_dag_rust_emit_check(
+    "module test.claim.length_projection_probe\nimport std.types { Int }\nimport std.occurrence_identity { OccurrenceId }\nimport v2.std.algebra { FreeMonoid, length }\nfn probe(xs: FreeMonoid<Int>) -> Int { length(xs: xs) }\n",
+    "src/test_claim_length_projection_probe.rs",
+    ["crate::v2_std_algebra::length("],
+    ["v1_rt::length("]
+  )
+}
+
+// THE BOUNDARY CONTROL FOR THE LENGTH REPAIR, AND THE ONE THAT PROVES THE GATE IS REGISTRY
+// MEMBERSHIP RATHER THAN "ROSTER ROW MEANS DECLARATION". empty_map has a roster row AND a
+// registry row, so it must still lower to the bridge. A repair that had simply routed every
+// ModeledProjection to its declaration would go red here -- and would also emit
+// v2.std.collection map_insert's `Map { lookup: fn .. }` body against an Rc<BTreeMap> carrier.
+test fn w_bridged_modeled_primitive_still_lowers_to_the_bridge() -> Bool {
+  compile_dag_rust_emit_check(
+    "module test.claim.bridged_empty_map_probe\nimport std.types { Int, String, Map }\nimport std.occurrence_identity { OccurrenceId }\nimport v2.std.collection { empty_map }\nfn probe() -> Map<String, Int> { empty_map() }\n",
+    "src/test_claim_bridged_empty_map_probe.rs",
+    ["v1_rt::rc_empty_map"],
+    ["crate::v2_std_collection::empty_map("]
+  )
+}
+
+// CLASS B, THE DISCRIMINATING RED. tier0 method resolution resolves an ordinary fn-typed RECORD
+// FIELD through lookup_field_in_product, so a field call arrived as AlgebraMethodSemantics and the
+// fallback at the end of that arm passed runtime_bridge: true unconditionally -- emitting
+// `v1_rt::step`, and leaving emit_rust_generic_method_call's own callable-field arm, guarded on
+// runtime_bridge == false, unreachable for the exact receiver it was written for.
+test fn w_callable_record_field_lowers_as_a_field_not_a_bridge() -> Bool {
+  compile_dag_rust_emit_check(
+    "module test.claim.callable_field_probe\nimport std.types { Int }\ntype Stepper { step: fn(Int) -> Int }\nfn probe(s: Stepper, n: Int) -> Int { s.step(n) }\n",
+    "src/test_claim_callable_field_probe.rs",
+    [".step)("],
+    ["v1_rt::step("]
+  )
+}
+
+// THE BOUNDARY CONTROL FOR THE B REPAIR. `count` IS in rt_function_registry, so method-form calls
+// that genuinely name a bridge must still reach one. A repair that had stopped the algebra
+// fallback reaching v1_rt at all -- rather than asking whether this particular name is realized --
+// goes red here.
+test fn w_registered_bridge_method_still_reaches_the_bridge() -> Bool {
+  compile_dag_rust_emit_check(
+    "module test.claim.bridge_method_probe\nimport std.types { Int, List }\nfn probe(xs: List<Int>) -> Int { xs |> count }\n",
+    "src/test_claim_bridge_method_probe.rs",
+    ["v1_rt::count("],
+    ["compile_error"]
+  )
+}
+
+// THE SYMBOL BRIDGES, AND THIS ONE'S RED IS NOT AN ERROR COUNT. symbol_lexeme and
+// symbol_intern_lexeme have self-call bodies -- host seams -- but carried no projection roster
+// row, so the resolver saw ordinary declarations and emission emitted the declaration. The result
+// COMPILES: `pub fn symbol_lexeme(sym: String) -> String { symbol_lexeme(sym) }` type-checks and
+// never returns. That is why these two are absent from the E0425 census this file's other rows
+// are measured against -- they were silent, not absent. A row asserting "no error" would have
+// been green throughout the defect; this asserts the call reaches the realization.
+test fn w_symbol_lexeme_reaches_its_host_realization_not_its_self_call() -> Bool {
+  compile_dag_rust_emit_check(
+    "module test.claim.symbol_lexeme_probe\nimport std.types { String }\nimport v2.std.node { Symbol }\nimport v2.std.compilers.lexing { symbol_lexeme }\nfn probe(sym: Symbol) -> String { symbol_lexeme(sym: sym) }\n",
+    "src/test_claim_symbol_lexeme_probe.rs",
+    ["v1_rt::symbol_lexeme("],
+    ["crate::v2_std_compilers_lexing::symbol_lexeme("]
+  )
+}
