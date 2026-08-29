@@ -4,7 +4,7 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-data emitted_call_target_realization_witness_note: String = "PERMANENT REGRESSION CONTROLS for the three emission defects that stood between the v2 compiler closure and a Rust crate rustc would accept (gunbc#9664 milestones 1 and 2). All three are one family -- emission ASSERTING a realization it had not established -- and each row here is the discriminating RED for one of them, paired with a boundary control that would go red if the repair had over-reached in the opposite direction.\n\nMEASURED POPULATIONS on the emitted closure at main 6447dd4, by `gunbc compile --entry src/v2/compiler/00_compile.dag --target rust` then `cargo check`: 260 coded errors, 254 of them E0425. Class C 102 (98 `v2` + 4 `std`), length 73, class B 65 (member 11, apply 11, is_empty 5, allocate_literal 4, step 3, init 3, and a tail of ones and twos).\n\nWHY THESE ARE NOT A SNAPSHOT. Each class's positive and negative assertion differ only in the fact the repair added, so no single edit satisfies both directions. The C rows would flip if decl_name reverted to the authored spelling; the length rows would flip if the registry membership gate were removed OR if the declaration fallback were extended to seams; the B rows would flip if runtime_bridge went back to a literal. The boundary controls (empty_map, a real bridge method) would flip if any of the three repairs had instead stopped emission reaching v1_rt at all.\n\nDISSOLVE-ON: never. Emission may change target SPELLING, but it may never again name a runtime symbol it has not established exists.";
+data emitted_call_target_realization_witness_note: String = "PERMANENT REGRESSION CONTROLS for the three emission defects that stood between the v2 compiler closure and a Rust crate rustc would accept (gunbc#9664 milestones 1 and 2). All three are one family -- emission ASSERTING a realization it had not established -- and each row here is the discriminating RED for one of them, paired with a boundary control that would go red if the repair had over-reached in the opposite direction.\n\nMEASURED POPULATIONS on the emitted closure at main 6447dd4, by `gunbc compile --entry src/v2/compiler/00_compile.dag --target rust` then `cargo check`: 260 coded errors, 254 of them E0425. Class C 102 (98 `v2` + 4 `std`), length 73, class B 65 (member 11, apply 11, is_empty 5, allocate_literal 4, step 3, init 3, and a tail of ones and twos).\n\nWHY THESE ARE NOT A SNAPSHOT. Each class's positive and negative assertion differ only in the fact the repair added, so no single edit satisfies both directions. The C rows would flip if decl_name reverted to the authored spelling; the length rows would flip if the registry membership gate were removed OR if the declaration fallback were extended to seams; the B rows would flip if runtime_bridge went back to a literal. The boundary controls (empty_map, a real bridge method) would flip if any of the three repairs had instead stopped emission reaching v1_rt at all.\n\nDISSOLVE-ON: never. Emission may change target SPELLING, but it may never again name a runtime symbol it has not established exists."
 
 // CLASS C, THE DISCRIMINATING RED. A qualified call carried the whole dotted path as its
 // declaration name, so emission produced `crate::v2_std_collection::v2.std.collection.map_get(..)`
@@ -68,9 +68,9 @@ test fn w_callable_record_field_lowers_as_a_field_not_a_bridge() -> Bool {
 // realized, goes red here.
 //
 // count was the first choice for this row and is wrong, which is worth recording: it has a
-// template (`(\{recv\}.len() as i64)`), so it is answered before the fallback and would have gone
-// red while testing nothing about the seam under repair -- a control passing through a codepath
-// its subject never executes.
+// simple-method template, so it is answered before the fallback and would have gone red while
+// testing nothing about the seam under repair -- a control passing through a codepath its
+// subject never executes.
 test fn w_registered_bridge_method_still_reaches_the_bridge() -> Bool {
   compile_dag_rust_emit_check(
     "module test.claim.bridge_method_probe\nimport std.types { String }\nfn probe(s: String) -> String { s |> trim }\n",
