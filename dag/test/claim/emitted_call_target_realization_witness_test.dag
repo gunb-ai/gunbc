@@ -237,3 +237,21 @@ test fn w_callable_field_named_count_is_not_captured_by_the_target_template() ->
     ["c.count()"]
   )
 }
+
+// THE ALGEBRA-PROFILE CONTROL FOR THE CALLABLE-FIELD TIER, and the direct regression control for
+// the 202-refusal class it caused. The tier asked rust_record_field_needs_fn_rc, whose candidate
+// list widens a receiver's name to its CONTAINER TEMPLATE ALGEBRA -- and an algebra declares its
+// operations as arrow-typed members, so a Map receiver read as having a callable field named
+// map_keys, and the tier emitted `(m.map_keys)(..)` for a call rustc then refused with E0609 no
+// field `map_keys` on Rc<im::HashMap<..>>. The receiver here is a genuine Map, so the tier must
+// decline it and the ordinary bridge lowering must survive. This is the discriminating red for
+// narrowing the predicate to the receiver's OWN declared record: restore the candidate sweep and
+// the must_not_contain clause fires.
+test fn w_map_receiver_operation_is_not_read_as_a_callable_field() -> Bool {
+  compile_dag_rust_emit_check(
+    "module test.claim.map_receiver_probe\nimport std.types { Int, String }\nfn probe(m: Map<String, Int>) -> List<String> { map_keys(m) }\n",
+    "src/test_claim_map_receiver_probe.rs",
+    ["map_keys"],
+    [".map_keys)("]
+  )
+}

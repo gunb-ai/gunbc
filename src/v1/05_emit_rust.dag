@@ -11036,10 +11036,24 @@ fn rust_callable_field_method_call(method_name: String, receiver: Node, args: Li
   }
 }
 
+// THE RECEIVER'S OWN DECLARED RECORD, NEVER ITS ALGEBRA PROFILE. This asked
+// rust_record_field_needs_fn_rc, which sweeps rust_struct_field_lookup_candidates -- and that
+// candidate list deliberately widens a receiver's name to its container template algebra so
+// FIELD-TYPE questions can be answered through the profile. An algebra declares its OPERATIONS as
+// arrow-typed members, so under that widening every Map receiver "has a callable field" named
+// map_keys, map_values, lookup or get, and the callable-field tier captured the very bridge calls
+// it sits in front of: 202 rustc refusals on the regenerated seed (E0609 no field `map_keys` on
+// Rc<im::HashMap<..>>, E0615 on `get`), one class, measured at the first compile of the converged
+// mirror. That is the SAME defect this tier was built to close, one level up -- a name-keyed
+// lookup consuming an identity domain that is not its own -- so the fix is to consume only the
+// domain this question is about: a field declared on the receiver's own record.
 fn rust_receiver_has_callable_method_field(receiver: Node, method_name: String, scope: InferScope) -> Bool {
   let receiver_type = resolved_type(n: receiver)
   let receiver_type_name = authored_name_at(source_indices: scope.type_env.source_indices, node: receiver_type)
-  rust_record_field_needs_fn_rc(scope: scope, struct_name: receiver_type_name, field_name: method_name)
+  match rust_struct_field_type_node(scope: scope, struct_name: receiver_type_name, field_name: method_name) {
+    Present { value: field_type } => field_type.connective == Arrow
+    Absent => false
+  }
 }
 
 fn rust_struct_field_type_node_variant_aware(scope: InferScope, emit_info: EmitGraphInfo, struct_name: String, field_name: String) -> Node? {
