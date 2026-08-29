@@ -13,7 +13,23 @@ import gunbc.spark.cell_role {
   spark_training_cell_hosts,
   spark_host_offerable_for_training,
 }
-import gunbc.spark.serving_desired { spark_serving_desired_hosts }
+import gunbc.spark.serving_desired {
+  spark_serving_desired_hosts,
+  spark_serving_desired_model_artifact,
+  spark_serving_desired_launch_profile,
+}
+import gunbc.spark.serving_release {
+  SparkServingRelease,
+  SparkServingOccurrence,
+  RuntimeArtifactIdentity,
+  spark_serving_release_identity,
+}
+import gunbc.spark.serving_converge_plan {
+  SparkServingRoleScopedDesired,
+  SparkServingRoleScopedDesiredReady,
+  SparkServingRoleScopedDesiredRefused,
+  spark_serving_role_scoped_desired_members,
+}
 import gunbc.spark.serving_execution_schedule {
   SparkServingScheduleVerdict,
   SparkServingScheduleFrozen,
@@ -430,4 +446,54 @@ test fn w_a_plan_mixing_installs_and_removals_refuses() -> Bool {
     SparkServingScheduleRefused { cause: c } => length(c) > 0
     SparkServingScheduleFrozen { schedule: _ } => false
   }
+}
+
+// THE PRODUCTION JOIN, WHICH IS WHAT THE FIXTURE CLAIMS ABOVE DO NOT REACH.
+//
+// Every claim before this one builds its membership plan by filtering a fixture through the scope
+// split. That proves the split and proves nothing about the planner, which built the full seven-member
+// desired state for any host handed to it and never consulted the role authority at all. Two
+// production paths existed and neither retired anything: iterate the desired-serving hosts and srv6
+// is absent from the loop, so no retirement is planned; or call the planner for srv6 and it restores
+// serving on the machine that was supposed to stop.
+fn w_release() -> SparkServingRelease {
+  SparkServingRelease {
+    runtime: RuntimeArtifactIdentity { closure_digest: "w-closure" },
+    model: spark_serving_desired_model_artifact(),
+  }
+}
+
+fn w_occurrence(host: HostIdentity) -> SparkServingOccurrence {
+  SparkServingOccurrence {
+    host: host,
+    release_identity: spark_serving_release_identity(spec: w_release()),
+    launch_profile: spark_serving_desired_launch_profile(),
+  }
+}
+
+fn w_role_scoped_count(host: HostIdentity) -> Int {
+  match spark_serving_role_scoped_desired_members(
+    occurrence: w_occurrence(host: host),
+    serving_release: w_release(),
+  ) {
+    SparkServingRoleScopedDesiredReady { members: ms } => length(ms)
+    SparkServingRoleScopedDesiredRefused { cause: _ } => 0 - 1
+  }
+}
+
+// THE TRAINING CELL'S DESIRED STATE IS THE BASELINE ALONE, FROM THE ROLE.
+//
+// Seven for the serving cell, three for the training cell, and the difference is the four service
+// members whose removal the teardown schedule orders. Both counts are asserted because a planner that
+// returned baseline for EVERY host would satisfy a claim that only checked srv6.
+test fn w_the_planner_scopes_desired_state_by_role() -> Bool {
+  w_role_scoped_count(host: operator_host_srv5) == 7
+    && w_role_scoped_count(host: operator_host_srv6) == 3
+}
+
+// A HOST NOBODY ASSIGNED REFUSES RATHER THAN DEFAULTING TO SERVING. This planner is reachable with
+// any HostIdentity, and answering "full serving desired state" for an unassigned machine is how a
+// convergence installs a model server on the wrong box.
+test fn w_the_planner_refuses_a_host_with_no_spark_role() -> Bool {
+  w_role_scoped_count(host: "srv1" as HostIdentity) == 0 - 1
 }
