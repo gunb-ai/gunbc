@@ -147,7 +147,7 @@ import product.cooling_qualification {
   cooling_catalog_refusal_reason,
   installed_cooling_verdict_for_host,
 }
-import extdeps.bmc.endpoint { AmiMegaRac, BmcFirmwareFamily, OpenBmc }
+import extdeps.bmc.endpoint { BmcFirmwareFamily, OpenBmc, AmiMegaRac }
 import std.content_hash {
   ContentHash,
   content_hash_atom,

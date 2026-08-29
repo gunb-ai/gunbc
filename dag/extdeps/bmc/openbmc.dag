@@ -2,7 +2,7 @@ module extdeps.bmc.openbmc
 
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
-import extdeps.bmc.endpoint { BmcProtocol, Redfish, Ipmi, FactoryLoginStanding, FactoryLoginPublished }
+import extdeps.bmc.endpoint { BmcProtocol, Redfish, Ipmi }
 import std.credentials { FactoryLogin }
 import std.types { List }
 
@@ -17,8 +17,6 @@ data openbmc_factory_login: FactoryLogin = FactoryLogin {
   username: "root",
   published_password: "0penBmc",
 }
-
-data openbmc_factory_login_standing: FactoryLoginStanding = FactoryLoginPublished { login: openbmc_factory_login }
 
 data openbmc_supported_protocols: List<BmcProtocol> = [Redfish, Ipmi]
 

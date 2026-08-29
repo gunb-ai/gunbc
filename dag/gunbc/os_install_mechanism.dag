@@ -15,6 +15,7 @@ import extdeps.bmc.capability {
   CapabilityBootSourceOverride,
   CapabilityVirtualMedia,
   CapabilityNbdProxyVirtualMedia,
+  CapabilityOemRemoteMedia,
   CapabilityFirmwareUpdate,
   firmware_has_capability,
   catalog_has_vm_capable_firmware,
@@ -55,6 +56,7 @@ import gunbc.boot_artifact_delivery {
   NetworkBootDeliveryStanding,
   NetworkBootDeliveryUnestablished,
   NetworkBootRequirement,
+  MegaRacRestRemoteMedia,
   OpenBmcConfigfsUsbGadget,
   OpenBmcNbdProxyWebsocket,
   PxeChainBoot,
@@ -126,6 +128,7 @@ type OsInstallMechanismSolution
 fn row_names_a_virtual_media_capability(row: BmcFirmwareCapabilityRow) -> Bool {
   firmware_has_capability(row: row, cap: CapabilityVirtualMedia)
     || firmware_has_capability(row: row, cap: CapabilityNbdProxyVirtualMedia)
+    || firmware_has_capability(row: row, cap: CapabilityOemRemoteMedia)
 }
 
 fn network_boot_missing(network_boot: NetworkBootDeliveryStanding) -> List<NetworkBootRequirement> {
@@ -187,6 +190,7 @@ fn solve_delivery_from_capability_row(
       row: row,
       live_access: live_access,
       redfish_media: none,
+      megarac_media: none,
       nbd_proxy: none,
       configfs: ReinstallPathUnestablished { missing_probes: configfs_transport_requirements_all },
       configfs_params: none,
@@ -199,6 +203,7 @@ fn solve_delivery_from_capability_row(
         RedfishVirtualMediaPull { params: _ } => OsInstallMechanismSelected { mechanism: VirtualMediaInstall }
         OpenBmcNbdProxyWebsocket { params: _ } => OsInstallMechanismSelected { mechanism: NbdProxyVirtualMediaInstall }
         PxeChainBoot { evidence: _ } => OsInstallMechanismSelected { mechanism: PxeHttpInstall }
+        MegaRacRestRemoteMedia { params: _ } => OsInstallMechanismRefused { cause: InstallDeliveryOutsideLegacyMechanism { delivery: d } }
         OpenBmcConfigfsUsbGadget { params: _ } => OsInstallMechanismRefused { cause: InstallDeliveryOutsideLegacyMechanism { delivery: d } }
         UefiHttpBoot { params: _ } => OsInstallMechanismRefused { cause: InstallDeliveryOutsideLegacyMechanism { delivery: d } }
       }

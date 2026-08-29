@@ -5,11 +5,7 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.observability { ChannelCannotObserve, InBand, NetworkInventory, OutOfBand, ProcessorInventory, RoutedTo, StorageInventory, route_observation }
 import extdeps.bmc.endpoint { AmiMegaRac, OpenBmc }
 import extdeps.bmc.openbmc { HostStorageBlind, HostStorageEnumerable }
-import gunbc.bmc_implementation_dispatch {
-  HostStorageVisibilityKnown,
-  HostStorageVisibilityUnobserved,
-  bmc_firmware_host_storage_visibility,
-}
+import gunbc.bmc_implementation_dispatch { bmc_firmware_host_storage_visibility }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -51,24 +47,17 @@ test fn out_of_band_cannot_observe_network() -> Bool {
 
 test fn out_of_band_storage_blindness_grounded_in_openbmc_finding() -> Bool {
   match bmc_firmware_host_storage_visibility(family: OpenBmc) {
-    HostStorageVisibilityKnown { visibility: v } =>
-      match v {
-        HostStorageBlind =>
-          match route_observation(channel: OutOfBand, class: StorageInventory) {
-            ChannelCannotObserve { channel: _, class: _ } => true
-            RoutedTo { channel: _ } => false
-          }
-        HostStorageEnumerable => false
+    HostStorageBlind =>
+      match route_observation(channel: OutOfBand, class: StorageInventory) {
+        ChannelCannotObserve { channel: _, class: _ } => true
+        RoutedTo { channel: _ } => false
       }
-    HostStorageVisibilityUnobserved { family: _ } => false
+    HostStorageEnumerable => false
   }
 }
 
-// The MegaRAC finding is unmeasured, and the dispatcher must say so rather
-// than inherit OpenBMC's blindness or assume enumerability.
-test fn megarac_storage_visibility_is_unobserved() -> Bool {
-  match bmc_firmware_host_storage_visibility(family: AmiMegaRac) {
-    HostStorageVisibilityUnobserved { family: f } => f == AmiMegaRac
-    HostStorageVisibilityKnown { visibility: _ } => false
-  }
+// The MegaRAC family-floor answer is blind (Redfish is per ODM build), from
+// the dispatch module, not inherited from the OpenBMC row by fall-through.
+test fn megarac_storage_visibility_floor_is_blind() -> Bool {
+  bmc_firmware_host_storage_visibility(family: AmiMegaRac) == HostStorageBlind
 }

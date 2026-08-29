@@ -1,10 +1,11 @@
 module extdeps.bmc.megarac
 
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import std.types { List, NonEmptyStr, String }
+import std.types { String, NonEmptyStr, List }
+import std.credentials { FactoryLogin }
+import extdeps.bmc.endpoint { BmcProtocol, Ipmi }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
-import extdeps.bmc.endpoint { AmiMegaRac, BmcFirmwareFamily, BmcProtocol, FactoryLoginStanding, FactoryLoginUnobserved, Redfish, Ipmi }
 import extdeps.vendor { Vendor }
 import extdeps.hardware { Hardware }
 import extdeps.vendor.ami { ami }
@@ -20,7 +21,7 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
   subject: ExternalSubjectRef {
     declaration: DeclarationRef {
       module_path: "extdeps.bmc.megarac",
-      decl_name: "megarac_supported_protocols",
+      decl_name: "megarac_api_operations",
       field: WholeDeclaration
     }
   },
@@ -28,24 +29,83 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
   further_citations: []
 }
 
-data megarac_subject_note: String = "AMI MEGARAC, the BMC firmware product family of AMI, modeled as its own upstream on the extdeps.bmc.openbmc pattern because it is independently versioned and independently governed (DESIGN §3 external upstream decomposition). Read from the public product page named in the anchor on 2026-08-29: AMI markets two product lines under the MegaRAC name, SP-X (the established proprietary stack) and OneTree (the OpenBMC-derived stack), and states Redfish and IPMI management interfaces for the family. Everything here is a READING of vendor collateral, never a measurement of a unit. What is deliberately NOT here: a published factory login, an exact firmware version, a capability roster, or a Redfish surface row for any board — each is a per-release, per-board fact that lands only from an observation of a real unit, and authoring one from memory would be the fabricated establishment the machine-intake ruling forbids. The ruling names Mt. Collins as a MegaRAC platform and its first slice ends at one executed Mt. Collins boot; the rows that executed boot produces (firmware version, VirtualMedia resource presence, image_redirection OEM parameter, bootstrap credential kind) are the dissolution of the unobserved arms below."
-
 data megarac_vendor: Vendor<Hardware> = ami
 
-// The two product lines AMI names. Which one a unit runs is a per-unit
-// observation (Managers/{id} FirmwareVersion plus Oem), so no board row claims a
-// line here; the coproduct exists so a later observation has a typed home that
-// can distinguish AMI firmware generations rather than one catch-all OEM label.
-type MegaRacProductLine
-  = MegaRacSpX
-  | MegaRacOneTree
+data megarac_scope_note: String = "AMI MEGARAC, THE PROPRIETARY BMC FIRMWARE STACK - subject authority: extdeps.firmware.megarac.subject. SCOPE DISCIPLINE, PER GRAIN: rows in this module answer at the FAMILY grain and each states its basis - a published vendor default, or the guaranteed-across-builds floor. Anything observed on one shipping build only (Redfish absence, firmware revision, service roster) is a BUILD-scoped fact and lives with the build binding (extdeps.ampere.mt_collins_product_brief.bmc for the Foxconn Mt. Collins build), never promoted here. The REST operation rows below are the SP-X interface shape as executed on that build - the one place a single-build execution grounds a family-grain row - and carry that provenance explicitly."
 
-data megarac_supported_protocols: List<BmcProtocol> = [Redfish, Ipmi]
+// The family answer is the PUBLISHED default - which is what FactoryLogin's
+// published_password field means - admin/admin being AMI's widely published MegaRAC
+// default; the Foxconn Mt. Collins build observation (its bmc binding module) is
+// corroboration, not the basis. An ODM build may ship differently; a workflow treats
+// this as the first credential to TRY, and a refusal as an already-rotated or
+// differently-shipped build, never as an error to force past.
+data megarac_factory_login: FactoryLogin = FactoryLogin {
+  username: "admin",
+  published_password: "admin",
+}
 
-// The published bootstrap credential for MegaRAC is NOT cited by this
-// repository. Every family-keyed consumer must therefore see an unobserved
-// standing here, never a guessed username/password pair: a guessed pair that
-// happened to be right would be a fabricated plausible output on the one
-// surface where that is a security fact, and a guessed pair that was wrong
-// would read as a tampered or already-rotated BMC at intake.
-data megarac_factory_login_standing: FactoryLoginStanding = FactoryLoginUnobserved { family: AmiMegaRac }
+// The family FLOOR: protocols guaranteed across MegaRAC builds. IPMI v2 lanplus
+// (chassis, sensors, SEL, FRU, SOL, bootdev) is universal to the product line; Redfish
+// is advertised by AMI but shipped per ODM build, so its presence is a BUILD-scoped
+// observation carried on the build's binding module, never asserted or denied here.
+// A Redfish-assuming workflow must read the build row or probe.
+data megarac_supported_protocols_floor: List<BmcProtocol> = [Ipmi]
+
+// ---------------------------------------------------------------------------------------------
+// THE PROPRIETARY REST SURFACE (SP-X style), as executed. Session auth: POST /api/session
+// with form-encoded username/password; the JSON reply carries CSRFToken, and every
+// subsequent request presents the session cookie plus header X-CSRFTOKEN.
+// ---------------------------------------------------------------------------------------------
+
+type MegaRacApiOperation {
+  http_method: NonEmptyStr
+  path: NonEmptyStr
+  contract_note: NonEmptyStr
+}
+
+data megarac_op_session_login: MegaRacApiOperation = MegaRacApiOperation {
+  http_method: "POST",
+  path: "/api/session",
+  contract_note: "form-encoded username/password; reply JSON carries CSRFToken and privilege; subsequent calls send the session cookie and X-CSRFTOKEN header",
+}
+
+data megarac_op_media_config: MegaRacApiOperation = MegaRacApiOperation {
+  http_method: "PUT",
+  path: "/api/settings/media/general",
+  contract_note: "JSON body: remote_media_support:1, cd_remote_server_address/source_path, cd_remote_share_type nfs|cifs, mount_cd:1; an rmedia daemon mounts on a retry interval (rmedia_retry_interval), so a mount can succeed seconds after the PUT that configured it",
+}
+
+data megarac_op_media_images: MegaRacApiOperation = MegaRacApiOperation {
+  http_method: "GET",
+  path: "/api/settings/media/remote/images",
+  contract_note: "lists image files visible on the mounted share; 'Could not mount the remote path' here means the rmedia daemon has not (yet) mounted - poll after the retry interval before concluding failure",
+}
+
+data megarac_op_media_start: MegaRacApiOperation = MegaRacApiOperation {
+  http_method: "POST",
+  path: "/api/settings/media/remote/start-media",
+  contract_note: "JSON body MUST carry image_redirection:1 beside image_name, image_type (1 = CD) and image_index; without image_redirection the firmware refuses with opaque codes 13410/13460. Recovered from the firmware's own UI bundle (source.min.js), not from documentation. Success attaches a redirection session visible at /api/settings/media/remote/configurations (redirection_status nonzero, session_index bound)",
+}
+
+data megarac_op_media_stop: MegaRacApiOperation = MegaRacApiOperation {
+  http_method: "POST",
+  path: "/api/settings/media/remote/stop-media",
+  contract_note: "counterpart of start-media, same body shape",
+}
+
+data megarac_op_media_status: MegaRacApiOperation = MegaRacApiOperation {
+  http_method: "GET",
+  path: "/api/settings/media/remote/configurations",
+  contract_note: "one row per media instance: media_type, image_name, session_index, redirection_status",
+}
+
+data megarac_api_operations: List<MegaRacApiOperation> = [
+  megarac_op_session_login,
+  megarac_op_media_config,
+  megarac_op_media_images,
+  megarac_op_media_start,
+  megarac_op_media_stop,
+  megarac_op_media_status,
+]
+
+data megarac_virtual_cd_boot_recipe_note: String = "THE EXECUTED HEADLESS BOOT-FROM-ISO SEQUENCE (Foxconn Mt. Collins build, 2026-08-29): export the ISO directory over NFS to the BMC address; PUT media config; wait for the rmedia retry to mount (images listing goes from refusal to listing); POST start-media WITH image_redirection:1; ipmitool chassis bootdev cdrom then power reset. Execution receipts available without any screen: the NFS server's read counter (bulk reads then quiet = image loaded), the configurations row (redirection_status/session_index), and the boot CPU's power rails rising while the second socket idles."

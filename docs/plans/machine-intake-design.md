@@ -68,20 +68,25 @@ chassis part number × implementation × exact firmware, carrying candidate rout
 ASRock/OpenBMC: the OEM WebSocket locator or configfs/UDC parameters). `BmcAccessObservation` is
 per endpoint, per attempt. The solver selects a path only from their intersection.
 
-`BmcFirmwareFamily` gained `AmiMegaRac` (`extdeps.bmc.endpoint`); the implementation module is
-`extdeps.bmc.megarac` and the vendor row `extdeps.vendor.ami`. The family-keyed dispatchers moved
-out of `extdeps.bmc.openbmc` into `gunbc.bmc_implementation_dispatch` so a MegaRAC change never
-edits the OpenBMC module (DESIGN §3 external upstream decomposition). No MegaRAC firmware
-version, capability roster, factory login or surface row is authored: each lands from an
-observed unit.
+`BmcFirmwareFamily` gained `AmiMegaRac` (`extdeps.bmc.endpoint`, gunbc#9678); the implementation
+module is `extdeps.bmc.megarac` and the vendor row `extdeps.vendor.ami`. The family-keyed
+dispatchers moved out of `extdeps.bmc.openbmc` into `gunbc.bmc_implementation_dispatch` so a
+MegaRAC change never edits the OpenBMC module (DESIGN §3 external upstream decomposition).
+Family-grain MegaRAC facts are cited (admin/admin published default, IPMI-only protocol floor);
+build-scoped facts live on the build binding `extdeps.ampere.mt_collins_product_brief.bmc` —
+the observed Foxconn Mt. Collins build (BMC 0.32) serves NO Redfish and boots through the
+proprietary REST remote-media surface, so the Mt. Collins delivery arm is
+`MegaRacRestRemoteMedia`, not the DMTF pull. A profile/capability row per exact firmware is
+still to be authored from that observation.
 
 ## 3. The boot boundary
 
 Boot control (set one-shot target × reset × observe override consumption × restore) and artifact
 delivery (visible to firmware × bytes proven × intended host consumed it × detach) are
 independent obligations. `BootArtifactDelivery` is the coproduct
-`RedfishVirtualMediaPull | OpenBmcNbdProxyWebsocket | OpenBmcConfigfsUsbGadget | UefiHttpBoot |
-PxeChainBoot`; `extdeps.bmc.virtual_media` gained the `RedfishVirtualMediaTransport` arm and
+`RedfishVirtualMediaPull | MegaRacRestRemoteMedia | OpenBmcNbdProxyWebsocket |
+OpenBmcConfigfsUsbGadget | UefiHttpBoot | PxeChainBoot`; `extdeps.bmc.virtual_media` gained the
+`RedfishVirtualMediaTransport` and `MegaRacRemoteMediaTransport` arms and
 `extdeps.bmc.redfish_virtual_media` models the DMTF shape. Boot purpose is data
 (`BootPurpose`); the artifact set is per architecture (`IntakeArtifactSet`), never a bi-arch
 invariant.
@@ -90,7 +95,8 @@ Platform mapping:
 
 | Platform observation | Candidate delivery |
 |---|---|
-| Mt. Collins MegaRAC with live-observed Redfish VirtualMedia | RedfishVirtualMediaPull |
+| MegaRAC build with live-observed Redfish VirtualMedia | RedfishVirtualMediaPull |
+| Mt. Collins MegaRAC (observed build 0.32: no Redfish) with live-observed REST remote media | MegaRacRestRemoteMedia |
 | ASRock/OpenBMC with live-observed OEM NBD WebSocket | OpenBmcNbdProxyWebsocket |
 | ASRock/OpenBMC with BMC SSH, NBD client, configfs gadget, usable UDC | OpenBmcConfigfsUsbGadget |
 | Firmware with observed UEFI HTTP support and reachable artifact service | UefiHttpBoot |
@@ -238,8 +244,8 @@ byte/schema-equivalent receipt envelopes for both the Mt. Collins and ASRock tra
 
 | Existing authority | Change |
 |---|---|
-| `extdeps.bmc.endpoint` | `AmiMegaRac` arm; `FactoryLoginStanding` (landed) |
-| `extdeps.bmc.megarac`, `extdeps.vendor.ami` | new implementation and vendor modules (landed, no per-release rows yet) |
+| `extdeps.bmc.endpoint` | `AmiMegaRac` arm (landed via gunbc#9678 and this PR) |
+| `extdeps.bmc.megarac`, `extdeps.vendor.ami` | implementation module (gunbc#9678: cited admin/admin default, IPMI floor, proprietary REST remote-media operations, executed Mt. Collins boot recipe) and vendor row |
 | `extdeps.bmc.access_profile` | profile/observation carriers and intersection (landed) |
 | `extdeps.bmc.redfish_virtual_media`, `extdeps.bmc.virtual_media` | DMTF shape; `RedfishVirtualMediaTransport` arm (landed) |
 | `gunbc.boot_artifact_delivery` | the one delivery solver (landed) |

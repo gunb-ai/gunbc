@@ -12,11 +12,12 @@ import extdeps.bmc.capability {
   BmcFirmwareVersion,
   CapabilityBootSourceOverride,
   CapabilityNbdProxyVirtualMedia,
+  CapabilityOemRemoteMedia,
   CapabilityVirtualMedia,
   bmc_firmware_version_eq,
   firmware_has_capability,
 }
-import extdeps.bmc.virtual_media { ConfigfsGadgetParams, NbdProxyWebsocatParams, RedfishVirtualMediaParams }
+import extdeps.bmc.virtual_media { ConfigfsGadgetParams, MegaRacRemoteMediaParams, NbdProxyWebsocatParams, RedfishVirtualMediaParams }
 import extdeps.bmc.access_profile {
   BmcAccessObservation,
   BmcAccessObservationStanding,
@@ -24,6 +25,7 @@ import extdeps.bmc.access_profile {
   BmcAccessSurface,
   BmcAccessUnobserved,
   SurfaceOemNbdWebsocket,
+  SurfaceOemRestRemoteMedia,
   SurfaceRedfishVirtualMedia,
   bmc_surface_in,
 }
@@ -210,6 +212,7 @@ data firmware_transition_requirements_all: List<FirmwareTransitionRequirement> =
 // that is what names its DHCP service, its loader and its artifact service.
 type BootArtifactDelivery
   = RedfishVirtualMediaPull { params: RedfishVirtualMediaParams }
+  | MegaRacRestRemoteMedia { params: MegaRacRemoteMediaParams }
   | OpenBmcNbdProxyWebsocket { params: NbdProxyWebsocatParams }
   | OpenBmcConfigfsUsbGadget { params: ConfigfsGadgetParams }
   | UefiHttpBoot { params: UefiHttpBootParams }
@@ -218,6 +221,7 @@ type BootArtifactDelivery
 fn boot_artifact_delivery_kind(delivery: BootArtifactDelivery) -> NonEmptyStr {
   match delivery {
     RedfishVirtualMediaPull { params: _ } => "redfish-virtualmedia-pull"
+    MegaRacRestRemoteMedia { params: _ } => "megarac-rest-remote-media"
     OpenBmcNbdProxyWebsocket { params: _ } => "openbmc-nbdproxy-websocket"
     OpenBmcConfigfsUsbGadget { params: _ } => "openbmc-configfs-usb-gadget"
     UefiHttpBoot { params: _ } => "uefi-http-boot"
@@ -228,6 +232,7 @@ fn boot_artifact_delivery_kind(delivery: BootArtifactDelivery) -> NonEmptyStr {
 fn boot_artifact_delivery_boot_target(delivery: BootArtifactDelivery) -> RedfishBootSourceOverrideTarget {
   match delivery {
     RedfishVirtualMediaPull { params: _ } => BootTargetCd
+    MegaRacRestRemoteMedia { params: _ } => BootTargetCd
     OpenBmcNbdProxyWebsocket { params: _ } => BootTargetCd
     OpenBmcConfigfsUsbGadget { params: _ } => BootTargetCd
     UefiHttpBoot { params: _ } => BootTargetUefiHttp
@@ -237,6 +242,7 @@ fn boot_artifact_delivery_boot_target(delivery: BootArtifactDelivery) -> Redfish
 
 type BootDeliveryCandidate
   = CandidateRedfishVirtualMedia
+  | CandidateMegaRacRestRemoteMedia
   | CandidateOpenBmcNbdProxyWebsocket
   | CandidateOpenBmcConfigfsUsbGadget
   | CandidateUefiHttpBoot
@@ -269,6 +275,7 @@ type BootDeliveryEvidence {
   row: BmcFirmwareCapabilityRow
   live_access: BmcAccessObservationStanding
   redfish_media: RedfishVirtualMediaParams?
+  megarac_media: MegaRacRemoteMediaParams?
   nbd_proxy: NbdProxyWebsocatParams?
   configfs: ReinstallPathStanding
   configfs_params: ConfigfsGadgetParams?
@@ -339,6 +346,26 @@ fn nbd_proxy_websocket_candidate(ev: BootDeliveryEvidence) -> BootDeliveryCandid
   }
 }
 
+// MegaRAC's proprietary remote media: same intersection rule as the DMTF arm,
+// on the OEM capability and the OEM surface. This is the arm the observed
+// Mt. Collins build (gunbc#9678) actually boots through.
+fn megarac_rest_remote_media_candidate(ev: BootDeliveryEvidence) -> BootDeliveryCandidateStanding {
+  if firmware_has_capability(row: ev.row, cap: CapabilityOemRemoteMedia) == false {
+    CandidateCapabilityAbsent
+  } else {
+    let standing = live_surface_standing(row: ev.row, live_access: ev.live_access, surface: SurfaceOemRestRemoteMedia)
+    let eligible = standing == CandidateEligible
+    if eligible {
+      match ev.megarac_media {
+        Absent => CandidateParamsAbsent
+        Present { value: _ } => CandidateEligible
+      }
+    } else {
+      standing
+    }
+  }
+}
+
 // The configfs gadget rides on the BMC shell, not on a Redfish capability, so
 // its eligibility is the transport qualification's own standing — the
 // requirement probes gunbc.install_transport_qualification names. This is the
@@ -377,6 +404,10 @@ fn boot_delivery_candidate_verdicts(ev: BootDeliveryEvidence) -> List<BootDelive
       standing: redfish_virtual_media_candidate(ev: ev),
     },
     BootDeliveryCandidateVerdict {
+      candidate: CandidateMegaRacRestRemoteMedia,
+      standing: megarac_rest_remote_media_candidate(ev: ev),
+    },
+    BootDeliveryCandidateVerdict {
       candidate: CandidateOpenBmcNbdProxyWebsocket,
       standing: nbd_proxy_websocket_candidate(ev: ev),
     },
@@ -409,6 +440,11 @@ fn select_boot_artifact_delivery(
   if candidate_is_eligible(verdicts: verdicts, candidate: CandidateRedfishVirtualMedia) {
     match ev.redfish_media {
       Present { value: p } => BootDeliverySelected { delivery: RedfishVirtualMediaPull { params: p }, considered: verdicts }
+      Absent => BootDeliveryRefused { cause: DeliveryNoEligibleTransport { firmware: ev.row.firmware, considered: verdicts } }
+    }
+  } else if candidate_is_eligible(verdicts: verdicts, candidate: CandidateMegaRacRestRemoteMedia) {
+    match ev.megarac_media {
+      Present { value: p } => BootDeliverySelected { delivery: MegaRacRestRemoteMedia { params: p }, considered: verdicts }
       Absent => BootDeliveryRefused { cause: DeliveryNoEligibleTransport { firmware: ev.row.firmware, considered: verdicts } }
     }
   } else if candidate_is_eligible(verdicts: verdicts, candidate: CandidateOpenBmcNbdProxyWebsocket) {

@@ -1,43 +1,44 @@
 module gunbc.bmc_implementation_dispatch
 
 import std.types { List, String }
-import extdeps.bmc.endpoint { AmiMegaRac, BmcFirmwareFamily, BmcProtocol, FactoryLoginStanding, OpenBmc }
+import std.credentials { FactoryLogin }
+import extdeps.bmc.endpoint { AmiMegaRac, BmcFirmwareFamily, BmcProtocol, OpenBmc }
 import extdeps.bmc.openbmc {
+  HostStorageBlind,
   RedfishHostStorageVisibility,
-  openbmc_factory_login_standing,
+  openbmc_factory_login,
   openbmc_redfish_host_storage_visibility,
   openbmc_supported_protocols,
 }
-import extdeps.bmc.megarac { megarac_factory_login_standing, megarac_supported_protocols }
+import extdeps.bmc.megarac { megarac_factory_login, megarac_supported_protocols_floor }
 
-data bmc_implementation_dispatch_note: String = "THE DISPATCH THAT SELECTS AN IMPLEMENTATION IS ITSELF REALIZATION (DESIGN §3), so it sits here, peripheral to both implementation authorities, and neither extdeps.bmc.openbmc nor extdeps.bmc.megarac imports the other or matches on BmcFirmwareFamily. Until 2026-08-29 these three functions lived inside extdeps.bmc.openbmc, which meant adding AmiMegaRac would have edited the OpenBMC module — the 'a Chrome change must not require editing Safari's module' violation named in DESIGN §3. Each function is an exhaustive match, so a third implementation refuses to compile here and nowhere else; that is the census. Every arm returns what its implementation module CITES, and where the implementation module cites nothing the arm returns the unobserved standing rather than a default — a MegaRAC factory login is not root/0penBmc because the match needed an answer."
+data bmc_implementation_dispatch_note: String = "THE DISPATCH THAT SELECTS AN IMPLEMENTATION IS ITSELF REALIZATION (DESIGN §3), so it sits here, peripheral to both implementation authorities, and neither extdeps.bmc.openbmc nor extdeps.bmc.megarac imports the other or matches on BmcFirmwareFamily. gunbc#9678 added the AmiMegaRac arms to three family-keyed functions INSIDE extdeps.bmc.openbmc, and made the OpenBMC module import the MegaRAC one — the 'a Chrome change must not require editing Safari's module' violation named in DESIGN §3, and the reason those functions now live here. Each is an exhaustive match, so a third implementation refuses to compile here and nowhere else; that is the census. Every arm returns what its implementation module CITES at the family grain: MegaRAC's published admin/admin default and IPMI-only protocol floor come from extdeps.bmc.megarac, whose scope note explains why Redfish presence is a build-scoped fact carried on the build binding, never here."
 
-fn bmc_firmware_factory_login(family: BmcFirmwareFamily) -> FactoryLoginStanding {
+fn bmc_firmware_factory_login(family: BmcFirmwareFamily) -> FactoryLogin {
   match family {
-    OpenBmc => openbmc_factory_login_standing
-    AmiMegaRac => megarac_factory_login_standing
+    OpenBmc => openbmc_factory_login
+    AmiMegaRac => megarac_factory_login
   }
 }
 
 fn bmc_firmware_supported_protocols(family: BmcFirmwareFamily) -> List<BmcProtocol> {
   match family {
     OpenBmc => openbmc_supported_protocols
-    AmiMegaRac => megarac_supported_protocols
+    AmiMegaRac => megarac_supported_protocols_floor
   }
 }
 
-// Whether the out-of-band channel can enumerate host storage is a measured
-// finding for OpenBMC (HostStorageBlind, the 2026-08 observability routing
-// finding) and an unmeasured one for MegaRAC. The unobserved arm keeps the
-// in-band/out-of-band routing from assuming MegaRAC is either blind or
-// enumerable: a consumer that needs the answer refuses until a unit is probed.
-type HostStorageVisibilityStanding
-  = HostStorageVisibilityKnown { visibility: RedfishHostStorageVisibility }
-  | HostStorageVisibilityUnobserved { family: BmcFirmwareFamily }
+// FAMILY-FLOOR answer for MegaRAC, matching megarac_supported_protocols_floor:
+// Redfish presence is per ODM build, so the family-grain guarantee on Redfish
+// host-storage enumeration is none — blind. A build that ships Redfish answers
+// at its own build grain. (Row moved here from extdeps.bmc.openbmc, where
+// gunbc#9678 first authored it, because it is a MegaRAC fact and the OpenBMC
+// module is not its home.)
+data megarac_host_storage_visibility_floor: RedfishHostStorageVisibility = HostStorageBlind
 
-fn bmc_firmware_host_storage_visibility(family: BmcFirmwareFamily) -> HostStorageVisibilityStanding {
+fn bmc_firmware_host_storage_visibility(family: BmcFirmwareFamily) -> RedfishHostStorageVisibility {
   match family {
-    OpenBmc => HostStorageVisibilityKnown { visibility: openbmc_redfish_host_storage_visibility }
-    AmiMegaRac => HostStorageVisibilityUnobserved { family: AmiMegaRac }
+    OpenBmc => openbmc_redfish_host_storage_visibility
+    AmiMegaRac => megarac_host_storage_visibility_floor
   }
 }

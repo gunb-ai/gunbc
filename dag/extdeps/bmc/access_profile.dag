@@ -4,7 +4,8 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.types { Bool, EpochMs, List, NonEmptyStr, String }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
-import extdeps.bmc.endpoint { BmcEndpoint, BmcFirmwareFamily, FactoryLoginStanding }
+import std.credentials { FactoryLogin }
+import extdeps.bmc.endpoint { BmcEndpoint, BmcFirmwareFamily }
 import extdeps.boards.types { BaseboardModel }
 import extdeps.firmware.types { FirmwareSemanticVersion }
 import extdeps.bmc.capability { BmcFirmwareVersion, bmc_firmware_version_eq }
@@ -34,7 +35,9 @@ data access_profile_two_carriers_note: String = "TWO CARRIERS, ONE INTERSECTION 
 // served or did not when probed; none is a promise. SurfaceBmcShell is the
 // authenticated management shell (OpenBMC SSH) the configfs gadget transport
 // rides on; SurfaceOemNbdWebsocket is the bmcweb nbd-proxy WebSocket the ASRock
-// transport rides on; SurfaceRedfishVirtualMedia is the DMTF collection.
+// transport rides on; SurfaceOemRestRemoteMedia is the proprietary MegaRAC
+// /api/settings/media surface (extdeps.bmc.megarac) the observed Mt. Collins
+// build serves; SurfaceRedfishVirtualMedia is the DMTF collection.
 type BmcAccessSurface
   = SurfaceManagerIdentity
   | SurfaceSystemInventory
@@ -44,6 +47,7 @@ type BmcAccessSurface
   | SurfaceBootControl
   | SurfaceRedfishVirtualMedia
   | SurfaceOemNbdWebsocket
+  | SurfaceOemRestRemoteMedia
   | SurfaceBmcShell
   | SurfaceUefiHttpBoot
   | SurfaceSensors
@@ -68,7 +72,7 @@ type BmcAccessProfile {
   redfish_system_locator: NonEmptyStr
   redfish_chassis_locator: NonEmptyStr
   redfish_manager_locator: NonEmptyStr
-  bootstrap_credential: FactoryLoginStanding
+  bootstrap_credential: FactoryLogin?
   candidate_surfaces: List<BmcAccessSurface>
   oem_parameters: List<BmcOemParameter>
 }

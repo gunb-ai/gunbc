@@ -1,7 +1,6 @@
 module extdeps.bmc.endpoint
 
 import std.types { NonEmptyStr }
-import std.credentials { FactoryLogin }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 
@@ -29,23 +28,14 @@ type BmcProtocol = Redfish | Ipmi
 // for Mt. Collins, and the three family-keyed dispatchers that used to live
 // INSIDE extdeps.bmc.openbmc would have forced that OpenBMC module to change
 // for a MegaRAC addition — which is exactly the violation the rule names.
-// AmiMegaRac is one arm because the exact firmware generation is a per-release
-// fact keyed by version in the implementation module (MegaRacProductLine and
-// the version-keyed rows there), not a second axis here; OpenBmc as an enum arm
-// remains the nickname debt extdeps.firmware.openbmc.subject records.
+// AmiMegaRac is one arm because build-scoped facts (firmware revision, Redfish
+// presence, service roster) live with the build binding
+// (extdeps.ampere.mt_collins_product_brief.bmc), not as a second axis here;
+// OpenBmc as an enum arm remains the nickname debt
+// extdeps.firmware.openbmc.subject records.
 type BmcFirmwareFamily
   = OpenBmc
   | AmiMegaRac
-
-// A published factory login is a fact about a firmware stack that this
-// repository has either cited or has not. The unobserved arm exists so a
-// dispatcher over BmcFirmwareFamily stays total WITHOUT fabricating a
-// credential for an implementation whose published bootstrap login has not
-// been cited: the 2026-08-29 machine-intake ruling treats factory credentials as
-// a bootstrap mechanism whose absence is an ACCESS STATE, never a default.
-type FactoryLoginStanding
-  = FactoryLoginPublished { login: FactoryLogin }
-  | FactoryLoginUnobserved { family: BmcFirmwareFamily }
 
 type BmcEndpoint {
   host: NonEmptyStr

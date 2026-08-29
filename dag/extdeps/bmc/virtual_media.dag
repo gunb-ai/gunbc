@@ -50,7 +50,22 @@ type RedfishVirtualMediaParams {
   transfer_protocol: RedfishVirtualMediaTransferProtocol
 }
 
-// THE TRANSPORT AXIS. Three realizations of one intent; the third arm landed
+// MegaRAC's proprietary remote media (extdeps.bmc.megarac megarac_op_media_*):
+// the BMC mounts an NFS or CIFS share the staging service exports and
+// redirects a named image from it. The observed Foxconn Mt. Collins build
+// (BMC 0.32, no Redfish) boots from an ISO through exactly this path.
+type MegaRacRemoteShareType
+  = MegaRacShareNfs
+  | MegaRacShareCifs
+
+type MegaRacRemoteMediaParams {
+  share_type: MegaRacRemoteShareType
+  server_address: NonEmptyStr
+  source_path: NonEmptyStr
+  image_name: NonEmptyStr
+}
+
+// THE TRANSPORT AXIS. Four realizations of one intent; the third and fourth arms landed
 // with the 2026-08-29 machine-intake ruling, which forbade a second
 // burn-in-specific media system and required the standard Redfish path to be
 // one more inhabitant here. The dispatch that selects an arm is realization and
@@ -59,12 +74,14 @@ type VirtualMediaTransport
   = ConfigfsGadgetTransport { params: ConfigfsGadgetParams }
   | NbdProxyWebsocatTransport { params: NbdProxyWebsocatParams }
   | RedfishVirtualMediaTransport { params: RedfishVirtualMediaParams }
+  | MegaRacRemoteMediaTransport { params: MegaRacRemoteMediaParams }
 
 fn virtual_media_transport_kind(transport: VirtualMediaTransport) -> String {
   match transport {
     ConfigfsGadgetTransport { params: _ } => "configfs-gadget"
     NbdProxyWebsocatTransport { params: _ } => "nbdproxy-websocat"
     RedfishVirtualMediaTransport { params: _ } => "redfish-virtualmedia"
+    MegaRacRemoteMediaTransport { params: _ } => "megarac-remote-media"
   }
 }
 

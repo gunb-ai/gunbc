@@ -171,11 +171,21 @@ fn floor_discovery_scan_test_decl_names(content: String) -> List<String> {
 // still PASSES, because the wiring it asserts is genuinely intact on the producer path. A green
 // run of it says nothing about whether the required floor can reach the wall.
 //
-// WHAT LANDED: the required floor now asks this module's own `floor_test_sidecar_suffix` about
-// the files its preparation found carrying no test decl of either form, so the RULE keeps one
-// home and only its consumer moved. The two scanners are NOT unified here -- collapsing them
-// needs the canonical parser to retain the authored `test` marker, and the note below states why
-// that is blocked on a GrammarExpr contextual-keyword terminal that does not exist yet.
+// WHAT LANDED THEN: the required floor asked this module's own `floor_test_sidecar_suffix` about
+// the files its preparation found carrying no test decl of either form, so the RULE kept one
+// home and only its consumer moved.
+//
+// WHAT LANDED NEXT (2026-08-29), AND IT RETIRES THE ROSTER ROW ABOVE: cli_run.rs
+// witness_file_from_source is DELETED. The required floor no longer scans at all -- it folds
+// v2.workflow.floor_discovery_producer discover_floor_rows_for_source over its prepared sources
+// and takes that fold's rows as its roster, so the barren check, the placement rule and the scan
+// reach the floor through ONE consumer of this module. The measured fork that forced it: the
+// Rust roster scan was filename-blind, so five files carrying 39 `test`-marked decls outside a
+// `*_test.dag` sidecar were refused by the producer and executed by the floor. Two scanners
+// remain in the binary (this module's, and cli_run.rs scan_test_decl_lines on the explicit-entry
+// path); collapsing them still needs the canonical parser to retain the authored `test` marker,
+// and the note below states why that is blocked on a GrammarExpr contextual-keyword terminal
+// that does not exist yet.
 //
 // THAT SEPARATE REPAIR HAS LANDED, and the population it named is the population it closed.
 // witness_file_from_source recognised `test fn ` and not `test data `, so every `test data`
@@ -195,8 +205,9 @@ fn floor_discovery_scan_test_decl_names(content: String) -> List<String> {
 // stronger predicate here -- it is removing the disagreement that made this predicate's own
 // vocabulary mean one thing to the wall and another to the roster.
 //
-// STILL OPEN, AND NOT WIDENED BY THAT REPAIR: this module's scan and the two in cli_run.rs are
-// still THREE SPELLINGS of one fact. They now agree; they are not unified. The prerequisite is
+// STILL OPEN, AND NOT WIDENED BY THAT REPAIR: this module's scan and cli_run.rs
+// scan_test_decl_lines are still TWO SPELLINGS of one fact (three, until the floor's own scan was
+// deleted as recorded above). They agree; they are not unified. The prerequisite is
 // unchanged and is stated in the note below -- the canonical parser must retain the authored
 // `test` marker, which needs a GrammarExpr contextual-keyword terminal that does not exist yet.
 fn floor_entry_is_barren_test_sidecar(entry_path: String, content: String) -> Bool {

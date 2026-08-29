@@ -25,6 +25,7 @@ type BmcCapability
   | CapabilityFirmwareUpdate
   | CapabilityVirtualMedia
   | CapabilityNbdProxyVirtualMedia
+  | CapabilityOemRemoteMedia
   | CapabilityBiosAttributeConfig
   | CapabilitySerialConsole
 

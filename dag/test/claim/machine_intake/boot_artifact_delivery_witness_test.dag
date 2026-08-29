@@ -10,11 +10,14 @@ import extdeps.bmc.capability {
   BmcFirmwareVersion,
   CapabilityBootSourceOverride,
   CapabilityNbdProxyVirtualMedia,
+  CapabilityOemRemoteMedia,
   CapabilityPowerControl,
   CapabilityVirtualMedia,
 }
 import extdeps.bmc.virtual_media {
   ConfigfsGadgetParams,
+  MegaRacRemoteMediaParams,
+  MegaRacShareNfs,
   NbdProxyWebsocatParams,
   RedfishVirtualMediaParams,
   RedfishVirtualMediaTransport,
@@ -35,6 +38,7 @@ import extdeps.bmc.access_profile {
   BmcAccessUnobserved,
   SurfaceBootControl,
   SurfaceOemNbdWebsocket,
+  SurfaceOemRestRemoteMedia,
   SurfaceRedfishVirtualMedia,
 }
 import gunbc.install_transport_qualification {
@@ -58,6 +62,7 @@ import gunbc.boot_artifact_delivery {
   CandidateRedfishVirtualMedia,
   DeliveryNoBootSourceOverride,
   DeliveryNoEligibleTransport,
+  MegaRacRestRemoteMedia,
   NetworkBootDeliveryUnestablished,
   OpenBmcConfigfsUsbGadget,
   OpenBmcNbdProxyWebsocket,
@@ -109,6 +114,21 @@ data redfish_params: RedfishVirtualMediaParams = RedfishVirtualMediaParams {
   transfer_protocol: TransferHttps,
 }
 
+data megarac_params: MegaRacRemoteMediaParams = MegaRacRemoteMediaParams {
+  share_type: MegaRacShareNfs,
+  server_address: "intake-staging",
+  source_path: "/srv/bmc/intake/artifacts/sha256-abc",
+  image_name: "intake.iso",
+}
+
+// The observed Mt. Collins build (gunbc#9678): no Redfish, the proprietary
+// remote-media surface present. The row names the OEM capability, the live
+// observation discovered the OEM surface, so the MegaRAC REST arm is selected.
+data mt_collins_observed_row: BmcFirmwareCapabilityRow = BmcFirmwareCapabilityRow {
+  firmware: megarac_fw,
+  capabilities: [CapabilityPowerControl, CapabilityBootSourceOverride, CapabilityOemRemoteMedia],
+}
+
 fn observed(surfaces: List<BmcAccessSurface>, firmware: BmcFirmwareVersion) -> BmcAccessObservationStanding {
   BmcAccessObserved {
     observation: BmcAccessObservation {
@@ -127,6 +147,7 @@ fn delivery_evidence(row: BmcFirmwareCapabilityRow, live_access: BmcAccessObserv
     row: row,
     live_access: live_access,
     redfish_media: Present { value: redfish_params },
+    megarac_media: Present { value: megarac_params },
     nbd_proxy: none,
     configfs: configfs,
     configfs_params: configfs_params,
@@ -144,6 +165,17 @@ test fn redfish_virtual_media_selected_from_profile_and_live_intersection() -> B
     BootDeliverySelected { delivery: d, considered: _ } =>
       match d {
         RedfishVirtualMediaPull { params: p } => p.transfer_protocol == TransferHttps
+        _ => false
+      }
+    BootDeliveryRefused { cause: _ } => false
+  }
+}
+
+test fn observed_mt_collins_build_selects_megarac_rest_remote_media() -> Bool {
+  match solve_boot_artifact_delivery(ev: delivery_evidence(row: mt_collins_observed_row, live_access: observed(surfaces: [SurfaceBootControl, SurfaceOemRestRemoteMedia], firmware: megarac_fw), configfs: configfs_unestablished, configfs_params: none)) {
+    BootDeliverySelected { delivery: d, considered: _ } =>
+      match d {
+        MegaRacRestRemoteMedia { params: p } => p.image_name == "intake.iso"
         _ => false
       }
     BootDeliveryRefused { cause: _ } => false
