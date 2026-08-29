@@ -43723,6 +43723,7 @@ mod peel_alias_fixpoint_termination {
                 // name is in play here and the empty map is the fixture's real value.
                 authored_import_names: crate::v1_rt::rc_empty_map(),
                 symbol_index,
+                unit_variant_index: crate::v1_rt::rc_empty_map(),
             });
             // The pre-fix firing set: the old peel called this same resolver,
             // projected `.resolved`, and discarded these diagnostics. The fix
