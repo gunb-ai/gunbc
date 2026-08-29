@@ -61,7 +61,7 @@ import gunbc.scm.repository_envelope {
 // THIS DECLARATION DOES NOT CHANGE WHETHER THESE CLAIMS EXECUTE, AND TWO EARLIER REVISIONS OF THIS
 // ANNOTATION SAID IT DID. Both are retracted here against the source rather than against a rerun.
 //
-// THE FLOOR'S AUTOMATIC ROUTE IS A COLUMN-ZERO TEXT SCAN (`witness_file_from_source`, v1 seed):
+// THE FLOOR'S AUTOMATIC ROUTE WAS A COLUMN-ZERO TEXT SCAN (former v1 seed scanner):
 // a line must `starts_with("data ")` AND contain BOTH `LiveTreeDisposition` AND `ReadsLiveTree`.
 // An undeclared module matches nothing, so `reads_live_tree` is false and the module is ROUTED.
 // A module declaring SubstrateInputsOnly also matches nothing -- the second token is absent -- so it

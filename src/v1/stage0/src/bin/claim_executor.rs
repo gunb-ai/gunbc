@@ -1171,15 +1171,21 @@ fn report_required_floor_outcome(outcome: &v1_compiler::cli_run::RequiredFloorOu
     // entry stops the line in `run_required_floor` before this point — so the guarantee is stated
     // rather than left for a reader to discover it was never claimed.
     eprintln!(
-        "required-floor: offered={} routed={} declined_long={} declined_fixture={} \
-         declined_outside_required_gate={} — every discovered site is exactly one of these, \
-         and no `*_test.dag` entry offered zero sites (v2.workflow.floor_discovery_producer \
-         refuses a barren or misplaced sidecar upstream of this line)",
+        "required-floor: declared={} offered={} routed={} declined_long={} declined_fixture={} \
+         declined_outside_required_gate={} declined_outside_gate_closure={} \
+         declined_discovery_excluded={} — every DECLARED witness identity in the tree is exactly \
+         one of these, joined at identity grain (FloorDispositionJoinInexact refuses otherwise), \
+         and no `*_test.dag` entry declared zero sites (v2.workflow.floor_discovery_producer \
+         refuses a barren or misplaced sidecar upstream of this line, over the full module \
+         index)",
+        outcome.declared_identities,
         outcome.sites_offered,
         outcome.claims_planned,
         outcome.declined_long_module,
         outcome.declined_fixture_member,
-        outcome.declined_outside_required_gate
+        outcome.declined_outside_required_gate,
+        outcome.declined_outside_gate_closure,
+        outcome.declined_discovery_excluded
     );
     // WHY route_gap IS NOW SPELLED route_gap_unenrolled, AND WHY route_gap_held JOINS IT HERE.
     // The old field printed `outcome.route_gap.len()` under the bare name `route_gap` — the

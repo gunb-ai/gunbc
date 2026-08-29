@@ -525,7 +525,7 @@ fn floor_discovery_apply_wire_contract_sidecar_rules(
 //                                                 prepared inventory (cli_run required_floor_runner)
 //
 // Before this seam existed the required floor enrolled its roster from a SECOND scanner in Rust
-// (cli_run.rs witness_file_from_source), filename-blind, so a `test`-marked decl outside a
+// (the former cli_run.rs floor scanner), filename-blind, so a `test`-marked decl outside a
 // sidecar was refused on the claim_batch path and executed on the floor -- two authorities for
 // one fact (DESIGN section 3), measured on main 2026-08-29: five files, 39 test fns. That scanner
 // is deleted; the floor's roster is this fold's answer.
