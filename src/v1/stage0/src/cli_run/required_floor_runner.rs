@@ -1947,14 +1947,6 @@ pub(crate) fn floor_cgroup_dir() -> String {
     .clone()
 }
 
-/// One prepared source handed to the `.dag` discovery authority: its repo-relative path, its
-/// authored module name, and the bytes preparation already holds.
-struct FloorDiscoverySource {
-    path: String,
-    module_path: String,
-    source: Rc<v1_compiler_compile::SourceFile>,
-}
-
 /// One entry's enrolled witness names, exactly as `v2.workflow.floor_discovery_producer`
 /// answered them; the site-projection loop's unit.
 struct FloorDiscoveryFile {
@@ -2367,22 +2359,15 @@ pub fn run_required_floor(
         .iter()
         .map(|view| view.module_path.clone())
         .collect();
-    // BOUNDED RETENTION, NOT A CORPUS COPY HELD FOR THE CLAIM RUN. The full-index views exist
-    // only until the modeled discovery fold consumes them. Taking them out of `prepared` makes
-    // that lifetime structural: the outside-closure source bytes cannot survive into claim
-    // execution through the repository value every later phase borrows.
+    // BOUNDED RETENTION, NOT A CORPUS COPY HELD FOR THE CLAIM RUN. The full-index views are
+    // taken OUT of `prepared` here and consumed, by value, inside the discovery-authority phase
+    // below — no second vector is built from them, and the phase drops them before the claim
+    // roster exists. Taking them out of `prepared` makes the lifetime structural: the
+    // outside-closure source bytes cannot survive into claim execution through the repository
+    // value every later phase borrows, and the discovery phase's own completion line measures
+    // the release (review 57430).
     let discovery_exclusions = std::mem::take(&mut prepared.discovery_exclusions);
     let full_inventory = std::mem::take(&mut prepared.full_inventory);
-    let discovery_sources: Vec<FloorDiscoverySource> = full_inventory
-        .iter()
-        .map(|view| FloorDiscoverySource {
-            path: view.source.path.replace('\\', "/"),
-            module_path: view.module_path.clone(),
-            source: view.source.clone(),
-        })
-        .collect();
-    let discovery_source_count = discovery_sources.len();
-    drop(full_inventory);
     let _floor_prepared_guard = register_floor_prepared_authority_guard(prepared_sources);
     // WARM THE MODULE-PATH INDEX HERE, because otherwise ONE ARBITRARY CLAIM PAYS FOR IT.
     //
@@ -2929,11 +2914,15 @@ pub fn run_required_floor(
     floor_seam("discovery-authority");
     let discovery_started = std::time::Instant::now();
     let producer_frame = floor_authority_frame(&prepared, FLOOR_DISCOVERY_AUTHORITY_MODULE)?;
+    let discovery_source_count = full_inventory.len();
     let mut discovery_outcomes: Vec<v1_interpreter::Value> =
-        Vec::with_capacity(discovery_sources.len());
-    for src in &discovery_sources {
+        Vec::with_capacity(full_inventory.len());
+    for src in &full_inventory {
         let args = [
-            (Some("repo_path".to_string()), str_value(src.path.clone())),
+            (
+                Some("repo_path".to_string()),
+                str_value(src.source.path.replace('\\', "/")),
+            ),
             (
                 Some("content".to_string()),
                 str_value(src.source.content.clone()),
@@ -2949,7 +2938,7 @@ pub fn run_required_floor(
             format!(
                 "REQUIRED-FLOOR REFUSAL cause=FloorDiscoveryAuthorityUnevaluable source={} — \
                  discover_floor_rows_for_source: {e}",
-                src.path
+                src.source.path.replace('\\', "/")
             )
         })?;
         discovery_outcomes.push(outcome);
@@ -2975,9 +2964,9 @@ pub fn run_required_floor(
         })?;
     // Rows are (entry, function); the disposition loop below needs the entry's AUTHORED module
     // name, which preparation read off the `module` line and holds beside the same path.
-    let module_for_path: std::collections::HashMap<&str, &str> = discovery_sources
+    let module_for_path: std::collections::HashMap<String, &str> = full_inventory
         .iter()
-        .map(|src| (src.path.as_str(), src.module_path.as_str()))
+        .map(|src| (src.source.path.replace('\\', "/"), src.module_path.as_str()))
         .collect();
     let mut files: Vec<FloorDiscoveryFile> = Vec::new();
     for row in &discovery_rows {
@@ -2998,16 +2987,30 @@ pub fn run_required_floor(
         }
     }
     drop(module_for_path);
-    drop(discovery_sources);
+    // THE RELEASE IS MEASURED IN THE SAME MOTION AS IT HAPPENS, by exclusive drop against the
+    // existing statm/malloc_trim instruments rather than a new one: rss before, drop the full
+    // inventory (whose outside-closure `Rc<SourceFile>` bytes have no other owner once the
+    // gate-cut index discarded them), trim the freed-but-retained arena, rss after. What the
+    // trim gives back after this drop is exactly the full-index retention this phase held; a
+    // reader of the run therefore sees the retention's size and its end on the phase's own
+    // line, instead of trusting a comment that the bytes were dropped (review 57430).
+    let full_inventory_rss_kb_before = floor_sampled_field(floor_statm_rss_kb());
+    drop(full_inventory);
+    let full_inventory_trim_reclaimed_kb = floor_sampled_field(trim_retained_heap());
+    let full_inventory_rss_kb_after = floor_sampled_field(floor_statm_rss_kb());
     files.sort_by(|a, b| a.path.cmp(&b.path));
     eprintln!(
         "[floor-phase] phase=discovery-authority state=completed wall_ms={} authority={} \
-         sources={} rows={} entries={}",
+         sources={} rows={} entries={} full_inventory_release_rss_kb_before={} \
+         full_inventory_release_trim_reclaimed_kb={} full_inventory_release_rss_kb_after={}",
         discovery_started.elapsed().as_millis(),
         FLOOR_DISCOVERY_AUTHORITY_MODULE,
         discovery_source_count,
         discovery_rows.len(),
-        files.len()
+        files.len(),
+        full_inventory_rss_kb_before,
+        full_inventory_trim_reclaimed_kb,
+        full_inventory_rss_kb_after
     );
     let files = &files;
     // THE COST-DEBT ROSTER, decoded before the claim-build loop below because it decides an

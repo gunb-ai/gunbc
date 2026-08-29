@@ -249,17 +249,16 @@ run's own, not this document's: `required-floor: declared=… offered=… declin
 
 ### What changed
 
-**Hand-Rust receipt.** This change adds zero Rust declarations. It modifies the existing
-`PreparedRepository`, `PreparedSubject`, `assemble_prepared_subject_closure`,
-`prepare_repository_closure`, and `run_required_floor` items to transport full-index source views
-into the already-modeled discovery producer, then drops those views before claim execution. Rust
-is still necessary only at the v1 host boundary that owns repository acquisition and invokes the
-interpreter; it defines neither the declaration grammar nor discovery policy. The owning ROADMAP
-row is `v1-hand-queue-drain`. The concrete deletion trigger is that row's emitted-v2 replacement
-of required-floor orchestration: when repository acquisition and producer invocation are
-performed by the emitted workflow, these five seed modifications delete with the host rather than
-moving into another Rust census. This is an explicit deferral of the transport boundary, not a
-claim that the modified hand-Rust surface is generated or already dissolved.
+**Hand-Rust receipt.** The receipt is a roster row, not this paragraph:
+`gunbc.floor_population_projection_seed_growth`, enrolled in
+`gunbc.seed_growth_admission seed_growth_justification_roster` — item delta, admitted
+modifications, owning lane (`v1-hand-queue-drain`), dissolution trigger, and the boundary chain
+live there, where the census reads them. **Full-index retention (review 57430):** the discovery
+fold consumes the prepared full-index views by value inside its own phase — the intermediate
+`FloorDiscoverySource` vector is deleted — and the phase's completion line prints
+`full_inventory_release_rss_kb_before` / `_trim_reclaimed_kb` / `_rss_kb_after` through the
+floor's existing statm/malloc_trim instruments, so the run itself states that outside-closure
+bytes end with the phase rather than surviving into claim execution.
 
 1. **The universe is the declared population, answered by one authority.** The floor folds
    `v2.workflow.floor_discovery_producer` (`discover_floor_rows_for_source`) over preparation's
