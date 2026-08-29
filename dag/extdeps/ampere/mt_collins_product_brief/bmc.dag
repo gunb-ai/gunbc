@@ -1,0 +1,26 @@
+module extdeps.ampere.mt_collins_product_brief.bmc
+
+import std.types { String }
+import extdeps.bmc.endpoint { BmcFirmwareFamily, AmiMegaRac }
+import extdeps.ampere.mt_collins_product_brief.subject { MtCollinsPublicProductBrief, mt_collins_public_product_brief }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https,
+    locator: "amperecomputing.com/customer-connect/products/mt-collins",
+  }
+}
+
+data bmc_subject: MtCollinsPublicProductBrief = mt_collins_public_product_brief
+
+// The management stack shipping on the Foxconn Mt. Collins build, established by
+// execution against a held unit 2026-08-29 (FRU-confirmed board): AMI MegaRAC, reached
+// over IPMI lanplus and the proprietary REST surface modeled in extdeps.bmc.megarac,
+// with no Redfish endpoint on that build. Factory login and API contract rows live with
+// the stack (extdeps.bmc.megarac), not here - this row only binds platform to family so
+// a workflow holding a Mt. Collins knows which access authority applies.
+data mt_collins_bmc_firmware: BmcFirmwareFamily = AmiMegaRac
+
+data mt_collins_bmc_provenance_note: String = "Grounded by execution, not collateral: the public Ampere/Foxconn documents for Mt. Collins do not state the BMC firmware product. Scope is the observed shipping build; a re-flashed unit (OpenBMC ports exist for some Ampere platforms) would change the family row for that unit, which is why fleet workflows read the family from the unit's intake receipt when present and fall back to this platform default only for an unprobed unit."

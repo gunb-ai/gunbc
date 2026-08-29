@@ -1,0 +1,93 @@
+module extdeps.bmc.megarac
+
+import std.types { String, NonEmptyStr, List }
+import std.credentials { FactoryLogin }
+import extdeps.bmc.endpoint { BmcProtocol, Ipmi }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.ami.com/megarac/"
+  }
+}
+
+data megarac_subject_note: String = "AMI MEGARAC, THE PROPRIETARY BMC FIRMWARE STACK, sibling of extdeps.bmc.openbmc in the BmcFirmwareFamily dispatch. Unlike OpenBMC there is no public source tree; the interface facts below are grounded in the vendor product page plus execution against a shipping build (Foxconn Mt. Collins, probed 2026-08-29 over the operator's LAN), and each row says which. ODMs ship customized builds, so build-specific rows are scoped to the build they were observed on, never asserted for the family."
+
+// The factory login OBSERVED on the Foxconn Mt. Collins build, which matches the widely
+// published MegaRAC default. An ODM build may differ; a workflow must treat this as the
+// first credential to TRY, and a refusal as an already-rotated or differently-shipped
+// build, never as an error to force past.
+data megarac_factory_login: FactoryLogin = FactoryLogin {
+  username: "admin",
+  published_password: "admin",
+}
+
+// Protocols observed live on the Mt. Collins build: IPMI v2 lanplus (chassis, sensors,
+// SEL, FRU, SOL, bootdev) and the proprietary HTTPS REST surface below. Redfish is a
+// family capability AMI advertises, but this build serves 404 at /redfish/v1 — so the
+// modeled protocol list carries what execution found, and a Redfish-assuming workflow
+// must probe, not presume.
+data megarac_supported_protocols: List<BmcProtocol> = [Ipmi]
+
+data megarac_no_redfish_on_observed_build_note: NonEmptyStr = "GET /redfish/v1 returns 404 on the Foxconn Mt. Collins build (2026-08-29). Family-level Redfish support is an AMI marketing claim, not an observed fact of this build."
+
+// ---------------------------------------------------------------------------------------------
+// THE PROPRIETARY REST SURFACE (SP-X style), as executed. Session auth: POST /api/session
+// with form-encoded username/password; the JSON reply carries CSRFToken, and every
+// subsequent request presents the session cookie plus header X-CSRFTOKEN.
+// ---------------------------------------------------------------------------------------------
+
+type MegaRacApiOperation {
+  http_method: NonEmptyStr
+  path: NonEmptyStr
+  contract_note: NonEmptyStr
+}
+
+data megarac_op_session_login: MegaRacApiOperation = MegaRacApiOperation {
+  http_method: "POST",
+  path: "/api/session",
+  contract_note: "form-encoded username/password; reply JSON carries CSRFToken and privilege; subsequent calls send the session cookie and X-CSRFTOKEN header",
+}
+
+data megarac_op_media_config: MegaRacApiOperation = MegaRacApiOperation {
+  http_method: "PUT",
+  path: "/api/settings/media/general",
+  contract_note: "JSON body: remote_media_support:1, cd_remote_server_address/source_path, cd_remote_share_type nfs|cifs, mount_cd:1; an rmedia daemon mounts on a retry interval (rmedia_retry_interval), so a mount can succeed seconds after the PUT that configured it",
+}
+
+data megarac_op_media_images: MegaRacApiOperation = MegaRacApiOperation {
+  http_method: "GET",
+  path: "/api/settings/media/remote/images",
+  contract_note: "lists image files visible on the mounted share; 'Could not mount the remote path' here means the rmedia daemon has not (yet) mounted - poll after the retry interval before concluding failure",
+}
+
+data megarac_op_media_start: MegaRacApiOperation = MegaRacApiOperation {
+  http_method: "POST",
+  path: "/api/settings/media/remote/start-media",
+  contract_note: "JSON body MUST carry image_redirection:1 beside image_name, image_type (1 = CD) and image_index; without image_redirection the firmware refuses with opaque codes 13410/13460. Recovered from the firmware's own UI bundle (source.min.js), not from documentation. Success attaches a redirection session visible at /api/settings/media/remote/configurations (redirection_status nonzero, session_index bound)",
+}
+
+data megarac_op_media_stop: MegaRacApiOperation = MegaRacApiOperation {
+  http_method: "POST",
+  path: "/api/settings/media/remote/stop-media",
+  contract_note: "counterpart of start-media, same body shape",
+}
+
+data megarac_op_media_status: MegaRacApiOperation = MegaRacApiOperation {
+  http_method: "GET",
+  path: "/api/settings/media/remote/configurations",
+  contract_note: "one row per media instance: media_type, image_name, session_index, redirection_status",
+}
+
+data megarac_api_operations: List<MegaRacApiOperation> = [
+  megarac_op_session_login,
+  megarac_op_media_config,
+  megarac_op_media_images,
+  megarac_op_media_start,
+  megarac_op_media_stop,
+  megarac_op_media_status,
+]
+
+data megarac_virtual_cd_boot_recipe_note: String = "THE EXECUTED HEADLESS BOOT-FROM-ISO SEQUENCE (Foxconn Mt. Collins build, 2026-08-29): export the ISO directory over NFS to the BMC address; PUT media config; wait for the rmedia retry to mount (images listing goes from refusal to listing); POST start-media WITH image_redirection:1; ipmitool chassis bootdev cdrom then power reset. Execution receipts available without any screen: the NFS server's read counter (bulk reads then quiet = image loaded), the configurations row (redirection_status/session_index), and the boot CPU's power rails rising while the second socket idles."
