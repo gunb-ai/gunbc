@@ -28,7 +28,6 @@ import gunbc.roadmap_launch_canary {
   roadmap_launch_canary_edge, roadmap_launch_canary_execution_contract,
   roadmap_launch_canary_ticket, roadmap_launch_canary_oracle_entry, roadmap_launch_canary_oracle_function,
 }
-import gunbc.roadmap_launch_canary_sentinel { roadmap_launch_canary_sentinel }
 import test.manual.roadmap_launch_canary_oracle {
   roadmap_launch_canary_nonce,
   roadmap_launch_canary_expected_sentinel,
@@ -215,9 +214,11 @@ test fn falsifier_wrong_blocker_identity_refused() -> Bool {
 
 // Falsifier (c) and the oracle's discrimination: red on base (the committed sentinel is pending),
 // green on exactly the authorized value, red on a wrong or missing nonce.
-test fn witness_oracle_red_on_base_sentinel() -> Bool {
-  !roadmap_launch_canary_sentinel_completed(value: roadmap_launch_canary_sentinel as String)
-    && roadmap_launch_canary_sentinel as String == join(["pending:", roadmap_launch_canary_nonce as String], "")
+// Over the PREDICATE with a literal input, never the live sentinel row: at RLM-5 the canary attempt
+// flips that row, and a floor witness reading it would red the very PR the MVP exists to publish.
+// "Red on base" as a fact about the committed row belongs only to the pinned oracle.
+test fn witness_oracle_red_on_pending_sentinel() -> Bool {
+  !roadmap_launch_canary_sentinel_completed(value: join(["pending:", roadmap_launch_canary_nonce as String], ""))
 }
 
 test fn witness_oracle_green_on_exact_authorized_mutation() -> Bool {
