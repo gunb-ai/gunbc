@@ -50,8 +50,29 @@ import std.types { String, List }
 // pins provenance/history while the verified tree pins bytes. A branch or working directory stays
 // representable at the input boundary so construction can return a typed refusal; it has no route to
 // Work. Lists are checked non-empty before hashing, so [] cannot become a plausible empty manifest.
+type VerifiedGitCommitTree sole_constructor {
+  commit: GitObjectId
+  tree: GitObjectId
+}
+
+type GitCommitTreeVerification
+  = GitCommitTreeVerified { subject: VerifiedGitCommitTree }
+  | GitCommitTreeMismatch { commit: GitObjectId, declared_tree: GitObjectId, observed_commit_tree: GitObjectId }
+
+fn verify_git_commit_tree(
+  commit: GitObjectId,
+  declared_tree: GitObjectId,
+  observed_commit_tree: GitObjectId,
+) -> GitCommitTreeVerification {
+  if declared_tree == observed_commit_tree {
+    GitCommitTreeVerified { subject: VerifiedGitCommitTree { commit: commit, tree: declared_tree } }
+  } else {
+    GitCommitTreeMismatch { commit: commit, declared_tree: declared_tree, observed_commit_tree: observed_commit_tree }
+  }
+}
+
 type RequiredBuildSource
-  = ExactGitSource { commit: GitObjectId, verified_tree: GitObjectId, verification_receipt: NonEmptyStr }
+  = ExactGitSource { subject: VerifiedGitCommitTree }
   | MovingGitRef { ref_name: NonEmptyStr }
   | WorkingDirectorySource { path: NonEmptyStr }
 
@@ -171,7 +192,7 @@ fn bind_required_witnesses_build_work(
   match spec.source {
     MovingGitRef { ref_name } => RequiredBuildWorkRefused { cause: RequiredBuildMovingRefRefused { ref_name: ref_name } }
     WorkingDirectorySource { path } => RequiredBuildWorkRefused { cause: RequiredBuildWorkingDirectoryRefused { path: path } }
-    ExactGitSource { commit, verified_tree, verification_receipt } =>
+    ExactGitSource { subject } =>
       match non_empty_strings_material(label: "checkout", values: spec.checkout_materialization) {
         Absent => RequiredBuildWorkRefused { cause: RequiredBuildCoordinateMissing { coordinate: "checkout-materialization" } }
         Present { value: checkout } => match non_empty_strings_material(label: "toolchain", values: spec.toolchain_provenance) {
@@ -189,14 +210,14 @@ fn bind_required_witnesses_build_work(
                     Present { value: outputs } => match non_empty_strings_material(label: "terminal", values: spec.terminal_result_manifest) {
                       Absent => RequiredBuildWorkRefused { cause: RequiredBuildCoordinateMissing { coordinate: "terminal-result-manifest" } }
                       Present { value: terminal } => {
-                        let source = concat("git-source:", concat(framed_string(value: git_object_id_wire_hex(oid: commit)), concat(framed_string(value: git_object_id_wire_hex(oid: verified_tree)), framed_string(value: verification_receipt))))
+                        let source = concat("git-source:", concat(framed_string(value: git_object_id_wire_hex(oid: subject.commit)), framed_string(value: git_object_id_wire_hex(oid: subject.tree))))
                         let command = command_material(command: spec.command)
                         let contract = required_build_contract_from_materials(source: source, checkout: checkout, toolchain: toolchain, executable: executable, command: command, environment: environment, cache: cache, credentials: credentials, outputs: outputs, terminal: terminal)
                         let requirements = floor_execution_requirements()
                         let work = work_for(principal: principal, contract: contract, requirements: requirements)
                         RequiredBuildWorkBound {
                           work: work,
-                          source_tree_digest: git_object_id_content_hash(oid: verified_tree),
+                          source_tree_digest: git_object_id_content_hash(oid: subject.tree),
                           environment_materialization_digest: content_hash_of_value(value: concat("environment-materialization:", concat(framed_string(value: checkout), concat(framed_string(value: toolchain), concat(framed_string(value: executable), concat(framed_string(value: environment), concat(framed_string(value: cache), framed_string(value: credentials)))))))),
                         }
                       }
@@ -225,6 +246,11 @@ fn required_witnesses_build_work(source: RequiredBuildSource) -> RequiredBuildWo
           executable_provenance: [repo_self_build_all_bins_command(), "target/release/claim_executor"],
           command: build_lane_run_command(),
           environment: [
+            RequiredBuildEnvironmentEntry { name: "CARGO_TERM_COLOR", value: "always" },
+            RequiredBuildEnvironmentEntry { name: "GUNBC_EXPECTED_RED_ROSTER_JOIN", value: "expected_red_roster_join.tsv" },
+            RequiredBuildEnvironmentEntry { name: "GUNBC_REQUIRED_FLOOR_DISPOSITION", value: "required_floor_disposition.tsv" },
+            RequiredBuildEnvironmentEntry { name: "GUNBC_LONG_HOME_STORAGE_AGREEMENT", value: "long_home_storage_agreement.tsv" },
+            RequiredBuildEnvironmentEntry { name: "GUNBC_REQUIRED_FLOOR_CLAIM_COST", value: "required_floor_claim_cost.tsv" },
             RequiredBuildEnvironmentEntry { name: "HOME", value: "derived-from-RUNNER_TEMP" },
             RequiredBuildEnvironmentEntry { name: "CARGO_HOME", value: "derived-from-RUNNER_TEMP/cargo" },
             RequiredBuildEnvironmentEntry { name: "RUSTUP_HOME", value: "derived-from-RUNNER_TEMP/rustup" },
@@ -256,15 +282,19 @@ fn required_witnesses_build_frozen_identities(source: RequiredBuildSource) -> Re
 fn required_witnesses_build_frozen_identity_wire(
   commit_hex: NonEmptyStr,
   tree_hex: NonEmptyStr,
-  verification_receipt: NonEmptyStr,
+  observed_commit_tree_hex: NonEmptyStr,
 ) -> String {
   let projection = match git_sha1_object_id(hex: commit_hex) {
     Absent => RequiredBuildFrozenIdentitiesRefused { cause: RequiredBuildCoordinateMissing { coordinate: "source-commit" } }
     Present { value: commit } => match git_sha1_object_id(hex: tree_hex) {
       Absent => RequiredBuildFrozenIdentitiesRefused { cause: RequiredBuildCoordinateMissing { coordinate: "verified-source-tree" } }
-      Present { value: tree } => required_witnesses_build_frozen_identities(
-        source: ExactGitSource { commit: commit, verified_tree: tree, verification_receipt: verification_receipt },
-      )
+      Present { value: tree } => match git_sha1_object_id(hex: observed_commit_tree_hex) {
+        Absent => RequiredBuildFrozenIdentitiesRefused { cause: RequiredBuildCoordinateMissing { coordinate: "observed-commit-tree" } }
+        Present { value: observed_commit_tree } => match verify_git_commit_tree(commit: commit, declared_tree: tree, observed_commit_tree: observed_commit_tree) {
+          GitCommitTreeMismatch { commit: _, declared_tree: _, observed_commit_tree: _ } => RequiredBuildFrozenIdentitiesRefused { cause: RequiredBuildCoordinateMissing { coordinate: "commit-tree-verification" } }
+          GitCommitTreeVerified { subject } => required_witnesses_build_frozen_identities(source: ExactGitSource { subject: subject })
+        }
+      }
     }
   }
   match projection {

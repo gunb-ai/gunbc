@@ -5,6 +5,7 @@ import extdeps.git.object_store { GitObjectId, git_sha1_object_id }
 import product.fabric.identity { WorkKey }
 import gunbc.fabric_witness_run {
   RequiredBuildSource, ExactGitSource, MovingGitRef, WorkingDirectorySource,
+  GitCommitTreeVerified, GitCommitTreeMismatch, verify_git_commit_tree,
   RequiredBuildEnvironmentEntry, RequiredBuildExecutionSpec,
   RequiredBuildWorkBinding, RequiredBuildWorkBound, RequiredBuildWorkRefused,
   RequiredBuildMovingRefRefused, RequiredBuildWorkingDirectoryRefused,
@@ -53,7 +54,26 @@ fn exact_source(tree_hex: NonEmptyStr) -> RequiredBuildSource? {
     Absent => none
     Present { value: commit } => match fixture_oid(hex: tree_hex) {
       Absent => none
-      Present { value: tree } => Present { value: ExactGitSource { commit: commit, verified_tree: tree, verification_receipt: "fixture-git-tree-verification" } }
+      Present { value: tree } => match verify_git_commit_tree(commit: commit, declared_tree: tree, observed_commit_tree: tree) {
+        GitCommitTreeMismatch { commit: _, declared_tree: _, observed_commit_tree: _ } => none
+        GitCommitTreeVerified { subject } => Present { value: ExactGitSource { subject: subject } }
+      }
+    }
+  }
+}
+
+test fn mismatched_commit_tree_refuses_before_source_construction() -> Bool {
+  match fixture_oid(hex: "e9eaa579ed0b6585a48965842b43ee09af5671a1") {
+    Absent => false
+    Present { value: commit } => match fixture_oid(hex: "c8983a3d8412a5e37a309b2d90ceafc698856619") {
+      Absent => false
+      Present { value: declared_tree } => match fixture_oid(hex: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa") {
+        Absent => false
+        Present { value: observed_commit_tree } => match verify_git_commit_tree(commit: commit, declared_tree: declared_tree, observed_commit_tree: observed_commit_tree) {
+          GitCommitTreeMismatch { commit: _, declared_tree: _, observed_commit_tree: _ } => true
+          GitCommitTreeVerified { subject: _ } => false
+        }
+      }
     }
   }
 }
