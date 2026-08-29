@@ -1,5 +1,6 @@
 module v2.compiler.effect_demand_floor_join
 
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.content_hash { ContentHash, content_hash_of_value, serialize_content_hash }
 import std.types { NonEmptyStr }
 import gunbc.ci_layer_roots { witness_exclusion_substrings }
@@ -38,7 +39,10 @@ import v2.workflow.required_floor {
 
 data effect_demand_floor_join_note: String = "THE INSTRUMENT, NAMED, THAT A COMMITTED TABLE ONCE STOOD IN FOR. XL-1 needs one population: every claim the required floor discovers whose entry's dependency closure reaches a whole-body self-call seam, joined to the floor's own standing for that claim. An earlier revision committed that population as a TSV -- the output of an instrument standing where the instrument should be named (DESIGN section 6), and a second representation of what required_floor_site_disposition already derives (DESIGN section 3). This module is the producer. Three authorities, none re-coined: the discovery walk is v2.workflow.floor_discovery_producer's, the closure is v2.lens.module_graph's dependency_closure over the same import-and-reference edge family claim_scope_for walks, and the standing is v2.workflow.required_floor's required_floor_site_disposition, called with the dotted module.function identity the cost-debt roster keys on. A consumer re-derives from this entry point and joins by identity; the digest is how two derivations know they saw one population. WHAT THE STANDING IS AND IS NOT: it is the floor's SCHEDULER standing -- planned, or declined for a named reason -- and it is not a cutover disposition, which another lane owns. Reading FloorDeclinedLongModule as 'too expensive to run' is wrong on its face: that arm declines by authored module prefix, and the corpus records a member whose cost justification lapsed."
 
+data effect_demand_floor_join_identity_note: String = "THE ROW'S IDENTITY IS A DeclarationRef, AND THE DOTTED STRING IS DERIVED FROM IT, not the other way round. Two lanes joining on this population spelled the same claim two ways -- module.function here, module::decl there -- which is a hollow-alias fork on the join key, the class caught one field over on source_revision. std.decl_ref already owns declaration identity; the row carries it, a consumer joins on it, and claim_identity survives only because the cost-debt roster and the digest are keyed on the dotted rendering."
+
 type FloorStandingJoinRow {
+  identity_ref: DeclarationRef
   claim_identity: String
   module_path: String
   entry_path: String
@@ -226,6 +230,7 @@ fn floor_join_fold_row(
           Absent => FloorJoinFoldState {
             rows_reversed: Cons {
               head: FloorStandingJoinRow {
+                identity_ref: DeclarationRef { module_path: module, decl_name: row.function, field: WholeDeclaration },
                 claim_identity: identity,
                 module_path: module,
                 entry_path: row.entry,

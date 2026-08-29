@@ -14,6 +14,7 @@ import v2.compiler.effect_demand_floor_join {
 }
 import v2.compiler.effect_demand { effect_demand_seam_roster }
 import v2.lens.module_graph { ModuleDeclarationFact, ModuleDependencyEdge }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 import v2.std.algebra { Cons, Empty, any, length }
 import v2.std.collection { List }
 import v2.std.live_tree { SubstrateInputsOnly }
@@ -198,4 +199,16 @@ test fn floor_join_witness_live_seam_modules_are_the_fourteen_seams_homes() -> B
   any(xs: homes, predicate: fn(m) { m == "v2.std.decl_index" })
     && any(xs: homes, predicate: fn(m) { m == "v2.std.compilers.lexing" })
     && !any(xs: homes, predicate: fn(m) { m == "" })
+}
+
+test fn floor_join_witness_the_dotted_identity_is_derived_from_the_declaration_ref() -> Bool {
+  match probe_join() {
+    FloorStandingJoinRefused { cause } => false,
+    FloorStandingJoined { rows, counts, digest, seam_modules, owned_data_records_supplied } =>
+      !any(xs: rows, predicate: fn(row) {
+        row.claim_identity != concat(concat(row.identity_ref.module_path, "."), row.identity_ref.decl_name)
+          || row.identity_ref.module_path != row.module_path
+          || row.identity_ref.decl_name != row.function
+      })
+  }
 }
