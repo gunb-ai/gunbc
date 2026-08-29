@@ -218,24 +218,24 @@ fn floor_join_fold_row(
   let entry = strip_leading_dot_slash(s: row.entry)
   match map_lookup_where_rejected_unreachable(m: path_to_module, key: entry) {
     Absent => floor_join_refuse(state: state, cause: EntryPathUndeclared { entry_path: row.entry, function: row.function }),
-    Present { value: module } => {
+    Present { value: owning_module } => {
       let reaches = floor_join_reach_memoized(memo: state.reach_memo, entry: entry, edges: edges, nodes: nodes, seam_paths: seam_paths)
       let memo = map_insert(state.reach_memo, entry, reaches)
       if !reaches {
         FloorJoinFoldState { rows_reversed: state.rows_reversed, seen: state.seen, reach_memo: memo, refusal: state.refusal }
       } else {
-        let identity = concat(concat(module, "."), row.function)
+        let identity = concat(concat(owning_module, "."), row.function)
         match map_lookup_where_rejected_unreachable(m: state.seen, key: identity) {
           Present { value: dup } => floor_join_refuse(state: FloorJoinFoldState { rows_reversed: state.rows_reversed, seen: state.seen, reach_memo: memo, refusal: state.refusal }, cause: DuplicateClaimIdentity { claim_identity: identity }),
           Absent => FloorJoinFoldState {
             rows_reversed: Cons {
               head: FloorStandingJoinRow {
-                identity_ref: DeclarationRef { module_path: module, decl_name: row.function, field: WholeDeclaration },
+                identity_ref: DeclarationRef { module_path: owning_module, decl_name: row.function, field: WholeDeclaration },
                 claim_identity: identity,
-                module_path: module,
+                module_path: owning_module,
                 entry_path: row.entry,
                 function: row.function,
-                disposition: required_floor_site_disposition(module_path: module, identity: identity)
+                disposition: required_floor_site_disposition(module_path: owning_module, identity: identity)
               },
               tail: state.rows_reversed
             },
