@@ -6578,17 +6578,16 @@ pub fn collect_anonymous_record_lit_heads(
 }
 
 pub fn collect_items_field_import_surface_names(
-    items: Rc<Vec<Rc<Node>>>,
+    surface_names: Rc<Vec<String>>,
     emit_info: Rc<EmitGraphInfo>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<Vec<String>> {
     {
         let type_summaries = emit_info.type_summaries.clone();
         let variant_to_enum = emit_info.variant_to_enum.clone();
         crate::v1_compiler_emit_core_support::unique_strings(Rc::new({
             let mut __result = Vec::new();
-            for item in items.iter().cloned() {
-                __result.extend((*Rc::new({ let mut __result = Vec::new(); for type_name in collect_item_emit_surface_names(item.clone(), source_indices.clone(), emit_info.clone()).iter().cloned() { __result.extend((*{
+            for type_name in surface_names.iter().cloned() {
+                __result.extend((*{
             let summary_lookup = match v1_rt::map_get(&type_summaries, type_name.clone()) {
     Some(summary) => Some(summary.clone()),
     None => match v1_rt::map_get(&variant_to_enum, type_name.clone()) {
@@ -6610,7 +6609,7 @@ match summary_lookup.clone() {
 }) { __result.push(field_type); } } __result }),
     None => Rc::new(vec![]),
 }
-}).iter().cloned()); } __result })).iter().cloned());
+}).iter().cloned());
             }
             __result
         }))
@@ -8176,7 +8175,7 @@ pub fn reference_derived_use_line_plan(
             }
             __result
         }));
-        let type_surface_names = crate::v1_compiler_emit_core_support::unique_strings(Rc::new({
+        let item_emit_surface_names = Rc::new({
             let mut __result = Vec::new();
             for item in items.iter().cloned() {
                 __result.extend(
@@ -8190,11 +8189,12 @@ pub fn reference_derived_use_line_plan(
                 );
             }
             __result
-        }));
+        });
+        let type_surface_names =
+            crate::v1_compiler_emit_core_support::unique_strings(item_emit_surface_names.clone());
         let field_surface_names = collect_items_field_import_surface_names(
-            items.clone(),
+            item_emit_surface_names.clone(),
             emit_info.clone(),
-            source_indices.clone(),
         );
         let variant_payload_structs = expand_variant_payload_struct_imports(
             type_surface_names.clone(),
@@ -8235,6 +8235,10 @@ pub fn reference_derived_use_line_plan(
                 __result
             }));
         let emitted_source_tokens = rust_identifier_tokens(emitted_source.clone());
+        let emitted_source_token_set = emitted_source_tokens.iter().cloned().fold(
+            v1_rt::rc_empty_map::<String, bool>(),
+            |acc: Rc<HashMap<String, bool>>, t: String| v1_rt::rc_map_insert(acc, t.clone(), true),
+        );
         let candidates = Rc::new({
             let mut __result = Vec::new();
             for name in Rc::new({
@@ -8271,16 +8275,10 @@ pub fn reference_derived_use_line_plan(
                                 }
                             }
                             __found
-                        }) || {
-                            let mut __found = false;
-                            for t in emitted_source_tokens.iter().cloned() {
-                                if (t.clone() == name.clone()) {
-                                    __found = true;
-                                    break;
-                                }
-                            }
-                            __found
-                        }) {
+                        }) || crate::v1_compiler_infer_types::emit_map_has(
+                            emitted_source_token_set.clone(),
+                            name.clone(),
+                        )) {
                             __result.push(name);
                         }
                     }
@@ -8298,16 +8296,10 @@ pub fn reference_derived_use_line_plan(
             .iter()
             .cloned()
             {
-                if {
-                    let mut __found = false;
-                    for token in emitted_source_tokens.iter().cloned() {
-                        if (token.clone() == name.clone()) {
-                            __found = true;
-                            break;
-                        }
-                    }
-                    __found
-                } {
+                if crate::v1_compiler_infer_types::emit_map_has(
+                    emitted_source_token_set.clone(),
+                    name.clone(),
+                ) {
                     __result.push(name);
                 }
             }
