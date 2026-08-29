@@ -2351,7 +2351,7 @@ pub fn run_required_floor(
                 .map(|m| m.to_string()),
         )
         .collect();
-    let (prepared, prepared_sources) = prepare_repository_closure(
+    let (mut prepared, prepared_sources) = prepare_repository_closure(
         source_roots,
         &floor_prepared_subject_exclusions(),
         Some((&gate_entry_index, &closure_seeds)),
@@ -2367,9 +2367,13 @@ pub fn run_required_floor(
         .iter()
         .map(|view| view.module_path.clone())
         .collect();
-    let discovery_exclusions = prepared.discovery_exclusions.clone();
-    let discovery_sources: Vec<FloorDiscoverySource> = prepared
-        .full_inventory
+    // BOUNDED RETENTION, NOT A CORPUS COPY HELD FOR THE CLAIM RUN. The full-index views exist
+    // only until the modeled discovery fold consumes them. Taking them out of `prepared` makes
+    // that lifetime structural: the outside-closure source bytes cannot survive into claim
+    // execution through the repository value every later phase borrows.
+    let discovery_exclusions = std::mem::take(&mut prepared.discovery_exclusions);
+    let full_inventory = std::mem::take(&mut prepared.full_inventory);
+    let discovery_sources: Vec<FloorDiscoverySource> = full_inventory
         .iter()
         .map(|view| FloorDiscoverySource {
             path: view.source.path.replace('\\', "/"),
@@ -2377,6 +2381,7 @@ pub fn run_required_floor(
             source: view.source.clone(),
         })
         .collect();
+    drop(full_inventory);
     let _floor_prepared_guard = register_floor_prepared_authority_guard(prepared_sources);
     // WARM THE MODULE-PATH INDEX HERE, because otherwise ONE ARBITRARY CLAIM PAYS FOR IT.
     //
@@ -2991,6 +2996,8 @@ pub fn run_required_floor(
             }),
         }
     }
+    drop(module_for_path);
+    drop(discovery_sources);
     files.sort_by(|a, b| a.path.cmp(&b.path));
     eprintln!(
         "[floor-phase] phase=discovery-authority state=completed wall_ms={} authority={} \
