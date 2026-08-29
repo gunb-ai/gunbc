@@ -319,6 +319,65 @@ pub fn render_rust_type(
     }
 }
 
+pub fn render_rust_arrow_position(
+    n: Rc<Node>,
+    shared_types: Rc<BTreeSet<String>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    emit_info: Rc<EmitGraphInfo>,
+) -> String {
+    {
+        let is_bare_zero_param_alias = (((n.connective.clone() == Connective::NoConnective)
+            && ((n.children.clone().len() as i64) > 0))
+            && closed_alias_peels_zero_param(emit_info.fn_type_env.clone(), n.clone()));
+        if (type_node_carries_applied_binding(n.clone(), source_indices.clone())
+            || is_bare_zero_param_alias.clone())
+        {
+            render_rust_type(
+                n.clone(),
+                shared_types.clone(),
+                source_indices.clone(),
+                emit_info.clone(),
+            )
+        } else {
+            crate::v1_compiler_emit::render_node_type(
+                n.clone(),
+                RenderTarget::Rust,
+                shared_types.clone(),
+                source_indices.clone(),
+            )
+        }
+    }
+}
+
+pub fn type_node_carries_applied_binding(
+    n: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+        let own = match crate::v1_std_core::find_property(
+            n.properties.clone(),
+            "__applied_type_args".to_string(),
+            source_indices.clone(),
+        ) {
+            Some(applied) => ((applied.children.clone().len() as i64) > 0),
+            None => false,
+        };
+        (own.clone() || {
+            let mut __found = false;
+            for c in n.children.clone().iter().cloned() {
+                if type_node_carries_applied_binding(
+                    crate::v1_compiler_infer_types::child_type_node(c.clone()),
+                    source_indices.clone(),
+                ) {
+                    __found = true;
+                    break;
+                }
+            }
+            __found
+        })
+    })
+}
+
 pub fn rust_type_node_is_arrow(n: Rc<Node>) -> bool {
     (n.connective.clone() == Connective::Arrow)
 }
@@ -334,7 +393,7 @@ pub fn render_rust_arrow_type(
         let param_strs = Rc::new({
             let mut __result = Vec::new();
             for p in n.params.clone().iter().cloned() {
-                __result.push(render_rust_type(
+                __result.push(render_rust_arrow_position(
                     crate::v1_std_core::param_node_type_expr(p.clone()),
                     shared_types.clone(),
                     source_indices.clone(),
@@ -346,7 +405,7 @@ pub fn render_rust_arrow_type(
         let param_str = param_strs.clone().join(&repr.param_separator.clone());
         let spec = crate::v1_compiler_emit_core_support::language_spec(RenderTarget::Rust);
         let ret_str = match n.inferred.clone().as_deref().cloned() {
-            Some(InferredNode::Resolved { node: rt, .. }) => render_rust_type(
+            Some(InferredNode::Resolved { node: rt, .. }) => render_rust_arrow_position(
                 rt.clone(),
                 shared_types.clone(),
                 source_indices.clone(),
@@ -8321,8 +8380,6 @@ pub fn reference_derived_use_line_plan(
         });
         let type_surface_names =
             crate::v1_compiler_emit_core_support::unique_strings(item_emit_surface_names.clone());
-        let qualified_surface_leaves =
-            qualified_type_surface_leaf_candidates(type_surface_names.clone(), registry.clone());
         let field_surface_names = collect_items_field_import_surface_names(
             item_emit_surface_names.clone(),
             emit_info.clone(),
@@ -8380,14 +8437,8 @@ pub fn reference_derived_use_line_plan(
                         v1_rt::concat(
                             v1_rt::concat(
                                 v1_rt::concat(
-                                    v1_rt::concat(
-                                        v1_rt::concat(
-                                            unlisted_type_names.clone(),
-                                            value_names.clone(),
-                                        ),
-                                        type_surface_names.clone(),
-                                    ),
-                                    qualified_surface_leaves.clone(),
+                                    v1_rt::concat(unlisted_type_names.clone(), value_names.clone()),
+                                    type_surface_names.clone(),
                                 ),
                                 field_surface_names.clone(),
                             ),
@@ -8574,57 +8625,74 @@ v1_rt::concat(block_lines.clone(), fallback.clone())
             }
             __result
         });
+        let names_already_in_lines = Rc::new({
+            let mut __result = Vec::new();
+            for l in lines.iter().cloned() {
+                __result.extend((*imported_names_in_use_line(l.clone())).iter().cloned());
+            }
+            __result
+        });
+        let qualified_lines = qualified_type_reference_use_lines(
+            type_surface_names.clone(),
+            this_module_name.clone(),
+            already.clone(),
+            names_already_in_lines.clone(),
+            registry.clone(),
+            export_sets.clone(),
+            typed_modules.clone(),
+            source_indices.clone(),
+            module_index.clone(),
+        );
         Rc::new(ReferenceDerivedUseLinePlan {
-            lines: lines.clone(),
+            lines: v1_rt::concat(lines.clone(), qualified_lines.clone()),
             rows: rows.clone(),
         })
     }
 }
 
-pub fn qualified_type_surface_leaf_candidates(
+pub fn qualified_type_reference_use_lines(
     names: Rc<Vec<String>>,
+    this_module_name: String,
+    already: Rc<HashMap<String, bool>>,
+    names_already_in_lines: Rc<Vec<String>>,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
+    export_sets: Rc<HashMap<String, Rc<HashMap<String, bool>>>>,
+    typed_modules: Rc<Vec<Rc<TypedModule>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    module_index: Rc<ModuleIndex>,
 ) -> Rc<Vec<String>> {
-    Rc::new({
-        let mut __result = Vec::new();
-        for name in names.iter().cloned() {
-            __result.extend(
-                (*if !v1_rt::string_contains(&name, ".".to_string()) {
+    {
+        let leaves_done = names_already_in_lines.iter().cloned().fold(
+            v1_rt::rc_empty_map::<String, bool>(),
+            |acc: Rc<HashMap<String, bool>>, nm: String| {
+                v1_rt::rc_map_insert(acc, nm.clone(), true)
+            },
+        );
+        crate::v1_compiler_emit_core_support::unique_strings(Rc::new({
+            let mut __result = Vec::new();
+            for name in names.iter().cloned() {
+                __result.extend((*if !v1_rt::string_contains(&name, ".".to_string()) {
+            Rc::new(vec![])
+        } else {
+            {
+                let leaf = crate::v1_std_core::qualified_last_segment(name.clone());
+let segments = Rc::new(name.clone().split(&".".to_string()).map(|s| s.to_string()).collect::<Vec<_>>());
+let qualifier = Rc::new(segments.clone().iter().cloned().take(((segments.clone().len() as i64) - 1) as usize).collect::<Vec<_>>()).join(&".".to_string());
+if ((((qualifier.clone() == this_module_name.clone()) || crate::v1_compiler_infer_types::emit_map_has(already.clone(), leaf.clone())) || crate::v1_compiler_infer_types::emit_map_has(leaves_done.clone(), leaf.clone())) || crate::std_types::is_kernel_type(leaf.clone())) {
                     Rc::new(vec![])
                 } else {
-                    {
-                        let leaf = crate::v1_std_core::qualified_last_segment(name.clone());
-                        match v1_rt::map_get(&registry, name.clone()) {
-                            Some(qualified_info) => {
-                                if is_duplicate_qualified_item_registry_marker(
-                                    qualified_info.clone(),
-                                ) {
-                                    Rc::new(vec![])
-                                } else {
-                                    match v1_rt::map_get(&registry, leaf.clone()) {
-                                        Some(bare_info) => {
-                                            if (bare_info.module_name.clone()
-                                                == qualified_info.module_name.clone())
-                                            {
-                                                Rc::new(vec![leaf.clone()])
-                                            } else {
-                                                Rc::new(vec![])
-                                            }
-                                        }
-                                        None => Rc::new(vec![]),
-                                    }
-                                }
-                            }
-                            None => Rc::new(vec![]),
-                        }
+                    if provider_proven_exports_symbol(leaf.clone(), qualifier.clone(), export_sets.clone(), typed_modules.clone(), source_indices.clone(), module_index.clone()) {
+                        Rc::new(vec![v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(rust_visibility_prefix(), "use crate::".to_string()), crate::v1_compiler_emit_core_support::module_to_filename(qualifier.clone())), "::".to_string()), emit_import_name(leaf.clone(), registry.clone())), ";".to_string())])
+                    } else {
+                        Rc::new(vec![])
                     }
-                })
-                .iter()
-                .cloned(),
-            );
-        }
-        __result
-    })
+                }
+}
+        }).iter().cloned());
+            }
+            __result
+        }))
+    }
 }
 
 pub fn reference_derived_use_lines(
@@ -23736,16 +23804,9 @@ pub fn emit_rust_fold_method_call(
                         acc_type.clone(),
                         scope.type_env.clone().source_indices.clone(),
                     ));
-                let is_under_resolved_generic = type_node_has_closure_unbound_generic_atom(
-                    acc_type.clone(),
-                    emit_info.fn_generic_param_names.clone(),
-                    scope.type_env.clone(),
-                    scope.type_env.clone().source_indices.clone(),
-                );
-                if ((((is_under_resolved_map.clone() || is_under_resolved_list.clone())
+                if (((is_under_resolved_map.clone() || is_under_resolved_list.clone())
                     || is_under_resolved_set.clone())
                     || is_under_resolved_non_collection.clone())
-                    || is_under_resolved_generic.clone())
                 {
                     match contextual_acc_type.clone() {
                         Some(concrete_type) => concrete_type.clone(),
@@ -24012,16 +24073,28 @@ pub fn emit_rust_fold_method_call(
                                 shared_types.clone(),
                                 scope.type_env.clone().source_indices.clone(),
                             );
-                            if (kv_type_str.clone() != "".to_string()) {
-                                v1_rt::concat(
+                            if ((kv_type_str.clone() != "".to_string())
+                                && rust_fold_rendered_type_has_any_spurious_generic(
                                     v1_rt::concat(
-                                        "v1_rt::rc_empty_map::<".to_string(),
-                                        kv_type_str.clone(),
+                                        v1_rt::concat("<".to_string(), kv_type_str.clone()),
+                                        ">".to_string(),
                                     ),
-                                    ">()".to_string(),
-                                )
+                                    emit_info.fn_generic_param_names.clone(),
+                                ))
+                            {
+                                "v1_rt::rc_empty_map::<_, _>()".to_string()
                             } else {
-                                rust_shared_wrap_ctor("HashMap::new() /* BRIDGE: fold empty_map value type unresolved */".to_string())
+                                if (kv_type_str.clone() != "".to_string()) {
+                                    v1_rt::concat(
+                                        v1_rt::concat(
+                                            "v1_rt::rc_empty_map::<".to_string(),
+                                            kv_type_str.clone(),
+                                        ),
+                                        ">()".to_string(),
+                                    )
+                                } else {
+                                    rust_shared_wrap_ctor("HashMap::new() /* BRIDGE: fold empty_map value type unresolved */".to_string())
+                                }
                             }
                         }
                     } else {
