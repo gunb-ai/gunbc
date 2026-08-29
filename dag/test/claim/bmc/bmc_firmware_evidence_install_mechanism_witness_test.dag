@@ -39,18 +39,14 @@ import gunbc.fleet_bmc_firmware_evidence {
   srv3_bmc_firmware_evidence,
   srv4_bmc_firmware_evidence,
 }
-import gunbc.os_install_mechanism {
-  FirmwareUpdateThenVirtualMedia,
-  InstallFirmwareEvidenceAbsent,
-  InstallFirmwareVersionAmbiguous,
-  InstallFirmwareVersionUncatalogued,
-  InstallNoBootSourceOverride,
-  InstallNoVirtualMediaAndNetworkBootUnestablished,
+import gunbc.boot_artifact_delivery {
+  BootDeliveryCandidateVerdict,
+  CandidateCapabilityAbsent,
+  CandidateLiveSurfaceUnobserved,
+  CandidateOpenBmcNbdProxyWebsocket,
   FirmwareTransitionEstablished,
   FirmwareTransitionStanding,
   FirmwareTransitionUnestablished,
-  InstallFirmwareTransitionAmbiguous,
-  InstallFirmwareTransitionUnestablished,
   NetworkBootBootArtifacts,
   NetworkBootBootSourceOverride,
   NetworkBootClientBootMode,
@@ -61,10 +57,25 @@ import gunbc.os_install_mechanism {
   NetworkBootRequirement,
   NetworkBootRequirementEvidence,
   NetworkBootServingInfrastructure,
+  boot_delivery_candidate_standing_of,
+}
+import extdeps.bmc.access_profile { BmcAccessUnobserved }
+import gunbc.os_install_mechanism {
+  FirmwareUpdateThenVirtualMedia,
+  InstallDeliveryOutsideLegacyMechanism,
+  InstallFirmwareEvidenceAbsent,
+  InstallFirmwareVersionAmbiguous,
+  InstallFirmwareVersionUncatalogued,
+  InstallNoBootSourceOverride,
+  InstallNoVirtualMediaAndNetworkBootUnestablished,
+  InstallVirtualMediaLiveSurfaceUnestablished,
+  InstallFirmwareTransitionAmbiguous,
+  InstallFirmwareTransitionUnestablished,
   fleet_firmware_transition_standing,
   NbdProxyVirtualMediaInstall,
   OsInstallMechanismRefused,
   OsInstallMechanismSelected,
+  OsInstallMechanismSolution,
   PxeHttpInstall,
   VirtualMediaInstall,
   solve_delivery_from_capability_row,
@@ -153,6 +164,8 @@ test fn srv4_evidence_derived_refuses_while_board_default_selects_nbd_proxy() ->
         InstallNoBootSourceOverride { firmware: _ } => false
         InstallFirmwareTransitionUnestablished { firmware: _, missing: _ } => false
         InstallFirmwareTransitionAmbiguous { firmware: _, candidates: _ } => false
+        InstallVirtualMediaLiveSurfaceUnestablished { firmware: _, considered: _ } => false
+        InstallDeliveryOutsideLegacyMechanism { delivery: _ } => false
       }
     OsInstallMechanismSelected { mechanism: _ } => false
   }
@@ -203,26 +216,35 @@ test fn legacy_board_default_row_no_longer_agrees_with_evidence() -> Bool {
   }
 }
 
-test fn attested_srv1_srv2_resolve_to_nbd_proxy() -> Bool {
-  match srv1_install_mechanism_solution {
-    OsInstallMechanismSelected { mechanism: a } =>
-      match srv2_install_mechanism_solution {
-        OsInstallMechanismSelected { mechanism: b } =>
-          match a {
-            NbdProxyVirtualMediaInstall =>
-              match b {
-                NbdProxyVirtualMediaInstall => true
-                PxeHttpInstall => false
-                VirtualMediaInstall => false
-                FirmwareUpdateThenVirtualMedia => false
-              }
-            PxeHttpInstall => false
-            VirtualMediaInstall => false
-            FirmwareUpdateThenVirtualMedia => false
-          }
-        OsInstallMechanismRefused { cause: _ } => false
+// FLIPPED 2026-08-29 by the machine-intake ruling's intersection rule. This
+// witness used to assert that srv1 and srv2 SELECT NbdProxyVirtualMediaInstall
+// from their attested 2.07.00 capability row. A capability row is a catalog
+// fact about a firmware release; selecting a transport from it without a live
+// observation that THIS endpoint serves the nbd-proxy WebSocket is the
+// establishment-by-catalog the ruling forbids, and nothing on the install
+// path observes served surfaces. So both hosts now refuse, the cause names the
+// virtual-media-but-unobserved-surface state as its own arm (not "no virtual
+// media"), and the considered set shows the nbd-proxy candidate blocked by an
+// UNOBSERVED live surface — not by an absent capability. The row's capability
+// is still read correctly; what changed is what a capability alone may prove.
+test fn attested_srv1_srv2_refuse_for_want_of_a_live_surface_observation() -> Bool {
+  srv_solution_refuses_on_unobserved_nbd_surface(solution: srv1_install_mechanism_solution)
+    && srv_solution_refuses_on_unobserved_nbd_surface(solution: srv2_install_mechanism_solution)
+}
+
+fn srv_solution_refuses_on_unobserved_nbd_surface(solution: OsInstallMechanismSolution) -> Bool {
+  match solution {
+    OsInstallMechanismRefused { cause: c } =>
+      match c {
+        InstallVirtualMediaLiveSurfaceUnestablished { firmware: fw, considered: considered } =>
+          fw.version.major == 2 && fw.version.minor == 7
+            && match boot_delivery_candidate_standing_of(verdicts: considered, candidate: CandidateOpenBmcNbdProxyWebsocket) {
+                 CandidateLiveSurfaceUnobserved { endpoint: _ } => true
+                 _ => false
+               }
+        _ => false
       }
-    OsInstallMechanismRefused { cause: _ } => false
+    OsInstallMechanismSelected { mechanism: _ } => false
   }
 }
 
@@ -271,6 +293,8 @@ test fn unobserved_endpoint_refuses_rather_than_defaulting_to_pxe() -> Bool {
         InstallNoVirtualMediaAndNetworkBootUnestablished { firmware: _, missing: _ } => false
         InstallFirmwareTransitionUnestablished { firmware: _, missing: _ } => false
         InstallFirmwareTransitionAmbiguous { firmware: _, candidates: _ } => false
+        InstallVirtualMediaLiveSurfaceUnestablished { firmware: _, considered: _ } => false
+        InstallDeliveryOutsideLegacyMechanism { delivery: _ } => false
       }
     OsInstallMechanismSelected { mechanism: _ } => false
   }
@@ -303,6 +327,8 @@ test fn uncatalogued_version_refuses_rather_than_matching_nearest() -> Bool {
         InstallNoVirtualMediaAndNetworkBootUnestablished { firmware: _, missing: _ } => false
         InstallFirmwareTransitionUnestablished { firmware: _, missing: _ } => false
         InstallFirmwareTransitionAmbiguous { firmware: _, candidates: _ } => false
+        InstallVirtualMediaLiveSurfaceUnestablished { firmware: _, considered: _ } => false
+        InstallDeliveryOutsideLegacyMechanism { delivery: _ } => false
       }
     OsInstallMechanismSelected { mechanism: _ } => false
   }
@@ -398,6 +424,8 @@ test fn no_virtual_media_without_declared_network_boot_refuses_instead_of_inferr
         InstallNoBootSourceOverride { firmware: _ } => false
         InstallFirmwareTransitionUnestablished { firmware: _, missing: _ } => false
         InstallFirmwareTransitionAmbiguous { firmware: _, candidates: _ } => false
+        InstallVirtualMediaLiveSurfaceUnestablished { firmware: _, considered: _ } => false
+        InstallDeliveryOutsideLegacyMechanism { delivery: _ } => false
       }
     OsInstallMechanismSelected { mechanism: _ } => false
   }
@@ -427,6 +455,7 @@ test fn row_without_boot_source_override_refuses_even_with_declared_network_boot
   match solve_delivery_from_capability_row(
     row: no_boot_override_row,
     catalog: srv3_firmware_catalog,
+    live_access: BmcAccessUnobserved { endpoint: unknown_endpoint },
     network_boot: established_network_boot_for_control,
     firmware_transition: fleet_firmware_transition_standing,
   ) {
@@ -439,6 +468,8 @@ test fn row_without_boot_source_override_refuses_even_with_declared_network_boot
         InstallFirmwareVersionAmbiguous { firmware: _, count: _ } => false
         InstallFirmwareTransitionUnestablished { firmware: _, missing: _ } => false
         InstallFirmwareTransitionAmbiguous { firmware: _, candidates: _ } => false
+        InstallVirtualMediaLiveSurfaceUnestablished { firmware: _, considered: _ } => false
+        InstallDeliveryOutsideLegacyMechanism { delivery: _ } => false
       }
     OsInstallMechanismSelected { mechanism: _ } => false
   }
@@ -473,6 +504,8 @@ test fn ambiguous_catalog_propagates_to_a_mechanism_refusal() -> Bool {
         InstallNoVirtualMediaAndNetworkBootUnestablished { firmware: _, missing: _ } => false
         InstallFirmwareTransitionUnestablished { firmware: _, missing: _ } => false
         InstallFirmwareTransitionAmbiguous { firmware: _, candidates: _ } => false
+        InstallVirtualMediaLiveSurfaceUnestablished { firmware: _, considered: _ } => false
+        InstallDeliveryOutsideLegacyMechanism { delivery: _ } => false
       }
     OsInstallMechanismSelected { mechanism: _ } => false
   }

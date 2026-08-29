@@ -1,11 +1,11 @@
 module extdeps.bmc.openbmc
 
-
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
-import extdeps.bmc.endpoint { BmcFirmwareFamily, BmcProtocol }
+import extdeps.bmc.endpoint { BmcProtocol, Redfish, Ipmi, FactoryLoginStanding, FactoryLoginPublished }
 import std.credentials { FactoryLogin }
 import std.types { List }
+
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
@@ -18,6 +18,8 @@ data openbmc_factory_login: FactoryLogin = FactoryLogin {
   published_password: "0penBmc",
 }
 
+data openbmc_factory_login_standing: FactoryLoginStanding = FactoryLoginPublished { login: openbmc_factory_login }
+
 data openbmc_supported_protocols: List<BmcProtocol> = [Redfish, Ipmi]
 
 type RedfishHostStorageVisibility =
@@ -25,21 +27,3 @@ type RedfishHostStorageVisibility =
   | HostStorageBlind
 
 data openbmc_redfish_host_storage_visibility: RedfishHostStorageVisibility = HostStorageBlind
-
-fn bmc_firmware_factory_login(family: BmcFirmwareFamily) -> FactoryLogin {
-  match family {
-    OpenBmc => openbmc_factory_login
-  }
-}
-
-fn bmc_firmware_supported_protocols(family: BmcFirmwareFamily) -> List<BmcProtocol> {
-  match family {
-    OpenBmc => openbmc_supported_protocols
-  }
-}
-
-fn bmc_firmware_host_storage_visibility(family: BmcFirmwareFamily) -> RedfishHostStorageVisibility {
-  match family {
-    OpenBmc => openbmc_redfish_host_storage_visibility
-  }
-}

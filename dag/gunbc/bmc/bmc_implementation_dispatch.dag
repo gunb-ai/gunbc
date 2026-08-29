@@ -1,0 +1,43 @@
+module gunbc.bmc_implementation_dispatch
+
+import std.types { List, String }
+import extdeps.bmc.endpoint { AmiMegaRac, BmcFirmwareFamily, BmcProtocol, FactoryLoginStanding, OpenBmc }
+import extdeps.bmc.openbmc {
+  RedfishHostStorageVisibility,
+  openbmc_factory_login_standing,
+  openbmc_redfish_host_storage_visibility,
+  openbmc_supported_protocols,
+}
+import extdeps.bmc.megarac { megarac_factory_login_standing, megarac_supported_protocols }
+
+data bmc_implementation_dispatch_note: String = "THE DISPATCH THAT SELECTS AN IMPLEMENTATION IS ITSELF REALIZATION (DESIGN §3), so it sits here, peripheral to both implementation authorities, and neither extdeps.bmc.openbmc nor extdeps.bmc.megarac imports the other or matches on BmcFirmwareFamily. Until 2026-08-29 these three functions lived inside extdeps.bmc.openbmc, which meant adding AmiMegaRac would have edited the OpenBMC module — the 'a Chrome change must not require editing Safari's module' violation named in DESIGN §3. Each function is an exhaustive match, so a third implementation refuses to compile here and nowhere else; that is the census. Every arm returns what its implementation module CITES, and where the implementation module cites nothing the arm returns the unobserved standing rather than a default — a MegaRAC factory login is not root/0penBmc because the match needed an answer."
+
+fn bmc_firmware_factory_login(family: BmcFirmwareFamily) -> FactoryLoginStanding {
+  match family {
+    OpenBmc => openbmc_factory_login_standing
+    AmiMegaRac => megarac_factory_login_standing
+  }
+}
+
+fn bmc_firmware_supported_protocols(family: BmcFirmwareFamily) -> List<BmcProtocol> {
+  match family {
+    OpenBmc => openbmc_supported_protocols
+    AmiMegaRac => megarac_supported_protocols
+  }
+}
+
+// Whether the out-of-band channel can enumerate host storage is a measured
+// finding for OpenBMC (HostStorageBlind, the 2026-08 observability routing
+// finding) and an unmeasured one for MegaRAC. The unobserved arm keeps the
+// in-band/out-of-band routing from assuming MegaRAC is either blind or
+// enumerable: a consumer that needs the answer refuses until a unit is probed.
+type HostStorageVisibilityStanding
+  = HostStorageVisibilityKnown { visibility: RedfishHostStorageVisibility }
+  | HostStorageVisibilityUnobserved { family: BmcFirmwareFamily }
+
+fn bmc_firmware_host_storage_visibility(family: BmcFirmwareFamily) -> HostStorageVisibilityStanding {
+  match family {
+    OpenBmc => HostStorageVisibilityKnown { visibility: openbmc_redfish_host_storage_visibility }
+    AmiMegaRac => HostStorageVisibilityUnobserved { family: AmiMegaRac }
+  }
+}

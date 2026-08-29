@@ -574,6 +574,7 @@ type RedfishBootSourceOverrideTarget =
   | BootTargetUsb
   | BootTargetBiosSetup
   | BootTargetDiags
+  | BootTargetUefiHttp
 
 type RedfishBootSourceOverrideEnabled =
     BootOverrideDisabled
@@ -622,6 +623,7 @@ fn redfish_boot_target_wire(t: RedfishBootSourceOverrideTarget) -> NonEmptyStr {
     BootTargetUsb => "Usb"
     BootTargetBiosSetup => "BiosSetup"
     BootTargetDiags => "Diags"
+    BootTargetUefiHttp => "UefiHttp"
   }
 }
 

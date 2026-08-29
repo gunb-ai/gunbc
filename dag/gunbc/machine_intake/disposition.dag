@@ -1,0 +1,249 @@
+module gunbc.machine_intake_disposition
+
+import std.types { Bool, EpochMs, Int, List, NonEmptyStr, String, list_length }
+import std.content_hash { ContentHash }
+import gunbc.machine_intake_subject {
+  QualificationSubject,
+  SubjectCurrency,
+  SubjectCurrent,
+  SubjectStale,
+  compare_qualification_subject,
+}
+import gunbc.machine_intake_phase {
+  ArrivalHardwareQualification,
+  IntakePhase,
+  IntakeTransaction,
+  OsProvisioning,
+  PlacementCommissioning,
+  QualificationRefusalOwner,
+  UnitHardware,
+  fleet_admission_required_phases,
+  intake_phase_transaction,
+}
+import gunbc.machine_intake_receipt {
+  EvidenceRef,
+  IntakeReceiptEnvelope,
+  ReceiptRefused,
+  ReceiptSatisfied,
+  intake_receipt_digest,
+}
+
+data machine_intake_disposition_note: String = "ADMITTED IS DERIVED, NEVER AUTHORED (machine-intake ruling 2026-08-29 §11). The three top-level arms are kept and each preserves WHY it was reached. FleetAdmissionStanding is derived from phase receipts: identity bound, BMC secured, prior-life boundary, boot delivery, diagnostic boot attested, inventory conformant, memory qualified, subsystems qualified, arrival soak, OS provisioned, placement qualified, cleanup confirmed, AND the qualification subject still current. A hand-authored strategy.foo_held_unit = Admitted row cannot substitute for those producers because the only path to FleetAdmissible is derive_fleet_admission over receipts whose subject matches. RUNG, honestly: this is mechanically preventable, not structurally impossible — .dag record literals are public, so an Admitted { admission_receipt: FleetAdmissionReceipt { ... } } literal can still be WRITTEN; what the construction guarantees is that no derivation produces it without the receipts, and what the witness executes is that the derivation refuses on each missing phase. The construction wall over the literal is the corpus-wide gap docs/plans/hollow-alias-construction-wall.md names, the same row as ValidatedBmcFanCurve; this module claims no more than that."
+
+type IntakePhaseStanding
+  = PhaseSatisfiedByReceipt { receipt: ContentHash }
+  | PhaseRefusedByReceipt { owner: QualificationRefusalOwner, cause: NonEmptyStr, receipt: ContentHash }
+  | PhaseReceiptSubjectMismatch { receipt: ContentHash, currency: SubjectCurrency }
+  | PhaseUnobserved
+
+fn receipt_is_for_phase(receipt: IntakeReceiptEnvelope, phase: IntakePhase) -> Bool {
+  receipt.phase == phase
+}
+
+// The standing of one phase against the receipt ledger for THIS subject. The
+// latest receipt for the phase decides; a receipt whose subject is stale — a
+// pre-repair attempt re-read after a DIMM swap — is reported as a subject
+// mismatch, never silently skipped and never silently counted.
+fn phase_standing(
+  phase: IntakePhase,
+  subject: QualificationSubject,
+  receipts: List<IntakeReceiptEnvelope>,
+) -> IntakePhaseStanding {
+  fold(
+    receipts,
+    init: PhaseUnobserved,
+    f: fn(acc, r) {
+      if receipt_is_for_phase(receipt: r, phase: phase) == false {
+        acc
+      } else {
+        let digest = intake_receipt_digest(envelope: r)
+        match compare_qualification_subject(admitted: subject, observed: r.subject.subject) {
+          SubjectStale { unit_changed: u, assembly_changed: a, firmware_changed: f } =>
+            match acc {
+              PhaseSatisfiedByReceipt { receipt: _ } => acc
+              PhaseRefusedByReceipt { owner: _, cause: _, receipt: _ } => acc
+              PhaseReceiptSubjectMismatch { receipt: _, currency: _ } => acc
+              PhaseUnobserved =>
+                PhaseReceiptSubjectMismatch {
+                  receipt: digest,
+                  currency: SubjectStale { unit_changed: u, assembly_changed: a, firmware_changed: f },
+                }
+            }
+          SubjectCurrent =>
+            match r.result {
+              ReceiptSatisfied => PhaseSatisfiedByReceipt { receipt: digest }
+              ReceiptRefused { owner: o, cause: c } => PhaseRefusedByReceipt { owner: o, cause: c, receipt: digest }
+            }
+        }
+      }
+    },
+  )
+}
+
+type PhaseRefusal {
+  phase: IntakePhase
+  owner: QualificationRefusalOwner
+  cause: NonEmptyStr
+}
+
+type FleetAdmissionReceipt {
+  subject: QualificationSubject
+  satisfied_phases: List<IntakePhase>
+  derived_at: EpochMs
+}
+
+type FleetAdmissionStanding
+  = FleetAdmissible { receipt: FleetAdmissionReceipt }
+  | FleetNotAdmissible {
+      missing: List<IntakePhase>
+      refused: List<PhaseRefusal>
+      subject_mismatched: List<IntakePhase>
+      subject_currency: SubjectCurrency
+    }
+
+type AdmissionFold {
+  satisfied: List<IntakePhase>
+  missing: List<IntakePhase>
+  refused: List<PhaseRefusal>
+  subject_mismatched: List<IntakePhase>
+}
+
+// The admission predicate, as a fold over the required roster. The subject
+// handed in is the one OBSERVED NOW (the last identity read), and it is
+// compared against the subject each receipt was produced for; a receipt from
+// before a repair is a mismatch, not a satisfaction.
+fn derive_fleet_admission(
+  observed_subject: QualificationSubject,
+  receipts: List<IntakeReceiptEnvelope>,
+  now: EpochMs,
+) -> FleetAdmissionStanding {
+  let folded = fold(
+    fleet_admission_required_phases,
+    init: AdmissionFold { satisfied: [], missing: [], refused: [], subject_mismatched: [] },
+    f: fn(acc, phase) {
+      match phase_standing(phase: phase, subject: observed_subject, receipts: receipts) {
+        PhaseSatisfiedByReceipt { receipt: _ } =>
+          AdmissionFold { satisfied: concat(acc.satisfied, [phase]), missing: acc.missing, refused: acc.refused, subject_mismatched: acc.subject_mismatched }
+        PhaseRefusedByReceipt { owner: o, cause: c, receipt: _ } =>
+          AdmissionFold { satisfied: acc.satisfied, missing: acc.missing, refused: concat(acc.refused, [PhaseRefusal { phase: phase, owner: o, cause: c }]), subject_mismatched: acc.subject_mismatched }
+        PhaseReceiptSubjectMismatch { receipt: _, currency: _ } =>
+          AdmissionFold { satisfied: acc.satisfied, missing: acc.missing, refused: acc.refused, subject_mismatched: concat(acc.subject_mismatched, [phase]) }
+        PhaseUnobserved =>
+          AdmissionFold { satisfied: acc.satisfied, missing: concat(acc.missing, [phase]), refused: acc.refused, subject_mismatched: acc.subject_mismatched }
+      }
+    },
+  )
+  if list_length(items: folded.missing) == 0
+      && list_length(items: folded.refused) == 0
+      && list_length(items: folded.subject_mismatched) == 0 {
+    FleetAdmissible {
+      receipt: FleetAdmissionReceipt { subject: observed_subject, satisfied_phases: folded.satisfied, derived_at: now },
+    }
+  } else {
+    FleetNotAdmissible {
+      missing: folded.missing,
+      refused: folded.refused,
+      subject_mismatched: folded.subject_mismatched,
+      subject_currency: if list_length(items: folded.subject_mismatched) == 0 { SubjectCurrent } else { SubjectStale { unit_changed: false, assembly_changed: true, firmware_changed: false } },
+    }
+  }
+}
+
+type ReturnWindow
+  = ReturnWindowOpen { deadline: EpochMs }
+  | ReturnWindowClosed
+
+type HardwareDefect {
+  phase: IntakePhase
+  cause: NonEmptyStr
+}
+
+type PartsHoldReason
+  = RepairOrCull { defect: HardwareDefect }
+  | QualificationUnestablished { phase: IntakePhase, owner: QualificationRefusalOwner, cause: NonEmptyStr }
+  | PhaseNotYetObserved { phase: IntakePhase }
+  | PlacementQualificationPending
+  | QualificationSubjectStale { currency: SubjectCurrency }
+
+type MachineIntakeDisposition
+  = Admitted { admission_receipt: FleetAdmissionReceipt }
+  | ReturnWindow { defect: HardwareDefect, evidence: List<EvidenceRef>, return_deadline: EpochMs }
+  | PartsHold { reason: PartsHoldReason, next_action: NonEmptyStr }
+
+fn hardware_refusal_or_none(r: PhaseRefusal) -> PhaseRefusal? {
+  let is_hardware = r.owner == UnitHardware
+  if is_hardware { Present { value: r } } else { none }
+}
+
+fn first_hardware_refusal(refused: List<PhaseRefusal>) -> PhaseRefusal? {
+  fold(refused, init: none, f: (acc, r) => match acc {
+    Present { value: _ } => acc
+    Absent => hardware_refusal_or_none(r: r)
+  })
+}
+
+fn first_refusal(refused: List<PhaseRefusal>) -> PhaseRefusal? {
+  fold(refused, init: none, f: (acc, r) => match acc {
+    Present { value: _ } => acc
+    Absent => Present { value: r }
+  })
+}
+
+fn phases_all_in_transaction(phases: List<IntakePhase>, transaction: IntakeTransaction) -> Bool {
+  fold(phases, init: true, f: (acc, p) => acc && intake_phase_transaction(phase: p) == transaction)
+}
+
+fn first_phase(phases: List<IntakePhase>) -> IntakePhase? {
+  fold(phases, init: none, f: (acc, p) => match acc {
+    Present { value: _ } => acc
+    Absent => Present { value: p }
+  })
+}
+
+// The ruling's mapping, in its order of precedence. An observed hardware
+// defect inside an open return window is the only path to ReturnWindow; every
+// other owner's refusal, every unobserved phase and every stale subject is a
+// PartsHold with its reason — loud, and never a false hardware diagnosis.
+fn derive_disposition(
+  admission: FleetAdmissionStanding,
+  return_window: ReturnWindow,
+  evidence: List<EvidenceRef>,
+) -> MachineIntakeDisposition {
+  match admission {
+    FleetAdmissible { receipt: r } => Admitted { admission_receipt: r }
+    FleetNotAdmissible { missing: missing, refused: refused, subject_mismatched: mismatched, subject_currency: currency } =>
+      match first_hardware_refusal(refused: refused) {
+        Present { value: hw } =>
+          match return_window {
+            ReturnWindowOpen { deadline: d } =>
+              ReturnWindow { defect: HardwareDefect { phase: hw.phase, cause: hw.cause }, evidence: evidence, return_deadline: d }
+            ReturnWindowClosed =>
+              PartsHold { reason: RepairOrCull { defect: HardwareDefect { phase: hw.phase, cause: hw.cause } }, next_action: "repair or cull; return window closed" }
+          }
+        Absent =>
+          match first_refusal(refused: refused) {
+            Present { value: r } =>
+              PartsHold { reason: QualificationUnestablished { phase: r.phase, owner: r.owner, cause: r.cause }, next_action: "resolve the refusal at its owner and re-run the phase" }
+            Absent =>
+              if list_length(items: mismatched) > 0 {
+                PartsHold { reason: QualificationSubjectStale { currency: currency }, next_action: "start a new intake attempt for the current subject" }
+              } else if phases_all_in_transaction(phases: missing, transaction: PlacementCommissioning) {
+                PartsHold { reason: PlacementQualificationPending, next_action: "run placement commissioning in the serving location" }
+              } else {
+                match first_phase(phases: missing) {
+                  Present { value: p } => PartsHold { reason: PhaseNotYetObserved { phase: p }, next_action: "run the next unobserved phase" }
+                  Absent => PartsHold { reason: QualificationSubjectStale { currency: currency }, next_action: "no missing phase and not admissible: subject standing must be re-read" }
+                }
+              }
+          }
+      }
+  }
+}
+
+fn disposition_is_admitted(disposition: MachineIntakeDisposition) -> Bool {
+  match disposition {
+    Admitted { admission_receipt: _ } => true
+    ReturnWindow { defect: _, evidence: _, return_deadline: _ } => false
+    PartsHold { reason: _, next_action: _ } => false
+  }
+}

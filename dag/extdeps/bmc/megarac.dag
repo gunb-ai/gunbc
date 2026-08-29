@@ -1,0 +1,51 @@
+module extdeps.bmc.megarac
+
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.types { List, NonEmptyStr, String }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+import extdeps.bmc.endpoint { AmiMegaRac, BmcFirmwareFamily, BmcProtocol, FactoryLoginStanding, FactoryLoginUnobserved, Redfish, Ipmi }
+import extdeps.vendor { Vendor }
+import extdeps.hardware { Hardware }
+import extdeps.vendor.ami { ami }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.ami.com/megarac/"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.bmc.megarac",
+      decl_name: "megarac_supported_protocols",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+data megarac_subject_note: String = "AMI MEGARAC, the BMC firmware product family of AMI, modeled as its own upstream on the extdeps.bmc.openbmc pattern because it is independently versioned and independently governed (DESIGN §3 external upstream decomposition). Read from the public product page named in the anchor on 2026-08-29: AMI markets two product lines under the MegaRAC name, SP-X (the established proprietary stack) and OneTree (the OpenBMC-derived stack), and states Redfish and IPMI management interfaces for the family. Everything here is a READING of vendor collateral, never a measurement of a unit. What is deliberately NOT here: a published factory login, an exact firmware version, a capability roster, or a Redfish surface row for any board — each is a per-release, per-board fact that lands only from an observation of a real unit, and authoring one from memory would be the fabricated establishment the machine-intake ruling forbids. The ruling names Mt. Collins as a MegaRAC platform and its first slice ends at one executed Mt. Collins boot; the rows that executed boot produces (firmware version, VirtualMedia resource presence, image_redirection OEM parameter, bootstrap credential kind) are the dissolution of the unobserved arms below."
+
+data megarac_vendor: Vendor<Hardware> = ami
+
+// The two product lines AMI names. Which one a unit runs is a per-unit
+// observation (Managers/{id} FirmwareVersion plus Oem), so no board row claims a
+// line here; the coproduct exists so a later observation has a typed home that
+// can distinguish AMI firmware generations rather than one catch-all OEM label.
+type MegaRacProductLine
+  = MegaRacSpX
+  | MegaRacOneTree
+
+data megarac_supported_protocols: List<BmcProtocol> = [Redfish, Ipmi]
+
+// The published bootstrap credential for MegaRAC is NOT cited by this
+// repository. Every family-keyed consumer must therefore see an unobserved
+// standing here, never a guessed username/password pair: a guessed pair that
+// happened to be right would be a fabricated plausible output on the one
+// surface where that is a security fact, and a guessed pair that was wrong
+// would read as a tampered or already-rotated BMC at intake.
+data megarac_factory_login_standing: FactoryLoginStanding = FactoryLoginUnobserved { family: AmiMegaRac }

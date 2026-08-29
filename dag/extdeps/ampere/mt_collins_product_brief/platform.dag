@@ -8,6 +8,7 @@ import extdeps.ampere.mt_collins_product_brief.subject { MtCollinsPublicProductB
 
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
+import extdeps.bmc.endpoint { AmiMegaRac, BmcFirmwareFamily }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -57,3 +58,11 @@ data mt_collins_platform_model_scope: ExternalModelScope = ExternalModelScope {
 }
 
 data extdeps_model_scope: ExternalModelScope = mt_collins_platform_model_scope
+
+// The BMC firmware implementation the platform ships, as stated by the operator
+// ruling of 2026-08-29 that keys this platform's boot delivery to standard
+// Redfish virtual media on MegaRAC. It is a product-to-implementation edge and
+// nothing more: no version, no capability, no surface row is claimed here —
+// those are per-release rows in extdeps.bmc.megarac and land only from an
+// observed unit.
+data mt_collins_bmc_firmware_family: BmcFirmwareFamily = AmiMegaRac

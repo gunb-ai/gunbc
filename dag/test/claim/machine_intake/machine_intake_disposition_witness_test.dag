@@ -1,0 +1,334 @@
+module test.claim.machine_intake_disposition_witness_test
+
+import std.types { Bool, EpochMs, List, NonEmptyStr, String, list_length }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.content_hash { ContentHash, content_hash_of_value }
+import extdeps.toolchain.types { Aarch64 }
+import gunbc.machine_intake_subject {
+  AssemblyManifest,
+  ComponentIdentity,
+  DimmComponent,
+  FirmwareEntry,
+  FirmwareManifest,
+  IntakeAttemptId,
+  MachineIntakeSubject,
+  QualificationSubject,
+  UnitKey,
+  qualification_subject_of,
+}
+import gunbc.machine_intake_phase {
+  AcceptanceSoak,
+  Arrival,
+  BmcAccess,
+  BootDeliveryEstablish,
+  IntakePhase,
+  MemoryAuthoritativeQualify,
+  Placement,
+  PlacementIdentityBound,
+  QualificationRefusalOwner,
+  StagingInfrastructure,
+  UnitHardware,
+  fleet_admission_required_phases,
+  intake_phase_in,
+  arrival_phases_all,
+  provisioning_phases_all,
+}
+import gunbc.machine_intake_receipt {
+  AgentReceiptAbsent,
+  ArtifactDigestMismatch,
+  BoardSerialMismatch,
+  BootAttestationRefusal,
+  DiagnosticBootAttested,
+  DiagnosticBootNotAttested,
+  EvidenceRef,
+  ImageRedirectionSessionActive,
+  IntakeAgentBootReceipt,
+  IntakeAttemptNonce,
+  IntakeProducerIdentity,
+  IntakeReceiptEnvelope,
+  IssuedAttemptNonce,
+  MachineIntakeReceiptV1,
+  NfsReadPlateau,
+  NonceMismatch,
+  ReceiptRefused,
+  ReceiptSatisfied,
+  attest_diagnostic_boot,
+  intake_receipt_digest,
+  receipt_chain_is_linked,
+}
+import gunbc.machine_intake_disposition {
+  Admitted,
+  FleetAdmissible,
+  FleetNotAdmissible,
+  PartsHold,
+  PhaseReceiptSubjectMismatch,
+  PhaseSatisfiedByReceipt,
+  PhaseUnobserved,
+  PlacementQualificationPending,
+  QualificationUnestablished,
+  RepairOrCull,
+  ReturnWindow,
+  ReturnWindowClosed,
+  ReturnWindowOpen,
+  derive_disposition,
+  derive_fleet_admission,
+  disposition_is_admitted,
+  phase_standing,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data unit: UnitKey = "BRD-000123" as UnitKey
+
+data assembly_before: AssemblyManifest = AssemblyManifest {
+  chassis_part_number: "CH-1U-ALT",
+  components: [ComponentIdentity { kind: DimmComponent, slot: "A1", identity: "SPD-A1-OLD" }],
+}
+
+data assembly_after: AssemblyManifest = AssemblyManifest {
+  chassis_part_number: "CH-1U-ALT",
+  components: [ComponentIdentity { kind: DimmComponent, slot: "A1", identity: "SPD-A1-NEW" }],
+}
+
+data firmware_v1: FirmwareManifest = FirmwareManifest {
+  entries: [FirmwareEntry { component: "bmc", version: "3.22.00" }],
+  configuration_digests: [],
+}
+
+data subject_before: QualificationSubject = qualification_subject_of(unit_key: unit, assembly: assembly_before, firmware: firmware_v1)
+data subject_after: QualificationSubject = qualification_subject_of(unit_key: unit, assembly: assembly_after, firmware: firmware_v1)
+
+data attempt_one: IntakeAttemptId = "intake-20260829-0001" as IntakeAttemptId
+
+data producer: IntakeProducerIdentity = IntakeProducerIdentity {
+  intake_binary: content_hash_of_value(value: "intake-binary-fixture"),
+  staging_service_identity: "intake-staging",
+  agent_artifact: none,
+}
+
+data policy_digest: ContentHash = content_hash_of_value(value: "policy-fixture")
+
+fn satisfied_receipt(phase: IntakePhase, subject: QualificationSubject, previous: ContentHash?) -> IntakeReceiptEnvelope {
+  IntakeReceiptEnvelope {
+    schema: MachineIntakeReceiptV1,
+    subject: MachineIntakeSubject { subject: subject, attempt_id: attempt_one },
+    phase: phase,
+    producer: producer,
+    policy_digest: policy_digest,
+    started_at: 1788000000000,
+    ended_at: 1788000001000,
+    observations: [],
+    result: ReceiptSatisfied,
+    previous_receipt: previous,
+  }
+}
+
+fn refused_receipt(phase: IntakePhase, subject: QualificationSubject, owner: QualificationRefusalOwner, cause: NonEmptyStr) -> IntakeReceiptEnvelope {
+  IntakeReceiptEnvelope {
+    schema: MachineIntakeReceiptV1,
+    subject: MachineIntakeSubject { subject: subject, attempt_id: attempt_one },
+    phase: phase,
+    producer: producer,
+    policy_digest: policy_digest,
+    started_at: 1788000000000,
+    ended_at: 1788000001000,
+    observations: [],
+    result: ReceiptRefused { owner: owner, cause: cause },
+    previous_receipt: none,
+  }
+}
+
+// A full satisfied ledger for a subject: one receipt per required phase.
+fn full_ledger(subject: QualificationSubject) -> List<IntakeReceiptEnvelope> {
+  fold(fleet_admission_required_phases, init: [], f: (acc, p) => concat(acc, [satisfied_receipt(phase: p, subject: subject, previous: none)]))
+}
+
+fn ledger_without(subject: QualificationSubject, omitted: IntakePhase) -> List<IntakeReceiptEnvelope> {
+  fold(fleet_admission_required_phases, init: [], f: (acc, p) => if p == omitted { acc } else { concat(acc, [satisfied_receipt(phase: p, subject: subject, previous: none)]) })
+}
+
+// POSITIVE CONTROL — a complete, current ledger derives admission, so every
+// refusal below is discriminating rather than the derivation refusing all.
+test fn complete_current_ledger_is_admissible() -> Bool {
+  match derive_fleet_admission(observed_subject: subject_before, receipts: full_ledger(subject: subject_before), now: 1788000002000) {
+    FleetAdmissible { receipt: r } => list_length(items: r.satisfied_phases) == list_length(items: fleet_admission_required_phases)
+    FleetNotAdmissible { missing: _, refused: _, subject_mismatched: _, subject_currency: _ } => false
+  }
+}
+
+// CONTROL 4 — a manually authored terminal status cannot substitute for phase
+// receipts: with NO receipts the derivation refuses naming every phase, and
+// with one phase omitted it refuses naming that phase. Admitted is reachable
+// only through this derivation.
+test fn empty_ledger_is_not_admissible_and_names_every_phase() -> Bool {
+  match derive_fleet_admission(observed_subject: subject_before, receipts: [], now: 1788000002000) {
+    FleetNotAdmissible { missing: m, refused: _, subject_mismatched: _, subject_currency: _ } =>
+      list_length(items: m) == list_length(items: fleet_admission_required_phases)
+    FleetAdmissible { receipt: _ } => false
+  }
+}
+
+test fn one_missing_phase_blocks_admission_and_is_named() -> Bool {
+  let omitted = Arrival { phase: MemoryAuthoritativeQualify }
+  match derive_fleet_admission(observed_subject: subject_before, receipts: ledger_without(subject: subject_before, omitted: omitted), now: 1788000002000) {
+    FleetNotAdmissible { missing: m, refused: _, subject_mismatched: _, subject_currency: _ } =>
+      list_length(items: m) == 1 && intake_phase_in(phases: m, phase: omitted)
+    FleetAdmissible { receipt: _ } => false
+  }
+}
+
+// CONTROL 1 (disposition side) — a repair changed one DIMM; the pre-repair
+// ledger is complete, and the machine is STILL not admissible because every
+// receipt's subject is stale against the subject observed now.
+test fn prior_admission_does_not_survive_a_dimm_swap() -> Bool {
+  match derive_fleet_admission(observed_subject: subject_after, receipts: full_ledger(subject: subject_before), now: 1788000002000) {
+    FleetNotAdmissible { missing: m, refused: _, subject_mismatched: s, subject_currency: _ } =>
+      list_length(items: m) == 0 && list_length(items: s) == list_length(items: fleet_admission_required_phases)
+    FleetAdmissible { receipt: _ } => false
+  }
+}
+
+// Re-running from a stale attempt after a repair: the phase standing reports
+// the subject mismatch rather than reading the old receipt as satisfaction.
+test fn stale_attempt_receipt_reports_subject_mismatch() -> Bool {
+  let phase = Arrival { phase: BootDeliveryEstablish }
+  match phase_standing(phase: phase, subject: subject_after, receipts: [satisfied_receipt(phase: phase, subject: subject_before, previous: none)]) {
+    PhaseReceiptSubjectMismatch { receipt: _, currency: _ } => true
+    _ => false
+  }
+}
+
+// CONTROL 5 — a staging failure is a PartsHold owned by StagingInfrastructure,
+// never a ReturnWindow hardware defect, even with the return window open.
+test fn staging_failure_is_parts_hold_not_return_window() -> Bool {
+  let phase = Arrival { phase: BootDeliveryEstablish }
+  let receipts = concat(ledger_without(subject: subject_before, omitted: phase), [refused_receipt(phase: phase, subject: subject_before, owner: StagingInfrastructure, cause: "artifact service unreachable")])
+  let admission = derive_fleet_admission(observed_subject: subject_before, receipts: receipts, now: 1788000002000)
+  match derive_disposition(admission: admission, return_window: ReturnWindowOpen { deadline: 1790000000000 }, evidence: []) {
+    PartsHold { reason: r, next_action: _ } =>
+      match r {
+        QualificationUnestablished { phase: p, owner: o, cause: _ } => p == phase && o == StagingInfrastructure
+        _ => false
+      }
+    ReturnWindow { defect: _, evidence: _, return_deadline: _ } => false
+    Admitted { admission_receipt: _ } => false
+  }
+}
+
+// Positive control for control 5: the SAME shape of refusal owned by the
+// hardware, inside an open window, IS a ReturnWindow — so the owner is what
+// decides, not the phase.
+test fn hardware_defect_in_open_window_is_return_window() -> Bool {
+  let phase = Arrival { phase: MemoryAuthoritativeQualify }
+  let receipts = concat(ledger_without(subject: subject_before, omitted: phase), [refused_receipt(phase: phase, subject: subject_before, owner: UnitHardware, cause: "new uncorrectable error")])
+  let admission = derive_fleet_admission(observed_subject: subject_before, receipts: receipts, now: 1788000002000)
+  match derive_disposition(admission: admission, return_window: ReturnWindowOpen { deadline: 1790000000000 }, evidence: []) {
+    ReturnWindow { defect: d, evidence: _, return_deadline: dl } => d.phase == phase && dl == 1790000000000
+    _ => false
+  }
+}
+
+test fn hardware_defect_outside_window_is_repair_or_cull() -> Bool {
+  let phase = Arrival { phase: AcceptanceSoak }
+  let receipts = concat(ledger_without(subject: subject_before, omitted: phase), [refused_receipt(phase: phase, subject: subject_before, owner: UnitHardware, cause: "thermal runaway")])
+  let admission = derive_fleet_admission(observed_subject: subject_before, receipts: receipts, now: 1788000002000)
+  match derive_disposition(admission: admission, return_window: ReturnWindowClosed, evidence: []) {
+    PartsHold { reason: r, next_action: _ } =>
+      match r {
+        RepairOrCull { defect: d } => d.phase == phase
+        _ => false
+      }
+    _ => false
+  }
+}
+
+// Arrival and provisioning complete, placement not yet run: the state between
+// the two gates is PartsHold { PlacementQualificationPending }, not Admitted.
+test fn placement_pending_is_parts_hold_not_admitted() -> Bool {
+  let done = concat(arrival_phases_all, provisioning_phases_all)
+  let receipts = fold(done, init: [], f: (acc, p) => concat(acc, [satisfied_receipt(phase: p, subject: subject_before, previous: none)]))
+  let admission = derive_fleet_admission(observed_subject: subject_before, receipts: receipts, now: 1788000002000)
+  let disposition = derive_disposition(admission: admission, return_window: ReturnWindowOpen { deadline: 1790000000000 }, evidence: [])
+  disposition_is_admitted(disposition: disposition) == false
+    && match disposition {
+         PartsHold { reason: r, next_action: _ } => r == PlacementQualificationPending
+         _ => false
+       }
+}
+
+// Receipt chain: a correctly linked pair holds; a pair whose second link
+// names the wrong predecessor does not.
+test fn receipt_chain_link_is_checked_by_digest() -> Bool {
+  let first = satisfied_receipt(phase: Arrival { phase: BootDeliveryEstablish }, subject: subject_before, previous: none)
+  let second_ok = satisfied_receipt(phase: Arrival { phase: MemoryAuthoritativeQualify }, subject: subject_before, previous: Present { value: intake_receipt_digest(envelope: first) })
+  let second_bad = satisfied_receipt(phase: Arrival { phase: MemoryAuthoritativeQualify }, subject: subject_before, previous: Present { value: content_hash_of_value(value: "not-the-first") })
+  receipt_chain_is_linked(receipts: [first, second_ok]) && receipt_chain_is_linked(receipts: [first, second_bad]) == false
+}
+
+data issued: IssuedAttemptNonce = IssuedAttemptNonce {
+  attempt_id: attempt_one,
+  nonce: "nonce-7f3a" as IntakeAttemptNonce,
+  artifact_digest: content_hash_of_value(value: "intake-iso-aarch64"),
+  issued_at: 1788000000000,
+}
+
+fn agent_receipt(nonce: NonEmptyStr, artifact: NonEmptyStr, serial: NonEmptyStr) -> IntakeAgentBootReceipt {
+  IntakeAgentBootReceipt {
+    attempt_nonce: nonce as IntakeAttemptNonce,
+    artifact_digest: content_hash_of_value(value: artifact),
+    architecture: Aarch64,
+    board_serial: serial,
+    assembly_observation: EvidenceRef { label: "smbios", digest: content_hash_of_value(value: "smbios-dump") },
+    firmware_observation: EvidenceRef { label: "firmware", digest: content_hash_of_value(value: "firmware-dump") },
+    booted_at: 1788000000500,
+  }
+}
+
+// CONTROL — media activity, an image-redirection session and an NFS plateau
+// WITHOUT the agent callback do not attest the boot; they ride in the refusal.
+test fn activity_without_agent_receipt_does_not_attest_boot() -> Bool {
+  match attest_diagnostic_boot(issued: issued, unit_key: unit, receipt: none, supporting: [NfsReadPlateau, ImageRedirectionSessionActive]) {
+    DiagnosticBootNotAttested { cause: c } =>
+      match c {
+        AgentReceiptAbsent { supporting: s } => list_length(items: s) == 2
+        _ => false
+      }
+    DiagnosticBootAttested { attempt_id: _, receipt: _ } => false
+  }
+}
+
+test fn nonce_bound_receipt_attests_and_wrong_nonce_refuses() -> Bool {
+  let good = attest_diagnostic_boot(issued: issued, unit_key: unit, receipt: Present { value: agent_receipt(nonce: "nonce-7f3a", artifact: "intake-iso-aarch64", serial: "BRD-000123") }, supporting: [])
+  let bad = attest_diagnostic_boot(issued: issued, unit_key: unit, receipt: Present { value: agent_receipt(nonce: "nonce-0000", artifact: "intake-iso-aarch64", serial: "BRD-000123") }, supporting: [])
+  match good {
+    DiagnosticBootAttested { attempt_id: a, receipt: _ } =>
+      (a as NonEmptyStr) == (attempt_one as NonEmptyStr)
+        && match bad {
+             DiagnosticBootNotAttested { cause: c } => c == NonceMismatch
+             DiagnosticBootAttested { attempt_id: _, receipt: _ } => false
+           }
+    DiagnosticBootNotAttested { cause: _ } => false
+  }
+}
+
+test fn wrong_artifact_or_wrong_unit_refuses_attestation() -> Bool {
+  let wrong_artifact = attest_diagnostic_boot(issued: issued, unit_key: unit, receipt: Present { value: agent_receipt(nonce: "nonce-7f3a", artifact: "some-other-iso", serial: "BRD-000123") }, supporting: [])
+  let wrong_unit = attest_diagnostic_boot(issued: issued, unit_key: unit, receipt: Present { value: agent_receipt(nonce: "nonce-7f3a", artifact: "intake-iso-aarch64", serial: "BRD-000999") }, supporting: [])
+  let a = match wrong_artifact {
+    DiagnosticBootNotAttested { cause: c } =>
+      match c {
+        ArtifactDigestMismatch { expected: _, received: _ } => true
+        _ => false
+      }
+    DiagnosticBootAttested { attempt_id: _, receipt: _ } => false
+  }
+  let b = match wrong_unit {
+    DiagnosticBootNotAttested { cause: c } =>
+      match c {
+        BoardSerialMismatch { expected: _, received: r } => r == "BRD-000999"
+        _ => false
+      }
+    DiagnosticBootAttested { attempt_id: _, receipt: _ } => false
+  }
+  a && b
+}

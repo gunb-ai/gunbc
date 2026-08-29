@@ -1,0 +1,127 @@
+module extdeps.bmc.access_profile
+
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.types { Bool, EpochMs, List, NonEmptyStr, String }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+import extdeps.bmc.endpoint { BmcEndpoint, BmcFirmwareFamily, FactoryLoginStanding }
+import extdeps.boards.types { BaseboardModel }
+import extdeps.firmware.types { FirmwareSemanticVersion }
+import extdeps.bmc.capability { BmcFirmwareVersion, bmc_firmware_version_eq }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.dmtf.org/standards/redfish"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.bmc.access_profile",
+      decl_name: "BmcAccessSurface",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+data access_profile_two_carriers_note: String = "TWO CARRIERS, ONE INTERSECTION (machine-intake ruling 2026-08-29 §2). BmcAccessProfile is PLATFORM CATALOG data keyed by (baseboard, chassis part number, implementation, exact firmware): the routes and quirks a firmware release is documented or previously observed to expose. BmcAccessObservation is a LIVE, per-endpoint, per-attempt reading of what that endpoint served just now. A solver may select a surface only from their intersection — a platform row saying that firmware should expose virtual media does not establish that this endpoint currently does, and a live discovery on one endpoint does not become a platform fact. This module carries the two shapes and the intersection predicate; concrete profile rows live in the board and implementation modules that cite them, and observations are receipts in the workflow layer (DESIGN §3: observations are never authored inside an upstream module). It generalizes the strength extdeps.boards.asrock_rack already had — capabilities catalogued per exact firmware version, changing across 2.07.00, 3.06.00 and 3.22.00 — from one board's capability roster to a keyed profile any board can inhabit."
+
+// The surfaces intake asks a BMC about. Each is a thing an endpoint either
+// served or did not when probed; none is a promise. SurfaceBmcShell is the
+// authenticated management shell (OpenBMC SSH) the configfs gadget transport
+// rides on; SurfaceOemNbdWebsocket is the bmcweb nbd-proxy WebSocket the ASRock
+// transport rides on; SurfaceRedfishVirtualMedia is the DMTF collection.
+type BmcAccessSurface
+  = SurfaceManagerIdentity
+  | SurfaceSystemInventory
+  | SurfaceChassisInventory
+  | SurfaceEventLog
+  | SurfaceAccountManagement
+  | SurfaceBootControl
+  | SurfaceRedfishVirtualMedia
+  | SurfaceOemNbdWebsocket
+  | SurfaceBmcShell
+  | SurfaceUefiHttpBoot
+  | SurfaceSensors
+  | SurfaceTelemetryMetrics
+  | SurfaceBmcClock
+
+type BmcAccessProfileKey {
+  baseboard: BaseboardModel
+  chassis_part_number: NonEmptyStr?
+  firmware: BmcFirmwareVersion
+}
+
+// A vendor-specific parameter the profile has to carry verbatim (MegaRAC's
+// image_redirection, an ASRock UDC name). Named, not folded into prose.
+type BmcOemParameter {
+  name: NonEmptyStr
+  value: NonEmptyStr
+}
+
+type BmcAccessProfile {
+  key: BmcAccessProfileKey
+  redfish_system_locator: NonEmptyStr
+  redfish_chassis_locator: NonEmptyStr
+  redfish_manager_locator: NonEmptyStr
+  bootstrap_credential: FactoryLoginStanding
+  candidate_surfaces: List<BmcAccessSurface>
+  oem_parameters: List<BmcOemParameter>
+}
+
+type BmcAccessObservation {
+  endpoint: BmcEndpoint
+  firmware: BmcFirmwareVersion
+  discovered_surfaces: List<BmcAccessSurface>
+  successful_read_surfaces: List<BmcAccessSurface>
+  successful_write_surfaces: List<BmcAccessSurface>
+  observed_at: EpochMs
+}
+
+// An observation is a receipt of an attempt; its absence is a state a solver
+// must see, so there is no default observation and no empty one standing in
+// for "not yet probed".
+type BmcAccessObservationStanding
+  = BmcAccessObserved { observation: BmcAccessObservation }
+  | BmcAccessUnobserved { endpoint: BmcEndpoint }
+
+fn bmc_surface_in(surfaces: List<BmcAccessSurface>, surface: BmcAccessSurface) -> Bool {
+  fold(surfaces, init: false, f: (acc, s) => acc || s == surface)
+}
+
+// Every way the intersection can fail to admit a surface, named. A profile and
+// an observation for different firmware do not intersect at all: the
+// observation is a reading of a release the profile does not describe.
+type BmcSurfaceEligibility
+  = SurfaceEligible
+  | SurfaceAbsentFromProfile
+  | SurfaceAbsentFromLiveObservation
+  | SurfaceProfileObservationFirmwareMismatch { profile: BmcFirmwareVersion, observed: BmcFirmwareVersion }
+
+fn bmc_surface_eligibility(
+  profile: BmcAccessProfile,
+  observation: BmcAccessObservation,
+  surface: BmcAccessSurface,
+) -> BmcSurfaceEligibility {
+  if bmc_firmware_version_eq(a: profile.key.firmware, b: observation.firmware) == false {
+    SurfaceProfileObservationFirmwareMismatch { profile: profile.key.firmware, observed: observation.firmware }
+  } else if bmc_surface_in(surfaces: profile.candidate_surfaces, surface: surface) == false {
+    SurfaceAbsentFromProfile
+  } else if bmc_surface_in(surfaces: observation.discovered_surfaces, surface: surface) == false {
+    SurfaceAbsentFromLiveObservation
+  } else {
+    SurfaceEligible
+  }
+}
+
+fn bmc_surface_is_eligible(
+  profile: BmcAccessProfile,
+  observation: BmcAccessObservation,
+  surface: BmcAccessSurface,
+) -> Bool {
+  bmc_surface_eligibility(profile: profile, observation: observation, surface: surface) == SurfaceEligible
+}

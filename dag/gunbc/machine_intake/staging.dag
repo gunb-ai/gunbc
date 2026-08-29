@@ -1,0 +1,85 @@
+module gunbc.machine_intake_staging
+
+import std.types { Bool, EpochMs, List, NonEmptyStr, String, list_length }
+import product.placement_supply { HostIdentity }
+
+data machine_intake_staging_note: String = "AN ABSTRACT STAGING SERVICE, NOT srv2 (machine-intake ruling 2026-08-29, operational answer (b)). srv2 is today's candidate realization of IntakeStagingService, not the permanent identity of that service, and the workflow does not bake it in: the service is named by its required capabilities, and a host becomes its realization only after an observation shows it actually provides them. A cheap dedicated always-on management box is the preferable terminal realization — intake must stay available while production nodes reboot, are reimaged, leave the fleet or are under repair, and it gives the BMC network, artifact store, receipt collector and power-meter integrations a stable home — but that is a REALIZATION MIGRATION, not a workflow change, and the MVP does not block on buying it. Current-state discrepancy the ruling requires be resolved by observation, not prose: gunbc.bmc_virtual_media's concrete srv4 configfs plan names srv1 as its NBD server, while the brief says srv2 is today's staging host. Neither is chosen here; intake_staging_realization_today is StagingUnobserved until the staging-service observation runs and binds whichever host is actually serving artifacts."
+
+type IntakeStagingCapability
+  = ContentAddressedArtifactStore
+  | BmcManagementReachability
+  | HttpArtifactDelivery
+  | NfsArtifactDelivery
+  | NbdArtifactDelivery
+  | PxeArtifactDelivery
+  | DhcpDnsObservation
+  | ReceiptCollector
+  | StableClock
+  | SecretReferenceAccess
+  | ManagementNetworkPlacement
+  | WallMeterIntegration
+  | DurableReceiptBackup
+
+// Required for any intake at all. The delivery-protocol capabilities are
+// required per selected transport (the boot-delivery solver names which), and
+// the wall meter is optional: without it the placement wall-power phase is
+// WallPowerUnestablished, which is a PartsHold, not a fabricated watt.
+data intake_staging_required_capabilities: List<IntakeStagingCapability> = [
+  ContentAddressedArtifactStore,
+  BmcManagementReachability,
+  ReceiptCollector,
+  StableClock,
+  SecretReferenceAccess,
+  ManagementNetworkPlacement,
+  DurableReceiptBackup,
+]
+
+type IntakeStagingObservation {
+  host: HostIdentity
+  observed_capabilities: List<IntakeStagingCapability>
+  observed_at: EpochMs
+}
+
+type IntakeStagingRealization
+  = StagingRealized { host: HostIdentity, observation: IntakeStagingObservation }
+  | StagingUnrealized { host: HostIdentity, missing: List<IntakeStagingCapability> }
+  | StagingUnobserved
+
+fn staging_capability_in(capabilities: List<IntakeStagingCapability>, capability: IntakeStagingCapability) -> Bool {
+  fold(capabilities, init: false, f: (acc, c) => acc || c == capability)
+}
+
+fn staging_missing_capabilities(
+  required: List<IntakeStagingCapability>,
+  observation: IntakeStagingObservation,
+) -> List<IntakeStagingCapability> {
+  fold(
+    required,
+    init: [],
+    f: (acc, c) => if staging_capability_in(capabilities: observation.observed_capabilities, capability: c) { acc } else { concat(acc, [c]) },
+  )
+}
+
+fn bind_observed_staging(
+  required: List<IntakeStagingCapability>,
+  observation: IntakeStagingObservation,
+) -> IntakeStagingRealization {
+  let missing = staging_missing_capabilities(required: required, observation: observation)
+  if list_length(items: missing) == 0 {
+    StagingRealized { host: observation.host, observation: observation }
+  } else {
+    StagingUnrealized { host: observation.host, missing: missing }
+  }
+}
+
+fn bind_intake_staging(
+  required: List<IntakeStagingCapability>,
+  observation: IntakeStagingObservation?,
+) -> IntakeStagingRealization {
+  match observation {
+    Absent => StagingUnobserved
+    Present { value: o } => bind_observed_staging(required: required, observation: o)
+  }
+}
+
+data intake_staging_realization_today: IntakeStagingRealization = StagingUnobserved

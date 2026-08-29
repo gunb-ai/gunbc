@@ -1,0 +1,146 @@
+module extdeps.bmc.redfish_virtual_media
+
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.types { Bool, List, NonEmptyStr, String }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "redfish.dmtf.org/schemas/v1/VirtualMedia.v1_6_0.json"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.bmc.redfish_virtual_media",
+      decl_name: "RedfishVirtualMediaAction",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: [
+    ExternalAuthority { uri: Uri { scheme: Https, locator: "redfish.dmtf.org/schemas/v1/ComputerSystem.v1_22_0.json" } }
+  ]
+}
+
+data redfish_virtual_media_shape_note: String = "THE STANDARD SHAPE, NOT ITS PRESENCE. DMTF Redfish defines the VirtualMedia resource under Managers/<ManagerId>/VirtualMedia/<MediaId> (and, on older implementations, under Systems/<SystemId>/VirtualMedia), with the InsertMedia and EjectMedia actions, an Image URI, a TransferProtocolType, and Inserted / WriteProtected flags; ComputerSystem.Boot defines the one-shot BootSourceOverride with Cd, Pxe and UefiHttp targets and the HttpBootUri property. These are OPERATION SHAPES. Whether a given BMC serves the collection at all, which of the two locations it uses, which TransferProtocolType values it accepts, and whether InsertMedia reads Image over HTTPS with a self-signed staging certificate are per-endpoint, per-firmware discoveries recorded in a BmcAccessObservation (extdeps.bmc.access_profile) — never derived from this module. extdeps.boards.asrock_rack live-probe rows record BOTH locations as absent on the observed ASRock OpenBMC surface, which is why this repository had no Redfish VirtualMedia model before the 2026-08-29 machine-intake ruling named MegaRAC as the first platform expected to serve it."
+
+// TransferProtocolType, VirtualMedia schema. The Oem arm exists because the
+// schema admits it, not because any consumer selects it.
+type RedfishVirtualMediaTransferProtocol
+  = TransferCifs
+  | TransferFtp
+  | TransferSftp
+  | TransferHttp
+  | TransferHttps
+  | TransferNfs
+  | TransferScp
+  | TransferTftp
+  | TransferOem
+
+fn redfish_virtual_media_transfer_protocol_wire(p: RedfishVirtualMediaTransferProtocol) -> NonEmptyStr {
+  match p {
+    TransferCifs => "CIFS"
+    TransferFtp => "FTP"
+    TransferSftp => "SFTP"
+    TransferHttp => "HTTP"
+    TransferHttps => "HTTPS"
+    TransferNfs => "NFS"
+    TransferScp => "SCP"
+    TransferTftp => "TFTP"
+    TransferOem => "OEM"
+  }
+}
+
+// MediaType, VirtualMedia schema.
+type RedfishVirtualMediaType
+  = MediaCd
+  | MediaDvd
+  | MediaUsbStick
+  | MediaFloppy
+
+fn redfish_virtual_media_type_wire(t: RedfishVirtualMediaType) -> NonEmptyStr {
+  match t {
+    MediaCd => "CD"
+    MediaDvd => "DVD"
+    MediaUsbStick => "USBStick"
+    MediaFloppy => "Floppy"
+  }
+}
+
+// ConnectedVia, VirtualMedia schema: whether the BMC currently holds a remote
+// image, and by which mechanism. NotConnected is the resting state a cleanup
+// phase must read back before an intake attempt can close.
+type RedfishVirtualMediaConnectedVia
+  = ConnectedViaNotConnected
+  | ConnectedViaUri
+  | ConnectedViaApplet
+  | ConnectedViaOem
+
+// Where the collection hangs is one of two cited locations, and an endpoint
+// serves at most one of them; a locator therefore names its parent explicitly
+// instead of leaving the path to a convention.
+type RedfishVirtualMediaParent
+  = UnderManager { manager_id: NonEmptyStr }
+  | UnderSystem { system_id: NonEmptyStr }
+
+type RedfishVirtualMediaLocator {
+  parent: RedfishVirtualMediaParent
+  media_id: NonEmptyStr
+}
+
+fn redfish_virtual_media_collection_path(parent: RedfishVirtualMediaParent) -> NonEmptyStr {
+  match parent {
+    UnderManager { manager_id: m } => concat("/redfish/v1/Managers/", concat(m, "/VirtualMedia")) as NonEmptyStr
+    UnderSystem { system_id: s } => concat("/redfish/v1/Systems/", concat(s, "/VirtualMedia")) as NonEmptyStr
+  }
+}
+
+fn redfish_virtual_media_resource_path(locator: RedfishVirtualMediaLocator) -> NonEmptyStr {
+  concat(redfish_virtual_media_collection_path(parent: locator.parent), concat("/", locator.media_id)) as NonEmptyStr
+}
+
+fn redfish_virtual_media_insert_action_path(locator: RedfishVirtualMediaLocator) -> NonEmptyStr {
+  concat(redfish_virtual_media_resource_path(locator: locator), "/Actions/VirtualMedia.InsertMedia") as NonEmptyStr
+}
+
+fn redfish_virtual_media_eject_action_path(locator: RedfishVirtualMediaLocator) -> NonEmptyStr {
+  concat(redfish_virtual_media_resource_path(locator: locator), "/Actions/VirtualMedia.EjectMedia") as NonEmptyStr
+}
+
+// The two actions the schema defines. InsertMedia carries the artifact by URI:
+// the BMC pulls it, so the staging service must serve it over a protocol the
+// endpoint has been OBSERVED to accept.
+type RedfishVirtualMediaAction
+  = InsertMedia {
+      image: Uri
+      transfer_protocol: RedfishVirtualMediaTransferProtocol
+      inserted: Bool
+      write_protected: Bool
+    }
+  | EjectMedia
+
+// What a GET of the resource reports. `image` is optional because a
+// NotConnected slot reports no image, and that absence is the cleanup receipt.
+type RedfishVirtualMediaObservation {
+  locator: RedfishVirtualMediaLocator
+  media_types: List<RedfishVirtualMediaType>
+  connected_via: RedfishVirtualMediaConnectedVia
+  inserted: Bool
+  image: Uri?
+}
+
+fn redfish_virtual_media_is_detached(observation: RedfishVirtualMediaObservation) -> Bool {
+  observation.connected_via == ConnectedViaNotConnected && observation.inserted == false
+}
+
+// ComputerSystem.Boot.HttpBootUri — the UEFI HTTP boot target's artifact
+// address. It is a Boot property, not a VirtualMedia one, and is modeled beside
+// the media shapes because the machine-intake ruling treats it as a peer
+// delivery constructor for the same obligation.
+type RedfishHttpBootUri {
+  uri: Uri
+}

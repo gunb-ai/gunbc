@@ -1,0 +1,464 @@
+module gunbc.boot_artifact_delivery
+
+import std.types { Bool, EpochMs, Int, List, NonEmptyStr, String }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.content_hash { ContentHash }
+import extdeps.uri { Uri }
+import extdeps.toolchain.types { Architecture, X86_64, Aarch64 }
+import extdeps.bmc.endpoint { BmcEndpoint }
+import extdeps.bmc.types { RedfishBootSourceOverrideTarget, BootTargetCd, BootTargetPxe, BootTargetUefiHttp }
+import extdeps.bmc.capability {
+  BmcFirmwareCapabilityRow,
+  BmcFirmwareVersion,
+  CapabilityBootSourceOverride,
+  CapabilityNbdProxyVirtualMedia,
+  CapabilityVirtualMedia,
+  bmc_firmware_version_eq,
+  firmware_has_capability,
+}
+import extdeps.bmc.virtual_media { ConfigfsGadgetParams, NbdProxyWebsocatParams, RedfishVirtualMediaParams }
+import extdeps.bmc.access_profile {
+  BmcAccessObservation,
+  BmcAccessObservationStanding,
+  BmcAccessObserved,
+  BmcAccessSurface,
+  BmcAccessUnobserved,
+  SurfaceOemNbdWebsocket,
+  SurfaceRedfishVirtualMedia,
+  bmc_surface_in,
+}
+import gunbc.install_transport_qualification {
+  ConfigfsTransportRequirement,
+  ReinstallPathEstablished,
+  ReinstallPathRefused,
+  ReinstallPathStanding,
+  ReinstallPathUnestablished,
+}
+
+data boot_artifact_delivery_note: String = "ONE OBLIGATION, N CONSTRUCTORS (machine-intake ruling 2026-08-29 §3). 'Virtual CD' is not a phase. Redfish VirtualMedia, the bmcweb OEM NBD WebSocket, the OpenBMC configfs USB gadget, UEFI HTTP boot and PXE chain boot are alternative constructors for one obligation: deliver this content-addressed boot artifact to this identified host for one boot, prove that the intended artifact executed, and restore the prior boot-control state. They are distinct arms because they have different failure owners and different receipts, and boot CONTROL (one-shot target, reset, override consumption, restore) is a separate obligation from artifact DELIVERY (visible to firmware, bytes proven, intended host consumed it, detached after use) — a BMC can support boot-source override with no media path at all. This module is the ONE solver; gunbc.os_install_mechanism is now a frozen projection of it for the OperatingSystemInstaller purpose. The selection rule is the ruling's: a transport is eligible only from the INTERSECTION of the catalogued capability row and the live access observation, so a capability row saying this firmware should expose virtual media never selects it on an endpoint that was not observed to. That rule is what flipped srv1/srv2 from a selected NbdProxy mechanism to a typed refusal on 2026-08-29 — their firmware evidence is an attestation with no live surface observation, and the earlier selection was exactly the establishment-by-catalog the ruling forbids."
+
+// What the artifact is FOR is data the same delivery mechanism accepts, never
+// a reason to fork the mechanism.
+type BootPurpose
+  = FastMemoryDiagnostic
+  | IntakeLinuxEnvironment
+  | OperatingSystemInstaller
+  | FirmwareUtility
+
+type BootArtifactFormat
+  = IsoImage
+  | EfiApplication
+  | KernelInitrdPair
+  | FirmwareCapsule
+
+type BootArtifact {
+  purpose: BootPurpose
+  architecture: Architecture
+  digest: ContentHash
+  format: BootArtifactFormat
+  entrypoint: NonEmptyStr
+  build_identity: NonEmptyStr
+}
+
+// 'The same ISO serves both architectures' is NOT an invariant. The set names
+// one artifact per architecture; the two may resolve to one digest when that is
+// genuinely true, and otherwise the per-architecture selection stays explicit.
+type IntakeArtifactSet {
+  x86_64: BootArtifact
+  aarch64: BootArtifact
+}
+
+type IntakeArtifactSelection
+  = IntakeArtifactSelected { artifact: BootArtifact }
+  | IntakeArtifactNoneForArchitecture { architecture: Architecture }
+
+fn intake_artifact_for(set: IntakeArtifactSet, architecture: Architecture) -> IntakeArtifactSelection {
+  match architecture {
+    X86_64 => IntakeArtifactSelected { artifact: set.x86_64 }
+    Aarch64 => IntakeArtifactSelected { artifact: set.aarch64 }
+    _ => IntakeArtifactNoneForArchitecture { architecture: architecture }
+  }
+}
+
+type BootControlObligation
+  = SetOneShotTarget
+  | ResetHost
+  | ObserveOverrideConsumed
+  | RestoreBootState
+
+data boot_control_obligations_all: List<BootControlObligation> = [
+  SetOneShotTarget,
+  ResetHost,
+  ObserveOverrideConsumed,
+  RestoreBootState,
+]
+
+type BootArtifactDeliveryObligation
+  = MakeArtifactVisibleToFirmware
+  | ProveArtifactBytes
+  | ProveIntendedHostConsumed
+  | DetachAfterUse
+
+data boot_artifact_delivery_obligations_all: List<BootArtifactDeliveryObligation> = [
+  MakeArtifactVisibleToFirmware,
+  ProveArtifactBytes,
+  ProveIntendedHostConsumed,
+  DetachAfterUse,
+]
+
+// PXE was previously reached by ABSENCE: the pre-repair install solver's else-arm answered
+// PxeHttpInstall whenever no virtual-media capability was found, so "this BMC exposes no virtual
+// media" silently became "therefore it network-boots". Those are different states, and a BMC
+// capability roster cannot establish the second — it is a claim about the host's UEFI network
+// stack, the serving infrastructure, and the boot artifacts, none of which the BMC reports.
+//
+// So a network-boot delivery is established only by naming every requirement it rests on. An
+// authored chain or serve plan is NOT such an establishment: gunbc.os_install
+// srv3_pxe_network_boot_chain and gunbc.bmc_netboot_serve srv4_bmc_netboot_serve_plan describe
+// what a network boot WOULD look like, and neither is an observation that the host performed
+// one. Citing them as evidence would be the same substitution one layer up.
+type NetworkBootRequirement
+  = NetworkBootBootSourceOverride
+  | NetworkBootClientBootMode
+  | NetworkBootServingInfrastructure
+  | NetworkBootBootArtifacts
+
+// One observation per requirement axis. A single DeclarationRef standing for all four was the
+// same substitution this carrier exists to forbid, one level in: it let an authored plan satisfy
+// axes nobody observed. Establishing the delivery now requires naming an observation for each
+// axis, so a false claim has to be told four times rather than once.
+type NetworkBootRequirementEvidence {
+  requirement: NetworkBootRequirement
+  observation: DeclarationRef
+  observed_at: EpochMs
+}
+
+type NetworkBootDeliveryEstablishment {
+  boot_source_override: NetworkBootRequirementEvidence
+  client_boot_mode: NetworkBootRequirementEvidence
+  serving_infrastructure: NetworkBootRequirementEvidence
+  boot_artifacts: NetworkBootRequirementEvidence
+}
+
+type NetworkBootDeliveryStanding
+  = NetworkBootDeliveryEstablished { evidence: NetworkBootDeliveryEstablishment }
+  | NetworkBootDeliveryUnestablished { missing: List<NetworkBootRequirement> }
+
+data network_boot_requirements_all: List<NetworkBootRequirement> = [
+  NetworkBootBootSourceOverride,
+  NetworkBootClientBootMode,
+  NetworkBootServingInfrastructure,
+  NetworkBootBootArtifacts,
+]
+
+// UEFI HTTP boot is split from PXE (ruling §3.2): it needs no DHCP-driven
+// chain loader, and its failure owner is the firmware's HTTP client plus the
+// artifact service, not a DHCP service. Its three requirements are its own.
+type UefiHttpRequirement
+  = UefiHttpFirmwareSupportObserved
+  | UefiHttpArtifactServiceReachable
+  | UefiHttpBootArtifacts
+
+data uefi_http_requirements_all: List<UefiHttpRequirement> = [
+  UefiHttpFirmwareSupportObserved,
+  UefiHttpArtifactServiceReachable,
+  UefiHttpBootArtifacts,
+]
+
+type UefiHttpBootParams {
+  image: Uri
+}
+
+type UefiHttpDeliveryStanding
+  = UefiHttpDeliveryEstablished { params: UefiHttpBootParams, evidence: List<DeclarationRef> }
+  | UefiHttpDeliveryUnestablished { missing: List<UefiHttpRequirement> }
+
+// CapabilityFirmwareUpdate means "this firmware exposes an update operation", NOT "therefore a
+// VM-capable firmware is reachable from here". The pre-repair FirmwareUpdateThenVirtualMedia arm
+// inferred the second from the first plus "the catalog contains SOME VM-capable row", which
+// establishes no admissible transition: not the exact target release, not upgrade vs downgrade,
+// not board compatibility, not artifact availability or integrity, not whether the transition
+// preserves the BMC functions the install depends on, and not a policy permitting it.
+type FirmwareTransitionRequirement
+  = FirmwareTransitionTargetRelease
+  | FirmwareTransitionDirection
+  | FirmwareTransitionBoardCompatibility
+  | FirmwareTransitionArtifactIntegrity
+  | FirmwareTransitionFunctionPreservation
+  | FirmwareTransitionPolicyPermission
+
+type FirmwareTransitionStanding
+  = FirmwareTransitionEstablished {
+      from: BmcFirmwareVersion,
+      to: BmcFirmwareVersion,
+      artifact: DeclarationRef,
+    }
+  | FirmwareTransitionUnestablished { missing: List<FirmwareTransitionRequirement> }
+  | FirmwareTransitionAmbiguous { candidates: Int }
+
+data firmware_transition_requirements_all: List<FirmwareTransitionRequirement> = [
+  FirmwareTransitionTargetRelease,
+  FirmwareTransitionDirection,
+  FirmwareTransitionBoardCompatibility,
+  FirmwareTransitionArtifactIntegrity,
+  FirmwareTransitionFunctionPreservation,
+  FirmwareTransitionPolicyPermission,
+]
+
+// THE DELIVERY COPRODUCT. Each arm carries exactly the parameters its
+// realization binds; the PXE arm carries the four-axis establishment because
+// that is what names its DHCP service, its loader and its artifact service.
+type BootArtifactDelivery
+  = RedfishVirtualMediaPull { params: RedfishVirtualMediaParams }
+  | OpenBmcNbdProxyWebsocket { params: NbdProxyWebsocatParams }
+  | OpenBmcConfigfsUsbGadget { params: ConfigfsGadgetParams }
+  | UefiHttpBoot { params: UefiHttpBootParams }
+  | PxeChainBoot { evidence: NetworkBootDeliveryEstablishment }
+
+fn boot_artifact_delivery_kind(delivery: BootArtifactDelivery) -> NonEmptyStr {
+  match delivery {
+    RedfishVirtualMediaPull { params: _ } => "redfish-virtualmedia-pull"
+    OpenBmcNbdProxyWebsocket { params: _ } => "openbmc-nbdproxy-websocket"
+    OpenBmcConfigfsUsbGadget { params: _ } => "openbmc-configfs-usb-gadget"
+    UefiHttpBoot { params: _ } => "uefi-http-boot"
+    PxeChainBoot { evidence: _ } => "pxe-chain-boot"
+  }
+}
+
+fn boot_artifact_delivery_boot_target(delivery: BootArtifactDelivery) -> RedfishBootSourceOverrideTarget {
+  match delivery {
+    RedfishVirtualMediaPull { params: _ } => BootTargetCd
+    OpenBmcNbdProxyWebsocket { params: _ } => BootTargetCd
+    OpenBmcConfigfsUsbGadget { params: _ } => BootTargetCd
+    UefiHttpBoot { params: _ } => BootTargetUefiHttp
+    PxeChainBoot { evidence: _ } => BootTargetPxe
+  }
+}
+
+type BootDeliveryCandidate
+  = CandidateRedfishVirtualMedia
+  | CandidateOpenBmcNbdProxyWebsocket
+  | CandidateOpenBmcConfigfsUsbGadget
+  | CandidateUefiHttpBoot
+  | CandidatePxeChainBoot
+
+// Every way a candidate can fail to be eligible, named per candidate, so a
+// refusal reports the whole considered set rather than the first miss.
+type BootDeliveryCandidateStanding
+  = CandidateEligible
+  | CandidateCapabilityAbsent
+  | CandidateLiveSurfaceUnobserved { endpoint: BmcEndpoint }
+  | CandidateLiveSurfaceAbsent { surface: BmcAccessSurface }
+  | CandidateLiveSurfaceStale { observed: BmcFirmwareVersion, row: BmcFirmwareVersion }
+  | CandidateParamsAbsent
+  | CandidateConfigfsUnestablished { missing: List<ConfigfsTransportRequirement> }
+  | CandidateConfigfsRefused { observed_absent: List<ConfigfsTransportRequirement> }
+  | CandidateUefiHttpUnestablished { missing: List<UefiHttpRequirement> }
+  | CandidateNetworkBootUnestablished { missing: List<NetworkBootRequirement> }
+
+type BootDeliveryCandidateVerdict {
+  candidate: BootDeliveryCandidate
+  standing: BootDeliveryCandidateStanding
+}
+
+// Everything the solver reads, as one record, so a caller cannot omit an axis
+// by omitting an argument. Optional params are the staging-side bindings a
+// transport needs; a transport whose surface is live but whose params are
+// absent is CandidateParamsAbsent, not silently selected.
+type BootDeliveryEvidence {
+  row: BmcFirmwareCapabilityRow
+  live_access: BmcAccessObservationStanding
+  redfish_media: RedfishVirtualMediaParams?
+  nbd_proxy: NbdProxyWebsocatParams?
+  configfs: ReinstallPathStanding
+  configfs_params: ConfigfsGadgetParams?
+  uefi_http: UefiHttpDeliveryStanding
+  network_boot: NetworkBootDeliveryStanding
+}
+
+type BootDeliveryRefusalCause
+  = DeliveryNoBootSourceOverride { firmware: BmcFirmwareVersion }
+  | DeliveryNoEligibleTransport { firmware: BmcFirmwareVersion, considered: List<BootDeliveryCandidateVerdict> }
+
+type BootDeliverySolution
+  = BootDeliverySelected { delivery: BootArtifactDelivery, considered: List<BootDeliveryCandidateVerdict> }
+  | BootDeliveryRefused { cause: BootDeliveryRefusalCause }
+
+// The intersection rule for a VM-shaped candidate: the row must NAME the
+// capability, the endpoint must have been OBSERVED at the row's firmware, and
+// the observation must have DISCOVERED the surface. Three separate refusals.
+fn live_surface_standing(
+  row: BmcFirmwareCapabilityRow,
+  live_access: BmcAccessObservationStanding,
+  surface: BmcAccessSurface,
+) -> BootDeliveryCandidateStanding {
+  match live_access {
+    BmcAccessUnobserved { endpoint: e } => CandidateLiveSurfaceUnobserved { endpoint: e }
+    BmcAccessObserved { observation: o } =>
+      if bmc_firmware_version_eq(a: o.firmware, b: row.firmware) == false {
+        CandidateLiveSurfaceStale { observed: o.firmware, row: row.firmware }
+      } else if bmc_surface_in(surfaces: o.discovered_surfaces, surface: surface) == false {
+        CandidateLiveSurfaceAbsent { surface: surface }
+      } else {
+        CandidateEligible
+      }
+  }
+}
+
+fn redfish_virtual_media_candidate(ev: BootDeliveryEvidence) -> BootDeliveryCandidateStanding {
+  if firmware_has_capability(row: ev.row, cap: CapabilityVirtualMedia) == false {
+    CandidateCapabilityAbsent
+  } else {
+    let standing = live_surface_standing(row: ev.row, live_access: ev.live_access, surface: SurfaceRedfishVirtualMedia)
+    let eligible = standing == CandidateEligible
+    if eligible {
+      match ev.redfish_media {
+        Absent => CandidateParamsAbsent
+        Present { value: _ } => CandidateEligible
+      }
+    } else {
+      standing
+    }
+  }
+}
+
+fn nbd_proxy_websocket_candidate(ev: BootDeliveryEvidence) -> BootDeliveryCandidateStanding {
+  if firmware_has_capability(row: ev.row, cap: CapabilityNbdProxyVirtualMedia) == false {
+    CandidateCapabilityAbsent
+  } else {
+    let standing = live_surface_standing(row: ev.row, live_access: ev.live_access, surface: SurfaceOemNbdWebsocket)
+    let eligible = standing == CandidateEligible
+    if eligible {
+      match ev.nbd_proxy {
+        Absent => CandidateParamsAbsent
+        Present { value: _ } => CandidateEligible
+      }
+    } else {
+      standing
+    }
+  }
+}
+
+// The configfs gadget rides on the BMC shell, not on a Redfish capability, so
+// its eligibility is the transport qualification's own standing — the
+// requirement probes gunbc.install_transport_qualification names. This is the
+// arm the old install solver could not see: srv4 was installed through it while
+// the solver answered that no path existed.
+fn configfs_usb_gadget_candidate(ev: BootDeliveryEvidence) -> BootDeliveryCandidateStanding {
+  match ev.configfs {
+    ReinstallPathEstablished { qualified_by: _ } =>
+      match ev.configfs_params {
+        Absent => CandidateParamsAbsent
+        Present { value: _ } => CandidateEligible
+      }
+    ReinstallPathUnestablished { missing_probes: m } => CandidateConfigfsUnestablished { missing: m }
+    ReinstallPathRefused { observed_absent: a } => CandidateConfigfsRefused { observed_absent: a }
+  }
+}
+
+fn uefi_http_candidate(ev: BootDeliveryEvidence) -> BootDeliveryCandidateStanding {
+  match ev.uefi_http {
+    UefiHttpDeliveryEstablished { params: _, evidence: _ } => CandidateEligible
+    UefiHttpDeliveryUnestablished { missing: m } => CandidateUefiHttpUnestablished { missing: m }
+  }
+}
+
+fn pxe_chain_candidate(ev: BootDeliveryEvidence) -> BootDeliveryCandidateStanding {
+  match ev.network_boot {
+    NetworkBootDeliveryEstablished { evidence: _ } => CandidateEligible
+    NetworkBootDeliveryUnestablished { missing: m } => CandidateNetworkBootUnestablished { missing: m }
+  }
+}
+
+fn boot_delivery_candidate_verdicts(ev: BootDeliveryEvidence) -> List<BootDeliveryCandidateVerdict> {
+  [
+    BootDeliveryCandidateVerdict {
+      candidate: CandidateRedfishVirtualMedia,
+      standing: redfish_virtual_media_candidate(ev: ev),
+    },
+    BootDeliveryCandidateVerdict {
+      candidate: CandidateOpenBmcNbdProxyWebsocket,
+      standing: nbd_proxy_websocket_candidate(ev: ev),
+    },
+    BootDeliveryCandidateVerdict {
+      candidate: CandidateOpenBmcConfigfsUsbGadget,
+      standing: configfs_usb_gadget_candidate(ev: ev),
+    },
+    BootDeliveryCandidateVerdict {
+      candidate: CandidateUefiHttpBoot,
+      standing: uefi_http_candidate(ev: ev),
+    },
+    BootDeliveryCandidateVerdict {
+      candidate: CandidatePxeChainBoot,
+      standing: pxe_chain_candidate(ev: ev),
+    },
+  ]
+}
+
+fn candidate_is_eligible(verdicts: List<BootDeliveryCandidateVerdict>, candidate: BootDeliveryCandidate) -> Bool {
+  fold(verdicts, init: false, f: (acc, v) => acc || (v.candidate == candidate && v.standing == CandidateEligible))
+}
+
+// Builds the selected arm from the params its candidate already proved
+// present. The Absent branches are unreachable once the candidate is eligible;
+// they refuse rather than fabricate so that invariant is executed, not assumed.
+fn select_boot_artifact_delivery(
+  ev: BootDeliveryEvidence,
+  verdicts: List<BootDeliveryCandidateVerdict>,
+) -> BootDeliverySolution {
+  if candidate_is_eligible(verdicts: verdicts, candidate: CandidateRedfishVirtualMedia) {
+    match ev.redfish_media {
+      Present { value: p } => BootDeliverySelected { delivery: RedfishVirtualMediaPull { params: p }, considered: verdicts }
+      Absent => BootDeliveryRefused { cause: DeliveryNoEligibleTransport { firmware: ev.row.firmware, considered: verdicts } }
+    }
+  } else if candidate_is_eligible(verdicts: verdicts, candidate: CandidateOpenBmcNbdProxyWebsocket) {
+    match ev.nbd_proxy {
+      Present { value: p } => BootDeliverySelected { delivery: OpenBmcNbdProxyWebsocket { params: p }, considered: verdicts }
+      Absent => BootDeliveryRefused { cause: DeliveryNoEligibleTransport { firmware: ev.row.firmware, considered: verdicts } }
+    }
+  } else if candidate_is_eligible(verdicts: verdicts, candidate: CandidateOpenBmcConfigfsUsbGadget) {
+    match ev.configfs_params {
+      Present { value: p } => BootDeliverySelected { delivery: OpenBmcConfigfsUsbGadget { params: p }, considered: verdicts }
+      Absent => BootDeliveryRefused { cause: DeliveryNoEligibleTransport { firmware: ev.row.firmware, considered: verdicts } }
+    }
+  } else if candidate_is_eligible(verdicts: verdicts, candidate: CandidateUefiHttpBoot) {
+    match ev.uefi_http {
+      UefiHttpDeliveryEstablished { params: p, evidence: _ } => BootDeliverySelected { delivery: UefiHttpBoot { params: p }, considered: verdicts }
+      UefiHttpDeliveryUnestablished { missing: _ } => BootDeliveryRefused { cause: DeliveryNoEligibleTransport { firmware: ev.row.firmware, considered: verdicts } }
+    }
+  } else if candidate_is_eligible(verdicts: verdicts, candidate: CandidatePxeChainBoot) {
+    match ev.network_boot {
+      NetworkBootDeliveryEstablished { evidence: e } => BootDeliverySelected { delivery: PxeChainBoot { evidence: e }, considered: verdicts }
+      NetworkBootDeliveryUnestablished { missing: _ } => BootDeliveryRefused { cause: DeliveryNoEligibleTransport { firmware: ev.row.firmware, considered: verdicts } }
+    }
+  } else {
+    BootDeliveryRefused { cause: DeliveryNoEligibleTransport { firmware: ev.row.firmware, considered: verdicts } }
+  }
+}
+
+// THE SOLVER. Boot-source override gates every arm (each drives the host
+// through a BMC one-shot target); then the candidates are judged in the
+// ruling's platform-mapping order and the first eligible one is built. Every
+// arm is reached from something the evidence NAMES, never from the absence of
+// another arm: the else is a refusal carrying every candidate's standing.
+fn solve_boot_artifact_delivery(ev: BootDeliveryEvidence) -> BootDeliverySolution {
+  if firmware_has_capability(row: ev.row, cap: CapabilityBootSourceOverride) == false {
+    BootDeliveryRefused { cause: DeliveryNoBootSourceOverride { firmware: ev.row.firmware } }
+  } else {
+    select_boot_artifact_delivery(
+      ev: ev,
+      verdicts: boot_delivery_candidate_verdicts(ev: ev),
+    )
+  }
+}
+
+fn boot_delivery_candidate_standing_of(
+  verdicts: List<BootDeliveryCandidateVerdict>,
+  candidate: BootDeliveryCandidate,
+) -> BootDeliveryCandidateStanding {
+  fold(
+    verdicts,
+    init: CandidateCapabilityAbsent,
+    f: (acc, v) => if v.candidate == candidate { v.standing } else { acc },
+  )
+}
