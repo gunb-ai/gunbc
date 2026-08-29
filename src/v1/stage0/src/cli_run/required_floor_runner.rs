@@ -3392,6 +3392,94 @@ pub fn run_required_floor(
         cost_debt_declined
     );
 
+    // THE COST-DEBT ROSTER'S STANDING, JOINED AGAINST THE DECLARED UNIVERSE RATHER THAN AGAINST
+    // THE SPELLING OF A NAME. Computed here because this is the last point at which the declared
+    // set, the withheld set and the disposition rows are all live and unmoved; the reverse join
+    // below consumes the result.
+    //
+    // WHAT THIS REPLACES AND WHY IT WAS A FAIL-OPEN. The reverse join used to decide "is this
+    // unseen roster row merely outside the gate" by prefix-matching the identity's module path
+    // against `required_gate_prefixes`. A module NAME cannot distinguish "declared, but this
+    // run's gate never loaded it" from "no such declaration anywhere" — so an enrolled identity
+    // that does not exist (a typo, a renamed or deleted witness, a fabricated line) prefix-missed
+    // the gate, was counted as outside-the-gate, and refused nothing. That is precisely the hole
+    // the reverse join exists to close, in its own words below: "the cheapest way to fake a green
+    // run: enrolling an identity that does not exist would otherwise cost nothing." The
+    // 2026-08-29 gate cut reopened it across the whole non-gate namespace, which is now the
+    // majority of the corpus — 122 enrolled rows sat in that arm on the first gate-bounded fold,
+    // and nothing could have told a real one from a fabricated one.
+    //
+    // gunbc#9684 is what makes the repair possible: every DECLARED identity now carries exactly
+    // one disposition, so preparation's own account of what it loaded is available here as a
+    // population rather than as a name test.
+    let cost_debt_disposition_index: HashMap<String, RequiredFloorDisposition> = disposition_rows
+        .iter()
+        .map(|row| (row.identity.clone(), row.disposition.clone()))
+        .collect();
+    let cost_debt_standings =
+        partition_cost_debt_roster(&cost_debt_roster, &cost_debt_disposition_index);
+    // THE WITHHELD SET AND THE DISPOSITION ROWS MUST NAME THE SAME IDENTITIES, and a disagreement
+    // REFUSES rather than being resolved in either direction. They are two observations of one
+    // act — the build loop's own accounting, and the projection of that same loop — so they agree
+    // by construction or the loop is wrong. An earlier draft of this change consulted the
+    // withheld set as a FIRST classifier and fell back to the disposition, which made two
+    // structures answer one question and would have silently preferred one; that is the §3 defect
+    // this repair exists to close, and rebuilding it inside the repair is the failure mode worth
+    // refusing loudly for.
+    {
+        let (withheld_without_disposition, dispositioned_without_withhold) =
+            reconcile_withheld_against_dispositions(&cost_debt_seen, &cost_debt_disposition_index);
+        if !withheld_without_disposition.is_empty() || !dispositioned_without_withhold.is_empty() {
+            return Err(format!(
+                "REQUIRED-FLOOR REFUSAL cause=CostDebtWithholdDispositionDisagreement — the \
+                 build loop's withheld set and its disposition projection are two observations of \
+                 one act and must name the same identities. withheld with no DeclinedCostDebt \
+                 disposition: [{}]; DeclinedCostDebt disposition with no withhold: [{}]",
+                withheld_without_disposition.join(", "),
+                dispositioned_without_withhold.join(", ")
+            ));
+        }
+    }
+    let cost_debt_undeclared: Vec<&str> = cost_debt_standings
+        .iter()
+        .filter(|(_, s)| *s == CostDebtRosterStanding::Undeclared)
+        .map(|(q, _)| *q)
+        .collect();
+    let cost_debt_outside_universe: Vec<&str> = cost_debt_standings
+        .iter()
+        .filter(|(_, s)| *s == CostDebtRosterStanding::OutsideThisRunsUniverse)
+        .map(|(q, _)| *q)
+        .collect();
+    let cost_debt_declared_not_withheld: Vec<&str> = cost_debt_standings
+        .iter()
+        .filter(|(_, s)| *s == CostDebtRosterStanding::DeclaredButNotWithheld)
+        .map(|(q, _)| *q)
+        .collect();
+    let cost_debt_withheld_count = cost_debt_standings
+        .iter()
+        .filter(|(_, s)| *s == CostDebtRosterStanding::Withheld)
+        .count();
+    // THE PARTITION IS THE RECEIPT, AT IDENTITY GRAIN AND ON ONE LINE. The previous report was a
+    // bare count of the outside-gate arm; a count cannot be joined against a roster, and the arm
+    // it counted silently contained both legitimate rows and unrefusable fabrications.
+    eprintln!(
+        "[floor-cost-debt] roster standing: enrolled={} withheld={} outside_this_runs_universe={} \
+         undeclared={} declared_not_withheld={}",
+        cost_debt_standings.len(),
+        cost_debt_withheld_count,
+        cost_debt_outside_universe.len(),
+        cost_debt_undeclared.len(),
+        cost_debt_declared_not_withheld.len()
+    );
+    if !cost_debt_outside_universe.is_empty() {
+        eprintln!(
+            "[floor-cost-debt] outside this run's universe, kept as record and NOT counted as \
+             debt (declared, but preparation never offered them — gate closure or discovery \
+             exclusion): {}",
+            cost_debt_outside_universe.join(", ")
+        );
+    }
+
     // THE EXPECTED-RED ROSTER, read from its .dag authority in the policy module's frame — it
     // must be decoded BEFORE that frame is dropped below, and it is a separate evaluation from
     // the manifest because it answers a different question: the manifest says which claims
@@ -4928,38 +5016,43 @@ pub fn run_required_floor(
     // roster that has stopped describing the tree, and the contract's monotone claim is only
     // worth anything while its universe is the discovered one.
     //
-    // OUTSIDE THE GATE IS NOT STALE. A cost-debt row whose module the gate never loads was
-    // never planned for the same reason the expected-red and route-gap rows above were
-    // withheld: this run's universe is the gate closure, not the tree. Counted, never silent
-    // (measured 2026-08-29: 122 such rows on the first gate-bounded fold, every one in a
-    // module outside the gate).
+    // OUTSIDE THIS RUN'S UNIVERSE IS NOT STALE, BUT UNDECLARED IS. A cost-debt row whose module
+    // preparation never offered was never planned, for the same reason the expected-red and
+    // route-gap rows above were withheld: this run's universe is the gate closure, not the tree.
+    // Those rows are kept as record and reported at identity grain above, never counted as debt.
+    //
+    // A row the tree DOES NOT DECLARE is a different fact and refuses. The two were conflated
+    // while this arm asked a name test; the partition above separates them on preparation's own
+    // account of what it loaded. See `partition_cost_debt_roster`.
+    //
+    // GUARDED BY `reverse_joins_answerable` EXACTLY AS BEFORE. Both arms below REFUSE, and a
+    // halted run's population is truncated, so answering "delete the row" over it would be the
+    // empty-observation narrow this file already refuses to commit for the sibling rosters. The
+    // partition's inputs are planning-time facts, so they survive an execution halt — but a halt
+    // during preparation truncates them too, and this arm must not be the one place that assumes
+    // otherwise. The report line above is diagnostic and prints regardless.
     {
-        let mut cost_debt_outside_gate = 0usize;
-        let mut stale: Vec<&String> = cost_debt_roster
+        for identity in cost_debt_declared_not_withheld
             .iter()
-            .filter(|q| reverse_joins_answerable && !cost_debt_seen.contains(*q))
-            .filter(|q| {
-                let inside = identity_inside_required_gate(q.as_str());
-                if !inside {
-                    cost_debt_outside_gate += 1;
-                }
-                inside
-            })
-            .collect();
-        stale.sort();
-        if cost_debt_outside_gate > 0 {
-            eprintln!(
-                "[floor-required-gate] floor_cost_debt: {cost_debt_outside_gate} enrolled \
-                 identity(ies) withheld from the staleness join because their module is outside \
-                 the required gate and was never loaded"
-            );
-        }
-        for identity in stale {
+            .filter(|_| reverse_joins_answerable)
+        {
             outcome.stale_cost_debt.push(format!(
                 "{identity} is enrolled in v2.workflow.floor_cost_debt but was not planned, so \
                  nothing was withheld for it. It was renamed, deleted, or declined by home \
                  policy. Delete the row — a withhold over an identity the tree does not carry \
                  counts as debt while costing nothing and can never ask to be removed."
+            ));
+        }
+        for identity in cost_debt_undeclared
+            .iter()
+            .filter(|_| reverse_joins_answerable)
+        {
+            outcome.stale_cost_debt.push(format!(
+                "{identity} is enrolled in v2.workflow.floor_cost_debt but the tree DECLARES NO \
+                 SUCH IDENTITY — it is not merely outside this run's gate closure, it does not \
+                 exist. Delete the row. Until gunbc#9684 gave the floor a declared-identity \
+                 universe this row was indistinguishable from a legitimate outside-the-gate \
+                 enrollment and refused nothing, which is the cheapest way to fake a green run."
             ));
         }
     }

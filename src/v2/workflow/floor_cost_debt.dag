@@ -223,6 +223,41 @@ import v2.std.text { String }
 // error this file was rebuilt once to correct, in mirror image: there a real number belonged to
 // another row, here a real zero does.
 
+// THE 45 test.claim.live_deploy ROWS ARE HELD, AND THEIR TRIGGER IS NOT A COST MEASUREMENT.
+//
+// This paragraph is where their trigger lives because the roster is a `List<String>` and carries
+// no per-row field to hang one on; that is a real limitation of this carrier, stated rather than
+// worked around.
+//
+// WHY THEY CANNOT BE RELEASED THE ORDINARY WAY. The exit above -- delete the line, let the floor
+// run it under the 500ms ceiling -- presumes the floor RUNS it. After the 2026-08-29 gate cut
+// these identities are outside the gate closure, so preparation never offers them, and the
+// disposition projection now says so at identity grain (`DeclinedOutsideGateClosure`). There is
+// also no full-corpus floor left in CI to measure them elsewhere: `.github/workflows/witnesses.yml`
+// invokes `claim_executor --required-ci` twice, once per lane, and nothing else runs a floor. So
+// their marginal cost is not observable by any instrument this repository currently runs, and a
+// release would be bookkeeping rather than a measured shrink.
+//
+// WHAT IS KNOWN ABOUT THEIR COST, measured off-lane and recorded so the next reader does not
+// re-derive it: the apply-script witnesses cost ~3.4s and the retract ones ~1.3s, and that is
+// ~21ms per DISTINCT emitted bash command over a ~100ms base rather than anything about their
+// byte sizes. The re-derivable form of that model is
+// `v2.test.floor.bash_command_serialization_cost_model`, whose four K-varying rows carry it in
+// `required_floor_claim_cost.tsv`. The 21 apply witnesses emit a BYTE-IDENTICAL script, so a
+// cache surviving across claims collapses them to one payer -- which is why the repair is a
+// same-key emission cache at the production owner and never a smaller fixture: the emitted
+// command set IS what these witnesses assert, so shrinking it to buy the budget would shrink the
+// subject.
+//
+// TRIGGER, and it is a CAPABILITY rather than a PR: a required population that reaches these
+// identities -- the restoration of the DESIGN section 4b(3) rung drop "Required gate reduced to
+// the compiler floor", by a change-derived required population rather than a static prefix
+// roster. Until then they are held here, reported by the roster-standing line as
+// `outside_this_runs_universe`, and explicitly NOT counted as debt. Deleting them on the strength
+// of a cheap off-lane re-measurement would be the same error in the other direction as releasing
+// a 0ms first-toucher row: a number that is real and is not the row's standing on the lane that
+// owns the contract.
+
 // NOT RELEASED, AND ITS TRIGGER NAMED SO THE ROW IS NOT RE-EXAMINED FROM SCRATCH.
 //
 // `v2.test.lens_inert_carrier.inert_carrier_test.inert_carrier_universe_is_nonempty` was examined
