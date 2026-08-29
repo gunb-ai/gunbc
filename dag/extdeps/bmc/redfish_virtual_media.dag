@@ -159,10 +159,15 @@ type RedfishVirtualMediaProbe
 
 fn redfish_virtual_media_probe_admits_plan(probe: RedfishVirtualMediaProbe) -> Bool {
   match probe {
+    ProbeUnreached => false
+    ObservedAbsent => false
+    CollectionDiscovered => false
+    ResourceReadable => false
+    InsertMediaActionAdvertised => false
     TransferProtocolAdmitted { protocol: _ } => true
     InsertSucceeded => true
     EjectSucceededAndDetached => true
-    _ => false
+    OperationRefused => false
   }
 }
 

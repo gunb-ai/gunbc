@@ -4,7 +4,7 @@ import std.types { Bool, EpochMs, Int, List, NonEmptyStr, String }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.content_hash { ContentHash }
 import extdeps.uri { Uri }
-import extdeps.toolchain.types { Architecture, X86_64, Aarch64 }
+import extdeps.toolchain.types { Architecture, X86_64, Aarch64, X86, Arm, Armv7, Mips, Mipsel, Mips64, Mips64el, Riscv64, Wasm32 }
 import extdeps.bmc.endpoint { BmcEndpoint }
 import extdeps.bmc.types { RedfishBootSourceOverrideTarget, BootTargetCd, BootTargetPxe, BootTargetUefiHttp }
 import extdeps.bmc.capability {
@@ -90,7 +90,15 @@ fn intake_artifact_for(set: IntakeArtifactSet, architecture: Architecture) -> In
   match architecture {
     X86_64 => IntakeArtifactSelected { artifact: set.x86_64 }
     Aarch64 => IntakeArtifactSelected { artifact: set.aarch64 }
-    _ => IntakeArtifactNoneForArchitecture { architecture: architecture }
+    X86 => IntakeArtifactNoneForArchitecture { architecture: architecture }
+    Arm => IntakeArtifactNoneForArchitecture { architecture: architecture }
+    Armv7 => IntakeArtifactNoneForArchitecture { architecture: architecture }
+    Mips => IntakeArtifactNoneForArchitecture { architecture: architecture }
+    Mipsel => IntakeArtifactNoneForArchitecture { architecture: architecture }
+    Mips64 => IntakeArtifactNoneForArchitecture { architecture: architecture }
+    Mips64el => IntakeArtifactNoneForArchitecture { architecture: architecture }
+    Riscv64 => IntakeArtifactNoneForArchitecture { architecture: architecture }
+    Wasm32 => IntakeArtifactNoneForArchitecture { architecture: architecture }
   }
 }
 
@@ -356,7 +364,10 @@ fn surface_candidate_standing(
             SurfaceProfileObservationIdentityMismatch { profile: _, observed: _ } => CandidateProfileObservationIdentityMismatch { surface: surface }
           }
       }
-    _ => CandidateProfileUnestablished { standing: profile }
+    AccessProfileUncatalogued { observed_identity: _ } => CandidateProfileUnestablished { standing: profile }
+    AccessProfileAmbiguous { observed_identity: _, count: _ } => CandidateProfileUnestablished { standing: profile }
+    AccessProfileIdentityMismatch { profile: _, observed: _ } => CandidateProfileUnestablished { standing: profile }
+    AccessProfileNotLookedUp { endpoint: _ } => CandidateProfileUnestablished { standing: profile }
   }
 }
 

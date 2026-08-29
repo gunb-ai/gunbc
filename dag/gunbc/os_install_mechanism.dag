@@ -54,6 +54,7 @@ import gunbc.boot_artifact_delivery {
   FirmwareTransitionRequirement,
   FirmwareTransitionStanding,
   FirmwareTransitionUnestablished,
+  NetworkBootDeliveryEstablished,
   NetworkBootDeliveryStanding,
   NetworkBootDeliveryUnestablished,
   NetworkBootRequirement,
@@ -135,7 +136,7 @@ fn row_names_a_virtual_media_capability(row: BmcFirmwareCapabilityRow) -> Bool {
 fn network_boot_missing(network_boot: NetworkBootDeliveryStanding) -> List<NetworkBootRequirement> {
   match network_boot {
     NetworkBootDeliveryUnestablished { missing: m } => m
-    _ => []
+    NetworkBootDeliveryEstablished { evidence: _ } => []
   }
 }
 
