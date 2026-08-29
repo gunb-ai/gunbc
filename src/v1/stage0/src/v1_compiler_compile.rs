@@ -55,9 +55,7 @@ pub use crate::v1_compiler_ownership::analyze_ownership;
 use crate::v1_compiler_ownership::OwnershipDecision::SharedError;
 pub use crate::v1_compiler_ownership::{OwnershipDecision, OwnershipProof};
 pub use crate::v1_compiler_parse::ParseResult;
-pub use crate::v1_compiler_parse::{
-    parse_heads_in_occurrence_scope, parse_with_table, parse_with_table_in_occurrence_scope,
-};
+pub use crate::v1_compiler_parse::{parse_with_table, parse_with_table_in_occurrence_scope};
 pub use crate::v1_compiler_resolve::{
     module_occurrence_input, module_occurrence_input_node, module_occurrence_input_transport,
     resolve_modules_with_occurrence_transport,
@@ -2629,7 +2627,7 @@ pub struct CensusFillParse {
 pub fn parse_census_fill_note() -> String {
     thread_local! {
         static CACHED: String = {
-            "Heads-grade front end for census-only fill: tokenize + parse DECLARATION HEADS, NEVER resolve (a fill module's imports live in the compile closure or a different tree view; resolving against a fill-only pool fabricates unresolved-import diagnostics about the view, not the modules). The reading is heads-only because the census consumer is: build_symbol_index_qualified_fill reads module items, their names, single-occurrence Disj variants and fn SIGNATURES, and local_binding_for_item builds its fn binding with body none — it tests that a body EXISTS to tell a fn from a type, then discards it, which is exactly the distinction the CensusHeadsBodyStripped stand-in preserves. Diagnostics are parse errors only — those are load-bearing (a broken-parse module contributes no names to the census) and must surface, never be skipped; the narrowing is that a well-braced but ungrammatical BODY in a fill module no longer refuses here, which is the scope statement at parse_heads_with_table and is owned by the required .dag parse sweep.".to_string()
+            "Parse-grade front end for census-only fill: tokenize + parse, NEVER resolve (a fill module's imports live in the compile closure or a different tree view; resolving against a fill-only pool fabricates unresolved-import diagnostics about the view, not the modules). Diagnostics are parse errors only — those are load-bearing (a broken-parse module contributes no names to the census) and must surface, never be skipped.".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
@@ -2675,7 +2673,7 @@ pub fn parse_census_fill_sources(sources: Rc<Vec<Rc<SourceFile>>>) -> Rc<CensusF
                 annotation_diagnostics: Rc::new(vec![]),
             }),
             |acc: Rc<FrontendAccum>, p: Rc<FrontendPrepared>| {
-                let parsed = crate::v1_compiler_parse::parse_heads_in_occurrence_scope(
+                let parsed = crate::v1_compiler_parse::parse_with_table_in_occurrence_scope(
                     p.tokens.clone(),
                     v1_rt::rc_map_insert(
                         v1_rt::rc_empty_map::<String, Rc<NewlineIndex>>(),

@@ -3421,23 +3421,6 @@ pub fn parse_with_table_in_occurrence_scope(
     )
 }
 
-pub fn parse_heads_in_occurrence_scope(
-    tokens: Rc<Vec<Rc<Token>>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    intern_table: Rc<InternTable>,
-    occurrence_allocator: OccurrenceIdAllocator,
-) -> Rc<ParseWithTableResult> {
-    parse_with_table_at(
-        tokens.clone(),
-        source_indices.clone(),
-        intern_table.clone(),
-        crate::std_occurrence_identity::authored_token_ordinal_space_from_allocator(
-            occurrence_allocator.clone(),
-        ),
-        true,
-    )
-}
-
 pub fn parse_with_table(
     tokens: Rc<Vec<Rc<Token>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,

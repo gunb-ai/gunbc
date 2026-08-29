@@ -34,7 +34,6 @@ import v1.compiler.tokenize { tokenize_artifact }
 import v1.compiler.parse {
   parse_with_table,
   parse_with_table_in_occurrence_scope,
-  parse_heads_in_occurrence_scope,
   ParseResult,
 }
 import std.occurrence_identity {
@@ -1102,7 +1101,7 @@ type CensusFillParse {
   annotations: SourceAnnotationGraph
 }
 
-data parse_census_fill_note: String = "Heads-grade front end for census-only fill: tokenize + parse DECLARATION HEADS, NEVER resolve (a fill module's imports live in the compile closure or a different tree view; resolving against a fill-only pool fabricates unresolved-import diagnostics about the view, not the modules). The reading is heads-only because the census consumer is: build_symbol_index_qualified_fill reads module items, their names, single-occurrence Disj variants and fn SIGNATURES, and local_binding_for_item builds its fn binding with body none — it tests that a body EXISTS to tell a fn from a type, then discards it, which is exactly the distinction the CensusHeadsBodyStripped stand-in preserves. Diagnostics are parse errors only — those are load-bearing (a broken-parse module contributes no names to the census) and must surface, never be skipped; the narrowing is that a well-braced but ungrammatical BODY in a fill module no longer refuses here, which is the scope statement at parse_heads_with_table and is owned by the required .dag parse sweep."
+data parse_census_fill_note: String = "Parse-grade front end for census-only fill: tokenize + parse, NEVER resolve (a fill module's imports live in the compile closure or a different tree view; resolving against a fill-only pool fabricates unresolved-import diagnostics about the view, not the modules). Diagnostics are parse errors only — those are load-bearing (a broken-parse module contributes no names to the census) and must surface, never be skipped."
 
 fn parse_census_fill_sources(sources: List<SourceFile>) -> CensusFillParse {
   let prepared = sources |> map(s =>
@@ -1125,7 +1124,7 @@ fn parse_census_fill_sources(sources: List<SourceFile>) -> CensusFillParse {
     annotations: source_annotation_graph_empty(),
     annotation_diagnostics: [],
   }, f: (acc, p) =>
-    let parsed = parse_heads_in_occurrence_scope(
+    let parsed = parse_with_table_in_occurrence_scope(
       tokens: p.tokens,
       source_indices: map_insert(
         empty_map(),

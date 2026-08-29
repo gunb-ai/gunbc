@@ -1822,31 +1822,6 @@ fn parse_with_table_in_occurrence_scope(
   )
 }
 
-// The heads reading of `parse_with_table_in_occurrence_scope` -- same occurrence scope, same
-// allocator threading, bodies skipped at token grain. It completes the pair the file already
-// carries at table grain (`parse_with_table` / `parse_heads_with_table`); the occurrence-scoped
-// reading had only its full arm, so a caller that wanted heads INSIDE an occurrence scope had
-// to take bodies it did not read.
-//
-// The scope statement at `parse_heads_with_table` governs this arm unchanged, and is the whole
-// of what a caller gives up: a well-braced but ungrammatical body does not refuse here.
-fn parse_heads_in_occurrence_scope(
-  tokens: List<Token>,
-  source_indices: Map<String, NewlineIndex>,
-  intern_table: InternTable,
-  occurrence_allocator: OccurrenceIdAllocator
-) -> ParseWithTableResult {
-  parse_with_table_at(
-    tokens: tokens,
-    source_indices: source_indices,
-    intern_table: intern_table,
-    occurrence_base: authored_token_ordinal_space_from_allocator(
-      alloc: occurrence_allocator
-    ),
-    heads_only: true
-  )
-}
-
 fn parse_with_table(tokens: List<Token>, source_indices: Map<String, NewlineIndex>, intern_table: InternTable) -> ParseWithTableResult {
   parse_with_table_at(
     tokens: tokens,
