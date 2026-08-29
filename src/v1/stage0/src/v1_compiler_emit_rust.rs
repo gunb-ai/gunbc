@@ -325,57 +325,14 @@ pub fn render_rust_arrow_position(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     emit_info: Rc<EmitGraphInfo>,
 ) -> String {
-    {
-        let is_bare_zero_param_alias = (((n.connective.clone() == Connective::NoConnective)
-            && ((n.children.clone().len() as i64) > 0))
-            && closed_alias_peels_zero_param(emit_info.fn_type_env.clone(), n.clone()));
-        if (type_node_carries_applied_binding(n.clone(), source_indices.clone())
-            || is_bare_zero_param_alias.clone())
-        {
-            render_rust_type(
-                n.clone(),
-                shared_types.clone(),
-                source_indices.clone(),
-                emit_info.clone(),
-            )
-        } else {
-            crate::v1_compiler_emit::render_node_type(
-                n.clone(),
-                RenderTarget::Rust,
-                shared_types.clone(),
-                source_indices.clone(),
-            )
-        }
-    }
-}
-
-pub fn type_node_carries_applied_binding(
-    n: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> bool {
-    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
-        let own = match crate::v1_std_core::find_property(
-            n.properties.clone(),
-            "__applied_type_args".to_string(),
-            source_indices.clone(),
-        ) {
-            Some(applied) => ((applied.children.clone().len() as i64) > 0),
-            None => false,
-        };
-        (own.clone() || {
-            let mut __found = false;
-            for c in n.children.clone().iter().cloned() {
-                if type_node_carries_applied_binding(
-                    crate::v1_compiler_infer_types::child_type_node(c.clone()),
-                    source_indices.clone(),
-                ) {
-                    __found = true;
-                    break;
-                }
-            }
-            __found
-        })
-    })
+    render_rust_fn_sig_type(
+        n.clone(),
+        emit_info.fn_generic_param_names.clone(),
+        shared_types.clone(),
+        source_indices.clone(),
+        emit_info.variant_to_enum.clone(),
+        emit_info.fn_type_env.clone(),
+    )
 }
 
 pub fn rust_type_node_is_arrow(n: Rc<Node>) -> bool {
@@ -2382,8 +2339,9 @@ if peel.clone() {
                                 ) {
                                     "_".to_string()
                                 } else {
-                                    render_rust_type_with_applied_binding(
+                                    render_rust_type_with_applied_binding_in_scope(
                                         n.clone(),
+                                        generic_param_names.clone(),
                                         shared_types.clone(),
                                         source_indices.clone(),
                                         env.clone(),
@@ -8081,8 +8039,11 @@ pub fn reference_derived_candidate_disposition(
     module_index: Rc<ModuleIndex>,
     type_summaries: Rc<HashMap<String, Rc<TypeSummary>>>,
     variant_to_enum: Rc<HashMap<String, String>>,
+    in_type_position: bool,
 ) -> Rc<ReferenceDerivedCandidateDisposition> {
-    if crate::v1_compiler_infer_emit_info::is_known_variant(type_summaries.clone(), name.clone()) {
+    if (crate::v1_compiler_infer_emit_info::is_known_variant(type_summaries.clone(), name.clone())
+        && !in_type_position.clone())
+    {
         match v1_rt::map_get(&variant_to_enum, name.clone()) {
             Some(parent) => {
                 if (parent.clone() == "".to_string()) {
@@ -8380,6 +8341,12 @@ pub fn reference_derived_use_line_plan(
         });
         let type_surface_names =
             crate::v1_compiler_emit_core_support::unique_strings(item_emit_surface_names.clone());
+        let type_position_set = type_surface_names.iter().cloned().fold(
+            v1_rt::rc_empty_map::<String, bool>(),
+            |acc: Rc<HashMap<String, bool>>, nm: String| {
+                v1_rt::rc_map_insert(acc, nm.clone(), true)
+            },
+        );
         let field_surface_names = collect_items_field_import_surface_names(
             item_emit_surface_names.clone(),
             emit_info.clone(),
@@ -8555,6 +8522,10 @@ pub fn reference_derived_use_line_plan(
                                 module_index.clone(),
                                 emit_info.type_summaries.clone(),
                                 emit_info.variant_to_enum.clone(),
+                                crate::v1_compiler_infer_types::emit_map_has(
+                                    type_position_set.clone(),
+                                    name.clone(),
+                                ),
                             ),
                         })])
                     })
@@ -8611,7 +8582,7 @@ let block_lines = if (block.clone() == "".to_string()) {
                 Rc::new(block.clone().split(&"\n".to_string()).map(|s| s.to_string()).collect::<Vec<_>>())
             };
 let emitted_here = Rc::new({ let mut __result = Vec::new(); for l in block_lines.iter().cloned() { __result.extend((*imported_names_in_use_line(l.clone())).iter().cloned()); } __result });
-let fallback = Rc::new({ let mut __result = Vec::new(); for nm in names.iter().cloned() { __result.extend((*if ({ let mut __found = false; for e in emitted_here.iter().cloned() { if (e.clone() == nm.clone()) { __found = true; break; } } __found } || crate::v1_compiler_infer_emit_info::is_known_variant(emit_info.type_summaries.clone(), nm.clone())) {
+let fallback = Rc::new({ let mut __result = Vec::new(); for nm in names.iter().cloned() { __result.extend((*if ({ let mut __found = false; for e in emitted_here.iter().cloned() { if (e.clone() == nm.clone()) { __found = true; break; } } __found } || (crate::v1_compiler_infer_emit_info::is_known_variant(emit_info.type_summaries.clone(), nm.clone()) && !crate::v1_compiler_infer_types::emit_map_has(type_position_set.clone(), nm.clone()))) {
                 Rc::new(vec![])
             } else {
                 if provider_proven_exports_symbol(nm.clone(), provider.clone(), export_sets.clone(), typed_modules.clone(), source_indices.clone(), module_index.clone()) {
@@ -8632,8 +8603,19 @@ v1_rt::concat(block_lines.clone(), fallback.clone())
             }
             __result
         });
-        let qualified_lines = qualified_type_reference_use_lines(
-            type_surface_names.clone(),
+        let qualified_rows = qualified_type_reference_rows(
+            Rc::new({
+                let mut __result = Vec::new();
+                for nm in type_surface_names.iter().cloned() {
+                    if crate::v1_compiler_infer_types::emit_map_has(
+                        emitted_source_token_set.clone(),
+                        crate::v1_std_core::qualified_last_segment(nm.clone()),
+                    ) {
+                        __result.push(nm);
+                    }
+                }
+                __result
+            }),
             this_module_name.clone(),
             already.clone(),
             names_already_in_lines.clone(),
@@ -8643,14 +8625,16 @@ v1_rt::concat(block_lines.clone(), fallback.clone())
             source_indices.clone(),
             module_index.clone(),
         );
+        let qualified_lines =
+            qualified_type_reference_use_lines(qualified_rows.clone(), registry.clone());
         Rc::new(ReferenceDerivedUseLinePlan {
             lines: v1_rt::concat(lines.clone(), qualified_lines.clone()),
-            rows: rows.clone(),
+            rows: v1_rt::concat(rows.clone(), qualified_rows.clone()),
         })
     }
 }
 
-pub fn qualified_type_reference_use_lines(
+pub fn qualified_type_reference_rows(
     names: Rc<Vec<String>>,
     this_module_name: String,
     already: Rc<HashMap<String, bool>>,
@@ -8660,7 +8644,7 @@ pub fn qualified_type_reference_use_lines(
     typed_modules: Rc<Vec<Rc<TypedModule>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     module_index: Rc<ModuleIndex>,
-) -> Rc<Vec<String>> {
+) -> Rc<Vec<Rc<ReferenceDerivedCandidateRow>>> {
     {
         let leaves_done = names_already_in_lines.iter().cloned().fold(
             v1_rt::rc_empty_map::<String, bool>(),
@@ -8668,31 +8652,147 @@ pub fn qualified_type_reference_use_lines(
                 v1_rt::rc_map_insert(acc, nm.clone(), true)
             },
         );
-        crate::v1_compiler_emit_core_support::unique_strings(Rc::new({
+        Rc::new({
             let mut __result = Vec::new();
             for name in names.iter().cloned() {
-                __result.extend((*if !v1_rt::string_contains(&name, ".".to_string()) {
-            Rc::new(vec![])
-        } else {
-            {
-                let leaf = crate::v1_std_core::qualified_last_segment(name.clone());
-let segments = Rc::new(name.clone().split(&".".to_string()).map(|s| s.to_string()).collect::<Vec<_>>());
-let qualifier = Rc::new(segments.clone().iter().cloned().take(((segments.clone().len() as i64) - 1) as usize).collect::<Vec<_>>()).join(&".".to_string());
-if ((((qualifier.clone() == this_module_name.clone()) || crate::v1_compiler_infer_types::emit_map_has(already.clone(), leaf.clone())) || crate::v1_compiler_infer_types::emit_map_has(leaves_done.clone(), leaf.clone())) || crate::std_types::is_kernel_type(leaf.clone())) {
-                    Rc::new(vec![])
-                } else {
-                    if provider_proven_exports_symbol(leaf.clone(), qualifier.clone(), export_sets.clone(), typed_modules.clone(), source_indices.clone(), module_index.clone()) {
-                        Rc::new(vec![v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(rust_visibility_prefix(), "use crate::".to_string()), crate::v1_compiler_emit_core_support::module_to_filename(qualifier.clone())), "::".to_string()), emit_import_name(leaf.clone(), registry.clone())), ";".to_string())])
-                    } else {
+                __result.extend(
+                    (*if !v1_rt::string_contains(&name, ".".to_string()) {
                         Rc::new(vec![])
-                    }
-                }
-}
-        }).iter().cloned());
+                    } else {
+                        {
+                            let leaf = crate::v1_std_core::qualified_last_segment(name.clone());
+                            let segments = Rc::new(
+                                name.clone()
+                                    .split(&".".to_string())
+                                    .map(|s| s.to_string())
+                                    .collect::<Vec<_>>(),
+                            );
+                            let qualifier = Rc::new(
+                                segments
+                                    .clone()
+                                    .iter()
+                                    .cloned()
+                                    .take(((segments.clone().len() as i64) - 1) as usize)
+                                    .collect::<Vec<_>>(),
+                            )
+                            .join(&".".to_string());
+                            if ((((qualifier.clone() == this_module_name.clone())
+                                || crate::v1_compiler_infer_types::emit_map_has(
+                                    already.clone(),
+                                    leaf.clone(),
+                                ))
+                                || crate::v1_compiler_infer_types::emit_map_has(
+                                    leaves_done.clone(),
+                                    leaf.clone(),
+                                ))
+                                || crate::std_types::is_kernel_type(leaf.clone()))
+                            {
+                                Rc::new(vec![])
+                            } else {
+                                match v1_rt::map_get(&registry, leaf.clone()) {
+                                    None => Rc::new(vec![Rc::new(ReferenceDerivedCandidateRow {
+    module_name: this_module_name.clone(),
+    name: name.clone(),
+    disposition: Rc::new(ReferenceDerivedCandidateDisposition::CandidateRegistryAbsent),
+})]),
+                                    Some(info) => {
+                                        if !registry_row_is_type_declared_in(
+                                            info.clone(),
+                                            qualifier.clone(),
+                                        ) {
+                                            Rc::new(vec![])
+                                        } else {
+                                            if provider_proven_exports_symbol(
+                                                leaf.clone(),
+                                                qualifier.clone(),
+                                                export_sets.clone(),
+                                                typed_modules.clone(),
+                                                source_indices.clone(),
+                                                module_index.clone(),
+                                            ) {
+                                                Rc::new(vec![Rc::new(ReferenceDerivedCandidateRow {
+    module_name: this_module_name.clone(),
+    name: name.clone(),
+    disposition: Rc::new(ReferenceDerivedCandidateDisposition::CandidateSurvived {
+    provider_module: qualifier.clone(),
+}),
+})])
+                                            } else {
+                                                Rc::new(vec![Rc::new(ReferenceDerivedCandidateRow {
+    module_name: this_module_name.clone(),
+    name: name.clone(),
+    disposition: Rc::new(ReferenceDerivedCandidateDisposition::CandidateExportProofFailed {
+    provider_module: qualifier.clone(),
+}),
+})])
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    })
+                    .iter()
+                    .cloned(),
+                );
             }
             __result
-        }))
+        })
     }
+}
+
+pub fn registry_row_is_type_declared_in(info: Rc<ItemInfo>, module_name: String) -> bool {
+    if (info.module_name.clone() != module_name.clone()) {
+        false
+    } else {
+        match info.kind.clone() {
+            ItemKind::TypeItem => true,
+            _ => false,
+        }
+    }
+}
+
+pub fn qualified_type_reference_use_lines(
+    rows: Rc<Vec<Rc<ReferenceDerivedCandidateRow>>>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
+) -> Rc<Vec<String>> {
+    crate::v1_compiler_emit_core_support::unique_strings(Rc::new({
+        let mut __result = Vec::new();
+        for r in rows.iter().cloned() {
+            __result.extend(
+                (*match (*r.disposition.clone()).clone() {
+                    ReferenceDerivedCandidateDisposition::CandidateSurvived {
+                        provider_module: provider,
+                        ..
+                    } => Rc::new(vec![v1_rt::concat(
+                        v1_rt::concat(
+                            v1_rt::concat(
+                                v1_rt::concat(
+                                    v1_rt::concat(
+                                        rust_visibility_prefix(),
+                                        "use crate::".to_string(),
+                                    ),
+                                    crate::v1_compiler_emit_core_support::module_to_filename(
+                                        provider.clone(),
+                                    ),
+                                ),
+                                "::".to_string(),
+                            ),
+                            emit_import_name(
+                                crate::v1_std_core::qualified_last_segment(r.name.clone()),
+                                registry.clone(),
+                            ),
+                        ),
+                        ";".to_string(),
+                    )]),
+                    _ => Rc::new(vec![]),
+                })
+                .iter()
+                .cloned(),
+            );
+        }
+        __result
+    }))
 }
 
 pub fn reference_derived_use_lines(
@@ -14605,6 +14705,22 @@ pub fn render_rust_type_with_applied_binding(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     env: Rc<TypeEnv>,
 ) -> String {
+    render_rust_type_with_applied_binding_in_scope(
+        n.clone(),
+        Rc::new(vec![]),
+        shared_types.clone(),
+        source_indices.clone(),
+        env.clone(),
+    )
+}
+
+pub fn render_rust_type_with_applied_binding_in_scope(
+    n: Rc<Node>,
+    generic_param_names: Rc<Vec<String>>,
+    shared_types: Rc<BTreeSet<String>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    env: Rc<TypeEnv>,
+) -> String {
     {
         if is_host_text_carrier_type(n.clone(), source_indices.clone()) {
             return rust_carrier_optional_wrap(n.clone(), "String".to_string());
@@ -14637,7 +14753,7 @@ pub fn render_rust_type_with_applied_binding(
                             } else {
                                 render_rust_applied_type_shared(
                                     applied.clone(),
-                                    Rc::new(vec![]),
+                                    generic_param_names.clone(),
                                     shared_types.clone(),
                                     source_indices.clone(),
                                     v1_rt::rc_empty_map::<String, String>(),
@@ -14647,7 +14763,7 @@ pub fn render_rust_type_with_applied_binding(
                         } else {
                             render_rust_applied_type_shared(
                                 applied.clone(),
-                                Rc::new(vec![]),
+                                generic_param_names.clone(),
                                 shared_types.clone(),
                                 source_indices.clone(),
                                 v1_rt::rc_empty_map::<String, String>(),
@@ -14662,7 +14778,7 @@ pub fn render_rust_type_with_applied_binding(
                         source_indices.clone(),
                         crate::v1_compiler_infer_emit_info::emit_info_with_fn_type_context(
                             crate::v1_compiler_infer_emit_info::empty_emit_graph_info(),
-                            Rc::new(vec![]),
+                            generic_param_names.clone(),
                             env.clone(),
                         ),
                     )
@@ -14674,7 +14790,7 @@ pub fn render_rust_type_with_applied_binding(
                 source_indices.clone(),
                 crate::v1_compiler_infer_emit_info::emit_info_with_fn_type_context(
                     crate::v1_compiler_infer_emit_info::empty_emit_graph_info(),
-                    Rc::new(vec![]),
+                    generic_param_names.clone(),
                     env.clone(),
                 ),
             ),
