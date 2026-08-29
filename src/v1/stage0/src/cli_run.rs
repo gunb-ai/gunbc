@@ -36280,23 +36280,25 @@ pub fn assemble_prepared_subject_closure(
         None => full_index,
         Some(prefixes) => {
             let started = std::time::Instant::now();
-            let mut keep: HashSet<String> = HashSet::new();
-            let mut stack: Vec<String> = full_index
-                .keys()
-                .filter(|m| prefixes.iter().any(|p| m.starts_with(p.as_str())))
-                .cloned()
+            // THE CLOSURE IS THE LOADER'S BOTH-CLOSURE, NOT THE IMPORT HEADERS. A module in
+            // this corpus may carry no `import` line at all and still depend on another
+            // module through a strict-tier reference edge (the namespace cut's stripped
+            // modules); a header-only walk reached 1,885 modules and left 1,190 unresolved
+            // names behind, measured 2026-08-29. `collect_both_closure_module_names_for_entry`
+            // is the one authority for what an entry reaches -- imports, then the reference
+            // closure, to a fixpoint -- and it is reused here rather than re-derived.
+            let seed_paths: Vec<String> = full_index
+                .iter()
+                .filter(|(m, _)| prefixes.iter().any(|p| m.starts_with(p.as_str())))
+                .map(|(_, sf)| sf.path.replace('\\', "/"))
                 .collect();
-            let seeds = stack.len();
-            while let Some(m) = stack.pop() {
-                if !keep.insert(m.clone()) {
-                    continue;
-                }
-                if let Some(sf) = full_index.get(&m) {
-                    for imported in extract_import_paths(&sf.content) {
-                        if !keep.contains(&imported) && full_index.contains_key(&imported) {
-                            stack.push(imported);
-                        }
-                    }
+            let seeds = seed_paths.len();
+            let mut keep: HashSet<String> = HashSet::new();
+            if seeds > 0 {
+                let entry_index = build_multi_entry_index(source_roots);
+                for path in &seed_paths {
+                    collect_both_closure_module_names_for_entry(&entry_index, path, &mut keep)
+                        .map_err(|e| format!("REQUIRED-FLOOR REFUSAL cause=GateClosureUnresolvable entry={path} — {e}"))?;
                 }
             }
             if seeds == 0 {
