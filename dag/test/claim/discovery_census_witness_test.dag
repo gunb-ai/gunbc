@@ -26,9 +26,15 @@ import gunbc.discovery_census {
   RequiredAggregateDerivation, RequiredAggregateDerived, RequiredAggregateUnderivable,
   required_aggregate_from_census,
 }
+// THE TWO PREPARATION-STAGE DECLINES ARE IMPORTED AND ANSWERED `false` EVERYWHERE BELOW.
+// `required_floor_site_disposition` can never RETURN `DeclinedOutsideGateClosure` or
+// `DeclinedDiscoveryExcluded`: both are decided before a module reaches the prepared subject,
+// from facts a module NAME cannot carry. So their arms here are a claim about that
+// unreachability, not an omission padded out to satisfy exhaustiveness.
 import v2.workflow.required_floor {
   RequiredFloorDisposition,
   Planned, DeclinedLongModule, DeclinedFixtureMember, DeclinedOutsideRequiredGate, DeclinedCostDebt,
+  DeclinedOutsideGateClosure, DeclinedDiscoveryExcluded,
   required_floor_site_disposition,
 }
 import v2.workflow.floor_terminal_ledger { ClaimDisposition, Passed }
@@ -207,6 +213,8 @@ test fn w_fixture_home_declines_with_its_matched_prefix() -> Bool {
     DeclinedLongModule { matched_prefix: _ } => false
     DeclinedOutsideRequiredGate => false
     DeclinedCostDebt => false
+    DeclinedOutsideGateClosure => false
+    DeclinedDiscoveryExcluded { matched_substring: _ } => false
   }
 }
 
@@ -220,6 +228,8 @@ test fn w_long_home_module_declines_with_its_matched_prefix() -> Bool {
     DeclinedFixtureMember { matched_prefix: _ } => false
     DeclinedOutsideRequiredGate => false
     DeclinedCostDebt => false
+    DeclinedOutsideGateClosure => false
+    DeclinedDiscoveryExcluded { matched_substring: _ } => false
   }
 }
 
@@ -236,6 +246,8 @@ test fn w_long_home_is_a_prefix_not_a_substring() -> Bool {
     DeclinedFixtureMember { matched_prefix: _ } => false
     DeclinedOutsideRequiredGate => false
     DeclinedCostDebt => false
+    DeclinedOutsideGateClosure => false
+    DeclinedDiscoveryExcluded { matched_substring: _ } => false
   }
 }
 
@@ -249,6 +261,8 @@ test fn w_site_is_planned_when_no_home_matched() -> Bool {
     DeclinedFixtureMember { matched_prefix: _ } => false
     DeclinedOutsideRequiredGate => false
     DeclinedCostDebt => false
+    DeclinedOutsideGateClosure => false
+    DeclinedDiscoveryExcluded { matched_substring: _ } => false
   }
 }
 
@@ -265,6 +279,8 @@ test fn w_site_outside_the_required_gate_is_declined() -> Bool {
     DeclinedLongModule { matched_prefix: _ } => false
     DeclinedFixtureMember { matched_prefix: _ } => false
     DeclinedCostDebt => false
+    DeclinedOutsideGateClosure => false
+    DeclinedDiscoveryExcluded { matched_substring: _ } => false
   }
 }
 
@@ -283,10 +299,14 @@ test fn w_counts_partition_the_offered_population() -> Bool {
     && (counts.declined_fixture_member == 1)
     && (counts.declined_outside_required_gate == 0)
     && (counts.declined_cost_debt == 1)
+    && (counts.declined_outside_gate_closure == 0)
+    && (counts.declined_discovery_excluded == 0)
     && (counts.offered ==
         counts.planned + counts.declined_long_module
           + counts.declined_fixture_member
           + counts.declined_outside_required_gate
+          + counts.declined_outside_gate_closure
+          + counts.declined_discovery_excluded
           + counts.declined_cost_debt)
 }
 
@@ -316,6 +336,9 @@ test fn w_rostered_identity_declines_for_cost_debt() -> Bool {
     identity: "dag.test.claim.lifecycle_survivor_corpus_census.no_raw_lifecycle_string_survivors_remain"
   ) {
     DeclinedCostDebt => true
+    DeclinedOutsideRequiredGate => false
+    DeclinedOutsideGateClosure => false
+    DeclinedDiscoveryExcluded { matched_substring: _ } => false
     Planned => false
     DeclinedLongModule { matched_prefix: _ } => false
     DeclinedFixtureMember { matched_prefix: _ } => false
@@ -333,6 +356,8 @@ test fn w_unrostered_sibling_in_the_same_module_is_planned() -> Bool {
     Planned => true
     DeclinedOutsideRequiredGate => false
     DeclinedCostDebt => false
+    DeclinedOutsideGateClosure => false
+    DeclinedDiscoveryExcluded { matched_substring: _ } => false
     DeclinedLongModule { matched_prefix: _ } => false
     DeclinedFixtureMember { matched_prefix: _ } => false
   }
@@ -351,6 +376,8 @@ test fn w_home_decline_outranks_cost_debt() -> Bool {
     DeclinedLongModule { matched_prefix: p } => p == "test.claim.long."
     DeclinedOutsideRequiredGate => false
     DeclinedCostDebt => false
+    DeclinedOutsideGateClosure => false
+    DeclinedDiscoveryExcluded { matched_substring: _ } => false
     Planned => false
     DeclinedFixtureMember { matched_prefix: _ } => false
   }

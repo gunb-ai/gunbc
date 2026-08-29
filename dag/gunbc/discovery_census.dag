@@ -13,6 +13,7 @@ import gunbc.build_target {
 import v2.workflow.required_floor {
   RequiredFloorDisposition,
   Planned, DeclinedLongModule, DeclinedFixtureMember, DeclinedCostDebt,
+  DeclinedOutsideRequiredGate, DeclinedOutsideGateClosure, DeclinedDiscoveryExcluded,
   required_floor_site_disposition,
 }
 import v2.std.live_tree { LiveTreeDisposition }
@@ -256,6 +257,12 @@ fn census_partition_step(acc: CensusPartition, row: CensusRow) -> CensusPartitio
       CensusPartition { planned: acc.planned, declined: concat([row], acc.declined) }
     DeclinedCostDebt =>
       CensusPartition { planned: acc.planned, declined: concat([row], acc.declined) }
+    DeclinedOutsideRequiredGate =>
+      CensusPartition { planned: acc.planned, declined: concat([row], acc.declined) }
+    DeclinedOutsideGateClosure =>
+      CensusPartition { planned: acc.planned, declined: concat([row], acc.declined) }
+    DeclinedDiscoveryExcluded { matched_substring: _ } =>
+      CensusPartition { planned: acc.planned, declined: concat([row], acc.declined) }
   }
 }
 
@@ -315,12 +322,25 @@ fn required_aggregate_from_census(census: SiteCensus) -> RequiredAggregateDeriva
 // written out rather than counted as "planned and everything else": a new decline reason
 // silently joining the non-planned remainder would leave the census reporting a population it no
 // longer distinguishes.
+// THE "MUST FAIL TO COMPILE" CLAIM ABOVE WAS FALSE WHEN THIS ROW WAS WRITTEN, and the correction
+// is recorded here rather than silently applied. `DeclinedOutsideRequiredGate` was added to
+// `RequiredFloorDisposition` and NEITHER of this module's two wildcard-free matches acquired an
+// arm for it; nothing refused, so the census counted a population it no longer distinguished for
+// as long as that arm existed — exactly the outcome the paragraph promises is unwritable. The
+// three arms below close that gap and the missing one, but the claim is now stated at its honest
+// rung: match exhaustiveness over an imported coproduct is NOT enforced for this module on any
+// executing path, because its own witness sits outside the required gate's import closure. NEXT
+// TRIGGER: the required gate reaching this module (or any executing consumer typechecking it),
+// at which point the omission fails the build instead of being found by a reader.
 type CensusCounts {
   offered: Int
   planned: Int
   declined_long_module: Int
   declined_fixture_member: Int
   declined_cost_debt: Int
+  declined_outside_required_gate: Int
+  declined_outside_gate_closure: Int
+  declined_discovery_excluded: Int
 }
 
 fn census_counts_zero() -> CensusCounts {
@@ -329,7 +349,10 @@ fn census_counts_zero() -> CensusCounts {
     planned: 0,
     declined_long_module: 0,
     declined_fixture_member: 0,
-    declined_cost_debt: 0
+    declined_cost_debt: 0,
+    declined_outside_required_gate: 0,
+    declined_outside_gate_closure: 0,
+    declined_discovery_excluded: 0
   }
 }
 
@@ -341,7 +364,10 @@ fn census_counts_add(counts: CensusCounts, d: RequiredFloorDisposition) -> Censu
         planned: counts.planned + 1,
         declined_long_module: counts.declined_long_module,
         declined_fixture_member: counts.declined_fixture_member,
-        declined_cost_debt: counts.declined_cost_debt
+        declined_cost_debt: counts.declined_cost_debt,
+        declined_outside_required_gate: counts.declined_outside_required_gate,
+        declined_outside_gate_closure: counts.declined_outside_gate_closure,
+        declined_discovery_excluded: counts.declined_discovery_excluded
       }
     DeclinedLongModule { matched_prefix: _ } =>
       CensusCounts {
@@ -349,7 +375,10 @@ fn census_counts_add(counts: CensusCounts, d: RequiredFloorDisposition) -> Censu
         planned: counts.planned,
         declined_long_module: counts.declined_long_module + 1,
         declined_fixture_member: counts.declined_fixture_member,
-        declined_cost_debt: counts.declined_cost_debt
+        declined_cost_debt: counts.declined_cost_debt,
+        declined_outside_required_gate: counts.declined_outside_required_gate,
+        declined_outside_gate_closure: counts.declined_outside_gate_closure,
+        declined_discovery_excluded: counts.declined_discovery_excluded
       }
     DeclinedFixtureMember { matched_prefix: _ } =>
       CensusCounts {
@@ -357,7 +386,10 @@ fn census_counts_add(counts: CensusCounts, d: RequiredFloorDisposition) -> Censu
         planned: counts.planned,
         declined_long_module: counts.declined_long_module,
         declined_fixture_member: counts.declined_fixture_member + 1,
-        declined_cost_debt: counts.declined_cost_debt
+        declined_cost_debt: counts.declined_cost_debt,
+        declined_outside_required_gate: counts.declined_outside_required_gate,
+        declined_outside_gate_closure: counts.declined_outside_gate_closure,
+        declined_discovery_excluded: counts.declined_discovery_excluded
       }
     DeclinedCostDebt =>
       CensusCounts {
@@ -365,7 +397,43 @@ fn census_counts_add(counts: CensusCounts, d: RequiredFloorDisposition) -> Censu
         planned: counts.planned,
         declined_long_module: counts.declined_long_module,
         declined_fixture_member: counts.declined_fixture_member,
-        declined_cost_debt: counts.declined_cost_debt + 1
+        declined_cost_debt: counts.declined_cost_debt + 1,
+        declined_outside_required_gate: counts.declined_outside_required_gate,
+        declined_outside_gate_closure: counts.declined_outside_gate_closure,
+        declined_discovery_excluded: counts.declined_discovery_excluded
+      }
+    DeclinedOutsideRequiredGate =>
+      CensusCounts {
+        offered: counts.offered + 1,
+        planned: counts.planned,
+        declined_long_module: counts.declined_long_module,
+        declined_fixture_member: counts.declined_fixture_member,
+        declined_cost_debt: counts.declined_cost_debt,
+        declined_outside_required_gate: counts.declined_outside_required_gate + 1,
+        declined_outside_gate_closure: counts.declined_outside_gate_closure,
+        declined_discovery_excluded: counts.declined_discovery_excluded
+      }
+    DeclinedOutsideGateClosure =>
+      CensusCounts {
+        offered: counts.offered + 1,
+        planned: counts.planned,
+        declined_long_module: counts.declined_long_module,
+        declined_fixture_member: counts.declined_fixture_member,
+        declined_cost_debt: counts.declined_cost_debt,
+        declined_outside_required_gate: counts.declined_outside_required_gate,
+        declined_outside_gate_closure: counts.declined_outside_gate_closure + 1,
+        declined_discovery_excluded: counts.declined_discovery_excluded
+      }
+    DeclinedDiscoveryExcluded { matched_substring: _ } =>
+      CensusCounts {
+        offered: counts.offered + 1,
+        planned: counts.planned,
+        declined_long_module: counts.declined_long_module,
+        declined_fixture_member: counts.declined_fixture_member,
+        declined_cost_debt: counts.declined_cost_debt,
+        declined_outside_required_gate: counts.declined_outside_required_gate,
+        declined_outside_gate_closure: counts.declined_outside_gate_closure,
+        declined_discovery_excluded: counts.declined_discovery_excluded + 1
       }
   }
 }

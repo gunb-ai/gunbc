@@ -161,7 +161,7 @@ fn floor_discovery_scan_test_decl_names(content: String) -> List<String> {
 //                                          <- discover_floor_witness_roster, whose entire caller
 //                                          set is claim_batch and the discovery-corpus mode
 //   cli_run.rs scan_test_decl_lines        `test fn ` / `test data `
-//   cli_run.rs witness_file_from_source    `test fn ` / `test data ` -- and THIS is the required
+//   former cli_run.rs floor scanner        `test fn ` / `test data ` -- and THIS is the required
 //                                          floor's roster, via assemble_prepared_subject. It read
 //                                          `test fn ` ONLY until the repair recorded below; that
 //                                          divergence is what forked this one fact three ways
@@ -176,7 +176,7 @@ fn floor_discovery_scan_test_decl_names(content: String) -> List<String> {
 // home and only its consumer moved.
 //
 // WHAT LANDED NEXT (2026-08-29), AND IT RETIRES THE ROSTER ROW ABOVE: cli_run.rs
-// witness_file_from_source is DELETED. The required floor no longer scans at all -- it folds
+// The Rust floor scanner is DELETED. The required floor no longer scans at all -- it folds
 // v2.workflow.floor_discovery_producer discover_floor_rows_for_source over its prepared sources
 // and takes that fold's rows as its roster, so the barren check, the placement rule and the scan
 // reach the floor through ONE consumer of this module. The measured fork that forced it: the
@@ -188,7 +188,7 @@ fn floor_discovery_scan_test_decl_names(content: String) -> List<String> {
 // that does not exist yet.
 //
 // THAT SEPARATE REPAIR HAS LANDED, and the population it named is the population it closed.
-// witness_file_from_source recognised `test fn ` and not `test data `, so every `test data`
+// The old Rust scanner recognised `test fn ` and not `test data `, so every `test data`
 // claim was dropped from the required floor's roster -- including from files the floor
 // otherwise enrolled. Measured over both source roots at 3bbd53c05a and re-measured unchanged
 // when the repair landed: 40 decls in 15 files (34 in 13 files carrying no `test fn` at all, 6
