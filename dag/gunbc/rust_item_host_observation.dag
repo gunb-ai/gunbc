@@ -65,11 +65,41 @@ type RustSourceNamespaceRow {
   namespace_prefix: String
 }
 
+// THE HAND-RUST SOURCE PREFIXES LIVE HERE, BESIDE THE NAMESPACE TABLE THAT KEYS ON THEM. They were
+// authored in gunbc.stage0_rust_source_lifecycle_scaffold as discovery hints, and the namespace row
+// for the tooling tree needs the same prefix; importing it from the scaffold would close a real
+// cycle (scaffold -> seed_growth_admission -> this module), and restating the literal would be the
+// second representation DESIGN section 3 forbids. So the four constants moved to the layer that owns
+// "where hand Rust lives and what namespace it carries", and the scaffold imports them from here.
+data rust_source_prefix_test_harness: String = "src/v1/tests/"
+
+data rust_source_prefix_stage0_test: String = "src/v1/stage0/tests/"
+
+data rust_source_prefix_stage0_example: String = "src/v1/stage0/examples/"
+
+data rust_source_prefix_tooling: String = "dag/gunbc/instruments/"
+
+// THE TOOLING ROW IS A CONSEQUENCE OF WHAT THE DIRECTORY IS, NOT A PATH EXCEPTION. The tree the
+// scaffold classifies as rust_source_prefix_tooling holds the self-host shim crates: hand Rust that
+// stands in for primitive arms the emitted v2 closure does not yet realize, reaching v1_rt to do so,
+// and assembled by tools.self_host_curated_seed_linked_harness into ONE Cargo package whose name is
+// `v1_compiled` (cssl_v1_compiled_cargo_package_header). The namespace root is therefore the crate
+// name, by the same rule that gives src/v1/stage0/src/ the `v1_compiler` root -- the package the
+// path compiles into, spelled as Rust spells it. It is deliberately NOT `tools.`, the root the .dag
+// instruments beside these files declare: the citation gate (v1_compiler.declaration_index
+// citation_is_outside_index) treats a root some .dag module declares as inside the index and refuses
+// an absent module under it, so a Rust namespace sharing a .dag root would make every Rust item
+// citation under it refuse. `v1_compiler` and `v1_compiled` sit outside the .dag index for exactly
+// that reason. Until this row existed the four shim crates that reach v1_rt were consumers
+// gunbc.v1_consumer_census could see and the exact cut vocabulary could not spell; removing this
+// row returns them to that uncitable state, which test.claim.v1_consumer_census_witness_test
+// executes as the falsifier.
 data rust_source_namespace_rows: List<RustSourceNamespaceRow> = [
   RustSourceNamespaceRow { repo_prefix: "src/v1/stage0/src/bin/", namespace_prefix: "v1_compiler.bin." },
   RustSourceNamespaceRow { repo_prefix: "src/v1/stage0/src/", namespace_prefix: "v1_compiler." },
   RustSourceNamespaceRow { repo_prefix: "src/v1/stage0/tests/", namespace_prefix: "v1_compiler.tests." },
-  RustSourceNamespaceRow { repo_prefix: "src/v1/tests/src/", namespace_prefix: "v1_compiler_tests." }
+  RustSourceNamespaceRow { repo_prefix: "src/v1/tests/src/", namespace_prefix: "v1_compiler_tests." },
+  RustSourceNamespaceRow { repo_prefix: rust_source_prefix_tooling, namespace_prefix: "v1_compiled." }
 ]
 
 type RustModulePathProjection
@@ -93,8 +123,16 @@ fn strip_rs_suffix(s: String) -> String {
 // src/v1/stage0/src/bin/ is a subtree of src/v1/stage0/src/, so a first-match reader would give
 // every binary the library's namespace and the row order would silently be load-bearing.
 fn rust_namespace_row_for_path(repo_path: String) -> List<RustSourceNamespaceRow> {
+  rust_namespace_row_for_path_in(rows: rust_source_namespace_rows, repo_path: repo_path)
+}
+
+// THE TABLE IS A PARAMETER OF THE FOLD, AND THE LIVE TABLE IS ONE CALLER. A projection that read
+// only the declared rows could be exercised against exactly one table, so "what does this path
+// project to WITHOUT row R" -- the falsifier for any row -- would be unaskable without editing the
+// authority. The `_in` forms take the rows; the bare forms pass the live ones.
+fn rust_namespace_row_for_path_in(rows: List<RustSourceNamespaceRow>, repo_path: String) -> List<RustSourceNamespaceRow> {
   fold_list(
-    xs: rust_source_namespace_rows,
+    xs: rows,
     empty: [] as List<RustSourceNamespaceRow>,
     cons: fn(best, row) {
       if !starts_with(s: repo_path, prefix: row.repo_prefix) {
@@ -117,8 +155,12 @@ fn rust_namespace_row_for_path(repo_path: String) -> List<RustSourceNamespaceRow
 }
 
 fn rust_module_path_for_repo_path(repo_path: String) -> RustModulePathProjection {
+  rust_module_path_for_repo_path_in(rows: rust_source_namespace_rows, repo_path: repo_path)
+}
+
+fn rust_module_path_for_repo_path_in(rows: List<RustSourceNamespaceRow>, repo_path: String) -> RustModulePathProjection {
   fold_list(
-    xs: rust_namespace_row_for_path(repo_path: repo_path),
+    xs: rust_namespace_row_for_path_in(rows: rows, repo_path: repo_path),
     empty: RustModulePathRefused {
       repo_path: repo_path,
       detail: "no rust_source_namespace_rows prefix claims this path, so no module path can be derived for it"
@@ -152,6 +194,10 @@ type ItemDeclarationRefProjection
   | ItemDeclarationRefRefused { item_key: String, detail: String }
 
 fn item_declaration_ref(item: RustItemIdentity) -> ItemDeclarationRefProjection {
+  item_declaration_ref_in(rows: rust_source_namespace_rows, item: item)
+}
+
+fn item_declaration_ref_in(rows: List<RustSourceNamespaceRow>, item: RustItemIdentity) -> ItemDeclarationRefProjection {
   let key = rust_item_identity_key(item: item)
   if item.kind == RustImplMethod || item.kind == RustImplBlock {
     ItemDeclarationRefUncitable {
@@ -159,7 +205,7 @@ fn item_declaration_ref(item: RustItemIdentity) -> ItemDeclarationRefProjection 
       detail: "std.decl_ref DeclField cannot name a method on an impl block, nor an unnamed impl block itself"
     }
   } else {
-    match rust_module_path_for_repo_path(repo_path: item.repo_path as String) {
+    match rust_module_path_for_repo_path_in(rows: rows, repo_path: item.repo_path as String) {
       RustModulePathRefused { repo_path: _, detail: detail } =>
         ItemDeclarationRefRefused { item_key: key, detail: detail }
       RustModulePathProjected { module_path: module_path } =>

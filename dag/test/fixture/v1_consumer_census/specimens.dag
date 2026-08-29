@@ -31,9 +31,16 @@ data fixture_producer: DiscoveryProducer = discovery_producer(
   source_revision: "fixture",
 )
 
-data consumer_one: DeclarationRef = decl_ref(module_path: "test.fixture.consumer", decl_name: "one")
-data consumer_two: DeclarationRef = decl_ref(module_path: "test.fixture.consumer", decl_name: "two")
-data old_authority: DeclarationRef = decl_ref(module_path: "test.fixture.old_root", decl_name: "authority")
+// EVERY CITATION HERE NAMES A DECLARATION THAT EXISTS, and it is this module's own. The required
+// floor's declarations phase resolves every decl_ref in the corpus (CITED-MODULE-ABSENT is a floor
+// refusal, executed on the first push of this file against invented fixture modules), so a fixture
+// may plant an identity that is absent from a ROSTER but never one that is absent from the TREE.
+// The specimens are therefore self-citations: real declarations, controlled membership.
+data fixture_module: String = "test.fixture.v1_consumer_census.specimens"
+data consumer_one: DeclarationRef = decl_ref(module_path: fixture_module, decl_name: "consumer_one")
+data consumer_two: DeclarationRef = decl_ref(module_path: fixture_module, decl_name: "consumer_two")
+data consumer_three_undisposed: DeclarationRef = decl_ref(module_path: fixture_module, decl_name: "consumer_three_undisposed")
+data old_authority: DeclarationRef = decl_ref(module_path: fixture_module, decl_name: "old_authority")
 
 data fixture_native_successor: String = "test.fixture.native successor_target"
 data fixture_unrealized_successor: String = "test.fixture.native successor_that_was_never_built"
@@ -54,8 +61,8 @@ data clean_rows: List<V1ConsumerRow> = [
 ]
 
 data clean_discovered: List<String> = [
-  "test.fixture.consumer.one -> test.fixture.old_root.authority",
-  "test.fixture.consumer.two -> test.fixture.old_root.authority",
+  "test.fixture.v1_consumer_census.specimens.consumer_one -> test.fixture.v1_consumer_census.specimens.old_authority",
+  "test.fixture.v1_consumer_census.specimens.consumer_two -> test.fixture.v1_consumer_census.specimens.old_authority",
 ]
 
 data clean_realized: List<String> = [ fixture_native_successor ]
@@ -69,14 +76,14 @@ data clean_population: ConsumerPopulation = PopulationMeasuredComplete {
 // gains a third relation. This is the shape of the real failure: nobody edits the census, the tree
 // grows a consumer, and the census cannot notice.
 data planted_undisposed_discovered: List<String> = [
-  "test.fixture.consumer.one -> test.fixture.old_root.authority",
-  "test.fixture.consumer.two -> test.fixture.old_root.authority",
-  "test.fixture.consumer.three -> test.fixture.old_root.authority",
+  "test.fixture.v1_consumer_census.specimens.consumer_one -> test.fixture.v1_consumer_census.specimens.old_authority",
+  "test.fixture.v1_consumer_census.specimens.consumer_two -> test.fixture.v1_consumer_census.specimens.old_authority",
+  "test.fixture.v1_consumer_census.specimens.consumer_three_undisposed -> test.fixture.v1_consumer_census.specimens.old_authority",
 ]
 
 // PLANT TWO -- a row naming a relation the discovery population does not contain.
 data planted_stale_discovered: List<String> = [
-  "test.fixture.consumer.one -> test.fixture.old_root.authority",
+  "test.fixture.v1_consumer_census.specimens.consumer_one -> test.fixture.v1_consumer_census.specimens.old_authority",
 ]
 
 // PLANT THREE -- a successor claimed and never built. The row is well-formed; the only thing wrong

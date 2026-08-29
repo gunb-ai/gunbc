@@ -2,11 +2,13 @@ module test.claim.v1_consumer_census_witness_test
 
 import std.types { Bool }
 import gunbc.replacement_cut { BoundaryCensus, ConsumersEnumerated, BoundaryDeclaredEmpty }
+import gunbc.rust_item_host_observation { RustSourceNamespaceRow, rust_source_namespace_rows, rust_source_prefix_tooling }
 import gunbc.v1_consumer_census {
   v1_consumers, v1_uncitable_consumers, v1_consumer_population,
   v1_every_discovered_consumer_disposed, v1_every_row_names_a_live_consumer, v1_every_claimed_successor_is_realized,
   v1_bankruptcy_transaction_admitted, v1_blocking_consumer_count, v1_consumer_member_count,
-  v1_boundary_census, consumer_population_is_complete, consumer_population_rows, consumer_population_uncitable
+  v1_boundary_census, consumer_population_is_complete, consumer_population_rows, consumer_population_uncitable,
+  v1_shim_partition, v1_shim_items, v1_consumer_population_for
 }
 import test.fixture.v1_consumer_census.specimens {
   clean_rows, clean_discovered, clean_realized, clean_population,
@@ -81,23 +83,49 @@ fn boundary_census_enumerates_the_rows() -> Bool {
   }
 }
 
+// THE TOOLING NAMESPACE ROW IS LOAD-BEARING, AND ITS ABSENCE IS EXECUTED, NOT DESCRIBED. Under the
+// live table every shim projects to a BoundaryConsumer row under the v1_compiled. namespace and nothing is
+// uncitable; under the live table with exactly the tooling row removed, every shim returns to the
+// uncitable list and none is cited. The two halves together are the falsifier the ruling asked for:
+// the row is what makes the four spellable, and the census does not spell them any other way.
+fn live_rows_without_tooling() -> List<RustSourceNamespaceRow> {
+  rust_source_namespace_rows |> filter(r => r.repo_prefix != rust_source_prefix_tooling)
+}
+
+fn the_tooling_row_decides_shim_citability() -> Bool {
+  let with = v1_shim_partition(rows: rust_source_namespace_rows)
+  let without = v1_shim_partition(rows: live_rows_without_tooling())
+  count(with.cited) == count(v1_shim_items()) && count(with.uncitable) == 0
+    && count(without.uncitable) == count(v1_shim_items()) && count(without.cited) == 0
+    && count(live_rows_without_tooling()) == count(rust_source_namespace_rows) - 1
+    && (with.cited |> all(r => starts_with(s: r.boundary.consumer.module_path as String, prefix: "v1_compiled.")))
+}
+
+// THE POPULATION IS DERIVED FROM THE SAME PARTITION: with the row, the uncitable column is empty;
+// without it, four. Both arms stay LowerBound -- the row was necessary for Complete, not sufficient.
+fn the_population_carries_the_partition() -> Bool {
+  count(consumer_population_uncitable(p: v1_consumer_population_for(rows: rust_source_namespace_rows))) == 0
+    && count(consumer_population_uncitable(p: v1_consumer_population_for(rows: live_rows_without_tooling()))) == count(v1_shim_items())
+    && !consumer_population_is_complete(p: v1_consumer_population_for(rows: rust_source_namespace_rows))
+    && !consumer_population_is_complete(p: v1_consumer_population_for(rows: live_rows_without_tooling()))
+}
+
 // THE LIVE TREE REFUSES, AND FOR THE REASONS THE CENSUS RECORDS. Stated as a conjunction because
 // 'the gate is false' is also what a broken gate returns: the population is a lower bound AND there
-// is at least one blocking consumer AND not every consumer blocks AND the uncitable list is
-// non-empty -- four independent facts whose conjunction is what 'XL-5 has not run yet' means.
+// is at least one blocking consumer AND not every consumer blocks -- three independent facts whose
+// conjunction is what 'XL-5 has not run yet' means.
 fn the_live_transaction_refuses_for_recorded_reasons() -> Bool {
-  !consumer_population_is_complete(p: v1_consumer_population)
+  !consumer_population_is_complete(p: v1_consumer_population())
     && v1_blocking_consumer_count() > 0
     && v1_blocking_consumer_count() < v1_consumer_member_count()
-    && count(consumer_population_uncitable(p: v1_consumer_population)) > 0
 }
 
 // THE ROSTER AND THE POPULATION NAME ONE LIST. Two declarations naming one list can disagree in
 // exactly one way -- an author filing a row and forgetting the population -- which would leave a
 // consumer recorded and unread by the gate.
 fn the_live_population_carries_the_whole_roster() -> Bool {
-  count(v1_consumers) == count(consumer_population_rows(p: v1_consumer_population))
-    && count(v1_uncitable_consumers) == count(consumer_population_uncitable(p: v1_consumer_population))
+  count(v1_consumers()) == count(consumer_population_rows(p: v1_consumer_population()))
+    && count(v1_uncitable_consumers()) == count(consumer_population_uncitable(p: v1_consumer_population()))
 }
 
 test fn consumer_census_catches_an_undisposed_consumer() -> Bool { undisposed_consumer_is_caught() }
@@ -107,5 +135,7 @@ test fn consumer_census_admission_reads_completeness() -> Bool { admission_reads
 test fn consumer_census_admission_refuses_a_blocking_consumer() -> Bool { admission_refuses_a_blocking_consumer() }
 test fn consumer_census_admission_refuses_an_unrealized_successor() -> Bool { admission_refuses_an_unrealized_successor() }
 test fn consumer_census_boundary_census_enumerates_the_rows() -> Bool { boundary_census_enumerates_the_rows() }
+test fn consumer_census_tooling_row_decides_shim_citability() -> Bool { the_tooling_row_decides_shim_citability() }
+test fn consumer_census_population_carries_the_partition() -> Bool { the_population_carries_the_partition() }
 test fn consumer_census_live_transaction_refuses_for_recorded_reasons() -> Bool { the_live_transaction_refuses_for_recorded_reasons() }
 test fn consumer_census_live_population_carries_the_whole_roster() -> Bool { the_live_population_carries_the_whole_roster() }

@@ -1,7 +1,7 @@
 module gunbc.v1_witness_census
 
 import std.types { List, String, NonEmptyStr, Bool, Int }
-import std.decl_ref { DeclarationRef, decl_ref }
+import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_eq }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import gunbc.replacement_cut { EvidenceDisposition, ReenrollAgainstY, ReplaceEvidence, RetireEvidence }
 import v2.workflow.required_floor {
@@ -122,8 +122,17 @@ data v1_claim_live_population: ClaimPopulation = ClaimRosterUnmeasured {
   what_would_settle_it: "XL-1's joined claim population (full-tree floor claim identities x claim_scope_for x RequiredFloorDisposition) at a named run and revision, landed here as ClaimRosterComplete with that run named as roster_producer, and one disposition per row authored by XL-5",
 }
 
-fn v1_claim_row_keys(rows: List<V1ClaimCutoverRow>) -> List<String> {
-  rows |> map(r => v1_claim_identity_key(r: r.pre_cutover_identity))
+// THE JOIN IS ON DeclarationRef, NEVER ON A RENDERED SPELLING. XL-1's producer keys its rows on
+// identity_ref: DeclarationRef and derives the dotted string from it; a roster of module::decl
+// strings here would be a second spelling of one identity on the join key, the hollow-alias class.
+// v1_claim_identity_key survives only as a display projection for the evidence rows the exact cut
+// carries as NonEmptyStr, and as the occurrence key for the distinctness folds.
+fn v1_claim_ref_in(needle: DeclarationRef, xs: List<DeclarationRef>) -> Bool {
+  xs |> any(x => declaration_ref_eq(a: x, b: needle))
+}
+
+fn v1_claim_row_refs(rows: List<V1ClaimCutoverRow>) -> List<DeclarationRef> {
+  rows |> map(r => r.pre_cutover_identity)
 }
 
 fn v1_claim_key_in(needle: String, xs: List<String>) -> Bool {
@@ -135,22 +144,22 @@ fn v1_claim_key_in(needle: String, xs: List<String>) -> Bool {
 // Direction one: every identity the pre-cutover roster contains has exactly one row. This is the
 // one that catches a lost subject -- a claim that simply stops being executed by the native fold
 // leaves no artifact, produces no red, and shortens no number a reader is looking at.
-fn v1_claims_unaccounted(roster: List<String>, rows: List<V1ClaimCutoverRow>) -> List<String> {
-  roster |> filter(id => !v1_claim_key_in(needle: id, xs: v1_claim_row_keys(rows: rows)))
+fn v1_claims_unaccounted(roster: List<DeclarationRef>, rows: List<V1ClaimCutoverRow>) -> List<DeclarationRef> {
+  roster |> filter(id => !v1_claim_ref_in(needle: id, xs: v1_claim_row_refs(rows: rows)))
 }
 
-fn v1_every_claim_accounted(roster: List<String>, rows: List<V1ClaimCutoverRow>) -> Bool {
+fn v1_every_claim_accounted(roster: List<DeclarationRef>, rows: List<V1ClaimCutoverRow>) -> Bool {
   count(v1_claims_unaccounted(roster: roster, rows: rows)) == 0
 }
 
 // Direction two: every row names an identity the roster contains. A row for a claim that does not
 // exist pre-cutover is a fabricated subject, and it inflates the accounting in the one place a
 // reader checks -- the same row count, with a real subject swapped for an invented one.
-fn v1_claim_rows_outside_roster(roster: List<String>, rows: List<V1ClaimCutoverRow>) -> List<V1ClaimCutoverRow> {
-  rows |> filter(r => !v1_claim_key_in(needle: v1_claim_identity_key(r: r.pre_cutover_identity), xs: roster))
+fn v1_claim_rows_outside_roster(roster: List<DeclarationRef>, rows: List<V1ClaimCutoverRow>) -> List<V1ClaimCutoverRow> {
+  rows |> filter(r => !v1_claim_ref_in(needle: r.pre_cutover_identity, xs: roster))
 }
 
-fn v1_every_claim_row_is_in_roster(roster: List<String>, rows: List<V1ClaimCutoverRow>) -> Bool {
+fn v1_every_claim_row_is_in_roster(roster: List<DeclarationRef>, rows: List<V1ClaimCutoverRow>) -> Bool {
   count(v1_claim_rows_outside_roster(roster: roster, rows: rows)) == 0
 }
 
@@ -204,7 +213,7 @@ fn v1_no_fixture_member_carries_a_disposition(rows: List<V1ClaimCutoverRow>) -> 
 // THE GATE. Conservation is all five directions over a COMPLETE roster; any of them dropped is a
 // different and weaker claim, and the completeness arm is first for the same reason it is first in
 // the consumer census -- a join over an unmeasured roster is vacuously total.
-fn v1_claim_conservation_holds(population: ClaimPopulation, roster: List<String>) -> Bool {
+fn v1_claim_conservation_holds(population: ClaimPopulation, roster: List<DeclarationRef>) -> Bool {
   let rows = claim_population_rows(p: population)
   claim_population_is_complete(p: population)
     && v1_every_claim_accounted(roster: roster, rows: rows)

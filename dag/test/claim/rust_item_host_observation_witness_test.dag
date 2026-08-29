@@ -122,6 +122,21 @@ test fn a_path_no_namespace_row_claims_refuses_rather_than_acquiring_one() -> Bo
   }
 }
 
+// THE TOOLING TREE CARRIES THE NAME OF THE PACKAGE IT ASSEMBLES INTO. dag/gunbc/instruments/ is the
+// scaffold's rust_source_prefix_tooling; its shim crates are assembled into the `v1_compiled`
+// package, so a shim crate root projects to v1_compiled.<crate>.lib -- a root no .dag module
+// declares, like v1_compiler -- and a path one directory up is still unclaimed.
+test fn the_tooling_tree_projects_to_the_assembled_package_namespace() -> Bool {
+  match rust_module_path_for_repo_path(repo_path: "dag/gunbc/instruments/self_host_03_normalize_shims/lib.rs") {
+    RustModulePathProjected { module_path: path } => path == "v1_compiled.self_host_03_normalize_shims.lib"
+    RustModulePathRefused { repo_path: _, detail: _ } => false
+  }
+  && match rust_module_path_for_repo_path(repo_path: "dag/gunbc/not_instruments/lib.rs") {
+    RustModulePathRefused { repo_path: _, detail: _ } => true
+    RustModulePathProjected { module_path: _ } => false
+  }
+}
+
 test fn a_nested_source_path_keeps_its_directory_as_a_namespace_segment() -> Bool {
   match rust_module_path_for_repo_path(repo_path: "src/v1/stage0/src/cli_run/bare_reference_scanner.rs") {
     RustModulePathProjected { module_path: path } => path == "v1_compiler.cli_run.bare_reference_scanner"

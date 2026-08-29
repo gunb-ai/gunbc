@@ -19,14 +19,21 @@ import gunbc.v1_witness_census {
 // one native identity, a self-referential red control, and a support module folded in as a claim.
 // Only the first is caught by asking 'does every claim have a disposition'. The rest answer yes.
 
-data claim_a: DeclarationRef = decl_ref(module_path: "test.fixture.claim", decl_name: "alpha")
-data claim_b: DeclarationRef = decl_ref(module_path: "test.fixture.claim", decl_name: "beta")
-data claim_c: DeclarationRef = decl_ref(module_path: "test.fixture.claim", decl_name: "gamma")
+// EVERY CITATION HERE NAMES A DECLARATION THAT EXISTS, and it is this module's own. The required
+// floor resolves every decl_ref in the corpus (CITED-MODULE-ABSENT refused the first push of this
+// file, which cited invented fixture modules), so a plant may be absent from a ROSTER but never from
+// the TREE. Roles are carried by the declaration names; membership is what each roster controls.
+data fixture_module: String = "test.fixture.v1_witness_census.specimens"
+data claim_a: DeclarationRef = decl_ref(module_path: fixture_module, decl_name: "claim_a")
+data claim_b: DeclarationRef = decl_ref(module_path: fixture_module, decl_name: "claim_b")
+data claim_c: DeclarationRef = decl_ref(module_path: fixture_module, decl_name: "claim_c")
+data claim_delta_unaccounted: DeclarationRef = decl_ref(module_path: fixture_module, decl_name: "claim_delta_unaccounted")
+data claim_never_in_roster: DeclarationRef = decl_ref(module_path: fixture_module, decl_name: "claim_never_in_roster")
 
-data native_a: DeclarationRef = decl_ref(module_path: "test.fixture.native", decl_name: "alpha_native")
-data native_b: DeclarationRef = decl_ref(module_path: "test.fixture.native", decl_name: "beta_native")
-data control_b: DeclarationRef = decl_ref(module_path: "test.fixture.native", decl_name: "beta_red_control")
-data deleted_subject: DeclarationRef = decl_ref(module_path: "test.fixture.subject", decl_name: "gamma_subject")
+data native_a: DeclarationRef = decl_ref(module_path: fixture_module, decl_name: "native_a")
+data native_b: DeclarationRef = decl_ref(module_path: fixture_module, decl_name: "native_b")
+data control_b: DeclarationRef = decl_ref(module_path: fixture_module, decl_name: "control_b")
+data deleted_subject: DeclarationRef = decl_ref(module_path: fixture_module, decl_name: "deleted_subject")
 
 fn v1wc_fixture_row(identity: DeclarationRef, standing: RequiredFloorDisposition, disposition: ClaimCutoverDisposition) -> V1ClaimCutoverRow {
   { pre_cutover_identity: identity, floor_standing: standing, disposition: disposition }
@@ -49,32 +56,20 @@ data clean_rows: List<V1ClaimCutoverRow> = [
   }),
 ]
 
-data clean_roster: List<String> = [
-  "test.fixture.claim::alpha",
-  "test.fixture.claim::beta",
-  "test.fixture.claim::gamma",
-]
+data clean_roster: List<DeclarationRef> = [ claim_a, claim_b, claim_c ]
 
 data clean_population: ClaimPopulation = ClaimRosterComplete { rows: clean_rows, roster_producer: "controlled fixture; no floor run" }
 
 // PLANT ONE -- a roster identity with no row. The lost subject in its purest form.
-data planted_unaccounted_roster: List<String> = [
-  "test.fixture.claim::alpha",
-  "test.fixture.claim::beta",
-  "test.fixture.claim::gamma",
-  "test.fixture.claim::delta",
-]
+data planted_unaccounted_roster: List<DeclarationRef> = [ claim_a, claim_b, claim_c, claim_delta_unaccounted ]
 
 // PLANT TWO -- a row for a claim the roster does not contain. Row count unchanged, subject invented.
 data planted_fabricated_rows: List<V1ClaimCutoverRow> = [
   v1wc_fixture_row(identity: claim_a, standing: Planned, disposition: StillRequired { surviving_subject: claim_a, native_identity: native_a }),
-  v1wc_fixture_row(identity: decl_ref(module_path: "test.fixture.claim", decl_name: "never_existed"), standing: Planned, disposition: StillRequired { surviving_subject: claim_b, native_identity: native_b }),
+  v1wc_fixture_row(identity: claim_never_in_roster, standing: Planned, disposition: StillRequired { surviving_subject: claim_b, native_identity: native_b }),
 ]
 
-data planted_fabricated_roster: List<String> = [
-  "test.fixture.claim::alpha",
-  "test.fixture.claim::never_existed_not_in_roster",
-]
+data planted_fabricated_roster: List<DeclarationRef> = [ claim_a, claim_delta_unaccounted ]
 
 data planted_fabricated_population: ClaimPopulation = ClaimRosterComplete { rows: planted_fabricated_rows, roster_producer: "controlled fixture" }
 
@@ -85,7 +80,7 @@ data planted_merged_rows: List<V1ClaimCutoverRow> = [
   v1wc_fixture_row(identity: claim_b, standing: Planned, disposition: StillRequired { surviving_subject: claim_b, native_identity: native_a }),
 ]
 
-data planted_merged_roster: List<String> = [ "test.fixture.claim::alpha", "test.fixture.claim::beta" ]
+data planted_merged_roster: List<DeclarationRef> = [ claim_a, claim_b ]
 
 data planted_merged_population: ClaimPopulation = ClaimRosterComplete { rows: planted_merged_rows, roster_producer: "controlled fixture" }
 
@@ -99,7 +94,7 @@ data planted_self_control_rows: List<V1ClaimCutoverRow> = [
   }),
 ]
 
-data planted_self_control_roster: List<String> = [ "test.fixture.claim::beta" ]
+data planted_self_control_roster: List<DeclarationRef> = [ claim_b ]
 
 data planted_self_control_population: ClaimPopulation = ClaimRosterComplete { rows: planted_self_control_rows, roster_producer: "controlled fixture" }
 
@@ -114,7 +109,7 @@ data planted_fixture_member_rows: List<V1ClaimCutoverRow> = [
   }),
 ]
 
-data planted_fixture_member_roster: List<String> = [ "test.fixture.claim::alpha", "test.fixture.claim::gamma" ]
+data planted_fixture_member_roster: List<DeclarationRef> = [ claim_a, claim_c ]
 
 data planted_fixture_member_population: ClaimPopulation = ClaimRosterComplete { rows: planted_fixture_member_rows, roster_producer: "controlled fixture" }
 

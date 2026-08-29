@@ -1,12 +1,18 @@
 module gunbc.v1_consumer_census
 
-import std.types { List, String, NonEmptyStr, Bool, Int }
+import std.types { List, String, NonEmptyStr, FilePath, Bool, Int }
 import std.decl_ref { DeclarationRef, decl_ref }
+import v2.std.algebra { fold_list, list_append, list_snoc_item }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import gunbc.replacement_cut {
   BoundaryConsumer, BoundaryCensus, ConsumersEnumerated,
   ConsumerDisposition, RetainSameContract, RetainChangedContract, ReplacedByY, EvidenceOnly, Retire, Undecided,
   CoverageClaim, Covered, CoverageOpen
+}
+import gunbc.rust_item_identity { RustItemIdentity, RustModule }
+import gunbc.rust_item_host_observation {
+  RustSourceNamespaceRow, rust_source_namespace_rows, item_declaration_ref_in,
+  ItemDeclarationRefProjection, ItemDeclarationRefProjected, ItemDeclarationRefUncitable, ItemDeclarationRefRefused
 }
 
 // XL-5's FIRST DELIVERABLE: the population that has to be EMPTY before the bankruptcy transaction
@@ -155,7 +161,7 @@ fn coverage_authorities(c: CoverageClaim) -> List<String> {
   }
 }
 
-data v1_consumer_census_uncitable_note: String = "A CONSUMER THE EXACT VOCABULARY CANNOT SPELL IS CARRIED AS A REFUSAL, NEVER AS A FABRICATED REFERENCE. gunbc.rust_item_host_observation item_declaration_ref projects a Rust item into DeclarationRef through rust_source_namespace_rows, and those rows claim prefixes under src/v1 only. The four self-host shim crates under dag/gunbc/instruments/ are hand-authored Rust OUTSIDE every claimed prefix, so the projection returns ItemDeclarationRefRefused for each of them -- and a BoundaryConsumer needs a DeclarationRef on both sides. The two dishonest moves are to invent a module path the projection did not produce, or to drop the four from the census because the carrier has no slot for them; both make the population look smaller than it is. So they are carried here in the projection's own refusal shape, with their disposition, and they COUNT toward the blocking column and toward the lower-bound standing below. The capability that dissolves this list is a rust_source_namespace_rows row for the instruments directory, at which point these four become ordinary BoundaryConsumer rows and this list is empty by construction rather than by edit."
+data v1_consumer_census_uncitable_note: String = "A CONSUMER THE EXACT VOCABULARY CANNOT SPELL IS CARRIED AS A REFUSAL, NEVER AS A FABRICATED REFERENCE. gunbc.rust_item_host_observation item_declaration_ref projects a Rust item into DeclarationRef through rust_source_namespace_rows, and a BoundaryConsumer needs a DeclarationRef on both sides. The four self-host shim crates under dag/gunbc/instruments/ are hand-authored Rust that reaches v1_rt; until this lane added the tooling namespace row the projection REFUSED them, and the two dishonest moves were to invent a module path the projection did not produce, or to drop the four because the carrier had no slot for them. So citability is DERIVED, never authored: v1_shim_partition runs the projection over the four items against a supplied namespace table, and a shim lands as a BoundaryConsumer row when the projection answers and in this refusal shape when it does not. Under the live table all four are cited and this list is empty by construction; under the live table with the tooling row removed all four return here -- which is the falsifier the paired witness executes, and the reason the table is a parameter."
 
 type V1UncitableConsumer {
   item_key: String
@@ -291,7 +297,7 @@ fn tsv_row(path_decl: String) -> V1ConsumerRow {
 
 data v1_consumer_roster_note: String = "THE ROSTER. Every relation was established by running its cited producer against the revision above and reading the emitting declaration, and each row's identity is the relation a deletion would break, not the file the evidence was read in. Rows are not ordered by severity: the floor-cut plan's bounds say the dangerous member is the one nobody thought to look for, and ordering by an author's judgement is what lets a reader stop early.\n\nTHE RETAINED-OPEN ROWS ARE THE TRANSACTION. Everything else is discharged by deleting a subject or by a successor that already exists; the rows carrying CoverageOpen are the entire content of 'XL-5 cannot run yet', and each justification names the CAPABILITY that closes it -- never an artifact that would contribute to one, which DESIGN section 4b(3) rules is satisfied while the capability stays dead. That is the honest shape of a bankruptcy: the estate is mostly worthless, and the whole question is the creditors who are still owed.\n\nTHE TSV ROWS ARE FOUR RELATIONS, NOT ONE, because the authority's key is consumer x consumed authority and one upload step consumes four path declarations. Collapsing them would let one disposition stand for four dependencies, which is the exact conflation the key exists to refuse."
 
-data v1_consumers: List<V1ConsumerRow> = [
+data v1_static_consumers: List<V1ConsumerRow> = [
   {
     boundary: v1cc_boundary(
       consumer: wfw(decl: "build_lane_run_step"),
@@ -428,33 +434,108 @@ data v1_consumers: List<V1ConsumerRow> = [
   tsv_row(path_decl: "required_floor_claim_cost_path"),
 ]
 
-fn shim_consumer(path: String) -> V1UncitableConsumer {
+fn v1_shim_disposition() -> ConsumerDisposition {
+  retained_open(justification: "a hand-authored shim standing in for primitive arms the emitted v2 closure does not yet realize; the only Rust outside src/v1 that reaches the v1 runtime bridge. These shims are themselves v1 CONSUMERS slated for a disposition, not infrastructure that survives the cut. Closes on: the emitted v2 closure realizing those arms so the shim has nothing to bridge -- XL-0's arms-to-zero milestone AS EXECUTED, meaning the emitted crate compiles without a v1_rt path rather than merely cargo-checking with one")
+}
+
+data v1_rt_bridge_authority: DeclarationRef = decl_ref(module_path: "v1_compiler.v1_rt", decl_name: "v1_rt")
+
+// THE FOUR SHIM ITEMS, at the grain gunbc.rust_item_identity carries: the crate root of each shim
+// crate, a RustModule item named for the file. loc is the measured line count at v1_census_revision
+// (wc -l) and is metadata; identity is the path and kind.
+fn v1_shim_item(path: String, loc: Int) -> RustItemIdentity {
+  RustItemIdentity {
+    repo_path: path as FilePath,
+    kind: RustModule,
+    name: "lib" as NonEmptyStr,
+    impl_subject: "",
+    enclosing_module: "",
+    start_line: 1,
+    loc: loc,
+  }
+}
+
+fn v1_shim_items() -> List<RustItemIdentity> {
+  [
+    v1_shim_item(path: "dag/gunbc/instruments/self_host_03_normalize_shims/lib.rs", loc: 23),
+    v1_shim_item(path: "dag/gunbc/instruments/self_host_body_producer_shims/lib.rs", loc: 10),
+    v1_shim_item(path: "dag/gunbc/instruments/self_host_parse_engine_hooks_shims/lib.rs", loc: 8),
+    v1_shim_item(path: "dag/gunbc/instruments/self_host_use_site_verdict_shims/lib.rs", loc: 10),
+  ]
+}
+
+type V1ShimPartition {
+  cited: List<V1ConsumerRow>
+  uncitable: List<V1UncitableConsumer>
+}
+
+fn v1_shim_cited_row(ref: DeclarationRef) -> V1ConsumerRow {
   {
-    item_key: path,
-    refusal_detail: "no rust_source_namespace_rows prefix claims this path, so no module path can be derived for it",
+    boundary: v1cc_boundary(consumer: ref, authority: v1_rt_bridge_authority, disposition: v1_shim_disposition()),
     medium: RustUseEdge,
     subject: V1RuntimeBridge,
-    disposition: retained_open(justification: "a hand-authored shim standing in for primitive arms the emitted v2 closure does not yet realize; the only Rust outside src/v1 that reaches the v1 runtime bridge. Closes on: the emitted v2 closure realizing those arms so the shim has nothing to bridge -- XL-0's arms-to-zero milestone AS EXECUTED, meaning the emitted crate compiles without a v1_rt path rather than merely cargo-checking with one"),
     discovered_by: producer_rust_bridge_edge,
   }
 }
 
-data v1_uncitable_consumers: List<V1UncitableConsumer> = [
-  shim_consumer(path: "dag/gunbc/instruments/self_host_03_normalize_shims/lib.rs"),
-  shim_consumer(path: "dag/gunbc/instruments/self_host_body_producer_shims/lib.rs"),
-  shim_consumer(path: "dag/gunbc/instruments/self_host_parse_engine_hooks_shims/lib.rs"),
-  shim_consumer(path: "dag/gunbc/instruments/self_host_use_site_verdict_shims/lib.rs"),
-]
+fn v1_shim_uncitable_row(item_key: String, detail: String) -> V1UncitableConsumer {
+  {
+    item_key: item_key,
+    refusal_detail: detail,
+    medium: RustUseEdge,
+    subject: V1RuntimeBridge,
+    disposition: v1_shim_disposition(),
+    discovered_by: producer_rust_bridge_edge,
+  }
+}
+
+// CITABILITY IS THE PROJECTION'S ANSWER, ASKED AGAINST A SUPPLIED TABLE. One fold, two accumulators;
+// a shim cannot be in both and cannot be in neither.
+fn v1_shim_partition(rows: List<RustSourceNamespaceRow>) -> V1ShimPartition {
+  fold_list(
+    xs: v1_shim_items(),
+    empty: V1ShimPartition { cited: [], uncitable: [] },
+    cons: fn(acc, item) {
+      match item_declaration_ref_in(rows: rows, item: item) {
+        ItemDeclarationRefProjected { ref: r } =>
+          V1ShimPartition { cited: list_snoc_item(xs: acc.cited, item: v1_shim_cited_row(ref: r)), uncitable: acc.uncitable }
+        ItemDeclarationRefUncitable { item_key: k, detail: d } =>
+          V1ShimPartition { cited: acc.cited, uncitable: list_snoc_item(xs: acc.uncitable, item: v1_shim_uncitable_row(item_key: k, detail: d)) }
+        ItemDeclarationRefRefused { item_key: k, detail: d } =>
+          V1ShimPartition { cited: acc.cited, uncitable: list_snoc_item(xs: acc.uncitable, item: v1_shim_uncitable_row(item_key: k, detail: d)) }
+      }
+    }
+  )
+}
+
+fn v1_consumers_for(rows: List<RustSourceNamespaceRow>) -> List<V1ConsumerRow> {
+  list_append(left: v1_static_consumers, right: v1_shim_partition(rows: rows).cited)
+}
+
+fn v1_consumers() -> List<V1ConsumerRow> {
+  v1_consumers_for(rows: rust_source_namespace_rows)
+}
+
+fn v1_uncitable_consumers() -> List<V1UncitableConsumer> {
+  v1_shim_partition(rows: rust_source_namespace_rows).uncitable
+}
 
 // THE POPULATION THIS ROSTER CONSTITUTES TODAY, and it is deliberately not the Complete arm. Seven
 // producers were run and none of them joins the others. Filing this as Complete would be the rung
 // inflation DESIGN section 4b names as worse than sitting low, because the admission gate below
 // reads this field and an inflated Complete would let the transaction execute against a population
 // that was never closed.
-data v1_consumer_population: ConsumerPopulation = PopulationMeasuredLowerBound {
-  rows: v1_consumers,
-  uncitable: v1_uncitable_consumers,
-  missing_basis: "seven per-medium sweeps, unjoined, plus four consumers the exact vocabulary cannot cite. Three named holes, each of which would produce a row this roster does not have: (1) no producer classifies the .dag argv rows -- 85 .dag files name a v1 binary in a string position and only the two ci_release_bins rosters were traced to a consumer; (2) the deletion-set blind spot the floor cut measured has one row here (workspace_members) and no instrument -- a consumer defined inside src/v1 and consumed inside src/v1 cannot refuse when both go, and only a per-deleted-file question finds the rest; (3) reachability is not measured for any row: every disposition above is a PRESENCE claim, and presence over-approximates demand, which is the reachability_read_as_occupancy class this repository rosters and XL-1 tripped on in its own first census.",
+fn v1_consumer_population_for(rows: List<RustSourceNamespaceRow>) -> ConsumerPopulation {
+  let partition = v1_shim_partition(rows: rows)
+  PopulationMeasuredLowerBound {
+    rows: list_append(left: v1_static_consumers, right: partition.cited),
+    uncitable: partition.uncitable,
+    missing_basis: "seven per-medium sweeps, unjoined. Three named holes, each of which would produce a row this roster does not have: (1) no producer classifies the .dag argv rows -- 85 .dag files name a v1 binary in a string position and only the two ci_release_bins rosters were traced to a consumer; (2) the deletion-set blind spot the floor cut measured has one row here (workspace_members) and no instrument -- a consumer defined inside src/v1 and consumed inside src/v1 cannot refuse when both go, and only a per-deleted-file question finds the rest; (3) reachability is not measured for any row: every disposition above is a PRESENCE claim, and presence over-approximates demand, which is the reachability_read_as_occupancy class this repository rosters and XL-1 tripped on in its own first census. The uncitable column is NOT a fourth hole any more: under the live namespace table it is empty by construction, and the tooling row that made it so was necessary for Complete, not sufficient.",
+  }
+}
+
+fn v1_consumer_population() -> ConsumerPopulation {
+  v1_consumer_population_for(rows: rust_source_namespace_rows)
 }
 
 // THE PROJECTION INTO THE EXACT CARRIER. When the population reaches Complete, this is the
@@ -527,11 +608,11 @@ fn v1_blocking_uncitable(uncitable: List<V1UncitableConsumer>) -> List<V1Uncitab
 }
 
 fn v1_blocking_consumer_count() -> Int {
-  count(v1_blocking_consumers(rows: v1_consumers)) + count(v1_blocking_uncitable(uncitable: v1_uncitable_consumers))
+  count(v1_blocking_consumers(rows: v1_consumers())) + count(v1_blocking_uncitable(uncitable: v1_uncitable_consumers()))
 }
 
 fn v1_consumer_member_count() -> Int {
-  count(v1_consumers) + count(v1_uncitable_consumers)
+  count(v1_consumers()) + count(v1_uncitable_consumers())
 }
 
 // THE ADMISSION GATE FOR THE BANKRUPTCY TRANSACTION. All four conditions, and the first is the one
