@@ -291,3 +291,18 @@ WHY THIS ONE: smallest end-to-end existence proof of the store (one producer,
 one consumer, one oracle); kills the measured entry-independent pool tax; the
 same mechanism CI-minutes and the v2 loop need; ~a day; pass/fail visible in
 one command run twice.
+- 2026-08-29: REGRESSION PINNED BY BISECT — main's converge actuator dies with
+  `trim expects a string argument, got Null`. First bad commit: 655f82a74
+  (#9344, "Carry occurrence identity on every semantic v1 Node"). Mechanics at
+  the crash site (dag/gunbc/repo/repo_local_git_config.dag observe_binding_at_repo):
+  the effect result of git.Core.ConfigLocalGetInRepo reads `.success` fine
+  (the branch is taken) but `.value` comes back Null — a record-field read on
+  an effect result resolving to Null post-#9344, so the suspect is field
+  lookup / effect-result decode interacting with the new occurrence identity.
+  Repro: build any commit >= 655f82a74, run
+  `gunbc run --source-root dag --source-root src/v2 --entry
+  dag/gunbc/repo/repo_local_git_config.dag --function converge`.
+  Likely blast radius: any interpreted entry reading effect-result fields
+  (belt, deploys, gates). Not fixed here — #9344 is the operator's own thread.
+  Also fixed forward on this branch: #9656 omitted TypeEnv.unit_variant_index
+  in six bin/infer_semantics_witness.rs literals (main's full build is red).
