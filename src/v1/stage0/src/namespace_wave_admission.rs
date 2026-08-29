@@ -426,6 +426,30 @@ pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
+    // THE DECLARING MODULE REBINDS TOO, which the first four rows missed. `v1.compiler.infer_sigs`
+    // used to DECLARE `DeclaredCallableIdentity`, so its own two construction sites resolved
+    // locally and produced no delta; now that the declaration lives in `v1.std.core` and this
+    // module imports it, those sites rebind exactly like the consumers in `infer_lookup`. Missing
+    // them was an enumeration error on my part, not a second transition: same subject, same
+    // trigger, same dissolve.
+    TransitionAdmission {
+        label: "DeclaredCallableIdentity hoist to v1.std.core 2026-08-29",
+        subject: AdmissionSubject::Binding {
+            module: "v1.compiler.infer_sigs",
+            in_declaration: "lookup_resolved_sig",
+            spelling: "DeclaredCallableIdentity",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "DeclaredCallableIdentity hoist to v1.std.core 2026-08-29",
+        subject: AdmissionSubject::Binding {
+            module: "v1.compiler.infer_sigs",
+            in_declaration: "parent_closure_callable_candidates",
+            spelling: "DeclaredCallableIdentity",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
 ];
 
 /// The denominators a green must name (DESIGN §5). A run that cannot say what it covered is
