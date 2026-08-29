@@ -61,15 +61,21 @@ test fn w_callable_record_field_lowers_as_a_field_not_a_bridge() -> Bool {
   )
 }
 
-// THE BOUNDARY CONTROL FOR THE B REPAIR. `count` IS in rt_function_registry, so method-form calls
-// that genuinely name a bridge must still reach one. A repair that had stopped the algebra
-// fallback reaching v1_rt at all -- rather than asking whether this particular name is realized --
-// goes red here.
+// THE BOUNDARY CONTROL FOR THE B REPAIR. `trim` is in rt_function_registry and, unlike count /
+// join / first and the rest of rust_simple_method_specs, has NO method template -- so it is one of
+// the few names that actually REACHES the algebra fallback this repair changed. A repair that had
+// stopped that fallback reaching v1_rt at all, rather than asking whether this particular name is
+// realized, goes red here.
+//
+// count was the first choice for this row and is wrong, which is worth recording: it has a
+// template (`(\{recv\}.len() as i64)`), so it is answered before the fallback and would have gone
+// red while testing nothing about the seam under repair -- a control passing through a codepath
+// its subject never executes.
 test fn w_registered_bridge_method_still_reaches_the_bridge() -> Bool {
   compile_dag_rust_emit_check(
-    "module test.claim.bridge_method_probe\nimport std.types { Int, List }\nfn probe(xs: List<Int>) -> Int { xs |> count }\n",
+    "module test.claim.bridge_method_probe\nimport std.types { String }\nfn probe(s: String) -> String { s |> trim }\n",
     "src/test_claim_bridge_method_probe.rs",
-    ["v1_rt::count("],
+    ["v1_rt::trim("],
     ["compile_error"]
   )
 }
