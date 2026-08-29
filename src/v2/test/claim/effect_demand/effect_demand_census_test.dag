@@ -1,6 +1,10 @@
 module v2.test.claim.effect_demand.effect_demand_census_test
 
+import std.types { CommitSha }
 import std.decl_ref { DeclarationRef, decl_ref }
+import std.content_hash { Sha1Digest }
+import extdeps.git.object_store { GitObjectId, GitSha1ObjectId }
+import v2.workflow.floor_discovery { FloorDiscoveryTreeId, floor_discovery_tree_id }
 import std.execution_mode { ExecutionMode, Hermetic, Wet }
 import std.primitive_projection { PrimitiveIdentity, primitive_identity_slug }
 import v2.compiler.effect_demand {
@@ -437,15 +441,22 @@ data effect_demand_receipt_probe_note: String = "The receipt's member count is D
 data effect_demand_probe_roster_members: List<String> = ["src/a.rs", "src/b.rs", "Cargo.toml"]
 data effect_demand_probe_roster_members_short: List<String> = ["src/a.rs", "src/b.rs"]
 
-fn effect_demand_probe_receipt(
+data effect_demand_probe_tree_main: FloorDiscoveryTreeId = floor_discovery_tree_id(object_id: GitSha1ObjectId { digest: Sha1Digest { hex: "4b825dc642cb6eb9a060e54bf8d69288fbee4904" } })
+
+data effect_demand_probe_tree_other: FloorDiscoveryTreeId = floor_discovery_tree_id(object_id: GitSha1ObjectId { digest: Sha1Digest { hex: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" } })
+
+fn effect_demand_probe_receipt_on(
   producer: DemandProducer,
   members: List<String>,
   roots: List<String>,
   root_resolution: RootResolutionStanding,
-  unresolved: List<String>
+  unresolved: List<String>,
+  revision: CommitSha,
+  tree: FloorDiscoveryTreeId
 ) -> DemandReceipt {
   DemandReceipt {
-    source_revision: "probe-revision",
+    source_revision: revision,
+    source_tree: tree,
     entry_identity: "v2.compiler.compile",
     producer: producer,
     instrument_identity: "probe-instrument",
@@ -457,6 +468,16 @@ fn effect_demand_probe_receipt(
     call_site_identities: Empty,
     operation_identities: Empty
   }
+}
+
+fn effect_demand_probe_receipt(
+  producer: DemandProducer,
+  members: List<String>,
+  roots: List<String>,
+  root_resolution: RootResolutionStanding,
+  unresolved: List<String>
+) -> DemandReceipt {
+  effect_demand_probe_receipt_on(producer: producer, members: members, roots: roots, root_resolution: root_resolution, unresolved: unresolved, revision: "probe-revision", tree: effect_demand_probe_tree_main)
 }
 
 data effect_demand_probe_roots: List<String> = ["probe_root_fn"]
@@ -614,8 +635,8 @@ test fn effect_demand_witness_local_gate_refuses_an_empty_root_set() -> Bool {
     agreement: effect_demand_probe_empty_agreement,
     census_is_sound: true
   ) {
-    EffectDemandEvidenceAdmitted { source_revision } => false,
-    EffectDemandEvidenceRefused { source_revision, conjunct } => conjunct == ^right_roots_unresolved
+    EffectDemandEvidenceAdmitted { source_revision, source_tree } => false,
+    EffectDemandEvidenceRefused { source_revision, source_tree, conjunct } => conjunct == ^right_roots_unresolved
   }
 }
 
@@ -627,8 +648,8 @@ test fn effect_demand_witness_local_gate_refuses_unresolved_indirect_edges() -> 
     agreement: effect_demand_probe_empty_agreement,
     census_is_sound: true
   ) {
-    EffectDemandEvidenceAdmitted { source_revision } => false,
-    EffectDemandEvidenceRefused { source_revision, conjunct } => conjunct == ^right_unresolved_indirect_edges
+    EffectDemandEvidenceAdmitted { source_revision, source_tree } => false,
+    EffectDemandEvidenceRefused { source_revision, source_tree, conjunct } => conjunct == ^right_unresolved_indirect_edges
   }
 }
 
@@ -640,8 +661,8 @@ test fn effect_demand_witness_local_gate_refuses_one_producer_twice() -> Bool {
     agreement: effect_demand_probe_empty_agreement,
     census_is_sound: true
   ) {
-    EffectDemandEvidenceAdmitted { source_revision } => false,
-    EffectDemandEvidenceRefused { source_revision, conjunct } => conjunct == ^one_producer_twice
+    EffectDemandEvidenceAdmitted { source_revision, source_tree } => false,
+    EffectDemandEvidenceRefused { source_revision, source_tree, conjunct } => conjunct == ^one_producer_twice
   }
 }
 
@@ -653,8 +674,8 @@ test fn effect_demand_witness_local_gate_refuses_an_incomplete_subject() -> Bool
     agreement: effect_demand_probe_empty_agreement,
     census_is_sound: true
   ) {
-    EffectDemandEvidenceAdmitted { source_revision } => false,
-    EffectDemandEvidenceRefused { source_revision, conjunct } => conjunct == ^subject_incomplete
+    EffectDemandEvidenceAdmitted { source_revision, source_tree } => false,
+    EffectDemandEvidenceRefused { source_revision, source_tree, conjunct } => conjunct == ^subject_incomplete
   }
 }
 
@@ -818,7 +839,32 @@ test fn effect_demand_witness_admitted_standing_carries_the_agreed_revision() ->
     agreement: effect_demand_probe_empty_agreement,
     census_is_sound: true
   ) {
-    EffectDemandEvidenceAdmitted { source_revision } => source_revision == effect_demand_probe_receipt_modeled.source_revision,
-    EffectDemandEvidenceRefused { source_revision, conjunct } => false
+    EffectDemandEvidenceAdmitted { source_revision, source_tree } => source_revision == effect_demand_probe_receipt_modeled.source_revision,
+    EffectDemandEvidenceRefused { source_revision, source_tree, conjunct } => false
+  }
+}
+
+data effect_demand_tree_join_probe_note: String = "THE TREE IS THE JOIN KEY AND THE COMMIT IS NOT, witnessed in both directions because the ruling is only real if both hold. Two receipts over one tree from two different commits -- the post-squash case -- must be ADMITTED; the same two receipts over two trees from one commit must be REFUSED on ^tree_mismatch. A gate that refused the first or admitted the second would be keyed on the wrong identity, and the pair reads red in exactly one witness each."
+
+test fn effect_demand_witness_two_commits_over_one_tree_admit() -> Bool {
+  effect_demand_local_gate_holds(standing: effect_demand_local_gate(
+    left: effect_demand_probe_receipt_on(producer: ModeledCallReachability, members: effect_demand_probe_roster_members, roots: effect_demand_probe_roots, root_resolution: RootsResolvedNonEmpty, unresolved: Empty, revision: "commit-before-squash", tree: effect_demand_probe_tree_main),
+    right: effect_demand_probe_receipt_on(producer: EmittedRealizationCensus, members: effect_demand_probe_roster_members, roots: effect_demand_probe_roots, root_resolution: RootsResolvedNonEmpty, unresolved: Empty, revision: "commit-after-squash", tree: effect_demand_probe_tree_main),
+    population: effect_demand_probe_complete_population,
+    agreement: effect_demand_probe_empty_agreement,
+    census_is_sound: true
+  ))
+}
+
+test fn effect_demand_witness_one_commit_over_two_trees_refuses_on_the_tree() -> Bool {
+  match effect_demand_local_gate(
+    left: effect_demand_probe_receipt_on(producer: ModeledCallReachability, members: effect_demand_probe_roster_members, roots: effect_demand_probe_roots, root_resolution: RootsResolvedNonEmpty, unresolved: Empty, revision: "one-commit", tree: effect_demand_probe_tree_main),
+    right: effect_demand_probe_receipt_on(producer: EmittedRealizationCensus, members: effect_demand_probe_roster_members, roots: effect_demand_probe_roots, root_resolution: RootsResolvedNonEmpty, unresolved: Empty, revision: "one-commit", tree: effect_demand_probe_tree_other),
+    population: effect_demand_probe_complete_population,
+    agreement: effect_demand_probe_empty_agreement,
+    census_is_sound: true
+  ) {
+    EffectDemandEvidenceAdmitted { source_revision, source_tree } => false,
+    EffectDemandEvidenceRefused { source_revision, source_tree, conjunct } => conjunct == ^tree_mismatch
   }
 }
