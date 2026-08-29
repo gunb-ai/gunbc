@@ -423,19 +423,15 @@ fn floor_discovery_apply_test_sidecar_rules(
           test_names,
           init: state,
           f: fn(acc, name) {
-            if witness_row_excluded_from_discovery(entry: repo_path, function: name) {
-              acc
-            } else {
-              floor_discovery_append_row(
-                state: acc,
-                row: FloorDiscoveryRow {
-                  label: name,
-                  entry: repo_path,
-                  function: name,
-                  reads_live_tree: reads_live
-                }
-              )
-            }
+            floor_discovery_append_row(
+              state: acc,
+              row: FloorDiscoveryRow {
+                label: name,
+                entry: repo_path,
+                function: name,
+                reads_live_tree: reads_live
+              }
+            )
           }
         )
       } else if length(xs: test_names) > 0 {
@@ -471,6 +467,40 @@ fn floor_discovery_apply_wire_contract_sidecar_rules(
   }
 }
 
+// THE PER-FILE AUTHORITY. Everything discovery decides about ONE source -- which test decls it
+// enrolls, whether its `test`-marked decls sit in a `*_test.dag` sidecar, whether a sidecar is
+// barren, whether its wire-contract decls sit in `*_contracts.dag`, whether its
+// live_tree_disposition row is well-formed -- is decided here, from the path and the bytes, with
+// no host effect. Both consumers compose exactly this function and nothing else per file:
+//
+//   discover_floor_corpus_rows_from_host_facts   walks the roots with Filesystem.List/Read and
+//                                                 folds this over every non-excluded `.dag` file
+//                                                 (claim_batch, the discovery-corpus mode)
+//   discover_floor_rows_for_source                the required floor, which already holds every
+//                                                 prepared source's bytes and folds this over its
+//                                                 prepared inventory (cli_run required_floor_runner)
+//
+// Before this seam existed the required floor enrolled its roster from a SECOND scanner in Rust
+// (cli_run.rs witness_file_from_source), filename-blind, so a `test`-marked decl outside a
+// sidecar was refused on the claim_batch path and executed on the floor -- two authorities for
+// one fact (DESIGN section 3), measured on main 2026-08-29: five files, 39 test fns. That scanner
+// is deleted; the floor's roster is this fold's answer.
+fn floor_discovery_fold_source(
+  state: FloorDiscoveryWalkState,
+  repo_path: String,
+  content: String
+) -> FloorDiscoveryWalkState {
+  floor_discovery_apply_wire_contract_sidecar_rules(
+    state: floor_discovery_apply_test_sidecar_rules(
+      state: state,
+      repo_path: repo_path,
+      content: content
+    ),
+    repo_path: repo_path,
+    content: content
+  )
+}
+
 fn floor_discovery_process_dag_file(
   state: FloorDiscoveryWalkState,
   repo_path: String,
@@ -483,16 +513,96 @@ fn floor_discovery_process_dag_file(
     if !read_out.success {
       floor_discovery_record_walk_failure(state: state, path: repo_path)
     } else {
-      floor_discovery_apply_wire_contract_sidecar_rules(
-        state: floor_discovery_apply_test_sidecar_rules(
-          state: state,
-          repo_path: repo_path,
-          content: read_out.content
-        ),
-        repo_path: repo_path,
-        content: read_out.content
-      )
+      floor_discovery_fold_source(state: state, repo_path: repo_path, content: read_out.content)
     }
+  }
+}
+
+// ONE SOURCE, JUDGED ALONE: the per-file authority over the zero state. The required floor calls
+// this once per prepared source and hands the outcomes, untouched, to
+// floor_discovery_finalize_source_outcomes -- the host threads values and decides nothing.
+fn discover_floor_rows_for_source(
+  repo_path: String,
+  content: String
+) -> FloorDiscoveryWalkState {
+  floor_discovery_fold_source(
+    state: floor_discovery_walk_state_zero(),
+    repo_path: repo_path,
+    content: content
+  )
+}
+
+// THE FOLD IS A MONOID HOMOMORPHISM OVER FILES, which is what lets the floor evaluate it one
+// source at a time. Every field of the walk state combines associatively: rows and violations
+// concatenate, walk failures add, the first located failure path and the first disposition
+// refusal are kept. Folding the corpus in one pass and merging per-file outcomes therefore
+// produce the same state, with one exception stated rather than hidden: floor_discovery_append_row
+// dedupes rows by (entry, function), and that key contains the entry, so two distinct files can
+// never collide and the merge needs no second dedupe.
+fn floor_discovery_merge_walk_states(
+  left: FloorDiscoveryWalkState,
+  right: FloorDiscoveryWalkState
+) -> FloorDiscoveryWalkState {
+  FloorDiscoveryWalkState {
+    rows: concat(left.rows, right.rows),
+    walk_failures: left.walk_failures + right.walk_failures,
+    walk_failure_path: match left.walk_failure_path {
+      Present { value: _ } => left.walk_failure_path
+      Absent => right.walk_failure_path
+    },
+    sidecar_violations: concat(left.sidecar_violations, right.sidecar_violations),
+    disposition_refusal: match left.disposition_refusal {
+      Present { value: _ } => left.disposition_refusal
+      Absent => right.disposition_refusal
+    }
+  }
+}
+
+// THE REQUIRED FLOOR'S ENTRY. Same finalize, same refusal reasons, same accepted row shape as
+// discover_floor_corpus_rows_from_host_facts; only the source of host facts differs (the prepared
+// inventory instead of a Filesystem walk) and the row-admission policy below is NOT applied --
+// see floor_discovery_row_admission_policy_note.
+fn floor_discovery_finalize_source_outcomes(
+  outcomes: List<FloorDiscoveryWalkState>
+) -> FloorDiscoveryProducerResult {
+  floor_discovery_finalize(
+    state: fold(
+      outcomes,
+      init: floor_discovery_walk_state_zero(),
+      f: fn(acc, outcome) { floor_discovery_merge_walk_states(left: acc, right: outcome) }
+    )
+  )
+}
+
+// ROW ADMISSION IS POLICY, NOT DISCOVERY (DESIGN section 3: interface, realization and policy
+// are three facts). witness_row_excluded_from_discovery quarantines known-red probes, the
+// falsifier long lane and the ci_layer_roots exclusion frontier -- the per-PR discovery-corpus
+// mode's admission. It is applied HERE, after the walk and before the owned-data merge, exactly
+// where it applied before the per-file seam was cut, so claim_batch's roster is unchanged. The
+// required floor deliberately does not inherit it: its admission is the static gate roster and
+// floor_prepared_subject_exclusions, and the known-red rows themselves record that the floor's
+// execution of them "is the row's real, present protection" (gunbc.explicit_witness_admission).
+// Folding this policy into the per-file authority would have dropped those witnesses from the
+// floor silently.
+data floor_discovery_row_admission_policy_note: String = "Row admission (witness_row_excluded_from_discovery) is the discovery-corpus mode's policy over the per-file authority's rows, applied by discover_floor_corpus_rows_from_host_facts only. The required floor composes the same per-file authority under its own admission (required_gate_prefixes + floor_prepared_subject_exclusions) via discover_floor_rows_for_source / floor_discovery_finalize_source_outcomes."
+
+fn floor_discovery_apply_row_admission(state: FloorDiscoveryWalkState) -> FloorDiscoveryWalkState {
+  FloorDiscoveryWalkState {
+    rows: fold(
+      state.rows,
+      init: [],
+      f: fn(acc, row) {
+        if witness_row_excluded_from_discovery(entry: row.entry, function: row.function) {
+          acc
+        } else {
+          concat(acc, [row])
+        }
+      }
+    ),
+    walk_failures: state.walk_failures,
+    walk_failure_path: state.walk_failure_path,
+    sidecar_violations: state.sidecar_violations,
+    disposition_refusal: state.disposition_refusal
   }
 }
 
@@ -705,16 +815,18 @@ fn discover_floor_corpus_rows_from_host_facts(
   floor_discovery_finalize(
     state: fold(
       owned_data_records,
-      init: fold(
-        source_roots,
-        init: floor_discovery_walk_state_zero(),
-        f: fn(acc, root) {
-          floor_discovery_walk_dir(
-            state: acc,
-            dir_path: root,
-            exclude_substrings: exclude_substrings
-          )
-        }
+      init: floor_discovery_apply_row_admission(
+        state: fold(
+          source_roots,
+          init: floor_discovery_walk_state_zero(),
+          f: fn(acc, root) {
+            floor_discovery_walk_dir(
+              state: acc,
+              dir_path: root,
+              exclude_substrings: exclude_substrings
+            )
+          }
+        )
       ),
       f: fn(acc, rec) { floor_discovery_merge_owned_data_record(state: acc, rec: rec) }
     )
