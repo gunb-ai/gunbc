@@ -1173,8 +1173,8 @@ fn report_required_floor_outcome(outcome: &v1_compiler::cli_run::RequiredFloorOu
     eprintln!(
         "required-floor: offered={} routed={} declined_long={} declined_fixture={} \
          declined_outside_required_gate={} — every discovered site is exactly one of these, \
-         and no `*_test.dag` entry offered zero sites (BarrenTestSidecar refuses upstream of \
-         this line)",
+         and no `*_test.dag` entry offered zero sites (v2.workflow.floor_discovery_producer \
+         refuses a barren or misplaced sidecar upstream of this line)",
         outcome.sites_offered,
         outcome.claims_planned,
         outcome.declined_long_module,
