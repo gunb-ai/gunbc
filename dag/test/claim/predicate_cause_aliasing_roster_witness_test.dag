@@ -1,0 +1,37 @@
+module test.claim.predicate_cause_aliasing_roster_witness_test
+
+import gunbc.predicate_cause_aliasing_roster {
+  class_b_remaining_sites,
+  bare_false_negative_controls,
+  aliased_predicate_site_is_named,
+  negative_control_site_is_named
+}
+import std.logic { Bool }
+import v2.std.algebra { fold_list }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// The witness gunbc.predicate_cause_aliasing_roster names as its consumer. The assertions are
+// deliberately narrow (see that module's header): every row names its site and the roster is not
+// empty while the class is open. Nothing here checks that a named site still aliases -- that gap
+// is declared where the roster is.
+test fn every_roster_row_names_its_site() -> Bool {
+  fold_list(
+    xs: class_b_remaining_sites,
+    empty: true,
+    cons: fn(ok, row) { ok && aliased_predicate_site_is_named(row: row) }
+  )
+}
+
+test fn the_roster_is_not_empty_while_the_class_is_open() -> Bool {
+  fold_list(xs: class_b_remaining_sites, empty: false, cons: fn(_acc, _row) { true })
+}
+
+test fn every_negative_control_row_names_its_site() -> Bool {
+  fold_list(
+    xs: bare_false_negative_controls,
+    empty: true,
+    cons: fn(ok, row) { ok && negative_control_site_is_named(row: row) }
+  )
+}

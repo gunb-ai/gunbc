@@ -35653,15 +35653,14 @@ pub struct PreparedRepository {
     pub subject_digest: String,
     pub modules_resolved: usize,
     pub modules_excluded: usize,
-    /// The witness sites preparation found, already folded. NOT the corpus bytes.
-    pub witness_files: Vec<InventoryWitnessFile>,
-    /// Admitted sources carrying zero `test` decls (`test fn` or `test data`). See
-    /// `PreparedSubject::test_decl_free_paths`.
-    pub test_decl_free_paths: Vec<String>,
-    /// The witness identities preparation DROPPED, each with its disposition. Carried through
-    /// with the admitted population because the floor's projection is a join over every DECLARED
-    /// identity: see `PreparedSubject::undiscovered_dispositions`.
-    pub undiscovered_dispositions: Vec<RequiredFloorDispositionRow>,
+    /// Every source in the module index, including modules outside this prepared closure and
+    /// sources removed by discovery exclusions. The required floor folds the one modeled
+    /// discovery producer over this full population before classifying each resulting identity.
+    pub full_inventory: Vec<PreparedSourceView>,
+    /// Modules that reached the requested closure but preparation excluded, paired with the
+    /// exact substring that matched. Absence from both this map and `inventory` means outside
+    /// the prepared closure, keeping the two pre-offer dispositions distinguishable.
+    pub discovery_exclusions: HashMap<String, String>,
 }
 
 /// Shared view of one admitted source. Holds the same `Rc<SourceFile>` preparation already
@@ -35819,25 +35818,8 @@ fn register_floor_prepared_authority_guard(
 pub struct PreparedSubject {
     pub sources: Vec<Rc<v1_compiler_compile::SourceFile>>,
     pub inventory: Vec<PreparedSourceView>,
-    pub witness_files: Vec<InventoryWitnessFile>,
-    /// One disposition row per witness identity this preparation DROPPED — excluded by
-    /// substring, or never reached by the gate closure. Carried beside the admitted population
-    /// so the floor's projection can be a join over every DECLARED identity rather than over the
-    /// subset that survived preparation; see the field's producer for why the arms are the
-    /// admitted population's own.
-    pub undiscovered_dispositions: Vec<RequiredFloorDispositionRow>,
-    /// Admitted sources carrying ZERO `test` decls — neither `test fn` nor `test data` — by
-    /// repo-relative path. The vocabulary is `floor_discovery_scan_test_decl_names`'s, so this
-    /// population is the wall's own denominator rather than a narrower one that happens to
-    /// agree.
-    ///
-    ///
-    /// Preparation records the fact and judges nothing with it. Whether a path in here is a
-    /// VIOLATION is a policy question owned by `v2.workflow.floor_naming_hygiene`
-    /// (`floor_test_sidecar_suffix` / `floor_entry_is_barren_test_sidecar`), and the floor asks
-    /// it once, later, against the constant read from that module — so the rule keeps one home
-    /// and only its consumer moved.
-    pub test_decl_free_paths: Vec<String>,
+    pub full_inventory: Vec<PreparedSourceView>,
+    pub discovery_exclusions: HashMap<String, String>,
     pub subject_digest: String,
     pub modules_resolved: usize,
     pub modules_excluded: usize,
@@ -35882,19 +35864,14 @@ pub fn assemble_prepared_subject_closure(
     closure: Option<(&MultiEntryIndex, &[String])>,
 ) -> Result<PreparedSubject, String> {
     let full_index = build_module_index(source_roots);
-    // THE POPULATION THIS PREPARATION DROPS, KEPT AT IDENTITY GRAIN RATHER THAN AS A COUNT.
-    //
-    // The gate closure and the exclusion substrings both remove modules from the subject, and a
-    // witness declared in a removed module is then neither planned NOR declined — it leaves the
-    // floor's universe one level above the disposition projection, which is exactly the silence
-    // `docs/plans/witness-execution-closure.md` found the last time a population went missing.
-    // After the 2026-08-29 gate cut that silence is the majority of the corpus, not an edge:
-    // `declined_outside_required_gate` can only speak for modules that reached the index.
-    //
-    // So preparation records a disposition for every declaration it drops, in the SAME authority
-    // the admitted population uses (`RequiredFloorDisposition`) — not a second status vocabulary
-    // — and the floor joins the two into one row per declared identity.
-    let mut undiscovered_dispositions: Vec<RequiredFloorDispositionRow> = Vec::new();
+    let full_inventory: Vec<PreparedSourceView> = full_index
+        .iter()
+        .map(|(module_path, source)| PreparedSourceView {
+            module_path: module_path.clone(),
+            source: source.clone(),
+        })
+        .collect();
+    let mut discovery_exclusions: HashMap<String, String> = HashMap::new();
     let index: ModuleSourceIndex = match closure {
         None => full_index,
         Some((entry_index, prefixes)) => {
@@ -36031,29 +36008,6 @@ pub fn assemble_prepared_subject_closure(
                 full_index.len() - keep.len(),
                 full_index.len()
             );
-            for (module_path, sf) in full_index.iter() {
-                if keep.contains(module_path) {
-                    continue;
-                }
-                let Some(site) = witness_file_from_source(module_path, &sf.path, &sf.content)
-                else {
-                    continue;
-                };
-                for function in &site.functions {
-                    undiscovered_dispositions.push(RequiredFloorDispositionRow {
-                        identity: format!("{module_path}.{function}"),
-                        // ITS OWN ARM, NOT `DeclinedOutsideRequiredGate`. Both are "not on the
-                        // required path", but they are removed by different mechanisms and only
-                        // one of them is the population the §4b rung drop names: a module the
-                        // GATE CLOSURE never reached was never prepared, never resolved and never
-                        // offered, while `DeclinedOutsideRequiredGate` speaks for a module that
-                        // WAS prepared and whose authored name missed every gate prefix. Folding
-                        // them would put five figures and two figures behind one label, and the
-                        // artifact could no longer show the closure population as a column.
-                        disposition: RequiredFloorDisposition::DeclinedOutsideGateClosure,
-                    });
-                }
-            }
             full_index
                 .into_iter()
                 .filter(|(m, _)| keep.contains(m))
@@ -36061,8 +36015,6 @@ pub fn assemble_prepared_subject_closure(
         }
     };
     let total = index.len();
-    let mut witness_files: Vec<InventoryWitnessFile> = Vec::new();
-    let mut test_decl_free_paths: Vec<String> = Vec::new();
     let mut sources: Vec<Rc<v1_compiler_compile::SourceFile>> = Vec::with_capacity(total);
     let mut inventory: Vec<PreparedSourceView> = Vec::with_capacity(total);
     for (module_path, sf) in index.iter() {
@@ -36071,65 +36023,15 @@ pub fn assemble_prepared_subject_closure(
             .iter()
             .find(|sub| p.contains(sub.as_str()) || module_path.contains(sub.as_str()))
         {
-            // EXCLUDED IS A DISPOSITION, NOT A DISAPPEARANCE. `collect_deferred_discovery_rows`
-            // already receipts the excluded `*_test.dag` ENTRIES; this records the same removal
-            // at the grain the population join is keyed on — the qualified identity — so an
-            // excluded witness is a named row in the projection instead of a subtraction a
-            // reader has to reconstruct from two artifacts.
-            if let Some(site) = witness_file_from_source(module_path, &sf.path, &sf.content) {
-                for function in &site.functions {
-                    undiscovered_dispositions.push(RequiredFloorDispositionRow {
-                        identity: format!("{module_path}.{function}"),
-                        disposition: RequiredFloorDisposition::DeclinedDiscoveryExcluded {
-                            matched_substring: matched.clone(),
-                        },
-                    });
-                }
-            }
+            discovery_exclusions.insert(module_path.clone(), matched.clone());
             continue;
         }
-        // THE DROP THAT MADE A WALL UNREACHABLE, NOW A RECORDED FACT.
-        //
-        // `witness_file_from_source` answers `None` for a file with no `test fn` decl, and this
-        // loop used to discard that answer. Since `run_required_floor` builds its whole roster
-        // from `witness_files`, a `*_test.dag` file declaring no `test fn` was not declined and
-        // not counted — it left the floor's universe entirely, one level ABOVE the
-        // `offered = routed + declined_long + declined_fixture` partition, which is why that line
-        // can be exact and still say nothing about it.
-        //
-        // The `.dag` producer has carried a wall for exactly this since it was written
-        // (`v2.workflow.floor_naming_hygiene` `floor_entry_is_barren_test_sidecar`, refused as
-        // `BarrenTestSidecar`), and it never fired, because the required floor does not take the
-        // path that reaches it — `invoke_floor_discovery_producer` is reachable only through
-        // `discover_floor_witness_roster`, which `run_required_floor` never calls.
-        //
-        // WHAT IS RECORDED HERE IS A CANDIDATE SET, NOT A VERDICT, and the distinction is the
-        // whole reason no second copy of the rule appears in Rust. This records every source
-        // `witness_file_from_source` declined, and asks nothing about suffixes. That question
-        // belongs to `v2.workflow.floor_naming_hygiene` and is put TO it, per candidate, by
-        // `floor_barren_test_sidecars`. Rust can only widen the question, never decide it, so a
-        // Rust/`.dag` disagreement cannot produce a wrong refusal — only a candidate the
-        // authority discards.
-        //
-        // AND THE RECORDED SET NOW USES THE RULE'S OWN VOCABULARY BY CONSTRUCTION, rather than by
-        // a second test standing beside it. `test data ` is a test decl to
-        // `floor_discovery_scan_test_decl_names`, which is what `floor_entry_is_barren_test_sidecar`
-        // composes; this loop used to agree with that rule by asking a SEPARATE question here
-        // (`site.is_none() && no line starts with "test data "`) because the roster builder below
-        // could not see `test data` at all. It can now, so `site.is_none()` means exactly
-        // "declares no test decl" in the wall's own vocabulary and the compensating second scan is
-        // deleted rather than left as a third spelling of the same fact (DESIGN §3, and §4b(4):
-        // a climb deletes the lower-rung machinery it obsoletes). A `test data`-only file
-        // therefore no longer reaches this set at all, where before the repair it did and the
-        // `.dag` predicate discarded it.
-        //
-        // The 40 `test data` claims that compensating scan was protecting from a
-        // wall-over-reach are, for the same reason, no longer dropped from the roster: they are
-        // offered, routed and executed like any other claim. See `witness_file_from_source`.
-        match witness_file_from_source(module_path, &sf.path, &sf.content) {
-            Some(site) => witness_files.push(site),
-            None => test_decl_free_paths.push(p.clone()),
-        }
+        // WHICH `test` DECLS A SOURCE ENROLLS IS NOT DECIDED HERE. Preparation admits the
+        // source and keeps its bytes beside its module name; the required floor hands both to
+        // `v2.workflow.floor_discovery_producer` (`discover_floor_rows_for_source`), the one
+        // authority for discovery, sidecar placement and barren sidecars. A Rust scan used to
+        // stand here and disagreed with that authority on
+        // placement — deleted, DESIGN §3.
         inventory.push(PreparedSourceView {
             module_path: module_path.clone(),
             source: sf.clone(),
@@ -36140,17 +36042,13 @@ pub fn assemble_prepared_subject_closure(
         return Err("whole-tree corpus is empty (no .dag modules under source roots)".to_string());
     }
     let modules_excluded = total - sources.len();
-    witness_files.sort_by(|a, b| a.path.cmp(&b.path));
-    test_decl_free_paths.sort();
     let subject_digest = subject_digest_for_closure(&sources);
     let modules_resolved = total - modules_excluded;
-    undiscovered_dispositions.sort_by(|a, b| a.identity.cmp(&b.identity));
     Ok(PreparedSubject {
         sources,
         inventory,
-        witness_files,
-        undiscovered_dispositions,
-        test_decl_free_paths,
+        full_inventory,
+        discovery_exclusions,
         subject_digest,
         modules_resolved,
         modules_excluded,
@@ -36188,12 +36086,11 @@ pub fn prepare_repository_closure(
     let PreparedSubject {
         sources,
         inventory,
-        witness_files,
-        test_decl_free_paths,
+        full_inventory,
+        discovery_exclusions,
         subject_digest,
         modules_resolved,
         modules_excluded,
-        undiscovered_dispositions,
     } = subject;
     let resolved = resolved_graph_from_sources(sources, ResolveTypecheckGate::Strict);
     let (graph, source_indices) = resolved.map_err(|e| format!("{subject_statement}\n{e}"))?;
@@ -36204,9 +36101,8 @@ pub fn prepare_repository_closure(
             subject_digest,
             modules_resolved,
             modules_excluded,
-            witness_files,
-            test_decl_free_paths,
-            undiscovered_dispositions,
+            full_inventory,
+            discovery_exclusions,
         },
         inventory,
     ))
@@ -37163,124 +37059,6 @@ pub struct RequiredFloorOutcome {
     pub long_home_storage_agreement: Vec<LongHomeStorageAgreementRow>,
 }
 
-/// A witness site as preparation found it — the file's path, its module, and the `test fn` /
-/// `test data` names it declares. Produced from bytes preparation had in hand, and retained INSTEAD of
-/// those bytes.
-pub struct InventoryWitnessFile {
-    pub path: String,
-    pub module_path: String,
-    pub functions: Vec<String>,
-    /// Whether the module declares `LiveTreeDisposition = ReadsLiveTree`.
-    ///
-    /// A SECOND, SYNTACTIC COMPUTATION OF A FACT `reads_live_tree_effective` DERIVES
-    /// SEMANTICALLY, and that is a §3 defect this change does not yet remove. See the comment
-    /// at its scan site below.
-    pub reads_live_tree: bool,
-}
-
-/// Decide whether ONE admitted file is a witness site, from the bytes preparation is holding
-/// at that moment. Called inside the preparation loop, so no corpus copy is retained to be
-/// scanned later and NO FILESYSTEM ACCESS occurs: the walk this replaces cost ~6 minutes of
-/// every floor run, acquired the repository a second time, and additionally built a
-/// whole-corpus module graph to answer a question about one file at a time.
-///
-/// `None` means the file declares no `test` decl, which is how a non-witness module is excluded
-/// — the predecessor expressed the same rule as `if !functions.is_empty()` after building the
-/// record.
-///
-/// A `test` decl is recognised at column zero only, which is the same rule the parser applies to
-/// a top-level declaration: an indented occurrence is inside a body and is not a declaration.
-///
-/// BOTH `test fn ` AND `test data ` ARE TEST DECLS HERE, and making that true is the whole of
-/// this function's most recent change. What a test decl IS had two answers in one binary:
-/// `v2.workflow.floor_naming_hygiene` `floor_discovery_scan_test_decl_names` — the authority the
-/// `BarrenTestSidecar` wall composes — counts both forms, while this roster builder counted only
-/// `test fn `. A file whose test decls are all `test data ` therefore SATISFIED the wall (its
-/// predicate found decls) and enrolled ZERO claims (this scan found none), which is partial
-/// enrollment made invisible by construction: nothing refuses, nothing runs, and the run's own
-/// `offered = routed + declined_long + declined_live` partition stays exact because the site was
-/// never offered. That is §3's two-authorities-for-one-fact defect with the two halves wired to
-/// opposite sides of the same gate.
-///
-/// The population this closed is exact and was declared before it was repaired (the note at
-/// `floor_entry_is_barren_test_sidecar`): 40 `test data` decls in 15 files over both source
-/// roots — 34 in 13 files carrying no `test fn` at all, 6 in 2 files the floor already enrolled
-/// partially. The second group is the one no wall could ever have caught.
-///
-/// The two SCANNERS are still two scanners, and that residue is unchanged by this: collapsing
-/// them needs the canonical parser to retain the authored `test` marker, which
-/// `v1_compiler_parse.rs` `drop_leading_test_marker` discards, and `test` cannot become a lex
-/// keyword because it is a live module-path segment. What is repaired here is that they no
-/// longer DISAGREE; what remains is that they are separately spelled.
-///
-/// A `test data` claim executes on exactly the same path as a `test fn` one: `run_claim` calls
-/// `run_in_context`, whose `lookup_fn` resolves a `DataItem` as readily as a function node and
-/// evaluates its initializer with no arguments. There is no second execution mechanism here,
-/// which is why the roster is the only thing that had to move.
-fn witness_file_from_source(
-    module_path: &str,
-    path: &str,
-    content: &str,
-) -> Option<InventoryWitnessFile> {
-    let mut functions: Vec<String> = Vec::new();
-    for line in content.lines() {
-        let Some(rest) = line
-            .strip_prefix("test fn ")
-            .or_else(|| line.strip_prefix("test data "))
-        else {
-            continue;
-        };
-        let name: String = rest
-            .chars()
-            .take_while(|c| c.is_ascii_alphanumeric() || *c == '_')
-            .collect();
-        if !name.is_empty() {
-            functions.push(name);
-        }
-    }
-    if functions.is_empty() {
-        return None;
-    }
-    // ONE FACT, TWO COMPUTATIONS, IN ONE BINARY — a §3 defect, recorded here rather than
-    // silently carried, and deliberately NOT fixed in this change.
-    //
-    // This column-zero TEXT SCAN and `reads_live_tree_effective` answer the same question by
-    // methods that cannot agree except by coincidence: the second reads the same declaration
-    // and then falls through to `effect_reach_derived_reads_live_tree_for_entry`, a SEMANTIC
-    // reachability derivation over the entry's import closure. A syntactic scan and an
-    // effect-reach derivation disagree as a function of the import graph.
-    //
-    // THE FIX IS NOT TO UNIFY THEM. The two consumers ask DIFFERENT QUESTIONS. Affected-set
-    // selection asks "does this entry's result depend on live tree state", which
-    // `reads_live_tree_effective` answers and keeps. The floor asks "can this identity
-    // execute", which no authored file-level boolean can answer — the interpreter decides it
-    // exactly, per identity, at the effect boundary, and now says so in a typed outcome
-    // (`ClaimOutcome::HostEffectRefused`). So the floor's copy is deleted rather than
-    // reconciled, and the population it was excluding is executed.
-    //
-    // MEASURED, so the deletion is not a hope: floor run 32345970386 removed this scan and ran
-    // the population. Of ~783 identities admitted, 626 PASS and 157 route-gap on real host
-    // operations (Mktemp.Dir 54, IsExecutable 26, Run 17, Write 8, git.Inspect 5, …) — not one
-    // a committed-source read. The premise was stale for the large majority of what it
-    // excluded.
-    //
-    // WHY IT IS STILL HERE: that same run surfaced 55 blockers — 6 witnesses that do not
-    // RESOLVE (`undefined variable`, `no such function`; never caught because nothing ever
-    // evaluated them) and 49 in a cost tail — and all 55 are newly-admitted. This change is the
-    // part that carries none of them. → `docs/plans/witness-execution-closure.md`.
-    let reads_live_tree = content.lines().any(|line| {
-        line.starts_with("data ")
-            && line.contains("LiveTreeDisposition")
-            && line.contains("ReadsLiveTree")
-    });
-    Some(InventoryWitnessFile {
-        path: path.replace('\\', "/"),
-        module_path: module_path.to_string(),
-        functions,
-        reads_live_tree,
-    })
-}
-
 fn str_list(items: impl IntoIterator<Item = String>) -> v1_interpreter::Value {
     v1_interpreter::Value::List(Rc::new(
         items
@@ -37297,15 +37075,17 @@ fn str_list(items: impl IntoIterator<Item = String>) -> v1_interpreter::Value {
 const REQUIRED_FLOOR_POLICY_MODULE: &str = "v2.workflow.required_floor";
 
 /// Modules the required floor's own runner evaluates BY NAME, outside any gate roster: the
-/// policy module (its rosters, via `floor_decode_module_prefix_roster`), the naming-hygiene
-/// authority (`floor_entries_requiring_test_sidecar`, `floor_entry_is_barren_test_sidecar`,
-/// qualified), and the output policy (`resolve_channel_policy` /
+/// policy module (its rosters, via `floor_decode_module_prefix_roster`), the discovery authority
+/// (`discover_floor_rows_for_source` / `floor_discovery_finalize_source_outcomes`, qualified —
+/// the floor's roster IS that fold's answer), and the output policy (`resolve_channel_policy` /
 /// `resolve_shell_trace_stream_policy`, bare, from `install_output_policy_in`). Every one is a
 /// closure seed of the gate-bounded prepared subject; a new by-name evaluation adds its module
-/// here or refuses at its own call site.
+/// here or refuses at its own call site. `v2.workflow.floor_naming_hygiene` is reached through
+/// the producer's import closure rather than asked directly: the barren-sidecar question the
+/// runner used to put to it is one arm of the producer's per-file fold.
 const REQUIRED_FLOOR_RUNTIME_AUTHORITY_MODULES: [&str; 3] = [
     REQUIRED_FLOOR_POLICY_MODULE,
-    "v2.workflow.floor_naming_hygiene",
+    "v2.workflow.floor_discovery_producer",
     "gunbc.output_policy",
 ];
 

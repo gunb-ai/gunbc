@@ -12,7 +12,7 @@ This document is the finding and the receipt. The change itself is in
 
 ## The measurement
 
-Counted with the floor's own rule (`cli_run` `witness_file_from_source`: a column-zero
+Counted with the floor's former Rust scanner (a column-zero
 `test fn `, and a column-zero `data … LiveTreeDisposition … ReadsLiveTree`), on `4cec10f66a3`:
 
 | population | identities | files |
@@ -59,7 +59,7 @@ did not need a new lane. It needed the stale prediction deleted.
 
 `reads_live_tree` was derived twice, by methods that cannot agree except by coincidence:
 
-- `cli_run` `witness_file_from_source` — a **syntactic text scan** for the declaration line.
+- the former `cli_run` floor scanner — a **syntactic text scan** for the declaration line.
 - `cli_run` `reads_live_tree_effective` — reads the same declaration, then falls through to
   `effect_reach_derived_reads_live_tree_for_entry`, a **semantic effect-reachability derivation**
   over the entry's import closure.

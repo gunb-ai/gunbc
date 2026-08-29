@@ -62,8 +62,8 @@ import std.types { NonEmptyStr }
 // without this arm being touched at all.
 //
 // DELETION RECEIPT: run 32345970386 measured 626/783 passing under execution, and the staged
-// blockers were closed before this root deletion. The `witness_file_from_source` scan remains:
-// live-tree disposition still feeds affected-set eligibility even though it no longer gates
+// blockers were closed before this root deletion. The live-tree disposition remains:
+// it still feeds affected-set eligibility even though it no longer gates
 // floor admission.
 //
 // A NOTE ON WHAT DID *NOT* MOVE: `live_tree_disposition` itself is not deleted and is not

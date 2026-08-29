@@ -85,7 +85,7 @@ doc_reachability (x6, v1+v2 copies), sole_constructor audit probes (x6),
 lens_module_gate (x3), quarantine_probe_disposition (x3), ci_budget_tree
 (x3), cost_coverage (x3), compiler_closure ingest/emit (x4), guarantee
 probes (x5), and singletons. Plus 1 STALE-QUARANTINE
-(`duplicate_definition_binding_probe` passes; remove from
+(`duplicate_definition_binding_probe_test` passes; remove from
 `v2.workflow.floor_expected_red`). Triage by shared root, not row-by-row;
 several sit in the same corpus-scan families as P1.1 and get cheap after
 the hoist. Dispositions must be honest: fix, or expected-red with typed
