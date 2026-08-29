@@ -431,30 +431,14 @@ fn launch_gate_capacity(sessions: LaunchSessionsStanding, capacity: BeltCapacity
 
 data launch_cause_mode_note: String = "The production posture (plan section 3, RLM-1): ManualReady -- the operator may start a Ready node, the timer may not start new work; the timer's reconciliation, verification, publication and cleanup are NOT launches and never pass through this gate. AutomaticReady admits both causes; Paused admits neither. The gate is LAST in the order on purpose: a refusal names the most specific fact first, so a timer looking at a blocked node reports DependenciesBlocked, and only a node the timer could otherwise start reports CauseNotPermitted."
 
-fn launch_cause_permitted(cause: LaunchCause, mode: SpawnMode) -> Bool {
-  match mode {
-    Paused => false
-    AutomaticReady => true
-    ManualReady => match cause {
-      Operator => true
-      Timer => false
-    }
-  }
-}
-
 fn launch_gate_cause(cause: LaunchCause, mode: SpawnMode) -> LaunchGateVerdict {
-  if launch_cause_permitted(cause: cause, mode: mode) {
-    GatePassed
-  } else {
-    GateRefused { refusal: LaunchCauseNotPermitted { cause: cause, mode: mode } }
-  }
-}
-
-fn launch_verdict_passed(v: LaunchGateVerdict) -> Bool {
-  match v {
-    GatePassed => true
-    GateRefused { refusal: _ } => false
-    GateNotReached => false
+  match mode {
+    Paused => GateRefused { refusal: LaunchCauseNotPermitted { cause: cause, mode: mode } }
+    AutomaticReady => GatePassed
+    ManualReady => match cause {
+      Operator => GatePassed
+      Timer => GateRefused { refusal: LaunchCauseNotPermitted { cause: cause, mode: mode } }
+    }
   }
 }
 
@@ -553,13 +537,6 @@ fn launch_admission(
     node_id: node_id,
     reserved: reserved,
   ))
-}
-
-fn launch_admission_is_admitted(a: LaunchAdmission) -> Bool {
-  match a {
-    LaunchAdmitted { identity: _ } => true
-    LaunchRefused { refusal: _ } => false
-  }
 }
 
 fn launch_admission_label(a: LaunchAdmission) -> String {
