@@ -1,4 +1,4 @@
-module v2.test.parse.grammar_validation
+module v2.test.parse.grammar_validation_test
 
 import std.occurrence_identity { OccurrenceSynthetic }
 import v2.std.compilers.lexing { Token }

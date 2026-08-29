@@ -1947,6 +1947,27 @@ pub(crate) fn floor_cgroup_dir() -> String {
     .clone()
 }
 
+/// One prepared source handed to the `.dag` discovery authority: its repo-relative path, its
+/// authored module name, and the bytes preparation already holds.
+struct FloorDiscoverySource {
+    path: String,
+    module_path: String,
+    source: Rc<v1_compiler_compile::SourceFile>,
+}
+
+/// One entry's enrolled witness names, exactly as `v2.workflow.floor_discovery_producer`
+/// answered them; the site-projection loop's unit.
+struct FloorDiscoveryFile {
+    path: String,
+    module_path: String,
+    functions: Vec<String>,
+}
+
+/// The `.dag` module whose per-file fold IS the required floor's roster. Evaluated by qualified
+/// name in its own exact scope, like every other floor authority; a closure seed of the
+/// gate-bounded prepared subject (`REQUIRED_FLOOR_RUNTIME_AUTHORITY_MODULES`).
+const FLOOR_DISCOVERY_AUTHORITY_MODULE: &str = "v2.workflow.floor_discovery_producer";
+
 pub fn floor_seam(name: &str) {
     if let Ok(mut g) = FLOOR_SEAM.lock() {
         g.clear();
@@ -2054,106 +2075,6 @@ pub(crate) fn floor_required_int(
         )),
         Err(e) => Err(format!("{qualified}: {e}")),
     }
-}
-
-/// The barren witnesses among preparation's candidate set, decided by the `.dag` authority
-/// rather than by a second Rust spelling of it.
-///
-/// TWO CALLS, AND THE SPLIT IS A COST DECISION, NEVER A POLICY ONE. Both questions
-/// — does this path claim the sidecar place, and does this file declare a test decl —
-/// are answered by `v2.workflow.floor_naming_hygiene`; Rust supplies facts and decides
-/// nothing.
-///
-/// Preparation records every admitted source with no `test fn` or `test data` decl; this asks
-/// `floor_naming_hygiene`'s own suffix which of them are `*_test.dag` entries — the same
-/// predicate `floor_entry_is_barren_test_sidecar` composes, consumed here because THIS is the
-/// path the required floor takes.
-///
-///   1. `floor_entries_requiring_test_sidecar` is asked ONCE for the whole candidate roster.
-///      It is a pure string question, so the whole list crosses in one call, and it narrows
-///      thousands of admitted sources to the handful that claim the `*_test.dag` place.
-///   2. `floor_entry_is_barren_test_sidecar` is then asked per survivor, with that file's
-///      content. That is the call that needs bytes, and after step 1 there are typically zero
-///      or a few of them — so consuming the real predicate costs a handful of invocations
-///      rather than one per corpus file, which is what a caller reimplementing the filter
-///      would have been buying.
-///
-/// An earlier revision of this function read the suffix constant out of the `.dag` and then
-/// applied `strip_prefix("./")` and `ends_with` in Rust. Reading the constant does not make
-/// the computation derived from the authority — the two can still drift — and that is the
-/// §2/§3 fork this repository exists to prevent (`review 56971`).
-pub(crate) fn floor_barren_test_sidecars(
-    hermetic: &v1_interpreter::InterpContext,
-    candidate_paths: &[String],
-    content_for_path: &HashMap<String, Rc<v1_compiler_compile::SourceFile>>,
-) -> Result<Vec<String>, String> {
-    if candidate_paths.is_empty() {
-        return Ok(Vec::new());
-    }
-    let path_values: Vec<v1_interpreter::Value> = candidate_paths
-        .iter()
-        .map(|s| str_value(s.clone()))
-        .collect();
-    let requiring = v1_interpreter::run_in_context_with_args(
-        hermetic,
-        "v2.workflow.floor_naming_hygiene.floor_entries_requiring_test_sidecar",
-        &[(
-            Some("entry_paths".to_string()),
-            list_value_from_vec(path_values),
-        )],
-        false,
-    )
-    .map_err(|e| format!("floor_entries_requiring_test_sidecar: {e}"))?;
-    let items = floor_decode_list(hermetic, Some(&requiring))
-        .map_err(|why| format!("floor_entries_requiring_test_sidecar decode: {why}"))?;
-
-    let mut barren = Vec::new();
-    for item in items {
-        let path = match item {
-            v1_interpreter::Value::Str(s) => s.to_string(),
-            other => {
-                return Err(format!(
-                    "floor_entries_requiring_test_sidecar: expected String rows, got {}",
-                    floor_value_shape(Some(other))
-                ))
-            }
-        };
-        // A candidate with no source in hand is not silently skipped: preparation built both
-        // the candidate list and the inventory from the same walk, so a miss here means those
-        // two disagree, and a wall that quietly drops the entries it cannot look up is the
-        // absorbing failure arm DESIGN §5 forbids.
-        let Some(source) = content_for_path.get(&path) else {
-            return Err(format!(
-                "REQUIRED-FLOOR REFUSAL cause=BarrenCandidateSourceMissing — `{path}` was \
-                 recorded as a sidecar candidate but has no prepared source"
-            ));
-        };
-        let verdict = v1_interpreter::run_in_context_with_args(
-            hermetic,
-            "v2.workflow.floor_naming_hygiene.floor_entry_is_barren_test_sidecar",
-            &[
-                (Some("entry_path".to_string()), str_value(path.clone())),
-                (
-                    Some("content".to_string()),
-                    str_value(source.content.to_string()),
-                ),
-            ],
-            false,
-        )
-        .map_err(|e| format!("floor_entry_is_barren_test_sidecar({path}): {e}"))?;
-        match verdict {
-            v1_interpreter::Value::Bool(true) => barren.push(path),
-            v1_interpreter::Value::Bool(false) => {}
-            other => {
-                return Err(format!(
-                    "floor_entry_is_barren_test_sidecar({path}): expected Bool, got {}",
-                    floor_value_shape(Some(&other))
-                ))
-            }
-        }
-    }
-    barren.sort();
-    Ok(barren)
 }
 
 pub(crate) fn floor_decode_list<'a>(
@@ -2436,26 +2357,17 @@ pub fn run_required_floor(
         Some((&gate_entry_index, &closure_seeds)),
     )?;
     drop(gate_entry_index);
-    // The bytes behind the sidecar candidates, captured here because `prepared_sources` is
-    // moved into the guard on the next line and the barren check needs content, not paths.
-    // Restricted to the candidate set rather than the whole inventory: the `.dag` predicate is
-    // asked only about files preparation already declined, so nothing else is retained.
-    let barren_candidate_sources: HashMap<String, Rc<v1_compiler_compile::SourceFile>> = {
-        let wanted: HashSet<&str> = prepared
-            .test_decl_free_paths
-            .iter()
-            .map(|s| s.as_str())
-            .collect();
-        prepared_sources
-            .iter()
-            .filter_map(|view| {
-                let path = view.source.path.replace('\\', "/");
-                wanted
-                    .contains(path.as_str())
-                    .then(|| (path, view.source.clone()))
-            })
-            .collect()
-    };
+    // THE PREPARED SOURCES THE DISCOVERY AUTHORITY WILL JUDGE, captured here because
+    // `prepared_sources` is moved into the guard on the next line. Rc clones of what preparation
+    // already holds -- path, module and bytes -- never a second corpus.
+    let discovery_sources: Vec<FloorDiscoverySource> = prepared_sources
+        .iter()
+        .map(|view| FloorDiscoverySource {
+            path: view.source.path.replace('\\', "/"),
+            module_path: view.module_path.clone(),
+            source: view.source.clone(),
+        })
+        .collect();
     let _floor_prepared_guard = register_floor_prepared_authority_guard(prepared_sources);
     // WARM THE MODULE-PATH INDEX HERE, because otherwise ONE ARBITRARY CLAIM PAYS FOR IT.
     //
@@ -2910,7 +2822,6 @@ pub fn run_required_floor(
     // seams below are what turn the gap into one located term.
     floor_seam("site-projection");
     let projection_started = std::time::Instant::now();
-    let files = &prepared.witness_files;
     // ONE DECISION, MADE ONCE, WHERE THE FACTS ALREADY ARE.
     //
     // WHAT THIS REPLACED, and why it was not an optimisation. The required outcome of this whole
@@ -2979,30 +2890,106 @@ pub fn run_required_floor(
                     floor would plan zero claims and green over an empty population"
             .to_string());
     }
-    // THE LINE STOPS BEFORE THE PARTITION IS COMPUTED, because a barren entry is invisible to
-    // the partition by construction — it contributes no SITE, so `offered` cannot report it and
-    // `offered == routed + declined_long + declined_fixture + declined_cost_debt` stays exact
-    // while saying nothing about
-    // it. A file that claims the `*_test.dag` place and enrolls nothing is a witness nobody asked
-    // and everybody reads as covered.
-    // Same rule as the output policy above: the naming-hygiene predicates are
-    // `v2.workflow.floor_naming_hygiene`'s declarations, evaluated in that module's scope.
-    let naming_hygiene_frame =
-        floor_authority_frame(&prepared, "v2.workflow.floor_naming_hygiene")?;
-    let barren_test_sidecars = floor_barren_test_sidecars(
-        &naming_hygiene_frame,
-        &prepared.test_decl_free_paths,
-        &barren_candidate_sources,
-    )?;
-    if !barren_test_sidecars.is_empty() {
-        return Err(format!(
-            "REQUIRED-FLOOR REFUSAL cause=BarrenTestSidecar count={} — a `*_test.dag` entry must \
-             declare at least one `test fn` or `test data` decl; the required floor enrolls \
-             nothing from: {}",
-            barren_test_sidecars.len(),
-            barren_test_sidecars.join(", ")
-        ));
+    // ── the witness roster, as the `.dag` discovery authority answers it ──────────────────
+    //
+    // ONE AUTHORITY FOR "WHAT DOES THE FLOOR DISCOVER". The roster used to be projected by a
+    // Rust text scan (`witness_file_from_source`, deleted) that was filename-blind, while
+    // `v2.workflow.floor_discovery_producer` -- reached only by claim_batch -- refused a
+    // `test`-marked decl outside a `*_test.dag` sidecar. Two answers to one question (DESIGN
+    // section 3), measured on main 2026-08-29: five files, 39 test fns, refused on one path and
+    // executed on the other. The floor now folds the producer's own per-file authority over the
+    // sources it prepared and takes that fold's rows as the roster; Rust threads values and
+    // decides nothing. Every refusal the producer carries -- misplaced test decl, barren sidecar,
+    // misplaced wire contract, malformed live_tree_disposition row -- therefore stops THIS line,
+    // with the producer's own reason text.
+    //
+    // The subject is the prepared inventory, not a filesystem walk: what the gate closure
+    // admitted is exactly what the fold judges, so an entry the floor could plan and an entry the
+    // authority never saw cannot come apart. Row admission (`witness_row_excluded_from_discovery`)
+    // is the discovery-corpus mode's policy and is deliberately NOT applied here -- see
+    // `floor_discovery_row_admission_policy_note` in the producer.
+    floor_seam("discovery-authority");
+    let discovery_started = std::time::Instant::now();
+    let producer_frame = floor_authority_frame(&prepared, FLOOR_DISCOVERY_AUTHORITY_MODULE)?;
+    let mut discovery_outcomes: Vec<v1_interpreter::Value> =
+        Vec::with_capacity(discovery_sources.len());
+    for src in &discovery_sources {
+        let args = [
+            (Some("repo_path".to_string()), str_value(src.path.clone())),
+            (
+                Some("content".to_string()),
+                str_value(src.source.content.clone()),
+            ),
+        ];
+        let outcome = v1_interpreter::run_in_context_with_args(
+            &producer_frame,
+            "v2.workflow.floor_discovery_producer.discover_floor_rows_for_source",
+            &args,
+            false,
+        )
+        .map_err(|e| {
+            format!(
+                "REQUIRED-FLOOR REFUSAL cause=FloorDiscoveryAuthorityUnevaluable source={} — \
+                 discover_floor_rows_for_source: {e}",
+                src.path
+            )
+        })?;
+        discovery_outcomes.push(outcome);
     }
+    let finalized = v1_interpreter::run_in_context_with_args(
+        &producer_frame,
+        "v2.workflow.floor_discovery_producer.floor_discovery_finalize_source_outcomes",
+        &[(
+            Some("outcomes".to_string()),
+            list_value_from_vec(discovery_outcomes),
+        )],
+        false,
+    )
+    .map_err(|e| {
+        format!(
+            "REQUIRED-FLOOR REFUSAL cause=FloorDiscoveryAuthorityUnevaluable — \
+             floor_discovery_finalize_source_outcomes: {e}"
+        )
+    })?;
+    let discovery_rows = parse_floor_discovery_producer_result(&producer_frame, &finalized)
+        .map_err(|reason| {
+            format!("REQUIRED-FLOOR REFUSAL cause=FloorDiscoveryRefused — {reason}")
+        })?;
+    // Rows are (entry, function); the disposition loop below needs the entry's AUTHORED module
+    // name, which preparation read off the `module` line and holds beside the same path.
+    let module_for_path: std::collections::HashMap<&str, &str> = discovery_sources
+        .iter()
+        .map(|src| (src.path.as_str(), src.module_path.as_str()))
+        .collect();
+    let mut files: Vec<FloorDiscoveryFile> = Vec::new();
+    for row in &discovery_rows {
+        let Some(module_path) = module_for_path.get(row.entry.as_str()) else {
+            return Err(format!(
+                "REQUIRED-FLOOR REFUSAL cause=FloorDiscoveryEntryOutsideSubject entry={} — the \
+                 discovery authority enrolled an entry the prepared subject does not hold",
+                row.entry
+            ));
+        };
+        match files.last_mut() {
+            Some(last) if last.path == row.entry => last.functions.push(row.function.clone()),
+            _ => files.push(FloorDiscoveryFile {
+                path: row.entry.clone(),
+                module_path: module_path.to_string(),
+                functions: vec![row.function.clone()],
+            }),
+        }
+    }
+    files.sort_by(|a, b| a.path.cmp(&b.path));
+    eprintln!(
+        "[floor-phase] phase=discovery-authority state=completed wall_ms={} authority={} \
+         sources={} rows={} entries={}",
+        discovery_started.elapsed().as_millis(),
+        FLOOR_DISCOVERY_AUTHORITY_MODULE,
+        discovery_sources.len(),
+        discovery_rows.len(),
+        files.len()
+    );
+    let files = &files;
     // THE COST-DEBT ROSTER, decoded before the claim-build loop below because it decides an
     // ADMISSION and not a verdict. It answers a FOURTH question: not which claims exist, not
     // which of them are known to fail, and not which have no route — but which PASS and cost
