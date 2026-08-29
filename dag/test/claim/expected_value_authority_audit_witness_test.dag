@@ -1,0 +1,121 @@
+module test.claim.expected_value_authority_audit_witness
+
+import std.types { String, NonEmptyStr, Bool, Int, List, list_length }
+import std.decl_ref { DeclarationRef, decl_ref }
+import gunbc.semantic_conformance { AuthoredExpectedOutcome }
+import gunbc.expected_value_authority_audit {
+  AuditDerivationBasis, DerivedFromReferenceClosure, DerivedFromAuthoredAuthorityBinding, BasisUnavailable,
+  ExpectedValueOrigin, IndependentOfImplementation, DerivedThroughEvaluatorUnderTest, OriginUnmeasured,
+  AuditRow,
+  AuditPartition, PartitionUnmeasured, PartitionMeasured,
+  AuditRefusalCause, RowClaimsOriginWithoutBasis, RowDuplicated, MeasuredPartitionCarriesNoRows,
+  partition_is_measured,
+  audit_partition_refusal_causes,
+  count_rows_with_origin_independent,
+  v2_test_claim_expected_value_partition,
+}
+
+fn nes(s: String) -> NonEmptyStr { s as NonEmptyStr }
+
+fn fixture_claim(name: String) -> DeclarationRef {
+  decl_ref(module_path: "fixture.expected_value_audit", decl_name: name)
+}
+
+fn independent_row(name: String) -> AuditRow {
+  AuditRow {
+    claim: fixture_claim(name: name),
+    origin: IndependentOfImplementation {
+      authority: AuthoredExpectedOutcome { statement: nes(s: "an authored expectation") },
+      judged_against_closure: fixture_claim(name: "subject_closure"),
+    },
+    basis: DerivedFromAuthoredAuthorityBinding {
+      binding_producer: fixture_claim(name: "binding_producer"),
+    },
+  }
+}
+
+fn derived_row(name: String) -> AuditRow {
+  AuditRow {
+    claim: fixture_claim(name: name),
+    origin: DerivedThroughEvaluatorUnderTest {
+      deriving_producer: fixture_claim(name: "the_same_evaluator"),
+      judged_against_closure: fixture_claim(name: "subject_closure"),
+    },
+    basis: DerivedFromReferenceClosure {
+      relation_producer: fixture_claim(name: "reference_closure_relation"),
+    },
+  }
+}
+
+fn baseless_claiming_row(name: String) -> AuditRow {
+  AuditRow {
+    claim: fixture_claim(name: name),
+    origin: IndependentOfImplementation {
+      authority: AuthoredExpectedOutcome { statement: nes(s: "asserted with nothing behind it") },
+      judged_against_closure: fixture_claim(name: "subject_closure"),
+    },
+    basis: BasisUnavailable { reason: nes(s: "no relation was consulted") },
+  }
+}
+
+fn measured(rows: List<AuditRow>) -> AuditPartition {
+  PartitionMeasured {
+    rows: rows,
+    subject_universe: nes(s: "fixture universe"),
+    measured_revision: nes(s: "fixture-revision"),
+    producer: fixture_claim(name: "fixture_producer"),
+    command: nes(s: "fixture command"),
+  }
+}
+
+// The landed production value is the honest arm: the corpus-wide measurement is gated, and an
+// unmeasured partition must never read as a measured-empty one. If someone later flips the
+// production row to PartitionMeasured without rows, the second conjunct of the refusal test below
+// is the red that meets them.
+test fn production_partition_is_declared_unmeasured_not_measured_empty() -> Bool {
+  !partition_is_measured(p: v2_test_claim_expected_value_partition)
+}
+
+test fn an_unmeasured_partition_carries_no_refusal_causes() -> Bool {
+  list_length(items: audit_partition_refusal_causes(p: v2_test_claim_expected_value_partition)) == 0
+}
+
+// A measured partition with zero rows is a completeness claim over a universe nobody enumerated,
+// and it is refused rather than passing as vacuously clean -- the empty-roster-vacuous-guard class.
+test fn a_measured_partition_with_no_rows_is_refused() -> Bool {
+  list_length(items: audit_partition_refusal_causes(p: measured(rows: []))) == 1
+}
+
+test fn a_clean_measured_partition_is_admitted_and_counts_both_sides() -> Bool {
+  list_length(
+    items: audit_partition_refusal_causes(
+      p: measured(rows: [independent_row(name: "claim_a"), derived_row(name: "claim_b")])
+    )
+  ) == 0
+    && count_rows_with_origin_independent(
+      rows: [independent_row(name: "claim_a"), derived_row(name: "claim_b")],
+      want_independent: true
+    ) == 1
+    && count_rows_with_origin_independent(
+      rows: [independent_row(name: "claim_a"), derived_row(name: "claim_b")],
+      want_independent: false
+    ) == 1
+}
+
+// A row asserting an independent origin with no basis behind it is the audit lying about its own
+// instrument, and it is refused by identity rather than absorbed into unmeasured.
+test fn an_origin_claim_without_a_basis_is_refused_by_identity() -> Bool {
+  list_length(
+    items: audit_partition_refusal_causes(
+      p: measured(rows: [independent_row(name: "claim_a"), baseless_claiming_row(name: "claim_b")])
+    )
+  ) == 1
+}
+
+test fn a_duplicated_claim_identity_is_refused() -> Bool {
+  list_length(
+    items: audit_partition_refusal_causes(
+      p: measured(rows: [independent_row(name: "claim_a"), independent_row(name: "claim_a")])
+    )
+  ) == 2
+}
