@@ -4,9 +4,19 @@ import v2.std.algebra { Cons, Empty, list_flat_map, any }
 import v2.std.collection { List }
 import v2.std.text { String }
 
-// THE OVER-COST WITHHOLDING MECHANISM, CARRYING 274 IDENTITIES.
+// THE OVER-COST WITHHOLDING MECHANISM, CARRYING 289 IDENTITIES -- 240 PROVEN, 49 CENSORED.
 //
-// The count is stated once, here, and derived nowhere else in this file's prose. An earlier
+// The count is stated once, here, and derived nowhere else in this file's prose. IT IS A
+// TRANSCRIBED NUMBER AND IT HAS NOW ROTTED TWICE, which is this file's own recurring defect
+// rather than a new one. The header read 274 while the roster held 290, and the population block
+// below read 225 + 51 = 276 against the same 290 -- three figures, no two agreeing, none of them
+// the roster's actual length. Nothing was wrong with the roster; every wrong number was prose
+// copied beside it and never re-read, exactly as the "CARRYING NO IDENTITIES" header this file
+// already corrected once. DESIGN section 6 names the repair and this file cannot yet perform it:
+// a count is cited by naming the producer that re-derives it, and the producer here is
+// `floor_cost_debt_proven_roster` / `floor_cost_debt_censored_roster` themselves. Until a reader
+// can ask them, every figure in this prose is a snapshot with a decay rate, and a reader who
+// needs the population should count the roster rather than believe this line. An earlier
 // revision of this header read "CURRENTLY CARRYING NO IDENTITIES" -- true of the empty carrier
 // that landed first, false from the moment the roster was enrolled, and it then stood in direct
 // contradiction with the population block below on the same authority. Caught by review 57235.
@@ -176,8 +186,74 @@ import v2.std.text { String }
 // Nothing here needs to be re-measured to release a row, and nothing may be added to release
 // one.
 
-// THE ROSTER CARRIES 274 IDENTITIES, IN TWO POPULATIONS THAT ARE ENROLLED FOR DIFFERENT REASONS
-// AND MUST NOT BE READ AS ONE.
+// RELEASED 2026-08-29, ONE ROW, ON A PRODUCER RECEIPT RATHER THAN ON A COST READING.
+//
+// `v2.test.languages_consumer_census.corpus.per_language_row_ratchet.corpus_per_language_row_ratchet_holds`
+// leaves the proven roster. It is released because the cost it was enrolled for is now PAID
+// SOMEWHERE ELSE, not because it was re-measured and found cheap -- and the distinction is the
+// whole of the receipt.
+//
+// WHAT IT WAS ENROLLED FOR. The block above records it at cpu 645ms with "none" recorded fill in
+// either `[floor-shared-fill]` format. That "none" was the tell and was read at the time as the
+// row owning its cost: the row builds `languages_decl_records_cached`, a process-wide `OnceLock`
+// over a token scan of every `.dag` and `.rs` file in the tree, and that build was NOT bracketed
+// by `record_shared_artifact_fill_cpu`, so `run_claim_measured` could neither net it nor report
+// it. An unbracketed shared build is INVISIBLE to the marginal basis this roster is defined
+// against -- it reads exactly like own work. This is the class the file already declares as its
+// known bounded impurity, met a second time on a second artifact.
+//
+// WHY IT IS NOW ZERO. gunbc#9680 added `LanguagesConsumerCensusBuild` to `FloorPreparationPhase`
+// and `required_floor_runner.rs` warms it by calling the declared producer once, after the
+// prepared authority is installed and BEFORE any claim window opens, adjudicated by the same
+// three limits as the other preparation phases. The artifact moved into the PREPARATION-FORCEABLE
+// arm that the successor paragraph below names, so no claim is billed for it at all.
+//
+// THE RECEIPT IS AN EXECUTED PREPARATION LINE, NOT A COST COLUMN. Main run 33263972922, at
+// 6515d6fb816 -- the first main run carrying gunbc#9680 -- announces
+// `[floor-phase] phase=languages-consumer-census-warm state=completed cpu_ms=460 wall_ms=464
+// rss_growth_bytes=0 decl_rows=72 provenance=built-by-preparation`. `built-by-preparation` is the
+// load-bearing field: it says preparation found the memo COLD and paid the build, which is the
+// only state in which this release is sound. Had it read `already-warm-on-entry` the fill would
+// still have been paid by some claim and this row's release would have moved the bill rather than
+// removed it.
+//
+// AND ITS OWN 0ms READINGS ARE NOT THE EVIDENCE, deliberately. The row reads cpu 0ms on main runs
+// 33141550579 and 33145062452 and 642ms `completed_over_budget` on 33191118450, and NONE of those
+// three figures is its marginal cost -- the 0s are borrowed from whichever row built the census
+// first, and the 642 is the whole build billed to it for touching first. Measured in isolation on
+// this branch, where it must be the first toucher, it costs 679ms; that number is the SIZE OF THE
+// FILL, not the cost of the row. Releasing on a 0ms reading would have been the charged-basis
+// error this file was rebuilt once to correct, in mirror image: there a real number belonged to
+// another row, here a real zero does.
+
+// NOT RELEASED, AND ITS TRIGGER NAMED SO THE ROW IS NOT RE-EXAMINED FROM SCRATCH.
+//
+// `v2.test.lens_inert_carrier.inert_carrier_test.inert_carrier_universe_is_nonempty` was examined
+// in the same pass, on the same reasoning, and STAYS. It presents identically -- 0-1ms on runs
+// 33141550579 and 33145062452, 1183ms `completed_over_budget` on 33191118450 -- and measures
+// 1270ms in isolation on this branch. But its artifact, `inert_carrier_data`, has NO preparation
+// warm: the block above already follows it across two runs by its `cache=inert_carrier_data
+// paid_by=...` line, and the payer is simply whichever inert-carrier claim runs first. Deleting
+// this line would not make the fill stop being paid; it would hand the 1.2s to a sibling that is
+// under the ceiling today, which is precisely the regeneration this file measured once before
+// (withholding 266 rows left 16 others tripping the same conjuncts, 9 of them under the ceiling
+// on main, one at 1ms).
+//
+// TRIGGER, and it is a CAPABILITY rather than an artifact, per DESIGN section 4b(3): the row is
+// released when `inert_carrier_data` is built and adjudicated in preparation -- a
+// `FloorPreparationPhase` member warmed by calling its declared producer once before any claim
+// window opens, reporting its own `provenance=built-by-preparation` -- OR when the build is
+// bracketed by `record_shared_artifact_fill_cpu` so the marginal basis can net it. Either arm
+// makes the row's own marginal cost knowable; nothing short of one of them does, and a re-measure
+// on its own is not sufficient, because every figure the instrument can currently produce for
+// this row is either borrowed or over-attributed. That build is not this lane's work.
+
+// THE ROSTER CARRIES 289 IDENTITIES, IN TWO POPULATIONS THAT ARE ENROLLED FOR DIFFERENT REASONS
+// AND MUST NOT BE READ AS ONE. The per-population figures in the two paragraphs below (225 and 51)
+// are the counts AT ENROLMENT and are NOT the present sizes, which are 240 and 49; they are left
+// as written because each paragraph is a record of what one measurement enrolled and why, and
+// re-pointing them at today's roster would destroy that provenance while creating two more
+// numbers to rot. The present sizes are stated in the header and nowhere else.
 //
 // POPULATION A -- 225 EXPENSIVE PASSES. Claims that REACHED A VERDICT, PASSED, and whose measured
 // CPU exceeded `required_floor_claim_cpu_safety_limit_ms`. Read from main run 33141550579's
@@ -593,7 +669,7 @@ fn floor_cost_debt_proven_chunk_10() -> List<String> {
 }
 
 fn floor_cost_debt_proven_chunk_11() -> List<String> {
-  Cons { head: "v2.test.realization_vocabulary_containment.cli_vocabulary.rest_path_reaches_no_cli.widened_scans_actually_read_the_tree", tail: Cons { head: "test.claim.operation_argv_corpus_witness.operation_argv_corpus_every_row_is_materialized_or_counted", tail: Cons { head: "v2.test.lens_inert_carrier.inert_carrier_test.inert_carrier_universe_is_nonempty", tail: Cons { head: "v2.test.languages_consumer_census.corpus.per_language_row_ratchet.corpus_per_language_row_ratchet_holds", tail: Cons { head: "dag.test.claim.lifecycle_survivor_corpus_census.scan_denominator_is_a_real_corpus", tail: Empty {} } } } } }
+  Cons { head: "v2.test.realization_vocabulary_containment.cli_vocabulary.rest_path_reaches_no_cli.widened_scans_actually_read_the_tree", tail: Cons { head: "test.claim.operation_argv_corpus_witness.operation_argv_corpus_every_row_is_materialized_or_counted", tail: Cons { head: "v2.test.lens_inert_carrier.inert_carrier_test.inert_carrier_universe_is_nonempty", tail: Cons { head: "dag.test.claim.lifecycle_survivor_corpus_census.scan_denominator_is_a_real_corpus", tail: Empty {} } } } }
 }
 
 fn floor_cost_debt_censored_chunk_00() -> List<String> {

@@ -1,0 +1,98 @@
+module test.claim.floor.bash_command_serialization_cost_model
+
+import std.types { Bool, String, List }
+import v2.std.node { Node }
+import gunbc.shell_command_text { shell_command_text_of_stmts, shell_command_intent }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+// Reads no tree: every subject is constructed in this file from Int literals.
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE VERDICT HERE IS MODEST ON PURPOSE. THE INSTRUMENT IS THE COST COLUMN, NOT THE BOOLEAN.
+//
+// These four claims assert that the bash command serializer is TOTAL and FAITHFUL over K
+// distinct commands -- every command handed in comes back out. That is a real claim with a real
+// RED (a serializer that dropped, merged or truncated a command reds it), and it is deliberately
+// not the reason the rows exist.
+//
+// WHAT THEY MEASURE. The floor already publishes per-claim marginal CPU for every identity in
+// `required_floor_claim_cost.tsv`. Four rows differing ONLY in K therefore re-derive, from that
+// artifact and with no second instrument, the cost model of the whole bash emission path: read
+// the four `cpu_ms` values, and the intercept is the fixed per-call setup while the slope is the
+// marginal cost of one additional DISTINCT emitted command. Nothing is transcribed here, which is
+// the point -- DESIGN section 6 rules that a measurement is cited by naming the producer that
+// re-derives it, and an earlier reading of this same cost lived as numbers in a session transcript
+// where it could not be re-derived by anyone.
+//
+// WHY DISTINCT AND NOT REPEATED, which is the whole shape of the finding. Identical commands are
+// free: the interpreter memoizes the serialization, so K repetitions of one command cost the same
+// as one. Cost tracks the number of DISTINCT commands and tracks neither the statement count nor
+// the byte size -- serializing one word of 100 bytes and one of 1600 bytes measure the same, and
+// so do 2 statements and 16 identical ones. So the K-th row must carry K commands that differ,
+// and the words below differ in exactly one token for that reason.
+//
+// K STOPS AT 8 BECAUSE THIS FILE MAY NOT CREATE COST DEBT. `v2.workflow.floor_cost_debt` is a
+// shrink-only contract, and an instrument that enrolled its own rows on it would be buying its
+// measurement with the budget it exists to measure. Eight distinct commands sit comfortably inside
+// `required_floor_claim_cpu_safety_limit_ms`; the slope is already determined by four points, and
+// extending K to buy a longer lever would cross the ceiling and put this file on the roster.
+//
+// AND THE ROWS ARE A REGRESSION CONTROL, not a one-off reading. Any change that memoizes this
+// path -- the same-key emission cache lane is the live candidate -- moves these four `cpu_ms`
+// values together, and the new intercept and slope are read from the same four rows in the same
+// artifact rather than from a fresh instrument. Note what the four rows can and cannot see: they
+// vary K WITHIN one claim, so they measure the per-distinct-command cost inside a single
+// evaluation. A cache whose scope is a whole floor run -- one that survives ACROSS claims, so that
+// a second claim emitting a byte-identical script pays nothing -- would leave this file's numbers
+// almost unchanged while collapsing the corpus cost, because each of these claims is its own first
+// toucher. That is not a defect in the instrument; it is the reason a cross-claim saving must be
+// read from the module totals in the same artifact and never from these four rows.
+//
+// THE DISSOLUTION CONDITION IS FOR THE READING, NOT FOR THE CLAIMS: the totality assertion stands
+// whatever the cost does, so these rows do not retire when the cost falls -- they become the
+// control that it stayed fallen.
+
+fn cost_model_word(k: Int) -> String {
+  concat("gunbc-cost-model-command-", to_string(k))
+}
+
+fn cost_model_command(k: Int) -> Node {
+  shell_command_intent(words: ["echo", cost_model_word(k: k)])
+}
+
+fn cost_model_commands(k: Int) -> List<Node> {
+  if k <= 0 { [] } else { concat(cost_model_commands(k: k - 1), [cost_model_command(k: k)]) }
+}
+
+fn cost_model_serialized(k: Int) -> String {
+  shell_command_text_of_stmts(stmts: cost_model_commands(k: k))
+}
+
+fn cost_model_every_command_survives(k: Int, remaining: Int, text: String) -> Bool {
+  if remaining <= 0 {
+    true
+  } else {
+    string_contains(s: text, pattern: cost_model_word(k: remaining))
+      && cost_model_every_command_survives(k: k, remaining: remaining - 1, text: text)
+  }
+}
+
+fn serialization_is_total_over_distinct_commands(k: Int) -> Bool {
+  cost_model_every_command_survives(k: k, remaining: k, text: cost_model_serialized(k: k))
+}
+
+test fn bash_serialization_is_total_at_1_distinct_command() -> Bool {
+  serialization_is_total_over_distinct_commands(k: 1)
+}
+
+test fn bash_serialization_is_total_at_2_distinct_commands() -> Bool {
+  serialization_is_total_over_distinct_commands(k: 2)
+}
+
+test fn bash_serialization_is_total_at_4_distinct_commands() -> Bool {
+  serialization_is_total_over_distinct_commands(k: 4)
+}
+
+test fn bash_serialization_is_total_at_8_distinct_commands() -> Bool {
+  serialization_is_total_over_distinct_commands(k: 8)
+}
