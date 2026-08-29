@@ -49,6 +49,12 @@ data cross_module_exhaustiveness_widened_provider_fixture: String = "module fixt
 
 data cross_module_exhaustiveness_authority_statement: NonEmptyStr = "A match over a closed coproduct with no catch-all must cover every variant of the provider's CURRENT declaration, across module boundaries exactly as within one; the refusal must carry the infer_match_non_exhaustive identity and name each omitted variant. Acceptance of the incomplete consumer fixture, or continued acceptance of the complete consumer after the provider widens, is a NativeV2Defect at the compiler floor." as NonEmptyStr
 
+// NO DIFFERENTIAL RECORD IS AUTHORED HERE, deliberately: a record is a measurement, and running
+// the fixtures through the native acceptance path is the released lane's work. What model-work
+// publishes is the subject -- the authority, the expectation, and fixtures whose discriminating
+// structure is itself witnessed. v1's observation on these fixtures, when taken, enters a record
+// as LegacyRun and nothing else; the seed's known blindness on this shape makes it a
+// LegacyV1Defect candidate, never a judge.
 data cross_module_exhaustiveness_subject: BehaviorSubject = BehaviorSubject {
   subject_id: cross_module_exhaustiveness_subject_identity,
   authority: AuthoredExpectedOutcome {
@@ -63,10 +69,3 @@ data cross_module_exhaustiveness_subject: BehaviorSubject = BehaviorSubject {
   },
   supplementary: [],
 }
-
-// NO DIFFERENTIAL RECORD IS AUTHORED HERE, deliberately: a record is a measurement, and running
-// the fixtures through the native acceptance path is the released lane's work. What model-work
-// publishes is the subject -- the authority, the expectation, and fixtures whose discriminating
-// structure is itself witnessed. v1's observation on these fixtures, when taken, enters a record
-// as LegacyRun and nothing else; the seed's known blindness on this shape makes it a
-// LegacyV1Defect candidate, never a judge.
