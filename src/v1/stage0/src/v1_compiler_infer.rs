@@ -4882,18 +4882,24 @@ pub fn direct_call_argument_inhabitance_diags(
             __result.extend(
                 (*match app.matched_arg.clone() {
                     Some(ta) => {
-                        let actual_expr = crate::v1_std_core::arg_value(ta.clone());
-                        declared_type_obligation_diags(
-                            Rc::new(DeclaredTypeObligation {
-                                position: DeclaredTypePosition::PositionDirectCallArgument,
-                                declared: app.formal_subst.clone(),
-                                produced: crate::v1_compiler_infer_types::resolved_type(
-                                    actual_expr.clone(),
-                                ),
-                                span: actual_expr.span.clone(),
-                            }),
-                            scope.clone(),
-                        )
+                        if type_node_is_callable(app.formal_subst.clone()) {
+                            Rc::new(vec![])
+                        } else {
+                            {
+                                let actual_expr = crate::v1_std_core::arg_value(ta.clone());
+                                declared_type_obligation_diags(
+                                    Rc::new(DeclaredTypeObligation {
+                                        position: DeclaredTypePosition::PositionDirectCallArgument,
+                                        declared: app.formal_subst.clone(),
+                                        produced: crate::v1_compiler_infer_types::resolved_type(
+                                            actual_expr.clone(),
+                                        ),
+                                        span: actual_expr.span.clone(),
+                                    }),
+                                    scope.clone(),
+                                )
+                            }
+                        }
                     }
                     None => Rc::new(vec![]),
                 })
