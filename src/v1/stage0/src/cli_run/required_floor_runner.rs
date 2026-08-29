@@ -2983,6 +2983,24 @@ pub fn run_required_floor(
     // SUPPRESSION IS COUNTED, NEVER SILENT. A roster quietly shrinking is how a skip list is
     // born, so the count is printed per roster and the population is recoverable by intersecting
     // the two authorities. This is a narrowing of what those joins observe, declared as one.
+    //
+    // THE REQUIRED GATE IS THE SECOND SUCH MECHANISM, same shape, same accounting. A module
+    // outside the gate roster is never loaded into the prepared subject, so none of its
+    // identities can execute, so an enrollment naming one asserts something this run cannot
+    // observe. Measured 2026-08-29 on the first gate-bounded fold: 39 expected-red rows, every
+    // one in a module outside the gate, refused as ExpectedRedIdentityDidNotExecute. They are
+    // not stale -- they are out of this run's scope -- and the receipts workflow that runs the
+    // whole corpus is where their standing is decided. Withheld here, counted per roster, and
+    // observable again the moment the gate roster admits their module.
+    let identity_inside_required_gate = |identity: &str| -> bool {
+        let module_path = match identity.rfind('.') {
+            Some(dot) => &identity[..dot],
+            None => identity,
+        };
+        required_gate_prefixes
+            .iter()
+            .any(|prefix| module_path.starts_with(prefix.as_str()))
+    };
     let suppress_withheld = |roster: &mut HashSet<String>, name: &str| {
         let before = roster.len();
         roster.retain(|identity| !cost_debt_roster.contains(identity));
@@ -2992,6 +3010,17 @@ pub fn run_required_floor(
                 "[floor-cost-debt] {name}: {suppressed} enrolled identity(ies) suppressed because \
                  the cost-debt roster withholds them; their enrollment is dormant, not deleted, \
                  and becomes observable again when they leave that roster"
+            );
+        }
+        let before = roster.len();
+        roster.retain(|identity| identity_inside_required_gate(identity));
+        let outside_gate = before - roster.len();
+        if outside_gate > 0 {
+            eprintln!(
+                "[floor-required-gate] {name}: {outside_gate} enrolled identity(ies) suppressed \
+                 because their module is outside the required gate and was never loaded; their \
+                 enrollment is dormant, not deleted, and becomes observable again when the gate \
+                 roster admits the module or in the whole-corpus receipts run"
             );
         }
     };
