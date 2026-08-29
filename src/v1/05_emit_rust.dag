@@ -1,6 +1,10 @@
 module v1.compiler.emit_rust
 
 import std.occurrence_identity { OccurrenceSynthetic }
+import std.decl_ref { decl_ref }
+import std.primitive_projection {
+  primitive_identity_runtime_name, primitive_projection_row_for_declaration
+}
 
 import extdeps.languages.rust.capabilities { phantom_opaque_carrier_derive_traits }
 
@@ -7234,10 +7238,24 @@ fn rust_body_is_bare_self_call(name: String, body: Node, source_indices: Map<Str
 // precedent avoids; and the declaration has no honest caller anyway, because every call to a
 // realized primitive routes to the bridge. If some path ever misses that routing, the result is an
 // unresolved symbol -- loud, located, and fixable -- rather than a silent nonterminating call.
-fn rust_host_seam_declaration_emit(name: String, body: Node, source_indices: Map<String, NewlineIndex>) -> String? {
+// THE PRIMITIVE A DECLARATION PROJECTS, WHICH IS NOT ITS OWN NAME. A seam's declaration name and
+// the primitive it realizes are different facts, and keying realization on the declaration name
+// was a defect measured rather than reasoned: v2.std.collection empty_map_primitive_delegate is
+// rostered to the `empty_map` primitive, whose bridge is rc_empty_map, so it IS realized -- but the
+// registry holds `empty_map`, not `empty_map_primitive_delegate`, so a decl-name lookup missed and
+// the wall refused a seam that had a perfectly good realization. The roster is the authority that
+// joins the two; the declaration name is only the fallback for a seam nobody has rostered.
+fn rust_seam_primitive_name(module_path: String, name: String) -> String {
+  match primitive_projection_row_for_declaration(declaration: decl_ref(module_path: module_path, decl_name: name)) {
+    Present { value: row } => primitive_identity_runtime_name(identity: row.primitive)
+    Absent => name
+  }
+}
+
+fn rust_host_seam_declaration_emit(module_path: String, name: String, body: Node, source_indices: Map<String, NewlineIndex>) -> String? {
   if rust_body_is_bare_self_call(name: name, body: body, source_indices: source_indices) == false {
     none
-  } else if rust_runtime_primitive_has_bridge(primitive_name: name) {
+  } else if rust_runtime_primitive_has_bridge(primitive_name: rust_seam_primitive_name(module_path: module_path, name: name)) {
     Present { value: "" }
   } else {
     Present { value: concat(
@@ -7257,7 +7275,7 @@ fn emit_fn_def(name: String, params: List<Node>, inferred: Node, body: Node, reg
       Absent => ""
     }
   }
-  let host_seam_emit = rust_host_seam_declaration_emit(name: name, body: body, source_indices: si)
+  let host_seam_emit = rust_host_seam_declaration_emit(module_path: scope.module_name, name: name, body: body, source_indices: si)
   if host_seam_emit != none {
     return match host_seam_emit {
       Present { value: seam_emit } => seam_emit

@@ -125,3 +125,22 @@ test fn w_ordinary_recursion_is_not_read_as_a_host_seam() -> Bool {
     ["has no realization for this target"]
   )
 }
+
+// A SEAM'S DECLARATION NAME IS NOT THE PRIMITIVE IT REALIZES, and this row is the one that caught
+// it. v2.std.collection empty_map_primitive_delegate is a self-call body -- so the wall sees a seam
+// -- and it IS realized, because its roster row names the `empty_map` primitive whose bridge is
+// rc_empty_map. Keying the realization lookup on the DECLARATION name missed, because the registry
+// holds `empty_map`, and the wall refused a seam that had a perfectly good realization. Measured,
+// not predicted: it appeared as one of six refusals in the emitted closure.
+//
+// The discriminating direction is that this seam must NOT refuse while decl_facts, which genuinely
+// has no realization, must. A wall that reverted to decl-name keying flips this row red and leaves
+// the decl_facts row green, so the two cannot be satisfied by one edit.
+test fn w_rostered_seam_resolves_realization_through_its_primitive_not_its_decl_name() -> Bool {
+  compile_dag_rust_emit_check(
+    "module test.claim.delegate_seam_probe\nimport std.types { Int, String, Map }\nimport std.occurrence_identity { OccurrenceId }\nimport v2.std.collection { empty_map }\nfn probe() -> Map<String, Int> { empty_map() }\n",
+    "src/test_claim_delegate_seam_probe.rs",
+    ["v1_rt::rc_empty_map"],
+    ["has no realization for this target"]
+  )
+}
