@@ -1,4 +1,4 @@
-module test.claim.filesystem_list_hermetic_witness
+module test.claim.filesystem_list_hermetic_witness_test
 
 
 import extdeps.filesystem.filesystem_io

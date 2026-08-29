@@ -1175,8 +1175,8 @@ fn report_required_floor_outcome(outcome: &v1_compiler::cli_run::RequiredFloorOu
          declined_outside_required_gate={} declined_outside_gate_closure={} \
          declined_discovery_excluded={} — every DECLARED witness identity in the tree is exactly \
          one of these, joined at identity grain (FloorDispositionJoinInexact refuses otherwise), \
-         and no `*_test.dag` entry offered zero sites (BarrenTestSidecar refuses upstream of \
-         this line)",
+         and no `*_test.dag` entry offered zero sites (v2.workflow.floor_discovery_producer \
+         refuses a barren or misplaced sidecar upstream of this line, over the PREPARED subject)",
         outcome.declared_identities,
         outcome.sites_offered,
         outcome.claims_planned,

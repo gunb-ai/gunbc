@@ -249,13 +249,25 @@ run's own, not this document's: `required-floor: declared=… offered=… declin
 
 ### What changed
 
-1. **The universe is the declared population.** Preparation now emits one
-   `RequiredFloorDisposition` row for every identity it drops —
-   `DeclinedOutsideGateClosure` and `DeclinedDiscoveryExcluded { matched_substring }`, two arms
-   on the authority that already existed, not a second status vocabulary. The gate-closure
+1. **The universe is the declared population.** Preparation keeps the SOURCES it removes, each
+   beside the disposition naming why — `DeclinedOutsideGateClosure` and
+   `DeclinedDiscoveryExcluded { matched_substring }`, two arms on the authority that already
+   existed, not a second status vocabulary — and judges nothing about witnesses. What those
+   sources DECLARE is asked of the `.dag` authority in the floor
+   (`v2.workflow.floor_naming_hygiene` `floor_discovery_scan_test_decl_names`, the same
+   enumeration `floor_discovery_producer` composes for the prepared subject), so gunbc#9685's
+   single-discovery-authority cut is not re-forked through a side door. The gate-closure
    population keeps its own arm rather than folding into `DeclinedOutsideRequiredGate`: the two
    are removed by different mechanisms, restored by different triggers, and differ by two orders
    of magnitude, and the first is the rung drop's subject.
+
+   **Enumeration, not placement policy.** The producer's per-file fold also refuses a misplaced
+   `test` decl, a barren sidecar and a misplaced wire contract. Those judgements are applied over
+   the PREPARED subject only. Extending them to sources the required gate does not cover would
+   silently widen this lane from *which identities exist* to *is the whole corpus well-placed*,
+   as a side effect of counting; the removed population's hygiene is therefore unjudged, and its
+   next-rung trigger is the same one the rung drop already carries — the gate closure reaching
+   those modules.
 2. **The partition is an identity join, not a count equality.** The old check was
    `offered == routed + declined_long + declined_fixture + declined_outside_gate +
    declined_cost_debt`, which DESIGN §5 names by shape: green over a projection that drops one
