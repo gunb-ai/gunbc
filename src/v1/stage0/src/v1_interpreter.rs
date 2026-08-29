@@ -1328,6 +1328,9 @@ enum PortableValue {
         variant_name: String,
         fields: Vec<(String, PortableValue)>,
     },
+    /// A module-scope fn value, carried by its shared resolved-graph `Node`. See
+    /// `portable_value_from_ctx`: portable by reference, never by content.
+    Fn(Rc<Node>),
 }
 
 fn portable_value_from_ctx(ctx: &InterpContext, value: &Value) -> Option<PortableValue> {
@@ -1381,7 +1384,12 @@ fn portable_value_from_ctx(ctx: &InterpContext, value: &Value) -> Option<Portabl
                 fields: out,
             }
         }
-        Value::Closure { .. } | Value::Fn { .. } => return None,
+        // A bare `Fn` is portable BY REFERENCE: its `Node` lives in the prepared resolved
+        // graph that every claim frame shares (the same fact `fn_ptr` keying rests on), and
+        // it carries no `Symbol` and no `Env`. A `Closure` stays refused — its captured `Env`
+        // chain is a frame-local structure, not a content snapshot.
+        Value::Fn { node } => PortableValue::Fn(Rc::clone(node)),
+        Value::Closure { .. } => return None,
     })
 }
 
@@ -1433,24 +1441,178 @@ fn value_from_portable_ctx(ctx: &InterpContext, portable: &PortableValue) -> Val
                     .collect(),
             ),
         },
+        PortableValue::Fn(node) => Value::Fn {
+            node: Rc::clone(node),
+        },
     }
 }
 
 #[derive(Default)]
-struct PrepareGrammarCrossClaimMemo {
+struct CrossClaimPureMemo {
     map: HashMap<(usize, u64), PortableValue>,
+    /// Stores refused because the map was at `CROSS_CLAIM_PURE_MEMO_ENTRY_CAP`. Counted,
+    /// never silent: an over-cap producer simply recomputes, and the count is readable by
+    /// the receipt so a saturated memo is visible rather than inferred from missing hits.
+    overflow: u64,
+}
+
+/// Byte-bounded admission for the cross-claim tier (the "conscious provider row" the
+/// eval-frame memo's own doc demands): distinct (fn, args) keys stop being STORED past this
+/// many entries. Enrolled producers are roster-declared and mostly nullary, so the ordinary
+/// population is tens of keys; the cap exists for a mis-enrolled parametric producer whose
+/// argument space is claim-shaped.
+const CROSS_CLAIM_PURE_MEMO_ENTRY_CAP: usize = 4096;
+
+/// Observes cross-claim memo traffic for the floor's shared-fill ledger. Installed by the
+/// harness (required-floor preparation); `None` outside it. The interpreter itself nets fill
+/// CPU via `record_shared_artifact_fill_cpu_nanos` — the observer carries the ledger rows and
+/// the wall clock, which live in `cli_run`.
+pub struct CrossClaimShareObserver {
+    /// Called when an admitted call MAY become a fill — before it computes. Paired with
+    /// exactly one `on_fill` or `on_fill_abandon`, so a nesting ledger on the other side
+    /// (the floor's shared-fill child stack) stays balanced.
+    pub on_fill_begin: Box<dyn Fn()>,
+    /// (producer name, inclusive fill wall nanos, SELF fill wall nanos — inclusive minus
+    /// stored descendants) — called once per store that landed. CPU is netted inside the
+    /// interpreter (`record_shared_artifact_fill_cpu_nanos`) and appears nowhere here.
+    pub on_fill: Box<dyn Fn(&str, u128, u128)>,
+    /// The admitted call computed but did not store (effects, unportable value, cap,
+    /// duplicate key) — closes the `on_fill_begin`.
+    pub on_fill_abandon: Box<dyn Fn()>,
+    /// producer name — called once per served hit.
+    pub on_hit: Box<dyn Fn(&str)>,
 }
 
 thread_local! {
-    static PREPARE_GRAMMAR_CROSS_CLAIM_MEMO: RefCell<PrepareGrammarCrossClaimMemo> =
-        RefCell::new(PrepareGrammarCrossClaimMemo::default());
+    static CROSS_CLAIM_PURE_MEMO: RefCell<CrossClaimPureMemo> =
+        RefCell::new(CrossClaimPureMemo::default());
     static CROSS_CLAIM_FN_KEEPALIVE: RefCell<Vec<Rc<Node>>> = RefCell::new(Vec::new());
+    /// Producer BARE names admitted to the cross-claim tier beyond the built-in
+    /// `prepare_grammar` arm. Fn-node identity in the key keeps a bare-name homonym sound
+    /// (two declarations are two `fn_ptr`s); admission by bare name only decides who is
+    /// ELIGIBLE to be stored.
+    static CROSS_CLAIM_PURE_ROSTER: RefCell<std::collections::HashSet<String>> =
+        RefCell::new(std::collections::HashSet::new());
+    static CROSS_CLAIM_SHARE_OBSERVER: RefCell<Option<CrossClaimShareObserver>> =
+        const { RefCell::new(None) };
 }
 
 pub fn clear_cross_claim_pure_memos() {
-    PREPARE_GRAMMAR_CROSS_CLAIM_MEMO
-        .with(|m| *m.borrow_mut() = PrepareGrammarCrossClaimMemo::default());
+    CROSS_CLAIM_PURE_MEMO.with(|m| *m.borrow_mut() = CrossClaimPureMemo::default());
     CROSS_CLAIM_FN_KEEPALIVE.with(|k| k.borrow_mut().clear());
+}
+
+/// Install the declared producer roster (bare fn names). Replaces any previous roster; the
+/// built-in `prepare_grammar` arm stays admitted regardless, so surfaces that install no
+/// roster (claim_batch, `gunbc run`) keep today's behavior exactly.
+pub fn install_cross_claim_pure_share_roster<I: IntoIterator<Item = String>>(names: I) {
+    CROSS_CLAIM_PURE_ROSTER.with(|r| *r.borrow_mut() = names.into_iter().collect());
+}
+
+/// Install the shared-fill observer for the cross-claim tier. `None` uninstalls.
+pub fn install_cross_claim_share_observer(observer: Option<CrossClaimShareObserver>) {
+    CROSS_CLAIM_SHARE_OBSERVER.with(|o| *o.borrow_mut() = observer);
+}
+
+/// (stores, overflow) for the cross-claim tier on this thread — receipt fodder only.
+pub fn cross_claim_pure_memo_counts() -> (usize, u64) {
+    CROSS_CLAIM_PURE_MEMO.with(|m| {
+        let m = m.borrow();
+        (m.map.len(), m.overflow)
+    })
+}
+
+fn cross_claim_pure_admitted(func_name: &str) -> bool {
+    func_name == "prepare_grammar"
+        || CROSS_CLAIM_PURE_ROSTER.with(|r| r.borrow().contains(func_name))
+}
+
+fn cross_claim_observe_hit(func_name: &str) {
+    CROSS_CLAIM_SHARE_OBSERVER.with(|o| {
+        if let Some(obs) = o.borrow().as_ref() {
+            (obs.on_hit)(func_name);
+        }
+    });
+}
+
+thread_local! {
+    /// One accumulator per admitted fill in flight, innermost last, holding the inclusive CPU
+    /// of the STORED fills that completed inside it. Enrolled producers compose (a full target
+    /// model reads its staging core), and netting both the outer and the inner inclusive CPU
+    /// from the paying claim would net the inner twice — the same composition fact the
+    /// shared-fill ledger's own child stack exists for, at this tier's grain.
+    static CROSS_CLAIM_FILL_CHILDREN: RefCell<Vec<(u128, u128)>> = const { RefCell::new(Vec::new()) };
+}
+
+/// RAII scope for one admitted call that missed the cross-claim memo. Every path out of the
+/// call — store, non-store, error — runs `Drop`, which keeps the child stack and the
+/// observer's begin/record/abandon protocol balanced by construction.
+struct CrossClaimFillGuard {
+    func_name: String,
+    cpu_started: u128,
+    wall_started: Instant,
+    stored: std::cell::Cell<bool>,
+}
+
+impl CrossClaimFillGuard {
+    fn enter(func_name: &str) -> CrossClaimFillGuard {
+        CROSS_CLAIM_FILL_CHILDREN.with(|s| s.borrow_mut().push((0, 0)));
+        CROSS_CLAIM_SHARE_OBSERVER.with(|o| {
+            if let Some(obs) = o.borrow().as_ref() {
+                (obs.on_fill_begin)();
+            }
+        });
+        CrossClaimFillGuard {
+            func_name: func_name.to_string(),
+            cpu_started: thread_cpu_nanos(),
+            wall_started: Instant::now(),
+            stored: std::cell::Cell::new(false),
+        }
+    }
+
+    fn mark_stored(&self) {
+        self.stored.set(true);
+    }
+}
+
+impl Drop for CrossClaimFillGuard {
+    fn drop(&mut self) {
+        let inclusive_cpu = thread_cpu_nanos().saturating_sub(self.cpu_started);
+        let inclusive_wall = self.wall_started.elapsed().as_nanos();
+        let (children_cpu, children_wall) = CROSS_CLAIM_FILL_CHILDREN
+            .with(|s| s.borrow_mut().pop())
+            .unwrap_or((0, 0));
+        if self.stored.get() {
+            // Net SELF time only: stored descendants already netted their own inclusive time.
+            record_shared_artifact_fill_cpu_nanos(inclusive_cpu.saturating_sub(children_cpu));
+            let self_wall = inclusive_wall.saturating_sub(children_wall);
+            CROSS_CLAIM_FILL_CHILDREN.with(|s| {
+                if let Some(parent) = s.borrow_mut().last_mut() {
+                    parent.0 = parent.0.saturating_add(inclusive_cpu);
+                    parent.1 = parent.1.saturating_add(inclusive_wall);
+                }
+            });
+            CROSS_CLAIM_SHARE_OBSERVER.with(|o| {
+                if let Some(obs) = o.borrow().as_ref() {
+                    (obs.on_fill)(&self.func_name, inclusive_wall, self_wall);
+                }
+            });
+        } else {
+            // Not stored: this frame's own cost stays the caller's, but its STORED
+            // descendants were netted, so their total rolls up for the parent to subtract.
+            CROSS_CLAIM_FILL_CHILDREN.with(|s| {
+                if let Some(parent) = s.borrow_mut().last_mut() {
+                    parent.0 = parent.0.saturating_add(children_cpu);
+                    parent.1 = parent.1.saturating_add(children_wall);
+                }
+            });
+            CROSS_CLAIM_SHARE_OBSERVER.with(|o| {
+                if let Some(obs) = o.borrow().as_ref() {
+                    (obs.on_fill_abandon)();
+                }
+            });
+        }
+    }
 }
 
 fn keep_cross_claim_fn(fn_node: &Rc<Node>) {
@@ -1463,69 +1625,124 @@ fn keep_cross_claim_fn(fn_node: &Rc<Node>) {
     });
 }
 
+/// One content hash over ALL of a call's arguments (names and values). `None` when any
+/// argument is not content-hashable — such a call is never admitted to the cross-claim tier.
+/// The interner/hash-memo borrows must not outlive this function: they are immutable/local
+/// borrows of `ctx`, and `value_from_portable_ctx` at the caller interns symbols into `ctx`
+/// (a `borrow_mut()`) while reconstructing a stored value — holding `interner` across that
+/// call double-borrows.
+fn cross_claim_args_hash(ctx: &InterpContext, args: &[(Option<String>, Value)]) -> Option<u64> {
+    use std::hash::{Hash, Hasher};
+    let mut hash_memo = ctx.eval_recompute_hash_memo.borrow_mut();
+    let interner = ctx.symbols.borrow();
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    args.len().hash(&mut hasher);
+    for (name, value) in args {
+        name.hash(&mut hasher);
+        eval_recompute_arg_key(&mut hash_memo, &interner, value)?.hash(&mut hasher);
+    }
+    Some(hasher.finish())
+}
+
+// 🟡 dissolve-on (narrowed, not discharged): gunbc.roadmap_authority
+// five_minute_ci_gate_program_note — this tier is now the generic cross-claim pure memo that
+// note asked for, keyed on fn-node identity + content-hashed args, with admission held to a
+// DECLARED roster (`v2.workflow.floor_pure_producer_share`) plus the built-in
+// `prepare_grammar` arm rather than to every pure call: cross-claim retention is
+// byte-unbounded by construction (the 2026-07-10 20GiB ctx-lifetime regression), so
+// admission stays a conscious, bounded row. Widening admission beyond the roster is that
+// note's remaining work, not this arm's.
 fn try_cross_claim_pure_memo(
     ctx: &InterpContext,
     fn_node: &Rc<Node>,
     func_name: &str,
     args: &[(Option<String>, Value)],
 ) -> Option<Value> {
-    // 🟡 dissolve-on: gunbc.roadmap_authority five_minute_ci_gate_program_note — a generic
-    // *cross-claim* pure memo keyed on fn-node identity + content-hashable args. `eval_call_memo`
-    // cannot be that authority: its eviction scope is the witness frame
-    // (`eval_call_memo_frame_exit`), so it cannot amortize the same pure call across the floor
-    // fold. These two name arms exist only because that lifetime gap does; a third arm is
-    // evidence the generic memo has not landed, not a reason to grow the list.
-    if func_name == "prepare_grammar" && args.len() == 1 {
-        // The interner/hash-memo borrows must not outlive this block: they are
-        // immutable/local borrows of `ctx`, and `value_from_portable_ctx` below
-        // interns symbols into `ctx` (a `borrow_mut()`) while reconstructing the
-        // stored value — holding `interner` across that call double-borrows.
-        let key = {
-            let mut hash_memo = ctx.eval_recompute_hash_memo.borrow_mut();
-            let interner = ctx.symbols.borrow();
-            eval_recompute_arg_key(&mut hash_memo, &interner, &args[0].1)?
-        };
-        let content_hash = match key {
-            EvalRecomputeArgKey::ContentHash(h) => h,
-            _ => return None,
-        };
-        let memo_key = (Rc::as_ptr(fn_node) as usize, content_hash);
-        let portable =
-            PREPARE_GRAMMAR_CROSS_CLAIM_MEMO.with(|m| m.borrow().map.get(&memo_key).cloned())?;
-        return Some(value_from_portable_ctx(ctx, &portable));
+    if !cross_claim_pure_admitted(func_name) {
+        return None;
     }
-    None
+    let args_hash = cross_claim_args_hash(ctx, args)?;
+    let memo_key = (Rc::as_ptr(fn_node) as usize, args_hash);
+    if let Some(v) = ctx.cross_claim_hit_cache.borrow().get(&memo_key) {
+        return Some(v.clone());
+    }
+    let portable = CROSS_CLAIM_PURE_MEMO.with(|m| m.borrow().map.get(&memo_key).cloned())?;
+    cross_claim_observe_hit(func_name);
+    let value = value_from_portable_ctx(ctx, &portable);
+    ctx.cross_claim_hit_cache
+        .borrow_mut()
+        .insert(memo_key, value.clone());
+    Some(value)
 }
 
+/// Store a just-computed admitted call. Fill cost is recorded (netted from the paying claim,
+/// reported to the ledger) by the guard's `Drop`, and only when the store actually lands —
+/// an overflow-refused store leaves the cost genuinely the caller's, because every later
+/// caller recomputes it too.
 fn store_cross_claim_pure_memo(
     ctx: &InterpContext,
     fn_node: &Rc<Node>,
     func_name: &str,
     args: &[(Option<String>, Value)],
     result: &Value,
+    fill_guard: Option<&CrossClaimFillGuard>,
 ) {
-    if func_name == "prepare_grammar" && args.len() == 1 {
-        // See the matching comment in `try_cross_claim_pure_memo`: the interner
-        // borrow must be dropped before `portable_value_from_ctx` below, which
-        // itself may borrow `ctx.symbols` while resolving/interning.
-        let key = {
-            let mut hash_memo = ctx.eval_recompute_hash_memo.borrow_mut();
-            let interner = ctx.symbols.borrow();
-            eval_recompute_arg_key(&mut hash_memo, &interner, &args[0].1)
-        };
-        if let Some(key) = key {
-            if let EvalRecomputeArgKey::ContentHash(h) = key {
-                if let Some(portable) = portable_value_from_ctx(ctx, result) {
-                    keep_cross_claim_fn(fn_node);
-                    PREPARE_GRAMMAR_CROSS_CLAIM_MEMO.with(|m| {
-                        m.borrow_mut()
-                            .map
-                            .insert((Rc::as_ptr(fn_node) as usize, h), portable)
-                    });
-                }
-            }
+    if !cross_claim_pure_admitted(func_name) {
+        return;
+    }
+    let Some(args_hash) = cross_claim_args_hash(ctx, args) else {
+        return;
+    };
+    let memo_key = (Rc::as_ptr(fn_node) as usize, args_hash);
+    let Some(portable) = portable_value_from_ctx(ctx, result) else {
+        return;
+    };
+    let stored = CROSS_CLAIM_PURE_MEMO.with(|m| {
+        let mut m = m.borrow_mut();
+        if m.map.contains_key(&memo_key) {
+            return false;
+        }
+        if m.map.len() >= CROSS_CLAIM_PURE_MEMO_ENTRY_CAP {
+            m.overflow += 1;
+            return false;
+        }
+        m.map.insert(memo_key, portable);
+        true
+    });
+    if stored {
+        keep_cross_claim_fn(fn_node);
+        if let Some(guard) = fill_guard {
+            guard.mark_stored();
         }
     }
+}
+
+/// Evaluate one rostered NULLARY producer in `ctx` and seed the cross-claim tier with its
+/// value, running the same guard protocol a claim-forced fill runs — so a preparation warm
+/// lands in the ledger as an outside-fold fill rather than on the first claim. Returns
+/// whether the value was actually stored (`false`: unportable result, duplicate key, cap).
+pub fn warm_cross_claim_pure_producer(
+    ctx: &InterpContext,
+    qualified_fn: &str,
+) -> Result<bool, String> {
+    with_active_ctx(ctx, || {
+        let fn_node = ctx
+            .lookup_fn(qualified_fn)
+            .ok_or_else(|| format!("no declaration named '{qualified_fn}' in this frame"))?
+            .clone();
+        let bare = qualified_fn.rsplit('.').next().unwrap_or(qualified_fn);
+        if !cross_claim_pure_admitted(bare) {
+            return Err(format!(
+                "'{bare}' is not on the installed cross-claim producer roster"
+            ));
+        }
+        let guard = CrossClaimFillGuard::enter(bare);
+        let env = Env::empty();
+        let value = with_lexical_base_env(&env, || call_function(ctx, &fn_node, &[], &env))
+            .map_err(|e| format!("{qualified_fn}: {e}"))?;
+        store_cross_claim_pure_memo(ctx, &fn_node, bare, &[], &value, Some(&guard));
+        Ok(guard.stored.get())
+    })
 }
 
 #[cfg(test)]
@@ -1552,6 +1769,50 @@ mod cross_claim_memo_tests {
             emit_graph_info: empty_emit_graph_info(),
         };
         InterpContext::new(&graph, Rc::new(HashMap::new()), ExecutionMode::Hermetic)
+    }
+
+    // A module-scope `fn` value is portable BY REFERENCE — target models carry emit
+    // transforms as fn references, and refusing them (the pre-share behavior) silently
+    // excluded every `TargetModel` from the cross-claim tier. A `Closure` stays refused:
+    // its captured `Env` chain is frame-local.
+    #[test]
+    fn a_fn_valued_field_round_trips_and_a_closure_refuses() {
+        use super::{portable_value_from_ctx, value_from_portable_ctx, Env};
+        let ctx = fresh_ctx();
+        let fn_node = make_expr_node(
+            Rc::new(crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic),
+            Rc::new(ExprData::NoExprData),
+            Rc::new(im_vec![]),
+            None,
+            no_span(),
+        );
+        let with_fn = Value::Record {
+            type_name: ctx.sym("TargetModelish"),
+            fields: Rc::new(vec![(
+                ctx.sym("transform"),
+                Value::Fn {
+                    node: fn_node.clone(),
+                },
+            )]),
+        };
+        let portable = portable_value_from_ctx(&ctx, &with_fn).expect("Fn field is portable");
+        let ctx_b = fresh_ctx();
+        match value_from_portable_ctx(&ctx_b, &portable) {
+            Value::Record { fields, .. } => match &fields[0].1 {
+                Value::Fn { node } => assert!(Rc::ptr_eq(node, &fn_node)),
+                other => panic!("expected Fn back, got {other:?}"),
+            },
+            other => panic!("expected Record, got {other:?}"),
+        }
+        let with_closure = Value::Closure {
+            params: vec![],
+            body: fn_node,
+            env: Env::empty(),
+        };
+        assert!(
+            portable_value_from_ctx(&ctx, &with_closure).is_none(),
+            "a captured environment must never cross frames"
+        );
     }
 
     // Regression for gunbc#8505: the cross-claim `prepare_grammar` memo cached a raw
@@ -1599,7 +1860,7 @@ mod cross_claim_memo_tests {
             fields: Rc::new(vec![(ctx_a.sym("stage"), Value::Str(RcStr::from("first")))]),
         };
 
-        store_cross_claim_pure_memo(&ctx_a, &fn_node, "prepare_grammar", &args, &result);
+        store_cross_claim_pure_memo(&ctx_a, &fn_node, "prepare_grammar", &args, &result, None);
 
         let loaded = try_cross_claim_pure_memo(&ctx_b, &fn_node, "prepare_grammar", &args)
             .expect("cross-claim memo hit for the same fn identity + content hash");
@@ -1666,7 +1927,14 @@ mod cross_claim_memo_tests {
             },
         )];
         let result_a = Value::Str(RcStr::from("result-for-TypeFoo"));
-        store_cross_claim_pure_memo(&ctx_a, &fn_node, "prepare_grammar", &args_a, &result_a);
+        store_cross_claim_pure_memo(
+            &ctx_a,
+            &fn_node,
+            "prepare_grammar",
+            &args_a,
+            &result_a,
+            None,
+        );
 
         let args_c = [(
             None,
@@ -1716,7 +1984,14 @@ mod cross_claim_memo_tests {
             },
         )];
         let result_a = Value::Str(RcStr::from("result-for-alpha"));
-        store_cross_claim_pure_memo(&ctx_a, &fn_node, "prepare_grammar", &args_a, &result_a);
+        store_cross_claim_pure_memo(
+            &ctx_a,
+            &fn_node,
+            "prepare_grammar",
+            &args_a,
+            &result_a,
+            None,
+        );
 
         let args_c = [(
             None,
@@ -1762,7 +2037,7 @@ mod cross_claim_memo_tests {
             entries.insert(key, Value::Int(1));
             let args = [(None, super::map_value(entries))];
 
-            store_cross_claim_pure_memo(&ctx, &fn_node, "prepare_grammar", &args, &result);
+            store_cross_claim_pure_memo(&ctx, &fn_node, "prepare_grammar", &args, &result, None);
             let loaded = try_cross_claim_pure_memo(&ctx, &fn_node, "prepare_grammar", &args)
                 .expect("cross-claim memo hit for the same fn identity + content hash");
             match loaded {
@@ -1825,7 +2100,7 @@ mod cross_claim_memo_tests {
             entries.insert(key, Value::Int(1));
             let args = [(None, super::map_value(entries))];
 
-            store_cross_claim_pure_memo(&ctx, &fn_node, "prepare_grammar", &args, &result);
+            store_cross_claim_pure_memo(&ctx, &fn_node, "prepare_grammar", &args, &result, None);
             let loaded = try_cross_claim_pure_memo(&ctx, &fn_node, "prepare_grammar", &args)
                 .expect("cross-claim memo hit for the same fn identity + content hash");
             match loaded {
@@ -2471,6 +2746,11 @@ pub struct InterpContext {
     // memo-eligible; found via the artifact-store List-after-Delete staleness).
     effect_dispatch_count: std::cell::Cell<u64>,
     eval_recompute_hash_memo: std::cell::RefCell<EvalRecomputeHashMemo>,
+    /// Per-context cache of values already served from the cross-claim tier: reconstructing
+    /// a `PortableValue` re-interns and re-allocates the whole structure, so a hot producer
+    /// served on every call would pay that per CALL; this bounds it to once per frame. Keyed
+    /// identically to the global tier; lives and dies with the frame.
+    cross_claim_hit_cache: std::cell::RefCell<HashMap<(usize, u64), Value>>,
     mutation_counters: std::cell::RefCell<MutationCounters>,
     symbols: RefCell<SymbolInterner>,
     published_mock_keys: RefCell<Option<Rc<std::collections::HashSet<String>>>>,
@@ -2822,6 +3102,7 @@ impl InterpContext {
             eval_call_memo: std::cell::RefCell::new(EvalCallMemo::default()),
             effect_dispatch_count: std::cell::Cell::new(0),
             eval_recompute_hash_memo: std::cell::RefCell::new(EvalRecomputeHashMemo::default()),
+            cross_claim_hit_cache: std::cell::RefCell::new(HashMap::new()),
             mutation_counters: std::cell::RefCell::new(MutationCounters::default()),
             symbols: RefCell::new({
                 let mut interner = SymbolInterner::default();
@@ -5699,6 +5980,14 @@ fn eval_pure_named_call(
     if let Some(v) = try_cross_claim_pure_memo(ctx, fn_node, func_name, args) {
         return Ok(v);
     }
+    // Guard runs only for admitted calls: a store that lands must carry what it cost, so the
+    // paying claim's receipt can net it and the shared-fill ledger can attribute it. Its
+    // `Drop` closes the fill on every path out of this function.
+    let fill_guard = if cross_claim_pure_admitted(func_name) {
+        Some(CrossClaimFillGuard::enter(func_name))
+    } else {
+        None
+    };
     let trace_on = eval_recompute_trace_enabled();
     let memo_on = ctx.eval_call_memo.borrow().enabled;
     if !trace_on && !memo_on {
@@ -5706,7 +5995,7 @@ fn eval_pure_named_call(
         let result = call_function(ctx, fn_node, args, env);
         if let Ok(v) = &result {
             if ctx.effect_dispatch_count.get() == effects_before {
-                store_cross_claim_pure_memo(ctx, fn_node, func_name, args, v);
+                store_cross_claim_pure_memo(ctx, fn_node, func_name, args, v, fill_guard.as_ref());
             }
         }
         return result;
@@ -5740,7 +6029,7 @@ fn eval_pure_named_call(
     let result = call_function(ctx, fn_node, args, env);
     if let Ok(v) = &result {
         if ctx.effect_dispatch_count.get() == effects_before {
-            store_cross_claim_pure_memo(ctx, fn_node, func_name, args, v);
+            store_cross_claim_pure_memo(ctx, fn_node, func_name, args, v, fill_guard.as_ref());
         }
     }
     if memo_on && ctx.effect_dispatch_count.get() == effects_before {

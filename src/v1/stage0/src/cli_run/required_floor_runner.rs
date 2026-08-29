@@ -2685,6 +2685,112 @@ pub fn run_required_floor(
         );
         None
     };
+    // THE CROSS-CLAIM PURE-PRODUCER SHARE — install the declared roster, wire its fills and
+    // hits into the shared-fill ledger, and warm the preparation-forceable rows so their
+    // fills land outside the fold. The roster is `v2.workflow.floor_pure_producer_share`;
+    // Rust consumes it and decides nothing. A subject that does not carry the roster module
+    // carries no rostered producer either, so the whole mechanism is skipped there, printed.
+    const FLOOR_PURE_PRODUCER_SHARE_MODULE: &str = "v2.workflow.floor_pure_producer_share";
+    const CROSS_CLAIM_SHARE_CACHE: &str = "cross_claim_pure_share";
+    match floor_authority_frame(&prepared, FLOOR_PURE_PRODUCER_SHARE_MODULE) {
+        Ok(roster_frame) => {
+            let warm_rows = floor_decode_module_prefix_roster(
+                &roster_frame,
+                &format!(
+                    "{FLOOR_PURE_PRODUCER_SHARE_MODULE}.floor_cross_claim_pure_producers_warm"
+                ),
+            )?;
+            let claim_forced_rows = floor_decode_module_prefix_roster(
+                &roster_frame,
+                &format!(
+                    "{FLOOR_PURE_PRODUCER_SHARE_MODULE}.floor_cross_claim_pure_producers_claim_forced"
+                ),
+            )?;
+            let bare = |qualified: &String| {
+                qualified
+                    .rsplit('.')
+                    .next()
+                    .unwrap_or(qualified.as_str())
+                    .to_string()
+            };
+            v1_interpreter::install_cross_claim_pure_share_roster(
+                warm_rows
+                    .iter()
+                    .map(&bare)
+                    .chain(claim_forced_rows.iter().map(&bare)),
+            );
+            v1_interpreter::install_cross_claim_share_observer(Some(
+                v1_interpreter::CrossClaimShareObserver {
+                    on_fill_begin: Box::new(crate::cli_run::shared_fill::begin_fill),
+                    on_fill: Box::new(|name, inclusive_wall, self_wall| {
+                        crate::cli_run::shared_fill::record_fill(
+                            CROSS_CLAIM_SHARE_CACHE,
+                            name,
+                            inclusive_wall as u64,
+                        );
+                        crate::cli_run::record_shared_artifact_fill_wall(self_wall);
+                    }),
+                    on_fill_abandon: Box::new(crate::cli_run::shared_fill::abandon_fill),
+                    on_hit: Box::new(|name| {
+                        crate::cli_run::shared_fill::record_hit(CROSS_CLAIM_SHARE_CACHE, name)
+                    }),
+                },
+            ));
+            for qualified in &warm_rows {
+                // A warm row names its module before its declaration; a subject carrying the
+                // roster but not a producer's module carries no consumer of that producer.
+                let module = match qualified.rsplit_once('.') {
+                    Some((module, _)) => module.to_string(),
+                    None => qualified.clone(),
+                };
+                let producer_frame = match floor_authority_frame(&prepared, &module) {
+                    Ok(frame) => frame,
+                    Err(why) => {
+                        eprintln!(
+                            "[floor-phase] phase=pure-producer-share-warm state=skipped \
+                             producer={qualified} — the subject does not carry {module}: {why}"
+                        );
+                        continue;
+                    }
+                };
+                let warm_started = std::time::Instant::now();
+                match v1_interpreter::warm_cross_claim_pure_producer(&producer_frame, qualified) {
+                    Ok(stored) => {
+                        // `stored=false` here means the value was refused by the store
+                        // (unportable, duplicate, cap) — the roster promised a servable
+                        // producer, so a silent decline would relocate the fill onto the
+                        // first toucher. Stop the line instead.
+                        if !stored {
+                            return Err(format!(
+                                "REQUIRED-FLOOR REFUSAL cause=PureProducerShareWarmNotStored \
+                                 producer={qualified} — the rostered producer evaluated but \
+                                 its value was refused by the cross-claim store"
+                            ));
+                        }
+                        eprintln!(
+                            "[floor-phase] phase=pure-producer-share-warm state=completed \
+                             producer={qualified} wall_ms={}",
+                            warm_started.elapsed().as_millis()
+                        );
+                    }
+                    Err(why) => {
+                        return Err(format!(
+                            "REQUIRED-FLOOR REFUSAL cause=PureProducerShareWarmFailed \
+                             producer={qualified} — {why}"
+                        ));
+                    }
+                }
+            }
+        }
+        Err(why) => {
+            eprintln!(
+                "[floor-phase] phase=pure-producer-share-warm state=skipped module={} — the \
+                 subject does not carry the roster, so it carries no rostered producer either: \
+                 {why}",
+                FLOOR_PURE_PRODUCER_SHARE_MODULE
+            );
+        }
+    }
     let mut shared_build_warms: Vec<(&'static str, SharedBuildObservation)> = vec![
         ("ModulePathIndexBuild", module_path_index_warm),
         ("SharedModuleIndexBuild", shared_index_warm),

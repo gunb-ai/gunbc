@@ -426,6 +426,120 @@ mod tests {
         );
     }
 
+    /// THE CROSS-CLAIM PURE-PRODUCER SHARE'S DISCRIMINATING PAIR, run through the REAL
+    /// evaluation path (a compiled module, two fresh `InterpContext`s over one resolved
+    /// graph — the exact shape the required floor gives consecutive claims).
+    ///
+    /// Same key across two claims: ONE fill paid by the first claim, the second claim a
+    /// consumer — a regression that stops cross-claim serving turns the second evaluation
+    /// into a second fill row and reds the `fills for tm_alpha == 1` assertion. Two keys
+    /// (two producers): TWO fills — so an implementation that always reports one fill
+    /// cannot pass either. An un-rostered producer is the negative control: it must not
+    /// be served across contexts and must leave no ledger row.
+    #[test]
+    fn a_rostered_producer_fills_once_and_serves_later_claims() {
+        use crate::v1_compiler_compile::SourceFile;
+        use crate::v1_interpreter::{self, ExecutionMode, InterpContext, Value};
+        use std::rc::Rc;
+
+        reset();
+        v1_interpreter::clear_cross_claim_pure_memos();
+        v1_interpreter::install_cross_claim_pure_share_roster([
+            "tm_alpha".to_string(),
+            "tm_beta".to_string(),
+        ]);
+        v1_interpreter::install_cross_claim_share_observer(Some(
+            v1_interpreter::CrossClaimShareObserver {
+                on_fill_begin: Box::new(begin_fill),
+                on_fill: Box::new(|name, inclusive_wall, _self_wall| {
+                    record_fill("cross_claim_pure_share", name, inclusive_wall as u64)
+                }),
+                on_fill_abandon: Box::new(abandon_fill),
+                on_hit: Box::new(|name| record_hit("cross_claim_pure_share", name)),
+            },
+        ));
+
+        let result =
+            crate::v1_compiler_compile::compile_to_resolved(Rc::new(im::vector![Rc::new(
+                SourceFile {
+                    path: "workspace/src/tmshare.dag".to_string(),
+                    content: "module fixture.tmshare\n\
+                              fn tm_alpha() -> Bool { true }\n\
+                              fn tm_beta() -> Bool { false }\n\
+                              fn tm_unrostered() -> Bool { true }\n\
+                              fn use_alpha() -> Bool { tm_alpha() }\n\
+                              fn use_beta() -> Bool { tm_beta() }\n\
+                              fn use_unrostered() -> Bool { tm_unrostered() }\n"
+                        .to_string(),
+                },
+            )]));
+        let graph = result.graph.as_ref().expect("fixture graph");
+        let fresh_ctx = || {
+            InterpContext::new(
+                graph,
+                result.source_indices.clone(),
+                ExecutionMode::Hermetic,
+            )
+        };
+
+        // Claim A pays the fills.
+        let ctx_a = fresh_ctx();
+        set_current_claim(Some("fixture.claim_a.w_first"));
+        for entry in ["use_alpha", "use_beta", "use_unrostered"] {
+            let v =
+                v1_interpreter::run_in_context(&ctx_a, &format!("fixture.tmshare.{entry}"), false)
+                    .expect(entry);
+            assert!(matches!(v, Value::Bool(_)), "{entry}: {v:?}");
+        }
+
+        // Claim B, a FRESH context (the floor's per-claim frame), reads them.
+        let ctx_b = fresh_ctx();
+        set_current_claim(Some("fixture.claim_b.w_second"));
+        let served = v1_interpreter::run_in_context(&ctx_b, "fixture.tmshare.use_alpha", false)
+            .expect("use_alpha via ctx_b");
+        assert!(
+            matches!(served, Value::Bool(true)),
+            "served value: {served:?}"
+        );
+        let served_beta = v1_interpreter::run_in_context(&ctx_b, "fixture.tmshare.use_beta", false)
+            .expect("use_beta via ctx_b");
+        assert!(matches!(served_beta, Value::Bool(false)));
+        let recomputed =
+            v1_interpreter::run_in_context(&ctx_b, "fixture.tmshare.use_unrostered", false)
+                .expect("use_unrostered via ctx_b");
+        assert!(matches!(recomputed, Value::Bool(true)));
+        set_current_claim(None);
+
+        let text = report();
+        v1_interpreter::install_cross_claim_share_observer(None);
+        v1_interpreter::install_cross_claim_pure_share_roster(std::iter::empty());
+        v1_interpreter::clear_cross_claim_pure_memos();
+
+        let alpha_fills = text
+            .lines()
+            .filter(|l| l.contains("cache=cross_claim_pure_share key=tm_alpha "))
+            .count();
+        assert_eq!(alpha_fills, 1, "same key, two claims, ONE fill: {text}");
+        assert!(
+            text.contains("cache=cross_claim_pure_share key=tm_beta "),
+            "two keys are two fills, so 'always one fill' cannot pass: {text}"
+        );
+        let alpha_line = text
+            .lines()
+            .find(|l| l.contains("key=tm_alpha "))
+            .expect("alpha fill line");
+        assert!(
+            alpha_line.contains("paid_by=fixture.claim_a.w_first")
+                && alpha_line.contains("consumer_claims=1")
+                && alpha_line.contains("disposition=shared"),
+            "the first claim pays, the second consumes: {alpha_line}"
+        );
+        assert!(
+            !text.contains("tm_unrostered"),
+            "an un-rostered producer must leave no ledger row: {text}"
+        );
+    }
+
     #[test]
     fn a_hit_with_no_recorded_fill_is_counted_never_dropped() {
         reset();
