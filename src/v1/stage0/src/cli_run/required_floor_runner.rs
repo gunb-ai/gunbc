@@ -2351,7 +2351,7 @@ pub fn run_required_floor(
                 .map(|m| m.to_string()),
         )
         .collect();
-    let (prepared, prepared_sources) = prepare_repository_closure(
+    let (mut prepared, prepared_sources) = prepare_repository_closure(
         source_roots,
         &floor_prepared_subject_exclusions(),
         Some((&gate_entry_index, &closure_seeds)),
@@ -2368,13 +2368,23 @@ pub fn run_required_floor(
         .map(|view| view.module_path.clone())
         .collect();
     let discovery_exclusions = prepared.discovery_exclusions.clone();
-    let discovery_sources: Vec<FloorDiscoverySource> = prepared
-        .full_inventory
-        .iter()
+    // THE FULL INVENTORY IS MOVED OUT, NOT BORROWED, AND IT DIES WITH THE FOLD IT FEEDS.
+    //
+    // Out-of-closure sources are held by NOTHING else: the prepared graph is the gate closure, so
+    // these `Rc<SourceFile>`s are the only thing keeping the rest of the corpus alive. Retaining
+    // them on `prepared` for the whole run would restore corpus-scale retention across the
+    // longest phase of the program, in the one lane `v2.workflow.required_floor`
+    // `RequiredFloorGrowthBudgetStanding` records as having NO MEASURED MEMORY MARGIN — growth
+    // there owes a named payment, and "the discovery fold needed the bytes for a moment" is not
+    // one. So `take` empties the field rather than cloning from it, and `discovery_sources` is
+    // dropped the moment the fold has produced its rows (below, at the `drop` beside `files`).
+    // What survives is the roster: paths, module names and function names, never bytes.
+    let discovery_sources: Vec<FloorDiscoverySource> = std::mem::take(&mut prepared.full_inventory)
+        .into_iter()
         .map(|view| FloorDiscoverySource {
             path: view.source.path.replace('\\', "/"),
-            module_path: view.module_path.clone(),
-            source: view.source.clone(),
+            module_path: view.module_path,
+            source: view.source,
         })
         .collect();
     let _floor_prepared_guard = register_floor_prepared_authority_guard(prepared_sources);
@@ -2992,12 +3002,20 @@ pub fn run_required_floor(
         }
     }
     files.sort_by(|a, b| a.path.cmp(&b.path));
+    let discovery_source_count = discovery_sources.len();
+    // THE CORPUS IS RELEASED HERE. `module_for_path` borrowed from `discovery_sources`, so the
+    // drop waits for the last row to be classified and not one statement longer; every later
+    // consumer reads `files`, which carries names and no bytes. Same discipline the policy scope
+    // and the hermetic frame are dropped under further down: a value held across the fold that
+    // nothing reads during it has no defence.
+    drop(module_for_path);
+    drop(discovery_sources);
     eprintln!(
         "[floor-phase] phase=discovery-authority state=completed wall_ms={} authority={} \
          sources={} rows={} entries={}",
         discovery_started.elapsed().as_millis(),
         FLOOR_DISCOVERY_AUTHORITY_MODULE,
-        discovery_sources.len(),
+        discovery_source_count,
         discovery_rows.len(),
         files.len()
     );

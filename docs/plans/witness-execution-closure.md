@@ -303,3 +303,38 @@ claim to join to (§3), so they are named here as triggers rather than improvise
 added without either match acquiring an arm, and nothing refused — the module's own witness is
 outside the gate closure, so no executing path typechecks it. The arms are added here and the
 claim is restated at its honest rung, with the trigger recorded in the module.
+
+### The seed-growth disposition of this change, and the retention it does not take
+
+Two review findings on gunbc#9684 (review 57430) are answered here rather than in the PR thread,
+because both are properties of the change a later reader must be able to check.
+
+**Retention.** Folding the discovery authority over the FULL module index means holding every
+source's bytes — including the out-of-closure majority, which nothing else in the run holds, since
+the prepared graph is the gate closure. Retaining that on `PreparedRepository` for the run would be
+corpus-scale retention across the longest phase of the program, in the one lane
+`v2.workflow.required_floor` `RequiredFloorGrowthBudgetStanding` records as having **no measured
+memory margin** — where growth owes a named payment. No payment is claimed. The inventory is
+`take`n out of the prepared repository into the fold's own local and dropped the moment the rows
+are classified; what survives is paths, module names and function names. The instrument for what
+the fold itself costs is the run's own `[floor-phase] phase=discovery-authority` line, which
+reports sources, rows and wall — it is not transcribed here.
+
+**Hand-Rust growth.** Measured at item grain over `src/v1/stage0/src`, this change adds **no hand
+Rust declaration**: one function is renamed (`reconcile_terminal_ledger` →
+`reconcile_identity_population`, generalized so one join serves two seams) and everything else is
+fields, coproduct arms and bodies of items that already existed. Its disposition in
+`gunbc.seed_growth_admission`'s own vocabulary is therefore `ExistingSeedItemModified`, whose
+payload this section supplies: the `.dag` authority is
+`v2.workflow.required_floor` `RequiredFloorDisposition` — the two new arms land there, in the model,
+and the seed realizes them — so the capability origin is `ModeledCapability` and not a capability
+originated in Rust. The current boundary is the required floor's projection.
+
+No `SeedGrowthJustification` row is owed, because that roster names *added* declarations and this
+change adds none. And no before/after item or LOC figures are typed into this document
+deliberately: `seed_growth_forward_freeze_policy_note` records that hand-item and hand-LOC deltas
+are functions of the diff, that an authored copy is a second representation of a fact the diff
+already owns, and that a previous receipt authored exactly such figures and got them wrong. The
+deriving instrument is `gunbc.rust_item_host_observation`; the adjudicating join is
+`gunbc.seed_growth_admission` `seed_growth_admit_change`, which that module states no required CI
+phase invokes yet — its next-rung trigger, unchanged by this change.
