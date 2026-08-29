@@ -14,8 +14,17 @@ import gunbc.spark.cell_role {
   spark_host_offerable_for_training,
 }
 import gunbc.spark.serving_desired { spark_serving_desired_hosts }
+import gunbc.spark.serving_execution_schedule {
+  SparkServingScheduleVerdict,
+  SparkServingScheduleFrozen,
+  SparkServingScheduleRefused,
+  spark_serving_freeze_execution_schedule,
+  spark_serving_frozen_schedule_order,
+}
 import gunbc.spark.serving_membership {
   SparkServingMember,
+  SparkServingMemberAt,
+  spark_serving_resource_address_wire,
   SparkServingResourceAddress,
   SparkServingRuntimeRootAddress,
   SparkServingUserUnitAddress,
@@ -323,4 +332,102 @@ test fn w_a_host_that_still_serves_plans_no_action() -> Bool {
     observed: w_srv6_observed_members(),
   )
   length(plan.actions) == 0
+}
+
+// THE FROZEN SCHEDULE FOR A RETIREMENT, WHICH IS THE SEAM THE VOCABULARY COULD NOT REACH.
+//
+// Everything above this point stops at the membership plan and its per-address remedies. The
+// scheduler refused every plan containing a removal, so those four valid removals reached no frozen
+// schedule, no scheduled typed actions, and no applicable plan artifact -- the retirement was
+// expressible and unroutable, and no amount of host access would have repaired it.
+//
+// These claims are about the bridge: the plan freezes, and it freezes in the order the host can
+// actually execute.
+fn w_srv6_frozen_retirement() -> SparkServingScheduleVerdict {
+  spark_serving_freeze_execution_schedule(
+    plan: w_srv6_retirement_plan(),
+    desired_addresses: flat_map(
+      spark_serving_baseline_members(members: w_srv6_observed_members()),
+      m => [m.address],
+    ),
+  )
+}
+
+fn w_frozen_order(v: SparkServingScheduleVerdict) -> List<SparkServingMemberAt> {
+  match v {
+    SparkServingScheduleFrozen { schedule: sch } => spark_serving_frozen_schedule_order(schedule: sch)
+    SparkServingScheduleRefused { cause: _ } => []
+  }
+}
+
+test fn w_a_retirement_plan_freezes_instead_of_refusing() -> Bool {
+  length(w_frozen_order(v: w_srv6_frozen_retirement())) == 4
+}
+
+// THE ORDER IS THE EXECUTABLE ONE, ASSERTED POSITIONALLY.
+//
+// Stop, then disable, then remove the file, then reload. The two adjacent pairs that matter are
+// checked by position rather than by membership, because this claim's ancestor in this file was a
+// membership assertion wearing an order's name and every permutation passed it.
+type WIndexScan {
+  seen: Int
+  found: Int
+}
+
+fn w_scan_position(
+  order: List<SparkServingMemberAt>,
+  address: SparkServingResourceAddress,
+) -> WIndexScan {
+  fold(order, init: WIndexScan { seen: 0, found: 0 - 1 }, f: fn(acc, at) {
+    if string_contains(at, spark_serving_resource_address_wire(address: address)) {
+      WIndexScan { seen: acc.seen + 1, found: acc.seen }
+    } else {
+      WIndexScan { seen: acc.seen + 1, found: acc.found }
+    }
+  })
+}
+
+// -1 MEANS THE ADDRESS IS NOT IN THE ORDER, and the claims below check for it rather than letting it
+// compare as "earliest". A missing row silently sorting first is how an order assertion passes over a
+// schedule that dropped a step.
+fn w_position_of(
+  order: List<SparkServingMemberAt>,
+  address: SparkServingResourceAddress,
+) -> Int {
+  w_scan_position(order: order, address: address).found
+}
+
+test fn w_the_frozen_retirement_stops_before_it_disables_and_removes_before_it_reloads() -> Bool {
+  let order = w_frozen_order(v: w_srv6_frozen_retirement())
+  let activity = w_position_of(order: order, address: SparkServingUserUnitActivityAddress)
+  let enablement = w_position_of(order: order, address: SparkServingUserUnitEnablementAddress)
+  let content = w_position_of(order: order, address: SparkServingUserUnitAddress)
+  let registration = w_position_of(order: order, address: SparkServingUserUnitRegistrationAddress)
+  activity >= 0
+    && enablement >= 0
+    && content >= 0
+    && registration >= 0
+    && activity < enablement
+    && enablement < content
+    && content < registration
+}
+
+// A PLAN CARRYING BOTH DIRECTIONS STILL REFUSES, and this is the arm that keeps the new scheduling
+// from being a widening. The forward and teardown chains touch the same four addresses from opposite
+// ends; composing them is a third relation nobody has modeled, so it stops the line.
+test fn w_a_plan_mixing_installs_and_removals_refuses() -> Bool {
+  let mixed = spark_serving_membership_reconcile(
+    desired: concat(
+      spark_serving_baseline_members(members: w_srv6_observed_members()),
+      [w_member(host: operator_host_srv6, address: SparkServingUserUnitActivityAddress)],
+    ),
+    observed: spark_serving_role_scoped_members(members: w_srv6_observed_members()),
+  )
+  match spark_serving_freeze_execution_schedule(
+    plan: mixed,
+    desired_addresses: flat_map(w_srv6_observed_members(), m => [m.address]),
+  ) {
+    SparkServingScheduleRefused { cause: c } => length(c) > 0
+    SparkServingScheduleFrozen { schedule: _ } => false
+  }
 }
