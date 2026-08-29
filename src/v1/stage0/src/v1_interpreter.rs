@@ -1578,21 +1578,101 @@ struct CrossClaimPureMemo {
     /// belonged to OTHER calls of the same producer (no field 'produced_decl_support' on
     /// type 'TargetModel', run 33269961629).
     map: HashMap<(usize, u64), Vec<(Vec<(Option<String>, PortableValue)>, PortableValue)>>,
-    /// Stores refused because the map was at `CROSS_CLAIM_PURE_MEMO_ENTRY_CAP`. Counted,
-    /// never silent: an over-cap producer simply recomputes, and the count is readable by
-    /// the receipt so a saturated memo is visible rather than inferred from missing hits.
+    /// Stores refused because the map was at `CROSS_CLAIM_PURE_MEMO_ENTRY_CAP` or because
+    /// landing the entry would push `bytes` past `CROSS_CLAIM_PURE_MEMO_BYTE_BUDGET`.
+    /// Counted, never silent: an over-budget producer simply recomputes, and the count is
+    /// readable by the receipt so a saturated memo is visible rather than inferred from
+    /// missing hits.
     overflow: u64,
+    /// Estimated retained bytes across every stored entry (argument rows AND values,
+    /// collision-bucket entries included), computed from the reified `PortableValue` at
+    /// publication — reification is total, so the size is always computable before the
+    /// store lands. This is the ACTUAL byte bound review 57446's F2 demanded: the entry
+    /// cap alone bounded a bucket count while each retained value was arbitrarily large.
+    bytes: usize,
     /// Stores refused because the value failed TOTAL reification (`ServeCacheValueNotPortable`).
     /// Counted, and the most recent refusal is retained for the warm path's diagnostics.
     unportable_refusals: u64,
 }
 
-/// Byte-bounded admission for the cross-claim tier (the "conscious provider row" the
-/// eval-frame memo's own doc demands): distinct (fn, args) keys stop being STORED past this
-/// many entries. Enrolled producers are roster-declared and mostly nullary, so the ordinary
-/// population is tens of keys; the cap exists for a mis-enrolled parametric producer whose
-/// argument space is claim-shaped.
+/// Entry-count admission for the cross-claim tier: distinct (fn, args) keys stop being
+/// STORED past this many entries. Enrolled producers are roster-declared and mostly
+/// nullary, so the ordinary population is tens of keys; the cap exists for a mis-enrolled
+/// parametric producer whose argument space is claim-shaped. It bounds POPULATION, not
+/// RETENTION — the byte budget below is the retention bound.
 const CROSS_CLAIM_PURE_MEMO_ENTRY_CAP: usize = 4096;
+
+/// Byte budget on the tier's RETAINED representation, enforced at publication against the
+/// estimated size of the reified portable entry (arguments + value). The cross-claim store
+/// lives for a whole prepared floor run (the 2026-07-10 20GiB ctx-lifetime regression is
+/// the harm class), so the bound must be denominated in bytes, not entries: a single
+/// mis-enrolled producer returning whole-corpus values would exhaust memory under any
+/// entry count. 256 MiB is ~25x the enrolled population's observed retention (run
+/// 33273530722: 320 fills of target-model/grammar values) and well under the session
+/// container's headroom; an over-budget store refuses counted (`overflow`), and the
+/// producer recomputes per claim exactly as if never enrolled.
+const CROSS_CLAIM_PURE_MEMO_BYTE_BUDGET: usize = 256 * 1024 * 1024;
+
+#[cfg(test)]
+thread_local! {
+    /// Test-only budget override: the production budget is far above any value a unit test
+    /// should allocate, so the budget RED shrinks the line instead of the fixture. Read
+    /// only through `cross_claim_byte_budget`, never by production code directly.
+    static CROSS_CLAIM_BYTE_BUDGET_TEST_OVERRIDE: std::cell::Cell<Option<usize>> =
+        const { std::cell::Cell::new(None) };
+}
+
+fn cross_claim_byte_budget() -> usize {
+    #[cfg(test)]
+    if let Some(b) = CROSS_CLAIM_BYTE_BUDGET_TEST_OVERRIDE.with(|c| c.get()) {
+        return b;
+    }
+    CROSS_CLAIM_PURE_MEMO_BYTE_BUDGET
+}
+
+/// Estimated retained size of one portable value: the enum footprint plus every owned
+/// heap allocation reachable from it. An estimate (allocator overhead and `Vec` spare
+/// capacity are not modeled), but computed from the same total reification the store
+/// publishes, so it can never miss a child the way a shallow `size_of` would.
+fn portable_value_size_bytes(v: &PortableValue) -> usize {
+    use std::mem::size_of;
+    size_of::<PortableValue>()
+        + match v {
+            PortableValue::Null
+            | PortableValue::Unit
+            | PortableValue::Bool(_)
+            | PortableValue::Int(_)
+            | PortableValue::Float(_) => 0,
+            PortableValue::Str(s) => s.len(),
+            PortableValue::List(items) => {
+                items.iter().map(portable_value_size_bytes).sum::<usize>()
+            }
+            PortableValue::Map(pairs) => pairs
+                .iter()
+                .map(|(k, v)| portable_value_size_bytes(k) + portable_value_size_bytes(v))
+                .sum(),
+            PortableValue::Set(s) => s.iter().map(|x| x.len() + size_of::<String>()).sum(),
+            PortableValue::Record { type_name, fields } => {
+                type_name.len()
+                    + fields
+                        .iter()
+                        .map(|(n, f)| n.len() + portable_value_size_bytes(f))
+                        .sum::<usize>()
+            }
+            PortableValue::Variant {
+                type_name,
+                variant_name,
+                fields,
+            } => {
+                type_name.len()
+                    + variant_name.len()
+                    + fields
+                        .iter()
+                        .map(|(n, f)| n.len() + portable_value_size_bytes(f))
+                        .sum::<usize>()
+            }
+        }
+}
 
 /// Observes cross-claim memo traffic for the floor's shared-fill ledger. Installed by the
 /// harness (required-floor preparation); `None` outside it. The interpreter itself nets fill
@@ -1618,11 +1698,14 @@ thread_local! {
     static CROSS_CLAIM_PURE_MEMO: RefCell<CrossClaimPureMemo> =
         RefCell::new(CrossClaimPureMemo::default());
     static CROSS_CLAIM_FN_KEEPALIVE: RefCell<Vec<Rc<Node>>> = RefCell::new(Vec::new());
-    /// Producer BARE names admitted to the cross-claim tier beyond the built-in
-    /// `prepare_grammar` arm. Fn-node identity in the key keeps a bare-name homonym sound
-    /// (two declarations are two `fn_ptr`s); admission by bare name only decides who is
-    /// ELIGIBLE to be stored.
-    static CROSS_CLAIM_PURE_ROSTER: RefCell<std::collections::HashSet<String>> =
+    /// The fn-NODE identities admitted to the cross-claim tier beyond the built-in
+    /// `prepare_grammar` arm. Admission is by RESOLVED DECLARATION IDENTITY, not bare name:
+    /// the roster's qualified spellings are resolved to their fn nodes at install time, so a
+    /// bare-name homonym in a non-rostered module is never eligible — review 57446's F1
+    /// (name-set admission made any same-named fn anywhere in the subject cacheable though
+    /// absent from the modeled roster). The nodes themselves are kept alive by
+    /// `CROSS_CLAIM_FN_KEEPALIVE` at install.
+    static CROSS_CLAIM_PURE_ROSTER: RefCell<std::collections::HashSet<usize>> =
         RefCell::new(std::collections::HashSet::new());
     static CROSS_CLAIM_SHARE_OBSERVER: RefCell<Option<CrossClaimShareObserver>> =
         const { RefCell::new(None) };
@@ -1639,11 +1722,19 @@ pub fn clear_cross_claim_pure_memos() {
     CROSS_CLAIM_SHARE_OBSERVER.with(|o| *o.borrow_mut() = None);
 }
 
-/// Install the declared producer roster (bare fn names). Replaces any previous roster; the
-/// built-in `prepare_grammar` arm stays admitted regardless, so surfaces that install no
-/// roster (claim_batch, `gunbc run`) keep today's behavior exactly.
-pub fn install_cross_claim_pure_share_roster<I: IntoIterator<Item = String>>(names: I) {
-    CROSS_CLAIM_PURE_ROSTER.with(|r| *r.borrow_mut() = names.into_iter().collect());
+/// Install the declared producer roster as RESOLVED fn nodes (the caller resolves each
+/// qualified roster spelling in a frame over the prepared subject). Replaces any previous
+/// roster and keeps the nodes alive for the tier's lifetime; the built-in `prepare_grammar`
+/// arm stays admitted regardless, so surfaces that install no roster (claim_batch,
+/// `gunbc run`) keep today's behavior exactly.
+pub fn install_cross_claim_pure_share_roster<I: IntoIterator<Item = Rc<Node>>>(nodes: I) {
+    let nodes: Vec<Rc<Node>> = nodes.into_iter().collect();
+    CROSS_CLAIM_PURE_ROSTER.with(|r| {
+        *r.borrow_mut() = nodes.iter().map(|n| Rc::as_ptr(n) as usize).collect();
+    });
+    for node in &nodes {
+        keep_cross_claim_fn(node);
+    }
 }
 
 /// Install the shared-fill observer for the cross-claim tier. `None` uninstalls.
@@ -1670,9 +1761,9 @@ fn cross_claim_portable_args_match(
             .all(|((sn, sv), (an, av))| sn == an && portable_value_eq(sv, av))
 }
 
-fn cross_claim_pure_admitted(func_name: &str) -> bool {
+fn cross_claim_pure_admitted(fn_node: &Rc<Node>, func_name: &str) -> bool {
     func_name == "prepare_grammar"
-        || CROSS_CLAIM_PURE_ROSTER.with(|r| r.borrow().contains(func_name))
+        || CROSS_CLAIM_PURE_ROSTER.with(|r| r.borrow().contains(&(Rc::as_ptr(fn_node) as usize)))
 }
 
 fn cross_claim_observe_hit(func_name: &str) {
@@ -1806,7 +1897,7 @@ fn try_cross_claim_pure_memo(
     func_name: &str,
     args: &[(Option<String>, Value)],
 ) -> Option<Value> {
-    if !cross_claim_pure_admitted(func_name) {
+    if !cross_claim_pure_admitted(fn_node, func_name) {
         return None;
     }
     let args_hash = cross_claim_args_hash(ctx, args)?;
@@ -1852,7 +1943,7 @@ fn store_cross_claim_pure_memo(
     result: &Value,
     fill_guard: Option<&CrossClaimFillGuard>,
 ) {
-    if !cross_claim_pure_admitted(func_name) {
+    if !cross_claim_pure_admitted(fn_node, func_name) {
         return;
     }
     let Some(args_hash) = cross_claim_args_hash(ctx, args) else {
@@ -1887,6 +1978,18 @@ fn store_cross_claim_pure_memo(
             m.overflow += 1;
             return false;
         }
+        // Byte budget on the retained representation, charged for the WHOLE entry —
+        // argument row and value, collision-bucket entries included — before it lands.
+        let entry_bytes = portable_value_size_bytes(&portable)
+            + portable_args
+                .iter()
+                .map(|(n, v)| n.as_ref().map_or(0, |n| n.len()) + portable_value_size_bytes(v))
+                .sum::<usize>();
+        if m.bytes.saturating_add(entry_bytes) > cross_claim_byte_budget() {
+            m.overflow += 1;
+            return false;
+        }
+        m.bytes += entry_bytes;
         m.map
             .entry(memo_key)
             .or_default()
@@ -1915,9 +2018,9 @@ pub fn warm_cross_claim_pure_producer(
             .ok_or_else(|| format!("no declaration named '{qualified_fn}' in this frame"))?
             .clone();
         let bare = qualified_fn.rsplit('.').next().unwrap_or(qualified_fn);
-        if !cross_claim_pure_admitted(bare) {
+        if !cross_claim_pure_admitted(&fn_node, bare) {
             return Err(format!(
-                "'{bare}' is not on the installed cross-claim producer roster"
+                "'{qualified_fn}' did not resolve to an installed cross-claim roster identity"
             ));
         }
         let guard = CrossClaimFillGuard::enter(bare);
@@ -2079,6 +2182,104 @@ mod cross_claim_memo_tests {
                 other => panic!("field '{name}' must resolve via fields_get, got {other:?}"),
             }
         }
+    }
+
+    // RED (review 57446 F1): admission is by RESOLVED DECLARATION IDENTITY, so a bare-name
+    // HOMONYM in a non-rostered module must NOT store — under name-set admission any
+    // same-named fn anywhere in the subject became cacheable though absent from the
+    // modeled roster. Fn-node identity in the key stopped cross-SERVING between homonyms
+    // but never stopped CACHING the unintended fn; this red does.
+    #[test]
+    fn a_homonym_outside_the_roster_identity_does_not_store() {
+        use super::{
+            install_cross_claim_pure_share_roster, store_cross_claim_pure_memo,
+            try_cross_claim_pure_memo,
+        };
+        super::clear_cross_claim_pure_memos();
+        let ctx = fresh_ctx();
+        let mk = || {
+            make_expr_node(
+                Rc::new(
+                    crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic,
+                ),
+                Rc::new(ExprData::NoExprData),
+                Rc::new(im_vec![]),
+                None,
+                no_span(),
+            )
+        };
+        let rostered = mk();
+        let homonym = mk(); // same bare name, different declaration — a different module's fn
+        install_cross_claim_pure_share_roster([rostered.clone()]);
+        let args = [(None, list_value(vec![Value::Int(3)]))];
+        store_cross_claim_pure_memo(
+            &ctx,
+            &homonym,
+            "tm_shared_name",
+            &args,
+            &Value::Int(9),
+            None,
+        );
+        assert!(
+            try_cross_claim_pure_memo(&ctx, &homonym, "tm_shared_name", &args).is_none(),
+            "a homonym outside the rostered identity must never be cached"
+        );
+        store_cross_claim_pure_memo(
+            &ctx,
+            &rostered,
+            "tm_shared_name",
+            &args,
+            &Value::Int(9),
+            None,
+        );
+        assert!(
+            try_cross_claim_pure_memo(&ctx, &rostered, "tm_shared_name", &args).is_some(),
+            "control: the resolved roster identity stores and serves"
+        );
+        super::clear_cross_claim_pure_memos();
+    }
+
+    // RED (review 57446 F2): the retention bound is a BYTE budget on the reified entry
+    // (args + value), not an entry count — a store that would cross the budget refuses
+    // counted, and later smaller stores still land within the remaining budget.
+    #[test]
+    fn a_store_past_the_byte_budget_refuses_counted() {
+        use super::{
+            cross_claim_pure_memo_counts, store_cross_claim_pure_memo, try_cross_claim_pure_memo,
+        };
+        super::clear_cross_claim_pure_memos();
+        super::CROSS_CLAIM_BYTE_BUDGET_TEST_OVERRIDE.with(|c| c.set(Some(512)));
+        let ctx = fresh_ctx();
+        let mk = || {
+            make_expr_node(
+                Rc::new(
+                    crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic,
+                ),
+                Rc::new(ExprData::NoExprData),
+                Rc::new(im_vec![]),
+                None,
+                no_span(),
+            )
+        };
+        let fn_node = mk();
+        let big_args = [(None, list_value(vec![Value::Int(1)]))];
+        let big = Value::Str(RcStr::from("x".repeat(4096)));
+        store_cross_claim_pure_memo(&ctx, &fn_node, "prepare_grammar", &big_args, &big, None);
+        assert!(
+            try_cross_claim_pure_memo(&ctx, &fn_node, "prepare_grammar", &big_args).is_none(),
+            "an over-budget value must refuse to store"
+        );
+        let (_, overflow) = cross_claim_pure_memo_counts();
+        assert_eq!(overflow, 1, "the refusal is counted, never silent");
+        let small_args = [(None, list_value(vec![Value::Int(2)]))];
+        let small = Value::Str(RcStr::from("ok"));
+        store_cross_claim_pure_memo(&ctx, &fn_node, "prepare_grammar", &small_args, &small, None);
+        assert!(
+            try_cross_claim_pure_memo(&ctx, &fn_node, "prepare_grammar", &small_args).is_some(),
+            "control: a within-budget value still stores"
+        );
+        super::CROSS_CLAIM_BYTE_BUDGET_TEST_OVERRIDE.with(|c| c.set(None));
+        super::clear_cross_claim_pure_memos();
     }
 
     // Regression for gunbc#8505: the cross-claim `prepare_grammar` memo cached a raw
@@ -6251,7 +6452,7 @@ fn eval_pure_named_call(
     // Guard runs only for admitted calls: a store that lands must carry what it cost, so the
     // paying claim's receipt can net it and the shared-fill ledger can attribute it. Its
     // `Drop` closes the fill on every path out of this function.
-    let fill_guard = if cross_claim_pure_admitted(func_name) {
+    let fill_guard = if cross_claim_pure_admitted(fn_node, func_name) {
         Some(CrossClaimFillGuard::enter(func_name))
     } else {
         None

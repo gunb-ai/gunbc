@@ -28,8 +28,11 @@ import v2.std.text { String }
 // realization (`v1_interpreter` cross-claim tier) keys every entry on fn-node identity plus
 // a content hash of the full argument row, serves only after the stored argument row
 // verifies structurally equal in portable form (a hash collision degrades to recompute,
-// never to a wrong value), refuses to store any call that dispatched an effect, and caps
-// the store with a counted overflow.
+// never to a wrong value), refuses to store any call that dispatched an effect, and bounds
+// retention twice with counted refusals: an entry-count cap on the key population and a
+// byte budget on the reified portable representation (arguments and values, measured at
+// publication — reification is total, so the size is always computable before a store
+// lands). An over-budget producer recomputes per claim exactly as if never enrolled.
 //
 // TWO LISTS BECAUSE TWO FILL DISPOSITIONS (the well-posed split the floor-cost-debt carrier
 // names): a WARM row is nullary and preparation-forceable — the floor evaluates it once during
@@ -41,10 +44,12 @@ import v2.std.text { String }
 // warm silently failed would relocate its fill onto the first toucher, which is exactly the
 // nondeterministic charge this roster exists to delete.
 //
-// ADMISSION IS BY BARE NAME; CORRECTNESS IS BY IDENTITY. The seed admits calls by the bare
-// function name and keys stored values by fn-node identity, so a bare-name homonym is two
-// keys, never a cross-served value; the qualified spelling here is the citation (§3) and what
-// preparation resolves when it warms.
+// ADMISSION IS BY RESOLVED DECLARATION IDENTITY. Preparation resolves each qualified
+// spelling below to its declaration's fn node and the seed admits by that node set — a
+// bare-name homonym in a non-rostered module is a different declaration and is never
+// eligible, and a row whose module or declaration the subject cannot resolve stops the
+// line as a stale row. Stored values are additionally keyed on fn-node identity, so even
+// the built-in prepare_grammar arm never cross-serves between distinct declarations.
 //
 // HOW A ROW EARNS ITS PLACE: a measured per-claim recompute of a pure producer — cite the
 // instrument (claim_batch + GUNBC_INTERP_PROFILE staging, or a floor cost receipt), not a

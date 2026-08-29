@@ -2178,19 +2178,42 @@ pub(crate) fn install_pure_producer_share(prepared: &PreparedRepository) -> Resu
             "{FLOOR_PURE_PRODUCER_SHARE_MODULE}.floor_cross_claim_pure_producers_claim_forced"
         ),
     )?;
-    let bare = |qualified: &String| {
-        qualified
-            .rsplit('.')
-            .next()
-            .unwrap_or(qualified.as_str())
-            .to_string()
-    };
-    v1_interpreter::install_cross_claim_pure_share_roster(
-        warm_rows
-            .iter()
-            .map(&bare)
-            .chain(claim_forced_rows.iter().map(&bare)),
-    );
+    // Admission is by RESOLVED DECLARATION IDENTITY (review 57446 F1): each qualified
+    // roster spelling resolves to its fn node in a frame over the prepared subject, and the
+    // interpreter admits by that node set — a bare-name homonym in a non-rostered module is
+    // a different node and never eligible. A row whose module or declaration the subject
+    // cannot resolve is a stale row and stops the line, exactly like a stale warm row.
+    let mut resolution_frames: std::collections::HashMap<String, v1_interpreter::InterpContext> =
+        std::collections::HashMap::new();
+    let mut admitted_nodes = Vec::new();
+    for qualified in warm_rows.iter().chain(claim_forced_rows.iter()) {
+        let module = match qualified.rsplit_once('.') {
+            Some((module, _)) => module.to_string(),
+            None => qualified.clone(),
+        };
+        if !resolution_frames.contains_key(&module) {
+            let frame = floor_authority_frame(prepared, &module).map_err(|why| {
+                format!(
+                    "REQUIRED-FLOOR REFUSAL cause=PureProducerShareProducerModuleOutsideSubject \
+                     producer={qualified} — the rostered producer's module is not in the \
+                     prepared subject; delete the stale roster row or restore its consumers: \
+                     {why}"
+                )
+            })?;
+            resolution_frames.insert(module.clone(), frame);
+        }
+        let node = resolution_frames[&module]
+            .lookup_fn_node(qualified)
+            .ok_or_else(|| {
+                format!(
+                    "REQUIRED-FLOOR REFUSAL cause=PureProducerShareProducerUnresolved \
+                     producer={qualified} — the rostered spelling names no declaration in its \
+                     module's frame; fix or delete the roster row"
+                )
+            })?;
+        admitted_nodes.push(node);
+    }
+    v1_interpreter::install_cross_claim_pure_share_roster(admitted_nodes);
     v1_interpreter::install_cross_claim_share_observer(Some(
         v1_interpreter::CrossClaimShareObserver {
             on_fill_begin: Box::new(crate::cli_run::shared_fill::begin_fill),
@@ -2213,18 +2236,11 @@ pub(crate) fn install_pure_producer_share(prepared: &PreparedRepository) -> Resu
             Some((module, _)) => module.to_string(),
             None => qualified.clone(),
         };
-        // A warm row whose module the subject no longer carries is a STALE ROW, not a
-        // narrower subject: the subject is the gate closure plus the declared seeds, so the
-        // row outlived its consumers and must be deleted, never silently unwarmed.
-        let producer_frame = floor_authority_frame(prepared, &module).map_err(|why| {
-            format!(
-                "REQUIRED-FLOOR REFUSAL cause=PureProducerShareProducerModuleOutsideSubject \
-                 producer={qualified} — the rostered producer's module is not in the prepared \
-                 subject; delete the stale roster row or restore its consumers: {why}"
-            )
-        })?;
+        // Resolution above already refused any row whose module the subject no longer
+        // carries, so the frame is present; reuse it rather than re-preparing the module.
+        let producer_frame = &resolution_frames[&module];
         let warm_started = std::time::Instant::now();
-        match v1_interpreter::warm_cross_claim_pure_producer(&producer_frame, qualified) {
+        match v1_interpreter::warm_cross_claim_pure_producer(producer_frame, qualified) {
             Ok(stored) => {
                 // `stored=false` means the value was refused by the store (unportable,
                 // duplicate, cap) — the roster promised a servable producer, so a silent
@@ -2240,7 +2256,7 @@ pub(crate) fn install_pure_producer_share(prepared: &PreparedRepository) -> Resu
                             },
                             refusal.encountered_kind
                         ),
-                        None => "duplicate key or entry cap".to_string(),
+                        None => "duplicate key, entry cap, or byte budget".to_string(),
                     };
                     return Err(format!(
                         "REQUIRED-FLOOR REFUSAL cause=PureProducerShareWarmNotStored \
@@ -5494,8 +5510,10 @@ mod pure_producer_share_tests {
         )]);
         let err = install_pure_producer_share(&prepared)
             .expect_err("a stale warm row must stop the line");
+        // The stop now lands at roster RESOLUTION (admission is by resolved declaration
+        // identity), before any warm runs — same line-stop, more precisely located.
         assert!(
-            err.contains("PureProducerShareWarmFailed"),
+            err.contains("PureProducerShareProducerUnresolved"),
             "refusal must name the cause: {err}"
         );
         v1_interpreter::clear_cross_claim_pure_memos();

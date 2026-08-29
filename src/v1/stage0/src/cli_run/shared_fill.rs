@@ -444,10 +444,6 @@ mod tests {
 
         reset();
         v1_interpreter::clear_cross_claim_pure_memos();
-        v1_interpreter::install_cross_claim_pure_share_roster([
-            "tm_alpha".to_string(),
-            "tm_beta".to_string(),
-        ]);
         v1_interpreter::install_cross_claim_share_observer(Some(
             v1_interpreter::CrossClaimShareObserver {
                 on_fill_begin: Box::new(begin_fill),
@@ -482,6 +478,18 @@ mod tests {
             )
         };
 
+        // Admission by RESOLVED declaration identity: the roster carries the fn NODES the
+        // qualified spellings resolve to, so tm_unrostered — or a homonym in another
+        // module — is never eligible.
+        let resolver = fresh_ctx();
+        v1_interpreter::install_cross_claim_pure_share_roster(
+            ["fixture.tmshare.tm_alpha", "fixture.tmshare.tm_beta"].map(|q| {
+                resolver
+                    .lookup_fn_node(q)
+                    .unwrap_or_else(|| panic!("fixture declares {q}"))
+            }),
+        );
+
         // Claim A pays the fills.
         let ctx_a = fresh_ctx();
         set_current_claim(Some("fixture.claim_a.w_first"));
@@ -512,7 +520,7 @@ mod tests {
 
         let text = report();
         v1_interpreter::install_cross_claim_share_observer(None);
-        v1_interpreter::install_cross_claim_pure_share_roster(std::iter::empty());
+        v1_interpreter::install_cross_claim_pure_share_roster(Vec::new());
         v1_interpreter::clear_cross_claim_pure_memos();
 
         let alpha_fills = text
