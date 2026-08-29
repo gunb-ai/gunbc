@@ -37544,6 +37544,19 @@ fn str_list(items: impl IntoIterator<Item = String>) -> v1_interpreter::Value {
 /// the policy constants is not privileged with a wider namespace than the claims they bound.
 const REQUIRED_FLOOR_POLICY_MODULE: &str = "v2.workflow.required_floor";
 
+/// Modules the required floor's own runner evaluates BY NAME, outside any gate roster: the
+/// policy module (its rosters, via `floor_decode_module_prefix_roster`), the naming-hygiene
+/// authority (`floor_entries_requiring_test_sidecar`, `floor_entry_is_barren_test_sidecar`,
+/// qualified), and the output policy (`resolve_channel_policy` /
+/// `resolve_shell_trace_stream_policy`, bare, from `install_output_policy_in`). Every one is a
+/// closure seed of the gate-bounded prepared subject; a new by-name evaluation adds its module
+/// here or refuses at its own call site.
+const REQUIRED_FLOOR_RUNTIME_AUTHORITY_MODULES: [&str; 3] = [
+    REQUIRED_FLOOR_POLICY_MODULE,
+    "v2.workflow.floor_naming_hygiene",
+    "gunbc.output_policy",
+];
+
 /// THE REQUIRED FLOOR, AS ONE ATTEMPT.
 ///
 /// Read the active sources once, strict-prepare one subject once, project the claim roster from

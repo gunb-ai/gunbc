@@ -2388,15 +2388,28 @@ pub fn run_required_floor(
             "v2.workflow.required_floor.required_gate_prefixes",
         )?
     };
-    // THE POLICY MODULE IS ALWAYS IN THE SUBJECT: the floor evaluates its rosters (expected
-    // red, route gap, cost debt, the gate itself) in a frame over the prepared graph, and a
-    // gate roster that happened not to reach `v2.workflow.required_floor` refused with
-    // EntryModuleOutsidePreparedSubject (measured 2026-08-29). It is a seed, not a gate row:
-    // its own witnesses are admitted or declined by the roster like every other module's.
+    // THE FLOOR'S OWN AUTHORITIES ARE ALWAYS IN THE SUBJECT: the floor evaluates its rosters
+    // (expected red, route gap, cost debt, the gate itself) in a frame over the prepared graph,
+    // and a gate roster that happened not to reach `v2.workflow.required_floor` refused with
+    // EntryModuleOutsidePreparedSubject (measured 2026-08-29). They are seeds, not gate rows:
+    // their own witnesses are admitted or declined by the roster like every other module's.
+    //
+    // The roster names every module the floor's Rust reaches BY NAME outside the gate roster.
+    // Under the whole-tree subject these resolved by pool-membership coincidence -- the
+    // flat bare-name channel found `resolve_channel_policy` because the whole corpus was
+    // loaded, not because anything in the policy closure references `gunbc.output_policy`
+    // (measured 2026-08-29: the first gate-bounded run refused at output-policy install with
+    // "no declaration named 'resolve_channel_policy' in this execution's loaded index").
+    // Making the dependency a declared seed is the honest form; a module evaluated by name
+    // and absent from this list refuses loudly at its own call site, never silently.
     let closure_seeds: Vec<String> = required_gate_prefixes
         .iter()
         .cloned()
-        .chain(std::iter::once(REQUIRED_FLOOR_POLICY_MODULE.to_string()))
+        .chain(
+            REQUIRED_FLOOR_RUNTIME_AUTHORITY_MODULES
+                .iter()
+                .map(|m| m.to_string()),
+        )
         .collect();
     let (prepared, prepared_sources) = prepare_repository_closure(
         source_roots,
