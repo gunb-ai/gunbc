@@ -5,6 +5,8 @@ import gunbc.os_install { HostAutoinstall, fleet_autoinstall_specs, InstallServe
 import gunbc.plan { Plan, plan_doc_directory, plan_doc_name, PlanProjectsCommittedMarkdown, PlanIsAuthorityOnly }
 import gunbc.plan_registry { all_plans }
 import gunbc.generated_artifact_merge_driver { generated_artifact_merge_driver_script_directory, generated_artifact_merge_driver_script_name }
+import examples.js_site { JsSitePageId, Home, Browse, About }
+import examples.js_site_emit { js_site_generated_dir, js_site_page_basename }
 
 type GeneratedArtifact
   = WitnessFloorYamlArtifact
@@ -26,6 +28,9 @@ type GeneratedArtifact
   | AutoinstallUserDataArtifact { spec: HostAutoinstall }
   | ProxyDhcpDnsmasqArtifact { spec: InstallServerSpec }
   | PlanArtifact { plan: Plan }
+  | JsSitePageArtifact { page_id: JsSitePageId, form: JsSiteArtifactForm }
+
+type JsSiteArtifactForm = JsSiteHtml | JsSiteTsx
 
 data generated_artifact_registry: List<GeneratedArtifact> = concat(
   concat(
@@ -35,7 +40,13 @@ data generated_artifact_registry: List<GeneratedArtifact> = concat(
     ),
     map(fleet_install_server_specs, s => ProxyDhcpDnsmasqArtifact { spec: s })
   ),
-  map(all_plans, pl => PlanArtifact { plan: pl })
+  concat(
+    map(all_plans, pl => PlanArtifact { plan: pl }),
+    flat_map([Home {}, Browse {}, About {}], id => [
+      JsSitePageArtifact { page_id: id, form: JsSiteHtml },
+      JsSitePageArtifact { page_id: id, form: JsSiteTsx }
+    ])
+  )
 )
 
 type RepoConsumer
@@ -83,6 +94,11 @@ fn artifact_location(a: GeneratedArtifact) -> ArtifactLocation {
       ArtifactLocation { directory: concat("provisioning/", spec.host), name: "dnsmasq.conf" }
     PlanArtifact { plan } =>
       ArtifactLocation { directory: plan_doc_directory, name: plan_doc_name(slug: plan.slug) }
+    JsSitePageArtifact { page_id, form } =>
+      ArtifactLocation {
+        directory: js_site_generated_dir(),
+        name: concat(js_site_page_basename(id: page_id), match form { JsSiteHtml => ".html"  JsSiteTsx => ".tsx" })
+      }
   }
 }
 
@@ -127,6 +143,7 @@ fn artifact_commit_policy(a: GeneratedArtifact) -> CommitPolicy {
     Stage0CrateLayoutGeneratedRsArtifact => CommitRequired { consumer: GitProtocol }
     Stage0CratePartitionGeneratedDagArtifact => CommitRequired { consumer: GitProtocol }
     V1InterpreterDispatchGeneratedRsArtifact => CommitRequired { consumer: GitProtocol }
+    JsSitePageArtifact { page_id: _, form: _ } => CommitRequired { consumer: ProjectDocumentation }
     AutoinstallUserDataArtifact { spec: _ } => NotCommitted
     ProxyDhcpDnsmasqArtifact { spec: _ } => NotCommitted
   }
@@ -170,9 +187,29 @@ fn artifact_eq(a: GeneratedArtifact, b: GeneratedArtifact) -> Bool {
     AutoinstallUserDataArtifact { spec } => match b { AutoinstallUserDataArtifact { spec: spec2 } => spec.host == spec2.host  _ => false }
     ProxyDhcpDnsmasqArtifact { spec } => match b { ProxyDhcpDnsmasqArtifact { spec: spec2 } => spec.host == spec2.host  _ => false }
     PlanArtifact { plan } => match b { PlanArtifact { plan: plan2 } => plan.slug == plan2.slug  _ => false }
+    JsSitePageArtifact { page_id, form } => match b {
+      JsSitePageArtifact { page_id: page_id2, form: form2 } =>
+        js_site_page_id_eq(a: page_id, b: page_id2) && js_site_artifact_form_eq(a: form, b: form2)
+      _ => false
+    }
   }
 }
 
 fn registry_contains(a: GeneratedArtifact) -> Bool {
   any(generated_artifact_registry, x => artifact_eq(a: x, b: a))
+}
+
+fn js_site_page_id_eq(a: JsSitePageId, b: JsSitePageId) -> Bool {
+  match a {
+    Home => match b { Home => true  _ => false }
+    Browse => match b { Browse => true  _ => false }
+    About => match b { About => true  _ => false }
+  }
+}
+
+fn js_site_artifact_form_eq(a: JsSiteArtifactForm, b: JsSiteArtifactForm) -> Bool {
+  match a {
+    JsSiteHtml => match b { JsSiteHtml => true  JsSiteTsx => false }
+    JsSiteTsx => match b { JsSiteTsx => true  JsSiteHtml => false }
+  }
 }

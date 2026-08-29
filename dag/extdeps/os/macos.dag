@@ -9,6 +9,8 @@ import std.os.types {
 }
 
 import extdeps.external_authority { ExternalAuthority }
+import std.types { String, List }
+import std.workspace_artifact { WorkspaceFootprint, WorkspaceArtifact, CitedUpstream, HostOsMetadata }
 import extdeps.uri { Uri, Https }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
@@ -33,5 +35,15 @@ data sequoia_15_catalog: MacosDistributionCatalogRow = MacosDistributionCatalogR
 fn macos_distribution_catalog_row(distro: MacosDistribution) -> MacosDistributionCatalogRow {
   match distro {
     Sequoia15 => sequoia_15_catalog
+  }
+}
+
+// WORKSPACE FOOTPRINT. Finder writes per-directory metadata into any tree it browses.
+fn finder_metadata_footprint() -> WorkspaceFootprint {
+  WorkspaceFootprint {
+    provenance: CitedUpstream { display: "macOS Finder metadata", upstream: "developer.apple.com (Finder metadata)" },
+    artifacts: [
+      WorkspaceArtifact { pattern: ".DS_Store", meaning: "Finder folder-view metadata", reason: HostOsMetadata }
+    ]
   }
 }

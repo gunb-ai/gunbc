@@ -490,24 +490,23 @@ test fn a_receipt_from_another_principal_is_not_the_same_attempt() -> Bool {
   admission_label(r: foreign_principal_receipt) == "different-attempt"
 }
 
+data granted_lease_receipt: Receipt<NonEmptyStr> = Receipt {
+  id: FabricIdentity { principal: "operator", key: "receipt-ok" },
+  attempt: first_attempt.id,
+  lease: lease_gen_9,
+  payload: ExecutionReceipt {
+    step_id: "floor",
+    outputs: content_hash_of_value(value: "outputs-ok"),
+    billable: second(count: 10),
+    completed_at: "2026-08-18T01:00:00Z",
+  },
+}
+
 // The positive control. Without it every refusal above is satisfied by an
 // admission function that refuses everything.
 
 test fn a_receipt_from_the_granted_lease_is_admissible() -> Bool {
-  match admit_receipt_for_grant(
-    r: Receipt {
-      id: FabricIdentity { principal: "operator", key: "receipt-ok" },
-      attempt: first_attempt.id,
-      lease: lease_gen_9,
-      payload: ExecutionReceipt {
-        step_id: "floor",
-        outputs: content_hash_of_value(value: "outputs-ok"),
-        billable: second(count: 10),
-        completed_at: "2026-08-18T01:00:00Z",
-      },
-    },
-    g: fixture_grant,
-  ) {
+  match admit_receipt_for_grant(r: granted_lease_receipt, g: fixture_grant) {
     ReceiptAdmissible => true
     ReceiptFromDifferentLease => false
     ReceiptFromDifferentAttempt => false
