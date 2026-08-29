@@ -218,3 +218,74 @@ whereas a route-gapped identity stays in the subject, executes, and reports.
 Converting those entries into `floor_route_gap` rows is the obvious next step and is deliberately
 **not** in this change: it should follow the measurement that proves the route-gap mechanism
 behaves as designed on the population it was built for, not precede it.
+
+---
+
+## The same failure one level up: the projection's denominator (2026-08-29, `nimble-ibex-902`)
+
+The population above was lost *inside* the projection — discovered, declined, never run. The
+sequel is the population lost *before* it: identities that never reached the projection at all,
+so no partition over "offered" could speak for them.
+
+### The two mechanisms that removed them
+
+`assemble_prepared_subject_closure` drops modules two ways, and a witness declared in a dropped
+module was neither planned nor declined:
+
+- **the exclusion substrings**, whose entry-grain receipt (`collect_deferred_discovery_rows`)
+  existed but was never joined to the disposition population at identity grain; and
+- **the gate closure** introduced by the 2026-08-29 gate cut (§4b rung drop *Required gate
+  reduced to the compiler floor*). Only modules in the transitive closure of the gate seeds are
+  prepared, so `declined_outside_required_gate` — which reads two figures — can only ever speak
+  for modules that *reached* the index.
+
+### The subject universe, measured
+
+Counted with the floor's own rule (a column-zero `test fn ` / `test data `) over `dag/` and
+`src/v2`: **13,975 distinct declared identities**, in 1,759 files, with **zero** duplicate
+identities and **zero** module-name collisions. So the gap between the declared corpus and the
+floor's `offered` was never duplication; it was two silent removals. The live figures are the
+run's own, not this document's: `required-floor: declared=… offered=… declined_outside_gate_closure=…`.
+
+### What changed
+
+1. **The universe is the declared population.** Preparation now emits one
+   `RequiredFloorDisposition` row for every identity it drops —
+   `DeclinedOutsideGateClosure` and `DeclinedDiscoveryExcluded { matched_substring }`, two arms
+   on the authority that already existed, not a second status vocabulary. The gate-closure
+   population keeps its own arm rather than folding into `DeclinedOutsideRequiredGate`: the two
+   are removed by different mechanisms, restored by different triggers, and differ by two orders
+   of magnitude, and the first is the rung drop's subject.
+2. **The partition is an identity join, not a count equality.** The old check was
+   `offered == routed + declined_long + declined_fixture + declined_outside_gate +
+   declined_cost_debt`, which DESIGN §5 names by shape: green over a projection that drops one
+   identity and writes another twice, since every count still agrees. It is now the same
+   reconciliation the terminal ledger uses, through the same function
+   (`reconcile_identity_population`), refusing as `FloorDispositionJoinInexact` with the offending
+   identities named. Its calibration pair is enrolled beside the terminal-ledger one.
+3. **The counters are derived from the rows** instead of accumulated beside them, and duplicate
+   detection moved from the *planned* subset to the *whole declared* population — a duplicate
+   whose first site declined used to pass unnoticed.
+4. **The artifact carries two axes, never folded.** The disposition TSV gains an `outcome`
+   column, joined from the terminal ledger through `claim_disposition`; an identity that never
+   ran reads `not_executed`, which is a statement rather than a blank.
+
+### Two axes deliberately NOT built, and what each needs first
+
+Both were in the commissioning brief and both would have meant *authoring* the authority they
+claim to join to (§3), so they are named here as triggers rather than improvised:
+
+- **semantic producer / retire-with-producer.** No authority in the tree maps a witness identity
+  to the producer whose behavior it witnesses. Trigger: a modeled producer binding on the witness
+  carrier itself, at which point the join is a lookup rather than a classification.
+- **the Rust `#[ignore]` roster.** A different universe with no roster authority and no identity
+  grain shared with `.dag` witnesses. Trigger: an enumerated, typed roster of ignored Rust tests
+  with a stated reason per row — the same shape `floor_cost_debt` already has for its population.
+
+### One inert wall found on the way
+
+`gunbc.discovery_census` claims, twice and in prose, that its wildcard-free matches make a new
+`RequiredFloorDisposition` arm *fail to compile*. `DeclinedOutsideRequiredGate` had already been
+added without either match acquiring an arm, and nothing refused — the module's own witness is
+outside the gate closure, so no executing path typechecks it. The arms are added here and the
+claim is restated at its honest rung, with the trigger recorded in the module.

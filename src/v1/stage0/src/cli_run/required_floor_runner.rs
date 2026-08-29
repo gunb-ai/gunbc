@@ -2933,11 +2933,14 @@ pub fn run_required_floor(
     // directory deciding admission was that ruling's root cause; reading the declaration is what
     // fixes it, and that is preserved here exactly.
     //
-    // THE PARTITION IS NOW EXACT BY CONSTRUCTION, not by reconciliation. Every site takes exactly
-    // one arm below, so `claims + declined == offered` holds because the loop cannot do
-    // otherwise. The former `SitePartitionInexact` and unexplained-decline refusals existed to
-    // catch the two computations disagreeing; with one computation they have no reachable
-    // producer, so they are deleted rather than left standing as walls nothing can trip.
+    // THE PARTITION IS EXACT BY CONSTRUCTION IN THE ARMS, AND CHECKED AS AN IDENTITY JOIN AT THE
+    // END. Every site takes exactly one arm below, which is what makes the COUNTS agree; it is
+    // not what makes the POPULATION agree, and those are different claims. A row written for the
+    // wrong identity, an identity discovered twice, or a preparation-side row for an identity the
+    // tree does not declare all satisfy "one arm per site" and still break the projection — so
+    // `FloorDispositionJoinInexact` below joins the declared identities against the rows they
+    // produced, and the old count equality (`SitePartitionInexact`) is gone rather than kept as a
+    // weaker restatement of it.
     //
     // DUPLICATE ENROLLMENT IS UNCHANGED AND UNMOVED, and this is the one invariant the deleted
     // fold genuinely carried. It is caught downstream by `receipt_identities`, a HashSet keyed on
@@ -3125,13 +3128,14 @@ pub fn run_required_floor(
 
     let mut claims: Vec<RequiredFloorClaim> = Vec::new();
     let mut planned_identities: HashSet<String> = HashSet::new();
-    let mut long_declined = 0usize;
-    let mut fixture_declined = 0usize;
-    let mut outside_gate_declined = 0usize;
-    let mut cost_debt_declined = 0usize;
     let mut cost_debt_seen: HashSet<String> = HashSet::new();
     let mut outcome_withheld_cost_debt: Vec<String> = Vec::new();
-    let mut sites_offered = 0usize;
+    // THE POPULATION, AT IDENTITY GRAIN. It accumulates the sites this loop offers and then the
+    // identities preparation dropped, so by the join below it is every DECLARED witness identity
+    // in the tree. Both counts (`sites_offered`, `declared_identities`) are read off it rather
+    // than maintained beside it: a count and a population kept in step by hand are two
+    // computations of one fact, and the count is the weaker one.
+    let mut declared_identity_set: HashSet<String> = HashSet::new();
     let mut disposition_rows: Vec<RequiredFloorDispositionRow> = Vec::new();
     let mut storage_agreement_rows: Vec<LongHomeStorageAgreementRow> = Vec::new();
     for file in files {
@@ -3150,14 +3154,28 @@ pub fn run_required_floor(
         let path_is_long = is_long_home_path(&file.path);
         let storage_agreement = long_home_storage_agreement(path_is_long, long_home);
         for function in &file.functions {
-            sites_offered += 1;
             let identity = format!("{}.{}", file.module_path, function);
+            // ONE SITE PER QUALIFIED IDENTITY, REFUSED OVER THE WHOLE OFFERED POPULATION.
+            //
+            // This wall used to stand further down, guarding PLANNED claims only, so a duplicate
+            // whose first arm was a decline never reached it: two sites sharing one identity took
+            // two arms, wrote two disposition rows, and the partition — a count equality — added
+            // up exactly. The identity join below cannot express "this witness has one
+            // disposition" while the offered side is a multiset, so the uniqueness of the offered
+            // side is established HERE, where the site is enumerated, and the join downstream is
+            // then a statement about identities rather than about totals.
+            if !declared_identity_set.insert(identity.clone()) {
+                return Err(format!(
+                    "REQUIRED-FLOOR REFUSAL cause=DuplicateWitnessIdentity identity={identity} — \
+                     one qualified declaration was discovered at more than one site, so it would \
+                     carry more than one disposition; a witness identity names exactly one site"
+                ));
+            }
             storage_agreement_rows.push(LongHomeStorageAgreementRow {
                 identity: identity.clone(),
                 agreement: storage_agreement,
             });
             if long_home {
-                long_declined += 1;
                 disposition_rows.push(RequiredFloorDispositionRow {
                     identity,
                     disposition: RequiredFloorDisposition::DeclinedLongModule {
@@ -3169,7 +3187,6 @@ pub fn run_required_floor(
                 continue;
             }
             if let Some(prefix) = fixture_prefix {
-                fixture_declined += 1;
                 disposition_rows.push(RequiredFloorDispositionRow {
                     identity,
                     disposition: RequiredFloorDisposition::DeclinedFixtureMember {
@@ -3191,7 +3208,6 @@ pub fn run_required_floor(
             // checks exact and costs the fold nothing — no scope is built and no frame allocated
             // for a row that will not run.
             if cost_debt_roster.contains(&identity) {
-                cost_debt_declined += 1;
                 cost_debt_seen.insert(identity.clone());
                 outcome_withheld_cost_debt.push(identity.clone());
                 disposition_rows.push(RequiredFloorDispositionRow {
@@ -3203,29 +3219,20 @@ pub fn run_required_floor(
             // THE FOURTH DECLINE, AFTER COST DEBT so a rostered identity outside the gate still
             // enters `cost_debt_seen` and the roster's staleness check keeps its meaning.
             if !inside_required_gate {
-                outside_gate_declined += 1;
                 disposition_rows.push(RequiredFloorDispositionRow {
                     identity,
                     disposition: RequiredFloorDisposition::DeclinedOutsideRequiredGate,
                 });
                 continue;
             }
-            // ONE EXECUTABLE CLAIM PER QUALIFIED IDENTITY, REFUSED HERE AND NAMED.
-            //
-            // The deleted manifest carried this invariant and refused BEFORE running anything,
-            // naming the offending declaration. `receipt_identities` is NOT the same wall: it
-            // compares populations after all 9,122 claims have executed, so a duplicate costs a
-            // full duplicated evaluation before anything notices, and a count mismatch says only
-            // that two populations disagree -- never which identity caused it. Planned-identity
-            // uniqueness and receipt completeness are different properties, and the terminal
-            // `planned == executed == receipted` check remains as the second, separate one.
-            if let Some(prior) = planned_identities.replace(identity.clone()) {
-                return Err(format!(
-                    "REQUIRED-FLOOR REFUSAL cause=DuplicateWitnessIdentity identity={prior} — \
-                     one qualified declaration resolved to more than one executable claim; the \
-                     roster cannot name the same witness twice"
-                ));
-            }
+            // NO SECOND DUPLICATE WALL LIVES HERE. This arm used to re-test uniqueness over the
+            // PLANNED identities only, which is the same invariant the offered-side insert above
+            // now establishes over the whole discovered population — strictly wider, and reached
+            // before any arm is taken, so a duplicate whose first site declines is caught too.
+            // Keeping both would be one fact with two producers (DESIGN §3), and the narrower one
+            // dissolves on the climb (§4b(4)). `planned_identities` remains, as the expected side
+            // of the terminal ledger join; it is no longer a uniqueness mechanism.
+            planned_identities.insert(identity.clone());
             disposition_rows.push(RequiredFloorDispositionRow {
                 identity: identity.clone(),
                 disposition: RequiredFloorDisposition::Planned,
@@ -3241,8 +3248,37 @@ pub fn run_required_floor(
             });
         }
     }
-    // THE PARTITION OVER THE OFFERED POPULATION, CHECKED — not merely reported for a reader to
-    // add up.
+    // Taken BEFORE the declared population is folded in, so it is what the site loop offered and
+    // not that number reconstructed by subtracting one population from another.
+    let sites_offered = declared_identity_set.len();
+    // THE UNIVERSE IS THE DECLARED POPULATION, NOT THE OFFERED ONE.
+    //
+    // Preparation removes two populations before a site can be offered — modules excluded by
+    // substring, and (since the 2026-08-29 gate cut) every module the gate closure does not
+    // reach — and a witness declared in one of them used to be neither planned nor declined. It
+    // was not in `offered`, so no partition over `offered` could say anything about it: the
+    // denominator itself had already narrowed, which is the level ABOVE the partition where
+    // `docs/plans/witness-execution-closure.md` found the last missing population. After the gate
+    // cut that silence is most of the corpus.
+    //
+    // Preparation now carries a disposition row for each identity it drops, in the SAME authority
+    // (`RequiredFloorDisposition`), so the join below runs over every DECLARED witness identity in
+    // the tree. `sites_offered` keeps its old meaning — what the site loop was offered — and is
+    // reported beside `declared` rather than replaced by it, because a reader comparing runs needs
+    // the subject-relative number and the tree-relative number to stay distinguishable.
+    for row in &prepared.undiscovered_dispositions {
+        if !declared_identity_set.insert(row.identity.clone()) {
+            return Err(format!(
+                "REQUIRED-FLOOR REFUSAL cause=DuplicateWitnessIdentity identity={} — an identity \
+                 dropped by preparation was ALSO offered by the site loop, so it would carry two \
+                 dispositions; the prepared subject and its complement must be disjoint",
+                row.identity
+            ));
+        }
+        disposition_rows.push(row.clone());
+    }
+    // THE PARTITION OVER THE DECLARED POPULATION, CHECKED AS AN IDENTITY JOIN — not as a count
+    // equality, and not merely reported for a reader to add up.
     //
     // `claims_planned` is the POST-decline number, and the terminal invariant downstream
     // (`ClaimIdentityCountsDisagree`) compares planned == executed == receipted. Every one of
@@ -3250,41 +3286,97 @@ pub fn run_required_floor(
     // the run's own honesty check could not see what it lost: a projection that declined a
     // thousand identities and one that declined none produce identically healthy-looking
     // triples. This is the missing invariant on the other side of that seam — the offered
-    // population must be exactly the routed population plus the declined one — and it is
-    // stated where the loop that could violate it runs.
+    // population must be exactly the dispositioned population — and it is stated where the loop
+    // that could violate it runs.
     //
-    // It cannot fail today, because the loop takes exactly one arm per site. That is the point:
-    // it is the construction's own statement of what it guarantees, and it fails loudly the
-    // first time an edit adds a third arm that quietly swallows rows, which is precisely how
-    // the live-tree decline arrived and stayed invisible.
-    if sites_offered
-        != claims.len()
-            + long_declined
-            + fixture_declined
-            + outside_gate_declined
-            + cost_debt_declined
+    // WHY IT IS A JOIN AND NOT `offered == routed + declined_*`. The old form was that sum, and
+    // DESIGN §5 names it: completeness is an identity join, not a count equality. The sum is
+    // green over a projection that writes a row for the wrong identity, over one that drops
+    // `m.c` while writing `m.a` twice, and over any pair of errors that cancels in the totals —
+    // exactly the calibration pair `terminal_ledger_completeness_law` pins one seam downstream.
+    // It is the SAME join, through the SAME function
+    // (`reconcile_identity_population`), because it is the same fact asked at a different seam.
+    //
+    // AND THE COUNTERS ARE DERIVED FROM THE ROWS, not accumulated beside them. Four `+= 1`s used
+    // to run in the arms that push the rows, so the reported `declined_long` and the row
+    // population were two computations of one fact and could disagree with nothing to say so.
+    // With the counts folded out of the rows there is one producer, and the join above is what
+    // makes the rows themselves trustworthy.
+    let (declared_without_disposition, dispositioned_without_declaration, disposition_duplicated) =
+        reconcile_identity_population(
+            &declared_identity_set,
+            disposition_rows.iter().map(|r| r.identity.as_str()),
+        );
+    if !declared_without_disposition.is_empty()
+        || !dispositioned_without_declaration.is_empty()
+        || !disposition_duplicated.is_empty()
     {
+        let sample = |rows: &[&str]| {
+            if rows.is_empty() {
+                "none".to_string()
+            } else {
+                rows.iter()
+                    .take(10)
+                    .copied()
+                    .collect::<Vec<_>>()
+                    .join(" | ")
+            }
+        };
         return Err(format!(
-            "REQUIRED-FLOOR REFUSAL cause=SitePartitionInexact offered={sites_offered} \
-             routed={} declined_long={long_declined} declined_fixture={fixture_declined} \
-             declined_outside_gate={outside_gate_declined} \
-             declined_cost_debt={cost_debt_declined} — every \
-             discovered site must be either routed to a claim or declined with a stated \
-             disposition; a gap here is a roster that narrowed without saying so",
-            claims.len()
+            "REQUIRED-FLOOR REFUSAL cause=FloorDispositionJoinInexact declared={} rows={} \
+             declared_without_disposition={} dispositioned_without_declaration={} duplicated={} \
+             — every DECLARED witness identity must join to exactly one disposition; a gap here \
+             is a roster that narrowed, widened or double-counted without saying so. \
+             declared_without_disposition: {} :: dispositioned_without_declaration: {} :: \
+             duplicated: {}",
+            declared_identity_set.len(),
+            disposition_rows.len(),
+            declared_without_disposition.len(),
+            dispositioned_without_declaration.len(),
+            disposition_duplicated.len(),
+            sample(&declared_without_disposition),
+            sample(&dispositioned_without_declaration),
+            sample(&disposition_duplicated),
         ));
     }
+    // ONE PRODUCER FOR THE COUNTS: the joined row population, folded once per arm.
+    let disposition_count = |select: fn(&RequiredFloorDisposition) -> bool| {
+        disposition_rows
+            .iter()
+            .filter(|row| select(&row.disposition))
+            .count()
+    };
+    let declared_identities = declared_identity_set.len();
+    let long_declined =
+        disposition_count(|d| matches!(d, RequiredFloorDisposition::DeclinedLongModule { .. }));
+    let fixture_declined =
+        disposition_count(|d| matches!(d, RequiredFloorDisposition::DeclinedFixtureMember { .. }));
+    let outside_gate_declined =
+        disposition_count(|d| matches!(d, RequiredFloorDisposition::DeclinedOutsideRequiredGate));
+    let cost_debt_declined =
+        disposition_count(|d| matches!(d, RequiredFloorDisposition::DeclinedCostDebt));
+    let gate_closure_declined =
+        disposition_count(|d| matches!(d, RequiredFloorDisposition::DeclinedOutsideGateClosure));
+    let discovery_excluded_declined = disposition_count(|d| {
+        matches!(
+            d,
+            RequiredFloorDisposition::DeclinedDiscoveryExcluded { .. }
+        )
+    });
     eprintln!(
-        "[floor-phase] phase=site-projection state=completed wall_ms={} sites={} files={} \
-         claims={} declined_long={} declined_fixture={} declined_outside_gate={} \
-         declined_cost_debt={}",
+        "[floor-phase] phase=site-projection state=completed wall_ms={} declared={} sites={} \
+         files={} claims={} declined_long={} declined_fixture={} declined_outside_gate={} \
+         declined_gate_closure={} declined_discovery_excluded={} declined_cost_debt={}",
         projection_started.elapsed().as_millis(),
+        declared_identities,
         sites_offered,
         files.len(),
         claims.len(),
         long_declined,
         fixture_declined,
         outside_gate_declined,
+        gate_closure_declined,
+        discovery_excluded_declined,
         cost_debt_declined
     );
 
@@ -3771,6 +3863,9 @@ pub fn run_required_floor(
         declined_long_module: long_declined,
         declined_fixture_member: fixture_declined,
         declined_outside_required_gate: outside_gate_declined,
+        declared_identities,
+        declined_outside_gate_closure: gate_closure_declined,
+        declined_discovery_excluded: discovery_excluded_declined,
         claims_planned,
         claims_executed: 0,
         receipt_identities: 0,
@@ -4956,8 +5051,8 @@ pub fn run_required_floor(
     // WITHHELD ROWS DO NOT APPEAR IN THIS SUM, and that is a consequence of where the withhold
     // happens rather than an exemption carved into it. A cost-debt row is declined at claim
     // BUILD time, alongside the long-home and live-tree declines, so it never becomes a planned
-    // claim and this partition never sees it. The site-level partition upstream
-    // (`SitePartitionInexact`) is what accounts for it.
+    // claim and this partition never sees it. The site-level population join upstream
+    // (`FloorDispositionJoinInexact`) is what accounts for it.
     //
     // A FIRST CUT OF THIS CHANGE WITHHELD INSIDE THE EXECUTION LOOP INSTEAD, and it would have
     // red the floor on this very check -- 320 planned claims that never executed and never
@@ -4992,7 +5087,10 @@ pub fn run_required_floor(
     // the first would hide the second — which is precisely the pair that cancels in the totals.
     {
         let (planned_without_terminal, terminal_without_planned, terminal_duplicated) =
-            reconcile_terminal_ledger(&planned_identities, &terminal_rows);
+            reconcile_identity_population(
+                &planned_identities,
+                terminal_rows.iter().map(|r| r.qualified.as_str()),
+            );
         if !planned_without_terminal.is_empty()
             || !terminal_without_planned.is_empty()
             || !terminal_duplicated.is_empty()
@@ -5132,7 +5230,11 @@ pub fn run_required_floor(
         write_required_floor_claim_cost_tsv(&path, &outcome.claim_cost, cost_basis)?;
     }
     if let Some(path) = required_floor_disposition_path {
-        write_required_floor_disposition_tsv(&path, &outcome.required_floor_disposition)?;
+        write_required_floor_disposition_tsv(
+            &path,
+            &outcome.required_floor_disposition,
+            &terminal_rows,
+        )?;
     }
     if let Some(path) = long_home_storage_agreement_path {
         write_long_home_storage_agreement_tsv(&path, &outcome.long_home_storage_agreement)?;
@@ -5149,6 +5251,8 @@ pub(crate) fn required_floor_disposition_label(
         RequiredFloorDisposition::DeclinedFixtureMember { .. } => "declined_fixture_member",
         RequiredFloorDisposition::DeclinedOutsideRequiredGate => "declined_outside_required_gate",
         RequiredFloorDisposition::DeclinedCostDebt => "declined_cost_debt",
+        RequiredFloorDisposition::DeclinedOutsideGateClosure => "declined_outside_gate_closure",
+        RequiredFloorDisposition::DeclinedDiscoveryExcluded { .. } => "declined_discovery_excluded",
     }
 }
 
@@ -5158,8 +5262,17 @@ pub(crate) fn required_floor_disposition_matched_prefix(
     match disposition {
         RequiredFloorDisposition::DeclinedLongModule { matched_prefix }
         | RequiredFloorDisposition::DeclinedFixtureMember { matched_prefix } => matched_prefix,
+        // The excluded arm's payload is a SUBSTRING and not a module-name prefix, and it shares
+        // this column because the column's meaning is "the authored text that matched", which is
+        // the same question for all three. It is not folded into the prefix arms above: a
+        // substring matched anywhere in a path is a different test from a prefix on a module
+        // name, and the label column keeps them apart for any reader joining on it.
+        RequiredFloorDisposition::DeclinedDiscoveryExcluded { matched_substring } => {
+            matched_substring
+        }
         RequiredFloorDisposition::Planned
         | RequiredFloorDisposition::DeclinedOutsideRequiredGate
+        | RequiredFloorDisposition::DeclinedOutsideGateClosure
         | RequiredFloorDisposition::DeclinedCostDebt => "",
     }
 }
