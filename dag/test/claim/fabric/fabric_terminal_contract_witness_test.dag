@@ -493,19 +493,26 @@ test fn a_receipt_from_another_principal_is_not_the_same_attempt() -> Bool {
 // The positive control. Without it every refusal above is satisfied by an
 // admission function that refuses everything.
 
+// THE PRINCIPAL TYPE IS CARRIED BY THE DECLARATION, NOT INFERRED FROM THE LITERAL. Written
+// inline at the call, `principal: "operator"` binds P to String and the grant's NonEmptyStr no
+// longer matches, so the control refused to compile for a reason that has nothing to do with the
+// admission it is checking. Every other receipt in this file is an annotated `data` for the same
+// reason; this one was the exception.
+data granted_lease_receipt: Receipt<NonEmptyStr> = Receipt {
+  id: FabricIdentity { principal: "operator", key: "receipt-ok" },
+  attempt: first_attempt.id,
+  lease: lease_gen_9,
+  payload: ExecutionReceipt {
+    step_id: "floor",
+    outputs: content_hash_of_value(value: "outputs-ok"),
+    billable: second(count: 10),
+    completed_at: "2026-08-18T01:00:00Z",
+  },
+}
+
 test fn a_receipt_from_the_granted_lease_is_admissible() -> Bool {
   match admit_receipt_for_grant(
-    r: Receipt {
-      id: FabricIdentity { principal: "operator", key: "receipt-ok" },
-      attempt: first_attempt.id,
-      lease: lease_gen_9,
-      payload: ExecutionReceipt {
-        step_id: "floor",
-        outputs: content_hash_of_value(value: "outputs-ok"),
-        billable: second(count: 10),
-        completed_at: "2026-08-18T01:00:00Z",
-      },
-    },
+    r: granted_lease_receipt,
     g: fixture_grant,
   ) {
     ReceiptAdmissible => true

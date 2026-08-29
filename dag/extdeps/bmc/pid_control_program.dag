@@ -316,8 +316,18 @@ fn decimal_measures_agree<Q, S>(a: Measure<Q, S, ExactDecimal>, b: Measure<Q, S,
   exact_decimal_equal(a: a.count, b: b.count)
 }
 
+// THE ZONE'S DEMAND VALUE IS NOT A MEASURE AND CANNOT BORROW THE MEASURE COMPARATOR. Its whole
+// reason for existing is that this deployment's output units are not fixed by the schema, so it
+// carries a bare canonical magnitude rather than a std.measure quantity at a std.measure scale --
+// which means it has no `count` and no Q or S to unify against. The agreement rule is the same
+// one decimal_measures_agree states (values, never the numerals they were written with), applied
+// to the carrier that actually holds this value.
+fn zone_demand_values_agree(a: ZoneDemandValue, b: ZoneDemandValue) -> Bool {
+  exact_decimal_equal(a: a.magnitude, b: b.magnitude)
+}
+
 fn curve_points_agree(a: DemandCurvePoint, b: DemandCurvePoint) -> Bool {
   a.index == b.index
     && decimal_measures_agree(a: a.reading, b: b.reading)
-    && decimal_measures_agree(a: a.output, b: b.output)
+    && zone_demand_values_agree(a: a.output, b: b.output)
 }

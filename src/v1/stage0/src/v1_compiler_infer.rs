@@ -6238,8 +6238,8 @@ pub fn unresolved_method_frontier() -> Rc<Vec<Rc<UnresolvedMethodFrontierRow>>> 
     module_name: "gunbc.source_integration_landing_spine".to_string(),
     method: "map".to_string(),
     occurrences: 1,
-    receiver_shape: "Node(Optional)".to_string(),
-    cause: "same optional-functor class as the v1.compiler.trace row, in its OTHER surface form: here the Optional survives as a named node rather than collapsing to its inner product, and neither form carries a method surface. Two shapes for one concept is itself the defect the trigger names.".to_string(),
+    receiver_shape: "Node(Optional<Primitive(LandingNormativeOption)>)".to_string(),
+    cause: "same optional-functor class as the v1.compiler.trace row, in its OTHER surface form: here the Optional survives as a named node rather than collapsing to its inner product, and neither form carries a method surface. Two shapes for one concept is itself the defect the trigger names. RE-KEYED 2026-08-29, and the receiver did not change: this row was measured when node_type_shape had no arm for a named node WITH children, so the identical receiver rendered as the bare Node(Optional). The Node(name<args>) arm landed with the direct-call inhabitance wall (#9608), the rendered key gained its type argument, the equality dropped observed to zero against declared one, and both directions of the ratchet fired at once -- attributed by run bisection (parent commit's floor executed, #9608's refused) and by that commit's own diff to node_type_shape, not inferred from the diagnostic text. The re-key NARROWS the admission, which is the direction the shape component exists for: an unresolved map on an Optional of any other payload now refuses instead of inheriting this row.".to_string(),
     dissolution: crate::std_dissolution::unbound_dissolution("reconciling the two optionality representations so an optional receiver keeps its optional surface at method lookup".to_string()),
 }), Rc::new(UnresolvedMethodFrontierRow {
     module_name: "test.claim.sccache_local_content_verified_on_read".to_string(),
