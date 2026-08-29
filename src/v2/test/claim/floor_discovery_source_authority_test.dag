@@ -1,0 +1,165 @@
+module v2.test.claim.floor_discovery_source_authority_test
+
+import v2.workflow.floor_discovery { FloorDiscoveryRow }
+import v2.workflow.floor_discovery_producer {
+  FloorDiscoveryAccepted,
+  FloorDiscoveryRefused,
+  FloorDiscoveryProducerResult,
+  discover_floor_rows_for_source,
+  floor_discovery_finalize_source_outcomes
+}
+import v2.std.algebra { length }
+import v2.std.collection { List, fold_list }
+import std.types { Bool, String }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE PER-FILE DISCOVERY AUTHORITY, EXERCISED ON THE ROUTE THE REQUIRED FLOOR TAKES. The floor
+// (cli_run required_floor_runner) calls discover_floor_rows_for_source once per prepared source
+// and floor_discovery_finalize_source_outcomes once over the outcomes, and takes the accepted rows
+// as its roster; every fixture below is handed to exactly those two functions. A `test`-marked decl
+// outside a `*_test.dag` sidecar must refuse HERE with the producer's own reason, because this is
+// the same call the floor makes -- the fork this closes was a Rust roster scan that never asked.
+// The live-corpus half of the evidence is the floor run itself: the first run of this change
+// against main's five misplaced files stopped at FloorDiscoveryRefused naming them (receipt in
+// gunbc PR), and the positive control is the green run after their sidecar dispositions landed.
+
+data fdsa_misplaced_entry: String = "src/v2/lens/example.dag"
+data fdsa_sidecar_entry: String = "src/v2/lens/example_test.dag"
+data fdsa_second_sidecar_entry: String = "src/v2/lens/other_test.dag"
+data fdsa_one_test_fn_content: String = "module m\n\ntest fn probe() -> Bool { true }\n"
+data fdsa_one_test_data_content: String = "module m\n\ntest data flag: Bool = true\n"
+data fdsa_no_test_decl_content: String = "module m\n\nfn helper() -> Bool { true }\n"
+
+fn fdsa_rows_contain(rows: List<FloorDiscoveryRow>, entry: String, function: String) -> Bool {
+  fold_list(
+    xs: rows,
+    empty: false,
+    cons: fn(found, row) {
+      if found { true } else { (row.entry == entry) && (row.function == function) }
+    }
+  )
+}
+
+fn fdsa_finalize_one(entry: String, content: String) -> FloorDiscoveryProducerResultView {
+  fdsa_view(
+    result: floor_discovery_finalize_source_outcomes(
+      outcomes: [discover_floor_rows_for_source(repo_path: entry, content: content)]
+    )
+  )
+}
+
+type FloorDiscoveryProducerResultView
+  = AcceptedRows { rows: List<FloorDiscoveryRow> }
+  | RefusedReason { reason: String }
+
+fn fdsa_view(result: FloorDiscoveryProducerResult) -> FloorDiscoveryProducerResultView {
+  match result {
+    FloorDiscoveryAccepted { rows: rows } => AcceptedRows { rows: rows }
+    FloorDiscoveryRefused { reason: reason } => RefusedReason { reason: reason }
+  }
+}
+
+// RED: the refusal the floor never reached before this change.
+test fn misplaced_test_decl_refuses_with_the_producer_reason() -> Bool {
+  match fdsa_finalize_one(entry: fdsa_misplaced_entry, content: fdsa_one_test_fn_content) {
+    RefusedReason { reason: reason } =>
+      string_contains(s: reason, pattern: "`test`-marked decls must live in `*_test.dag` files")
+        && string_contains(s: reason, pattern: fdsa_misplaced_entry)
+    AcceptedRows { rows: _ } => false
+  }
+}
+
+// POSITIVE CONTROL: the same bytes at the sidecar place enroll exactly one row, so the red above
+// discriminates on placement and not on content.
+test fn sidecar_test_fn_enrolls_one_row() -> Bool {
+  match fdsa_finalize_one(entry: fdsa_sidecar_entry, content: fdsa_one_test_fn_content) {
+    AcceptedRows { rows: rows } =>
+      (length(xs: rows) == 1) && fdsa_rows_contain(rows: rows, entry: fdsa_sidecar_entry, function: "probe")
+    RefusedReason { reason: _ } => false
+  }
+}
+
+test fn sidecar_test_data_enrolls_one_row() -> Bool {
+  match fdsa_finalize_one(entry: fdsa_sidecar_entry, content: fdsa_one_test_data_content) {
+    AcceptedRows { rows: rows } =>
+      (length(xs: rows) == 1) && fdsa_rows_contain(rows: rows, entry: fdsa_sidecar_entry, function: "flag")
+    RefusedReason { reason: _ } => false
+  }
+}
+
+// RED, the other half of the sidecar rule: a file claiming the place and declaring nothing.
+test fn barren_sidecar_refuses() -> Bool {
+  match fdsa_finalize_one(entry: fdsa_sidecar_entry, content: fdsa_no_test_decl_content) {
+    RefusedReason { reason: reason } =>
+      string_contains(s: reason, pattern: "at least one")
+        && string_contains(s: reason, pattern: fdsa_sidecar_entry)
+    AcceptedRows { rows: _ } => false
+  }
+}
+
+// An ordinary module is neither enrolled nor refused: the floor's non-witness inventory.
+test fn ordinary_module_enrolls_nothing_and_refuses_nothing() -> Bool {
+  match fdsa_finalize_one(entry: fdsa_misplaced_entry, content: fdsa_no_test_decl_content) {
+    AcceptedRows { rows: rows } => length(xs: rows) == 0
+    RefusedReason { reason: _ } => false
+  }
+}
+
+// THE MERGE LAW the floor relies on: outcomes judged one source at a time finalize to the union of
+// their rows, identity-joined, and one violation anywhere stops the whole line.
+test fn finalize_unions_per_source_outcomes() -> Bool {
+  match fdsa_view(
+    result: floor_discovery_finalize_source_outcomes(
+      outcomes: [
+        discover_floor_rows_for_source(repo_path: fdsa_sidecar_entry, content: fdsa_one_test_fn_content),
+        discover_floor_rows_for_source(repo_path: fdsa_second_sidecar_entry, content: fdsa_one_test_data_content),
+        discover_floor_rows_for_source(repo_path: fdsa_misplaced_entry, content: fdsa_no_test_decl_content)
+      ]
+    )
+  ) {
+    AcceptedRows { rows: rows } =>
+      (length(xs: rows) == 2)
+        && fdsa_rows_contain(rows: rows, entry: fdsa_sidecar_entry, function: "probe")
+        && fdsa_rows_contain(rows: rows, entry: fdsa_second_sidecar_entry, function: "flag")
+    RefusedReason { reason: _ } => false
+  }
+}
+
+test fn one_violation_among_many_sources_stops_the_line() -> Bool {
+  match fdsa_view(
+    result: floor_discovery_finalize_source_outcomes(
+      outcomes: [
+        discover_floor_rows_for_source(repo_path: fdsa_sidecar_entry, content: fdsa_one_test_fn_content),
+        discover_floor_rows_for_source(repo_path: fdsa_misplaced_entry, content: fdsa_one_test_fn_content)
+      ]
+    )
+  ) {
+    RefusedReason { reason: reason } => string_contains(s: reason, pattern: fdsa_misplaced_entry)
+    AcceptedRows { rows: _ } => false
+  }
+}
+
+// THE LIVE SPECIMEN THE FLOOR'S FIRST RUN OF THIS AUTHORITY REFUSED (run 33267373258): a `String`
+// data row whose value quotes a wire-contract declaration. The declared type is `String`, so it
+// is not a wire-contract decl and must enroll as an ordinary module; the positive control beside
+// it is a real `CoproductWireContract` row at a non-`_contracts.dag` path, which must refuse.
+data fdsa_quoted_wire_contract_content: String = "module m\n\ndata src: String = \"data x: CoproductWireContract = { coproduct: \\\"X\\\" }\"\n"
+data fdsa_real_wire_contract_content: String = "module m\n\ndata x: CoproductWireContract = { coproduct: \"X\", encoding: UntaggedVariant }\n"
+
+test fn quoted_wire_contract_in_a_string_row_is_not_a_wire_contract_decl() -> Bool {
+  match fdsa_finalize_one(entry: fdsa_misplaced_entry, content: fdsa_quoted_wire_contract_content) {
+    AcceptedRows { rows: rows } => length(xs: rows) == 0
+    RefusedReason { reason: _ } => false
+  }
+}
+
+test fn real_wire_contract_row_outside_contracts_sidecar_refuses() -> Bool {
+  match fdsa_finalize_one(entry: fdsa_misplaced_entry, content: fdsa_real_wire_contract_content) {
+    RefusedReason { reason: reason } =>
+      string_contains(s: reason, pattern: "_contracts.dag")
+        && string_contains(s: reason, pattern: fdsa_misplaced_entry)
+    AcceptedRows { rows: _ } => false
+  }
+}
