@@ -51,12 +51,24 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 //                                                              w_no_realization_spells_the_bare_string_token
 //   restore the Symbol row to rust_type_checkpoints           -> w_migrated_names_are_absent_from_the_bare_table
 //   add a bare row with no verdict                            -> w_every_bare_row_carries_a_verdict
+//   bind v2.std.logic Bool beside std.types Bool             -> w_sibling_declarations_of_one_spelling_receive_no_binding
 //   resolve Absent identity by falling to a bare spelling     -> w_missing_source_identity_refuses
 //   duplicate the Symbol row in rust_source_type_binding_rows -> w_corpus_bindings_are_unambiguous
 //   answer InternedIdentity while every law says lexeme       -> w_symbol_decision_is_coherent
 
-fn other_symbol_declaration() -> DeclarationRef {
-  decl_ref(module_path: "test.claim.symbol_identity_binding_witness", decl_name: "Symbol")
+// THE SAME-SPELLING SIBLINGS, all REAL declarations (the cited-declaration gate refuses a citation
+// of a declaration that does not exist, so the "another module declaring Symbol" falsifier is
+// asked of the declarations the corpus actually has two of): v2.std.text String and std.string_type
+// String beside the kernel String row, v2.std.logic Bool beside std.types Bool (which HAS an exact
+// row), and v2.std.node Hash, declared in Symbol's own module one line below it. None may receive a
+// binding authored for a different declaration -- module-path and decl-name discrimination both.
+fn sibling_declarations_without_bindings() -> List<DeclarationRef> {
+  [
+    decl_ref(module_path: "v2.std.text", decl_name: "String"),
+    decl_ref(module_path: "std.string_type", decl_name: "String"),
+    decl_ref(module_path: "v2.std.logic", decl_name: "Bool"),
+    decl_ref(module_path: "v2.std.node", decl_name: "Hash")
+  ]
 }
 
 fn resolution_is_std_string(resolution: ExactBindingResolution<RustRepresentation>) -> Bool {
@@ -99,8 +111,9 @@ test fn w_symbol_declaration_resolves_to_std_string() -> Bool {
   resolution_is_std_string(resolution: resolve_exact_binding(source: Present { value: symbol_identity_subject }, rows: rust_source_type_binding_rows))
 }
 
-test fn w_another_module_declaring_symbol_receives_no_binding() -> Bool {
-  resolution_is_absent(resolution: resolve_exact_binding(source: Present { value: other_symbol_declaration() }, rows: rust_source_type_binding_rows))
+test fn w_sibling_declarations_of_one_spelling_receive_no_binding() -> Bool {
+  sibling_declarations_without_bindings() |> all(d => resolution_is_absent(resolution: resolve_exact_binding(source: Present { value: d }, rows: rust_source_type_binding_rows)))
+    && exact_binding_is_resolved(resolution: resolve_exact_binding(source: Present { value: decl_ref(module_path: "std.types", decl_name: "Bool") }, rows: rust_source_type_binding_rows))
 }
 
 test fn w_missing_source_identity_refuses() -> Bool {

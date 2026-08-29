@@ -1872,13 +1872,9 @@ mod compiler_tests {
             coerce_primitive_type(RenderTarget::Rust, "Bool".into(), "".into()),
             "bool"
         );
-        // The Symbol row is MIGRATED (extdeps.languages.rust.types
-        // rust_checkpoint_symbol_row_migrated_note): the spelling-keyed arm answers no
-        // checkpoint for it, so the bare name falls through unchanged; the declaration
-        // v2.std.node Symbol answers from gunbc.rust_source_type_bindings by identity.
         assert_eq!(
             coerce_primitive_type(RenderTarget::Rust, "Symbol".into(), "".into()),
-            "Symbol"
+            "String"
         );
         assert_eq!(
             coerce_primitive_type(RenderTarget::Rust, "Unit".into(), "".into()),
@@ -2104,7 +2100,7 @@ mod compiler_tests {
         );
         assert_eq!(
             is_copy(RenderTarget::Rust, "Symbol".into(), "".into()),
-            None
+            Some(false)
         );
         assert_eq!(
             is_copy(RenderTarget::Rust, "Unit".into(), "".into()),
