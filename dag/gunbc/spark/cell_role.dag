@@ -52,7 +52,7 @@ data srv5_cell_role: SparkCellRoleAssignment = SparkCellRoleAssignment {
 
 data srv6_cell_role: SparkCellRoleAssignment = SparkCellRoleAssignment {
   host: operator_host_srv6,
-  role: SparkTrainingCell,
+  role: SparkServingCell,
 }
 
 data spark_cell_role_assignments: List<SparkCellRoleAssignment> = [
