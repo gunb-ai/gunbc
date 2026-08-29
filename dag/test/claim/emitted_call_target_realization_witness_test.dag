@@ -255,3 +255,102 @@ test fn w_map_receiver_operation_is_not_read_as_a_callable_field() -> Bool {
     [".map_keys)("]
   )
 }
+
+// ---------------------------------------------------------------------------------------------
+// THE TAIL CLASSES: the fifteen rustc refusals that remained on the 00_compile closure once the
+// three families above were closed, one discriminating row per emitter defect. Each row's
+// must_not_contain is the exact malformed spelling the emitter produced, so a revert of that one
+// repair reddens exactly that row.
+// ---------------------------------------------------------------------------------------------
+
+// WITNESS CARRIER, THE DISCRIMINATING RED. A Holds value bound through a NESTED record pattern can
+// reach emission with its produced identity erased; the turbofish then rendered the erasure itself:
+// `Witness::<compile_error!("UNRESOLVED_CompilerError")>::Holds`. The enclosing fn's declared return
+// is the carrier authority and must be what the arm falls back to.
+test fn w_witness_carrier_falls_back_to_the_fn_return_when_the_value_identity_is_erased() -> Bool {
+  compile_dag_rust_emit_check(
+    "module test.claim.witness_carrier_probe\nimport std.types { Int }\nimport std.algebra { Cons, Empty }\nimport v2.std.algebra { fold_list, list_snoc_item }\nimport v2.std.witness { Holds, Violates, Witness }\nimport v2.std.diagnostic { Diagnostic }\ntype Progress { edges: List<Int>, index: Int }\nfn step(p: Witness<Progress>, x: Int) -> Witness<Progress> { match p { Holds { value: Progress { edges: es, index: i } } => Holds { value: Progress { edges: list_snoc_item(xs: es, item: x), index: i + 1 } }  Violates { diagnostic: d } => Violates { diagnostic: d } } }\nfn probe(xs: List<Int>) -> Witness<List<Int>> { match fold_list(xs: xs, empty: Holds { value: Progress { edges: Empty, index: 0 } }, cons: fn(p, x) { step(p: p, x: x) }) { Holds { value: Progress { edges: result, index: _ } } => Holds { value: result }  Violates { diagnostic: d } => Violates { diagnostic: d } } }\n",
+    "src/test_claim_witness_carrier_probe.rs",
+    ["Witness::<"],
+    ["UNRESOLVED_CompilerError"]
+  )
+}
+
+// FOLD ACCUMULATOR, THE DISCRIMINATING RED. A fold whose init is empty_map() took the Map
+// declaration's own formals as its accumulator and wrote them into the turbofish:
+// `v1_rt::rc_empty_map::<K, V>()`. The fn's declared Map<Symbol, Symbol> return is the resolved
+// accumulator and must be what the init renders from.
+test fn w_fold_empty_map_init_renders_the_resolved_accumulator_not_the_declaration_formals() -> Bool {
+  compile_dag_rust_emit_check(
+    "module test.claim.fold_accumulator_probe\nimport std.types { Int, String, Map }\nimport v2.std.node { Symbol }\nimport v2.std.collection { empty_map, map_insert }\ntype Row { field: Symbol, carrier: Symbol }\nfn rows() -> List<Row> { [Row { field: ^a, carrier: ^b }] }\nfn probe() -> Map<Symbol, Symbol> { fold(rows(), init: empty_map(), f: fn(acc, row) { map_insert(m: acc, key: row.field, value: row.carrier) }) }\n",
+    "src/test_claim_fold_accumulator_probe.rs",
+    ["rc_empty_map::<"],
+    ["rc_empty_map::<K, V>"]
+  )
+}
+
+// LAMBDA PARAMETER ANNOTATION, THE DISCRIMINATING RED. A closure parameter whose inferred type
+// carries a formal no fn generic binds (`FreeMonoid<T>`) was annotated with it verbatim, a type the
+// closure cannot name. The annotation must decline exactly as the fold element annotation does.
+test fn w_lambda_param_annotation_declines_a_spurious_generic() -> Bool {
+  compile_dag_rust_emit_check(
+    "module test.claim.lambda_annotation_probe\nimport std.types { Bool }\nimport std.algebra { Cons, Empty }\nimport v2.std.node { Symbol }\nfn has(xs: List<Symbol>, s: Symbol) -> Bool { match xs { Empty => false  Cons { head: h, tail: t } => if h == s { true } else { has(xs: t, s: s) } } }\nfn probe(hits: List<Symbol>, accepted: List<Symbol>) -> Bool { match hits { Empty => false  Cons { head: first_hit, tail: rest_hits } => fold(Cons { head: first_hit, tail: rest_hits }, init: true, f: fn(acc, a) { acc && has(xs: accepted, s: a) }) } }\n",
+    "src/test_claim_lambda_annotation_probe.rs",
+    ["|acc: bool"],
+    ["FreeMonoid<T>>|"]
+  )
+}
+
+// ZERO-PARAMETER ALIAS, THE DISCRIMINATING RED. An alias over a parameterized type, referenced as
+// the return of an arrow type, rendered with the arguments of what it abbreviates:
+// `Gate = Rc<dyn Fn(..) -> Outc<Rc<Witness<..>>>>` (E0107, with the E0391 variance cycle rustc
+// reports beside it). The alias is zero-parameter and must render bare.
+test fn w_zero_param_alias_in_an_arrow_return_renders_without_its_rhs_arguments() -> Bool {
+  compile_dag_rust_emit_check(
+    "module test.claim.alias_arrow_probe\nimport std.types { Int }\nimport v2.std.witness { Witness }\nimport v2.std.diagnostic { Outcome }\nimport v2.std.node { Node }\ntype Outc = Outcome<Witness<Node>>\ntype Gate = fn(Int) -> Outc\ntype Lens { gate: Gate }\n",
+    "src/test_claim_alias_arrow_probe.rs",
+    ["-> Outc>"],
+    ["Outc<"]
+  )
+}
+
+// ARROW RETURN BINDING, THE DISCRIMINATING RED. An arrow type's return rendered through the
+// target-generic renderer, which never reads an applied-type binding, so `fn(Int) -> Outcome<Box2<String>>`
+// dropped the inner binding: `Rc<Outcome<Rc<Box2>>>` (E0107 missing generics). The Rust renderer
+// honours the binding and must be what an arrow's positions render through.
+test fn w_arrow_return_type_keeps_its_applied_binding() -> Bool {
+  compile_dag_rust_emit_check(
+    "module test.claim.arrow_binding_probe\nimport std.types { Int, String }\nimport v2.std.diagnostic { Outcome }\ntype Box2<T> { v: T }\nfn probe() -> fn(Int) -> Outcome<Box2<String>> { fn(n) { Outcome::Accepted { value: Box2 { v: \"x\" } } } }\n",
+    "src/test_claim_arrow_binding_probe.rs",
+    ["Box2<String>"],
+    ["Rc<Box2>>"]
+  )
+}
+
+// QUALIFIED TYPE REFERENCE, THE DISCRIMINATING RED. A field typed `std.determinism.Determinism`
+// with no import renders as bare `Determinism`, and the use-line derivation collected the DOTTED
+// spelling, which is never an emitted token, so the module referenced a name it never imported.
+// The leaf must earn its use-line from the qualified registry row.
+test fn w_qualified_type_reference_earns_the_leaf_use_line() -> Bool {
+  compile_dag_rust_emit_check(
+    "module test.claim.qualified_type_ref_probe\nimport std.types { String }\ntype Fact { signature: String, classification: std.determinism.Determinism }\nfn probe(f: Fact) -> std.determinism.Determinism { f.classification }\n",
+    "src/test_claim_qualified_type_ref_probe.rs",
+    ["use crate::std_determinism::Determinism"],
+    ["std.determinism.Determinism"]
+  )
+}
+
+// SERVICE OP WITHOUT A REALIZATION, THE DISCRIMINATING RED. `Filesystem.Read(path:)` inside a fn
+// the signature authority judged service-free emitted `filesystem.read(path).await?` -- an unbound
+// name in a non-async fn, the only `.await?` in the whole closure. It is a host seam with no
+// realization in this target and must emit the generated refusal body naming the seam. The realized
+// arm has no positive control here because no source in the corpus spells a receiver the signature
+// authority accepts; that absence is recorded in rust_unrealized_service_op_refusal's note.
+test fn w_service_op_in_a_service_free_fn_refuses_instead_of_awaiting_an_unbound_binding() -> Bool {
+  compile_dag_rust_emit_check(
+    "module test.claim.service_op_probe\nimport std.types { String }\nimport extdeps.filesystem.filesystem_io { Filesystem }\nfn probe(path: String) -> String { let read = Filesystem.Read(path: path)\n read.content }\n",
+    "src/test_claim_service_op_probe.rs",
+    ["unrealized host seam: service op Filesystem.Read"],
+    [".await?"]
+  )
+}
