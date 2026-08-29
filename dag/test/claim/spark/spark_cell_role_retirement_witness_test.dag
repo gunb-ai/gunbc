@@ -1,6 +1,6 @@
 module test.claim.spark.spark_cell_role_retirement_witness_test
 
-import std.types { String, Bool, List, NonEmptyStr }
+import std.types { String, Bool, List, NonEmptyStr, Int }
 import product.placement_supply { HostIdentity }
 import gunbc.fleet_intent_network { operator_host_srv5, operator_host_srv6 }
 import gunbc.spark.cell_role {
@@ -28,12 +28,16 @@ import gunbc.spark.serving_membership {
   spark_serving_address_is_role_scoped,
   spark_serving_role_scoped_members,
   spark_serving_baseline_members,
+  spark_serving_membership_reconcile,
 }
 import gunbc.spark.serving_member_realization {
   spark_serving_retirement_effects_for_address,
   SparkServingRetirementRemedyPresent,
   SparkServingRetirementRemedyRefused,
   spark_serving_retirement_effects_include,
+  spark_serving_realization_for_member_action,
+  SparkServingMemberInstalls,
+  SparkServingMemberRetires,
 }
 import gunbc.spark.serving_realization {
   SparkServingRetirementEffect,
@@ -44,6 +48,15 @@ import gunbc.spark.serving_realization {
   spark_serving_retirement_effect_mutates_host,
 }
 import gunbc.ownership { Owned }
+import gunbc.membership_reconcile {
+  MembershipPlan,
+  MemberAction,
+  MemberAdded,
+  MemberChanged,
+  MemberRemoved,
+  MemberRemovalRefused,
+  MemberRosterDuplicateKeyRefused,
+}
 
 data spark_cell_role_retirement_witness_note: String = "SPARK-PAIR-0 P0. The discriminating evidence for role separation and real serving retirement. Every claim here is written so that reverting the role assignment, or restoring the empty removal remedy, turns it red — an assertion that passes under both the old and the new model would be measuring nothing."
 
@@ -214,4 +227,79 @@ test fn w_the_address_scope_partitions_the_member_roster() -> Bool {
 test fn w_retained_cache_is_absent_from_the_retirement_rather_than_a_no_op_within_it() -> Bool {
   all(w_baseline_addresses(), a => length(w_retirement_effects(address: a)) == 0)
     && all(w_serving_addresses(), a => length(w_retirement_effects(address: a)) == 1)
+}
+
+// THE PLAN FOR A HOST THAT STOPPED SERVING, WHICH IS THE ROW THE GATE ACTUALLY NAMES.
+//
+// The claims above establish that the retirement VOCABULARY exists and that each address maps to one
+// operation. Neither of them establishes what a reconcile DOES when a host leaves the serving
+// roster, and that is the question the empty remedy used to answer wrongly: desired loses the four
+// service members, observed still has all seven, and the plan must contain four removals that
+// realize to four real operations.
+//
+// The observed population is the full seven and the desired population is the baseline three, which
+// is exactly the state srv6 enters when its role changes. Deriving desired by FILTERING observed
+// through the scope split, rather than listing three members by hand, is what makes this a claim
+// about the split rather than a restatement of it.
+fn w_srv6_observed_members() -> List<SparkServingMember> {
+  concat(
+    map(w_serving_addresses(), a => w_member(host: operator_host_srv6, address: a)),
+    map(w_baseline_addresses(), a => w_member(host: operator_host_srv6, address: a)),
+  )
+}
+
+fn w_srv6_retirement_plan() -> MembershipPlan<SparkServingMember, SparkServingMemberAt> {
+  spark_serving_membership_reconcile(
+    desired: spark_serving_baseline_members(members: w_srv6_observed_members()),
+    observed: w_srv6_observed_members(),
+  )
+}
+
+fn w_action_is_removal(action: MemberAction<SparkServingMember, SparkServingMemberAt>) -> Bool {
+  match action {
+    MemberRemoved { at: _, from: _ } => true
+    MemberAdded { at: _, to: _ } => false
+    MemberChanged { at: _, from: _, to: _ } => false
+    MemberRemovalRefused { from: _, cause: _ } => false
+    MemberRosterDuplicateKeyRefused { roster: _, first: _, duplicate: _ } => false
+  }
+}
+
+fn w_action_retirement_effect_count(action: MemberAction<SparkServingMember, SparkServingMemberAt>) -> Int {
+  match spark_serving_realization_for_member_action(action: action) {
+    Absent => 0
+    Present { value: r } =>
+      match r {
+        SparkServingMemberInstalls { effects: _ } => 0
+        SparkServingMemberRetires { effects: es } => length(es)
+      }
+  }
+}
+
+// FOUR REMOVALS AND NOTHING ELSE. The baseline members are in both populations, so they reconcile as
+// converged and emit no action at all -- which is the property that makes the retained cache safe
+// without any retention effect existing.
+test fn w_a_retired_host_plans_exactly_four_removals() -> Bool {
+  let plan = w_srv6_retirement_plan()
+  length(plan.actions) == 4
+    && all(plan.actions, a => w_action_is_removal(action: a))
+}
+
+// AND EVERY ONE OF THEM REALIZES TO A REAL OPERATION. This is the claim the old `-> []` fails: under
+// it every removal realized to zero effects, so this total would be 0 rather than 4.
+test fn w_every_planned_removal_realizes_one_retirement_effect() -> Bool {
+  let plan = w_srv6_retirement_plan()
+  fold(plan.actions, init: 0, f: fn(acc, a) { acc + w_action_retirement_effect_count(action: a) }) == 4
+    && all(plan.actions, a => w_action_retirement_effect_count(action: a) == 1)
+}
+
+// A HOST THAT STILL SERVES PLANS NOTHING. The same reconcile over an unchanged roster is the
+// idempotence half: without it, "four removals" could be true of a plan that also proposed work on a
+// converged host.
+test fn w_a_host_that_still_serves_plans_no_action() -> Bool {
+  let plan = spark_serving_membership_reconcile(
+    desired: w_srv6_observed_members(),
+    observed: w_srv6_observed_members(),
+  )
+  length(plan.actions) == 0
 }
