@@ -23,8 +23,10 @@ import std.types { NonEmptyStr }
 
 // IDENTITY-GRAINED FLOOR DISPOSITION RECEIPT (operator ruling 2026-08-19).
 //
-// Every discovered site gets exactly one `RequiredFloorDisposition`, keyed by its qualified
-// `module.function` identity. This is the single authority for that fact: the host loop in
+// Every DECLARED witness identity in the tree gets exactly one `RequiredFloorDisposition`, keyed
+// by its qualified `module.function` identity, and the host joins the two populations at that
+// grain — `FloorDispositionJoinInexact` refuses a missing, duplicated or foreign row rather than
+// reporting counts that add up (DESIGN §5: completeness is an identity join). This is the single authority for that fact: the host loop in
 // `v1_compiler.cli_run` `run_required_floor` computes admission by testing a claim's authored
 // module name against `long_home_prefixes()` and `fixture_home_prefixes()` below, then REALIZES
 // the arm this type already names — it does not invent a second admission concept. A `Declined*`
@@ -56,23 +58,44 @@ import std.types { NonEmptyStr }
 // not green, and it is not a failure either — the two have different remedies and are
 // reported apart. THAT MECHANISM IS ALREADY LIVE IN THIS CHANGE, which is what makes the
 // deletion safe to make next: the route-gap arm, its two-way roster join, and the
-// `SitePartitionInexact` wall all execute here, over the 101 identities that reached it
+// `FloorDispositionJoinInexact` wall all execute here, over the 101 identities that reached it
 // without this arm being touched at all.
 //
 // DELETION RECEIPT: run 32345970386 measured 626/783 passing under execution, and the staged
-// blockers were closed before this root deletion. The `witness_file_from_source` scan remains:
-// live-tree disposition still feeds affected-set eligibility even though it no longer gates
+// blockers were closed before this root deletion. The live-tree disposition remains:
+// it still feeds affected-set eligibility even though it no longer gates
 // floor admission.
 //
 // A NOTE ON WHAT DID *NOT* MOVE: `live_tree_disposition` itself is not deleted and is not
 // deprecated. It remains the declaration `reads_live_tree_effective` reads for AFFECTED-SET
 // SELECTION ELIGIBILITY, which is a different question from "can this execute" and keeps its
 // own single authority. Only the floor's forked, syntactic second copy was deleted.
+// TWO ARMS SPEAK FOR IDENTITIES THE PROJECTION NEVER USED TO SEE AT ALL, and they are declines
+// by the same authority rather than a second status vocabulary beside it.
+//
+// A disposition row used to exist only for a site the PREPARED SUBJECT offered. Preparation
+// itself removes two populations before that point — a module whose path or name carries an
+// exclusion substring, and (since the 2026-08-29 gate cut) every module the required gate's
+// import closure does not reach — and a witness declared in one of those was neither planned nor
+// declined. It left the floor's universe one level above the partition, which is the same
+// silence `docs/plans/witness-execution-closure.md` records for the deleted live-tree decline:
+// a population discovered by nothing, so counted by nothing.
+//
+// `DeclinedOutsideGateClosure` IS NOT `DeclinedOutsideRequiredGate`, and the distinction is
+// load-bearing rather than descriptive: the second speaks for a module that WAS prepared and
+// whose authored name missed every gate prefix, and the first for a module that was never
+// prepared, resolved or offered. They are removed by different mechanisms, they are restored by
+// different triggers, and after the gate cut they differ in population by two orders of
+// magnitude — the closure arm is the population the §4b rung drop "Required gate reduced to the
+// compiler floor" names. One label over both would report that drop's whole subject as a
+// rounding error on a nearby count.
 type RequiredFloorDisposition =
     Planned
   | DeclinedLongModule { matched_prefix: String }
   | DeclinedFixtureMember { matched_prefix: String }
   | DeclinedOutsideRequiredGate
+  | DeclinedOutsideGateClosure
+  | DeclinedDiscoveryExcluded { matched_substring: String }
   | DeclinedCostDebt
 
 // ROSTER GROWTH IS BUDGET-BOUND AT THIS ADMISSION AUTHORITY.

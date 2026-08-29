@@ -45,6 +45,7 @@ import gunbc.stage0_rust_host_observation { stage0_rust_observation_seed_growth_
 import gunbc.floor_non_verdict_enrollment { floor_non_verdict_seed_growth_justification }
 import gunbc.floor_route_gap_seed_growth { floor_route_gap_seed_growth_justification }
 import gunbc.floor_cost_debt_seed_growth { floor_cost_debt_seed_growth_justification }
+import gunbc.floor_population_projection_seed_growth { floor_population_projection_seed_growth_justification }
 import gunbc.whole_corpus_compile_admission { whole_corpus_compile_seed_growth_justification }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.disposition { Disposition }
@@ -151,6 +152,7 @@ fn seed_growth_justification_roster() -> List<SeedGrowthJustification> {
     floor_non_verdict_seed_growth_justification,
     floor_route_gap_seed_growth_justification,
     floor_cost_debt_seed_growth_justification,
+    floor_population_projection_seed_growth_justification,
     stage0_rust_observation_seed_growth_justification,
     observation_scoped_run_seed_growth_justification(),
     whole_corpus_compile_seed_growth_justification,
