@@ -1010,6 +1010,8 @@ data primitive_projection_target_canonical_names: List<String> = [
   "data_decl_type_facts",
   "concept_decl_facts",
   "concept_decl_facts_live",
+  "symbol_lexeme",
+  "symbol_intern_lexeme",
 ]
 
 fn primitive_declared_definitions() -> List<PrimitiveDefinition> {
