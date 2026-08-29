@@ -3375,6 +3375,12 @@ fn direct_call_structured_application_mismatch_diags(
   )
 }
 
+// A callable formal carries its parameter types in `params`, which is exactly what
+// `declared_type_inhabitance` reads as generic type parameters, so passing one here
+// produced a counted advisory with a false reason on every higher-order call.
+// The sibling relation `direct_call_arg_type_mismatch` excludes callables for the
+// same reason; callable-formal inhabitance is therefore ABSENT from the census
+// (no obligation producer), not judged undecidable.
 fn direct_call_argument_inhabitance_diags(
   plan: List<CallFormalApplication>,
   scope: InferScope
@@ -3384,16 +3390,18 @@ fn direct_call_argument_inhabitance_diags(
     app =>
       match app.matched_arg {
         Present { value: ta } =>
-          let actual_expr = arg_value(n: ta)
-          declared_type_obligation_diags(
-            obligation: DeclaredTypeObligation {
-              position: PositionDirectCallArgument,
-              declared: app.formal_subst,
-              produced: resolved_type(n: actual_expr),
-              span: actual_expr.span
-            },
-            scope: scope
-          )
+          if type_node_is_callable(n: app.formal_subst) { [] } else {
+            let actual_expr = arg_value(n: ta)
+            declared_type_obligation_diags(
+              obligation: DeclaredTypeObligation {
+                position: PositionDirectCallArgument,
+                declared: app.formal_subst,
+                produced: resolved_type(n: actual_expr),
+                span: actual_expr.span
+              },
+              scope: scope
+            )
+          }
         Absent => []
       }
   )

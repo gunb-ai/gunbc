@@ -1,5 +1,7 @@
 module v2.lens.leaf_model_verification
 
+import v2.extdeps.languages.rust { rust_target_model_staging }
+
 
 
 data rust_r1_happy_fixture_source: String = "pub fn r1_test() -> i32 { 0i32 }\n"

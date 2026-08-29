@@ -72,6 +72,7 @@ type RequiredFloorDisposition =
     Planned
   | DeclinedLongModule { matched_prefix: String }
   | DeclinedFixtureMember { matched_prefix: String }
+  | DeclinedOutsideRequiredGate
   | DeclinedCostDebt
 
 // ROSTER GROWTH IS BUDGET-BOUND AT THIS ADMISSION AUTHORITY.
@@ -315,6 +316,65 @@ fn fixture_home_prefixes() -> List<String> {
   }
 }
 
+// THE REQUIRED GATE: A STATIC ROSTER, BY OPERATOR RULING (2026-08-29, THE CI BANKRUPTCY).
+//
+// On the last green run before this row landed the required floor folded 11,996 witnesses
+// through a whole-corpus strict preparation: 27 minutes to prepare 4,171 modules on one core,
+// 32 more to fold, 87 wall minutes for the workflow, and ~50 squash-merges a day validated
+// against a main that had moved dozens of commits by merge time -- fifteen consecutive red
+// runs on main from two integration collisions no PR could have seen. The operator's ruling:
+// the required gate is the compiler floor and nothing else; the rest of the corpus runs as
+// receipts, not as merge conditions.
+//
+// THIS ROSTER IS THAT RULING AS A MECHANISM. A site whose authored module name carries none
+// of these prefixes is `DeclinedOutsideRequiredGate` -- counted, written to the disposition
+// TSV, reported in the run's announcement, never silently skipped. It is decided AFTER cost
+// debt, so a rostered cost-debt identity outside the gate still enters the seen set and the
+// roster's staleness check keeps its meaning -- and the host prepares ONLY
+// the import closure of the modules these prefixes name (`v1_compiler.cli_run`
+// `assemble_prepared_subject_closure`), so the cost is denominated in the gate, not the corpus.
+//
+// WHAT IS IN. `v2.test.` is the whole v2 compiler suite. The `test.claim.` rows are the v1
+// compiler-floor witnesses -- inference, occurrence binding, declared-type inhabitance,
+// coproduct soundness, namespace resolution, parse, the self-host behavioral witnesses -- and
+// the census that tests this roster's own arms. Nothing here is a product, fleet, deploy,
+// secret, dashboard or roadmap witness; those are exactly what the ruling moved off the gate.
+//
+// WHAT THIS IS NOT. Not a selection shrink (the 2026-08-13 directive): a selection derives the
+// population from the change; this roster is a constant the operator signed, and the derived
+// selection the CI-cost lane names ("decide what matters before paying to prepare everything")
+// replaces the constant when it lands. It is a declared rung drop --
+// `gunbc.rung_drop` `required_gate_bankruptcy` -- with that as its restoration trigger.
+//
+// A ROW IS ADDED HERE AND NOWHERE ELSE, and adding one is a wall-clock decision: the floor's
+// per-claim cost receipt names what each row costs.
+fn required_gate_prefixes() -> List<String> {
+  [
+    "v2.test.",
+    "test.claim.infer_",
+    "test.claim.occurrence_binding_",
+    "test.claim.declared_type_",
+    "test.claim.coproduct_payload_soundness_witness_test",
+    "test.claim.match_exhaustiveness_coproduct_witness",
+    "test.claim.namespace_",
+    "test.claim.self_host_",
+    "test.claim.type_reference_",
+    "test.claim.import_admission_closure_membership_witness_test",
+    "test.claim.import_shadowed_by_local_definition_witness_test",
+    "test.claim.class_b_import_closure_binding_refusal_witness",
+    "test.claim.floor_resolve_realization_witness",
+    "test.claim.resolved_call_emission_identity_witness_test",
+    "test.claim.dag_parse_continuation_operator_witness_test",
+    "test.claim.parse_test",
+    "test.claim.v1_dag_parse_witness",
+    "test.claim.generic_lambda_parameter_binding_witness",
+    "test.claim.arity_zero_import_refusal_witness",
+    "test.claim.bare_name_",
+    "test.claim.legacy_binding_",
+    "test.claim.discovery_census_witness_test",
+  ]
+}
+
 // THE ADMISSION ORDER, HELD HERE RATHER THAN IN WHOEVER WALKS THE CORPUS.
 //
 // `RequiredFloorDisposition` above names the three arms. The ordering is long home, then fixture
@@ -414,7 +474,10 @@ fn required_floor_site_disposition(
           if floor_cost_debt_holds(name: identity) {
             DeclinedCostDebt {}
           } else {
-            Planned {}
+            match first_module_prefix_match(module_path: module_path, prefixes: required_gate_prefixes()) {
+              ModulePrefixUnmatched => DeclinedOutsideRequiredGate {}
+              ModulePrefixMatched { prefix: _ } => Planned {}
+            }
           }
       }
   }

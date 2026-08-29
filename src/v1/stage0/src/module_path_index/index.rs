@@ -2,11 +2,11 @@ use im::HashMap;
 use std::path::Path;
 use std::rc::Rc;
 
-use crate::v1_compiler_parse::parse;
+use crate::v1_compiler_parse::parse_heads_with_table;
 use crate::v1_compiler_tokenize::tokenize;
 use crate::v1_std_core::{
-    build_newline_index, diagnostic_to_message, diagnostic_to_span, node_name_span,
-    CompilerDiagnostic, SourceSpan,
+    build_newline_index, diagnostic_to_message, diagnostic_to_span, empty_intern_table,
+    node_name_span, CompilerDiagnostic, SourceSpan,
 };
 
 /// One parse-derived module⇄path row for manifest emission (host binding authority).
@@ -131,7 +131,25 @@ pub fn parse_module_binding(
     let mut indices = HashMap::new();
     indices.insert(key.clone(), source_index);
     let source_indices = Rc::new(indices);
-    let result = parse(tokens, source_indices);
+    // THE DECLARATION HEADS ARE THE WHOLE SUBJECT, so this is the heads reading of the
+    // grammar rather than the full one. Every item HEAD is parsed by the same productions,
+    // and both facts this walk projects -- `module.name` and its span -- are heads.
+    //
+    // WHAT THE NARROWING GIVES UP, stated exactly: a well-braced but UNGRAMMATICAL `fn`
+    // BODY in a pool file no longer refuses here. That is not a lost refusal, it is one
+    // fact losing its second authority. Required-CI phase 1 (`cli_run::run_dag_parse_sweep`
+    // over `DAG_PARSE_SWEEP_ROOTS` -- `src/v1`, `dag`, `src/v2`) full-parses exactly these
+    // roots and owns that question; and any file this invocation actually COMPILES is
+    // full-parsed again by the front end, which refuses there. What still refuses below is
+    // unchanged: an unterminated body, and every malformed item head.
+    //
+    // This is the same cut already taken for the pool census -- see the scope statement at
+    // `v1.compiler.parse.parse_heads_with_table`. Building an index was full-parsing the
+    // corpus as a side effect, which coupled every pool-derived resolve in the process to
+    // the grammaticality of every body in the tree (DESIGN §3: one fact, one authority).
+    let result = parse_heads_with_table(tokens, source_indices, empty_intern_table())
+        .result
+        .clone();
     if let Some(err) = result.error.as_ref() {
         if module_declaration_line_present(content) {
             return Err(ModuleBindingRefusal {

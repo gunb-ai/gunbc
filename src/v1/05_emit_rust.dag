@@ -3167,11 +3167,20 @@ fn collect_anonymous_record_lit_heads(n: Node, source_indices: Map<String, Newli
   concat(self_head, concat(list_fields, opt_fields))
 }
 
-fn collect_items_field_import_surface_names(items: List<Node>, emit_info: EmitGraphInfo, source_indices: Map<String, NewlineIndex>) -> List<String> {
+// TAKES THE SURFACE NAMES, NOT THE ITEMS, BECAUSE ITS ONLY CALLER HAS ALREADY WALKED THEM.
+// This function used to re-run collect_item_emit_surface_names over every item -- the identical
+// walk reference_derived_use_line_plan runs one line earlier to build type_surface_names -- so the
+// corpus paid for two whole-graph emit-surface walks per module and the second one was a copy of
+// the first. Measured on the seed regen closure (gunbc compile --entry src/v1/compile.dag): the
+// two bindings cost 184s and 203s of a 539s compile.emit, and the second's excess over the first
+// is that duplicate walk. The parameter is now the flat concatenation the caller already holds, so
+// the map-lookup half below -- which is what this function is actually for, and what
+// gunbc.emit_summary_map_consumer_partition cites it for -- runs over exactly the same names in
+// exactly the same order as before. Values and order are unchanged; only the second walk is gone.
+fn collect_items_field_import_surface_names(surface_names: List<String>, emit_info: EmitGraphInfo) -> List<String> {
   let type_summaries = emit_info.type_summaries
   let variant_to_enum = emit_info.variant_to_enum
-  unique_strings(items: items |> flat_map(item =>
-    collect_item_emit_surface_names(item: item, source_indices: source_indices, emit_info: emit_info)
+  unique_strings(items: surface_names
       |> flat_map(type_name =>
         let summary_lookup = match map_get(type_summaries, type_name) {
           Present { value: summary } => Present { value: summary }
@@ -3199,7 +3208,7 @@ fn collect_items_field_import_surface_names(items: List<Node>, emit_info: EmitGr
           Absent => []
         }
       )
-  ))
+  )
 }
 
 // A match pattern is carried on Node.match_pattern, a field no reference walk reads, so the
@@ -4070,6 +4079,13 @@ type ReferenceDerivedUseLinePlan {
 // neither can justify a use-line. A real qualified constructor emits Parent::Variant and keeps
 // Parent; anonymous record heads likewise occur in the emitted text. This observation is
 // module-local and deliberately never asks variant_to_enum who owns a name.
+// CANDIDATE TOKEN MEMBERSHIP IS A LOOKUP, NOT A WALK PER CANDIDATE. Two filters here each asked
+// `emitted_source_tokens |> any(t => t == name)`, a linear scan of every identifier token in the
+// whole emitted module, once per candidate and twice over -- O(candidates x tokens) for what is a
+// set membership question. Measured at 73s of a 539s compile.emit on the seed regen closure
+// (gunbc compile --source-root src/v1 --source-root dag --entry src/v1/compile.dag). The predicate
+// is unchanged: emitted_source_token_set holds exactly the tokens the list holds, so emit_map_has
+// answers what `any` answered, for the same names in the same order.
 fn reference_derived_use_line_plan(items: List<Node>, unlisted_type_names: List<String>, this_module_name: String, registry: Map<String, ItemInfo>, emit_info: EmitGraphInfo, local_type_names: List<String>, already_imported_names: List<String>, export_sets: Map<String, Map<String, Bool>>, typed_modules: List<TypedModule>, source_indices: Map<String, NewlineIndex>, module_index: ModuleIndex, shared_types: Set<String>, emitted_source: String) -> ReferenceDerivedUseLinePlan {
   {
     let module_source = match typed_modules |> filter(tm => authored_name_at(source_indices: source_indices, node: tm.module) == this_module_name) |> first {
@@ -4077,19 +4093,22 @@ fn reference_derived_use_line_plan(items: List<Node>, unlisted_type_names: List<
       Absent => ""
     }
     let value_names = unique_strings(items: items |> flat_map(item => collect_value_ref_names(n: item, source_indices: source_indices, type_summaries: emit_info.type_summaries, variant_to_enum: emit_info.variant_to_enum)))
-    let type_surface_names = unique_strings(items: items |> flat_map(item => collect_item_emit_surface_names(item: item, source_indices: source_indices, emit_info: emit_info)))
-    let field_surface_names = collect_items_field_import_surface_names(items: items, emit_info: emit_info, source_indices: source_indices)
+    let item_emit_surface_names = items |> flat_map(item => collect_item_emit_surface_names(item: item, source_indices: source_indices, emit_info: emit_info))
+    let type_surface_names = unique_strings(items: item_emit_surface_names)
+    let field_surface_names = collect_items_field_import_surface_names(surface_names: item_emit_surface_names, emit_info: emit_info)
     let variant_payload_structs = expand_variant_payload_struct_imports(names: type_surface_names, type_summaries: emit_info.type_summaries, variant_to_enum: emit_info.variant_to_enum)
     let emitter_attested_anon_heads = unique_strings(items: items |> flat_map(item => collect_anonymous_record_lit_heads(n: item, source_indices: source_indices, type_summaries: emit_info.type_summaries)))
     let realized_surface_names = unique_strings(items: items |> flat_map(item => collect_item_realized_surface_names(item: item, shared_types: shared_types, source_indices: source_indices, emit_info: emit_info)))
     let emitted_source_tokens = rust_identifier_tokens(s: emitted_source)
+    let emitted_source_token_set = emitted_source_tokens
+      |> fold(init: empty_map(), f: (acc, t) => map_insert(acc, t, true))
     let candidates = unique_strings(items: concat(concat(concat(concat(concat(unlisted_type_names, value_names), type_surface_names), field_surface_names), variant_payload_structs), realized_surface_names))
       |> filter(name =>
         reference_derived_candidate_authored(module_source: module_source, name: name, type_summaries: emit_info.type_summaries, variant_to_enum: emit_info.variant_to_enum)
           || emitter_attested_anon_heads |> any(h => h == name)
-          || (emitted_source_tokens |> any(t => t == name)))
+          || emit_map_has(m: emitted_source_token_set, key: name))
       |> filter(name => !reference_is_host_realized_builtin(name: name))
-      |> filter(name => emitted_source_tokens |> any(token => token == name))
+      |> filter(name => emit_map_has(m: emitted_source_token_set, key: name))
     let local_decl_names = items |> flat_map(item =>
       let nm = authored_name_at(source_indices: source_indices, node: item)
       if nm == "" { [] } else { [nm] }

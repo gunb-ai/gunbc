@@ -68,6 +68,18 @@ fn repo_self_build_all_bins_command() -> String {
   join([repo_self_build_package_command(), repo_self_build_all_bins_flag], " ")
 }
 
+// THE PACKAGE'S OWN UNIT TESTS, as one cargo invocation. The 774 `#[test]`s under src/v1/stage0
+// ran on no CI path at all before the 2026-08-29 gate (no workflow invoked `cargo test`); they
+// are the v1 compiler's cheapest regression net and now run in their own job. `--lib` is
+// deliberate: the bin targets' tests would each link a binary, and the required build lane
+// already establishes that every bin compiles.
+fn repo_self_test_command() -> String {
+  join(
+    ["cargo test", repo_self_build_profile_flag, "-p", repo_self_build_package as String, "--lib"],
+    " "
+  )
+}
+
 fn repo_self_build_command(bins: List<String>) -> String {
   if bins |> count == 0 {
     repo_self_build_package_command()
