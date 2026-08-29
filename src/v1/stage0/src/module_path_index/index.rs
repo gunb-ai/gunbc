@@ -3,10 +3,9 @@ use std::path::Path;
 use std::rc::Rc;
 
 use crate::v1_compiler_parse::parse_heads_with_table;
-use crate::v1_compiler_tokenize::tokenize;
 use crate::v1_std_core::{
-    build_newline_index, diagnostic_to_message, diagnostic_to_span, empty_intern_table,
-    node_name_span, CompilerDiagnostic, SourceSpan,
+    diagnostic_to_message, diagnostic_to_span, empty_intern_table, node_name_span,
+    CompilerDiagnostic, SourceSpan,
 };
 
 /// One parse-derived module⇄path row for manifest emission (host binding authority).
@@ -126,8 +125,10 @@ pub fn parse_module_binding(
     content: &str,
 ) -> Result<ModuleBindingOutcome, ModuleBindingRefusal> {
     let key = source_key(path);
-    let tokens = tokenize(content.to_string(), key.clone());
-    let source_index = build_newline_index(key.clone(), content.to_string());
+    // One acquisition, not one per walk -- see `cli_run::pool_acquire`. Identical bytes and
+    // identical spelling, so identical tokens; this walk keeps its own collector and policy.
+    let tokens = crate::cli_run::pool_acquire::tokens_for(&key, content);
+    let source_index = crate::cli_run::pool_acquire::newline_index_for(&key, content);
     let mut indices = HashMap::new();
     indices.insert(key.clone(), source_index);
     let source_indices = Rc::new(indices);
