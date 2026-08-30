@@ -105,7 +105,7 @@ pub fn dag_node_key(node: Rc<Node>) -> String {
                 ),
                 match anchor.ident.clone() {
                     Some(id) => v1_rt::concat(":".to_string(), (id.clone()).to_string()),
-                    None => "".to_string(),
+                    std::option::Option::None => "".to_string(),
                 },
             )
         }
@@ -140,7 +140,7 @@ pub fn dag_collect_optional_node(
         Some(inner) => {
             dag_collect_insert_slots(inner.clone(), slots.clone(), collision_errors.clone())
         }
-        None => slots.clone(),
+        std::option::Option::None => slots.clone(),
     }
 }
 
@@ -172,7 +172,7 @@ pub fn dag_collect_match_pattern(
         }) => dag_collect_nodes_list(fbs.clone(), slots.clone(), collision_errors.clone()),
         Some(MatchPattern::LitPattern { value: _, .. }) => slots.clone(),
         Some(MatchPattern::Wildcard) => slots.clone(),
-        None => slots.clone(),
+        std::option::Option::None => slots.clone(),
     }
 }
 
@@ -234,7 +234,7 @@ pub fn dag_collect_insert_slots(
         let key = dag_node_key(anchor.clone());
         match v1_rt::map_get(&slots, key.clone()) {
             Some(_) => slots.clone(),
-            None => {
+            std::option::Option::None => {
                 let fp = if ((anchor.span.clone().start.clone() == 0)
                     && (anchor.span.clone().end.clone() == 0))
                 {

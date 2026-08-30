@@ -94,7 +94,9 @@ pub fn structural_ordering_for(
                     Some(row) => Rc::new(StructuralOrderingLookup::StructuralOrderingFound {
                         row: row.clone(),
                     }),
-                    None => Rc::new(StructuralOrderingLookup::StructuralOrderingAbsent),
+                    std::option::Option::None => {
+                        Rc::new(StructuralOrderingLookup::StructuralOrderingAbsent)
+                    }
                 }
             } else {
                 Rc::new(StructuralOrderingLookup::StructuralOrderingAmbiguous {
@@ -355,7 +357,7 @@ pub fn structural_ordering_realization(
     ordering_rows: Rc<Vec<Rc<StructuralOrderingBinding>>>,
 ) -> Rc<OperatorRealization> {
     match ordering_test_for(op.clone()) {
-        None => structural_arithmetic_refusal(op.clone(), declaration.clone()),
+        std::option::Option::None => structural_arithmetic_refusal(op.clone(), declaration.clone()),
         Some(test) => {
             match (*structural_ordering_for(ordering_rows.clone(), declaration.clone())).clone() {
                 StructuralOrderingLookup::StructuralOrderingFound { row: row, .. } => {
