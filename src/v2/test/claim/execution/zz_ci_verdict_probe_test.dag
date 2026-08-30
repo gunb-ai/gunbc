@@ -639,3 +639,473 @@ test fn ciprobe_english_witness_copy() -> Bool {
 test fn ciprobe_english_original() -> Bool {
   english_emit_add_ingest_round_trip_holds()
 }
+
+type CiprobeScan {
+  matched: Int
+  found: Bool
+}
+
+fn ciprobe_bytes_contain(bs: ByteString, pattern: List<Int>) -> Bool {
+  let n = length(xs: pattern)
+  let r = fold_list(
+    xs: bs,
+    empty: CiprobeScan { matched: 0, found: false },
+    cons: fn(acc, b) {
+      if acc.found {
+        acc
+      } else {
+        let want = match list_at_optional(xs: pattern, index: acc.matched) {
+          Present { value: o } => emit_host_byte_from_octet(octet: o) == b
+          Absent => false
+        }
+        let restart = match list_at_optional(xs: pattern, index: 0) {
+          Present { value: o } => emit_host_byte_from_octet(octet: o) == b
+          Absent => false
+        }
+        let m = if want { acc.matched + 1 } else if restart { 1 } else { 0 }
+        CiprobeScan { matched: m, found: m == n }
+      }
+    }
+  )
+  r.found
+}
+
+
+test fn ciprobe_variant_ok_stderr_has_error_bracket() -> Bool {
+  match ciprobe_variant_ok_receipt() {
+    Accepted { value: rc, diagnostics: _ } => ciprobe_bytes_contain(bs: rc.stderr_bytes, pattern: [101, 114, 114, 111, 114, 91])
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+
+test fn ciprobe_variant_ok_stderr_has_could_not_compile() -> Bool {
+  match ciprobe_variant_ok_receipt() {
+    Accepted { value: rc, diagnostics: _ } => ciprobe_bytes_contain(bs: rc.stderr_bytes, pattern: [99, 111, 117, 108, 100, 32, 110, 111, 116, 32, 99, 111, 109, 112, 105, 108, 101])
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+
+test fn ciprobe_variant_ok_stderr_has_panicked() -> Bool {
+  match ciprobe_variant_ok_receipt() {
+    Accepted { value: rc, diagnostics: _ } => ciprobe_bytes_contain(bs: rc.stderr_bytes, pattern: [112, 97, 110, 105, 99, 107, 101, 100, 32, 97, 116])
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+
+test fn ciprobe_variant_ok_stderr_has_blocking_lock() -> Bool {
+  match ciprobe_variant_ok_receipt() {
+    Accepted { value: rc, diagnostics: _ } => ciprobe_bytes_contain(bs: rc.stderr_bytes, pattern: [66, 108, 111, 99, 107, 105, 110, 103, 32, 119, 97, 105, 116, 105, 110, 103])
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+
+test fn ciprobe_variant_ok_stderr_has_finished() -> Bool {
+  match ciprobe_variant_ok_receipt() {
+    Accepted { value: rc, diagnostics: _ } => ciprobe_bytes_contain(bs: rc.stderr_bytes, pattern: [70, 105, 110, 105, 115, 104, 101, 100])
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+
+test fn ciprobe_variant_ok_stderr_has_compiling() -> Bool {
+  match ciprobe_variant_ok_receipt() {
+    Accepted { value: rc, diagnostics: _ } => ciprobe_bytes_contain(bs: rc.stderr_bytes, pattern: [67, 111, 109, 112, 105, 108, 105, 110, 103])
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+
+test fn ciprobe_variant_ok_stderr_has_linker() -> Bool {
+  match ciprobe_variant_ok_receipt() {
+    Accepted { value: rc, diagnostics: _ } => ciprobe_bytes_contain(bs: rc.stderr_bytes, pattern: [108, 105, 110, 107, 101, 114])
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+
+test fn ciprobe_variant_ok_stderr_has_no_such_file() -> Bool {
+  match ciprobe_variant_ok_receipt() {
+    Accepted { value: rc, diagnostics: _ } => ciprobe_bytes_contain(bs: rc.stderr_bytes, pattern: [78, 111, 32, 115, 117, 99, 104, 32, 102, 105, 108, 101])
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+
+test fn ciprobe_variant_ok_stderr_has_permission_denied() -> Bool {
+  match ciprobe_variant_ok_receipt() {
+    Accepted { value: rc, diagnostics: _ } => ciprobe_bytes_contain(bs: rc.stderr_bytes, pattern: [80, 101, 114, 109, 105, 115, 115, 105, 111, 110, 32, 100, 101, 110, 105, 101, 100])
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+
+test fn ciprobe_variant_ok_stderr_has_killed() -> Bool {
+  match ciprobe_variant_ok_receipt() {
+    Accepted { value: rc, diagnostics: _ } => ciprobe_bytes_contain(bs: rc.stderr_bytes, pattern: [75, 105, 108, 108, 101, 100])
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+
+test fn ciprobe_variant_ok_stderr_has_unused_parens() -> Bool {
+  match ciprobe_variant_ok_receipt() {
+    Accepted { value: rc, diagnostics: _ } => ciprobe_bytes_contain(bs: rc.stderr_bytes, pattern: [117, 110, 117, 115, 101, 100, 95, 112, 97, 114, 101, 110, 115])
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+
+test fn ciprobe_variant_ok_stderr_has_denied_warnings() -> Bool {
+  match ciprobe_variant_ok_receipt() {
+    Accepted { value: rc, diagnostics: _ } => ciprobe_bytes_contain(bs: rc.stderr_bytes, pattern: [100, 101, 110, 121, 40, 119, 97, 114, 110, 105, 110, 103, 115, 41])
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+
+test fn ciprobe_variant_ok_stderr_has_error_colon() -> Bool {
+  match ciprobe_variant_ok_receipt() {
+    Accepted { value: rc, diagnostics: _ } => ciprobe_bytes_contain(bs: rc.stderr_bytes, pattern: [101, 114, 114, 111, 114, 58])
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+
+test fn ciprobe_variant_ok_stderr_has_warning_colon() -> Bool {
+  match ciprobe_variant_ok_receipt() {
+    Accepted { value: rc, diagnostics: _ } => ciprobe_bytes_contain(bs: rc.stderr_bytes, pattern: [119, 97, 114, 110, 105, 110, 103, 58])
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+
+test fn ciprobe_variant_ok_exit_code_1() -> Bool {
+  match ciprobe_variant_ok_receipt() {
+    Accepted { value: rc, diagnostics: _ } =>
+      match rc.exit.outcome {
+        Accepted { value: Violates { diagnostic: d }, diagnostics: _ } => false
+        Accepted { value: Holds { value: ok }, diagnostics: _ } => ok.code == 1
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+
+test fn ciprobe_variant_ok_exit_code_101() -> Bool {
+  match ciprobe_variant_ok_receipt() {
+    Accepted { value: rc, diagnostics: _ } =>
+      match rc.exit.outcome {
+        Accepted { value: Violates { diagnostic: d }, diagnostics: _ } => false
+        Accepted { value: Holds { value: ok }, diagnostics: _ } => ok.code == 101
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+
+test fn ciprobe_variant_ok_exit_code_127() -> Bool {
+  match ciprobe_variant_ok_receipt() {
+    Accepted { value: rc, diagnostics: _ } =>
+      match rc.exit.outcome {
+        Accepted { value: Violates { diagnostic: d }, diagnostics: _ } => false
+        Accepted { value: Holds { value: ok }, diagnostics: _ } => ok.code == 127
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+
+test fn ciprobe_variant_ok_exit_code_137() -> Bool {
+  match ciprobe_variant_ok_receipt() {
+    Accepted { value: rc, diagnostics: _ } =>
+      match rc.exit.outcome {
+        Accepted { value: Violates { diagnostic: d }, diagnostics: _ } => false
+        Accepted { value: Holds { value: ok }, diagnostics: _ } => ok.code == 137
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+
+test fn ciprobe_variant_ok_exit_code_2() -> Bool {
+  match ciprobe_variant_ok_receipt() {
+    Accepted { value: rc, diagnostics: _ } =>
+      match rc.exit.outcome {
+        Accepted { value: Violates { diagnostic: d }, diagnostics: _ } => false
+        Accepted { value: Holds { value: ok }, diagnostics: _ } => ok.code == 2
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+
+test fn ciprobe_variant_ok_stdout_empty() -> Bool {
+  match ciprobe_variant_ok_receipt() {
+    Accepted { value: rc, diagnostics: _ } =>
+      match rc.logical_run {
+        Accepted { value: HostLogicalRun { stdout: so }, diagnostics: _ } => is_empty(xs: so.bytes)
+        Rejected { diagnostics: _ } => true
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn ciprobe_variant_ok_stderr_len_under_200() -> Bool {
+  match ciprobe_variant_ok_receipt() {
+    Accepted { value: rc, diagnostics: _ } => length(xs: rc.stderr_bytes) < 200
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn ciprobe_variant_ok_build_log_lines_under_5() -> Bool {
+  match ciprobe_variant_ok_receipt() {
+    Accepted { value: rc, diagnostics: _ } => length(xs: rc.build_log.lines) < 5
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+
+test fn ciprobe_meet_ok_stderr_has_error_bracket() -> Bool {
+  match ciprobe_meet_ok_receipt() {
+    Accepted { value: rc, diagnostics: _ } => ciprobe_bytes_contain(bs: rc.stderr_bytes, pattern: [101, 114, 114, 111, 114, 91])
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+
+test fn ciprobe_meet_ok_stderr_has_could_not_compile() -> Bool {
+  match ciprobe_meet_ok_receipt() {
+    Accepted { value: rc, diagnostics: _ } => ciprobe_bytes_contain(bs: rc.stderr_bytes, pattern: [99, 111, 117, 108, 100, 32, 110, 111, 116, 32, 99, 111, 109, 112, 105, 108, 101])
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+
+test fn ciprobe_meet_ok_stderr_has_panicked() -> Bool {
+  match ciprobe_meet_ok_receipt() {
+    Accepted { value: rc, diagnostics: _ } => ciprobe_bytes_contain(bs: rc.stderr_bytes, pattern: [112, 97, 110, 105, 99, 107, 101, 100, 32, 97, 116])
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+
+test fn ciprobe_meet_ok_stderr_has_blocking_lock() -> Bool {
+  match ciprobe_meet_ok_receipt() {
+    Accepted { value: rc, diagnostics: _ } => ciprobe_bytes_contain(bs: rc.stderr_bytes, pattern: [66, 108, 111, 99, 107, 105, 110, 103, 32, 119, 97, 105, 116, 105, 110, 103])
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+
+test fn ciprobe_meet_ok_stderr_has_finished() -> Bool {
+  match ciprobe_meet_ok_receipt() {
+    Accepted { value: rc, diagnostics: _ } => ciprobe_bytes_contain(bs: rc.stderr_bytes, pattern: [70, 105, 110, 105, 115, 104, 101, 100])
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+
+test fn ciprobe_meet_ok_stderr_has_compiling() -> Bool {
+  match ciprobe_meet_ok_receipt() {
+    Accepted { value: rc, diagnostics: _ } => ciprobe_bytes_contain(bs: rc.stderr_bytes, pattern: [67, 111, 109, 112, 105, 108, 105, 110, 103])
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+
+test fn ciprobe_meet_ok_stderr_has_linker() -> Bool {
+  match ciprobe_meet_ok_receipt() {
+    Accepted { value: rc, diagnostics: _ } => ciprobe_bytes_contain(bs: rc.stderr_bytes, pattern: [108, 105, 110, 107, 101, 114])
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+
+test fn ciprobe_meet_ok_stderr_has_no_such_file() -> Bool {
+  match ciprobe_meet_ok_receipt() {
+    Accepted { value: rc, diagnostics: _ } => ciprobe_bytes_contain(bs: rc.stderr_bytes, pattern: [78, 111, 32, 115, 117, 99, 104, 32, 102, 105, 108, 101])
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+
+test fn ciprobe_meet_ok_stderr_has_permission_denied() -> Bool {
+  match ciprobe_meet_ok_receipt() {
+    Accepted { value: rc, diagnostics: _ } => ciprobe_bytes_contain(bs: rc.stderr_bytes, pattern: [80, 101, 114, 109, 105, 115, 115, 105, 111, 110, 32, 100, 101, 110, 105, 101, 100])
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+
+test fn ciprobe_meet_ok_stderr_has_killed() -> Bool {
+  match ciprobe_meet_ok_receipt() {
+    Accepted { value: rc, diagnostics: _ } => ciprobe_bytes_contain(bs: rc.stderr_bytes, pattern: [75, 105, 108, 108, 101, 100])
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+
+test fn ciprobe_meet_ok_stderr_has_unused_parens() -> Bool {
+  match ciprobe_meet_ok_receipt() {
+    Accepted { value: rc, diagnostics: _ } => ciprobe_bytes_contain(bs: rc.stderr_bytes, pattern: [117, 110, 117, 115, 101, 100, 95, 112, 97, 114, 101, 110, 115])
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+
+test fn ciprobe_meet_ok_stderr_has_denied_warnings() -> Bool {
+  match ciprobe_meet_ok_receipt() {
+    Accepted { value: rc, diagnostics: _ } => ciprobe_bytes_contain(bs: rc.stderr_bytes, pattern: [100, 101, 110, 121, 40, 119, 97, 114, 110, 105, 110, 103, 115, 41])
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+
+test fn ciprobe_meet_ok_stderr_has_error_colon() -> Bool {
+  match ciprobe_meet_ok_receipt() {
+    Accepted { value: rc, diagnostics: _ } => ciprobe_bytes_contain(bs: rc.stderr_bytes, pattern: [101, 114, 114, 111, 114, 58])
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+
+test fn ciprobe_meet_ok_stderr_has_warning_colon() -> Bool {
+  match ciprobe_meet_ok_receipt() {
+    Accepted { value: rc, diagnostics: _ } => ciprobe_bytes_contain(bs: rc.stderr_bytes, pattern: [119, 97, 114, 110, 105, 110, 103, 58])
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+
+test fn ciprobe_meet_ok_exit_code_1() -> Bool {
+  match ciprobe_meet_ok_receipt() {
+    Accepted { value: rc, diagnostics: _ } =>
+      match rc.exit.outcome {
+        Accepted { value: Violates { diagnostic: d }, diagnostics: _ } => false
+        Accepted { value: Holds { value: ok }, diagnostics: _ } => ok.code == 1
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+
+test fn ciprobe_meet_ok_exit_code_101() -> Bool {
+  match ciprobe_meet_ok_receipt() {
+    Accepted { value: rc, diagnostics: _ } =>
+      match rc.exit.outcome {
+        Accepted { value: Violates { diagnostic: d }, diagnostics: _ } => false
+        Accepted { value: Holds { value: ok }, diagnostics: _ } => ok.code == 101
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+
+test fn ciprobe_meet_ok_exit_code_127() -> Bool {
+  match ciprobe_meet_ok_receipt() {
+    Accepted { value: rc, diagnostics: _ } =>
+      match rc.exit.outcome {
+        Accepted { value: Violates { diagnostic: d }, diagnostics: _ } => false
+        Accepted { value: Holds { value: ok }, diagnostics: _ } => ok.code == 127
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+
+test fn ciprobe_meet_ok_exit_code_137() -> Bool {
+  match ciprobe_meet_ok_receipt() {
+    Accepted { value: rc, diagnostics: _ } =>
+      match rc.exit.outcome {
+        Accepted { value: Violates { diagnostic: d }, diagnostics: _ } => false
+        Accepted { value: Holds { value: ok }, diagnostics: _ } => ok.code == 137
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+
+test fn ciprobe_meet_ok_exit_code_2() -> Bool {
+  match ciprobe_meet_ok_receipt() {
+    Accepted { value: rc, diagnostics: _ } =>
+      match rc.exit.outcome {
+        Accepted { value: Violates { diagnostic: d }, diagnostics: _ } => false
+        Accepted { value: Holds { value: ok }, diagnostics: _ } => ok.code == 2
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+
+test fn ciprobe_meet_ok_stdout_empty() -> Bool {
+  match ciprobe_meet_ok_receipt() {
+    Accepted { value: rc, diagnostics: _ } =>
+      match rc.logical_run {
+        Accepted { value: HostLogicalRun { stdout: so }, diagnostics: _ } => is_empty(xs: so.bytes)
+        Rejected { diagnostics: _ } => true
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn ciprobe_meet_ok_stderr_len_under_200() -> Bool {
+  match ciprobe_meet_ok_receipt() {
+    Accepted { value: rc, diagnostics: _ } => length(xs: rc.stderr_bytes) < 200
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn ciprobe_meet_ok_build_log_lines_under_5() -> Bool {
+  match ciprobe_meet_ok_receipt() {
+    Accepted { value: rc, diagnostics: _ } => length(xs: rc.build_log.lines) < 5
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+
+test fn ciprobe_english_copy_without_none_check() -> Bool {
+  let serialize_ok = english_emit_add_matches_serialize_holds()
+  let grammar_ok = english_emit_add_grammar_inverse_holds()
+  let ingest_ok = match english_emit_add_receipt {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: source, diagnostics: _ } =>
+      match english_emit_add_ingest_parse(source: source) {
+        Accepted { value: tree, diagnostics: d } =>
+          english_emit_add_parse_identity_matches(root: tree, expected: english_emit_add_emitted_root)
+        Rejected { diagnostics: _ } => false
+      }
+  }
+  serialize_ok && grammar_ok && ingest_ok
+}
+
+test fn ciprobe_english_only_none_check() -> Bool {
+  match english_emit_add_receipt {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: source, diagnostics: _ } =>
+      match english_emit_add_ingest_parse(source: source) {
+        Accepted { value: _, diagnostics: d } => d == v2.std.diagnostic.None
+        Rejected { diagnostics: _ } => false
+      }
+  }
+}
+
+test fn ciprobe_english_receipt_diags_none() -> Bool {
+  match english_emit_add_receipt {
+    Accepted { value: _, diagnostics: d } => d == v2.std.diagnostic.None
+    Rejected { diagnostics: _ } => false
+  }
+}
