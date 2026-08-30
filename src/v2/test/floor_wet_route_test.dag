@@ -230,6 +230,7 @@ test fn wet_route_publication_beyond_skew_is_contract_mismatch() -> Bool {
   let late = WetReceiptEnvelope {
     schema_version: base.schema_version,
     subject_digest: base.subject_digest,
+    executor_contract_digest: base.executor_contract_digest,
     attempt_seq: base.attempt_seq,
     executed_at_unix_secs: 1000000,
     published_at_unix_secs: 1000000 + floor_wet_route_publication_skew_secs() + 1,

@@ -127,6 +127,7 @@ test fn changed_selector_replaces_an_ordinary_decline_with_its_own_planned_arm()
     DeclinedCostDebt => false
     DeclinedFixtureMember { matched_prefix: _ } => false
     DeclinedDiscoveryExcluded { matched_substring: _ } => false
+    DeclinedRoutedToWetLane => false
   }
 }
 
@@ -140,6 +141,27 @@ test fn unchanged_identity_keeps_its_ordinary_disposition() -> Bool {
     PlannedAsChangedWitness => false
     DeclinedLongModule { matched_prefix: _ } => false
     DeclinedOutsideRequiredGate => false
+    DeclinedCostDebt => false
+    DeclinedFixtureMember { matched_prefix: _ } => false
+    DeclinedDiscoveryExcluded { matched_substring: _ } => false
+    DeclinedRoutedToWetLane => false
+  }
+}
+
+// THE PRESERVED ARM: selection may not plan a wet-routed identity into hermetic execution —
+// its subject is a real host-effect chain the hermetic route refuses by construction, so the
+// selector keeps the routed decline and the candidate-exact receipt admission is its verdict.
+test fn changed_selection_preserves_the_wet_route_decline() -> Bool {
+  match required_floor_disposition_with_changed_selection(
+    ordinary: DeclinedRoutedToWetLane {},
+    selected_as_changed_witness: true,
+  ) {
+    DeclinedRoutedToWetLane => true
+    Planned => false
+    PlannedAsChangedWitness => false
+    DeclinedLongModule { matched_prefix: _ } => false
+    DeclinedOutsideRequiredGate => false
+    DeclinedOutsideGateClosure => false
     DeclinedCostDebt => false
     DeclinedFixtureMember { matched_prefix: _ } => false
     DeclinedDiscoveryExcluded { matched_substring: _ } => false
@@ -259,7 +281,7 @@ test fn routed_with_ancestor_subject_receipt_is_declined() -> Bool {
         disposition: DeclinedRoutedToWetLane {},
         terminal: NotExecuted {}
       },
-      wet_standing: ReceiptSubjectMismatch { receipt_digest: "ancestor", computed_digest: "candidate" }
+      wet_standing: ReceiptSubjectMismatch { axis: "semantic-subject", receipt_digest: "ancestor", computed_digest: "candidate" }
     )
   )
 }
