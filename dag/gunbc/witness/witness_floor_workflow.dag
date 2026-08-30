@@ -46,7 +46,7 @@ import gunbc.ci_layer_roots { witness_layer_roots }
 import gunbc.fabric_witness_run { witnesses_lane_run_command, build_lane_run_command }
 import gunbc.claim_executor_cli { claim_batch_command }
 import extdeps.cron.schedule_model { CronSchedule, Wildcard }
-import v2.workflow.floor_wet_route { floor_wet_route_receipt_rel_path }
+import v2.workflow.floor_wet_route { floor_wet_route_receipt_json_rel_path, floor_wet_route_receipt_tsv_rel_path }
 import extdeps.exec.command { ArgvCommand, shell_command_render }
 import gunbc.required_lanes_gate { required_lanes_gate_stmts }
 import extdeps.github.expressions { ContextAccess, Github, Needs, interpolate }
@@ -1305,11 +1305,16 @@ fn rust_unit_tests_job() -> Job {
 //
 // THE POPULATION IS DERIVED, NEVER SPELLED HERE: `claim_batch --wet-route` reads
 // `floor_wet_route_roster` from the .dag authority at run time, so a roster edit needs no
-// workflow regeneration and no second list can drift. The receipt TSV reaches main by PULL
-// REQUEST (transport a', same ruling): this job commits the refreshed file to a well-known
-// branch and opens/refreshes the PR; merging stays under the ordinary rule. No bot push to
-// the protected default branch, and no API read anywhere on the required path — the floor
-// only ever reads the committed TSV.
+// workflow regeneration and no second list can drift. The receipt — a latest-attempt JSON
+// envelope keyed by the wet subject digest, plus its canonical TSV projection (authority
+// `v2.workflow.floor_wet_route`) — reaches main by PULL REQUEST (transport a' as amended,
+// same ruling): this job commits the refreshed pair to a well-known branch and
+// opens/refreshes the PR; merging stays under the ordinary rule. No bot push to the
+// protected default branch, and no API read anywhere on the required path — the floor only
+// ever reads the committed pair. A RECEIPT MERGE CANNOT RELAUNCH THIS LANE by construction
+// rather than by path filter: the job's condition admits only schedule and
+// workflow_dispatch, and a merge to main is a push event, so the amendment's
+// no-relaunch requirement holds without a paths: clause to drift.
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 
 // THE REQUIRED LANES DO NOT RUN ON THE WET CADENCE. The schedule trigger exists for the
@@ -1354,7 +1359,10 @@ fn wet_receipts_run_command() -> ArgvCommand {
         init: [],
         f: fn(acc, root) { append(acc, items: ["--source-root", root]) },
       ),
-      items: ["--receipt-out", floor_wet_route_receipt_rel_path],
+      items: [
+        "--receipt-out", floor_wet_route_receipt_json_rel_path,
+        "--receipt-tsv-out", floor_wet_route_receipt_tsv_rel_path,
+      ],
     ),
   )
 }
@@ -1377,9 +1385,9 @@ fn wet_receipts_run_step() -> Step {
 // success() — because an honest fail receipt is the routed witnesses' verdict channel and an
 // absent receipt refuses every open pull request three days later. The lane's own red stays
 // on this job.
-data wet_receipts_pr_annotation: String = "# dissolve-on: wet_receipts_pr_script -- orch-emitted foreign-executor step committing the lane's generated receipt to its refresh branch and opening the carrying pull request. Leaf git/gh strings remain until a typed repository-write effect lands on host_effect_apply (shell-to-intent Phase 2), the same terminal construction the toolchain isolation steps above wait on; the receipt file itself is the modeled artifact (v2.workflow.floor_wet_route, digest-sealed).\n"
+data wet_receipts_pr_annotation: String = "# dissolve-on: wet_receipts_pr_script -- orch-emitted foreign-executor step committing the lane's generated receipt pair to its refresh branch and opening the carrying pull request. Leaf git/gh strings remain until a typed repository-write effect lands on host_effect_apply (shell-to-intent Phase 2), the same terminal construction the toolchain isolation steps above wait on; the receipt pair itself is the modeled artifact (v2.workflow.floor_wet_route: JSON envelope authority, TSV canonical projection, floor-refused on drift).\n"
 
-data wet_receipts_pr_body: String = "cd \"$ROOT\"\ngit config user.name gunbc-ci-auto-heal\ngit config user.email gunbc-ci-auto-heal@users.noreply.github.com\ngit checkout -B 'wet-receipts/refresh'\ngit add dag/gunbc/witness/wet_lane_receipt.tsv\ngit commit -m \"wet-receipts: refresh lane receipt (run $\{GITHUB_RUN_ID\})\"\ngit push -f origin 'wet-receipts/refresh'\ngh pr create --head 'wet-receipts/refresh' --title 'wet-receipts: refresh lane receipt' --body \"Generated artifact: per-identity wet-lane receipt (v2.workflow.floor_wet_route), produced by workflow run $\{GITHUB_RUN_ID\} on $\{GITHUB_SHA\}. The digest line seals the rows; regenerate via the wet-receipts job, never by hand.\" || echo 'PR already open; the push refreshed it'\n"
+data wet_receipts_pr_body: String = "cd \"$ROOT\"\ngit config user.name gunbc-ci-auto-heal\ngit config user.email gunbc-ci-auto-heal@users.noreply.github.com\ngit checkout -B 'wet-receipts/refresh'\ngit add dag/gunbc/witness/wet_lane\ngit commit -m \"wet-receipts: refresh lane receipt envelope (run $\{GITHUB_RUN_ID\})\"\ngit push -f origin 'wet-receipts/refresh'\ngh pr create --head 'wet-receipts/refresh' --title 'wet-receipts: refresh lane receipt envelope' --body \"Generated artifact pair: the wet-lane latest-attempt receipt envelope and its canonical TSV projection (v2.workflow.floor_wet_route), produced by workflow run $\{GITHUB_RUN_ID\} on $\{GITHUB_SHA\}. The required floor re-projects the TSV from the JSON and refuses on drift; regenerate via the wet-receipts job, never by hand.\" || echo 'PR already open; the push refreshed it'\n"
 
 fn wet_receipts_pr_script() -> String {
   concat(
@@ -1407,7 +1415,7 @@ fn wet_receipts_artifact_step() -> Step {
     with: Present {
       value: [
         kv(key: "name", value: yaml_string(s: "wet-lane-receipt")),
-        kv(key: "path", value: yaml_string(s: floor_wet_route_receipt_rel_path)),
+        kv(key: "path", value: yaml_string(s: "dag/gunbc/witness/wet_lane")),
         kv(key: "if-no-files-found", value: yaml_string(s: "error")),
         kv(key: "retention-days", value: yaml_int(n: 14)),
       ]

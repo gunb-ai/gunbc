@@ -2,7 +2,8 @@ module v2.test.floor_changed_witness
 
 import v2.workflow.floor_changed_witness {
   ChangedWitnessExecutionStanding,
-  PlannedAndPassed, PlannedWithoutTerminalVerdict, Declined, MissingDisposition,
+  PlannedAndPassed, PlannedWithoutTerminalVerdict, RoutedWithCandidateExactReceipt,
+  Declined, MissingDisposition,
   ChangedWitnessTerminalReading, TerminalOutcome, NotExecuted,
   ChangedWitnessDispositionReading, DispositionRow, NoDispositionRow,
   ChangedWitnessRow,
@@ -13,7 +14,10 @@ import v2.workflow.floor_changed_witness {
 import v2.workflow.required_floor {
   RequiredFloorDisposition,
   Planned, DeclinedLongModule, DeclinedOutsideRequiredGate, DeclinedOutsideGateClosure,
-  DeclinedCostDebt,
+  DeclinedCostDebt, DeclinedRoutedToWetLane,
+}
+import v2.workflow.floor_wet_route {
+  WetLaneReceiptStanding, ReceiptFreshExactSubject, ReceiptMissing, ReceiptSubjectMismatch,
 }
 import v2.workflow.floor_terminal_ledger {
   ClaimDisposition, Passed, Failed, KnownRedHeld, RouteGapBeforeVerdict,
@@ -36,14 +40,18 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // the PR that lands them is also the projection's first live positive control: each must
 // appear in its run's changed-witness lines as planned-and-passed.
 
+// Fixtures that do not exercise the wet-routed arm pass ReceiptMissing: for every other
+// disposition the wet standing is not consulted, and Missing is the arm a wrong consultation
+// would turn into a visible Declined here.
 fn changed_standing_of(reading: ChangedWitnessDispositionReading) -> ChangedWitnessExecutionStanding {
-  changed_witness_execution_standing(reading: reading)
+  changed_witness_execution_standing(reading: reading, wet_standing: ReceiptMissing {})
 }
 
 fn is_planned_and_passed(s: ChangedWitnessExecutionStanding) -> Bool {
   match s {
     PlannedAndPassed => true
     PlannedWithoutTerminalVerdict => false
+    RoutedWithCandidateExactReceipt => false
     Declined { disposition: _ } => false
     MissingDisposition => false
   }
@@ -53,6 +61,7 @@ fn is_planned_without_terminal_verdict(s: ChangedWitnessExecutionStanding) -> Bo
   match s {
     PlannedAndPassed => false
     PlannedWithoutTerminalVerdict => true
+    RoutedWithCandidateExactReceipt => false
     Declined { disposition: _ } => false
     MissingDisposition => false
   }
@@ -62,6 +71,7 @@ fn is_declined(s: ChangedWitnessExecutionStanding) -> Bool {
   match s {
     PlannedAndPassed => false
     PlannedWithoutTerminalVerdict => false
+    RoutedWithCandidateExactReceipt => false
     Declined { disposition: _ } => true
     MissingDisposition => false
   }
@@ -71,6 +81,7 @@ fn is_missing_disposition(s: ChangedWitnessExecutionStanding) -> Bool {
   match s {
     PlannedAndPassed => false
     PlannedWithoutTerminalVerdict => false
+    RoutedWithCandidateExactReceipt => false
     Declined { disposition: _ } => false
     MissingDisposition => true
   }
@@ -172,14 +183,49 @@ test fn declined_cost_debt_is_declined() -> Bool {
   )
 }
 
+// THE CANDIDATE-EXACT ADMISSION (#9717 composition, parent amendment 2026-08-30): a changed
+// wet-routed identity under a receipt whose subject digest matches the candidate stands
+// green — the lane executed exactly this candidate's wet subject.
+test fn routed_with_candidate_exact_receipt_stands_green() -> Bool {
+  let s = changed_witness_execution_standing(
+    reading: DispositionRow {
+      disposition: DeclinedRoutedToWetLane {},
+      terminal: NotExecuted {}
+    },
+    wet_standing: ReceiptFreshExactSubject { age_secs: 1 }
+  )
+  match s {
+    RoutedWithCandidateExactReceipt => !changed_witness_standing_blocks(standing: s)
+    PlannedAndPassed => false
+    PlannedWithoutTerminalVerdict => false
+    Declined { disposition: _ } => false
+    MissingDisposition => false
+  }
+}
+
+// AND ITS REFUSAL: an ancestor-subject receipt is a verdict about a tree without the edit,
+// so the changed identity blocks — there is no cadence-lag admission arm by ruling.
+test fn routed_with_ancestor_subject_receipt_is_declined() -> Bool {
+  is_declined(
+    s: changed_witness_execution_standing(
+      reading: DispositionRow {
+        disposition: DeclinedRoutedToWetLane {},
+        terminal: NotExecuted {}
+      },
+      wet_standing: ReceiptSubjectMismatch { receipt_digest: "ancestor", computed_digest: "candidate" }
+    )
+  )
+}
+
 // A changed identity with no disposition row at all is a fact the receipt cannot speak for.
 test fn absent_row_is_missing_disposition() -> Bool {
   is_missing_disposition(s: changed_standing_of(reading: NoDispositionRow {}))
 }
 
-// Blocking polarity: exactly one standing is green.
-test fn only_planned_and_passed_is_green() -> Bool {
+// Blocking polarity: exactly the two executed-verdict standings are green.
+test fn only_executed_verdict_standings_are_green() -> Bool {
   !changed_witness_standing_blocks(standing: PlannedAndPassed {})
+    && !changed_witness_standing_blocks(standing: RoutedWithCandidateExactReceipt {})
     && changed_witness_standing_blocks(standing: PlannedWithoutTerminalVerdict {})
     && changed_witness_standing_blocks(
       standing: Declined { disposition: DeclinedOutsideRequiredGate {} }

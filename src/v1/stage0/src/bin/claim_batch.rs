@@ -184,6 +184,7 @@ struct ParsedArgs {
     /// effects, and write the per-identity receipt TSV the required floor joins against.
     wet_route: bool,
     receipt_out: Option<PathBuf>,
+    receipt_tsv_out: Option<PathBuf>,
 }
 
 struct DiscoveryConfig {
@@ -203,6 +204,7 @@ fn parse_args(args: &[String]) -> Result<ParsedArgs, ExitCode> {
     let mut pre_push = false;
     let mut wet_route = false;
     let mut receipt_out: Option<PathBuf> = None;
+    let mut receipt_tsv_out: Option<PathBuf> = None;
 
     let mut i = 1;
     while i < args.len() {
@@ -257,6 +259,10 @@ fn parse_args(args: &[String]) -> Result<ParsedArgs, ExitCode> {
             }
             "--claim-run" => {}
             "--wet-route" => wet_route = true,
+            "--receipt-tsv-out" => {
+                i += 1;
+                receipt_tsv_out = Some(PathBuf::from(require_value(args, i, "--receipt-tsv-out")?));
+            }
             "--receipt-out" => {
                 i += 1;
                 receipt_out = Some(PathBuf::from(require_value(args, i, "--receipt-out")?));
@@ -313,6 +319,7 @@ fn parse_args(args: &[String]) -> Result<ParsedArgs, ExitCode> {
         pre_push,
         wet_route,
         receipt_out,
+        receipt_tsv_out,
     })
 }
 
@@ -530,6 +537,7 @@ fn validate_fixture_flags(
     Ok(())
 }
 
+#[allow(clippy::too_many_arguments)]
 fn run_witnesses(
     index: &MultiEntryIndex,
     group: &EntryGroup,
@@ -654,10 +662,47 @@ fn run() -> Result<ExitCode, ExitCode> {
         let receipt_out = match &parsed.receipt_out {
             Some(p) => p.clone(),
             None => {
-                eprintln!("claim_batch: --wet-route requires --receipt-out <path>");
+                eprintln!("claim_batch: --wet-route requires --receipt-out <envelope json path>");
                 return Err(ExitCode::from(2));
             }
         };
+        let receipt_tsv_out = match &parsed.receipt_tsv_out {
+            Some(p) => p.clone(),
+            None => {
+                eprintln!(
+                    "claim_batch: --wet-route requires --receipt-tsv-out <projection tsv path>"
+                );
+                return Err(ExitCode::from(2));
+            }
+        };
+        // THE WET SUBJECT DIGEST AND THE EXECUTION CLOCK, both captured BEFORE any witness
+        // runs: the digest is the envelope's validity key (computed by the same resolver the
+        // floor uses, which is what makes candidate-exactness a decidable equality), and
+        // executed_at is the conservative freshness basis — the tree's wet subject as of the
+        // moment execution began.
+        let subject_digest = match v1_compiler::cli_run::wet_subject_digest(&source_roots) {
+            Ok(d) => d,
+            Err(e) => {
+                eprintln!("claim_batch: {e}");
+                return Err(ExitCode::from(1));
+            }
+        };
+        let executor_contract_digest =
+            match v1_compiler::cli_run::wet_executor_contract_digest(&source_roots) {
+                Ok(d) => d,
+                Err(e) => {
+                    eprintln!("claim_batch: {e}");
+                    return Err(ExitCode::from(1));
+                }
+            };
+        let executed_at_unix_secs = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_secs())
+            .unwrap_or(0);
+        eprintln!(
+            "wet-lane: subject_digest={subject_digest} \
+             executor_contract_digest={executor_contract_digest}"
+        );
         let rows = match v1_compiler::cli_run::wet_route_lane_rows(&source_roots) {
             Ok(rows) => rows,
             Err(e) => {
@@ -749,15 +794,23 @@ fn run() -> Result<ExitCode, ExitCode> {
             });
             v1_compiler::v1_interpreter::eval_call_memo_frame_exit(&ctx);
         }
-        let out_path = receipt_out.to_string_lossy().to_string();
-        if let Err(e) = v1_compiler::cli_run::write_wet_lane_receipt_tsv_rows(&out_path, &receipts)
-        {
+        let json_path = receipt_out.to_string_lossy().to_string();
+        let tsv_path = receipt_tsv_out.to_string_lossy().to_string();
+        if let Err(e) = v1_compiler::cli_run::write_wet_receipt_envelope(
+            &json_path,
+            &tsv_path,
+            &receipts,
+            &subject_digest,
+            &executor_contract_digest,
+            executed_at_unix_secs,
+        ) {
             eprintln!("claim_batch: {e}");
             return Err(ExitCode::from(1));
         }
         eprintln!(
-            "wet-lane: receipt written path={} rows={} total_wall_ms={}",
-            out_path,
+            "wet-lane: envelope written json={} tsv={} rows={} total_wall_ms={}",
+            json_path,
+            tsv_path,
             receipts.len(),
             timings.witness_ms
         );

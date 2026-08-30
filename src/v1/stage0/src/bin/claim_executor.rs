@@ -1300,7 +1300,7 @@ fn report_required_floor_outcome(outcome: &v1_compiler::cli_run::RequiredFloorOu
          known_red_host_effect_refused={} known_red_runtime_errored={} \
          known_red_observation_unreadable={} over_cost_line_diagnostic={} \
          withheld_cost_debt={} stale_cost_debt={} routed_to_wet_lane={} \
-         wet_route_receipt_absent={} wet_route_receipt_stale={} stale_wet_route={}",
+         wet_route_standing_blocking={} stale_wet_route={}",
         outcome.claims_planned,
         outcome.claims_executed,
         outcome.not_attempted_after_abort,
@@ -1326,8 +1326,7 @@ fn report_required_floor_outcome(outcome: &v1_compiler::cli_run::RequiredFloorOu
         outcome.withheld_cost_debt.len(),
         outcome.stale_cost_debt.len(),
         outcome.declined_routed_to_wet_lane,
-        outcome.wet_route_receipt_absent.len(),
-        outcome.wet_route_receipt_stale.len(),
+        outcome.wet_route_standing_blocking.len(),
         outcome.stale_wet_route.len()
     );
     // ONE receipt, both numbers (#8642). This replaced a per-miss trace line that had no hit
@@ -1405,11 +1404,8 @@ fn report_required_floor_outcome(outcome: &v1_compiler::cli_run::RequiredFloorOu
     for stale in &outcome.stale_cost_debt {
         eprintln!("required-floor: STALE-COST-DEBT {stale}");
     }
-    for absent in &outcome.wet_route_receipt_absent {
-        eprintln!("required-floor: WET-ROUTE-RECEIPT-ABSENT {absent}");
-    }
-    for stale in &outcome.wet_route_receipt_stale {
-        eprintln!("required-floor: WET-ROUTE-RECEIPT-STALE {stale}");
+    for blocking in &outcome.wet_route_standing_blocking {
+        eprintln!("required-floor: WET-ROUTE-STANDING {blocking}");
     }
     for stale in &outcome.stale_wet_route {
         eprintln!("required-floor: STALE-WET-ROUTE {stale}");
@@ -1508,13 +1504,13 @@ fn required_floor_outcome_is_clean(outcome: &v1_compiler::cli_run::RequiredFloor
         // roster that has stopped describing the tree, which voids the contract's monotone
         // claim, so it blocks exactly as `stale_quarantine` and `stale_route_gap` do.
         && outcome.stale_cost_debt.is_empty()
-        // THE WET ROUTE'S THREE BLOCKING JOINS. A routed identity with no wet-lane receipt has
-        // never been executed by the lane it was routed to; one with a stale receipt is routed
-        // to a lane that stopped running; a roster row this run did not route names an identity
-        // the tree no longer offers. Every one is the decline decaying into a skip list, so
-        // every one stops the line (`v2.workflow.floor_wet_route`).
-        && outcome.wet_route_receipt_absent.is_empty()
-        && outcome.wet_route_receipt_stale.is_empty()
+        // THE WET ROUTE'S TWO BLOCKING JOINS. The receipt standing blocks on every arm but
+        // FreshExactSubject — missing, expired, an ancestor-subject receipt, a broken
+        // contract, an inexact roster join, or a FAILED latest attempt — because each is the
+        // decline decaying into a skip list or the lane's own line-stop; and a roster row
+        // this run did not route names an identity the tree no longer offers
+        // (`v2.workflow.floor_wet_route`).
+        && outcome.wet_route_standing_blocking.is_empty()
         && outcome.stale_wet_route.is_empty()
         // A CHANGED witness identity that did not execute to a passing verdict — declined,
         // absent from the disposition receipt, or without a terminal Passed verdict — reds the

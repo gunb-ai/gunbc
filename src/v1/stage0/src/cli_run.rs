@@ -55,8 +55,8 @@ mod required_floor_runner;
 pub(crate) use required_floor_runner::*;
 pub use required_floor_runner::{
     make_eval_context, make_eval_context_with_runtime_options, run_claim_measured,
-    run_required_floor, wet_route_lane_rows, write_wet_lane_receipt_tsv_rows,
-    WetLaneExecutedReceipt, WetRouteLaneRow,
+    run_required_floor, wet_executor_contract_digest, wet_route_lane_rows, wet_subject_digest,
+    write_wet_receipt_envelope, WetLaneExecutedReceipt, WetReceiptEnvelope, WetRouteLaneRow,
 };
 mod entry_resolve;
 pub(crate) use active_workset::*;
@@ -37120,13 +37120,12 @@ pub struct RequiredFloorOutcome {
     /// leaves a line behind that withholds nothing, and the roster's length then overstates the
     /// debt in the direction that flatters. Same shape as `stale_quarantine`, same reason.
     pub stale_cost_debt: Vec<String>,
-    /// BLOCKING. A wet-routed identity with NO row in the lane's committed receipt: the lane
-    /// has never executed it, so the decline would be coverage by illusion.
-    pub wet_route_receipt_absent: Vec<String>,
-    /// BLOCKING. A wet-routed identity whose receipt is older than the declared staleness
-    /// budget: the lane has stopped producing evidence, and a dead lane must un-route its
-    /// population loudly rather than hold it forever.
-    pub wet_route_receipt_stale: Vec<String>,
+    /// BLOCKING. The wet-lane receipt standing for the routed population, when it is any arm
+    /// but `FreshExactSubject` (authority `v2.workflow.floor_wet_route.WetLaneReceiptStanding`):
+    /// missing, expired, subject-mismatch (an ancestor receipt — blocked by ruling),
+    /// contract-mismatch, roster-inexact, or a FAILED latest attempt. At most one entry; it
+    /// carries the standing's own description and remedy.
+    pub wet_route_standing_blocking: Vec<String>,
     /// BLOCKING. A `floor_wet_route` roster row naming an identity this run did not offer and
     /// route — renamed, deleted, or declined by an earlier home policy. Same rot guard as
     /// `stale_cost_debt`.

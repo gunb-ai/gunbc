@@ -202,89 +202,61 @@ fn floor_route_gap_chunk_00() -> List<String> {
 fn floor_route_gap_chunk_01() -> List<String> {
   Cons {
     head: "test.claim.host_build_cache_provision_real_execution.provision_read_back_failure_not_converged_by_real_execution",
-    tail:
-    Cons {
+    tail: Cons {
       head: "test.claim.http_client_get_real_execution.http_client_get_missing_target_red_control_by_real_execution",
-      tail:
-      Cons {
+      tail: Cons {
         head: "test.claim.http_client_get_real_execution.http_client_get_roundtrip_by_real_execution",
-        tail:
-        Cons {
+        tail: Cons {
           head: "test.claim.interp_recorded_fixture_witness_test.interp_recorded_fixture_keystone_holds",
-          tail:
-          Cons {
+          tail: Cons {
             head: "test.claim.materialized_ssh_key_file_real_execution_witness.witness_ssh_key_bracket_write_owner_only_shreds_and_not_under_target",
-            tail:
-            Cons {
+            tail: Cons {
               head: "test.claim.materialized_ssh_key_file_real_execution_witness.witness_write_owner_only_refuses_when_path_already_exists",
-              tail:
-              Cons {
+              tail: Cons {
                 head: "test.claim.namespace_import_closure_witness.namespace_import_closure_receipt_holds",
-                tail:
-                Cons {
+                tail: Cons {
                   head: "test.claim.parse_test.parse_witness_floor_holds",
-                  tail:
-                  Cons {
+                  tail: Cons {
                     head: "test.claim.parse_test.parse_witness_perf_holds",
-                    tail:
-                    Cons {
+                    tail: Cons {
                       head: "test.claim.proc_self_cgroup_real_execution_witness.bash_assign_from_source_observed_shell_holds",
-                      tail:
-                      Cons {
+                      tail: Cons {
                         head: "test.claim.proc_self_cgroup_real_execution_witness.bash_assign_from_source_refuses_ambiguous_shell_holds",
-                        tail:
-                        Cons {
+                        tail: Cons {
                           head: "test.claim.proc_self_cgroup_real_execution_witness.bash_assign_from_source_refuses_malformed_shell_holds",
-                          tail:
-                          Cons {
+                          tail: Cons {
                             head: "test.claim.proc_self_cgroup_real_execution_witness.bash_assign_from_source_refuses_missing_shell_holds",
-                            tail:
-                            Cons {
+                            tail: Cons {
                               head: "test.claim.random_bytes_csprng_witness.random_bytes_base64url_mint_16_length_holds",
-                              tail:
-                              Cons {
+                              tail: Cons {
                                 head: "test.claim.random_bytes_csprng_witness.random_bytes_base64url_mint_20_length_holds",
-                                tail:
-                                Cons {
+                                tail: Cons {
                                   head: "test.claim.random_bytes_csprng_witness.random_bytes_count_holds",
-                                  tail:
-                                  Cons {
+                                  tail: Cons {
                                     head: "test.claim.random_bytes_csprng_witness.random_bytes_zero_holds",
-                                    tail:
-                                    Cons {
+                                    tail: Cons {
                                       head: "test.claim.repo_local_git_config_real_execution.repo_local_git_config_actuator_sets_local_bindings_by_real_execution",
-                                      tail:
-                                      Cons {
+                                      tail: Cons {
                                         head: "test.claim.roadmap_belt_actuate_witness.witness_exec_all_fails_on_later_step",
-                                        tail:
-                                        Cons {
+                                        tail: Cons {
                                           head: "test.claim.roadmap_belt_actuate_witness.witness_exec_all_runs_every_step_when_ok",
-                                          tail:
-                                          Cons {
+                                          tail: Cons {
                                             head: "test.claim.roadmap_belt_actuate_witness.witness_exec_all_short_circuits_after_failure",
-                                            tail:
-                                            Cons {
+                                            tail: Cons {
                                               head: "test.claim.roadmap_belt_actuate_witness.witness_exec_fails_on_nonzero_exit",
-                                              tail:
-                                              Cons {
+                                              tail: Cons {
                                                 head: "test.claim.roadmap_belt_actuate_witness.witness_exec_ok_runs_echo",
-                                                tail:
-                                                Cons {
+                                                tail: Cons {
                                                   head: "test.claim.roadmap_belt_actuate_witness.witness_exec_refuses_missing_program",
-                                                  tail:
-                                                  Cons {
+                                                  tail: Cons {
                                                     head: "test.claim.roadmap_belt_actuate_witness.witness_named_exec_steps_locate_the_first_failure",
-                                                    tail:
-                                                    Cons {
+                                                    tail: Cons {
                                                       head: "test.claim.run_verdict_exit_status_witness_test.run_failure_verdict_reaches_nonzero_exit",
-                                                      tail:
-                                                      Cons {
+                                                      tail: Cons {
                                                         head: "test.claim.run_verdict_exit_status_witness_test.run_non_process_exit_return_refuses",
-                                                        tail:
-                                                        Cons {
+                                                        tail: Cons {
                                                           head: "test.claim.run_verdict_exit_status_witness_test.run_success_verdict_reaches_zero_exit",
-                                                          tail:
-                                                          Empty {}
+                                                          tail: Empty {}
                                                         }
                                                       }
                                                     }
@@ -318,44 +290,31 @@ fn floor_route_gap_chunk_01() -> List<String> {
 fn floor_route_gap_chunk_02() -> List<String> {
   Cons {
     head: "test.claim.srv3_install_media_fetch_real_execution.install_media_hash_matches_false_on_wrong_hash_by_real_execution",
-    tail:
-    Cons {
+    tail: Cons {
       head: "test.claim.srv3_install_media_fetch_real_execution.install_media_hash_matches_true_by_real_execution",
-      tail:
-      Cons {
+      tail: Cons {
         head: "test.claim.srv3_install_media_fetch_real_execution.observe_install_media_fetch_covers_absent_verified_and_mismatch_by_real_execution",
-        tail:
-        Cons {
+        tail: Cons {
           head: "test.claim.srv3_seeded_install_media_real_execution.install_media_remaster_ensure_grub_cmdline_inserts_by_real_execution",
-          tail:
-          Cons {
+          tail: Cons {
             head: "test.claim.typed_witness_invocation.typed_claim_batch_pooled_run_red_control_holds",
-            tail:
-            Cons {
+            tail: Cons {
               head: "test.claim.typed_witness_invocation.typed_claim_executor_verify_build_artifacts_red_control_holds",
-              tail:
-              Cons {
+              tail: Cons {
                 head: "test.claim.typed_witness_invocation.typed_gunbc_cli_run_claim_holds",
-                tail:
-                Cons {
+                tail: Cons {
                   head: "test.claim.typed_witness_invocation.typed_is_executable_negative_red_control_holds",
-                  tail:
-                  Cons {
+                  tail: Cons {
                     head: "test.claim.typed_witness_invocation.typed_is_executable_positive_holds",
-                    tail:
-                    Cons {
+                    tail: Cons {
                       head: "test.claim.typed_witness_invocation.typed_is_nonempty_positive_holds",
-                      tail:
-                      Cons {
+                      tail: Cons {
                         head: "test.claim.typed_witness_invocation.typed_is_nonempty_zero_byte_red_control_holds",
-                        tail:
-                        Cons {
+                        tail: Cons {
                           head: "test.claim.typed_witness_invocation.typed_witness_bin_run_args_splice_holds",
-                          tail:
-                          Cons {
+                          tail: Cons {
                             head: "test.claim.typed_witness_invocation.typed_witness_bin_run_argv_holds",
-                            tail:
-                            Empty {}
+                            tail: Empty {}
                           }
                         }
                       }
@@ -551,50 +510,35 @@ fn floor_route_gap_expectation_chunk_01() -> List<FloorRouteGapExpectation> {
 fn floor_route_gap_expectation_chunk_02() -> List<FloorRouteGapExpectation> {
   Cons {
     head: FloorRouteGapExpectation { identity: "test.claim.host_cli_dependency_wet_witness_test.observe_echo_wet_posix_command_v_check_does_not_crash", operation: "Check", ground: NoMockResponse {} },
-    tail:
-    Cons {
+    tail: Cons {
       head: FloorRouteGapExpectation { identity: "test.claim.host_cli_dependency_wet_witness_test.observe_npm_wet_posix_command_v_check_does_not_crash", operation: "Check", ground: NoMockResponse {} },
-      tail:
-      Cons {
+      tail: Cons {
         head: FloorRouteGapExpectation { identity: "test.claim.interpreter_dispatch_bijection_real_roster_witness_test.interpreter_dispatch_bijection_real_roster_red_holds", operation: "Check", ground: NoMockResponse {} },
-        tail:
-        Cons {
+        tail: Cons {
           head: FloorRouteGapExpectation { identity: "test.claim.json_protocol_schema_memory_split_wet_witness_test.wet_finish_parse_largest_protocol_schema_only", operation: "Check", ground: NoMockResponse {} },
-          tail:
-          Cons {
+          tail: Cons {
             head: FloorRouteGapExpectation { identity: "test.claim.json_protocol_schema_memory_split_wet_witness_test.wet_finish_parse_canonicalize_largest_protocol_schema_only", operation: "Check", ground: NoMockResponse {} },
-            tail:
-            Cons {
+            tail: Cons {
               head: FloorRouteGapExpectation { identity: "test.claim.namespace_structural_root_exposure_generated_witness_test.namespace_structural_root_exposure_generated_witness_holds", operation: "IsExecutable", ground: NoMockResponse {} },
-              tail:
-              Cons {
+              tail: Cons {
                 head: FloorRouteGapExpectation { identity: "test.claim.no_fake_anomalies_witness.passing_run_shows_no_fake_anomaly_holds", operation: "Run", ground: NoMockResponse {} },
-                tail:
-                Cons {
+                tail: Cons {
                   head: FloorRouteGapExpectation { identity: "test.claim.no_fake_anomalies_witness.red_control_entry_with_real_anomaly_still_shows_glyph_holds", operation: "Run", ground: NoMockResponse {} },
-                  tail:
-                  Cons {
+                  tail: Cons {
                     head: FloorRouteGapExpectation { identity: "test.claim.roadmap_receipt_continuity_live_witness.live_roadmap_acceptance_history_integrity_holds", operation: "git.Inspect.HeadCommit", ground: UnpublishedMockCase {} },
-                    tail:
-                    Cons {
+                    tail: Cons {
                       head: FloorRouteGapExpectation { identity: "test.claim.served_surface_browser_artifact_integrity_witness.witness_checked_in_screenshots_match_receipts", operation: "Dir", ground: NoMockResponse {} },
-                      tail:
-                      Cons {
+                      tail: Cons {
                         head: FloorRouteGapExpectation { identity: "test.claim.stage0_regen_convergence_real_execution_witness.a_real_regen_stage0_verify_run_reports_zero_divergence", operation: "Run", ground: NoMockResponse {} },
-                        tail:
-                        Cons {
+                        tail: Cons {
                           head: FloorRouteGapExpectation { identity: "test.claim.stage0_regen_convergence_real_execution_witness.w_RED_an_unrecognized_flag_does_not_report_the_success_marker", operation: "Run", ground: NoMockResponse {} },
-                          tail:
-                          Cons {
+                          tail: Cons {
                             head: FloorRouteGapExpectation { identity: "test.claim.stage0_rust_host_observation_live_witness.live_rust_observation_matches_actions_subject", operation: "Get", ground: NoMockResponse {} },
-                            tail:
-                            Cons {
+                            tail: Cons {
                               head: FloorRouteGapExpectation { identity: "test.claim.stage0_rust_host_observation_live_witness.scaffold_host_observation_is_live_and_observed", operation: "git.Inspect.HeadCommit", ground: UnpublishedMockCase {} },
-                              tail:
-                              Cons {
+                              tail: Cons {
                                 head: FloorRouteGapExpectation { identity: "test.claim.stage0_rust_host_observation_live_witness.scaffold_host_observation_reaches_path_derived_verdict", operation: "git.Inspect.HeadCommit", ground: UnpublishedMockCase {} },
-                                tail:
-                                Empty {}
+                                tail: Empty {}
                               }
                             }
                           }
