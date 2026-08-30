@@ -75,7 +75,7 @@ import gunbc.compiler_frontend_program_status {
   Outstanding,
   NotDerivable,
   MissingInstrument,
-  WholeCorpusEmissionBoard,
+  WholeCorpusCompilePhaseFrontier,
   PhaseCargoExecutionFact,
   DeclaringIdentitySpellingCensus,
   RepairInputOriginRosterProducer,
@@ -461,7 +461,7 @@ test fn the_report_renders() -> Bool {
 // co-required for a third; the gate-enrolment fact independently answers NONE and is only
 // co-required. Deriving singleton sufficiency is a stronger carrier and is not claimed here.
 test fn the_whole_corpus_board_is_awaited_by_exactly_these_three() -> Bool {
-  let waiting = milestones_awaiting(i: WholeCorpusEmissionBoard)
+  let waiting = milestones_awaiting(i: WholeCorpusCompilePhaseFrontier)
   count(waiting) == 3
     && any(waiting, l => l == milestone_label(m: SelfHostWholeCorpusPopulationDerived))
     && any(waiting, l => l == milestone_label(m: SelfHostRatchetGateEnrolled))
@@ -699,7 +699,7 @@ test fn every_declared_instrument_is_distinct_and_awaited() -> Bool {
 // UNBUILT AND REFUSED ARE DIFFERENT STATES WITH DIFFERENT REMEDIES, and this arm now exhibits that
 // at FIXTURE grain rather than naming two live instruments that happen to occupy one arm each.
 //
-// The previous form matched missing_instrument_obstacle(WholeCorpusEmissionBoard) expecting
+// The previous form matched missing_instrument_obstacle(WholeCorpusCompilePhaseFrontier) expecting
 // RefusedByAuthority and missing_instrument_obstacle(RequiredCiPhaseRoster) expecting NotBuilt. Its
 // annotation claimed the axis is inhabited on both arms and that a collapse to one would red. Two
 // identities cannot carry an axis-wide claim, and worse, the arm is progress-sensitive in both
@@ -752,7 +752,7 @@ test fn the_obstacle_axis_renders_its_three_arms_distinguishably() -> Bool {
 // NotBuilt still answers false, and that is not laxity: a row with no citation cannot satisfy a
 // claim about which authority it names, and the board row is not in that state.
 test fn the_board_obstacle_cites_the_authority_it_is_about() -> Bool {
-  match missing_instrument_obstacle(i: WholeCorpusEmissionBoard) {
+  match missing_instrument_obstacle(i: WholeCorpusCompilePhaseFrontier) {
     NotBuilt => false
     RefusedByAuthority { authority, why: _ } =>
       authority.module_path == "gunbc.whole_corpus_compile_admission"

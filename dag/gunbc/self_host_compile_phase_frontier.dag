@@ -3,6 +3,7 @@ module gunbc.self_host_compile_phase_frontier
 import std.types { Bool, Int, String, NonEmptyStr }
 import std.content_hash { content_hash_atom, Fnv1a64Structural }
 import extdeps.git.inspect { CommitSha }
+import extdeps.crypto.hash { Digest }
 import extdeps.cargo_diagnostic {
   RustcCodedDiagnostic,
   RustcDiagnosticIdentity,
@@ -53,6 +54,31 @@ type RustcPhaseBoard {
   furthest_phase_reached: RustcPhase
   furthest_phase_evidence: PhaseCountEvidence
   census_identity_digest: Fnv1a64Structural
+}
+
+type RustfmtParseObservation {
+  parse_errors: Int
+}
+
+type ParsePhaseEvidence
+  = ParseReached { evidence: RustfmtParseObservation }
+
+type CompilePhaseInvocation {
+  target: String
+  profile: String
+  features: List<String>
+}
+
+type CompilePhaseReceiptSubject {
+  source_revision: CommitSha
+  git_tree_object: String
+  emitted_artifact_identity: Digest
+  compiler_identity: Digest
+  assembler_identity: Digest
+  cargo_identity: NonEmptyStr
+  rustc_identity: NonEmptyStr
+  invocation: CompilePhaseInvocation
+  classification_policy_digest: Fnv1a64Structural
 }
 
 type RustcPhaseBoardRead
@@ -160,12 +186,29 @@ type PhaseBoardSeriesPosition
   = PhaseBoardBaseline
   | PhaseBoardSuccessor { predecessor_invocation: NonEmptyStr }
 
-type SelfHostEmissionBoardReceipt {
-  source_revision: CommitSha
+type CompilePhaseFrontierReceipt {
+  sequence: Int
+  subject: CompilePhaseReceiptSubject
   invocation: NonEmptyStr
   position: PhaseBoardSeriesPosition
+  previous_prefix_digest: Fnv1a64Structural?
+  receipt_identity: Fnv1a64Structural
+  prefix_digest: Fnv1a64Structural
+  parse_evidence: ParsePhaseEvidence
   board: RustcPhaseBoard
+  raw_coded_diagnostic_identities: List<String>
+  unplaced_identities: List<String>
+  newly_exposed: List<NewlyExposedDiagnostic>
   producer: PhaseBoardProducer
+}
+
+type NewlyExposedCause
+  = ExposedByRemovedMaskingIdentity { removed_identity: String }
+  | ExposedByPhaseAdvance { previous_phase: RustcPhase, reached_phase: RustcPhase }
+
+type NewlyExposedDiagnostic {
+  identity: String
+  cause: NewlyExposedCause
 }
 
 type PhaseRatchetVerdict
@@ -179,8 +222,48 @@ type PhaseBoardSeriesVerdict
 
 type PhaseBoardSeriesFold
   = SeriesFoldEmpty
-  | SeriesFoldHeld { previous: SelfHostEmissionBoardReceipt }
+  | SeriesFoldHeld { previous: CompilePhaseFrontierReceipt, seen_subjects: List<String> }
   | SeriesFoldRefused { invocation: String, reason: NonEmptyStr }
+
+fn receipt_subject_key(receipt: CompilePhaseFrontierReceipt) -> String {
+  join([
+    receipt.subject.git_tree_object,
+    receipt.subject.emitted_artifact_identity.hex as String,
+    receipt.subject.compiler_identity.hex as String,
+    receipt.subject.assembler_identity.hex as String,
+    receipt.subject.cargo_identity as String,
+    receipt.subject.rustc_identity as String,
+    receipt.subject.classification_policy_digest.digest as String,
+    receipt.subject.invocation.target,
+    receipt.subject.invocation.profile,
+    receipt.subject.invocation.features |> join(separator: ",")
+  ], "\t")
+}
+
+fn receipt_payload_identity(receipt: CompilePhaseFrontierReceipt) -> Fnv1a64Structural {
+  content_hash_atom(
+    value: join([
+      receipt_subject_key(receipt: receipt),
+      receipt.invocation as String,
+      receipt.raw_coded_diagnostic_identities |> join(separator: "\n"),
+      receipt.unplaced_identities |> join(separator: "\n"),
+      receipt.board.census_identity_digest.digest as String,
+      rustc_phase_name(phase: receipt.board.furthest_phase_reached)
+    ], "\n") as NonEmptyStr
+  )
+}
+
+fn expected_prefix_digest(previous: Fnv1a64Structural?, identity: Fnv1a64Structural) -> Fnv1a64Structural {
+  content_hash_atom(
+    value: concat(
+      match previous {
+        Absent => "genesis"
+        Present { value: p } => p.digest as String
+      },
+      concat("\n", identity.digest as String)
+    ) as NonEmptyStr
+  )
+}
 
 fn board_row(board: RustcPhaseBoard, phase: RustcPhase) -> RustcPhaseBoardRow? {
   board.rows |> find(r => rustc_phase_order(phase: r.phase) == rustc_phase_order(phase: phase))
@@ -211,8 +294,11 @@ fn phase_ratchet(previous: RustcPhaseBoard, current: RustcPhaseBoard) -> PhaseRa
           Present { value: now } => {
             let old_count = phase_count_or_negative(row: old)
             let now_count = phase_count_or_negative(row: now)
+            let added = now.identities |> filter(identity => !any(old.identities, prior => prior == identity))
             if old_count == 0 && now_count > 0 {
               PhaseRatchetRefused { phase: old.phase, identities: now.identities, reason: "a closed phase regained diagnostic identities" as NonEmptyStr }
+            } else if count(added) > 0 && rustc_phase_order(phase: old.phase) <= rustc_phase_order(phase: previous.furthest_phase_reached) {
+              PhaseRatchetRefused { phase: old.phase, identities: added, reason: "the reached population gained diagnostic identities without a newly-exposed disposition" as NonEmptyStr }
             } else if rustc_phase_order(phase: old.phase) == rustc_phase_order(phase: previous.furthest_phase_reached) && now_count > old_count {
               PhaseRatchetRefused { phase: old.phase, identities: now.identities, reason: "the reached phase diagnostic identity count increased" as NonEmptyStr }
             } else { PhaseRatchetHeld }
@@ -223,28 +309,79 @@ fn phase_ratchet(previous: RustcPhaseBoard, current: RustcPhaseBoard) -> PhaseRa
   }
 }
 
-fn phase_board_series_ratchet(series: List<SelfHostEmissionBoardReceipt>) -> PhaseBoardSeriesVerdict {
+fn board_all_identities(board: RustcPhaseBoard) -> List<String> {
+  board.rows |> flat_map(r => r.identities)
+}
+
+fn newly_exposed_identity_admitted(
+  previous: RustcPhaseBoard,
+  current: RustcPhaseBoard,
+  dispositions: List<NewlyExposedDiagnostic>,
+  identity: String
+) -> Bool {
+  any(dispositions, row => row.identity == identity && match row.cause {
+    ExposedByRemovedMaskingIdentity { removed_identity: masking } =>
+      any(board_all_identities(board: previous), prior => prior == masking)
+        && !any(board_all_identities(board: current), now => now == masking)
+    ExposedByPhaseAdvance { previous_phase: old, reached_phase: reached } =>
+      rustc_phase_order(phase: old) == rustc_phase_order(phase: previous.furthest_phase_reached)
+        && rustc_phase_order(phase: reached) == rustc_phase_order(phase: current.furthest_phase_reached)
+        && rustc_phase_order(phase: reached) > rustc_phase_order(phase: old)
+  })
+}
+
+fn phase_ratchet_with_dispositions(
+  previous: RustcPhaseBoard,
+  current: RustcPhaseBoard,
+  dispositions: List<NewlyExposedDiagnostic>
+) -> PhaseRatchetVerdict {
+  match phase_ratchet(previous: previous, current: current) {
+    PhaseRatchetRefused { phase: p, identities: ids, reason: why } =>
+      if string_contains(s: why as String, pattern: "gained diagnostic identities")
+        && all(ids, identity => newly_exposed_identity_admitted(previous: previous, current: current, dispositions: dispositions, identity: identity)) {
+        PhaseRatchetHeld
+      } else {
+        PhaseRatchetRefused { phase: p, identities: ids, reason: why }
+      }
+    PhaseRatchetHeld => PhaseRatchetHeld
+  }
+}
+
+fn phase_board_series_ratchet(series: List<CompilePhaseFrontierReceipt>) -> PhaseBoardSeriesVerdict {
   let folded = fold(
     series,
     init: SeriesFoldEmpty,
     f: (state, receipt) => match state {
       SeriesFoldRefused { invocation: i, reason: why } => SeriesFoldRefused { invocation: i, reason: why }
       SeriesFoldEmpty => match receipt.position {
-        PhaseBoardBaseline => SeriesFoldHeld { previous: receipt }
+        PhaseBoardBaseline =>
+          if receipt.sequence != 0 || receipt.previous_prefix_digest != none || receipt.receipt_identity != receipt_payload_identity(receipt: receipt) || receipt.prefix_digest != expected_prefix_digest(previous: none, identity: receipt.receipt_identity) {
+            SeriesFoldRefused { invocation: receipt.invocation as String, reason: "genesis receipt identity, sequence, or prefix link is invalid" as NonEmptyStr }
+          } else {
+            SeriesFoldHeld { previous: receipt, seen_subjects: [receipt_subject_key(receipt: receipt)] }
+          }
         PhaseBoardSuccessor { predecessor_invocation: _ } => SeriesFoldRefused {
           invocation: receipt.invocation as String,
           reason: "the first board receipt is not typed as the baseline" as NonEmptyStr
         }
       }
-      SeriesFoldHeld { previous: previous } => {
+      SeriesFoldHeld { previous: previous, seen_subjects: seen } => {
           match receipt.position {
             PhaseBoardBaseline => SeriesFoldRefused { invocation: receipt.invocation as String, reason: "a later board receipt is typed as another baseline" as NonEmptyStr }
             PhaseBoardSuccessor { predecessor_invocation: named } =>
               if (named as String) != (previous.invocation as String) {
                 SeriesFoldRefused { invocation: receipt.invocation as String, reason: "board successor names a different predecessor" as NonEmptyStr }
+              } else if receipt.sequence != previous.sequence + 1 {
+                SeriesFoldRefused { invocation: receipt.invocation as String, reason: "board receipt sequence is not chronological" as NonEmptyStr }
+              } else if receipt.previous_prefix_digest != Present { value: previous.prefix_digest } {
+                SeriesFoldRefused { invocation: receipt.invocation as String, reason: "board receipt does not link the preceding prefix digest" as NonEmptyStr }
+              } else if receipt.receipt_identity != receipt_payload_identity(receipt: receipt) || receipt.prefix_digest != expected_prefix_digest(previous: receipt.previous_prefix_digest, identity: receipt.receipt_identity) {
+                SeriesFoldRefused { invocation: receipt.invocation as String, reason: "board receipt or prefix digest does not match its payload" as NonEmptyStr }
+              } else if any(seen, key => key == receipt_subject_key(receipt: receipt)) {
+                SeriesFoldRefused { invocation: receipt.invocation as String, reason: "the same tree and full observation subject appears twice" as NonEmptyStr }
               } else {
-                match phase_ratchet(previous: previous.board, current: receipt.board) {
-                  PhaseRatchetHeld => SeriesFoldHeld { previous: receipt }
+                match phase_ratchet_with_dispositions(previous: previous.board, current: receipt.board, dispositions: receipt.newly_exposed) {
+                  PhaseRatchetHeld => SeriesFoldHeld { previous: receipt, seen_subjects: concat(seen, [receipt_subject_key(receipt: receipt)]) }
                   PhaseRatchetRefused { phase: p, identities: ids, reason: why } => SeriesFoldRefused {
                     invocation: receipt.invocation as String,
                     reason: concat(concat(rustc_phase_name(phase: p), concat(": ", why as String)), concat(" — identities: ", ids |> join(separator: " | "))) as NonEmptyStr
@@ -257,7 +394,7 @@ fn phase_board_series_ratchet(series: List<SelfHostEmissionBoardReceipt>) -> Pha
   )
   match folded {
     SeriesFoldEmpty => PhaseBoardSeriesEmptyBaselinePermitted
-    SeriesFoldHeld { previous: _ } => PhaseBoardSeriesHeld
+    SeriesFoldHeld { previous: _, seen_subjects: _ } => PhaseBoardSeriesHeld
     SeriesFoldRefused { invocation: i, reason: why } => PhaseBoardSeriesRefused { invocation: i, reason: why }
   }
 }
