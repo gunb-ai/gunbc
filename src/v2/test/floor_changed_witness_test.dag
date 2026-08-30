@@ -2,7 +2,7 @@ module v2.test.floor_changed_witness
 
 import v2.workflow.floor_changed_witness {
   ChangedWitnessExecutionStanding,
-  PlannedAndPassed, PlannedWithoutTerminalVerdict, Declined, MissingDisposition,
+  PlannedAndPassed, PlannedAndKnownRedHeld, PlannedWithoutTerminalVerdict, Declined, MissingDisposition,
   ChangedWitnessTerminalReading, TerminalOutcome, NotExecuted,
   ChangedWitnessDispositionReading, DispositionRow, NoDispositionRow,
   ChangedWitnessRow,
@@ -36,7 +36,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // discriminating arm each, so the model's rung is established by execution rather than by the
 // host citing it. This module's own identities are new under the `v2.test.` gate prefix, so
 // the PR that lands them is also the projection's first live positive control: each must
-// appear in its run's changed-witness lines as planned-and-passed.
+// appear in its run's changed-witness lines with the terminal disposition preserved.
 
 fn changed_standing_of(reading: ChangedWitnessDispositionReading) -> ChangedWitnessExecutionStanding {
   changed_witness_execution_standing(reading: reading)
@@ -45,6 +45,7 @@ fn changed_standing_of(reading: ChangedWitnessDispositionReading) -> ChangedWitn
 fn is_planned_and_passed(s: ChangedWitnessExecutionStanding) -> Bool {
   match s {
     PlannedAndPassed => true
+    PlannedAndKnownRedHeld => false
     PlannedWithoutTerminalVerdict => false
     Declined { disposition: _ } => false
     MissingDisposition => false
@@ -54,6 +55,7 @@ fn is_planned_and_passed(s: ChangedWitnessExecutionStanding) -> Bool {
 fn is_planned_without_terminal_verdict(s: ChangedWitnessExecutionStanding) -> Bool {
   match s {
     PlannedAndPassed => false
+    PlannedAndKnownRedHeld => false
     PlannedWithoutTerminalVerdict => true
     Declined { disposition: _ } => false
     MissingDisposition => false
@@ -63,6 +65,7 @@ fn is_planned_without_terminal_verdict(s: ChangedWitnessExecutionStanding) -> Bo
 fn is_declined(s: ChangedWitnessExecutionStanding) -> Bool {
   match s {
     PlannedAndPassed => false
+    PlannedAndKnownRedHeld => false
     PlannedWithoutTerminalVerdict => false
     Declined { disposition: _ } => true
     MissingDisposition => false
@@ -72,13 +75,24 @@ fn is_declined(s: ChangedWitnessExecutionStanding) -> Bool {
 fn is_missing_disposition(s: ChangedWitnessExecutionStanding) -> Bool {
   match s {
     PlannedAndPassed => false
+    PlannedAndKnownRedHeld => false
     PlannedWithoutTerminalVerdict => false
     Declined { disposition: _ } => false
     MissingDisposition => true
   }
 }
 
-// A planned identity whose terminal outcome is Passed is the ONE green standing.
+fn is_planned_and_known_red_held(s: ChangedWitnessExecutionStanding) -> Bool {
+  match s {
+    PlannedAndPassed => false
+    PlannedAndKnownRedHeld => true
+    PlannedWithoutTerminalVerdict => false
+    Declined { disposition: _ } => false
+    MissingDisposition => false
+  }
+}
+
+// A planned identity whose terminal outcome is Passed carries the passed green standing.
 test fn planned_with_passed_verdict_stands_green() -> Bool {
   is_planned_and_passed(
     s: changed_standing_of(
@@ -150,7 +164,7 @@ test fn planned_but_not_executed_is_nonterminal() -> Bool {
 // An enrolled expected-red failing exactly as enrolled reached the terminal verdict the run
 // holds green for it — the sanctioned add-a-discriminating-RED move is not vetoed here.
 test fn planned_with_known_red_held_verdict_stands_green() -> Bool {
-  is_planned_and_passed(
+  is_planned_and_known_red_held(
     s: changed_standing_of(
       reading: DispositionRow {
         disposition: Planned {},
@@ -224,9 +238,10 @@ test fn absent_row_is_missing_disposition() -> Bool {
   is_missing_disposition(s: changed_standing_of(reading: NoDispositionRow {}))
 }
 
-// Blocking polarity: exactly one standing is green.
-test fn only_planned_and_passed_is_green() -> Bool {
+// Blocking polarity: the passed and enrolled-held standings are green.
+test fn passed_and_known_red_held_are_green() -> Bool {
   !changed_witness_standing_blocks(standing: PlannedAndPassed {})
+    && !changed_witness_standing_blocks(standing: PlannedAndKnownRedHeld {})
     && changed_witness_standing_blocks(standing: PlannedWithoutTerminalVerdict {})
     && changed_witness_standing_blocks(
       standing: Declined { disposition: DeclinedOutsideRequiredGate {} }
