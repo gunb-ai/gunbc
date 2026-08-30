@@ -869,7 +869,7 @@ fn admit_commit_writer(
       ),
     ),
   )
-  if refusals.length() == 0 {
+  if refusals == [] {
     CommitWriterAdmitted {
       writer: writer,
       coverage: ExactIndexBlobCoverageReceipt {
