@@ -66,13 +66,13 @@ fn is_ordered_element_collection(name: String) -> Bool {
 }
 
 // BOTH MAPS ARE DERIVED FROM THE CARRIER ROSTER in `std.algebra`. What stood here was two
-// spelling-keyed literals, and the note they carried explained -- correctly -- exactly why each
-// row was present or absent: `PartialFunction` had to be in the alias map because that map decides
-// what resolves as a container at all, and `FinitelySupportedFunction` had to stay out of it
-// because `container_alias_canonical_spelling` returns the first sorted key for an algebra and
-// that key would sort ahead of `"Map"`. Those reasons are now FIELDS on the spelling rows they
-// govern (`container_alias_row`, with its `RowAbsent` reason), so they travel with the carrier
-// instead of living in prose beside a literal that a later author edits without reading it.
+// spelling-keyed literals whose note explained -- correctly -- why each row was present or
+// absent: `PartialFunction` had to be in the alias map because that map decides what resolves as
+// a container at all, and `FinitelySupportedFunction` had to stay out because
+// `container_alias_canonical_spelling` returns the first sorted key for an algebra and that key
+// would sort ahead of `"Map"`. Those reasons are now FIELDS on the spelling rows they govern
+// (`container_alias_row`, with its `RowAbsent` reason), so they travel with the carrier instead
+// of living in prose beside a literal a later author edits without reading it.
 //
 // A self-mapping row is not a nickname: the value is the ALGEBRA and the key is a SPELLING that
 // resolves to it, which is why `List` and `Set` are keys at all.
@@ -110,35 +110,34 @@ type Bytes
 type Char = Int where unicode_scalar, brand("Char")
 
 type List<element> = FreeMonoid<element>
-// BOTH ALIASES NAME THE FINITE CARRIER, and this is the motion the predicate-half change
-// (`PointwisePower`, landed separately) was waiting for. A `Set` or a `Map` in a declaration
-// position has always LOWERED to a finite container -- `im::OrdSet` and `HashMap` in Rust, and the
-// same story in Go, Python and TypeScript -- so pointing the aliases at the finite carriers makes
-// the declaration say what the realization already did. The open carriers keep their own names:
-// `std.algebra` `PointwisePower` for a characteristic function, `PartialFunction` for a partial
-// one.
+// BOTH ALIASES NAME THE FINITE CARRIER, the motion the predicate-half change (`PointwisePower`,
+// landed separately) was waiting for. A `Set` or a `Map` in a declaration position has always
+// LOWERED to a finite container -- `im::OrdSet` and `HashMap` in Rust, likewise in Go, Python and
+// TypeScript -- so pointing the aliases at the finite carriers makes the declaration say what the
+// realization already did. The open carriers keep their own names: `std.algebra` `PointwisePower`
+// for a characteristic function, `PartialFunction` for a partial one.
 //
-// Why the two rows move together rather than one at a time: they are one row set. Retargeting
-// `Map` while `Set` still resolved to the predicate would leave the fork intact on the Set side
-// and make the pair inconsistent for the interval, which is the dual-authority state the
-// replacement-migration doctrine exists to avoid. The transition is atomic in the AUTHORITY sense
-// -- one motion, no interval in which both answers are live -- whatever the diff size.
+// The two rows move together because they are one row set. Retargeting `Map` while `Set` still
+// resolved to the predicate would leave the fork intact on the Set side and make the pair
+// inconsistent for the interval, the dual-authority state the replacement-migration doctrine
+// avoids. The transition is atomic in the AUTHORITY sense -- one motion, no interval in which both
+// answers are live -- whatever the diff size.
 //
-// RUNG: STILL MITIGATABLE. This change does NOT make the bad literal unwritable, and saying it did
+// RUNG: STILL MITIGATABLE. This change does NOT make the bad literal unwritable, and saying so
 // would be the inflation DESIGN 4b calls worse than sitting low. `FinitePowerSet` carries `member`
-// and `FinitelySupportedFunction` carries `lookup`, because a finite set really does answer
-// membership and a finite map really does answer lookup -- so `Set { member: .. }` and
-// `Map { lookup: .. }` still typecheck. They must: 145 `Map { lookup: .. }` literals are live in
-// the corpus and are re-authored by the following change, not by this one.
+// and `FinitelySupportedFunction` carries `lookup`, because a finite set answers membership and a
+// finite map answers lookup -- so `Set { member: .. }` and `Map { lookup: .. }` still typecheck.
+// They must: 145 `Map { lookup: .. }` literals are live in the corpus and are re-authored by the
+// following change, not this one.
 //
 // The correction is that the invalid state was never "a literal supplying `member` or `lookup`".
 // It is "a literal supplying ONLY those, on a carrier whose remaining fields promise an
 // enumeration it cannot perform" -- a construction-COMPLETENESS question, and record literals in
 // this substrate do not require every field. So the real NEXT-RUNG TRIGGER is field-completeness
 // enforcement on record construction, which would make the deficient literal unwritable at every
-// carrier at once rather than at these two. Until that exists the class stays mitigatable and only
-// review sees a new one; what this change buys is that each alias now names a carrier that can
-// answer for it, which is the single-authority half, not the wall.
+// carrier at once rather than at these two. Until then the class stays mitigatable and only review
+// sees a new one; what this change buys is that each alias now names a carrier that can answer
+// for it -- the single-authority half, not the wall.
 //
 // CARRIED FORWARD FROM THE PREDICATE-HALF CHANGE (#9055), whose note this row replaces: the
 // fusion was measured, not argued -- `extdeps.languages.rust.types` gave `PointwisePower` the
@@ -157,7 +156,15 @@ fn list_length<T>(items: List<T>) -> Int {
 
 type CommitSha    = String
 
-data commit_sha_text_holds_note: String = "The located syntax wall for an EXTERNALLY SUPPLIED Git head: lowercase 40-hex. It lives here, beside CommitSha, because that is the one authority every Git-head consumer already names — it was previously homed in std.realization_schedule as scoped_witness_exact_head_text_holds, where a receipt family that has since been deleted happened to be its first caller, and a second consumer (v2.compiler.self_host.frontier_probe_survey) was already importing it across that seam. CommitSha is presently an unvalidated String alias, so this predicate is a validating CHECK a caller must remember to run, not a construction wall. Dissolve-on: CommitSha gains one validating constructor; callers reach the constructor, the invalid state stops being writable, and this predicate deletes."
+// The located syntax wall for an EXTERNALLY SUPPLIED Git head: lowercase 40-hex. It lives here,
+// beside CommitSha, the one authority every Git-head consumer already names — it was previously
+// homed in std.realization_schedule as scoped_witness_exact_head_text_holds, where a since-deleted
+// receipt family happened to be its first caller, and a second consumer
+// (v2.compiler.self_host.frontier_probe_survey) was already importing it across that seam.
+// CommitSha is presently an unvalidated String alias, so this predicate is a validating CHECK a
+// caller must remember to run, not a construction wall. Dissolve-on: CommitSha gains one validating
+// constructor; callers reach the constructor, the invalid state stops being writable, and this
+// predicate deletes.
 
 fn commit_sha_text_holds(head: String) -> Bool {
   head.length() == 40 && all(chars(s: head), cp =>
@@ -199,7 +206,23 @@ fn path_segment_is_safe(raw: String) -> Bool {
 }
 type GlobSegment   = NonEmptyStr where brand("GlobSegment")
 
-data rendered_terminal_text_note: String = "TEXT THAT CARRIES NO TERMINAL CONTROL SEQUENCES — the vocabulary two unrelated dependencies meet on so neither has to know the other exists. A terminal-facing tool emits SGR escapes around the values it highlights; a parser reading those values needs them absent. Those are facts about DIFFERENT upstreams, and the wrong fix is for either to mention the other: a note in a CLI's module explaining what a terminal multiplexer strips is a fact filed under the wrong authority, and it stops being true the moment a second capture transport appears (operator, 2026-07-30: 'tmux stripping ansi should be a tmux fact, and codex prompts should be a codex fact, and the interaction should be emergent').\\n\\nSo the brand is the seam. A capture surface that renders a pane PRODUCES RenderedTerminalText; a prompt parser CONSUMES it; and the composition is admissible because the types line up, not because one module was written knowing about the other. A raw stdout pipe cannot inhabit the brand, so feeding one to a parser that requires it is a type error rather than a runtime paste of escape bytes the operator discovers when the far end rejects them.\\n\\nIt lives in std because it is a property of text, not of any one tool — the same reason FilePath is not owned by whichever dependency happens to open files."
+// TEXT THAT CARRIES NO TERMINAL CONTROL SEQUENCES — the vocabulary two unrelated dependencies meet
+// on so neither has to know the other exists. A terminal-facing tool emits SGR escapes around the
+// values it highlights; a parser reading those values needs them absent. Those are facts about
+// DIFFERENT upstreams, and the wrong fix is for either to mention the other: a note in a CLI's
+// module explaining what a terminal multiplexer strips is filed under the wrong authority, and
+// stops being true the moment a second capture transport appears (operator, 2026-07-30: 'tmux
+// stripping ansi should be a tmux fact, and codex prompts should be a codex fact, and the
+// interaction should be emergent').
+//
+// So the brand is the seam. A capture surface that renders a pane PRODUCES RenderedTerminalText;
+// a prompt parser CONSUMES it; the composition is admissible because the types line up, not
+// because one module was written knowing about the other. A raw stdout pipe cannot inhabit the
+// brand, so feeding one to a parser that requires it is a type error rather than a runtime paste
+// of escape bytes the operator discovers when the far end rejects them.
+//
+// It lives in std because it is a property of text, not of any one tool — the same reason
+// FilePath is not owned by whichever dependency happens to open files.
 
 type RenderedTerminalText = String where brand("RenderedTerminalText")
 type FilePathParts {

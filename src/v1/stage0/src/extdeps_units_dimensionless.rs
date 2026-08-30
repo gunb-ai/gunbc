@@ -26,24 +26,6 @@ pub fn extdeps_external_authority_anchor() -> Rc<ExternalAuthority> {
     CACHED.with(|c: &Rc<ExternalAuthority>| c.clone())
 }
 
-pub fn basis_point_authority_note() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "Permyriad / basis-point unity: one part per ten thousand (1 bp = 0.01 percentage points = 1/10000 of unity). ISO 80000-1 quantity 'factor, unitless' applied to the ten-thousandth submultiple (permyriad, ‱); financial reporting convention names the same scale 'basis point'.".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
-}
-
-pub fn percent_unity_note() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "Percent unity: parts per hundred (1% = 1/100 of unity). ISO 80000-1 quantity 'factor, unitless' applied to the hundredth submultiple.".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
-}
-
 pub fn parts_per_ten_thousand_unity_count() -> Nat {
     10000
 }

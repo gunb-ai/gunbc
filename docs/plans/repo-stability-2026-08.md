@@ -14,10 +14,10 @@ stable place and keep it there. Maintained on branch
   corpus-walk / integration / performance witnesses are POLICY VIOLATIONS —
   the current 44 BUDGET-REFUSED rows are considered erroring/failing now,
   not "budget too small".
-- The recurring pattern to break: things reach "good enough" (e.g. 40-min CI)
-  and then spiral (100 min) because nothing prices the derivative. v1 /
-  reconcile / CI root work keeps being avoided; it is admitted under the
-  2026-08-20 purpose ruling (in support of v2 self-host; fixing issues is fine).
+- The pattern to break: things reach "good enough" (e.g. 40-min CI) then spiral
+  (100 min) because nothing prices the derivative. v1 / reconcile / CI root work
+  keeps being avoided; it is admitted under the 2026-08-20 purpose ruling (in
+  support of v2 self-host; fixing issues is fine).
 
 ## Measured state (2026-08-28, main @ e910a39)
 
@@ -43,8 +43,8 @@ stable place and keep it there. Maintained on branch
 
 ### P1 — CI to ~minutes: minimal invocation + short witnesses
 
-The two whole-corpus terms (fold ~30 min, reconcile 22 min) cannot reach
-minutes by optimization; only by not redoing unchanged work. Plan:
+The two whole-corpus terms (fold ~30 min, reconcile 22 min) reach minutes only
+by not redoing unchanged work, never by optimization. Plan:
 
 1. **Hoist corpus walks out of witnesses into run-once indexes**
    (`declaration_index` pattern: the required parse sweep derives the facts
@@ -80,24 +80,23 @@ commits, report would-have-been hit rate + residual per-push cost.
 
 ### P2 — Main back to green: the 47 standing reds
 
-Identical across runs; grouped by module (see run 33145062452):
+Identical across runs; grouped by module (run 33145062452):
 doc_reachability (x6, v1+v2 copies), sole_constructor audit probes (x6),
 lens_module_gate (x3), quarantine_probe_disposition (x3), ci_budget_tree
 (x3), cost_coverage (x3), compiler_closure ingest/emit (x4), guarantee
 probes (x5), and singletons. Plus 1 STALE-QUARANTINE
 (`duplicate_definition_binding_probe_test` passes; remove from
-`v2.workflow.floor_expected_red`). Triage by shared root, not row-by-row;
-several sit in the same corpus-scan families as P1.1 and get cheap after
-the hoist. Dispositions must be honest: fix, or expected-red with typed
-reason + trigger — never quarantine-to-green.
+`v2.workflow.floor_expected_red`). Triage by shared root, not row-by-row; several sit in P1.1's corpus-scan
+families and get cheap after the hoist. Dispositions must be honest: fix, or
+expected-red with typed reason + trigger — never quarantine-to-green.
 
 ### P3 — srv1 / roadmap daily workspace
 
 Run the fleet-converge plan → apply with the landed convergence chain;
 verify by the belt's own evidence (next tick spawns; dispatch_preflight
 refused_axis_count 5 → 0; fresh provider-events capture). Then consider a
-scheduled convergence so a 664-commit drift can never silently accumulate
-again (drift was invisible for 8+ days because the belt exits 0).
+scheduled convergence so a 664-commit drift can never silently accumulate again
+(it was invisible for 8+ days because the belt exits 0).
 
 ### P4 — Repo cleanup pass ("pristine")
 
@@ -126,10 +125,9 @@ consumer; transcribed measurement outputs are debt regardless of accuracy.
 
 ### P5 — Plans content refresh
 
-After P4 shrinks the population: rewrite the surviving live plans
-(floor-cut, namespace-cut, guarantee-recovery gap analysis,
-replacement-migration doctrine) against the current tree, so plan prose
-stops contaminating sessions with dead premises.
+After P4 shrinks the population: rewrite the surviving live plans (floor-cut,
+namespace-cut, guarantee-recovery gap analysis, replacement-migration doctrine)
+against the current tree, so plan prose stops seeding sessions with dead premises.
 
 ## Open operator decisions
 
@@ -182,7 +180,7 @@ stops contaminating sessions with dead premises.
 AN EARLIER REVISION OF THIS SECTION CLAIMED A CWD-GATED SWITCH (identical trees
 <0.5s outside a checkout) AND IS REPLACED WHOLE: those fast controls were
 PANICS — `repo_relative_path_normalized` aborts on roots outside the process
-workspace root, and the discarded stderr was misread as fast success. The
+workspace root, and the discarded stderr was misread as fast success — the
 fabricated-fast twin of execution-provenance loss. `git rev-parse` is workspace
 discovery only, not a heavy-work toggle.
 
@@ -204,7 +202,7 @@ String clones in `pre_intern_tokens`.
 
 WHY THE FACTS EXIST (per the in-code comment block): loader-tier adjacency and
 selection-tier adjacency (affected-set selection). A single-entry run needs at
-most one entry's loader closure; it pays both tiers over the whole pool. The
+most one entry's loader closure but pays both tiers over the whole pool. The
 facts ARE memoized (thread-local MODULE_GRAPH_FACTS_CACHE / PROCESS_RESOLVE_INDEX),
 so one process pays once — but every PROCESS pays cold, and CI phases,
 emit-compile entries, and belt ticks are one process per invocation.
@@ -253,8 +251,8 @@ window; the extraction recipe is in the split commits' messages.
 The interpreter has four roles: R1 witness executor · R2 orchestration executor
 · R3 v2's executor (v2 stages are .dag, so v2 compiles by being interpreted) ·
 R4 the host-effect seam (builtin handlers). Emitting .dag→Rust does NOT need
-the interpreter (the v1 passes are native); interpretation is only evaluation
-without emission. Three separable decisions:
+the interpreter (the v1 passes are native); interpretation is evaluation without
+emission. Three separable decisions:
 
 1. REALIZATION STORE (backport of v2.std.materialize's model into a v1-host
    persistent content-keyed store; digest authority already shared via
@@ -285,7 +283,7 @@ ACCEPTANCE, binary and pre-registered: on an unchanged tree, the SECOND
 completes in <10s (cold today: ~81–99s), AND the warm facts are byte-identical
 to cold-derived facts (the §5 purity oracle, asserted by execution). A miss
 (any file changed) re-derives fail-closed. If the warm run is not <10s or the
-oracle disagrees, the store thesis as specified is refuted and the plan gets
+oracle disagrees, the store thesis as specified is refuted and the plan is
 rewritten before anything else is built on it.
 WHY THIS ONE: smallest end-to-end existence proof of the store (one producer,
 one consumer, one oracle); kills the measured entry-independent pool tax; the

@@ -17,7 +17,16 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   }
 }
 
-data ftsh_105_01_l_dv_note: String = "THIS ROW HAS NO UPSTREAM PRECEDENT BEHIND IT AT ALL, AND SAYING SO IS THE POINT OF CARRYING IT. The other three unread rows in this lane are named by Ampere's Mt. Jade reference for specific jobs; this part number was proposed here as a debug header, and Mt. Jade names no part number for its JTAG headers. So there is nothing upstream that even suggests it — which is the class of pick the operator's ruling on this lane exists to make visible, and it is recorded rather than quietly presented alongside the others. THE ANCHOR POINTS AT A SIBLING VARIANT'S PRINT. Samtec publishes per-variant footprint prints under one path pattern, and the print observed to exist is the -DH one; the anchor records the path that was observed rather than a constructed -DV path, because guessing a locator is how a citation ends up naming a document nobody has seen. The -DV footprint print is what the standing below owes."
+// THIS ROW HAS NO UPSTREAM PRECEDENT BEHIND IT AT ALL, AND SAYING SO IS THE POINT OF CARRYING IT.
+// The other three unread rows in this lane are named by Ampere's Mt. Jade reference for specific
+// jobs; this part number was proposed here as a debug header, and Mt. Jade names no part number for
+// its JTAG headers. So there is nothing upstream that even suggests it — which is the class of pick
+// the operator's ruling on this lane exists to make visible, and it is recorded rather than quietly
+// presented alongside the others. THE ANCHOR POINTS AT A SIBLING VARIANT'S PRINT. Samtec publishes
+// per-variant footprint prints under one path pattern, and the print observed to exist is the -DH
+// one; the anchor records the path that was observed rather than a constructed -DV path, because
+// guessing a locator is how a citation ends up naming a document nobody has seen. The -DV footprint
+// print is what the standing below owes.
 
 data ftsh_105_01_l_dv: CatalogPartIdentity = CatalogPartIdentity {
   ordering_part_number: "FTSH-105-01-L-DV",

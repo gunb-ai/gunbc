@@ -26,15 +26,6 @@ pub fn extdeps_external_authority_anchor() -> Rc<ExternalAuthority> {
     CACHED.with(|c: &Rc<ExternalAuthority>| c.clone())
 }
 
-pub fn iso8601_duration_units_note() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "ISO 8601-1:2019 duration and time-unit vocabulary: 60 seconds per minute, 60 minutes per hour, 24 hours per day.".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
-}
-
 pub fn iso8601_seconds_per_minute() -> Nat {
     60
 }

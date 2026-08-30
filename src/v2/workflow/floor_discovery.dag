@@ -28,7 +28,17 @@ import v2.std.optional {
   optional_present
 }
 
-data floor_discovery_exact_subject_note: String = "The exact subject for the cross-worker discovery result. `tested_commit` and `tested_tree` are two different Git facts: the commit names the revision selected for execution, while the GitObjectId is that commit's tree object. The seed formerly stored `git rev-parse HEAD` in a String field named tested_tree, so a commit id inhabited a tree-named coordinate and a consumer could not distinguish same commit/different tree metadata from an exact source-tree binding. Source roots and execution-authority roots remain ordered semantic lists here; a digest is DERIVED only for the storage/request identity and is never carried beside the lists as a caller-asserted duplicate. Naming-authority and tool identities use the existing Fnv1a64Structural family, matching the floor snapshot's current byte/structural identity realization. This is deliberately floor-discovery grain, not a new generic compute subject beside the execution-spine lane and not the gated WalkPlan executor state machine."
+// The exact subject for the cross-worker discovery result. `tested_commit` and `tested_tree` are
+// two different Git facts: the commit names the revision selected for execution, while the
+// GitObjectId is that commit's tree object. The seed formerly stored `git rev-parse HEAD` in a
+// String field named tested_tree, so a commit id inhabited a tree-named coordinate and a consumer
+// could not distinguish same commit/different tree metadata from an exact source-tree binding.
+// Source roots and execution-authority roots remain ordered semantic lists here; a digest is
+// DERIVED only for the storage/request identity and is never carried beside the lists as a
+// caller-asserted duplicate. Naming-authority and tool identities use the existing
+// Fnv1a64Structural family, matching the floor snapshot's current byte/structural identity
+// realization. This is deliberately floor-discovery grain, not a new generic compute subject beside
+// the execution-spine lane and not the gated WalkPlan executor state machine.
 
 type FloorDiscoveryCommitId sole_constructor {
   object_id: GitObjectId
@@ -264,7 +274,16 @@ fn floor_discovery_request_identity(request: FloorDiscoveryRequest) -> Fnv1a64St
   )
 }
 
-data floor_discovery_exact_subject_seed_scaffold_note: String = "DECLARED SCAFFOLD for the existing Rust snapshot transport only. `src/v1/stage0/src/cli_run/floor_discovery_snapshot.rs` observes tested_commit and the format-qualified tree object selected by that commit, refuses cross-process sharing when tracked or untracked worktree bytes differ from the selected commit tree, derives this request identity in the field order above, and refuses a coordinated snapshot whose complete request differs. It does not evaluate this model per floor request because doing so would resolve another compiler world inside the path whose duplicate setup this lane removes. The executable model witness pins the authority and Rust unit controls pin the mirror. DISSOLVE-ON: generated host-effect transport can construct FloorDiscoveryRequest and its typed binding directly; then the Rust request/terminal mirror and this scaffold note delete."
+// DECLARED SCAFFOLD for the existing Rust snapshot transport only.
+// `src/v1/stage0/src/cli_run/floor_discovery_snapshot.rs` observes tested_commit and the
+// format-qualified tree object selected by that commit, refuses cross-process sharing when tracked
+// or untracked worktree bytes differ from the selected commit tree, derives this request identity
+// in the field order above, and refuses a coordinated snapshot whose complete request differs. It
+// does not evaluate this model per floor request because doing so would resolve another compiler
+// world inside the path whose duplicate setup this lane removes. The executable model witness pins
+// the authority and Rust unit controls pin the mirror. DISSOLVE-ON: generated host-effect transport
+// can construct FloorDiscoveryRequest and its typed binding directly; then the Rust
+// request/terminal mirror and this scaffold note delete.
 
 type FloorDiscoveryRow {
   label: String

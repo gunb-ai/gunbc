@@ -84,15 +84,15 @@ type synthesizable here — 32 variants x 16 fields = 512 fields — costs **1.1
 predicting ~0.3 ms). **Arity is 670x short; breadth and depth together ~90x short.** Type size is
 true and insufficient; it is not the root cause.
 
-**The cost IS inside expression inference** (this was checked, because "ms per call" had been
-computed as module wall / call count, which would attribute item-level work to expressions):
+**The cost IS inside expression inference** (checked because "ms per call" had been computed as
+module wall / call count, which would attribute item-level work to expressions):
 
 ```
 gunbc.host_effect_realize   wall_us=259697135  rootIncl=259685651  OUTSIDE=11484 (0.004%)
 ```
 
-`sum(exclusive)` equals `sum(root inclusive)` exactly, which is the arithmetic identity for a call
-tree and confirms the partition neither double-counts nor loses recursion time.
+`sum(exclusive)` equals `sum(root inclusive)` exactly — the call-tree identity — so the partition
+neither double-counts nor loses recursion time.
 
 **Two factors, one still unidentified.** Per-call cost by environment:
 
@@ -103,9 +103,9 @@ gunbc.host_effect_realize (anc=15056) 113.3 ms/call     ~9x above that
 ```
 
 The earlier "environment size refuted" claim was scoped to the gap BETWEEN two real modules with
-near-identical environments, and stands at that scope. It does not license concluding environment
-is irrelevant: the fixture-to-corpus step is ~50x and is the larger factor. What remains genuinely
-open is the ~9x that separates this module from its control.
+near-identical environments, and stands there. It does not make environment irrelevant: the
+fixture-to-corpus step is ~50x and the larger factor. Genuinely open is the ~9x separating this
+module from its control.
 
 **The dominant rule is function-call inference.** Exclusive time bucketed by expression kind
 (exclusive, so a recursive parent does not absorb its children and read as dominant for sitting on
@@ -123,14 +123,14 @@ v1.compiler.infer                     2943ms  n=2958     995 us/call
 v1.compiler.parse                     1983ms  n=2334     850 us/call
 ```
 
-This is a matched-rule control, not a whole-module one: the same rule costs 560x more here than in
-ordinary compiler modules. Two consequences. `Match` is 1710ms, so the 86-arm nested match is
-**definitively not the cause** — it was suspected twice and is wrong twice. And a call site must
-both resolve a callee and unify each argument against the signature's types, which is exactly where
-a large type surface and a large visibility surface would MULTIPLY rather than add. That is why every
-one-dimensional fixture above was true and insufficient: the identity fixture has a type but no call
-site, and the breadth fixture varies fields but never unifies them against a signature. Neither can
-exercise the product.
+A matched-rule control, not a whole-module one: the same rule costs 560x more here than in ordinary
+compiler modules. Two consequences. `Match` is 1710ms, so the 86-arm nested match is
+**definitively not the cause** — suspected twice, wrong twice. And a call site must both resolve a
+callee and unify each argument against the signature's types — exactly where a large type surface
+and a large visibility surface would MULTIPLY rather than add. That is why every one-dimensional
+fixture above was true and insufficient: the identity fixture has a type but no call site; the
+breadth fixture varies fields but never unifies them against a signature. Neither exercises the
+product.
 
 **The `Other` bucket resolved to `RecordLit`, and callee resolution is NOT the cost.** Full
 `ExprData` enumeration plus direct timing of the two operations on the Call path:
@@ -145,9 +145,9 @@ v1.compiler.emit_rust :: sig_lookup    249ms  n=4191  59us/call  distinctNames=8
    -> gunbc.host_effect_realize does not appear in the table at all
 ```
 
-So **callee resolution is negligible**, which refutes the func-env DAG walk as the mechanism — the
+So **callee resolution is negligible**, refuting the func-env DAG walk as the mechanism — the
 candidate suggested by that structure's sharing factor (614 distinct nodes, 33,783 naive traversals).
-The repair it implied, indexing the environment, would have bought nothing.
+Its implied repair, indexing the environment, would have bought nothing.
 
 A single record literal — `ProvisionBuildCacheOnHost { node: n, catalog_id: id }`, two fields —
 costs **241 ms**. Both dominant kinds are places where a value is checked against a large
@@ -155,15 +155,15 @@ coproduct's variant shapes, and neither involves callee lookup.
 
 **Current candidate, explicitly untested:** `global_variant_base` carries **14,309** entries (built
 from `symbol_index.global_bare`). If record-literal construction and call-argument unification
-consult it, both hot kinds share one mechanism and it is a corpus-sized population consulted for a
-local question. Stated as the next thing to measure, NOT as a finding: three candidates have now
-been proposed for this same 259s (func-env walk, type size, variant base) and the first two were
-measured false.
+consult it, both hot kinds share one mechanism: a corpus-sized population consulted for a local
+question. Stated as the next thing to measure, NOT as a finding: three candidates have been
+proposed for this same 259s (func-env walk, type size, variant base) and the first two measured
+false.
 
 **Relation-level amplification is real but cheap where measured:** `sig_lookup` runs at amp 5.0-21.0
-(calls per distinct callee name) across the corpus, so the same lookup IS recomputed — it simply
-costs too little to matter. That is evidence about this operation only; the RecordLit and
-call-argument paths have not been given the same census.
+(calls per distinct callee name) across the corpus, so the same lookup IS recomputed — it just
+costs too little to matter. Evidence about this operation only; the RecordLit and call-argument
+paths have not had the same census.
 
 **Scope of `amp = 1.0`:** no expression NODE is re-entered. It says nothing about repeated type
 comparisons, generic substitutions, or name lookups across different expressions; a relation-level
@@ -194,8 +194,7 @@ The first was mine for four days. The fourth was an average asserted as a shape.
   reachability (DESIGN Class B: bare references resolve by pool coincidence), so 659 is an upper
   bound on what could be dropped, and acting on it would be the empty-observation narrow.
   `SelectionOff` (operator, 2026-08-13) forbids skipping consumers; it does **not** mandate
-  preparing every indexed module. Those are different axes and this document previously conflated
-  them.
+  preparing every indexed module — different axes, previously conflated in this document.
 - **cross-process duplication — unmeasured.** srv2 ran 7 concurrent `claim_executor` CI processes.
   One inference per module *within one fold* says nothing about once per commit / run / host.
 - **artifact non-determinism.** Same binary, same arm, three processes: identical byte counts,
@@ -221,6 +220,6 @@ The first was mine for four days. The fourth was an average asserted as a shape.
   invisible to the printing thread; `Vec` aliased to `im::Vector` in a static; and an
   unmemoized walk over a shared DAG that **tripled the run it was measuring**. The first two
   produced wrong output; the last four failed loudly — compile error, explicit `ABSENT` guard,
-  or an obvious slowdown. The guards are why none contaminated a finding.
+  or an obvious slowdown — which is why none contaminated a finding.
 - `perf` is present on srv2 but `perf_event_paranoid=4`; lowering it needs root on a host
   running 22 CI processes. Not done.

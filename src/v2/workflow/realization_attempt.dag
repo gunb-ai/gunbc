@@ -21,10 +21,32 @@ import std.algebra { Cons, Empty }
 import v2.std.logic { Bool }
 import std.types { Int, List, NonEmptyStr, String }
 
-data realization_attempt_note: String = "CI2-0 Commit B (operator mandate 2026-08-08): the ACTUAL canonical v2 realization attempt per identity — replacing the circular census whose capability verdict was bundle membership. One entry attempt runs the mandated pipeline over the entry's real authored source: Filesystem.Read -> tokenize -> parse_module -> normalize -> resolve (ingested_resolved_module_from_source, the SAME general ingest the wave1 census fixtures ride — not a witness-specific converter) -> Arrow extraction per declaration -> emit_produced_module against rust_target_model_staging (the one general Rust TargetModel). The result is a typed standing per phase: the FIRST refusing phase is recorded with its exact diagnostic, and a green traversal is V2TranslateSerialized (RustCompile/NativeExecute are the transport stages, attempted by the bundle leg, not here). Bundle membership appears nowhere in this computation."
+// CI2-0 Commit B (operator mandate 2026-08-08): the ACTUAL canonical v2 realization attempt per
+// identity — replacing the circular census whose capability verdict was bundle membership. One
+// entry attempt runs the mandated pipeline over the entry's real authored source: Filesystem.Read
+// -> tokenize -> parse_module -> normalize -> resolve (ingested_resolved_module_from_source, the
+// SAME general ingest the wave1 census fixtures ride — not a witness-specific converter) -> Arrow
+// extraction per declaration -> emit_produced_module against rust_target_model_staging (the one
+// general Rust TargetModel). The result is a typed standing per phase: the FIRST refusing phase is
+// recorded with its exact diagnostic, and a green traversal is V2TranslateSerialized
+// (RustCompile/NativeExecute are the transport stages, attempted by the bundle leg, not here).
+// Bundle membership appears nowhere in this computation.
 
-
-data attempt_probe_supersession_note: String = "OPERATOR VERDICT (msg_9dec74f7, seven blocking findings): this module as landed is a PROBE, not the canonical route, and is being replaced IN-PLACE. The replacement contract: exact required-test identity -> exact module closure (the floor's own resolved graph — never a single-file re-ingest) -> canonical compiler result -> exact resolved declaration (identity join against enrolled test declarations, never synthetic wrappers) -> v2.compiler.compile with TranslateTo (infer INCLUDED — finding 3) -> canonical Rust realization -> bundle member. Findings addressed so far: (7) attempt_is_emitted now requires emitted_nonempty — accepted-but-empty is not emitted. Remaining, tracked here until each lands: (1) drop the ingested_fixture_arrows bridge; (2) closure resolution via the executor's resolved graph; (3) infer stage actually runs via compile(); (4) per-stage phase precision — the measured specimen is a normalize wrapper-retained refusal (body_lowering_reason_wrapper_retained_emitted) currently flattened into PhaseFrontend; (5) show rust_target_model_staging canonical or replace with what is; (6) identity join replaces collect_arrows synthesis. The probe's measured buckets (test-marker gate, match-binder resolve, staging-lex literals, wrapper-retained normalize) remain valid census data — they were produced by real canonical stages even where the harness plumbing was probe-grade."
+// OPERATOR VERDICT (msg_9dec74f7, seven blocking findings): this module as landed is a PROBE, not
+// the canonical route, and is being replaced IN-PLACE. The replacement contract: exact
+// required-test identity -> exact module closure (the floor's own resolved graph — never a
+// single-file re-ingest) -> canonical compiler result -> exact resolved declaration (identity join
+// against enrolled test declarations, never synthetic wrappers) -> v2.compiler.compile with
+// TranslateTo (infer INCLUDED — finding 3) -> canonical Rust realization -> bundle member. Findings
+// addressed so far: (7) attempt_is_emitted now requires emitted_nonempty — accepted-but-empty is
+// not emitted. Remaining, tracked here until each lands: (1) drop the ingested_fixture_arrows
+// bridge; (2) closure resolution via the executor's resolved graph; (3) infer stage actually runs
+// via compile(); (4) per-stage phase precision — the measured specimen is a normalize
+// wrapper-retained refusal (body_lowering_reason_wrapper_retained_emitted) currently flattened into
+// PhaseFrontend; (5) show rust_target_model_staging canonical or replace with what is; (6) identity
+// join replaces collect_arrows synthesis. The probe's measured buckets (test-marker gate,
+// match-binder resolve, staging-lex literals, wrapper-retained normalize) remain valid census data
+// — they were produced by real canonical stages even where the harness plumbing was probe-grade.
 
 type RealizationPhase
   = PhaseRead
@@ -46,7 +68,6 @@ type EntryRealizationAttempt {
   arrow_count: Int
   standing: RealizationAttemptStanding
 }
-
 
 fn first_located_cause(ds: NonEmptyDiagnostics) -> Symbol {
   let residue = ^parse_grammar_choice_overlap_residue
@@ -122,8 +143,19 @@ fn collect_arrows(root: Node, acc: List<Node>) -> List<Node> {
   })
 }
 
-
-data test_marker_capture_note: String = "STAGED SCAFFOLD (escalation msg_628838a5; dissolve-on: GrammarExpr contextual-keyword terminal lands and dag fn_decl/data_decl productions carry the test marker structurally): the v2 dag grammar cannot yet parse the authored test marker ('test' is a module-path segment, so it cannot be a lex keyword; v1's v1_compiler_parse.rs drop_leading_test_marker DISCARDS the marker pre-parse and re-derives test-ness by text scan — cited as the prior art this capture SUPERSEDES, not imitates: this seam captures and counts, that seam discarded, and the distinction is the point (ruling msg_64870b7f)). The realization ATTEMPT captures the marker at its own seam — line-leading 'test fn '/'test data ' rewritten to the unmarked form, capture COUNTED on the attempt row — so the census sweep can measure the rest of the pipeline while the grammar extension is priced as its own top-of-burn-down repair item (it gates 100 percent of test files). Test-ness itself is never derived from this capture: the discovery roster carries it. Scoped deliberately to attempt_entry_source; the canonical production pipeline does NOT route through this fn."
+// STAGED SCAFFOLD (escalation msg_628838a5; dissolve-on: GrammarExpr contextual-keyword terminal
+// lands and dag fn_decl/data_decl productions carry the test marker structurally): the v2 dag
+// grammar cannot yet parse the authored test marker ('test' is a module-path segment, so it cannot
+// be a lex keyword; v1's v1_compiler_parse.rs drop_leading_test_marker DISCARDS the marker
+// pre-parse and re-derives test-ness by text scan — cited as the prior art this capture SUPERSEDES,
+// not imitates: this seam captures and counts, that seam discarded, and the distinction is the
+// point (ruling msg_64870b7f)). The realization ATTEMPT captures the marker at its own seam —
+// line-leading 'test fn '/'test data ' rewritten to the unmarked form, capture COUNTED on the
+// attempt row — so the census sweep can measure the rest of the pipeline while the grammar
+// extension is priced as its own top-of-burn-down repair item (it gates 100 percent of test files).
+// Test-ness itself is never derived from this capture: the discovery roster carries it. Scoped
+// deliberately to attempt_entry_source; the canonical production pipeline does NOT route through
+// this fn.
 
 type MarkedSource {
   unmarked: String
@@ -231,7 +263,15 @@ fn attempt_cause(a: EntryRealizationAttempt) -> Optional<Symbol> {
   }
 }
 
-data attempt_assembled_note: String = "The CANONICAL closure attempt (operator seven-findings contract, msg_9dec74f7): exact ingest (real file reads as DagSourceReadWitness rows) -> assemble_program_from_ingest (the SAME multi-module assembly the source-root-ingest gate rides — imports resolve against the closure, finding 2; no fixture bridge, finding 1) -> EXACTLY-ONE identity join against the resolved program for the required declaration name (zero and many both refuse with typed causes — finding 6, never a synthetic wrapper) -> infer (finding 3, its own phase) -> compile_inferred TranslateTo (finding 4: assembly, join, infer, translate each report their own phase; the exact cause Symbol locates the true stage inside assembly refusals). rust_target_model_staging remains the target pending the finding-5 canonicality ruling, surfaced in the sweep receipt."
+// The CANONICAL closure attempt (operator seven-findings contract, msg_9dec74f7): exact ingest
+// (real file reads as DagSourceReadWitness rows) -> assemble_program_from_ingest (the SAME
+// multi-module assembly the source-root-ingest gate rides — imports resolve against the closure,
+// finding 2; no fixture bridge, finding 1) -> EXACTLY-ONE identity join against the resolved
+// program for the required declaration name (zero and many both refuse with typed causes — finding
+// 6, never a synthetic wrapper) -> infer (finding 3, its own phase) -> compile_inferred TranslateTo
+// (finding 4: assembly, join, infer, translate each report their own phase; the exact cause Symbol
+// locates the true stage inside assembly refusals). rust_target_model_staging remains the target
+// pending the finding-5 canonicality ruling, surfaced in the sweep receipt.
 
 fn decl_edges_named(root: Node, fn_name: Symbol, acc: List<Node>) -> List<Node> {
   let here = fold(root.children, init: acc, f: fn(inner, e) {
@@ -254,7 +294,11 @@ fn decl_edges_named(root: Node, fn_name: Symbol, acc: List<Node>) -> List<Node> 
   })
 }
 
-data phase_for_reason_note: String = "Finding 4 (per-stage phase precision): an assembly rejection carries the TRUE originating stage inside its reason symbol — parse/tokenize reasons are PhaseFrontend, body_lowering reasons are PhaseNormalize, resolve reasons are PhaseResolve — so the harness classifies the located reason's family instead of flattening every assembly refusal into one phase. An unrecognized family keeps the harness stage's fallback rather than fabricating a stage (§5: never a guessed label)."
+// Finding 4 (per-stage phase precision): an assembly rejection carries the TRUE originating stage
+// inside its reason symbol — parse/tokenize reasons are PhaseFrontend, body_lowering reasons are
+// PhaseNormalize, resolve reasons are PhaseResolve — so the harness classifies the located reason's
+// family instead of flattening every assembly refusal into one phase. An unrecognized family keeps
+// the harness stage's fallback rather than fabricating a stage (§5: never a guessed label).
 
 fn phase_for_reason(reason: Symbol, fallback: RealizationPhase) -> RealizationPhase {
   let lexeme = symbol_lexeme(sym: reason)
@@ -321,7 +365,12 @@ fn attempt_assembled(
   }
 }
 
-data attempt_closure_rows_note: String = "Sweep seam (CI2-0 Commit B): ONE assembly per entry closure, then one attempt_joined per required test-fn identity — the exactly-once accounting grain the mandate names. The ingest is marker-captured at this seam only (test_marker_capture_note: the grammar cannot yet parse the authored test marker, so the capture scaffold rewrites line-leading markers and the count stays observable); an assembly refusal is replicated to EVERY identity in the entry with the reason-classified phase, because each identity is accountable and none of them reached its join."
+// Sweep seam (CI2-0 Commit B): ONE assembly per entry closure, then one attempt_joined per required
+// test-fn identity — the exactly-once accounting grain the mandate names. The ingest is
+// marker-captured at this seam only (test_marker_capture_note: the grammar cannot yet parse the
+// authored test marker, so the capture scaffold rewrites line-leading markers and the count stays
+// observable); an assembly refusal is replicated to EVERY identity in the entry with the
+// reason-classified phase, because each identity is accountable and none of them reached its join.
 
 fn capture_markers_ingest(ingest: SourceRootIngest) -> SourceRootIngest {
   match ingest {

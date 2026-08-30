@@ -213,7 +213,24 @@ fn json_text_starts_with_at(s: String, i: Int, lit: String) -> Bool {
   substring(s: s, start: i, end: i + lit.length()) == lit
 }
 
-data json_escape_production_note: String = "RFC 8259 section 7: escape = %x22 / %x5C / %x2F / %x62 / %x66 / %x6E / %x72 / %x74 / %x75 4HEXDIG. The set is CLOSED and \\u carries exactly four hex digits. This scanner previously consumed the backslash and whatever followed it without deciding whether that character named an escape at all, so every unknown escape was accepted (review 45642 RED). The consequence was not cosmetic and not confined to the scanner: the unescaper's unknown-escape arm dropped the backslash, so `\"p\\assed\"` - which is not JSON - decoded to the string `passed` and satisfied the validation receipt's verdict identity. A malformed document fabricated a pass, which is the fail-open DESIGN 5 forbids at exactly the boundary that exists to prevent it.\\n\\nThe refusal belongs HERE rather than in the unescaper because the escape set is a grammar production, and deciding it at the span scan means the invalid state never reaches the value builder - construction over validation. It also fixes both readings in one place: parse_json's strings come through this scanner, and so does the span question extdeps.llm.cli asks, so the two cannot disagree about what an escape is.\\n\\nNOT closed here, declared rather than left silent: RFC 8259 also forbids UNESCAPED control characters (%x00-1F) inside a string, and this scanner still admits them. That gap cannot fabricate an identity the way an unknown escape can - a raw control character inside `passed` makes the string unequal to `passed` rather than equal to it - so it is a lesser member of the same family. Dissolve-on: the char production is scanned as a closed set rather than as everything-but-quote-and-backslash."
+// RFC 8259 section 7: escape = %x22 / %x5C / %x2F / %x62 / %x66 / %x6E / %x72 / %x74 / %x75
+// 4HEXDIG. The set is CLOSED and \u carries exactly four hex digits. This scanner previously
+// consumed the backslash and whatever followed it without deciding whether that character named an
+// escape at all, so every unknown escape was accepted (review 45642 RED). The consequence was not
+// cosmetic and not confined to the scanner: the unescaper's unknown-escape arm dropped the
+// backslash, so `"p\assed"` - which is not JSON - decoded to the string `passed` and satisfied the
+// validation receipt's verdict identity. A malformed document fabricated a pass, which is the
+// fail-open DESIGN 5 forbids at exactly the boundary that exists to prevent it.\n\nThe refusal
+// belongs HERE rather than in the unescaper because the escape set is a grammar production, and
+// deciding it at the span scan means the invalid state never reaches the value builder -
+// construction over validation. It also fixes both readings in one place: parse_json's strings come
+// through this scanner, and so does the span question extdeps.llm.cli asks, so the two cannot
+// disagree about what an escape is.\n\nNOT closed here, declared rather than left silent: RFC 8259
+// also forbids UNESCAPED control characters (%x00-1F) inside a string, and this scanner still
+// admits them. That gap cannot fabricate an identity the way an unknown escape can - a raw control
+// character inside `passed` makes the string unequal to `passed` rather than equal to it - so it is
+// a lesser member of the same family. Dissolve-on: the char production is scanned as a closed set
+// rather than as everything-but-quote-and-backslash.
 
 fn is_json_hex_digit_char(c: String) -> Bool {
   (c != "") && string_contains(s: "0123456789abcdefABCDEF", pattern: c)
@@ -279,7 +296,15 @@ fn json_text_parse_number_digits(s: String, i: Int) -> Int {
   }
 }
 
-data json_text_exponent_digit_note: String = "RFC 8259 number = [minus] int [frac] [exp], and exp = (e/E) [minus/plus] 1*DIGIT — the exponent's digits are REQUIRED. This branch previously consumed the marker and optional sign and then accepted whatever json_text_parse_number_digits returned, so `1e` and `1e+` parsed as complete numbers; a receipt carrying one read as well-formed JSON (review 44043). The guard now mirrors the fraction branch directly above it: no digits means the exponent was never part of the number, so the scan backtracks to after_frac and the stray marker surfaces as unconsumed trailing input, which json_text_parseable and every enclosing production refuse. The sibling lexeme surface json_number_consume_optional_exp always required the digit — the two readings of one RFC production had forked (DESIGN 3), and this restores them to agreement."
+// RFC 8259 number = [minus] int [frac] [exp], and exp = (e/E) [minus/plus] 1*DIGIT — the exponent's
+// digits are REQUIRED. This branch previously consumed the marker and optional sign and then
+// accepted whatever json_text_parse_number_digits returned, so `1e` and `1e+` parsed as complete
+// numbers; a receipt carrying one read as well-formed JSON (review 44043). The guard now mirrors
+// the fraction branch directly above it: no digits means the exponent was never part of the number,
+// so the scan backtracks to after_frac and the stray marker surfaces as unconsumed trailing input,
+// which json_text_parseable and every enclosing production refuse. The sibling lexeme surface
+// json_number_consume_optional_exp always required the digit — the two readings of one RFC
+// production had forked (DESIGN 3), and this restores them to agreement.
 
 fn json_text_parse_number(s: String, i: Int) -> JsonTextParseResult {
   let start = i
@@ -392,6 +417,23 @@ fn json_text_parse_object(s: String, i: Int) -> JsonTextParseResult {
   }
 }
 
+// json_text_parseable used to live here, deciding on the span scanner alone whether a whole
+// document was JSON. That is the same question extdeps.languages.json.parse answers by CONSTRUCTING
+// the value, so the corpus had one procedure deciding whether text is JSON and another deciding
+// what it contains - two readings of one RFC that can disagree (DESIGN 3; review 44043 was that
+// disagreement, on the exponent production, found only because a witness pinned the surfaces
+// together). The whole-document reading now derives from parse_json and lives beside it. What stays
+// here is the SPAN question, which is a different question and has its own consumer:
+// json_text_parse_value answers where a value ends at an offset INSIDE a larger text, which
+// extdeps.llm.cli needs to walk a config document and which parse_json cannot answer because it
+// requires full consumption. RESIDUAL FORK, declared rather than left silent:
+// json_text_parse_object/_array and their counterparts in parse.dag still decide object and array
+// syntax independently - parse.dag reuses the string and number scanners here but recurses on its
+// own for the two container productions. Dissolve-on: extdeps.llm.cli takes its span from
+// parse_json_value_at's next field, at which point
+// json_text_parse_value/_object/_object_members/_array/_array_values/_literal have no consumer and
+// delete, leaving one reading of every production.
+
 fn json_text_parse_value(s: String, i: Int) -> JsonTextParseResult {
   let p = json_text_skip_ws(s: s, i: i)
   if p >= s.length() {
@@ -408,5 +450,3 @@ fn json_text_parse_value(s: String, i: Int) -> JsonTextParseResult {
     else { json_text_parse_fail(end: p) }
   }
 }
-
-data json_text_whole_document_reading_note: String = "json_text_parseable used to live here, deciding on the span scanner alone whether a whole document was JSON. That is the same question extdeps.languages.json.parse answers by CONSTRUCTING the value, so the corpus had one procedure deciding whether text is JSON and another deciding what it contains - two readings of one RFC that can disagree (DESIGN 3; review 44043 was that disagreement, on the exponent production, found only because a witness pinned the surfaces together). The whole-document reading now derives from parse_json and lives beside it. What stays here is the SPAN question, which is a different question and has its own consumer: json_text_parse_value answers where a value ends at an offset INSIDE a larger text, which extdeps.llm.cli needs to walk a config document and which parse_json cannot answer because it requires full consumption. RESIDUAL FORK, declared rather than left silent: json_text_parse_object/_array and their counterparts in parse.dag still decide object and array syntax independently - parse.dag reuses the string and number scanners here but recurses on its own for the two container productions. Dissolve-on: extdeps.llm.cli takes its span from parse_json_value_at's next field, at which point json_text_parse_value/_object/_object_members/_array/_array_values/_literal have no consumer and delete, leaving one reading of every production."

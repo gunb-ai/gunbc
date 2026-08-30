@@ -90,13 +90,20 @@ type Stage0PartitionCrateRow {
   carries_non_empty_wrappers: Bool
 }
 
-data rust_crate_partition_note: String = "Rust R3 workflow realization of the shared CompilationUnit home (emitted-crate-partition-design.md §2/§13). resolve_partition_outcome is the sole entry for the assignment Map; partition_fold_outcome is the sole producer of interface + deps. Phase 0: HandExplicit provenance + ExplicitPartition interim ~8-crate layered grouping (dissolves to PolicyPartition when balanced crates≈cores policy lands)."
+// Rust R3 workflow realization of the shared CompilationUnit home
+// (emitted-crate-partition-design.md §2/§13). resolve_partition_outcome is the sole entry for the
+// assignment Map; partition_fold_outcome is the sole producer of interface + deps. Phase 0:
+// HandExplicit provenance + ExplicitPartition interim ~8-crate layered grouping (dissolves to
+// PolicyPartition when balanced crates≈cores policy lands).
 
 data rust_crate_partition_declared_core_target: Int = 7
 
 data rust_crate_partition_module_bearing_unit_target: Int = 6
 
-data stage0_r3_emit_shell_note: String = "R3-only emit shell crate (reexport surface, NOT a partition_fold CompilationUnit): modules list is the reexport bundle for render at cutover; those modules remain owned by module-bearing units in stage0_interim_explicit_assignment. Physical crate count = module_bearing (6) + emit_shell (1) = declared_core_target (7)."
+// R3-only emit shell crate (reexport surface, NOT a partition_fold CompilationUnit): modules list
+// is the reexport bundle for render at cutover; those modules remain owned by module-bearing units
+// in stage0_interim_explicit_assignment. Physical crate count = module_bearing (6) + emit_shell (1)
+// = declared_core_target (7).
 
 data stage0_unit_runtime: CompilationUnitId = "stage0-unit-runtime" as CompilationUnitId
 data stage0_unit_std_primitives: CompilationUnitId = "stage0-unit-std-primitives" as CompilationUnitId
@@ -127,9 +134,16 @@ type TypeDefinitionsMapNotFrontierGrounded {
   dissolve_target: DeclarationRef
 }
 
-data rust_crate_partition_interface_deferred_note: String = "Interim: ModuleDag.exports + type_definitions carry per-module keys with empty lists (structural scaffold for partition_fold only). R3 render uses Stage0PartitionCrateRow.modules + reexport_packages wildcard pub-use chain — not CompilationUnit.interface Nodes. Full Node-carrier exports blocked on stage0 module ingest supplying them through the path-module binding index (see stage0_grounding_target_repointed_note)."
+// Interim: ModuleDag.exports + type_definitions carry per-module keys with empty lists (structural
+// scaffold for partition_fold only). R3 render uses Stage0PartitionCrateRow.modules +
+// reexport_packages wildcard pub-use chain — not CompilationUnit.interface Nodes. Full Node-carrier
+// exports blocked on stage0 module ingest supplying them through the path-module binding index (see
+// stage0_grounding_target_repointed_note).
 
-data rust_crate_partition_r4_by_value_type_cycle_note: String = "Rust R4 primary refusals on current main: SccSplit + UnitGraphCycle (LinkageCycle permissive). ByValueTypeCycle arm lands with #6744 rebase — refuse type-layout cycles via ByValueTypeCycle { detail } ONLY, never SccSplit. Exhaustive PartitionR4ValidityCause matches must add the 4th arm on rebase."
+// Rust R4 primary refusals on current main: SccSplit + UnitGraphCycle (LinkageCycle permissive).
+// ByValueTypeCycle arm lands with #6744 rebase — refuse type-layout cycles via ByValueTypeCycle {
+// detail } ONLY, never SccSplit. Exhaustive PartitionR4ValidityCause matches must add the 4th arm
+// on rebase.
 
 data stage0_grounding_target_repointed_note: String = "REPOINTED, and the old target was wrong before it was deleted. This debt's dissolution used to name v2.compiler.self_host.frontier compiler_frontier_roster, on the premise that the self-host roster would eventually carry each module's exports and type definitions. It never could: a roster row carried a module path and a self-host disposition and nothing else, so the pointer named an authority that was not going to supply the fact even in principle. The roster is deleted, which is what surfaced the mispointing rather than causing it.
 
