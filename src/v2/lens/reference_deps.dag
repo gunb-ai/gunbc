@@ -58,17 +58,6 @@ type ParsedReferenceClosureNoResultObservation {
   deciding_stage_reach: ParsedReferenceClosureDecidingStageReachUnproven
 }
 
-data parsed_reference_closure_two_entry_no_result_observation: ParsedReferenceClosureNoResultObservation = ParsedReferenceClosureNoResultObservation {
-  entries: ["dag/gunbc/native_scm_interaction_contract.dag", "src/v2/std/node.dag"],
-  expected_path_counts: [37, 8],
-  required_path: "dag/std/occurrence_identity.dag",
-  basis: WallClock,
-  deadline: millisecond(count: 900000),
-  build_included: false,
-  preparation_completed: true,
-  deciding_stage_reach: ParsedReferenceClosureDecidingStageReachUnproven {}
-}
-
 data reference_deps_file_anchor: Symbol = ^reference_deps_file_anchor
 
 data reference_deps_qualified_name_capture_missing: Symbol = ^reference_deps_qualified_name_capture_missing

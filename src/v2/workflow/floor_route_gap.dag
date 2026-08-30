@@ -173,9 +173,9 @@ fn floor_route_gap_chunk_00() -> List<String> {
       head: "test.claim.generated_artifact_merge_driver_real_execution.divergent_generated_artifact_merge_under_true_driver_silently_drops_theirs_red_control_by_real_execution",
       tail: Cons {
       head: "test.claim.generated_artifact_merge_driver_real_execution.one_sided_generated_artifact_change_merges_clean_by_real_execution",
-      tail: Empty {}
-    }
-    }
+      tail: Empty {
+    
+    
     }
     }
     }
@@ -630,12 +630,6 @@ fn floor_route_gap_expectation_chunk_03() -> List<FloorRouteGapExpectation> {
     head: FloorRouteGapExpectation { identity: "test.claim.stage0_rust_host_observation_live_witness.scaffold_mechanical_checks_reflect_live_classification", operation: "git.Inspect.HeadCommit", ground: UnpublishedMockCase {} },
     tail: Cons {
     head: FloorRouteGapExpectation { identity: "test.claim.stage0_rust_maintenance_census_report_live_witness.maintenance_census_report_positive_control_derives_from_current_head", operation: "git.Inspect.HeadCommit", ground: UnpublishedMockCase {} },
-    tail: Cons {
-    head: FloorRouteGapExpectation { identity: "test.manual.git_upstream_model_execution.witness_git_cli_fixture_hashes_projects_and_independently_reads_back", operation: "Dir", ground: NoMockResponse {} },
-    tail: Cons {
-    head: FloorRouteGapExpectation { identity: "test.manual.mercurial_upstream_model_execution.witness_mercurial_cli_fixture_projects_and_independently_reads_back", operation: "Dir", ground: NoMockResponse {} },
-    tail: Cons {
-    head: FloorRouteGapExpectation { identity: "test.manual.pijul_upstream_model_execution.witness_pijul_cli_fixture_reads_channel_sets_and_retained_conflict", operation: "Dir", ground: NoMockResponse {} },
     tail: Cons {
     head: FloorRouteGapExpectation { identity: "v2.test.claim.dag_acceptance_rustc_wet.rustc_accepts_valid_target_source", operation: "CheckSourceText", ground: NoMockResponse {} },
     tail: Cons {

@@ -1,0 +1,72 @@
+module extdeps.git.versioning
+
+import std.types { NonEmptyStr }
+import std.integer { NonNegativeInt }
+import std.algebra { Ordering, Equal, Greater }
+import std.nat { nat_compare }
+import extdeps.version { VersionIdentity, VersionScheme, VersionConstraint }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "git-scm.com/docs/BreakingChanges.html"
+  }
+}
+
+type GitReleaseVersion {
+  major: NonNegativeInt
+  minor: NonNegativeInt
+  patch: NonNegativeInt
+}
+
+type GitVersionPlatformSuffix
+  = GitVersionPlain
+  | GitVersionWindows { build: NonNegativeInt }
+
+type GitCliReportedVersion {
+  git_release: GitReleaseVersion
+  suffix: GitVersionPlatformSuffix
+}
+
+data git_2_0_release: GitReleaseVersion = {
+  major: 2,
+  minor: 0,
+  patch: 0
+}
+
+data git_release_versioning_spec_url: NonEmptyStr = "https://git-scm.com/docs/BreakingChanges.html"
+
+type GitVersionConstraint = VersionConstraint where brand("GitVersionConstraint")
+
+data min_git_version: GitVersionConstraint = ">= 2.0.0"
+
+fn git_release_version_label(v: GitReleaseVersion) -> String {
+  concat(
+    to_string(v.major),
+    concat(".", concat(to_string(v.minor), concat(".", to_string(v.patch))))
+  )
+}
+
+fn git_release_to_version_identity(v: GitReleaseVersion) -> VersionIdentity {
+  git_release_version_label(v: v)
+}
+
+fn git_release_version_compare(a: GitReleaseVersion, b: GitReleaseVersion) -> Ordering {
+  match nat_compare(a: a.major, b: b.major) {
+    Equal => match nat_compare(a: a.minor, b: b.minor) {
+      Equal => nat_compare(a: a.patch, b: b.patch)
+      other => other
+    }
+    other => other
+  }
+}
+
+fn git_release_compare_identity(a: VersionIdentity, b: VersionIdentity) -> Ordering {
+  if a == b { Equal } else { Greater }
+}
+
+data git_release_version_scheme: VersionScheme = {
+  compare: git_release_compare_identity
+}

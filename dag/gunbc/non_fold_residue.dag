@@ -1013,16 +1013,6 @@ data non_fold_residue_frontier: List<FrontierRow> = [
     dissolution: nfr_dissolve_build_axis_reading_refined_carrier,
   },
   FrontierRow {
-    subject: PathSubject { path: "dag/gunbc/scm/commit_closure_json_v2.dag::encode_connective" },
-    reason: nfr_reason_connective_payload_encoding,
-    dissolution: nfr_dissolve_connective_payload_encoding,
-  },
-  FrontierRow {
-    subject: PathSubject { path: "dag/gunbc/scm/repository_envelope.dag::repository_natural_from_json" },
-    reason: nfr_reason_json_natural_projection,
-    dissolution: nfr_dissolve_json_natural_projection,
-  },
-  FrontierRow {
     subject: PathSubject { path: "dag/gunbc/session_lease.dag::classify_process_port_upsert" },
     reason: nfr_reason_process_port_upsert_refusal_split,
     dissolution: nfr_dissolve_process_port_upsert_refusal_split,
