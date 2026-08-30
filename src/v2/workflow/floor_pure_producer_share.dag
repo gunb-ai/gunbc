@@ -76,6 +76,15 @@ import v2.std.text { String }
 // fn -- the publication wall did not move, and its RED still refuses a fn-carrying value.
 // Both are ~125ms of pure re-derivation per claim (58 and 75 consumer claims on run
 // 33269961629), which is what every emit claim was paying while they sat out.
+//
+// THE TWO ROWS ARE ONE-WAY REACHABLE, and that is a declared fact rather than an
+// ordering hazard: rust_target_model reaches rust_target_model_staging through its
+// atom-realization catalog rows, so whichever order the warm runs, the second row's
+// publication finds its entry already present. Both rows stay declared -- a row states
+// THAT the producer is shared, not that this particular warm is what put it there --
+// and the seed reports the already-present disposition rather than refusing it
+// (v1_compiler.v1_interpreter CrossClaimStoreOutcome; run 33295721732 is the receipt
+// for what the older boolean did here).
 data floor_cross_claim_pure_producers_warm: List<String> = [
   "v2.extdeps.languages.bash_command_fold.bash_fold_formal_productions",
   "v2.extdeps.languages.bash_command_fold.bash_fold_lex",
