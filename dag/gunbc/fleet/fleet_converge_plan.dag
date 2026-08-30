@@ -2295,6 +2295,14 @@ type FleetConvergePlanArtifactOutcome
 // already runs the other way. That refusal was correct and load-bearing. Artifact assembly consumes
 // already-planned axis products -- timer plan, cap plan, slot plan, fabric plan, activation plan --
 // and the Spark schedule is one more of them, not an exception this module reaches down to compute.
+// THE AXIS CARRIES A HOST AND SO DOES THIS ARTIFACT, AND NOTHING JOINED THEM.
+//
+// Putting the host inside the disposition stopped it disagreeing with the OBSERVATION that produced
+// it. It did not stop it disagreeing with the SUBJECT being planned: an axis tagged srv6 could be
+// handed to an artifact whose subject is srv5, and the resulting plan would carry srv6's retirement
+// rows under srv5's baseline and lease. Third instance of the class #9754 opened -- a host carried
+// twice, joined by convention -- and this function refuses on the disagreement rather than making it
+// unrepresentable, because the two hosts are genuinely two facts until the comparison is made.
 fn fleet_converge_plan_artifact(
   host: NonEmptyStr,
   prior_generation: Int,
@@ -2388,14 +2396,6 @@ fn fleet_converge_plan_artifact(
       observed_activation_readiness: observed_activation_readiness,
     ),
   )
-  // THE AXIS CARRIES A HOST AND SO DOES THIS ARTIFACT, AND NOTHING JOINED THEM.
-  //
-  // Putting the host inside the disposition stopped it disagreeing with the OBSERVATION that
-  // produced it. It did not stop it disagreeing with the SUBJECT being planned: an axis tagged srv6
-  // could be handed to an artifact whose subject is srv5, and the resulting plan would carry srv6's
-  // retirement rows under srv5's baseline and lease. Third instance of the class #9754 opened -- a
-  // host carried twice, joined by convention -- and it is caught here rather than made
-  // unrepresentable because the two hosts are genuinely two facts until this comparison is made.
   if !host_identity_eq(a: spark_serving_axis_host(a: spark_axis), b: host as HostIdentity) {
     FleetConvergePlanArtifactRefused {
       cause: join([
