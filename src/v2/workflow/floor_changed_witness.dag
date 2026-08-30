@@ -2,7 +2,7 @@ module v2.workflow.floor_changed_witness
 
 import v2.workflow.required_floor {
   RequiredFloorDisposition,
-  Planned, DeclinedLongModule, DeclinedFixtureMember, DeclinedCostDebt,
+  Planned, PlannedAsChangedWitness, DeclinedLongModule, DeclinedFixtureMember, DeclinedCostDebt,
   DeclinedOutsideRequiredGate, DeclinedOutsideGateClosure, DeclinedDiscoveryExcluded,
 }
 import v2.workflow.floor_terminal_ledger {
@@ -84,6 +84,26 @@ fn changed_witness_execution_standing(
     DispositionRow { disposition: d, terminal: t } =>
       match d {
         Planned =>
+          match t {
+            NotExecuted => PlannedWithoutTerminalVerdict {}
+            TerminalOutcome { outcome: o } =>
+              match o {
+                Passed => PlannedAndPassed {}
+                Failed => PlannedWithoutTerminalVerdict {}
+                KnownRedHeld => PlannedAndPassed {}
+                KnownRedNowPassing => PlannedAndPassed {}
+                BudgetRefusedBeforeVerdict => PlannedWithoutTerminalVerdict {}
+                PassedOverBudget => PlannedWithoutTerminalVerdict {}
+                BudgetTerminalWithoutSafetyCause => PlannedWithoutTerminalVerdict {}
+                HostToolUnresolvedBeforeVerdict => PlannedWithoutTerminalVerdict {}
+                RouteGapBeforeVerdict => PlannedWithoutTerminalVerdict {}
+                RuntimeErroredBeforeVerdict => PlannedWithoutTerminalVerdict {}
+                PanickedBeforeVerdict => PlannedWithoutTerminalVerdict {}
+                NotAttemptedAfterAbort => PlannedWithoutTerminalVerdict {}
+                ObservationUnreadableBeforeVerdict => PlannedWithoutTerminalVerdict {}
+              }
+          }
+        PlannedAsChangedWitness =>
           match t {
             NotExecuted => PlannedWithoutTerminalVerdict {}
             TerminalOutcome { outcome: o } =>
