@@ -551,9 +551,9 @@ fn spark_serving_slice_report_for(
               observed_caps: [],
               projection: spark_serving_observed_members_for_unit(
                 host: host,
-                runtime: rt,
-                store: st,
-                observed_unit: ou,
+                runtime: runtime,
+                store: store,
+                observed_unit: observed_unit,
                 linger: if linger_enabled { LingerObservedEnabled } else { LingerObservedDisabled },
               ),
             ) {
