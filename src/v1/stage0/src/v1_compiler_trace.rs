@@ -273,7 +273,7 @@ pub fn capture_repro(
     Rc::new(ReproCase {
         func_name: func_name.clone(),
         inputs: inputs.clone(),
-        expected_output: None,
+        expected_output: std::option::Option::None,
         trace: Some(trace.clone()),
     })
 }

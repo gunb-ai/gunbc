@@ -115,7 +115,7 @@ pub fn collect_type_node_import_surface_names(
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         let peeled = crate::v1_compiler_infer_types::normalize_access_type_node(n.clone());
         let name = crate::v1_std_core::authored_name_at(source_indices.clone(), peeled.clone());
-        let is_tv = if (peeled.inferred.clone() != None) {
+        let is_tv = if (peeled.inferred.clone() != std::option::Option::None) {
             is_type_variable(peeled.inferred.clone().clone().unwrap())
         } else {
             false
@@ -215,7 +215,7 @@ pub fn empty_emit_graph_info() -> Rc<EmitGraphInfo> {
         clone_impl_required_type_params: v1_rt::rc_empty_map::<String, Rc<BTreeSet<String>>>(),
         fn_generic_param_names: Rc::new(vec![]),
         fn_type_env: crate::v1_compiler_infer_env::empty_type_env(),
-        fn_return_type: None,
+        fn_return_type: std::option::Option::None,
     })
 }
 
@@ -316,7 +316,7 @@ pub fn emit_graph_records_type_decl(
             ((((item.connective.clone() == Connective::NoConnective)
                 && ((item.children.clone().len() as i64) == 0))
                 && ((item.params.clone().len() as i64) == 0))
-                && (item.transport.clone() == None))
+                && (item.transport.clone() == std::option::Option::None))
         }
     }
 }
@@ -331,7 +331,8 @@ pub fn emit_graph_records_fn_decl_note() -> String {
 }
 
 pub fn emit_graph_records_fn_decl(item: Rc<Node>) -> bool {
-    ((item.body.clone() != None) && (item.type_annotation.clone() == None))
+    ((item.body.clone() != std::option::Option::None)
+        && (item.type_annotation.clone() == std::option::Option::None))
 }
 
 pub fn derive_variant_to_enum(
@@ -460,7 +461,8 @@ pub fn field_value_shape_from_type_node(type_node: Rc<Node>) -> FieldValueShape 
 }
 
 pub fn is_tuple_type(n: Rc<Node>) -> bool {
-    (((n.connective.clone() == Connective::Conj) && (n.ident_span.clone() == None))
+    (((n.connective.clone() == Connective::Conj)
+        && (n.ident_span.clone() == std::option::Option::None))
         && ((n.children.clone().len() as i64) == 2))
 }
 
@@ -487,7 +489,7 @@ pub fn build_struct_field_summaries(
             |acc: Rc<HashMap<String, Rc<FieldSummary>>>, pair: (i64, Rc<Node>)| {
                 let idx = pair.0.clone();
                 let child = pair.1.clone();
-                if (child.inferred.clone() == None) {
+                if (child.inferred.clone() == std::option::Option::None) {
                     acc.clone()
                 } else {
                     {
@@ -533,9 +535,9 @@ pub fn find_first_enum_field_node(
             source_indices.clone(),
         ) {
             Some(field_child) => Some(field_child.clone()),
-            None => None,
+            None => std::option::Option::None,
         },
-        None => None,
+        None => std::option::Option::None,
     }
 }
 
@@ -688,7 +690,7 @@ pub fn build_field_type_map(
                     source_indices.clone(),
                     crate::v1_compiler_infer_types::normalize_access_type_node(ft.clone()),
                 );
-                let ft_is_type_var = if (ft.inferred.clone() != None) {
+                let ft_is_type_var = if (ft.inferred.clone() != std::option::Option::None) {
                     is_type_variable(ft.inferred.clone().clone().unwrap())
                 } else {
                     false
@@ -729,9 +731,9 @@ pub fn build_type_summary(
     {
         if (((item.connective.clone() == Connective::NoConnective)
             || (item.connective.clone() == Connective::Arrow))
-            || (item.transport.clone() != None))
+            || (item.transport.clone() != std::option::Option::None))
         {
-            return None;
+            return std::option::Option::None;
         }
         let gpn = Rc::new({
             let mut __result = Vec::new();
@@ -1016,9 +1018,9 @@ pub fn add_emit_item_summary(
             crate::v1_std_core::authored_name_at(source_indices.clone(), alias_rhs.clone());
         let is_type_alias = (((((((decl_name.clone() != "".to_string())
             && (item.connective.clone() == Connective::NoConnective))
-            && (item.body.clone() == None))
+            && (item.body.clone() == std::option::Option::None))
             && ((item.params.clone().len() as i64) == 0))
-            && (item.transport.clone() == None))
+            && (item.transport.clone() == std::option::Option::None))
             && ((item.children.clone().len() as i64) == 0))
             && (alias_rhs_name.clone() != "Unit".to_string()));
         let is_structural_alias = if is_type_alias.clone() {

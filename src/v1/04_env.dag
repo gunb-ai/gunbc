@@ -1238,10 +1238,21 @@ fn binding_declares_span(binding: TypeBinding, sp: SourceSpan) -> Bool {
   }
 }
 
+// A reference the resolver leaves IN PLACE -- a recursive type such as v2.std.nat Nat, whose leaf arm
+// answers `resolved: n` with no inferred node (v1.compiler.resolve resolve_node, is_recursive_type_for)
+// -- still names its declaration: the env binding the resolver established for the reference's ident
+// (lookup_type_for) carries the declaration's own ident_span, which is the span the global roster is
+// matched on. Without this arm every recursive destination answered Absent here and fell to the
+// identity-unavailable arms downstream (measured: the Peano literal and ordering rows passed for
+// v2.std.logic Bool and failed for v2.std.nat Nat on the same compiler).
 fn type_reference_declaration_ref(n: Node, source_indices: Map<String, NewlineIndex>, env: TypeEnv) -> DeclarationRef? {
   let rt = match n.inferred {
     Present { value: Resolved { node: r } } => r
-    _ => n
+    _ =>
+      match lookup_type_for(env: env, node: n) {
+        Present { value: bound } => bound
+        Absent => n
+      }
   }
   let decl_name = qualified_last_segment(name: authored_name_at(source_indices: source_indices, node: rt))
   if decl_name == "" { return none }
