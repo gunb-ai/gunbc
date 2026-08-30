@@ -63,6 +63,10 @@ pub use crate::std_operator_realization::{
 pub use crate::std_primitive_projection::{
     primitive_identity_runtime_name, primitive_projection_row_for_declaration,
 };
+pub use crate::std_repair_input_origin::{
+    qualified_item_emit_surface_compatibility_names, repair_input_origin_candidates,
+    repair_input_origin_compatibility_names,
+};
 use crate::std_serialization::VariantEncoding::*;
 use crate::std_serialization::VariantNaming::*;
 pub use crate::std_serialization::{CoproductWireContract, VariantEncoding, VariantNaming};
@@ -8563,25 +8567,26 @@ pub fn reference_derived_use_line_plan(
             v1_rt::rc_empty_map::<String, bool>(),
             |acc: Rc<HashMap<String, bool>>, t: String| v1_rt::rc_map_insert(acc, t.clone(), true),
         );
+        let origin_candidates = crate::std_repair_input_origin::repair_input_origin_candidates(
+            this_module_name.clone(),
+            unlisted_type_names.clone(),
+            value_names.clone(),
+            type_surface_names.clone(),
+            field_surface_names.clone(),
+            variant_payload_structs.clone(),
+            realized_surface_names.clone(),
+        );
         let candidates = Rc::new({
             let mut __result = Vec::new();
             for name in Rc::new({
                 let mut __result = Vec::new();
                 for name in Rc::new({
                     let mut __result = Vec::new();
-                    for name in crate::v1_compiler_emit_core_support::unique_strings(v1_rt::concat(
-                        v1_rt::concat(
-                            v1_rt::concat(
-                                v1_rt::concat(
-                                    v1_rt::concat(unlisted_type_names.clone(), value_names.clone()),
-                                    type_surface_names.clone(),
-                                ),
-                                field_surface_names.clone(),
-                            ),
-                            variant_payload_structs.clone(),
+                    for name in crate::v1_compiler_emit_core_support::unique_strings(
+                        crate::std_repair_input_origin::repair_input_origin_compatibility_names(
+                            origin_candidates.clone(),
                         ),
-                        realized_surface_names.clone(),
-                    ))
+                    )
                     .iter()
                     .cloned()
                     {
@@ -8775,7 +8780,13 @@ v1_rt::concat(block_lines.clone(), fallback.clone())
         let qualified_rows = qualified_type_reference_rows(
             Rc::new({
                 let mut __result = Vec::new();
-                for nm in type_surface_names.iter().cloned() {
+                for nm in
+                    crate::std_repair_input_origin::qualified_item_emit_surface_compatibility_names(
+                        origin_candidates.clone(),
+                    )
+                    .iter()
+                    .cloned()
+                {
                     if crate::v1_compiler_infer_types::emit_map_has(
                         emitted_source_token_set.clone(),
                         crate::v1_std_core::qualified_last_segment(nm.clone()),
@@ -29191,44 +29202,11 @@ pub fn emit_typed_bin_op(
             )
         } else {
             match (*binop_operator_realization(op.clone(), left.clone(), scope.clone())).clone() {
-                OperatorRealization::OperatorRealizationRefused { cause: c, .. } => {
-                    emit_rust_compile_error_expr(
-                        crate::std_operator_realization::operator_realization_refusal_message(
-                            c.clone(),
-                        ),
-                    )
-                }
-                OperatorRealization::StructuralComparison {
-                    binding: b,
-                    test: t,
-                    ..
-                } => emit_rust_structural_comparison(
-                    l_str.clone(),
-                    r_str.clone(),
-                    b.clone(),
-                    t.clone(),
-                ),
-                OperatorRealization::StructuralEquality { declaration: _, .. } => {
-                    emit_rust_host_bin_op(
-                        op.clone(),
-                        algebra_field.clone(),
-                        left.clone(),
-                        right.clone(),
-                        l_str.clone(),
-                        r_str.clone(),
-                        scope.clone(),
-                    )
-                }
-                OperatorRealization::HostOperator => emit_rust_host_bin_op(
-                    op.clone(),
-                    algebra_field.clone(),
-                    left.clone(),
-                    right.clone(),
-                    l_str.clone(),
-                    r_str.clone(),
-                    scope.clone(),
-                ),
-            }
+    OperatorRealization::OperatorRealizationRefused { cause: c, .. } => emit_rust_compile_error_expr(v1_rt::concat(v1_rt::concat(v1_rt::concat(crate::std_operator_realization::operator_realization_refusal_message(c.clone()), " [".to_string()), rust_operand_shape_facts(left.clone(), scope.clone())), "]".to_string())),
+    OperatorRealization::StructuralComparison { binding: b, test: t, .. } => emit_rust_structural_comparison(l_str.clone(), r_str.clone(), b.clone(), t.clone()),
+    OperatorRealization::StructuralEquality { declaration: _, .. } => emit_rust_host_bin_op(op.clone(), algebra_field.clone(), left.clone(), right.clone(), l_str.clone(), r_str.clone(), scope.clone()),
+    OperatorRealization::HostOperator => emit_rust_host_bin_op(op.clone(), algebra_field.clone(), left.clone(), right.clone(), l_str.clone(), r_str.clone(), scope.clone()),
+}
         }
     }
 }
@@ -29269,28 +29247,69 @@ pub fn rust_operand_realization_of_type(
                         Some(InferredNode::Resolved { node: r, .. }) => r.clone(),
                         _ => rt.clone(),
                     };
-                    if ((fuel.clone() > 0)
-                        && crate::v1_compiler_emit_core_support::is_type_alias_item(
-                            decl.clone(),
-                            scope.type_env.clone().source_indices.clone(),
-                        ))
-                    {
-                        {
-                            let __tco_0 =
-                                crate::v1_compiler_infer_types::resolved_type(decl.clone());
-                            let __tco_1 = (fuel - 1);
-                            rt = __tco_0;
-                            fuel = __tco_1;
-                            continue;
-                        }
+                    let structural_kernel_leaf = (((rt.connective.clone()
+                        == Connective::NoConnective)
+                        && ((rt.children.clone().len() as i64) == 0))
+                        && crate::std_types::is_kernel_type(
+                            crate::v1_std_core::qualified_last_segment(rt.name.clone()),
+                        ));
+                    if structural_kernel_leaf.clone() {
+                        break Rc::new(OperandRealization::HostNumericOperand);
                     } else {
-                        break Rc::new(OperandRealization::StructuralOperand {
-                            declaration: d.clone(),
-                        });
+                        if ((fuel.clone() > 0)
+                            && crate::v1_compiler_emit_core_support::is_type_alias_item(
+                                decl.clone(),
+                                scope.type_env.clone().source_indices.clone(),
+                            ))
+                        {
+                            {
+                                let __tco_0 =
+                                    crate::v1_compiler_infer_types::resolved_type(decl.clone());
+                                let __tco_1 = (fuel - 1);
+                                rt = __tco_0;
+                                fuel = __tco_1;
+                                continue;
+                            }
+                        } else {
+                            break Rc::new(OperandRealization::StructuralOperand {
+                                declaration: d.clone(),
+                            });
+                        }
                     }
                 }
             }
         }
+    }
+}
+
+pub fn rust_operand_shape_facts(operand: Rc<Node>, scope: Rc<InferScope>) -> String {
+    {
+        let rt = crate::v1_compiler_infer_types::resolved_type(operand.clone());
+        let decl = match rt.inferred.clone().as_deref().cloned() {
+            Some(InferredNode::Resolved { node: r, .. }) => r.clone(),
+            _ => rt.clone(),
+        };
+        v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("rt.name=".to_string(), rt.name.clone()), " rt.authored=".to_string()), crate::v1_std_core::authored_name_at(scope.type_env.clone().source_indices.clone(), rt.clone())), " rt.conn=".to_string()), if (rt.connective.clone() == Connective::NoConnective) {
+            "none".to_string()
+        } else {
+            "some".to_string()
+        }), " rt.children=".to_string()), panic!("unsupported cast from i64 to String")), " rt.inferred=".to_string()), if (rt.inferred.clone() == None) {
+            "absent".to_string()
+        } else {
+            "present".to_string()
+        }), " decl.name=".to_string()), decl.name.clone()), " decl.authored=".to_string()), crate::v1_std_core::authored_name_at(scope.type_env.clone().source_indices.clone(), decl.clone())), " decl.conn=".to_string()), if (decl.connective.clone() == Connective::NoConnective) {
+            "none".to_string()
+        } else {
+            "some".to_string()
+        }), " decl.children=".to_string()), panic!("unsupported cast from i64 to String")), " decl.inferred=".to_string()), if (decl.inferred.clone() == None) {
+            "absent".to_string()
+        } else {
+            "present".to_string()
+        }), " decl.params=".to_string()), panic!("unsupported cast from i64 to String")), " alias_item=".to_string()), if crate::v1_compiler_emit_core_support::is_type_alias_item(decl.clone(), scope.type_env.clone().source_indices.clone()) {
+            "yes".to_string()
+        } else {
+            "no".to_string()
+        })
     }
 }
 

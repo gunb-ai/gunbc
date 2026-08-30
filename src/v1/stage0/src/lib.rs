@@ -87,6 +87,7 @@ pub mod std_primitive_projection;
 pub mod std_process_termination;
 pub mod std_realization_schedule;
 pub mod std_reference_binding_observation;
+pub mod std_repair_input_origin;
 pub mod std_roster_frontier;
 pub mod std_serialization;
 pub mod std_source_annotation;
