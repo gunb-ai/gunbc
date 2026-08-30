@@ -359,8 +359,9 @@ fn fixture_home_prefixes() -> List<String> {
 //
 // WHAT IS IN. `v2.test.` is the whole v2 compiler suite. The `test.claim.` rows are the v1
 // compiler-floor witnesses -- inference, occurrence binding, declared-type inhabitance,
-// coproduct soundness, namespace resolution, parse, the self-host behavioral witnesses -- and
-// the census that tests this roster's own arms. Nothing here is a product, fleet, deploy,
+// coproduct soundness, namespace resolution, parse, the self-host behavioral witnesses, and
+// XL-0's repair-input split plus namespace control-plane standing -- and the census that tests
+// this roster's own arms. Nothing here is a product, fleet, deploy,
 // secret, dashboard or roadmap witness; those are exactly what the ruling moved off the gate.
 //
 // WHAT THIS IS NOT. Not a selection shrink (the 2026-08-13 directive): a selection derives the
@@ -394,6 +395,8 @@ fn required_gate_prefixes() -> List<String> {
     "test.claim.arity_zero_import_refusal_witness",
     "test.claim.bare_name_",
     "test.claim.legacy_binding_",
+    "test.claim.repair_input_origin_split_witness_test",
+    "test.claim.compiler_frontend_program_status_witness",
     "test.claim.discovery_census_witness_test",
   ]
 }
