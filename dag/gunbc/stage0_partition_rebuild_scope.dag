@@ -1,0 +1,384 @@
+module gunbc.stage0_partition_rebuild_scope
+
+import std.types { String, List, Bool }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
+import extdeps.rust.cargo { CargoDependency, LocalPathDep, RegistryDep }
+import gunbc.stage0_crate_partition_generated {
+  GeneratedPartitionCrateRow,
+  generated_partition_crate_rows
+}
+import v1.compiler.stage0_crates {
+  Stage0PackageCrateDirMissing,
+  Stage0PartitionRowDepsOk,
+  Stage0PartitionRowDepsRefused,
+  stage0_partition_row_dependencies_outcome,
+  stage0_partition_row_is_module_bearing
+}
+
+// WHICH PACKAGES ONE CHANGED MIRROR MAKES cargo COMPILE, and the refusals that keep the answer
+// from becoming "all of them". This is the rebuild half of the change-denominated regen round:
+// gunbc.regen_affected_set bounds which MIRRORS an edit can change, and this module bounds which
+// PACKAGES those changed mirrors force the next-pass compiler to rebuild. The two are different
+// questions over different graphs -- one over .dag module references, one over cargo packages --
+// and the second is the larger of the two costs on every measured host
+// (gunbc.regen_round_cost regen_round_cost_shape_note).
+//
+// THE CLAIM IS NOT "ONE MIRROR, ONE CRATE". A foundation edit legitimately rebuilds several
+// downstream packages; the guarantee is that an UNRELATED package stays uncompiled, and that
+// the executable the second generation runs is the one built from the installed mirrors. So the
+// answer is the exact reverse package-dependency closure of the changed mirrors' owning
+// packages, plus the executable/link package -- never a count, and never a superset.
+//
+// THE PACKAGE GRAPH IS DERIVED, NOT TRANSCRIBED. Every edge read here comes from
+// v1.compiler.stage0_crates stage0_partition_row_dependencies_outcome, which is the single
+// producer of each partition package's Cargo manifest dependencies (foundation registry deps,
+// the layered reexport path deps, and the emit shell's path deps over the module-bearing rows).
+// Reading the manifest producer means the closure cannot disagree with what cargo is handed: a
+// second hand-authored edge roster here would be a parallel authority for the same fact, and one
+// that silently NARROWS -- a missing edge would drop a package that must recompile, which is a
+// worse failure than widening because the next pass would then run stale code.
+//
+// REFUSE, NEVER WIDEN (DESIGN section 5, the absorbing fallback). Every arm below that cannot
+// compute the precise package set REFUSES with the mirror or package it could not answer for.
+// "Could not determine the owner" is not "build everything": collapsing them would destroy the
+// only signal that the ownership roster has a hole, and the hole would then never rank for
+// filling. WholeCompilerRebuildRequired is reserved for a POSITIVELY MODELED class -- an edit to
+// an input every package's build is made of -- and is reached by naming that input, never by
+// failing to name something else.
+
+// A changed mirror is a FILE basename as the regen compares it ("std_effects.rs"); a partition
+// row owns MODULE basenames ("std_effects"). The join is the file suffix, applied in one
+// direction only: a row's module name is extended to the file it owns, so no path string is ever
+// taken apart and a mirror whose name is not `<module>.rs` simply has no owner and refuses.
+fn rebuild_scope_mirror_of_module(module_basename: String) -> String {
+  concat(module_basename, ".rs")
+}
+
+type PartitionExecutableAssembly
+  = PartitionAssembledExecutable { package_name: String, bin_name: String }
+  | MonolithicExecutableRetained { package_name: String, bin_name: String, duplicated_population: String }
+
+type WholeCompilerRebuildCause
+  = PartitionGenerationAuthorityChanged { mirrors: List<String> }
+  | SharedCompilerBuildInputChanged { mirrors: List<String> }
+
+type RebuildScopeRefusalCause
+  = ChangedMirrorUnlocatable { mirrors: List<String>, reason: String }
+  | MirrorHasNoOwningPackage { mirror: String }
+  | MirrorHasMultipleOwningPackages { mirror: String, packages: List<String> }
+  | PackageDependencyClosureUnderivable { package_name: String, detail: String }
+  | ExecutableAssemblyNotCovered { executable_package: String, detail: String }
+
+type PartitionRebuildDecision
+  = PartitionRebuild {
+      changed_mirrors: List<String>
+      owning_packages: List<String>
+      rebuilt_package_closure: List<String>
+      executable_package: String
+    }
+  | WholeCompilerRebuildRequired { cause: WholeCompilerRebuildCause }
+  | RebuildScopeRefused { cause: RebuildScopeRefusalCause }
+
+// THE TWO POSITIVELY MODELED WHOLE-BUILD CLASSES, each named by the mirror whose bytes decide
+// every package's build rather than any package's contents.
+//
+// (1) The partition generation authority. gunbc_stage0_crate_partition_generated.rs carries the
+//     ownership rows themselves and v1_compiler_stage0_crates.rs renders every manifest and lib
+//     from them, so a change to either can move which package any module compiles in. No reverse
+//     package closure can see that: the closure is computed FROM those rows.
+// (2) The shared compiler build input. gunbc_stage0_crate_layout_generated.rs decides the
+//     monolith's declaration surface and v1_compiler_workspace_members.rs decides the workspace
+//     membership region, so a change to either re-plans the build for every package at once.
+//
+// A mirror that merely sits low in the graph -- std_types.rs, v1_rt.rs -- is deliberately NOT on
+// these rosters: its blast radius IS its reverse package closure, which the partition arm
+// computes exactly, and listing it here would be the absorbing fallback wearing a roster's name.
+data rebuild_scope_partition_generation_mirrors: List<String> = [
+  "gunbc_stage0_crate_partition_generated.rs",
+  "v1_compiler_stage0_crates.rs"
+]
+
+data rebuild_scope_shared_build_input_mirrors: List<String> = [
+  "gunbc_stage0_crate_layout_generated.rs",
+  "v1_compiler_workspace_members.rs"
+]
+
+// THE EXECUTABLE THE SECOND GENERATION RUNS, stated as a typed state rather than assumed.
+//
+// TODAY IT IS THE MONOLITH, AND THAT IS WHY EVERY LIVE CALL REFUSES. claim_executor is a [[bin]]
+// of the v1-compiler package, whose library declares the whole stage0 population -- including all
+// 81 modules the partition crates also compile by path include. Rebuilding an owning partition
+// crate and then running that binary would compile one subset for validation and run a compiler
+// built from a different declaration of the same mirrors, which is not the fixed-point proof the
+// round claims to perform. So the refusal is the honest answer at this rung, and the positive
+// arm is exercised by controls over a partition-assembled executable rather than by pretending
+// the monolith is one.
+fn stage0_next_pass_executable_assembly() -> PartitionExecutableAssembly {
+  MonolithicExecutableRetained {
+    package_name: "v1-compiler",
+    bin_name: "claim_executor",
+    duplicated_population: "src/v1/stage0/src/lib.rs declares every partition-owned module, so the linked executable compiles those mirrors a second time outside the partition"
+  }
+}
+
+fn rebuild_scope_list_has(items: List<String>, item: String) -> Bool {
+  items |> any(x => x == item)
+}
+
+fn rebuild_scope_push_new(items: List<String>, item: String) -> List<String> {
+  if rebuild_scope_list_has(items: items, item: item) { items } else { list_push(items, item) }
+}
+
+fn rebuild_scope_intersect(left: List<String>, right: List<String>) -> List<String> {
+  left |> filter(x => rebuild_scope_list_has(items: right, item: x))
+}
+
+// The path dependencies of one package row, read from the manifest producer. A registry
+// dependency is not a package of this workspace and carries no rebuild edge.
+type PackageDepsOutcome
+  = PackageDepsOk { packages: List<String> }
+  | PackageDepsUnderivable { package_name: String }
+
+fn rebuild_scope_dep_is_path(dep: CargoDependency) -> Bool {
+  match dep.source {
+    LocalPathDep { path: _ } => true
+    RegistryDep { version: _, features: _ } => false
+  }
+}
+
+fn rebuild_scope_row_path_deps(row: GeneratedPartitionCrateRow) -> PackageDepsOutcome {
+  match stage0_partition_row_dependencies_outcome(row: row) {
+    Stage0PartitionRowDepsOk { deps: deps } =>
+      PackageDepsOk {
+        packages: deps |> filter(dep => rebuild_scope_dep_is_path(dep: dep)) |> map(dep => dep.name)
+      }
+    Stage0PartitionRowDepsRefused { cause: Stage0PackageCrateDirMissing { package_name: p } } =>
+      PackageDepsUnderivable { package_name: p }
+  }
+}
+
+// FIRST UNDERIVABLE PACKAGE, or nothing. Taken before any closure step so the refusal names the
+// package whose manifest could not be produced, not whichever walk step noticed it.
+fn rebuild_scope_first_underivable(rows: List<GeneratedPartitionCrateRow>) -> List<String> {
+  rows |> fold(init: [], f: fn(acc, row) {
+    match rebuild_scope_row_path_deps(row: row) {
+      PackageDepsOk { packages: _ } => acc
+      PackageDepsUnderivable { package_name: p } =>
+        if count(acc) > 0 { acc } else { list_push(acc, p) }
+    }
+  })
+}
+
+fn rebuild_scope_row_deps_or_empty(row: GeneratedPartitionCrateRow) -> List<String> {
+  match rebuild_scope_row_path_deps(row: row) {
+    PackageDepsOk { packages: ps } => ps
+    PackageDepsUnderivable { package_name: _ } => []
+  }
+}
+
+// ONE STEP of the reverse package walk: a package joins the set when any of its own path
+// dependencies is already in it. Guarded by rebuild_scope_first_underivable, so an empty
+// dependency list here means the package genuinely has no path dependencies.
+fn rebuild_scope_reverse_step(
+  reached: List<String>,
+  rows: List<GeneratedPartitionCrateRow>
+) -> List<String> {
+  rows |> fold(init: reached, f: fn(acc, row) {
+    let deps = rebuild_scope_row_deps_or_empty(row: row)
+    if count(rebuild_scope_intersect(left: deps, right: acc)) > 0 {
+      rebuild_scope_push_new(items: acc, item: row.package_name)
+    } else {
+      acc
+    }
+  })
+}
+
+// The fixpoint by construction: a package dependency path over n packages has at most n edges,
+// so n steps reach it (DESIGN section 4 -- bounded and forward, no discovered termination).
+fn rebuild_scope_reverse_closure(
+  seeds: List<String>,
+  rows: List<GeneratedPartitionCrateRow>
+) -> List<String> {
+  rows |> fold(init: seeds, f: fn(acc, row) { rebuild_scope_reverse_step(reached: acc, rows: rows) })
+}
+
+fn rebuild_scope_owners_of_mirror(
+  mirror: String,
+  rows: List<GeneratedPartitionCrateRow>
+) -> List<String> {
+  rows
+    |> filter(row => stage0_partition_row_is_module_bearing(row: row))
+    |> filter(row => row.modules |> any(m => rebuild_scope_mirror_of_module(module_basename: m) == mirror))
+    |> map(row => row.package_name)
+}
+
+// EXACTLY ONE OWNER, or a refusal naming which way the roster is wrong. The emit path's
+// stage0_lookup_module_owner_package_name answers the same ownership question permissively --
+// it folds a multi-row match down to the first -- because at emit time a duplicate would show
+// up as a duplicated `pub mod` and fail to compile. A rebuild SELECTOR has no such backstop: a
+// duplicated owner would silently pick one package and leave the other stale, so this consumer
+// needs the refusing form. See rebuild_scope_owner_resolution_dissolve_on.
+type OwnerResolution
+  = OwnerResolved { packages: List<String> }
+  | OwnerRefused { cause: RebuildScopeRefusalCause }
+
+fn rebuild_scope_resolve_owners(
+  changed_mirrors: List<String>,
+  rows: List<GeneratedPartitionCrateRow>
+) -> OwnerResolution {
+  changed_mirrors |> fold(init: OwnerResolved { packages: [] }, f: fn(acc, mirror) {
+    match acc {
+      OwnerRefused { cause: c } => OwnerRefused { cause: c }
+      OwnerResolved { packages: found } => {
+        let owners = rebuild_scope_owners_of_mirror(mirror: mirror, rows: rows)
+        if count(owners) == 0 {
+          OwnerRefused { cause: MirrorHasNoOwningPackage { mirror: mirror } }
+        } else if count(owners) > 1 {
+          OwnerRefused { cause: MirrorHasMultipleOwningPackages { mirror: mirror, packages: owners } }
+        } else {
+          OwnerResolved {
+            packages: owners |> fold(init: found, f: fn(inner, pkg) {
+              rebuild_scope_push_new(items: inner, item: pkg)
+            })
+          }
+        }
+      }
+    }
+  })
+}
+
+fn rebuild_scope_changed_in_roster(changed_mirrors: List<String>, roster: List<String>) -> List<String> {
+  changed_mirrors |> filter(m => rebuild_scope_list_has(items: roster, item: m))
+}
+
+// THE DECISION. `unlocatable` is the host's list of changed paths it could not name as a compared
+// mirror; a non-empty list refuses before anything else is asked, exactly as
+// gunbc.regen_affected_set EditedSetUnlocatable does, and for the same reason.
+fn stage0_partition_rebuild_decision(
+  changed_mirrors: List<String>,
+  unlocatable: List<String>,
+  rows: List<GeneratedPartitionCrateRow>,
+  executable: PartitionExecutableAssembly
+) -> PartitionRebuildDecision {
+  if count(unlocatable) > 0 {
+    RebuildScopeRefused {
+      cause: ChangedMirrorUnlocatable {
+        mirrors: unlocatable,
+        reason: "a changed path could not be named as a compared mirror; the rebuild scope cannot answer, and it does not widen to the whole compiler"
+      }
+    }
+  } else {
+    let generation = rebuild_scope_changed_in_roster(changed_mirrors: changed_mirrors, roster: rebuild_scope_partition_generation_mirrors)
+    let shared = rebuild_scope_changed_in_roster(changed_mirrors: changed_mirrors, roster: rebuild_scope_shared_build_input_mirrors)
+    if count(generation) > 0 {
+      WholeCompilerRebuildRequired { cause: PartitionGenerationAuthorityChanged { mirrors: generation } }
+    } else if count(shared) > 0 {
+      WholeCompilerRebuildRequired { cause: SharedCompilerBuildInputChanged { mirrors: shared } }
+    } else {
+      let underivable = rebuild_scope_first_underivable(rows: rows)
+      if count(underivable) > 0 {
+        RebuildScopeRefused {
+          cause: PackageDependencyClosureUnderivable {
+            package_name: underivable |> fold(init: "", f: fn(acc, p) { if acc == "" { p } else { acc } }),
+            detail: "the manifest producer could not resolve a path dependency for this package, so the reverse package closure is not derivable"
+          }
+        }
+      } else {
+        match rebuild_scope_resolve_owners(changed_mirrors: changed_mirrors, rows: rows) {
+          OwnerRefused { cause: c } => RebuildScopeRefused { cause: c }
+          OwnerResolved { packages: owners } => {
+            let closure = rebuild_scope_reverse_closure(seeds: owners, rows: rows)
+            match executable {
+              MonolithicExecutableRetained { package_name: p, bin_name: b, duplicated_population: d } =>
+                RebuildScopeRefused {
+                  cause: ExecutableAssemblyNotCovered { executable_package: p, detail: d }
+                }
+              PartitionAssembledExecutable { package_name: p, bin_name: b } =>
+                if !rebuild_scope_list_has(items: closure, item: p) {
+                  RebuildScopeRefused {
+                    cause: ExecutableAssemblyNotCovered {
+                      executable_package: p,
+                      detail: "the declared next-pass executable package is not reached from the changed mirrors' owning packages, so relinking it would not carry the changed bytes"
+                    }
+                  }
+                } else {
+                  PartitionRebuild {
+                    changed_mirrors: changed_mirrors,
+                    owning_packages: owners,
+                    rebuilt_package_closure: closure,
+                    executable_package: p
+                  }
+                }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+fn stage0_partition_rebuild_decision_today(
+  changed_mirrors: List<String>,
+  unlocatable: List<String>
+) -> PartitionRebuildDecision {
+  stage0_partition_rebuild_decision(
+    changed_mirrors: changed_mirrors,
+    unlocatable: unlocatable,
+    rows: generated_partition_crate_rows,
+    executable: stage0_next_pass_executable_assembly()
+  )
+}
+
+// THE PACKAGES NOT COMPILED. Reported beside the closure because the guarantee this module makes
+// is an EXCLUSION -- an unrelated package stays uncompiled -- and an exclusion no consumer can
+// read is not evidence of anything.
+fn rebuild_scope_excluded_packages(
+  closure: List<String>,
+  rows: List<GeneratedPartitionCrateRow>
+) -> List<String> {
+  rows
+    |> map(row => row.package_name)
+    |> filter(p => !rebuild_scope_list_has(items: closure, item: p))
+}
+
+fn rebuild_scope_join(items: List<String>) -> String {
+  items |> fold(init: "", f: fn(acc, item) {
+    if acc == "" { item } else { concat(concat(acc, ", "), item) }
+  })
+}
+
+// THE PACKAGE IDENTITY ROSTER, NOT A COUNT. `rebuild_compiled_crates=3` is display; the roster
+// below is the evidence, so every line names the packages it is talking about.
+fn stage0_partition_rebuild_decision_line(decision: PartitionRebuildDecision) -> String {
+  match decision {
+    PartitionRebuild { changed_mirrors: m, owning_packages: o, rebuilt_package_closure: c, executable_package: e } =>
+      concat(
+        concat(concat("partition-rebuild: PartitionRebuild changed_mirrors=[", rebuild_scope_join(items: m)), "]"),
+        concat(
+          concat(concat(" owning_packages=[", rebuild_scope_join(items: o)), "]"),
+          concat(
+            concat(concat(" rebuilt_package_closure=[", rebuild_scope_join(items: c)), "]"),
+            concat(" executable_package=", e)
+          )
+        )
+      )
+    WholeCompilerRebuildRequired { cause: PartitionGenerationAuthorityChanged { mirrors: ms } } =>
+      concat("partition-rebuild: WholeCompilerRebuildRequired partition_generation_authority=[", concat(rebuild_scope_join(items: ms), "]"))
+    WholeCompilerRebuildRequired { cause: SharedCompilerBuildInputChanged { mirrors: ms } } =>
+      concat("partition-rebuild: WholeCompilerRebuildRequired shared_build_input=[", concat(rebuild_scope_join(items: ms), "]"))
+    RebuildScopeRefused { cause: ChangedMirrorUnlocatable { mirrors: ms, reason: r } } =>
+      concat(concat("partition-rebuild: RebuildScopeRefused ChangedMirrorUnlocatable mirrors=[", rebuild_scope_join(items: ms)), concat("] reason=", r))
+    RebuildScopeRefused { cause: MirrorHasNoOwningPackage { mirror: m } } =>
+      concat("partition-rebuild: RebuildScopeRefused MirrorHasNoOwningPackage mirror=", m)
+    RebuildScopeRefused { cause: MirrorHasMultipleOwningPackages { mirror: m, packages: ps } } =>
+      concat(concat("partition-rebuild: RebuildScopeRefused MirrorHasMultipleOwningPackages mirror=", m), concat(" packages=[", concat(rebuild_scope_join(items: ps), "]")))
+    RebuildScopeRefused { cause: PackageDependencyClosureUnderivable { package_name: p, detail: d } } =>
+      concat(concat("partition-rebuild: RebuildScopeRefused PackageDependencyClosureUnderivable package=", p), concat(" detail=", d))
+    RebuildScopeRefused { cause: ExecutableAssemblyNotCovered { executable_package: p, detail: d } } =>
+      concat(concat("partition-rebuild: RebuildScopeRefused ExecutableAssemblyNotCovered executable_package=", p), concat(" detail=", d))
+  }
+}
+
+data rebuild_scope_owner_resolution_dissolve_on: DissolutionCondition = unbound_dissolution(description: "dissolve-on: rebuild_scope_resolve_owners — repoint v1.compiler.stage0_crates stage0_lookup_module_owner_package_name at this refusing resolver so one answer serves both consumers. Held back here because that lookup is on the partition EMIT path, where a duplicate owner is already caught by rustc as a duplicated pub mod, and moving it is a change to a load-bearing generated-artifact producer rather than to this selector.")
+
+data rebuild_scope_executable_assembly_dissolve_on: DissolutionCondition = unbound_dissolution(description: "dissolve-on: stage0_next_pass_executable_assembly — flips MonolithicExecutableRetained to PartitionAssembledExecutable when the CAPABILITY exists of building the next-pass claim_executor from partition artifacts alone: every mirror in its closure owned by exactly one partition package, and the monolithic v1-compiler library no longer declaring those mirrors a second time. Until then every live call of stage0_partition_rebuild_decision_today refuses with ExecutableAssemblyNotCovered, which is the truthful state of the rebuild proof and not a gap this module papers over.")
