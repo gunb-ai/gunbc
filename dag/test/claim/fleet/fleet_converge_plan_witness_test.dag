@@ -106,6 +106,7 @@ import gunbc.fleet_converge_plan {
   FleetConvergeScope,
   FullHost,
   FabricExecutionCellsOnly,
+  FabricAllocationStoreOnly,
   FullHostConverge,
   FabricExecutionCellsConverge,
   fleet_converge_request_scope,
@@ -1815,10 +1816,15 @@ fn line_is_a_scope_row(l: String) -> Bool {
     || l == fleet_converge_scope_wire(scope: FabricExecutionCellsOnly)
 }
 
+// #9746 added FabricAllocationStoreOnly to the scope sum and left these two predicates behind, so
+// they stopped being exhaustive. Answering false for the new scope is the honest arm -- an allocation
+// store converge is neither a full host nor the execution-cells family -- and the compiler is what
+// found it, which is the closed sum doing its job.
 fn scope_is_full_host(s: FleetConvergeScope) -> Bool {
   match s {
     FullHost => true
     FabricExecutionCellsOnly => false
+    FabricAllocationStoreOnly => false
   }
 }
 
@@ -1826,6 +1832,7 @@ fn scope_is_fabric_only(s: FleetConvergeScope) -> Bool {
   match s {
     FabricExecutionCellsOnly => true
     FullHost => false
+    FabricAllocationStoreOnly => false
   }
 }
 
