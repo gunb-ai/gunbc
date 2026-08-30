@@ -2,6 +2,27 @@ module v2.test.execution.zz_ci_verdict_probe
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
+fn ciprobe_run_failed_reason(v: Verdict<TestClaimEvalSubject<Node>, RuntimeValue>) -> Optional<Symbol> {
+  match v {
+    RunFailed { actual: _, diagnostic: d } => Present { value: d.reason }
+    _ => Absent
+  }
+}
+
+fn ciprobe_run_failed_actual_reason(v: Verdict<TestClaimEvalSubject<Node>, RuntimeValue>) -> Optional<Symbol> {
+  match v {
+    RunFailed { actual: Rejected { diagnostics: ds }, diagnostic: _ } => Present { value: ds.head.reason }
+    _ => Absent
+  }
+}
+
+fn ciprobe_reason_is(o: Optional<Symbol>, want: Symbol) -> Bool {
+  match o {
+    Present { value: r } => r == want
+    Absent => false
+  }
+}
+
 fn ciprobe_variant_ok_verdict() -> Verdict<TestClaimEvalSubject<Node>, RuntimeValue> {
   emit_variant_construct_eval_run(tree: emit_variant_construct_eval_tree).verdict
 }
@@ -37,6 +58,28 @@ test fn ciprobe_variant_ok_is_run_failed() -> Bool {
 test fn ciprobe_variant_ok_is_deferred() -> Bool {
   match ciprobe_variant_ok_verdict() {
     Deferred { actual: _, diagnostic: _ } => true
+    _ => false
+  }
+}
+
+test fn ciprobe_variant_ok_rf_diag_exit_not_ok() -> Bool {
+  ciprobe_reason_is(o: ciprobe_run_failed_reason(v: ciprobe_variant_ok_verdict()), want: ^emit_host_exit_not_ok)
+}
+
+test fn ciprobe_variant_ok_rf_actual_rejected() -> Bool {
+  match ciprobe_run_failed_actual_reason(v: ciprobe_variant_ok_verdict()) {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
+test fn ciprobe_variant_ok_rf_actual_exit_not_ok() -> Bool {
+  ciprobe_reason_is(o: ciprobe_run_failed_actual_reason(v: ciprobe_variant_ok_verdict()), want: ^emit_host_exit_not_ok)
+}
+
+test fn ciprobe_variant_ok_rf_actual_accepted() -> Bool {
+  match ciprobe_variant_ok_verdict() {
+    RunFailed { actual: Accepted { value: _, diagnostics: _ }, diagnostic: _ } => true
     _ => false
   }
 }
@@ -80,6 +123,28 @@ test fn ciprobe_variant_wrong_is_deferred() -> Bool {
   }
 }
 
+test fn ciprobe_variant_wrong_rf_diag_exit_not_ok() -> Bool {
+  ciprobe_reason_is(o: ciprobe_run_failed_reason(v: ciprobe_variant_wrong_verdict()), want: ^emit_host_exit_not_ok)
+}
+
+test fn ciprobe_variant_wrong_rf_actual_rejected() -> Bool {
+  match ciprobe_run_failed_actual_reason(v: ciprobe_variant_wrong_verdict()) {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
+test fn ciprobe_variant_wrong_rf_actual_exit_not_ok() -> Bool {
+  ciprobe_reason_is(o: ciprobe_run_failed_actual_reason(v: ciprobe_variant_wrong_verdict()), want: ^emit_host_exit_not_ok)
+}
+
+test fn ciprobe_variant_wrong_rf_actual_accepted() -> Bool {
+  match ciprobe_variant_wrong_verdict() {
+    RunFailed { actual: Accepted { value: _, diagnostics: _ }, diagnostic: _ } => true
+    _ => false
+  }
+}
+
 fn ciprobe_meet_ok_verdict() -> Verdict<TestClaimEvalSubject<Node>, RuntimeValue> {
   meet_join_eval_run(root: dag_meet_arrow_with_body_fixture, target: rust_logic_meet_target_model_staging(), subgraph: dag_meet_eval_subgraph_fixture).verdict
 }
@@ -115,6 +180,28 @@ test fn ciprobe_meet_ok_is_run_failed() -> Bool {
 test fn ciprobe_meet_ok_is_deferred() -> Bool {
   match ciprobe_meet_ok_verdict() {
     Deferred { actual: _, diagnostic: _ } => true
+    _ => false
+  }
+}
+
+test fn ciprobe_meet_ok_rf_diag_exit_not_ok() -> Bool {
+  ciprobe_reason_is(o: ciprobe_run_failed_reason(v: ciprobe_meet_ok_verdict()), want: ^emit_host_exit_not_ok)
+}
+
+test fn ciprobe_meet_ok_rf_actual_rejected() -> Bool {
+  match ciprobe_run_failed_actual_reason(v: ciprobe_meet_ok_verdict()) {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
+test fn ciprobe_meet_ok_rf_actual_exit_not_ok() -> Bool {
+  ciprobe_reason_is(o: ciprobe_run_failed_actual_reason(v: ciprobe_meet_ok_verdict()), want: ^emit_host_exit_not_ok)
+}
+
+test fn ciprobe_meet_ok_rf_actual_accepted() -> Bool {
+  match ciprobe_meet_ok_verdict() {
+    RunFailed { actual: Accepted { value: _, diagnostics: _ }, diagnostic: _ } => true
     _ => false
   }
 }
@@ -155,5 +242,180 @@ test fn ciprobe_complement_wrong_is_deferred() -> Bool {
   match ciprobe_complement_wrong_verdict() {
     Deferred { actual: _, diagnostic: _ } => true
     _ => false
+  }
+}
+
+test fn ciprobe_complement_wrong_rf_diag_exit_not_ok() -> Bool {
+  ciprobe_reason_is(o: ciprobe_run_failed_reason(v: ciprobe_complement_wrong_verdict()), want: ^emit_host_exit_not_ok)
+}
+
+test fn ciprobe_complement_wrong_rf_actual_rejected() -> Bool {
+  match ciprobe_run_failed_actual_reason(v: ciprobe_complement_wrong_verdict()) {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
+test fn ciprobe_complement_wrong_rf_actual_exit_not_ok() -> Bool {
+  ciprobe_reason_is(o: ciprobe_run_failed_actual_reason(v: ciprobe_complement_wrong_verdict()), want: ^emit_host_exit_not_ok)
+}
+
+test fn ciprobe_complement_wrong_rf_actual_accepted() -> Bool {
+  match ciprobe_complement_wrong_verdict() {
+    RunFailed { actual: Accepted { value: _, diagnostics: _ }, diagnostic: _ } => true
+    _ => false
+  }
+}
+
+fn ciprobe_variant_ok_receipt() -> Outcome<EmitHostRunReceipt> {
+  match emit(tree: emit_variant_construct_eval_tree, target: rust_variant_construct_target_model_staging()) {
+    Accepted { value: source, diagnostics: _ } =>
+      run_emit_host(target: rust_variant_construct_target_model_staging(), source: source, fixture_inputs: inputs_root_only(root: dag_variant_construct_body_fixture))
+    Rejected { diagnostics: ds } => Rejected { diagnostics: ds }
+  }
+}
+
+fn ciprobe_variant_ok_exit_code() -> Optional<Int> {
+  match ciprobe_variant_ok_receipt() {
+    Accepted { value: rc, diagnostics: _ } =>
+      match rc.exit.outcome {
+        Accepted { value: Holds { value: ok }, diagnostics: _ } => Present { value: ok.code }
+        _ => Absent
+      }
+    Rejected { diagnostics: _ } => Absent
+  }
+}
+
+test fn ciprobe_variant_ok_receipt_accepted() -> Bool {
+  match ciprobe_variant_ok_receipt() {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn ciprobe_variant_ok_exit_ok_zero() -> Bool {
+  match ciprobe_variant_ok_exit_code() {
+    Present { value: c } => c == 0
+    Absent => false
+  }
+}
+
+test fn ciprobe_variant_ok_exit_violates() -> Bool {
+  match ciprobe_variant_ok_receipt() {
+    Accepted { value: rc, diagnostics: _ } =>
+      match rc.exit.outcome {
+        Accepted { value: Violates { diagnostic: _ }, diagnostics: _ } => true
+        _ => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn ciprobe_variant_ok_logical_run_accepted() -> Bool {
+  match ciprobe_variant_ok_receipt() {
+    Accepted { value: rc, diagnostics: _ } =>
+      match rc.logical_run {
+        Accepted { value: _, diagnostics: _ } => true
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn ciprobe_variant_ok_stderr_empty() -> Bool {
+  match ciprobe_variant_ok_receipt() {
+    Accepted { value: rc, diagnostics: _ } => is_empty(xs: rc.stderr_bytes)
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn ciprobe_variant_ok_build_log_empty() -> Bool {
+  match ciprobe_variant_ok_receipt() {
+    Accepted { value: rc, diagnostics: _ } => is_empty(xs: rc.build_log.lines)
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn ciprobe_variant_ok_compile_skipped() -> Bool {
+  match ciprobe_variant_ok_receipt() {
+    Accepted { value: rc, diagnostics: _ } => rc.compile_skipped
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+
+fn ciprobe_meet_ok_receipt() -> Outcome<EmitHostRunReceipt> {
+  match emit(tree: meet_join_eval_tree_for(root: dag_meet_arrow_with_body_fixture), target: rust_logic_meet_target_model_staging()) {
+    Accepted { value: source, diagnostics: _ } =>
+      run_emit_host(target: rust_logic_meet_target_model_staging(), source: source, fixture_inputs: inputs_root_only(root: dag_meet_eval_subgraph_fixture))
+    Rejected { diagnostics: ds } => Rejected { diagnostics: ds }
+  }
+}
+
+fn ciprobe_meet_ok_exit_code() -> Optional<Int> {
+  match ciprobe_meet_ok_receipt() {
+    Accepted { value: rc, diagnostics: _ } =>
+      match rc.exit.outcome {
+        Accepted { value: Holds { value: ok }, diagnostics: _ } => Present { value: ok.code }
+        _ => Absent
+      }
+    Rejected { diagnostics: _ } => Absent
+  }
+}
+
+test fn ciprobe_meet_ok_receipt_accepted() -> Bool {
+  match ciprobe_meet_ok_receipt() {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn ciprobe_meet_ok_exit_ok_zero() -> Bool {
+  match ciprobe_meet_ok_exit_code() {
+    Present { value: c } => c == 0
+    Absent => false
+  }
+}
+
+test fn ciprobe_meet_ok_exit_violates() -> Bool {
+  match ciprobe_meet_ok_receipt() {
+    Accepted { value: rc, diagnostics: _ } =>
+      match rc.exit.outcome {
+        Accepted { value: Violates { diagnostic: _ }, diagnostics: _ } => true
+        _ => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn ciprobe_meet_ok_logical_run_accepted() -> Bool {
+  match ciprobe_meet_ok_receipt() {
+    Accepted { value: rc, diagnostics: _ } =>
+      match rc.logical_run {
+        Accepted { value: _, diagnostics: _ } => true
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn ciprobe_meet_ok_stderr_empty() -> Bool {
+  match ciprobe_meet_ok_receipt() {
+    Accepted { value: rc, diagnostics: _ } => is_empty(xs: rc.stderr_bytes)
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn ciprobe_meet_ok_build_log_empty() -> Bool {
+  match ciprobe_meet_ok_receipt() {
+    Accepted { value: rc, diagnostics: _ } => is_empty(xs: rc.build_log.lines)
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn ciprobe_meet_ok_compile_skipped() -> Bool {
+  match ciprobe_meet_ok_receipt() {
+    Accepted { value: rc, diagnostics: _ } => rc.compile_skipped
+    Rejected { diagnostics: _ } => false
   }
 }
