@@ -1,4 +1,4 @@
-module test.claim.emitted_call_target_realization_witness_test
+module test.claim.self_host_emitted_call_target_realization_witness_test
 
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
@@ -355,7 +355,7 @@ test fn w_qualified_type_reference_earns_the_leaf_use_line() -> Bool {
   )
 }
 
-// THE SYMBOL IMPORT COLLISION, the byte-level falsifier test.claim.symbol_identity_binding specifies
+// THE SYMBOL IMPORT COLLISION, the byte-level falsifier test.claim.self_host_symbol_identity_binding specifies
 // for the exact path (symbol_import_collision_fixture_source there is this source). v2.std.node
 // `type Symbol` is opaque and bound by declaration to RustStdString; v2.std.text `String` is the
 // structural text carrier, and this module imports both. Under the spelling-keyed path Symbol
