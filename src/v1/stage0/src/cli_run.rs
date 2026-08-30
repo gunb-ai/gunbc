@@ -12010,6 +12010,7 @@ fn check_index_module_source_identity(
 pub(crate) struct MemoryStallWindowStart {
     started: std::time::Instant,
     major_faults: u64,
+    self_cpu_ms: u64,
     cache_evictions: u64,
     cache_readmissions: u64,
 }
@@ -12021,7 +12022,10 @@ pub(crate) struct MemoryStallWindowStart {
 /// run was admitted under. Inert (`Ok`) where the fault counter is unreadable (Darwin has
 /// no procfs): a check that cannot observe must not refuse, and must not fabricate a zero.
 fn memory_stall_check(index: &MultiEntryIndex, mod_name: &str) -> Result<(), String> {
-    let Some(now_faults) = crate::memory_governor::self_major_faults() else {
+    let (Some(now_faults), Some(now_cpu_ms)) = (
+        crate::memory_governor::self_major_faults(),
+        crate::memory_governor::self_cpu_ms(),
+    ) else {
         return Ok(());
     };
     let evictions = index.typed_cache_evictions.get();
@@ -12031,6 +12035,7 @@ fn memory_stall_check(index: &MultiEntryIndex, mod_name: &str) -> Result<(), Str
         *window = Some(MemoryStallWindowStart {
             started: std::time::Instant::now(),
             major_faults: now_faults,
+            self_cpu_ms: now_cpu_ms,
             cache_evictions: evictions,
             cache_readmissions: readmissions,
         });
@@ -12039,6 +12044,7 @@ fn memory_stall_check(index: &MultiEntryIndex, mod_name: &str) -> Result<(), Str
     let observation = crate::memory_governor::MemoryStallObservation {
         window_wall_ms: start.started.elapsed().as_millis() as u64,
         major_faults_in_window: now_faults.saturating_sub(start.major_faults),
+        self_cpu_ms_in_window: now_cpu_ms.saturating_sub(start.self_cpu_ms),
         cache_evictions_in_window: evictions.saturating_sub(start.cache_evictions),
         cache_readmissions_in_window: readmissions.saturating_sub(start.cache_readmissions),
     };
@@ -12048,6 +12054,7 @@ fn memory_stall_check(index: &MultiEntryIndex, mod_name: &str) -> Result<(), Str
             *window = Some(MemoryStallWindowStart {
                 started: std::time::Instant::now(),
                 major_faults: now_faults,
+                self_cpu_ms: now_cpu_ms,
                 cache_evictions: evictions,
                 cache_readmissions: readmissions,
             });
