@@ -152,6 +152,21 @@ type WetReceiptEnvelope = {
   rows: List<WetReceiptIdentityRow>
 }
 
+// FLAT-SCALAR TIME FIELDS, DECLARED AS A BOUNDED GAP RATHER THAN SILENTLY LEFT (review 57567
+// on gunbc#9725, BLOCKING on `wall_ms`, `executed_at_unix_secs`, `published_at_unix_secs`
+// and the fold's `evaluated_tree_commit_unix_secs` parameter). The finding is correct on the
+// merits, and this row is the same construction its sibling
+// `v2.workflow.required_floor.flat_scalar_millisecond_fields_dissolve_on` already carries for
+// the identical class: `std.measure` `Millisecond = Measure<Time, Milli, std.nat.Nat>` is
+// built on v1's host-backed `Nat`, while this module's `Int` is v2's inductive tower
+// (`v2.std.integer.Int = GroupCompletion<v2.std.nat.Nat>`), and no verified bridge between
+// the two numeric towers exists anywhere in this corpus. Authoring that bridge inside a
+// routing PR would be exactly the silent cross-representation seam the incident history
+// warns against, so the conversion is a typed obligation, not a prose promise.
+data flat_scalar_wet_receipt_time_fields_dissolve_on: DissolutionCondition = unbound_dissolution(
+  description: "🟡 feature: flat-scalar wet-receipt time fields. dissolve-on: WetReceiptIdentityRow.wall_ms, WetReceiptEnvelope.executed_at_unix_secs/published_at_unix_secs and wet_lane_receipt_standing's evaluated_tree_commit_unix_secs parameter (with the cadence/grace/budget/skew rows they compare against) convert from bare Int to std.measure Time carriers once a verified conversion exists between v2's inductive numeric tower (v2.std.integer.Int) and the host-backed Nat std.measure is built on — the same trigger v2.workflow.required_floor.flat_scalar_millisecond_fields_dissolve_on names (review 57567 and review 57568 on gunbc#9725; precedent review 53860 on gunbc#8584)." as NonEmptyStr,
+)
+
 // THE FLOOR-SIDE STANDING OF THE COMMITTED ENVELOPE, one value per evaluated tree, decided
 // from four facts the floor holds: the envelope (or its absence), the wet subject digest the
 // floor computed for the tree under evaluation, the roster, and the tree's own commit time.
@@ -195,20 +210,6 @@ fn floor_wet_route_publication_skew_secs() -> Int {
   3600
 }
 
-// FLAT-SCALAR TIME FIELDS, DECLARED AS A BOUNDED GAP RATHER THAN SILENTLY LEFT (review 57567
-// on gunbc#9725, BLOCKING on `wall_ms`, `executed_at_unix_secs`, `published_at_unix_secs`
-// and the fold's `evaluated_tree_commit_unix_secs` parameter). The finding is correct on the
-// merits, and this row is the same construction its sibling
-// `v2.workflow.required_floor.flat_scalar_millisecond_fields_dissolve_on` already carries for
-// the identical class: `std.measure` `Millisecond = Measure<Time, Milli, std.nat.Nat>` is
-// built on v1's host-backed `Nat`, while this module's `Int` is v2's inductive tower
-// (`v2.std.integer.Int = GroupCompletion<v2.std.nat.Nat>`), and no verified bridge between
-// the two numeric towers exists anywhere in this corpus. Authoring that bridge inside a
-// routing PR would be exactly the silent cross-representation seam the incident history
-// warns against, so the conversion is a typed obligation, not a prose promise.
-data flat_scalar_wet_receipt_time_fields_dissolve_on: DissolutionCondition = unbound_dissolution(
-  description: "dissolve-on: WetReceiptIdentityRow.wall_ms, WetReceiptEnvelope.executed_at_unix_secs/published_at_unix_secs and wet_lane_receipt_standing's evaluated_tree_commit_unix_secs parameter (with the cadence/grace/budget/skew rows they compare against) convert from bare Int to std.measure Time carriers once a verified conversion exists between v2's inductive numeric tower (v2.std.integer.Int) and the host-backed Nat std.measure is built on — the same trigger v2.workflow.required_floor.flat_scalar_millisecond_fields_dissolve_on names (review 57567 on gunbc#9725; precedent review 53860 on gunbc#8584)." as NonEmptyStr,
-)
 
 data floor_wet_route_receipt_json_rel_path: String = "dag/gunbc/witness/wet_lane/latest-attempt.json"
 
