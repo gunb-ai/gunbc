@@ -8,6 +8,7 @@ use clap::{Parser, Subcommand};
 pub struct Cli {
     #[command(subcommand)]
     pub command: Commands,
+    /// Run in dry-run mode (mock all service calls)
     #[arg(long, global = true)]
     pub dry_run: bool,
 }
@@ -59,6 +60,7 @@ pub enum Commands {
     /// Build one exact executable for a named program
     Build {
         /// Program name from the offered program roster
+        #[arg(value_name = "PROGRAM")]
         program: String,
     },
     /// Apply a host's typed converge policy in-process
@@ -103,6 +105,7 @@ pub enum Commands {
     Test {
         /// Absolute label of exactly one target, e.g.
         /// `//gunbc/instruments:heads-reading-differential`.
+        #[arg(value_name = "LABEL")]
         target: String,
     },
 }
@@ -139,16 +142,23 @@ pub trait CliDispatchHost {
     fn invoke_bound_target_producer(&self, target: String) -> !;
 }
 
-pub fn dispatch<H: CliDispatchHost>(command: Commands, __gunbc_dispatch_executor_0: &H) -> ! {
-    match command {
-        Commands::Compile {
-            source_roots,
-            source_dir,
-            output_dir,
-            target,
-            dependency_pool_index,
-            entry,
-        } => __gunbc_dispatch_executor_0.retained_host_kernel(
+pub fn dispatch<H: CliDispatchHost>(
+    command: Commands,
+    dry_run: bool,
+    __gunbc_dispatch_executor_0: &H,
+) -> ! {
+    match (command, dry_run) {
+        (
+            Commands::Compile {
+                source_roots,
+                source_dir,
+                output_dir,
+                target,
+                dependency_pool_index,
+                entry,
+            },
+            _,
+        ) => __gunbc_dispatch_executor_0.retained_host_kernel(
             source_roots,
             source_dir,
             output_dir,
@@ -156,36 +166,46 @@ pub fn dispatch<H: CliDispatchHost>(command: Commands, __gunbc_dispatch_executor
             dependency_pool_index,
             entry,
         ),
-        Commands::Run {
-            source_roots,
-            function,
-            entry,
-            claim_run,
-            args,
-        } => __gunbc_dispatch_executor_0.run_verb(source_roots, function, entry, claim_run, args),
-        Commands::Build { program } => crate::cli_run::run_bootstrap_dag_operation(
+        (
+            Commands::Run {
+                source_roots,
+                function,
+                entry,
+                claim_run,
+                args,
+            },
+            _,
+        ) => __gunbc_dispatch_executor_0.run_verb(source_roots, function, entry, claim_run, args),
+        (Commands::Build { program }, true) => {
+            eprintln!("REFUSED: --dry-run cannot execute a bootstrap successor operation");
+            std::process::exit(2);
+        }
+        (Commands::Build { program }, false) => crate::cli_run::run_bootstrap_dag_operation(
             &["dag".to_string(), "src/v2".to_string()],
             "dag/gunbc/devboot/build.dag",
             "gunbc.devboot.build",
             "gunbc_build_cli_entry",
             vec![("program".to_string(), program)],
             "receipt_path",
-            ".gunbc-build-receipt",
+            ".gunbc-build-receipts",
         ),
-        Commands::Converge { .. } => {
+        (Commands::Converge { .. }, _) => {
             eprintln!("REFUSED: gunbc.fleet_converge_apply is not wired");
             std::process::exit(2);
         }
-        Commands::Serve {
-            source_roots,
-            entry,
-            function,
-            host,
-            port,
-            release_revision,
-            eval_budget_cpu_ms,
-            eval_budget_wall_ms,
-        } => __gunbc_dispatch_executor_0.handle_serve(
+        (
+            Commands::Serve {
+                source_roots,
+                entry,
+                function,
+                host,
+                port,
+                release_revision,
+                eval_budget_cpu_ms,
+                eval_budget_wall_ms,
+            },
+            _,
+        ) => __gunbc_dispatch_executor_0.handle_serve(
             source_roots,
             entry,
             function,
@@ -195,7 +215,7 @@ pub fn dispatch<H: CliDispatchHost>(command: Commands, __gunbc_dispatch_executor
             eval_budget_cpu_ms,
             eval_budget_wall_ms,
         ),
-        Commands::Test { target } => {
+        (Commands::Test { target }, _) => {
             __gunbc_dispatch_executor_0.invoke_bound_target_producer(target)
         }
     }

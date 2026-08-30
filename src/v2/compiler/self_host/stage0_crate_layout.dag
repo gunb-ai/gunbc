@@ -285,6 +285,17 @@ type EmitterProducedDivergentRegistration {
 
 data emitter_produced_divergent_note: String = "A DECLARED RUNG DROP (DESIGN section 4b), not a hand-authored file. These basenames ARE in compile_stage0()'s emitted population and what it emits DIVERGES from what is committed. Every other exclusion family above names a file the emitter does not produce at all, so for them exclusion from the regen comparison costs nothing; for these it suppresses a real authority-versus-artifact divergence. Declared rung: mitigatable — the divergence is measured, named and counted on every required-regen run, and the population is bounded by this list. Ceiling: structural impossibility — the file is decidable and fully modelled, so the reachable end state is that the emitter produces the committed bytes and this family is EMPTY, not that a check reports the gap. main was carried as a SeedRetainedIntrinsicRegistration, whose type asserts hand-authored source with no .dag authority; that is false of a file the emitter emits, and the false family is exactly what made the divergence unobservable. The consumer enforces this list in three directions rather than reading it as permission: an undeclared divergence FAILS (a new suppression cannot be added by editing Rust), a declared row that no longer diverges FAILS (the restoration trigger is mechanical, not prose), and a declared row the emitter no longer produces FAILS (a row cannot outlive its producer)."
 
+// CROSS-DIVERGENCE CALL CONTRACT, §4b rung row. Invalid state: an emitted declaration and its
+// hand-retained caller disagree in parameter arity or order across the declared main.rs divergence
+// boundary. Current rung: mitigatable — rustc refuses the mismatch, but only when a consumer builds
+// the composed crate. Ceiling: structural impossibility, because both sides are modeled corpus
+// members. Next-rung capability trigger: the emitter renders, or a structural lens derives, the
+// caller-side dispatch contract from the same authority that renders the generated carrier
+// signature, so changing either arity or order cannot leave the retained call stale. At that point
+// this row is deleted with the independently authored caller contract; adding one compile test does
+// not satisfy the trigger because the lost relation is corpus-grain.
+data generated_dispatch_retained_caller_contract_rung_note: String = "The generated dispatch signature and retained main.rs call are presently separate projections across an admitted divergence boundary; compilation is the mitigatable rung until one authority constructs both contracts."
+
 data emitter_produced_divergent_registrations: List<EmitterProducedDivergentRegistration> = [
   EmitterProducedDivergentRegistration {
     basename: "main",
