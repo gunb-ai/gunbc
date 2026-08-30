@@ -709,15 +709,23 @@ fn scheduled_rows_from_frozen_schedule<Row>(
 // absorbing fallback DESIGN §5 names, sitting in the input to a converge.
 //
 // So the arms are distinct and the empty mint is deleted rather than kept beside them. NotApplicable
-// is honest for a non-Spark host; Refused carries why and cannot become an empty plan; Planned
-// carries the members and the rows TOGETHER, minted only where both were derived from one
-// observation. The host travels in the arm rather than as a second parameter, so it cannot disagree
+// is honest for a non-Spark host; Unobserved is honest for a Spark nobody probed; Refused carries
+// why and cannot become an empty plan; Planned carries the members and the rows TOGETHER, minted
+// only where both were derived from one observation.
+//
+// UNOBSERVED IS A SEPARATE ARM BECAUSE THE FIRST VERSION HAD THE CLI CALL EVERY HOST NotApplicable,
+// AND THAT WAS A LIE. srv5 and srv6 are enrolled Sparks; saying the Spark axis does not apply to
+// them ASSERTS a fact, where the empty product it replaced merely failed to carry one. That is
+// strictly worse -- it converted missing evidence into a false claim. Unobserved says what is true,
+// and it refuses through spark_serving_axis_refusal rather than planning an empty schedule, so the
+// unwired observer is LOUD instead of quietly producing a plan with no Spark axis in it. The host travels in the arm rather than as a second parameter, so it cannot disagree
 // with the observation that produced it.
 //
 // It is generic in the row for the same reason ScheduledRows is: the row type is declared upstream
 // in the plan layer, and naming it here would close an import cycle.
 type SparkServingAxisDisposition<Row>
   = SparkServingAxisNotApplicable { host: HostIdentity }
+  | SparkServingAxisUnobserved { host: HostIdentity }
   | SparkServingAxisRefused { host: HostIdentity, cause: String }
   | SparkServingAxisPlanned {
       host: HostIdentity
@@ -728,9 +736,19 @@ type SparkServingAxisDisposition<Row>
 // The members the artifact's observed baseline must fingerprint. A refusal contributes none -- and
 // that is not the same as an observed-empty population, which is why the caller must consult the
 // arm rather than this projection alone.
+fn spark_serving_axis_host<Row>(a: SparkServingAxisDisposition<Row>) -> HostIdentity {
+  match a {
+    SparkServingAxisNotApplicable { host: h } => h
+    SparkServingAxisUnobserved { host: h } => h
+    SparkServingAxisRefused { host: h, cause: _ } => h
+    SparkServingAxisPlanned { host: h, observed_members: _, rows: _ } => h
+  }
+}
+
 fn spark_serving_axis_observed_members<Row>(a: SparkServingAxisDisposition<Row>) -> List<SparkServingMember> {
   match a {
     SparkServingAxisNotApplicable { host: _ } => []
+    SparkServingAxisUnobserved { host: _ } => []
     SparkServingAxisRefused { host: _, cause: _ } => []
     SparkServingAxisPlanned { host: _, observed_members: ms, rows: _ } => ms
   }
@@ -739,6 +757,7 @@ fn spark_serving_axis_observed_members<Row>(a: SparkServingAxisDisposition<Row>)
 fn spark_serving_axis_rows<Row>(a: SparkServingAxisDisposition<Row>) -> ScheduledRows<Row> {
   match a {
     SparkServingAxisNotApplicable { host: _ } => scheduled_rows_empty()
+    SparkServingAxisUnobserved { host: _ } => scheduled_rows_empty()
     SparkServingAxisRefused { host: _, cause: _ } => scheduled_rows_empty()
     SparkServingAxisPlanned { host: _, observed_members: _, rows: rows } => rows
   }
@@ -749,6 +768,15 @@ fn spark_serving_axis_refusal<Row>(a: SparkServingAxisDisposition<Row>) -> Strin
     SparkServingAxisNotApplicable { host: _ } => none
     SparkServingAxisPlanned { host: _, observed_members: _, rows: _ } => none
     SparkServingAxisRefused { host: _, cause: why } => Present { value: why }
+    SparkServingAxisUnobserved { host: h } =>
+      Present {
+        value: join([
+          "spark axis for host ",
+          h as String,
+          " was never observed: this host is an enrolled Spark and the plan CLI does not yet run the",
+          " serving observer, so a plan built here would claim a completeness it does not have",
+        ], ""),
+      }
   }
 }
 

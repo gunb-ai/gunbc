@@ -26,6 +26,7 @@ import gunbc.fabric_cell_observation_admission { admit_fabric_cell_probe }
 import gunbc.fabric_cell_acquire { fabric_cell_probe_wet }
 import gunbc.runner_service_activation { runner_activation_readiness_unobserved_no_transaction }
 import gunbc.fleet_converge_plan {
+  FleetConvergeSparkServingTypedAction,
   TimerRetirementMember,
   fleet_converge_plan_artifact,
   FleetConvergePlanArtifactReady,
@@ -65,7 +66,27 @@ import gunbc.fleet_converge_plan {
 }
 import gunbc.spark.serving_execution_schedule {
   SparkServingAxisNotApplicable,
+  SparkServingAxisUnobserved,
+  SparkServingAxisDisposition,
   scheduled_rows_list,
+}
+import gunbc.spark.serving_observation_scope { spark_serving_observation_scope, host_in }
+
+// THE CLI DOES NOT RUN THE SERVING OBSERVER YET, AND THE HONEST WAY TO SAY THAT IS NOT "NotApplicable".
+//
+// NotApplicable ASSERTS that the Spark serving axis does not govern this host. For srv3 that is true.
+// For srv5 and srv6 -- enrolled Sparks, named by the procurement authority -- it is false, and a plan
+// that carried it would claim a completeness it does not have while looking exactly like a complete
+// one. Unobserved says the true thing instead, and refuses the artifact, so the missing observer is a
+// loud stop rather than a silent omission from every plan built on a Spark.
+fn spark_axis_for_unobserved_cli(
+  host: HostIdentity,
+) -> SparkServingAxisDisposition<FleetConvergeSparkServingTypedAction> {
+  if host_in(hosts: spark_serving_observation_scope(), host: host) {
+    SparkServingAxisUnobserved { host: host }
+  } else {
+    SparkServingAxisNotApplicable { host: host }
+  }
 }
 
 data fleet_converge_plan_spark_typed_actions_wire_path: String = "/tmp/fleet-converge-plan/spark_serving_typed_actions.wire"
@@ -170,7 +191,7 @@ func fleet_converge_plan_wet() -> ProcessExit
     prior_generation: prior_generation,
     observed_timers: observed_timers,
     observed_caps: observed_caps,
-    spark_axis: SparkServingAxisNotApplicable { host: host as HostIdentity },
+    spark_axis: spark_axis_for_unobserved_cli(host: host as HostIdentity),
     observed_slots: observed_slots,
     observed_fabric_cells: admit_fabric_cell_probe(probe: fabric_cell_probe_wet(host: host as HostIdentity)),
     observed_activation_readiness: runner_activation_readiness_unobserved_no_transaction,

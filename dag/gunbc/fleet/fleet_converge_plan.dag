@@ -122,6 +122,7 @@ import gunbc.spark.serving_execution_schedule {
   spark_serving_axis_rows,
   spark_serving_axis_observed_members,
   spark_serving_axis_refusal,
+  spark_serving_axis_host,
 }
 
 import gunbc.fleet_converge_timer {
@@ -163,7 +164,7 @@ import extdeps.github.actions_runner {
   actions_runner_binary_artifact_for_arch,
 }
 import extdeps.cpu.ampere { altra_max_m12830_catalog }
-import product.placement_supply { HostIdentity }
+import product.placement_supply { HostIdentity, host_identity_eq }
 import gunbc.runner_host_deploy {
   RunnerHostDeployFound,
   RunnerHostDeployUnmodeled,
@@ -2387,6 +2388,24 @@ fn fleet_converge_plan_artifact(
       observed_activation_readiness: observed_activation_readiness,
     ),
   )
+  // THE AXIS CARRIES A HOST AND SO DOES THIS ARTIFACT, AND NOTHING JOINED THEM.
+  //
+  // Putting the host inside the disposition stopped it disagreeing with the OBSERVATION that
+  // produced it. It did not stop it disagreeing with the SUBJECT being planned: an axis tagged srv6
+  // could be handed to an artifact whose subject is srv5, and the resulting plan would carry srv6's
+  // retirement rows under srv5's baseline and lease. Third instance of the class #9754 opened -- a
+  // host carried twice, joined by convention -- and it is caught here rather than made
+  // unrepresentable because the two hosts are genuinely two facts until this comparison is made.
+  if !host_identity_eq(a: spark_serving_axis_host(a: spark_axis), b: host as HostIdentity) {
+    FleetConvergePlanArtifactRefused {
+      cause: join([
+        "spark axis is tagged for host ",
+        spark_serving_axis_host(a: spark_axis) as String,
+        " but the plan subject is ",
+        host as String,
+      ], ""),
+    }
+  } else {
   match spark_serving_axis_refusal(a: spark_axis) {
     Present { value: why } => FleetConvergePlanArtifactRefused { cause: why }
     Absent =>
@@ -2401,6 +2420,7 @@ fn fleet_converge_plan_artifact(
           spark_serving_typed_actions: spark_serving_axis_rows(a: spark_axis),
         },
       }
+  }
   }
 }
 
