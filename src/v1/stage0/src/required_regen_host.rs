@@ -2307,17 +2307,45 @@ fn render_round_cost_receipt(
             format!("refusal: {entry} did not resolve, so the receipt cannot render: {e}")
         })?;
     let ctx = super::make_eval_context(&graph, indices, ExecutionMode::Hermetic);
-    let cpu_value = |cpu_ms: Option<u64>| match cpu_ms {
+    // The model's carriers, built in the model's vocabulary: a duration is a
+    // `std.measure` Nanosecond (`Measure { count }`) inside `std.observation` Measured, on a
+    // `TimedMeasurement` row that names its clock. Milliseconds from the ledger become
+    // nanoseconds here so no unit lives in a field name past this boundary.
+    let nanosecond = |ms: u64| Value::Record {
+        type_name: ctx.sym("Measure"),
+        fields: Rc::new(vec![(
+            ctx.sym("count"),
+            Value::Int((ms * 1_000_000) as i64),
+        )]),
+    };
+    let measured = |ms: Option<u64>| match ms {
         Some(ms) => Value::Variant {
-            type_name: ctx.sym("CpuReading"),
-            variant_name: ctx.sym("CpuMs"),
-            fields: Rc::new(vec![(ctx.sym("ms"), Value::Int(ms as i64))]),
+            type_name: ctx.sym("Measured"),
+            variant_name: ctx.sym("MeasuredValue"),
+            fields: Rc::new(vec![(ctx.sym("value"), nanosecond(ms))]),
         },
         None => Value::Variant {
-            type_name: ctx.sym("CpuReading"),
-            variant_name: ctx.sym("CpuUnreadable"),
-            fields: Rc::new(vec![]),
+            type_name: ctx.sym("Measured"),
+            variant_name: ctx.sym("MeasuredUnavailable"),
+            fields: Rc::new(vec![(
+                ctx.sym("cause"),
+                str_value("process accounting unreadable"),
+            )]),
         },
+    };
+    let timed = |basis: &str, ms: Option<u64>| Value::Record {
+        type_name: ctx.sym("TimedMeasurement"),
+        fields: Rc::new(vec![
+            (
+                ctx.sym("basis"),
+                Value::Variant {
+                    type_name: ctx.sym("ClockBasis"),
+                    variant_name: ctx.sym(basis),
+                    fields: Rc::new(vec![]),
+                },
+            ),
+            (ctx.sym("elapsed"), measured(ms)),
+        ]),
     };
     let mark_values: Vec<Value> = marks
         .iter()
@@ -2325,8 +2353,16 @@ fn render_round_cost_receipt(
             type_name: ctx.sym("TraceMark"),
             fields: Rc::new(vec![
                 (ctx.sym("label"), str_value(row.label.clone())),
-                (ctx.sym("wall_ms"), Value::Int(row.wall_ms as i64)),
-                (ctx.sym("cpu"), cpu_value(row.cpu_ms)),
+                (
+                    ctx.sym("durations"),
+                    Value::List(Rc::new(
+                        vec![
+                            timed("WallClock", Some(row.wall_ms)),
+                            timed("CpuClock", row.cpu_ms),
+                        ]
+                        .into(),
+                    )),
+                ),
             ]),
         })
         .collect();
@@ -2477,7 +2513,12 @@ mod regen_round_cost_tests {
     /// forty-minute round. The expected text is the same fixture the .dag witness asserts.
     #[test]
     fn host_built_receipt_renders_through_the_model() {
-        let roots = vec![workspace_root().join("dag").to_string_lossy().into_owned()];
+        // Both roots the production driver passes: `std.observation`'s closure reaches
+        // `std.cache_interface`, which imports `v2.std.optional` from src/v2.
+        let roots: Vec<String> = ["dag", "src/v2"]
+            .iter()
+            .map(|r| workspace_root().join(r).to_string_lossy().into_owned())
+            .collect();
         let marks = vec![
             v1_rt::TraceLedgerRow {
                 label: "round.seed_build".to_string(),

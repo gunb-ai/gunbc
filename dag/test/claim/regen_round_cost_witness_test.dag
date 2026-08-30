@@ -1,11 +1,13 @@
 module test.claim.regen_round_cost_witness
 
-import std.types { Bool, String, List }
+import std.types { Bool, String, List, NonEmptyStr }
+import std.measure { CpuClock, WallClock, Nanosecond, nanosecond, nanosecond_count }
+import std.observation { Measured, MeasuredValue, MeasuredUnavailable }
 import gunbc.regen_round_cost {
-  RegenRoundCostReceipt, TraceMark, CpuReading, CpuMs, CpuUnreadable,
+  RegenRoundCostReceipt, TraceMark, regen_round_mark, regen_round_cpu_unreadable_cause,
   RegenRoundPhase, Emit, SeedBuild, RegenRoundPhaseAttribution, Attributed, Unattributed,
   regen_round_phase_of_label, regen_round_phase_tag, regen_round_phase_label, regen_round_phases,
-  regen_round_cpu_total, regen_round_wall_total_ms, regen_round_mark_line, regen_round_cost_render
+  regen_round_total, regen_round_mark_line, regen_round_cost_render
 }
 
 // WHAT THIS WITNESS COVERS: the fold from a drained trace ledger to the receipt lines the host
@@ -17,8 +19,23 @@ import gunbc.regen_round_cost {
 // know renders as `unattributed`, so the disagreement is visible in the receipt rather than
 // silent.
 
+fn ms(count: Int) -> Nanosecond {
+  nanosecond(count: count * 1000000)
+}
+
 fn a_mark(label: String, wall_ms: Int, cpu_ms: Int) -> TraceMark {
-  TraceMark { label: label, wall_ms: wall_ms, cpu: CpuMs { ms: cpu_ms } }
+  regen_round_mark(label: label, wall: ms(count: wall_ms), cpu: MeasuredValue { value: ms(count: cpu_ms) })
+}
+
+fn a_cpu_unreadable_mark(label: String, wall_ms: Int) -> TraceMark {
+  regen_round_mark(label: label, wall: ms(count: wall_ms), cpu: MeasuredUnavailable { cause: regen_round_cpu_unreadable_cause })
+}
+
+fn measured_ms_is(d: Measured<Nanosecond>, expected_ms: Int) -> Bool {
+  match d {
+    MeasuredValue { value: v } => nanosecond_count(n: v) == expected_ms * 1000000
+    MeasuredUnavailable { cause: c } => false
+  }
 }
 
 fn a_receipt(marks: List<TraceMark>) -> RegenRoundCostReceipt {
@@ -68,27 +85,36 @@ test fn w_RED_an_emit_sub_mark_is_unattributed_not_folded_into_emit() -> Bool {
 }
 
 test fn a_wall_total_is_the_sum_of_the_marks() -> Bool {
-  regen_round_wall_total_ms(marks: [a_mark(label: "round.seed_build", wall_ms: 1500, cpu_ms: 9000), a_mark(label: "compile.emit", wall_ms: 300000, cpu_ms: 299000)]) == 301500
+  measured_ms_is(
+    d: regen_round_total(marks: [a_mark(label: "round.seed_build", wall_ms: 1500, cpu_ms: 9000), a_mark(label: "compile.emit", wall_ms: 300000, cpu_ms: 299000)], basis: WallClock),
+    expected_ms: 301500
+  )
 }
 
 // THE DISCRIMINATING RED for the CPU total: one unreadable row makes the total unreadable. A
 // total that summed the readable rows would report a smaller CPU than the round spent.
 test fn w_RED_one_unreadable_cpu_row_makes_the_cpu_total_unreadable() -> Bool {
-  let total = regen_round_cpu_total(marks: [
+  let total = regen_round_total(marks: [
     a_mark(label: "round.seed_build", wall_ms: 1500, cpu_ms: 9000),
-    TraceMark { label: "compile.emit", wall_ms: 300000, cpu: CpuUnreadable }
-  ])
+    a_cpu_unreadable_mark(label: "compile.emit", wall_ms: 300000)
+  ], basis: CpuClock)
   match total {
-    CpuUnreadable => true
-    CpuMs { ms: m } => false
+    MeasuredUnavailable { cause: c } => true
+    MeasuredValue { value: v } => false
   }
 }
 
 test fn a_all_readable_cpu_rows_sum() -> Bool {
-  match regen_round_cpu_total(marks: [a_mark(label: "a", wall_ms: 1, cpu_ms: 2), a_mark(label: "b", wall_ms: 3, cpu_ms: 4)]) {
-    CpuMs { ms: m } => m == 6
-    CpuUnreadable => false
-  }
+  measured_ms_is(d: regen_round_total(marks: [a_mark(label: "a", wall_ms: 1, cpu_ms: 2), a_mark(label: "b", wall_ms: 3, cpu_ms: 4)], basis: CpuClock), expected_ms: 6)
+}
+
+// The wall total of the same rows is readable even though the CPU total is not: the two
+// clocks are two rows, and an unreadable CPU never poisons the wall.
+test fn a_wall_total_survives_an_unreadable_cpu_row() -> Bool {
+  measured_ms_is(
+    d: regen_round_total(marks: [a_mark(label: "a", wall_ms: 1500, cpu_ms: 9000), a_cpu_unreadable_mark(label: "b", wall_ms: 300000)], basis: WallClock),
+    expected_ms: 301500
+  )
 }
 
 test fn a_mark_line_names_the_phase_and_both_clocks() -> Bool {
