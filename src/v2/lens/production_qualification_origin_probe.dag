@@ -198,42 +198,31 @@ fn maybe_snoc_site_row(
   }
 }
 
-type AtomCollectState {
-  node: Node
-  atoms: List<Symbol>
-}
-
-fn atom_collect_init(n: Node) -> AtomCollectState {
-  AtomCollectState { node: n, atoms: empty_symbol_list }
-}
-
-fn atom_collect_step(acc: AtomCollectState, _edge: Edge, child: AtomCollectState) -> AtomCollectState {
-  let atoms = match node_atom_identity_optional(node: child.node) {
-    Present { value: sym } =>
-      if contains(xs: acc.atoms, item: sym, eq: symbol_eq) {
-        acc.atoms
-      } else {
-        list_snoc_item(xs: acc.atoms, item: sym)
-      }
-    Absent => acc.atoms
-  }
-  AtomCollectState { node: acc.node, atoms: atoms }
-}
-
-fn atom_collect_algebra() -> NodeFold<AtomCollectState> {
-  NodeFold { init: atom_collect_init, step: atom_collect_step }
-}
-
+// The atoms this reader returns are the node's own identity and those of its IMMEDIATE
+// children — the fold_node it once ran recursed the whole subtree while its step discarded
+// every child's collected atoms, so the descent computed results nothing consumed
+// (measured: 320ms of a 480ms witness over 479 declarations). The fold over `node.children`
+// below is extensionally the same function at the cost of one probe per child.
 fn atom_identities_in_node(node: Node) -> List<Symbol> {
-  let from_descendants = fold_node(n: node, algebra: atom_collect_algebra()).atoms
+  let from_children = fold(node.children, init: empty_symbol_list, f: fn(acc, e) {
+    match node_atom_identity_optional(node: e.target) {
+      Present { value: sym } =>
+        if contains(xs: acc, item: sym, eq: symbol_eq) {
+          acc
+        } else {
+          list_snoc_item(xs: acc, item: sym)
+        }
+      Absent => acc
+    }
+  })
   match node_atom_identity_optional(node: node) {
     Present { value: sym } =>
-      if contains(xs: from_descendants, item: sym, eq: symbol_eq) {
-        from_descendants
+      if contains(xs: from_children, item: sym, eq: symbol_eq) {
+        from_children
       } else {
-        list_snoc_item(xs: from_descendants, item: sym)
+        list_snoc_item(xs: from_children, item: sym)
       }
-    Absent => from_descendants
+    Absent => from_children
   }
 }
 

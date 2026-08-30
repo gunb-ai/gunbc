@@ -28,6 +28,7 @@ import gunbc.runner_service_activation { runner_activation_readiness_unobserved_
 import gunbc.fleet_converge_plan {
   TimerRetirementMember,
   fleet_converge_plan_artifact,
+  fleet_converge_allocation_store_plan_artifact,
   fleet_converge_plan_body_path,
   fleet_converge_plan_baseline_hex_path,
   fleet_converge_plan_apply_shell_path,
@@ -46,7 +47,17 @@ import gunbc.fleet_converge_plan {
   fleet_converge_scope_wire,
   fleet_converge_plan_subject,
   FleetConvergeRequest,
+  FleetConvergePlanArtifact,
   FullHostConverge,
+  FabricExecutionCellsConverge,
+  FabricAllocationStoreConverge,
+  FleetConvergeScope,
+  FullHost,
+  FabricExecutionCellsOnly,
+  FabricAllocationStoreOnly,
+  fleet_converge_scope_of_wire,
+  ScopeDecoded,
+  ScopeUndecodable,
   timer_retirement_observed_legacy_srv1,
   fleet_converge_generation_store_path,
   fleet_converge_locked_apply_script,
@@ -141,6 +152,108 @@ func observe_cap_members_wet() -> List<CapMember>
       []
     }
   })
+}
+
+type FleetConvergeRequestObservation
+  = FleetConvergeRequestObserved { request: FleetConvergeRequest }
+  | FleetConvergeRequestUnobserved { reason: String }
+
+func observe_fleet_converge_request_wet(scope_wire: String, host: NonEmptyStr) -> FleetConvergeRequestObservation
+  uses net: Network
+{
+  match fleet_converge_scope_of_wire(wire: scope_wire) {
+    ScopeUndecodable { cause: why } => FleetConvergeRequestUnobserved { reason: why }
+    ScopeDecoded { scope: FabricAllocationStoreOnly } => FleetConvergeRequestObserved {
+      request: FabricAllocationStoreConverge { host: host },
+    }
+    ScopeDecoded { scope: FabricExecutionCellsOnly } => FleetConvergeRequestObserved {
+      request: FabricExecutionCellsConverge {
+        host: host,
+        observed_fabric_cells: admit_fabric_cell_probe(probe: fabric_cell_probe_wet(host: host as HostIdentity)),
+      },
+    }
+    ScopeDecoded { scope: FullHost } =>
+      match observe_runner_slot_members_wet() {
+        RunnerSlotsUnobserved { reason: why } => FleetConvergeRequestUnobserved { reason: why as String }
+        RunnerSlotsObserved { members: observed_slots } => FleetConvergeRequestObserved {
+          request: FullHostConverge {
+            host: host,
+            observed_timers: observe_timer_members_wet(),
+            observed_caps: observe_cap_members_wet(),
+            observed_spark: [],
+            observed_slots: observed_slots,
+            observed_fabric_cells: admit_fabric_cell_probe(probe: fabric_cell_probe_wet(host: host as HostIdentity)),
+          },
+        }
+      }
+  }
+}
+
+func write_fleet_converge_plan_artifact_wet(artifact: FleetConvergePlanArtifact) -> ProcessExit
+  uses net: Network
+{
+  match fleet_converge_plan_bundle_digest_hex(
+    plan_body: artifact.plan_body,
+    apply_shell: artifact.apply_shell,
+    spark_typed_actions_wire: fleet_converge_spark_serving_typed_actions_wire(
+      rows: scheduled_rows_list(scheduled: artifact.spark_serving_typed_actions),
+    ),
+  ) {
+    Absent => exit_failure(reason: "fleet_converge_plan: plan bundle hash is not Fnv1a64Structural — plan refused")
+    Present { value: content_hash } => {
+      let spark_wire = fleet_converge_spark_serving_typed_actions_wire(
+        rows: scheduled_rows_list(scheduled: artifact.spark_serving_typed_actions),
+      )
+      match run_shell_commands(
+        commands: [mkdir_parents_command(path: fleet_converge_plan_artifact_dir)],
+        transport: LocalExec,
+      ) {
+        ExitFailure { code: _, reason: why } => exit_failure(reason: concat("fleet_converge_plan: mkdir refused: ", why))
+        ExitSuccess => {
+          let w_plan = Filesystem.Write(path: fleet_converge_plan_body_path, content: artifact.plan_body)
+          let w_base = Filesystem.Write(path: fleet_converge_plan_baseline_hex_path, content: artifact.observed_baseline_hex)
+          let w_hash = Filesystem.Write(path: fleet_converge_plan_content_hash_path, content: content_hash)
+          let w_apply = Filesystem.Write(path: fleet_converge_plan_apply_shell_path, content: artifact.apply_shell)
+          let w_host = Filesystem.Write(path: fleet_converge_plan_subject_host_path, content: artifact.subject.host as String)
+          let w_gen = Filesystem.Write(path: fleet_converge_plan_generation_path, content: to_string(artifact.prior_generation + 1))
+          let w_prior = Filesystem.Write(path: fleet_converge_plan_prior_generation_path, content: to_string(artifact.prior_generation))
+          let w_member_fp = Filesystem.Write(path: fleet_converge_plan_member_set_fp_path, content: serialize_content_hash(hash: artifact.subject.member_set_fingerprint) as String)
+          let w_scope = Filesystem.Write(path: fleet_converge_plan_subject_scope_path, content: fleet_converge_scope_wire(scope: artifact.subject.scope))
+          let w_spark_wire = Filesystem.Write(path: fleet_converge_plan_spark_typed_actions_wire_path, content: spark_wire)
+          if w_plan.success && w_base.success && w_hash.success && w_apply.success && w_host.success
+            && w_gen.success && w_prior.success && w_member_fp.success && w_scope.success && w_spark_wire.success {
+            run_shell_commands(
+              commands: [
+                chmod_set_mode_command(chmod_program: chmod_path_resolved_program, mode: fleet_converge_plan_apply_shell_mode, path: fleet_converge_plan_apply_shell_path),
+                cat_command(path: fleet_converge_plan_body_path),
+                cat_command(path: fleet_converge_plan_content_hash_path),
+              ],
+              transport: LocalExec,
+            )
+          } else {
+            exit_failure(reason: "fleet_converge_plan: artifact write refused")
+          }
+        }
+      }
+    }
+  }
+}
+
+func fleet_converge_allocation_store_plan_wet() -> ProcessExit
+  uses net: Network
+{
+  match observe_host_short_wet() {
+    Absent => exit_failure(reason: "fleet_converge_allocation_store_plan: HostObservationFailed")
+    Present { value: host } =>
+      match observe_generation_store_wet() {
+        GenerationAdmissionRefused { reason: why } => exit_failure(reason: why)
+        GenerationAdmitted { generation: prior_generation } =>
+          match fleet_converge_allocation_store_plan_artifact(host: host, prior_generation: prior_generation) {
+            Absent => exit_failure(reason: "fleet_converge_allocation_store_plan: host is not modeled or baseline hash refused")
+            Present { value: artifact } => write_fleet_converge_plan_artifact_wet(artifact: artifact)
+          }
+      }
+  }
 }
 
 func fleet_converge_plan_wet() -> ProcessExit
@@ -297,25 +410,10 @@ func fleet_converge_apply_wet() -> ProcessExit
             exit_failure(reason: "fleet_converge_apply: planned_generation artifact corrupt — refuse, do not coerce to 0")
           Present { value: planned_generation } => {
             {
-              let observed_timers = observe_timer_members_wet()
-              let observed_caps = observe_cap_members_wet()
-              let observed_fabric_cells = admit_fabric_cell_probe(
-                probe: fabric_cell_probe_wet(host: observed_host as HostIdentity),
-              )
-              match observe_runner_slot_members_wet() {
-                RunnerSlotsUnobserved { reason: why } =>
-                  exit_failure(
-                    reason: concat("fleet_converge_apply: RunnerSlotsUnobserved — ", why as String),
-                  )
-                RunnerSlotsObserved { members: observed_slots } =>
-              let observed_request = FullHostConverge {
-                host: observed_host,
-                observed_timers: observed_timers,
-                observed_caps: observed_caps,
-                observed_spark: [],
-                observed_slots: observed_slots,
-                observed_fabric_cells: observed_fabric_cells,
-              }
+              match observe_fleet_converge_request_wet(scope_wire: read_scope.content, host: observed_host) {
+                FleetConvergeRequestUnobserved { reason: why } =>
+                  exit_failure(reason: concat("fleet_converge_apply: PlannedScopeOrObservationRefused — ", why))
+                FleetConvergeRequestObserved { request: observed_request } =>
               match fleet_converge_apply_artifact_admits(
                 planned_host_text: planned_host as String,
                 planned_scope_wire: read_scope.content,
