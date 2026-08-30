@@ -14,10 +14,10 @@ type RunnerGroupVisibility
   = AllRepositories
   | SelectedRepositories
 
-// GET /orgs/:org/actions/runner-groups -> runner_groups[]. selected_repositories_url is
-// populated only when visibility is selected; allows_public_repositories gates whether
-// public-repo workflows may use the group (public forks running on self-hosted hardware
-// is the canonical self-hosted security trap, which is why it defaults false upstream).
+// The runner_groups[] element shape. selected_repositories_url is populated only when
+// visibility is selected; allows_public_repositories gates whether public-repo workflows
+// may use the group (public forks running on self-hosted hardware is the canonical
+// self-hosted security trap, which is why it defaults false upstream).
 type OrgRunnerGroup {
   id: Int
   name: NonEmptyStr
@@ -25,9 +25,42 @@ type OrgRunnerGroup {
   allows_public_repositories: Bool
 }
 
-data org_runner_groups_endpoint: NonEmptyStr = "GET /orgs/:org/actions/runner-groups"
-data org_runner_group_repos_endpoint: NonEmptyStr = "GET /orgs/:org/actions/runner-groups/:runner_group_id/repositories"
-data org_actions_permissions_endpoint: NonEmptyStr = "GET /orgs/:org/actions/permissions"
+// THE CLI TRANSPORT, one of N realizations and not a fact about the dependency -
+// consistent with extdeps.github.actions_runs github.CliActionsRuns. Both operations are
+// readonly observations; the repositories read exists because per-repo admission is only
+// decidable by joining a selected-visibility group to its repository list.
+service github.CliOrgRunnerGroups {
+  operation ListRunnerGroupsJson {
+    input {
+      org: NonEmptyStr
+    }
+    output {
+      success: Bool from "exit_success"
+      stdout: String from "stdout"
+      stderr: String from "stderr"
+    }
+    readonly
+    transport shell {
+      argv: ["gh", "api", "orgs/{org}/actions/runner-groups"]
+    }
+  }
+
+  operation ListRunnerGroupRepositoriesJson {
+    input {
+      org: NonEmptyStr
+      runner_group_id: Int
+    }
+    output {
+      success: Bool from "exit_success"
+      stdout: String from "stdout"
+      stderr: String from "stderr"
+    }
+    readonly
+    transport shell {
+      argv: ["gh", "api", "orgs/{org}/actions/runner-groups/{runner_group_id}/repositories"]
+    }
+  }
+}
 
 // TOKEN-SCOPE FACT, observed by execution 2026-08-30: these endpoints require org
 // administration scope. A repository-scoped integration token receives HTTP 403

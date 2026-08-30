@@ -1,20 +1,16 @@
 module gunbc.fleet.org_actions_standing
 
 import std.types { NonEmptyStr, String, Bool, Int, List }
-import extdeps.github.org_actions {
-  OrgRunnerGroup, RunnerGroupVisibility, AllRepositories, SelectedRepositories,
-  org_runner_groups_endpoint, org_admin_scope_refusal_fragment,
-}
+import std.dissolution { DissolutionCondition, unbound_dissolution }
+import extdeps.github.org_actions { org_admin_scope_refusal_fragment }
 
 // ORG ACTIONS SETTINGS AS A CONVERGED SURFACE (operator direction 2026-08-30: "we need
 // to connect the org github settings via fleet converge - basically this is all
 // unmodeled right now"). The org's runner-group access policy decides which repositories
 // reach the fleet, and until now it lived only in the GitHub settings UI - actuated by
-// hand, observed by nobody, exactly the unmodeled-authority shape fleet converge exists
-// to eliminate. This module declares the DESIRED state and the OBSERVATIONS; the
-// convergence loop (read settings -> diff -> refuse-or-apply) binds to fleet-converge
-// once its credential precondition is met, and that binding is this module's declared
-// next trigger, not something a hand edit in the UI satisfies.
+// hand, observed by nobody. This module declares the DESIRED state, the OBSERVATIONS
+// typed by channel, and the derived standing; the convergence binding is a typed
+// dissolution row below, not prose.
 
 // ---------------------------------------------------------------------------------------------
 // Desired state - fleet policy.
@@ -46,13 +42,22 @@ data desired_repo_access: List<RepoRunnerAccess> = [access_gunbc, access_gunbc_p
 data desired_allows_public_repositories: Bool = false
 
 // ---------------------------------------------------------------------------------------------
-// Observations - what we can actually see today, typed by HOW it was seen.
+// Observations - typed by HOW they were seen. A successful settings read carries the
+// JOINED admission data (groups x their repository lists, flattened to the admitted set,
+// plus the public-repositories flag) because that is exactly what per-repo standing
+// needs - a read that carried less could not answer without fabricating.
 // ---------------------------------------------------------------------------------------------
 
 type OrgSettingsObservation
-  = SettingsRead { groups: List<OrgRunnerGroup>, observed_on: NonEmptyStr }
+  = SettingsRead {
+      admitted_repositories: List<NonEmptyStr>,
+      allows_public_repositories: Bool,
+      observed_on: NonEmptyStr
+    }
   | SettingsReadRefusedTokenScope { refusal_fragment: NonEmptyStr, observed_on: NonEmptyStr }
 
+// run_id carried as decimal digits verbatim per the standing ruling in
+// extdeps.github.workflow_run_event (identity join, never arithmetic - no decode).
 type BehavioralReceipt {
   repository: NonEmptyStr
   runner_name: NonEmptyStr
@@ -77,17 +82,26 @@ data receipt_private_on_fleet: BehavioralReceipt = BehavioralReceipt {
 data behavioral_receipts: List<BehavioralReceipt> = [receipt_private_on_fleet]
 
 // ---------------------------------------------------------------------------------------------
-// Standing - derived, honest about the observation channel.
+// Standing - derived, honest about the observation channel. The SettingsRead arm CONSULTS
+// its payload: membership admits, absence REFUSES - never a green from the read's mere
+// success. The derivation is pure in its observation so the witness can exercise every
+// arm; the data rows below bind it to the current observation.
 // ---------------------------------------------------------------------------------------------
 
 type OrgAccessStanding
   = HoldsBySettingsRead { observed_on: NonEmptyStr }
+  | RefusedBySettingsRead { observed_on: NonEmptyStr }
   | HoldsByBehavior { run_id: NonEmptyStr, observed_on: NonEmptyStr }
   | Unobserved
 
-fn repo_access_standing(r: RepoRunnerAccess) -> OrgAccessStanding {
-  match settings_observation_current {
-    SettingsRead { groups, observed_on } => HoldsBySettingsRead { observed_on: observed_on },
+fn standing_from(obs: OrgSettingsObservation, r: RepoRunnerAccess) -> OrgAccessStanding {
+  match obs {
+    SettingsRead { admitted_repositories, allows_public_repositories, observed_on } =>
+      if count(filter(admitted_repositories, x => x == r.repository)) >= 1 {
+        HoldsBySettingsRead { observed_on: observed_on }
+      } else {
+        RefusedBySettingsRead { observed_on: observed_on }
+      },
     SettingsReadRefusedTokenScope { refusal_fragment, observed_on } =>
       fold(behavioral_receipts, init: Unobserved, f: fn(acc, b) {
         if b.repository == r.repository { HoldsByBehavior { run_id: b.run_id, observed_on: b.observed_on } } else { acc }
@@ -95,12 +109,41 @@ fn repo_access_standing(r: RepoRunnerAccess) -> OrgAccessStanding {
   }
 }
 
+fn repo_access_standing(r: RepoRunnerAccess) -> OrgAccessStanding {
+  standing_from(obs: settings_observation_current, r: r)
+}
+
 fn standing_is_observed(s: OrgAccessStanding) -> Bool {
   match s {
     HoldsBySettingsRead { observed_on } => true,
+    RefusedBySettingsRead { observed_on } => true,
     HoldsByBehavior { run_id, observed_on } => true,
     Unobserved => false,
   }
 }
 
-data org_converge_binding_note: String = "NEXT TRIGGER, named as the capability: fleet-converge can converge this surface when (1) an org-administration-scoped credential is modeled in the fleet secret set - the repo-scoped integration token observably receives the 403 this module cites - and (2) the converge phase reads org_runner_groups_endpoint, diffs against desired_repo_access and desired_allows_public_repositories, and REFUSES on divergence it is not authorized to apply (a settings surface converged by silent overwrite would erase an operator's deliberate UI change; the diff is the deliverable, apply is gated). Until then the standing here is honest about its channel: HoldsByBehavior is weaker than HoldsBySettingsRead - behavior proves admission TODAY, not that the group's visibility row matches the desired shape - and a behavioral receipt cannot observe desired_allows_public_repositories at all, which is why that row has no standing fn: it is UNOBSERVABLE until the settings read lands, and deriving a green from its absence would be the reachability-read-as-occupancy failure."
+// The public-fork policy row has its own standing because a behavioral receipt cannot
+// observe it at all - only a settings read can, and deriving a green from its absence
+// would be the reachability-read-as-occupancy failure.
+type PublicForkPolicyStanding
+  = MatchesDesired { observed_on: NonEmptyStr }
+  | DivergesFromDesired { observed: Bool, observed_on: NonEmptyStr }
+  | UnobservableUntilSettingsRead
+
+fn public_fork_policy_standing(obs: OrgSettingsObservation) -> PublicForkPolicyStanding {
+  match obs {
+    SettingsRead { admitted_repositories, allows_public_repositories, observed_on } =>
+      if allows_public_repositories == desired_allows_public_repositories {
+        MatchesDesired { observed_on: observed_on }
+      } else {
+        DivergesFromDesired { observed: allows_public_repositories, observed_on: observed_on }
+      },
+    SettingsReadRefusedTokenScope { refusal_fragment, observed_on } => UnobservableUntilSettingsRead,
+  }
+}
+
+// The converge binding, as a typed dissolution row (not prose): HoldsByBehavior is weaker
+// than HoldsBySettingsRead - behavior proves admission today, not group shape - and the
+// diff is the deliverable while apply stays gated, because a settings surface converged
+// by silent overwrite would erase an operator's deliberate UI change.
+data org_converge_binding_trigger: DissolutionCondition = unbound_dissolution(description: "dissolve-on: fleet-converge converges this surface. CAPABILITY, both parts required: (1) an org-administration-scoped credential lands in the fleet secret set - the repo-scoped integration token observably receives the 403 cited by org_admin_scope_refusal_fragment; (2) a converge phase reads github.CliOrgRunnerGroups (groups joined to their repository lists), constructs a SettingsRead observation, diffs it against desired_repo_access and desired_allows_public_repositories, and REFUSES on divergence it is not authorized to apply. Until both hold, the standing here is honest about its channel and the UI remains the hand-actuated authority.")

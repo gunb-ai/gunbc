@@ -3,38 +3,102 @@ module test.claim.org_actions_standing_witness
 import std.types { Bool, Int, NonEmptyStr, List }
 import gunbc.fleet.org_actions_standing {
   RepoRunnerAccess, desired_repo_access, access_gunbc_private, access_gunbc,
-  OrgAccessStanding, HoldsBySettingsRead, HoldsByBehavior, Unobserved,
-  repo_access_standing, standing_is_observed, behavioral_receipts,
-  desired_allows_public_repositories,
+  OrgSettingsObservation, SettingsRead, SettingsReadRefusedTokenScope,
+  OrgAccessStanding, HoldsBySettingsRead, RefusedBySettingsRead, HoldsByBehavior, Unobserved,
+  standing_from, repo_access_standing, standing_is_observed,
+  PublicForkPolicyStanding, MatchesDesired, DivergesFromDesired, UnobservableUntilSettingsRead,
+  public_fork_policy_standing, desired_allows_public_repositories,
 }
 
-// THE DISCRIMINATING CLAIMS. (1) The standing derivation is channel-honest: with the
-// settings read refused (today's observation), gunbc-private holds BY BEHAVIOR - the
-// receipt names the run - while a repository with no behavioral receipt derives
-// Unobserved rather than borrowing its neighbour's green. gunbc itself currently has no
-// receipt row, so it IS the discriminating negative: if the derivation ever widens to
-// answer for unreceipted repositories, this witness reds. (2) The public-fork policy row
-// is false. (3) Every desired row demands fleet reach (a row that does not is dead).
+// THE DISCRIMINATING CLAIMS, every observation arm exercised. (1) Channel honesty under
+// today's refused read: gunbc-private holds BY BEHAVIOR (the receipt names the run) while
+// gunbc, with no receipt, derives Unobserved rather than borrowing its neighbour's green.
+// (2) THE SETTINGS-READ ARM CONSULTS ITS PAYLOAD (the review-57587 defect): a read whose
+// admitted set contains only gunbc-private admits it and REFUSES gunbc - a read arm that
+// greens on mere read-success reds here. (3) The public-fork policy is decidable only by
+// a settings read: matches on false, diverges on true, unobservable under the refusal.
+// (4) Every desired row demands fleet reach.
+
+data probe_read_private_only: OrgSettingsObservation = SettingsRead {
+  admitted_repositories: ["gunb-ai/gunbc-private"],
+  allows_public_repositories: false,
+  observed_on: "2026-08-30",
+}
+
+data probe_read_public_forks_open: OrgSettingsObservation = SettingsRead {
+  admitted_repositories: ["gunb-ai/gunbc", "gunb-ai/gunbc-private"],
+  allows_public_repositories: true,
+  observed_on: "2026-08-30",
+}
 
 fn holds_by_behavior(s: OrgAccessStanding) -> Bool {
   match s {
     HoldsByBehavior { run_id, observed_on } => true,
     HoldsBySettingsRead { observed_on } => false,
+    RefusedBySettingsRead { observed_on } => false,
     Unobserved => false,
   }
 }
 
-test fn witness_private_holds_by_behavior_only() -> Bool {
+fn holds_by_read(s: OrgAccessStanding) -> Bool {
+  match s {
+    HoldsBySettingsRead { observed_on } => true,
+    RefusedBySettingsRead { observed_on } => false,
+    HoldsByBehavior { run_id, observed_on } => false,
+    Unobserved => false,
+  }
+}
+
+fn refused_by_read(s: OrgAccessStanding) -> Bool {
+  match s {
+    RefusedBySettingsRead { observed_on } => true,
+    HoldsBySettingsRead { observed_on } => false,
+    HoldsByBehavior { run_id, observed_on } => false,
+    Unobserved => false,
+  }
+}
+
+test fn witness_refused_read_is_channel_honest() -> Bool {
   holds_by_behavior(s: repo_access_standing(r: access_gunbc_private))
     && !standing_is_observed(s: repo_access_standing(r: access_gunbc))
 }
 
-test fn witness_public_fork_trap_stays_closed() -> Bool {
-  desired_allows_public_repositories == false
+test fn witness_settings_read_arm_consults_membership() -> Bool {
+  holds_by_read(s: standing_from(obs: probe_read_private_only, r: access_gunbc_private))
+    && refused_by_read(s: standing_from(obs: probe_read_private_only, r: access_gunbc))
 }
 
-test fn witness_desired_rows_live() -> Bool {
-  count(desired_repo_access) == 2
-    && fold(desired_repo_access, init: true, f: fn(acc, r) { acc && r.must_reach_fleet })
-    && count(behavioral_receipts) == 1
+fn fork_matches(p: PublicForkPolicyStanding) -> Bool {
+  match p {
+    MatchesDesired { observed_on } => true,
+    DivergesFromDesired { observed, observed_on } => false,
+    UnobservableUntilSettingsRead => false,
+  }
+}
+
+fn fork_diverges(p: PublicForkPolicyStanding) -> Bool {
+  match p {
+    DivergesFromDesired { observed, observed_on } => observed,
+    MatchesDesired { observed_on } => false,
+    UnobservableUntilSettingsRead => false,
+  }
+}
+
+fn fork_unobservable(p: PublicForkPolicyStanding) -> Bool {
+  match p {
+    UnobservableUntilSettingsRead => true,
+    MatchesDesired { observed_on } => false,
+    DivergesFromDesired { observed, observed_on } => false,
+  }
+}
+
+test fn witness_public_fork_policy_decidable_only_by_read() -> Bool {
+  desired_allows_public_repositories == false
+    && fork_matches(p: public_fork_policy_standing(obs: probe_read_private_only))
+    && fork_diverges(p: public_fork_policy_standing(obs: probe_read_public_forks_open))
+    && fork_unobservable(p: public_fork_policy_standing(obs: SettingsReadRefusedTokenScope { refusal_fragment: "probe", observed_on: "2026-08-30" }))
+}
+
+test fn witness_desired_rows_demand_fleet_reach() -> Bool {
+  fold(desired_repo_access, init: true, f: fn(acc, r) { acc && r.must_reach_fleet })
 }
