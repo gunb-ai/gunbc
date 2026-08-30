@@ -747,7 +747,7 @@ fn run() -> Result<ExitCode, ExitCode> {
                     );
                     receipts.push(v1_compiler::cli_run::WetLaneExecutedReceipt {
                         identity: row.identity.clone(),
-                        passed: false,
+                        outcome_wire: "resolve-failed",
                         wall_ms: 0,
                     });
                     any_failed = true;
@@ -760,7 +760,7 @@ fn run() -> Result<ExitCode, ExitCode> {
                     println!("FAIL {} (closure subject: {e})", row.function);
                     receipts.push(v1_compiler::cli_run::WetLaneExecutedReceipt {
                         identity: row.identity.clone(),
-                        passed: false,
+                        outcome_wire: "closure-subject-failed",
                         wall_ms: 0,
                     });
                     any_failed = true;
@@ -776,20 +776,32 @@ fn run() -> Result<ExitCode, ExitCode> {
             );
             ctx.set_witness_eval_budget(eval_budget_ms);
             let (outcome, receipt) = run_claim_measured(&ctx, &closure_subject, &row.function);
-            let passed = matches!(outcome, ClaimOutcome::Pass);
+            // The RAW typed outcome, kept at wire grain (one of cli_run::WET_OUTCOME_WIRES):
+            // an assertion that ran and returned false and an infrastructure failure that
+            // produced no verdict are different facts with different floor standings.
+            let outcome_wire = match &outcome {
+                ClaimOutcome::Pass => "pass",
+                ClaimOutcome::Fail => "assertion-false",
+                ClaimOutcome::NotBool { .. } => "not-bool",
+                ClaimOutcome::RuntimeError { .. } => "runtime-error",
+                ClaimOutcome::BudgetInterrupted { .. } => "budget-interrupted",
+                ClaimOutcome::CompletedOverBudget { .. } => "completed-over-budget",
+                ClaimOutcome::HostToolUnresolved { .. } => "host-tool-unresolved",
+                ClaimOutcome::HostEffectRefused { .. } => "host-effect-refused",
+                ClaimOutcome::Panicked { .. } => "panicked",
+                ClaimOutcome::NotAttempted { .. } => "not-attempted",
+            };
             report_outcome(&row.function, outcome, &mut any_failed);
             let wall_ms = receipt.wall_nanos / 1_000_000;
             eprintln!(
                 "wet-lane: identity={} outcome={} wall_ms={}",
-                row.identity,
-                if passed { "pass" } else { "fail" },
-                wall_ms
+                row.identity, outcome_wire, wall_ms
             );
             timings.witnesses += 1;
             timings.witness_ms += wall_ms;
             receipts.push(v1_compiler::cli_run::WetLaneExecutedReceipt {
                 identity: row.identity.clone(),
-                passed,
+                outcome_wire,
                 wall_ms,
             });
             v1_compiler::v1_interpreter::eval_call_memo_frame_exit(&ctx);

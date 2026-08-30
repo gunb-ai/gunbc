@@ -2,7 +2,12 @@ module v2.workflow.floor_wet_route
 
 import v2.std.algebra { fold_list, length, list_append }
 import v2.std.collection { List }
-import std.types { Int, EpochSecs, Seconds, Milliseconds }
+import std.types { Int, EpochSecs, Seconds, Milliseconds, NonEmptyStr }
+import gunbc.explicit_witness_admission { known_red_probe_execution_roster }
+import std.witness_admission {
+  WitnessExpectedVerdict, ExpectWitnessHolds, ExpectAssertionFalse, ExpectTypedPreVerdictRefusal,
+}
+import v2.std.algebra { any }
 import v2.std.logic { Bool }
 import v2.std.optional { Optional, Absent, Present }
 import v2.std.text { String }
@@ -62,10 +67,11 @@ import v2.std.text { String }
 // is not. The built binary's own sha stays provenance, never the comparison.
 //
 // PUBLICATION SEMANTICS: LATEST-ATTEMPT. The lane overwrites one committed envelope per run,
-// pass or fail — a FAILED attempt publishes too, and the floor then stands at
-// `ReceiptFailed`, which blocks: the factory line stops on a wet regression at the next
-// cadence rather than the failure hiding behind a surviving older green. `attempt_seq`
-// advances monotonically so two attempts are ordered facts, not overwrites of one.
+// pass or fail — a FAILED attempt publishes too, and its per-identity verdicts are then the
+// standing facts the floor adjudicates (see THE PER-IDENTITY JOIN below): an UNEXPECTED wet
+// red stops the line at the next cadence rather than hiding behind a surviving older green.
+// `attempt_seq` advances monotonically so two attempts are ordered facts, not overwrites of
+// one.
 //
 // HOW THE RECEIPT REACHES THE FLOOR (transport a'): the lane writes
 // `floor_wet_route_receipt_json_rel_path` (the envelope, authority) and
@@ -97,21 +103,38 @@ import v2.std.text { String }
 // fresh receipt (`ReceiptFreshExactSubject` — the digest proves the lane executed exactly
 // this candidate's wet subject); under any other standing it blocks at the changed-set
 // grain, and greening it by decline would be the coverage inflation this module exists to
-// refuse. An ancestor-subject receipt BLOCKS — there is no cadence-lag admission arm
+// refuse. The standing is envelope-level: a changed routed identity whose own receipt row
+// is an unexpected red still reds the run through the per-identity join itself. An ancestor-subject receipt BLOCKS — there is no cadence-lag admission arm
 // (parent ruling 2026-08-30). The remedy is live: workflow_dispatch the wet receipts lane on
 // the head and land its envelope with the change.
 //
 // THE PUBLICATION WALL (residual B, parent ruling 2026-08-30). Latest-attempt semantics have
-// a self-sealing corner: a FAILED attempt's own refresh pull request would red on
-// `ReceiptFailed`, so without a wall main silently keeps the last SUCCESS — latest-success
-// wearing latest-attempt's name. The wall is a typed admission, not a widen:
-// `ReceiptFailed` alone is waived, and only for a run whose own diff is a valid publication
-// transaction (`WetReceiptPublicationTransaction`) — every changed path inside the receipt
-// namespace and the attempt sequence advancing over the base envelope. Canonical rendering
-// is already the reader's unconditional wall, and candidate-exactness and roster exactness
-// are entailed by the fold reaching the `ReceiptFailed` arm at all. Every other blocking
-// standing blocks the publication PR too: an expired or subject-mismatched envelope advances
-// nothing and is refused, never admitted.
+// a self-sealing corner: a red attempt's own refresh pull request would red on its own
+// per-identity verdicts, so without a wall main silently keeps the last SUCCESS —
+// latest-success wearing latest-attempt's name. The wall is a typed admission, not a widen:
+// exactly the PER-IDENTITY reds (unexpected red, enrolled-now-passing) are waived, and only
+// for a run whose own diff is a valid publication transaction
+// (`WetReceiptPublicationTransaction`) — every changed path inside the receipt namespace and
+// the attempt sequence advancing over the base envelope. Both waived classes have remedies
+// that live OUTSIDE the receipt namespace (a repair, or an expected-red roster removal), so
+// a receipt-confined refresh PR could not carry them by construction. Canonical rendering is
+// already the reader's unconditional wall, and candidate-exactness and roster exactness are
+// entailed by the fold reaching a verdict at all. Every ENVELOPE-level blocking standing
+// blocks the publication PR too: an expired or subject-mismatched envelope advances nothing
+// and is refused, never admitted.
+//
+// THE PER-IDENTITY JOIN (parent ruling 2026-08-30, replacing the envelope-level ReceiptFailed
+// arm). The receipt is per-identity, so its verdicts join `floor_expected_red` exactly as dry
+// claims do: receipt pass + not enrolled = clean; receipt fail + enrolled = KNOWN RED HELD —
+// counted, visible, non-blocking, retiring only by an observed pass (the roster's shrink-only
+// contract); receipt fail + NOT enrolled = UNEXPECTED wet red — blocks, the fail-closed arm
+// that stays live; receipt pass + enrolled = NOW PASSING — blocks until the roster row is
+// removed, exactly as the dry stale-quarantine does. An envelope-level "any failure blocks"
+// arm was rejected because a known pre-existing red that seals main and every PR is not
+// fail-closed but a denial of service on the line, and an observe-only mode was rejected as a
+// §5 escape hatch that would also blind NEW wet reds. The expected-red population is passed
+// IN (the live `floor_expected_red` roster intersected with this roster by the caller), so
+// this fold stays pure and testable.
 //
 // THE LANE'S COST IS READ FROM THE LANE, NOT FROM PROSE: every wet run prints one
 // `wet-lane:` line per identity carrying its measured wall, and the envelope rows carry the
@@ -124,9 +147,25 @@ type WetRouteRow = {
   function: String
 }
 
+// THE OUTCOME GRAIN IS THE RAW TYPED OBSERVATION, never a collapsed Bool (parent ruling
+// 2026-08-30, wall 1): the lane's executor distinguishes an assertion that RAN and returned
+// false from every way of producing NO subject verdict — and collapsing them would hold an
+// infrastructure failure as if the witness answered, the exact defect the dry expected-red
+// roster documents. Arms mirror the executor's ClaimOutcome plus the lane's own two
+// pre-execution refusals.
 type WetLaneOutcome =
     WetPass
-  | WetFail
+  | WetAssertionFalse
+  | WetNotBool
+  | WetRuntimeError
+  | WetBudgetInterrupted
+  | WetCompletedOverBudget
+  | WetHostToolUnresolved
+  | WetHostEffectRefused
+  | WetPanicked
+  | WetNotAttempted
+  | WetResolveFailed
+  | WetClosureSubjectFailed
 
 // One identity's row inside the envelope: the lane's verdict and its measured wall.
 type WetReceiptIdentityRow = {
@@ -164,16 +203,17 @@ type WetReceiptEnvelope = {
 // THE FLOOR-SIDE STANDING OF THE COMMITTED ENVELOPE, one value per evaluated tree, decided
 // from four facts the floor holds: the envelope (or its absence), the wet subject digest the
 // floor computed for the tree under evaluation, the roster, and the tree's own commit time.
-// Exactly one arm is clean. The arms carry the `Receipt` prefix because bare `Failed` and
-// friends already name terminal-ledger facts and names resolve globally.
+// Exactly one arm is clean, and every arm is a fact about the ENVELOPE — validity, subject,
+// contract, roster, age. Per-identity verdicts (pass/fail per routed witness) are NOT a
+// standing arm: they join `floor_expected_red` in the per-identity fns below (parent ruling
+// 2026-08-30). The arms carry the `Receipt` prefix because names resolve globally.
 type WetLaneReceiptStanding =
-    ReceiptFreshExactSubject { age_secs: Int }
+    ReceiptFreshExactSubject { age_secs: Seconds }
   | ReceiptMissing
-  | ReceiptExpired { age_secs: Int }
+  | ReceiptExpired { age_secs: Seconds }
   | ReceiptSubjectMismatch { axis: String, receipt_digest: String, computed_digest: String }
   | ReceiptContractMismatch { detail: String }
   | ReceiptRosterInexact { detail: String }
-  | ReceiptFailed { failed_identities: List<String> }
 
 // The receipt schema this floor reads. A committed envelope carrying any other version is
 // `ReceiptContractMismatch` — the producer and consumer no longer share a contract, and
@@ -264,10 +304,10 @@ fn wet_lane_receipt_standing(
       if e.schema_version != floor_wet_route_receipt_schema_version() {
         ReceiptContractMismatch { detail: "schema_version is not the version this floor reads" }
       } else {
-        if e.executed_at_unix_secs > e.published_at_unix_secs {
+        if wet_time_scalar(x: e.executed_at_unix_secs) > wet_time_scalar(x: e.published_at_unix_secs) {
           ReceiptContractMismatch { detail: "executed_at exceeds published_at" }
         } else {
-          if e.published_at_unix_secs > evaluated_tree_commit_unix_secs + floor_wet_route_publication_skew_secs() {
+          if wet_time_scalar(x: e.published_at_unix_secs) > wet_time_scalar(x: evaluated_tree_commit_unix_secs) + wet_time_scalar(x: floor_wet_route_publication_skew_secs()) {
             ReceiptContractMismatch { detail: "published_at exceeds the evaluated tree's commit time beyond the declared skew" }
           } else {
             if e.subject_digest != computed_subject_digest {
@@ -277,16 +317,12 @@ fn wet_lane_receipt_standing(
                 ReceiptSubjectMismatch { axis: "executor-contract", receipt_digest: e.executor_contract_digest, computed_digest: computed_executor_contract_digest }
               } else {
               if wet_receipt_rows_join_roster_exactly(rows: e.rows, roster_identities: roster_identities) {
-                let age = evaluated_tree_commit_unix_secs - e.executed_at_unix_secs
-                if age > floor_wet_route_receipt_staleness_budget_secs() {
+                let raw_age = wet_time_scalar(x: evaluated_tree_commit_unix_secs) - wet_time_scalar(x: e.executed_at_unix_secs)
+                let age = if raw_age < 0 { 0 } else { raw_age }
+                if age > wet_time_scalar(x: floor_wet_route_receipt_staleness_budget_secs()) {
                   ReceiptExpired { age_secs: age }
                 } else {
-                  let failed = wet_receipt_failed_identities(rows: e.rows)
-                  if length(xs: failed) != 0 {
-                    ReceiptFailed { failed_identities: failed }
-                  } else {
-                    ReceiptFreshExactSubject { age_secs: age }
-                  }
+                  ReceiptFreshExactSubject { age_secs: age }
                 }
               } else {
                 ReceiptRosterInexact { detail: "the envelope's identity rows are not exactly the routed roster" }
@@ -329,22 +365,179 @@ fn wet_route_list_contains(xs: List<String>, needle: String) -> Bool {
   )
 }
 
-fn wet_receipt_failed_identities(rows: List<WetReceiptIdentityRow>) -> List<String> {
+// THE PER-IDENTITY VERDICT PROJECTIONS (parent ruling 2026-08-30, walls 1 and 3). The
+// expected-verdict authority is `gunbc.explicit_witness_admission` at FUNCTION grain — the
+// same rows the hermetic probe cadence consumes — projected onto this route's identities by
+// `wet_route_expected_assertion_false_identities` below; no second enrollment roster exists
+// beside it. The algebra is the dry floor's: pass + unenrolled = clean; pass + enrolled =
+// NOW PASSING (blocks until the admission row deletes); assertion-false + enrolled = KNOWN
+// RED HELD (counted, non-blocking, retiring only by an observed pass); assertion-false +
+// unenrolled = UNEXPECTED RED (blocks — the fail-closed arm that stays live); and EVERY
+// no-subject-verdict outcome blocks regardless of enrollment, because an enrollment asserts
+// the witness reaches its subject and answers — only an explicitly enrolled typed
+// pre-verdict expectation could hold one, and no wet identity carries such a row today; the
+// projection grows an arm when one does, and until then the outcome blocks.
+
+fn wet_route_expected_assertion_false_identities() -> List<String> {
+  fold_list(
+    xs: floor_wet_route_roster(),
+    empty: [],
+    cons: fn(acc, row) {
+      if any(
+        xs: known_red_probe_execution_roster(),
+        predicate: fn(entry) {
+          (entry.entry as String) == row.entry_rel && entry.function == row.function
+        }
+      ) {
+        list_append(left: acc, right: [row.identity])
+      } else {
+        acc
+      }
+    }
+  )
+}
+
+fn wet_receipt_unexpected_red_identities(
+  rows: List<WetReceiptIdentityRow>,
+  expected_red_identities: List<String>
+) -> List<String> {
+  fold_list(
+    xs: rows,
+    empty: [],
+    cons: fn(acc, row) {
+      match row.outcome {
+        WetAssertionFalse =>
+          if wet_route_list_contains(xs: expected_red_identities, needle: row.identity) {
+            acc
+          } else {
+            list_append(left: acc, right: [row.identity])
+          }
+        WetPass => acc
+        WetNotBool => acc
+        WetRuntimeError => acc
+        WetBudgetInterrupted => acc
+        WetCompletedOverBudget => acc
+        WetHostToolUnresolved => acc
+        WetHostEffectRefused => acc
+        WetPanicked => acc
+        WetNotAttempted => acc
+        WetResolveFailed => acc
+        WetClosureSubjectFailed => acc
+      }
+    }
+  )
+}
+
+fn wet_receipt_held_identities(
+  rows: List<WetReceiptIdentityRow>,
+  expected_red_identities: List<String>
+) -> List<String> {
+  fold_list(
+    xs: rows,
+    empty: [],
+    cons: fn(acc, row) {
+      match row.outcome {
+        WetAssertionFalse =>
+          if wet_route_list_contains(xs: expected_red_identities, needle: row.identity) {
+            list_append(left: acc, right: [row.identity])
+          } else {
+            acc
+          }
+        WetPass => acc
+        WetNotBool => acc
+        WetRuntimeError => acc
+        WetBudgetInterrupted => acc
+        WetCompletedOverBudget => acc
+        WetHostToolUnresolved => acc
+        WetHostEffectRefused => acc
+        WetPanicked => acc
+        WetNotAttempted => acc
+        WetResolveFailed => acc
+        WetClosureSubjectFailed => acc
+      }
+    }
+  )
+}
+
+fn wet_receipt_now_passing_identities(
+  rows: List<WetReceiptIdentityRow>,
+  expected_red_identities: List<String>
+) -> List<String> {
+  fold_list(
+    xs: rows,
+    empty: [],
+    cons: fn(acc, row) {
+      match row.outcome {
+        WetPass =>
+          if wet_route_list_contains(xs: expected_red_identities, needle: row.identity) {
+            list_append(left: acc, right: [row.identity])
+          } else {
+            acc
+          }
+        WetAssertionFalse => acc
+        WetNotBool => acc
+        WetRuntimeError => acc
+        WetBudgetInterrupted => acc
+        WetCompletedOverBudget => acc
+        WetHostToolUnresolved => acc
+        WetHostEffectRefused => acc
+        WetPanicked => acc
+        WetNotAttempted => acc
+        WetResolveFailed => acc
+        WetClosureSubjectFailed => acc
+      }
+    }
+  )
+}
+
+// Every way of producing no subject verdict, spelled arm-by-arm so an eventual twelfth
+// outcome must be classified here, never absorbed.
+fn wet_receipt_no_verdict_identities(rows: List<WetReceiptIdentityRow>) -> List<String> {
   fold_list(
     xs: rows,
     empty: [],
     cons: fn(acc, row) {
       match row.outcome {
         WetPass => acc
-        WetFail => list_append(left: acc, right: [row.identity])
+        WetAssertionFalse => acc
+        WetNotBool => list_append(left: acc, right: [row.identity])
+        WetRuntimeError => list_append(left: acc, right: [row.identity])
+        WetBudgetInterrupted => list_append(left: acc, right: [row.identity])
+        WetCompletedOverBudget => list_append(left: acc, right: [row.identity])
+        WetHostToolUnresolved => list_append(left: acc, right: [row.identity])
+        WetHostEffectRefused => list_append(left: acc, right: [row.identity])
+        WetPanicked => list_append(left: acc, right: [row.identity])
+        WetNotAttempted => list_append(left: acc, right: [row.identity])
+        WetResolveFailed => list_append(left: acc, right: [row.identity])
+        WetClosureSubjectFailed => list_append(left: acc, right: [row.identity])
       }
     }
   )
 }
 
-// THE BLOCKING POLARITY, STATED ONCE: exactly one standing is clean. A FAILED attempt blocks
-// — latest-attempt semantics mean the lane's newest verdict is the standing fact, and a red
-// line stops (§5 factory model) rather than coasting on an older green.
+// THE PER-IDENTITY BLOCKING POLARITY, STATED ONCE: an unexpected red, an enrolled row now
+// passing, or any row with no subject verdict blocks; held rows are counted and do not.
+fn wet_route_identity_reds_block(
+  unexpected_red: List<String>,
+  now_passing: List<String>,
+  no_verdict: List<String>
+) -> Bool {
+  length(xs: unexpected_red) != 0 || length(xs: now_passing) != 0 || length(xs: no_verdict) != 0
+}
+
+// The one sanctioned bridge from a refined time scalar to plain Int arithmetic: the
+// interpreter has no `as` cast in either direction for refined scalars (measured on this
+// change: `EpochSecs as Int` refuses at eval exactly like the roadmap witness note's
+// `2 as Seconds`), but parameter positions admit a refined value where Int is declared —
+// the same mechanism `roadmap_forecast` uses passing an EpochMs difference into
+// `millisecond(count:)`. One named identity keeps every use greppable.
+fn wet_time_scalar(x: Int) -> Int {
+  x
+}
+
+// THE ENVELOPE-LEVEL BLOCKING POLARITY, STATED ONCE: exactly one standing is clean. The
+// per-identity polarity is `wet_route_identity_reds_block` above, decided from the same
+// envelope's rows once this standing is fresh.
 fn wet_route_standing_blocks_floor(standing: WetLaneReceiptStanding) -> Bool {
   match standing {
     ReceiptFreshExactSubject { age_secs: _ } => false
@@ -353,14 +546,14 @@ fn wet_route_standing_blocks_floor(standing: WetLaneReceiptStanding) -> Bool {
     ReceiptSubjectMismatch { axis: _, receipt_digest: _, computed_digest: _ } => true
     ReceiptContractMismatch { detail: _ } => true
     ReceiptRosterInexact { detail: _ } => true
-    ReceiptFailed { failed_identities: _ } => true
   }
 }
 
 // THE PUBLICATION TRANSACTION (residual B): the two facts a run must observe about ITSELF to
-// admit a FAILED receipt. Canonical rendering is the reader's unconditional wall, and
-// candidate-exactness, contract validity and roster exactness are entailed by the standing
-// fold reaching `ReceiptFailed` at all — so exactly these two conjuncts remain.
+// admit a receipt carrying per-identity reds. Canonical rendering is the reader's
+// unconditional wall, and candidate-exactness, contract validity and roster exactness are
+// entailed by the standing fold reaching `ReceiptFreshExactSubject` at all — so exactly
+// these two conjuncts remain.
 type WetReceiptPublicationTransaction = {
   diff_confined_to_receipt_namespace: Bool,
   attempt_seq_advances: Bool
@@ -370,22 +563,26 @@ fn wet_receipt_publication_transaction_valid(t: WetReceiptPublicationTransaction
   t.diff_confined_to_receipt_namespace && t.attempt_seq_advances
 }
 
-// The pull-request polarity: `ReceiptFailed` alone is waived, and only under a valid
-// publication transaction — the wall that keeps latest-attempt from decaying into
-// latest-success. Every other standing blocks a publication PR exactly as it blocks any
-// other run: an expired or mismatched envelope advances nothing.
-fn wet_route_standing_blocks_with_publication(
-  standing: WetLaneReceiptStanding,
+// The pull-request polarity: exactly the PER-IDENTITY reds are waived, and only under a
+// valid publication transaction — the wall that keeps latest-attempt from decaying into
+// latest-success. Both waived classes carry remedies outside the receipt namespace, so a
+// receipt-confined refresh PR could not resolve them in the same diff by construction.
+// Envelope-level standings are never waived: an expired or mismatched envelope advances
+// nothing and blocks a publication PR exactly as it blocks any other run.
+fn wet_route_identity_reds_block_with_publication(
+  unexpected_red: List<String>,
+  now_passing: List<String>,
+  no_verdict: List<String>,
   publication_transaction_valid: Bool
 ) -> Bool {
-  match standing {
-    ReceiptFailed { failed_identities: _ } => !publication_transaction_valid
-    ReceiptFreshExactSubject { age_secs: _ } => wet_route_standing_blocks_floor(standing: standing)
-    ReceiptMissing => wet_route_standing_blocks_floor(standing: standing)
-    ReceiptExpired { age_secs: _ } => wet_route_standing_blocks_floor(standing: standing)
-    ReceiptSubjectMismatch { axis: _, receipt_digest: _, computed_digest: _ } => wet_route_standing_blocks_floor(standing: standing)
-    ReceiptContractMismatch { detail: _ } => wet_route_standing_blocks_floor(standing: standing)
-    ReceiptRosterInexact { detail: _ } => wet_route_standing_blocks_floor(standing: standing)
+  if publication_transaction_valid {
+    false
+  } else {
+    wet_route_identity_reds_block(
+      unexpected_red: unexpected_red,
+      now_passing: now_passing,
+      no_verdict: no_verdict
+    )
   }
 }
 

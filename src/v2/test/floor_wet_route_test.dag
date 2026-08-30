@@ -2,19 +2,25 @@ module v2.test.floor_wet_route
 
 import v2.workflow.floor_wet_route {
   WetRouteRow,
-  WetLaneOutcome, WetPass, WetFail,
+  WetLaneOutcome, WetPass, WetAssertionFalse, WetRuntimeError,
   WetReceiptIdentityRow, WetReceiptEnvelope,
   WetLaneReceiptStanding,
   ReceiptFreshExactSubject, ReceiptMissing, ReceiptExpired, ReceiptSubjectMismatch,
-  ReceiptContractMismatch, ReceiptRosterInexact, ReceiptFailed,
+  ReceiptContractMismatch, ReceiptRosterInexact,
   wet_lane_receipt_standing,
   wet_route_standing_blocks_floor,
+  wet_receipt_unexpected_red_identities,
+  wet_receipt_held_identities,
+  wet_receipt_now_passing_identities,
+  wet_receipt_no_verdict_identities,
+  wet_route_identity_reds_block,
   WetReceiptPublicationTransaction,
   wet_receipt_publication_transaction_valid,
-  wet_route_standing_blocks_with_publication,
+  wet_route_identity_reds_block_with_publication,
   floor_wet_route_receipt_schema_version,
   floor_wet_route_receipt_staleness_budget_secs,
   floor_wet_route_publication_skew_secs,
+  wet_time_scalar,
   floor_wet_route_roster,
   floor_wet_route_identities,
 }
@@ -90,36 +96,71 @@ test fn wet_route_fresh_exact_receipt_is_the_one_clean_standing() -> Bool {
   )
   match standing {
     ReceiptFreshExactSubject { age_secs: age } =>
-      age == 1 && !wet_route_standing_blocks_floor(standing: standing)
+      wet_time_scalar(x: age) == 1 && !wet_route_standing_blocks_floor(standing: standing)
     ReceiptMissing => false
     ReceiptExpired { age_secs: _ } => false
     ReceiptSubjectMismatch { axis: _, receipt_digest: _, computed_digest: _ } => false
     ReceiptContractMismatch { detail: _ } => false
     ReceiptRosterInexact { detail: _ } => false
-    ReceiptFailed { failed_identities: _ } => false
   }
 }
 
-// LATEST-ATTEMPT SEMANTICS: a fresh, candidate-exact envelope whose newest attempt FAILED
-// blocks, naming exactly the failed identities — the factory line stops on a wet regression
-// at the next cadence instead of coasting on an older green.
-test fn wet_route_failed_attempt_blocks_and_names_the_failures() -> Bool {
-  let standing = standing_at(
-    envelope: Present { value: fixture_envelope(rows: fixture_rows(alpha: WetPass {}, beta: WetFail {})) },
-    tree_secs: 1000001
-  )
-  match standing {
-    ReceiptFailed { failed_identities: failed } =>
-      length(xs: failed) == 1
-        && fold_list(xs: failed, empty: true, cons: fn(acc, id) { acc && id == "test.claim.fixture.beta_holds" })
-        && wet_route_standing_blocks_floor(standing: standing)
-    ReceiptFreshExactSubject { age_secs: _ } => false
-    ReceiptMissing => false
-    ReceiptExpired { age_secs: _ } => false
-    ReceiptSubjectMismatch { axis: _, receipt_digest: _, computed_digest: _ } => false
-    ReceiptContractMismatch { detail: _ } => false
-    ReceiptRosterInexact { detail: _ } => false
-  }
+// THE PER-IDENTITY JOIN, arm one — the fail-closed arm that stays live: a wet red the
+// expected-red roster does not hold blocks and is named. The envelope standing stays fresh
+// (per-identity verdicts are not an envelope fact), so both facts are asserted together.
+test fn wet_route_unexpected_red_blocks_and_is_named() -> Bool {
+  let rows = fixture_rows(alpha: WetPass {}, beta: WetAssertionFalse {})
+  let unexpected = wet_receipt_unexpected_red_identities(rows: rows, expected_red_identities: [])
+  let standing = standing_at(envelope: Present { value: fixture_envelope(rows: rows) }, tree_secs: 1000001)
+  length(xs: unexpected) == 1
+    && fold_list(xs: unexpected, empty: true, cons: fn(acc, id) { acc && id == "test.claim.fixture.beta_holds" })
+    && wet_route_identity_reds_block(unexpected_red: unexpected, now_passing: [], no_verdict: [])
+    && !wet_route_standing_blocks_floor(standing: standing)
+}
+
+// Arm two — known red held: the same failing row under an enrolled identity is counted,
+// named, and does NOT block. The three projections partition the rows: nothing lands in two.
+test fn wet_route_enrolled_red_is_held_not_blocking() -> Bool {
+  let rows = fixture_rows(alpha: WetPass {}, beta: WetAssertionFalse {})
+  let enrolled = ["test.claim.fixture.beta_holds"]
+  let unexpected = wet_receipt_unexpected_red_identities(rows: rows, expected_red_identities: enrolled)
+  let held = wet_receipt_held_identities(rows: rows, expected_red_identities: enrolled)
+  let now_passing = wet_receipt_now_passing_identities(rows: rows, expected_red_identities: enrolled)
+  length(xs: unexpected) == 0
+    && length(xs: held) == 1
+    && fold_list(xs: held, empty: true, cons: fn(acc, id) { acc && id == "test.claim.fixture.beta_holds" })
+    && length(xs: now_passing) == 0
+    && !wet_route_identity_reds_block(unexpected_red: unexpected, now_passing: now_passing, no_verdict: [])
+}
+
+// Arm three — now passing: an enrolled identity the receipt observes PASSING blocks until
+// its roster row is removed, so the fix is counted the moment the lane sees it.
+test fn wet_route_enrolled_pass_is_now_passing_and_blocks() -> Bool {
+  let rows = fixture_rows(alpha: WetPass {}, beta: WetPass {})
+  let enrolled = ["test.claim.fixture.beta_holds"]
+  let held = wet_receipt_held_identities(rows: rows, expected_red_identities: enrolled)
+  let now_passing = wet_receipt_now_passing_identities(rows: rows, expected_red_identities: enrolled)
+  length(xs: held) == 0
+    && length(xs: now_passing) == 1
+    && fold_list(xs: now_passing, empty: true, cons: fn(acc, id) { acc && id == "test.claim.fixture.beta_holds" })
+    && wet_route_identity_reds_block(unexpected_red: [], now_passing: now_passing, no_verdict: [])
+}
+
+// Arm four — no subject verdict: an infrastructure failure is never held by an
+// assertion-false enrollment; it blocks regardless, because an enrollment asserts the
+// witness reaches its subject and answers.
+test fn wet_route_no_verdict_outcome_blocks_even_when_enrolled() -> Bool {
+  let rows = [
+    WetReceiptIdentityRow { identity: "test.claim.fixture.alpha_holds", outcome: WetPass {}, wall_ms: 1 },
+    WetReceiptIdentityRow { identity: "test.claim.fixture.beta_holds", outcome: WetRuntimeError {}, wall_ms: 2 }
+  ]
+  let enrolled = ["test.claim.fixture.beta_holds"]
+  let no_verdict = wet_receipt_no_verdict_identities(rows: rows)
+  let held = wet_receipt_held_identities(rows: rows, expected_red_identities: enrolled)
+  length(xs: no_verdict) == 1
+    && fold_list(xs: no_verdict, empty: true, cons: fn(acc, id) { acc && id == "test.claim.fixture.beta_holds" })
+    && length(xs: held) == 0
+    && wet_route_identity_reds_block(unexpected_red: [], now_passing: [], no_verdict: no_verdict)
 }
 
 // THE COVERAGE-BY-ILLUSION CONTROL: routed with no envelope ever committed must refuse,
@@ -133,44 +174,41 @@ test fn wet_route_missing_envelope_blocks() -> Bool {
     ReceiptSubjectMismatch { axis: _, receipt_digest: _, computed_digest: _ } => false
     ReceiptContractMismatch { detail: _ } => false
     ReceiptRosterInexact { detail: _ } => false
-    ReceiptFailed { failed_identities: _ } => false
   }
 }
 
 test fn wet_route_expired_envelope_blocks() -> Bool {
-  let over = floor_wet_route_receipt_staleness_budget_secs() + 1
+  let over = wet_time_scalar(x: floor_wet_route_receipt_staleness_budget_secs()) + 1
   let standing = standing_at(
     envelope: Present { value: fixture_envelope(rows: fixture_rows(alpha: WetPass {}, beta: WetPass {})) },
     tree_secs: 1000000 + over
   )
   match standing {
     ReceiptExpired { age_secs: age } =>
-      age == over && wet_route_standing_blocks_floor(standing: standing)
+      wet_time_scalar(x: age) == over && wet_route_standing_blocks_floor(standing: standing)
     ReceiptFreshExactSubject { age_secs: _ } => false
     ReceiptMissing => false
     ReceiptSubjectMismatch { axis: _, receipt_digest: _, computed_digest: _ } => false
     ReceiptContractMismatch { detail: _ } => false
     ReceiptRosterInexact { detail: _ } => false
-    ReceiptFailed { failed_identities: _ } => false
   }
 }
 
 // The boundary discriminates the comparison's direction: a receipt EXACTLY at the budget is
 // still fresh, so the wall fires on `>` and a re-spelling as `>=` reds here.
 test fn wet_route_envelope_at_exact_budget_is_fresh() -> Bool {
-  let at = floor_wet_route_receipt_staleness_budget_secs()
+  let at = wet_time_scalar(x: floor_wet_route_receipt_staleness_budget_secs())
   let standing = standing_at(
     envelope: Present { value: fixture_envelope(rows: fixture_rows(alpha: WetPass {}, beta: WetPass {})) },
     tree_secs: 1000000 + at
   )
   match standing {
-    ReceiptFreshExactSubject { age_secs: age } => age == at
+    ReceiptFreshExactSubject { age_secs: age } => wet_time_scalar(x: age) == at
     ReceiptMissing => false
     ReceiptExpired { age_secs: _ } => false
     ReceiptSubjectMismatch { axis: _, receipt_digest: _, computed_digest: _ } => false
     ReceiptContractMismatch { detail: _ } => false
     ReceiptRosterInexact { detail: _ } => false
-    ReceiptFailed { failed_identities: _ } => false
   }
 }
 
@@ -197,7 +235,6 @@ test fn wet_route_subject_mismatch_blocks_and_carries_both_digests() -> Bool {
     ReceiptExpired { age_secs: _ } => false
     ReceiptContractMismatch { detail: _ } => false
     ReceiptRosterInexact { detail: _ } => false
-    ReceiptFailed { failed_identities: _ } => false
   }
 }
 
@@ -218,7 +255,6 @@ test fn wet_route_roster_inexact_blocks() -> Bool {
     ReceiptExpired { age_secs: _ } => false
     ReceiptSubjectMismatch { axis: _, receipt_digest: _, computed_digest: _ } => false
     ReceiptContractMismatch { detail: _ } => false
-    ReceiptFailed { failed_identities: _ } => false
   }
 }
 
@@ -233,7 +269,7 @@ test fn wet_route_publication_beyond_skew_is_contract_mismatch() -> Bool {
     executor_contract_digest: base.executor_contract_digest,
     attempt_seq: base.attempt_seq,
     executed_at_unix_secs: 1000000,
-    published_at_unix_secs: 1000000 + floor_wet_route_publication_skew_secs() + 1,
+    published_at_unix_secs: 1000000 + wet_time_scalar(x: floor_wet_route_publication_skew_secs()) + 1,
     run_id: base.run_id,
     head_sha: base.head_sha,
     rows: base.rows
@@ -246,7 +282,6 @@ test fn wet_route_publication_beyond_skew_is_contract_mismatch() -> Bool {
     ReceiptExpired { age_secs: _ } => false
     ReceiptSubjectMismatch { axis: _, receipt_digest: _, computed_digest: _ } => false
     ReceiptRosterInexact { detail: _ } => false
-    ReceiptFailed { failed_identities: _ } => false
   }
 }
 
@@ -272,17 +307,14 @@ test fn wet_route_executor_contract_mismatch_blocks_on_its_own_axis() -> Bool {
     ReceiptExpired { age_secs: _ } => false
     ReceiptContractMismatch { detail: _ } => false
     ReceiptRosterInexact { detail: _ } => false
-    ReceiptFailed { failed_identities: _ } => false
   }
 }
 
-// THE PUBLICATION WALL (residual B): a FAILED receipt is admitted exactly when the run's own
-// diff is a valid publication transaction — and only the Failed arm is waived.
-test fn wet_route_failed_receipt_admitted_only_under_valid_publication_transaction() -> Bool {
-  let failed = standing_at(
-    envelope: Present { value: fixture_envelope(rows: fixture_rows(alpha: WetPass {}, beta: WetFail {})) },
-    tree_secs: 1000001
-  )
+// THE PUBLICATION WALL (residual B): per-identity reds are admitted exactly when the run's
+// own diff is a valid publication transaction — a red refresh PR can land its own envelope,
+// and nothing else can ride that waiver.
+test fn wet_route_identity_reds_waived_only_under_valid_publication_transaction() -> Bool {
+  let unexpected = ["test.claim.fixture.beta_holds"]
   let valid = WetReceiptPublicationTransaction {
     diff_confined_to_receipt_namespace: true,
     attempt_seq_advances: true
@@ -295,30 +327,56 @@ test fn wet_route_failed_receipt_admitted_only_under_valid_publication_transacti
     diff_confined_to_receipt_namespace: true,
     attempt_seq_advances: false
   }
-  !wet_route_standing_blocks_with_publication(
-    standing: failed,
+  !wet_route_identity_reds_block_with_publication(
+    unexpected_red: unexpected,
+    now_passing: [],
+    no_verdict: [],
     publication_transaction_valid: wet_receipt_publication_transaction_valid(t: valid)
   )
-    && wet_route_standing_blocks_with_publication(
-      standing: failed,
+    && !wet_route_identity_reds_block_with_publication(
+      unexpected_red: [],
+      now_passing: ["test.claim.fixture.alpha_holds"],
+      no_verdict: [],
+      publication_transaction_valid: wet_receipt_publication_transaction_valid(t: valid)
+    )
+    && !wet_route_identity_reds_block_with_publication(
+      unexpected_red: [],
+      now_passing: [],
+      no_verdict: ["test.claim.fixture.beta_holds"],
+      publication_transaction_valid: wet_receipt_publication_transaction_valid(t: valid)
+    )
+    && wet_route_identity_reds_block_with_publication(
+      unexpected_red: unexpected,
+      now_passing: [],
+      no_verdict: [],
       publication_transaction_valid: wet_receipt_publication_transaction_valid(t: stray_path)
     )
-    && wet_route_standing_blocks_with_publication(
-      standing: failed,
+    && wet_route_identity_reds_block_with_publication(
+      unexpected_red: unexpected,
+      now_passing: [],
+      no_verdict: [],
       publication_transaction_valid: wet_receipt_publication_transaction_valid(t: replayed)
     )
 }
 
-// AND ITS NON-WIDENING HALF: no other blocking standing is waived by a valid transaction —
-// an expired or missing envelope blocks its own publication PR too.
-test fn wet_route_publication_transaction_waives_only_the_failed_arm() -> Bool {
+// AND ITS NON-WIDENING HALF: envelope-level standings are never waived by a valid
+// transaction — an expired or missing envelope blocks its own publication PR too, because
+// the waiver is defined over the per-identity polarity and never consulted for the
+// envelope's own standing.
+test fn wet_route_publication_transaction_waives_no_envelope_standing() -> Bool {
   let expired = standing_at(
     envelope: Present { value: fixture_envelope(rows: fixture_rows(alpha: WetPass {}, beta: WetPass {})) },
     tree_secs: 1000000 + floor_wet_route_receipt_staleness_budget_secs() + 1
   )
   let missing = standing_at(envelope: Absent, tree_secs: 1000000)
-  wet_route_standing_blocks_with_publication(standing: expired, publication_transaction_valid: true)
-    && wet_route_standing_blocks_with_publication(standing: missing, publication_transaction_valid: true)
+  wet_route_standing_blocks_floor(standing: expired)
+    && wet_route_standing_blocks_floor(standing: missing)
+    && !wet_route_identity_reds_block_with_publication(
+      unexpected_red: [],
+      now_passing: [],
+      no_verdict: [],
+      publication_transaction_valid: false
+    )
 }
 
 // Roster hygiene the host wall then re-checks at run grain: identities are pairwise
