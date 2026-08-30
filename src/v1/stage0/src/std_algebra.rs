@@ -804,6 +804,42 @@ pub fn carrier_container_arity_rows() -> Rc<HashMap<String, i64>> {
     )
 }
 
+pub fn algebra_profile_equality_extensional(profile: AlgebraProfile) -> bool {
+    match profile.clone() {
+        AlgebraProfile::OrderedRingProfile => true,
+        AlgebraProfile::ApproximateFieldProfile => true,
+        AlgebraProfile::BooleanAlgebraProfile => true,
+        AlgebraProfile::FinitePowerSetProfile => true,
+        AlgebraProfile::PointwisePowerCollectionProfile => false,
+        AlgebraProfile::FreeMonoidScalarProfile => true,
+        AlgebraProfile::FreeMonoidCollectionProfile => true,
+        AlgebraProfile::PartialFunctionProfile => false,
+        AlgebraProfile::FinitelySupportedFunctionProfile => true,
+    }
+}
+
+pub fn carrier_container_equality_rows() -> Rc<HashMap<String, bool>> {
+    algebra_carriers().iter().cloned().fold(
+        v1_rt::rc_empty_map::<String, bool>(),
+        |acc: Rc<HashMap<String, bool>>, carrier: Rc<AlgebraCarrier>| {
+            carrier.spellings.clone().iter().cloned().fold(
+                acc,
+                |inner: Rc<HashMap<String, bool>>, spelling: Rc<CarrierSpelling>| {
+                    if carrier_spelling_row_present(spelling.container_algebra_row.clone()) {
+                        v1_rt::rc_map_insert(
+                            inner.clone(),
+                            spelling.text.clone(),
+                            algebra_profile_equality_extensional(carrier.profile.clone()),
+                        )
+                    } else {
+                        inner.clone()
+                    }
+                },
+            )
+        },
+    )
+}
+
 pub fn kernel_algebra_profile() -> Rc<HashMap<String, AlgebraProfile>> {
     thread_local! {
         static CACHED: Rc<HashMap<String, AlgebraProfile>> = {
