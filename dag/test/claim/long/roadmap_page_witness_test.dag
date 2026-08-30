@@ -8,7 +8,7 @@ import extdeps.languages.html { try_serialize_html_source, EmitOk, EmitRejected 
 import gunbc.roadmap_focus { RoadmapFocus, NoFocus }
 import gunbc.roadmap_belt { ManualReady }
 import gunbc.roadmap_launch_admission { LaunchHostStanding, LaunchAdmitted, LaunchIdentity, Operator }
-import test.claim.roadmap.roadmap_launch_admission_fixture { launch_fixture_standing_clear, launch_fixture_with_contract, launch_fixture_doc }
+import test.claim.roadmap.roadmap_launch_admission_fixture { launch_fixture_standing_clear, launch_fixture_with_contract, launch_fixture_doc, launch_fixture_identity }
 import gunbc.roadmap_page {
   roadmap_page_launch, roadmap_daily_workspace_page_launch,
   roadmap_page_for_authority,
@@ -586,7 +586,7 @@ fn parity_specimen_view(activity: gunbc.roadmap_presentation.ActivityView) -> gu
     activity: activity,
     action: gunbc.roadmap_presentation.action_view(
       lifecycle: gunbc.roadmap_presentation.OpenLifecycle,
-      admission: LaunchAdmitted { identity: LaunchIdentity { node_id: "parity-specimen", cause: Operator, mode: ManualReady, instance_id: "fixture", revision: "fixture" } }),
+      admission: LaunchAdmitted { identity: launch_fixture_identity(node_id: "parity-specimen", cause: Operator, mode: ManualReady) }),
     supporting_facts: [],
     disclosure: gunbc.roadmap_presentation.NoDisclosure,
   }

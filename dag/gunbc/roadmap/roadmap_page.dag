@@ -41,6 +41,7 @@ import gunbc.roadmap_belt { spawn_mode_label }
 import gunbc.roadmap_launch_admission {
   LaunchHostStanding, LaunchGraphStanding, launch_graph_of_document,
   launch_host_unobserved_static_render, launch_cause_label,
+  launch_identity_instance_text, launch_identity_revision_hex,
 }
 import gunbc.roadmap_presentation {
   WorkRowView, work_row_view, row_headline, LaunchRowContext,
@@ -359,8 +360,8 @@ fn dispatch_button_attributes(view: WorkRowView, a: WorkAction) -> List<Attribut
     Present { value: id } => concat(base, [
       attr(name: "data-launch-cause", value: launch_cause_label(c: id.cause) ),
       attr(name: "data-launch-mode", value: spawn_mode_label(m: id.mode) ),
-      attr(name: "data-launch-instance", value: id.instance_id ),
-      attr(name: "data-launch-revision", value: id.revision ),
+      attr(name: "data-launch-instance", value: launch_identity_instance_text(id: id) ),
+      attr(name: "data-launch-revision", value: launch_identity_revision_hex(id: id) ),
     ])
   }
   match a.availability {

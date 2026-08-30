@@ -180,7 +180,7 @@ test fn witness_dispatch_status_total() -> Bool {
     && belt_dispatch_status(r: SpawnFailed { node_id: "n", step: "git", detail: "d", provider: "codex", launch: launch_identity_exemplar() }) == 502
     && belt_dispatch_status(r: na(r: LaunchStaleSession { session_name: "s", detail: "d" })) == 409
     && belt_dispatch_status(r: na(r: LaunchRevisionDrift { desired: "a", local: "b" })) == 409
-    && belt_dispatch_status(r: na(r: LaunchSessionMultiplicityConflict { session_names: "s1, s2", session_count: 2 })) == 409
+    && belt_dispatch_status(r: na(r: LaunchSessionMultiplicityConflict { session_names: ["s1", "s2"], session_count: 2 })) == 409
     && belt_dispatch_status(r: na(r: LaunchLivenessUnobserved { session_name: "s", reason: "r" })) == 503
     && belt_dispatch_status(r: na(r: LaunchRevisionUnobserved { cause: "c" })) == 503
     && belt_dispatch_status(r: na(r: LaunchDependenciesBlocked { blockers: ["p"] })) == 409

@@ -27,7 +27,7 @@ import gunbc.roadmap_launch_admission {
   LaunchDependenciesBlocked, launch_graph_of_document,
 }
 import test.claim.roadmap.roadmap_launch_admission_fixture {
-  launch_fixture_standing_clear, launch_fixture_doc,
+  launch_fixture_standing_clear, launch_fixture_doc, launch_fixture_identity,
 }
 import gunbc.roadmap_presentation {
   ActivityView, NoActiveWork, ActiveWork, ActiveWorkRefused, LegacySupersedableAttempt,
@@ -260,7 +260,7 @@ test fn witness_all_complete_ledger_is_terminal_not_active() -> Bool {
 }
 
 fn fx_admitted(node_id: String) -> LaunchAdmission {
-  LaunchAdmitted { identity: LaunchIdentity { node_id: node_id, cause: Operator, mode: ManualReady, instance_id: "fixture", revision: "fixture" } }
+  LaunchAdmitted { identity: launch_fixture_identity(node_id: node_id, cause: Operator, mode: ManualReady) }
 }
 
 fn fx_blocked() -> LaunchAdmission {

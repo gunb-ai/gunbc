@@ -1,7 +1,7 @@
 module gunbc.roadmap_launch_admission
 
 import std.types { String, Int, List, Bool, NonEmptyStr }
-import std.content_hash { Fnv1a64Structural, content_hash_atom, content_hash_combine_structural, content_hash_tagged_structural }
+import std.content_hash { Fnv1a64Structural, Sha1Digest, Sha1DigestHex, content_hash_atom, content_hash_combine_structural, content_hash_tagged_structural }
 import gunbc.roadmap_model { RoadmapNode, RoadmapNodeId, RoadmapEdge }
 import gunbc.roadmap_document { RoadmapDocument }
 import gunbc.roadmap_status { item_superseded_by, signoff_accepts, item_is_done }
@@ -16,7 +16,7 @@ import gunbc.roadmap_authority {
 import gunbc.roadmap_dashboard_instance { DashboardActuationPosture, DashboardObserveOnly, DashboardActuating }
 import gunbc.deploy_transition { ActuationAdmission, ActuationAdmitted, ActuationRefused }
 import gunbc.fleet_desired_observe { FleetRevisionStanding, RevisionConverged, RevisionDrifted, RevisionUnobserved }
-import extdeps.git.object_store { git_object_id_wire_hex }
+import extdeps.git.object_store { GitObjectId, GitSha1ObjectId, git_object_id_wire_hex, git_object_id_from_untagged_hex }
 import gunbc.roadmap_dispatch_actuator { DispatchLiveSession }
 import gunbc.worker_lifecycle {
   WorkerProcessEvidence, WorkerProcessRunning, WorkerProcessExited, WorkerProcessAbsent, WorkerProcessUnobserved,
@@ -52,20 +52,26 @@ fn launch_cause_of_label(label: String) -> LaunchCause? {
 data launch_identity_note: String = "THE ADMITTED DECISION, carried whole. Every surface that acts on LaunchAdmitted binds this exact record to what it does next -- the page's decided action, the route's response, the timer's spawn attempt and the durable tick receipt -- so a successor gate (RLM-4) joins an attempt to the admission that decided it by these five facts and nothing else. The identity is EVIDENCE, never AUTHORIZATION: a client that renders one must not present it to the route as permission; the route re-observes the host and re-admits, and the only thing the two identities may be compared for is parity (same node, mode, instance, revision; the cause differs by construction)."
 
 type LaunchIdentity {
-  node_id: String
+  node_id: RoadmapNodeId
   cause: LaunchCause
   mode: SpawnMode
-  instance_id: String
-  revision: String
+  instance_id: NonEmptyStr
+  revision: GitObjectId
 }
+
+data launch_identity_grain_note: String = "The five facts keep the types their authorities gave them (DESIGN 2: consume, never unwind at a boundary): node_id is the RoadmapNodeId of the node the node gate FOUND in the projected authority, never the request's spelling; instance_id is the dashboard instance's NonEmptyStr; revision is the GitObjectId the revision gate observed converged. The three text projections below are the ONLY place an identity becomes a string, so the wire, the page attributes and the reason line spell each fact one way."
+
+fn launch_identity_node_id_text(id: LaunchIdentity) -> String { id.node_id as String }
+fn launch_identity_instance_text(id: LaunchIdentity) -> String { id.instance_id as String }
+fn launch_identity_revision_hex(id: LaunchIdentity) -> String { git_object_id_wire_hex(oid: id.revision) as String }
 
 fn launch_identity_json(id: LaunchIdentity) -> JsonValue {
   json_object(members: [
-    json_kv(key: "node_id", value: json_string(s: id.node_id)),
+    json_kv(key: "node_id", value: json_string(s: launch_identity_node_id_text(id: id))),
     json_kv(key: "cause", value: json_string(s: launch_cause_label(c: id.cause))),
     json_kv(key: "mode", value: json_string(s: spawn_mode_label(m: id.mode))),
-    json_kv(key: "instance_id", value: json_string(s: id.instance_id)),
-    json_kv(key: "revision", value: json_string(s: id.revision)),
+    json_kv(key: "instance_id", value: json_string(s: launch_identity_instance_text(id: id))),
+    json_kv(key: "revision", value: json_string(s: launch_identity_revision_hex(id: id))),
   ])
 }
 
@@ -73,52 +79,94 @@ type LaunchIdentityDecode
   = LaunchIdentityDecoded { identity: LaunchIdentity }
   | LaunchIdentityUnreadable { reason: String }
 
-fn launch_identity_member_string(doc: JsonValue, key: String) -> String? {
+type LaunchIdentityMemberRead
+  = LaunchIdentityMemberString { value: String }
+  | LaunchIdentityMemberRefused { reason: String }
+
+data launch_identity_member_note: String = "Each way a member can fail to be a string is its own located reason (DESIGN 5: a failure arm refuses, never widens): absent, duplicated N times, not a string, or the document not an object at all. Collapsing them to one Absent re-reported a duplicated member as a missing one (review 57561 on #9696)."
+
+fn launch_identity_member_string(doc: JsonValue, key: String) -> LaunchIdentityMemberRead {
   match json_object_unique_member(v: doc, key: key) {
-    JsonMemberFound { value: JsonString { value: v } } => Present { value: v }
-    JsonMemberFound { value: _ } => none
-    JsonMemberAbsent => none
-    JsonMemberDuplicated { count: _ } => none
-    JsonMemberNotAnObject => none
+    JsonMemberFound { value: JsonString { value: v } } => LaunchIdentityMemberString { value: v }
+    JsonMemberFound { value: _ } => LaunchIdentityMemberRefused { reason: join(["launch identity ", key, " is not a string"], "") }
+    JsonMemberAbsent => LaunchIdentityMemberRefused { reason: join(["launch identity ", key, " is missing"], "") }
+    JsonMemberDuplicated { count } => LaunchIdentityMemberRefused { reason: join(["launch identity ", key, " appears ", to_string(count), " times"], "") }
+    JsonMemberNotAnObject => LaunchIdentityMemberRefused { reason: "launch identity document is not an object" }
+  }
+}
+
+fn launch_identity_non_empty(key: String, value: String) -> LaunchIdentityMemberRead {
+  if value == "" {
+    LaunchIdentityMemberRefused { reason: join(["launch identity ", key, " is empty"], "") }
+  } else {
+    LaunchIdentityMemberString { value: value }
   }
 }
 
 fn launch_identity_of_json(doc: JsonValue) -> LaunchIdentityDecode {
   match launch_identity_member_string(doc: doc, key: "node_id") {
-    Absent => LaunchIdentityUnreadable { reason: "launch identity node_id is missing or not a string" }
-    Present { value: node_id } =>
+    LaunchIdentityMemberRefused { reason } => LaunchIdentityUnreadable { reason: reason }
+    LaunchIdentityMemberString { value: node_id_text } =>
+      match launch_identity_non_empty(key: "node_id", value: node_id_text) {
+        LaunchIdentityMemberRefused { reason } => LaunchIdentityUnreadable { reason: reason }
+        LaunchIdentityMemberString { value: node_id } =>
       match launch_identity_member_string(doc: doc, key: "cause") {
-        Absent => LaunchIdentityUnreadable { reason: "launch identity cause is missing or not a string" }
-        Present { value: cause_label } =>
+        LaunchIdentityMemberRefused { reason } => LaunchIdentityUnreadable { reason: reason }
+        LaunchIdentityMemberString { value: cause_label } =>
           match launch_cause_of_label(label: cause_label) {
             Absent => LaunchIdentityUnreadable { reason: join(["launch identity cause is not in the closed vocabulary: ", cause_label], "") }
             Present { value: cause } =>
               match launch_identity_member_string(doc: doc, key: "mode") {
-                Absent => LaunchIdentityUnreadable { reason: "launch identity mode is missing or not a string" }
-                Present { value: mode_label } =>
+                LaunchIdentityMemberRefused { reason } => LaunchIdentityUnreadable { reason: reason }
+                LaunchIdentityMemberString { value: mode_label } =>
                   match spawn_mode_of_label(label: mode_label) {
                     Absent => LaunchIdentityUnreadable { reason: join(["launch identity mode is not in the closed vocabulary: ", mode_label], "") }
                     Present { value: mode } =>
                       match launch_identity_member_string(doc: doc, key: "instance_id") {
-                        Absent => LaunchIdentityUnreadable { reason: "launch identity instance_id is missing or not a string" }
-                        Present { value: instance_id } =>
+                        LaunchIdentityMemberRefused { reason } => LaunchIdentityUnreadable { reason: reason }
+                        LaunchIdentityMemberString { value: instance_text } =>
+                          match launch_identity_non_empty(key: "instance_id", value: instance_text) {
+                            LaunchIdentityMemberRefused { reason } => LaunchIdentityUnreadable { reason: reason }
+                            LaunchIdentityMemberString { value: instance_id } =>
                           match launch_identity_member_string(doc: doc, key: "revision") {
-                            Absent => LaunchIdentityUnreadable { reason: "launch identity revision is missing or not a string" }
-                            Present { value: revision } =>
-                              LaunchIdentityDecoded { identity: LaunchIdentity {
-                                node_id: node_id, cause: cause, mode: mode, instance_id: instance_id, revision: revision,
-                              } }
+                            LaunchIdentityMemberRefused { reason } => LaunchIdentityUnreadable { reason: reason }
+                            LaunchIdentityMemberString { value: revision_hex } =>
+                              match git_object_id_from_untagged_hex(hex: revision_hex) {
+                                Absent => LaunchIdentityUnreadable { reason: join(["launch identity revision is not a git object id: ", revision_hex], "") }
+                                Present { value: revision } =>
+                                  LaunchIdentityDecoded { identity: LaunchIdentity {
+                                    node_id: node_id as NonEmptyStr as RoadmapNodeId,
+                                    cause: cause,
+                                    mode: mode,
+                                    instance_id: instance_id as NonEmptyStr,
+                                    revision: revision,
+                                  } }
+                              }
+                          }
                           }
                       }
                   }
               }
           }
       }
+      }
   }
 }
 
+data launch_identity_null_revision_note: String = "git's null object id (every octet zero) is the one revision value git itself defines as naming no object; it is the exemplar's and the UI fixtures' revision so a synthetic identity can never collide with an observed one."
+
+fn launch_identity_null_revision() -> GitObjectId {
+  GitSha1ObjectId { digest: Sha1Digest { hex: "0000000000000000000000000000000000000000" as Sha1DigestHex } }
+}
+
 fn launch_identity_exemplar() -> LaunchIdentity {
-  LaunchIdentity { node_id: "x", cause: Operator, mode: ManualReady, instance_id: "exemplar-instance", revision: "0000000000000000000000000000000000000000" }
+  LaunchIdentity {
+    node_id: "x" as NonEmptyStr as RoadmapNodeId,
+    cause: Operator,
+    mode: ManualReady,
+    instance_id: "exemplar-instance" as NonEmptyStr,
+    revision: launch_identity_null_revision(),
+  }
 }
 
 type LaunchRefusal
@@ -139,7 +187,7 @@ type LaunchRefusal
   | LaunchAlreadyLive { session_name: String }
   | LaunchStaleSession { session_name: String, detail: String }
   | LaunchLivenessUnobserved { session_name: String, reason: String }
-  | LaunchSessionMultiplicityConflict { session_names: String, session_count: Int }
+  | LaunchSessionMultiplicityConflict { session_names: List<String>, session_count: Int }
   | LaunchNoCapacity { occupied: Int, max_concurrent: Int }
   | LaunchCauseNotPermitted { cause: LaunchCause, mode: SpawnMode }
   | LaunchGateNotEvaluated { gate: String }
@@ -195,7 +243,7 @@ fn launch_refusal_reason(r: LaunchRefusal) -> String {
     LaunchAlreadyLive { session_name } => join(["attempt already live in ", session_name], "")
     LaunchStaleSession { session_name, detail } => join([session_name, ": ", detail], "")
     LaunchLivenessUnobserved { session_name, reason } => join([session_name, ": ", reason], "")
-    LaunchSessionMultiplicityConflict { session_names, session_count } => join([to_string(session_count), " sessions claim this node: ", session_names], "")
+    LaunchSessionMultiplicityConflict { session_names, session_count } => join([to_string(session_count), " sessions claim this node: ", join(session_names, ", ")], "")
     LaunchNoCapacity { occupied, max_concurrent } => join(["belt at capacity: ", to_string(occupied), " of ", to_string(max_concurrent), " slots occupied"], "")
     LaunchCauseNotPermitted { cause, mode } => join(["cause ", launch_cause_label(c: cause), " may not start new work in spawn mode ", spawn_mode_label(m: mode)], "")
     LaunchGateNotEvaluated { gate } => join(["gate ", gate, " was not evaluated; fail-closed"], "")
@@ -221,7 +269,7 @@ fn launch_refusal_exemplars() -> List<LaunchRefusal> {
     LaunchAlreadyLive { session_name: "s" },
     LaunchStaleSession { session_name: "s", detail: "d" },
     LaunchLivenessUnobserved { session_name: "s", reason: "r" },
-    LaunchSessionMultiplicityConflict { session_names: "s1, s2", session_count: 2 },
+    LaunchSessionMultiplicityConflict { session_names: ["s1", "s2"], session_count: 2 },
     LaunchNoCapacity { occupied: 3, max_concurrent: 3 },
     LaunchCauseNotPermitted { cause: Timer, mode: ManualReady },
     LaunchGateNotEvaluated { gate: "g" },
@@ -241,7 +289,7 @@ data launch_host_standing_note: String = "Everything the decision needs from the
 
 type LaunchHostStanding
   = LaunchHostObserved {
-      instance_id: String,
+      instance_id: NonEmptyStr,
       actuation: DashboardActuationPosture,
       transition: ActuationAdmission,
       revision: FleetRevisionStanding,
@@ -352,7 +400,17 @@ type LaunchGateLedger {
   live: LaunchGateVerdict
   capacity: LaunchGateVerdict
   cause: LaunchGateVerdict
-  identity: LaunchIdentity?
+}
+
+type LaunchIdentityStanding
+  = LaunchIdentityBound { identity: LaunchIdentity }
+  | LaunchIdentityWithheld { refusal: LaunchRefusal }
+
+data launch_identity_standing_note: String = "The identity is a CONSEQUENCE of the first four gates, not a tenth gate: it is bound exactly when the host is actuating and transition-clear, the revision observed converged (that GitObjectId) and the node found (that RoadmapNodeId). When it is withheld, the standing carries the refusal of the gate that withheld it -- the same verdict that gate's ledger row holds -- so the admission never manufactures an `identity` gate and no ledger state says `every gate passed and no identity exists` (review 57561 on #9696: the former Optional field's Absent arm under an all-passed ledger had no authorable RED)."
+
+type LaunchDecisionFacts {
+  ledger: LaunchGateLedger
+  identity: LaunchIdentityStanding
 }
 
 data launch_gate_template_note: String = "THE CANONICAL ROW ROSTER, read once from the one place rows are authored (launch_ledger_rows) over a ledger in which no gate has been evaluated. Every roster the contract serializes -- the gate order and the session-observation boundary -- is a projection of these rows and their typed LaunchGateRow.stage marks; nothing about the order or the partition is spelled a second time (review 5060354380: an authored `host_stages=` literal beside the typed marks left the frozen digest silent under a reclassification)."
@@ -368,7 +426,6 @@ fn launch_gate_template() -> List<LaunchGateRow> {
     live: GateNotReached,
     capacity: GateNotReached,
     cause: GateNotReached,
-    identity: none,
   })
 }
 
@@ -439,24 +496,24 @@ fn launch_fold_step(acc: LaunchFoldState, row: LaunchGateRow) -> LaunchFoldState
   }
 }
 
-fn launch_admission_of_ledger(l: LaunchGateLedger) -> LaunchAdmission {
-  let folded = fold(launch_ledger_rows(l: l), init: FoldOpen, f: fn(acc, row) { launch_fold_step(acc: acc, row: row) })
+fn launch_admission_of_facts(f: LaunchDecisionFacts) -> LaunchAdmission {
+  let folded = fold(launch_ledger_rows(l: f.ledger), init: FoldOpen, f: fn(acc, row) { launch_fold_step(acc: acc, row: row) })
   match folded {
     FoldRefused { refusal } => LaunchRefused { refusal: refusal }
     FoldOpen =>
-      match l.identity {
-        Present { value: id } => LaunchAdmitted { identity: id }
-        Absent => LaunchRefused { refusal: LaunchGateNotEvaluated { gate: "identity" } }
+      match f.identity {
+        LaunchIdentityBound { identity } => LaunchAdmitted { identity: identity }
+        LaunchIdentityWithheld { refusal } => LaunchRefused { refusal: refusal }
       }
   }
 }
 
-fn launch_gate_instance(instance_id: String, actuation: DashboardActuationPosture) -> LaunchGateVerdict {
+fn launch_gate_instance(instance_id: NonEmptyStr, actuation: DashboardActuationPosture) -> LaunchGateVerdict {
   match actuation {
     DashboardActuating => GatePassed
     DashboardObserveOnly =>
       GateRefused { refusal: LaunchInstanceActuationRefused {
-        instance_id: instance_id,
+        instance_id: instance_id as String,
         reason: "dashboard instance is observe-only; launch refused before observation, provider preflight, or worktree creation",
       } }
   }
@@ -469,23 +526,26 @@ fn launch_gate_transition(transition: ActuationAdmission) -> LaunchGateVerdict {
   }
 }
 
-fn launch_gate_revision(revision: FleetRevisionStanding) -> LaunchGateVerdict {
+type LaunchRevisionOutcome
+  = LaunchRevisionBound { oid: GitObjectId }
+  | LaunchRevisionRefused { refusal: LaunchRefusal }
+
+fn launch_revision_outcome(revision: FleetRevisionStanding) -> LaunchRevisionOutcome {
   match revision {
-    RevisionConverged { revision: _ } => GatePassed
+    RevisionConverged { revision: oid } => LaunchRevisionBound { oid: oid }
     RevisionDrifted { desired, local } =>
-      GateRefused { refusal: LaunchRevisionDrift {
+      LaunchRevisionRefused { refusal: LaunchRevisionDrift {
         desired: git_object_id_wire_hex(oid: desired) as String,
         local: git_object_id_wire_hex(oid: local) as String,
       } }
-    RevisionUnobserved { cause } => GateRefused { refusal: LaunchRevisionUnobserved { cause: cause } }
+    RevisionUnobserved { cause } => LaunchRevisionRefused { refusal: LaunchRevisionUnobserved { cause: cause } }
   }
 }
 
-fn launch_revision_hex(revision: FleetRevisionStanding) -> String? {
-  match revision {
-    RevisionConverged { revision: r } => Present { value: git_object_id_wire_hex(oid: r) as String }
-    RevisionDrifted { desired: _, local: _ } => Absent
-    RevisionUnobserved { cause: _ } => Absent
+fn launch_gate_revision(revision: FleetRevisionStanding) -> LaunchGateVerdict {
+  match launch_revision_outcome(revision: revision) {
+    LaunchRevisionBound { oid: _ } => GatePassed
+    LaunchRevisionRefused { refusal } => GateRefused { refusal: refusal }
   }
 }
 
@@ -584,7 +644,7 @@ fn launch_gate_live(sessions: LaunchSessionsStanding, node_id: String) -> Launch
       let n = count(matched)
       if n > 1 {
         GateRefused { refusal: LaunchSessionMultiplicityConflict {
-          session_names: join(map(matched, s => s.session_name), ", "),
+          session_names: map(matched, s => s.session_name as String),
           session_count: n,
         } }
       } else {
@@ -640,104 +700,129 @@ fn launch_gate_cause(cause: LaunchCause, mode: SpawnMode) -> LaunchGateVerdict {
   }
 }
 
-fn launch_ledger_unreached_after_instance(refusal: LaunchRefusal) -> LaunchGateLedger {
-  LaunchGateLedger {
-    instance: GateRefused { refusal: refusal },
-    transition: GateNotReached,
-    revision: GateNotReached,
-    node: GateNotReached,
-    contract: GateNotReached,
-    dependencies: GateNotReached,
-    live: GateNotReached,
-    capacity: GateNotReached,
-    cause: GateNotReached,
-    identity: none,
+fn launch_facts_unreached_after_instance(refusal: LaunchRefusal) -> LaunchDecisionFacts {
+  LaunchDecisionFacts {
+    ledger: LaunchGateLedger {
+      instance: GateRefused { refusal: refusal },
+      transition: GateNotReached,
+      revision: GateNotReached,
+      node: GateNotReached,
+      contract: GateNotReached,
+      dependencies: GateNotReached,
+      live: GateNotReached,
+      capacity: GateNotReached,
+      cause: GateNotReached,
+    },
+    identity: LaunchIdentityWithheld { refusal: refusal },
   }
 }
 
-fn launch_gate_ledger(
+fn launch_identity_of_observed(
+  cause: LaunchCause,
+  mode: SpawnMode,
+  instance_id: NonEmptyStr,
+  revision: FleetRevisionStanding,
+  lookup: LaunchNodeLookup,
+) -> LaunchIdentityStanding {
+  match launch_revision_outcome(revision: revision) {
+    LaunchRevisionRefused { refusal } => LaunchIdentityWithheld { refusal: refusal }
+    LaunchRevisionBound { oid } =>
+      match lookup {
+        LaunchNodeLookupRefused { refusal } => LaunchIdentityWithheld { refusal: refusal }
+        LaunchNodeFound { node, nodes: _, edges: _ } =>
+          LaunchIdentityBound { identity: LaunchIdentity {
+            node_id: node.node,
+            cause: cause,
+            mode: mode,
+            instance_id: instance_id,
+            revision: oid,
+          } }
+      }
+  }
+}
+
+fn launch_decision_facts(
   cause: LaunchCause,
   standing: LaunchHostStanding,
   graph: LaunchGraphStanding,
   merged: List<Int>,
   node_id: String,
   reserved: Int,
-) -> LaunchGateLedger {
+) -> LaunchDecisionFacts {
   match standing {
     LaunchHostUnobserved { reason } =>
-      launch_ledger_unreached_after_instance(
+      launch_facts_unreached_after_instance(
         refusal: LaunchNoActuatingInstance { reason: reason },
       )
     LaunchHostObserveOnly { instance_id } =>
-      launch_ledger_unreached_after_instance(
+      launch_facts_unreached_after_instance(
         refusal: LaunchInstanceActuationRefused { instance_id: instance_id, reason: launch_observe_only_reason },
       )
     LaunchHostHalted { instance_id: _, gate, refusal } =>
       match gate {
         HostTransitionGate =>
-          LaunchGateLedger {
-            instance: GatePassed,
-            transition: GateRefused { refusal: refusal },
-            revision: GateNotReached,
-            node: GateNotReached,
-            contract: GateNotReached,
-            dependencies: GateNotReached,
-            live: GateNotReached,
-            capacity: GateNotReached,
-            cause: GateNotReached,
-            identity: none,
+          LaunchDecisionFacts {
+            ledger: LaunchGateLedger {
+              instance: GatePassed,
+              transition: GateRefused { refusal: refusal },
+              revision: GateNotReached,
+              node: GateNotReached,
+              contract: GateNotReached,
+              dependencies: GateNotReached,
+              live: GateNotReached,
+              capacity: GateNotReached,
+              cause: GateNotReached,
+            },
+            identity: LaunchIdentityWithheld { refusal: refusal },
           }
         HostRevisionGate =>
-          LaunchGateLedger {
-            instance: GatePassed,
-            transition: GatePassed,
-            revision: GateRefused { refusal: refusal },
-            node: GateNotReached,
-            contract: GateNotReached,
-            dependencies: GateNotReached,
-            live: GateNotReached,
-            capacity: GateNotReached,
-            cause: GateNotReached,
-            identity: none,
+          LaunchDecisionFacts {
+            ledger: LaunchGateLedger {
+              instance: GatePassed,
+              transition: GatePassed,
+              revision: GateRefused { refusal: refusal },
+              node: GateNotReached,
+              contract: GateNotReached,
+              dependencies: GateNotReached,
+              live: GateNotReached,
+              capacity: GateNotReached,
+              cause: GateNotReached,
+            },
+            identity: LaunchIdentityWithheld { refusal: refusal },
           }
       }
     LaunchHostObserved { instance_id, actuation, transition, revision, sessions, capacity, mode } => {
-      let identity = match launch_revision_hex(revision: revision) {
-        Absent => none
-        Present { value: hex } =>
-          Present { value: LaunchIdentity {
-            node_id: node_id,
-            cause: cause,
-            mode: mode,
-            instance_id: instance_id,
-            revision: hex,
-          } }
-      }
-      match launch_lookup_node(graph: graph, node_id: node_id) {
+      let lookup = launch_lookup_node(graph: graph, node_id: node_id)
+      let identity = launch_identity_of_observed(cause: cause, mode: mode, instance_id: instance_id, revision: revision, lookup: lookup)
+      match lookup {
         LaunchNodeLookupRefused { refusal } =>
-          LaunchGateLedger {
-            instance: launch_gate_instance(instance_id: instance_id, actuation: actuation),
-            transition: launch_gate_transition(transition: transition),
-            revision: launch_gate_revision(revision: revision),
-            node: GateRefused { refusal: refusal },
-            contract: GateNotReached,
-            dependencies: GateNotReached,
-            live: GateNotReached,
-            capacity: GateNotReached,
-            cause: GateNotReached,
+          LaunchDecisionFacts {
+            ledger: LaunchGateLedger {
+              instance: launch_gate_instance(instance_id: instance_id, actuation: actuation),
+              transition: launch_gate_transition(transition: transition),
+              revision: launch_gate_revision(revision: revision),
+              node: GateRefused { refusal: refusal },
+              contract: GateNotReached,
+              dependencies: GateNotReached,
+              live: GateNotReached,
+              capacity: GateNotReached,
+              cause: GateNotReached,
+            },
             identity: identity,
           }
         LaunchNodeFound { node, nodes, edges } =>
-          LaunchGateLedger {
-            instance: launch_gate_instance(instance_id: instance_id, actuation: actuation),
-            transition: launch_gate_transition(transition: transition),
-            revision: launch_gate_revision(revision: revision),
-            node: launch_gate_node_state(node: node, merged: merged),
-            contract: launch_gate_contract(node: node),
-            dependencies: launch_gate_dependencies(node: node, nodes: nodes, edges: edges),
-            live: launch_gate_live(sessions: sessions, node_id: node_id),
-            capacity: launch_gate_capacity(sessions: sessions, capacity: capacity, reserved: reserved),
-            cause: launch_gate_cause(cause: cause, mode: mode),
+          LaunchDecisionFacts {
+            ledger: LaunchGateLedger {
+              instance: launch_gate_instance(instance_id: instance_id, actuation: actuation),
+              transition: launch_gate_transition(transition: transition),
+              revision: launch_gate_revision(revision: revision),
+              node: launch_gate_node_state(node: node, merged: merged),
+              contract: launch_gate_contract(node: node),
+              dependencies: launch_gate_dependencies(node: node, nodes: nodes, edges: edges),
+              live: launch_gate_live(sessions: sessions, node_id: node_id),
+              capacity: launch_gate_capacity(sessions: sessions, capacity: capacity, reserved: reserved),
+              cause: launch_gate_cause(cause: cause, mode: mode),
+            },
             identity: identity,
           }
       }
@@ -753,7 +838,7 @@ fn launch_admission(
   node_id: String,
   reserved: Int,
 ) -> LaunchAdmission {
-  launch_admission_of_ledger(l: launch_gate_ledger(
+  launch_admission_of_facts(f: launch_decision_facts(
     cause: cause,
     standing: standing,
     graph: graph,
@@ -802,8 +887,8 @@ fn launch_admission_staged(
   node_id: String,
   reserved: Int,
 ) -> LaunchStagedAdmission {
-  let l = launch_gate_ledger(cause: cause, standing: standing, graph: graph, merged: merged, node_id: node_id, reserved: reserved)
-  let pre = fold(launch_ledger_stages(l: l).pre_session, init: FoldOpen, f: fn(acc, row) { launch_fold_step(acc: acc, row: row) })
+  let f = launch_decision_facts(cause: cause, standing: standing, graph: graph, merged: merged, node_id: node_id, reserved: reserved)
+  let pre = fold(launch_ledger_stages(l: f.ledger).pre_session, init: FoldOpen, f: fn(acc, row) { launch_fold_step(acc: acc, row: row) })
   match pre {
     FoldRefused { refusal } => LaunchStageDecided { admission: LaunchRefused { refusal: refusal } }
     FoldOpen =>
@@ -811,12 +896,12 @@ fn launch_admission_staged(
         LaunchHostObserved { instance_id: _, actuation: _, transition: _, revision: _, sessions, capacity: _, mode: _ } =>
           match sessions {
             LaunchSessionsPending => LaunchStageNeedsSessions
-            LaunchSessionsObserved { live: _ } => LaunchStageDecided { admission: launch_admission_of_ledger(l: l) }
-            LaunchSessionsUnobserved { reason: _ } => LaunchStageDecided { admission: launch_admission_of_ledger(l: l) }
+            LaunchSessionsObserved { live: _ } => LaunchStageDecided { admission: launch_admission_of_facts(f: f) }
+            LaunchSessionsUnobserved { reason: _ } => LaunchStageDecided { admission: launch_admission_of_facts(f: f) }
           }
-        LaunchHostObserveOnly { instance_id: _ } => LaunchStageDecided { admission: launch_admission_of_ledger(l: l) }
-        LaunchHostHalted { instance_id: _, gate: _, refusal: _ } => LaunchStageDecided { admission: launch_admission_of_ledger(l: l) }
-        LaunchHostUnobserved { reason: _ } => LaunchStageDecided { admission: launch_admission_of_ledger(l: l) }
+        LaunchHostObserveOnly { instance_id: _ } => LaunchStageDecided { admission: launch_admission_of_facts(f: f) }
+        LaunchHostHalted { instance_id: _, gate: _, refusal: _ } => LaunchStageDecided { admission: launch_admission_of_facts(f: f) }
+        LaunchHostUnobserved { reason: _ } => LaunchStageDecided { admission: launch_admission_of_facts(f: f) }
       }
   }
 }
@@ -831,7 +916,7 @@ fn launch_admission_label(a: LaunchAdmission) -> String {
 fn launch_admission_reason(a: LaunchAdmission) -> String {
   match a {
     LaunchAdmitted { identity } =>
-      join(["admitted: ", launch_cause_label(c: identity.cause), " may start ", identity.node_id, " on ", identity.instance_id, " at ", identity.revision], "")
+      join(["admitted: ", launch_cause_label(c: identity.cause), " may start ", launch_identity_node_id_text(id: identity), " on ", launch_identity_instance_text(id: identity), " at ", launch_identity_revision_hex(id: identity)], "")
     LaunchRefused { refusal } => launch_refusal_reason(r: refusal)
   }
 }

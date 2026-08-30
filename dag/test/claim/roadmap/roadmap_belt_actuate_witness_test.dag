@@ -1896,7 +1896,7 @@ test fn witness_two_sessions_for_one_node_refuse_and_name_both() -> Bool {
     GateRefused { refusal } =>
       match refusal {
         LaunchSessionMultiplicityConflict { session_names: names, session_count: n } =>
-          n == 2 && string_contains(s: names, pattern: ",")
+          n == 2 && count(names) == 2
         _ => false
       }
     _ => false

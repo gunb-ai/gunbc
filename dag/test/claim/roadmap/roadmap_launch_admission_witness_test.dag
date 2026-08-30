@@ -19,7 +19,7 @@ import gunbc.roadmap_belt_actuate {
   BeltTickReceiptRead, BeltTickReceiptPresent, BeltTickReceiptAbsent, BeltTickReceiptUnreadable,
   BeltPassRecorded,
 }
-import extdeps.languages.json.emit { serialize_json }
+import extdeps.languages.json.emit { serialize_json, json_object, json_kv, json_string }
 import gunbc.roadmap_presentation {
   WorkAction, ActionAvailable, ActionUnavailable, PrimaryAction, SecondaryAction, DiagnosticAction,
   OpenLifecycle, DoneLifecycle, dispatch_action,
@@ -39,7 +39,10 @@ import gunbc.roadmap_launch_admission {
   LaunchSessionsObserved, launch_host_with_sessions,
   LaunchGraphStanding, launch_graph_of_document, LaunchGraphUnobserved,
   LaunchGateVerdict, GatePassed, GateRefused, GateNotReached,
-  LaunchGateLedger, launch_gate_ledger, launch_admission_of_ledger,
+  LaunchGateLedger, LaunchDecisionFacts, launch_decision_facts, launch_admission_of_facts,
+  launch_identity_node_id_text, launch_identity_revision_hex,
+  LaunchIdentityStanding, LaunchIdentityBound, LaunchIdentityWithheld,
+  LaunchIdentityDecode, LaunchIdentityDecoded, LaunchIdentityUnreadable, launch_identity_of_json,
   launch_admission, launch_admission_label, launch_admission_reason, launch_refusal_label, launch_refusal_reason,
   launch_refusal_exemplars, launch_host_unobserved_static_render,
   launch_gate_names, launch_admission_contract_text, launch_admission_contract_digest_hex,
@@ -108,10 +111,10 @@ fn refused_as(a: LaunchAdmission, label: String) -> Bool {
 test fn witness_operator_admitted_for_ready_parent() -> Bool {
   match decide(cause: Operator, standing: launch_fixture_standing_clear(mode: ManualReady), g: graph(), node_id: parent_id()) {
     LaunchAdmitted { identity } =>
-      identity.node_id == parent_id()
+      launch_identity_node_id_text(id: identity) == parent_id()
         && (match identity.cause { Operator => true Timer => false })
-        && identity.instance_id == launch_fixture_instance_id
-        && identity.revision == launch_fixture_desired_hex
+        && identity.instance_id == launch_fixture_instance_id()
+        && launch_identity_revision_hex(id: identity) == launch_fixture_desired_hex
         && spawn_mode_label(m: identity.mode) == "manual_ready"
     LaunchRefused { refusal: _ } => false
   }
@@ -156,7 +159,7 @@ test fn witness_blocked_child_fold_reaches_no_actuation() -> Bool {
 
 // (c) THE MUTATION CONTROL: the same ledger with the dependency verdict replaced admits.
 test fn witness_dependency_gate_is_load_bearing() -> Bool {
-  let ledger = launch_gate_ledger(
+  let facts = launch_decision_facts(
     cause: Operator,
     standing: launch_fixture_standing_clear(mode: ManualReady),
     graph: graph_child_contracted(),
@@ -164,7 +167,8 @@ test fn witness_dependency_gate_is_load_bearing() -> Bool {
     node_id: child_id(),
     reserved: 0,
   )
-  let mutated = LaunchGateLedger {
+  let ledger = facts.ledger
+  let mutated = LaunchDecisionFacts { ledger: LaunchGateLedger {
     instance: ledger.instance,
     transition: ledger.transition,
     revision: ledger.revision,
@@ -174,11 +178,10 @@ test fn witness_dependency_gate_is_load_bearing() -> Bool {
     live: ledger.live,
     capacity: ledger.capacity,
     cause: ledger.cause,
-    identity: ledger.identity,
-  }
-  refused_as(a: launch_admission_of_ledger(l: ledger), label: "dependencies_blocked")
-    && (match launch_admission_of_ledger(l: mutated) {
-      LaunchAdmitted { identity } => identity.node_id == child_id()
+  }, identity: facts.identity }
+  refused_as(a: launch_admission_of_facts(f: facts), label: "dependencies_blocked")
+    && (match launch_admission_of_facts(f: mutated) {
+      LaunchAdmitted { identity } => launch_identity_node_id_text(id: identity) == child_id()
       LaunchRefused { refusal: _ } => false
     })
     && (match ledger.live { GatePassed => true _ => false })
@@ -188,7 +191,7 @@ test fn witness_dependency_gate_is_load_bearing() -> Bool {
 
 // The control's control: mutating a gate that is NOT the refusing one leaves the refusal in place.
 test fn witness_mutating_a_passing_gate_changes_nothing() -> Bool {
-  let ledger = launch_gate_ledger(
+  let facts = launch_decision_facts(
     cause: Operator,
     standing: launch_fixture_standing_clear(mode: ManualReady),
     graph: graph_child_contracted(),
@@ -196,7 +199,8 @@ test fn witness_mutating_a_passing_gate_changes_nothing() -> Bool {
     node_id: child_id(),
     reserved: 0,
   )
-  let mutated = LaunchGateLedger {
+  let ledger = facts.ledger
+  let mutated = LaunchDecisionFacts { ledger: LaunchGateLedger {
     instance: ledger.instance,
     transition: ledger.transition,
     revision: ledger.revision,
@@ -206,9 +210,8 @@ test fn witness_mutating_a_passing_gate_changes_nothing() -> Bool {
     live: ledger.live,
     capacity: GatePassed,
     cause: GatePassed,
-    identity: ledger.identity,
-  }
-  refused_as(a: launch_admission_of_ledger(l: mutated), label: "dependencies_blocked")
+  }, identity: facts.identity }
+  refused_as(a: launch_admission_of_facts(f: mutated), label: "dependencies_blocked")
 }
 
 // (b) The timer in ManualReady never starts a Ready node.
@@ -424,7 +427,7 @@ test fn witness_accepted_parent_relaunch_refused_already_accepted() -> Bool {
 
 test fn witness_accepted_parent_unlocks_child() -> Bool {
   match decide(cause: Operator, standing: launch_fixture_standing_clear(mode: ManualReady), g: graph_parent_accepted(), node_id: child_id()) {
-    LaunchAdmitted { identity } => identity.node_id == child_id()
+    LaunchAdmitted { identity } => launch_identity_node_id_text(id: identity) == child_id()
     LaunchRefused { refusal: _ } => false
   }
 }
@@ -493,7 +496,7 @@ fn rlm_three_candidates() -> List<DesiredMember> {
 
 fn decision_admits_node(d: BeltLaunchDecision, id: String) -> Bool {
   match d {
-    BeltLaunchDecided { member: _, launch } => launch.node_id == id
+    BeltLaunchDecided { member: _, launch } => launch_identity_node_id_text(id: launch) == id
     BeltLaunchWithheld { node_id: _, refusal: _ } => false
   }
 }
@@ -609,7 +612,7 @@ test fn witness_timer_pass_sessions_unobserved_is_shared_refusal() -> Bool {
 // (2) The order is structural: a halted standing's ledger marks every later gate not reached, and the
 // halt refusal is the one the fully observed standing would have produced at that gate.
 test fn witness_halted_ledger_marks_later_gates_not_reached() -> Bool {
-  let l = launch_gate_ledger(cause: Timer, standing: launch_fixture_standing_halt_transition(), graph: graph(), merged: [], node_id: parent_id(), reserved: 0)
+  let l = launch_decision_facts(cause: Timer, standing: launch_fixture_standing_halt_transition(), graph: graph(), merged: [], node_id: parent_id(), reserved: 0).ledger
   (match l.instance { GatePassed => true _ => false })
     && (match l.transition { GateRefused { refusal: LaunchTransitionInhibited { reason: _ } } => true _ => false })
     && (match l.revision { GateNotReached => true _ => false })
@@ -704,9 +707,9 @@ test fn witness_page_post_timer_bind_one_identity() -> Bool {
                 && launch_cause_label(c: p.cause) == "operator"
                 && launch_cause_label(c: q.cause) == "operator"
                 && launch_cause_label(c: t.cause) == "timer"
-                && p.node_id == parent_id()
-                && p.instance_id == launch_fixture_instance_id
-                && p.revision == launch_fixture_desired_hex
+                && launch_identity_node_id_text(id: p) == parent_id()
+                && p.instance_id == launch_fixture_instance_id()
+                && launch_identity_revision_hex(id: p) == launch_fixture_desired_hex
           }
       }
   }
@@ -720,7 +723,7 @@ test fn witness_spawn_outcome_json_carries_launch_identity() -> Bool {
   string_contains(s: spawned, pattern: "\"launch\"")
     && string_contains(s: spawned, pattern: "\"cause\": \"operator\"")
     && string_contains(s: spawned, pattern: "\"mode\": \"manual_ready\"")
-    && string_contains(s: spawned, pattern: launch_fixture_instance_id)
+    && string_contains(s: spawned, pattern: launch_fixture_instance_id() as String)
     && string_contains(s: spawned, pattern: launch_fixture_desired_hex)
     && string_contains(s: failed, pattern: "\"launch\"")
     && string_contains(s: failed, pattern: launch_fixture_desired_hex)
@@ -781,7 +784,7 @@ test fn witness_pending_sessions_ready_parent_needs_sessions() -> Bool {
 test fn witness_pending_sessions_completed_admits_ready_parent() -> Bool {
   let completed = launch_host_with_sessions(standing: launch_fixture_standing_pending(mode: ManualReady), sessions: LaunchSessionsObserved { live: [] })
   match staged(standing: completed, g: graph(), node_id: parent_id()) {
-    LaunchStageDecided { admission: LaunchAdmitted { identity } } => identity.node_id == parent_id()
+    LaunchStageDecided { admission: LaunchAdmitted { identity } } => launch_identity_node_id_text(id: identity) == parent_id()
     _ => false
   }
 }
@@ -809,4 +812,60 @@ test fn witness_contract_binds_the_session_boundary() -> Bool {
     && string_contains(s: canonical, pattern: ";pre_session=instance,transition,revision,node,contract,dependencies;session=live,capacity,cause")
     && reclassified != canonical
     && reordered != canonical
+}
+
+// review 57561 (a): a member that fails to be a string refuses with ITS OWN reason. The duplicated
+// arm is the discriminating one -- before, a doubled node_id was re-reported as a missing one.
+test fn witness_identity_duplicated_member_names_the_duplication() -> Bool {
+  let doubled = json_object(members: [
+    json_kv(key: "node_id", value: json_string(s: "a")),
+    json_kv(key: "node_id", value: json_string(s: "b")),
+  ])
+  let not_object = json_string(s: "not an object")
+  (match launch_identity_of_json(doc: doubled) {
+    LaunchIdentityUnreadable { reason } => string_contains(s: reason, pattern: "node_id appears 2 times")
+    LaunchIdentityDecoded { identity: _ } => false
+  })
+    && (match launch_identity_of_json(doc: not_object) {
+      LaunchIdentityUnreadable { reason } => string_contains(s: reason, pattern: "not an object")
+      LaunchIdentityDecoded { identity: _ } => false
+    })
+    && (match launch_identity_of_json(doc: json_object(members: [json_kv(key: "node_id", value: json_string(s: ""))])) {
+      LaunchIdentityUnreadable { reason } => string_contains(s: reason, pattern: "node_id is empty")
+      LaunchIdentityDecoded { identity: _ } => false
+    })
+}
+
+// review 57561 (b): the identity is withheld BY a gate, and the standing carries that gate's own
+// refusal -- the same value the gate's ledger row holds. Drifted revision: the withholding refusal
+// is the drift, not a manufactured `identity` gate. Unknown node under a converged revision: the
+// withholding refusal is the node gate's.
+test fn witness_withheld_identity_carries_the_withholding_gates_refusal() -> Bool {
+  let drifted = launch_decision_facts(
+    cause: Operator,
+    standing: launch_fixture_standing(mode: ManualReady, revision: launch_fixture_revision_drifted(), live: [], max_concurrent: 3),
+    graph: graph(), merged: [], node_id: parent_id(), reserved: 0,
+  )
+  let unknown = launch_decision_facts(
+    cause: Operator, standing: launch_fixture_standing_clear(mode: ManualReady),
+    graph: graph(), merged: [], node_id: "no-such-node", reserved: 0,
+  )
+  let bound = launch_decision_facts(
+    cause: Operator, standing: launch_fixture_standing_clear(mode: ManualReady),
+    graph: graph(), merged: [], node_id: parent_id(), reserved: 0,
+  )
+  (match drifted.identity {
+    LaunchIdentityWithheld { refusal } =>
+      launch_refusal_label(r: refusal) == "deployed_revision_drifted"
+        && (match drifted.ledger.revision { GateRefused { refusal: r } => launch_refusal_label(r: r) == "deployed_revision_drifted" _ => false })
+    LaunchIdentityBound { identity: _ } => false
+  })
+    && (match unknown.identity {
+      LaunchIdentityWithheld { refusal } => launch_refusal_label(r: refusal) == "node_not_found"
+      LaunchIdentityBound { identity: _ } => false
+    })
+    && (match bound.identity {
+      LaunchIdentityBound { identity } => launch_identity_node_id_text(id: identity) == parent_id()
+      LaunchIdentityWithheld { refusal: _ } => false
+    })
 }

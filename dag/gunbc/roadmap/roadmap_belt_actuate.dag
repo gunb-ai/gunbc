@@ -4997,7 +4997,7 @@ fn belt_launch_host_standing_for_instance_with_capacity(
             HostRevisionHalted { standing } => standing
             HostRevisionConverged { revision } =>
               LaunchHostObserved {
-                instance_id: instance_id,
+                instance_id: instance.instance_id,
                 actuation: DashboardActuating,
                 transition: ActuationAdmitted,
                 revision: revision,
