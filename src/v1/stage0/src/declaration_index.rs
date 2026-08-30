@@ -560,28 +560,49 @@ fn declaration_field_names(
 ///     reference (`probe.home.widget`) from an ordinary projection, and the wall keys on the
 ///     last segment either way, so a qualified reference keeps its leaf.
 ///
-/// WHAT THIS DELIBERATELY DOES NOT EXCLUDE, named rather than left to be discovered, because
-/// each is the SAME CLASS reached from a different position and none of them is repaired here:
-/// a record TYPE declaration's field labels, a named call argument's label, a parameter binder,
-/// and a coproduct's variant names are all still collected as references. Measured on a fixture,
-/// not predicted: `type Row { tag: String }` contributes `tag`, and `call_it(tag: "z")`
-/// contributes `tag`. Each can fabricate the same refusal the record-literal case did, and each
-/// needs its own structural discriminator — the parent kinds that carry them (`Connective::Conj`,
-/// `ExprCall`) also carry children that ARE real references (a refinement's base type expression
-/// is a `Conj` child with a real type name), so a parent-kind rule that covers them cannot be
-/// lifted from this one and must be derived against its own fixture. Excluding them by guessing
-/// would risk the opposite defect, which is worse: a wall that stops seeing genuine
-/// unresolvedness is a decoration.
+/// THE REMAINING MEMBERS OF THE CLASS, each excluded by its own structural discriminator
+/// derived against a fixture rather than guessed — because the parent kinds that carry them
+/// also carry children that ARE real references, so every rule below suppresses ONLY the
+/// label or binder and keeps the genuine-reference children walked:
+///
+///   * A RECORD TYPE DECLARATION'S FIELD LABEL. `field_to_child_node` builds it with the
+///     declared type parked in `inferred` and nothing in `children`/`params`, no expr data and
+///     no connective — a shape no reference node has (a refinement's base type is a
+///     `leaf_type_node` with `inferred: None`, so it stays collected). The declared TYPE
+///     itself lives in `inferred`, which this walk never visits; it reaches consumers through
+///     `authored_type_references`, which is why that channel must be unioned wherever
+///     `referenced` is read.
+///   * A NAMED CALL ARGUMENT'S LABEL. `ExprCall`'s children are its argument nodes, the same
+///     parent-kind rule as the record literal; the callee spelling is on the call node itself
+///     and the argument VALUE is still walked. A positional argument's node has no ident span
+///     and contributed nothing already.
+///   * A PARAMETER BINDER. Everything directly on the `params` edge declares a name — a value
+///     parameter or a generic type parameter — so the edge passes the label flag; the param's
+///     declared type is `children[0]` and is still walked because the flag is consumed at one
+///     level.
+///   * A COPRODUCT'S VARIANT NAMES IN THE DECLARATION. `Connective::Disj` is set only by the
+///     two coproduct item builders, so a `Disj` parent's direct children are variant
+///     declarations — already exported via `variants` — and their payload field nodes are
+///     still walked (their labels then fall to the field rule).
 fn collect_reference_occurrences(
     node: &Rc<Node>,
     source_indices: &Rc<im::HashMap<String, Rc<NewlineIndex>>>,
     in_declaration: &str,
-    ident_is_a_field_label: bool,
+    ident_is_a_binder_or_label: bool,
     out: &mut BTreeSet<(String, String)>,
 ) {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         let is_projection_member = matches!(&*node.expr_data, ExprData::ExprFieldAccess { .. });
-        if !ident_is_a_field_label && !is_projection_member {
+        // The `field_to_child_node` shape: declared type in `inferred`, no children, no
+        // params, no expr data, no connective, an authored ident. `inferred: Some` alone
+        // separates it from every reference node; the rest pins the constructor.
+        let is_declared_field_label = node.inferred.is_some()
+            && node.children.is_empty()
+            && node.params.is_empty()
+            && matches!(&*node.expr_data, ExprData::NoExprData)
+            && node.connective == Connective::NoConnective
+            && node.ident_span.is_some();
+        if !ident_is_a_binder_or_label && !is_projection_member && !is_declared_field_label {
             let name = authored_name_at(source_indices.clone(), node.clone());
             if !name.is_empty() {
                 out.insert((in_declaration.to_string(), name));
@@ -590,7 +611,8 @@ fn collect_reference_occurrences(
         if let Some(chain) = dotted_chain(node, source_indices) {
             out.insert((in_declaration.to_string(), chain));
         }
-        let children_are_field_labels = is_record_literal(node);
+        let children_are_field_labels =
+            is_record_literal(node) || is_call(node) || node.connective == Connective::Disj;
         for c in node.children.iter() {
             collect_reference_occurrences(
                 c,
@@ -601,7 +623,7 @@ fn collect_reference_occurrences(
             );
         }
         for c in node.params.iter() {
-            collect_reference_occurrences(c, source_indices, in_declaration, false, out);
+            collect_reference_occurrences(c, source_indices, in_declaration, true, out);
         }
         for c in node.properties.iter() {
             collect_reference_occurrences(c, source_indices, in_declaration, false, out);
