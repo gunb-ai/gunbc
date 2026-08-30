@@ -1,0 +1,116 @@
+module gunbc.memory_per_vcpu_convention
+
+import std.types { Bool, List, NonEmptyStr }
+import std.nat { Nat }
+import std.measure { gigabyte }
+import std.decl_ref { DeclarationRef }
+import extdeps.toolchain.types { Aarch64, Architecture, X86_64 }
+import extdeps.ci_runner.types { QuotedByteMagnitude, QuotedDecimalGigabytes }
+import gunbc.memory_provisioning {
+  EvidenceStanding,
+  MarketShapeBenchmark,
+  ProfileEvidenceVerdict,
+  classify_all_benchmarks,
+  evidence_verdict,
+  standing_supports,
+  ubicloud_arm_benchmark,
+  blacksmith_arm_benchmark,
+  github_arm_benchmark,
+  depot_arm_benchmark,
+  warpbuild_arm_benchmark,
+  github_x64_benchmark,
+  depot_x64_benchmark,
+  warpbuild_x64_benchmark,
+  circleci_x64_benchmark,
+}
+
+// A MARKET CONVENTION IS A FACT ABOUT THE MARKET, AND ITS ORIGIN IS A SEPARATE FACT. CI runner
+// catalogues quote memory as a multiple of vCPUs -- three GB per vCPU on arm64 surfaces such as
+// Ubicloud, four on most x64 surfaces -- and no cited standard, vendor guideline or publication
+// names the number or who first chose it. gunbc.memory_provisioning already reads every surveyed
+// catalogue and grades each against a declared figure with derived polarity; what it did not carry
+// is the convention AS A SUBJECT: the ratio, the architecture it attaches to, the evidence for and
+// against it across the whole survey, and -- typed, not implied -- that its authorship is unknown.
+// An arbitrary standard is exactly the kind of fact that is quietly adopted and never written down,
+// which is why the origin arm below cannot be omitted: Unattributed is a standing obligation that a
+// later reader can retire by naming a source, not a blank that reads as "everyone knows".
+type ConventionOrigin
+  = Unattributed { searched: List<NonEmptyStr> }
+  | Attributed { authority: DeclarationRef }
+
+type MemoryPerVcpuConvention {
+  architecture: Architecture
+  per_vcpu: QuotedByteMagnitude
+  origin: ConventionOrigin
+  consulted: List<MarketShapeBenchmark>
+}
+
+// THE CONSULTED SET IS EVERY SURVEYED SURFACE ON THE ARCHITECTURE, NOT THE ONES THAT AGREE. A
+// convention consulted only against its conformers would be self-certifying; grading the whole
+// survey is what makes "arm is 1:3" report honestly as "Ubicloud, and roughly GitHub, against
+// Depot and WarpBuild at 1:4".
+fn convention_verdict(c: MemoryPerVcpuConvention) -> ProfileEvidenceVerdict {
+  evidence_verdict(declared: c.per_vcpu, benchmarks: c.consulted)
+}
+
+fn convention_standings(c: MemoryPerVcpuConvention) -> List<EvidenceStanding> {
+  classify_all_benchmarks(declared: c.per_vcpu, benchmarks: c.consulted)
+}
+
+fn conforming_count(c: MemoryPerVcpuConvention) -> Nat {
+  fold(convention_standings(c: c), init: 0, f: (n, s) => if standing_supports(standing: s) { n + 1 } else { n })
+}
+
+fn non_conforming_count(c: MemoryPerVcpuConvention) -> Nat {
+  fold(convention_standings(c: c), init: 0, f: (n, s) => if standing_supports(standing: s) { n } else { n + 1 })
+}
+
+fn convention_is_universal(c: MemoryPerVcpuConvention) -> Bool {
+  non_conforming_count(c: c) == 0
+}
+
+fn origin_is_attributed(c: MemoryPerVcpuConvention) -> Bool {
+  match c.origin {
+    Attributed { authority: _ } => true
+    Unattributed { searched: _ } => false
+  }
+}
+
+fn arm_benchmarks() -> List<MarketShapeBenchmark> {
+  [ubicloud_arm_benchmark, blacksmith_arm_benchmark, github_arm_benchmark, depot_arm_benchmark, warpbuild_arm_benchmark]
+}
+
+fn x64_benchmarks() -> List<MarketShapeBenchmark> {
+  [github_x64_benchmark, depot_x64_benchmark, warpbuild_x64_benchmark, circleci_x64_benchmark]
+}
+
+// WHERE THE ORIGIN WAS LOOKED FOR, so the Unattributed arm is a receipt of a search and not a
+// shrug. Each entry names a place a reader would expect the number to be published; none of them
+// states it.
+fn origin_search_receipt() -> List<NonEmptyStr> {
+  [
+    "Ubicloud runner-types page (quotes 3GB per arm64 vCPU without stating a basis or a source)",
+    "GitHub Actions larger-runner size tables (arm64 sizes are not a constant ratio)",
+    "Depot and WarpBuild runner-types pages (quote 4GB per vCPU on both architectures)",
+    "Ampere Altra family product brief and Rev A1 datasheet (state channels and capacities, no per-core provisioning ratio)",
+  ]
+}
+
+data arm64_three_gb_per_vcpu_convention: MemoryPerVcpuConvention = MemoryPerVcpuConvention {
+  architecture: Aarch64,
+  per_vcpu: QuotedDecimalGigabytes { value: gigabyte(count: 3) },
+  origin: Unattributed { searched: origin_search_receipt() },
+  consulted: arm_benchmarks(),
+}
+
+data x64_four_gb_per_vcpu_convention: MemoryPerVcpuConvention = MemoryPerVcpuConvention {
+  architecture: X86_64,
+  per_vcpu: QuotedDecimalGigabytes { value: gigabyte(count: 4) },
+  origin: Unattributed { searched: origin_search_receipt() },
+  consulted: x64_benchmarks(),
+}
+
+data surveyed_conventions: List<MemoryPerVcpuConvention> = [
+  arm64_three_gb_per_vcpu_convention,
+  x64_four_gb_per_vcpu_convention,
+]

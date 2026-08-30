@@ -1,0 +1,77 @@
+module test.claim.memory_per_vcpu_convention_witness_test
+
+import std.types { Bool, List, list_length }
+import std.nat { Nat }
+import std.measure { gigabyte }
+import extdeps.toolchain.types { Aarch64 }
+import extdeps.ci_runner.types { QuotedDecimalGigabytes }
+import gunbc.memory_provisioning { EvidenceSupported, EvidenceUnsupported }
+import gunbc.memory_per_vcpu_convention {
+  MemoryPerVcpuConvention,
+  Unattributed,
+  arm64_three_gb_per_vcpu_convention,
+  x64_four_gb_per_vcpu_convention,
+  surveyed_conventions,
+  arm_benchmarks,
+  origin_search_receipt,
+  convention_verdict,
+  conforming_count,
+  non_conforming_count,
+  convention_is_universal,
+  origin_is_attributed,
+}
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE ARM CONVENTION IS SUPPORTED AND NOT UNIVERSAL: at least one surveyed arm64 surface quotes
+// three GB per vCPU and at least one quotes something else. A convention that came back universal
+// would mean the consulted set had been narrowed to its conformers.
+test fn w_arm_three_gb_is_supported_but_not_universal() -> Bool {
+  let supported = match convention_verdict(c: arm64_three_gb_per_vcpu_convention) {
+    EvidenceSupported { supporting_count: s, contrasting_count: _ } => s >= 1
+    EvidenceUnsupported { consulted_count: _, contrasting_count: _ } => false
+  }
+  supported
+    && conforming_count(c: arm64_three_gb_per_vcpu_convention) >= 1
+    && non_conforming_count(c: arm64_three_gb_per_vcpu_convention) >= 1
+    && !convention_is_universal(c: arm64_three_gb_per_vcpu_convention)
+}
+
+test fn w_x64_four_gb_is_supported_but_not_universal() -> Bool {
+  conforming_count(c: x64_four_gb_per_vcpu_convention) >= 1
+    && !convention_is_universal(c: x64_four_gb_per_vcpu_convention)
+}
+
+// THE ORIGIN IS TYPED AS UNKNOWN, WITH A NON-EMPTY SEARCH RECEIPT. Both halves matter: an
+// Attributed arm with no authority is unwritable, and an Unattributed arm with an empty search
+// list would be a shrug rather than a standing obligation.
+test fn w_the_origin_is_unattributed_and_the_search_is_recorded() -> Bool {
+  !origin_is_attributed(c: arm64_three_gb_per_vcpu_convention)
+    && !origin_is_attributed(c: x64_four_gb_per_vcpu_convention)
+    && list_length(items: origin_search_receipt()) >= 3
+}
+
+// EVERY CONSULTED SET SPANS THE SURVEY: the arm convention consults every surveyed arm64 surface,
+// not a hand-picked subset, so the non-conforming count is a reading of the market.
+test fn w_the_consulted_set_is_the_whole_arm_survey() -> Bool {
+  list_length(items: arm_benchmarks()) == 5
+    && list_length(items: arm64_three_gb_per_vcpu_convention.consulted) == list_length(items: arm_benchmarks())
+    && list_length(items: surveyed_conventions) == 2
+}
+
+// RED: A FIGURE NO SURFACE QUOTES COMES BACK UNSUPPORTED. Five GB per arm64 vCPU is quoted
+// nowhere; if the grader admitted it, conformity would be decoration.
+test fn w_red_a_ratio_nobody_quotes_is_unsupported() -> Bool {
+  let bogus = MemoryPerVcpuConvention {
+    architecture: Aarch64,
+    per_vcpu: QuotedDecimalGigabytes { value: gigabyte(count: 5) },
+    origin: Unattributed { searched: origin_search_receipt() },
+    consulted: arm_benchmarks(),
+  }
+  let unsupported = match convention_verdict(c: bogus) {
+    EvidenceUnsupported { consulted_count: n, contrasting_count: _ } => n == 5
+    EvidenceSupported { supporting_count: _, contrasting_count: _ } => false
+  }
+  unsupported && conforming_count(c: bogus) == 0
+}
