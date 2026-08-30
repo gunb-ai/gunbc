@@ -278,7 +278,13 @@ pub fn run_required_regen(
     let formatter = ResolvedFormatter::admit()?;
 
     let commit_sha = git_head_sha(&workspace)?;
+    // PHASE MARKS. Every boundary below is stamped through `v1_rt::trace_mark`, the same
+    // instrument compile.dag already uses for its stages, so `--regen-round-cost` reads one
+    // ledger for the whole round rather than a second set of clocks kept beside the first.
+    // The labels are `gunbc.regen_round_cost` `regen_round_phase_label`, verbatim.
+    v1_rt::trace_mark("regen.corpus_load.begin".to_string());
     let sources = super::regen_input_sources(&workspace)?;
+    v1_rt::trace_mark("regen.corpus_load.done".to_string());
     let authority_digest = authority_digest_from_sources(&sources)?;
 
     // PRODUCTION, THEN ADJUDICATION -- and the order is the whole repair.
@@ -326,21 +332,24 @@ pub fn run_required_regen(
             .map_err(|e| format!("remove {}: {e}", candidate_dir.display()))?;
     }
     let fresh_src = candidate_dir.join("src");
+    v1_rt::trace_mark("regen.mirror_write.begin".to_string());
     write_emitted_tree(&formatter, &fresh_src, &emitted)?;
     copy_hand_maintained_support(&stage0_src, &fresh_src)?;
+    v1_rt::trace_mark("regen.mirror_write.done".to_string());
     // Verified against what EMIT produced, not against what is committed. Those two populations
     // are equal on a clean tree and differ in precisely the case this ordering exists to serve, so
     // checking the committed population here would re-impose the refusal one line after the write
     // and fail the producer on the run that needs it. The invariant a producer owes is that its
     // own product landed whole.
+    v1_rt::trace_mark("regen.candidate_verify.begin".to_string());
     verify_candidate_tree(&fresh_src, &emitted_basenames)?;
+    v1_rt::trace_mark("regen.candidate_verify.done".to_string());
 
-    let (committed_basenames, sync) = match adjudicate_generated_surface(
-        &formatter,
-        &stage0_src,
-        &emitted,
-        &emitted_basenames,
-    )? {
+    v1_rt::trace_mark("regen.adjudicate.begin".to_string());
+    let adjudicated =
+        adjudicate_generated_surface(&formatter, &stage0_src, &emitted, &emitted_basenames)?;
+    v1_rt::trace_mark("regen.adjudicate.done".to_string());
+    let (committed_basenames, sync) = match adjudicated {
         GeneratedSurfaceAdjudicated::Refused { reason } => {
             return regen_refusal_outcome(
                 &workspace,
@@ -357,11 +366,15 @@ pub fn run_required_regen(
         GeneratedSurfaceAdjudicated::Measured { committed, sync } => (committed, sync),
     };
 
+    v1_rt::trace_mark("regen.hand_verify.begin".to_string());
     let hand = verify_hand_maintained(&formatter, &emitted, &stage0_src, &candidate_dir)?;
+    v1_rt::trace_mark("regen.hand_verify.done".to_string());
 
+    v1_rt::trace_mark("regen.digest.begin".to_string());
     let committed_digest =
         tree_digest_for_basenames(&formatter, &stage0_src, &committed_basenames, "committed")?;
     let candidate_digest = tree_digest_from_map(&formatter, &emitted, &committed_basenames)?;
+    v1_rt::trace_mark("regen.digest.done".to_string());
 
     let first_generation_equal = sync.matches && hand.unverifiable.is_empty();
     let changed_paths = sync.drifted_paths.clone();
@@ -769,7 +782,12 @@ fn is_declared_divergent(file_name: &str) -> bool {
 }
 
 fn compile_stage0(workspace: &Path) -> Result<HashMap<String, String>, String> {
+    // A SECOND READ OF THE SAME CLOSURE. `run_required_regen` already read these sources for
+    // the authority digest; this is the same walk again, and it is stamped under its own label
+    // so the receipt prices the duplication instead of folding it into the frontend.
+    v1_rt::trace_mark("regen.corpus_reload.begin".to_string());
     let sources = super::regen_input_sources(workspace)?;
+    v1_rt::trace_mark("regen.corpus_reload.done".to_string());
     let source_files: Vec<Rc<SourceFile>> = sources
         .into_iter()
         .map(|(path, content)| Rc::new(SourceFile { path, content }))
@@ -2109,4 +2127,327 @@ mod tests {
             "positive control: with one source the receipt is simply used"
         );
     }
+}
+
+// ---------------------------------------------------------------------------------------------
+// ONE REGEN ROUND, PRICED — `claim_executor --regen-round-cost`.
+//
+// The round is the convergence recipe `gunbc.generated_artifact_merge_driver`
+// `generated_artifact_merge_driver_repair_steps` prints: build the seed, emit from it, install
+// what drifted, rebuild from the installed seed. This driver runs exactly that sequence ONCE,
+// through the same `run_required_regen` the required phase runs (never a second emit path),
+// with `v1_rt::trace_mark` armed so every phase boundary lands in one ledger, and renders the
+// receipt through `gunbc.regen_round_cost` `regen_round_cost_render` via the interpreter — there
+// is no Rust copy of the receipt format to drift from the model.
+//
+// IT MUTATES THE TREE, AND SAYS SO. Installing the drifted mirrors into src/v1/stage0/src is
+// the step an author performs by hand today, and the round's rebuild is only a measurement of
+// "rebuild from the installed seed" if the seed was actually installed. A read-only variant
+// would price a round nobody runs. The receipt names the tree (HEAD sha, dirty flag) and lists
+// every installed path by identity, so what the round changed is on the record.
+//
+// THE SEED THAT EMITS IS THE SEED THAT WAS BUILT, OR THE RUN REFUSES. The emit runs in THIS
+// process, whose binary is the product of the seed build only if that build was a no-op on the
+// running executable. The executable's bytes are hashed before and after the build; a changed
+// hash means the round measured a stale seed's emit, and the only honest answer is to stop and
+// say so rather than report a candidate the built seed never produced.
+// ---------------------------------------------------------------------------------------------
+
+pub struct RegenRoundCostOutcome {
+    /// The rendered receipt, already printed by the caller's contract to stderr.
+    pub rendered: String,
+    /// Where the same bytes were written, so a remote run can bring them back by path.
+    pub receipt_path: PathBuf,
+    /// Anything that stopped the round short of install/rebuild/diff, or that the regen
+    /// reported as a failure. Non-empty means the round is not a clean round.
+    pub round_failures: Vec<String>,
+}
+
+pub const REGEN_ROUND_COST_RECEIPT_REL: &str = "target/stage0-regen-round-cost.txt";
+const REGEN_ROUND_COST_PRODUCER: &str = "claim_executor --regen-round-cost";
+const REGEN_ROUND_COST_ENTRY_UNDER_ROOT: &str = "gunbc/regen_round_cost.dag";
+
+struct CargoBuildObservation {
+    compiled_crates: u64,
+}
+
+fn seed_cargo_build(workspace: &Path, label: &str) -> Result<CargoBuildObservation, String> {
+    v1_rt::trace_mark(format!("{label}.begin"));
+    let output = Command::new("cargo")
+        .args(["build", "--release", "--bin", "claim_executor"])
+        .current_dir(workspace)
+        .output()
+        .map_err(|e| format!("spawn cargo build ({label}): {e}"))?;
+    v1_rt::trace_mark(format!("{label}.done"));
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    if !output.status.success() {
+        let tail: Vec<&str> = stderr.lines().rev().take(40).collect::<Vec<_>>();
+        let tail: Vec<&str> = tail.into_iter().rev().collect();
+        return Err(format!(
+            "refusal: cargo build ({label}) failed with {} — last lines:\n{}",
+            output.status,
+            tail.join("\n")
+        ));
+    }
+    let compiled_crates = stderr
+        .lines()
+        .filter(|l| l.trim_start().starts_with("Compiling "))
+        .count() as u64;
+    Ok(CargoBuildObservation { compiled_crates })
+}
+
+fn current_exe_digest() -> Result<String, String> {
+    let exe = std::env::current_exe().map_err(|e| format!("current_exe: {e}"))?;
+    let bytes = fs::read(&exe).map_err(|e| format!("read {}: {e}", exe.display()))?;
+    Ok(v1_rt::bytes_identity_hash(&bytes))
+}
+
+fn git_tree_dirty(workspace: &Path) -> Result<bool, String> {
+    let output = Command::new("git")
+        .args(["status", "--porcelain", "--untracked-files=no"])
+        .current_dir(workspace)
+        .output()
+        .map_err(|e| format!("git status: {e}"))?;
+    if !output.status.success() {
+        return Err(String::from_utf8_lossy(&output.stderr).to_string());
+    }
+    Ok(!output.stdout.is_empty())
+}
+
+fn git_changed_stage0_paths(workspace: &Path) -> Result<Vec<String>, String> {
+    let output = Command::new("git")
+        .args(["diff", "--name-only", "--", "src/v1/stage0/src"])
+        .current_dir(workspace)
+        .output()
+        .map_err(|e| format!("git diff --name-only: {e}"))?;
+    if !output.status.success() {
+        return Err(String::from_utf8_lossy(&output.stderr).to_string());
+    }
+    Ok(String::from_utf8_lossy(&output.stdout)
+        .lines()
+        .map(|l| l.trim().to_string())
+        .filter(|l| !l.is_empty())
+        .collect())
+}
+
+fn host_name() -> String {
+    // `/proc/sys/kernel/hostname` first (no libc buffer sizing), then the POSIX call; a host
+    // that answers neither is reported as unreadable rather than as an empty name.
+    if let Ok(name) = fs::read_to_string("/proc/sys/kernel/hostname") {
+        let trimmed = name.trim();
+        if !trimmed.is_empty() {
+            return trimmed.to_string();
+        }
+    }
+    let mut buf = [0u8; 256];
+    // SAFETY: `buf` is a live, fully-owned buffer; `gethostname` writes at most `buf.len()`
+    // bytes into it and nothing else.
+    let rc = unsafe { libc::gethostname(buf.as_mut_ptr() as *mut libc::c_char, buf.len()) };
+    if rc == 0 {
+        let end = buf.iter().position(|b| *b == 0).unwrap_or(buf.len());
+        let name = String::from_utf8_lossy(&buf[..end]).to_string();
+        if !name.is_empty() {
+            return name;
+        }
+    }
+    "unreadable".to_string()
+}
+
+/// Install the candidate's drifted mirrors into the committed seed — the manual step of the
+/// recipe, performed from the SAME candidate tree the regen just wrote and judged.
+fn install_candidate_paths(
+    candidate_src: &Path,
+    stage0_src: &Path,
+    basenames: &[String],
+) -> Result<(), String> {
+    for basename in basenames {
+        let from = candidate_src.join(basename);
+        let to = stage0_src.join(basename);
+        fs::copy(&from, &to)
+            .map_err(|e| format!("install {} -> {}: {e}", from.display(), to.display()))?;
+    }
+    Ok(())
+}
+
+fn round_cost_entry(source_roots: &[String]) -> Result<String, String> {
+    source_roots
+        .iter()
+        .map(|root| Path::new(root).join(REGEN_ROUND_COST_ENTRY_UNDER_ROOT))
+        .find(|candidate| candidate.is_file())
+        .map(|found| found.to_string_lossy().into_owned())
+        .ok_or_else(|| {
+            format!(
+                "refusal: {REGEN_ROUND_COST_ENTRY_UNDER_ROOT} is not under any declared source \
+                 root {source_roots:?}, so the receipt has no renderer"
+            )
+        })
+}
+
+fn render_round_cost_receipt(
+    source_roots: &[String],
+    host: &str,
+    tree: &str,
+    tree_dirty: bool,
+    seed_build_compiled_crates: u64,
+    rebuild_compiled_crates: u64,
+    marks: &[v1_rt::TraceLedgerRow],
+    changed_paths: &[String],
+) -> Result<String, String> {
+    use crate::v1_interpreter::{self, str_value, ExecutionMode, Value};
+    let entry = round_cost_entry(source_roots)?;
+    let index = super::process_shared_index(source_roots);
+    let (graph, indices) = super::resolve_entry_with_index_for_discovery_corpus(&index, &entry)
+        .map_err(|e| {
+            format!("refusal: {entry} did not resolve, so the receipt cannot render: {e}")
+        })?;
+    let ctx = super::make_eval_context(&graph, indices, ExecutionMode::Hermetic);
+    let cpu_value = |cpu_ms: Option<u64>| match cpu_ms {
+        Some(ms) => Value::Variant {
+            type_name: ctx.sym("CpuReading"),
+            variant_name: ctx.sym("CpuMs"),
+            fields: Rc::new(vec![(ctx.sym("ms"), Value::Int(ms as i64))]),
+        },
+        None => Value::Variant {
+            type_name: ctx.sym("CpuReading"),
+            variant_name: ctx.sym("CpuUnreadable"),
+            fields: Rc::new(vec![]),
+        },
+    };
+    let mark_values: Vec<Value> = marks
+        .iter()
+        .map(|row| Value::Record {
+            type_name: ctx.sym("TraceMark"),
+            fields: Rc::new(vec![
+                (ctx.sym("label"), str_value(row.label.clone())),
+                (ctx.sym("wall_ms"), Value::Int(row.wall_ms as i64)),
+                (ctx.sym("cpu"), cpu_value(row.cpu_ms)),
+            ]),
+        })
+        .collect();
+    let path_values: Vec<Value> = changed_paths.iter().map(str_value).collect();
+    let receipt = Value::Record {
+        type_name: ctx.sym("RegenRoundCostReceipt"),
+        fields: Rc::new(vec![
+            (ctx.sym("producer"), str_value(REGEN_ROUND_COST_PRODUCER)),
+            (ctx.sym("host"), str_value(host)),
+            (ctx.sym("tree"), str_value(tree)),
+            (ctx.sym("tree_dirty"), Value::Bool(tree_dirty)),
+            (
+                ctx.sym("seed_build_compiled_crates"),
+                Value::Int(seed_build_compiled_crates as i64),
+            ),
+            (
+                ctx.sym("rebuild_compiled_crates"),
+                Value::Int(rebuild_compiled_crates as i64),
+            ),
+            (ctx.sym("marks"), Value::List(Rc::new(mark_values.into()))),
+            (
+                ctx.sym("changed_paths"),
+                Value::List(Rc::new(path_values.into())),
+            ),
+        ]),
+    };
+    let args = vec![(Some("receipt".to_string()), receipt)];
+    let rendered = v1_interpreter::with_active_context(&ctx, || {
+        v1_interpreter::run_in_context_with_args(&ctx, "regen_round_cost_render", &args, false)
+    })
+    .map_err(|e| format!("refusal: regen_round_cost_render did not render: {e}"))?;
+    match rendered {
+        Value::Str(s) => Ok(s.to_string()),
+        other => Err(format!(
+            "refusal: regen_round_cost_render returned {} where a String was expected",
+            other.type_label_public()
+        )),
+    }
+}
+
+pub fn run_regen_round_cost(
+    candidate_dir_rel: &str,
+    receipt_rel: &str,
+    source_roots: &[String],
+) -> Result<RegenRoundCostOutcome, String> {
+    let workspace = workspace_root();
+    let stage0_src = workspace.join("src/v1/stage0/src");
+    let candidate_src = workspace.join(candidate_dir_rel).join("src");
+    let host = host_name();
+    let tree = git_head_sha(&workspace)?;
+    let tree_dirty = git_tree_dirty(&workspace)?;
+    let exe_before = current_exe_digest()?;
+
+    v1_rt::trace_ledger_arm();
+    let seed_build = seed_cargo_build(&workspace, "round.seed_build")?;
+    let exe_after = current_exe_digest()?;
+    if exe_before != exe_after {
+        return Err(format!(
+            "refusal: the seed build replaced the running executable ({exe_before} -> \
+             {exe_after}), so an emit from this process would measure a seed the build did not \
+             produce. Re-run {REGEN_ROUND_COST_PRODUCER} so the emitting seed is the built one."
+        ));
+    }
+
+    let mut round_failures = Vec::new();
+    let regen = run_required_regen(candidate_dir_rel, receipt_rel)?;
+    for failure in &regen.failures {
+        round_failures.push(format!("regen: {failure}"));
+    }
+    // The install set is the regen's own drift answer — every generated path whose committed
+    // bytes differ from the candidate's. A refused regen has no such answer and the round stops
+    // at the emit: no install, no rebuild, no diff, and the receipt says which phases ran.
+    let drifted: Option<Vec<String>> = match &regen.receipt {
+        RegenReceipt::FirstGeneration { changed_paths, .. } => Some(changed_paths.clone()),
+        RegenReceipt::Refused { reason, .. } => {
+            round_failures.push(format!("regen refused, round stopped at emit: {reason}"));
+            None
+        }
+        RegenReceipt::FixedPoint { .. } => {
+            round_failures.push(
+                "regen returned a fixed-point receipt from a first-generation pass".to_string(),
+            );
+            None
+        }
+    };
+
+    let mut rebuild_compiled_crates = 0;
+    let mut changed_paths: Vec<String> = Vec::new();
+    if let Some(drifted) = drifted {
+        v1_rt::trace_mark("round.install.begin".to_string());
+        install_candidate_paths(&candidate_src, &stage0_src, &drifted)?;
+        v1_rt::trace_mark("round.install.done".to_string());
+        let rebuild = seed_cargo_build(&workspace, "round.rebuild_from_installed")?;
+        rebuild_compiled_crates = rebuild.compiled_crates;
+        v1_rt::trace_mark("round.diff.begin".to_string());
+        changed_paths = git_changed_stage0_paths(&workspace)?;
+        v1_rt::trace_mark("round.diff.done".to_string());
+    }
+
+    // The runtime's `Vec` is the persistent vector its emitted programs use; the receipt
+    // renderer takes a slice, so the rows are collected once here.
+    let marks: std::vec::Vec<v1_rt::TraceLedgerRow> = v1_rt::trace_ledger_drain()
+        .ok_or_else(|| {
+            "refusal: the trace ledger was not armed, so no phase was recorded".to_string()
+        })?
+        .iter()
+        .cloned()
+        .collect();
+    let rendered = render_round_cost_receipt(
+        source_roots,
+        &host,
+        &tree,
+        tree_dirty,
+        seed_build.compiled_crates,
+        rebuild_compiled_crates,
+        &marks,
+        &changed_paths,
+    )?;
+    let receipt_path = workspace.join(REGEN_ROUND_COST_RECEIPT_REL);
+    if let Some(parent) = receipt_path.parent() {
+        fs::create_dir_all(parent).map_err(|e| format!("create {}: {e}", parent.display()))?;
+    }
+    fs::write(&receipt_path, &rendered)
+        .map_err(|e| format!("write {}: {e}", receipt_path.display()))?;
+    Ok(RegenRoundCostOutcome {
+        rendered,
+        receipt_path,
+        round_failures,
+    })
 }
