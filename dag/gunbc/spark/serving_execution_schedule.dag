@@ -737,25 +737,38 @@ fn scheduled_rows_from_frozen_schedule<Row>(
 // and locus they were read under -- is a projection of ONE producer's output rather than a record
 // somebody filled in. The artifact may project members and rows back out of it precisely because it
 // can no longer have been assembled from independent arguments.
+// IT CARRIES THE PROVENANCE VALUE, NOT TWO STRINGS COPIED OUT OF IT.
+//
+// The first cut lifted attempt and locus out of the projection's provenance into two flat fields,
+// which quietly re-created the thing provenance exists to stop: two facts travelling beside each
+// other with nothing binding them, and no way to ask whether the observation behind them was
+// acquired, refused, or hermetic. The whole value travels, so a consumer can ask.
 type BoundSparkServingAxisPlan<Row> sole_constructor {
   host: HostIdentity
-  attempt: NonEmptyStr
-  locus: NonEmptyStr
+  provenance: SparkServingObservationProvenance
   observed_members: List<SparkServingMember>
   rows: ScheduledRows<Row>
 }
 
+// Sealed to the row producer. sole_constructor stopped an outside record literal; it did not stop an
+// outside module calling this factory with arbitrary members and rows, which is exactly the forgery
+// the opaque payload was introduced to prevent.
 fn spark_serving_bound_axis_plan<Row>(
   host: HostIdentity,
-  attempt: NonEmptyStr,
-  locus: NonEmptyStr,
+  provenance: SparkServingObservationProvenance,
   observed_members: List<SparkServingMember>,
   rows: ScheduledRows<Row>,
-) -> BoundSparkServingAxisPlan<Row> {
+) -> BoundSparkServingAxisPlan<Row>
+  admit_callers: [
+    decl_ref(
+      module_path: "gunbc.spark.serving_converge_plan",
+      decl_name: "spark_serving_scheduled_rows_for_release",
+    ),
+  ]
+{
   BoundSparkServingAxisPlan {
     host: host,
-    attempt: attempt,
-    locus: locus,
+    provenance: provenance,
     observed_members: observed_members,
     rows: rows,
   }

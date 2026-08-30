@@ -519,8 +519,7 @@ fn spark_serving_scheduled_rows_for_release(
               axis: SparkServingAxisPlanned {
                 plan: spark_serving_bound_axis_plan(
                   host: host as HostIdentity,
-                  attempt: projection.provenance.attempt,
-                  locus: projection.provenance.locus,
+                  provenance: spark_serving_projection_provenance(projection: projection),
                   observed_members: observed_members,
                   rows: spark_rows,
                 ),
