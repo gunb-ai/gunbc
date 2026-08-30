@@ -4,9 +4,39 @@ import std.types { String, NonEmptyStr, Bool, Int, List }
 import std.upsert_decision { ObservationVerdict, Converged, Drifted, Conflict, Inaccessible, UnknownRefused, Absent }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 
-data readback_independence_authority_note: String = "THE standing criterion generalized out of #7213 Finding 2, which was found once, by hand, on one host: `sccache --show-stats` printed a healthy stats table over srv3 while the modeled unit had been inactive (dead) for six hours and no sccache process existed before the probe ran. CORRECTED 2026-08-01: the original diagnosis written here was that any sccache invocation AUTO-STARTS a server, so the read created the state it reported. Measured false — --show-stats moved the listener count 0 to 0 on private-endpoint controls in both UDS and TCP form, while a real compile moved it 0 to 1. The finding survives the correction and is if anything sharper: the read did not create the subject, it answered positively WITHOUT one, which is the same fabricated plausible output arriving by a different route. Both routes are represented now (ProbeMayEstablish and ProbeAnswersWithoutSubject) rather than one standing in for the other. That was written down as a note beside one verdict fold, which leaves the criterion as prose the next probe author has to happen to read. The criterion itself is general and has nothing to do with sccache: a read-back is evidence about a subject only if performing the read could not have established the subject. A probe that can establish what it reports is not measuring, it is asserting — the fabricated plausible output of DESIGN §5, arriving as a genuinely-executed command with genuinely-correct output. The class is not exotic and it is not rare. It is every probe whose transport shares a mechanism with the thing provisioned: a client that auto-starts its daemon, a mount check that triggers an automount, a token read that refreshes the token, a health endpoint that lazily initializes on first request, an ensure-shaped operation used as a query. The tell is always the same and it is a question about the TRANSPORT rather than the value: could running this have made the answer true?"
+// THE standing criterion generalized out of #7213 Finding 2, which was found once, by hand, on one
+// host: `sccache --show-stats` printed a healthy stats table over srv3 while the modeled unit had
+// been inactive (dead) for six hours and no sccache process existed before the probe ran. CORRECTED
+// 2026-08-01: the original diagnosis written here was that any sccache invocation AUTO-STARTS a
+// server, so the read created the state it reported. Measured false — --show-stats moved the
+// listener count 0 to 0 on private-endpoint controls in both UDS and TCP form, while a real compile
+// moved it 0 to 1. The finding survives the correction and is if anything sharper: the read did not
+// create the subject, it answered positively WITHOUT one, which is the same fabricated plausible
+// output arriving by a different route. Both routes are represented now (ProbeMayEstablish and
+// ProbeAnswersWithoutSubject) rather than one standing in for the other. That was written down as a
+// note beside one verdict fold, which leaves the criterion as prose the next probe author has to
+// happen to read. The criterion itself is general and has nothing to do with sccache: a read-back
+// is evidence about a subject only if performing the read could not have established the subject. A
+// probe that can establish what it reports is not measuring, it is asserting — the fabricated
+// plausible output of DESIGN §5, arriving as a genuinely-executed command with genuinely-correct
+// output. The class is not exotic and it is not rare. It is every probe whose transport shares a
+// mechanism with the thing provisioned: a client that auto-starts its daemon, a mount check that
+// triggers an automount, a token read that refreshes the token, a health endpoint that lazily
+// initializes on first request, an ensure-shaped operation used as a query. The tell is always the
+// same and it is a question about the TRANSPORT rather than the value: could running this have made
+// the answer true?
 
-data readback_independence_asymmetry_note: String = "The correction is deliberately ASYMMETRIC, and getting that right is what keeps the criterion from being a blunt instrument that discards good evidence. A self-establishing probe's NEGATIVE results stay trustworthy: if `--show-stats` had failed outright, that failure is real — the probe was willing and able to bring the subject into existence and still could not report it. Only the positive is poisoned, because that is the one outcome the probe's own side effect can manufacture. So the fold rewrites Converged and passes every other verdict through unchanged, and it rewrites Converged to UnknownRefused specifically — not to Absent, which would assert the subject is missing, and not to Conflict, which would assert two sources disagree. The honest statement is that this probe cannot answer this question, and UnknownRefused is exactly that statement. It is also the arm that keeps the deficit COUNTABLE: an UnknownRefused cell ranks for a producer to be built, while a silently-downgraded or silently-accepted one ranks for nothing."
+// The correction is deliberately ASYMMETRIC, and getting that right is what keeps the criterion
+// from being a blunt instrument that discards good evidence. A self-establishing probe's NEGATIVE
+// results stay trustworthy: if `--show-stats` had failed outright, that failure is real — the probe
+// was willing and able to bring the subject into existence and still could not report it. Only the
+// positive is poisoned, because that is the one outcome the probe's own side effect can
+// manufacture. So the fold rewrites Converged and passes every other verdict through unchanged, and
+// it rewrites Converged to UnknownRefused specifically — not to Absent, which would assert the
+// subject is missing, and not to Conflict, which would assert two sources disagree. The honest
+// statement is that this probe cannot answer this question, and UnknownRefused is exactly that
+// statement. It is also the arm that keeps the deficit COUNTABLE: an UnknownRefused cell ranks for
+// a producer to be built, while a silently-downgraded or silently-accepted one ranks for nothing.
 
 type ProbeEffectOnSubject
   = ProbeInert
@@ -83,7 +113,10 @@ fn readback_evidence_verdict(p: ReadBackProbe, observed: ObservationVerdict) -> 
   )
 }
 
-data readback_trusting_widen_red_control_note: String = "The forbidden arm as an executable declaration: trust the probe's own answer whatever the transport can do to the subject. It is the corpus's behaviour everywhere the criterion has not yet been applied, so the sketch is a description of today rather than a hypothetical, and the gate rejects it on exactly the inputs #7213 hit live."
+// The forbidden arm as an executable declaration: trust the probe's own answer whatever the
+// transport can do to the subject. It is the corpus's behaviour everywhere the criterion has not
+// yet been applied, so the sketch is a description of today rather than a hypothetical, and the
+// gate rejects it on exactly the inputs #7213 hit live.
 
 fn readback_evidence_trusting_widen_sketch(
   p: ReadBackProbe,

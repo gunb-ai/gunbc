@@ -275,7 +275,13 @@ fn bmc_fan_realization_definition_linkages() -> StateRealizationDefinitionLinkag
   }
 }
 
-data srv4_bmc_fan_realization_definition_linkages_scaffold_note: String = "Until the namespace content-addressed SymbolIndex subtree-digest authority lands, every realization role is CallerAssertedDefinitionLinkage and durable qualification refuses with typed DurabilityDefinitionLinkageUnavailable. The condition is not restated per row: std.state_durability state_definition_linkage_frontier_note is its single authority, and the arm's own name carries the temporary state, so the deleted per-instance dissolve_on string was one module fact copied to eight sites — including a witness that asserted the sentence verbatim, which made the prose the contract rather than the behaviour."
+// Until the namespace content-addressed SymbolIndex subtree-digest authority lands, every
+// realization role is CallerAssertedDefinitionLinkage and durable qualification refuses with typed
+// DurabilityDefinitionLinkageUnavailable. The condition is not restated per row:
+// std.state_durability state_definition_linkage_frontier_note is its single authority, and the
+// arm's own name carries the temporary state, so the deleted per-instance dissolve_on string was
+// one module fact copied to eight sites — including a witness that asserted the sentence verbatim,
+// which made the prose the contract rather than the behaviour.
 
 data srv4_bmc_fan_realization: StateRealizationIdentity = StateRealizationIdentity {
   realization_id: srv4_bmc_fan_realization_id,
@@ -378,14 +384,42 @@ data srv4_bmc_fan_post_reboot_policy_observation: BmcFanPolicyObservation = BmcF
   observed_at: 1785433000000,
 }
 
-data srv4_bmc_fan_projection_probe_note: String = "Authenticated BMC SSH, 2026-07-30: srv4's config-asrr.json was rebuilt to the srv3 2.07.00 vendor stock aggressive curve by running the modeled TEMP_SOC jq realization on srv4's pre-onboarding base config and writing the canonical bytes back through a staged same-filesystem atomic rename; the live digest read back equal to altrad8ud_openbmc_322_fleet_quiet_projected_config_sha256_hex. srv4_bmc_fan_convergence_receipt is the typed live receipt of the converged state (12 samples over 120 seconds, TEMP_SOC 60-63C, guarded component max 69C, aggregate FAN1 4600 RPM). This replaces the earlier 2026-07-27 lazy-curve projection provenance."
+// Authenticated BMC SSH, 2026-07-30: srv4's config-asrr.json was rebuilt to the srv3 2.07.00 vendor
+// stock aggressive curve by running the modeled TEMP_SOC jq realization on srv4's pre-onboarding
+// base config and writing the canonical bytes back through a staged same-filesystem atomic rename;
+// the live digest read back equal to altrad8ud_openbmc_322_fleet_quiet_projected_config_sha256_hex.
+// srv4_bmc_fan_convergence_receipt is the typed live receipt of the converged state (12 samples
+// over 120 seconds, TEMP_SOC 60-63C, guarded component max 69C, aggregate FAN1 4600 RPM). This
+// replaces the earlier 2026-07-27 lazy-curve projection provenance.
 
-data bmc_historical_receipt_not_realization_identity_note: String = "These July 30 rows are immutable historical evidence snapshots, not live producers and not StateDurabilityEvidence. In particular BmcFanConvergenceReceipt deliberately has no StateRealizationIdentity: the content-addressed SymbolIndex subtree-digest authority does not exist yet, so std.state_durability exposes only counted CallerAssertedDefinitionLinkage rows and refuses durable qualification. Hashing a remembered label or these observed output values would leave definition changes invisible; these historical rows therefore do not pretend to supply realization linkage."
+// These July 30 rows are immutable historical evidence snapshots, not live producers and not
+// StateDurabilityEvidence. In particular BmcFanConvergenceReceipt deliberately has no
+// StateRealizationIdentity: the content-addressed SymbolIndex subtree-digest authority does not
+// exist yet, so std.state_durability exposes only counted CallerAssertedDefinitionLinkage rows and
+// refuses durable qualification. Hashing a remembered label or these observed output values would
+// leave definition changes invisible; these historical rows therefore do not pretend to supply
+// realization linkage.
 
-data srv4_bmc_fan_reboot_persistence_note: String = "Live perturbation receipt, 2026-07-30 (aggressive stock curve): Redfish Manager.Reset advertised and accepted GracefulRestart with HTTP 200. The BMC was observed down for a 170-second reachability interval while srv4's host OS remained up (ComputerSystem PowerState On). After return, OpenBMC still reported 3.22.00; the active config-asrr.json SHA-256 digest was unchanged and equal to the srv3 stock aggressive curve projection (f559aff7...); phosphor-pid-control was active; zone0 FailSafe=false. This proves the JFFS2 upper override persists the aggressive curve across one graceful BMC restart. It does not prove persistence across a firmware replacement."
+// Live perturbation receipt, 2026-07-30 (aggressive stock curve): Redfish Manager.Reset advertised
+// and accepted GracefulRestart with HTTP 200. The BMC was observed down for a 170-second
+// reachability interval while srv4's host OS remained up (ComputerSystem PowerState On). After
+// return, OpenBMC still reported 3.22.00; the active config-asrr.json SHA-256 digest was unchanged
+// and equal to the srv3 stock aggressive curve projection (f559aff7...); phosphor-pid-control was
+// active; zone0 FailSafe=false. This proves the JFFS2 upper override persists the aggressive curve
+// across one graceful BMC restart. It does not prove persistence across a firmware replacement.
 
-data fleet_bmc_surface_observation_note: String = "Authenticated read-only Redfish observations, 2026-07-27. srv3 OpenBMC 2.07.00 advertises ThermalSubsystem and its 51-member Chassis/Sensors collection includes temperature and fan readings; the legacy Chassis/Thermal URI is absent. srv4 OpenBMC 3.22.00 advertises legacy Chassis/Thermal; its Chassis/Sensors request still returns HTTP success but has only 9 power/utilization members and omits temperature/fan readings. A collection-only observer therefore fails open on srv4: transport success is not telemetry completeness. Direct known sensor URIs still resolve, but they do not make an inventory query complete."
+// Authenticated read-only Redfish observations, 2026-07-27. srv3 OpenBMC 2.07.00 advertises
+// ThermalSubsystem and its 51-member Chassis/Sensors collection includes temperature and fan
+// readings; the legacy Chassis/Thermal URI is absent. srv4 OpenBMC 3.22.00 advertises legacy
+// Chassis/Thermal; its Chassis/Sensors request still returns HTTP success but has only 9
+// power/utilization members and omits temperature/fan readings. A collection-only observer
+// therefore fails open on srv4: transport success is not telemetry completeness. Direct known
+// sensor URIs still resolve, but they do not make an inventory query complete.
 
-data fleet_bmc_update_service_observation_note: String = "Authenticated read-only Redfish observations, 2026-07-27. Both srv3 2.07.00 and srv4 3.22.00 advertise /redfish/v1/UpdateService/update through HttpPushUri and MultipartHttpPushUri, and each active BMC image is Updateable=true. Each FirmwareInventory exposed exactly one BMC image plus non-BMC members; neither exposed a backup BMC image. This is update-surface capability evidence, not an approved image, apply receipt, or recovery proof."
+// Authenticated read-only Redfish observations, 2026-07-27. Both srv3 2.07.00 and srv4 3.22.00
+// advertise /redfish/v1/UpdateService/update through HttpPushUri and MultipartHttpPushUri, and each
+// active BMC image is Updateable=true. Each FirmwareInventory exposed exactly one BMC image plus
+// non-BMC members; neither exposed a backup BMC image. This is update-surface capability evidence,
+// not an approved image, apply receipt, or recovery proof.
 
 data bmc_fan_symbol_index_subtree_digest_dissolve_on: DissolutionCondition = unbound_dissolution(description: "namespace content-addressed SymbolIndex subtree digest")

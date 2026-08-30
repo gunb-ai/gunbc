@@ -4,16 +4,16 @@
 //! explicitly armed via `build_multi_entry_index_with_shared_caches`. Parse, normalize,
 //! ownership memos, and the **intern table** stay per-index on each worker.
 //!
-//! Normal indexes keep typed results as per-index `Rc` maps (main memory path). This
-//! module holds the interim **serde byte transport** for cross-worker share only.
-//! When armed, the shared store is the sole typed-cache authority — `index_insert_typed`
-//! never writes per-index `typed_module_cache` (reads decode shared bytes only; avoids
-//! Rc+JSON double retention). 🟡 dissolve-on:
-//! store-path `Rc`→`Arc` on `TypecheckModuleResult` / nested infer carriers (design §4.2).
+//! Normal indexes keep typed results as per-index `Rc` maps (main memory path); this module is
+//! the interim **serde byte transport** for cross-worker share only. When armed, the shared store
+//! is the sole typed-cache authority — `index_insert_typed` never writes per-index
+//! `typed_module_cache` (reads decode shared bytes only; avoids Rc+JSON double retention).
+//! 🟡 dissolve-on: store-path `Rc`→`Arc` on `TypecheckModuleResult` / nested infer carriers
+//! (design §4.2).
 //!
 //! **Cross-worker serde contract:** `TypecheckModuleResult` serializes authored module/type
-//! *names* and diagnostic trees — not per-worker `InternTable` indices — so worker B can decode
-//! worker A's byte snapshot against its own intern table without a cross-representation straddle.
+//! *names* and diagnostic trees — not per-worker `InternTable` indices — so worker B decodes
+//! worker A's snapshot against its own intern table without a cross-representation straddle.
 
 use std::collections::HashMap as StdHashMap;
 use std::rc::Rc;
@@ -100,11 +100,11 @@ pub(crate) fn record_private_store_fallback() {
     PRIVATE_STORE_FALLBACK.fetch_add(1, Ordering::SeqCst);
 }
 
-/// Cross-worker share shell: typed byte cache + collision registry only.
-/// Construct once per explicit cross-worker run; clone the `Arc<RwLock<_>>` to every worker.
-/// Keys are typed-module CONTENT keys (`std.interface_summary.typed_module_key` — source
-/// hash ⊕ direct-import interface hashes ⊕ compiler identity), never authored module names;
-/// `module_source_identity` stays name→file (it guards the name-keyed graph assembly).
+/// Cross-worker share shell: typed byte cache + collision registry only. Construct once per
+/// explicit cross-worker run; clone the `Arc<RwLock<_>>` to every worker. Keys are typed-module
+/// CONTENT keys (`std.interface_summary.typed_module_key` — source hash ⊕ direct-import interface
+/// hashes ⊕ compiler identity), never authored module names; `module_source_identity` stays
+/// name→file (it guards the name-keyed graph assembly).
 pub struct SharedTypecheckCaches {
     typed_module_cache: StdHashMap<String, Arc<Vec<u8>>>,
     pub module_source_identity: StdHashMap<String, String>,

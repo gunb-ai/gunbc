@@ -176,6 +176,14 @@ test fn manual_dispatch_without_expected_sha_cannot_masquerade_as_heal_revalidat
   }
 }
 
+// These executing witnesses enumerate every current HealOutcome arm (including
+// HealAuthorCommitRequired) and every HealDispatchOutcome arm through exhaustive matches. A newly
+// added heal path or dispatch classification makes this file and the admission folds fail to
+// compile until it is explicitly classified; unclassified cannot become success. The RED controls
+// discriminate dispatch accepted from coverage complete, refused dispatch from an in-flight run,
+// old-head green from healed-head green, ordinary manual dispatch from heal revalidation, and
+// author-commit-required workflow drift from produced heal heads.
+
 test fn expected_sha_preflight_binds_run_subject_and_checkout_exactly() -> Bool {
   let matched = classify_workflow_dispatch_preflight(
     expected_healed_head: Present { value: healed_head },
@@ -211,5 +219,3 @@ test fn expected_sha_preflight_binds_run_subject_and_checkout_exactly() -> Bool 
     HealWorkflowDispatchCheckoutMismatch { expected_head: _, checkout_head: _, run_subject_head: _ } => false
   }
 }
-
-data heal_revalidation_closed_denominator_witness_note: String = "These executing witnesses enumerate every current HealOutcome arm (including HealAuthorCommitRequired) and every HealDispatchOutcome arm through exhaustive matches. A newly added heal path or dispatch classification makes this file and the admission folds fail to compile until it is explicitly classified; unclassified cannot become success. The RED controls discriminate dispatch accepted from coverage complete, refused dispatch from an in-flight run, old-head green from healed-head green, ordinary manual dispatch from heal revalidation, and author-commit-required workflow drift from produced heal heads."

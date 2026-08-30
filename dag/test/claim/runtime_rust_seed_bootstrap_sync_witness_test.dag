@@ -6,7 +6,17 @@ import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
-data runtime_rust_seed_bootstrap_sync_witness_note: String = "Regression control for a two-hop bootstrap-lag class: `regen_stage0 --emit-fresh` renders v1_rt.rs by running the CURRENTLY-COMPILED `rt_hash_ops()`, which is compiled from the checked-in seed src/v1/stage0/src/v1_compiler_runtime_rust.rs — not derived live from src/v1/runtime_rust.dag at emit time. Editing the .dag authority alone (as happened for `pub fn obs_human_elapsed`, added so `crate::v1_rt::obs_human_elapsed` in cli_run.rs would resolve — E0425 previously) updates the fresh-emit projection of the seed file but leaves the CHECKED-IN seed, and therefore the compiled binary's output, stale. This witness pins the three-file agreement directly: the .dag authority, its checked-in Rust-translation seed, and the final generated runtime all name the same functions. A regression that repeats this class (author edits runtime_rust.dag, forgets to sync+recompile the seed) reds here without requiring a live regen_stage0 run."
+// Regression control for a two-hop bootstrap-lag class: `regen_stage0 --emit-fresh` renders
+// v1_rt.rs by running the CURRENTLY-COMPILED `rt_hash_ops()`, which is compiled from the checked-in
+// seed src/v1/stage0/src/v1_compiler_runtime_rust.rs — not derived live from
+// src/v1/runtime_rust.dag at emit time. Editing the .dag authority alone (as happened for `pub fn
+// obs_human_elapsed`, added so `crate::v1_rt::obs_human_elapsed` in cli_run.rs would resolve —
+// E0425 previously) updates the fresh-emit projection of the seed file but leaves the CHECKED-IN
+// seed, and therefore the compiled binary's output, stale. This witness pins the three-file
+// agreement directly: the .dag authority, its checked-in Rust-translation seed, and the final
+// generated runtime all name the same functions. A regression that repeats this class (author edits
+// runtime_rust.dag, forgets to sync+recompile the seed) reds here without requiring a live
+// regen_stage0 run.
 
 data runtime_rust_dag_path: String = "src/v1/runtime_rust.dag"
 data runtime_rust_seed_path: String = "src/v1/stage0/src/v1_compiler_runtime_rust.rs"

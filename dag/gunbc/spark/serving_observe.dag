@@ -159,7 +159,12 @@ import gunbc.spark.serving_runtime_admission { spark_serving_parse_nvidia_driver
 import gunbc.spark.serving_desired {
   spark_serving_automation_principal_login,
 }
-import gunbc.spark.serving_observation_scope { spark_serving_observation_scope }
+import gunbc.spark.serving_observation_scope {
+  spark_serving_observation_scope,
+  spark_observation_coverage,
+  SparkObservationCovered,
+  SparkObservationIncomplete,
+}
 import gunbc.spark.serving_readback_parse {
   SparkServingReadbackField,
   SparkServingReadbackAbsent,
@@ -170,9 +175,14 @@ import gunbc.spark.serving_readback_parse {
   spark_serving_readback_field_label,
 }
 
-data spark_serving_observe_transport_note: String = "OBSERVATION PRODUCER (SPARK-SERVE-BIND-0 item B) over FleetSsh — callers supply a sealed FleetSshExecutionContext rather than hardcoding one credential route."
+// OBSERVATION PRODUCER (SPARK-SERVE-BIND-0 item B) over FleetSsh — callers supply a sealed
+// FleetSshExecutionContext rather than hardcoding one credential route.
 
-data spark_serving_observe_note: String = "Wet observation only; a green witness over fixture strings is not proof gpt-oss:20b is serving. Runtime closure identity requires the release-archive admission receipt under ~/.local/share/gunbc/spark-serving/ (archive digest admitted at materialization — not proof of completed install) plus independent /api/version and /api/tags probes. This branch does not install or start Ollama on the hosts."
+// Wet observation only; a green witness over fixture strings is not proof gpt-oss:20b is serving.
+// Runtime closure identity requires the release-archive admission receipt under
+// ~/.local/share/gunbc/spark-serving/ (archive digest admitted at materialization — not proof of
+// completed install) plus independent /api/version and /api/tags probes. This branch does not
+// install or start Ollama on the hosts.
 
 data spark_serving_observe_receipt_path: String = "target/spark-serving-observe-receipt.txt"
 
@@ -476,10 +486,40 @@ fn spark_serving_account_line(host: HostIdentity, account: SparkManagedAccountOb
 // while staying silent on whether its unit would survive a power cycle, which is exactly the
 // question the run was dispatched to answer. A field with a witness and no wet reader is a carrier,
 // not an observation.
-type SparkServingHostObservation {
+// THE HOST WAS CARRIED TWICE AND COVERAGE JOINED ONE OF THEM.
+//
+// Found on review of #9754. Every SparkServingObservation arm carries its own `host`, so a row could
+// be authored with readback.host = srv6 and observation.host = srv7: coverage would be satisfied for
+// srv6 while the report emitted an observation of srv7. The production path could not do this --
+// derive_spark_serving_observation sets the observation's host from readback.host in every arm -- but
+// the TYPE permitted it, and "the only current producer happens to agree" is not a property, it is a
+// coincidence that holds until someone writes a second producer. The fixtures in this repository
+// already construct both halves independently, so the counterexample was not hypothetical.
+//
+// THE REPAIR IS CONSTRUCTION, NOT A SECOND CHECK. Adding a readback.host == observation.host guard
+// beside the coverage join would be validation standing exactly where construction was available,
+// and DESIGN §5's tell applies literally: it could be satisfied by editing the declaration while the
+// realization still lied. sole_constructor confines the mint to this module, and the single mint
+// below DERIVES the observation from the readback rather than accepting it. The disagreeing state
+// now has no constructor, which is why the coverage join can read readback.host and be reading the
+// only host there is.
+type SparkServingHostObservation sole_constructor {
   readback: SparkServingReadback
   observation: SparkServingObservation
   account: SparkManagedAccountObservation
+}
+
+// The only mint. The observation is not a parameter -- it is a function of the readback, which is
+// what makes the two hosts one fact.
+fn spark_serving_host_observation(
+  readback: SparkServingReadback,
+  account: SparkManagedAccountObservation,
+) -> SparkServingHostObservation {
+  SparkServingHostObservation {
+    readback: readback,
+    observation: derive_spark_serving_observation(readback: readback),
+    account: account,
+  }
 }
 
 type SparkServingObservationReport
@@ -487,7 +527,33 @@ type SparkServingObservationReport
       first: SparkServingHostObservation,
       more: List<SparkServingHostObservation>,
     }
-  | SparkServingObservationReportRefused { cause: NonEmptyStr }
+  | SparkServingObservationReportRefused { refusal: SparkServingObservationReportRefusal }
+
+// THE COVERAGE JOIN COMPUTED A TYPED RESULT AND THE REPORT KEPT ONLY ITS RENDERER.
+//
+// Found on review of #9754. spark_observation_coverage answers with three separate identity
+// populations -- missing, foreign, duplicated -- because they are three different defects with three
+// different causes. The report's refusal arm carried a single NonEmptyStr, so the constructor
+// formatted those populations into "missing=... foreign=... duplicated=..." and threw the structure
+// away at the moment it was computed. A downstream consumer could not ask WHICH identities were
+// missing; it could only parse presentation text.
+//
+// That is the producer-versus-renderer confusion, and it matters beyond tidiness: P0-C3 needs a
+// planner refusal to stay attributable to the exact observation-scope defect rather than arriving as
+// an undifferentiated sentence. Rendering now happens at the receipt boundary and nowhere else.
+//
+// THE PREREQUISITE ARM IS NOT A LOOPHOLE. Attempt-identity refusal and known-hosts materialization
+// refusal are genuinely un-typed strings from outside this module's vocabulary, so they keep a cause.
+// The coverage arm must never use it -- routing a coverage defect through the prose arm would restore
+// exactly the loss this type was introduced to end.
+type SparkServingObservationReportRefusal
+  = SparkServingObservationScopeEmpty
+  | SparkServingObservationCoverageIncomplete {
+      missing: List<HostIdentity>
+      foreign: List<HostIdentity>
+      duplicated: List<HostIdentity>
+    }
+  | SparkServingObservationPrerequisiteRefused { cause: NonEmptyStr }
 
 // LOCUS-PARAMETERIZED PROBE LEG. Same observation, either credential locus. The
 // context-taking leg below remains for the operator-workstation entry; this one is what the
@@ -544,14 +610,13 @@ fn spark_serving_observe_host_via_locus(
     uptime: spark_serving_probe_leg_via_locus(context: context, host: host, raw_words: spark_serving_uptime_probe_argv()),
     grants: spark_serving_probe_leg_via_locus(context: context, host: host, raw_words: spark_serving_grant_probe_words),
   )
-  SparkServingHostObservation {
+  spark_serving_host_observation(
     readback: readback,
-    observation: derive_spark_serving_observation(readback: readback),
     account: spark_serving_account_observation_from_probes(
       passwd_probe: spark_serving_probe_leg_via_locus(context: context, host: host, raw_words: spark_serving_account_probe_words()),
       key_probe: spark_serving_probe_leg_via_locus(context: context, host: host, raw_words: spark_serving_authorized_keys_probe_words()),
     ),
-  }
+  )
 }
 
 fn spark_serving_probe_leg(
@@ -840,14 +905,13 @@ fn spark_serving_observe_host(
     uptime: uptime,
     grants: grants,
   )
-  SparkServingHostObservation {
+  spark_serving_host_observation(
     readback: readback,
-    observation: derive_spark_serving_observation(readback: readback),
     account: spark_serving_account_observation_from_probes(
       passwd_probe: spark_serving_probe_leg(context: context, host: host, raw_words: spark_serving_account_probe_words()),
       key_probe: spark_serving_probe_leg(context: context, host: host, raw_words: spark_serving_authorized_keys_probe_words()),
     ),
-  }
+  )
 }
 
 fn spark_serving_observations_from_hosts(
@@ -857,34 +921,105 @@ fn spark_serving_observations_from_hosts(
   map(hosts, h => spark_serving_observe_host(context: context, host: h))
 }
 
-fn spark_serving_observation_report_from_observations(
+// P0-C2: THE REPORT IS BUILT FROM AN IDENTITY JOIN, AND THE COUNT GUARD IS GONE RATHER THAN KEPT.
+//
+// What stood here refused only an EMPTY observation list, on the stated ground that empty is
+// ignorance and not a clean fleet. That is true, and it was useless in the incident it was supposed
+// to catch: the roster held {srv5}, which is not empty, so nothing fired while the one host that
+// mattered went unprobed. A count cannot tell "every expected host answered" from "some other host
+// answered instead" -- and fleet-converge run 33296910990 reported observed_hosts=1 with a green
+// report.
+//
+// So the guard is REPLACED, not joined. Keeping both would be two authorities for one question, and
+// the weaker one would keep answering first. Once an admitted nonempty expected scope and exact
+// identity coverage both hold, nonemptiness is DERIVED -- there is nothing left for a cardinality
+// check to add.
+//
+// THE EXPECTED SCOPE IS ADMITTED BEFORE THE JOIN, because an empty expected roster would make
+// coverage vacuously true: no host is missing from a roster that demands nobody. That is the
+// empty_observation_narrow failure wearing the join's clothes, so it refuses on its own arm with its
+// own cause rather than passing through as Covered.
+//
+// WHAT THIS FUNCTION DOES NOT DECIDE. Coverage asks whether the required subject roster produced one
+// result row per identity. It does NOT ask whether each probe answered -- that is
+// spark_serving_report_observations_were_made, and the two are deliberately not one Bool. A row for
+// srv6 carrying SparkServingAbsent SATISFIES coverage and is a genuine observation: the correct
+// post-retirement state for a read-only instrument. A row carrying SparkServingObservationRefused
+// also satisfies coverage while failing the observation terminal. Only a MISSING srv6 row refuses
+// here, before any "fleet observed" report exists at all.
+fn spark_serving_observed_host_keys(
   observations: List<SparkServingHostObservation>,
-) -> SparkServingObservationReport? {
-  if observations.length() == 0 {
-    none
+) -> List<HostIdentity> {
+  map(observations, o => o.readback.host)
+}
+
+fn spark_serving_host_identity_words(hosts: List<HostIdentity>) -> String {
+  if length(hosts) == 0 {
+    "none"
   } else {
-    Present {
-      value: SparkServingObservationsProduced {
-        first: observations.first(),
-        more: observations.skip(n: 1),
-      },
+    join(map(hosts, h => h as String), ",")
+  }
+}
+
+// THE ONLY RENDERER. Called at the receipt boundary, never by the constructor -- the report carries
+// the identities and a reader turns them into words, not the other way round.
+fn spark_serving_observation_refusal_wire(refusal: SparkServingObservationReportRefusal) -> NonEmptyStr {
+  match refusal {
+    SparkServingObservationScopeEmpty =>
+      "spark serving observation scope is empty: coverage over an empty expected roster is vacuous, not clean" as NonEmptyStr
+    SparkServingObservationPrerequisiteRefused { cause: c } => c
+    SparkServingObservationCoverageIncomplete { missing: m, foreign: f, duplicated: d } =>
+      join([
+        "spark serving observation does not cover its physical scope: missing=",
+        spark_serving_host_identity_words(hosts: m),
+        " foreign=",
+        spark_serving_host_identity_words(hosts: f),
+        " duplicated=",
+        spark_serving_host_identity_words(hosts: d),
+      ], "") as NonEmptyStr
+  }
+}
+
+fn spark_serving_observation_report_from_observations(
+  expected: List<HostIdentity>,
+  observations: List<SparkServingHostObservation>,
+) -> SparkServingObservationReport {
+  if length(expected) == 0 {
+    SparkServingObservationReportRefused { refusal: SparkServingObservationScopeEmpty }
+  } else {
+    match spark_observation_coverage(
+      expected: expected,
+      observed: spark_serving_observed_host_keys(observations: observations),
+    ) {
+      SparkObservationIncomplete { missing: m, foreign: f, duplicated: d } =>
+        SparkServingObservationReportRefused {
+          refusal: SparkServingObservationCoverageIncomplete {
+            missing: m,
+            foreign: f,
+            duplicated: d,
+          },
+        }
+      SparkObservationCovered =>
+        SparkServingObservationsProduced {
+          first: observations.first(),
+          more: observations.skip(n: 1),
+        }
     }
   }
 }
 
+// The hosts probed and the hosts EXPECTED are the same roster here by construction, which is the
+// property that makes this entry's coverage meaningful rather than circular: the caller passes the
+// physical scope once, and a probe that fails to produce a row for one of them is exactly what the
+// join catches.
 fn spark_serving_observe_with_context(
   context: FleetSshExecutionContext,
   hosts: List<HostIdentity>,
 ) -> SparkServingObservationReport {
-  match spark_serving_observation_report_from_observations(
+  spark_serving_observation_report_from_observations(
+    expected: hosts,
     observations: spark_serving_observations_from_hosts(context: context, hosts: hosts),
-  ) {
-    Absent =>
-      SparkServingObservationReportRefused {
-        cause: "spark serving observation requires at least one host" as NonEmptyStr,
-      }
-    Present { value: report } => report
-  }
+  )
 }
 
 // ONE RENDERER FOR A HOST OBSERVATION, because there were two and that is why this change did not
@@ -908,7 +1043,7 @@ fn spark_serving_report_body_lines(report: SparkServingObservationReport) -> Str
   join(
     concat(
       match report {
-        SparkServingObservationReportRefused { cause: _ } => []
+        SparkServingObservationReportRefused { refusal: _ } => []
         SparkServingObservationsProduced { first: f, more: m } =>
           map(concat([f], m), ho => spark_serving_host_observation_lines(ho: ho))
       },
@@ -983,8 +1118,8 @@ fn spark_serving_current_boot_durability_standing(
   report: SparkServingObservationReport,
 ) -> SparkServingCurrentBootDurabilityStanding {
   match report {
-    SparkServingObservationReportRefused { cause: c } =>
-      CurrentBootDurabilityUnobserved { cause: c }
+    SparkServingObservationReportRefused { refusal: r } =>
+      CurrentBootDurabilityUnobserved { cause: spark_serving_observation_refusal_wire(refusal: r) }
     SparkServingObservationsProduced { first: f, more: m } => {
       let hosts = concat([f], m)
       let observed = length(hosts)
@@ -1039,12 +1174,12 @@ fn spark_serving_observation_report_text(
   materialization_receipt: String,
 ) -> String {
   match report {
-    SparkServingObservationReportRefused { cause: c } =>
+    SparkServingObservationReportRefused { refusal: r } =>
       join([
         "spark serving observe probed_at=", probed_at,
         " attempt_raw=", attempt_raw, "\n",
         materialization_receipt,
-        "REFUSED: ", c as String, "\n",
+        "REFUSED: ", spark_serving_observation_refusal_wire(refusal: r) as String, "\n",
         spark_serving_report_body_lines(report: report),
       ], "")
     SparkServingObservationsProduced { first: _, more: _ } =>
@@ -1097,26 +1232,34 @@ fn spark_serving_all_observations_succeeded(observations: List<SparkServingObser
 // required gate closure, so it has never run in CI. An attempt to restate the claim under the executed
 // v2.test.* prefix was made and abandoned on measurement, not preference: importing this module to
 // reach these two predicates pulls its 46-import closure and the claim module is killed during resolve
-// with no rows, the same wall that holds the 59 nonterminal identities. Moving the predicates to the
-// light module where the type lives would fix that and force an edit to the inert test, which would
-// classify its witnesses as changed-and-declined and red the required floor.
+// with no rows, the same wall that holds the 59 nonterminal identities.
+//
+// CORRECTION (P0-C2): the sentence that stood here said editing that inert module would classify its
+// witnesses as changed-and-declined and red the required floor, and therefore that the predicates
+// could not be moved. That is no longer true and was already false when it merged. #9728 landed
+// PlannedAsChangedWitness, which seeds changed-witness modules into preparation EVEN WHEN THEY SIT
+// OUTSIDE THE FLOOR ROSTER, so an edit to a test.claim.spark.* module now executes in the required
+// sublane rather than being automatically declined -- measured on this lane, standing
+// planned-and-passed. The enrollment argument for leaving the predicates where they are has
+// dissolved; the resolve-cost argument above has not, and it is the one that still holds.
 //
 // So the honest standing of the swap is: correct by argument, controlled by an authored claim, and
 // NOT established by execution. It is recorded here rather than in a commit message because a reader
 // of this function is the person who needs to know it.
 //
 // RETAINED, NOT KEPT: by the trimming rule applied elsewhere in this stack, a row whose only consumers
-// are its own claims should be deleted until a real consumer exists. It survives here for a mechanical
-// reason worth stating rather than hiding -- its claims live in test.claim.spark.*, which is outside
-// the required gate closure, so editing that module would classify its witnesses as changed-and-
-// declined and red the required floor. The row is therefore load-bearing for nothing and blocked from
-// deletion by an enrollment gap, which is the same gap that owns the 59 nonterminal identities.
+// are its own claims should be deleted until a real consumer exists. The reason recorded here used to
+// be an enrollment gap -- that editing test.claim.spark.* would classify its witnesses as changed-and-
+// declined and red the floor. #9728 dissolved that gap (see the correction above), so it is no longer
+// what blocks the deletion. What blocks it now is that this predicate answers the ROLE question --
+// "is every observed host serving" -- which is a real question P0 has not finished asking, and which
+// is deliberately NOT the coverage question the report constructor above now decides.
 fn spark_serving_observation_report_succeeded(report: SparkServingObservationReport) -> Bool {
   match report {
     SparkServingObservationsProduced { first: f, more: m } =>
       spark_serving_observation_succeeded(observation: f.observation)
         && spark_serving_all_observations_succeeded(observations: map(m, ho => ho.observation))
-    SparkServingObservationReportRefused { cause: _ } => false
+    SparkServingObservationReportRefused { refusal: _ } => false
   }
 }
 
@@ -1149,10 +1292,9 @@ fn spark_serving_report_observations_were_made(report: SparkServingObservationRe
     SparkServingObservationsProduced { first: f, more: m } =>
       spark_serving_observation_was_made(observation: f.observation)
         && spark_serving_all_observations_were_made(observations: map(m, ho => ho.observation))
-    SparkServingObservationReportRefused { cause: _ } => false
+    SparkServingObservationReportRefused { refusal: _ } => false
   }
 }
-
 
 func spark_serving_observe_wet() -> ProcessExit
   uses net: Network
@@ -1177,14 +1319,18 @@ func spark_serving_observe_with_attempt(attempt_raw: String) -> ProcessExit
       let report = match fleet_ssh_attempt_identity(raw: attempt_raw) {
         Absent =>
           SparkServingObservationReportRefused {
-            cause: "attempt identity is not a safe path segment" as NonEmptyStr,
+            refusal: SparkServingObservationPrerequisiteRefused {
+              cause: "attempt identity is not a safe path segment" as NonEmptyStr,
+            },
           }
         Present { value: attempt } => {
           let materialization = materialize_fleet_known_hosts_anchor(attempt: attempt)
           match fleet_ssh_execution_context_of(outcome: materialization, credential: credential) {
             Absent =>
               SparkServingObservationReportRefused {
-                cause: known_hosts_materialization_receipt(outcome: materialization) as NonEmptyStr,
+                refusal: SparkServingObservationPrerequisiteRefused {
+                  cause: known_hosts_materialization_receipt(outcome: materialization) as NonEmptyStr,
+                },
               }
             Present { value: context } =>
               spark_serving_observe_with_context(
@@ -1221,7 +1367,6 @@ func spark_serving_observe_with_attempt(attempt_raw: String) -> ProcessExit
   )
 }
 
-
 // RUNNER-SIDE OBSERVATION ENTRY. spark_serving_observe_wet above resolves a credential through
 // GcloudPrintToken and is therefore an operator-workstation route only; a GHA self-hosted slot
 // carries no gcloud and that fetch fails at runtime rather than degrading. This entry observes
@@ -1248,13 +1393,10 @@ func spark_serving_observe_ci_with_context(
     spark_serving_observation_scope(),
     h => spark_serving_observe_host_via_locus(context: context, host: h),
   )
-  let report = match spark_serving_observation_report_from_observations(observations: observations) {
-    Absent =>
-      SparkServingObservationReportRefused {
-        cause: "spark_serving_observe_ci_wet: no host was probed — an empty observation list is ignorance, not a clean fleet" as NonEmptyStr,
-      }
-    Present { value: r } => r
-  }
+  let report = spark_serving_observation_report_from_observations(
+    expected: spark_serving_observation_scope(),
+    observations: observations,
+  )
   let body = join([
     join(["spark_serving_observe_ci_wet probed_at=", probed_at_word(reading: now) as String, "\n"], ""),
     join(["credential_locus=", fleet_locus_label(context: context), "\n"], ""),
@@ -2174,7 +2316,6 @@ fn spark_serving_observe_runtime_materialization(
       }
   }
 }
-
 
 // ONE OBSERVATION IN, ONE PROJECTION OUT.
 //

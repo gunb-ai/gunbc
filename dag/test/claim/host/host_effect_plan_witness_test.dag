@@ -26,7 +26,9 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-data hermetic_witness_home_doc: String = "Hermetic-safe Wave A2 host_effect_plan_apply witnesses: control-flow and empty-plan refusal arms only (no shell.Exec.Run). Shell converge/failure/sequential poles live in host_effect_plan_real_execution_witness_test.dag (Wet bin batch)."
+// Hermetic-safe Wave A2 host_effect_plan_apply witnesses: control-flow and empty-plan refusal arms
+// only (no shell.Exec.Run). Shell converge/failure/sequential poles live in
+// host_effect_plan_real_execution_witness_test.dag (Wet bin batch).
 
 fn witness_host_os_target() -> NodeControlPlane {
   HostOs { node: srv1_host }
@@ -72,6 +74,4 @@ test fn witness_control_flow_step_refuses_fail_closed() -> Bool {
     ctx: witness_plan_ctx(),
   ))
 }
-
-
 

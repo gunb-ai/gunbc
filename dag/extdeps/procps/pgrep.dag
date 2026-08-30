@@ -2,7 +2,8 @@ module extdeps.procps.pgrep
 
 import std.types { String, Int }
 
-data pgrep_authority_note: String = "pgrep(1) from procps-ng, cited to the upstream manual's EXIT STATUS section. Only the codes this repository reads are modelled."
+// pgrep(1) from procps-ng, cited to the upstream manual's EXIT STATUS section. Only the codes this
+// repository reads are modelled.
 
 // PGREP EXITS 1 WHEN NOTHING MATCHED, AND THAT IS A SUCCESSFUL ANSWER WEARING A FAILURE STATUS.
 //

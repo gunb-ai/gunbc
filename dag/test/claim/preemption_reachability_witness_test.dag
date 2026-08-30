@@ -16,8 +16,32 @@ import v2.workflow.required_floor {
   required_floor_claim_wall_safety_limit_ms,
 }
 
-data root_d_receipt_note: String = "PREEMPTION-1 (gunbc#8584 REWORK): floor run 32301212975 recorded root_d_checkpoint_scalar_declared_arity_witness_holds reaching a verdict at 60317ms CPU against the then-current 5000ms required_floor_claim_cpu_safety_limit_ms, dominated by one compile_dag_rust_emit_check call. THE MEASURED RECEIPT IS THE CPU FIGURE AND THE VerdictReached/not-SafetyInterrupted FACT, AND NOTHING ELSE. The floor log did not report a wall figure for this occurrence, so there is no measured wall number to carry and this fixture does not invent one: observed_wall_ms is set to 100, a value that cannot trip any wall limit this repository has carried, so the CPU arm is the sole cause of the classification under test.\n\nTHIS SENTENCE HAS NOW ROTTED TWICE, WHICH IS WHY THE FIXTURE WAS CHANGED RATHER THAN THE PROSE CORRECTED A SECOND TIME. It first read comfortably inside the 10000ms wall limit; the 2026-08-27 ceiling work invalidated that, and the correction then asserted the limit had moved to 2000ms and that the fixture value exercised the wall branch. BOTH HALVES WERE FALSE ON THE DAY THEY LANDED: the wall limit was NOT 2000, it was whatever required_floor_claim_wall_safety_limit_ms held, and the fixture value EQUALLED it -- and int_gt is strict, so it never exercised the wall branch at all. THE THIRD ROT IS PRE-EMPTED HERE RATHER THAN REPAIRED LATER: this sentence carried the live figure, which is the same transcription that produced rots one and two, so the number is dropped and the constant named. A reader who needs the value reads the function. The witness stayed green throughout because the CPU figure trips the same arm on its own, so nothing measured ever changed and only the sentence was wrong. Found by review 57138.\n\nTHE STRUCTURAL DEFECT BEHIND BOTH ROTS, and it is the reason for the 100: a fixture input equal to a live constant is coupled to that constant silently. Holding the limit's own value, this fixture sat one edit away from changing its own subject -- lower the wall limit below that value and the wall arm starts firing, the classification is reached for a different reason, and every assertion here still passes. A fixture chosen to isolate one clock must carry a value for the other that cannot participate at any setting, which is what 100 buys and what any value near the limit cannot."
-
+// PREEMPTION-1 (gunbc#8584 REWORK): floor run 32301212975 recorded
+// root_d_checkpoint_scalar_declared_arity_witness_holds reaching a verdict at 60317ms CPU against
+// the then-current 5000ms required_floor_claim_cpu_safety_limit_ms, dominated by one
+// compile_dag_rust_emit_check call. THE MEASURED RECEIPT IS THE CPU FIGURE AND THE
+// VerdictReached/not-SafetyInterrupted FACT, AND NOTHING ELSE. The floor log reported no wall
+// figure for this occurrence, so this fixture invents none: observed_wall_ms is set to 100, a
+// value that cannot trip any wall limit this repository has carried, so the CPU arm is the sole
+// cause of the classification under test.
+//
+// THIS SENTENCE HAS NOW ROTTED TWICE, WHICH IS WHY THE FIXTURE WAS CHANGED RATHER THAN THE PROSE
+// CORRECTED A SECOND TIME. It first read comfortably inside the 10000ms wall limit; the 2026-08-27
+// ceiling work invalidated that, and the correction asserted the limit had moved to 2000ms and that
+// the fixture value exercised the wall branch. BOTH HALVES WERE FALSE ON THE DAY THEY LANDED: the
+// wall limit was whatever required_floor_claim_wall_safety_limit_ms held, not 2000, and the fixture
+// value EQUALLED it -- int_gt is strict, so it never exercised the wall branch. THE THIRD ROT IS
+// PRE-EMPTED HERE: this sentence carried the live figure, the same transcription that produced rots
+// one and two, so the number is dropped and the constant named; a reader who needs the value reads
+// the function. The witness stayed green throughout because the CPU figure trips the same arm on
+// its own; only the sentence was wrong. Found by review 57138.
+//
+// THE STRUCTURAL DEFECT BEHIND BOTH ROTS, and the reason for the 100: a fixture input equal to a
+// live constant is coupled to that constant silently. Holding the limit's own value, this fixture
+// sat one edit away from changing its own subject -- lower the wall limit below that value and the
+// wall arm starts firing, the classification is reached for a different reason, and every
+// assertion here still passes. A fixture chosen to isolate one clock must carry a value for the
+// other that cannot participate at any setting, which 100 buys and any value near the limit cannot.
 
 test fn w_root_d_shape_derives_completed_past_safety_limit_with_opaque_host_preemption() -> Bool {
   match claim_safety_outcome(
@@ -40,7 +64,11 @@ test fn w_root_d_shape_derives_completed_past_safety_limit_with_opaque_host_pree
   }
 }
 
-data blocking_control_note: String = "BINDING CONSTRAINT: a completed-past-limit occurrence blocks exactly as an interrupt does -- no amount of later completion converts a missed interrupt into successful enforcement. This is the discriminating half: it would pass if claim_safety_outcome_blocks silently returned false for CompletedPastSafetyLimit, so it is asserted directly rather than folded into the shape test above."
+// BINDING CONSTRAINT: a completed-past-limit occurrence blocks exactly as an interrupt does -- no
+// amount of later completion converts a missed interrupt into successful enforcement. This is the
+// discriminating half: it would pass if claim_safety_outcome_blocks silently returned false for
+// CompletedPastSafetyLimit, so it is asserted directly rather than folded into the shape test
+// above.
 
 test fn w_completed_past_safety_limit_blocks() -> Bool {
   claim_safety_outcome_blocks(
@@ -52,7 +80,11 @@ test fn w_completed_past_safety_limit_blocks() -> Bool {
   ) == true
 }
 
-data no_relabel_control_note: String = "BINDING CONSTRAINT: root_d was terminal -- it completed -- and must never be relabelled SafetyInterrupted. reached_verdict is the one fact the derivation switches on; this asserts that a claim which never reached a verdict (a genuine interrupt) is classified SafetyInterrupted and NOT CompletedPastSafetyLimit, so the two terminal-but-over-limit and non-terminal cases cannot be silently swapped by an edit to claim_safety_outcome."
+// BINDING CONSTRAINT: root_d was terminal -- it completed -- and must never be relabelled
+// SafetyInterrupted. reached_verdict is the one fact the derivation switches on; this asserts that
+// a claim which never reached a verdict (a genuine interrupt) is classified SafetyInterrupted and
+// NOT CompletedPastSafetyLimit, so the two terminal-but-over-limit and non-terminal cases cannot be
+// silently swapped by an edit to claim_safety_outcome.
 
 test fn w_genuine_interrupt_is_not_relabelled_completed() -> Bool {
   match claim_safety_outcome(
@@ -99,7 +131,10 @@ test fn w_within_limits_does_not_block() -> Bool {
   } && (claim_safety_outcome_blocks(CompletedWithinSafetyLimits) == false)
 }
 
-data migration_wall_note: String = "THE MIGRATION WALL, both arms. compile_dag_rust_emit_check is the one grandfathered opaque host operation and is admitted; a hypothetical second operation that has never been measured reaching this shape is refused; and cooperative reachability is always admitted, because it is the case the safety limits genuinely protect."
+// THE MIGRATION WALL, both arms. compile_dag_rust_emit_check is the one grandfathered opaque host
+// operation and is admitted; a hypothetical second operation never measured reaching this shape is
+// refused; cooperative reachability is always admitted, the case the safety limits genuinely
+// protect.
 
 test fn w_grandfathered_operation_is_admitted() -> Bool {
   claim_preemption_admission(OpaqueHostCallUnbounded { operation: "compile_dag_rust_emit_check" }) == true

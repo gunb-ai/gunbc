@@ -1,33 +1,28 @@
 // THE HOST REALIZATION OF `gunbc test <label>`, AND IT IS A HAND MIRROR OF A `.dag` AUTHORITY.
 //
-// The model is `gunbc.target_invocation` (the generic route and the termination vocabulary),
-// `gunbc.instrument_targets` (the live target and binding rows, and the differential's own
-// classifier and rendering) and `extdeps.bazel.label` (the label grammar this admission mirrors).
-// None of those three modules is in the v1 seed's emitted closure -- `src/gunbc_cli_dispatch_surface.rs`
-// is the only `gunbc.*` mirror the emitter produces -- so this file is written by hand beside the
-// carrier rather than derived from it, exactly as `required_regen_host.rs` mirrors
-// `v2.workflow.required_regen` by hand. That makes this seam MITIGATABLE and not structurally
-// guaranteed: the two can drift, and the thing that would stop them is the seam being emitted
-// rather than authored. The obligation is enrolled in `gunbc.target_invocation_seed_growth`.
+// The model is `gunbc.target_invocation` (generic route, termination vocabulary),
+// `gunbc.instrument_targets` (live target and binding rows, the differential's classifier and
+// rendering) and `extdeps.bazel.label` (the label grammar mirrored here). None is in the v1
+// seed's emitted closure — `src/gunbc_cli_dispatch_surface.rs` is the only `gunbc.*` mirror the
+// emitter produces — so this file is hand-written beside the carrier, as `required_regen_host.rs`
+// mirrors `v2.workflow.required_regen`. The seam is therefore MITIGATABLE, not structurally
+// guaranteed: the two can drift until the seam is emitted rather than authored. The obligation
+// is enrolled in `gunbc.target_invocation_seed_growth`.
 //
-// WHAT IS AND IS NOT GENERIC HERE. One route runs: argv operand -> admit label -> build the
-// registry -> exact lookup -> invoke the bound producer -> render that producer's native standing.
-// There is no arm per instrument on that route and none may be added; a second instrument is a row
-// in `instrument_registry` plus one `Producer` arm in `run_producer`, which is the peripheral
-// realization dispatch DESIGN section 3 keeps out of the interface. What is deliberately NOT here
-// is any consultation of `//:required` aggregate policy or of the Blaze status export: both refuse
-// instrument producers by design, and reaching for either would answer a question this verb is not
-// asking.
+// WHAT IS AND IS NOT GENERIC HERE. One route: argv operand -> admit label -> build the registry
+// -> exact lookup -> invoke the bound producer -> render its native standing. No per-instrument
+// arm on that route, and none may be added; a second instrument is a row in `instrument_registry`
+// plus one `Producer` arm in `run_producer` — the peripheral realization dispatch DESIGN section 3
+// keeps out of the interface. Deliberately NOT here: any consultation of `//:required` aggregate
+// policy or the Blaze status export — both refuse instrument producers by design.
 
 use crate::cli_run;
 
 /// The label subset `extdeps.bazel.label` admits, and its refusal vocabulary, mirrored.
 ///
 /// Every family that authority excludes is excluded here with the SAME named cause, because the
-/// causes have different remedies: a pattern means "name one target", a relative label means "make
-/// it absolute", and collapsing them into one malformed-operand message sends both to the same
-/// place. The subset is the main repository only, so there is no field in which a different
-/// repository could be written.
+/// remedies differ: a pattern means "name one target", a relative label "make it absolute". Main
+/// repository only, so no field can name another repository.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum LabelRefusal {
     RepositoryQualifiedLabel(String),
@@ -40,11 +35,9 @@ pub enum LabelRefusal {
     TargetNameContainsSlash(String),
 }
 
-/// Rendering is a FREE FUNCTION rather than an inherent method, and the placement is not style.
-/// `std.decl_ref` `DeclarationRef` can name a whole declaration or a named field and has no
-/// spelling for a method on an impl block, so an inherent method is uncitable in the seed-growth
-/// roster that must enumerate every item this file adds. A file whose obligations cannot be
-/// written down is a file whose obligations do not get discharged.
+/// Rendering is a FREE FUNCTION, not an inherent method: `std.decl_ref` `DeclarationRef` names a
+/// declaration or a named field but has no spelling for an impl method, so an inherent method
+/// would be uncitable in the seed-growth roster that must enumerate every item this file adds.
 fn label_refusal_rendered(cause: &LabelRefusal) -> String {
     {
         match cause {
@@ -80,9 +73,8 @@ pub struct Label {
     pub target: String,
 }
 
-/// The structural inverse of `parse_label`, always writing the explicit colon form. This is the
-/// registry key, and it is DERIVED on every call rather than stored beside the label, so a target
-/// cannot acquire a second identity that drifts from its first.
+/// The structural inverse of `parse_label`, always the explicit colon form. This is the registry
+/// key, DERIVED on every call rather than stored, so a target cannot acquire a second identity.
 pub fn render_label(l: &Label) -> String {
     format!("//{}:{}", l.package_segments.join("/"), l.target)
 }
@@ -105,8 +97,8 @@ fn parse_target_name(text: &str) -> Result<String, LabelRefusal> {
 
 fn parse_package_segments(package_text: &str) -> Result<Vec<String>, LabelRefusal> {
     let raw: Vec<String> = package_text.split('/').map(|s| s.to_string()).collect();
-    // A leading `/`, a trailing `/` and an embedded `//` all produce the same observable -- an
-    // empty segment -- so one arm covers three malformed shapes by construction.
+    // Leading `/`, trailing `/` and embedded `//` all yield an empty segment: one arm, three
+    // malformed shapes.
     if raw.iter().any(|s| s.is_empty()) {
         return Err(LabelRefusal::EmptyPackageSegment(package_text.to_string()));
     }
@@ -119,8 +111,7 @@ fn parse_package_segments(package_text: &str) -> Result<Vec<String>, LabelRefusa
     Ok(raw)
 }
 
-/// `//my/app/lib` IS `//my/app/lib:lib`: the shorthand is folded at parse time so no consumer
-/// downstream ever has to ask which spelling it was handed.
+/// `//my/app/lib` IS `//my/app/lib:lib`: the shorthand is folded at parse time.
 pub fn parse_label(text: &str) -> Result<Label, LabelRefusal> {
     if text.starts_with('@') {
         return Err(LabelRefusal::RepositoryQualifiedLabel(text.to_string()));
@@ -165,8 +156,7 @@ pub enum TargetProducer {
 /// `gunbc.instrument_targets` `instrument_targets` / `instrument_bindings`, as the pairs the
 /// index is built from. All four modeled instruments are rows on the same generic seam.
 /// `gunbc.instrument_targets` `heads_reading_differential_source_roots`. The subject is the
-/// instrument's own fact and not a CLI option, so an invocation cannot quietly measure a different
-/// corpus while reporting this target's standing.
+/// instrument's own fact, not a CLI option, so an invocation cannot quietly measure another corpus.
 fn heads_reading_differential_source_roots() -> Vec<String> {
     vec!["dag".to_string(), "src/v2".to_string()]
 }
@@ -202,16 +192,13 @@ fn instrument_label(target: &str) -> Label {
     }
 }
 
-/// `gunbc.target_invocation` `TargetInvocationRefusal`, MINUS ONE ARM, and the omission is
-/// deliberate rather than an oversight.
+/// `gunbc.target_invocation` `TargetInvocationRefusal`, MINUS ONE ARM, deliberately.
 ///
-/// The model keeps a known target with no bound producer apart from an unknown target, because in
-/// `gunbc.target_binding` the two populations are separate lists and a target can be registered
-/// with nothing realizing it. In THIS realization the registry is a list of PAIRS, so a registered
-/// target without a producer has no representation at all -- the state is unwritable rather than
-/// checked (DESIGN section 4b, structural impossibility), and carrying an arm nothing can
-/// construct would be a decoration that reads as coverage. If the host ever takes its two
-/// populations separately, the arm comes back with the state that makes it reachable.
+/// The model separates a known target with no bound producer from an unknown target because
+/// `gunbc.target_binding` keeps two lists. Here the registry is a list of PAIRS, so a producer-less
+/// target is unwritable (DESIGN section 4b, structural impossibility) and an unconstructible arm
+/// would be decoration read as coverage. If the host ever takes the two populations separately,
+/// the arm returns with the state that makes it reachable.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum InvocationRefusal {
     OperandNotALabel {
@@ -238,8 +225,7 @@ fn invocation_refusal_rendered(refusal: &InvocationRefusal) -> String {
 }
 
 /// `gunbc.target_invocation` `InvocationTermination`. `SubjectUnreached` is NOT
-/// `ObservationDidNotHold`: an instrument handed a root that does not exist observed nothing, and
-/// reporting that as a defect would announce a finding where no reading was taken.
+/// `ObservationDidNotHold`: a nonexistent root observed nothing, and that is not a defect finding.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Termination {
     ObservationHeld,
@@ -248,10 +234,9 @@ pub enum Termination {
     Refused,
 }
 
-/// Three statuses rather than two: 1 is an observation that did not hold, 2 is the absence of an
-/// observation, and a caller that cannot tell them apart has been handed the absorbing answer
-/// DESIGN section 5 forbids. Wildcard-free: a fifth termination must fail to compile here rather
-/// than inherit whichever status a `_` happened to name.
+/// Three statuses, not two: 1 is an observation that did not hold, 2 is no observation — conflating
+/// them is the absorbing answer DESIGN section 5 forbids. Wildcard-free: a fifth termination must
+/// fail to compile rather than inherit a `_` status.
 pub fn invocation_exit_status(t: Termination) -> i32 {
     match t {
         Termination::ObservationHeld => 0,
@@ -263,21 +248,18 @@ pub fn invocation_exit_status(t: Termination) -> i32 {
 
 /// AN OUTCOME, DELIBERATELY NOT A RECEIPT, AND THE NAME IS THE WHOLE OF WHAT IS CLAIMED.
 ///
-/// The producer executes against an UNPINNED LIVE WORKING TREE. Nothing binds the bytes it read to
-/// the answer it returned: the corpus may change while the walk is in progress, so the population
-/// reported here is not identified with any source state a later run could reconstruct. Calling
-/// this a receipt would assert exactly that binding, so it is not called one.
+/// The producer executes against an UNPINNED LIVE WORKING TREE: the corpus may change mid-walk,
+/// so the reported population is bound to no source state a later run could reconstruct. A
+/// receipt would assert that binding.
 ///
-/// NO HASH FIELD CLOSES THIS AND ONE MUST NOT BE ADDED. Hashing the tree before the run, after it,
-/// or both proves nothing -- the tree can go A -> B -> A while the producer reads a MIXED
-/// population, and both hashes agree. The requirement is that the bytes producing the manifest ARE
-/// the bytes the producer consumes, which cannot be arranged by observing one mutable namespace and
-/// executing against it afterwards. A digest field here would look like evidence and carry none,
-/// which is worse than the honest gap.
+/// NO HASH FIELD CLOSES THIS AND ONE MUST NOT BE ADDED. Hashing before, after, or both proves
+/// nothing — the tree can go A -> B -> A while the producer reads a MIXED population and both
+/// hashes agree. The bytes producing the manifest must BE the bytes the producer consumes, which
+/// observing a mutable namespace and executing afterwards cannot arrange. A digest would look
+/// like evidence and carry none.
 ///
-/// SO WHAT IS NOT CLAIMED, named rather than left for a reader to assume safe: this outcome does
-/// not support target-result caching, cross-run comparison, remote execution, replay, or the
-/// statement "this standing was about source X". Each of those needs source binding first.
+/// NOT CLAIMED: target-result caching, cross-run comparison, remote execution, replay, or "this
+/// standing was about source X". Each needs source binding first.
 pub struct InvocationOutcome {
     pub termination: Termination,
     pub message: String,
@@ -285,10 +267,9 @@ pub struct InvocationOutcome {
 
 /// The differential's own standing, rendered in its own vocabulary.
 ///
-/// It does not say PASSED or FAILED and it must not: those are the `//:required` aggregate's
-/// words, and this verb is not asking the aggregate's question. `narrowed` is reported and
-/// deliberately excluded from the verdict -- it is the declared, bounded scope narrowing, counted
-/// rather than absorbed -- so only `divergent` and `regressed` decide whether the reading held.
+/// It must not say PASSED or FAILED: those are the `//:required` aggregate's words. `narrowed` is
+/// reported but excluded from the verdict — declared, bounded scope narrowing, counted rather
+/// than absorbed — so only `divergent` and `regressed` decide whether the reading held.
 fn run_heads_reading_differential(source_roots: &[String]) -> InvocationOutcome {
     let missing: Vec<&String> = source_roots
         .iter()
@@ -331,17 +312,14 @@ fn run_heads_reading_differential(source_roots: &[String]) -> InvocationOutcome 
     // THE PARSE-WALL FIGURES ARE CARRIED OVER FROM THE DELETED `--heads-reading-differential`
     // MODE, AND THEY ARE HOST OUTPUT RATHER THAN PART OF THE MODELED OBSERVATION.
     //
-    // `HeadsReadingDifferentialObservation` carries the four populations and no timing, so these
-    // two numbers have no home in the standing. They are printed rather than dropped because the
-    // route they came from is being deleted in this same change and a replacement that silently
-    // loses a capability is not a replacement. They are printed BELOW the populations and take no
-    // part in the verdict, which is the split `gunbc.build_target` already states: cost has its own
-    // authority and folding it into a correctness answer gives the cost axis a second home. Their
-    // next rung is a cost carrier on the observation; until one exists, this is an unmodeled host
-    // line and is named as such rather than left to look like modeled output.
+    // `HeadsReadingDifferentialObservation` carries four populations and no timing, so these two
+    // numbers have no home in the standing. Printed rather than dropped because a replacement that
+    // silently loses a capability is not a replacement; printed BELOW the populations and outside
+    // the verdict, per the split `gunbc.build_target` states: cost has its own authority. Next rung
+    // is a cost carrier on the observation; until then this is a named unmodeled host line.
     //
-    // It measures the PARSE only -- tokenize, newline indexing and per-file setup sit outside both
-    // timers -- so it is not the whole `pool_parse` saving and must never be quoted as one.
+    // It measures the PARSE only — tokenize, newline indexing and per-file setup sit outside both
+    // timers — so it is not the whole `pool_parse` saving and must never be quoted as one.
     message.push_str(&format!(
         "\nheads-reading-differential: full_reading_parse_ms={} heads_reading_parse_ms={}",
         d.full_reading_nanos / 1_000_000,
@@ -358,8 +336,7 @@ fn run_heads_reading_differential(source_roots: &[String]) -> InvocationOutcome 
 }
 
 /// THE REALIZATION DISPATCH, AND IT IS THE ONLY PLACE A PRODUCER IS NAMED. Selecting a realization
-/// is itself realization (DESIGN section 3), so it sits here, at the periphery, and never in the
-/// route above or in the CLI surface.
+/// is itself realization (DESIGN section 3): periphery, never the route above or the CLI surface.
 fn run_producer(producer: TargetProducer) -> InvocationOutcome {
     match producer {
         TargetProducer::HeadsReadingDifferential => {
@@ -398,10 +375,8 @@ fn behavioral_outcome(
 
 /// THE ONE SEAM: argv operand -> label -> registry -> exact binding -> producer -> native standing.
 ///
-/// The lookup is by the label's own rendering, which is `label_eq` evaluated once per row rather
-/// than a first-match scan over a hand-written comparison, and it is EXACT -- there is no prefix
-/// match, no suffix match and no "did you mean", because a near miss silently running a different
-/// target is worse than a refusal naming the one that was asked for.
+/// Lookup is `label_eq` once per row, and EXACT — no prefix, suffix or "did you mean": a near miss
+/// silently running a different target is worse than a refusal naming the one asked for.
 pub fn test_verb(operand: &str) -> InvocationOutcome {
     let label = match parse_label(operand) {
         Ok(l) => l,

@@ -103,7 +103,10 @@ type PipelineResult {
   newline_indices: List<NewlineIndex>
 }
 
-data frontend_result_authored_note: String = "The authored source annotation graph rides beside the semantic result rather than inside it. Every existing consumer reads the fields it already read and is unaffected; annotation-aware machinery reads the graph. Refusals are carried too, because a graph without them cannot distinguish prose that was never written from prose that was dropped."
+// The authored source annotation graph rides beside the semantic result rather than inside it.
+// Every existing consumer reads the fields it already read and is unaffected; annotation-aware
+// machinery reads the graph. Refusals are carried too, because a graph without them cannot
+// distinguish prose that was never written from prose that was dropped.
 
 type FrontendResult {
   graph: ModuleGraph?
@@ -201,7 +204,11 @@ type CompilePipelineOptions {
   census_only_sources: List<SourceFile>
 }
 
-data census_only_sources_note: String = "Sources included in the NAME CENSUS but not compiled (fill = whole tree; policy gates lookup, never fill — namespace-resolution-design.md 7.5). Qualified references to modules outside the compile closure resolve against these; compiling them here instead would subject them to this invocation's pool-precedence tree view, where cross-tree bare names break (measured: 344 diagnostics, the Empty/Cons poisoning class)."
+// Sources included in the NAME CENSUS but not compiled (fill = whole tree; policy gates lookup,
+// never fill — namespace-resolution-design.md 7.5). Qualified references to modules outside the
+// compile closure resolve against these; compiling them here instead would subject them to this
+// invocation's pool-precedence tree view, where cross-tree bare names break (measured: 344
+// diagnostics, the Empty/Cons poisoning class).
 
 fn default_compile_pipeline_options() -> CompilePipelineOptions {
   CompilePipelineOptions { analyze_complexity: false, census_only_sources: [] }
@@ -250,7 +257,6 @@ fn json_optional_string(value: String?) -> String {
     Absent => "null"
   }
 }
-
 
 fn dag_node_missing_ref_error(node: Node) -> ErrorNode {
   make_error_node(
@@ -1103,7 +1109,11 @@ type CensusFillParse {
   annotations: SourceAnnotationGraph
 }
 
-data parse_census_fill_note: String = "Parse-grade front end for census-only fill: tokenize + parse, NEVER resolve (a fill module's imports live in the compile closure or a different tree view; resolving against a fill-only pool fabricates unresolved-import diagnostics about the view, not the modules). Diagnostics are parse errors only — those are load-bearing (a broken-parse module contributes no names to the census) and must surface, never be skipped."
+// Parse-grade front end for census-only fill: tokenize + parse, NEVER resolve (a fill module's
+// imports live in the compile closure or a different tree view; resolving against a fill-only pool
+// fabricates unresolved-import diagnostics about the view, not the modules). Diagnostics are parse
+// errors only — those are load-bearing (a broken-parse module contributes no names to the census)
+// and must surface, never be skipped.
 
 fn parse_census_fill_sources(sources: List<SourceFile>) -> CensusFillParse {
   let prepared = sources |> map(s =>

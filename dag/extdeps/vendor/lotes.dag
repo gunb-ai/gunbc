@@ -24,7 +24,9 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   }
 }
 
-data lotes_registrant_note: String = "Lotes Co., Ltd is cited from its corporate site as a manufacturer of sockets, connectors and loading mechanisms. This module owns only the company entity. The LGA4926 attachment part numbers attributed to it, and the strength of that attribution, live in extdeps.cpu_attachment.ilm4926."
+// Lotes Co., Ltd is cited from its corporate site as a manufacturer of sockets, connectors and
+// loading mechanisms. This module owns only the company entity. The LGA4926 attachment part numbers
+// attributed to it, and the strength of that attribution, live in extdeps.cpu_attachment.ilm4926.
 
 data lotes: Vendor<Hardware> = Vendor { legal_name: "Lotes Co., Ltd" }
 

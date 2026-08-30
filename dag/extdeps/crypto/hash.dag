@@ -50,7 +50,14 @@ fn digest_shell_verify_line(digest: Digest, file_path: NonEmptyStr) -> String {
   }
 }
 
-data sha256_digest_content_hash_convergence_note: String = "THE BRIDGE from extdeps.crypto.hash.Digest to std.content_hash.ContentHash for artifact pins — NOT a merge with std.content_hash's fnv1a64 structural fingerprint (dag/std/content_hash.dag, dag/extdeps/provisioning/ubuntu_install_media_fetch.dag install_media_fetch_hash_convergence_note). Digest is a cited cryptographic SHA-256 authority value; ContentHash is the family-grounded coproduct carrier (Sha256Hash arm for this bridge). sha256_digest_content_hash validates hex via sha256_hex_digest then mints through as_content_hash_cryptographic — construction-walled, refuses invalid hex. Wire serialization (sha256:<hex>) is std.content_hash.serialize_content_hash, not a second rendering rule here."
+// THE BRIDGE from extdeps.crypto.hash.Digest to std.content_hash.ContentHash for artifact pins —
+// NOT a merge with std.content_hash's fnv1a64 structural fingerprint (dag/std/content_hash.dag,
+// dag/extdeps/provisioning/ubuntu_install_media_fetch.dag
+// install_media_fetch_hash_convergence_note). Digest is a cited cryptographic SHA-256 authority
+// value; ContentHash is the family-grounded coproduct carrier (Sha256Hash arm for this bridge).
+// sha256_digest_content_hash validates hex via sha256_hex_digest then mints through
+// as_content_hash_cryptographic — construction-walled, refuses invalid hex. Wire serialization
+// (sha256:<hex>) is std.content_hash.serialize_content_hash, not a second rendering rule here.
 
 fn sha256_digest_content_hash(digest: Digest) -> ContentHash? {
   match digest.algorithm {

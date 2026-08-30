@@ -51,7 +51,9 @@ type EmissionQualification
   | BehavioralEquivalent
   | ProductionRouted
 
-data emission_qualification_eq_note: String = "Canonical equality surface for EmissionQualification (reviews 44328/44481 predicate-dissolution): one total match over the substrate coproduct — membership and list-equality queries consume emission_qualification_eq, not hand-rolled has_* predicates."
+// Canonical equality surface for EmissionQualification (reviews 44328/44481 predicate-dissolution):
+// one total match over the substrate coproduct — membership and list-equality queries consume
+// emission_qualification_eq, not hand-rolled has_* predicates.
 
 fn emission_qualification_eq(
   left: EmissionQualification,
@@ -107,7 +109,18 @@ type RealizedEmitterClosure {
   emitter_module_paths: List<String>
 }
 
-data behavioral_probe_binding_note: String = "A behavioral probe is a witness that COMPILES the emitted Rust, RUNS it, and COMPARES behavior against the seed. Carrying it as a bare pair of strings made every receipt claim one existed, because there is no unbound spelling of a String pair: an author with no such witness has to write something, and whatever is written becomes the subject that ProducerEmissionExecutedGreenReceipt matching and the BehavioralEquivalent advance later consume. That is the fabricated-plausible-output failure (DESIGN section 5) at the receipt's own self-description. BehavioralProbeUnbound is therefore a real state, not a null: a receipt that has produced source and nothing more says so, and binding becomes meaningful only where an actual compile/run/compare seam exists. The direct Rust door is exactly that case — it observes ingest through emission and stops, so it binds nothing. Dissolve-on: the ProducerEmissionOracleRow and ProducerEmissionExecutedGreenReceipt pairs migrate onto this carrier too, at which point the executed-verdict match keys on a binding rather than on two strings that may name no witness."
+// A behavioral probe is a witness that COMPILES the emitted Rust, RUNS it, and COMPARES behavior
+// against the seed. Carrying it as a bare pair of strings made every receipt claim one existed,
+// because there is no unbound spelling of a String pair: an author with no such witness has to
+// write something, and whatever is written becomes the subject that
+// ProducerEmissionExecutedGreenReceipt matching and the BehavioralEquivalent advance later consume.
+// That is the fabricated-plausible-output failure (DESIGN section 5) at the receipt's own
+// self-description. BehavioralProbeUnbound is therefore a real state, not a null: a receipt that
+// has produced source and nothing more says so, and binding becomes meaningful only where an actual
+// compile/run/compare seam exists. The direct Rust door is exactly that case — it observes ingest
+// through emission and stops, so it binds nothing. Dissolve-on: the ProducerEmissionOracleRow and
+// ProducerEmissionExecutedGreenReceipt pairs migrate onto this carrier too, at which point the
+// executed-verdict match keys on a binding rather than on two strings that may name no witness.
 
 type BehavioralProbeBinding
   = BehavioralProbeUnbound
@@ -139,12 +152,14 @@ type ProducerEmissionReceipt {
   realized_closure: RealizedEmitterClosure
 }
 
-
 data v1_seed_emit_rust_qualified_module: String = "v1.compiler.emit_rust"
 
 data v2_emit_interpreted_qualified_module: String = "v2.compiler.emit"
 
-data cssl_harness_realized_closure_note: String = "Structural authority for the cssl seed-linked behavioral harness (tools.self_host_curated_seed_linked_harness): gunbc compile routes through v1.compile -> v1.compiler.emit_rust. Any receipt minted from this closure MUST be V1SeedEmitter — V2Emitter* is unwritable by construction."
+// Structural authority for the cssl seed-linked behavioral harness
+// (tools.self_host_curated_seed_linked_harness): gunbc compile routes through v1.compile ->
+// v1.compiler.emit_rust. Any receipt minted from this closure MUST be V1SeedEmitter — V2Emitter* is
+// unwritable by construction.
 
 data cssl_harness_realized_closure: RealizedEmitterClosure = RealizedEmitterClosure {
   emitter_module_paths: [
@@ -153,7 +168,10 @@ data cssl_harness_realized_closure: RealizedEmitterClosure = RealizedEmitterClos
   ]
 }
 
-data v2_interpreted_emitter_closure_note: String = "V2EmitterInterpreted closure for Lane B direct rust door: v2.compiler.emit (serialize_target composed with translate) plus v2.compiler.self_host.candidate_generation (mint_provenanced_rust_artifact entry), without v1.compiler.emit_rust. Landed as first customer in session bright-bear-372."
+// V2EmitterInterpreted closure for Lane B direct rust door: v2.compiler.emit (serialize_target
+// composed with translate) plus v2.compiler.self_host.candidate_generation
+// (mint_provenanced_rust_artifact entry), without v1.compiler.emit_rust. Landed as first customer
+// in session bright-bear-372.
 
 data v2_interpreted_emitter_closure: RealizedEmitterClosure = RealizedEmitterClosure {
   emitter_module_paths: [
@@ -205,7 +223,10 @@ type EmitterProducerMintAdmission
   = ProducerMintAdmitted
   | ProducerMintRefused { cause: Symbol }
 
-data emitter_producer_mint_admission_note: String = "🟢 Canonical admission fold over EmitterProducer (review 44579 predicate-dissolution): emitter_producer_mint_admission is the ONLY total match classifying producer×realized_closure admissibility — mint_producer_emission_receipt consumes this surface; no parallel hand-rolled Bool admissibility predicates."
+// 🟢 Canonical admission fold over EmitterProducer (review 44579 predicate-dissolution):
+// emitter_producer_mint_admission is the ONLY total match classifying producer×realized_closure
+// admissibility — mint_producer_emission_receipt consumes this surface; no parallel hand-rolled
+// Bool admissibility predicates.
 
 fn emitter_producer_mint_admission(
   producer: EmitterProducer,
@@ -240,7 +261,20 @@ data behavioral_equivalent_with_cargo_qualifications: List<EmissionQualification
   BehavioralEquivalent
 ]
 
-data behavioral_probe_qualification_admission_note: String = "THE ONE authority relating a probe binding to a qualification population, consumed by BOTH mint and the behavioral advance so neither can drift from the other. Without it, BehavioralProbeUnbound only DESCRIBED the absence of behavioral evidence while the strongest behavioral qualification stayed writable beside it: the advance predicate read build result and qualifications and never looked at the probe, and mint reconciled the producer against its closure but not the qualifications against the probe. A carrier that records a fact the consequential constructor does not consume is the recurring failure this whole lane exists to remove — the fact is present locally and the wall is absent. The relation: BehavioralEquivalent REQUIRES a bound probe, because that qualification asserts a run happened and a bound probe is the only thing that names what ran. SourceProduced and CargoGreen stay legal beside an unbound probe, because producing source and compiling it are exactly the states that precede behavioral evidence — walling those would make the ordinary pre-behavior receipt unwritable. This makes the newly introduced Unbound state non-promotable; it does NOT claim the Boolean advance argument is itself executed evidence, which remains the separate executed-verdict obligation."
+// THE ONE authority relating a probe binding to a qualification population, consumed by BOTH mint
+// and the behavioral advance so neither can drift from the other. Without it,
+// BehavioralProbeUnbound only DESCRIBED the absence of behavioral evidence while the strongest
+// behavioral qualification stayed writable beside it: the advance predicate read build result and
+// qualifications and never looked at the probe, and mint reconciled the producer against its
+// closure but not the qualifications against the probe. A carrier that records a fact the
+// consequential constructor does not consume is the recurring failure this whole lane exists to
+// remove — the fact is present locally and the wall is absent. The relation: BehavioralEquivalent
+// REQUIRES a bound probe, because that qualification asserts a run happened and a bound probe is
+// the only thing that names what ran. SourceProduced and CargoGreen stay legal beside an unbound
+// probe, because producing source and compiling it are exactly the states that precede behavioral
+// evidence — walling those would make the ordinary pre-behavior receipt unwritable. This makes the
+// newly introduced Unbound state non-promotable; it does NOT claim the Boolean advance argument is
+// itself executed evidence, which remains the separate executed-verdict obligation.
 
 data behavioral_equivalent_without_bound_probe: String = "BehavioralEquivalent refused: the receipt carries BehavioralProbeUnbound, so no witness names the compile/run/compare that qualification asserts"
 
@@ -390,7 +424,6 @@ fn mint_producer_emission_receipt(
   }
   }
 }
-
 
 fn emitter_producer_eq(left: EmitterProducer, right: EmitterProducer) -> Bool {
   match left {

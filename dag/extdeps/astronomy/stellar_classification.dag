@@ -11,7 +11,13 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   }
 }
 
-data stellar_classification_note: String = "Cited upstream: Wikipedia, Stellar classification (the Morgan-Keenan / Harvard system), retrieved 2026-07-21. This module models what the source's main-sequence table actually says — class letters O B A F G K M hottest to coolest, effective temperature ranges in kelvin, BOTH chromaticity columns (Vega-relative and D65-calibrated, verbatim strings), hydrogen-line strength, and the main-sequence share column (kept as source-verbatim text; a typed magnitude lands when a consumer needs arithmetic on it). Perceptual rendering of these rows into any palette is a downstream projection (gunbc.site.starlight), never a fact of this module."
+// Cited upstream: Wikipedia, Stellar classification (the Morgan-Keenan / Harvard system), retrieved
+// 2026-07-21. This module models what the source's main-sequence table actually says — class
+// letters O B A F G K M hottest to coolest, effective temperature ranges in kelvin, BOTH
+// chromaticity columns (Vega-relative and D65-calibrated, verbatim strings), hydrogen-line
+// strength, and the main-sequence share column (kept as source-verbatim text; a typed magnitude
+// lands when a consumer needs arithmetic on it). Perceptual rendering of these rows into any
+// palette is a downstream projection (gunbc.site.starlight), never a fact of this module.
 
 data stellar_color_perception_quote: String = "Excluding colour-contrast effects in dim light, in typical viewing conditions there are no green, cyan, indigo, or violet stars. 'Yellow' dwarfs such as the Sun are white, 'red' dwarfs are a deep shade of yellow/orange. (Source, section: Conventional and apparent colours.)"
 

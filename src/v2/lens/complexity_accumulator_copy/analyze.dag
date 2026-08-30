@@ -1,6 +1,5 @@
 module v2.lens.complexity_accumulator_copy.analyze
 
-
 fn named_child_optional(cap: Node, name: Symbol) -> Optional<Node> {
   match v2.std.node_query.find_named_child(root: cap, name: name) {
     Accepted { value: c, diagnostics: _ } => Present { value: c }
@@ -275,7 +274,13 @@ fn let_resolution(
   }
 }
 
-data mentions_depth_note: String = "v2.lens.complexity_accumulator_copy.BindsComputed stores the RHS's RAW mentions (depth-1 closure): a computed let whose RHS names a carrier directly is caught at its unregistered use, but a chain through a SECOND computed let (b mentions a, a mentions the carrier) is not - bind-time substitution was priced and rejected here because every fold-literal splice it needs is itself an unregistered-carrier call site, trading one silent hole for four counted refusals. The chain case is a declared residue; it dissolves in Stage B, where callee/definition facts prove the substitution without accumulator threading."
+// v2.lens.complexity_accumulator_copy.BindsComputed stores the RHS's RAW mentions (depth-1
+// closure): a computed let whose RHS names a carrier directly is caught at its unregistered use,
+// but a chain through a SECOND computed let (b mentions a, a mentions the carrier) is not -
+// bind-time substitution was priced and rejected here because every fold-literal splice it needs is
+// itself an unregistered-carrier call site, trading one silent hole for four counted refusals. The
+// chain case is a declared residue; it dissolves in Stage B, where callee/definition facts prove
+// the substitution without accumulator threading.
 
 fn analyze_children(
   n: Node,
@@ -458,7 +463,11 @@ fn analyze_postfix_projection_call(
   }
 }
 
-data lowered_substrate_call_note: String = "Stage B cross-decl: normalize lowers fn bodies to ComputationNode substrate (Loop for fold-family, Transform for calls/projections). The surface primary_expr walk is blind to lowered trees — these arms re-establish fold iteration and call classification on the producer output (projection-call residue dissolved; repairs post-#6840 accumulator-copy regressions on ingested fold bodies)."
+// Stage B cross-decl: normalize lowers fn bodies to ComputationNode substrate (Loop for
+// fold-family, Transform for calls/projections). The surface primary_expr walk is blind to lowered
+// trees — these arms re-establish fold iteration and call classification on the producer output
+// (projection-call residue dissolved; repairs post-#6840 accumulator-copy regressions on ingested
+// fold bodies).
 
 type LoweredTransformPortAcc {
   saw_operator: Bool

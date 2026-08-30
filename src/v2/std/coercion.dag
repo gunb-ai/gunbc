@@ -132,7 +132,15 @@ fn coercion_candidate_set_from_declared_inhabitants(
     )
   }
 }
-data identity_coercion_grounding_ruling: String = "Identity admission and semantic coercion are distinct judgments. coercion_identity_from_target_model accepts the TargetModel itself — never a caller-supplied CoercionCandidateSet — and reads its unique target_model_edge_declared_inhabitants and target_model_edge_selection_policy children inside this authority. Exact selection from that authored roster grounds CoercionQuality.Identity without claiming a resolved type for source. A candidate roster derived from source cannot enter this API; generic candidate sets remain available only to the semantic coercion path whose source is a compiler-derived CanonicalGrounding. This is the API-level wall between target-model membership and self-certification."
+// Identity admission and semantic coercion are distinct judgments.
+// coercion_identity_from_target_model accepts the TargetModel itself — never a caller-supplied
+// CoercionCandidateSet — and reads its unique target_model_edge_declared_inhabitants and
+// target_model_edge_selection_policy children inside this authority. Exact selection from that
+// authored roster grounds CoercionQuality.Identity without claiming a resolved type for source. A
+// candidate roster derived from source cannot enter this API; generic candidate sets remain
+// available only to the semantic coercion path whose source is a compiler-derived
+// CanonicalGrounding. This is the API-level wall between target-model membership and
+// self-certification.
 
 fn coercion_homomorphism_evidence_for_node(
   source: Node,

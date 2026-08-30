@@ -13,7 +13,26 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   }
 }
 
-data posix_rusage_subject_note: String = "getrusage(2) AS THE PORTABLE RESOURCE-USAGE INTERFACE, modeled because the repository was reading a Linux-only file for a fact POSIX already exposes everywhere. Peak resident set size was taken from /proc/self/status VmHWM, which exists on exactly one kernel family; getrusage with RUSAGE_SELF returns the same quantity in ru_maxrss on every conforming implementation, and the corpus's own v1 seed already depends on libc, so the portable call needs no new dependency.\n\nTHE SECTION 3 POINT THIS CORRECTS, because it is the general lesson rather than a macOS detail: reading VmHWM through procfs is a TRANSPORT, one of N, not a fact about the observation. Treating the transport's platform limits as the observation's limits is how 'peak RSS is unavailable on macOS' came to be believed — it is not, it was simply never asked for the portable way. The right shape is not two transports selected by platform either; it is ONE portable call, with the platform divergence pushed down to the single axis where it genuinely exists.\n\nTHAT AXIS IS THE UNIT, and it is a specification-level fact rather than an implementation quirk: POSIX defines ru_maxrss's meaning and DOES NOT SPECIFY ITS UNIT. Implementations therefore differ legitimately and permanently — no future release reconciles them — which is why RusageMaxrssUnit is modeled here as an open question this module refuses to answer, and answered instead by extdeps.linux.rusage and extdeps.darwin.rusage each speaking for their own implementation. A conversion that assumed either unit would be wrong on half the fleet by a factor of 1024, silently, in the direction that looks plausible."
+// getrusage(2) AS THE PORTABLE RESOURCE-USAGE INTERFACE, modeled because the repository was reading
+// a Linux-only file for a fact POSIX already exposes everywhere. Peak resident set size was taken
+// from /proc/self/status VmHWM, which exists on exactly one kernel family; getrusage with
+// RUSAGE_SELF returns the same quantity in ru_maxrss on every conforming implementation, and the
+// corpus's own v1 seed already depends on libc, so the portable call needs no new dependency.
+//
+// THE SECTION 3 POINT THIS CORRECTS, because it is the general lesson rather than a macOS detail:
+// reading VmHWM through procfs is a TRANSPORT, one of N, not a fact about the observation. Treating
+// the transport's platform limits as the observation's limits is how 'peak RSS is unavailable on
+// macOS' came to be believed — it is not, it was simply never asked for the portable way. The right
+// shape is not two transports selected by platform either; it is ONE portable call, with the
+// platform divergence pushed down to the single axis where it genuinely exists.
+//
+// THAT AXIS IS THE UNIT, and it is a specification-level fact rather than an implementation quirk:
+// POSIX defines ru_maxrss's meaning and DOES NOT SPECIFY ITS UNIT. Implementations therefore differ
+// legitimately and permanently — no future release reconciles them — which is why RusageMaxrssUnit
+// is modeled here as an open question this module refuses to answer, and answered instead by
+// extdeps.linux.rusage and extdeps.darwin.rusage each speaking for their own implementation. A
+// conversion that assumed either unit would be wrong on half the fleet by a factor of 1024,
+// silently, in the direction that looks plausible.
 
 type RusageWho
   = RusageSelf
