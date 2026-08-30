@@ -47,6 +47,17 @@ type PrimarySemanticAuthority
 // check DESIGN section 5 says to prefer construction over, and one satisfiable by editing the
 // declaration while the realization still lies. With two disjoint types the invalid state has no
 // constructor: BehaviorSubject.authority admits no value of this type at all.
+//
+// THE CEILING OF THAT DISJOINTNESS CLAIM, STATED RATHER THAN CLAIMED GREEN: the wall is DESIGN
+// section 4b rung 4 (structurally impossible), and its discriminating RED is a source fixture the
+// compiler must REFUSE -- not a Bool a witness can return, since a total function answering true on
+// every arm of PrimarySemanticAuthority would be permanently green by construction, carrying no
+// information and worse than absent because it would be cited as coverage. So no such witness is
+// written in this lane. NEXT-RUNG TRIGGER, naming the capability rather than an artifact: a
+// compiler-refusal fixture harness sufficient to hand arbitrary .dag source containing
+// BehaviorSubject { authority: LegacyV1Observation { .. } } to the acceptance path and assert a
+// located typed refusal. When that capability lands, this annotation's claim gains its executing
+// fixture and that fixture enrolls as the permanent regression control.
 type SupplementaryObservation
   = V2EvaluatorObservation { observed: NonEmptyStr }
   | LegacyV1Observation { observed: NonEmptyStr }
@@ -679,15 +690,3 @@ fn admit_conformance(
       }
   }
 }
-
-// THE CEILING OF THE DISJOINTNESS CLAIM, STATED RATHER THAN CLAIMED GREEN. The wall that a
-// SupplementaryObservation cannot inhabit BehaviorSubject.authority is structural: the invalid state
-// has no constructor, which is DESIGN section 4b rung 4. Its RED is therefore a source fixture the
-// compiler must REFUSE, not a Bool a witness can return -- and a total function over
-// PrimarySemanticAuthority returning true on all five arms would be permanently green by
-// construction, carrying no information and worse than absent because it would be cited as coverage.
-// So no such witness is written here. The next-rung trigger is a refusal fixture harness able to
-// hand this module's declarations to the compiler as source and assert the located refusal; until
-// that harness exists the claim is established by inspection of the two type declarations above and
-// by the absence of any conversion between them in this module.
-data supplementary_disjointness_ceiling_note: String = "The disjointness of PrimarySemanticAuthority and SupplementaryObservation is rung 4 (structurally impossible) for the class 'an observation of a second implementation is used as the expected value'. It is NOT witnessed by an executing Bool in this lane, deliberately: the discriminating RED is a source fixture the compiler must refuse, and a witness asserting a property no authorable input can violate would be a decoration. NEXT-RUNG TRIGGER, naming the capability rather than an artifact: a compiler-refusal fixture harness sufficient to hand arbitrary .dag source containing BehaviorSubject { authority: LegacyV1Observation { .. } } to the acceptance path and assert a located typed refusal. When that capability lands, this note dissolves and the fixture is enrolled as the permanent regression control."
