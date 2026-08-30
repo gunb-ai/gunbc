@@ -1,0 +1,275 @@
+module gunbc.self_host_compile_phase_frontier
+
+import std.types { Bool, Int, String, NonEmptyStr }
+import std.content_hash { content_hash_atom, Fnv1a64Structural }
+import extdeps.git.inspect { CommitSha }
+import extdeps.cargo_diagnostic {
+  RustcCodedDiagnostic,
+  RustcDiagnosticIdentity,
+  RustcCoded,
+  RustcUncoded,
+  rustc_diagnostic_row
+}
+import extdeps.languages.rust.compiler_phases {
+  RustcPhase,
+  Parse,
+  Expand,
+  Resolve,
+  Typeck,
+  Borrowck,
+  rustc_phase_order,
+  rustc_phase_name,
+  RustcErrorCodePhase,
+  ErrorCodePlaced,
+  ErrorCodeUnplaced,
+  rustc_error_code_phase
+}
+import tools.emission_entry_instrument {
+  EmissionMeasurement,
+  EmissionMeasured,
+  measure_entry_emission
+}
+
+// This is the derived successor to the deleted prose/script board, not a second census. The sole
+// population input is EmissionMeasured.cargo_diagnostics from measure_entry_emission: that entry
+// point emits one closure, assembles it, and invokes Cargo's JSON diagnostic stream once. This
+// module only classifies and folds those exact identities.
+type PhaseCountEvidence
+  = Observed
+  | DerivedFromRustcErrorIndex
+
+type PhaseCountStanding
+  = PhaseCount { count: Int, evidence: PhaseCountEvidence }
+  | PhaseNotYetReached
+
+type RustcPhaseBoardRow {
+  phase: RustcPhase
+  standing: PhaseCountStanding
+  identities: List<String>
+}
+
+type RustcPhaseBoard {
+  rows: List<RustcPhaseBoardRow>
+  furthest_phase_reached: RustcPhase
+  furthest_phase_evidence: PhaseCountEvidence
+  census_identity_digest: Fnv1a64Structural
+}
+
+type RustcPhaseBoardRead
+  = PhaseBoardDerived { board: RustcPhaseBoard }
+  | PhaseBoardUnplacedDiagnostics { identities: List<String> }
+  | PhaseBoardMeasurementUnreached
+
+fn diagnostic_phase(d: RustcCodedDiagnostic) -> RustcErrorCodePhase {
+  match d.identity {
+    RustcCoded { code: c } => rustc_error_code_phase(code: c)
+    RustcUncoded => ErrorCodeUnplaced { code: "uncoded", index: extdeps.languages.rust.compiler_phases.rustc_error_index_authority }
+  }
+}
+
+fn diagnostic_is_phase(d: RustcCodedDiagnostic, phase: RustcPhase) -> Bool {
+  match diagnostic_phase(d: d) {
+    ErrorCodePlaced { phase: p, authority: _ } => rustc_phase_order(phase: p) == rustc_phase_order(phase: phase)
+    ErrorCodeUnplaced { code: _, index: _ } => false
+  }
+}
+
+fn phase_identities(ds: List<RustcCodedDiagnostic>, phase: RustcPhase) -> List<String> {
+  ds |> filter(d => diagnostic_is_phase(d: d, phase: phase)) |> map(d => rustc_diagnostic_row(d: d)) |> dedup()
+}
+
+fn unplaced_identities(ds: List<RustcCodedDiagnostic>) -> List<String> {
+  ds |> filter(d => match diagnostic_phase(d: d) {
+    ErrorCodePlaced { phase: _, authority: _ } => false
+    ErrorCodeUnplaced { code: _, index: _ } => true
+  }) |> map(d => rustc_diagnostic_row(d: d)) |> dedup()
+}
+
+fn phase_row(ds: List<RustcCodedDiagnostic>, phase: RustcPhase, reached: Bool) -> RustcPhaseBoardRow {
+  let identities = phase_identities(ds: ds, phase: phase)
+  RustcPhaseBoardRow {
+    phase: phase,
+    standing: if reached {
+      PhaseCount { count: count(identities), evidence: DerivedFromRustcErrorIndex }
+    } else {
+      PhaseNotYetReached
+    },
+    identities: if reached { identities } else { [] }
+  }
+}
+
+fn first_failing_checked_phase(ds: List<RustcCodedDiagnostic>) -> RustcPhase {
+  if count(phase_identities(ds: ds, phase: Resolve)) > 0 { Resolve }
+  else if count(phase_identities(ds: ds, phase: Typeck)) > 0 { Typeck }
+  else { Borrowck }
+}
+
+fn cargo_phase_board(parse_errors: Int, ds: List<RustcCodedDiagnostic>) -> RustcPhaseBoardRead {
+  let unplaced = unplaced_identities(ds: ds)
+  if count(unplaced) > 0 {
+    PhaseBoardUnplacedDiagnostics { identities: unplaced }
+  } else {
+    let furthest = if parse_errors > 0 { Parse } else { first_failing_checked_phase(ds: ds) }
+    let furthest_order = rustc_phase_order(phase: furthest)
+    let all_identities = concat([concat("parse-errors:", to_string(parse_errors))], ds |> map(d => rustc_diagnostic_row(d: d)) |> dedup())
+    PhaseBoardDerived {
+      board: RustcPhaseBoard {
+        rows: [
+          RustcPhaseBoardRow {
+            phase: Parse,
+            standing: PhaseCount { count: parse_errors, evidence: Observed },
+            identities: if parse_errors > 0 { [concat("rustfmt-parse-errors:", to_string(parse_errors))] } else { [] }
+          },
+          phase_row(ds: ds, phase: Expand, reached: furthest_order >= rustc_phase_order(phase: Expand)),
+          phase_row(ds: ds, phase: Resolve, reached: furthest_order >= rustc_phase_order(phase: Resolve)),
+          phase_row(ds: ds, phase: Typeck, reached: furthest_order >= rustc_phase_order(phase: Typeck)),
+          phase_row(ds: ds, phase: Borrowck, reached: furthest_order >= rustc_phase_order(phase: Borrowck))
+        ],
+        furthest_phase_reached: furthest,
+        furthest_phase_evidence: Observed,
+        census_identity_digest: content_hash_atom(value: (all_identities |> join(separator: "\n")) as NonEmptyStr)
+      }
+    }
+  }
+}
+
+// parse_errors is the directly observed rustfmt parse-error count from the same emitted workspace.
+// The runner supplies it rather than deriving it from rustc codes: rustc issues uncoded parse
+// diagnostics, while rustfmt's success/refusal is the stable parse oracle.
+fn self_host_emission_board(entry: String, parse_errors: Int) -> RustcPhaseBoardRead {
+  match measure_entry_emission(entry: entry) {
+    EmissionMeasured {
+      subject: _,
+      emitted_files: _,
+      emit_diagnostics: _,
+      cargo_clean: _,
+      cargo_diagnostics: ds,
+      cargo_lines_scanned: _
+    } => cargo_phase_board(parse_errors: parse_errors, ds: ds)
+    measurement => PhaseBoardMeasurementUnreached
+  }
+}
+
+type PhaseBoardProducer {
+  module_path: String
+  function: String
+  entry: String
+}
+
+type PhaseBoardSeriesPosition
+  = PhaseBoardBaseline
+  | PhaseBoardSuccessor { predecessor_invocation: NonEmptyStr }
+
+type SelfHostEmissionBoardReceipt {
+  source_revision: CommitSha
+  invocation: NonEmptyStr
+  position: PhaseBoardSeriesPosition
+  board: RustcPhaseBoard
+  producer: PhaseBoardProducer
+}
+
+type PhaseRatchetVerdict
+  = PhaseRatchetHeld
+  | PhaseRatchetRefused { phase: RustcPhase, identities: List<String>, reason: NonEmptyStr }
+
+type PhaseBoardSeriesVerdict
+  = PhaseBoardSeriesHeld
+  | PhaseBoardSeriesEmptyBaselinePermitted
+  | PhaseBoardSeriesRefused { invocation: String, reason: NonEmptyStr }
+
+type PhaseBoardSeriesFold
+  = SeriesFoldEmpty
+  | SeriesFoldHeld { previous: SelfHostEmissionBoardReceipt }
+  | SeriesFoldRefused { invocation: String, reason: NonEmptyStr }
+
+fn board_row(board: RustcPhaseBoard, phase: RustcPhase) -> RustcPhaseBoardRow? {
+  board.rows |> find(r => rustc_phase_order(phase: r.phase) == rustc_phase_order(phase: phase))
+}
+
+fn phase_count_or_negative(row: RustcPhaseBoardRow) -> Int {
+  match row.standing {
+    PhaseCount { count: n, evidence: _ } => n
+    PhaseNotYetReached => -1
+  }
+}
+
+fn phase_ratchet(previous: RustcPhaseBoard, current: RustcPhaseBoard) -> PhaseRatchetVerdict {
+  if rustc_phase_order(phase: current.furthest_phase_reached) < rustc_phase_order(phase: previous.furthest_phase_reached) {
+    PhaseRatchetRefused {
+      phase: current.furthest_phase_reached,
+      identities: [],
+      reason: "furthest rustc phase regressed" as NonEmptyStr
+    }
+  } else {
+    fold(
+      previous.rows,
+      init: PhaseRatchetHeld,
+      f: (verdict, old) => match verdict {
+        PhaseRatchetRefused { phase: p, identities: ids, reason: why } => PhaseRatchetRefused { phase: p, identities: ids, reason: why }
+        PhaseRatchetHeld => match board_row(board: current, phase: old.phase) {
+          Absent => PhaseRatchetRefused { phase: old.phase, identities: [], reason: "current board omitted a phase" as NonEmptyStr }
+          Present { value: now } => {
+            let old_count = phase_count_or_negative(row: old)
+            let now_count = phase_count_or_negative(row: now)
+            if old_count == 0 && now_count > 0 {
+              PhaseRatchetRefused { phase: old.phase, identities: now.identities, reason: "a closed phase regained diagnostic identities" as NonEmptyStr }
+            } else if rustc_phase_order(phase: old.phase) == rustc_phase_order(phase: previous.furthest_phase_reached) && now_count > old_count {
+              PhaseRatchetRefused { phase: old.phase, identities: now.identities, reason: "the reached phase diagnostic identity count increased" as NonEmptyStr }
+            } else { PhaseRatchetHeld }
+          }
+        }
+      }
+    )
+  }
+}
+
+fn phase_board_series_ratchet(series: List<SelfHostEmissionBoardReceipt>) -> PhaseBoardSeriesVerdict {
+  let folded = fold(
+    series,
+    init: SeriesFoldEmpty,
+    f: (state, receipt) => match state {
+      SeriesFoldRefused { invocation: i, reason: why } => SeriesFoldRefused { invocation: i, reason: why }
+      SeriesFoldEmpty => match receipt.position {
+        PhaseBoardBaseline => SeriesFoldHeld { previous: receipt }
+        PhaseBoardSuccessor { predecessor_invocation: _ } => SeriesFoldRefused {
+          invocation: receipt.invocation as String,
+          reason: "the first board receipt is not typed as the baseline" as NonEmptyStr
+        }
+      }
+      SeriesFoldHeld { previous: previous } => {
+          match receipt.position {
+            PhaseBoardBaseline => SeriesFoldRefused { invocation: receipt.invocation as String, reason: "a later board receipt is typed as another baseline" as NonEmptyStr }
+            PhaseBoardSuccessor { predecessor_invocation: named } =>
+              if (named as String) != (previous.invocation as String) {
+                SeriesFoldRefused { invocation: receipt.invocation as String, reason: "board successor names a different predecessor" as NonEmptyStr }
+              } else {
+                match phase_ratchet(previous: previous.board, current: receipt.board) {
+                  PhaseRatchetHeld => SeriesFoldHeld { previous: receipt }
+                  PhaseRatchetRefused { phase: p, identities: ids, reason: why } => SeriesFoldRefused {
+                    invocation: receipt.invocation as String,
+                    reason: concat(concat(rustc_phase_name(phase: p), concat(": ", why as String)), concat(" — identities: ", ids |> join(separator: " | "))) as NonEmptyStr
+                  }
+                }
+              }
+          }
+      }
+    }
+  )
+  match folded {
+    SeriesFoldEmpty => PhaseBoardSeriesEmptyBaselinePermitted
+    SeriesFoldHeld { previous: _ } => PhaseBoardSeriesHeld
+    SeriesFoldRefused { invocation: i, reason: why } => PhaseBoardSeriesRefused { invocation: i, reason: why }
+  }
+}
+
+fn render_phase_standing(row: RustcPhaseBoardRow) -> String {
+  match row.standing {
+    PhaseNotYetReached => concat(rustc_phase_name(phase: row.phase), " not yet reached")
+    PhaseCount { count: 0, evidence: _ } => concat(rustc_phase_name(phase: row.phase), " PASSES")
+    PhaseCount { count: n, evidence: _ } => concat(concat(rustc_phase_name(phase: row.phase), " "), concat(to_string(n), " remaining"))
+  }
+}
+
+fn render_phase_board(board: RustcPhaseBoard) -> String {
+  board.rows |> map(r => render_phase_standing(row: r)) |> join(separator: " / ")
+}
