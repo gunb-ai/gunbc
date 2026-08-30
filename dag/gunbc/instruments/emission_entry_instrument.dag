@@ -877,6 +877,28 @@ fn emission_report_text(m: EmissionMeasurement) -> String {
 // even though it found nothing wrong with anything. Any other mapping would make a broken
 // instrument indistinguishable from a clean subject, which is the failure this whole module is a
 // response to.
+// The effectful measurement crosses a function boundary before either consumer reads it. A local
+// `let m = measure_entry_emission(...)` used by both the report and completion predicate is lowered
+// by substitution and executes the entire wet pipeline twice. A function parameter is already a
+// materialized value, so rendering and adjudication below share the one observation.
+fn persist_measurement(m: EmissionMeasurement, entry: String, report: String) -> ProcessExit {
+  let write = Filesystem.Write(path: report, content: emission_report_text(m: m))
+  if !write.success {
+    exit_failure(reason: concat("measure: could not write the report to ", report))
+  } else {
+    if emission_measurement_completed(m: m) {
+      ExitSuccess
+    } else {
+      exit_failure(
+        reason: concat(
+          concat("measure: the instrument did not complete for ", entry),
+          concat(" — the report at ", concat(report, " names the stage that stopped it"))
+        )
+      )
+    }
+  }
+}
+
 fn measure(entry: String, report: String) -> ProcessExit {
   if entry == "" {
     exit_failure(reason: "measure: --arg entry=<repo-relative .dag path> is required")
@@ -884,22 +906,7 @@ fn measure(entry: String, report: String) -> ProcessExit {
     if report == "" {
       exit_failure(reason: "measure: --arg report=<path> is required — the measurement is written, not printed")
     } else {
-      let m = measure_entry_emission(entry: entry)
-      let write = Filesystem.Write(path: report, content: emission_report_text(m: m))
-      if !write.success {
-        exit_failure(reason: concat("measure: could not write the report to ", report))
-      } else {
-        if emission_measurement_completed(m: m) {
-          ExitSuccess
-        } else {
-          exit_failure(
-            reason: concat(
-              concat("measure: the instrument did not complete for ", entry),
-              concat(" — the report at ", concat(report, " names the stage that stopped it"))
-            )
-          )
-        }
-      }
+      persist_measurement(m: measure_entry_emission(entry: entry), entry: entry, report: report)
     }
   }
 }
