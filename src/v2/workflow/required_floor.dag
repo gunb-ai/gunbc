@@ -91,12 +91,29 @@ import std.types { NonEmptyStr }
 // rounding error on a nearby count.
 type RequiredFloorDisposition =
     Planned
+  | PlannedAsChangedWitness
   | DeclinedLongModule { matched_prefix: String }
   | DeclinedFixtureMember { matched_prefix: String }
   | DeclinedOutsideRequiredGate
   | DeclinedOutsideGateClosure
   | DeclinedDiscoveryExcluded { matched_substring: String }
   | DeclinedCostDebt
+
+// The changed-witness sublane is a second selector over the SAME identity-grain disposition,
+// not a widening of `required_gate_prefixes` and not a terminal row beside a decline. Selection
+// therefore replaces the static gate's answer with one planned arm before execution; every
+// identity still has exactly one disposition and the ordinary answer is preserved unchanged for
+// the standing population.
+fn required_floor_disposition_with_changed_selection(
+  ordinary: RequiredFloorDisposition,
+  selected_as_changed_witness: Bool,
+) -> RequiredFloorDisposition {
+  if selected_as_changed_witness {
+    PlannedAsChangedWitness {}
+  } else {
+    ordinary
+  }
+}
 
 // ROSTER GROWTH IS BUDGET-BOUND AT THIS ADMISSION AUTHORITY.
 //
@@ -359,8 +376,9 @@ fn fixture_home_prefixes() -> List<String> {
 //
 // WHAT IS IN. `v2.test.` is the whole v2 compiler suite. The `test.claim.` rows are the v1
 // compiler-floor witnesses -- inference, occurrence binding, declared-type inhabitance,
-// coproduct soundness, namespace resolution, parse, the self-host behavioral witnesses -- and
-// the census that tests this roster's own arms. Nothing here is a product, fleet, deploy,
+// coproduct soundness, namespace resolution, parse, the self-host behavioral witnesses, and
+// XL-0's repair-input split plus namespace control-plane standing -- and the census that tests
+// this roster's own arms. Nothing here is a product, fleet, deploy,
 // secret, dashboard or roadmap witness; those are exactly what the ruling moved off the gate.
 //
 // WHAT THIS IS NOT. Not a selection shrink (the 2026-08-13 directive): a selection derives the
@@ -394,6 +412,7 @@ fn required_gate_prefixes() -> List<String> {
     "test.claim.arity_zero_import_refusal_witness",
     "test.claim.bare_name_",
     "test.claim.legacy_binding_",
+    "test.claim.compiler_frontend_program_status_witness",
     "test.claim.discovery_census_witness_test",
     "test.claim.host_budget_source_witness",
     "test.claim.typed_module_cache_capacity_witness",
