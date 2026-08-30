@@ -29269,24 +29269,19 @@ pub fn rust_operand_realization_of_type(
                         Some(InferredNode::Resolved { node: r, .. }) => r.clone(),
                         _ => rt.clone(),
                     };
-                    let is_bare_leaf_alias = (((decl.connective.clone()
-                        == Connective::NoConnective)
-                        && ((decl.children.clone().len() as i64) == 0))
-                        && (decl.inferred.clone() != None));
-                    if (is_bare_leaf_alias.clone() && (fuel.clone() > 0)) {
-                        match decl.inferred.clone().as_deref().cloned() {
-                            Some(InferredNode::Resolved { node: target, .. }) => {
-                                let __tco_0 = target.clone();
-                                let __tco_1 = (fuel - 1);
-                                rt = __tco_0;
-                                fuel = __tco_1;
-                                continue;
-                            }
-                            _ => {
-                                break Rc::new(OperandRealization::StructuralOperand {
-                                    declaration: d.clone(),
-                                });
-                            }
+                    if ((fuel.clone() > 0)
+                        && crate::v1_compiler_emit_core_support::is_type_alias_item(
+                            decl.clone(),
+                            scope.type_env.clone().source_indices.clone(),
+                        ))
+                    {
+                        {
+                            let __tco_0 =
+                                crate::v1_compiler_infer_types::resolved_type(decl.clone());
+                            let __tco_1 = (fuel - 1);
+                            rt = __tco_0;
+                            fuel = __tco_1;
+                            continue;
                         }
                     } else {
                         break Rc::new(OperandRealization::StructuralOperand {

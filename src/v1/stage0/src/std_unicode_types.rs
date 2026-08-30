@@ -108,7 +108,7 @@ pub fn char_in_class(c: i64, class: CharClass) -> bool {
 }
 
 pub fn unicode_char_code_point(c: i64) -> i64 {
-    (c.clone() + 0)
+    compile_error!("operator realization: host operator `+` on structural operand std.types.Char -- the declaration has no host realization and declares no operation for this operator; spell the operation as a call to the declared structural operation")
 }
 
 pub fn in_block(cp: i64, block: Rc<UnicodeBlock>) -> bool {
