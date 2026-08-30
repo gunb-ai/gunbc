@@ -709,6 +709,9 @@ fn measure_scope_emission(scope: EmissionScope, render_target: EmissionRenderTar
 // THE EMIT HALF, with the subject already bound. A compiler that RAN AND REFUSED is a measurement,
 // not an instrument failure: the population it produced is the answer, so it travels with the
 // refusal rather than being discarded for it.
+// The 00_compile closure produced 299,662 stderr bytes on 2026-08-30. Its scope anchor is near the
+// head, so the default 16 KiB tail cannot decode the population. Complete is still bounded by
+// GUNBC_MEMORY_BUDGET_BYTES and refuses rather than truncating when that authority is exceeded.
 fn measure_with_subject(
   subject: EmissionMeasurementSubject,
   root: String,
@@ -720,10 +723,6 @@ fn measure_with_subject(
     workdir: root,
     bin_path: gunbc_bin,
     args: emission_compile_args(scope: subject.scope, render_target: subject.render_target, out_dir: out_dir),
-    // The 00_compile closure produced 299,662 stderr bytes on 2026-08-30. Its
-    // scope anchor is near the head, so the default 16 KiB tail cannot decode
-    // the population. Complete is still bounded by GUNBC_MEMORY_BUDGET_BYTES
-    // and refuses rather than truncating when that authority is exceeded.
     stderr_capture: Complete
   )
   let read = read_emit_diagnostics(
