@@ -427,7 +427,36 @@ pub struct TransitionAdmission {
 /// authored with, in the first PR cut from the main that carries the move. The roster is
 /// EMPTY again and empty is not permissive: a run carrying a real namespace delta still
 /// refuses it as UNADJUDICATED until its author adds a row here.
-pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[];
+/// THIRD TRANSITION: `admission_from_module_root` moved home. #9710 relocated
+/// `admission_from_module_root` (with `import_rows_from_parsed_module`, `collect_import_decl_nodes`
+/// and `ImportRowsState`) from `v2.compiler.name_resolve` to `v2.lens.reference_deps`, the layer
+/// of its only two consumers, so that the compiler entry's emitted closure no longer carries the
+/// reference_deps subtree for a function no compile path reaches. The two consumers repoint their
+/// import; the spelling denotes a different declaration home, so each is a `TargetChanged`
+/// binding delta, admitted here by exact subject. Both rows dissolve when the relocation is on
+/// main: they then match no delta and report stale, refusing the first unrelated PR -- which is
+/// the trigger to delete them.
+pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
+    TransitionAdmission {
+        label: "admission_from_module_root relocated to v2.lens.reference_deps (frontier_probe)",
+        subject: AdmissionSubject::Binding {
+            module: "v2.compiler.self_host.frontier_probe",
+            in_declaration: "frontier_probe_admission_from_ingest",
+            spelling: "admission_from_module_root",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label:
+            "admission_from_module_root relocated to v2.lens.reference_deps (compile_door_ledger)",
+        subject: AdmissionSubject::Binding {
+            module: "v2.workflow.compile_door_ledger",
+            in_declaration: "derive_module_admission",
+            spelling: "admission_from_module_root",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+];
 
 /// The denominators a green must name (DESIGN §5). A run that cannot say what it covered is
 /// an instrument failure wearing coverage's clothes.
