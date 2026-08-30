@@ -1,5 +1,7 @@
 module test.claim.output_policy_witness
 
+import gunbc.output_policy { ExpectedOutcome }
+
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn dec_is(d: OutputDecision, suppressed: Bool, condensed: Bool, full: Bool) -> Bool {
