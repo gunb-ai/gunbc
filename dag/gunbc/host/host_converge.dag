@@ -16,7 +16,7 @@ import gunbc.ci_runner_placement {
   RunnerDeploymentPlan,
   HostRunnerDeploymentDerived, HostRunnerDeploymentRefused,
   RunnerHostDeployment,
-  RunnerCpuBoundary, CapacityQuota, DisjointCpuSet,
+  RunnerCpuBoundary, CapacityQuota,
   runner_deployment_plan,
   workload_class_cpu_weight,
   WorkloadClass,
@@ -535,12 +535,9 @@ fn codex_runtime_bundle_knobs(host: HostIdentity) -> List<ConvergeKnob> {
 // does not pre-empt that rename; it is the third value to arrive at a field still named
 // bytes_value, which strengthens the case that lane already carries rather than adding a new one.
 //
-// THE DisjointCpuSet ARM EMITS NOTHING, AND THAT IS THE HONEST ANSWER RATHER THAN A SILENT HOLE. No
-// producer constructs it, and extdeps.systemd carries no AllowedCPUs= property to render it with, so
-// a fleet that adopted the pinning contract would be claiming a boundary this emitter cannot write.
-// The arm says so by producing no knob rather than by degrading to the quota it never promised.
-// NEXT-RUNG TRIGGER: an AllowedCPUs directive in extdeps.systemd plus a producer that assigns
-// pairwise-disjoint sets.
+// EVERY REPRESENTABLE BOUNDARY EMITS A KNOB. RunnerCpuBoundary has exactly one constructor, so this
+// function is total without an arm that converges successfully while realizing nothing -- the
+// fail-open review 57675 found, now closed by deletion at the type rather than by a refusal here.
 fn runner_cpu_boundary_knobs(h: RunnerHostDeployment, glob: String) -> List<ConvergeKnob> {
   match h.per_runner_cpu_boundary {
     CapacityQuota { threads: t } =>
@@ -557,7 +554,6 @@ fn runner_cpu_boundary_knobs(h: RunnerHostDeployment, glob: String) -> List<Conv
           }
         ),
       ]
-    DisjointCpuSet { cpus: _ } => []
   }
 }
 

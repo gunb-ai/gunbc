@@ -105,18 +105,39 @@ fn workload_class_cpu_weight(wc: WorkloadClass) -> Int {
 //
 // CapacityQuota is the no-overcommit contract this fleet adopts: each slot may consume at most
 // cores_per_slot threads' worth of CPU time, and the sum of the runner, compile-pool and host
-// reserve ceilings must fit the machine. DisjointCpuSet is the STRONGER affinity contract --
-// pairwise-disjoint CPU sets per slot -- and it is modeled rather than omitted so the promise the
-// fleet does NOT make has a name. Nothing produces it today.
+// reserve ceilings must fit the machine. Pinning each slot to a pairwise-disjoint SET of named CPUs
+// is a stronger contract again, and this fleet does not make it; the block below records why it has
+// no constructor rather than a variant.
 //
 // THE ARM THIS TYPE REPLACES WAS NEITHER OF THEM. cores_per_slot was consumed to decide how many
 // units to create and then dropped, so the width was CPU-derived while the units it created carried
 // no CPU directive at all -- srv1 and srv2 show MemoryMax as their only resource line, CPUWeight
 // unset and CPUQuota infinity. Admission without confinement: the arithmetic said six threads per
 // slot and the host was never told.
+// THE PINNING CONTRACT HAS NO CONSTRUCTOR, AND THAT IS THE POINT RATHER THAN AN OMISSION.
+//
+// An earlier revision carried a DisjointCpuSet arm so the promise this fleet does NOT make would have
+// a name. Review 57675 was right that naming it that way cost more than it bought: nothing produced
+// it, extdeps.systemd carries no AllowedCPUs= to render it, and the emitter answered it with an empty
+// knob list -- so a deployment carrying that boundary converged SUCCESSFULLY while the host was never
+// told any CPU ceiling at all. A variant whose only realization is silence is a fail-open path
+// (DESIGN 5), and labelling it "unemitted" in a manifest does not make the operational path refuse.
+//
+// So the arm is DELETED rather than answered with a refusal. Both remedies close the hole, and DESIGN
+// 4b ranks them: construction over proof. A typed refusal would leave the invalid state writable and
+// depend on the refusal executing; deleting the constructor means no Accepted program can carry a
+// boundary this emitter cannot realize, which is the higher rung and the smaller change.
+//
+// The distinction it recorded survives as this annotation, which is where a promise nobody can
+// construct belongs. CapacityQuota is a no-overcommit ceiling: each slot may consume at most its
+// threads' worth of CPU time, and nothing pins it to particular CPUs. Pairwise-disjoint CPU sets are
+// a STRONGER contract and a different systemd directive.
+//
+// TRIGGER for reinstating it as a variant: an AllowedCPUs directive in extdeps.systemd AND a producer
+// that assigns disjoint sets -- both, since either alone reproduces exactly the unrealizable state
+// this deletion removes.
 type RunnerCpuBoundary
   = CapacityQuota { threads: HardwareThreadCount }
-  | DisjointCpuSet { cpus: List<Int> }
 
 type RunnerCpuBoundaryResolution
   = RunnerCpuBoundaryDerived { boundary: RunnerCpuBoundary }

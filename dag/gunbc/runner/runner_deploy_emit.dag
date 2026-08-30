@@ -11,7 +11,7 @@ import gunbc.ci_runner_placement {
   FleetDeploymentComplete, FleetDeploymentIncomplete, fleet_deployment_completion,
   host_deployment_refusal_text,
   RunnerHostDeployment,
-  RunnerCpuBoundary, CapacityQuota, DisjointCpuSet,
+  RunnerCpuBoundary, CapacityQuota,
   runner_deployment_plan,
   SessionReservationPlan,
   SessionReservationDerived,
@@ -74,7 +74,6 @@ fn runner_labels_text(spec: RunnerSpec) -> String {
 fn runner_cpu_boundary_text(b: RunnerCpuBoundary) -> String {
   match b {
     CapacityQuota { threads: t } => systemd_directive_value_wire(value: DirectiveCpuTime { threads: t })
-    DisjointCpuSet { cpus: _ } => "unemitted"
   }
 }
 
