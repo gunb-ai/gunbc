@@ -253,7 +253,11 @@ fn fabric_cell_plan_effects(
     FabricCellSliceEnsure { slice_unit: _, directives: _ } => acc
     FabricCellDirectoryEnsure { path: _, owner: _ } => concat(acc, [e])
   })
-  concat(boundary_effects, concat([fabric_cell_base_directory_effect()], directory_effects))
+  if list_length(items: address_effects) == 0 {
+    []
+  } else {
+    concat(boundary_effects, concat([fabric_cell_base_directory_effect()], directory_effects))
+  }
 }
 
 // THE EFFECTS ARE STILL CONSTRUCTED ON THE REFUSED PATH AND THEN NOT RETURNED, WHICH IS

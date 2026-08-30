@@ -65,6 +65,17 @@ fn changed(address: FabricCellResourceAddress) -> MemberAction<FabricCellMember,
   }
 }
 
+// NO ACTIONS MEANS NO EFFECTS. The base directory is a prerequisite of real cell work, not a
+// host mutation independently inferred from the absence of member actions. This is the direct RED
+// for review 57510: fabric_cell_realization must preserve the action-to-effect boundary even though
+// the fleet's converged-family arm normally bypasses this function for an empty plan.
+test fn witness_empty_cell_actions_realize_no_effects() -> Bool {
+  match fabric_cell_realization(actions: []) {
+    CellPlanRealizable { effects: es } => list_length(items: es) == 0
+    CellPlanRefused { refusals: _ } => false
+  }
+}
+
 // THE FLIPPED ROW, AND WHY IT FLIPPED (DESIGN 4b(4)). This module's original discriminating RED
 // asserted that a full cell plan refuses because the boundary's slice directives were unmodeled in
 // extdeps.systemd.unit_file. That premise went STALE -- the directive-value-grain lane landed
