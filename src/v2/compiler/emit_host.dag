@@ -27,6 +27,7 @@ import std.algebra { Cons, Empty }
 import v2.std.collection { List, optional_present }
 import v2.std.host_transport {
   ByteString,
+  host_build_environment_admitted_names,
   EmitHostRuntimeRow,
   HostTransportDescriptor,
   MaterializedWorkspaceFile,
@@ -478,10 +479,11 @@ fn run_host_process_admitted(
               ),
               files: files,
               build: builds,
-              run: run_argv
+              run: run_argv,
+              environment: host_build_environment_admitted_names
             )
           } else {
-            emit_host_run_transport(admission: admission, files: files, build: builds, run: run_argv)
+            emit_host_run_transport(admission: admission, files: files, build: builds, run: run_argv, environment: host_build_environment_admitted_names)
           }
           let exit = HostExit {
             outcome: Accepted {

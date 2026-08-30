@@ -65,6 +65,44 @@ type HostTransportDescriptor {
   runtime_value_codec: RuntimeValueCodec
 }
 
+// THE EMITTED PROGRAM'S BUILD ENVIRONMENT IS A DECLARED ROW, NOT AN INHERITANCE. The host
+// transport builds and runs the emitted program under env_clear() plus exactly the variables
+// named here, admitted by exact name; every other ambient variable is refused by negation.
+// Flag-bearing variables (RUSTFLAGS, RUSTDOCFLAGS, CARGO_ENCODED_RUSTFLAGS, CFLAGS, GOFLAGS,
+// ...) are absent BY CONSTRUCTION of the list and deliberately not enumerated as exclusions:
+// a build flag is policy, and a policy the emitted program's realization wants is a
+// runtime_row field with its own RED, never something the ambient shell exported for
+// compiling the seed. The seed used to admit RUST*/CARGO_*/*FLAGS by prefix (and the
+// uncached transport inherited the whole environment), so the required floor's
+// `RUSTFLAGS=-D warnings` -- exported for the SEED build -- reached the emitted program and
+// four emit_host expected-red rows were red only in CI, on `-D dead-code` (gunbc#9727).
+// Toolchain-location variables stay, because resolving `cargo`/`rustc`/`cc` is a fact about
+// where the toolchain lives, not about how the program is compiled.
+data host_build_environment_admitted_names: List<String> = [
+  "PATH",
+  "HOME",
+  "TMPDIR",
+  "CARGO_HOME",
+  "RUSTUP_HOME",
+  "RUSTUP_TOOLCHAIN",
+  "CC",
+  "CXX",
+  "AR",
+  "LD_LIBRARY_PATH",
+  "LIBRARY_PATH",
+  "CPATH",
+  "PKG_CONFIG_PATH",
+  "SDKROOT",
+  "MACOSX_DEPLOYMENT_TARGET",
+  "GOROOT",
+  "GOPATH",
+  "GOCACHE",
+  "GOMODCACHE",
+  "NODE_PATH",
+  "PYTHONPATH",
+  "PYTHONHOME"
+]
+
 type EmitHostRuntimeRow {
   transport: HostTransportDescriptor
   runtime_primitive_type: Node

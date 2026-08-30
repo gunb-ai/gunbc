@@ -1,0 +1,47 @@
+module v2.test.claim.host_build_environment_row
+
+import v2.std.host_transport { host_build_environment_admitted_names }
+import v2.std.algebra { any, contains, fold_list }
+import v2.std.logic { Bool }
+import v2.std.collection { List }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn host_build_environment_admits(name: String) -> Bool {
+  contains(xs: host_build_environment_admitted_names, item: name, eq: fn(a, b) { a == b })
+}
+
+// POSITIVE CONTROL: the toolchain-location variables the transport needs to resolve cargo,
+// rustc and cc still reach the emitted program's build. If this goes red the allowlist has
+// been narrowed past the point where any emit_host row can build at all.
+test fn host_build_environment_admits_toolchain_locations() -> Bool {
+  host_build_environment_admits(name: "PATH")
+    && host_build_environment_admits(name: "HOME")
+    && host_build_environment_admits(name: "CARGO_HOME")
+    && host_build_environment_admits(name: "RUSTUP_HOME")
+}
+
+// REGRESSION CONTROL for the class gunbc#9727 repaired: a flag-bearing variable admitted
+// from the ambient environment. The wall is the allowlist itself (admission by exact name);
+// this row is the executing evidence that nobody has re-admitted a policy carrier by name.
+test fn host_build_environment_admits_no_flag_carrier() -> Bool {
+  !any(
+    xs: host_build_environment_admitted_names,
+    predicate: fn(name) { string_contains(name, "FLAGS") }
+  )
+}
+
+test fn host_build_environment_row_has_no_duplicates() -> Bool {
+  fold_list(
+    xs: host_build_environment_admitted_names,
+    empty: true,
+    cons: fn(acc, name) {
+      acc && (fold_list(
+        xs: host_build_environment_admitted_names,
+        empty: 0,
+        cons: fn(n, other) { if other == name { n + 1 } else { n } }
+      ) == 1)
+    }
+  )
+}
