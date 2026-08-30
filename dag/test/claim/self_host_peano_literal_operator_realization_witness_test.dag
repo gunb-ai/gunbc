@@ -95,6 +95,29 @@ test fn w_host_arithmetic_on_peano_operands_refuses_in_the_bytes() -> Bool {
   )
 }
 
+// THE BOOL ROW ON THE EMITTED PATH: a kernel true at a v2.std.logic.Bool boundary emits the
+// structural constructor. (The interpreter realizes Bool natively and never executes this image;
+// the emitted bytes are the only place the image exists, so this row is its whole evidence.)
+test fn w_kernel_bool_at_structural_bool_boundary_emits_its_constructor() -> Bool {
+  compile_dag_rust_emit_check(
+    "module test.claim.structural_bool_probe\nimport v2.std.logic { Bool }\nfn probe() -> Bool { true }\nfn probe_false(b: Bool) -> Bool { false }\n",
+    "src/test_claim_structural_bool_probe.rs",
+    ["Bool::True", "Bool::False"],
+    ["{\n    true\n}", "{\n    false\n}"]
+  )
+}
+
+// HOST CONTROL for the Bool row: the prelude std.types Bool realizes natively and keeps the host
+// keyword -- a rule keyed on the spelling `Bool` cannot pass this row and the one above together.
+test fn w_kernel_bool_at_native_bool_boundary_stays_the_keyword() -> Bool {
+  compile_dag_rust_emit_check(
+    "module test.claim.native_bool_probe\nimport std.types { Bool }\nfn probe() -> Bool { true }\n",
+    "src/test_claim_native_bool_probe.rs",
+    ["{\n    true\n}"],
+    ["Bool::True"]
+  )
+}
+
 // HOST CONTROL: the same ordering on a native i64 operand keeps the host token. Without this row
 // a realization that routed EVERY `<` through a comparison call would pass the Peano rows.
 test fn w_ordering_on_native_operands_keeps_the_host_operator() -> Bool {

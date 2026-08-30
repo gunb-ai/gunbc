@@ -8,10 +8,10 @@ import std.content_hash {
   content_hash_validate_lower_hex_length,
 }
 import extdeps.container.oci.digest { oci_other_digest_algorithm, oci_other_digest_encoded }
-import std.syntax { Add, BinOp, LitStr, LitInt, LiteralValue }
+import std.syntax { Add, BinOp, LitStr, LitInt, LitBool, LiteralValue }
 import std.decl_ref { DeclarationRef }
 import std.literal_elaboration {
-  LiteralElaboration, LiteralHomomorphism, LiteralUnfolding, PeanoUnfold,
+  LiteralElaboration, LiteralHomomorphism, LiteralUnfolding, PeanoUnfold, BooleanUnfold,
   LiteralElaborationOutcome, DirectLiteral, ViaHomomorphism, LiteralElaborationRefused,
   elaborate_literal_at, literal_source_kind_of, literal_elaboration_refusal_message
 }
@@ -4776,6 +4776,16 @@ fn unfold_literal_image(lit: LiteralValue, elaboration: LiteralElaboration, dest
             destination_type: destination_type, span: span
           )
         _ => make_expr_error_node(occurrence_identity: OccurrenceSynthetic, kind: InternalExprError, message: "literal elaboration: a Peano unfolding row was selected for a non-integer literal (gunbc.structural_realization_bindings keys the row on KernelIntLiteral, so this row is malformed)", span: span)
+      }
+    BooleanUnfold { true_variant: t, false_variant: f } =>
+      match lit {
+        LitBool { value: b } =>
+          elaborated_expr_node(
+            name: if b { t.decl_name as String } else { f.decl_name as String },
+            expr_data: ExprVar { binding_kind: Present { value: VariantValueBinding { parent_enum: elaboration.destination.decl_name as String } } },
+            children: [], destination_type: destination_type, span: span
+          )
+        _ => make_expr_error_node(occurrence_identity: OccurrenceSynthetic, kind: InternalExprError, message: "literal elaboration: a Boolean unfolding row was selected for a non-boolean literal (gunbc.structural_realization_bindings keys the row on KernelBoolLiteral, so this row is malformed)", span: span)
       }
   }
 }

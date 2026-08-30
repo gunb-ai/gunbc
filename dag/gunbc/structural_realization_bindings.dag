@@ -2,7 +2,7 @@ module gunbc.structural_realization_bindings
 
 import std.types { List, String, Bool, NonEmptyStr }
 import std.decl_ref { DeclarationRef, decl_ref }
-import std.literal_elaboration { LiteralHomomorphism, LiteralSourceKind, KernelIntLiteral, LiteralUnfolding, PeanoUnfold }
+import std.literal_elaboration { LiteralHomomorphism, LiteralSourceKind, KernelIntLiteral, KernelBoolLiteral, LiteralUnfolding, PeanoUnfold, BooleanUnfold }
 import std.operator_realization { StructuralOrderingBinding }
 
 // THE CORPUS'S HALF OF LITERAL ELABORATION AND OPERATOR REALIZATION (std.literal_elaboration,
@@ -32,8 +32,23 @@ fn peano_literal_homomorphism(module_path: String, nat: String, zero: String, su
   }
 }
 
+fn boolean_literal_homomorphism(module_path: String, bool_decl: String, true_variant: String, false_variant: String) -> LiteralHomomorphism {
+  LiteralHomomorphism {
+    source_kind: KernelBoolLiteral,
+    destination: decl_ref(module_path: module_path, decl_name: bool_decl),
+    producer: BooleanUnfold {
+      true_variant: decl_ref(module_path: module_path, decl_name: true_variant),
+      false_variant: decl_ref(module_path: module_path, decl_name: false_variant)
+    }
+  }
+}
+
+// v2.std.logic Bool = True | False is gated structural on purpose (v1.compiler.coercion
+// structural_declaration_modules_for); the corpus-wide prelude std.types Bool realizes natively and
+// is NOT a row -- a kernel true/false at that boundary stays the host bool.
 data literal_homomorphism_rows: List<LiteralHomomorphism> = [
-  peano_literal_homomorphism(module_path: "v2.std.nat", nat: "Nat", zero: "Zero", succ: "Succ", prev_field: "prev")
+  peano_literal_homomorphism(module_path: "v2.std.nat", nat: "Nat", zero: "Zero", succ: "Succ", prev_field: "prev"),
+  boolean_literal_homomorphism(module_path: "v2.std.logic", bool_decl: "Bool", true_variant: "True", false_variant: "False")
 ]
 
 fn structural_ordering_binding(carrier_module: String, carrier: String, compare_module: String, compare: String, ordering_module: String, ordering: String) -> StructuralOrderingBinding {

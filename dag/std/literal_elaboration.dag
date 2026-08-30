@@ -76,10 +76,13 @@ fn literal_source_kind_eq(a: LiteralSourceKind, b: LiteralSourceKind) -> Bool {
 // HOW A KERNEL VALUE IS UNFOLDED INTO A DESTINATION'S CONSTRUCTORS. Each arm names the destination's
 // own constructors by exact DeclarationRef -- the unfolding is a fact about the destination, so a
 // renamed variant is a changed row, never a stale spelling inside the compiler.
-//   PeanoUnfold   a nonnegative integer n unfolds to succ^n(zero): `succ { prev_field: ... }` nested
-//                 n deep around the nullary `zero`.
+//   PeanoUnfold    a nonnegative integer n unfolds to succ^n(zero): `succ { prev_field: ... }` nested
+//                  n deep around the nullary `zero`.
+//   BooleanUnfold  a kernel bool unfolds to the destination's nullary true or false constructor
+//                  (v2.std.logic Bool = True | False, declared structural on purpose).
 type LiteralUnfolding
   = PeanoUnfold { zero: DeclarationRef, succ: DeclarationRef, prev_field: NonEmptyStr }
+  | BooleanUnfold { true_variant: DeclarationRef, false_variant: DeclarationRef }
 
 type LiteralHomomorphism {
   source_kind: LiteralSourceKind
