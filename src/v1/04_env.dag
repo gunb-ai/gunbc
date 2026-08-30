@@ -1354,44 +1354,60 @@ fn declaration_ref_of_node(rt: Node, source_indices: Map<String, NewlineIndex>, 
   }
 }
 
-// THREE HOPS, SAME IDENTITY DISCIPLINE, AND THE REFERENCE BINDING GOES FIRST. (1) The env binding
-// for the reference (lookup_type_for) -- the declaration the AUTHOR named, which is the identity a
-// boundary decision is about. It must precede the resolved-node hop because alias EXPANSION is
+// THREE HOPS, SAME IDENTITY DISCIPLINE, EACH ANSWER GUARDED BY THE AUTHORED LEAF NAME. The
+// resolved-node hop is precise for substitution and recursion but alias EXPANSION is
 // closure-dependent: `type String = FreeMonoid<Char>` expands only when the RHS names resolve, so
 // with std.types (Char) anywhere in the module graph the annotation's inferred node is the
-// FreeMonoid expansion and a resolved-node-first read answers std.algebra.FreeMonoid -- a real
-// declaration, but the realization the alias peels TO, not the destination the author wrote
-// (measured: the same data-literal boundary elaborated in a probe without std.types in closure and
-// fell to DirectLiteral in one with it, on the same compiler). (2) The resolved node's own
-// ident_span -- answers when the resolver substituted the declaration node itself and no binding
-// exists for the reference. All hops answer only from the census by declaration span,
+// FreeMonoid expansion and the hop answers std.algebra.FreeMonoid -- a real declaration, but the
+// realization the alias peels TO, not the destination the author wrote (measured: the same
+// data-literal boundary elaborated in a probe without std.types in closure and fell to
+// DirectLiteral in one with it, on the same compiler). Reordering the hops was tried and REGRESSED
+// the Peano battery: the binding hops answer by NAME, so put first they pick the wrong homonym
+// (dag/std nat vs v2.std.nat Nat) where the resolved node was exact. The invariant that separates
+// the two failure shapes is that a hop's answer is the reference's destination only if it names
+// the declaration the author spelled: declaration_ref_names_authored_leaf rejects an answer whose
+// decl_name differs from the reference's authored leaf, which discards the expansion artifact
+// (FreeMonoid for an authored String) without ever letting a name-keyed hop outrank the exact one.
+// An empty authored leaf (a synthetic node) skips the guard. All hops answer only from the census
+// by declaration span,
 // never from a spelling, so an identity neither can supply is still Absent. A THIRD hop for the
 // emitter's scope env (merged from XL-0N c7b8056): when the reference carries no ident-keyed
 // binding, the module-visible NAME binding (lookup_type_by_name) -- that module's own import
 // binding -- still names the declaration; the found node is STILL matched by span against the
 // census, so a by-name hit only ever confirms an exact declaration, never picks among homonyms.
-fn type_reference_declaration_ref(n: Node, source_indices: Map<String, NewlineIndex>, env: TypeEnv) -> DeclarationRef? {
-  let from_binding = match lookup_type_for(env: env, node: n) {
-    Present { value: bound } => declaration_ref_of_node(rt: bound, source_indices: source_indices, env: env)
+fn declaration_ref_names_authored_leaf(d: DeclarationRef?, authored_leaf: String) -> DeclarationRef? {
+  match d {
     Absent => none
-  }
-  match from_binding {
-    Present { value: d } => Present { value: d }
-    Absent =>
-      match n.inferred {
-        Present { value: Resolved { node: r } } =>
-          match declaration_ref_of_node(rt: r, source_indices: source_indices, env: env) {
-            Present { value: d } => Present { value: d }
-            Absent => type_reference_declaration_ref_by_name(n: n, source_indices: source_indices, env: env)
-          }
-        _ => type_reference_declaration_ref_by_name(n: n, source_indices: source_indices, env: env)
-      }
+    Present { value: dr } =>
+      if authored_leaf == "" || dr.decl_name == authored_leaf { Present { value: dr } } else { none }
   }
 }
 
-fn type_reference_declaration_ref_by_name(n: Node, source_indices: Map<String, NewlineIndex>, env: TypeEnv) -> DeclarationRef? {
-  match lookup_type_by_name(env: env, name: authored_name_at(source_indices: source_indices, node: n)) {
-    Present { value: bound } => declaration_ref_of_node(rt: bound, source_indices: source_indices, env: env)
-    Absent => declaration_ref_of_node(rt: n, source_indices: source_indices, env: env)
+fn type_reference_declaration_ref(n: Node, source_indices: Map<String, NewlineIndex>, env: TypeEnv) -> DeclarationRef? {
+  let authored_leaf = qualified_last_segment(name: authored_name_at(source_indices: source_indices, node: n))
+  let from_resolved = match n.inferred {
+    Present { value: Resolved { node: r } } =>
+      declaration_ref_names_authored_leaf(
+        d: declaration_ref_of_node(rt: r, source_indices: source_indices, env: env),
+        authored_leaf: authored_leaf)
+    _ => none
+  }
+  match from_resolved {
+    Present { value: d } => Present { value: d }
+    Absent =>
+      match lookup_type_for(env: env, node: n) {
+        Present { value: bound } =>
+          declaration_ref_names_authored_leaf(
+            d: declaration_ref_of_node(rt: bound, source_indices: source_indices, env: env),
+            authored_leaf: authored_leaf)
+        Absent =>
+          match lookup_type_by_name(env: env, name: authored_name_at(source_indices: source_indices, node: n)) {
+            Present { value: bound } =>
+              declaration_ref_names_authored_leaf(
+                d: declaration_ref_of_node(rt: bound, source_indices: source_indices, env: env),
+                authored_leaf: authored_leaf)
+            Absent => declaration_ref_of_node(rt: n, source_indices: source_indices, env: env)
+          }
+      }
   }
 }
