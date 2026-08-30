@@ -1006,6 +1006,51 @@ pub fn render_phase_concluded_line_mirror(phase: &str, elapsed_ms: u64, emoji: b
     format!("{glyph} {phase} done in {}", obs_human_duration(elapsed_ms))
 }
 
+/// One drained trace-ledger row: the mark's label with any `.done` suffix removed, the wall
+/// elapsed the mark printed, and the process-tree CPU spent since the mark it closes.
+/// Authority: `gunbc.regen_round_cost` `TraceMark`; `cpu_ms == None` is its `CpuUnreadable`.
+#[derive(Clone, Debug)]
+pub struct TraceLedgerRow {
+    pub label: String,
+    pub wall_ms: u64,
+    pub cpu_ms: Option<u64>,
+}
+
+fn trace_ledger_state() -> &'static std::sync::Mutex<Option<Vec<TraceLedgerRow>>> {
+    static LEDGER: std::sync::OnceLock<std::sync::Mutex<Option<Vec<TraceLedgerRow>>>> =
+        std::sync::OnceLock::new();
+    LEDGER.get_or_init(|| std::sync::Mutex::new(None))
+}
+
+/// Start recording marks. Until armed, `trace_mark` records nothing, so a program that never
+/// drains the ledger never grows it.
+pub fn trace_ledger_arm() {
+    if let Ok(mut ledger) = trace_ledger_state().lock() {
+        *ledger = Some(Vec::new());
+    }
+}
+
+/// Take every row recorded since `trace_ledger_arm` and disarm; `None` when never armed.
+pub fn trace_ledger_drain() -> Option<Vec<TraceLedgerRow>> {
+    trace_ledger_state()
+        .lock()
+        .ok()
+        .and_then(|mut ledger| ledger.take())
+}
+
+/// Process-tree CPU milliseconds — utime + stime + cutime + cstime from `/proc/self/stat` —
+/// or `None` where that accounting is unreadable. A child's CPU lands once it is reaped, so a
+/// mark that closes over a waited child carries that child's CPU; a fabricated 0 would read as
+/// free, which is the direction that looks survivable.
+pub fn trace_process_tree_cpu_ms() -> Option<u64> {
+    let stat = std::fs::read_to_string("/proc/self/stat").ok()?;
+    let after_comm = stat.rsplit(')').next()?;
+    let fields: Vec<&str> = after_comm.split_whitespace().collect();
+    let tick = |i: usize| fields.get(i).and_then(|v| v.parse::<u64>().ok());
+    let ticks = tick(11)? + tick(12)? + tick(13)? + tick(14)?;
+    Some(ticks * 1000 / 100)
+}
+
 /// Stage-boundary trace mark — the v1-seed interim realization of the v2 per-RealizedStep
 /// CostAccount (std.realization_measurement). Wired (gantt flip): projects Begin/Concluded
 /// on a PhaseSegment via the observation mirrors of `ci_event_line`. Segment wall on
@@ -1026,51 +1071,58 @@ pub fn trace_mark(label: String) {
     use std::sync::{Mutex, OnceLock};
     use std::time::Instant;
     static TRACE_T0: OnceLock<Instant> = OnceLock::new();
-    static LAST_MARK: OnceLock<Mutex<Instant>> = OnceLock::new();
-    static OPENS: OnceLock<Mutex<std::collections::HashMap<String, Instant>>> = OnceLock::new();
+    static LAST_MARK: OnceLock<Mutex<(Instant, Option<u64>)>> = OnceLock::new();
+    static OPENS: OnceLock<Mutex<std::collections::HashMap<String, (Instant, Option<u64>)>>> =
+        OnceLock::new();
     let t0 = TRACE_T0.get_or_init(Instant::now);
-    let last = LAST_MARK.get_or_init(|| Mutex::new(*t0));
+    let last = LAST_MARK.get_or_init(|| Mutex::new((*t0, trace_process_tree_cpu_ms())));
     let opens = OPENS.get_or_init(|| Mutex::new(std::collections::HashMap::new()));
     let emoji = obs_phase_emoji();
     let now = Instant::now();
+    let cpu_now = trace_process_tree_cpu_ms();
     let _ = GANTT_CENSUS_MARKER;
     if let Some(phase) = label.strip_suffix(".begin") {
         if let Ok(mut map) = opens.lock() {
-            map.insert(phase.to_string(), now);
+            map.insert(phase.to_string(), (now, cpu_now));
         }
         if let Ok(mut l) = last.lock() {
-            *l = now;
+            *l = (now, cpu_now);
         }
         eprintln!("{}", render_phase_begin_line_mirror(phase, emoji));
-    } else if let Some(phase) = label.strip_suffix(".done") {
-        let elapsed_ms = {
-            let started = opens.lock().ok().and_then(|mut m| m.remove(phase));
-            match started {
-                Some(t) => now.saturating_duration_since(t).as_millis() as u64,
-                None => {
-                    let prev = last.lock().map(|l| *l).unwrap_or(*t0);
-                    now.saturating_duration_since(prev).as_millis() as u64
-                }
-            }
-        };
-        if let Ok(mut l) = last.lock() {
-            *l = now;
-        }
-        eprintln!(
-            "{}",
-            render_phase_concluded_line_mirror(phase, elapsed_ms, emoji)
-        );
-    } else {
-        let prev = last.lock().map(|l| *l).unwrap_or(*t0);
-        let elapsed_ms = now.saturating_duration_since(prev).as_millis() as u64;
-        if let Ok(mut l) = last.lock() {
-            *l = now;
-        }
-        eprintln!(
-            "{}",
-            render_phase_concluded_line_mirror(&label, elapsed_ms, emoji)
-        );
+        return;
     }
+    let (phase, opened) = match label.strip_suffix(".done") {
+        Some(phase) => (
+            phase.to_string(),
+            opens.lock().ok().and_then(|mut m| m.remove(phase)),
+        ),
+        None => (label.clone(), None),
+    };
+    let (since, since_cpu) = match opened {
+        Some(open) => open,
+        None => last.lock().map(|l| *l).unwrap_or((*t0, None)),
+    };
+    let elapsed_ms = now.saturating_duration_since(since).as_millis() as u64;
+    let cpu_ms = match (cpu_now, since_cpu) {
+        (Some(now_ms), Some(since_ms)) => Some(now_ms.saturating_sub(since_ms)),
+        _ => None,
+    };
+    if let Ok(mut l) = last.lock() {
+        *l = (now, cpu_now);
+    }
+    if let Ok(mut ledger) = trace_ledger_state().lock() {
+        if let Some(rows) = ledger.as_mut() {
+            rows.push(TraceLedgerRow {
+                label: phase.clone(),
+                wall_ms: elapsed_ms,
+                cpu_ms,
+            });
+        }
+    }
+    eprintln!(
+        "{}",
+        render_phase_concluded_line_mirror(&phase, elapsed_ms, emoji)
+    );
 }
 
 /// Content hash over raw bytes — the byte-level single authority. `atom_identity_hash`

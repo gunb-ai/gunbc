@@ -13558,11 +13558,29 @@ fn eval_emit_host_run_transport_builtin(
     files_arg: Option<&Value>,
     build_arg: Option<&Value>,
     run_arg: Option<&Value>,
+    environment_arg: Option<&Value>,
     ctx: &InterpContext,
 ) -> InterpResult<Value> {
     ctx.effect_dispatch_count
         .set(ctx.effect_dispatch_count.get().wrapping_add(1));
     require_permitted_transport(admission_arg, ctx, "emit_host_run_transport")?;
+    let admitted_names: Vec<String> = {
+        let val = environment_arg.ok_or_else(|| InterpError::TypeError {
+            msg: format!("emit_host_run_transport requires an `environment` argument: the target's HostTransportDescriptor.build_environment.ambient_names (v2.std.host_transport HostBuildEnvironment)"),
+        })?;
+        let items = free_monoid_to_vec(val).ok_or_else(|| InterpError::TypeError {
+            msg: format!("emit_host_run_transport: environment must be a List<String> of admitted variable names"),
+        })?;
+        items
+            .iter()
+            .map(|v| {
+                free_monoid_to_string(v).ok_or_else(|| InterpError::TypeError {
+                    msg: format!("emit_host_run_transport: environment entries must be Strings"),
+                })
+            })
+            .collect::<InterpResult<Vec<String>>>()?
+    };
+    let build_environment = emit_host_constructed_build_environment(&admitted_names);
 
     let files_val = files_arg.ok_or_else(|| InterpError::TypeError {
         msg: "emit_host_run_transport requires (files, build, run) arguments".to_string(),
@@ -13668,6 +13686,7 @@ fn eval_emit_host_run_transport_builtin(
         &workspace_files,
         &build_argvs,
         &run_argv,
+        &build_environment,
         ctx,
     );
     if let Err(cleanup) = std::fs::remove_dir_all(&workspace) {
@@ -13766,11 +13785,30 @@ fn eval_emit_host_run_transport_cached_builtin(
     files_arg: Option<&Value>,
     build_arg: Option<&Value>,
     run_arg: Option<&Value>,
+    environment_arg: Option<&Value>,
     ctx: &InterpContext,
 ) -> InterpResult<Value> {
     ctx.effect_dispatch_count
         .set(ctx.effect_dispatch_count.get().wrapping_add(1));
     require_permitted_transport(admission_arg, ctx, "emit_host_run_transport_cached")?;
+    let admitted_names: Vec<String> = {
+        let val = environment_arg.ok_or_else(|| InterpError::TypeError {
+            msg: format!("emit_host_run_transport_cached requires an `environment` argument: the target's HostTransportDescriptor.build_environment.ambient_names (v2.std.host_transport HostBuildEnvironment)"),
+        })?;
+        let items = free_monoid_to_vec(val).ok_or_else(|| InterpError::TypeError {
+            msg: format!("emit_host_run_transport_cached: environment must be a List<String> of admitted variable names"),
+        })?;
+        items
+            .iter()
+            .map(|v| {
+                free_monoid_to_string(v).ok_or_else(|| InterpError::TypeError {
+                    msg: format!(
+                        "emit_host_run_transport_cached: environment entries must be Strings"
+                    ),
+                })
+            })
+            .collect::<InterpResult<Vec<String>>>()?
+    };
 
     let workspace_dir = free_monoid_to_string(workspace_dir_arg.ok_or_else(|| {
         InterpError::TypeError {
@@ -13881,6 +13919,7 @@ fn eval_emit_host_run_transport_cached_builtin(
         &build_argvs,
         &run_argv,
         false,
+        &admitted_names,
     )
 }
 
@@ -13893,6 +13932,7 @@ pub fn run_native_bundle_process_cached(
     workspace_files: &[(String, String)],
     build_argvs: &[Vec<String>],
     run_argv: &[String],
+    admitted_names: &[String],
 ) -> InterpResult<Value> {
     if !ctx.execution_mode.is_wet_dispatch() {
         return Err(InterpError::TypeError {
@@ -13911,6 +13951,7 @@ pub fn run_native_bundle_process_cached(
         build_argvs,
         run_argv,
         true,
+        &admitted_names,
     )
 }
 
@@ -13921,6 +13962,7 @@ fn run_cached_process_spec(
     build_argvs: &[Vec<String>],
     run_argv: &[String],
     require_transition_timing: bool,
+    admitted_names: &[String],
 ) -> InterpResult<Value> {
     let workspace_dir = native_cache_rebase_workspace_dir(workspace_dir);
     let realization_workspace = std::path::PathBuf::from(&workspace_dir);
@@ -13928,7 +13970,7 @@ fn run_cached_process_spec(
         msg: format!("emit_host_run_transport_cached: workspace create failed: {e}"),
     })?;
     emit_host_materialize_workspace_files(&realization_workspace, &workspace_files)?;
-    let build_environment = emit_host_constructed_build_environment();
+    let build_environment = emit_host_constructed_build_environment(admitted_names);
     let resolved_build_context_identity = emit_host_resolved_build_context_identity(
         &build_argvs,
         &realization_workspace,
@@ -14061,56 +14103,29 @@ struct EmitHostBuildEnvironment {
 /// Construct the complete environment admitted to build and run subprocesses.
 /// Commands use env_clear() and receive exactly these rows, so an undeclared
 /// ambient variable cannot affect an artifact outside the realization identity.
-fn emit_host_constructed_build_environment() -> EmitHostBuildEnvironment {
+///
+/// THE ADMITTED NAMES ARE A DECLARED ROW, NOT A RUST PREFIX TABLE. `admitted_names` is the
+/// target's `HostTransportDescriptor.build_environment.ambient_names`
+/// (`v2.std.host_transport HostBuildEnvironment`), passed by every transport call; this
+/// function admits a variable only if its exact name is in that list. It used to
+/// admit every `RUST*` / `CARGO_*` / `*FLAGS` variable by prefix, which let the required
+/// floor's seed-build policy (`RUSTFLAGS=-D warnings`, exported for compiling the seed)
+/// reach the EMITTED program's build: four emit_host expected-red rows built clean on every
+/// flagless runner and were `RunFailed` only in CI, on `-D dead-code` (gunbc#9727). A build
+/// flag is policy; the emitted program's build environment is realization; the seed does not
+/// get to smuggle one into the other through a prefix (DESIGN §3).
+fn emit_host_constructed_build_environment(admitted_names: &[String]) -> EmitHostBuildEnvironment {
     use std::os::unix::ffi::OsStrExt;
-
-    fn admitted(name: &str) -> bool {
-        const EXACT: &[&str] = &[
-            "PATH",
-            "HOME",
-            "TMPDIR",
-            "CC",
-            "CXX",
-            "AR",
-            "LD_LIBRARY_PATH",
-            "LIBRARY_PATH",
-            "CPATH",
-            "PKG_CONFIG_PATH",
-            "SDKROOT",
-            "MACOSX_DEPLOYMENT_TARGET",
-        ];
-        const PREFIXES: &[&str] = &[
-            "CARGO_",
-            "RUST",
-            "CC_",
-            "CXX_",
-            "AR_",
-            "CFLAGS",
-            "CXXFLAGS",
-            "CPPFLAGS",
-            "LDFLAGS",
-            "PKG_CONFIG_",
-            "GO",
-            "NODE_",
-            "NPM_",
-            "PYTHON",
-        ];
-        if matches!(
-            name,
-            "CARGO_TARGET_DIR" | "RUSTC_WRAPPER" | "RUSTC_WORKSPACE_WRAPPER"
-        ) {
-            return false;
-        }
-        EXACT.contains(&name) || PREFIXES.iter().any(|prefix| name.starts_with(prefix))
-    }
-
+    // No seed-side veto: the row is the whole policy. CARGO_TARGET_DIR is constructed at the
+    // realization boundary below (the workspace's own target dir), and a wrapper variable is
+    // admitted iff a row names it.
+    let admitted = |name: &str| -> bool { admitted_names.iter().any(|n| n == name) };
     let mut entries: Vec<_> = std::env::vars_os()
         .filter(|(name, _)| name.to_str().map(admitted).unwrap_or(false))
         .collect();
     entries.sort_by(|(a, _), (b, _)| a.as_bytes().cmp(b.as_bytes()));
-
     let mut digest =
-        v1_rt::atom_identity_hash("emit-host-constructed-build-environment-v1".to_string());
+        v1_rt::atom_identity_hash("emit-host-constructed-build-environment-v2".to_string());
     for (name, value) in &entries {
         digest = v1_rt::hash_combine(digest, v1_rt::bytes_identity_hash(name.as_bytes()));
         digest = v1_rt::hash_combine(digest, v1_rt::bytes_identity_hash(value.as_bytes()));
@@ -14201,8 +14216,8 @@ fn emit_host_cargo_configuration_digest(
 ///
 /// Cargo is a driver, not the compiler identity. Its observation is therefore
 /// paired with the rustc selected by the same process environment. The transport
-/// removes RUSTC_WRAPPER and RUSTC_WORKSPACE_WRAPPER when building, so wrappers are
-/// intentionally not part of this identity.
+/// runs under the target's declared build environment, in which no shipped row names
+/// RUSTC_WRAPPER or RUSTC_WORKSPACE_WRAPPER, so wrappers are not part of this identity.
 #[derive(Debug, Clone)]
 struct ObservedToolIdentity {
     tool_name: String,
@@ -14543,6 +14558,7 @@ fn emit_host_run_transport_in_workspace(
     files: &[(String, String)],
     build_argvs: &[Vec<String>],
     run_argv: &[String],
+    build_environment: &EmitHostBuildEnvironment,
     ctx: &InterpContext,
 ) -> InterpResult<Value> {
     use std::path::Component;
@@ -14574,12 +14590,14 @@ fn emit_host_run_transport_in_workspace(
     let target_dir = workspace.join("target");
     let run_command = |argv: &[String]| -> InterpResult<std::process::Output> {
         let program = resolve_host_tool_program(&argv[0])?;
-        std::process::Command::new(&program)
+        let mut command = std::process::Command::new(&program);
+        // The uncached transport inherited the WHOLE ambient environment until gunbc#9727;
+        // it now receives exactly the declared admitted rows, as the cached transport does.
+        emit_host_apply_build_environment(&mut command, build_environment);
+        command
             .args(&argv[1..])
             .current_dir(workspace)
             .env("CARGO_TARGET_DIR", &target_dir)
-            .env_remove("RUSTC_WRAPPER")
-            .env_remove("RUSTC_WORKSPACE_WRAPPER")
             .output()
             .map_err(|e| host_tool_spawn_failure("emit_host_run_transport", &argv[0], &program, &e))
     };
@@ -15274,6 +15292,7 @@ macro_rules! v1_builtin_arms {
                 $positional.get(1).copied(),
                 $positional.get(2).copied(),
                 $positional.get(3).copied(),
+                $positional.get(4).copied(),
                 $ctx,
             )?)),
 
@@ -15283,6 +15302,7 @@ macro_rules! v1_builtin_arms {
                 $positional.get(2).copied(),
                 $positional.get(3).copied(),
                 $positional.get(4).copied(),
+                $positional.get(5).copied(),
                 $ctx,
             )?)),
 
