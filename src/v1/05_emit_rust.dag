@@ -14312,23 +14312,17 @@ fn emit_generated_dispatch_match_arm(sub: CliSubcommandRow, crate_name: String, 
   }
 }
 
+data cli_dispatch_executor_name_construction_note: String = "One-consumer realization helper: only emit_gunbc_cli_dispatch_generated_for_rows consumes this spelling, and the spelling never enters CLI identity, build identity, receipts, cache keys, or product output. The blocked population is command plus the modeled pattern bindings: the complete value-binding population in the generated function before the executor is used. It is projected through modeled_subcommand_bound_fields, the same producer the pattern renderer consumes, rather than guessed from option spellings or a parallel field roster. Every numeric candidate is a legal non-keyword Rust value identifier. A population of length N produces N+1 candidates in fixed numeric order; duplicates may over-allocate but cannot change the first absent answer, and row order is irrelevant. Dissolve this local helper into a general Rust value-identifier allocation authority when that authority exists and can consume the exact dispatch-local binding population; until then, keeping the construction here avoids minting an unconsumed framework."
+
 fn dispatch_local_binding_names(rows: List<CliSubcommandRow>) -> List<String> {
-  // `command` and the modeled pattern bindings are the complete value-binding population in
-  // the generated function before the executor is used. This projection is shared with the
-  // pattern renderer; it does not guess from option spellings or from a parallel field roster.
   concat(["command"], rows |> flat_map(sub => modeled_subcommand_bound_fields(sub: sub)))
 }
 
 fn cli_dispatch_executor_candidate(index: Int) -> String {
-  // Every member is a legal, non-keyword Rust value identifier by construction.
   concat("__gunbc_dispatch_executor_", to_string(index))
 }
 
-data cli_dispatch_executor_name_construction_note: String = "One-consumer realization helper: only emit_gunbc_cli_dispatch_generated_for_rows consumes this spelling, and the spelling never enters CLI identity, build identity, receipts, cache keys, or product output. Dissolve this local helper into a general Rust value-identifier allocation authority when that authority exists and can consume the exact dispatch-local binding population; until then, keeping the construction here avoids minting an unconsumed framework."
-
 fn fresh_cli_dispatch_executor_name(blocked: List<String>) -> String? {
-  // A population of length N produces N+1 candidates in a fixed numeric order. Duplicates may
-  // over-allocate candidates but cannot change the first absent answer; row order is irrelevant.
   let first_n = enumerate(blocked) |> map(pair => cli_dispatch_executor_candidate(index: pair.first))
   let candidates = concat(first_n, [cli_dispatch_executor_candidate(index: count(blocked))])
   candidates |> filter(name => !(blocked |> any(local => local == name))) |> first
