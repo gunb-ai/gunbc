@@ -2,7 +2,7 @@ module test.claim.machine_intake_disposition_witness_test
 
 import std.types { Bool, EpochMs, Int, List, NonEmptyStr, String, list_length }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import std.content_hash { ContentHash, content_hash_of_value }
+import std.content_hash { ContentHash, ContentHashEqual, ContentHashDifferent, ContentHashCrossFamilyIncomparable, compare_content_hash, content_hash_of_value }
 import extdeps.toolchain.types { Aarch64 }
 import gunbc.machine_intake_subject {
   SubjectCurrent,
@@ -32,6 +32,7 @@ import gunbc.machine_intake_phase {
   UnitHardware,
   fleet_admission_required_phases,
   intake_phase_in,
+  intake_phase_rank,
   arrival_phases_all,
   provisioning_phases_all,
 }
@@ -55,8 +56,12 @@ import gunbc.machine_intake_receipt {
   IntakeLedgerRefusalCause,
   LedgerBrokenLink,
   LedgerEmpty,
+  LedgerIntervalInverted,
   LedgerMultipleGenesis,
   LedgerNonMonotoneTime,
+  LedgerPhaseRegression,
+  LedgerPolicyDigestChanged,
+  LedgerProducerChanged,
   LedgerRefused,
   LedgerSubjectMismatch,
   LedgerValidated,
@@ -73,6 +78,7 @@ import gunbc.machine_intake_disposition {
   FleetAdmissible,
   FleetNotAdmissible,
   PartsHold,
+  PhaseReceiptBinding,
   PhaseReceiptSubjectMismatch,
   PhaseSatisfiedByReceipt,
   PhaseUnobserved,
@@ -208,11 +214,57 @@ fn ledger_without(subject: QualificationSubject, omitted: IntakePhase) -> List<I
   fold(fleet_admission_required_phases, init: [], f: (acc, p) => if p == omitted { acc } else { concat(acc, [satisfied_receipt(phase: p, subject: subject, previous: none)]) })
 }
 
+fn phase_rank_or_neg(phase: IntakePhase) -> Int {
+  match intake_phase_rank(phase: phase) {
+    Present { value: k } => k
+    Absent => -1
+  }
+}
+
+// The lifecycle that STOPPED at `phase`: every lower-ranked required phase
+// satisfied in roster order, then the refused receipt for `phase` last. This
+// is what a serial executor records, and it is rank-valid: the ruling's
+// monotone-rank rule refuses the old shape (a refusal appended after every
+// later phase), so these fixtures now place the refusal at its rank.
+fn ledger_stopped_at(subject: QualificationSubject, phase: IntakePhase, owner: QualificationRefusalOwner, cause: NonEmptyStr) -> List<IntakeReceiptEnvelope> {
+  let stop = phase_rank_or_neg(phase: phase)
+  let before = fold(fleet_admission_required_phases, init: [], f: fn(acc, p) {
+    let earlier = phase_rank_or_neg(phase: p) < stop
+    if earlier { concat(acc, [satisfied_receipt(phase: p, subject: subject, previous: none)]) } else { acc }
+  })
+  concat(before, [refused_receipt(phase: phase, subject: subject, owner: owner, cause: cause)])
+}
+
+// The full lifecycle with ONE phase recorded twice at its rank — first with
+// `first`, then immediately with `retry` — an immediate same-rank retry, which
+// the validator admits and admission resolves last-wins.
+fn full_ledger_retrying(subject: QualificationSubject, phase: IntakePhase, first: IntakeReceiptResult, retry: IntakeReceiptResult) -> List<IntakeReceiptEnvelope> {
+  fold(fleet_admission_required_phases, init: [], f: fn(acc, p) {
+    let here = p == phase
+    if here {
+      concat(acc, [
+        receipt_at(phase: p, subject: subject, attempt: attempt_one, result: first, started_at: 0, previous: none),
+        receipt_at(phase: p, subject: subject, attempt: attempt_one, result: retry, started_at: 0, previous: none),
+      ])
+    } else {
+      concat(acc, [satisfied_receipt(phase: p, subject: subject, previous: none)])
+    }
+  })
+}
+
+fn hashes_equal(left: ContentHash, right: ContentHash) -> Bool {
+  match compare_content_hash(left: left, right: right) {
+    ContentHashEqual => true
+    ContentHashDifferent => false
+    ContentHashCrossFamilyIncomparable => false
+  }
+}
+
 fn admitted(standing: FleetAdmissionStanding?) -> Bool {
   match standing {
     Present { value: a } =>
       match a {
-        FleetAdmissible { receipt: r } => list_length(items: r.satisfied_phases) == list_length(items: fleet_admission_required_phases)
+        FleetAdmissible { receipt: r } => list_length(items: r.satisfied) == list_length(items: fleet_admission_required_phases)
         FleetNotAdmissible { missing: _, refused: _, subject_mismatched: _, subject_currency: _ } => false
       }
     Absent => false
@@ -334,7 +386,7 @@ fn disposition_over(subject: QualificationSubject, receipts: List<IntakeReceiptE
 // never a ReturnWindow hardware defect, even with the return window open.
 test fn staging_failure_is_parts_hold_not_return_window() -> Bool {
   let phase = Arrival { phase: BootDeliveryEstablish }
-  let receipts = concat(ledger_without(subject: subject_before, omitted: phase), [refused_receipt(phase: phase, subject: subject_before, owner: StagingInfrastructure, cause: "artifact service unreachable")])
+  let receipts = ledger_stopped_at(subject: subject_before, phase: phase, owner: StagingInfrastructure, cause: "artifact service unreachable")
   match disposition_over(subject: subject_before, receipts: receipts, window: ReturnWindowOpen { deadline: 1790000000000 }) {
     Present { value: d } =>
       match d {
@@ -354,7 +406,7 @@ test fn staging_failure_is_parts_hold_not_return_window() -> Bool {
 // decides, not the phase.
 test fn hardware_defect_in_open_window_is_return_window() -> Bool {
   let phase = Arrival { phase: MemoryAuthoritativeQualify }
-  let receipts = concat(ledger_without(subject: subject_before, omitted: phase), [refused_receipt(phase: phase, subject: subject_before, owner: UnitHardware, cause: "new uncorrectable error")])
+  let receipts = ledger_stopped_at(subject: subject_before, phase: phase, owner: UnitHardware, cause: "new uncorrectable error")
   match disposition_over(subject: subject_before, receipts: receipts, window: ReturnWindowOpen { deadline: 1790000000000 }) {
     Present { value: d } =>
       match d {
@@ -367,7 +419,7 @@ test fn hardware_defect_in_open_window_is_return_window() -> Bool {
 
 test fn hardware_defect_outside_window_is_repair_or_cull() -> Bool {
   let phase = Arrival { phase: AcceptanceSoak }
-  let receipts = concat(ledger_without(subject: subject_before, omitted: phase), [refused_receipt(phase: phase, subject: subject_before, owner: UnitHardware, cause: "thermal runaway")])
+  let receipts = ledger_stopped_at(subject: subject_before, phase: phase, owner: UnitHardware, cause: "thermal runaway")
   match disposition_over(subject: subject_before, receipts: receipts, window: ReturnWindowClosed) {
     Present { value: d } =>
       match d {
@@ -478,16 +530,158 @@ test fn mixed_attempt_ids_on_one_subject_are_refused() -> Bool {
 
 // Retry semantics: a later refusal on a phase supersedes its earlier success
 // (last-wins in ledger order), so a re-run that failed cannot hide behind the
-// first attempt's receipt.
+// first attempt's receipt. The retry sits at the phase's own rank — an
+// immediate retry — because a re-run appended after later phases is exactly
+// the regression the validator now refuses (see the counterexample REDs).
 test fn later_refusal_supersedes_earlier_success() -> Bool {
   let phase = Arrival { phase: MemoryAuthoritativeQualify }
-  let receipts = concat(full_ledger(subject: subject_before), [refused_receipt(phase: phase, subject: subject_before, owner: UnitHardware, cause: "new corrected errors on retry")])
+  let receipts = full_ledger_retrying(subject: subject_before, phase: phase, first: ReceiptSatisfied, retry: ReceiptRefused { owner: UnitHardware, cause: "new corrected errors on retry" })
   match admission_over(subject: subject_before, receipts: receipts) {
     Present { value: a } =>
       match a {
         FleetNotAdmissible { missing: m, refused: r, subject_mismatched: _, subject_currency: _ } =>
           list_length(items: m) == 0 && list_length(items: r) == 1
         FleetAdmissible { receipt: _ } => false
+      }
+    Absent => false
+  }
+}
+
+// Same-rank retry the other way: a refusal followed immediately by a satisfied
+// re-run of the SAME phase validates and admits — so the rank rule admits an
+// immediate retry and refuses only regression — and the admission receipt
+// preserves provenance: it binds the phase to the RETRY's fingerprint (not the
+// first receipt's), names the validated ledger's terminal fingerprint, and
+// carries the attempt's policy digest.
+test fn immediate_same_rank_retry_validates_and_binds_the_retry() -> Bool {
+  let phase = Arrival { phase: MemoryAuthoritativeQualify }
+  let receipts = chain(receipts: full_ledger_retrying(subject: subject_before, phase: phase, first: ReceiptRefused { owner: UnitHardware, cause: "corrected errors" }, retry: ReceiptSatisfied))
+  let retry_fingerprint = fold(receipts, init: none, f: fn(acc, r) {
+    let here = r.phase == phase
+    if here { Present { value: intake_receipt_structural_fingerprint(envelope: r) } } else { acc }
+  })
+  match validate_intake_receipt_ledger(receipts: receipts) {
+    LedgerRefused { cause: _ } => false
+    LedgerValidated { ledger: l } =>
+      match derive_fleet_admission(observed_subject: subject_before, ledger: l, now: 1788000002000) {
+        FleetNotAdmissible { missing: _, refused: _, subject_mismatched: _, subject_currency: _ } => false
+        FleetAdmissible { receipt: r } => {
+          let bound = fold(r.satisfied, init: none, f: fn(acc, b) {
+            let here = b.phase == phase
+            if here { Present { value: b.receipt } } else { acc }
+          })
+          let binding_is_retry = match bound {
+            Present { value: b } =>
+              match retry_fingerprint {
+                Present { value: f } => hashes_equal(left: b, right: f)
+                Absent => false
+              }
+            Absent => false
+          }
+          binding_is_retry
+            && hashes_equal(left: r.ledger_terminal_fingerprint, right: l.terminal_fingerprint)
+            && hashes_equal(left: r.policy_digest, right: policy_digest)
+            && list_length(items: r.satisfied) == list_length(items: fleet_admission_required_phases)
+        }
+      }
+  }
+}
+
+// RULING 3 §4 COUNTEREXAMPLE 1 — every required receipt in REVERSE phase
+// order, increasing timestamps, every link recomputed: link-valid, and refused
+// at index 1 as a phase-rank regression. Before the rank rule this admitted.
+test fn reverse_phase_order_with_valid_links_is_refused() -> Bool {
+  let reversed = fold(full_ledger(subject: subject_before), init: [], f: (acc, r) => concat([r], acc))
+  match ledger_refusal(receipts: chain(receipts: reversed)) {
+    Present { value: c } =>
+      match c {
+        LedgerPhaseRegression { index: i } => i == 1
+        _ => false
+      }
+    Absent => false
+  }
+}
+
+// RULING 3 §4 COUNTEREXAMPLE 2 — a complete successful lifecycle followed by a
+// fresh successful AccessDiscover: last-wins would make that discovery current
+// while every downstream qualification predates it. Refused as a regression at
+// the appended index; retrying an earlier phase requires a new attempt.
+test fn fresh_access_discover_after_complete_lifecycle_is_refused() -> Bool {
+  let full = full_ledger(subject: subject_before)
+  let appended = concat(full, [satisfied_receipt(phase: Arrival { phase: AccessDiscover }, subject: subject_before, previous: none)])
+  match ledger_refusal(receipts: chain(receipts: appended)) {
+    Present { value: c } =>
+      match c {
+        LedgerPhaseRegression { index: i } => i == list_length(items: full)
+        _ => false
+      }
+    Absent => false
+  }
+}
+
+// RED — a receipt whose started_at exceeds its ended_at is refused at its
+// index, before any link is read.
+test fn inverted_receipt_interval_is_refused() -> Bool {
+  let linked = chain(receipts: full_ledger(subject: subject_before))
+  let inverted = fold(linked, init: [], f: fn(acc, r) {
+    let here = list_length(items: acc) == 3
+    if here {
+      concat(acc, [IntakeReceiptEnvelope { schema: r.schema, subject: r.subject, phase: r.phase, producer: r.producer, policy_digest: r.policy_digest, started_at: r.started_at, ended_at: r.started_at - 1, observations: r.observations, result: r.result, previous_receipt: r.previous_receipt }])
+    } else {
+      concat(acc, [r])
+    }
+  })
+  match ledger_refusal(receipts: inverted) {
+    Present { value: c } =>
+      match c {
+        LedgerIntervalInverted { index: i } => i == 3
+        _ => false
+      }
+    Absent => false
+  }
+}
+
+// RED — a policy digest that differs from the genesis receipt's is refused at
+// its index: one attempt runs under one policy.
+test fn policy_digest_change_across_attempt_is_refused() -> Bool {
+  let linked = chain(receipts: full_ledger(subject: subject_before))
+  let changed = fold(linked, init: [], f: fn(acc, r) {
+    let here = list_length(items: acc) == 2
+    if here {
+      concat(acc, [IntakeReceiptEnvelope { schema: r.schema, subject: r.subject, phase: r.phase, producer: r.producer, policy_digest: content_hash_of_value(value: "policy-revised-midway"), started_at: r.started_at, ended_at: r.ended_at, observations: r.observations, result: r.result, previous_receipt: r.previous_receipt }])
+    } else {
+      concat(acc, [r])
+    }
+  })
+  match ledger_refusal(receipts: changed) {
+    Present { value: c } =>
+      match c {
+        LedgerPolicyDigestChanged { index: i } => i == 2
+        _ => false
+      }
+    Absent => false
+  }
+}
+
+// RED — a producer identity that differs from the genesis receipt's (here the
+// intake binary) is refused at its index: no producer-transition receipt is
+// modeled, so a change of producer is a new attempt.
+test fn producer_change_across_attempt_is_refused() -> Bool {
+  let linked = chain(receipts: full_ledger(subject: subject_before))
+  let other = IntakeProducerIdentity { intake_binary: content_hash_of_value(value: "intake-binary-upgraded"), staging_service_identity: "intake-staging", agent_artifact: none }
+  let changed = fold(linked, init: [], f: fn(acc, r) {
+    let here = list_length(items: acc) == 2
+    if here {
+      concat(acc, [IntakeReceiptEnvelope { schema: r.schema, subject: r.subject, phase: r.phase, producer: other, policy_digest: r.policy_digest, started_at: r.started_at, ended_at: r.ended_at, observations: r.observations, result: r.result, previous_receipt: r.previous_receipt }])
+    } else {
+      concat(acc, [r])
+    }
+  })
+  match ledger_refusal(receipts: changed) {
+    Present { value: c } =>
+      match c {
+        LedgerProducerChanged { index: i } => i == 2
+        _ => false
       }
     Absent => false
   }
