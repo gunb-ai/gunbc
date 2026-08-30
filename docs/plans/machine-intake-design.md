@@ -17,7 +17,7 @@ and is refused as `CandidateEvidenceForOtherTarget` otherwise; the profile's cap
 the exact-release `BmcFirmwareReleaseCapabilityRow` so raw "0.32" inhabits a valid profile (a
 positive control proves it); a promoted profile binds only beside `ProfilePromotionVerified`,
 which no producer can construct until INTAKE-AGENT-0A's evidence store — so every promoted
-profile refuses today; the Redfish probe receipt is one coherent reading (payload-free ladder arm at the floor AND a nonempty `admitted_protocols`; a receipt saying one without the other is refused as a contradiction), boot CONTROL is established on its own evidence (`SurfaceBootControl` in the profile/observation intersection plus the profile's control route, carried on the plan as `boot_control_route`) and the observation
+profile refuses today; the Redfish probe receipt is one coherent reading (payload-free ladder arm at the floor AND a nonempty `admitted_protocols`; a receipt saying one without the other is refused as a contradiction), boot CONTROL is established on its own evidence (`SurfaceBootControl` in the profile/observation intersection plus exactly one OBSERVED control route — `BmcBootControlRouteObservation`, its bytes in the evidence manifest, the route named by the profile — carried on the plan as `boot_control_route`; no observation refuses, an observed route the catalog does not name refuses, two observed routes are a typed ambiguity, never a catalog preference) and the observation
 receipt carries an evidence MANIFEST that must name both the discovery bytes and the nested
 probe's bytes; the plan's provenance preserves the selected candidate's own evidence. The
 changed-witness execution sublane #9717 requires is dispatched as its own CI PR (child work
@@ -373,6 +373,10 @@ evidence; automating media attachment while the verdict stays manual is not it.
 | Raw release "0.32" with an exact-release OEM row and matching observation | context binds, MegaRAC plan (positive) | boot delivery witness |
 | Probe arm below the floor while the population lists HTTPS | `CandidateRedfishProbeContradictory`, never resolved by preferring one side | boot delivery witness |
 | Live observation lacks `SurfaceBootControl` while catalog names override and media is live | `DeliveryBootControlSurfaceUnestablished`, no plan | boot delivery witness |
+| Profile names Redfish and IPMI; boot control observed over IPMI only | plan carries IPMI, never Redfish | boot delivery witness |
+| No route-specific boot-control observation / both routes observed | `DeliveryBootControlRouteUnobserved` / `DeliveryBootControlRouteAmbiguous`, no plan | boot delivery witness |
+| Boot control observed over MegaRAC REST (named by the profile, no control operation) | `DeliveryBootControlRouteNotControlCapable` | boot delivery witness |
+| Control-route observation bytes absent from the manifest | `AccessContextControlRouteEvidenceMismatch` | boot delivery witness |
 | Empty configfs observation population | `CandidateConfigfsUnestablished` with all eight probes missing — no authored establishment | boot delivery witness |
 | Every current phase in the three rosters | exactly one rank, all distinct (positive) | disposition witness |
 | Catalog row whose capability firmware differs from its key | lookup refuses the catalog | boot delivery witness |

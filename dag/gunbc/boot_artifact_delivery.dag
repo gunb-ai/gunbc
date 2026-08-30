@@ -1,6 +1,6 @@
 module gunbc.boot_artifact_delivery
 
-import std.types { Bool, EpochMs, Int, List, NonEmptyStr, String, Port }
+import std.types { Bool, EpochMs, Int, List, NonEmptyStr, String, Port, list_length }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.content_hash { ContentHash }
 import extdeps.uri { Uri }
@@ -37,6 +37,7 @@ import extdeps.bmc.access_profile {
   BmcAccessProfileProvenance,
   BmcAccessRoute,
   BmcAccessSurface,
+  BmcBootControlRouteObservation,
   SurfaceAbsentFromLiveObservation,
   SurfaceAbsentFromProfile,
   SurfaceBootControl,
@@ -45,14 +46,16 @@ import extdeps.bmc.access_profile {
   SurfaceOemRestRemoteMedia,
   SurfaceProfileObservationIdentityMismatch,
   SurfaceRedfishVirtualMedia,
-  bmc_profile_boot_control_route,
   bmc_profile_megarac_image_redirection,
+  bmc_profile_names_route,
+  bmc_route_is_boot_control_capable,
   bmc_profile_nbd_websocket_path,
   bmc_surface_eligibility,
 }
 import gunbc.machine_intake_access {
   AccessContextBound,
   AccessContextCatalogRefused,
+  AccessContextControlRouteEvidenceMismatch,
   AccessContextObservationEvidenceMismatch,
   AccessContextObservationForOtherAttempt,
   AccessContextProbeEvidenceMismatch,
@@ -386,17 +389,17 @@ type BootDeliveryEligibilityProvenance {
 // insert, host consumption, eject and detach are established only by execution
 // receipts (the boot-delivery and cleanup phases of gunbc.machine_intake_phase),
 // never by this solver.
-// boot_control_route is the CONTROL half's evidence: the route the bound
-// profile exposes for boot control, admitted only after SurfaceBootControl was
-// established in the profile/observation intersection (2026-08-30 re-review
-// §3). Control and delivery keep independent eligibility; the plan exists only
-// when both hold.
+// boot_control_route is the CONTROL half's evidence: the route the controller
+// was OBSERVED answering boot control over — its bytes named in the evidence
+// manifest, the route named by the bound profile — never the route the catalog
+// prefers (2026-08-30 re-review, boot-control ruling). Control and delivery
+// keep independent eligibility; the plan exists only when both hold.
 type BootDeliveryPlan {
   target: BootDeliveryTarget
   artifact: BootArtifact
   delivery: BootArtifactDelivery
   boot_control: BootControlTarget
-  boot_control_route: BmcAccessRoute
+  boot_control_route: BmcBootControlRouteObservation
   eligibility: BootDeliveryEligibilityProvenance
 }
 
@@ -406,7 +409,10 @@ type BootDeliveryRefusalCause
   | DeliveryTargetControllerMismatch { requested: BootDeliveryTarget, bound_endpoint: BmcControllerEndpoint }
   | DeliveryNoBootSourceOverride { firmware: BmcFirmwareReleaseIdentity }
   | DeliveryBootControlSurfaceUnestablished { standing: BootDeliveryCandidateStanding }
-  | DeliveryBootControlRouteAbsent { firmware: BmcFirmwareReleaseIdentity }
+  | DeliveryBootControlRouteUnobserved { endpoint: BmcControllerEndpoint }
+  | DeliveryBootControlRouteNotInProfile { observed: BmcAccessRoute }
+  | DeliveryBootControlRouteNotControlCapable { observed: BmcAccessRoute }
+  | DeliveryBootControlRouteAmbiguous { observed: List<BmcAccessRoute> }
   | DeliveryNoEligibleTransport { firmware: BmcFirmwareReleaseIdentity, considered: List<BootDeliveryCandidateVerdict> }
 
 type BootDeliverySolution
@@ -767,7 +773,7 @@ fn select_boot_artifact_delivery(
   ev: BoundBootDeliveryEvidence,
   request: BootDeliveryRequest,
   policy: BootDeliveryPolicy,
-  control_route: BmcAccessRoute,
+  control_route: BmcBootControlRouteObservation,
   verdicts: List<BootDeliveryCandidateVerdict>,
 ) -> BootDeliverySolution {
   match first_eligible_boot_artifact_delivery(ctx: ctx, ev: ev, request: request, policy: policy, verdicts: verdicts) {
@@ -791,15 +797,79 @@ fn select_boot_artifact_delivery(
   }
 }
 
+// THE OBSERVED CONTROL ROUTE. The live observation names every route the
+// controller answered boot control over; the plan carries exactly one, and it
+// must be a route the bound profile names. No observation is a refusal, not a
+// catalog preference; an observed route the catalog does not name is refused;
+// two observed routes are a typed ambiguity for a policy that does not exist
+// yet, never a silent pick.
+type ObservedBootControlRoute
+  = BootControlRouteObserved { observation: BmcBootControlRouteObservation }
+  | BootControlRouteUnobserved
+  | BootControlRouteNotInProfile { observed: BmcAccessRoute }
+  | BootControlRouteNotControlCapable { observed: BmcAccessRoute }
+  | BootControlRouteAmbiguous { observed: List<BmcAccessRoute> }
+
+fn first_route_not_control_capable(ctx: BoundBmcAccessContext) -> BmcAccessRoute? {
+  fold(
+    ctx.observation.boot_control_routes,
+    init: none,
+    f: (acc, r) => match acc {
+      Present { value: _ } => acc
+      Absent => if bmc_route_is_boot_control_capable(route: r.route) { none } else { Present { value: r.route } }
+    },
+  )
+}
+
+fn first_route_outside_profile(ctx: BoundBmcAccessContext) -> BmcAccessRoute? {
+  fold(
+    ctx.observation.boot_control_routes,
+    init: none,
+    f: (acc, r) => match acc {
+      Present { value: _ } => acc
+      Absent => if bmc_profile_names_route(profile: ctx.profile, route: r.route) { none } else { Present { value: r.route } }
+    },
+  )
+}
+
+fn sole_observed_route(observed: List<BmcBootControlRouteObservation>) -> BmcBootControlRouteObservation? {
+  fold(observed, init: none, f: (_acc, r) => Present { value: r })
+}
+
+fn observed_boot_control_route(ctx: BoundBmcAccessContext) -> ObservedBootControlRoute {
+  let observed = ctx.observation.boot_control_routes
+  match first_route_not_control_capable(ctx: ctx) {
+    Present { value: nc } => BootControlRouteNotControlCapable { observed: nc }
+    Absent =>
+  match first_route_outside_profile(ctx: ctx) {
+    Present { value: o } => BootControlRouteNotInProfile { observed: o }
+    Absent => {
+      let n = list_length(items: observed)
+      if n == 0 {
+        BootControlRouteUnobserved
+      } else if n == 1 {
+        match sole_observed_route(observed: observed) {
+          Present { value: r } => BootControlRouteObserved { observation: r }
+          Absent => BootControlRouteUnobserved
+        }
+      } else {
+        BootControlRouteAmbiguous { observed: fold(observed, init: [], f: (acc, r) => concat(acc, [r.route])) }
+      }
+    }
+  }
+  }
+}
+
 // Solve from a target context the binder admitted. Boot CONTROL is established
 // first, on its own evidence: the capability row must name boot-source
 // override, the bound profile and the live observation must both admit
-// SurfaceBootControl, and the profile must expose a control route — a catalog
-// capability alone never establishes control on a controller that was not
-// observed serving it. Then the candidates are judged in the policy's order and
-// the first eligible one is built. Every arm is reached from something the
-// request or the evidence NAMES, never from the absence of another arm: the
-// else is a refusal carrying every candidate's standing.
+// SurfaceBootControl, and the controller must have been OBSERVED answering
+// boot control over exactly one route the profile names — a catalog capability
+// or a catalogued route alone never establishes control on a controller that
+// was not observed serving it. Then the candidates are judged in the policy's
+// order and the first eligible one is built. Every arm is reached from
+// something the request or the evidence NAMES, never from the absence of
+// another arm: the else is a refusal carrying every candidate's standing.
 fn solve_bound_boot_artifact_delivery(
   ctx: BoundBmcAccessContext,
   request: BootDeliveryRequest,
@@ -813,9 +883,12 @@ fn solve_bound_boot_artifact_delivery(
   } else if control_ok == false {
     BootDeliveryRefused { cause: DeliveryBootControlSurfaceUnestablished { standing: control_surface } }
   } else {
-    match bmc_profile_boot_control_route(profile: ctx.profile) {
-      Absent => BootDeliveryRefused { cause: DeliveryBootControlRouteAbsent { firmware: ctx.capability_row.firmware } }
-      Present { value: route } =>
+    match observed_boot_control_route(ctx: ctx) {
+      BootControlRouteUnobserved => BootDeliveryRefused { cause: DeliveryBootControlRouteUnobserved { endpoint: ctx.endpoint } }
+      BootControlRouteNotInProfile { observed: o } => BootDeliveryRefused { cause: DeliveryBootControlRouteNotInProfile { observed: o } }
+      BootControlRouteNotControlCapable { observed: nc } => BootDeliveryRefused { cause: DeliveryBootControlRouteNotControlCapable { observed: nc } }
+      BootControlRouteAmbiguous { observed: rs } => BootDeliveryRefused { cause: DeliveryBootControlRouteAmbiguous { observed: rs } }
+      BootControlRouteObserved { observation: route } =>
         select_boot_artifact_delivery(
           ctx: ctx,
           ev: ev,
@@ -850,6 +923,7 @@ fn solve_boot_artifact_delivery(
     AccessContextObservationForOtherAttempt { expected: _, found: _ } => BootDeliveryRefused { cause: DeliveryAccessUnbound { standing: ev.access } }
     AccessContextObservationEvidenceMismatch { endpoint: _, manifest: _, raw_response: _ } => BootDeliveryRefused { cause: DeliveryAccessUnbound { standing: ev.access } }
     AccessContextProbeEvidenceMismatch { endpoint: _, manifest: _, raw_response: _ } => BootDeliveryRefused { cause: DeliveryAccessUnbound { standing: ev.access } }
+    AccessContextControlRouteEvidenceMismatch { endpoint: _, manifest: _, raw_response: _ } => BootDeliveryRefused { cause: DeliveryAccessUnbound { standing: ev.access } }
     AccessContextProfileUncatalogued { observed_identity: _ } => BootDeliveryRefused { cause: DeliveryAccessUnbound { standing: ev.access } }
     AccessContextProfileAmbiguous { observed_identity: _, count: _ } => BootDeliveryRefused { cause: DeliveryAccessUnbound { standing: ev.access } }
     AccessContextCatalogRefused { standing: _ } => BootDeliveryRefused { cause: DeliveryAccessUnbound { standing: ev.access } }

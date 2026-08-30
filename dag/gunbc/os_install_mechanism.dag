@@ -32,6 +32,7 @@ import gunbc.fleet_bmc_firmware_evidence {
 import gunbc.machine_intake_access {
   AccessContextBound,
   AccessContextCatalogRefused,
+  AccessContextControlRouteEvidenceMismatch,
   AccessContextObservationEvidenceMismatch,
   AccessContextObservationForOtherAttempt,
   AccessContextProbeEvidenceMismatch,
@@ -52,7 +53,10 @@ import gunbc.boot_artifact_delivery {
   BootDeliveryRefused,
   BootDeliverySolution,
   DeliveryAccessUnbound,
-  DeliveryBootControlRouteAbsent,
+  DeliveryBootControlRouteAmbiguous,
+  DeliveryBootControlRouteNotControlCapable,
+  DeliveryBootControlRouteNotInProfile,
+  DeliveryBootControlRouteUnobserved,
   DeliveryBootControlSurfaceUnestablished,
   DeliveryTargetControllerMismatch,
   DeliveryTargetSubjectMismatch,
@@ -128,6 +132,7 @@ fn os_install_solution_of_delivery(solution: BootDeliverySolution) -> OsInstallM
             AccessContextObservationForOtherAttempt { expected: _, found: _ } => OsInstallMechanismRefused { cause: InstallAccessContextUnbound { standing: s } }
             AccessContextObservationEvidenceMismatch { endpoint: _, manifest: _, raw_response: _ } => OsInstallMechanismRefused { cause: InstallAccessContextUnbound { standing: s } }
             AccessContextProbeEvidenceMismatch { endpoint: _, manifest: _, raw_response: _ } => OsInstallMechanismRefused { cause: InstallAccessContextUnbound { standing: s } }
+            AccessContextControlRouteEvidenceMismatch { endpoint: _, manifest: _, raw_response: _ } => OsInstallMechanismRefused { cause: InstallAccessContextUnbound { standing: s } }
             AccessContextPromotedProfileUnverified { observation_receipt: _, promotion_receipt: _ } => OsInstallMechanismRefused { cause: InstallAccessContextUnbound { standing: s } }
             AccessContextProfileUncatalogued { observed_identity: _ } => OsInstallMechanismRefused { cause: InstallAccessContextUnbound { standing: s } }
             AccessContextProfileAmbiguous { observed_identity: _, count: _ } => OsInstallMechanismRefused { cause: InstallAccessContextUnbound { standing: s } }
@@ -137,7 +142,10 @@ fn os_install_solution_of_delivery(solution: BootDeliverySolution) -> OsInstallM
         DeliveryTargetControllerMismatch { requested: r, bound_endpoint: _ } => OsInstallMechanismRefused { cause: InstallTargetContextMismatch { requested: r } }
         DeliveryNoBootSourceOverride { firmware: fw } => OsInstallMechanismRefused { cause: InstallNoBootSourceOverride { firmware: fw } }
         DeliveryBootControlSurfaceUnestablished { standing: _ } => OsInstallMechanismRefused { cause: InstallBootControlUnestablished { cause: c } }
-        DeliveryBootControlRouteAbsent { firmware: _ } => OsInstallMechanismRefused { cause: InstallBootControlUnestablished { cause: c } }
+        DeliveryBootControlRouteUnobserved { endpoint: _ } => OsInstallMechanismRefused { cause: InstallBootControlUnestablished { cause: c } }
+        DeliveryBootControlRouteNotInProfile { observed: _ } => OsInstallMechanismRefused { cause: InstallBootControlUnestablished { cause: c } }
+        DeliveryBootControlRouteNotControlCapable { observed: _ } => OsInstallMechanismRefused { cause: InstallBootControlUnestablished { cause: c } }
+        DeliveryBootControlRouteAmbiguous { observed: _ } => OsInstallMechanismRefused { cause: InstallBootControlUnestablished { cause: c } }
         DeliveryNoEligibleTransport { firmware: fw, considered: considered } =>
           OsInstallMechanismRefused { cause: InstallNoEligibleTransport { firmware: fw, considered: considered } }
       }

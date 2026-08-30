@@ -99,6 +99,7 @@ type BoundBmcAccessContextStanding
   | AccessContextObservationForOtherAttempt { expected: MachineIntakeSubject, found: MachineIntakeSubject }
   | AccessContextObservationEvidenceMismatch { endpoint: BmcControllerEndpoint, manifest: List<EvidenceRef>, raw_response: ContentHash }
   | AccessContextProbeEvidenceMismatch { endpoint: BmcControllerEndpoint, manifest: List<EvidenceRef>, raw_response: ContentHash }
+  | AccessContextControlRouteEvidenceMismatch { endpoint: BmcControllerEndpoint, manifest: List<EvidenceRef>, raw_response: ContentHash }
   | AccessContextProfileUncatalogued { observed_identity: BmcObservedIdentity }
   | AccessContextProfileAmbiguous { observed_identity: BmcObservedIdentity, count: Int }
   | AccessContextCatalogRefused { standing: BmcAccessProfileCatalogRowStanding }
@@ -161,6 +162,34 @@ fn probe_raw_response_or(observation: BmcAccessObservation, fallback: ContentHas
   }
 }
 
+// The first boot-control route observation whose bytes the manifest does not
+// name, if any: a route the plan would carry must be evidenced like the probe.
+fn control_route_evidence_unnamed(receipt: AccessObservationReceipt, observation: BmcAccessObservation) -> ContentHash? {
+  fold(
+    observation.boot_control_routes,
+    init: none,
+    f: (acc, r) => match acc {
+      Present { value: _ } => acc
+      Absent => if evidence_manifest_names(manifest: receipt.evidence_manifest, digest: r.raw_response) { none } else { Present { value: r.raw_response } }
+    },
+  )
+}
+
+fn bind_looked_up_access_context(
+  subject: MachineIntakeSubject,
+  receipt: AccessObservationReceipt,
+  observation: BmcAccessObservation,
+  catalog: List<BmcAccessProfileCatalogRow>,
+) -> BoundBmcAccessContextStanding {
+  match bmc_access_profile_for(identity: observation.identity, catalog: catalog) {
+    AccessProfileKnown { profile: p, provenance: prov } =>
+      bind_known_profile(subject: subject, receipt: receipt, observation: observation, profile: p, provenance: prov)
+    AccessProfileUncatalogued { observed_identity: i } => AccessContextProfileUncatalogued { observed_identity: i }
+    AccessProfileAmbiguous { observed_identity: i, count: n } => AccessContextProfileAmbiguous { observed_identity: i, count: n }
+    AccessProfileCatalogRowRefused { standing: s } => AccessContextCatalogRefused { standing: s }
+  }
+}
+
 fn bind_observed_access_context(
   subject: MachineIntakeSubject,
   receipt: AccessObservationReceipt,
@@ -172,12 +201,9 @@ fn bind_observed_access_context(
   } else if probe_evidence_named(receipt: receipt, observation: observation) == false {
     AccessContextProbeEvidenceMismatch { endpoint: observation.endpoint, manifest: receipt.evidence_manifest, raw_response: probe_raw_response_or(observation: observation, fallback: observation.raw_response) }
   } else {
-    match bmc_access_profile_for(identity: observation.identity, catalog: catalog) {
-      AccessProfileKnown { profile: p, provenance: prov } =>
-        bind_known_profile(subject: subject, receipt: receipt, observation: observation, profile: p, provenance: prov)
-      AccessProfileUncatalogued { observed_identity: i } => AccessContextProfileUncatalogued { observed_identity: i }
-      AccessProfileAmbiguous { observed_identity: i, count: n } => AccessContextProfileAmbiguous { observed_identity: i, count: n }
-      AccessProfileCatalogRowRefused { standing: s } => AccessContextCatalogRefused { standing: s }
+    match control_route_evidence_unnamed(receipt: receipt, observation: observation) {
+      Present { value: unnamed } => AccessContextControlRouteEvidenceMismatch { endpoint: observation.endpoint, manifest: receipt.evidence_manifest, raw_response: unnamed }
+      Absent => bind_looked_up_access_context(subject: subject, receipt: receipt, observation: observation, catalog: catalog)
     }
   }
 }

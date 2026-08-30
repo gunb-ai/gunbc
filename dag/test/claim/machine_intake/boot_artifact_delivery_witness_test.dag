@@ -61,6 +61,7 @@ import extdeps.bmc.access_profile {
   BmcObservedIdentity,
   CatalogRowCapabilityFirmwareMismatch,
   ExactChassisPartNumber,
+  BmcBootControlRouteObservation,
   IpmiLanplusRoute,
   MegaRacRestRoute,
   ProfileFromExternalAuthority,
@@ -87,6 +88,7 @@ import gunbc.machine_intake_receipt { EvidenceRef }
 import gunbc.machine_intake_access {
   AccessContextBound,
   AccessContextCatalogRefused,
+  AccessContextControlRouteEvidenceMismatch,
   AccessContextObservationEvidenceMismatch,
   AccessContextObservationForOtherAttempt,
   AccessContextProbeEvidenceMismatch,
@@ -156,6 +158,9 @@ import gunbc.boot_artifact_delivery {
   CandidateStagedArtifactMismatch,
   ConfigfsGadgetOffer,
   DeliveryAccessUnbound,
+  DeliveryBootControlRouteAmbiguous,
+  DeliveryBootControlRouteNotControlCapable,
+  DeliveryBootControlRouteUnobserved,
   DeliveryBootControlSurfaceUnestablished,
   DeliveryNoBootSourceOverride,
   DeliveryNoEligibleTransport,
@@ -387,11 +392,37 @@ data probe_collection_with_https: RedfishVirtualMediaProbeReceipt = RedfishVirtu
   raw_response: content_hash_of_value(value: "virtualmedia-collection-https-fixture"),
 }
 
+// Boot-control route observations: which route answered the control probe.
+data control_over_redfish: BmcBootControlRouteObservation = BmcBootControlRouteObservation { route: redfish_route, raw_response: content_hash_of_value(value: "boot-control-redfish-fixture"), observed_at: 1788000000000 }
+data control_over_megarac_rest: BmcBootControlRouteObservation = BmcBootControlRouteObservation { route: MegaRacRestRoute { image_redirection: MegaRacImageRedirectionEnabled }, raw_response: content_hash_of_value(value: "boot-control-megarac-rest-fixture"), observed_at: 1788000000000 }
+data control_over_ipmi: BmcBootControlRouteObservation = BmcBootControlRouteObservation { route: IpmiLanplusRoute, raw_response: content_hash_of_value(value: "boot-control-ipmi-fixture"), observed_at: 1788000000000 }
+
+fn observation_over(identity: BmcObservedIdentity, surfaces: List<BmcAccessSurface>, probe: RedfishVirtualMediaProbeReceipt?, control: List<BmcBootControlRouteObservation>) -> BmcAccessObservation {
+  BmcAccessObservation {
+    endpoint: megarac_endpoint,
+    identity: identity,
+    discovered_surfaces: surfaces,
+    boot_control_routes: control,
+    redfish_virtual_media_probe: probe,
+    successful_read_surfaces: surfaces,
+    successful_write_surfaces: [],
+    raw_response: discovery_digest,
+    observed_at: 1788000000000,
+  }
+}
+
+// The default control observation follows the surfaces: a Redfish-serving
+// observation answered control over Redfish, an OEM-only one over IPMI.
+fn default_control_for(surfaces: List<BmcAccessSurface>) -> List<BmcBootControlRouteObservation> {
+  if fold(surfaces, init: false, f: (acc, s) => acc || s == SurfaceRedfishVirtualMedia) { [control_over_redfish] } else { [control_over_ipmi] }
+}
+
 fn observation_of(identity: BmcObservedIdentity, surfaces: List<BmcAccessSurface>, probe: RedfishVirtualMediaProbeReceipt?) -> BmcAccessObservation {
   BmcAccessObservation {
     endpoint: megarac_endpoint,
     identity: identity,
     discovered_surfaces: surfaces,
+    boot_control_routes: default_control_for(surfaces: surfaces),
     redfish_virtual_media_probe: probe,
     successful_read_surfaces: surfaces,
     successful_write_surfaces: [],
@@ -407,7 +438,7 @@ fn manifest_of(digests: List<ContentHash>) -> List<EvidenceRef> {
   fold(digests, init: [], f: (acc, d) => concat(acc, [EvidenceRef { label: "bmc-discovery", digest: d }]))
 }
 
-data full_manifest: List<EvidenceRef> = manifest_of(digests: [discovery_digest, probe_https.raw_response, probe_nfs_only.raw_response, probe_collection_only.raw_response, probe_unreached_with_https.raw_response, probe_collection_with_https.raw_response])
+data full_manifest: List<EvidenceRef> = manifest_of(digests: [discovery_digest, probe_https.raw_response, probe_nfs_only.raw_response, probe_collection_only.raw_response, probe_unreached_with_https.raw_response, probe_collection_with_https.raw_response, control_over_redfish.raw_response, control_over_ipmi.raw_response, control_over_megarac_rest.raw_response])
 
 fn receipt_of(subject: MachineIntakeSubject, standing: BmcAccessObservationStanding, manifest: List<EvidenceRef>) -> AccessObservationReceipt {
   AccessObservationReceipt { subject: subject, standing: standing, evidence_manifest: manifest }
@@ -539,8 +570,8 @@ test fn redfish_virtual_media_planned_from_bound_context_and_probe_receipt() -> 
             && p.artifact.build_identity == intake_artifact.build_identity
             && p.target.endpoint == megarac_endpoint
             && p.boot_control == BootFromRemovableMedia
-            && p.boot_control_route == redfish_route
-            && list_length(items: p.eligibility.evidence_manifest) == 6
+            && p.boot_control_route.route == redfish_route
+            && list_length(items: p.eligibility.evidence_manifest) == 9
             && p.eligibility.selected == SelectedFromProfileIntersection { surface: SurfaceRedfishVirtualMedia }
         _ => false
       }
@@ -801,6 +832,59 @@ test fn live_boot_control_absent_refuses_despite_catalog_capability_and_live_med
   }
 }
 
+// RED + POSITIVE (2026-08-30 re-review, boot-control ruling) — profile names
+// Redfish AND IPMI; boot control was observed over IPMI only: the plan carries
+// IPMI, never the catalog's Redfish; with no route observation at all the solve
+// refuses rather than picking from the profile; with both observed it is a
+// typed ambiguity; a MegaRAC REST route — named by the profile, but carrying no
+// boot-control operation — is refused as not control-capable.
+fn solve_with_control(control: List<BmcBootControlRouteObservation>) -> BootDeliverySolution {
+  let receipt = receipt_of(subject: intake_subject, standing: BmcAccessObserved { observation: observation_over(identity: mt_collins_identity, surfaces: [SurfaceBootControl, SurfaceRedfishVirtualMedia], probe: Present { value: probe_https }, control: control) }, manifest: full_manifest)
+  solve(profile: vm_profile, receipt: receipt, staging: staging_all)
+}
+
+test fn boot_control_route_is_the_observed_one_never_the_catalogued_preference() -> Bool {
+  let ipmi_only = match solve_with_control(control: [control_over_ipmi]) {
+    BootDeliveryPlanned { plan: p } => p.boot_control_route.route == IpmiLanplusRoute && p.boot_control_route.raw_response == control_over_ipmi.raw_response
+    BootDeliveryRefused { cause: _ } => false
+  }
+  let unobserved = match solve_with_control(control: []) {
+    BootDeliveryRefused { cause: c } =>
+      match c {
+        DeliveryBootControlRouteUnobserved { endpoint: e } => e == megarac_endpoint
+        _ => false
+      }
+    BootDeliveryPlanned { plan: _ } => false
+  }
+  let ambiguous = match solve_with_control(control: [control_over_redfish, control_over_ipmi]) {
+    BootDeliveryRefused { cause: c } =>
+      match c {
+        DeliveryBootControlRouteAmbiguous { observed: rs } => list_length(items: rs) == 2
+        _ => false
+      }
+    BootDeliveryPlanned { plan: _ } => false
+  }
+  let not_capable = match solve_with_control(control: [control_over_megarac_rest]) {
+    BootDeliveryRefused { cause: c } =>
+      match c {
+        DeliveryBootControlRouteNotControlCapable { observed: r } => r == MegaRacRestRoute { image_redirection: MegaRacImageRedirectionEnabled }
+        _ => false
+      }
+    BootDeliveryPlanned { plan: _ } => false
+  }
+  ipmi_only && unobserved && ambiguous && not_capable
+}
+
+// RED — a control-route observation whose bytes the manifest does not name
+// does not bind, exactly like the probe's.
+test fn control_route_bytes_absent_from_the_manifest_do_not_bind() -> Bool {
+  let receipt = receipt_of(subject: intake_subject, standing: BmcAccessObserved { observation: observation_over(identity: mt_collins_identity, surfaces: [SurfaceBootControl, SurfaceRedfishVirtualMedia], probe: Present { value: probe_https }, control: [control_over_redfish]) }, manifest: manifest_of(digests: [discovery_digest, probe_https.raw_response]))
+  match bind(profile: vm_profile, receipt: receipt) {
+    AccessContextControlRouteEvidenceMismatch { endpoint: e, manifest: _, raw_response: r } => e == megarac_endpoint && r == control_over_redfish.raw_response
+    _ => false
+  }
+}
+
 // POSITIVE CONTROL — the observed Mt. Collins shape: no Redfish route at all,
 // the OEM REST surface live, the profile's MegaRAC route carrying
 // image_redirection Enabled. The plan's params carry the typed
@@ -813,7 +897,7 @@ test fn observed_mt_collins_build_plans_megarac_rest_remote_media_with_image_red
           params.image_name == "intake.iso"
             && megarac_image_redirection_wire(r: params.image_redirection) == "1"
             && p.boot_control == BootFromRemovableMedia
-            && p.boot_control_route == IpmiLanplusRoute
+            && p.boot_control_route.route == IpmiLanplusRoute
         _ => false
       }
     BootDeliveryRefused { cause: _ } => false

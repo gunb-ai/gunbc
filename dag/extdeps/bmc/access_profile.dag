@@ -140,10 +140,22 @@ type BmcObservedIdentity {
 // pretending to describe a member that does not exist. raw_response is the
 // digest of the captured discovery bytes so an observation can be traced to what
 // was actually read.
+// A boot-control probe answered over ONE route: which route, the digest of the
+// bytes it answered with, and when. SurfaceBootControl in discovered_surfaces
+// says the controller served boot control somehow; this says through what, so
+// a plan can name the route that was OBSERVED rather than the one the catalog
+// prefers (2026-08-30 re-review, boot-control ruling).
+type BmcBootControlRouteObservation {
+  route: BmcAccessRoute
+  raw_response: ContentHash
+  observed_at: EpochMs
+}
+
 type BmcAccessObservation {
   endpoint: BmcControllerEndpoint
   identity: BmcObservedIdentity
   discovered_surfaces: List<BmcAccessSurface>
+  boot_control_routes: List<BmcBootControlRouteObservation>
   redfish_virtual_media_probe: RedfishVirtualMediaProbeReceipt?
   successful_read_surfaces: List<BmcAccessSurface>
   successful_write_surfaces: List<BmcAccessSurface>
@@ -275,36 +287,25 @@ fn bmc_profile_megarac_image_redirection(profile: BmcAccessProfile) -> MegaRacIm
   )
 }
 
-// The route boot CONTROL rides on: Redfish where the profile exposes it, else
-// IPMI lanplus (the no-Redfish MegaRAC case). Absent when the profile names no
-// control-capable route at all.
-fn bmc_profile_boot_control_route(profile: BmcAccessProfile) -> BmcAccessRoute? {
-  let redfish = fold(
-    profile.routes,
-    init: none,
-    f: (acc, route) => match route {
-      RedfishRoute { system_locator: _, chassis_locator: _, manager_locator: _ } => Present { value: route }
-      IpmiLanplusRoute => acc
-      MegaRacRestRoute { image_redirection: _ } => acc
-      OpenBmcShellRoute => acc
-      OpenBmcNbdWebsocketRoute { ws_path: _ } => acc
-    },
-  )
-  match redfish {
-    Present { value: _ } => redfish
-    Absent =>
-      fold(
-        profile.routes,
-        init: none,
-        f: (acc, route) => match route {
-          IpmiLanplusRoute => Present { value: route }
-          RedfishRoute { system_locator: _, chassis_locator: _, manager_locator: _ } => acc
-          MegaRacRestRoute { image_redirection: _ } => acc
-          OpenBmcShellRoute => acc
-          OpenBmcNbdWebsocketRoute { ws_path: _ } => acc
-        },
-      )
+// Which routes REALIZE boot control today: Redfish (ComputerSystem.Boot) and
+// IPMI lanplus (chassis bootdev). The OEM remote-media, shell and NBD routes
+// deliver artifacts; a boot-control observation claiming one of them names a
+// route that has no boot-control operation, and is refused as such.
+fn bmc_route_is_boot_control_capable(route: BmcAccessRoute) -> Bool {
+  match route {
+    RedfishRoute { system_locator: _, chassis_locator: _, manager_locator: _ } => true
+    IpmiLanplusRoute => true
+    MegaRacRestRoute { image_redirection: _ } => false
+    OpenBmcShellRoute => false
+    OpenBmcNbdWebsocketRoute { ws_path: _ } => false
   }
+}
+
+// Whether the profile names a route, by value. The profile is the catalog of
+// routes a release exposes; a live observation over a route the catalog does
+// not name is an observation the catalog cannot vouch for.
+fn bmc_profile_names_route(profile: BmcAccessProfile, route: BmcAccessRoute) -> Bool {
+  fold(profile.routes, init: false, f: (acc, r) => acc || r == route)
 }
 
 fn bmc_profile_nbd_websocket_path(profile: BmcAccessProfile) -> NonEmptyStr? {
