@@ -223,9 +223,9 @@ test fn witness_complete_population_is_complete() -> Bool {
 test fn witness_complete_receipt_document_names_its_verdict_and_identity() -> Bool {
   let v = roadmap_launch_deployment_verdict(subject: rlm_subject(), facts: rlm_complete_facts())
   let doc = roadmap_launch_deployment_receipt_document(v: v)
-  string_contains(s: doc, pattern: "\"verdict\":\"DeploymentComplete\"")
+  string_contains(s: doc, pattern: "\"verdict\": \"DeploymentComplete\"")
     && string_contains(s: doc, pattern: verdict_receipt_identity(v: v))
-    && string_contains(s: doc, pattern: "\"blockers\":[]")
+    && string_contains(s: doc, pattern: "\"blockers\": []")
 }
 
 // ---------------------------------------------------------------- RED CONTROLS (one member each)
@@ -379,8 +379,8 @@ test fn witness_two_substitutions_retain_both_blockers() -> Bool {
 test fn witness_incomplete_receipt_document_carries_its_blockers() -> Bool {
   let v = roadmap_launch_deployment_verdict(subject: rlm_subject(), facts: with_principal(f: rlm_complete_facts(), p: PrincipalObserved { name: "ci-runner" }))
   let doc = roadmap_launch_deployment_receipt_document(v: v)
-  string_contains(s: doc, pattern: "\"verdict\":\"DeploymentIncomplete\"")
-    && string_contains(s: doc, pattern: "\"member\":\"principal\"")
+  string_contains(s: doc, pattern: "\"verdict\": \"DeploymentIncomplete\"")
+    && string_contains(s: doc, pattern: "\"member\": \"principal\"")
     && string_contains(s: doc, pattern: "ci-runner")
 }
 
