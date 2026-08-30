@@ -1515,7 +1515,8 @@ pub struct ResolvedFormatter {
     disk_cache: Option<PathBuf>,
 }
 
-/// Every rustfmt spawn this process has made. Read by `--regen-round-cost` before and after
+/// Every NORMALIZE spawn this process has made -- the `--version` probe in `with_normalize_cache`
+/// is not counted, since the fixed-point claim is about normalizations. Read by `--regen-round-cost` before and after
 /// the round so the receipt carries the count -- the fixed-point control's claim is that it
 /// is ~0, and a claim about a count is checked against the count.
 static RUSTFMT_SPAWNS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
