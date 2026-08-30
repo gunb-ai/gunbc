@@ -207,6 +207,43 @@ type SparkServingObservationTransaction sole_constructor {
   captures: List<SparkServingProbeLegCapture>
 }
 
+// THE PHASE IS PART OF THE IDENTITY BECAUSE ONE SSH ATTEMPT CONTAINS SEVERAL OBSERVATIONS.
+//
+// A fleet attempt identifies an invocation, not an observation: the converge slice observes a host
+// to plan, actuates, and observes it again to verify, all inside one attempt. Stamping all three
+// with the attempt alone makes the pre-apply and post-apply readings indistinguishable, which is the
+// join this carrier exists to prevent -- and the first cut was worse, because every acquisition
+// passed the same constant string.
+type SparkServingObservationPhase
+  = SparkServingPlanObservation
+  | SparkServingPostApplyObservation
+  | SparkServingReportObservation
+
+fn spark_serving_observation_phase_key(phase: SparkServingObservationPhase) -> NonEmptyStr {
+  match phase {
+    SparkServingPlanObservation => "plan" as NonEmptyStr
+    SparkServingPostApplyObservation => "post-apply" as NonEmptyStr
+    SparkServingReportObservation => "report" as NonEmptyStr
+  }
+}
+
+// The observation attempt is DERIVED -- fleet attempt, host, phase -- never supplied. A caller that
+// wants to claim a different attempt has to actually run under a different context, and one that
+// wants a different phase has to be a different phase.
+fn spark_serving_observation_attempt_of(
+  fleet_attempt: NonEmptyStr,
+  host: HostIdentity,
+  phase: SparkServingObservationPhase,
+) -> NonEmptyStr {
+  join([
+    fleet_attempt as String,
+    "/",
+    host as String,
+    "/",
+    spark_serving_observation_phase_key(phase: phase) as String,
+  ], "") as NonEmptyStr
+}
+
 // PROVENANCE SURVIVES THE PROJECTION, OR THE CARRIER BOUGHT NOTHING.
 //
 // A transaction that pins one host, one attempt and one locus during acquisition, and then hands
