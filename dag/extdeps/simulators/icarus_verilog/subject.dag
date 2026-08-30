@@ -12,7 +12,14 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   }
 }
 
-data icarus_verilog_subject_note: String = "ICARUS VERILOG, THE SIMULATOR — a runtime, deliberately not a language target, for the same reason ngspice is not one: it EXECUTES the Verilog medium and is independently governed and versioned, so under external-upstream decomposition it gets its own module rather than becoming an arm of the language. The distinction is the one this repository already drew for SPICE: what we emit and what runs it are separate facts, joined by a runtime binding rather than fused into one subject. IT IS ALSO NOT THE ONLY ONE — Verilator is a second implementation of the same relationship, and adding it must not require editing this file, which is the test of whether the decomposition was real."
+// ICARUS VERILOG, THE SIMULATOR — a runtime, deliberately not a language target, for the same
+// reason ngspice is not one: it EXECUTES the Verilog medium and is independently governed and
+// versioned, so under external-upstream decomposition it gets its own module rather than becoming
+// an arm of the language. The distinction is the one this repository already drew for SPICE: what
+// we emit and what runs it are separate facts, joined by a runtime binding rather than fused into
+// one subject. IT IS ALSO NOT THE ONLY ONE — Verilator is a second implementation of the same
+// relationship, and adding it must not require editing this file, which is the test of whether the
+// decomposition was real.
 
 type IcarusVerilog
   = | IcarusVerilogSimulator

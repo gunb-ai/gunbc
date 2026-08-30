@@ -44,7 +44,7 @@ The reference-derived edge machinery is **landed** for module-graph selection:
 - Import-bearing files intentionally emit **no** reference edges (pass 2 skips them; import facts own those edges exactly)
 - Import-less files fall back to reference edges only
 
-`layer_import_facts` did **not** follow that repoint. It remains import-syntax-only. At terminal step the gate's subject disappears.
+`layer_import_facts` did **not** follow that repoint; it remains import-syntax-only, so at terminal step the gate's subject disappears.
 
 ---
 
@@ -101,7 +101,7 @@ Loader-tier consumers (`extend_with_bare_reference_closure`, compile-clean impor
 | `import_module` field semantics | import-line target | **resolved target module** (reference or import — same string shape) |
 | Importer module resolution | implicit from path prefix | `extract_module_path(content)` per file (already required by reference producer) |
 
-**Not a new type:** `LayerImportFact` name is retained for consumer stability (`realization_vocabulary_containment`, `meta_exec_confinement`, lens_unit fixtures). Optional follow-on: rename field `import_module` → `target_module` when all call sites migrate — cosmetic, not blocking.
+**Not a new type:** `LayerImportFact` name is retained for consumer stability (`realization_vocabulary_containment`, `meta_exec_confinement`, lens_unit fixtures). Optional follow-on: rename `import_module` → `target_module` once all call sites migrate — cosmetic, not blocking.
 
 **Not a new builtin:** reuse `reference_resolution_facts` + `reference_edges_as_import_facts` inside `layer_import_facts`; no third host entry point.
 
@@ -204,5 +204,5 @@ These call `layer_import_facts_live` / `layer_import_facts` and inherit the repo
 ## 8. Open / to-verify
 
 - **Cross-tree `dag/std` vs `src/v2/std` modules:** `layer_prefix_from_dotted_qualified_name` handles `v2.*` and bare `std`/`extdeps` prefixes — confirm no mis-layering on `dag/std/foo.dag` declaring `module std.bar` (if any exist).
-- **Perf:** `layer_import_facts` currently cheap (text scan). Reference path parses each file — measure against 5s fast-lane budget (`gunbc_ci_fast_lane_rule_note`). If over budget, scope scan to gate roots only (already the case) and rely on `REFERENCE_EDGE_CACHE`.
-- **Test modules in std roots:** fixtures under `src/v2/test/fixture/layering_scan/` use `v2.test.*` modules; `layer_prefix_from_qualified_name` maps `v2.test` → `LayerPrefixCompiler`. Confirm this does not exclude them from std-root scans incorrectly (today scan root assigns `LayerPrefixStd` regardless of module name — **behavior change** to verify).
+- **Perf:** `layer_import_facts` is currently a cheap text scan; the reference path parses each file — measure against the 5s fast-lane budget (`gunbc_ci_fast_lane_rule_note`). If over budget, scope the scan to gate roots only (already the case) and rely on `REFERENCE_EDGE_CACHE`.
+- **Test modules in std roots:** fixtures under `src/v2/test/fixture/layering_scan/` use `v2.test.*` modules; `layer_prefix_from_qualified_name` maps `v2.test` → `LayerPrefixCompiler`. Confirm this does not wrongly exclude them from std-root scans (today the scan root assigns `LayerPrefixStd` regardless of module name — **behavior change** to verify).

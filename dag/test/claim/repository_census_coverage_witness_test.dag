@@ -90,7 +90,13 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-data coverage_witness_separability_note: String = "EVERY WITNESS HERE ASSERTS ONE PROPERTY, and that is a rule this file was built under rather than a style preference (operator refinement 2026-08-04). A conjunction can only be licensed one conjunct at a time — a discriminating RED credits exactly the conjunct it trips, so one live conjunct can launder several dead ones and the result is indistinguishable from an all-live conjunction. That is only mechanically checkable when the conjuncts are SEPARABLE: a witness whose arms cannot be individually falsified cannot be individually licensed. Splitting them also makes a red self-locating, so a guard that fires is never read as a failure of the property the witness is named for."
+// EVERY WITNESS HERE ASSERTS ONE PROPERTY -- a rule this file was built under, not a style
+// preference (operator refinement 2026-08-04). A conjunction is licensed one conjunct at a time: a
+// discriminating RED credits exactly the conjunct it trips, so one live conjunct can launder
+// several dead ones indistinguishably from an all-live conjunction. That is mechanically checkable
+// only when conjuncts are SEPARABLE: arms that cannot be individually falsified cannot be
+// individually licensed. Splitting also makes a red self-locating, so a firing guard is never read
+// as a failure of the named property.
 
 fn coverage_witness_decl(name: String) -> DeclarationRef {
   decl_ref(module_path: "test.claim.repository_census_coverage_witness", decl_name: name)
@@ -246,7 +252,10 @@ test fn witness_an_aligned_exact_join_yields_a_receipt() -> Bool {
   )
 }
 
-data coverage_blocker_one_note: String = "BLOCKER 1 WITNESSES. The two populations below differ only in their source roots and the two revisions only in their commit, while the subject keys are spelled IDENTICALLY. Under the first cut both pairs reconciled and the receipt then recorded the mismatched identities beside the exhaustive status. Each of the two mismatch axes gets its own witness so a red names which one broke."
+// BLOCKER 1 WITNESSES. The two populations below differ only in source roots and the two revisions
+// only in commit, with subject keys spelled IDENTICALLY. Under the first cut both pairs reconciled
+// and the receipt recorded the mismatched identities beside the exhaustive status. Each mismatch
+// axis gets its own witness so a red names which one broke.
 
 test fn witness_a_population_mismatch_refuses_before_any_key_is_compared() -> Bool {
   match census_resolve_coverage_subjects(
@@ -332,7 +341,10 @@ test fn witness_an_aligned_pair_carries_the_identities_the_join_established() ->
   }
 }
 
-data coverage_blocker_two_note: String = "BLOCKER 2 WITNESSES. A denominator of A, A against an observation of A has no missing key, no unexpected key and no duplicate among the OBSERVED keys — which is the whole population the first cut looked at. It reconciled. The denominator side is now resolved with its own arm, and the three duplicate shapes each get a witness."
+// BLOCKER 2 WITNESSES. A denominator of A, A against an observation of A has no missing, unexpected
+// or duplicate key among the OBSERVED keys -- the whole population the first cut looked at -- so it
+// reconciled. The denominator side now has its own arm, and the three duplicate shapes each get a
+// witness.
 
 test fn witness_a_denominator_duplicate_is_located_on_its_own_side() -> Bool {
   match census_resolve_duplicate_subjects(
@@ -439,7 +451,11 @@ test fn witness_an_unexpected_subject_is_located_not_counted() -> Bool {
   }
 }
 
-data coverage_cancelling_totals_note: String = "THE CASE A COUNT EQUALITY CANNOT SEE, and the reason this stage reconciles identities instead of totals. A denominator of two subjects against an observation carrying one subject TWICE has equal totals — two against two — while one subject is missing entirely and another is duplicated. The two failures cancel exactly in a sum. Any check comparing sizes reports coverage as complete; the identity join reports both failures, located, and refuses the receipt."
+// THE CASE A COUNT EQUALITY CANNOT SEE, and why this stage reconciles identities, not totals. A
+// denominator of two subjects against an observation carrying one subject TWICE has equal totals
+// -- two against two -- while one subject is missing and another duplicated; the failures cancel
+// in a sum. A size check reports complete coverage; the identity join reports both failures,
+// located, and refuses the receipt.
 
 test fn witness_a_duplicate_and_a_missing_subject_cancel_in_a_total() -> Bool {
   let denominator_subjects = coverage_witness_ab_subjects
@@ -471,7 +487,10 @@ test fn witness_a_duplicate_and_a_missing_subject_do_not_cancel_in_the_join() ->
   }
 }
 
-data coverage_blocker_five_note: String = "BLOCKER 5 WITNESSES. Independence is decided from the two runs and then ACTED ON. Three shapes: one run used twice, two invocations of one classifier declaration, and two different classifier declarations. Only the last establishes independence, and the first two still permit a population floor."
+// BLOCKER 5 WITNESSES. Independence is decided from the two runs and then ACTED ON. Three shapes:
+// one run used twice, two invocations of one classifier declaration, two different classifier
+// declarations. Only the last establishes independence; the first two still permit a population
+// floor.
 
 test fn witness_one_run_used_twice_is_a_shared_run() -> Bool {
   match census_resolve_independence(
@@ -518,13 +537,21 @@ test fn witness_two_distinct_classifiers_establish_independence() -> Bool {
   )
 }
 
-data coverage_blocker_four_note: String = "BLOCKER 4 WITNESSES. A capability receipt exists only when its contract names the classifier that actually ran, checked at identity grain, and when any conformance control it carries names the same classifier at the same revision under a DIFFERENT invocation. Each of those three refusals gets its own witness."
+// BLOCKER 4 WITNESSES. A capability receipt exists only when its contract names the classifier that
+// actually ran, at identity grain, and any conformance control it carries names the same classifier
+// at the same revision under a DIFFERENT invocation. Each of the three refusals gets its own
+// witness.
 
 fn coverage_witness_capability_for(contract_name: String) -> CensusMethodCapability {
   ClassifiesDeclaredStructure { contract: coverage_witness_decl(name: contract_name) }
 }
 
-// THE CONFORMANCE FIXTURES BUILD REAL CONTROL OUTCOMES, because the carrier no longer accepts an assertion about them. Each control here is an actual census_establish_coverage run against a denominator: the discriminating control observes rows that do NOT reconcile with the declared subjects and must come back CoverageRefused, the positive control observes rows that DO and must come back CoverageEstablished. A fixture that simply claimed those two results is no longer expressible, which is the point of the recut.
+// THE CONFORMANCE FIXTURES BUILD REAL CONTROL OUTCOMES, because the carrier no longer accepts an
+// assertion about them. Each control is an actual census_establish_coverage run against a
+// denominator: the discriminating control observes rows that do NOT reconcile with the declared
+// subjects and must return CoverageRefused; the positive control observes rows that DO and must
+// return CoverageEstablished. A fixture merely claiming those results is no longer expressible,
+// which is the point of the recut.
 fn coverage_witness_control_outcome(
   subjects: List<CensusSubjectKey>,
   rows: List<CensusObservedRow>,
@@ -794,8 +821,21 @@ test fn witness_a_contract_naming_another_declaration_yields_no_capability_recei
   )
 }
 
-
-data coverage_cost_receipt_note: String = "THE COST RECEIPT COMPARES TWO REAL POPULATIONS AND COUNTS OPERATIONS, NOT MILLISECONDS. Wall-clock at two sizes is a change detector dominated by host load; an operation count is a property of the code that produced it and reproduces exactly on any machine. The counters are incremented by the production fold itself, so this witness reads back what the real reconciliation did rather than what a mirror of it would have done.\n\nWHY 24 AND 240. 24 is the live confinement-roster population, so the small case is the one this repository actually reconciles today; 240 is ten times it. A quadratic reconciliation answers the tenfold population with roughly a HUNDREDFOLD operation count, a linear one with roughly tenfold, and those two predictions are far enough apart that no tolerance argument is needed to tell them apart. The assertion is on the RATIO rather than on either absolute count, because an absolute count copied out of a current run is a tree-copied literal and would be a change detector in exactly the way DESIGN section 5 rejects.\n\nThe generator is deliberately dull — one distinct key per index, no duplicates — so the ratio measures the reconciliation and not a fixture's own shape."
+// THE COST RECEIPT COMPARES TWO REAL POPULATIONS AND COUNTS OPERATIONS, NOT MILLISECONDS.
+// Wall-clock at two sizes is a change detector dominated by host load; an operation count is a
+// property of the code and reproduces exactly on any machine. The counters are incremented by the
+// production fold itself, so this witness reads back what the real reconciliation did, not what a
+// mirror would have done.
+//
+// WHY 24 AND 240. 24 is the live confinement-roster population, the case this repository actually
+// reconciles today; 240 is ten times it. A quadratic reconciliation answers tenfold population
+// with roughly a HUNDREDFOLD operation count, a linear one with roughly tenfold -- far enough apart
+// that no tolerance argument is needed. The assertion is on the RATIO, not either absolute count:
+// an absolute count copied from a current run is a tree-copied literal, the change detector DESIGN
+// section 5 rejects.
+//
+// The generator is deliberately dull -- one distinct key per index, no duplicates -- so the ratio
+// measures the reconciliation, not the fixture's shape.
 
 data coverage_cost_six: List<String> = ["a", "b", "c", "d", "e", "f"]
 data coverage_cost_four: List<String> = ["p", "q", "r", "s"]
@@ -848,7 +888,13 @@ test fn witness_reconciliation_operations_are_nowhere_near_quadratic() -> Bool {
   large * 4 < small * 100
 }
 
-// THE RED CONTROL IS THE QUADRATIC THE RECUT REMOVED, RE-EXPRESSED HERE AND ASSERTED TO FAIL THE SAME TEST. Without it, the ratio assertions above are satisfied by any fixture whose two populations happen to be close in cost, including a broken generator that returns the same list twice — they would be green because nothing varied, not because the reconciliation is linear. This control counts the pairwise scans the old implementation performed, runs it at the same two sizes, and asserts it BREACHES the same tenfold band the real path stays inside. If someone reintroduces the scan, the real assertions red; if the instrument stops discriminating, this one reds.
+// THE RED CONTROL IS THE QUADRATIC THE RECUT REMOVED, RE-EXPRESSED HERE AND ASSERTED TO FAIL THE
+// SAME TEST. Without it the ratio assertions above are satisfied by any fixture whose two
+// populations happen to be close in cost, including a broken generator returning the same list
+// twice -- green because nothing varied, not because reconciliation is linear. This control counts
+// the pairwise scans the old implementation performed, runs at the same two sizes, and asserts it
+// BREACHES the tenfold band the real path stays inside. Reintroduce the scan and the real
+// assertions red; if the instrument stops discriminating, this one reds.
 type CoverageScanTally {
   matched: Int
   passed_over: Int
@@ -883,9 +929,17 @@ test fn witness_the_pairwise_scan_control_breaches_the_linear_band() -> Bool {
   large > small * 12
 }
 
-data coverage_blocker_three_note: String = "BLOCKER 3 WITNESSES. The ceiling takes no observation parameter, so there is no separately supplied observation that could disagree with the coverage receipt; the observation identity is derived from the outcome. What remains joinable is the capability receipt, and it must name the same classification run the coverage outcome carries or no ceiling exists at all."
+// BLOCKER 3 WITNESSES. The ceiling takes no observation parameter, so no separately supplied
+// observation can disagree with the coverage receipt; observation identity derives from the
+// outcome. What remains joinable is the capability receipt, which must name the same
+// classification run the coverage outcome carries or no ceiling exists.
 
-data coverage_conformance_per_observation_note: String = "THE CONFORMANCE IS DERIVED AGAINST THE OBSERVATION'S OWN RUN, and this fixture had to change for that reason. It previously reused one conforming control for every observation, which the carrier now refuses: a conformance receipt records the method run it was derived against, and the capability receipt re-joins on that identity, so a receipt earned against run A cannot be attached to an observation produced by run B. Deriving per observation is what an honest caller does; the fixture was relying on the borrowed-evidence shape the re-join closes."
+// THE CONFORMANCE IS DERIVED AGAINST THE OBSERVATION'S OWN RUN, which is why this fixture changed.
+// It previously reused one conforming control for every observation; the carrier now refuses that:
+// a conformance receipt records the method run it was derived against and the capability receipt
+// re-joins on that identity, so a receipt earned against run A cannot attach to an observation from
+// run B. Deriving per observation is what an honest caller does; the fixture relied on the
+// borrowed-evidence shape the re-join closes.
 
 fn coverage_witness_conformance_for(
   observation: RepositoryCensusObservation,

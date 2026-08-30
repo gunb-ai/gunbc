@@ -35,7 +35,17 @@ import v2.std.logic { Bool }
 import std.types { Int, List, String }
 import std.algebra { Cons, Empty }
 
-data realization_sweep_note: String = "CI2-0 Commit B sweep (operator mandate 2026-08-08, convergence mandate 2026-08-09): the machine-derived census replacing the circular one — for each roster entry, the host-discovered import closure (the executor's own discover_source_root_reads_for_entry, transported as the SAME host_source_root_ingest_manifest overlay the frontier probe survey rides — never a .dag-side re-discovery forking the closure authority) is driven through attempt_closure_rows: ONE canonical assembly per entry, one attempt per required test-fn identity, a typed standing per identity, exactly once. The receipt is a phase-and-cause histogram whose laws are structural (row count equals identity count; every row typed), never tree-copied literals. Identity source: the entry's authored test-fn roster, scanned from the entry witness's own source text at line grain — the same 'test fn ' surface the floor's discovery walk recognizes — and interned to the resolved declaration name the exactly-one join consumes."
+// CI2-0 Commit B sweep (operator mandate 2026-08-08, convergence mandate 2026-08-09): the
+// machine-derived census replacing the circular one — for each roster entry, the host-discovered
+// import closure (the executor's own discover_source_root_reads_for_entry, transported as the SAME
+// host_source_root_ingest_manifest overlay the frontier probe survey rides — never a .dag-side
+// re-discovery forking the closure authority) is driven through attempt_closure_rows: ONE canonical
+// assembly per entry, one attempt per required test-fn identity, a typed standing per identity,
+// exactly once. The receipt is a phase-and-cause histogram whose laws are structural (row count
+// equals identity count; every row typed), never tree-copied literals. Identity source: the entry's
+// authored test-fn roster, scanned from the entry witness's own source text at line grain — the
+// same 'test fn ' surface the floor's discovery walk recognizes — and interned to the resolved
+// declaration name the exactly-one join consumes.
 
 type RealizationSweepRow {
   entry: String
@@ -49,7 +59,12 @@ fn no_name_strings() -> List<String> {
   []
 }
 
-data canonical_identity_note: String = "Roster authority correction (operator verdict, msg_6305b900): identities come from the CANONICAL enrolled floor population — the same floor_discovery_producer walk the floor's discovery batch runs, filtered to the entry — never a source-text line scan, which would be a second census beside the execution roster (the class the circular census died of). The walk is over the entry's own directory; a walk failure or empty roster is a refusal surface, not an empty list, because the survey verdict downstream refuses on canonical/output mismatch."
+// Roster authority correction (operator verdict, msg_6305b900): identities come from the CANONICAL
+// enrolled floor population — the same floor_discovery_producer walk the floor's discovery batch
+// runs, filtered to the entry — never a source-text line scan, which would be a second census
+// beside the execution roster (the class the circular census died of). The walk is over the entry's
+// own directory; a walk failure or empty roster is a refusal surface, not an empty list, because
+// the survey verdict downstream refuses on canonical/output mismatch.
 
 fn sweep_dir_join(out: String, seg: String) -> String {
   if out == "" { seg } else { concat(out, "/", seg) }
@@ -80,7 +95,12 @@ fn identity_snoc_unique(acc: List<String>, f: String) -> List<String> {
   }
 }
 
-data canonical_union_note: String = "The canonical enrolled population per entry is the UNION of the cadences that execute it: the per-PR discovery roster (the floor walk, which deliberately excludes exactly-admitted rows from ITS cadence), plus the exact-admission roster (gunbc.explicit_witness_admission), plus the substrate long-lane rows (ci_layer_roots) — each an enrolled executing consumer. Discovery exclusion is a CADENCE fact, not an enrollment fact; deriving the population from discovery alone would silently drop every long-lane witness."
+// The canonical enrolled population per entry is the UNION of the cadences that execute it: the
+// per-PR discovery roster (the floor walk, which deliberately excludes exactly-admitted rows from
+// ITS cadence), plus the exact-admission roster (gunbc.explicit_witness_admission), plus the
+// substrate long-lane rows (ci_layer_roots) — each an enrolled executing consumer. Discovery
+// exclusion is a CADENCE fact, not an enrollment fact; deriving the population from discovery alone
+// would silently drop every long-lane witness.
 
 fn entry_canonical_identities(entry: String) -> List<String> {
   let state = floor_discovery_walk_dir(
@@ -209,7 +229,11 @@ type SweepPairState {
   out: List<RealizationSweepRow>
 }
 
-data sweep_rows_from_refs_note: String = "Read-through seam for closures past the manifest inline cap (the SAME source_root_ingest_build_from_source_refs the frontier probe rides): the host manifest carries SourceRef rows (path + root + content hash, no inline source), the sweep reads them through the filesystem with content-hash verification, and a read failure is ONE located refusal row for the entry — typed, counted, never an empty roster."
+// Read-through seam for closures past the manifest inline cap (the SAME
+// source_root_ingest_build_from_source_refs the frontier probe rides): the host manifest carries
+// SourceRef rows (path + root + content hash, no inline source), the sweep reads them through the
+// filesystem with content-hash verification, and a read failure is ONE located refusal row for the
+// entry — typed, counted, never an empty roster.
 
 fn sweep_rows_from_refs(refs: List<SourceRef>, admission: Admission, entry: String, identities: List<String>) -> List<RealizationSweepRow> {
   match source_root_ingest_build_from_source_refs(refs: refs) {
@@ -242,7 +266,16 @@ fn sweep_rows_join_canonical(rows: List<RealizationSweepRow>, entry: String, ide
   forward && backward && (length(xs: rows) == length(xs: identities))
 }
 
-data member_scan_note: String = "Located attribution for assembly-parse refusals: each closure member is driven through the SAME canonical assembly as a singleton ingest — its own module header as the admission subject, no imports — so a member whose source the canonical grammar cannot parse yields a frontend-phase row whose entry IS the member's path. SourcePortLocus now carries file and extent when a refusal belongs to a source construct; InvariantPortLocus instead names the source-independent invariant and cannot masquerade as source location. A resolve-phase refusal here is EXPECTED (imports are absent by construction) and is not reported; only frontend rows are the scan's product. The single-module probe instrument (ingested_resolved_module_from_source) is NOT used: it has measurably narrower grammar coverage than the assembled route and misattributes (== comparisons, projections and generic signatures refuse under it while parsing through assembly)."
+// Located attribution for assembly-parse refusals: each closure member is driven through the SAME
+// canonical assembly as a singleton ingest — its own module header as the admission subject, no
+// imports — so a member whose source the canonical grammar cannot parse yields a frontend-phase row
+// whose entry IS the member's path. SourcePortLocus now carries file and extent when a refusal
+// belongs to a source construct; InvariantPortLocus instead names the source-independent invariant
+// and cannot masquerade as source location. A resolve-phase refusal here is EXPECTED (imports are
+// absent by construction) and is not reported; only frontend rows are the scan's product. The
+// single-module probe instrument (ingested_resolved_module_from_source) is NOT used: it has
+// measurably narrower grammar coverage than the assembled route and misattributes (== comparisons,
+// projections and generic signatures refuse under it while parsing through assembly).
 
 fn module_subject_of(source: String) -> List<Symbol> {
   fold_list(xs: split(s: source, delimiter: "\n"), empty: no_fn_symbols(), cons: fn(acc, line) {

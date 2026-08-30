@@ -121,7 +121,11 @@ fn shell_emission_authorize_steady_state(
   }
 }
 
-data authorize_shell_emission_doc: String = "The sign-off predicate — docs/plans/provisioning-window-executor-capability-design.md §3.3. Foreign-executor demand is authorized unconditionally (the payload class IS shell); a bootstrap window authorizes only when runtime availability is fully known (Unknown is a fail-closed bottom, never treated as Absent); steady state authorizes only a shrinking, named roster exception — everything else refuses, typed and located."
+// The sign-off predicate — docs/plans/provisioning-window-executor-capability-design.md §3.3.
+// Foreign-executor demand is authorized unconditionally (the payload class IS shell); a bootstrap
+// window authorizes only when runtime availability is fully known (Unknown is a fail-closed bottom,
+// never treated as Absent); steady state authorizes only a shrinking, named roster exception —
+// everything else refuses, typed and located.
 
 fn authorize_shell_emission(
   capability: ExecutorCapability,

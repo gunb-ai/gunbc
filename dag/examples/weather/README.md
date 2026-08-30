@@ -1,8 +1,7 @@
 # Weather forecast (hero demo)
 
-A self-contained daglang program: domain types, pattern matching on a sum
-type, pure functions, and a list pipeline. It compiles to Rust with no
-hand-written glue.
+A self-contained daglang program — domain types, sum-type pattern matching, pure functions,
+a list pipeline — compiled to Rust with no hand-written glue.
 
 ## What it shows
 
@@ -44,5 +43,4 @@ All logic lives in [`weather.dag`](weather.dag). The compiler pulls in
 ## Tests in this repo
 
 `src/v1/tests` includes structural checks over the emitted Rust (L4
-bootstrap). That path is heavier than the gate above; the gate is the
-fast public smoke test.
+bootstrap) — heavier than the gate above, which is the fast public smoke test.

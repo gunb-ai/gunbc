@@ -274,7 +274,9 @@ fn validate_module_roots(roots: FreeMonoid<NormalizedTree>) -> Outcome<FreeMonoi
   }
 }
 
-data module_root_lookup_note: String = "Typed lookup result beside module_root_find diagnostics. ModuleRootMissing and ModuleRootAmbiguous preserve the exact QualifiedName sought; diagnostics are projections of these results for consumers that still read the Outcome directly."
+// Typed lookup result beside module_root_find diagnostics. ModuleRootMissing and
+// ModuleRootAmbiguous preserve the exact QualifiedName sought; diagnostics are projections of these
+// results for consumers that still read the Outcome directly.
 
 fn module_root_lookup(
   roots: FreeMonoid<NormalizedTree>,

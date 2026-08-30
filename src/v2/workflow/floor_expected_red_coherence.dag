@@ -17,14 +17,14 @@ import v2.std.decl_index { DeclFact }
 import v2.std.node { Node }
 
 // AUTHORED-VS-EVALUATED COHERENCE for a chunk/aggregator/roster roster shape such as
-// floor_expected_red.dag's. #8437 severed one chunk out of the Cons chain that links
-// chunk_NN() calls into the aggregator: the chunk still authored its identities, the
-// aggregator stayed well-formed, and the roster stayed non-empty, so nothing observed
-// that identities had silently stopped being evaluated. This module reads the SAME
-// declaration facts the corpus already exposes and asserts two things a hand-authored
-// Cons chain cannot assert of itself: every identity a chunk body authors is present
-// in the evaluated roster, and every declared chunk function is actually called from
-// the aggregator body — both at identity/lexeme grain, never by count.
+// floor_expected_red.dag's. #8437 severed one chunk out of the Cons chain linking chunk_NN()
+// calls into the aggregator: the chunk still authored its identities, the aggregator stayed
+// well-formed, and the roster stayed non-empty, so nothing observed that identities had silently
+// stopped being evaluated. This module reads the SAME declaration facts the corpus already
+// exposes and asserts two things a hand-authored Cons chain cannot assert of itself: every
+// identity a chunk body authors is present in the evaluated roster, and every declared chunk
+// function is actually called from the aggregator body — both at identity/lexeme grain, never by
+// count.
 
 // A single declared chunk to check: its fully qualified decl-fact lookup key, and the
 // short identifier spelling the aggregator body must contain if the chunk is linked.
@@ -44,11 +44,10 @@ type ChunkCoherenceVerdict
   = ChunkCoherenceCoherent { checked_chunk_count: Int, checked_identity_count: Int }
   | ChunkCoherenceRefused { causes: List<ChunkCoherenceRefusal> }
 
-// The refusal message a maintainer meets when a chunk body authors an identity the
-// evaluated roster does not contain. It names WHY the mismatch is dangerous to paper
-// over and WHERE the real fix belongs, so the cheapest available reaction is not an
-// exclusion list re-inventing the lexeme-shape heuristic this derivation was built to
-// avoid (DESIGN §4/§5).
+// The refusal message a maintainer meets when a chunk body authors an identity the evaluated
+// roster does not contain. It names WHY the mismatch is dangerous to paper over and WHERE the
+// real fix belongs, so the cheapest reaction is not an exclusion list re-inventing the
+// lexeme-shape heuristic this derivation was built to avoid (DESIGN §4/§5).
 fn authored_identity_missing_from_roster_message(identity: String, source_chunk_qualified_name: String) -> String {
   concat(
     "identity '",
@@ -145,38 +144,32 @@ fn roster_identities_missing_from_authored_chunks(
   }))
 }
 
-// Fail-closed by construction: an unresolved chunk or aggregator declaration is a
-// refusal in its own right, never treated as "no identities to check" (the
-// empty-observation narrow DESIGN §5 forbids) and never silently skipped.
+// Fail-closed by construction: an unresolved chunk or aggregator declaration is a refusal in its
+// own right, never treated as "no identities to check" (the empty-observation narrow DESIGN §5
+// forbids) and never silently skipped.
 //
-// SCOPE, stated positively rather than as a dissolution condition (this is a
-// permanent property of the check, not debt with a lifecycle): this function is
-// complete for the chunks it is GIVEN via the `chunks` parameter. The caller
-// decides which declarations count as chunks and enumerates them by hand -- there
-// is no derivation of "which functions are chunks" from decl_facts alone, because
-// that would require a naming-convention heuristic over declaration names, which
-// is the same class of shape-based inference DESIGN §4 forbids for atom lexemes
-// (the substrate has no closed vocabulary that marks "chunk" as a structural
-// property; it is a role the caller assigns).
+// SCOPE, stated positively rather than as a dissolution condition (a permanent property of the
+// check, not debt with a lifecycle): this function is complete for the chunks it is GIVEN via the
+// `chunks` parameter. The caller decides which declarations count as chunks and enumerates them
+// by hand -- there is no derivation of "which functions are chunks" from decl_facts alone, since
+// that would require a naming-convention heuristic over declaration names, the shape-based
+// inference DESIGN §4 forbids for atom lexemes (the substrate has no closed vocabulary marking
+// "chunk" as a structural property; it is a role the caller assigns).
 //
-// BLIND SPOT this scope creates, named rather than left implicit: a chunk that is
-// declared in the checked module (e.g. floor_expected_red.dag) but is absent from
-// the call site's `chunks: List<ChunkDeclRef>` roster is invisible to this check --
-// it is not one of the `facts` this function ever resolves, so it can neither
-// contribute a cause nor be reported missing. Such an omission returns
-// ChunkCoherenceCoherent exactly as if the chunk had never existed, which is the
-// same empty-observation-narrow shape (DESIGN's "Recurring failure modes") the
-// severed-aggregator RED above exists to catch, now sitting one level up at the
-// call site instead of inside the aggregator body. Closing it would mean deriving
-// the chunk roster from decl_facts instead of taking it as a parameter -- and
-// deriving it without a naming heuristic requires the same fresh whole-module
-// decl_facts parse the live join already needs (see
-// live_floor_expected_red_coherence_join_gap_note below: verifying a caller's
-// roster against floor_expected_red.dag's actual declarations costs the identical
-// ~56s parse as verifying the roster's identities do, because both need decl_facts
-// over the same pool root). So this is not a second, separate gap with its own
-// cheaper fix -- it is the same live-join gap, restated from the roster-omission
-// angle rather than the roster-content angle, and it dissolves with that work's
+// BLIND SPOT this scope creates, named rather than left implicit: a chunk declared in the checked
+// module (e.g. floor_expected_red.dag) but absent from the call site's `chunks:
+// List<ChunkDeclRef>` roster is invisible to this check -- it is not one of the `facts` this
+// function resolves, so it can neither contribute a cause nor be reported missing. Such an
+// omission returns ChunkCoherenceCoherent exactly as if the chunk never existed: the same
+// empty-observation-narrow shape (DESIGN's "Recurring failure modes") the severed-aggregator RED
+// above catches, one level up at the call site. Closing it means deriving the chunk roster from
+// decl_facts instead of taking it as a parameter -- and deriving it without a naming heuristic
+// requires the same fresh whole-module decl_facts parse the live join already needs (see
+// live_floor_expected_red_coherence_join_gap_note below: verifying a caller's roster against
+// floor_expected_red.dag's actual declarations costs the identical ~56s parse as verifying the
+// roster's identities, because both need decl_facts over the same pool root). So this is not a
+// separate gap with a cheaper fix -- it is the same live-join gap restated from the
+// roster-omission angle rather than the roster-content angle, and it dissolves with that work's
 // preparation-time consumer, not separately.
 fn floor_expected_red_chunk_coherence_check(
   facts: List<DeclFact>,
@@ -237,36 +230,29 @@ fn floor_expected_red_chunk_coherence_check(
   }
 }
 
-// MECHANISM ON FIXTURES, per the decomposition rule witness_deferral_freeze_witness_note
-// already states for this exact situation: a corpus census may be irreducible but a
-// mechanism never is. This module's fixture-scale witnesses
-// (dag/test/claim/floor_expected_red_coherence_witness_test.dag) are the complete,
-// permanent evidence for floor_expected_red_chunk_coherence_check itself: they are
-// cheap, they execute every PR, and they discriminate the #8437 incident shape (a
-// severed chunk still authoring identities into a well-formed, non-empty roster).
-// The mechanism is finished, not deferred -- there is no dissolution condition here
-// because the fixture witnesses are not scaffolding for a later replacement; per
-// DESIGN §4b a climb deletes redundant lower-rung PRODUCTION machinery and never the
-// evidence, so these RED controls stay enrolled exactly as they are even after a live
-// census exists on top of them.
+// MECHANISM ON FIXTURES, per the decomposition rule witness_deferral_freeze_witness_note already
+// states for this situation: a corpus census may be irreducible but a mechanism never is. This
+// module's fixture-scale witnesses (dag/test/claim/floor_expected_red_coherence_witness_test.dag)
+// are the complete, permanent evidence for floor_expected_red_chunk_coherence_check itself: cheap,
+// executed every PR, and discriminating the #8437 incident shape (a severed chunk still authoring
+// identities into a well-formed, non-empty roster). The mechanism is finished, not deferred -- no
+// dissolution condition, because the fixture witnesses are not scaffolding for a later
+// replacement; per DESIGN §4b a climb deletes redundant lower-rung PRODUCTION machinery and never
+// the evidence, so these RED controls stay enrolled even after a live census exists on top.
 data floor_expected_red_chunk_coherence_check_note: String = "MECHANISM ON FIXTURES: floor_expected_red_chunk_coherence_check is proven by execution against planted rosters in dag/test/claim/floor_expected_red_coherence_witness_test.dag -- a severed-aggregator RED, its cause-naming RED siblings, and a linked-chunks-only positive control. That is the complete claim this module makes about the mechanism; it is not partial."
 
-// SEPARATE, PRE-EXISTING, UNOWNED OBLIGATION -- not debt this module introduces.
-// Folding floor_expected_red.dag's own real 21 chunks through the same check is a
-// distinct, much larger claim: it requires a fresh
-// decl_facts(pool_roots: ["src/v2/workflow"]) parse (measured: ~56s process wall,
-// dominated by the parse itself, ~36x the 1552ms per-PR floor ceiling), so per
-// DESIGN §5/§6 that cost may not be paid inside an ordinary per-PR claim, in
-// test/claim/long/ without cadence enrollment, or as an unenrolled-but-honest
-// UnexecutedDeferredWitness record (the gunbc#7762 shape). Before this module
-// existed, nothing in the tree could see a severed aggregator at all; after it,
-// strictly more of the #8437 incident shape is covered than before -- this is a
-// partial fix of a gap that predates this module, not an introduction of new debt,
-// so no admission verdict is owed for it (AcknowledgePreexistingDebt, DESIGN
-// 2026-08-10). The live join's natural home is where its cost is already paid: the
-// required-floor run resolves the whole corpus during preparation before any claim
-// executes, so re-deriving decl_facts fresh inside a claim duplicates work the floor
-// has already done -- the #8470 shape one level up. Building that preparation-time
-// consumer is its own future work item with its own owner, not a continuation of
-// this one.
+// SEPARATE, PRE-EXISTING, UNOWNED OBLIGATION -- not debt this module introduces. Folding
+// floor_expected_red.dag's own real 21 chunks through the same check is a distinct, much larger
+// claim: it requires a fresh decl_facts(pool_roots: ["src/v2/workflow"]) parse (measured: ~56s
+// process wall, dominated by the parse itself, ~36x the 1552ms per-PR floor ceiling), so per
+// DESIGN §5/§6 that cost may not be paid inside an ordinary per-PR claim, in test/claim/long/
+// without cadence enrollment, or as an unenrolled-but-honest UnexecutedDeferredWitness record
+// (the gunbc#7762 shape). Before this module, nothing in the tree could see a severed aggregator;
+// after it, strictly more of the #8437 incident shape is covered -- a partial fix of a gap that
+// predates this module, not new debt, so no admission verdict is owed (AcknowledgePreexistingDebt,
+// DESIGN 2026-08-10). The live join's natural home is where its cost is already paid: the
+// required-floor run resolves the whole corpus during preparation before any claim executes, so
+// re-deriving decl_facts inside a claim duplicates work the floor has done -- the #8470 shape one
+// level up. Building that preparation-time consumer is its own future work item with its own
+// owner, not a continuation of this one.
 data live_floor_expected_red_coherence_join_gap_note: String = "PRE-EXISTING, UNOWNED GAP (not this module's debt): the live join of floor_expected_red.dag's own 21 chunks against its own evaluated roster is not a per-PR witness in floor_expected_red_coherence_witness_test.dag, and was not checkable by anything before this module existed either. This single gap has two faces, not two gaps: a checked chunk's identities may drift from the roster (the content face, this note's original subject), and a chunk may be missing from the caller's ChunkDeclRef roster entirely (the omission face, named on floor_expected_red_chunk_coherence_check's own SCOPE comment) -- closing either face requires the identical fresh decl_facts parse over floor_expected_red.dag's module, so one preparation-time consumer closes both. See floor_expected_red_chunk_coherence_check_note and the comment above it for why the mechanism itself is complete, and for the measured cost and natural home (a required-floor preparation-time consumer) of the still-open live-census gap."

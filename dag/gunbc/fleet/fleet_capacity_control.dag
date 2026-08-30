@@ -22,7 +22,9 @@ import gunbc.fleet_intent_network {
 // dark rather than staying up, and a new host must be added in two places before it can ever be
 // used. Withdrawal fails toward capacity remaining available, which is the recoverable direction:
 // too much capacity is a cost, too little is an outage.
-data fleet_capacity_control_note: String = "Operator withdrawal rosters for fleet capacity on two axes: whole hosts and provider runtimes. Consumed at the dispatch inventory seam so a withdrawn provider makes no offer. Absent from a roster means active."
+// Operator withdrawal rosters for fleet capacity on two axes: whole hosts and provider runtimes.
+// Consumed at the dispatch inventory seam so a withdrawn provider makes no offer. Absent from a
+// roster means active.
 
 // A WITHDRAWAL CARRIES ITS REASON BECAUSE THE ROSTER OUTLIVES THE SITUATION THAT CAUSED IT.
 //

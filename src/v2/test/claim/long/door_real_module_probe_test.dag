@@ -5,12 +5,19 @@ import v2.std.diagnostic { Accepted, None, Outcome, Rejected }
 import v2.compiler.name_resolve { resolve_with_admission_policy }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
-
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-data door_real_module_probe_note: String = "Phase-2 discriminating witness (sharp-bee-290 / smart-eagle-362): synthetic 2-module quad+peer program exercising resolve_with_admission_policy BY EXECUTION. Supersedes the pre-flip parsed-source quad_with_peer_reds_at_resolve_ambiguous_export falsification row — ImportScoped + subject admit_named_exports flat-merge reds resolve_ambiguous_export; NamespaceOnlyY (default) skips subject export merge and greens."
+// Phase-2 discriminating witness (sharp-bee-290 / smart-eagle-362): synthetic 2-module quad+peer
+// program exercising resolve_with_admission_policy BY EXECUTION. Supersedes the pre-flip
+// parsed-source quad_with_peer_reds_at_resolve_ambiguous_export falsification row — ImportScoped +
+// subject admit_named_exports flat-merge reds resolve_ambiguous_export; NamespaceOnlyY (default)
+// skips subject export merge and greens.
 
-data migration_owned_causes_note: String = "Cause ownership (sharp-bee-290 + nimble-boar-198 reconciliation 2026-07-13; durable table in v2.workflow.compile_door_ledger known_frontier_causes): resolve_ambiguous_export LANDED fix in phase-2 flip (this file's ImportScoped RED / NamespaceOnlyY GREEN pair). parse_grammar_choice_overlap_residue on import syntax remains migration-owned until phase-3 grammar deletion."
+// Cause ownership (sharp-bee-290 + nimble-boar-198 reconciliation 2026-07-13; durable table in
+// v2.workflow.compile_door_ledger known_frontier_causes): resolve_ambiguous_export LANDED fix in
+// phase-2 flip (this file's ImportScoped RED / NamespaceOnlyY GREEN pair).
+// parse_grammar_choice_overlap_residue on import syntax remains migration-owned until phase-3
+// grammar deletion.
 
 fn quad_qn_node(seg: Symbol) -> Node {
   fold_list_node(

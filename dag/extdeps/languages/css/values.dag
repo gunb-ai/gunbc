@@ -11,7 +11,15 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   }
 }
 
-data css_length_note: String = "Cited upstream: W3C CSS Values and Units Module Level 4. A <length> is a magnitude PLUS a unit (section 6 Distance Units): px an absolute unit, rem and ch font-relative units — so a length literal like \"4px\" is a SERIALIZATION of that structure (DESIGN section 2, decompress the string), never the stored fact. The zero-length rule (section 6.2: for a zero length the unit identifier is optional) is why css_length_wire renders a zero magnitude as bare \"0\" regardless of unit — grounded spec behavior, not a special case, and the reason authored \"0\" round-trips byte-exact. <percentage> (section 5) rides the same wire for the register's dimension needs. Forward reading (parsing a CSS value through these rows) is the NAMED later direction (DESIGN section 4, one grammar both ways), not built here."
+// Cited upstream: W3C CSS Values and Units Module Level 4. A <length> is a magnitude PLUS a unit
+// (section 6 Distance Units): px an absolute unit, rem and ch font-relative units — so a length
+// literal like "4px" is a SERIALIZATION of that structure (DESIGN section 2, decompress the
+// string), never the stored fact. The zero-length rule (section 6.2: for a zero length the unit
+// identifier is optional) is why css_length_wire renders a zero magnitude as bare "0" regardless of
+// unit — grounded spec behavior, not a special case, and the reason authored "0" round-trips
+// byte-exact. <percentage> (section 5) rides the same wire for the register's dimension needs.
+// Forward reading (parsing a CSS value through these rows) is the NAMED later direction (DESIGN
+// section 4, one grammar both ways), not built here.
 
 type CssLengthUnit
   = Px
@@ -56,7 +64,11 @@ data css_font_family_authority: ExternalAuthority = ExternalAuthority {
   }
 }
 
-data css_font_family_note: String = "Cited upstream: W3C CSS Fonts Module Level 4, font-family property. A font-family value is a LIST of families: quoted <family-name> strings (NamedFamily, e.g. 'Noto Sans') and bare <generic-family> keywords (GenericFamily: serif/sans-serif/monospace/cursive/fantasy/system-ui), joined by \", \". The stringly \"'Noto Sans', system-ui, sans-serif\" is the serialization of this list, decompressed here (DESIGN section 2)."
+// Cited upstream: W3C CSS Fonts Module Level 4, font-family property. A font-family value is a LIST
+// of families: quoted <family-name> strings (NamedFamily, e.g. 'Noto Sans') and bare
+// <generic-family> keywords (GenericFamily: serif/sans-serif/monospace/cursive/fantasy/system-ui),
+// joined by ", ". The stringly "'Noto Sans', system-ui, sans-serif" is the serialization of this
+// list, decompressed here (DESIGN section 2).
 
 type CssGenericFamily
   = GenericSerif

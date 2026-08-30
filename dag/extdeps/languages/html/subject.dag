@@ -12,7 +12,13 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   }
 }
 
-data html_language_subject_note: String = "HTML, cited to the WHATWG HTML Living Standard (verified live 2026-08-04 by fetching the cited locator and confirming its title and publisher from the response, per the D0 verify-or-refuse rule): the fetched specification is titled 'HTML', is published by the WHATWG, and explicitly carries Living Standard status with a last-updated date rather than a version number. THE LIVING-STANDARD SHAPE IS WHY THIS SUBJECT CARRIES NO REVISION: there is no edition to pin, which is precisely the case external_model_scope_revision_grain_note describes — a dated snapshot is a fact on a specific observation row, never a property of the subject."
+// HTML, cited to the WHATWG HTML Living Standard (verified live 2026-08-04 by fetching the cited
+// locator and confirming its title and publisher from the response, per the D0 verify-or-refuse
+// rule): the fetched specification is titled 'HTML', is published by the WHATWG, and explicitly
+// carries Living Standard status with a last-updated date rather than a version number. THE
+// LIVING-STANDARD SHAPE IS WHY THIS SUBJECT CARRIES NO REVISION: there is no edition to pin, which
+// is precisely the case external_model_scope_revision_grain_note describes — a dated snapshot is a
+// fact on a specific observation row, never a property of the subject.
 
 type Html
   = | HtmlTarget

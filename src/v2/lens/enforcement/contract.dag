@@ -547,6 +547,14 @@ data lens_contract_witness_cost_locality: LensContract = {
   boundary: ConstructionJustification { class: WallAfterGrounding { dissolves_to: SingleAuthority } }
 }
 
+// Phase 0A honesty: contracts with consumer_witness: NoConsumerWitness remain enrolled in
+// lens_contract_registry and are enumerable via lens_contract_is_unbound
+// (v2.lens.enforcement.receipts, routed through consumer_enrolled_for — not a parallel coproduct
+// Bool predicate), but coverage_receipts_live does not derive an EnrollmentDiscoveryReceipt for
+// them — semantic receipt legs (scope, subjects, red control, self-application) would be fabricated
+// without a bound consumer witness. Unbound contracts stay visible and countable for the coming
+// inventory phase; omitting receipts is not omitting contracts.
+
 data lens_contract_registry: List<LensContract> = [
   lens_contract_cost,
   lens_contract_complexity_derived_kernel,
@@ -595,5 +603,3 @@ data lens_contract_registry: List<LensContract> = [
   lens_contract_wiring_liveness,
   lens_contract_witness_cost_locality
 ]
-
-data enrollment_discovery_receipt_unbound_contract_note: String = "Phase 0A honesty: contracts with consumer_witness: NoConsumerWitness remain enrolled in lens_contract_registry and are enumerable via lens_contract_is_unbound (v2.lens.enforcement.receipts, routed through consumer_enrolled_for — not a parallel coproduct Bool predicate), but coverage_receipts_live does not derive an EnrollmentDiscoveryReceipt for them — semantic receipt legs (scope, subjects, red control, self-application) would be fabricated without a bound consumer witness. Unbound contracts stay visible and countable for the coming inventory phase; omitting receipts is not omitting contracts."

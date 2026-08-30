@@ -40,7 +40,14 @@ import v2.std.text { String }
 // declaring SubstrateInputsOnly would be false. Undeclared remains the fail-closed affected-set
 // selection position; the required floor now executes it and lets the interpreter classify the
 // actual effects.
-data quarantine_probe_disposition_witness_note: String = "Live claim plus controls for the total quarantine-probe disposition join. THE LIVE CLAIM IS DELIBERATELY NOT WHERE THE DISCRIMINATION LIVES: it is a universal over the live admission rows, so it stays meaningful at any population size including zero, and it would pass vacuously on an empty roster. The discrimination is carried by the synthetic controls below, which are authored here and cannot lose their subject when a live quarantine dissolves -- each of the five holder arms is shown to derive HeldByExactlyOne on its own, held-by-nothing is shown to derive the alarm, and held-by-two is shown to refuse. The controls therefore prove the fold DISCRIMINATES rather than merely agreeing with today's tree."
+// Live claim plus controls for the total quarantine-probe disposition join. THE LIVE CLAIM IS
+// DELIBERATELY NOT WHERE THE DISCRIMINATION LIVES: it is a universal over the live admission rows,
+// so it stays meaningful at any population size including zero, and it would pass vacuously on an
+// empty roster. The discrimination is carried by the synthetic controls below, which are authored
+// here and cannot lose their subject when a live quarantine dissolves -- each of the five holder
+// arms is shown to derive HeldByExactlyOne on its own, held-by-nothing is shown to derive the
+// alarm, and held-by-two is shown to refuse. The controls therefore prove the fold DISCRIMINATES
+// rather than merely agreeing with today's tree.
 
 fn witness_pool_roots() -> List<String> {
   ["dag", "src/v2"]

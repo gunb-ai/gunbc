@@ -12,7 +12,15 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   }
 }
 
-data jsx_language_subject_note: String = "JSX, cited to the JSX Specification (verified live 2026-08-04 by fetching the cited locator and confirming its title and publisher from the response, per the D0 verify-or-refuse rule): the fetched repository hosts 'DRAFT: JSX Specification', maintained by Meta, defining JSX as 'an XML-like syntax extension to ECMAScript without any defined semantics'. THREE FACTS FROM THE UPSTREAM THAT THE REGISTRY NEEDS: it is explicitly a DRAFT; it is explicitly NOT intended to be implemented by engines or browsers and NOT a proposal to add JSX to ECMAScript; and it is independent of React. That last point is why this subject is jsx and not react — React is a separate library with separate governance, and the census surface named extdeps.languages.react_jsx fuses the two names in one module path. The syntax this repository emits is JSX; React would be a distinct subject if it is ever modelled."
+// JSX, cited to the JSX Specification (verified live 2026-08-04 by fetching the cited locator and
+// confirming title and publisher, per the D0 verify-or-refuse rule): the repository hosts 'DRAFT:
+// JSX Specification', maintained by Meta, defining JSX as 'an XML-like syntax extension to
+// ECMAScript without any defined semantics'. THREE FACTS THE REGISTRY NEEDS: it is explicitly a
+// DRAFT; it is explicitly NOT to be implemented by engines or browsers and NOT a proposal to add
+// JSX to ECMAScript; and it is independent of React. Hence the subject is jsx, not react — React is
+// a separate library with separate governance, and the census surface extdeps.languages.react_jsx
+// fuses the two names in one module path. This repository emits JSX; React would be a distinct
+// subject if ever modelled.
 
 type Jsx
   = | JsxTarget

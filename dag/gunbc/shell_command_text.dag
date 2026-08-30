@@ -9,14 +9,13 @@ import v2.workflow.bash_command_fold_serialize { bash_fold_serialize_node, bash_
 import v2.std.node { Node }
 import v2.std.diagnostic { Accepted, Rejected, None }
 
-// One authority for "an argv this repository intends to run" becoming shell text.
-// The argv is built as a bash grammar tree (v2.extdeps.languages.bash_build) and serialized
-// once, at the foreign-executor edge, by v2.workflow.bash_command_fold_serialize — so word
-// quoting is the serializer's structural job (POSIX single-quote, cited at
-// extdeps.posix.shell_command_language) rather than an apostrophe an author remembered to
-// type, and an element boundary in the argv survives into the emitted text. This module exists
-// because the same construction was reached for independently by the host-axis cap scripts and
-// by the live-deploy operation spellings; a second spelling of it would be the §3 fork.
+// One authority for "an argv this repository intends to run" becoming shell text. The argv is built
+// as a bash grammar tree (v2.extdeps.languages.bash_build) and serialized once, at the
+// foreign-executor edge, by v2.workflow.bash_command_fold_serialize — so word quoting is the
+// serializer's structural job (POSIX single-quote, cited at extdeps.posix.shell_command_language),
+// not an apostrophe an author remembered to type, and an argv element boundary survives into the
+// emitted text. The host-axis cap scripts and the live-deploy operation spellings reached for this
+// construction independently; a second spelling would be the §3 fork.
 data shell_command_text_refused_poison: String = "__GUNBC_BASH_EMIT_REFUSED__ a command intent was rejected by v2.workflow.bash_command_fold_serialize; this marker is not valid shell, so the consuming step fails loudly rather than a hand-spelled fallback masking the refusal (DESIGN §5: refuse, never widen)"
 
 fn shell_literal_words(words: List<String>) -> List<Node> {

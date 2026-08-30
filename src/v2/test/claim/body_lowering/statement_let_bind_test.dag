@@ -1,9 +1,24 @@
 module v2.test.claim.body_lowering.statement_let_bind
 
-
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-data statement_let_bind_note: String = "THE CAPABILITY THESE CLAIMS GUARD IS THE BOUNDARY-4 DOOR, and they are written as invariants rather than as observations of the present frontier so that neither inverts when the frontier moves.\n\nA statement-form let (`let n = e` with no `in`) does not carry its own Bind body: dag_grammar_let_expr is a CHOICE of two alternatives and only the `in` one has a body. The statement form's body is the REMAINDER OF THE ENCLOSING STATEMENT SPINE, so the lowering belongs at dag_surface_stmt_seq, which is the only node from which both halves of the Bind are reachable. Before that lowering existed, body_lower_let_expr was handed the let alone, looked for the `in` atom, and reported its absence as ^body_lowering_reason_unsupported_form -- which is what held boundary 4 of the seven-boundary product receipt on the compiler's own closure.\n\nTHE RED IS THE THIRD CLAIM AND IT IS THE ONE THAT MATTERS. A body whose non-final statement is NOT a binding has no continuation to bind and must refuse with its own cause. If that claim ever greens, the sequence lowering has started fabricating a body for a statement that never produced one, which is exactly the silent-wrong-answer class the refusal exists to prevent. It does not retire when the capability lands; it is the standing control that the capability stayed honest."
+// THE CAPABILITY THESE CLAIMS GUARD IS THE BOUNDARY-4 DOOR, and they are written as invariants
+// rather than as observations of the present frontier so that neither inverts when the frontier
+// moves.
+//
+// A statement-form let (`let n = e` with no `in`) does not carry its own Bind body:
+// dag_grammar_let_expr is a CHOICE of two alternatives and only the `in` one has a body. The
+// statement form's body is the REMAINDER OF THE ENCLOSING STATEMENT SPINE, so the lowering belongs
+// at dag_surface_stmt_seq, which is the only node from which both halves of the Bind are reachable.
+// Before that lowering existed, body_lower_let_expr was handed the let alone, looked for the `in`
+// atom, and reported its absence as ^body_lowering_reason_unsupported_form -- which is what held
+// boundary 4 of the seven-boundary product receipt on the compiler's own closure.
+//
+// THE RED IS THE THIRD CLAIM AND IT IS THE ONE THAT MATTERS. A body whose non-final statement is
+// NOT a binding has no continuation to bind and must refuse with its own cause. If that claim ever
+// greens, the sequence lowering has started fabricating a body for a statement that never produced
+// one, which is exactly the silent-wrong-answer class the refusal exists to prevent. It does not
+// retire when the capability lands; it is the standing control that the capability stayed honest.
 
 fn normalize_outcome(src: String) -> String {
   let lm = dag_language_model()

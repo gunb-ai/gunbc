@@ -406,8 +406,13 @@ fn bmc_fan_durability_evidence_built_items(
   }
 }
 
+// Durability evidence is derived solely from the typed perturbation receipt, including the exact
+// projection capability recorded at perturbation time. Admission and the graceful-restart boundary
+// are not separately writable caller labels. Activation is established from independent controller,
+// content, and safety readbacks; a later converge no-op is a consequence, never a premise. Ordinary
+// convergence additionally requires the live canonical config digest to equal the admitted digest
+// derived from the projected curve.
+
 data srv4_bmc_fan_durability_evidence_construction: BmcFanDurabilityEvidenceConstruction = bmc_fan_reboot_durability_evidence(
   receipt: srv4_bmc_fan_reboot_persistence_receipt,
 )
-
-data srv4_bmc_fan_policy_qualification_note: String = "Durability evidence is derived solely from the typed perturbation receipt, including the exact projection capability recorded at perturbation time. Admission and the graceful-restart boundary are not separately writable caller labels. Activation is established from independent controller, content, and safety readbacks; a later converge no-op is a consequence, never a premise. Ordinary convergence additionally requires the live canonical config digest to equal the admitted digest derived from the projected curve."

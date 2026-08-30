@@ -40,7 +40,15 @@ import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
-data emit_on_demand_complement_family_note: String = "Witness-realization lane 2 (witness_family_fanout): emit_host_complement family — PURE receipts only (grain/closure keys, store hit/miss materialization, interpreter role bound, packed-width budget refusal). Native execution + eval-anchored agreement for complement MIGRATED to family grain (merry-pike-487 follow-on, std.emit_on_demand witness_family_build_grain_ruling): the executing consumer is emit_on_demand_family_crate_witness_test — complement runs as a warm member of the logic family crate (agreement Pass via run_test_claim_from_source_emit_vs_eval_cached; wrong-fixture discriminator = the all-alt family octet flip 0 -> 1); the equals_eval harness's own mismatch RED stays live in emit_host_complement_equals_eval_test. Residue is pure; the LiveTreeDisposition flip to SubstrateInputsOnly is a named follow-on."
+// Witness-realization lane 2 (witness_family_fanout): emit_host_complement family — PURE receipts
+// only (grain/closure keys, store hit/miss materialization, interpreter role bound, packed-width
+// budget refusal). Native execution + eval-anchored agreement for complement MIGRATED to family
+// grain (merry-pike-487 follow-on, std.emit_on_demand witness_family_build_grain_ruling): the
+// executing consumer is emit_on_demand_family_crate_witness_test — complement runs as a warm member
+// of the logic family crate (agreement Pass via run_test_claim_from_source_emit_vs_eval_cached;
+// wrong-fixture discriminator = the all-alt family octet flip 0 -> 1); the equals_eval harness's
+// own mismatch RED stays live in emit_host_complement_equals_eval_test. Residue is pure; the
+// LiveTreeDisposition flip to SubstrateInputsOnly is a named follow-on.
 
 data complement_family_emitter: String = "v2.compiler.emit"
 data complement_family_provider: CacheProvider = provider_row(

@@ -65,7 +65,14 @@ import gunbc.observation_ci_render {
 }
 import v2.std.text { String }
 
-data witness_row_cost_projection_note: String = "Executing REDs for the #5 ObservationEvent join projection (N+1 per entry). (1) DeclarationSegment key/grain totality lives in observation_model_witness_test. (2) Two modeled events → one exact TSV row. (3) Missing or multiple parent resolve events REFUSE the row set. (4) W2 Ambient suppress does not delete the complete receipt row. (5) Declaration-/module-nested resolve phases do NOT count as the entry-level parent (collision RED — review 43409). Resolve wall is entry-level/shared — repeated as a column, never divided, never summed N times as a corpus total. Role classification is witness_cost_event_role (typed extract), not is_* Bool filters."
+// Executing REDs for the #5 ObservationEvent join projection (N+1 per entry). (1)
+// DeclarationSegment key/grain totality lives in observation_model_witness_test. (2) Two modeled
+// events → one exact TSV row. (3) Missing or multiple parent resolve events REFUSE the row set. (4)
+// W2 Ambient suppress does not delete the complete receipt row. (5) Declaration-/module-nested
+// resolve phases do NOT count as the entry-level parent (collision RED — review 43409). Resolve
+// wall is entry-level/shared — repeated as a column, never divided, never summed N times as a
+// corpus total. Role classification is witness_cost_event_role (typed extract), not is_* Bool
+// filters.
 
 fn sample_decl(name: String) -> DeclarationRef {
   DeclarationRef {

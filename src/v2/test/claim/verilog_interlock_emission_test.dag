@@ -25,7 +25,12 @@ import v2.compiler.translate { target_serialize_relation_row_from_model_bounded 
 import v2.compiler.ingest { row_token_spine_tokens, grammar_relation_row_forward_token_selection }
 import v2.std.compilers.target_model { render_target_text }
 
-data verilog_emission_note: String = "THE PROOF THAT TARGET EMISSION COMPOSES. These bytes are produced by the GENERIC serializer walking derived relation rows — no Verilog branch exists in the compiler and no Verilog spelling is authored here. The module frame, the recursive port list, the nested expressions and every space and newline come from the target's productions and layout profile. The oracle is the exact source product.compute_board.verilog_projection prints today by hand, which is what makes this a replacement rather than a second implementation."
+// THE PROOF THAT TARGET EMISSION COMPOSES. These bytes are produced by the GENERIC serializer
+// walking derived relation rows — no Verilog branch exists in the compiler and no Verilog spelling
+// is authored here. The module frame, the recursive port list, the nested expressions and every
+// space and newline come from the target's productions and layout profile. The oracle is the exact
+// source product.compute_board.verilog_projection prints today by hand, which is what makes this a
+// replacement rather than a second implementation.
 
 data expected_interlock_verilog: String = "module board_power_interlock (\n  input  wire conditioned_good,\n  input  wire fault,\n  output wire power_permit,\n  output wire reset_release\n);\n  assign power_permit = (conditioned_good & ~fault);\n  assign reset_release = (conditioned_good & power_permit);\nendmodule\n"
 

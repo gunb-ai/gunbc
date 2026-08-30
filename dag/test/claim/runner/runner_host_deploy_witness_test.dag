@@ -143,7 +143,11 @@ data unenrolled_host_fixture: RunnerHostDeploy = RunnerHostDeploy {
   runner_count: 5,
 }
 
-data witness_enrollment_wall_note: String = "The srv4 host-convergence OOM class, made unwritable. A host absent from fleet_intent_known_hosts yields an admission whose refusal arm carries NO command, so neither builder can hand back something runnable. The fixture is srv9 — a plausible next fleet host that nobody has enrolled — which is exactly the shape the incident took: real hardware, real ssh target, no intent row, and therefore no RAM figure for the conservation wall to check slot caps against."
+// The srv4 host-convergence OOM class, made unwritable. A host absent from fleet_intent_known_hosts
+// yields an admission whose refusal arm carries NO command, so neither builder can hand back
+// something runnable. The fixture is srv9 — a plausible next fleet host that nobody has enrolled —
+// which is exactly the shape the incident took: real hardware, real ssh target, no intent row, and
+// therefore no RAM figure for the conservation wall to check slot caps against.
 
 test fn unenrolled_host_cannot_produce_an_installer_command() -> Bool {
   match runner_host_installer_command(
@@ -175,7 +179,10 @@ test fn enrolled_host_still_admits() -> Bool {
       }
 }
 
-data witness_admission_red_control_note: String = "Discriminating RED control on the PATH-shadow precedent: the admission-blind sketch (what this module was before the wall) DOES hand back a runnable command for the unenrolled host, the gate rejects it, and the authority's refusal passes the same gate. The perturbation is independent of the property checked, so the conjunct cannot pass tautologically."
+// Discriminating RED control on the PATH-shadow precedent: the admission-blind sketch (what this
+// module was before the wall) DOES hand back a runnable command for the unenrolled host, the gate
+// rejects it, and the authority's refusal passes the same gate. The perturbation is independent of
+// the property checked, so the conjunct cannot pass tautologically.
 
 test fn red_control_admission_blind_builder_rejected_by_gate() -> Bool {
   let adm = admit_runner_host(deploy: unenrolled_host_fixture)
@@ -189,7 +196,12 @@ test fn red_control_admission_blind_builder_rejected_by_gate() -> Bool {
     && runner_host_admission_gate_accepts(outcome: authority, admission: adm)
 }
 
-data activation_moved_note: String = "runner_enable_command was deleted with the materialization/activation split; these rows now drive runner_activate_command through a readiness receipt. The receipt below is a fixture, and the enrollment assertions it supports are unchanged: an unenrolled host still refuses, and the refusal still carries no command. What changed is that enrollment alone is no longer sufficient, which is the whole point of the split — so these witnesses now assert the WEAKER half of a stronger wall, and the wall's own controls live in test.claim.runner_activation_wall."
+// runner_enable_command was deleted with the materialization/activation split; these rows now drive
+// runner_activate_command through a readiness receipt. The receipt below is a fixture, and the
+// enrollment assertions it supports are unchanged: an unenrolled host still refuses, and the
+// refusal still carries no command. What changed is that enrollment alone is no longer sufficient,
+// which is the whole point of the split — so these witnesses now assert the WEAKER half of a
+// stronger wall, and the wall's own controls live in test.claim.runner_activation_wall.
 
 // DEFINED LOCALLY RATHER THAN SHARED WITH runner_activation_wall_test, which carries the same fixture
 // and the full reasoning for it. A cross-test-module reference resolves under the floor -- it prepares

@@ -9,15 +9,6 @@ use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
 use std::rc::Rc;
 
-pub fn keyed_row_note() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "Minimal keyed-row carrier split from std.change for stage0 emit: KeyedRow plus keyed_row_find only. std.change retains merge/diff/three-way patch machinery; this module is the stage0-safe surface keyed_roster and other path-keyed construction carriers import without pulling Monoid/Rc closure emit that fails the v1-compiler-tests compile gate.".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
-}
-
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct KeyedRow<K: Clone, V: Clone> {
     pub row_key: K,

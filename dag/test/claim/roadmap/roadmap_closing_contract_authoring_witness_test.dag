@@ -43,7 +43,14 @@ import gunbc.roadmap_closing_contract_authoring {
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-data closing_contract_authoring_witness_note: String = "EVERY REFUSAL ARM FIRES ON A PLANTED INPUT, and the arms are planted rather than found because the point of this predicate is that it discriminates. The oracle observations are supplied as a parameter to closing_contract_verdict_for_observed, so a missing oracle and an ambiguous one are authored here rather than depending on a file that happens to be absent from the tree — which would be a fixture whose red is a property of the checkout instead of the predicate. The one arm read against the LIVE authority is ClosingContractTargetNotDeclared, because a name no node carries cannot be planted any other way, and its positive control sits beside it so the pair cannot both be satisfied by a predicate that always refuses."
+// EVERY REFUSAL ARM FIRES ON A PLANTED INPUT, and the arms are planted rather than found because
+// the point of this predicate is that it discriminates. The oracle observations are supplied as a
+// parameter to closing_contract_verdict_for_observed, so a missing oracle and an ambiguous one are
+// authored here rather than depending on a file that happens to be absent from the tree — which
+// would be a fixture whose red is a property of the checkout instead of the predicate. The one arm
+// read against the LIVE authority is ClosingContractTargetNotDeclared, because a name no node
+// carries cannot be planted any other way, and its positive control sits beside it so the pair
+// cannot both be satisfied by a predicate that always refuses.
 
 fn target() -> RoadmapNodeId { "example-node" as RoadmapNodeId }
 

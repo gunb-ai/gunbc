@@ -58,7 +58,15 @@ import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
-data emit_on_demand_field_access_family_note: String = "Witness-realization lane 2 (witness_family_fanout), consolidated to ONE-BUILD grain (std.emit_on_demand witness_family_build_grain_ruling, merry-pike-487 fan-out): the singleton family's crate builds ONCE per corpus pass. The single wet receipt is emit_on_demand_field_access_native_one_build_holds: one root, both keys evicted up front; primary cold then warm (octet 9), the eval-anchored agreement AND the wrong-fixture semantic-mismatch RED (wrong-field subject over the primary build) run WARM on the same build, then the wrong-field alt tree colds in the SAME root with the flipped octet 1. Formerly ~7 crate builds per pass; now 2. Wet tests run before pure share-on-hit in the aggregate (eval-call memo ordering trap). Pure receipts unchanged."
+// Witness-realization lane 2 (witness_family_fanout), consolidated to ONE-BUILD grain
+// (std.emit_on_demand witness_family_build_grain_ruling, merry-pike-487 fan-out): the singleton
+// family's crate builds ONCE per corpus pass. The single wet receipt is
+// emit_on_demand_field_access_native_one_build_holds: one root, both keys evicted up front; primary
+// cold then warm (octet 9); the eval-anchored agreement AND the wrong-fixture semantic-mismatch RED
+// (wrong-field subject over the primary build) run WARM on the same build; then the wrong-field alt
+// tree colds in the SAME root with the flipped octet 1. Formerly ~7 crate builds per pass; now 2.
+// Wet tests run before pure share-on-hit in the aggregate (eval-call memo ordering trap). Pure
+// receipts unchanged.
 
 data field_access_family_cache_root: String = "/tmp/gunbc_emit_on_demand_field_access"
 data field_access_family_emitter: String = "v2.compiler.emit"
