@@ -130,7 +130,6 @@ data seed_retention_frontier_roster: List<SeedRetentionFrontierRow> = [
   retained_reason_undeclared(path: "src/census_exclude_derive.rs", cause: SeedRetainedIntrinsicSource),
   retained_reason_undeclared(path: "src/derived_realization_schedule.rs", cause: SeedRetainedIntrinsicSource),
   retained_reason_undeclared(path: "src/memory_governor.rs", cause: SeedRetainedIntrinsicSource),
-  retained_reason_undeclared(path: "src/std_lens_verdict.rs", cause: SeedRetainedIntrinsicSource),
   retained_reason_undeclared(path: "src/v2_compiler_body_producer.rs", cause: SeedRetainedIntrinsicSource),
   retained_reason_undeclared(path: "src/v2_compiler_normalize.rs", cause: SeedRetainedIntrinsicSource),
   retained_reason_undeclared(path: "src/v2_compiler_target_carriers.rs", cause: SeedRetainedIntrinsicSource),
