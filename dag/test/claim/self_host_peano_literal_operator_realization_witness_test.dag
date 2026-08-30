@@ -1,0 +1,129 @@
+module test.claim.self_host_peano_literal_operator_realization_witness_test
+
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE EMITTED-BYTES HALF OF THE STRUCTURAL PEANO NAT FALSIFIERS (XL-0N, adhoc-aec65f93-b00).
+// Each row compiles a virtual module through the PRODUCTION v1 emitter (compile_dag_rust_emit_check)
+// and asserts on the Rust it writes. The interpreter-executed half -- the declared structural
+// operations on nontrivial Succ values and the generic decisions by row and identity -- is
+// v2.test.claim.self_host.peano_nat_structural_realization_test.
+//
+// The forbidden tokens are the emitter's rendering BEFORE this lane, read off the same probes
+// compiled with the pre-lane binary (recorded here so a reader can see what each row turns red on):
+//   arg boundary        crate::v2_std_nat::nat_add(n.clone(), 2)        -> E0308 Rc<Nat> vs integer
+//   return boundary     -> Rc<Nat> {\n    2\n}                             -> E0308
+//   literal equality    (a.clone() == 3)                                   -> E0308
+//   ordering            (a.clone() < b.clone())                            -> E0369 on Rc<Nat>
+//   arithmetic          (a.clone() / b.clone())                            -> E0369 on Rc<Nat>
+// The two host-control rows pin that the SAME operators on a native i64 operand keep the host
+// token and the bare digit: the decision is keyed on the operand's declaration, not the spelling.
+
+// A kernel integer literal at a v2.std.nat.Nat ARGUMENT boundary elaborates to its Zero/Succ
+// image (std.literal_elaboration PeanoUnfold, the row in gunbc.structural_realization_bindings).
+test fn w_literal_at_peano_argument_boundary_emits_its_image() -> Bool {
+  compile_dag_rust_emit_check(
+    "module test.claim.peano_arg_probe\nimport std.types { Bool }\nimport v2.std.nat { Nat, nat_add }\nfn probe(n: Nat) -> Nat { nat_add(a: n, b: 2) }\n",
+    "src/test_claim_peano_arg_probe.rs",
+    ["Nat::Succ { prev: Rc::new(Nat::Succ { prev: Rc::new(Nat::Zero) }) }"],
+    [", 2)"]
+  )
+}
+
+// The same at a declared RETURN boundary.
+test fn w_literal_at_peano_return_boundary_emits_its_image() -> Bool {
+  compile_dag_rust_emit_check(
+    "module test.claim.peano_return_probe\nimport v2.std.nat { Nat }\nfn probe() -> Nat { 2 }\n",
+    "src/test_claim_peano_return_probe.rs",
+    ["Nat::Succ { prev: Rc::new(Nat::Succ { prev: Rc::new(Nat::Zero) }) }"],
+    ["{\n    2\n}"]
+  )
+}
+
+// The other OPERAND of a binary operator is a boundary: `a == 3` with a: Nat introduces 3 at Nat,
+// and equality on the Peano operand is structural (the emitted enum derives PartialEq).
+test fn w_literal_operand_of_peano_equality_emits_its_image() -> Bool {
+  compile_dag_rust_emit_check(
+    "module test.claim.peano_literal_eq_probe\nimport std.types { Bool }\nimport v2.std.nat { Nat }\nfn probe(a: Nat) -> Bool { a == 3 }\n",
+    "src/test_claim_peano_literal_eq_probe.rs",
+    ["== Rc::new(Nat::Succ { prev: Rc::new(Nat::Succ { prev: Rc::new(Nat::Succ { prev: Rc::new(Nat::Zero) }) }) }))"],
+    ["== 3)"]
+  )
+}
+
+// Zero is the image of 0: the nullary constructor, not a digit.
+test fn w_zero_literal_emits_the_nullary_constructor() -> Bool {
+  compile_dag_rust_emit_check(
+    "module test.claim.peano_zero_probe\nimport v2.std.nat { Nat }\nfn probe() -> Nat { 0 }\n",
+    "src/test_claim_peano_zero_probe.rs",
+    ["Rc::new(Nat::Zero)"],
+    ["{\n    0\n}"]
+  )
+}
+
+// An ORDERING on Peano operands is a call to the declared comparison tested against std.algebra
+// Ordering (std.operator_realization StructuralComparison), never the host `<`.
+test fn w_ordering_on_peano_operands_calls_the_declared_comparison() -> Bool {
+  compile_dag_rust_emit_check(
+    "module test.claim.peano_lt_probe\nimport std.types { Bool }\nimport v2.std.nat { Nat }\nfn probe(a: Nat, b: Nat) -> Bool { a < b }\n",
+    "src/test_claim_peano_lt_probe.rs",
+    ["(crate::v2_std_nat::nat_compare(a.clone(), b.clone()) == crate::std_algebra::Ordering::Less)"],
+    [" < "]
+  )
+}
+
+// A non-strict ordering negates the opposite variant: `<=` is `!= Greater`.
+test fn w_non_strict_ordering_negates_the_opposite_variant() -> Bool {
+  compile_dag_rust_emit_check(
+    "module test.claim.peano_le_probe\nimport std.types { Bool }\nimport v2.std.nat { Nat }\nfn probe(a: Nat, b: Nat) -> Bool { a <= b }\n",
+    "src/test_claim_peano_le_probe.rs",
+    ["(crate::v2_std_nat::nat_compare(a.clone(), b.clone()) != crate::std_algebra::Ordering::Greater)"],
+    [" <= "]
+  )
+}
+
+// FORCING HOST ARITHMETIC ONTO PEANO OPERANDS REDS IN THE BYTES: infix `/` on Nat is refused by
+// a typed compile_error naming the declaration and the operator, not emitted as a token rustc
+// refuses later under E0369.
+test fn w_host_arithmetic_on_peano_operands_refuses_in_the_bytes() -> Bool {
+  compile_dag_rust_emit_check(
+    "module test.claim.peano_div_probe\nimport v2.std.nat { Nat }\nfn probe(a: Nat, b: Nat) -> Nat { a / b }\n",
+    "src/test_claim_peano_div_probe.rs",
+    ["compile_error!(\"operator realization: host operator `/` on structural operand v2.std.nat.Nat"],
+    [" / "]
+  )
+}
+
+// HOST CONTROL: the same ordering on a native i64 operand keeps the host token. Without this row
+// a realization that routed EVERY `<` through a comparison call would pass the Peano rows.
+test fn w_ordering_on_native_operands_keeps_the_host_operator() -> Bool {
+  compile_dag_rust_emit_check(
+    "module test.claim.native_lt_probe\nimport std.types { Bool, Int }\nfn probe(a: Int, b: Int) -> Bool { a < b }\n",
+    "src/test_claim_native_lt_probe.rs",
+    ["(a.clone() < b.clone())"],
+    ["nat_compare", "compile_error!"]
+  )
+}
+
+// HOST CONTROL: a literal at a native Int boundary stays the bare digit (DirectLiteral).
+test fn w_literal_at_native_boundary_stays_direct() -> Bool {
+  compile_dag_rust_emit_check(
+    "module test.claim.native_literal_probe\nimport std.types { Int }\nfn probe(a: Int) -> Int { a + 2 }\n",
+    "src/test_claim_native_literal_probe.rs",
+    ["(a.clone() + 2)"],
+    ["Succ", "Zero"]
+  )
+}
+
+// SAME SPELLING, DIFFERENT DECLARATION: std.nat Nat is the native-realizing semiring alias, and a
+// literal at ITS boundary stays direct while the host `<` stays the host token. This is the row a
+// spelling-keyed decision cannot pass together with the Peano rows above.
+test fn w_native_nat_declaration_keeps_direct_literal_and_host_operator() -> Bool {
+  compile_dag_rust_emit_check(
+    "module test.claim.native_nat_probe\nimport std.types { Bool }\nimport std.nat { Nat }\nfn probe(a: Nat) -> Bool { a < 2 }\n",
+    "src/test_claim_native_nat_probe.rs",
+    ["(a.clone() < 2)"],
+    ["Succ", "nat_compare", "compile_error!"]
+  )
+}

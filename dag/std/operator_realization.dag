@@ -1,0 +1,176 @@
+module std.operator_realization
+
+import std.types { List, String, Bool, Int, NonEmptyStr }
+import std.decl_ref { DeclarationRef, declaration_ref_eq }
+import std.syntax { BinOp, Add, Sub, Mul, Div, Mod, Eq, Ne, Lt, Gt, Le, Ge, And, Or, NullCoalesce }
+
+// OPERATOR REALIZATION BY EXACT OPERAND STRUCTURE (DESIGN section 4b, the floor: an operator is
+// admitted by algebra inhabitance, but what it RENDERS AS is a fact about the operand's declaration
+// and the target, never about the operator's spelling).
+//
+// The seed emitter rendered every binary operator as the host operator token. That is correct
+// exactly when the operand realizes as a host value with that operator -- a machine integer, a
+// float, a bool -- and wrong for every structural declaration: a Peano coproduct has no host `<`,
+// and rustc's E0369 on `Rc<Nat> < Rc<Nat>` was the emitter re-deciding, from the operator's
+// spelling alone, a question the operand's declaration already answers. The decision is keyed on
+// the operand's exact DeclarationRef and has four outcomes:
+//   HostOperator           the operand realizes natively on the target; the host token is the op.
+//   StructuralEquality     equality on a structural declaration: derived structurally (the target's
+//                          structural equality over the declaration's own constructors).
+//   StructuralComparison   an ordering on a structural declaration: a call to the declaration's
+//                          DECLARED comparison, whose result is tested against std.algebra Ordering.
+//   Refused                a host-only operator (arithmetic) on a structural operand that declares
+//                          no operation for it, or an operand whose identity is unknown at the site.
+//                          Typed and located: the line stops (DESIGN section 5), it does not emit a
+//                          token rustc will refuse later under a code nobody joins back to the site.
+//
+// Arithmetic on a structural declaration is deliberately NOT realized by this decision. A Peano
+// quotient with a typed zero-divisor outcome is a DECLARED OPERATION the source calls by name
+// (v2.std.nat nat_div_rem); an infix `/` that silently became that call would hide the outcome the
+// operation exists to expose. So the source spells structural arithmetic as calls, and this
+// decision refuses the infix form on structural operands.
+
+type OperandRealization
+  = HostNumericOperand
+  | StructuralOperand { declaration: DeclarationRef }
+  | OperandIdentityUnavailable
+
+// A structural declaration's declared ordering: the comparison to call and the Ordering declaration
+// whose variants its result is tested against. Keyed on the carrier's exact DeclarationRef.
+type StructuralOrderingBinding {
+  carrier: DeclarationRef
+  compare: DeclarationRef
+  ordering: DeclarationRef
+}
+
+type StructuralOrderingLookup
+  = StructuralOrderingFound { row: StructuralOrderingBinding }
+  | StructuralOrderingAbsent
+  | StructuralOrderingAmbiguous { row_count: Int }
+
+fn structural_ordering_for(rows: List<StructuralOrderingBinding>, carrier: DeclarationRef) -> StructuralOrderingLookup {
+  let matching = rows |> filter(r => declaration_ref_eq(a: r.carrier, b: carrier))
+  let n = matching |> count
+  if n == 0 {
+    StructuralOrderingAbsent
+  } else if n == 1 {
+    match matching |> first {
+      Present { value: row } => StructuralOrderingFound { row: row }
+      Absent => StructuralOrderingAbsent
+    }
+  } else {
+    StructuralOrderingAmbiguous { row_count: n }
+  }
+}
+
+// The test an ordering operator performs on a comparison's result, grounded on std.algebra
+// Ordering = Less | Equal | Greater: `<` is `== Less`, `>` is `== Greater`, `<=` is `!= Greater`,
+// `>=` is `!= Less`. Non-ordering operators have no test.
+type OrderingTest
+  = OrderingIs { variant: NonEmptyStr }
+  | OrderingIsNot { variant: NonEmptyStr }
+
+fn ordering_test_for(op: BinOp) -> OrderingTest? {
+  match op {
+    Lt => Present { value: OrderingIs { variant: "Less" as NonEmptyStr } }
+    Gt => Present { value: OrderingIs { variant: "Greater" as NonEmptyStr } }
+    Le => Present { value: OrderingIsNot { variant: "Greater" as NonEmptyStr } }
+    Ge => Present { value: OrderingIsNot { variant: "Less" as NonEmptyStr } }
+    _ => none
+  }
+}
+
+fn binop_is_equality(op: BinOp) -> Bool {
+  match op {
+    Eq => true
+    Ne => true
+    _ => false
+  }
+}
+
+fn binop_is_ordering(op: BinOp) -> Bool {
+  ordering_test_for(op: op) != none
+}
+
+fn binop_label(op: BinOp) -> String {
+  match op {
+    Add => "+"
+    Sub => "-"
+    Mul => "*"
+    Div => "/"
+    Mod => "%"
+    Eq => "=="
+    Ne => "!="
+    Lt => "<"
+    Gt => ">"
+    Le => "<="
+    Ge => ">="
+    And => "&&"
+    Or => "||"
+    NullCoalesce => "??"
+  }
+}
+
+type OperatorRealizationRefusal
+  = NoStructuralOperationDeclared { declaration: DeclarationRef, operator: String }
+  | StructuralOrderingDuplicated { declaration: DeclarationRef, row_count: Int }
+
+type OperatorRealization
+  = HostOperator
+  | StructuralEquality { declaration: DeclarationRef }
+  | StructuralComparison { declaration: DeclarationRef, binding: StructuralOrderingBinding, test: OrderingTest }
+  | OperatorRealizationRefused { cause: OperatorRealizationRefusal }
+
+fn operator_realization_refusal_message(cause: OperatorRealizationRefusal) -> String {
+  match cause {
+    NoStructuralOperationDeclared { declaration: d, operator: o } =>
+      concat(
+        "operator realization: host operator `", o, "` on structural operand ",
+        d.module_path as String, ".", d.decl_name as String,
+        " -- the declaration has no host realization and declares no operation for this operator; spell the operation as a call to the declared structural operation"
+      )
+    StructuralOrderingDuplicated { declaration: d, row_count: n } =>
+      concat(
+        "operator realization: structural ordering for ",
+        d.module_path as String, ".", d.decl_name as String,
+        " has more than one declared comparison (gunbc.structural_realization_bindings authoring defect)"
+      )
+  }
+}
+
+// THE DECISION. Logical connectives and null-coalescing are not operand-structure questions (their
+// operands are the kernel Bool and an Optional respectively) and answer HostOperator; an operand
+// whose identity is unavailable at the site is the seed's pre-existing host path and also answers
+// HostOperator, because refusing there would refuse every kernel-minted operand (a literal's own
+// type carries no declaration) -- the structural arm is entered only on a RESOLVED structural
+// declaration, which is the only place the host token was ever wrong.
+fn operator_realization_for(
+  op: BinOp,
+  operand: OperandRealization,
+  ordering_rows: List<StructuralOrderingBinding>
+) -> OperatorRealization {
+  match operand {
+    HostNumericOperand => HostOperator
+    OperandIdentityUnavailable => HostOperator
+    StructuralOperand { declaration: d } =>
+      if binop_is_equality(op: op) {
+        StructuralEquality { declaration: d }
+      } else {
+        match ordering_test_for(op: op) {
+          Present { value: test } =>
+            match structural_ordering_for(rows: ordering_rows, carrier: d) {
+              StructuralOrderingFound { row: row } => StructuralComparison { declaration: d, binding: row, test: test }
+              StructuralOrderingAbsent => OperatorRealizationRefused { cause: NoStructuralOperationDeclared { declaration: d, operator: binop_label(op: op) } }
+              StructuralOrderingAmbiguous { row_count: n } => OperatorRealizationRefused { cause: StructuralOrderingDuplicated { declaration: d, row_count: n } }
+            }
+          Absent =>
+            match op {
+              And => HostOperator
+              Or => HostOperator
+              NullCoalesce => HostOperator
+              _ => OperatorRealizationRefused { cause: NoStructuralOperationDeclared { declaration: d, operator: binop_label(op: op) } }
+            }
+        }
+      }
+  }
+}

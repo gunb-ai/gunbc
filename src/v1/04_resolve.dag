@@ -19,7 +19,7 @@ import v1.std.core {
   StringPart, Text, Interpolation,
   MatchPattern, Wildcard,
   ExprData, NoExprData,
-  ExprLiteral, ExprError, ExprVar, ExprFieldAccess, ExprCall, ExprMethodCall,
+  ExprLiteral, ExprElaboratedLiteral, ExprError, ExprVar, ExprFieldAccess, ExprCall, ExprMethodCall,
   ExprMatch, ExprIf, ExprLet, ExprRecordLit, ExprListLit,
   ExprBinOp, ExprUnaryOp, ExprLambda, ExprStringInterp, ExprBlock,
   ExprCast, ExprForEach, ExprIndex, ExprSlice, ExprReturn,
@@ -844,6 +844,7 @@ fn resolve_transport_binding(transport: Node, env: TypeEnv, module_name: String)
 fn resolve_expr_types(texpr: Node, env: TypeEnv, module_name: String) -> ExprResolveResult {
   match texpr.expr_data {
     ExprLiteral { value: _ } => ExprResolveResult { expr: texpr, diagnostics: [] }
+    ExprElaboratedLiteral { value: _, elaboration: _ } => ExprResolveResult { expr: texpr, diagnostics: [] }
     ExprError { kind: kind, message: message } =>
       ExprResolveResult {
         expr: make_expr_error_node(occurrence_identity: OccurrenceSynthetic, kind: kind, message: message, span: texpr.span),

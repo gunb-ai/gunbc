@@ -38,16 +38,24 @@ fn violation_count(source: String, wanted: String) -> Int {
 // which is the whole point of enrolling it: DESIGN 4b(4) keeps the evidence after a climb
 // precisely so the higher rung stays real.
 
-// RED, AND CURRENTLY FAILING -- ENROLLED IN v2.workflow.floor_expected_red rather than fixed.
-// A kernel integer at the PEANO Nat. 5 is not Zero and not Succ and no realization row covers
-// src/v2/std/nat.dag, so this OUGHT to refuse. It does not, and the control run on 2026-08-23
-// establishes that it never did: gunbc built from origin/main 907f19c2cc7 admits this source
-// exactly as the branch does. The refusal was ASSERTED here, not broken by this change.
-// The enrolment row carries the full branch-and-main control table and the next-rung trigger.
+// A kernel integer at the PEANO Nat -- RULED ADMITTED THROUGH THE DECLARED HOMOMORPHISM, and this
+// row's claim changed with the ruling (XL-0N, adhoc-aec65f93-b00, operator ruling 2026-08-30).
+// This row used to assert a refusal (5 is not Zero and not Succ) and sat in
+// v2.workflow.floor_expected_red with the trigger "the expected-type-directed literal introduction
+// judgment -- the MODEL half -- is NOT built". It is built: std.literal_elaboration elaborates the
+// kernel literal at the exact v2.std.nat.Nat boundary through the ONE declared Peano homomorphism
+// (gunbc.structural_realization_bindings) into Succ^5(Zero), typed as the destination, so the
+// value the inhabitance judgment sees IS a Nat. Admission here is therefore the ruled answer, and
+// this row is the positive control for it. The DISCRIMINATING evidence -- that the literal is
+// elaborated rather than merely waved through -- is the emitted-bytes witness
+// test.claim.self_host_peano_literal_operator_realization_witness_test
+// w_literal_at_peano_argument_boundary_emits_its_image, whose forbidden token is exactly the bare
+// digit this probe used to carry; the two rows are read together. DESIGN 4b(4): the probe flips
+// to a permanent regression control, it does not retire.
 data peano_nat_arg_source: String = "module probe_inhabit_peano\nimport v2.std.nat { Nat }\nfn takes_peano(n: Nat) -> Int { 1 }\nfn probe() -> Int { takes_peano(n: 5) }\n"
 
-test fn w_kernel_numeric_at_the_peano_nat_is_refused() -> Bool {
-  violation_count(source: peano_nat_arg_source, wanted: "DeclaredTypeNotInhabited") > 0
+test fn w_kernel_numeric_at_the_peano_nat_is_admitted_through_its_homomorphism() -> Bool {
+  violation_count(source: peano_nat_arg_source, wanted: "DeclaredTypeNotInhabited") == 0
 }
 
 // GREEN -- the same literal at the NATIVE Nat. Structurally this is a kernel value at an
