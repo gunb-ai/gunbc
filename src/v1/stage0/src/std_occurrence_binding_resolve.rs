@@ -35,33 +35,6 @@ use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
 use std::rc::Rc;
 
-pub fn occurrence_binding_resolve_authority_note() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "THE one exact name-binding decision for a supplied candidate population. P1 validates transport and exact reference/declaration identities, excludes category-inadmissible declarations, converts the remaining exact declarations to BindingCandidate<OccurrenceId>, and calls std.occurrence_binding.occurrence_binding_from_candidates exactly once. It does not derive visibility, source order, spelling equivalence, or a candidate catalogue: those are the downstream structural-candidate producer's responsibility.".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
-}
-
-pub fn occurrence_binding_resolve_transport_boundary_note() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "Transport validity is outside OccurrenceBindingResult: malformed transports or supplied identities that do not name the validated reference/declaration roles refuse as OccurrenceReferenceBindingTransportRefused before any Bound/Unbound/Ambiguous decision. ValidatedOccurrenceTransport entries_by_id, references_by_id, and declarations_by_id are the exact lookup authorities; the resolver never rescans a transported population.".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
-}
-
-pub fn occurrence_binding_resolve_duplicate_identity_law() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "A supplied candidate population contains semantic declarations, not discovery observations. P2 candidate construction collapses repeated discovery of one exact full identity before supplying the population. If a raw supplied list nevertheless repeats an OccurrenceId, P1 refuses with DuplicateSuppliedCandidateIdentity before the cardinality fold; it never silently deduplicates a defective producer input and never reports one declaration as genuine ambiguity.".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
-}
-
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum OccurrenceCategoryBindingVerdict {
@@ -94,15 +67,6 @@ impl OccurrenceCategoryBindingVerdict {
             } => __val.clone(),
         }
     }
-}
-
-pub fn occurrence_category_binding_verdict_note() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "Canonical namespace-binding reference×declaration category compatibility surface (review 44773 predicate-dissolution): consumers match OccurrenceCategoryBindingVerdict directly — not a parallel Bool predicate over the OccurrenceCategory coproduct. Occurrence identity carries each category; this binding authority alone decides their admissibility relation.".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
 }
 
 pub fn occurrence_category_binding_verdict(

@@ -9,15 +9,6 @@ use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
 use std::rc::Rc;
 
-pub fn infer_occurrence_binding_canonical_decide_note() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "Narrow v1 stage0 adapter: global_bare chain and func parent-closure cardinality fold through module_path_owner_binding_decide, which mirrors occurrence_binding_from_candidates 0/1/many semantics on supplied owner module paths without importing generic std.occurrence_binding into stage0. Candidate enumeration stays outside this adapter. Scaffold receipt: gunbc.infer_occurrence_binding_scaffold binds std.occurrence_binding.occurrence_binding_from_candidates. DISSOLVE-ON: stage0 emits the generic BindingCandidate<N> carrier with its required bounds and this adapter delegates to occurrence_binding_from_candidates by execution. ROADMAP lane: namespace-binding-kernel.".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
-}
-
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum ModulePathBindingProjection {
@@ -50,15 +41,6 @@ pub fn module_path_owner_binding_decide(
             }
         }
     }
-}
-
-pub fn ambiguity_labels_single_authority_note() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "ONE labeller for both production candidate sites (review 45364). global_bare_chain_ambiguity_labels_from_decide and func_parent_closure_ambiguity_labels_from_decide were token-identical modulo a local bind name -- a section 3 nickname pair, two names for one concept, which the predicate-dissolution pass left resident. The call site is not part of the fact: qualifying an ambiguous owner list is the same operation whether the candidates came from the global_bare chain (04_env) or a fn parent closure (04_sigs), so the site-prefixed names encoded a distinction that does not exist. Collapsed to ambiguity_labels_from_decide, consumed by both.\n\nWILDCARD-FREE (review 45417): the collapsed fn inherited a _ => [] arm from the two it replaced. ModulePathBindingProjection is a closed 3-arm type, so a wildcard means a future variant silently yields no labels -- an ambiguity that reports as unambiguous, which is the DESIGN section 5 absorbing shape and the same arm this PR deleted from v1.std.core diagnostic_to_span. Hit and Miss are now spelled out, so adding a variant is a compile error here rather than a silent empty label list.".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
 }
 
 pub fn ambiguity_labels_from_decide(owners: Rc<Vec<String>>, name: String) -> Rc<Vec<String>> {
