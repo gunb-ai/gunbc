@@ -49,29 +49,31 @@ import v2.compiler.source_authority {
   DiscoveredSourceRefsDigestUnavailable,
   FrontierProbeDiscoveredClosure,
   SourceRef,
-  SourceRefFilesystemReadRefused,
   SourceRefListDigestNonStructuralRefused,
   SourceRefListDigestOk,
-  SourceRefReadAccepted,
-  SourceRefReadHashMismatch,
-  SourceRefReadResult,
   SourceRootCoverage,
   SourceRootCoverageComplete,
   SourceRootIngest,
-  SourceRootIngestBuildOk,
-  SourceRootIngestBuildReadFailed,
   SourceRootManifestAbsent,
   SourceRootManifestElided,
   SourceRootRowsMissing,
   discovered_source_refs_digest_eq,
   frontier_probe_discovered_closure_seal,
-  source_ref_content_hash_mismatch,
   source_ref_count_in_list,
   source_ref_list_digest_build,
-  source_ref_read_refused,
-  source_root_ingest_build_from_source_refs,
   source_storage_hash_conflict_in_list,
   source_storage_list_has_duplicate_storage
+}
+import v2.compiler.source_authority_read {
+  SourceRefFilesystemReadRefused,
+  SourceRefReadAccepted,
+  SourceRefReadHashMismatch,
+  SourceRefReadResult,
+  SourceRootIngestBuildOk,
+  SourceRootIngestBuildReadFailed,
+  source_ref_content_hash_mismatch,
+  source_ref_read_refused,
+  source_root_ingest_build_from_source_refs
 }
 import v2.extdeps.languages.dag { dag_language_model }
 import v2.extdeps.languages.rust { rust_target_model }

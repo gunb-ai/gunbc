@@ -180,6 +180,8 @@ import v2.std.node {
   TypeNode,
 }
 import v2.std.host_transport {
+  HostBuildEnvironment,
+  host_process_location_names,
   EmitHostRuntimeRow,
   HostRuntimeRowPresent,
   TargetEmitHostRuntimeRow,
@@ -1557,8 +1559,15 @@ __gunbc_b.writeInt32LE(__gunbc_r, 0);
 process.stdout.write(__gunbc_b);
 "
 
+// The ambient variables this target's emitted program may see; see v2.std.host_transport
+// HostBuildEnvironment. Toolchain LOCATIONS only -- no flag carrier.
+fn ts_host_build_environment() -> HostBuildEnvironment {
+  HostBuildEnvironment { ambient_names: concat(host_process_location_names(), ["NODE_PATH"]) }
+}
+
 fn ts_host_transport_descriptor() -> HostTransportDescriptor {
   HostTransportDescriptor {
+    build_environment: ts_host_build_environment(),
     identity: ^ts_host_transport_identity,
     workspace: [
       WorkspaceFile {

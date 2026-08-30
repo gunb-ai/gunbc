@@ -478,10 +478,11 @@ fn run_host_process_admitted(
               ),
               files: files,
               build: builds,
-              run: run_argv
+              run: run_argv,
+              environment: transport.build_environment.ambient_names
             )
           } else {
-            emit_host_run_transport(admission: admission, files: files, build: builds, run: run_argv)
+            emit_host_run_transport(admission: admission, files: files, build: builds, run: run_argv, environment: transport.build_environment.ambient_names)
           }
           let exit = HostExit {
             outcome: Accepted {

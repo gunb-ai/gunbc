@@ -14,6 +14,7 @@ import v2.compiler.emit_host {
   emit_host_access_decision_seed_transport_receipt,
   emit_host_access_decision_seed_transport_dissolve_trigger,
 }
+import v2.extdeps.languages.rust { rust_host_build_environment }
 import v2.std.host_transport {
   HostTransportDescriptor, WorkspaceFile, WorkspaceContent, EmittedSource,
   ProcessInvocation, HostToolProgram, ProducedProgram,
@@ -70,6 +71,7 @@ data emitted: WorkspaceContent = EmittedSource
 
 fn transport_with_workspace_path(p: String) -> HostTransportDescriptor {
   HostTransportDescriptor {
+    build_environment: rust_host_build_environment(),
     identity: ^build_transport_admission_sample,
     workspace: [WorkspaceFile { path: p, content: emitted }],
     build: [well_formed_build()],
@@ -92,6 +94,7 @@ fn build_with_arg(a: InvocationArg) -> ProcessInvocation {
 
 fn transport_with_build(b: ProcessInvocation) -> HostTransportDescriptor {
   HostTransportDescriptor {
+    build_environment: rust_host_build_environment(),
     identity: ^build_transport_admission_sample,
     workspace: [WorkspaceFile { path: "fixture.c", content: emitted }],
     build: [b],

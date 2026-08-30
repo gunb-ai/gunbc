@@ -57,6 +57,8 @@ import v2.std.compilers.target_model {
 import v2.std.compilers.target_model { TargetModel, target_model_emit_transforms_empty }
 import v2.std.collection { List, Map, PointwisePower, empty_map, map_insert }
 import v2.std.host_transport {
+  HostBuildEnvironment,
+  host_process_location_names,
   EmitHostRuntimeRow,
   HostRuntimeRowPresent,
   TargetEmitHostRuntimeRow,
@@ -1141,8 +1143,15 @@ fn python_emit_host_runtime_primitive_type_node() -> Node {
   }
 }
 
+// The ambient variables this target's emitted program may see; see v2.std.host_transport
+// HostBuildEnvironment. Toolchain LOCATIONS only -- no flag carrier.
+fn python_host_build_environment() -> HostBuildEnvironment {
+  HostBuildEnvironment { ambient_names: concat(host_process_location_names(), ["PYTHONPATH", "PYTHONHOME"]) }
+}
+
 fn python_host_transport_descriptor() -> HostTransportDescriptor {
   HostTransportDescriptor {
+    build_environment: python_host_build_environment(),
     identity: ^python_host_transport_identity,
     workspace: [
       WorkspaceFile {
