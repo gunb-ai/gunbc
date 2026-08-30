@@ -181,6 +181,10 @@ jobs:
         id: rust_unit_tests
         run: |
           cargo test --release -p v1-compiler --lib
+      - name: clippy, all targets
+        id: rust_clippy_all_targets
+        run: |
+          cargo clippy --all-targets -- -D warnings
   witnesses:
     runs-on: [self-hosted, linux, arm64]
     needs: [required-witnesses-build, required-witnesses-floor]
