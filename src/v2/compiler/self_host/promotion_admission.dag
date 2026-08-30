@@ -16,6 +16,7 @@ import v2.std.integer { Int }
 import v2.std.logic { Bool }
 import v2.std.node { Hash, Symbol }
 import v2.std.text { String }
+import std.types { NonEmptyStr }
 
 // WHAT THIS MODULE DELIBERATELY CANNOT DO.
 //
@@ -205,6 +206,13 @@ type PromotionRefusalCause
   | V1FallbackObservedAfterGenesis { at_stage: Symbol }
   | AdmissionAuthorityIsSubject { subject: Symbol }
   | FixedPointStagesDisagree { axis: Symbol }
+  | CandidateReceiptRequirementsDisagree
+  | ConformanceEvidenceRefused { blocking_dispositions: Int, unmeasured_areas: Int }
+  | ConformanceEvidenceTreeMismatch
+  | ConformanceJudgedOffPromotedRoute
+  | ConformanceOmittedArmFailedOpen { detail: NonEmptyStr }
+  | ConformanceOmittedArmUnobserved { reason: NonEmptyStr }
+  | ConformanceOmittedArmJudgedOtherGeneration
 
 type PromotionOutcome
   = Promoted { successor: SuccessorGeneration, cases_compared: Int }
@@ -568,6 +576,15 @@ fn promotion_refusal_cause_symbol(c: PromotionRefusalCause) -> Symbol {
       ^refusal_v1_fallback_observed_after_genesis
     AdmissionAuthorityIsSubject { subject: _ } => ^refusal_admission_authority_is_subject
     FixedPointStagesDisagree { axis: _ } => ^refusal_fixed_point_stages_disagree
+    CandidateReceiptRequirementsDisagree => ^refusal_candidate_receipt_requirements_disagree
+    ConformanceEvidenceRefused { blocking_dispositions: _, unmeasured_areas: _ } =>
+      ^refusal_conformance_evidence_refused
+    ConformanceEvidenceTreeMismatch => ^refusal_conformance_evidence_tree_mismatch
+    ConformanceJudgedOffPromotedRoute => ^refusal_conformance_judged_off_promoted_route
+    ConformanceOmittedArmFailedOpen { detail: _ } => ^refusal_conformance_omitted_arm_failed_open
+    ConformanceOmittedArmUnobserved { reason: _ } => ^refusal_conformance_omitted_arm_unobserved
+    ConformanceOmittedArmJudgedOtherGeneration =>
+      ^refusal_conformance_omitted_arm_judged_other_generation
   }
 }
 

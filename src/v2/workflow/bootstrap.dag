@@ -31,6 +31,16 @@ import v2.std.witness { Holds, Violates, Witness }
 import std.types { CommitSha, NonEmptyStr }
 import extdeps.git.object_store { git_object_id_eq }
 import v2.workflow.floor_discovery { FloorDiscoveryTreeId }
+import gunbc.semantic_conformance {
+  ConformanceAdmission,
+  ConformanceAdmitted,
+  ConformanceRefused,
+  EvaluatorOffPromotedRoute,
+  EvaluatorOnPromotedRoute,
+  OmittedArmFailedOpen,
+  OmittedArmHeld,
+  OmittedArmUnobserved
+}
 import v2.compiler.self_host.generation {
   ArtifactMaterialized,
   ArtifactNotMaterialized,
@@ -42,6 +52,7 @@ import v2.compiler.self_host.generation {
 }
 import v2.compiler.self_host.promotion_admission {
   AdmissionAuthorityIsSubject,
+  CandidateReceiptRequirementsDisagree,
   BehaviorAgrees,
   BehaviorDiverges,
   BehavioralCorpus,
@@ -52,6 +63,12 @@ import v2.compiler.self_host.promotion_admission {
   ChangedOutputNotObserved,
   ChangedSuccessorParentNotCandidate,
   ConformanceDivergedFromRoster,
+  ConformanceEvidenceRefused,
+  ConformanceEvidenceTreeMismatch,
+  ConformanceJudgedOffPromotedRoute,
+  ConformanceOmittedArmFailedOpen,
+  ConformanceOmittedArmJudgedOtherGeneration,
+  ConformanceOmittedArmUnobserved,
   ConformanceRosterNotDeclaredRevision,
   CorpusPopulationMismatch,
   EmptyBehavioralCorpus,
@@ -1093,14 +1110,35 @@ type AdmissionAuthority {
   identity: GenerationIdentity
 }
 
+// THE GENERATION RECEIPT: what one stage established about the CANDIDATE, with the
+// upstream admissions it consumed carried as typed evidence rather than restated.
+// gunbc.semantic_conformance owns what conformance means and derives its own admission;
+// this receipt owns only the JOIN -- that the evidence is about this tree, that it is on
+// its admitted arm, and that the omitted-arm triple was judged over the candidate.
+//
+// effect_evidence is NOT yet a field, and that absence is named rather than papered:
+// its carrier is v2.compiler.effect_demand EffectDemandEvidenceStanding (gunbc#9669),
+// not on main at this revision. Until it lands, admit_generation can mint an
+// ActiveCompiler without effect evidence, which is exactly the incomplete sole
+// constructor the HOLD on gunbc#9674 exists for -- the field, its tree join and its
+// refused/absent/mismatch causes land in the same commit that imports the carrier.
+type GenerationReceipt {
+  requirements: CompilerRequirementRevision
+  producer: GenerationIdentity
+  subject: GenerationIdentity
+  build: BuildReceipt
+  conformance_evidence: ConformanceAdmission
+  fallback: FallbackObservation
+}
+
 type GenerationAdmissionRequest {
   reproduction: SelfHostCandidate
+  candidate_receipt: GenerationReceipt
   changed_successor: ChangedSuccessorReceipt
   fixed_point: FixedPointReceipt
   recovery: RecoveryGeneration
   previous_active: GenerationIdentity
   authority: AdmissionAuthority
-  fallback: FallbackObservation
 }
 
 // A requirement binding is joined on its subject like every other receipt, and then
@@ -1382,6 +1420,112 @@ fn authority_causes(
   }
 }
 
+// Conformance evidence is joined on THREE facts, each its own cause. The tree join
+// (msg_120bdb6d): the admission must be about the tree this generation was produced
+// over -- a commit-only difference is not consulted. The route (XL-3): an admission
+// earned with the evaluator off the promoted route is not the same claim as one with
+// it on, so it is carried through and refused here. The omitted-arm triple
+// (msg_c205c352): on the admitted arm a fail-open has no constructor, so the only join
+// left is WHICH generation the held triple was judged over -- it must be the candidate;
+// on the refused arm the verdict's fail-open and unobserved states are each named so
+// the deficit stays countable rather than folding into "conformance refused".
+fn conformance_evidence_causes(
+  c: ConformanceAdmission,
+  tree: FloorDiscoveryTreeId,
+  candidate_tree: FloorDiscoveryTreeId
+) -> List<PromotionRefusalCause> {
+  match c {
+    ConformanceAdmitted {
+      source_revision: _,
+      source_tree: t,
+      omitted_arm: held,
+      judged_route: route,
+      subject_count: _,
+      producer: _
+    } => {
+      let on_tree = if git_object_id_eq(left: t.object_id, right: tree.object_id) {
+        freemonoid_empty()
+      } else {
+        [ConformanceEvidenceTreeMismatch]
+      }
+      let on_candidate = if git_object_id_eq(
+        left: held.judged_generation_tree.object_id,
+        right: candidate_tree.object_id
+      ) {
+        on_tree
+      } else {
+        list_snoc_item(xs: on_tree, item: ConformanceOmittedArmJudgedOtherGeneration)
+      }
+      match route {
+        EvaluatorOnPromotedRoute => on_candidate
+        EvaluatorOffPromotedRoute =>
+          list_snoc_item(xs: on_candidate, item: ConformanceJudgedOffPromotedRoute)
+      }
+    }
+    ConformanceRefused {
+      source_revision: _,
+      source_tree: _,
+      omitted_arm: v,
+      judged_route: _,
+      blocking_dispositions: blocking,
+      unmeasured_areas: unmeasured,
+      producer: _
+    } => {
+      let base = [
+        ConformanceEvidenceRefused {
+          blocking_dispositions: blocking,
+          unmeasured_areas: unmeasured
+        }
+      ]
+      match v {
+        OmittedArmHeld { held: _ } => base
+        OmittedArmFailedOpen { judged_generation_tree: _, detail: d } =>
+          list_snoc_item(xs: base, item: ConformanceOmittedArmFailedOpen { detail: d })
+        OmittedArmUnobserved { reason: r } =>
+          list_snoc_item(xs: base, item: ConformanceOmittedArmUnobserved { reason: r })
+      }
+    }
+  }
+}
+
+// The receipt is about the candidate and nothing else: its subject joins the declared
+// candidate identity, its requirements must be the SAME revision the changed-successor
+// receipt bound to the candidate as parent (two claims about one generation's
+// requirements that disagree are two generations), and its evidence joins on that
+// revision's tree.
+fn generation_receipt_causes(
+  r: GenerationReceipt,
+  candidate: GenerationIdentity,
+  parent_requirements: CompilerRequirementRevision
+) -> List<PromotionRefusalCause> {
+  let tree = r.requirements.source_tree
+  let same_requirements = if length(
+    xs: requirement_revision_changed_axes(left: r.requirements, right: parent_requirements)
+  ) == 0 {
+    freemonoid_empty()
+  } else {
+    [CandidateReceiptRequirementsDisagree]
+  }
+  concat_causes(
+    parts: [
+      stale_causes_for(receipt: ^receipt_candidate_generation, subject: r.subject, expected: candidate),
+      same_requirements,
+      requirement_binding_causes(
+        receipt: ^receipt_candidate_generation_requirements,
+        r: RequirementBindingReceipt { subject: r.subject, requirements: r.requirements },
+        expected: candidate
+      ),
+      build_receipt_causes(
+        receipt: ^receipt_candidate_generation_build,
+        r: r.build,
+        expected: candidate
+      ),
+      conformance_evidence_causes(c: r.conformance_evidence, tree: tree, candidate_tree: tree),
+      fallback_causes(f: r.fallback)
+    ]
+  )
+}
+
 fn generation_admission_causes(
   request: GenerationAdmissionRequest
 ) -> List<PromotionRefusalCause> {
@@ -1390,6 +1534,11 @@ fn generation_admission_causes(
   concat_causes(
     parts: [
       promotion_refusal_causes(c: request.reproduction),
+      generation_receipt_causes(
+        r: request.candidate_receipt,
+        candidate: candidate_identity,
+        parent_requirements: request.changed_successor.parent_requirements.requirements
+      ),
       changed_successor_causes(
         r: request.changed_successor,
         declared_parent: request.reproduction.candidate
@@ -1401,7 +1550,6 @@ fn generation_admission_causes(
         candidate: candidate_identity,
         successor: successor_identity
       ),
-      fallback_causes(f: request.fallback),
       authority_causes(
         authority: request.authority,
         candidate: candidate_identity,
@@ -1424,6 +1572,7 @@ type GenerationAdmission sole_constructor {
   recovery: GenerationIdentity
   previous_active: GenerationIdentity
   admitted_by: AdmissionAuthority
+  candidate_receipt: GenerationReceipt
 }
 
 type PromotionDecision
@@ -1446,7 +1595,8 @@ fn admit_generation(request: GenerationAdmissionRequest) -> PromotionDecision {
             changed_successor: request.changed_successor,
             recovery: r,
             previous_active: request.previous_active,
-            admitted_by: request.authority
+            admitted_by: request.authority,
+            candidate_receipt: request.candidate_receipt
           }
         }
       RecoveryUnavailable { cause: c } =>

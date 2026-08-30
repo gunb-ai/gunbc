@@ -44,6 +44,7 @@ import v2.workflow.bootstrap {
   FallbackObserved,
   FixedPointReceipt,
   GenerationAdmissionRequest,
+  GenerationReceipt,
   NoFallbackObserved,
   PromotionAdmitted,
   PromotionDecision,
@@ -63,7 +64,31 @@ import v2.std.optional { Absent, Present }
 import std.content_hash { Sha1Digest, sha512_hex_digest }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.git.object_store { GitObjectId, GitSha1ObjectId }
-import v2.workflow.floor_discovery { floor_discovery_tree_id }
+import v2.workflow.floor_discovery { FloorDiscoveryTreeId, floor_discovery_tree_id }
+import std.types { CommitSha, NonEmptyStr }
+import std.decl_ref { DeclarationRef, decl_ref }
+import gunbc.semantic_conformance {
+  CompilerClosureMechanism,
+  ConformanceAdmission,
+  ConformanceAdmitted,
+  ConformanceRefused,
+  ConformanceDisposition,
+  Conforms,
+  CoverageStanding,
+  CoveragePopulationMeasuredComplete,
+  CoveragePopulationUnmeasured,
+  EvaluatorOffPromotedRoute,
+  EvaluatorOnPromotedRoute,
+  FixtureAccepted,
+  FixtureRejectedWith,
+  NativeV2Defect,
+  OmittedArmUnobserved,
+  OmittedArmVerdict,
+  PromotedRoute,
+  RequiredV2TestClaim,
+  admit_conformance,
+  omitted_arm_triple
+}
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -342,6 +367,138 @@ fn ga_fixed_point() -> FixedPointReceipt {
   ga_fixed_point_with(determinism_witnessed: false, right: ga_successor_identity())
 }
 
+fn ga_nes(s: String) -> NonEmptyStr { s as NonEmptyStr }
+
+fn ga_ref(name: String) -> DeclarationRef {
+  decl_ref(module_path: "fixture.self_host_generation_admission", decl_name: name)
+}
+
+fn ga_tree_id(hex: String) -> FloorDiscoveryTreeId {
+  floor_discovery_tree_id(object_id: ga_tree(hex: hex))
+}
+
+// The omitted-arm triple is DERIVED through XL-3's omitted_arm_triple, never authored: the
+// held record has no other constructor, so a fixture cannot claim the candidate rejects the
+// omitted-arm shape without stating the three observations that entail it.
+fn ga_held_triple(tree_hex: String) -> OmittedArmVerdict {
+  omitted_arm_triple(
+    judged_generation_tree: ga_tree_id(hex: tree_hex),
+    required_identity: ga_nes(s: "infer_match_non_exhaustive"),
+    incomplete: FixtureRejectedWith { diagnostic_identity: ga_nes(s: "infer_match_non_exhaustive") },
+    complete_control: FixtureAccepted,
+    widened: FixtureRejectedWith { diagnostic_identity: ga_nes(s: "infer_match_non_exhaustive") }
+  )
+}
+
+// FAILED OPEN in the direction the whole program exists to catch: the incomplete
+// cross-module match was ACCEPTED.
+fn ga_failed_open_triple(tree_hex: String) -> OmittedArmVerdict {
+  omitted_arm_triple(
+    judged_generation_tree: ga_tree_id(hex: tree_hex),
+    required_identity: ga_nes(s: "infer_match_non_exhaustive"),
+    incomplete: FixtureAccepted,
+    complete_control: FixtureAccepted,
+    widened: FixtureRejectedWith { diagnostic_identity: ga_nes(s: "infer_match_non_exhaustive") }
+  )
+}
+
+fn ga_coverage_complete() -> List<CoverageStanding> {
+  [
+    CoveragePopulationMeasuredComplete {
+      area: CompilerClosureMechanism,
+      members: [],
+      measured_revision: "source-r1" as CommitSha,
+      producer: ga_ref(name: "fixture_coverage_producer")
+    }
+  ]
+}
+
+// Every admission in this file is DERIVED by gunbc.semantic_conformance admit_conformance
+// over stated inputs. This fixture cannot write ConformanceAdmitted directly, so a witness
+// that admits did so because XL-3's exit gate opened over these inputs, not because the
+// fixture said so.
+fn ga_conformance_with(
+  tree_hex: String,
+  omitted_arm: OmittedArmVerdict,
+  dispositions: List<ConformanceDisposition>,
+  route: PromotedRoute,
+  coverage: List<CoverageStanding>
+) -> ConformanceAdmission {
+  admit_conformance(
+    source_revision: "source-r1" as CommitSha,
+    source_tree: ga_tree_id(hex: tree_hex),
+    omitted_arm: omitted_arm,
+    dispositions: dispositions,
+    route: route,
+    coverage: coverage,
+    producer: ga_ref(name: "fixture_admission_producer")
+  )
+}
+
+fn ga_conformance_admitted_on(tree_hex: String) -> ConformanceAdmission {
+  ga_conformance_with(
+    tree_hex: tree_hex,
+    omitted_arm: ga_held_triple(tree_hex: tree_hex),
+    dispositions: [Conforms],
+    route: EvaluatorOnPromotedRoute,
+    coverage: ga_coverage_complete()
+  )
+}
+
+fn ga_candidate_receipt_with(
+  conformance: ConformanceAdmission,
+  fallback_stage: Symbol,
+  fallback_observed: Bool
+) -> GenerationReceipt {
+  GenerationReceipt {
+    requirements: ga_parent_requirements(),
+    producer: ga_seed_identity(),
+    subject: ga_candidate_identity(),
+    build: ga_build(subject: ga_candidate_identity(), outcome: Observed { value: BuildGreen }),
+    conformance_evidence: conformance,
+    fallback: if fallback_observed {
+      FallbackObserved { at_stage: fallback_stage }
+    } else {
+      NoFallbackObserved
+    }
+  }
+}
+
+fn ga_candidate_receipt() -> GenerationReceipt {
+  ga_candidate_receipt_with(
+    conformance: ga_conformance_admitted_on(tree_hex: ga_tree_r1_hex),
+    fallback_stage: ^stage_unused,
+    fallback_observed: false
+  )
+}
+
+fn ga_request_full(
+  reproduction: SelfHostCandidate,
+  candidate_receipt: GenerationReceipt,
+  changed: ChangedSuccessorReceipt,
+  fixed_point: FixedPointReceipt,
+  recovery_identity: GenerationIdentity,
+  recovery_available: Bool,
+  previous_active: GenerationIdentity,
+  authority: GenerationIdentity
+) -> GenerationAdmissionRequest {
+  GenerationAdmissionRequest {
+    reproduction: reproduction,
+    candidate_receipt: candidate_receipt,
+    changed_successor: changed,
+    fixed_point: fixed_point,
+    recovery: if recovery_available {
+      RecoveryRetained { identity: recovery_identity }
+    } else {
+      RecoveryUnavailable { cause: ^recovery_artifact_not_retained }
+    },
+    previous_active: previous_active,
+    authority: AdmissionAuthority { identity: authority }
+  }
+}
+
+// The fallback observation lives on the candidate's generation receipt; the existing
+// witnesses route it there through this builder so their call sites stay unchanged.
 fn ga_request_with(
   reproduction: SelfHostCandidate,
   changed: ChangedSuccessorReceipt,
@@ -353,24 +510,22 @@ fn ga_request_with(
   fallback_stage: Symbol,
   fallback_observed: Bool
 ) -> GenerationAdmissionRequest {
-  GenerationAdmissionRequest {
+  ga_request_full(
     reproduction: reproduction,
-    changed_successor: changed,
+    candidate_receipt: ga_candidate_receipt_with(
+      conformance: ga_conformance_admitted_on(tree_hex: ga_tree_r1_hex),
+      fallback_stage: fallback_stage,
+      fallback_observed: fallback_observed
+    ),
+    changed: changed,
     fixed_point: fixed_point,
-    recovery: if recovery_available {
-      RecoveryRetained { identity: recovery_identity }
-    } else {
-      RecoveryUnavailable { cause: ^recovery_artifact_not_retained }
-    },
+    recovery_identity: recovery_identity,
+    recovery_available: recovery_available,
     previous_active: previous_active,
-    authority: AdmissionAuthority { identity: authority },
-    fallback: if fallback_observed {
-      FallbackObserved { at_stage: fallback_stage }
-    } else {
-      NoFallbackObserved
-    }
-  }
+    authority: authority
+  )
 }
+
 
 // THE POSITIVE CONTROL. Every obligation met: the candidate reproduces the seed's
 // behavior with a caught planted fault, the changed successor is produced under a
@@ -1090,5 +1245,166 @@ test fn ga_requirement_receipt_about_other_generation_refuses() -> Bool {
       )
     ),
     cause: ^refusal_stale_receipt_subject
+  )
+}
+
+// ---- CONFORMANCE EVIDENCE (XL-3 gunbc.semantic_conformance, consumed not restated) ----
+
+fn ga_request_with_conformance(c: ConformanceAdmission) -> GenerationAdmissionRequest {
+  ga_request_full(
+    reproduction: ga_reproduction(),
+    candidate_receipt: ga_candidate_receipt_with(
+      conformance: c,
+      fallback_stage: ^stage_unused,
+      fallback_observed: false
+    ),
+    changed: ga_changed_receipt(),
+    fixed_point: ga_fixed_point(),
+    recovery_identity: ga_seed_identity(),
+    recovery_available: true,
+    previous_active: ga_seed_identity(),
+    authority: ga_authority_identity()
+  )
+}
+
+// The admitted fixture really was derived: XL-3's gate opened over Conforms + a held
+// omitted-arm triple + complete coverage. If admit_conformance ever refuses these inputs,
+// the positive control above goes red for a reason this witness names first.
+test fn ga_conformance_fixture_is_derived_admitted() -> Bool {
+  match ga_conformance_admitted_on(tree_hex: ga_tree_r1_hex) {
+    ConformanceAdmitted { source_revision: _, source_tree: _, omitted_arm: _, judged_route: _, subject_count: _, producer: _ } => true
+    ConformanceRefused { source_revision: _, source_tree: _, omitted_arm: _, judged_route: _, blocking_dispositions: _, unmeasured_areas: _, producer: _ } => false
+  }
+}
+
+// FALSIFIER -- CONFORMANCE REFUSED. A blocking native-v2 defect closes XL-3's gate; the
+// generation cannot be admitted on top of it.
+test fn ga_conformance_refused_refuses() -> Bool {
+  generation_admission_carries(
+    decision: admit_generation(
+      request: ga_request_with_conformance(
+        c: ga_conformance_with(
+          tree_hex: ga_tree_r1_hex,
+          omitted_arm: ga_held_triple(tree_hex: ga_tree_r1_hex),
+          dispositions: [NativeV2Defect { detail: ga_nes(s: "classical_or diverges on (true,false)") }],
+          route: EvaluatorOnPromotedRoute,
+          coverage: ga_coverage_complete()
+        )
+      )
+    ),
+    cause: ^refusal_conformance_evidence_refused
+  )
+}
+
+// FALSIFIER -- CONFORMANCE ON ANOTHER TREE. Admitted, held, on-route -- and about a
+// different source tree than the one the candidate was produced over.
+test fn ga_conformance_on_other_tree_refuses() -> Bool {
+  generation_admission_carries(
+    decision: admit_generation(
+      request: ga_request_with_conformance(c: ga_conformance_admitted_on(tree_hex: ga_tree_r2_hex))
+    ),
+    cause: ^refusal_conformance_evidence_tree_mismatch
+  )
+}
+
+// FALSIFIER -- JUDGED OFF THE PROMOTED ROUTE. Same admitted evidence, evaluator off route.
+test fn ga_conformance_off_promoted_route_refuses() -> Bool {
+  generation_admission_carries(
+    decision: admit_generation(
+      request: ga_request_with_conformance(
+        c: ga_conformance_with(
+          tree_hex: ga_tree_r1_hex,
+          omitted_arm: ga_held_triple(tree_hex: ga_tree_r1_hex),
+          dispositions: [Conforms],
+          route: EvaluatorOffPromotedRoute,
+          coverage: ga_coverage_complete()
+        )
+      )
+    ),
+    cause: ^refusal_conformance_judged_off_promoted_route
+  )
+}
+
+// FALSIFIER -- THE CANDIDATE FAILS OPEN ON THE OMITTED ARM. Every disposition conforms and
+// coverage is complete; only the triple fails, in the direction the seed checker on main
+// once did. It must be refused BY NAME, not folded into a generic conformance refusal.
+test fn ga_omitted_arm_failed_open_refuses_by_name() -> Bool {
+  let decision = admit_generation(
+    request: ga_request_with_conformance(
+      c: ga_conformance_with(
+        tree_hex: ga_tree_r1_hex,
+        omitted_arm: ga_failed_open_triple(tree_hex: ga_tree_r1_hex),
+        dispositions: [Conforms],
+        route: EvaluatorOnPromotedRoute,
+        coverage: ga_coverage_complete()
+      )
+    )
+  )
+  generation_admission_carries(decision: decision, cause: ^refusal_conformance_omitted_arm_failed_open)
+}
+
+// A triple that was never observed is its own state -- not held, not failed open.
+test fn ga_omitted_arm_unobserved_refuses_by_name() -> Bool {
+  generation_admission_carries(
+    decision: admit_generation(
+      request: ga_request_with_conformance(
+        c: ga_conformance_with(
+          tree_hex: ga_tree_r1_hex,
+          omitted_arm: OmittedArmUnobserved { reason: ga_nes(s: "omitted-arm fixture not run") },
+          dispositions: [Conforms],
+          route: EvaluatorOnPromotedRoute,
+          coverage: ga_coverage_complete()
+        )
+      )
+    ),
+    cause: ^refusal_conformance_omitted_arm_unobserved
+  )
+}
+
+// FALSIFIER -- THE HELD TRIPLE WAS JUDGED OVER SOME OTHER GENERATION. Admitted, on the
+// right tree, on route; but the omitted-arm triple names a different judged tree, so the
+// candidate did not itself demonstrate the rejection.
+test fn ga_omitted_arm_judged_over_other_generation_refuses() -> Bool {
+  generation_admission_carries(
+    decision: admit_generation(
+      request: ga_request_with_conformance(
+        c: ga_conformance_with(
+          tree_hex: ga_tree_r1_hex,
+          omitted_arm: ga_held_triple(tree_hex: ga_tree_r2_hex),
+          dispositions: [Conforms],
+          route: EvaluatorOnPromotedRoute,
+          coverage: ga_coverage_complete()
+        )
+      )
+    ),
+    cause: ^refusal_conformance_omitted_arm_judged_other_generation
+  )
+}
+
+// FALSIFIER -- TWO CLAIMS ABOUT THE CANDIDATE'S REQUIREMENTS THAT DISAGREE. The receipt
+// says the candidate was produced under one revision, the changed-successor receipt binds
+// its parent to another. Neither is wrong on its own; together they describe two candidates.
+test fn ga_candidate_receipt_requirements_disagree_refuses() -> Bool {
+  generation_admission_carries(
+    decision: admit_generation(
+      request: ga_request_full(
+        reproduction: ga_reproduction(),
+        candidate_receipt: GenerationReceipt {
+          requirements: ga_successor_requirements(),
+          producer: ga_seed_identity(),
+          subject: ga_candidate_identity(),
+          build: ga_build(subject: ga_candidate_identity(), outcome: Observed { value: BuildGreen }),
+          conformance_evidence: ga_conformance_admitted_on(tree_hex: ga_tree_r2_hex),
+          fallback: NoFallbackObserved
+        },
+        changed: ga_changed_receipt(),
+        fixed_point: ga_fixed_point(),
+        recovery_identity: ga_seed_identity(),
+        recovery_available: true,
+        previous_active: ga_seed_identity(),
+        authority: ga_authority_identity()
+      )
+    ),
+    cause: ^refusal_candidate_receipt_requirements_disagree
   )
 }
