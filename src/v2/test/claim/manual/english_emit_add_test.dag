@@ -209,7 +209,7 @@ fn english_emit_add_grammar_inverse_holds() -> Bool {
     target: english_emit_add_target_model,
     emitted: english_emit_add_emitted_root
   ) {
-    Accepted { value: _, diagnostics: d } => d == None
+    Accepted { value: _, diagnostics: d } => d == v2.std.diagnostic.None
     Rejected { diagnostics: _ } => false
   }
 }
