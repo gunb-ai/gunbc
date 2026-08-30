@@ -713,6 +713,11 @@ data gunbc_ci_fleet_converge_plan_target: GunbcRunStepTarget = GunbcRunStepTarge
   function: "fleet_converge_plan_wet",
 }
 
+data gunbc_ci_fleet_converge_allocation_store_plan_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/fleet/fleet_converge_plan_cli.dag",
+  function: "fleet_converge_allocation_store_plan_wet",
+}
+
 data gunbc_ci_fleet_converge_apply_target: GunbcRunStepTarget = GunbcRunStepTarget {
   entry: "dag/gunbc/fleet/fleet_converge_plan_cli.dag",
   function: "fleet_converge_apply_wet",
@@ -826,6 +831,7 @@ fn gunbc_run_step_targets() -> List<GunbcRunStepTarget> {
     gunbc_ci_fleet_reach_probe_target,
     gunbc_ci_multi_principal_probe_target,
     gunbc_ci_fleet_converge_plan_target,
+    gunbc_ci_fleet_converge_allocation_store_plan_target,
     gunbc_ci_fleet_converge_apply_target,
     gunbc_ci_spark_serving_reboot_target,
     gunbc_ci_spark_serving_durability_target,
@@ -1197,6 +1203,16 @@ fn gunbc_ci_fleet_converge_plan_invoke() -> String {
     source_roots: witness_layer_roots,
     entry: gunbc_ci_fleet_converge_plan_target.entry,
     function: gunbc_ci_fleet_converge_plan_target.function,
+    claim_run: false,
+    receipt_rel: none
+  )
+}
+
+fn gunbc_ci_fleet_converge_allocation_store_plan_invoke() -> String {
+  gunbc_run_step_script(
+    source_roots: witness_layer_roots,
+    entry: gunbc_ci_fleet_converge_allocation_store_plan_target.entry,
+    function: gunbc_ci_fleet_converge_allocation_store_plan_target.function,
     claim_run: false,
     receipt_rel: none
   )
