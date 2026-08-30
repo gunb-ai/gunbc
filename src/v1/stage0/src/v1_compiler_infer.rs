@@ -6249,13 +6249,6 @@ pub fn unresolved_method_frontier() -> Rc<Vec<Rc<UnresolvedMethodFrontierRow>>> 
     receiver_shape: "Primitive(std.types.NonEmptyStr)".to_string(),
     cause: "the brand-alias class in its LEAF form. The receiver is a coproduct variant payload whose declared type is NonEmptyStr, and it arrives not as the refinement Conj the peel walks but as a plain leaf carrying the QUALIFIED name std.types.NonEmptyStr — so there is no refinement chain to descend and no kernel profile under that name. Three head-resolution strategies were tried against this site and measured: resolving the leaf through lookup_type_for, through lookup_type_by_name on the qualified name, and on its last segment. NONE of them recovered the refinement, so the machinery was deleted rather than shipped unproven, and the site is declared here instead. Why the peel reaches the Conj form but not this one is not yet understood, and saying so is more useful than a fourth guess.".to_string(),
     dissolution: crate::std_dissolution::unbound_dissolution("one representation for a brand alias at method lookup — the same reconciliation the conformance wall's class (2) names — so the leaf and Conj forms stop being two shapes for one concept".to_string()),
-}), Rc::new(UnresolvedMethodFrontierRow {
-    module_name: "v2.std.compilers.target_model".to_string(),
-    method: "lookup".to_string(),
-    occurrences: 1,
-    receiver_shape: "Primitive(T)".to_string(),
-    cause: "receiver is a bare type variable. This one is genuinely undecidable at this seam rather than a resolution defect: nothing establishes what T offers.".to_string(),
-    dissolution: crate::std_dissolution::unbound_dissolution("primitive-realization-single-authority, giving every receiver a complete declared method surface".to_string()),
 })])
 }
 
