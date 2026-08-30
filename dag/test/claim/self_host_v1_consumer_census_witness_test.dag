@@ -1,8 +1,11 @@
-module test.claim.v1_consumer_census_witness_test
+module test.claim.self_host_v1_consumer_census_witness_test
 
 import std.types { Bool }
 import gunbc.replacement_cut { BoundaryCensus, ConsumersEnumerated, BoundaryDeclaredEmpty }
-import gunbc.rust_item_host_observation { RustSourceNamespaceRow, rust_source_namespace_rows, rust_source_prefix_tooling }
+import gunbc.rust_item_host_observation {
+  RustSourceNamespaceRow, rust_source_namespace_rows, rust_source_prefix_tooling,
+  rust_module_path_for_repo_path, RustModulePathProjected, RustModulePathRefused
+}
 import gunbc.v1_consumer_census {
   v1_consumers, v1_uncitable_consumers, v1_consumer_population,
   v1_every_discovered_consumer_disposed, v1_every_row_names_a_live_consumer, v1_every_claimed_successor_is_realized,
@@ -150,3 +153,18 @@ test fn consumer_census_population_carries_the_partition() -> Bool { the_populat
 test fn consumer_census_live_transaction_refuses_for_recorded_reasons() -> Bool { the_live_transaction_refuses_for_recorded_reasons() }
 test fn consumer_census_live_gate_refuses_even_with_every_successor_realized() -> Bool { the_live_gate_refuses_even_with_every_successor_realized() }
 test fn consumer_census_live_population_carries_the_whole_roster() -> Bool { the_live_population_carries_the_whole_roster() }
+
+// THE TOOLING TREE CARRIES THE NAME OF THE PACKAGE IT ASSEMBLES INTO. dag/gunbc/instruments/ is the
+// scaffold's rust_source_prefix_tooling; its shim crates are assembled into the `v1_compiled`
+// package, so a shim crate root projects to v1_compiled.<crate>.lib -- a root no .dag module
+// declares, like v1_compiler -- and a path one directory up is still unclaimed.
+test fn consumer_census_tooling_tree_projects_to_the_assembled_package_namespace() -> Bool {
+  match rust_module_path_for_repo_path(repo_path: "dag/gunbc/instruments/self_host_03_normalize_shims/lib.rs") {
+    RustModulePathProjected { module_path: path } => path == "v1_compiled.self_host_03_normalize_shims.lib"
+    RustModulePathRefused { repo_path: _, detail: _ } => false
+  }
+  && match rust_module_path_for_repo_path(repo_path: "dag/gunbc/not_instruments/lib.rs") {
+    RustModulePathRefused { repo_path: _, detail: _ } => true
+    RustModulePathProjected { module_path: _ } => false
+  }
+}
