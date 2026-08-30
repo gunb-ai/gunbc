@@ -11,6 +11,7 @@ use self::ServiceConfigFieldJudgment::*;
 pub use crate::extdeps_container_oci_digest::{
     oci_other_digest_algorithm, oci_other_digest_encoded,
 };
+pub use crate::std_algebra::carrier_container_equality_rows;
 pub use crate::std_algebra::AlgebraFieldTemplate;
 use crate::std_algebra::CollectionSizeEffect::ShrinkEffect;
 pub use crate::std_algebra::{CollectionSizeEffect, FreeMonoid};
@@ -45,8 +46,8 @@ pub use crate::std_node::{compiler_inductive_fields, compiler_recursive_types};
 pub use crate::std_occurrence_identity::NodeOccurrenceIdentity;
 use crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic;
 pub use crate::std_occurrence_identity::OccurrenceId;
-use crate::std_syntax::BinOp::Add;
-use crate::std_syntax::BinOp::{And, Div, Eq, Ge, Gt, Le, Lt, Mod, Mul, Ne, NullCoalesce, Or, Sub};
+use crate::std_syntax::BinOp::{Add, Eq, Ne};
+use crate::std_syntax::BinOp::{And, Div, Ge, Gt, Le, Lt, Mod, Mul, NullCoalesce, Or, Sub};
 use crate::std_syntax::LiteralValue::LitStr;
 use crate::std_syntax::LiteralValue::{LitBool, LitFloat, LitInt, LitNull};
 pub use crate::std_syntax::{BinOp, LiteralValue};
@@ -194,12 +195,12 @@ use crate::v1_std_core::Cardinality::{CardOptional, Required};
 use crate::v1_std_core::CompilerDiagnostic::{
     AmbiguousReference, BareNoneNotAdmittedByFieldType, CallArgumentDuplicate,
     CallArgumentNameUnknown, CallNamedArgOnFunctionValue, CallPositionalDeficit,
-    CallPositionalSurplus, ConstructorCallAdmissionRefused, FieldNotFound,
-    FrontierOccurrenceBudgetExceeded, InternalError, MethodExistenceFrontierAdmitted,
-    MethodExistenceUndecided, MethodNotFound, MissingField, OptionalCastNotEliminated,
-    ReceiverTypeUnestablished, ServiceConfigReferenceJudgmentDeferred, SoleConstructorViolation,
-    TypeArgumentArityMismatch, TypeMismatch, UnlistedVariantValueUse, UnresolvedType,
-    VariantCollision,
+    CallPositionalSurplus, ConstructorCallAdmissionRefused, EqualityMemberUnjudgeable,
+    EqualityOnFunctionMember, FieldNotFound, FrontierOccurrenceBudgetExceeded, InternalError,
+    MethodExistenceFrontierAdmitted, MethodExistenceUndecided, MethodNotFound, MissingField,
+    OptionalCastNotEliminated, ReceiverTypeUnestablished, ServiceConfigReferenceJudgmentDeferred,
+    SoleConstructorViolation, TypeArgumentArityMismatch, TypeMismatch, UnlistedVariantValueUse,
+    UnresolvedType, VariantCollision,
 };
 use crate::v1_std_core::Connective::{Arrow, Conj, Disj, NoConnective};
 use crate::v1_std_core::ExprData::{
@@ -3284,6 +3285,398 @@ pub fn exposure_is_application(exposure: Rc<TypeHeadExposure>) -> bool {
             true
         }
         _ => false,
+    }
+}
+
+pub fn equality_admission_wall_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "WALL (DESIGN 5, XL-0E ruling 2026-08-30): equality on function-bearing values is an ACCEPTANCE defect, not an emitter formatting error. Before this wall, infer_binop_type_node answered Eq/Ne with bool_type for EVERY left type and the ExprBinOp arm emitted no diagnostic, so '==' was accepted on types whose equality semantics do not exist -- a record of interpreter functions, a runtime value carrying a closure environment. The interpretation path then answered from a host comparison the emission path cannot realize (rustc E0369: no PartialEq derives for fn-carrying types -- the refusal lived below the floor, in the wrong compiler, in the wrong phase). The admission is derived from the COMPLETE RESOLVED TYPE, never from a leaf spelling: an Arrow refuses; a kernel scalar admits; an algebra-carrier spelling admits or refuses by algebra_profile_equality_extensional -- the declared support-axis consequence in std.algebra, so finite-support carriers (List, Map, Set and their canonical names) lift the question into their type ARGUMENTS while open-support carriers (PartialFunction) refuse outright; a product walks every member and a coproduct walks every arm's members, under a visited set keyed on declaration identity so recursive structural data (Peano Nat: Zero | Succ { prev: Nat }) admits by the coinductive reading; a member that resolves nowhere refuses as EqualityMemberUnjudgeable rather than admitting silently. DELIBERATE BOUNDARIES, stated per rung honesty rather than implied covered: (1) a leaf whose head is OpaqueTypeHead at every authority -- a declared brand like v2.std.node.Symbol, or a generic type parameter -- carries no member this walk can judge and ADMITS at this rung; the admission is instantiation-blind, so a type parameter later bound to a function-bearing type is not caught at the generic declaration site. Next-rung trigger for both: instantiation-grain admission, i.e. judging '==' where type arguments are known, which requires the call-site substitution the checker does not thread to this seam today. (2) '== none' / '!= none' is a PRESENCE test on the optional structure, not member equality, and is exempt before any walk (398 live sites measured 2026-08-30). (3) Lt/Gt/Le/Ge ordering admission is the same defect one operator over and is NOT walled here -- ordering on a function-bearing type still accepts; that class is named rather than silently included. (4) Operands already carrying a compiler error are not judged: the resolution diagnostic owns the site. Cost shape (DESIGN 6): the walk runs only at Eq/Ne sites, kernel and opaque leaves return before any peel, and peel_nominal_alias_identity is reached only for structured or aliased operands (see where_refinement_peel_cost_note for why eager peels at this grain were withdrawn once already).".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct EqualityAdmissionRefusal {
+    pub type_name: String,
+    pub member: String,
+    pub member_judged: bool,
+}
+
+pub fn equality_extensional_container_rows() -> Rc<HashMap<String, bool>> {
+    thread_local! {
+        static CACHED: Rc<HashMap<String, bool>> = {
+            crate::std_algebra::carrier_container_equality_rows()
+        };
+    }
+    CACHED.with(|c: &Rc<HashMap<String, bool>>| c.clone())
+}
+
+pub fn equality_refused(
+    carrier: String,
+    member: String,
+    member_judged: bool,
+) -> Option<Rc<EqualityAdmissionRefusal>> {
+    Some(Rc::new(EqualityAdmissionRefusal {
+        type_name: carrier.clone(),
+        member: member.clone(),
+        member_judged: member_judged.clone(),
+    }))
+}
+
+pub fn equality_field_refusal(
+    owner_name: String,
+    ch: Rc<Node>,
+    scope: Rc<InferScope>,
+    visited: Rc<HashMap<String, bool>>,
+    depth: i64,
+) -> Option<Rc<EqualityAdmissionRefusal>> {
+    {
+        let ft = crate::v1_compiler_infer_types::child_type_node(ch.clone());
+        if (ft.connective.clone() == Connective::Arrow) {
+            equality_refused(
+                owner_name.clone(),
+                crate::v1_std_core::authored_name_at(
+                    scope.type_env.clone().source_indices.clone(),
+                    ch.clone(),
+                ),
+                true,
+            )
+        } else {
+            equality_operand_admission(ft.clone(), scope.clone(), visited.clone(), depth.clone())
+        }
+    }
+}
+
+pub fn equality_member_fields_refusal(
+    owner_name: String,
+    fields: Rc<Vec<Rc<Node>>>,
+    scope: Rc<InferScope>,
+    visited: Rc<HashMap<String, bool>>,
+    depth: i64,
+) -> Option<Rc<EqualityAdmissionRefusal>> {
+    fields
+        .iter()
+        .cloned()
+        .fold(None, |acc: _, ch: Rc<Node>| match acc.clone() {
+            Some(_) => acc.clone(),
+            None => equality_field_refusal(
+                owner_name.clone(),
+                ch.clone(),
+                scope.clone(),
+                visited.clone(),
+                depth.clone(),
+            ),
+        })
+}
+
+pub fn equality_operand_admission(
+    n: Rc<Node>,
+    scope: Rc<InferScope>,
+    visited: Rc<HashMap<String, bool>>,
+    depth: i64,
+) -> Option<Rc<EqualityAdmissionRefusal>> {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+        let source_indices = scope.type_env.clone().source_indices.clone();
+        if (depth.clone() > 64) {
+            equality_refused(
+                crate::v1_std_core::authored_name_at(source_indices.clone(), n.clone()),
+                "type expansion depth exceeded".to_string(),
+                false,
+            )
+        } else {
+            {
+                let peeled = crate::v1_compiler_infer_types::normalize_access_type_node(n.clone());
+                if ((peeled.return_cardinality.clone() == Cardinality::CardOptional)
+                    || ((peeled.name.clone() == "Optional".to_string())
+                        && ((peeled.children.clone().len() as i64) == 1)))
+                {
+                    equality_operand_admission(
+                        crate::v1_compiler_infer_types::extract_optional_inner_node(peeled.clone()),
+                        scope.clone(),
+                        visited.clone(),
+                        (depth.clone() + 1),
+                    )
+                } else {
+                    {
+                        let name = crate::v1_std_core::authored_name_at(
+                            source_indices.clone(),
+                            peeled.clone(),
+                        );
+                        let leaf = crate::v1_std_core::qualified_last_segment(name.clone());
+                        let identity =
+                            type_reference_identity(peeled.clone(), source_indices.clone());
+                        if v1_rt::map_contains_key(&visited, identity.clone()) {
+                            None
+                        } else {
+                            {
+                                let visited2 =
+                                    v1_rt::rc_map_insert(visited.clone(), identity.clone(), true);
+                                if (peeled.connective.clone() == Connective::Arrow) {
+                                    equality_refused(
+                                        name.clone(),
+                                        "function value".to_string(),
+                                        true,
+                                    )
+                                } else {
+                                    if (peeled.connective.clone() == Connective::Conj) {
+                                        equality_member_fields_refusal(
+                                            name.clone(),
+                                            peeled.children.clone(),
+                                            scope.clone(),
+                                            visited2.clone(),
+                                            (depth.clone() + 1),
+                                        )
+                                    } else {
+                                        if (peeled.connective.clone() == Connective::Disj) {
+                                            peeled.children.clone().iter().cloned().fold(
+                                                None,
+                                                |acc: _, v: Rc<Node>| match acc.clone() {
+                                                    Some(_) => acc.clone(),
+                                                    None => equality_member_fields_refusal(
+                                                        v1_rt::concat(
+                                                            v1_rt::concat(
+                                                                name.clone(),
+                                                                ".".to_string(),
+                                                            ),
+                                                            crate::v1_std_core::authored_name_at(
+                                                                source_indices.clone(),
+                                                                v.clone(),
+                                                            ),
+                                                        ),
+                                                        v.children.clone(),
+                                                        scope.clone(),
+                                                        visited2.clone(),
+                                                        (depth.clone() + 1),
+                                                    ),
+                                                },
+                                            )
+                                        } else {
+                                            if crate::std_types::is_kernel_type(leaf.clone()) {
+                                                None
+                                            } else {
+                                                match v1_rt::map_get(
+                                                    &equality_extensional_container_rows(),
+                                                    leaf.clone(),
+                                                ) {
+                                                    Some(extensional) => {
+                                                        if extensional.clone() {
+                                                            peeled.children.clone().iter().cloned().fold(None, |acc: _, ch: Rc<Node>| match acc.clone() {
+    Some(_) => acc.clone(),
+    None => equality_operand_admission(crate::v1_compiler_infer_types::child_type_node(ch.clone()), scope.clone(), visited2.clone(), (depth.clone() + 1)),
+})
+                                                        } else {
+                                                            equality_refused(name.clone(), "open-support carrier: extensional equality is not enumerable".to_string(), true)
+                                                        }
+                                                    }
+                                                    None => equality_leaf_admission(
+                                                        peeled.clone(),
+                                                        name.clone(),
+                                                        identity.clone(),
+                                                        scope.clone(),
+                                                        visited2.clone(),
+                                                        depth.clone(),
+                                                    ),
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    })
+}
+
+pub fn equality_exposure_refusal(
+    exposure: Rc<TypeHeadExposure>,
+    name: String,
+) -> Option<Rc<EqualityAdmissionRefusal>> {
+    match (*exposure.clone()).clone() {
+        TypeHeadExposure::ExposedTypeHead { ref view, .. } => match view.as_ref() {
+            TypeHeadView::KernelScalarHead {
+                type_identity: _, ..
+            } => None,
+            TypeHeadView::CallableHead {
+                type_identity: _, ..
+            } => equality_refused(name.clone(), "function value".to_string(), true),
+            TypeHeadView::ProductHead {
+                type_identity: _, ..
+            } => equality_refused(
+                name.clone(),
+                "members not exposed at this reference".to_string(),
+                false,
+            ),
+            TypeHeadView::CoproductHead {
+                type_identity: _, ..
+            } => equality_refused(
+                name.clone(),
+                "members not exposed at this reference".to_string(),
+                false,
+            ),
+            TypeHeadView::ApplicationHead { .. } => equality_refused(
+                name.clone(),
+                "members not exposed at this reference".to_string(),
+                false,
+            ),
+        },
+        TypeHeadExposure::OpaqueTypeHead {
+            type_identity: _, ..
+        } => None,
+        TypeHeadExposure::StuckTypeHead { cause: c, .. } => {
+            equality_refused(name.clone(), c.clone(), false)
+        }
+        TypeHeadExposure::MalformedApplicationHead { cause: c, .. } => {
+            equality_refused(name.clone(), c.clone(), false)
+        }
+    }
+}
+
+pub fn equality_leaf_admission(
+    peeled: Rc<Node>,
+    name: String,
+    ident_key: String,
+    scope: Rc<InferScope>,
+    visited: Rc<HashMap<String, bool>>,
+    depth: i64,
+) -> Option<Rc<EqualityAdmissionRefusal>> {
+    {
+        let source_indices = scope.type_env.clone().source_indices.clone();
+        if crate::v1_compiler_coercion::decl_file_realizes_natively(
+            crate::v1_compiler_coercion::type_reference_decl_file(peeled.clone()),
+        ) {
+            return None;
+        }
+        let resolved = crate::v1_compiler_infer_resolve::peel_nominal_alias_identity(
+            peeled.clone(),
+            scope.type_env.clone(),
+            scope.module_name.clone(),
+        );
+        let resolved_identity = type_reference_identity(resolved.clone(), source_indices.clone());
+        if (((resolved.connective.clone() != Connective::NoConnective)
+            || (resolved_identity.clone() != ident_key.clone()))
+            || ((resolved.children.clone().len() as i64) != (peeled.children.clone().len() as i64)))
+        {
+            equality_operand_admission(
+                resolved.clone(),
+                scope.clone(),
+                visited.clone(),
+                (depth.clone() + 1),
+            )
+        } else {
+            equality_exposure_refusal(
+                expected_type_head_exposure(peeled.clone(), scope.clone()),
+                name.clone(),
+            )
+        }
+    }
+}
+
+pub fn equality_operand_is_presence_literal(
+    n: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    {
+        let leaf = crate::v1_std_core::qualified_last_segment(
+            crate::v1_std_core::authored_name_at(source_indices.clone(), n.clone()),
+        );
+        (((leaf.clone() == "None".to_string()) || (leaf.clone() == "Absent".to_string()))
+            || (leaf.clone() == "none".to_string()))
+    }
+}
+
+pub fn equality_admission_refusal_diag(
+    r: Rc<EqualityAdmissionRefusal>,
+    span: Rc<SourceSpan>,
+) -> Rc<CompilerDiagnostic> {
+    if r.member_judged.clone() {
+        Rc::new(CompilerDiagnostic::EqualityOnFunctionMember {
+            type_name: r.type_name.clone(),
+            member: r.member.clone(),
+            span: span.clone(),
+        })
+    } else {
+        Rc::new(CompilerDiagnostic::EqualityMemberUnjudgeable {
+            type_name: r.type_name.clone(),
+            member: r.member.clone(),
+            span: span.clone(),
+        })
+    }
+}
+
+pub fn equality_admission_diags(
+    op: BinOp,
+    left_typed: Rc<Node>,
+    right_typed: Rc<Node>,
+    scope: Rc<InferScope>,
+    span: Rc<SourceSpan>,
+) -> Rc<Vec<Rc<ErrorNode>>> {
+    {
+        let judged_op = match op.clone() {
+            BinOp::Eq => true,
+            BinOp::Ne => true,
+            _ => false,
+        };
+        if !judged_op.clone() {
+            Rc::new(vec![])
+        } else {
+            {
+                let source_indices = scope.type_env.clone().source_indices.clone();
+                let lt = crate::v1_compiler_infer_types::resolved_type(left_typed.clone());
+                let rt = crate::v1_compiler_infer_types::resolved_type(right_typed.clone());
+                if (((((equality_operand_is_presence_literal(
+                    lt.clone(),
+                    source_indices.clone(),
+                ) || equality_operand_is_presence_literal(
+                    rt.clone(),
+                    source_indices.clone(),
+                )) || equality_operand_is_presence_literal(
+                    left_typed.clone(),
+                    source_indices.clone(),
+                )) || equality_operand_is_presence_literal(
+                    right_typed.clone(),
+                    source_indices.clone(),
+                )) || ((lt.inferred.clone() != None)
+                    && crate::v1_std_core::is_compiler_error(
+                        lt.inferred.clone().clone().unwrap(),
+                    )))
+                    || ((rt.inferred.clone() != None)
+                        && crate::v1_std_core::is_compiler_error(
+                            rt.inferred.clone().clone().unwrap(),
+                        )))
+                {
+                    Rc::new(vec![])
+                } else {
+                    match equality_operand_admission(
+                        lt.clone(),
+                        scope.clone(),
+                        v1_rt::rc_empty_map::<String, bool>(),
+                        0,
+                    ) {
+                        Some(r) => Rc::new(vec![crate::v1_std_core::make_error_node(
+                            equality_admission_refusal_diag(r.clone(), span.clone()),
+                            scope.module_name.clone(),
+                        )]),
+                        None => match equality_operand_admission(
+                            rt.clone(),
+                            scope.clone(),
+                            v1_rt::rc_empty_map::<String, bool>(),
+                            0,
+                        ) {
+                            Some(r) => Rc::new(vec![crate::v1_std_core::make_error_node(
+                                equality_admission_refusal_diag(r.clone(), span.clone()),
+                                scope.module_name.clone(),
+                            )]),
+                            None => Rc::new(vec![]),
+                        },
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -9632,6 +10025,13 @@ crate::v1_compiler_infer_types::resolve_type_variables_from_template(t.clone(), 
                 crate::v1_compiler_infer_types::resolved_type(left_typed.clone()),
                 scope.type_env.clone().source_indices.clone(),
             );
+            let eq_wall_diags = equality_admission_diags(
+                op.clone(),
+                left_typed.clone(),
+                right_typed.clone(),
+                scope.clone(),
+                span.clone(),
+            );
             let bo_texpr = crate::v1_std_core::make_expr_node(
                 texpr.occurrence_identity.clone(),
                 Rc::new(ExprData::ExprBinOp {
@@ -9646,7 +10046,10 @@ crate::v1_compiler_infer_types::resolve_type_variables_from_template(t.clone(), 
             );
             Rc::new(InferResult {
                 typed: bo_texpr.clone(),
-                diagnostics: v1_rt::concat(left_diags.clone(), right_diags.clone()),
+                diagnostics: v1_rt::concat(
+                    v1_rt::concat(left_diags.clone(), right_diags.clone()),
+                    eq_wall_diags.clone(),
+                ),
             })
         }
         ExprData::ExprUnaryOp { op: op, .. } => {
