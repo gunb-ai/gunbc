@@ -378,7 +378,6 @@ fn spark_serving_replan_rows_from(
         rows: scheduled_rows_list(scheduled: replanned.spark_serving_typed_actions),
       }
   }
-  }
 }
 
 // THE POST-APPLY READING IS ITS OWN TRANSACTION UNDER ITS OWN PHASE.
