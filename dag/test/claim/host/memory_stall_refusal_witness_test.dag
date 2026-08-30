@@ -3,31 +3,40 @@ module test.claim.memory_stall_refusal_witness
 import std.logic { Bool }
 import std.types { String, Int }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.nat { Nat }
+import std.measure {
+  Millisecond,
+  millisecond,
+  millisecond_count,
+  basis_point_count,
+}
 import gunbc.memory_stall_refusal {
   MemoryStallObservation,
   MemoryStallVerdict,
   StallWindowOpen,
   ProgressUnderMemoryAdmissible,
   StallRefusedPageThrash,
+  MajorFaultsPerMinute,
+  major_faults_per_minute_count,
   memory_stall_verdict,
   memory_stall_verdict_refuses,
-  memory_stall_major_faults_per_minute,
-  memory_stall_self_cpu_share_percent,
+  memory_stall_major_fault_rate,
+  memory_stall_self_cpu_share,
   memory_stall_refusal_pressure_text,
-  memory_stall_major_fault_rate_per_minute_threshold,
-  memory_stall_verdict_window_minimum_wall_ms,
-  memory_stall_progress_cpu_share_percent_floor,
+  memory_stall_major_fault_rate_threshold,
+  memory_stall_verdict_window_minimum_wall,
+  memory_stall_progress_cpu_share_floor,
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-data thrash_fixture_grounding_note: String = "BOTH PRESSURED FIXTURES ARE MEASURED SPECIMENS, and the pair is the module's whole content: rate alone cannot separate them. The RED is the 2026-08-30 default-VM treadmill shape, MEASURED on the reproduction trace (gunbc.memory_stall_refusal memory_stall_progress_cpu_share_percent_floor's receipt, invocation dd090164-9f2b-45fe-93bc-789cdd4ef9c4): a swapless machine smaller than the working set sustained 178795 major faults/minute with user CPU flat at 0.8% of wall, because the wall is disk wait; the fixture's 60000/minute at 4% is the same shape at conservative magnitude -- a verdict that needs the full measured extremity to fire would be tuned to one specimen. The ADMITTED control is the CI floor runner specimen that the rate-only form of this verdict wrongly refused on its own first execution (memory_stall_admitted_under_pressure_receipt_note, gunbc run 33319823294): 163296 major faults over a 788140 ms window -- 12431/minute, over the rate line -- during one 13-minute CPU-bound typecheck under a memory.high reclaim throttle, a configuration that completes green on main daily. The CPU-share conjunct is what admits the second while refusing the first, and these two rows are the executable form of that distinction. The SLOW control is the other acceptance boundary: an hour of wall with the fault counter flat is merely slow, and no verdict may refuse it however long it runs -- time enters this decision only as a rate denominator."
+data thrash_fixture_grounding_note: String = "BOTH PRESSURED FIXTURES ARE MEASURED SPECIMENS, and the pair is the module's whole content: rate alone cannot separate them. The RED is the 2026-08-30 default-VM treadmill shape, MEASURED on the reproduction trace (gunbc.memory_stall_refusal memory_stall_progress_cpu_share_floor's receipt, invocation dd090164-9f2b-45fe-93bc-789cdd4ef9c4): a swapless machine smaller than the working set sustained 178795 major faults/minute with user CPU flat at 0.8% of wall, because the wall is disk wait; the fixture's 60000/minute at 4% is the same shape at conservative magnitude -- a verdict that needs the full measured extremity to fire would be tuned to one specimen. The ADMITTED control is the CI floor runner specimen that the rate-only form of this verdict wrongly refused on its own first execution (memory_stall_admitted_under_pressure_receipt_note, gunbc run 33319823294): 163296 major faults over a 788140 ms window -- 12431/minute, over the rate line -- during one 13-minute CPU-bound typecheck under a memory.high reclaim throttle, a configuration that completes green on main daily. The CPU-share conjunct is what admits the second while refusing the first, and these two rows are the executable form of that distinction. The SLOW control is the other acceptance boundary: an hour of wall with the fault counter flat is merely slow, and no verdict may refuse it however long it runs -- time enters this decision only as a rate denominator."
 
 fn treadmill_window() -> MemoryStallObservation {
   MemoryStallObservation {
-    window_wall_ms: 120000,
+    window_wall: millisecond(count: 120000),
     major_faults_in_window: 120000,
-    self_user_cpu_ms_in_window: 4800,
+    self_user_cpu_in_window: millisecond(count: 4800),
     cache_evictions_in_window: 4213,
     cache_readmissions_in_window: 388,
   }
@@ -35,9 +44,9 @@ fn treadmill_window() -> MemoryStallObservation {
 
 fn ci_progressing_under_pressure_window() -> MemoryStallObservation {
   MemoryStallObservation {
-    window_wall_ms: 788140,
+    window_wall: millisecond(count: 788140),
     major_faults_in_window: 163296,
-    self_user_cpu_ms_in_window: 552000,
+    self_user_cpu_in_window: millisecond(count: 552000),
     cache_evictions_in_window: 0,
     cache_readmissions_in_window: 0,
   }
@@ -45,9 +54,9 @@ fn ci_progressing_under_pressure_window() -> MemoryStallObservation {
 
 fn slow_but_progressing_hour() -> MemoryStallObservation {
   MemoryStallObservation {
-    window_wall_ms: 3600000,
+    window_wall: millisecond(count: 3600000),
     major_faults_in_window: 60,
-    self_user_cpu_ms_in_window: 3200000,
+    self_user_cpu_in_window: millisecond(count: 3200000),
     cache_evictions_in_window: 0,
     cache_readmissions_in_window: 0,
   }
@@ -73,14 +82,14 @@ test fn RED_a_treadmill_window_refuses_and_names_the_pressure() -> Bool {
 // red every crowded runner.
 test fn the_ci_runner_progressing_under_pressure_specimen_is_admitted() -> Bool {
   match memory_stall_verdict(o: ci_progressing_under_pressure_window()) {
-    ProgressUnderMemoryAdmissible { major_faults_per_minute: rate, self_cpu_share_percent: share } =>
-      rate == 12431 && share == 70
-    StallWindowOpen { window_wall_ms: _, minimum_wall_ms: _ } => false
+    ProgressUnderMemoryAdmissible { major_fault_rate: rate, self_cpu_share: share } =>
+      major_faults_per_minute_count(r: rate) == 12431 && basis_point_count(bp: share) == 7003
+    StallWindowOpen { window_wall: _, minimum_wall: _ } => false
     StallRefusedPageThrash {
-      major_faults_per_minute: _,
-      threshold_per_minute: _,
-      self_cpu_share_percent: _,
-      cpu_share_percent_floor: _,
+      major_fault_rate: _,
+      rate_threshold: _,
+      self_cpu_share: _,
+      cpu_share_floor: _,
       observation: _,
     } => false
   }
@@ -88,14 +97,14 @@ test fn the_ci_runner_progressing_under_pressure_specimen_is_admitted() -> Bool 
 
 test fn a_slow_but_progressing_resolve_is_admitted_however_long_it_runs() -> Bool {
   match memory_stall_verdict(o: slow_but_progressing_hour()) {
-    ProgressUnderMemoryAdmissible { major_faults_per_minute: rate, self_cpu_share_percent: _ } =>
-      rate == 1
-    StallWindowOpen { window_wall_ms: _, minimum_wall_ms: _ } => false
+    ProgressUnderMemoryAdmissible { major_fault_rate: rate, self_cpu_share: _ } =>
+      major_faults_per_minute_count(r: rate) == 1
+    StallWindowOpen { window_wall: _, minimum_wall: _ } => false
     StallRefusedPageThrash {
-      major_faults_per_minute: _,
-      threshold_per_minute: _,
-      self_cpu_share_percent: _,
-      cpu_share_percent_floor: _,
+      major_fault_rate: _,
+      rate_threshold: _,
+      self_cpu_share: _,
+      cpu_share_floor: _,
       observation: _,
     } => false
   }
@@ -106,21 +115,21 @@ test fn a_slow_but_progressing_resolve_is_admitted_however_long_it_runs() -> Boo
 // a burst) nor a refusal (so does a healthy process's first read of its inputs).
 test fn a_burst_below_the_minimum_window_is_an_open_window_not_a_verdict() -> Bool {
   match memory_stall_verdict(o: MemoryStallObservation {
-    window_wall_ms: memory_stall_verdict_window_minimum_wall_ms - 1,
+    window_wall: millisecond(count: millisecond_count(m: memory_stall_verdict_window_minimum_wall) - 1),
     major_faults_in_window: 1000000,
-    self_user_cpu_ms_in_window: 0,
+    self_user_cpu_in_window: millisecond(count: 0),
     cache_evictions_in_window: 0,
     cache_readmissions_in_window: 0,
   }) {
-    StallWindowOpen { window_wall_ms: w, minimum_wall_ms: m } =>
-      w == memory_stall_verdict_window_minimum_wall_ms - 1
-        && m == memory_stall_verdict_window_minimum_wall_ms
-    ProgressUnderMemoryAdmissible { major_faults_per_minute: _, self_cpu_share_percent: _ } => false
+    StallWindowOpen { window_wall: w, minimum_wall: m } =>
+      millisecond_count(m: w) == millisecond_count(m: memory_stall_verdict_window_minimum_wall) - 1
+        && millisecond_count(m: m) == millisecond_count(m: memory_stall_verdict_window_minimum_wall)
+    ProgressUnderMemoryAdmissible { major_fault_rate: _, self_cpu_share: _ } => false
     StallRefusedPageThrash {
-      major_faults_per_minute: _,
-      threshold_per_minute: _,
-      self_cpu_share_percent: _,
-      cpu_share_percent_floor: _,
+      major_fault_rate: _,
+      rate_threshold: _,
+      self_cpu_share: _,
+      cpu_share_floor: _,
       observation: _,
     } => false
   }
@@ -132,30 +141,30 @@ test fn a_burst_below_the_minimum_window_is_an_open_window_not_a_verdict() -> Bo
 // percentage point less refuses. A fixture at an extreme would delete this test.
 test fn the_refusal_is_tight_at_both_declared_lines() -> Bool {
   let at_rate_line = memory_stall_verdict(o: MemoryStallObservation {
-    window_wall_ms: 60000,
-    major_faults_in_window: memory_stall_major_fault_rate_per_minute_threshold,
-    self_user_cpu_ms_in_window: 0,
+    window_wall: millisecond(count: 60000),
+    major_faults_in_window: major_faults_per_minute_count(r: memory_stall_major_fault_rate_threshold),
+    self_user_cpu_in_window: millisecond(count: 0),
     cache_evictions_in_window: 0,
     cache_readmissions_in_window: 0,
   })
   let over_rate_line = memory_stall_verdict(o: MemoryStallObservation {
-    window_wall_ms: 60000,
-    major_faults_in_window: memory_stall_major_fault_rate_per_minute_threshold + 1,
-    self_user_cpu_ms_in_window: 0,
+    window_wall: millisecond(count: 60000),
+    major_faults_in_window: major_faults_per_minute_count(r: memory_stall_major_fault_rate_threshold) + 1,
+    self_user_cpu_in_window: millisecond(count: 0),
     cache_evictions_in_window: 0,
     cache_readmissions_in_window: 0,
   })
   let at_cpu_floor = memory_stall_verdict(o: MemoryStallObservation {
-    window_wall_ms: 100000,
+    window_wall: millisecond(count: 100000),
     major_faults_in_window: 100000,
-    self_user_cpu_ms_in_window: memory_stall_progress_cpu_share_percent_floor * 1000,
+    self_user_cpu_in_window: millisecond(count: basis_point_count(bp: memory_stall_progress_cpu_share_floor) * 10),
     cache_evictions_in_window: 0,
     cache_readmissions_in_window: 0,
   })
   let under_cpu_floor = memory_stall_verdict(o: MemoryStallObservation {
-    window_wall_ms: 100000,
+    window_wall: millisecond(count: 100000),
     major_faults_in_window: 100000,
-    self_user_cpu_ms_in_window: memory_stall_progress_cpu_share_percent_floor * 1000 - 1000,
+    self_user_cpu_in_window: millisecond(count: basis_point_count(bp: memory_stall_progress_cpu_share_floor) * 10 - 10),
     cache_evictions_in_window: 0,
     cache_readmissions_in_window: 0,
   })
@@ -165,11 +174,11 @@ test fn the_refusal_is_tight_at_both_declared_lines() -> Bool {
     && memory_stall_verdict_refuses(v: under_cpu_floor)
 }
 
-test fn the_projections_are_per_minute_and_percent_of_wall() -> Bool {
-  memory_stall_major_faults_per_minute(o: treadmill_window()) == 60000
-    && memory_stall_self_cpu_share_percent(o: treadmill_window()) == 4
-    && memory_stall_major_faults_per_minute(o: ci_progressing_under_pressure_window()) == 12431
-    && memory_stall_self_cpu_share_percent(o: ci_progressing_under_pressure_window()) == 70
+test fn the_projections_are_per_minute_and_basis_points_of_wall() -> Bool {
+  major_faults_per_minute_count(r: memory_stall_major_fault_rate(o: treadmill_window())) == 60000
+    && basis_point_count(bp: memory_stall_self_cpu_share(o: treadmill_window())) == 400
+    && major_faults_per_minute_count(r: memory_stall_major_fault_rate(o: ci_progressing_under_pressure_window())) == 12431
+    && basis_point_count(bp: memory_stall_self_cpu_share(o: ci_progressing_under_pressure_window())) == 7003
 }
 
 // The non-refusing arms render no pressure clause: a consumer that logs the clause
@@ -177,9 +186,9 @@ test fn the_projections_are_per_minute_and_percent_of_wall() -> Bool {
 test fn only_the_refusal_carries_pressure_text() -> Bool {
   memory_stall_refusal_pressure_text(v: memory_stall_verdict(o: slow_but_progressing_hour())) == ""
     && memory_stall_refusal_pressure_text(v: memory_stall_verdict(o: MemoryStallObservation {
-      window_wall_ms: 1000,
+      window_wall: millisecond(count: 1000),
       major_faults_in_window: 0,
-      self_user_cpu_ms_in_window: 0,
+      self_user_cpu_in_window: millisecond(count: 0),
       cache_evictions_in_window: 0,
       cache_readmissions_in_window: 0,
     })) == ""

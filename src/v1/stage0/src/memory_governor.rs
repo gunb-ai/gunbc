@@ -419,7 +419,7 @@ pub const MEMORY_STALL_MAJOR_FAULT_RATE_PER_MINUTE_THRESHOLD: u64 = 6000;
 /// so a cold-start refault burst can never refuse a run that then progresses.
 pub const MEMORY_STALL_VERDICT_WINDOW_MINIMUM_WALL_MS: u64 = 30000;
 
-/// SEED MIRROR of `gunbc.memory_stall_refusal` `memory_stall_progress_cpu_share_percent_floor`.
+/// SEED MIRROR of `gunbc.memory_stall_refusal` `memory_stall_progress_cpu_share_floor`.
 /// The progress half of the refusal's conjunction, forced by this verdict's own first CI
 /// execution (`memory_stall_admitted_under_pressure_receipt_note`): the floor runner
 /// sustained 12431 majflt/min through a 13-minute CPU-bound typecheck under a memory.high
@@ -429,7 +429,9 @@ pub const MEMORY_STALL_VERDICT_WINDOW_MINIMUM_WALL_MS: u64 = 30000;
 /// (invocation dd090164-9f2b-45fe-93bc-789cdd4ef9c4: 178795 majflt/min, utime 0.8% of
 /// wall, stime 34%) shows the kernel billing its reclaim labour to the faulting process
 /// as system time, so a utime+stime share reads a pure treadmill as one-third computing.
-pub const MEMORY_STALL_PROGRESS_CPU_SHARE_PERCENT_FLOOR: u64 = 20;
+/// Declared in BASIS POINTS (the `std.measure` `BasisPoint` carrier the authority row
+/// uses): 2000 bp = 20%.
+pub const MEMORY_STALL_PROGRESS_CPU_SHARE_FLOOR_BASIS_POINTS: u64 = 2000;
 
 /// Seed mirror of `gunbc.memory_stall_refusal` `MemoryStallObservation`: one windowed
 /// sample of the process's own eviction/readmission behaviour — its major-fault counter
@@ -457,13 +459,13 @@ pub enum MemoryStallVerdict {
     },
     ProgressUnderMemoryAdmissible {
         major_faults_per_minute: u64,
-        self_cpu_share_percent: u64,
+        self_cpu_share_basis_points: u64,
     },
     StallRefusedPageThrash {
         major_faults_per_minute: u64,
         threshold_per_minute: u64,
-        self_cpu_share_percent: u64,
-        cpu_share_percent_floor: u64,
+        self_cpu_share_basis_points: u64,
+        cpu_share_floor_basis_points: u64,
         observation: MemoryStallObservation,
     },
 }
@@ -474,9 +476,10 @@ pub fn memory_stall_major_faults_per_minute(o: &MemoryStallObservation) -> u64 {
     o.major_faults_in_window.saturating_mul(60000) / o.window_wall_ms.max(1)
 }
 
-/// Mirror of `memory_stall_self_cpu_share_percent` — the progress half of the conjunction.
-pub fn memory_stall_self_cpu_share_percent(o: &MemoryStallObservation) -> u64 {
-    o.self_user_cpu_ms_in_window.saturating_mul(100) / o.window_wall_ms.max(1)
+/// Mirror of `memory_stall_self_cpu_share` — the progress half of the conjunction, in
+/// basis points of the window's wall (the `BasisPoint` grain of the authority row).
+pub fn memory_stall_self_cpu_share_basis_points(o: &MemoryStallObservation) -> u64 {
+    o.self_user_cpu_ms_in_window.saturating_mul(10_000) / o.window_wall_ms.max(1)
 }
 
 /// Mirror of `gunbc.memory_stall_refusal` `memory_stall_verdict`: the refusal is a
@@ -493,21 +496,21 @@ pub fn memory_stall_verdict(o: MemoryStallObservation) -> MemoryStallVerdict {
         };
     }
     let rate = memory_stall_major_faults_per_minute(&o);
-    let cpu_share = memory_stall_self_cpu_share_percent(&o);
+    let cpu_share_bp = memory_stall_self_cpu_share_basis_points(&o);
     if rate > MEMORY_STALL_MAJOR_FAULT_RATE_PER_MINUTE_THRESHOLD
-        && cpu_share < MEMORY_STALL_PROGRESS_CPU_SHARE_PERCENT_FLOOR
+        && cpu_share_bp < MEMORY_STALL_PROGRESS_CPU_SHARE_FLOOR_BASIS_POINTS
     {
         MemoryStallVerdict::StallRefusedPageThrash {
             major_faults_per_minute: rate,
             threshold_per_minute: MEMORY_STALL_MAJOR_FAULT_RATE_PER_MINUTE_THRESHOLD,
-            self_cpu_share_percent: cpu_share,
-            cpu_share_percent_floor: MEMORY_STALL_PROGRESS_CPU_SHARE_PERCENT_FLOOR,
+            self_cpu_share_basis_points: cpu_share_bp,
+            cpu_share_floor_basis_points: MEMORY_STALL_PROGRESS_CPU_SHARE_FLOOR_BASIS_POINTS,
             observation: o,
         }
     } else {
         MemoryStallVerdict::ProgressUnderMemoryAdmissible {
             major_faults_per_minute: rate,
-            self_cpu_share_percent: cpu_share,
+            self_cpu_share_basis_points: cpu_share_bp,
         }
     }
 }
@@ -524,15 +527,15 @@ pub fn memory_stall_refusal_pressure_text(v: &MemoryStallVerdict) -> String {
         MemoryStallVerdict::StallRefusedPageThrash {
             major_faults_per_minute,
             threshold_per_minute,
-            self_cpu_share_percent,
-            cpu_share_percent_floor,
+            self_cpu_share_basis_points,
+            cpu_share_floor_basis_points,
             observation,
         } => format!(
             "MemoryStallRefusedPageThrash: this process refaulted its own evicted pages at \
              {major_faults_per_minute} major faults/minute while computing for only \
-             {self_cpu_share_percent}% of the wall, over the last {} ms ({} major faults; \
+             {}% of the wall, over the last {} ms ({} major faults; \
              rate line {threshold_per_minute}/minute, CPU-share floor \
-             {cpu_share_percent_floor}%; source /proc/self/stat majflt and utime; \
+             {}%; source /proc/self/stat majflt and utime; \
              typed-cache evictions in window {}, readmissions {}). The wall clock is being \
              spent re-reading resident pages the kernel evicted, not computing: the machine \
              underneath cannot deliver the admitted budget beside its own page cache, and \
@@ -540,8 +543,10 @@ pub fn memory_stall_refusal_pressure_text(v: &MemoryStallVerdict) -> String {
              Refusing rather than holding. Remedy: run where the admitted budget is \
              genuinely available (a larger runner), or scope the compile with --entry to a \
              smaller closure.",
+            self_cpu_share_basis_points / 100,
             observation.window_wall_ms,
             observation.major_faults_in_window,
+            cpu_share_floor_basis_points / 100,
             observation.cache_evictions_in_window,
             observation.cache_readmissions_in_window,
         ),
@@ -1107,7 +1112,7 @@ mod tests {
             verdict,
             MemoryStallVerdict::StallRefusedPageThrash {
                 major_faults_per_minute: 60_000,
-                self_cpu_share_percent: 4,
+                self_cpu_share_basis_points: 400,
                 ..
             }
         ));
@@ -1137,7 +1142,7 @@ mod tests {
             verdict,
             MemoryStallVerdict::ProgressUnderMemoryAdmissible {
                 major_faults_per_minute: 12_431,
-                self_cpu_share_percent: 70,
+                self_cpu_share_basis_points: 7003,
             }
         );
     }
@@ -1162,7 +1167,7 @@ mod tests {
             slow,
             MemoryStallVerdict::ProgressUnderMemoryAdmissible {
                 major_faults_per_minute: 1,
-                self_cpu_share_percent: 88,
+                self_cpu_share_basis_points: 8888,
             }
         );
         assert_eq!(memory_stall_refusal_pressure_text(&slow), "");
@@ -1208,7 +1213,7 @@ mod tests {
         let at_cpu_floor = memory_stall_verdict(MemoryStallObservation {
             window_wall_ms: 100_000,
             major_faults_in_window: 100_000,
-            self_user_cpu_ms_in_window: MEMORY_STALL_PROGRESS_CPU_SHARE_PERCENT_FLOOR * 1_000,
+            self_user_cpu_ms_in_window: MEMORY_STALL_PROGRESS_CPU_SHARE_FLOOR_BASIS_POINTS * 10,
             cache_evictions_in_window: 0,
             cache_readmissions_in_window: 0,
         });
@@ -1219,8 +1224,8 @@ mod tests {
         let under_cpu_floor = memory_stall_verdict(MemoryStallObservation {
             window_wall_ms: 100_000,
             major_faults_in_window: 100_000,
-            self_user_cpu_ms_in_window: MEMORY_STALL_PROGRESS_CPU_SHARE_PERCENT_FLOOR * 1_000
-                - 1_000,
+            self_user_cpu_ms_in_window: MEMORY_STALL_PROGRESS_CPU_SHARE_FLOOR_BASIS_POINTS * 10
+                - 10,
             cache_evictions_in_window: 0,
             cache_readmissions_in_window: 0,
         });
