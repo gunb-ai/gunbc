@@ -2,13 +2,15 @@ module v2.test.claim.fold_lowering
 
 // NO IMPORT BLOCK, AND THAT IS LOAD-BEARING RATHER THAN AN OMISSION.
 //
-// This module merges the one-claim unit entry that lived here with the end-to-end entry from
-// src/v2/test/claim/long/ -- one subject, one witness module (DESIGN.md §3). The long entry
-// resolved every name from the ambient witness pool and carried no imports; this file carried
-// two. Measured 2026-08-21: with those two import rows present, every end-to-end claim fails with
-// `no such function: tokenize` -- an explicit import block replaces the ambient pool rather than
-// adding to it. The rows were removed, not relocated, because `fold_family_head` and `Bool`
-// resolve from that same pool and the one claim using them still passes.
+// This module is the merge of the one-claim unit entry that already lived here
+// and the end-to-end entry that lived under src/v2/test/claim/long/ -- one
+// subject, one witness module (DESIGN.md §3). The long entry resolved every
+// name it used from the ambient witness pool and carried no imports; this file
+// carried two. Measured 2026-08-21: with those two import rows present, every
+// end-to-end claim fails with `no such function: tokenize` -- an explicit
+// import block replaces the ambient pool rather than adding to it. The rows
+// were removed, not relocated, because `fold_family_head` and `Bool` resolve
+// from that same pool and the one claim that used them still passes.
 test fn fold_family_head_recognizes_fold_variants() -> Bool {
   fold_family_head(sym: ^fold)
     && fold_family_head(sym: ^fold_list)
@@ -18,19 +20,7 @@ test fn fold_family_head_recognizes_fold_variants() -> Bool {
     && !fold_family_head(sym: ^g)
 }
 
-// Grounds the un-forked fold->Loop desugaring (v2.compiler.fold_lowering) by execution on REAL
-// source, end-to-end through the census ingest (tokenize -> parse_module). A surface fold parses as
-// an ordinary call; after the StampLexeme grammar fix its callee carries its NAME (^fold) as an
-// atom identity and the collection likewise (^xs) — the survival sub-facts are the RED control that
-// a grammar regression (head stamped as the token class) breaks. The located fold-call subtree (the
-// first primary_expr capture — the outermost fn-body expression) desugars to the canonical seam
-// Loop, and the kept loop_multiplicity derives PROVEN termination from the fold-iteration measure —
-// the same real derivation the foundation's loop witnesses use, now reached from a real parsed fold
-// call rather than a hand-built loop. Two fail-closed red controls: a non-fold call (head ^g)
-// refuses (never desugars a foreign call), and a fold call carrying no fn-literal iteration body
-// refuses (never fabricates a loop). This is the desugaring the whole-tree body producer will run
-// on every located fold call once corpus walking is affordable; the shape it emits is exactly what
-// the accumulator-copy rule (M3) will key on.
+data fold_lowering_witness_note: String = "Grounds the un-forked fold->Loop desugaring (v2.compiler.fold_lowering) by execution on REAL source, end-to-end through the census ingest (tokenize -> parse_module). A surface fold parses as an ordinary call; after the StampLexeme grammar fix its callee carries its NAME (^fold) as an atom identity and the collection likewise (^xs) — the survival sub-facts are the RED control that a grammar regression (head stamped as the token class) breaks. The located fold-call subtree (the first primary_expr capture — the outermost fn-body expression) desugars to the canonical seam Loop, and the kept loop_multiplicity derives PROVEN termination from the fold-iteration measure — the same real derivation the foundation's loop witnesses use, now reached from a real parsed fold call rather than a hand-built loop. Two fail-closed red controls: a non-fold call (head ^g) refuses (never desugars a foreign call), and a fold call carrying no fn-literal iteration body refuses (never fabricates a loop). This is the desugaring the whole-tree body producer will run on every located fold call once corpus walking is affordable; the shape it emits is exactly what the accumulator-copy rule (M3) will key on."
 
 data fold_snippet: String = "module fold_probe\n\nfn f(xs: List<Int>) -> Int {\n  fold(xs, init: 0, f: fn(acc, x) { acc })\n}\n"
 
@@ -46,20 +36,24 @@ data paramless_step_fold_snippet: String = "module paramless_step_probe\n\nfn f(
 
 // THE SUBJECT CONSUMES A SURFACE PARSE SUBTREE, SO THE INGEST STOPS AT PARSE.
 //
-// This function called normalize between parse_module and the locate, and its dependent witnesses
-// had never executed. Measured 2026-08-21 on their first run: with normalize in the chain the
-// well-formed fold reaches fold_call_lowering as FoldCallNotAFold and ^fold is not among the tree's
-// atom identities at all; with the chain stopped at parse it reaches FoldCallLowered. Same snippet,
+// This function called normalize between parse_module and the locate, and the
+// witnesses that depend on it had never executed, so nothing said what that
+// cost. Measured 2026-08-21 on the first run these claims ever had: with
+// normalize in the chain the well-formed fold reaches fold_call_lowering as
+// FoldCallNotAFold and ^fold is not among the tree's atom identities at all;
+// with the chain stopped at parse it reaches FoldCallLowered. Same snippet,
 // same subject, one stage apart.
 //
-// Not a defect in normalize and not a weakening here. The authority's contract
-// (v2.compiler.fold_lowering fold_lowering_note) is that a surface fold "parses as an ordinary
-// call (a ^dag_surface_primary_expr whose head ident ... carries its NAME as an atom identity)"
-// and that its input is "the primary_expr captured child, a sequence(head_ident, call_suffix)".
-// fold_call_head_symbol reads that surface shape by name (^grammar_sequence_left_node_projection).
-// Normalize's output is the core graph, past the surface productions this stage keys on -- so
-// feeding it here handed the desugaring an input from the wrong side of the seam, and the refusal
-// it produced was correct.
+// That is not a defect in normalize and it is not a weakening here. The
+// authority's own contract (v2.compiler.fold_lowering fold_lowering_note) is
+// that a surface fold "parses as an ordinary call (a ^dag_surface_primary_expr
+// whose head ident ... carries its NAME as an atom identity)" and that its
+// input is "the primary_expr captured child, a sequence(head_ident,
+// call_suffix)". fold_call_head_symbol reads that surface shape by name
+// (^grammar_sequence_left_node_projection). Normalize's output is the core
+// graph, past the surface productions this stage keys on -- so feeding it here
+// was handing the desugaring an input from the wrong side of the seam, and the
+// refusal it produced was correct.
 fn ingest(source_text: String, file: Symbol) -> Optional<Node> {
   let lm = dag_language_model()
   match tokenize(text: source_text, file: file, rules: lm.lex) {
@@ -162,21 +156,24 @@ fn lowered_fixture_loop() -> Optional<Node> {
   }
 }
 
-// WHY THESE TWO CLAIMS PROJECT `.children` INSIDE A NODE-TYPED HELPER RATHER THAN OFF THE MATCH
-// BINDER DIRECTLY, the shape they were authored in.
+// WHY THESE TWO CLAIMS PROJECT `.children` INSIDE A NODE-TYPED HELPER RATHER
+// THAN OFF THE MATCH BINDER DIRECTLY, which is the shape they were authored in.
 //
-// Measured 2026-08-21, on the first execution these claims ever had: a binder introduced by
-// destructuring a GENERIC coproduct (`Present { value: l }` of `Optional<Node>`, `Accepted { value:
-// l }` of `Outcome<Node>`) is usable in ARGUMENT position -- four sibling claims here pass doing
-// exactly that -- but projecting a field off it (`l.children`) fails with `error type cascade` at
-// the projection's own offset. The element type is not resolved when the field is read.
+// Measured 2026-08-21, on the first execution these claims have ever had: a
+// binder introduced by destructuring a GENERIC coproduct (`Present { value: l }`
+// of `Optional<Node>`, `Accepted { value: l }` of `Outcome<Node>`) is usable in
+// ARGUMENT position -- four sibling claims in this file pass doing exactly that
+// -- but projecting a field off it (`l.children`) fails with `error type
+// cascade` at the projection's own offset. The element type is not resolved at
+// the point the field is read.
 //
-// That is a v2 inference deficit, not a fact about these claims, and it is REPORTED rather than
-// absorbed: named here, at the site whose shape it dictates, and raised to the
-// emission-convergence lane. The helpers below are not a dodge around a refusal -- they perform
-// the same projection where the type IS concrete, a `Node` parameter, and leave both claims
-// asserting exactly what they asserted before. When the deficit closes, the two helpers dissolve
-// back into the match arms and nothing else changes.
+// That is a v2 inference deficit, not a fact about these claims, and it is
+// REPORTED rather than absorbed: it is named here, at the site whose shape it
+// dictates, and raised to the emission-convergence lane. The helpers below are
+// not a dodge around a refusal -- they are the same projection performed where
+// the type IS concrete, which is a `Node` parameter, and they leave both claims
+// asserting exactly what they asserted before. When the deficit closes, these
+// two helpers dissolve back into the match arms and nothing else changes.
 fn carrier_binder_of(n: Node) -> NamedEdgeTargetLookup {
   loop_carrier_binder_target(children: n.children)
 }
@@ -236,18 +233,22 @@ test fn bodyless_fold_call_refuses_no_loop_fabricated() -> Bool {
   }
 }
 
+
 // THE CONFLATED ARM, SPLIT -- and what each half of this block is pinning.
 //
-// bodyless_fold_call_refuses_no_loop_fabricated above is UNCHANGED and still green:
-// fold_call_to_loop is the two-state projection and every non-lowered arm is still a refusal
-// there, so the no-fabrication property this file has always asserted is asserted in the same
-// words against the same function. The split adds the DISPOSITION NAME, a question the two-state
-// projection cannot be asked, and the claims below ask it of fold_call_lowering directly.
+// bodyless_fold_call_refuses_no_loop_fabricated above is UNCHANGED and still
+// green: fold_call_to_loop is the two-state projection and every non-lowered
+// arm is still a refusal there, so the no-fabrication property this file has
+// always asserted is asserted in exactly the same words against exactly the
+// same function. What the split adds is the DISPOSITION NAME, which is a
+// question the two-state projection cannot be asked, and the claims below ask
+// it of fold_call_lowering directly.
 //
-// Three subjects, deliberately: two the stage CANNOT judge malformed because judging them needs
-// the callee declaration, and one it CAN and therefore must still refuse. Without the third, the
-// split would have deleted an arm rather than separated two states, and this file would go green
-// for a stage that had stopped refusing anything.
+// Three subjects, deliberately: two that the stage CANNOT judge malformed
+// because judging them needs the callee declaration, and one that it CAN and
+// therefore must still refuse. Without the third, the split would have deleted
+// an arm rather than separated two states, and this file would go green for a
+// stage that had stopped refusing anything.
 fn lowering_of(source_text: String, file: Symbol) -> Optional<FoldCallLowering> {
   match ingest_and_locate(source_text: source_text, file: file) {
     Absent => Absent
@@ -318,35 +319,40 @@ test fn paramless_step_fold_is_step_shape_invalid() -> Bool {
 // (a) THE PROJECTION'S LAST UNCOVERED ARM, CROSSED ONCE.
 //
 // WHAT WAS HERE, AND WHY ONE CLAIM REPLACES IT RATHER THAN FOUR. A single
-// `split_dispositions_fabricate_no_loop` re-ingested all four snippets to ask whether
-// `fold_call_to_loop` rejects them -- four crossings of the ingest and lowering apparatus, and the
-// corpus's second most expensive witness at cpu_ms=4058 against a 1552ms disclosure line, from the
-// required floor's own `[over-cost]` line on run 32915551049.
+// `split_dispositions_fabricate_no_loop` re-ingested all four snippets to ask
+// whether `fold_call_to_loop` rejects them -- four crossings of the ingest and
+// lowering apparatus, and the corpus's second most expensive witness at
+// cpu_ms=4058 against a 1552ms disclosure line, measured from the required
+// floor's own `[over-cost]` line on run 32915551049.
 //
-// SPLITTING IT INTO FOUR WITNESSES WOULD HAVE DIVIDED THAT COST RATHER THAN REMOVING IT, and
-// bought little: `fold_call_to_loop` is an exhaustive projection over `FoldCallLowering` with NO
-// fixture-dependent behaviour once the variant is selected, and three of the four snippets select
-// the SAME variant. Three witnesses re-proving one arm is the redundancy DESIGN §2 prices.
+// SPLITTING IT INTO FOUR WITNESSES WOULD HAVE DIVIDED THAT COST RATHER THAN
+// REMOVING IT, and bought little: `fold_call_to_loop` is an exhaustive
+// projection over `FoldCallLowering` with NO fixture-dependent behaviour once
+// the variant is selected, and three of the four snippets select the SAME
+// variant. Three witnesses re-proving one arm is the redundancy DESIGN §2
+// prices, not a subject each.
 //
-// WHAT ACTUALLY NEEDED COVERING is the one projection arm no other claim reaches. Verified by
-// reading every claim in this file rather than trusting the argument for the deletion -- a
-// conjunction cannot object to its own removal, and the case for removing this one rested on
-// claims asserted to already exist. Three did. One did not:
+// WHAT ACTUALLY NEEDED COVERING is the one projection arm no other claim
+// reaches. Verified by reading every claim in this file rather than by trusting
+// the argument for the deletion -- a conjunction cannot object to its own
+// removal, and the case for removing this one rested entirely on claims
+// asserted to already exist. Three did. One did not:
 //
 //     FoldCallLowered            -> Accepted   fold_call_lowers_to_terminating_loop
 //     FoldCallNotAFold           -> Rejected   non_fold_call_refuses
 //     FoldCallStepFormUnresolved -> Rejected   bodyless_fold_call_refuses_no_loop_fabricated
 //     FoldCallStepShapeInvalid   -> Rejected   NOTHING -- only the deleted conjunction
 //
-// So the conjunction WAS carrying one distinction alone; deleting it without this replacement
-// would have lost an arm while looking like it removed a redundancy. This is that arm, crossed
-// once.
+// So the conjunction WAS carrying one distinction alone, and deleting it
+// without this replacement would have lost an arm while looking like it
+// removed a redundancy. This is that arm, crossed once.
 //
-// SELECTION COVERAGE IS UNAFFECTED AND WAS CHECKED SEPARATELY, because "the disposition claims
-// already cover selection" needs executing rather than reading. `is_step_form_unresolved` and
-// `is_step_shape_invalid` are TOTAL matches over all four variants -- true for the named one,
-// false for the other three -- so each of the four snippets keeps a claim that goes red if it
-// starts selecting a different variant.
+// SELECTION COVERAGE IS UNAFFECTED AND WAS CHECKED SEPARATELY, because "the
+// disposition claims already cover selection" is exactly the kind of assertion
+// that needs executing rather than reading. `is_step_form_unresolved` and
+// `is_step_shape_invalid` are TOTAL matches over all four variants -- true for
+// the named one, false for the other three -- so each of the four snippets
+// keeps a claim that goes red if it starts selecting a different variant.
 test fn paramless_step_fold_refuses_no_loop_fabricated() -> Bool {
   fabricates_no_loop(source_text: paramless_step_fold_snippet, file: ^paramless_step_probe_file)
 }

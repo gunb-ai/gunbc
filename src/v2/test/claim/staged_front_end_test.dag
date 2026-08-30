@@ -22,12 +22,7 @@ import v2.std.text { String }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-// THE DISCRIMINATING PAIR IS THE POINT OF THE DECOMPOSITION. Before it, the front end answered one
-// Outcome<Node> for four stages, so a candidate that died at parse and a candidate that died at
-// resolve were the same observation. These two candidates must land on DIFFERENT stages; if they
-// ever land on the same one, the decomposition carries nothing and the harness's per-stage evidence
-// is decorative. The tokenize candidate is the third point on the same axis, and the accepted
-// candidate is the positive control that keeps the whole set from passing vacuously.
+data staged_front_end_test_note: String = "THE DISCRIMINATING PAIR IS THE POINT OF THE DECOMPOSITION. Before it, the front end answered one Outcome<Node> for four stages, so a candidate that died at parse and a candidate that died at resolve were the same observation. These two candidates must land on DIFFERENT stages; if they ever land on the same one, the decomposition carries nothing and the harness's per-stage evidence is decorative. The tokenize candidate is the third point on the same axis, and the accepted candidate is the positive control that keeps the whole set from passing vacuously."
 
 data candidate_accepted_source: String = "module m\n\nfn add(x: Int, y: Int) -> Int { x + y }\n"
 data candidate_dies_at_parse_source: String = "module m\n\nfn add(x: Int, y: Int) -> Int { x + y\n"
@@ -115,14 +110,7 @@ test fn staged_front_end_bounded_run_refuses_the_whole_front_end_question() -> B
   }
 }
 
-// The floor property, pinned in the direction it should hold. An undeclared name in VALUE position
-// must refuse at resolve, and it must refuse with the reason that names what went wrong rather than
-// with any refusal at all — a stage that refuses for an unrelated cause would satisfy a looser
-// assertion while the diagnostic vocabulary rotted. Only this direction is pinned: the sibling
-// measurement, that an undeclared CALLEE passes resolve silently on the v2 path, is recorded in
-// v2.test.claim.dag_acceptance frontier_arm_note as a dated measurement and is deliberately NOT
-// asserted here, because a test that goes red when the compiler starts refusing the callee would be
-// a defender for the gap rather than a check on it.
+data unbound_symbol_reason_note: String = "The floor property, pinned in the direction it should hold. An undeclared name in VALUE position must refuse at resolve, and it must refuse with the reason that names what went wrong rather than with any refusal at all — a stage that refuses for an unrelated cause would satisfy a looser assertion while the diagnostic vocabulary rotted. Only this direction is pinned: the sibling measurement, that an undeclared CALLEE passes resolve silently on the v2 path, is recorded in v2.test.claim.dag_acceptance frontier_arm_note as a dated measurement and is deliberately NOT asserted here, because a test that goes red when the compiler starts refusing the callee would be a defender for the gap rather than a check on it."
 
 fn first_refusal_reason(source: String) -> Symbol {
   fold(run_front_end(source: source, file: ^candidate_module).steps, init: ^no_refusal, f: fn(acc, step) {
