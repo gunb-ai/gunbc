@@ -462,6 +462,23 @@ fn run() -> Result<ExitCode, ExitCode> {
                         phase_failures
                             .push(format!("declarations ({} finding(s))", findings.len()));
                     }
+                    // THE PHASE ROSTER JOIN RIDES THE SAME INGESTION. The substrate authority
+                    // for phase identity is `gunbc.required_ci_phase_roster` `RequiredCiPhase`;
+                    // this enum is its declared parallel realization, and the two are joined by
+                    // variant-set equality in both directions on every required run — the same
+                    // shape as the wave wall's vocabulary join, for the same DESIGN §3 reason.
+                    // A phase declared and not realized, or realized and not declared, stops
+                    // the line here rather than diverging silently.
+                    let roster_findings = phase_roster_findings(&sweep.index);
+                    for finding in &roster_findings {
+                        eprintln!("required-ci: phase-roster FAIL {finding}");
+                    }
+                    if !roster_findings.is_empty() {
+                        phase_failures.push(format!(
+                            "phase-roster ({} finding(s))",
+                            roster_findings.len()
+                        ));
+                    }
                 }
                 Err(errors) => {
                     for e in &errors {
@@ -1070,6 +1087,69 @@ const REQUIRED_CI_PHASES: [RequiredCiPhase; 4] = [
     RequiredCiPhase::Floor,
 ];
 
+/// The `.dag` coproduct this enum realizes, and the declaration whose variants it must equal.
+/// `gunbc.required_ci_phase_roster` is the substrate authority for phase identity and lane
+/// ownership; this enum, its `lane` match and `REQUIRED_CI_PHASES` are its declared parallel
+/// realization, scheduled to delete atomically when the workflow emission consumes the roster
+/// whole (`gunbc.required_ci_host_verdict_census` `required_ci_phase_roster_next_rung`).
+const PHASE_ROSTER_AUTHORITY_MODULE: &str = "gunbc.required_ci_phase_roster";
+const PHASE_ROSTER_AUTHORITY_DECL: &str = "RequiredCiPhase";
+
+/// Every phase this binary realizes, in the authority's own variant spelling.
+const PHASE_ROSTER_VARIANT_LABELS: [&str; 4] = [
+    "ParsePhase",
+    "NamespaceWaveAdmissionPhase",
+    "RegenPhase",
+    "FloorPhase",
+];
+
+/// Refuse if the host phase enum and the `.dag` phase roster disagree — the same both-directions
+/// variant-set join `namespace_wave_admission::vocabulary_findings` executes against its own
+/// authority, for the same reason: a second representation diverges on the first amendment, and
+/// nothing else joins these two. An absent authority module refuses too — that is the state in
+/// which nothing is checking the roster, not permission to proceed.
+///
+/// WHAT THIS JOIN DELIBERATELY DOES NOT COVER: lane ownership. The host `lane` match is not
+/// readable from the declaration index, and a lane divergence cannot un-enrol a phase — both
+/// lanes execute in every required run — so the residue is bounded to which job carries a phase,
+/// and its terminal is the atomic deletion the roster's census row names.
+fn phase_roster_findings(
+    index: &v1_compiler::cli_run::declaration_index::DeclarationIndex,
+) -> Vec<String> {
+    use std::collections::BTreeSet;
+    let Some(record) =
+        v1_compiler::cli_run::declaration_index::index_get(index, PHASE_ROSTER_AUTHORITY_MODULE)
+    else {
+        return vec![format!(
+            "the phase-roster authority `{PHASE_ROSTER_AUTHORITY_MODULE}` is absent from the \
+             index, so nothing joins this host phase enum to the roster it realizes"
+        )];
+    };
+    let Some(authored) = record.decl_fields.get(PHASE_ROSTER_AUTHORITY_DECL) else {
+        return vec![format!(
+            "`{PHASE_ROSTER_AUTHORITY_MODULE}` declares no `{PHASE_ROSTER_AUTHORITY_DECL}`"
+        )];
+    };
+    let here: BTreeSet<String> = PHASE_ROSTER_VARIANT_LABELS
+        .iter()
+        .map(|l| l.to_string())
+        .collect();
+    let mut findings = Vec::new();
+    for missing in authored.difference(&here) {
+        findings.push(format!(
+            "`{PHASE_ROSTER_AUTHORITY_DECL}` declares `{missing}` and this host enum does not \
+             realize it — a phase enrolled with no executor"
+        ));
+    }
+    for extra in here.difference(authored) {
+        findings.push(format!(
+            "this host enum realizes `{extra}` and `{PHASE_ROSTER_AUTHORITY_DECL}` does not \
+             declare it — a phase running with no authority"
+        ));
+    }
+    findings
+}
+
 /// EVERY PHASE IS ACCOUNTED FOR IN EVERY RUN, whether or not this lane owns it.
 ///
 /// A lane that simply omitted the other lane's phases would produce a ledger in which "this
@@ -1171,15 +1251,21 @@ fn report_required_floor_outcome(outcome: &v1_compiler::cli_run::RequiredFloorOu
     // entry stops the line in `run_required_floor` before this point — so the guarantee is stated
     // rather than left for a reader to discover it was never claimed.
     eprintln!(
-        "required-floor: offered={} routed={} declined_long={} declined_fixture={} \
-         declined_outside_required_gate={} — every discovered site is exactly one of these, \
-         and no `*_test.dag` entry offered zero sites (v2.workflow.floor_discovery_producer \
-         refuses a barren or misplaced sidecar upstream of this line)",
+        "required-floor: declared={} offered={} routed={} declined_long={} declined_fixture={} \
+         declined_outside_required_gate={} declined_outside_gate_closure={} \
+         declined_discovery_excluded={} — every DECLARED witness identity in the tree is exactly \
+         one of these, joined at identity grain (FloorDispositionJoinInexact refuses otherwise), \
+         and no `*_test.dag` entry declared zero sites (v2.workflow.floor_discovery_producer \
+         refuses a barren or misplaced sidecar upstream of this line, over the full module \
+         index)",
+        outcome.declared_identities,
         outcome.sites_offered,
         outcome.claims_planned,
         outcome.declined_long_module,
         outcome.declined_fixture_member,
-        outcome.declined_outside_required_gate
+        outcome.declined_outside_required_gate,
+        outcome.declined_outside_gate_closure,
+        outcome.declined_discovery_excluded
     );
     // WHY route_gap IS NOW SPELLED route_gap_unenrolled, AND WHY route_gap_held JOINS IT HERE.
     // The old field printed `outcome.route_gap.len()` under the bare name `route_gap` — the
@@ -1407,6 +1493,13 @@ fn required_floor_outcome_is_clean(outcome: &v1_compiler::cli_run::RequiredFloor
         // roster that has stopped describing the tree, which voids the contract's monotone
         // claim, so it blocks exactly as `stale_quarantine` and `stale_route_gap` do.
         && outcome.stale_cost_debt.is_empty()
+        // A CHANGED witness identity that did not execute to a passing verdict — declined,
+        // absent from the disposition receipt, or without a terminal Passed verdict — reds the
+        // required context. The classification authority is
+        // `v2.workflow.floor_changed_witness.changed_witness_standing_blocks`; the population
+        // is only the identities this change's diff touched, never the standing declined
+        // corpus, so this conjunct cannot red a PR for debt it did not author.
+        && outcome.changed_witness_blocking.is_empty()
 }
 
 fn main() -> ExitCode {

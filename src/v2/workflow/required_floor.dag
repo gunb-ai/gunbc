@@ -23,8 +23,10 @@ import std.types { NonEmptyStr }
 
 // IDENTITY-GRAINED FLOOR DISPOSITION RECEIPT (operator ruling 2026-08-19).
 //
-// Every discovered site gets exactly one `RequiredFloorDisposition`, keyed by its qualified
-// `module.function` identity. This is the single authority for that fact: the host loop in
+// Every DECLARED witness identity in the tree gets exactly one `RequiredFloorDisposition`, keyed
+// by its qualified `module.function` identity, and the host joins the two populations at that
+// grain — `FloorDispositionJoinInexact` refuses a missing, duplicated or foreign row rather than
+// reporting counts that add up (DESIGN §5: completeness is an identity join). This is the single authority for that fact: the host loop in
 // `v1_compiler.cli_run` `run_required_floor` computes admission by testing a claim's authored
 // module name against `long_home_prefixes()` and `fixture_home_prefixes()` below, then REALIZES
 // the arm this type already names — it does not invent a second admission concept. A `Declined*`
@@ -56,23 +58,44 @@ import std.types { NonEmptyStr }
 // not green, and it is not a failure either — the two have different remedies and are
 // reported apart. THAT MECHANISM IS ALREADY LIVE IN THIS CHANGE, which is what makes the
 // deletion safe to make next: the route-gap arm, its two-way roster join, and the
-// `SitePartitionInexact` wall all execute here, over the 101 identities that reached it
+// `FloorDispositionJoinInexact` wall all execute here, over the 101 identities that reached it
 // without this arm being touched at all.
 //
 // DELETION RECEIPT: run 32345970386 measured 626/783 passing under execution, and the staged
-// blockers were closed before this root deletion. The `witness_file_from_source` scan remains:
-// live-tree disposition still feeds affected-set eligibility even though it no longer gates
+// blockers were closed before this root deletion. The live-tree disposition remains:
+// it still feeds affected-set eligibility even though it no longer gates
 // floor admission.
 //
 // A NOTE ON WHAT DID *NOT* MOVE: `live_tree_disposition` itself is not deleted and is not
 // deprecated. It remains the declaration `reads_live_tree_effective` reads for AFFECTED-SET
 // SELECTION ELIGIBILITY, which is a different question from "can this execute" and keeps its
 // own single authority. Only the floor's forked, syntactic second copy was deleted.
+// TWO ARMS SPEAK FOR IDENTITIES THE PROJECTION NEVER USED TO SEE AT ALL, and they are declines
+// by the same authority rather than a second status vocabulary beside it.
+//
+// A disposition row used to exist only for a site the PREPARED SUBJECT offered. Preparation
+// itself removes two populations before that point — a module whose path or name carries an
+// exclusion substring, and (since the 2026-08-29 gate cut) every module the required gate's
+// import closure does not reach — and a witness declared in one of those was neither planned nor
+// declined. It left the floor's universe one level above the partition, which is the same
+// silence `docs/plans/witness-execution-closure.md` records for the deleted live-tree decline:
+// a population discovered by nothing, so counted by nothing.
+//
+// `DeclinedOutsideGateClosure` IS NOT `DeclinedOutsideRequiredGate`, and the distinction is
+// load-bearing rather than descriptive: the second speaks for a module that WAS prepared and
+// whose authored name missed every gate prefix, and the first for a module that was never
+// prepared, resolved or offered. They are removed by different mechanisms, they are restored by
+// different triggers, and after the gate cut they differ in population by two orders of
+// magnitude — the closure arm is the population the §4b rung drop "Required gate reduced to the
+// compiler floor" names. One label over both would report that drop's whole subject as a
+// rounding error on a nearby count.
 type RequiredFloorDisposition =
     Planned
   | DeclinedLongModule { matched_prefix: String }
   | DeclinedFixtureMember { matched_prefix: String }
   | DeclinedOutsideRequiredGate
+  | DeclinedOutsideGateClosure
+  | DeclinedDiscoveryExcluded { matched_substring: String }
   | DeclinedCostDebt
 
 // ROSTER GROWTH IS BUDGET-BOUND AT THIS ADMISSION AUTHORITY.
@@ -372,8 +395,43 @@ fn required_gate_prefixes() -> List<String> {
     "test.claim.bare_name_",
     "test.claim.legacy_binding_",
     "test.claim.discovery_census_witness_test",
+    "test.claim.host_budget_source_witness",
+    "test.claim.typed_module_cache_capacity_witness",
+    "test.claim.whole_corpus_compile_admission_witness",
   ]
 }
+
+// THE LAST THREE ROWS, ADDED 2026-08-30, AND WHY THEY BELONG UNDER THE RULING ABOVE RATHER
+// THAN BESIDE IT.
+//
+// They are the host memory budget's three witness modules, and each one is a COMPILER FLOOR
+// witness by the ruling's own test -- none is a product, fleet, deploy, secret, dashboard or
+// roadmap witness. What they judge is whether a compile may BEGIN and what bounds the memory
+// used to RESOLVE the corpus: gunbc.whole_corpus_compile_admission decides admission before
+// anything is indexed, gunbc.typed_module_cache_capacity derives the eviction bound that runs
+// WHILE modules are being resolved, and gunbc.host_budget_source owns the source those two
+// admit against. A compiler that cannot bound its own resolution is below the floor, not above
+// it -- and the failure this closed was a rc=137 SIGKILL of the corpus regen with no
+// diagnostic at all.
+//
+// WHY THEY ARE EXACT MODULE NAMES AND NOT `test.claim.host_`. That prefix would sweep in 28
+// modules under dag/test/claim/host/ -- converge, deploy-apply, disk-reclaim, standup -- which
+// perform real host effects and are precisely the population the 2026-08-29 ruling moved OFF
+// the gate. A prefix that admits the subject by admitting its neighbours is not the same
+// decision, and this roster's cost is a wall-clock one.
+//
+// WHAT THEY COST, MEASURED RATHER THAN ESTIMATED. All 30 functions across the three modules
+// were executed on one runner via claim_batch: 17/17, 8/8 and 5/5 PASS, every one between 0
+// and 15 ms wall, well inside the per-claim cost line. Adding them is not free, and it is the
+// smallest non-zero price at which this subject's evidence executes at all.
+//
+// WHY NOT LEAVE THEM OUT. Because they were already out, and that is the defect. All three
+// modules sat OUTSIDE this roster while carrying the walls for a live fail-open, so their
+// witnesses were `DeclinedOutsideGateClosure` on every run -- specification without execution,
+// the trap DESIGN section 5 names, in the evidence for a class that had already killed a
+// production run twice. v2.workflow.floor_changed_witness is what surfaced it: it projected
+// this change's own 14 changed identities as `declined ... not_executed` and refused the
+// floor. The roster row is the answer that gate is asking for.
 
 // THE ADMISSION ORDER, HELD HERE RATHER THAN IN WHOEVER WALKS THE CORPUS.
 //

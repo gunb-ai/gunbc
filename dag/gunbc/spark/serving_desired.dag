@@ -3,7 +3,7 @@ module gunbc.spark.serving_desired
 import std.types { String, Bool, List, NonEmptyStr }
 import std.measure { TokenCount, token_count }
 import product.placement_supply { HostIdentity }
-import gunbc.fleet_intent_network { operator_host_srv5, operator_host_srv6 }
+import gunbc.spark.cell_role { spark_serving_cell_hosts }
 import gunbc.ollama_runtime_bundle { ollama_runtime_materialization_identity_for_required_release }
 import gunbc.model_artifact { ModelArtifact, model_artifact_from_resolution }
 import gunbc.ollama_model_resolution { gpt_oss_20b_resolution }
@@ -50,10 +50,19 @@ import gunbc.spark.serving_realization {
   ServingEndpointIntent,
 }
 
-data spark_serving_desired_hosts: List<HostIdentity> = [
-  operator_host_srv5,
-  operator_host_srv6,
-]
+// DESIRED SERVING HOSTS ARE A PROJECTION OF THE ROLE ASSIGNMENT, NOT A LIST AUTHORED HERE.
+//
+// This row named both Sparks. Nothing was wrong with it while both machines served; it became wrong
+// the moment one of them was wanted as a trainer, and the shape is why: a hand-authored host list is
+// a second answer to "what is this machine for", so retiring srv6 from serving meant editing a
+// literal in this file while the intent lived nowhere. Deleting the name would have been a change
+// with no reviewable subject.
+//
+// gunbc.spark.cell_role owns the fact. Serving desired state asks it which cells serve, so srv6
+// leaves this roster because its ROLE changed -- one edit, in the authority, that the training-side
+// roster reads from too. The two rosters cannot disagree about a host because they are one fold of
+// one list read in two directions.
+data spark_serving_desired_hosts: List<HostIdentity> = spark_serving_cell_hosts()
 
 data spark_serving_desired_note: String = "OPERATOR DECLARATION (2026-08-12): LAN boundary, ollama runtime, gpt-oss:20b model, executor-owned serving process under gunbc-automation. Runtime closure identity derives from extdeps.ollama.binary_release cited digest — materialization binds through gunbc.package_delivery (#8225), not a parallel install path. Model identity is the manifest digest from /api/tags, not the serving label."
 

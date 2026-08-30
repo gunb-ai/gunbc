@@ -1,0 +1,692 @@
+module gunbc.semantic_conformance
+
+import std.types { String, NonEmptyStr, Bool, Int, List, CommitSha, list_length }
+import std.decl_ref { DeclarationRef, declaration_ref_eq }
+import extdeps.external_authority { ExternalAuthority }
+import std.primitive_projection { PrimitiveIdentity }
+import v2.workflow.floor_discovery { FloorDiscoveryTreeId }
+
+// CONFORMANCE, NOT EQUIVALENCE, AND THE DIFFERENCE IS THE WHOLE MODULE.
+//
+// Equivalence asks whether two implementations agree. Conformance asks whether ONE implementation
+// satisfies a NORMATIVE STATEMENT that exists independently of it. The two questions have the same
+// shape and opposite epistemics: agreement between v1 and v2 is satisfiable by two implementations
+// being wrong in the same way, and it is satisfiable BY CONSTRUCTION when the expected value was
+// copied out of one of them. A value copied from v1 is not an expected value. Two implementations
+// agreeing is not a definition.
+//
+// DESIGN section 3's replacement rule states the same thing from the migration side: Y never falls
+// back to X, resolves through it, or derives its answer from it, while X may serve from history as
+// an OFFLINE DIFFERENTIAL ORACLE. gunbc.interpreter_replacement_cut interpreter_cut_external_x
+// already fixes v1's permitted roles at exactly ExternalDifferentialOracle and
+// HistoricalMeasurementSource. This module is the carrier that makes that grant STRUCTURAL for the
+// semantic question rather than remembered: an observation of v1 has no constructor by which it can
+// inhabit the authority position, so "v1 is a probe, never the judge" is not a rule a reviewer
+// enforces, it is a sentence that cannot be written.
+
+// THE FIVE PRIMARY AUTHORITIES. Each one is a statement that can be true or false about an
+// implementation WITHOUT running that implementation, which is the property that makes it normative.
+// AuthoredExpectedOutcome is a human decision about what the program should do; AlgebraicLaw is a
+// property of a structure the value inhabits (DESIGN section 4: operations come from inhabitance);
+// MetamorphicRelation constrains how outputs must move when inputs move, and needs no reference
+// output at all; RoundTripLaw is the one-grammar-read-in-both-directions identity; and
+// ExternalTargetContract is the cited upstream specification, which is the deepest grounding
+// available under DESIGN section 1's reduce-intersubjectivity-to-physics aim.
+type PrimarySemanticAuthority
+  = AuthoredExpectedOutcome { statement: NonEmptyStr }
+  | AlgebraicLaw { law: NonEmptyStr, structure: DeclarationRef }
+  | MetamorphicRelation { relation: NonEmptyStr }
+  | RoundTripLaw { forward: DeclarationRef, backward: DeclarationRef }
+  | ExternalTargetContract { contract: NonEmptyStr, citation: ExternalAuthority }
+
+// THE THREE SUPPLEMENTARY OBSERVATIONS, IN THEIR OWN TYPE. This is the load-bearing construction of
+// the module and it is a separate TYPE rather than three more arms of the coproduct above, because
+// arms of one coproduct are interchangeable in every position that accepts the coproduct. A single
+// nine-arm SemanticAuthority would make "the expected value is whatever v1 printed" a well-typed
+// sentence, and the wall against it would then be a validator running somewhere else -- exactly the
+// check DESIGN section 5 says to prefer construction over, and one satisfiable by editing the
+// declaration while the realization still lies. With two disjoint types the invalid state has no
+// constructor: BehaviorSubject.authority admits no value of this type at all.
+//
+// THE CEILING OF THAT DISJOINTNESS CLAIM, STATED RATHER THAN CLAIMED GREEN: the wall is DESIGN
+// section 4b rung 4 (structurally impossible), and its discriminating RED is a source fixture the
+// compiler must REFUSE -- not a Bool a witness can return, since a total function answering true on
+// every arm of PrimarySemanticAuthority would be permanently green by construction, carrying no
+// information and worse than absent because it would be cited as coverage. So no such witness is
+// written in this lane. NEXT-RUNG TRIGGER, naming the capability rather than an artifact: a
+// compiler-refusal fixture harness sufficient to hand arbitrary .dag source containing
+// BehaviorSubject { authority: LegacyV1Observation { .. } } to the acceptance path and assert a
+// located typed refusal. When that capability lands, this annotation's claim gains its executing
+// fixture and that fixture enrolls as the permanent regression control.
+type SupplementaryObservation
+  = V2EvaluatorObservation { observed: NonEmptyStr }
+  | LegacyV1Observation { observed: NonEmptyStr }
+  | PreviouslyRecordedOutput { observed: NonEmptyStr, recorded_at_revision: CommitSha }
+
+// The expectation the authority yields. It is carried beside the authority rather than derived from
+// it inside this module, because deriving it would require executing the law, and a carrier that
+// executes its own normative statement has no independent referent left to compare an implementation
+// against. What this module owns is that the expectation is JUSTIFIED BY a named producer -- see
+// BehaviorSubject.authority_producer -- so the expectation is re-derivable rather than transcribed
+// (DESIGN section 6: name the instrument, never transcribe its output).
+type ExpectedOutcome
+  = ExpectsValue { digest: NonEmptyStr }
+  | ExpectsRefusal { diagnostic_identity: NonEmptyStr }
+  | ExpectsEffectOrder { ordered: List<EffectReceiptEntry> }
+
+type ObservedResult
+  = ProducedValue { digest: NonEmptyStr }
+  | RefusedWithDiagnostic { diagnostic_identity: NonEmptyStr }
+  | NotRun
+
+// v1's observation is typed as its own arm-carrying answer rather than as an ObservedResult field,
+// so that NOT CONSULTING v1 is a state with a name. An optional whose absence means "we did not ask"
+// and whose absence also means "it produced nothing" is the state-space conflation this repository
+// rosters; these are different facts and only one of them is a measurement.
+type LegacyObservation
+  = LegacyRun { result: ObservedResult }
+  | LegacyNotConsulted
+
+// THE OPERATION IDENTITY IS XL-1's, NOT A LOCAL COINAGE (boundary ruling, XL-N manager
+// 2026-08-29): what an effect operation IS belongs to std.primitive_projection, the identity
+// vocabulary the effect-demand census keys on. This lane owns only the ORDER a receipt must
+// satisfy, so the entry adds exactly one fact -- the ordinal -- to an identity it imports. A
+// DeclarationRef-typed operation field here would have been a second naming scheme for a fact
+// the primitive-projection authority already owns.
+type EffectReceiptEntry {
+  operation: PrimitiveIdentity
+  ordinal: Int
+}
+
+type CoverageArea
+  = CompilerClosureMechanism
+  | RequiredV2TestClaim
+  | PrimitiveOrAlgebraLaw
+  | DiagnosticRefusalBehavior
+  | SourceRootAndNameResolution
+  | HostEffectAdmissionAndReceiptOrdering
+  | Xl2NativeInterface
+
+// SUBJECT IDENTITY IS DERIVED, NOT MINTED (boundary ruling, XL-N manager 2026-08-29). The
+// conformance universe is keyed on the RETAINED portion of the interpreter replacement boundary:
+// XL-5 produces the exact retained-consumer population that discharges
+// gunbc.replacement_cut RegisteredCutRemeasureRequired for cut-v1-interpreter, and a behavior
+// subject here is one retained consumer crossed with one facet of its contract. The facet axis is
+// this lane's own: which ASPECT of the contract the authority speaks to. The two universes are
+// related and not equal -- one consumer yields many subjects, and no subject exists for a consumer
+// XL-5 retires -- which is why the consumer field is a DeclarationRef into THEIR population rather
+// than a name this module could invent. Until that population lands, only synthetic fixture refs
+// inhabit it.
+type ContractFacet
+  = ValueResultFacet
+  | RefusalBehaviorFacet
+  | EffectOrderingFacet
+  | ResolutionBehaviorFacet
+
+type BehaviorSubjectIdentity {
+  retained_consumer: DeclarationRef
+  facet: ContractFacet
+}
+
+fn behavior_subject_identity_eq(a: BehaviorSubjectIdentity, b: BehaviorSubjectIdentity) -> Bool {
+  declaration_ref_eq(a: a.retained_consumer, b: b.retained_consumer)
+    && contract_facet_eq(a: a.facet, b: b.facet)
+}
+
+fn contract_facet_eq(a: ContractFacet, b: ContractFacet) -> Bool {
+  match a {
+    ValueResultFacet =>
+      match b {
+        ValueResultFacet => true
+        RefusalBehaviorFacet => false
+        EffectOrderingFacet => false
+        ResolutionBehaviorFacet => false
+      }
+    RefusalBehaviorFacet =>
+      match b {
+        ValueResultFacet => false
+        RefusalBehaviorFacet => true
+        EffectOrderingFacet => false
+        ResolutionBehaviorFacet => false
+      }
+    EffectOrderingFacet =>
+      match b {
+        ValueResultFacet => false
+        RefusalBehaviorFacet => false
+        EffectOrderingFacet => true
+        ResolutionBehaviorFacet => false
+      }
+    ResolutionBehaviorFacet =>
+      match b {
+        ValueResultFacet => false
+        RefusalBehaviorFacet => false
+        EffectOrderingFacet => false
+        ResolutionBehaviorFacet => true
+      }
+  }
+}
+
+// A subject either HAS a primary authority or it is a discovered member of the coverage roster with
+// none. The second arm is why SemanticAuthorityMissing is a reachable disposition rather than a
+// decoration: BehaviorSubject cannot be constructed without an authority, so the missing case must
+// enter the judgment as its own binding, discovered from the roster rather than authored as a
+// half-filled subject.
+type BehaviorSubject {
+  subject_id: BehaviorSubjectIdentity
+  authority: PrimarySemanticAuthority
+  authority_producer: DeclarationRef
+  expected: ExpectedOutcome
+  supplementary: List<SupplementaryObservation>
+}
+
+type SubjectAuthorityBinding
+  = AuthorityBound { subject: BehaviorSubject }
+  | AuthorityMissing { subject_id: BehaviorSubjectIdentity, area: CoverageArea }
+
+type DifferentialRecord {
+  binding: SubjectAuthorityBinding
+  native_v2: ObservedResult
+  v2_evaluator: ObservedResult
+  legacy_v1: LegacyObservation
+  effect_receipt: List<EffectReceiptEntry>
+}
+
+// The nine total dispositions. Every arm names WHICH component is defective, because the remedies
+// are different and a disposition that collapses them is total at the level examined and blind one
+// level down. LegacyV1Defect is the arm that makes v1 a probe: v1 diverging from an authority the
+// v2 routes both satisfy is a fact about v1, and it does not block anything.
+type ConformanceDisposition
+  = Conforms
+  | NativeV2Defect { detail: NonEmptyStr }
+  | V2EvaluatorDefect { detail: NonEmptyStr }
+  | HostRealizationDefect { detail: NonEmptyStr }
+  | SemanticAuthorityMissing { subject_id: BehaviorSubjectIdentity }
+  | SemanticAuthorityConflict { subject_id: BehaviorSubjectIdentity, detail: NonEmptyStr }
+  | WitnessDefect { detail: NonEmptyStr }
+  | LegacyV1Defect { detail: NonEmptyStr }
+  | Unclassified { detail: NonEmptyStr }
+
+// Whether the v2 evaluator is still on the route the repository actually promotes. The brief this
+// carrier serves tolerates V2EvaluatorDefect only once the evaluator is OFF that route, and the
+// tolerance is therefore a fact about the route rather than about the defect -- so it is an input to
+// the judgment, never a property a row can assert about itself.
+type PromotedRoute
+  = EvaluatorOnPromotedRoute
+  | EvaluatorOffPromotedRoute
+
+// COMPLETENESS IS STRUCTURAL, NOT A COUNT. Both arms can carry zero members and they answer the exit
+// gate OPPOSITELY: an unmeasured area is a blocked gate, a measured-complete area with no members is
+// an area that genuinely has none. A bare List cannot make that distinction and a note beside it
+// cannot enforce it -- which is the whole reason an empty roster otherwise makes every guard over it
+// vacuous, passing at zero equals zero.
+type CoverageStanding
+  = CoveragePopulationUnmeasured { area: CoverageArea, reason: NonEmptyStr }
+  | CoveragePopulationMeasuredComplete {
+      area: CoverageArea,
+      members: List<DeclarationRef>,
+      measured_revision: CommitSha,
+      producer: DeclarationRef
+    }
+
+fn observed_result_eq(a: ObservedResult, b: ObservedResult) -> Bool {
+  match a {
+    ProducedValue { digest: da } =>
+      match b {
+        ProducedValue { digest: db } => da == db
+        RefusedWithDiagnostic { diagnostic_identity: _ } => false
+        NotRun => false
+      }
+    RefusedWithDiagnostic { diagnostic_identity: ia } =>
+      match b {
+        ProducedValue { digest: _ } => false
+        RefusedWithDiagnostic { diagnostic_identity: ib } => ia == ib
+        NotRun => false
+      }
+    NotRun =>
+      match b {
+        ProducedValue { digest: _ } => false
+        RefusedWithDiagnostic { diagnostic_identity: _ } => false
+        NotRun => true
+      }
+  }
+}
+
+fn observed_satisfies_expected(expected: ExpectedOutcome, observed: ObservedResult) -> Bool {
+  match expected {
+    ExpectsValue { digest: d } => observed_result_eq(a: observed, b: ProducedValue { digest: d })
+    ExpectsRefusal { diagnostic_identity: i } =>
+      observed_result_eq(a: observed, b: RefusedWithDiagnostic { diagnostic_identity: i })
+    ExpectsEffectOrder { ordered: _ } =>
+      match observed {
+        ProducedValue { digest: _ } => true
+        RefusedWithDiagnostic { diagnostic_identity: _ } => true
+        NotRun => false
+      }
+  }
+}
+
+fn observed_was_run(observed: ObservedResult) -> Bool {
+  match observed {
+    ProducedValue { digest: _ } => true
+    RefusedWithDiagnostic { diagnostic_identity: _ } => true
+    NotRun => false
+  }
+}
+
+// ORDER IS COMPARED AT IDENTITY GRAIN, INCLUDING THE POSITION, rather than by walking two lists in
+// parallel. A positional walk answers "the nth entries agree" and silently re-aligns when a single
+// entry is inserted or dropped, so a receipt missing one effect can still match on every remaining
+// pair. Carrying the ordinal on the entry makes position part of the identity being joined, which is
+// what makes a reordered receipt a HostRealizationDefect rather than a shorter list that happens to
+// agree.
+fn effect_entry_eq(a: EffectReceiptEntry, b: EffectReceiptEntry) -> Bool {
+  a.operation.slug == b.operation.slug && a.ordinal == b.ordinal
+}
+
+fn effect_receipt_contains_entry(
+  receipt: List<EffectReceiptEntry>,
+  entry: EffectReceiptEntry
+) -> Bool {
+  fold(receipt, init: false, f: fn(acc, r) { acc || effect_entry_eq(a: r, b: entry) })
+}
+
+fn effect_receipts_agree(
+  expected: List<EffectReceiptEntry>,
+  receipt: List<EffectReceiptEntry>
+) -> Bool {
+  list_length(items: expected) == list_length(items: receipt)
+    && fold(
+         expected,
+         init: true,
+         f: fn(acc, e) { acc && effect_receipt_contains_entry(receipt: receipt, entry: e) }
+       )
+}
+
+fn effect_receipt_matches_expected_order(
+  expected: ExpectedOutcome,
+  receipt: List<EffectReceiptEntry>
+) -> Bool {
+  match expected {
+    ExpectsEffectOrder { ordered: ordered } =>
+      effect_receipts_agree(expected: ordered, receipt: receipt)
+    ExpectsValue { digest: _ } => true
+    ExpectsRefusal { diagnostic_identity: _ } => true
+  }
+}
+
+// v1 is consulted here and JUDGED NOWHERE. Its result is compared against the same authority every
+// other route is compared against; it is never compared against the v2 routes, and no arm of
+// classify_differential_record reads it before the v2 routes have already decided. That ordering is
+// the executable form of "a probe, never the judge": deleting the legacy field cannot change any
+// disposition except LegacyV1Defect.
+fn legacy_diverges_from_authority(expected: ExpectedOutcome, legacy: LegacyObservation) -> Bool {
+  match legacy {
+    LegacyNotConsulted => false
+    LegacyRun { result: r } => !observed_satisfies_expected(expected: expected, observed: r)
+  }
+}
+
+fn classify_bound_record(
+  subject: BehaviorSubject,
+  record: DifferentialRecord,
+  route: PromotedRoute
+) -> ConformanceDisposition {
+  if !observed_was_run(observed: record.native_v2)
+      && !observed_was_run(observed: record.v2_evaluator) {
+    WitnessDefect {
+      detail: "no v2 route was observed: the record carries no measurement of the subject under judgment" as NonEmptyStr
+    }
+  } else {
+    if !effect_receipt_matches_expected_order(
+         expected: subject.expected,
+         receipt: record.effect_receipt
+       ) {
+      HostRealizationDefect {
+        detail: "ordered effect receipt does not match the effect order the authority requires" as NonEmptyStr
+      }
+    } else {
+      if !observed_was_run(observed: record.native_v2) {
+        Unclassified {
+          detail: "the native v2 route was not observed, so no statement about it is available" as NonEmptyStr
+        }
+      } else {
+        if !observed_satisfies_expected(
+             expected: subject.expected,
+             observed: record.native_v2
+           ) {
+          NativeV2Defect {
+            detail: "the native v2 result does not satisfy the subject's primary authority" as NonEmptyStr
+          }
+        } else {
+          if !evaluator_satisfies_or_is_excused(subject: subject, record: record) {
+            V2EvaluatorDefect {
+              detail: "the v2 evaluator result does not satisfy the subject's primary authority" as NonEmptyStr
+            }
+          } else {
+            if !evaluator_observation_is_sufficient(record: record, route: route) {
+              Unclassified {
+                detail: "the v2 evaluator was not observed while it is still on the promoted route" as NonEmptyStr
+              }
+            } else {
+              if legacy_diverges_from_authority(
+                   expected: subject.expected,
+                   legacy: record.legacy_v1
+                 ) {
+                LegacyV1Defect {
+                  detail: "v1 diverges from the authority both v2 routes satisfy" as NonEmptyStr
+                }
+              } else {
+                Conforms
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+fn evaluator_observation_is_sufficient(record: DifferentialRecord, route: PromotedRoute) -> Bool {
+  match route {
+    EvaluatorOffPromotedRoute => true
+    EvaluatorOnPromotedRoute => observed_was_run(observed: record.v2_evaluator)
+  }
+}
+
+fn evaluator_satisfies_or_is_excused(
+  subject: BehaviorSubject,
+  record: DifferentialRecord
+) -> Bool {
+  if !observed_was_run(observed: record.v2_evaluator) {
+    true
+  } else {
+    observed_satisfies_expected(expected: subject.expected, observed: record.v2_evaluator)
+  }
+}
+
+fn classify_differential_record(
+  record: DifferentialRecord,
+  route: PromotedRoute
+) -> ConformanceDisposition {
+  match record.binding {
+    AuthorityMissing { subject_id: id, area: _ } => SemanticAuthorityMissing { subject_id: id }
+    AuthorityBound { subject: s } =>
+      classify_bound_record(subject: s, record: record, route: route)
+  }
+}
+
+// CONFLICT IS A ROSTER FACT AND NOT A RECORD FACT, so it is derived where both sides are visible:
+// one subject id carrying two authorities whose expectations differ is a conflict no single record
+// can see. Same id and the SAME expectation is not a conflict but a duplicate authority row, which
+// is a different defect with a different remedy and is left to the roster's own admission.
+fn subjects_conflict(a: BehaviorSubject, b: BehaviorSubject) -> Bool {
+  behavior_subject_identity_eq(a: a.subject_id, b: b.subject_id)
+    && !expected_outcome_eq(a: a.expected, b: b.expected)
+}
+
+fn expected_outcome_eq(a: ExpectedOutcome, b: ExpectedOutcome) -> Bool {
+  match a {
+    ExpectsValue { digest: da } =>
+      match b {
+        ExpectsValue { digest: db } => da == db
+        ExpectsRefusal { diagnostic_identity: _ } => false
+        ExpectsEffectOrder { ordered: _ } => false
+      }
+    ExpectsRefusal { diagnostic_identity: ia } =>
+      match b {
+        ExpectsValue { digest: _ } => false
+        ExpectsRefusal { diagnostic_identity: ib } => ia == ib
+        ExpectsEffectOrder { ordered: _ } => false
+      }
+    ExpectsEffectOrder { ordered: oa } =>
+      match b {
+        ExpectsValue { digest: _ } => false
+        ExpectsRefusal { diagnostic_identity: _ } => false
+        ExpectsEffectOrder { ordered: ob } => effect_receipts_agree(expected: oa, receipt: ob)
+      }
+  }
+}
+
+fn disposition_blocks_cutover(
+  disposition: ConformanceDisposition,
+  route: PromotedRoute
+) -> Bool {
+  match disposition {
+    Conforms => false
+    LegacyV1Defect { detail: _ } => false
+    V2EvaluatorDefect { detail: _ } =>
+      match route {
+        EvaluatorOffPromotedRoute => false
+        EvaluatorOnPromotedRoute => true
+      }
+    NativeV2Defect { detail: _ } => true
+    HostRealizationDefect { detail: _ } => true
+    SemanticAuthorityMissing { subject_id: _ } => true
+    SemanticAuthorityConflict { subject_id: _, detail: _ } => true
+    WitnessDefect { detail: _ } => true
+    Unclassified { detail: _ } => true
+  }
+}
+
+type ExitGateVerdict
+  = ExitGateOpen
+  | ExitGateBlocked { blocking_dispositions: Int, unmeasured_areas: Int }
+
+fn coverage_standing_is_measured(standing: CoverageStanding) -> Bool {
+  match standing {
+    CoveragePopulationUnmeasured { area: _, reason: _ } => false
+    CoveragePopulationMeasuredComplete {
+      area: _,
+      members: _,
+      measured_revision: _,
+      producer: _
+    } => true
+  }
+}
+
+// THE GATE READS BOTH DENOMINATOR AND NUMERATOR, and the first half is the one that is usually
+// missing. Counting blocking dispositions over a roster nobody has measured passes at zero, so the
+// gate is open exactly when every coverage area is MeasuredComplete AND no judged record blocks. An
+// area whose measurement has not been performed keeps the gate shut with a nonzero unmeasured count,
+// which is the honest state rather than a green.
+fn conformance_exit_gate(
+  dispositions: List<ConformanceDisposition>,
+  route: PromotedRoute,
+  coverage: List<CoverageStanding>
+) -> ExitGateVerdict {
+  fold(
+    coverage,
+    init: fold(
+      dispositions,
+      init: ExitGateOpen,
+      f: fn(acc, d) {
+        if disposition_blocks_cutover(disposition: d, route: route) {
+          match acc {
+            ExitGateOpen => ExitGateBlocked { blocking_dispositions: 1, unmeasured_areas: 0 }
+            ExitGateBlocked { blocking_dispositions: b, unmeasured_areas: u } =>
+              ExitGateBlocked { blocking_dispositions: b + 1, unmeasured_areas: u }
+          }
+        } else {
+          acc
+        }
+      }
+    ),
+    f: fn(acc, standing) {
+      if coverage_standing_is_measured(standing: standing) {
+        acc
+      } else {
+        match acc {
+          ExitGateOpen => ExitGateBlocked { blocking_dispositions: 0, unmeasured_areas: 1 }
+          ExitGateBlocked { blocking_dispositions: b, unmeasured_areas: u } =>
+            ExitGateBlocked { blocking_dispositions: b, unmeasured_areas: u + 1 }
+        }
+      }
+    }
+  )
+}
+
+// THE OMITTED-ARM CONJUNCT, exposed as a TYPED field rather than entailed (manager ruling relayed
+// by XL-4, 2026-08-29): a fail-open on the cross-module exhaustiveness subject must be NAMEABLE by
+// the consumer's refusal cause, and under entailment it would be indistinguishable from any other
+// blocking disposition. The split into two types is the structural half: the ADMITTED arm carries
+// only OmittedArmTripleHeld, so an admission asserting a fail-open is not writable; the REFUSED arm
+// carries the full verdict, which is where FailedOpen and Unobserved live. The judged subject is
+// the CANDIDATE generation, joined on its tree object -- the same join key as source_tree, so the
+// consumer's cross-check is one identity discipline, not two.
+type OmittedArmTripleHeld {
+  judged_generation_tree: FloorDiscoveryTreeId
+  incomplete_rejection_identity: NonEmptyStr
+  widened_rejection_identity: NonEmptyStr
+}
+
+type OmittedArmVerdict
+  = OmittedArmHeld { held: OmittedArmTripleHeld }
+  | OmittedArmFailedOpen { judged_generation_tree: FloorDiscoveryTreeId, detail: NonEmptyStr }
+  | OmittedArmUnobserved { reason: NonEmptyStr }
+
+type FixtureObservation
+  = FixtureRejectedWith { diagnostic_identity: NonEmptyStr }
+  | FixtureAccepted
+
+// THE TRIPLE IS DERIVED FROM THREE OBSERVATIONS, never authored: (a) the incomplete consumer
+// fixture must be REJECTED with the non-exhaustiveness identity, (b) the complete control must be
+// ACCEPTED, (c) the widened provider with no consumer edit must be REJECTED with the same
+// identity. Any other pattern is FailedOpen with the direction named -- including a checker that
+// rejects everything, which (b) exists to catch.
+fn omitted_arm_triple(
+  judged_generation_tree: FloorDiscoveryTreeId,
+  required_identity: NonEmptyStr,
+  incomplete: FixtureObservation,
+  complete_control: FixtureObservation,
+  widened: FixtureObservation
+) -> OmittedArmVerdict {
+  match incomplete {
+    FixtureAccepted =>
+      OmittedArmFailedOpen {
+        judged_generation_tree: judged_generation_tree,
+        detail: "the incomplete cross-module match was accepted" as NonEmptyStr
+      }
+    FixtureRejectedWith { diagnostic_identity: incomplete_id } =>
+      if incomplete_id != required_identity {
+        OmittedArmFailedOpen {
+          judged_generation_tree: judged_generation_tree,
+          detail: "the incomplete fixture was rejected under a different diagnostic identity" as NonEmptyStr
+        }
+      } else {
+        match complete_control {
+          FixtureRejectedWith { diagnostic_identity: _ } =>
+            OmittedArmFailedOpen {
+              judged_generation_tree: judged_generation_tree,
+              detail: "the complete control was rejected: the checker refuses the shape, not the omission" as NonEmptyStr
+            }
+          FixtureAccepted =>
+            match widened {
+              FixtureAccepted =>
+                OmittedArmFailedOpen {
+                  judged_generation_tree: judged_generation_tree,
+                  detail: "the widened provider was accepted with no consumer edit: exhaustiveness judged against a stale declaration" as NonEmptyStr
+                }
+              FixtureRejectedWith { diagnostic_identity: widened_id } =>
+                if widened_id != required_identity {
+                  OmittedArmFailedOpen {
+                    judged_generation_tree: judged_generation_tree,
+                    detail: "the widened fixture was rejected under a different diagnostic identity" as NonEmptyStr
+                  }
+                } else {
+                  OmittedArmHeld {
+                    held: OmittedArmTripleHeld {
+                      judged_generation_tree: judged_generation_tree,
+                      incomplete_rejection_identity: incomplete_id,
+                      widened_rejection_identity: widened_id
+                    }
+                  }
+                }
+            }
+        }
+      }
+  }
+}
+
+// THE ADMISSION CARRIER XL-4's GENERATION RECEIPT TYPES AGAINST (hand-off owed per XL-N manager
+// ruling, 2026-08-29; revision-join ruling relayed by XL-4 the same day). A generation is admitted
+// against a conformance judgment OF A NAMED TREE, and the join key is the TREE object: squash-merge
+// rewrites commit SHAs, so source_tree (FloorDiscoveryTreeId over GitObjectId -- the existing
+// authority, not a fresh coinage) is what XL-4 cross-checks, while source_revision (CommitSha)
+// rides beside it as the informational head the measurement ran at. A commit-only mismatch is not
+// a refusal; a tree mismatch is. Admission is DERIVED from the exit gate, never authored: the only
+// constructor path offered is admit_conformance, so a ConformanceAdmitted value entails that the
+// gate computation ran over the carried inputs. The refusal arm carries the same revision plus the
+// gate's counted blockers, so a refusal is a located, countable diagnostic rather than an absence.
+type ConformanceAdmission
+  = ConformanceAdmitted {
+      source_revision: CommitSha,
+      source_tree: FloorDiscoveryTreeId,
+      omitted_arm: OmittedArmTripleHeld,
+      judged_route: PromotedRoute,
+      subject_count: Int,
+      producer: DeclarationRef
+    }
+  | ConformanceRefused {
+      source_revision: CommitSha,
+      source_tree: FloorDiscoveryTreeId,
+      omitted_arm: OmittedArmVerdict,
+      judged_route: PromotedRoute,
+      blocking_dispositions: Int,
+      unmeasured_areas: Int,
+      producer: DeclarationRef
+    }
+
+fn admit_conformance(
+  source_revision: CommitSha,
+  source_tree: FloorDiscoveryTreeId,
+  omitted_arm: OmittedArmVerdict,
+  dispositions: List<ConformanceDisposition>,
+  route: PromotedRoute,
+  coverage: List<CoverageStanding>,
+  producer: DeclarationRef
+) -> ConformanceAdmission {
+  match conformance_exit_gate(dispositions: dispositions, route: route, coverage: coverage) {
+    ExitGateOpen =>
+      match omitted_arm {
+        OmittedArmHeld { held: held } =>
+          ConformanceAdmitted {
+            source_revision: source_revision,
+            source_tree: source_tree,
+            omitted_arm: held,
+            judged_route: route,
+            subject_count: list_length(items: dispositions),
+            producer: producer
+          }
+        OmittedArmFailedOpen { judged_generation_tree: _, detail: _ } =>
+          ConformanceRefused {
+            source_revision: source_revision,
+            source_tree: source_tree,
+            omitted_arm: omitted_arm,
+            judged_route: route,
+            blocking_dispositions: 1,
+            unmeasured_areas: 0,
+            producer: producer
+          }
+        OmittedArmUnobserved { reason: _ } =>
+          ConformanceRefused {
+            source_revision: source_revision,
+            source_tree: source_tree,
+            omitted_arm: omitted_arm,
+            judged_route: route,
+            blocking_dispositions: 0,
+            unmeasured_areas: 1,
+            producer: producer
+          }
+      }
+    ExitGateBlocked { blocking_dispositions: b, unmeasured_areas: u } =>
+      ConformanceRefused {
+        source_revision: source_revision,
+        source_tree: source_tree,
+        omitted_arm: omitted_arm,
+        judged_route: route,
+        blocking_dispositions: b,
+        unmeasured_areas: u,
+        producer: producer
+      }
+  }
+}

@@ -1,0 +1,289 @@
+module gunbc.namespace_cut_subject_observation
+
+import std.types { String, NonEmptyStr, Bool, List }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import std.decl_ref { DeclarationRef, decl_ref, decl_field_ref }
+import v2.std.decl_index { DeclFact, decl_facts }
+import v2.lens.module_graph { ModuleDeclarationFact, module_declaration_facts_live }
+import v2.std.decl_ref_resolution {
+  DeclarationRefResolution,
+  DeclarationRefResolved,
+  DeclarationRefModuleAbsent,
+  DeclarationRefDeclarationAbsent,
+  DeclarationRefFieldAbsent,
+  DeclarationRefAmbiguous,
+  resolve_declaration_ref,
+}
+import gunbc.namespace_cut_stage { namespace_cut_stage_label }
+import gunbc.rust_item_identity { RustItemIdentity, rust_item_identity_qualified_name }
+import gunbc.rust_item_host_observation {
+  LiveHandRustObservation,
+  LiveHandRustObserved,
+  LiveHandRustHostRefused,
+  observe_current_live_hand_rust,
+}
+import gunbc.namespace_cut_subject_roster {
+  NamespaceCutSubjectIdentity,
+  NamespaceCutSubjectProbe,
+  DagDeclarationProbe,
+  DagDeclarationFieldProbe,
+  HostRustItemProbe,
+  namespace_cut_subjects,
+  namespace_cut_subject_label,
+  subject_probe_list,
+  subject_deleted_at_stage,
+  probe_render,
+}
+
+// THE LIVE HALF OF THE SUBJECT ROSTER, SPLIT FROM THE PURE HALF ON PURPOSE. The roster module
+// carries only identities and joins, so a consumer (the program-standing report, a witness) can
+// import it without its loader closure reaching live-read code -- the same pure/live split the
+// lens-enforcement gate note names as the repair shape for module_graph. This module is the
+// live-read carrier home (v2.std.live_read live_read_carrier_homes_v0) and holds every
+// observation that touches the tree.
+
+// ---------------------------------------------------------------------------------------------
+// OBSERVATION. Three answers, because two media and a refusal are three states:
+//  - SubjectProbePresent / SubjectProbeAbsent: decided by runtime declaration-ref resolution
+//    over the reflection facts this module reads.
+//  - SubjectProbeUnobservable: the honest arm, and it is now NARROW. It carries an ambiguous
+//    resolution -- a corpus defect this roster must surface rather than adjudicate -- and the
+//    host-probe cases where the JOIN cannot reach, each of which names what is missing. Neither
+//    is Present and neither is Absent, and folding either into a verdict would be the
+//    empty-observation narrow.
+//
+// THE HOST HALF'S NEXT-RUNG TRIGGER IS DISCHARGED, and how it was discharged is the point.
+// This module used to refuse every HostRustItemProbe with "no item-grain observation authority
+// exists in this tree yet" and name building one as the trigger. The authority already existed:
+// gunbc.rust_item_host_observation observe_current_live_hand_rust returns the live hand-Rust item
+// population at item-identity grain, scanned by gunbc.rust_item_scan and scoped by the namespace
+// rows that claim src/v1/stage0/src/ -- the exact tree every host probe in this roster names. The
+// missing thing was never the authority, it was the JOIN, and writing a second Rust-item observer
+// beside it would have been the parallel authority DESIGN section 3 forbids. So observe_host_probe
+// below CONSUMES that producer.
+// ---------------------------------------------------------------------------------------------
+type SubjectProbeObservation
+  = SubjectProbePresent { probe: NamespaceCutSubjectProbe }
+  | SubjectProbeAbsent { probe: NamespaceCutSubjectProbe }
+  | SubjectProbeUnobservable { probe: NamespaceCutSubjectProbe, why: String }
+
+fn probe_ref(p: NamespaceCutSubjectProbe) -> DeclarationRef {
+  match p {
+    DagDeclarationProbe { module_path, decl_name } =>
+      decl_ref(module_path: module_path, decl_name: decl_name)
+    DagDeclarationFieldProbe { module_path, decl_name, field_name } =>
+      decl_field_ref(module_path: module_path, decl_name: decl_name, field_name: field_name)
+    HostRustItemProbe { crate_relative_file, item_name } =>
+      decl_ref(module_path: crate_relative_file, decl_name: item_name)
+  }
+}
+
+
+fn observe_probe(
+  p: NamespaceCutSubjectProbe,
+  facts: List<DeclFact>,
+  modules: List<ModuleDeclarationFact>
+) -> SubjectProbeObservation {
+  match p {
+    HostRustItemProbe { crate_relative_file: _, item_name: _ } =>
+      SubjectProbeUnobservable {
+        probe: p,
+        why: "host Rust item handed to the declaration-fact route: this arm resolves substrate declarations only. A host probe is answered by observe_host_probe against the live hand-Rust population; reaching here means a caller routed it to the wrong acquisition.",
+      }
+    DagDeclarationProbe { module_path: _, decl_name: _ } =>
+      observation_from_resolution(p: p, r: resolve_declaration_ref(ref: probe_ref(p: p), facts: facts, modules: modules))
+    DagDeclarationFieldProbe { module_path: _, decl_name: _, field_name: _ } =>
+      observation_from_resolution(p: p, r: resolve_declaration_ref(ref: probe_ref(p: p), facts: facts, modules: modules))
+  }
+}
+
+// A MODULE GONE IS THE SUBJECT GONE. DeclarationRefModuleAbsent maps to Absent rather than to a
+// refusal because deleting a whole module is a legitimate terminal state for a deletion subject
+// -- what must NOT map to Absent is ambiguity, which is two declarations answering one identity
+// and is reported under its own name.
+fn observation_from_resolution(
+  p: NamespaceCutSubjectProbe,
+  r: DeclarationRefResolution
+) -> SubjectProbeObservation {
+  match r {
+    DeclarationRefResolved { declaration_identity: _ } => SubjectProbePresent { probe: p }
+    DeclarationRefModuleAbsent { reference: _ } => SubjectProbeAbsent { probe: p }
+    DeclarationRefDeclarationAbsent { reference: _ } => SubjectProbeAbsent { probe: p }
+    DeclarationRefFieldAbsent { reference: _ } => SubjectProbeAbsent { probe: p }
+    DeclarationRefAmbiguous { reference: _, candidates: _ } =>
+      SubjectProbeUnobservable { probe: p, why: "ambiguous: more than one declaration answers this identity" }
+  }
+}
+
+// ---------------------------------------------------------------------------------------------
+// THE HOST-PROBE JOIN. Four answers over one acquisition, and the ORDER of the arms is the whole
+// construction, because "no item matched" is three different states and only one of them is a
+// deletion:
+//
+//   1. the producer refused        -> Unobservable, carrying ITS refusal detail. A host refusal
+//                                     folded into Absent would report the whole host half of the
+//                                     cut complete because git did not answer.
+//   2. an item matches path+name   -> Present.
+//   3. the FILE was scanned and no -> Absent. This is the only route to Absent, and it is
+//      item in it matches             conditioned on the file being in the observed population:
+//                                     the item is gone from a file we actually read.
+//   4. the file is not in the      -> Unobservable, naming WHAT IS MISSING rather than the
+//      population at all              authority. observe_live_hand_rust drops a path that is
+//                                     generated, untracked at HEAD, outside the namespace-claimed
+//                                     trees, or unscannable, and it returns only the surviving
+//                                     items -- so the scoped-out reason is not recoverable from
+//                                     its result. That unrecoverable reason IS the residual, and
+//                                     it is named as such: the next rung here is
+//                                     LiveHandRustObserved carrying its scoped-out paths with
+//                                     their disposition, at which point arm 4 splits into
+//                                     answers instead of one refusal.
+//
+// Arm 3 is what makes the instrument able to report the cut's success state, and arm 4 is what
+// stops it from reporting success for a file it never opened. Deleting arm 4 would be the exact
+// absorbing fallback DESIGN section 5 forbids: an unread file silently joining the deleted.
+fn host_item_matches(item: RustItemIdentity, path: String, name: String) -> Bool {
+  (item.repo_path as String) == path && rust_item_identity_qualified_name(item: item) == name
+}
+
+fn host_probe_over_items(
+  p: NamespaceCutSubjectProbe,
+  path: String,
+  name: String,
+  items: List<RustItemIdentity>
+) -> SubjectProbeObservation {
+  if any(items, i => host_item_matches(item: i, path: path, name: name)) {
+    SubjectProbePresent { probe: p }
+  } else {
+    if any(items, i => (i.repo_path as String) == path) {
+      SubjectProbeAbsent { probe: p }
+    } else {
+      SubjectProbeUnobservable {
+        probe: p,
+        why: concat(
+          concat("host Rust item: the live hand-Rust population contains no item from ", path),
+          ", so this probe cannot distinguish a deleted item from an unread file. gunbc.rust_item_host_observation observe_live_hand_rust drops a path that is generated, untracked at HEAD, outside the namespace-claimed trees, or scan-refused, and returns only surviving items -- the missing join is that scoped-out population with its per-path disposition."
+        ),
+      }
+    }
+  }
+}
+
+// Parameterized on the observation so a witness can author every arm -- the refusal, a hit, a
+// scanned-file miss and an unread file -- without a tree read. The live caller hands it the one
+// acquisition taken per report.
+fn observe_host_probe(
+  p: NamespaceCutSubjectProbe,
+  observation: LiveHandRustObservation
+) -> SubjectProbeObservation {
+  match observation {
+    LiveHandRustHostRefused { detail: detail } =>
+      SubjectProbeUnobservable {
+        probe: p,
+        why: concat("host Rust item: gunbc.rust_item_host_observation refused rather than returning a population -- ", detail),
+      }
+    LiveHandRustObserved { items: items, unscannable: _ } =>
+      match p {
+        HostRustItemProbe { crate_relative_file: path, item_name: name } =>
+          host_probe_over_items(p: p, path: path, name: name, items: items)
+        DagDeclarationProbe { module_path: _, decl_name: _ } =>
+          SubjectProbeUnobservable { probe: p, why: "substrate declaration probe routed to the host join; it is answered by observe_probe" }
+        DagDeclarationFieldProbe { module_path: _, decl_name: _, field_name: _ } =>
+          SubjectProbeUnobservable { probe: p, why: "substrate declaration-field probe routed to the host join; it is answered by observe_probe" }
+      }
+  }
+}
+
+fn probe_is_host(p: NamespaceCutSubjectProbe) -> Bool {
+  match p {
+    HostRustItemProbe { crate_relative_file: _, item_name: _ } => true
+    DagDeclarationProbe { module_path: _, decl_name: _ } => false
+    DagDeclarationFieldProbe { module_path: _, decl_name: _, field_name: _ } => false
+  }
+}
+
+fn observation_render(o: SubjectProbeObservation) -> String {
+  match o {
+    SubjectProbePresent { probe } => concat("PRESENT      ", probe_render(p: probe))
+    SubjectProbeAbsent { probe } => concat("ABSENT       ", probe_render(p: probe))
+    SubjectProbeUnobservable { probe, why } =>
+      concat("UNOBSERVABLE ", concat(probe_render(p: probe), concat(" -- ", why)))
+  }
+}
+
+
+// ---------------------------------------------------------------------------------------------
+// THE RUNNABLE INSTRUMENT. One live acquisition, every probe resolved against it, one written
+// report -- the producer a reader re-runs instead of quoting:
+//
+//   gunbc run --source-root dag --source-root src/v2 \
+//     --entry dag/gunbc/namespace/namespace_cut_subject_observation.dag \
+//     --function subject_roster_report --arg out=/tmp/namespace-cut-subjects.txt
+//
+// This module is a live-read carrier for exactly this entry (decl_facts +
+// module_declaration_facts_live) and is enrolled in v2.std.live_read live_read_carrier_homes_v0.
+// The FACT pool roots (per-root, below) deliberately include src/v1: most deletion subjects
+// live in the seed's .dag corpus, and a walk that omitted it would report the cut complete
+// while the seed still resolves imports -- the false Absent this instrument must not be able to
+// produce. src/v1 is NOT a --source-root of the entry: the seed corpus is a SUBJECT the
+// reflection walk reads, never a module pool this module executes from.
+// ---------------------------------------------------------------------------------------------
+// ONE ACQUISITION PER ROOT, NOT ONE UNION. decl_facts retains a Node per declaration, so a
+// union walk over the seed plus the v2 corpus held both node populations resident at once and
+// was SIGKILLed on a memory-tight host (measured 2026-08-29, remote runner, ~14min then kill).
+// Every dag-grain probe names a module under exactly one root, so the report acquires each
+// root's facts separately and resolves each probe against its own root -- halving the peak and
+// keeping the false-Absent property: a v1 probe is still resolved against a walk that includes
+// src/v1.
+data subject_roster_v1_pool_roots: List<String> = ["src/v1"]
+data subject_roster_v2_pool_roots: List<String> = ["src/v2"]
+
+fn probe_is_v1(p: NamespaceCutSubjectProbe) -> Bool {
+  match p {
+    DagDeclarationProbe { module_path, decl_name: _ } => starts_with(s: module_path, prefix: "v1.")
+    DagDeclarationFieldProbe { module_path, decl_name: _, field_name: _ } => starts_with(s: module_path, prefix: "v1.")
+    HostRustItemProbe { crate_relative_file: _, item_name: _ } => false
+  }
+}
+
+// ONE HOST ACQUISITION PER REPORT, beside the two per-root declaration acquisitions. The host
+// population is a whole-tree read of the namespace-claimed Rust trees, so taking it once and
+// resolving every host probe against it is the same shape as the per-root split above -- and the
+// same reason: the acquisition, not the resolution, is what costs.
+fn subject_report_lines() -> List<String> {
+  let v1_facts = decl_facts(pool_roots: subject_roster_v1_pool_roots)
+  let v1_modules = module_declaration_facts_live(pool_roots: subject_roster_v1_pool_roots)
+  let v2_facts = decl_facts(pool_roots: subject_roster_v2_pool_roots)
+  let v2_modules = module_declaration_facts_live(pool_roots: subject_roster_v2_pool_roots)
+  let host = observe_current_live_hand_rust()
+  namespace_cut_subjects
+    |> flat_map(s => concat(
+      [concat("subject: ", concat(namespace_cut_subject_label(s: s) as String, concat(" -- deleted at ", namespace_cut_stage_label(s: subject_deleted_at_stage(s: s)) as String)))],
+      subject_probe_list(s: s)
+        |> map(p => concat("  ",
+          if probe_is_host(p: p) {
+            observation_render(o: observe_host_probe(p: p, observation: host))
+          } else {
+            if probe_is_v1(p: p) {
+              observation_render(o: observe_probe(p: p, facts: v1_facts, modules: v1_modules))
+            } else {
+              observation_render(o: observe_probe(p: p, facts: v2_facts, modules: v2_modules))
+            }
+          }))
+    ))
+}
+
+fn subject_roster_report(out: String) -> ProcessExit {
+  if out == "" {
+    exit_failure(reason: "subject_roster_report: --arg out=<path> is required -- the roster is written, not printed")
+  } else {
+    let body = fold(subject_report_lines(), init: "namespace cut subject roster -- observed\n\n", f: fn(acc, line) {
+      concat(acc, concat(line, "\n"))
+    })
+    if Filesystem.Write(path: out, content: body).success {
+      ExitSuccess
+    } else {
+      exit_failure(reason: concat("subject_roster_report: derived and could not be written to ", out))
+    }
+  }
+}

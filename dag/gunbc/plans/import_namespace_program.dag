@@ -57,14 +57,15 @@ fn section_3() -> List<MarkdownBlock> {
       alignments: [AlignNone, AlignNone, AlignNone],
       rows: [
         row(cells: [cell(text: "0"), cell(text: "Strip measurement"), cell(text: "DONE 2026-08-15")]),
-        row(cells: [cell(text: "1"), cell(text: "Delete the import-name universe — the semantic root"), cell(text: "open")]),
-        row(cells: [cell(text: "2"), cell(text: "Host and emit machinery"), cell(text: "open")]),
+        row(cells: [cell(text: "1"), cell(text: "Exact corpus rewrites while the semantic root still stands — the waves"), cell(text: "open")]),
+        row(cells: [cell(text: "2"), cell(text: "Delete the import-name universe and the host/emit machinery — the root authorities, in ONE motion"), cell(text: "open")]),
         row(cells: [cell(text: "3"), cell(text: "Repoints"), cell(text: "open, CONTESTED")]),
         row(cells: [cell(text: "4"), cell(text: "Fix forward at class grain"), cell(text: "open")]),
         row(cells: [cell(text: "5"), cell(text: "Grammar and parse deletion"), cell(text: "**LAST**")]),
       ],
     },
-    p(text: "**Why grammar-last is not a hedge.** Deleting the grammar first makes every unrepaired module unparseable at once, which converts a fix-forward program into a flag day. Deleting the semantic root first (step 1) makes every real dependent refuse LOUDLY while the source still parses — which is exactly the delete-first census DESIGN.md §3 prescribes, run at the level where the refusals are readable. The grammar deletion at the end is then a no-op over a corpus that already spells nothing that way, and its RED is that some construct still does."),
+    p(text: "**Why grammar-last is not a hedge.** Deleting the grammar first makes every unrepaired module unparseable at once, which converts a fix-forward program into a flag day. Deleting the semantic root makes every real dependent refuse LOUDLY while the source still parses — which is exactly the delete-first census DESIGN.md §3 prescribes, run at the level where the refusals are readable. The grammar deletion at the end is then a no-op over a corpus that already spells nothing that way, and its RED is that some construct still does."),
+    p(text: "**Step 1 no longer deletes the root, and that is a correction rather than a deferral.** It read \"delete the import-name universe\" until the stage carriers were made to derive: the import-name universe is a root AUTHORITY, so deleting it changes what live resolution and closure answer, and DESIGN.md §3 requires that transition to land in ONE motion rather than as the first of several waves. A wave is what can be done while the root still stands — exact occurrence and import-declaration rewrites, resolution answering identically at every step. The root moves at step 2 with the rest of the authorities. Authorities: `gunbc.namespace_cut_subject_roster` `subject_deleted_at_stage` assigns no subject to the waves, `gunbc.compiler_frontend_program_interlock` `milestone_label` carries the redefined wave, and `gunbc.compiler_frontend_program_status` derives the wave's standing from the rehearsal residual it does not yet have a producer for."),
   ]
 }
 
@@ -130,7 +131,7 @@ fn section_9() -> List<MarkdownBlock> {
   [
     h2(text: "9. What this plan does NOT claim"),
     ul(items: [
-      li(text: "**No CI mechanism enforces any of this** — no ratchet, no phase, no gate over the import population. **As of the 2026-08-26 ruling this is a BLOCKER rather than a disclosure**: it now gates Step 1 by name. A plan that reads as governed when it is not is worse than one that reads as unguarded, and this gap has since been given an executable consequence rather than left as candour."),
+      li(text: "**The CI-mechanism gap is CLOSED and this bullet is its record, not its claim.** Earlier revisions said no phase or gate covered the import population, then ruled that gap a Step-1 blocker. The wave-admission wall has since landed as the required `namespace-wave-admission` phase (gunbc#9365), phase enrolment is a substrate fact (`gunbc.required_ci_phase_roster`, joined against the executor's realization on every required run), and the milestone reads it derived: run `gunbc.compiler_frontend_program_status` `where_are_we` rather than trusting any sentence here. The remaining governance gaps are the ones that report names as NOT-DERIVABLE, each with its missing instrument."),
       li(text: "**No population figure here is live.** Section 5 says why."),
       li(text: "**Step ownership is not carried by any authority.** Section 4 says which half is assumed."),
       li(text: "**The ordering relation to self-host is RULED and is no longer a gap** — section 7 projects `gunbc.compiler_frontend_program_interlock`. It is listed here only so a reader of an older revision does not go looking for the open question."),
@@ -152,6 +153,9 @@ data import_namespace_program_bindings: List<DeclarationRef> = [
   decl_ref(module_path: "gunbc.compiler_frontend_program_interlock", decl_name: "NamespaceChangeClass"),
   decl_ref(module_path: "gunbc.compiler_frontend_program_interlock", decl_name: "NamespaceDeltaDisposition"),
   decl_ref(module_path: "gunbc.namespace_cut_landing_order", decl_name: "namespace_cut_grammar_last_ruling"),
+  decl_ref(module_path: "gunbc.required_ci_phase_roster", decl_name: "required_ci_phases"),
+  decl_ref(module_path: "gunbc.namespace_cut_stage", decl_name: "stage_prerequisites"),
+  decl_ref(module_path: "gunbc.namespace_cut_subject_roster", decl_name: "namespace_cut_subjects"),
 ]
 
 fn import_namespace_program_body() -> List<MarkdownBlock> {

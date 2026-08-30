@@ -39,6 +39,17 @@
 > plan quarries but whose *terminal shapes* it keeps as evidence — is reopened
 > there as an operator decision.
 
+> **CURRENT-STATE AUTHORITY (2026-08-29): this document carries REASONING and HISTORY, never
+> live standing.** Enrolment, standing and sequencing facts are typed carriers, cited by symbol:
+> the required-CI phase roster (and with it the wave-admission wall's enrolment) is
+> `gunbc.required_ci_phase_roster` `required_ci_phases`; the NAMESPACE-XL stage chain and its
+> prerequisites are `gunbc.namespace_cut_stage` `stage_prerequisites`; the deletion-subject
+> denominator is `gunbc.namespace_cut_subject_roster` `namespace_cut_subjects`, observed by
+> `gunbc.namespace_cut_subject_observation` `subject_roster_report`; and the derived standing
+> report is `gunbc.compiler_frontend_program_status` `where_are_we`. Where a sentence below
+> disagrees with those carriers, the carrier is correct and the sentence is a dated record —
+> in particular, sentences predating #9365 that say no wall or CI mechanism exists.
+
 Doctrine: DESIGN §3 *replacement migrations cut over at the root* (delete-first; the deletion is the census — bounded by the three silent populations measured across the five parallel cuts, recorded once in [floor-cut-replacement-plan.md](floor-cut-replacement-plan.md) under *What the census does not do*; they apply to this cut identically). Vehicle: integration branch `integration/namespace-cut`, forked from main `64ebefa74`; standing cutover PR gunbc#8282 (draft — the one merge main receives). Executing session: crisp-crab-430; doctrine/coordination: tidy-pike-117. Operator ruling (2026-08-15): delete all the grammar/import up front, then solve each problem as it is revealed — expecting the deletion to also reveal problems import was standing up (the concealment census). **SUPERSEDED ON ORDER 2026-08-25 — `gunbc.namespace_cut_landing_order` `namespace_cut_grammar_last_ruling`: grammar deletion is last.** The concealment-census expectation survives unchanged — what moved is when the grammar is cut, not what cutting it reveals. **Step gating:** each major step closes only when the operator is satisfied with its performance — the executing session stops at the boundary and presents, never rolls into the next step on its own judgment; within a step, the fix-forward loop runs continuously. **Existing designs** covering this region (namespace-resolution-design, the layering repoint design, and kin) are quarry — terminal shapes and mechanisms are evidence; their sequencing never defers the deletion (operator ruling, 2026-08-15; the 2026-08-25 reordering above is the same authority moving the grammar step, not a quarried design deferring it — the distinction this clause exists to enforce).
 
 ## The cut, stated in .dag terms

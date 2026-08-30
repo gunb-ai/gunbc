@@ -1,0 +1,242 @@
+module gunbc.namespace_cut_subject_roster
+
+import std.types { String, NonEmptyStr, Bool, List }
+import gunbc.namespace_cut_stage {
+  NamespaceCutStage,
+  StageXL6AtomicCutover,
+  StageXL7GrammarDeletion,
+  namespace_cut_stage_label,
+  namespace_cut_stage_is,
+}
+
+// THE NAMESPACE CUT'S DELETION DENOMINATOR: every authority scheduled to disappear, one closed
+// variant per subject family, at stable identity grain. This is the carrier
+// gunbc.compiler_frontend_program_status has named as its missing NamespaceStepSubjectRoster
+// instrument since 2026-08-26 -- "the namespace cut's remaining per-step subjects as rows".
+//
+// WHY THE PROBES ARE STRINGS AND NOT AUTHORED DeclarationRef LITERALS, which looks like the
+// weaker spelling and is the only workable one. The ingestion-time citation wall
+// (v1_compiler.declaration_index, cited-symbol arm) resolves every decl_ref literal on every
+// required run and REFUSES when the target is gone. Every declaration this roster names is
+// SCHEDULED TO BE DELETED: the moment a wave deletes one, an authored citation to it would red
+// the whole corpus -- the roster would refuse the very transition it exists to census. So a row
+// carries its identity as data strings, the DeclarationRef is CONSTRUCTED at observation time
+// from non-literal arguments (which the wall deliberately does not capture -- its own fail-open
+// arm), and resolution happens at runtime through v2.std.decl_ref_resolution -- in the live
+// sibling module gunbc.namespace_cut_subject_observation, split off so importing THIS module
+// never pulls live-read code into a consumer's closure -- where ABSENT is an answer rather than
+// a refusal. Absence-as-answer is the whole requirement: after the cut, SubjectProbeAbsent is
+// this roster's success state.
+//
+// IDENTITIES DECIDE, COUNTS SUMMARIZE. Every judgment below is a fold over probe identities;
+// no arm compares a count to a count.
+type NamespaceCutSubjectIdentity
+  = ImportGrammarProductions
+  | ImportParseSurfaceV1
+  | ImportAstCarriers
+  | ResolverImportNameUniverse
+  | ImportScopeOverlays
+  | ImportDerivedModuleAdjacency
+  | HostImportClosureAssembly
+  | HostTextImportScanners
+  | ImportDerivedUseLineInputs
+  | LegacyImportRepairApparatus
+  | LayerImportFactsConsumers
+
+fn namespace_cut_subject_label(s: NamespaceCutSubjectIdentity) -> NonEmptyStr {
+  match s {
+    ImportGrammarProductions => "the v2 import grammar: lex rule, formal rows, productions, emit rows" as NonEmptyStr
+    ImportParseSurfaceV1 => "the v1 import parse surface" as NonEmptyStr
+    ImportAstCarriers => "the import AST carriers on both frontends" as NonEmptyStr
+    ResolverImportNameUniverse => "the resolver import-name universe: source_visible_names and the import admission folds" as NonEmptyStr
+    ImportScopeOverlays => "the import scope overlays in v1 inference" as NonEmptyStr
+    ImportDerivedModuleAdjacency => "import-derived module adjacency and the build ordering it feeds" as NonEmptyStr
+    HostImportClosureAssembly => "host import-closure assembly in the stage0 CLI" as NonEmptyStr
+    HostTextImportScanners => "host raw-text import and module-path scanners" as NonEmptyStr
+    ImportDerivedUseLineInputs => "import-derived inputs to Rust use-line emission" as NonEmptyStr
+    LegacyImportRepairApparatus => "the unlisted-import repair and census apparatus" as NonEmptyStr
+    LayerImportFactsConsumers => "the layer_import_facts family and its interpreter arm" as NonEmptyStr
+  }
+}
+
+// A probe names ONE declaration-grain identity. Three probe shapes across two realization media:
+// substrate declarations and declaration fields, resolved through the declaration-fact reflection
+// the observation sibling executes, and HOST RUST ITEMS, resolved against
+// gunbc.rust_item_host_observation's live hand-Rust population.
+//
+// THE HOST PROBE IS NO LONGER UNOBSERVABLE BY DEFAULT. An earlier revision of this comment said
+// its observation instrument does not exist in this tree, and that was false when it was written:
+// gunbc.rust_item_host_observation observe_current_live_hand_rust has been the item-grain host
+// authority for seed-growth admission since before this roster existed. Refusing every host probe
+// on that reading was an absent-authority claim about a present authority -- the same
+// authority_substitution shape read in reverse -- and it is what made XL-0 look like a stage
+// waiting on a tool. The sibling now JOINS against that producer and refuses only where the join
+// itself cannot reach: see observe_host_probe, which names what is missing rather than the
+// authority.
+type NamespaceCutSubjectProbe
+  = DagDeclarationProbe { module_path: String, decl_name: String }
+  | DagDeclarationFieldProbe { module_path: String, decl_name: String, field_name: String }
+  | HostRustItemProbe { crate_relative_file: String, item_name: String }
+
+// EVERY SUBJECT HAS AT LEAST ONE PROBE BY CONSTRUCTION: the shape is first + rest, so an
+// empty-probed subject has no spelling, and the match is exhaustive, so a subject added without
+// probes refuses to compile. The probe lists are the identity grain the exit criterion demands;
+// they are not exhaustive over every declaration a wave will touch -- each is the subject's
+// ROOT identities, the ones whose absence is the subject being gone (the plan documents carry
+// the full per-step sweeps; a sweep is a wave's worklist, a probe is a subject's pulse).
+type NamespaceCutSubjectProbes {
+  first: NamespaceCutSubjectProbe
+  rest: List<NamespaceCutSubjectProbe>
+}
+
+fn subject_probes(s: NamespaceCutSubjectIdentity) -> NamespaceCutSubjectProbes {
+  match s {
+    ImportGrammarProductions => NamespaceCutSubjectProbes {
+      first: DagDeclarationProbe { module_path: "v2.extdeps.languages.dag", decl_name: "dag_grammar_import_decl_expr" },
+      rest: [
+        DagDeclarationProbe { module_path: "v2.extdeps.languages.dag", decl_name: "dag_grammar_import_block_expr" },
+      ],
+    }
+    ImportParseSurfaceV1 => NamespaceCutSubjectProbes {
+      first: DagDeclarationProbe { module_path: "v1.compiler.parse", decl_name: "parse_import" },
+      rest: [
+        DagDeclarationProbe { module_path: "v1.compiler.parse", decl_name: "parse_imports" },
+      ],
+    }
+    ImportAstCarriers => NamespaceCutSubjectProbes {
+      first: DagDeclarationProbe { module_path: "v1.std.core", decl_name: "import_node" },
+      rest: [
+        DagDeclarationProbe { module_path: "v1.std.core", decl_name: "module_imports" },
+        DagDeclarationProbe { module_path: "v2.compiler.name_resolve", decl_name: "Import" },
+      ],
+    }
+    ResolverImportNameUniverse => NamespaceCutSubjectProbes {
+      first: DagDeclarationFieldProbe { module_path: "v1.compiler.infer_env", decl_name: "TypeEnv", field_name: "source_visible_names" },
+      rest: [
+        DagDeclarationProbe { module_path: "v1.compiler.resolve", decl_name: "resolve_module_imports" },
+        DagDeclarationProbe { module_path: "v2.compiler.name_resolve", decl_name: "admit_imports" },
+      ],
+    }
+    ImportScopeOverlays => NamespaceCutSubjectProbes {
+      first: DagDeclarationProbe { module_path: "v1.compiler.infer", decl_name: "merge_scope_from_imports" },
+      rest: [
+        DagDeclarationProbe { module_path: "v1.compiler.infer", decl_name: "overlay_direct_import_exports" },
+      ],
+    }
+    ImportDerivedModuleAdjacency => NamespaceCutSubjectProbes {
+      first: DagDeclarationProbe { module_path: "v1.compiler.resolve", decl_name: "topological_sort" },
+      rest: [
+        HostRustItemProbe { crate_relative_file: "src/v1/stage0/src/cli_run.rs", item_name: "build_import_adjacency" },
+      ],
+    }
+    HostImportClosureAssembly => NamespaceCutSubjectProbes {
+      first: HostRustItemProbe { crate_relative_file: "src/v1/stage0/src/cli_run.rs", item_name: "import_closure_from_adjacency" },
+      rest: [
+        HostRustItemProbe { crate_relative_file: "src/v1/stage0/src/cli_run.rs", item_name: "compile_entry_on_declared_import_closure_only" },
+      ],
+    }
+    HostTextImportScanners => NamespaceCutSubjectProbes {
+      first: HostRustItemProbe { crate_relative_file: "src/v1/stage0/src/cli_run.rs", item_name: "extract_import_paths" },
+      rest: [
+        HostRustItemProbe { crate_relative_file: "src/v1/stage0/src/cli_run.rs", item_name: "referenced_module_paths_in_text" },
+      ],
+    }
+    ImportDerivedUseLineInputs => NamespaceCutSubjectProbes {
+      first: DagDeclarationProbe { module_path: "v1.compiler.emit_rust", decl_name: "emit_imports" },
+      rest: [
+        DagDeclarationProbe { module_path: "v1.compiler.emit_rust", decl_name: "emit_extract_import_paths_fn" },
+      ],
+    }
+    LegacyImportRepairApparatus => NamespaceCutSubjectProbes {
+      first: HostRustItemProbe { crate_relative_file: "src/v1/stage0/src/cli_run.rs", item_name: "classify_unlisted_import_binding_source" },
+      rest: [
+        DagDeclarationProbe { module_path: "v1.compiler.infer_env", decl_name: "listed_import_required_bare_call_blocked" },
+      ],
+    }
+    LayerImportFactsConsumers => NamespaceCutSubjectProbes {
+      first: HostRustItemProbe { crate_relative_file: "src/v1/stage0/src/cli_run.rs", item_name: "layer_import_facts" },
+      rest: [],
+    }
+  }
+}
+
+fn subject_probe_list(s: NamespaceCutSubjectIdentity) -> List<NamespaceCutSubjectProbe> {
+  let probes = subject_probes(s: s)
+  concat([probes.first], probes.rest)
+}
+
+// WHICH STAGE DELETES EACH SUBJECT -- the join the stage standings fold over. Total, so a new
+// subject refuses to compile until its deleting stage is stated.
+//
+// NO SUBJECT IS ASSIGNED TO XL-5, AND THAT IS THE CORRECTION THIS ROW SET CARRIES.
+//
+// The first cut of this function assigned five subjects to the waves on the reading that
+// "everything semantic dies in the waves". Every one of those five is a ROOT AUTHORITY -- the
+// resolver's import-name universe, the inference scope overlays, the host text scanners, the
+// use-line emission inputs, the repair apparatus -- and deleting a root authority changes what
+// live resolution and closure ANSWER. That is the atomic cutover's motion by definition (DESIGN
+// section 3: the authority transition is one motion, and Y never resolves through X), so
+// scheduling it as a wave scheduled a partial authority transition, which is the observable
+// intermediate state the doctrine exists to forbid.
+//
+// XL-5 IS NOT EMPTY WORK; IT IS WORK THIS ROSTER CANNOT ADDRESS. The waves are exact corpus
+// rewrites -- the occurrence and import-declaration residual XL-2's rehearsal produces -- and that
+// residual is not a root-authority probe, so it has no row here and cannot be given one. XL-5's
+// standing is therefore derived from that residual's own census in
+// gunbc.compiler_frontend_program_status, which reports it NOT-DERIVABLE while no producer exists.
+// This is deliberate and load-bearing: a subject-derived XL-5 with zero rows would fold to CLEAR
+// and report a wave nobody has run as complete, which is exactly the rung inflation DESIGN
+// section 4b names as worse than sitting low.
+//
+// WHAT WOULD MOVE A SUBJECT BACK EARLIER: an EXECUTED proof that deleting it cannot change live
+// resolution or closure. Not an argument that it looks independent -- a run. Until then the
+// cutover owns it, and test.claim.compiler_frontend_program_status_witness executes the
+// no-subject-at-XL-5 rule so a reassignment reds rather than being noticed in review.
+//
+// XL-7 keeps grammar, parse surface and AST carriers, structurally, by the grammar-last ruling
+// (gunbc.namespace_cut_landing_order namespace_cut_grammar_last_ruling).
+fn subject_deleted_at_stage(s: NamespaceCutSubjectIdentity) -> NamespaceCutStage {
+  match s {
+    ImportGrammarProductions => StageXL7GrammarDeletion
+    ImportParseSurfaceV1 => StageXL7GrammarDeletion
+    ImportAstCarriers => StageXL7GrammarDeletion
+    ResolverImportNameUniverse => StageXL6AtomicCutover
+    ImportScopeOverlays => StageXL6AtomicCutover
+    ImportDerivedModuleAdjacency => StageXL6AtomicCutover
+    HostImportClosureAssembly => StageXL6AtomicCutover
+    HostTextImportScanners => StageXL6AtomicCutover
+    ImportDerivedUseLineInputs => StageXL6AtomicCutover
+    LegacyImportRepairApparatus => StageXL6AtomicCutover
+    LayerImportFactsConsumers => StageXL6AtomicCutover
+  }
+}
+
+data namespace_cut_subjects: List<NamespaceCutSubjectIdentity> = [
+  ImportGrammarProductions,
+  ImportParseSurfaceV1,
+  ImportAstCarriers,
+  ResolverImportNameUniverse,
+  ImportScopeOverlays,
+  ImportDerivedModuleAdjacency,
+  HostImportClosureAssembly,
+  HostTextImportScanners,
+  ImportDerivedUseLineInputs,
+  LegacyImportRepairApparatus,
+  LayerImportFactsConsumers,
+]
+
+fn subjects_deleted_at(stage: NamespaceCutStage) -> List<NamespaceCutSubjectIdentity> {
+  namespace_cut_subjects
+    |> filter(s => namespace_cut_stage_is(a: subject_deleted_at_stage(s: s), b: stage))
+}
+
+fn probe_render(p: NamespaceCutSubjectProbe) -> String {
+  match p {
+    DagDeclarationProbe { module_path, decl_name } =>
+      concat(module_path, concat(" ", decl_name))
+    DagDeclarationFieldProbe { module_path, decl_name, field_name } =>
+      concat(module_path, concat(" ", concat(decl_name, concat(".", field_name))))
+    HostRustItemProbe { crate_relative_file, item_name } =>
+      concat(crate_relative_file, concat(" ", item_name))
+  }
+}
