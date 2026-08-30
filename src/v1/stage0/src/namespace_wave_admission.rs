@@ -408,62 +408,14 @@ pub struct TransitionAdmission {
 /// module, enclosing declaration and leaf, blast radius 0 on every one. DISSOLVE-ON: #9675
 /// merging -- base and head then both carry the relocation, the rows report stale, and they are
 /// removed by that trigger exactly as the four shrinks above were.
-pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
-    TransitionAdmission {
-        label: "rust-source-prefix-relocation-01",
-        subject: AdmissionSubject::Binding {
-            module: "gunbc.stage0_rust_product_reachability",
-            in_declaration: "path_is_test_harness",
-            spelling: "rust_source_prefix_stage0_test",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: "rust-source-prefix-relocation-02",
-        subject: AdmissionSubject::Binding {
-            module: "gunbc.stage0_rust_product_reachability",
-            in_declaration: "path_is_test_harness",
-            spelling: "rust_source_prefix_test_harness",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: "rust-source-prefix-relocation-03",
-        subject: AdmissionSubject::Binding {
-            module: "gunbc.stage0_rust_source_lifecycle_scaffold",
-            in_declaration: "rust_source_discovery_prefix_hints",
-            spelling: "rust_source_prefix_stage0_example",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: "rust-source-prefix-relocation-04",
-        subject: AdmissionSubject::Binding {
-            module: "gunbc.stage0_rust_source_lifecycle_scaffold",
-            in_declaration: "rust_source_discovery_prefix_hints",
-            spelling: "rust_source_prefix_stage0_test",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: "rust-source-prefix-relocation-05",
-        subject: AdmissionSubject::Binding {
-            module: "gunbc.stage0_rust_source_lifecycle_scaffold",
-            in_declaration: "rust_source_discovery_prefix_hints",
-            spelling: "rust_source_prefix_test_harness",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: "rust-source-prefix-relocation-06",
-        subject: AdmissionSubject::Binding {
-            module: "gunbc.stage0_rust_source_lifecycle_scaffold",
-            in_declaration: "rust_source_discovery_prefix_hints",
-            spelling: "rust_source_prefix_tooling",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-];
+/// DISSOLVED 2026-08-30: #9675 merged at 03:32:05Z, so base and head both carry the relocation
+/// and all six rows reported stale. Retired by their own trigger and by nothing else. The block was
+/// PR-only but universal -- two unrelated pull requests (#9706 compiler inference, #9712 fabric
+/// plan/apply) refused identically on these six ids while main stayed green -- which is why the
+/// shrink could not wait for a PR that would otherwise touch this file. The roster is EMPTY and
+/// empty is not permissive: a run carrying a real namespace delta still refuses it as UNADJUDICATED
+/// until its author adds a row here.
+pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[];
 
 /// The denominators a green must name (DESIGN §5). A run that cannot say what it covered is
 /// an instrument failure wearing coverage's clothes.
