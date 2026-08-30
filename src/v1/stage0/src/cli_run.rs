@@ -37173,6 +37173,16 @@ pub struct RequiredFloorOutcome {
     /// Per-identity `LongHomeStorageAgreement`, a storage/name-hygiene diagnostic that never
     /// feeds admission. See the type's doc comment.
     pub long_home_storage_agreement: Vec<LongHomeStorageAgreementRow>,
+    /// CHANGED witness identities this run's diff observation attributed (added/modified test
+    /// declarations vs the resolved comparison baseline), at the same qualified
+    /// `module.function` grain the disposition receipt is keyed by. Zero on a diff that
+    /// touches no witness declaration.
+    pub changed_witness_rows: usize,
+    /// The changed identities whose `ChangedWitnessExecutionStanding`
+    /// (`v2.workflow.floor_changed_witness`) BLOCKS — declined, missing from the disposition
+    /// receipt, or planned without a terminal Passed verdict. Non-empty reds the required
+    /// context; see `required_floor_outcome_is_clean` in `claim_executor`.
+    pub changed_witness_blocking: Vec<String>,
 }
 
 fn str_list(items: impl IntoIterator<Item = String>) -> v1_interpreter::Value {

@@ -2,7 +2,7 @@ module gunbc.spark.serving_converge_realize
 
 import std.types { String, List, NonEmptyStr, Bool }
 import std.measure { Second, second, second_count }
-import extdeps.systemd.systemctl { systemctl_user_enable_argv, systemctl_user_start_argv }
+import extdeps.systemd.systemctl { systemctl_user_enable_argv, systemctl_user_start_argv, systemctl_user_stop_argv, systemctl_user_disable_argv }
 import gunbc.fleet_known_hosts_anchor { portable_remote_words, portable_remote_words_strings }
 import gunbc.spark.serving_realization {
   ServingInstallEffect,
@@ -19,6 +19,11 @@ import gunbc.spark.serving_realization {
   MaterializeModelArtifact,
   GrantContainerRuntimeAccess,
   RunContainerAsOwnUser,
+  SparkServingRetirementEffect,
+  StopUserUnit,
+  DisableUserUnit,
+  RemoveUserUnitFile,
+  ReloadUserManagerAfterRemoval,
 }
 import gunbc.spark.serving_desired { spark_serving_automation_principal_login, spark_serving_desired_model_ref, spark_serving_local_api_version_url }
 import extdeps.ollama.api { ollama_model_ref_wire }
@@ -679,6 +684,54 @@ fn realize_spark_serving_install_effect_command(
 // The concat here appends COMMANDS, not words. That is the whole difference from the prior
 // shape: each effect contributes one or more complete argvs, and the list preserves the order
 // the effects were frozen in.
+// THE RETIREMENT REALIZER, WHICH HAS NO REFUSING ARMS.
+//
+// Its install sibling above refuses nine of its thirteen effects, because that vocabulary carries
+// realizations this slice does not implement -- system-scope units, packaged runtimes, containers.
+// The retirement vocabulary was minted for exactly one realization and has four constructors, all of
+// them user-scope, all of them implemented here. There is nothing for a refusal arm to say, and
+// adding one for symmetry would be a wall whose RED is unauthorable: no value could reach it.
+//
+// REMOVAL OF THE UNIT FILE IS AN ARGV, NOT A TYPED FILE WRITE. The write path seals content against
+// an allowed scope because it is putting bytes somewhere; a removal names a path and produces none.
+// The path comes from the same install-paths authority the write uses, so the two cannot come to
+// disagree about which file the unit is.
+fn spark_serving_stop_user_unit_remote_argv() -> SparkServingInstallRemoteCommandsVerdict {
+  spark_serving_admit_portable_remote_argv(
+    identity: "stop-user-unit" as NonEmptyStr,
+    raws: systemctl_user_stop_argv(unit: spark_serving_unit_name as NonEmptyStr),
+  )
+}
+
+fn spark_serving_disable_user_unit_remote_argv() -> SparkServingInstallRemoteCommandsVerdict {
+  spark_serving_admit_portable_remote_argv(
+    identity: "disable-user-unit" as NonEmptyStr,
+    raws: systemctl_user_disable_argv(unit: spark_serving_unit_name as NonEmptyStr),
+  )
+}
+
+// `rm -f`, AND THE `-f` IS NOT A SWALLOWED FAILURE. It suppresses the diagnostic for a path that is
+// already gone, which is the one condition under which a removal has nothing to do and has still
+// succeeded. It does not suppress a permission failure or an unreadable directory -- `rm -f` still
+// exits nonzero for those, so the step that could hide a real refusal does not.
+fn spark_serving_remove_user_unit_file_remote_argv() -> SparkServingInstallRemoteCommandsVerdict {
+  spark_serving_admit_portable_remote_argv(
+    identity: "remove-user-unit-file" as NonEmptyStr,
+    raws: ["rm", "-f", spark_serving_user_unit_path() as String],
+  )
+}
+
+fn realize_spark_serving_retirement_effect_command(
+  effect: SparkServingRetirementEffect,
+) -> SparkServingInstallRemoteCommandsVerdict {
+  match effect {
+    StopUserUnit => spark_serving_stop_user_unit_remote_argv()
+    DisableUserUnit => spark_serving_disable_user_unit_remote_argv()
+    RemoveUserUnitFile => spark_serving_remove_user_unit_file_remote_argv()
+    ReloadUserManagerAfterRemoval => spark_serving_reload_user_manager_remote_argv()
+  }
+}
+
 fn realize_spark_serving_install_effect_commands(
   effects: List<ServingInstallEffect>,
   executor_login: NonEmptyStr,

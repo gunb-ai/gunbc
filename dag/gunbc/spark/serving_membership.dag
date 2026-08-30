@@ -56,6 +56,60 @@ type SparkServingResourceAddress
   | SparkServingModelSlotAddress { slot: NonEmptyStr }
   | SparkServingLingerAddress
 
+// WHAT RETIRES WITH THE SERVICE, AND WHAT THE HOST KEEPS.
+//
+// One roster held seven addresses, and while both Sparks served that was harmless: nothing ever
+// removed a member, so nothing ever had to answer which of them a removal was about. Retiring
+// serving from a host makes the question load-bearing, and answering it wrongly is expensive in both
+// directions -- deleting the runtime closure and the model blob means re-downloading tens of
+// gigabytes to restore a cache, while leaving the unit running means the retirement freed nothing
+// and the trainer contends for the pool with a live server.
+//
+// The line is residency. A serving-role address describes something the SERVICE holds: a process,
+// an install symlink, a unit definition the manager has loaded. Those end when serving ends. A
+// baseline address describes bytes on a disk and a property of an account, which the host keeps
+// being true of whatever it is now for.
+//
+// This is a scope, not a role: it says which addresses belong to the serving role's population, and
+// gunbc.spark.cell_role says which hosts have that role. A training cell keeps its baseline members
+// desired and holds no serving-role members at all, so its retirement is the removal of exactly the
+// four the service owned.
+type SparkServingAddressScope
+  = SparkServingRoleScoped
+  | SparkHostBaselineScoped
+
+fn spark_serving_address_scope(address: SparkServingResourceAddress) -> SparkServingAddressScope {
+  match address {
+    SparkServingUserUnitAddress => SparkServingRoleScoped
+    SparkServingUserUnitRegistrationAddress => SparkServingRoleScoped
+    SparkServingUserUnitEnablementAddress => SparkServingRoleScoped
+    SparkServingUserUnitActivityAddress => SparkServingRoleScoped
+    SparkServingRuntimeRootAddress => SparkHostBaselineScoped
+    SparkServingModelSlotAddress { slot: _ } => SparkHostBaselineScoped
+    SparkServingLingerAddress => SparkHostBaselineScoped
+  }
+}
+
+// THE DESIRED POPULATION OF A HOST THAT NO LONGER SERVES. Baseline members stay desired, so the
+// reconcile proposes nothing for them; the four serving-role members leave desired state, so the
+// reconcile proposes exactly four removals. The retirement is a set difference over one roster
+// rather than a second code path, which is why nothing here needs a "retirement mode".
+fn spark_serving_baseline_members(members: List<SparkServingMember>) -> List<SparkServingMember> {
+  flat_map(members, m =>
+    match spark_serving_address_scope(address: m.address) {
+      SparkHostBaselineScoped => [m]
+      SparkServingRoleScoped => []
+    })
+}
+
+fn spark_serving_role_scoped_members(members: List<SparkServingMember>) -> List<SparkServingMember> {
+  flat_map(members, m =>
+    match spark_serving_address_scope(address: m.address) {
+      SparkServingRoleScoped => [m]
+      SparkHostBaselineScoped => []
+    })
+}
+
 type SparkServingMemberAt = String
 
 type SparkServingMember {

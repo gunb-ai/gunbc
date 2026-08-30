@@ -179,6 +179,25 @@ fn systemctl_user_start_argv(unit: NonEmptyStr) -> List<String> {
   ["systemctl", "--user", "start", unit as String]
 }
 
+// STOP AND DISABLE ARE THE RETIREMENT PAIR, AND THEY ARE SEPARATE FOR THE REASON ENABLE AND START
+// ARE. `disable --now` fuses them exactly as `enable --now` fuses the install pair, and the cost is
+// the same distinction: stop ends the RUNNING process, disable removes the install symlinks so the
+// unit does not return at the next boot. A retirement that only stops leaves a unit that comes back
+// on reboot; one that only disables leaves a live server holding the resource the retirement exists
+// to free. They are two facts about a unit and they remain two operations here.
+//
+// `disable` on a unit the manager does not know exits nonzero, and that nonzero is a real answer
+// rather than noise to swallow: it means the retirement was planned against a unit that is not
+// there, which is a disagreement between the observed population and the plan, not a step to make
+// idempotent by flag. Nothing here passes --quiet or ignores the status for that reason.
+fn systemctl_user_stop_argv(unit: NonEmptyStr) -> List<String> {
+  ["systemctl", "--user", "stop", unit as String]
+}
+
+fn systemctl_user_disable_argv(unit: NonEmptyStr) -> List<String> {
+  ["systemctl", "--user", "disable", unit as String]
+}
+
 // LoadState is the only observation that distinguishes an ABSENT unit from a present one, which is why the
 // `ShowLoadState` operation on the service surface above is its own operation rather than a
 // SystemdUnitProperty arm: that coproduct is numeric cgroup evidence sharing one numeric mock, and a wire
