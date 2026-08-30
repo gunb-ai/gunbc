@@ -3,7 +3,9 @@ module extdeps.iproute2.ss
 import std.types { String, Bool }
 import std.algebra { trim }
 
-data ss_authority_note: String = "ss(8) from iproute2, cited to the upstream manual. The socket-statistics query this repository consumes is a LISTENING-SOCKET ENUMERATION filtered to one port, whose answer is the population itself rather than a status code."
+// ss(8) from iproute2, cited to the upstream manual. The socket-statistics query this repository
+// consumes is a LISTENING-SOCKET ENUMERATION filtered to one port, whose answer is the population
+// itself rather than a status code.
 
 // ENUMERATION IS THE ONLY SHAPE THAT CAN PROVE NOTHING IS SERVING A PORT.
 //

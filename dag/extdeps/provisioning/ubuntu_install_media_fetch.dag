@@ -28,7 +28,13 @@ data install_media_fetch_bash_emit_dissolution_trigger: Disposition = Terminal {
   reason: "in-process typed reconcile (shell.Test.IsFile, sha256sum_verify_via_shell, http.Client.DownloadToFile, shell.Move.File) replaces ShellProgram/serialize_bash - no shell text is built or serialized"
 }
 
-data install_media_fetch_hash_convergence_note: String = "§3 convergence note: this file verifies fetched content against Canonical's published cryptographic SHA-256 digest (extdeps_external_authority_anchor above) via the Sha256Verify shape - a genuine external-authority digest check, distinct from std.content_hash's fnv1a64 internal structural fingerprint (dag/std/content_hash.dag, used for our own generated-artifact freshness, e.g. srv3_seeded_install_media's remaster sidecar). Do not unify the two: one is a cryptographic authority citation, the other is an internal identity fingerprint with no external-authority meaning."
+// §3 convergence note: this file verifies fetched content against Canonical's published
+// cryptographic SHA-256 digest (extdeps_external_authority_anchor above) via the Sha256Verify shape
+// - a genuine external-authority digest check, distinct from std.content_hash's fnv1a64 internal
+// structural fingerprint (dag/std/content_hash.dag, used for our own generated-artifact freshness,
+// e.g. srv3_seeded_install_media's remaster sidecar). Do not unify the two: one is a cryptographic
+// authority citation, the other is an internal identity fingerprint with no external-authority
+// meaning.
 
 type InstallMediaFetchObservation
   = InstallMediaFetchAbsent
@@ -41,7 +47,15 @@ type InstallMediaFetchReconcileOutcome
   | InstallMediaFetchFetched { path: NonEmptyStr, mirror_url: NonEmptyStr }
   | InstallMediaFetchRefused { reason: NonEmptyStr }
 
-data refusal_shape_doc: String = "DESIGN §5 refusal-shape fix (cursor review, PR #6596): the fetch reconcile path now matches Sha256VerifyVerdict directly instead of collapsing it through a Bool predicate, so a mktemp/checksum-write infra failure stays distinguishable from a genuine digest mismatch (InstallMediaFetchVerifyInfraFailure vs InstallMediaFetchHashMismatch), and a post-download shell.Move.File failure aborts with its own typed refusal instead of falling through the mirror fold to a misleading 'all mirrors unreachable'. The Bool-collapsing install_media_hash_matches helper was deleted (cursor review, PR #6596) - its two wet witnesses now assert on observe_install_media_fetch's Sha256VerifyVerdict-derived outcome directly, so no predicate-dissolution surface remains anywhere in this module."
+// DESIGN §5 refusal-shape fix (cursor review, PR #6596): the fetch reconcile path now matches
+// Sha256VerifyVerdict directly instead of collapsing it through a Bool predicate, so a
+// mktemp/checksum-write infra failure stays distinguishable from a genuine digest mismatch
+// (InstallMediaFetchVerifyInfraFailure vs InstallMediaFetchHashMismatch), and a post-download
+// shell.Move.File failure aborts with its own typed refusal instead of falling through the mirror
+// fold to a misleading 'all mirrors unreachable'. The Bool-collapsing install_media_hash_matches
+// helper was deleted (cursor review, PR #6596) - its two wet witnesses now assert on
+// observe_install_media_fetch's Sha256VerifyVerdict-derived outcome directly, so no
+// predicate-dissolution surface remains anywhere in this module.
 
 type MirrorAttempt
   = MirrorTerminal { outcome: InstallMediaFetchReconcileOutcome }
@@ -50,7 +64,13 @@ type MirrorAttempt
 
 type MirrorFoldAcc = MirrorFoldAcc { terminal: InstallMediaFetchReconcileOutcome?, saw_mismatch: Bool }
 
-data mirror_fold_refusal_doc: String = "DESIGN §5 fix (cursor review, PR #6596): install_media_fetch_try_mirror previously returned `none` for BOTH an unreachable mirror (transport miss, keep trying) AND a Sha256Mismatch (a genuine digest failure), so a run where every mirror downloaded but none verified fell through the fold to 'all mirrors unreachable' - a state-space conflation between reachability and digest correctness. MirrorAttempt now names the three outcomes distinctly, and the fold tracks saw_mismatch so the final refusal reads 'digest verification failed' when that's what actually happened."
+// DESIGN §5 fix (cursor review, PR #6596): install_media_fetch_try_mirror previously returned
+// `none` for BOTH an unreachable mirror (transport miss, keep trying) AND a Sha256Mismatch (a
+// genuine digest failure), so a run where every mirror downloaded but none verified fell through
+// the fold to 'all mirrors unreachable' - a state-space conflation between reachability and digest
+// correctness. MirrorAttempt now names the three outcomes distinctly, and the fold tracks
+// saw_mismatch so the final refusal reads 'digest verification failed' when that's what actually
+// happened.
 
 // The presence probe is OutcomeIsData: a non-zero `test -f` here means the media is ABSENT, which is one of this fn's four declared answers (InstallMediaFetchAbsent), not a fault. The type already draws the distinction the arm formalises — InstallMediaFetchVerifyInfraFailure is the separate 'the probe itself broke' arm — so subject-state and probe-breakage were never conflated here; only the effect layer's glyph conflated them. Admissible under the §5 guard: this fn returns InstallMediaFetchObservation, a typed observation whose arms ARE the adjudication, and the exit selects among them.
 fn observe_install_media_fetch(path: NonEmptyStr, expected_hash: NonEmptyStr) -> InstallMediaFetchObservation {

@@ -18,7 +18,19 @@ import v2.compiler.self_host.wet_receipt_route_standing {
 
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
-data wet_receipt_route_standing_witness_doc: String = "THE CONTROL FOR THE ROW-GRAIN ROUTE AUTHORITY, and what it asserts is deliberately NOT a census. A witness that pinned `exactly 6 revoked, exactly 10 never-established, exactly 1 executable` would be a count copied from the current tree, which DESIGN section 5 rules out as an oracle: restoring one binding would red it, and automating its update would collapse it to measure() == measure(). Completeness here is an IDENTITY JOIN over a closed universe, not a count equality.\n\nSo the arms below assert the DERIVATION instead: that a receipt which IS a known-red entry derives BindingRevokedOnMeasuredRed and one that is not derives BindingNeverEstablished; that the partition is total; and that the fault marker equals the exact string the driver source prints, which is an external oracle (dag/gunbc/instruments/self_host_00_compile_shims/witness_main.rs) rather than a measurement of this tree. Restoring a binding changes the standings and must NOT red this file -- that is the correct behaviour, because the roster is meant to move and the derivation is not."
+// THE CONTROL FOR THE ROW-GRAIN ROUTE AUTHORITY, and what it asserts is deliberately NOT a census.
+// A witness that pinned `exactly 6 revoked, exactly 10 never-established, exactly 1 executable`
+// would be a count copied from the current tree, which DESIGN section 5 rules out as an oracle:
+// restoring one binding would red it, and automating its update would collapse it to measure() ==
+// measure(). Completeness here is an IDENTITY JOIN over a closed universe, not a count equality.
+//
+// So the arms below assert the DERIVATION instead: that a receipt which IS a known-red entry
+// derives BindingRevokedOnMeasuredRed and one that is not derives BindingNeverEstablished; that the
+// partition is total; and that the fault marker equals the exact string the driver source prints,
+// which is an external oracle (dag/gunbc/instruments/self_host_00_compile_shims/witness_main.rs)
+// rather than a measurement of this tree. Restoring a binding changes the standings and must NOT
+// red this file -- that is the correct behaviour, because the roster is meant to move and the
+// derivation is not.
 
 // AN EXTERNAL ORACLE, NOT A TREE MEASUREMENT. The expected string is what the 00_compile driver
 // actually prints on its inject-fault path. If the derivation ever produced a different marker, the

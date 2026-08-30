@@ -51,7 +51,11 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // Every RED control plants its own two-row fixtures and moves exactly ONE fact between
 // the refusing and admitting halves, so a green half can never be an accident of the
 // live population's size.
-data offline_local_recipe_witness_note: String = "Shape-and-join walls over gunbc.offline_local_recipe. Live claims fold the real rosters (cheap: two substrate lists, no corpus acquisition, no host read). Discriminating REDs are fixture pairs holding the recipe fixed and moving one fact: the exclusion frontier that covers the subject, the function list a RecipeFunctions selection names, and whether a defect row's entry is a subject some recipe carries."
+// Shape-and-join walls over gunbc.offline_local_recipe. Live claims fold the real rosters (cheap:
+// two substrate lists, no corpus acquisition, no host read). Discriminating REDs are fixture pairs
+// holding the recipe fixed and moving one fact: the exclusion frontier that covers the subject, the
+// function list a RecipeFunctions selection names, and whether a defect row's entry is a subject
+// some recipe carries.
 
 fn probe_recipe(path: NonEmptyStr) -> OfflineLocalRecipeRow {
   OfflineLocalRecipeRow {
@@ -133,7 +137,6 @@ test fn recipe_functions_selection_naming_a_function_admits() -> Bool {
     }
   )
 }
-
 
 fn probe_defect_row(entry: NonEmptyStr) -> OfflineRecipeDefectRow {
   OfflineRecipeDefectRow {
@@ -236,8 +239,6 @@ test fn home_recipe_renders_no_argv_until_a_resident_is_chosen() -> Bool {
       entry: "dag/test/claim/long/some_resident_test.dag"
     )
 }
-
-
 
 // The one defect-row rule a refinement cannot decide, and its RED is still authorable
 // precisely because it is about a JOIN rather than a shape: a measurement filed against a

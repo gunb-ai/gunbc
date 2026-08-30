@@ -14,8 +14,8 @@ import gunbc.namespace_cut_stage {
 // gunbc.compiler_frontend_program_status has named as its missing NamespaceStepSubjectRoster
 // instrument since 2026-08-26 -- "the namespace cut's remaining per-step subjects as rows".
 //
-// WHY THE PROBES ARE STRINGS AND NOT AUTHORED DeclarationRef LITERALS, which looks like the
-// weaker spelling and is the only workable one. The ingestion-time citation wall
+// WHY THE PROBES ARE STRINGS AND NOT AUTHORED DeclarationRef LITERALS -- the weaker-looking
+// spelling and the only workable one. The ingestion-time citation wall
 // (v1_compiler.declaration_index, cited-symbol arm) resolves every decl_ref literal on every
 // required run and REFUSES when the target is gone. Every declaration this roster names is
 // SCHEDULED TO BE DELETED: the moment a wave deletes one, an authored citation to it would red
@@ -64,15 +64,14 @@ fn namespace_cut_subject_label(s: NamespaceCutSubjectIdentity) -> NonEmptyStr {
 // the observation sibling executes, and HOST RUST ITEMS, resolved against
 // gunbc.rust_item_host_observation's live hand-Rust population.
 //
-// THE HOST PROBE IS NO LONGER UNOBSERVABLE BY DEFAULT. An earlier revision of this comment said
-// its observation instrument does not exist in this tree, and that was false when it was written:
+// THE HOST PROBE IS NO LONGER UNOBSERVABLE BY DEFAULT. An earlier revision said its observation
+// instrument does not exist in this tree; that was false when written:
 // gunbc.rust_item_host_observation observe_current_live_hand_rust has been the item-grain host
 // authority for seed-growth admission since before this roster existed. Refusing every host probe
-// on that reading was an absent-authority claim about a present authority -- the same
-// authority_substitution shape read in reverse -- and it is what made XL-0 look like a stage
-// waiting on a tool. The sibling now JOINS against that producer and refuses only where the join
-// itself cannot reach: see observe_host_probe, which names what is missing rather than the
-// authority.
+// on that reading was an absent-authority claim about a present authority -- the
+// authority_substitution shape read in reverse -- and it made XL-0 look like a stage waiting on a
+// tool. The sibling now JOINS against that producer and refuses only where the join itself cannot
+// reach: see observe_host_probe, which names what is missing rather than the authority.
 type NamespaceCutSubjectProbe
   = DagDeclarationProbe { module_path: String, decl_name: String }
   | DagDeclarationFieldProbe { module_path: String, decl_name: String, field_name: String }
@@ -170,26 +169,24 @@ fn subject_probe_list(s: NamespaceCutSubjectIdentity) -> List<NamespaceCutSubjec
 //
 // NO SUBJECT IS ASSIGNED TO XL-5, AND THAT IS THE CORRECTION THIS ROW SET CARRIES.
 //
-// The first cut of this function assigned five subjects to the waves on the reading that
-// "everything semantic dies in the waves". Every one of those five is a ROOT AUTHORITY -- the
-// resolver's import-name universe, the inference scope overlays, the host text scanners, the
-// use-line emission inputs, the repair apparatus -- and deleting a root authority changes what
-// live resolution and closure ANSWER. That is the atomic cutover's motion by definition (DESIGN
-// section 3: the authority transition is one motion, and Y never resolves through X), so
-// scheduling it as a wave scheduled a partial authority transition, which is the observable
-// intermediate state the doctrine exists to forbid.
+// The first cut assigned five subjects to the waves on the reading that "everything semantic dies
+// in the waves". Every one of those five is a ROOT AUTHORITY -- the resolver's import-name
+// universe, the inference scope overlays, the host text scanners, the use-line emission inputs,
+// the repair apparatus -- and deleting a root authority changes what live resolution and closure
+// ANSWER. That is the atomic cutover's motion by definition (DESIGN section 3: the authority
+// transition is one motion, and Y never resolves through X), so scheduling it as a wave scheduled
+// a partial authority transition, the observable intermediate state the doctrine forbids.
 //
 // XL-5 IS NOT EMPTY WORK; IT IS WORK THIS ROSTER CANNOT ADDRESS. The waves are exact corpus
 // rewrites -- the occurrence and import-declaration residual XL-2's rehearsal produces -- and that
 // residual is not a root-authority probe, so it has no row here and cannot be given one. XL-5's
 // standing is therefore derived from that residual's own census in
 // gunbc.compiler_frontend_program_status, which reports it NOT-DERIVABLE while no producer exists.
-// This is deliberate and load-bearing: a subject-derived XL-5 with zero rows would fold to CLEAR
-// and report a wave nobody has run as complete, which is exactly the rung inflation DESIGN
-// section 4b names as worse than sitting low.
+// Load-bearing: a subject-derived XL-5 with zero rows would fold to CLEAR and report a wave nobody
+// has run as complete, the rung inflation DESIGN section 4b names as worse than sitting low.
 //
 // WHAT WOULD MOVE A SUBJECT BACK EARLIER: an EXECUTED proof that deleting it cannot change live
-// resolution or closure. Not an argument that it looks independent -- a run. Until then the
+// resolution or closure -- a run, not an argument that it looks independent. Until then the
 // cutover owns it, and test.claim.compiler_frontend_program_status_witness executes the
 // no-subject-at-XL-5 rule so a reassignment reds rather than being noticed in review.
 //

@@ -70,7 +70,14 @@ test fn the_two_lab_instances_really_do_straddle_the_transport_split() -> Bool {
   remote && local
 }
 
-data binding_law_note: String = "THE THREE-SITE DISAGREEMENT, pinned at the one authority that now decides it. gunbc.roadmap_authority read any ExecutionContract as bound; gunbc.roadmap_verify read an empty validation list as unbound; gunbc.roadmap_dispatch_environment refused it. Empty contracts are constructible, so the disagreement was reachable — a node bound to one would leave the acceptance frontier while remaining unverifiable and undispatchable.\\n\\nThe empty contract is the discriminating input, and the closure keeps it distinct from the unspecified one because their remedies differ: author a contract, versus fix the one you authored. A Bool-only authority would have collapsed them and taken dispatch_environment's located diagnostics with it."
+// THE THREE-SITE DISAGREEMENT, pinned at the one authority that now decides it.
+// gunbc.roadmap_authority read any ExecutionContract as bound; gunbc.roadmap_verify read an empty
+// validation list as unbound; gunbc.roadmap_dispatch_environment refused it. Empty contracts are
+// constructible, so the disagreement was reachable — a node bound to one would leave the acceptance
+// frontier while remaining unverifiable and undispatchable.\n\nThe empty contract is the
+// discriminating input, and the closure keeps it distinct from the unspecified one because their
+// remedies differ: author a contract, versus fix the one you authored. A Bool-only authority would
+// have collapsed them and taken dispatch_environment's located diagnostics with it.
 
 fn empty_contract() -> WorkItemExecutionContract {
   ExecutionContract { validations: [], extra_capabilities: [] }
@@ -149,7 +156,13 @@ test fn refusal_and_failure_and_unbound_all_exit_failure() -> Bool {
   refused && failed && unbound
 }
 
-data receipt_binds_the_facts_note: String = "THE FOUR FACTS THAT MAKE A VERIFICATION CHECKABLE, and none of which the first cut carried. An outcome says pass or fail; it does not say which tree, at which revision, on which machine, running which realized command — so a verification that ran on the wrong host against the wrong tree produced a value indistinguishable from a correct one. That is exactly what happened.\\n\\nThe receipt is asserted through its serialized form rather than field by field, because the serialization is what a Publication step or an operator actually reads. A field that exists in the type and is dropped by the projection would pass a field-wise claim and fail this one."
+// THE FOUR FACTS THAT MAKE A VERIFICATION CHECKABLE, and none of which the first cut carried. An
+// outcome says pass or fail; it does not say which tree, at which revision, on which machine,
+// running which realized command — so a verification that ran on the wrong host against the wrong
+// tree produced a value indistinguishable from a correct one. That is exactly what happened.\n\nThe
+// receipt is asserted through its serialized form rather than field by field, because the
+// serialization is what a Publication step or an operator actually reads. A field that exists in
+// the type and is dropped by the projection would pass a field-wise claim and fail this one.
 
 fn sample_receipt() -> LegacySingleValidationVerificationReceipt {
   LegacySingleValidationVerificationReceipt {
@@ -175,7 +188,11 @@ test fn receipt_projection_carries_host_worktree_revision_and_command() -> Bool 
     && string_contains(s: j, pattern: "gunbc-claim")
 }
 
-data unobserved_exit_note: String = "A process that never ran has no exit code, and zero is the wrong answer for it in the most dangerous direction. The receipt keeps the distinction as a coproduct, and this claim checks that the serialized form does not quietly render an unobserved exit as a success — a receipt reading exit 0 for a command the transport never delivered is the fabricated verdict the whole split exists to prevent."
+// A process that never ran has no exit code, and zero is the wrong answer for it in the most
+// dangerous direction. The receipt keeps the distinction as a coproduct, and this claim checks that
+// the serialized form does not quietly render an unobserved exit as a success — a receipt reading
+// exit 0 for a command the transport never delivered is the fabricated verdict the whole split
+// exists to prevent.
 
 test fn unobserved_exit_never_serializes_as_zero() -> Bool {
   let j = legacy_single_validation_verification_receipt_json(

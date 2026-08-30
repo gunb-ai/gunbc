@@ -1,11 +1,28 @@
 module v2.test.claim.enforcement_inventory_witness
 
-
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
-data enforcement_inventory_witness_offline_note: String = "Operator-ruled OFFLINE (review 47569): the global inventory receipt calls lens_enforcement_inventory_live, which reads decl_facts over the whole corpus, ONCE and folds the seven assertions over that one value. The former seven-test shape independently rebuilt the same immutable world fact seven times and safety-interrupted every identity before verdict; required-floor run 32794539384 measured the seven interruptions, and this consolidation is their bounded reshape. Excluded from per-PR discovery via witness_exclusion_frontier row enforcement_inventory_witness_test.dag (OfflineLocalRecipe, same dissolve_on as enforcement_live_witness_test.dag). Local recipe: claim_batch --source-root dag --source-root src/v2 --entry src/v2/test/claim/enforcement_inventory_witness_test.dag --function enforcement_inventory_global_receipt_holds --claim-run --wet. Two frontier-reconciliation tests (enforcement_live specimen + row-count) are cheap but share this file grain."
+// Operator-ruled OFFLINE (review 47569): the global inventory receipt calls
+// lens_enforcement_inventory_live, which reads decl_facts over the whole corpus, ONCE and folds the
+// seven assertions over that one value. The former seven-test shape rebuilt the same immutable
+// world fact seven times and safety-interrupted every identity before verdict; required-floor run
+// 32794539384 measured the seven interruptions, and this consolidation is their bounded reshape.
+// Excluded from per-PR discovery via witness_exclusion_frontier row
+// enforcement_inventory_witness_test.dag (OfflineLocalRecipe, same dissolve_on as
+// enforcement_live_witness_test.dag). Local recipe: claim_batch --source-root dag --source-root
+// src/v2 --entry src/v2/test/claim/enforcement_inventory_witness_test.dag --function
+// enforcement_inventory_global_receipt_holds --claim-run --wet. Two frontier-reconciliation tests
+// (enforcement_live specimen + row-count) are cheap but share this file grain.
 
-data enforcement_inventory_self_audit_note: String = "Phase 0B self-audit (operator acceptance 2026-08-02): unbound detection routes through lens_contract_is_unbound -> consumer_enrolled_for (0A, no parallel ConsumerWitnessBinding Bool predicate). Lens inventory rows are a pure fold over lens_contract_registry with no stored ledger. Witness admission inventory rows derive from gunbc.ci_layer_roots witness_exclusion_frontier (no hand-authored scheduling). Support status is on LensEnforcementApplication rows, not lens_id. evaluated_scope and subject_counts evaluated/unavailable are typed absent until Phase 1. Scope leg and whole_corpus_scope constant were not modified. 0A red-control evidence is construction in the production fold; discriminating witnesses execute at offline cadence only (enforcement_live_witness_test.dag frontier row)."
+// Phase 0B self-audit (operator acceptance 2026-08-02): unbound detection routes through
+// lens_contract_is_unbound -> consumer_enrolled_for (0A, no parallel ConsumerWitnessBinding Bool
+// predicate). Lens inventory rows are a pure fold over lens_contract_registry with no stored
+// ledger. Witness admission inventory rows derive from gunbc.ci_layer_roots
+// witness_exclusion_frontier (no hand-authored scheduling). Support status is on
+// LensEnforcementApplication rows, not lens_id. evaluated_scope and subject_counts
+// evaluated/unavailable are typed absent until Phase 1. Scope leg and whole_corpus_scope constant
+// were not modified. 0A red-control evidence is construction in the production fold; discriminating
+// witnesses execute at offline cadence only (enforcement_live_witness_test.dag frontier row).
 
 data enforcement_live_witness_pattern: String = "enforcement_live_witness_test.dag"
 
@@ -49,9 +66,9 @@ test fn enforcement_inventory_witness_excluded_via_frontier() -> Bool {
   }
 }
 
-// One whole-corpus acquisition, seven inventory assertions. These facts are genuinely global,
-// but acquiring the same `enforcement_corpus_facts` once per test identity made six of seven
-// walks pure repetition and safety-interrupted every row before verdict.
+// One whole-corpus acquisition, seven inventory assertions. The facts are genuinely global, but
+// acquiring the same `enforcement_corpus_facts` once per test identity made six of seven walks pure
+// repetition and safety-interrupted every row before verdict.
 test fn enforcement_inventory_global_receipt_holds() -> Bool {
   let inventory = lens_enforcement_inventory_live()
   inventory_reconciles_registry_both_ways(

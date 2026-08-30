@@ -26,7 +26,16 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 
 data rollins_facts_subject: IssuerCatalogRow = rollins_issuer_catalog
 
-data rollins_facts_provenance_note: String = "Every amount is a live pull from data.sec.gov companyfacts (2026-07-21, session snappy-carp-882). CIK 0000084839 verified against the SEC company_tickers.json ticker-to-CIK map and the EDGAR submissions API (tickers: [\"ROL\"], exchanges: [\"NYSE\"]). Fiscal year ended 2025-12-31, form 10-K, accession 0000084839-26-000008, filed 2026-02-12. Rollins' FY2025 10-K does not tag GrossProfit or CostOfRevenue on the us-gaap axis — it tags CostOfGoodsAndServiceExcludingDepreciationDepletionAndAmortization instead (the element-substitution case: the issuer's actually-filed tag is the authority, not a normalized nickname), with depreciation/amortization reported as a separate line. Revenue + cost + SG&A + D&A reconciles exactly to the filed OperatingIncomeLoss (3,761,050,000 - 1,777,006,000 - 1,133,232,000 - 124,744,000 = 726,068,000), so the profitability witness below derives operating margin rather than gross margin."
+// Every amount is a live pull from data.sec.gov companyfacts (2026-07-21, session snappy-carp-882).
+// CIK 0000084839 verified against SEC company_tickers.json and the EDGAR submissions API (tickers:
+// ["ROL"], exchanges: ["NYSE"]). Fiscal year ended 2025-12-31, form 10-K, accession
+// 0000084839-26-000008, filed 2026-02-12. The FY2025 10-K tags neither GrossProfit nor
+// CostOfRevenue on the us-gaap axis; it tags
+// CostOfGoodsAndServiceExcludingDepreciationDepletionAndAmortization (element substitution: the
+// filed tag is the authority, not a normalized nickname), with D&A a separate line. Revenue + cost
+// + SG&A + D&A reconciles exactly to the filed OperatingIncomeLoss (3,761,050,000 - 1,777,006,000 -
+// 1,133,232,000 - 124,744,000 = 726,068,000), so the profitability witness derives operating margin
+// rather than gross margin.
 
 data rollins_fy2025_citation: FiledFactCitation = FiledFactCitation {
   accession: "0000084839-26-000008",

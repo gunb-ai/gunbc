@@ -756,15 +756,6 @@ pub fn money_amount_micro_count(m: MoneyAmountMicro) -> Nat {
     measure_count(m.clone())
 }
 
-pub fn money_rate_billing_unit_note() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "Billing unit is part of the fact: per-minute, per-hour, and per-month are distinct carriers — never folded into a bare amount with the unit in the field name. Cross-vendor normalization is a derived projection at read time, never a stored catalog field.".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
-}
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct PerSecond(pub std::marker::PhantomData<()>);
 
@@ -807,15 +798,6 @@ pub type MoneyPerKilowattHour = Rc<MoneyRate<PerKilowattHour>>;
 
 pub type MoneyPerSquareFootYear = Rc<MoneyRate<PerSquareFootYear>>;
 
-pub fn money_rate_carrier_representation_note() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "MoneyRate<P> is the §2-horizontal carrier for vendor billing period: one parameterized record (P = PerMinute | PerHour | PerMonth | Once phantom markers), not four structurally-identical records — same move as MoneyAmount<S> = Measure<Currency, S, Nat> and Vendor<Domain>. Not a Measure<Q,S,M> row: billing period is a categorical vendor unit axis, not an SI Scale on a single Quantity; the carrier also holds runtime CurrencyCode beside the micro-denominated amount. Passing PerMinute where PerHour is expected is unwritable via the type argument.".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
-}
-
 pub fn money_rate_micros<P>(q: Rc<MoneyRate<P>>) -> Nat {
     money_amount_micro_count(q.amount.clone())
 }
@@ -854,24 +836,6 @@ pub fn per_hour_equivalent_from_per_minute(q: MoneyPerMinute) -> MoneyPerHour {
 
 pub fn billing_month_as_hour_count() -> Nat {
     730
-}
-
-pub fn billing_month_as_hour_count_note() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "Derived monthly→hourly divisor: 730 hours (365×24/12), the conventional cloud billing month used for cross-vendor hourly equivalence only — not a vendor quote.".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
-}
-
-pub fn billing_month_as_hour_count_representation_note() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "Nat divisor via fn not Measure<Time, One, Nat>: stage0 alias emission collapses applied-generic Measure aliases to concrete Measure<(), (), Nat> while fn/data return sites still reference the un-erased alias params (E0107). Dissolve-on: stage0 Measure-alias emitter preserves return types at data/fn sites.".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
 }
 
 pub fn per_hour_equivalent_from_per_month(q: MoneyPerMonth) -> MoneyPerHour {
@@ -950,15 +914,6 @@ pub fn hardware_thread_count_value(t: HardwareThreadCount) -> Nat {
     measure_count(t.clone())
 }
 
-pub fn character_count_note() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "A budget or length expressed in characters is a COUNT of a unit, not a bare scalar — the same axis HardwareThreadCount already instantiates, with a different thing being counted. It lives here rather than as a std.types brand because the consumers compare and order these budgets, and measure_le is where that ordering already lives (review 44089).".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
-}
-
 pub fn character_count(count: Nat) -> CharacterCount {
     Rc::new(Measure {
         count: count.clone(),
@@ -968,15 +923,6 @@ pub fn character_count(count: Nat) -> CharacterCount {
 
 pub fn character_count_value(c: CharacterCount) -> Nat {
     measure_count(c.clone())
-}
-
-pub fn token_count_note() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "A count of LLM tokens is a COUNT of a unit on the same axis HardwareThreadCount and CharacterCount already instantiate, with a different thing being counted — so it is a fourth member of an existing family, not a new point in the type space. It lives HERE, beside its siblings, because Measure of Count at One over Nat takes only arguments std.measure already owns: an instantiation declared downstream would be a fourth name for a shape this module already names three times, which is the DESIGN section 3 fork. That is the distinction from extdeps.pricing.billing_units, whose MoneyRate aliases introduce their own phantom markers and are therefore genuinely new instantiations that CANNOT be written here without importing vendor vocabulary. Landed by review 48816 on gunbc#7851, which caught the alias minted in gunbc.econ.llm_attempt_receipt and correctly refused the billing_units citation offered for it. HONEST LIMIT, unchanged from the siblings: all four are structurally identical, so passing a TokenCount where a CharacterCount belongs is WRITABLE — the family buys reading clarity and one construction site each, never a wall.".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
 }
 
 pub fn token_count(count: Nat) -> TokenCount {
@@ -1092,15 +1038,6 @@ pub fn nanosecond_to_millisecond_floor(n: Nanosecond) -> Millisecond {
     millisecond((nanosecond_count(n.clone()) / nanoseconds_per_millisecond()))
 }
 
-pub fn nanosecond_millisecond_projection_note() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "Nanosecond is the canonical exact elapsed-time carrier. Millisecond remains a policy and presentation scale. Converting Millisecond to Nanosecond is exact; converting Nanosecond to Millisecond is explicitly floor-only and may be used only at a named presentation, wire, or signed-policy boundary. Measurement, ordering, joining, and attribution must retain Nanosecond.".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
-}
-
 pub type Second = Rc<Measure<(), (), i64>>;
 
 pub fn second(count: Nat) -> Second {
@@ -1163,15 +1100,6 @@ pub fn percent_count(p: Percent) -> Nat {
     measure_count(p.clone())
 }
 
-pub fn permyriad_scale_note() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "RgbScaled and sRGB<->HSL integer kernels use a permyriad (parts per 10000) channel scale — grounded on extdeps.units.dimensionless.parts_per_ten_thousand_unity_count (same authority as basis_point_unity_count).".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
-}
-
 pub fn permyriad_half_for_round_half_up() -> i64 {
     (crate::extdeps_units_dimensionless::parts_per_ten_thousand_unity_count() / 2)
 }
@@ -1206,15 +1134,6 @@ pub fn basis_point_unity_count() -> Nat {
     crate::extdeps_units_dimensionless::parts_per_ten_thousand_unity_count()
 }
 
-pub fn basis_point_unit_note() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "One basis point = 0.01 percentage points (1/10000 of unity). Distinct from Percent carrier — same Measure<Dimensionless, One, Nat> shape, different semantic axis for utilization ratios and filed margin envelopes.".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
-}
-
 pub type AmortizationMonths = Rc<Measure<(), (), i64>>;
 
 pub fn amortization_months(count: Nat) -> AmortizationMonths {
@@ -1226,15 +1145,6 @@ pub fn amortization_months(count: Nat) -> AmortizationMonths {
 
 pub fn amortization_months_count(m: AmortizationMonths) -> Nat {
     measure_count(m.clone())
-}
-
-pub fn amortization_months_unit_note() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "Count of calendar billing months for setup-fee amortization — a named Count carrier, not SI duration (cf. billing_month_as_hour_count for the hourly divisor convention only).".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
 }
 
 #[derive(
@@ -1280,15 +1190,6 @@ pub fn clock_basis_authority_reachability_note() -> String {
     thread_local! {
         static CACHED: String = {
             "WHY THIS CARRIER LIVES IN std.measure AND NOT WHERE IT WAS FIRST DECLARED, generalized because the same authority hit the same wall twice in one day (2026-08-05). ClockBasis was minted in std.observation, the module whose events first needed it. Within hours it failed to be an authority twice, for two different reasons that look unrelated and are not. First it was internal, and gunbc's migration-policy carrier could not state its own basis without it being EXPORTED. Then std.realization_schedule -- which carried a forked second spelling, WitnessCostClock, that this lane was dissolving -- turned out to be UPSTREAM of std.observation through std.effect_grant and std.effects, so importing the authority created a cycle and the compiler refused it outright. A single authority that half the corpus cannot import is not a single authority. REACHABILITY IS PART OF WHAT MAKES SOMETHING AN AUTHORITY, not a deployment detail discovered afterwards, and it is the part nobody checks when minting one: declaring a concept once is assumed to settle it, when what actually settles it is every consumer being able to name it. The home is therefore chosen by who must reach it, not by who first needed it -- and here that answer is also the honest one on the merits, since which clock a duration was read from is a fact about the MEASUREMENT rather than about the observation event that happens to carry one, this module already owns the magnitudes the basis qualifies, and extdeps.pricing.object_storage ByteBasis is in-repo precedent for a basis living beside its magnitude. A METHOD NOTE, because the cycle was nearly missed: it was checked for by grepping the two files' direct imports, which showed no edge. That is a LOCAL instrument answering a question that is only decidable GLOBALLY, and it returned a confident wrong answer. Only the compiler could see it. When the question is transitive, only a transitive instrument answers it.".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
-}
-
-pub fn measure_clock_basis_seed_entry_note() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "Two nullary constructors exist so the v1 seed can hand a ClockBasis across the interpreter boundary WITHOUT building a Value in Rust — the same discipline millisecond(count:) and nanosecond(count:) already carry at this seam, and the reason gunbc.witness_row_cost's seed notes give for it: a carrier assembled on the Rust side is a second copy of this module's shape, and it drifts silently. WHICH one the seed calls is chosen by matching its own typed BudgetKind, so the clock is never recovered from a label string; the function name is a symbol the seed selects, not prose it parses. They dissolve with the seed transport itself, on the witness-realization lane's trigger — when a realized runner enforces the deadline, it constructs the outcome here directly and has nothing to marshal.".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())

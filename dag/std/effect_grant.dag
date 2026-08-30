@@ -11,13 +11,34 @@ import std.authorization_profile {
   EffectAuthorizationAction, EffectRequest, effect_access_request,
 }
 
-data effect_grant_note: String = "P-A model for effect-namespace grants (docs/plans/effect-namespace-grants.md, owned silent-ibex-417). An effect target is a POSITION in a containment tree that already exists; permission is a GRANT of (verb x subtree) attached to a Frame; admissibility is the namespace prefix relation (target under a granted root). This is the reach layer standing ABOVE the single std.effects.EffectShape authority, never a fork of it. admit_effect constructs std.authorization_profile.EffectRequest and delegates the only allow/deny decision to std.access.AccessPolicy; the former EffectAdmission sum is dissolved. Grants reuse std.materialization_ladder.Frame (the scope/nesting authority) rather than mint a scope noun. DERIVED PROJECTIONS LANDED in std.effect_axes (P-C). Provisional operator defaults carried inline (Q1 verb set, Q2 target realization) pending confirmation -- each with a dissolve-on."
+// P-A model for effect-namespace grants (docs/plans/effect-namespace-grants.md, owned
+// silent-ibex-417). An effect target is a POSITION in a containment tree that already exists;
+// permission is a GRANT of (verb x subtree) attached to a Frame; admissibility is the namespace
+// prefix relation (target under a granted root). This is the reach layer standing ABOVE the single
+// std.effects.EffectShape authority, never a fork of it. admit_effect constructs
+// std.authorization_profile.EffectRequest and delegates the only allow/deny decision to
+// std.access.AccessPolicy; the former EffectAdmission sum is dissolved. Grants reuse
+// std.materialization_ladder.Frame (the scope/nesting authority) rather than mint a scope noun.
+// DERIVED PROJECTIONS LANDED in std.effect_axes (P-C). Provisional operator defaults carried inline
+// (Q1 verb set, Q2 target realization) pending confirmation -- each with a dissolve-on.
 
 type Verb = Read | Write | Execute
 
-data verb_set_note: String = "Q1 AMENDED (dissolve-on fired 2026-07-19, deploy-preflight sudo-probe displaced cost): the effect-derived verbs are Read/Write/Execute, each coarsened from the ONE std.effects.EffectShape authority via verb_of_effect_shape below -- never a parallel effect vocabulary (DESIGN 3). Execute arrives as ExecuteEffect (invoke-nature shape in std.effects, not REST-derived). Create remains deferred until a displaced cost names it. The frozen Reference and Publish additions from gunbc#7541 dissolved into std.authorization_profile.ReferenceRequest and PublicationAdmissionRequest: neither is an EffectShape. dissolve-on = none (landed authority; operator may amend verb set)."
+// Q1 AMENDED (dissolve-on fired 2026-07-19, deploy-preflight sudo-probe displaced cost): the
+// effect-derived verbs are Read/Write/Execute, each coarsened from the ONE std.effects.EffectShape
+// authority via verb_of_effect_shape below -- never a parallel effect vocabulary (DESIGN 3).
+// Execute arrives as ExecuteEffect (invoke-nature shape in std.effects, not REST-derived). Create
+// remains deferred until a displaced cost names it. The frozen Reference and Publish additions from
+// gunbc#7541 dissolved into std.authorization_profile.ReferenceRequest and
+// PublicationAdmissionRequest: neither is an EffectShape. dissolve-on = none (landed authority;
+// operator may amend verb set).
 
-data execute_verb_note: String = "Execute grant reach for process/binary invocation: target is a NamespacePosition in FilesystemPathTree naming the executable. The verb is shape-grounded: verb_of_effect_shape(ExecuteEffect) = Execute. Deploy-preflight sudo probes materialize via PosixSudoGrant -> Grant projection (gunbc.fleet_posix_accounts). WHO may execute stays GroundedPosixPrincipal/std.access. dissolve-on = deploy-preflight envelope admits via admit_effect (shell-intent Wave A follow-on)."
+// Execute grant reach for process/binary invocation: target is a NamespacePosition in
+// FilesystemPathTree naming the executable. The verb is shape-grounded:
+// verb_of_effect_shape(ExecuteEffect) = Execute. Deploy-preflight sudo probes materialize via
+// PosixSudoGrant -> Grant projection (gunbc.fleet_posix_accounts). WHO may execute stays
+// GroundedPosixPrincipal/std.access. dissolve-on = deploy-preflight envelope admits via
+// admit_effect (shell-intent Wave A follow-on).
 
 fn verb_of_effect_shape(shape: EffectShape<KeySource>) -> Verb {
   match shape {
@@ -37,7 +58,16 @@ type NamespaceTree
   | ServiceOpTree { service: String }
   | CodeNameTree
 
-data namespace_tree_note: String = "Q2 (PROVISIONAL, pending operator ruling): grant targets are positions in CITED trees (DESIGN 3, not minted): the OS filesystem namespace (extdeps/filesystem), URIs (extdeps/uri), /proc/self introspection, REST/Redfish service-operation hierarchies (ServiceOpTree per service), and the code-name containment tree the namespace-resolution lane makes the single naming authority (CodeNameTree). INTERIM realization: path-string prefixes (position_under below). Publication audiences are sets in std.authorization_profile, not positions in this tree; the frozen AudienceScopeTree from gunbc#7541 dissolved. CONVERGENCE -- the anti-fork commitment: NamespacePosition and its prefix relation become PROJECTIONS of the ONE containment-tree walk when SymbolIndex lands (the same relation the resolver walks, content-addressing hashes, termination reads). dissolve-on = SymbolIndex-backed position supersedes the path-string interim."
+// Q2 (PROVISIONAL, pending operator ruling): grant targets are positions in CITED trees (DESIGN 3,
+// not minted): the OS filesystem namespace (extdeps/filesystem), URIs (extdeps/uri), /proc/self
+// introspection, REST/Redfish service-operation hierarchies (ServiceOpTree per service), and the
+// code-name containment tree the namespace-resolution lane makes the single naming authority
+// (CodeNameTree). INTERIM realization: path-string prefixes (position_under below). Publication
+// audiences are sets in std.authorization_profile, not positions in this tree; the frozen
+// AudienceScopeTree from gunbc#7541 dissolved. CONVERGENCE -- the anti-fork commitment:
+// NamespacePosition and its prefix relation become PROJECTIONS of the ONE containment-tree walk
+// when SymbolIndex lands (the same relation the resolver walks, content-addressing hashes,
+// termination reads). dissolve-on = SymbolIndex-backed position supersedes the path-string interim.
 
 type NamespacePosition {
   tree: NamespaceTree
@@ -78,7 +108,12 @@ type LifecycleGrade
   = LifecycleByConstruction
   | LifecycleByConvention
 
-data lifecycle_grade_note: String = "The containment law (operator, 2026-07-16): a write is frame-contained iff (target under a namespace the frame controls) AND (target lifecycle under frame lifecycle). LifecycleByConstruction = persistence unwritable past the frame (ephemeral container fs, netns loopback receiver -- teardown erases it). LifecycleByConvention = a cleanup that can fail or be forgotten (/tmp scratch + trap). The grade is CARRIED on the grant, an honest weaker grade, never conflated with the strong one."
+// The containment law (operator, 2026-07-16): a write is frame-contained iff (target under a
+// namespace the frame controls) AND (target lifecycle under frame lifecycle).
+// LifecycleByConstruction = persistence unwritable past the frame (ephemeral container fs, netns
+// loopback receiver -- teardown erases it). LifecycleByConvention = a cleanup that can fail or be
+// forgotten (/tmp scratch + trap). The grade is CARRIED on the grant, an honest weaker grade, never
+// conflated with the strong one.
 
 type Grant {
   verb: Verb
@@ -138,7 +173,16 @@ fn grant_coverage_fold<T>(
   }
 }
 
-data covering_grant_note: String = "The grant that covers (verb, target) in an envelope -- the P-C primitive both reach-admission AND per-grant binding selection read (docs/plans/effect-namespace-grants.md P-C: 'claim runners select handler bindings per grant instead of per-process mode'). The covering Grant is the single reach authority: its root is the reach and its HandlerBinding is the transport-vs-replay selector at dispatch. effect_grant_policy projects this relation into the one std.access decision kernel; it does not mint another admitted/refused carrier. Dispatch sites that currently branch on the per-process ExecutionMode (execution_mode_is_wet_dispatch) select instead on covering_grant(...).grant.binding -- the per-grant fixture_store supplanting the process-global ctx.fixture_store. NoCoveringGrant is typed coverage evidence consumed by that policy, fail-closed."
+// The grant that covers (verb, target) in an envelope -- the P-C primitive both reach-admission AND
+// per-grant binding selection read (docs/plans/effect-namespace-grants.md P-C: 'claim runners
+// select handler bindings per grant instead of per-process mode'). The covering Grant is the single
+// reach authority: its root is the reach and its HandlerBinding is the transport-vs-replay selector
+// at dispatch. effect_grant_policy projects this relation into the one std.access decision kernel;
+// it does not mint another admitted/refused carrier. Dispatch sites that currently branch on the
+// per-process ExecutionMode (execution_mode_is_wet_dispatch) select instead on
+// covering_grant(...).grant.binding -- the per-grant fixture_store supplanting the process-global
+// ctx.fixture_store. NoCoveringGrant is typed coverage evidence consumed by that policy,
+// fail-closed.
 
 fn grant_coverage_go(grants: List<Grant>, verb: Verb, target: NamespacePosition) -> GrantCoverage {
   if grants.count() == 0 {

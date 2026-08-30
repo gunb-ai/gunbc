@@ -5,19 +5,17 @@ anemia-lens CONFIRM judge (the leaf-side §2 decomposition detector — see DESI
 vendor a copy; point at this file. The historical design proposal is archived in closed-unmerged
 PR #5302.
 
-**Consumer status: none in the current tree.** An earlier revision named a `ctrl` coherence-gate
-consumer that no longer exists. This corpus is a fixed historical decision-eval, not an enrolled gate.
-A future consumer must be wired and independently observed before the corpus is described as live
-coverage.
+**Consumer status: none in the current tree.** The `ctrl` coherence-gate consumer an earlier revision
+named no longer exists. This is a fixed historical decision-eval, not an enrolled gate; a future consumer
+must be wired and independently observed before the corpus counts as live coverage.
 
 **What this corpus is.** A fixed, labelled **decision-eval**: each row is one
 `(declared_type, signal, coincides_with)` input plus the correct verdict (`expected_confirm`). The judge
 is scored by **reconstructing its input from these row fields** — the harness does **not** re-bind
-`located` against the live DAG. That distinction matters: the audited positive sites have **since been
-grounded** by the extdeps cleanup program (that's the whole point — the cleanup succeeded), so the live
-field at `located` now carries `grounded_now`, not `declared_type`. The merged grounding **is** the
-ground-truth evidence that the `positive`/`REAL` label is correct; it is not a live finding against
-current `main`.
+`located` against the live DAG. This matters because the audited positive sites have **since been
+grounded** by the extdeps cleanup program, so the live field at `located` now carries `grounded_now`,
+not `declared_type`. The merged grounding **is** the ground-truth evidence for the `positive`/`REAL`
+label; it is not a live finding against current `main`.
 
 Each row is one field site:
 
@@ -37,8 +35,8 @@ Each row is one field site:
 | `grounding` | provenance of the label (PR # or audit note) |
 | `rationale` | one-line justification |
 
-**One violation class.** There is no hard-block vs soft-warn severity. Everything the lens fires
-**blocks**; the `haiku_confirm` rows are a hard blocking dependency run in observe/shadow mode as a
-*rollout phase*, not a softer tier. The CONFIRM judge can only ever CLEAR a finding, so the promotion
-bar is two-sided: (1) **safety** — zero wrong-clears on `positive` rows; (2) **utility** — correctly
-CLEAR the `section5-negative` rows (an over-eager judge that clears everything is useless).
+**One violation class.** No hard-block vs soft-warn severity: everything the lens fires **blocks**,
+and the `haiku_confirm` rows are a hard blocking dependency run in observe/shadow mode as a *rollout
+phase*, not a softer tier. The CONFIRM judge can only ever CLEAR a finding, so the promotion bar is
+two-sided: (1) **safety** — zero wrong-clears on `positive` rows; (2) **utility** — correctly CLEAR the
+`section5-negative` rows (a judge that clears everything is useless).

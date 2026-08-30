@@ -26,7 +26,13 @@ import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
-data frontier_probe_closure_matrix_integration_cadence_note: String = "PR #7762 scheduled integration witnesses (operator msg_b51df9e7): below_cap and second_root on FalsifierCadenceJob with SpanEnrolled measured envelopes (4h cadence). Per-PR mechanism controls: src/v2/test/claim/workflow/frontier_probe_closure_matrix_test.dag (9 synthetic). Per-PR wet controls: src/v2/test/claim/workflow/frontier_probe_closure_readthrough_test.dag (read_failure 3ms, hash_mismatch 2ms, elision boundary 3ms — measured claim_batch eval wall, not full-pipeline resolve). below_cap and second_root re-homed to falsifier_rehomed_bin_wet_rows with measured exact-head eval (784772ms / 742109ms)."
+// PR #7762 scheduled integration witnesses (operator msg_b51df9e7): below_cap and second_root on
+// FalsifierCadenceJob with SpanEnrolled measured envelopes (4h cadence). Per-PR mechanism controls:
+// src/v2/test/claim/workflow/frontier_probe_closure_matrix_test.dag (9 synthetic). Per-PR wet
+// controls: src/v2/test/claim/workflow/frontier_probe_closure_readthrough_test.dag (read_failure
+// 3ms, hash_mismatch 2ms, elision boundary 3ms — measured claim_batch eval wall, not full-pipeline
+// resolve). below_cap and second_root re-homed to falsifier_rehomed_bin_wet_rows with measured
+// exact-head eval (784772ms / 742109ms).
 
 fn fp_matrix_ref_a() -> SourceRef {
   source_ref_for_observed_storage_path(path: "dag/std/algebra.dag")

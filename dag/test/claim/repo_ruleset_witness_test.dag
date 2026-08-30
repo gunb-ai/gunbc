@@ -37,20 +37,20 @@ import extdeps.github.rulesets {
   required_status_check_row,
 }
 
-// WHAT THESE WITNESSES COVER AND WHAT THEY DO NOT, stated first because the gap is the whole
-// reason to read them carefully. The subject here is the PURE half of gunbc.repo_ruleset: the
-// desired declaration, the wire projections, and the divergence fold that turns an observation
-// into a verdict. Every one of these runs over values authored in this file, so they are
-// SubstrateInputsOnly and they execute in the hermetic floor.
+// WHAT THESE WITNESSES COVER AND WHAT THEY DO NOT, stated first because the gap is the reason to
+// read them carefully. The subject is the PURE half of gunbc.repo_ruleset: the desired
+// declaration, the wire projections, and the divergence fold turning an observation into a
+// verdict. Every one runs over values authored in this file, so they are SubstrateInputsOnly and
+// execute in the hermetic floor.
 //
 // THEY SAY NOTHING ABOUT THE LIVE RULESET. Whether GitHub's ruleset currently agrees with desired
-// is a fact about the world, answerable only by the read that gunbc.repo_ruleset `verify` performs,
-// and a witness asserting it from here would be asserting a value it never observed. That read was
-// executed by hand while landing this change -- green against the live ruleset, and RED with a
-// planted extra desired context, refusing with `required context missing:` and exit 1 -- and it is
-// a route somebody runs, not a gate, exactly as the module's own annotation says. Conflating the
-// two would be the rung inflation DESIGN section 4b forbids: these witnesses establish that the
-// verdict fold is correct, never that the ruleset is.
+// is a fact about the world, answerable only by the read gunbc.repo_ruleset `verify` performs, and
+// a witness asserting it from here would assert a value it never observed. That read was executed
+// by hand while landing this change -- green against the live ruleset, and RED with a planted
+// extra desired context, refusing with `required context missing:` and exit 1 -- and it is a route
+// somebody runs, not a gate, as the module's own annotation says. Conflating the two would be the
+// rung inflation DESIGN section 4b forbids: these witnesses establish that the verdict fold is
+// correct, never that the ruleset is.
 
 // THE FACT THE WHOLE CHANGE EXISTS FOR. If this ever goes red, the required context and the job
 // that publishes it have forked, which is the failure that leaves a check permanently pending
@@ -154,12 +154,12 @@ test fn w_RED_a_reader_that_may_bypass_is_a_divergence() -> Bool {
     && length(divergences_for_bypass(bypass: BypassPullRequestsOnly)) == 1
 }
 
-// THE THREE NON-`never` STANDINGS DO NOT RENDER ALIKE, and this is the assertion review 56496's
-// finding needed: before the split, all three produced one static sentence, so a witness counting
+// THE THREE NON-`never` STANDINGS DO NOT RENDER ALIKE, the assertion review 56496's finding
+// needed: before the split, all three produced one static sentence, so a witness counting
 // divergences stayed green over the collapse. Counting is what a wildcard defeats; DISCRIMINATING
-// is what catches it. The two documented grants must name WHICH grant, and an unrecognized
-// standing must carry the raw string GitHub sent -- it is the only thing that says what to extend
-// the parser with, and a static sentence discards it.
+// catches it. The two documented grants must name WHICH grant, and an unrecognized standing must
+// carry the raw string GitHub sent -- the only thing that says what to extend the parser with, and
+// a static sentence discards it.
 test fn w_RED_the_three_non_never_bypass_standings_render_differently() -> Bool {
   let always = render_divergences(ds: divergences_for_bypass(bypass: BypassAlways))
   let prs = render_divergences(ds: divergences_for_bypass(bypass: BypassPullRequestsOnly))

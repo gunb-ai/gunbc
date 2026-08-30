@@ -64,15 +64,6 @@ use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
 use std::rc::Rc;
 
-pub fn trait_derive_emit_scope_note() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "Root-4 arm (b): v1 seed emit selects trait surface from the capability table — #[derive] attrs for shape-eligible traits, and (for GroupCompletion) pair-completion impl bodies as the realization of KernelInt arithmetic traits that cannot be #[derive]. Bool↔bool host bridge remains a separate enum-arm door (see bool dissolve-on). Also: (a) clone bounds on generic params; (c) serde/Debug/Ord #[derive] on named structs/enums.".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
-}
-
 pub fn trait_derive_emit_item_clone_bound_rule_note() -> String {
     thread_local! {
         static CACHED: String = {
@@ -86,15 +77,6 @@ pub fn trait_derive_emit_item_clone_bound_wf_propagation_note() -> String {
     thread_local! {
         static CACHED: String = {
             "SECOND, INDEPENDENT trigger for an item-level Clone bound, distinct from the derive/lowering trigger above and NOT a widening of it: WELL-FORMEDNESS PROPAGATION. Naming a declared generic type G<A..> at all requires satisfying G's own declared bounds, so if G's i-th parameter already carries `: Clone` and the i-th argument's Clone impl requires P: Clone, then the item declaring that field is ill-formed without P: Clone -- rustc E0277 at the field, before any derive is considered. This applies to STRUCTS AND ENUMS alike, because it is a property of naming the type, not of deriving Clone for it; the rule note above correctly scopes the DERIVE trigger to structs (derive emits per-impl bounds) and that scoping is unchanged here. The two axes are grounded differently and can disagree: im::Vector<A> carries NO declaration bound (checked against im-15.1.0 vector::Vector), so a container field is a derive-trigger fact only, while Boxed<T: Clone> is a well-formedness fact that propagates through Nested<T> { boxed: Boxed<T> } and List<Boxed<T>> alike. The requirement is a LEAST FIXPOINT over the declared-type graph (v1_clone_bounded_type_params), not a one-field-shape-deep read: each round derives every declared generic type's bounded parameters from the current approximation and stops when a round adds nothing, so a chain Boxed -> Nested -> TwoHop propagates all the way and a recursive type (Cyclic<T> { self_ref: Cyclic<T>? }) saturates instead of diverging. The derive trigger SEEDS the fixpoint (v1_clone_bound_seed_for_item, structs only, reusing v1_item_type_param_needs_clone_bound_struct verbatim rather than restating it) and then propagates, because Boxed<T: Clone> earns its bound from the derive trigger and Nested<T> { boxed: Boxed<T> } inherits it from well-formedness. Two sub-predicates, deliberately separate because they answer different questions about the same type expression: v1_type_expr_clone_impl_needs_param asks whether `tau: Clone` requires P: Clone (every derive(Clone) type and every container bounds all of its parameters, so this reduces to `P occurs in tau`), while v1_type_expr_wf_needs_clone_param asks whether NAMING tau requires it (only the argument positions the fixpoint has already bounded count). The undecidable residue is answered by its own total function rather than fused into either Bool: a type application whose head is neither a container nor a declared type in the closure has no readable parameter list, so v1_type_expr_clone_undecided_head names it and the emit site refuses with compile_error!. It is NOT silently treated as `no bound needed` and NOT widened to `bound everything` -- widening would zero the deficit's frequency by construction (DESIGN section 5, absorbing fallback). Dead in corpus as of this landing; kept as the fail-closed arm.".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
-}
-
-pub fn trait_derive_emit_fn_clone_bound_wf_propagation_note() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "THIRD site for the SAME well-formedness trigger (trait_derive_emit_item_clone_bound_wf_propagation_note above), applied to FN declarations rather than item (struct/enum) declarations: naming a Clone-bounded declared type G<A..> in a fn's value-param or return type is exactly as ill-formed as naming it in a field, so a fn generic parameter P earns `: Clone` when v1_fn_param_wf_needs_clone finds it occupying a Clone-bounded argument position of some declared type mentioned in a value param or the return type — reusing v1_type_expr_wf_needs_clone_param verbatim against the same v1_clone_bounded_type_params fixpoint (EmitGraphInfo.clone_bounded_type_params), not a second fixpoint or a restated predicate. This is additive to, not a replacement for, the existing structural fn trigger (v1_type_param_needs_clone_bound: bare-generic return or direct container-element usage) computed in v1_generic_params_needing_clone_bound — the two triggers answer different questions (usage-shape vs. naming-a-bounded-declared-type) and a fn param needing either earns the bound. Enum/struct IMPL surfaces (accessor impl blocks, supplemental impls) already inherit their item's bounded type_params string from emit_item_type_params_with_clone_bounds at the struct/enum decl site, so no separate IMPL-side propagation is needed there; the gap closed here is specifically free FN declarations, whose type_params were computed independently of the item-level fixpoint. Discovered live (not hypothetical) in deep-heron's honest regen of dag/std/occurrence_binding.dag: occurrence_binding_from_candidates<N> names BindingOccurrence<N> and BindingCandidate<N> (each well-formedness-bounded because their field ContainmentPath<N> is FreeMonoid<N>-derive-bounded) at value-param position without the fn declaring N: Clone, and OccurrenceBindingResult<N> at the return position — E0277 at both without this trigger.".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
@@ -539,15 +521,6 @@ pub fn v1_map_key_required_type_names(
     }
 }
 
-pub fn trait_derive_emit_freemonoid_supplemental_note() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "ROW 1a (materialization_carriers board): a derive-only generic item whose only Clone-requiring surface is a FreeMonoid<P> field (realized im::Vector<P>, whose Debug/PartialEq/Serialize/Deserialize impls are each conditional on the element being Clone) previously either derived with an unsatisfiable per-impl obligation (E0277/E0369 at the derive) or bounded the whole item header — both wrong: the bound belongs on specific IMPLS, not the declaration (loyal-raven review 43338). Realization here, consuming the dag-rooted single authority extdeps.languages.rust.derive_contracts rust_vec_freemonoid_supplemental_generic_bound_rows (NEVER a literal trait list in this module — coordinating-session ruling, smart-ram-730 (a session, not the operator) 2026-08-19): the item header stays BARE; rows routed FreeMonoidHandWrittenImpl (Debug, PartialEq — std derives cannot carry a bound override) leave the derive list and are realized as hand-written impls whose headers union the trait's own structural requirement with the row's supplemental requirement (impl<P: Clone + std::fmt::Debug> — a header carrying ONLY the supplemental bound would not compile, since the impl body formats/compares the field). The Debug half must be PATH-QUALIFIED and this is measured, not stylistic: the name `Debug` in the Rust prelude is the DERIVE MACRO, and the trait std::fmt::Debug is not in the prelude at all, so a bound spelled `T: Debug` in an emitted module resolves to the macro and rustc refuses with E0404 expected trait, found derive macro `Debug` — three sites on the live materialization_carriers closure when this was briefly spelled bare. Clone and PartialEq are genuinely prelude TRAITS and stay bare.; rows routed FreeMonoidSerdeBoundAttr (Serialize, Deserialize) stay derived with a #[serde(bound(..))] override naming every item generic param, supplemental-bound params carrying the row's requirement. The route split is realization knowledge (which Rust derive grammar admits a bound override) and lives here; the FACTS (which trait needs which supplemental bound, cited to im-15.1.0) live only in the shared rows. A row whose derive_trait this realization cannot route REFUSES via compile_error (typed, located), never skips. The oracle witness (originally PR #8525, corrected at c7172307 after this lane reported its non-compiling `impl<T: Clone>` headers and unqualified serde bound names) independently derives the same shapes from im's impl signatures and serde's bound-string scoping: bound-union headers with bare prelude spellings, serde::-qualified bound strings. Companion header facts: the struct path keys bareness on impl_bodies being nonempty (existing rule: supplemental-impl items keep bare params); enums were already bare under the derive trigger. Dissolution: same as trait_derive_emit_item_clone_bound_contract_fork_dissolve_on (v2 emitter subsumption at this grain).".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
-}
-
 #[derive(
     Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
 )]
@@ -889,15 +862,6 @@ pub fn v1_freemonoid_serde_bound_attr(
             "\"))]".to_string(),
         )
     }
-}
-
-pub fn trait_derive_emit_set_ord_supplemental_note() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "ROOT A, Ord half (E0277 root-partition adhoc-a407cd3d-840): std.authorization_profile AudienceSet's EnumeratedAudience { members: Set<P> } realizes Set<P> as im::OrdSet<P>, aliased `as BTreeSet` in every emitted use statement -- NOT std::collections::BTreeSet, corrected 2026-08-21 after a first pass of this lane cited the std/serde-for-std authorities and left 16 of the true P: Ord sites open under rustc (docs/probes/curated_cargo_probe_one.sh, not gunbc-compile-clean, is what caught it -- DESIGN section 5's 'a typecheck and a grep are not consumers'). Verified against the vendored im-15.1.0 source: OrdSet's own Debug and PartialEq impls (src/ord/set.rs#937, #844) are each conditional on P: Ord alone; its Serialize and Deserialize impls (src/ser.rs#134, #125) are each conditional on BOTH P: Ord and P: Clone; Clone itself is unconditional (set.rs#830, no row). The FreeMonoid apparatus above is a Clone-shaped fork (three Clone-only triggers named in trait_derive_emit_item_clone_bound_contract_fork_note) that structurally cannot emit P: Ord, so this lane consumes the dag-rooted single authority extdeps.languages.rust.derive_contracts rust_btree_set_supplemental_generic_bound_rows (NEVER a literal trait list in this module, same discipline as the FreeMonoid rows) rather than adding a second Clone-shaped item-header fixpoint: the item header and the #[derive(...)] trait list membership are UNCHANGED (P: Ord never unions onto AudienceSet<P>'s own declaration), but per-trait ROUTING now mirrors the FreeMonoid split exactly, reusing v1_freemonoid_row_route rather than a second copy of the same two-way split: Debug and PartialEq leave the derive list and are realized as hand-written impls whose headers union the trait's own structural requirement with the row's per-derive_trait Ord requirement ONLY (never Clone -- the discriminating control this lane names explicitly: a type whose Debug impl needs Ord but whose construction does not need Clone -- correct output bounds the DERIVE, not the type, and NOT every row's required trait unioned together, which would over-bound Debug/PartialEq with Clone they do not need); Serialize and Deserialize stay derived with a combined #[serde(bound(serialize = .., deserialize = ..))] override naming every item generic param, Set-affected params carrying Ord + Clone in both clauses (mirroring v1_freemonoid_serde_bound_attr, not a deserialize-only attribute). A row this realization cannot route, or a Set-affected param whose trait list omits a routed trait, REFUSES via compile_error (typed, located), never skips. Scoped to the enum derive path (v1_emit_enum_derives / v1_emit_enum_supplemental_impls) because that is AudienceSet's actual shape and the only exercised Set<P> generic field in the corpus (verified: the sole generic Set<P> field in dag/std/authorization_profile.dag); no struct in the corpus carries a generic Set<P> field today, so struct-side wiring would be speculative. Dissolution: same as trait_derive_emit_item_clone_bound_contract_fork_dissolve_on (v2 emitter subsumption at this grain).".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
 }
 
 pub fn v1_set_element_params(
@@ -1921,15 +1885,6 @@ pub fn v1_set_enum_partial_eq_impl(
             "}".to_string(),
         )
     }
-}
-
-pub fn trait_derive_emit_ord_propagation_note() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "ROOT A, Ord half, TRANSITIVE CASE (E0277 root-partition adhoc-a407cd3d-840, PR #8770, corrected 2026-08-21 after parent-session review found the well-formedness-header approach it started from would re-open trait_derive_emit_set_ord_supplemental_note's own deliberate scoping): std.authorization_profile PublicationContext<C, P> { audience: AudienceSet<P>, context: C } does not itself carry a direct Set<P> field -- it names AudienceSet<P>, a declared coproduct whose OWN field is Set<P>. The requirement is real (AudienceSet<P>'s hand-written Debug/PartialEq impls above are literally P: Ord, so a PublicationContext<C, P> Debug/PartialEq impl calling .field(\"audience\", &self.audience) needs the same P: Ord to typecheck) but it propagates through one field's declared-type reference rather than sitting on this item's own field directly. The routing decision this note records: the propagated requirement stays in per-derive-impl vocabulary exactly like the direct case -- PublicationContext's own header/declaration and its #[derive(...)] trait list membership are UNCHANGED, never a second Clone-shaped item-header fixpoint (v1_bound_seed_for_item / v1_bounded_type_params, drafted then discarded in this PR's own predecessor commit, would have put P: Ord on every item header reachable from a Set-affected declared type, re-opening exactly the over-bounding trait_derive_emit_set_ord_supplemental_note already rejected for the direct case). v1_item_ord_propagated_param_names computes, for a consuming item's own generic params, whether that param is passed positionally into a field naming a declared type (looked up via type_decl_items) whose OWN generic slot at that position is itself Set-affected (v1_item_own_set_affected_param_names) -- one hop, matching the one hop this corpus actually exercises (PublicationContext -> AudienceSet); no phantom-slot skipping is needed because the FreeMonoid/Clone well-formedness fixpoint's phantom carve-out answers a different question (does an unused param still need a bound at all) that does not arise here. A propagated param routes through the same v1_set_* hand-written-impl / serde-bound-attr machinery as a direct Set<P> field (v1_set_filter_hand_written, v1_set_unroutable_row_refusal, v1_set_serde_bound_attr_for_traits, rust_btree_set_supplemental_generic_bound_rows) -- no duplicate rows, no duplicate routing table. Scoped to the struct path (v1_emit_struct_from_capability_table) because PublicationContext is a struct; the enum path's direct-field case (v1_emit_enum_derives / v1_emit_enum_supplemental_impls) is untouched. Dissolution: same as trait_derive_emit_set_ord_supplemental_note (v2 emitter subsumption at this grain).".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
 }
 
 pub fn v1_item_own_set_affected_param_names(
@@ -3534,15 +3489,6 @@ pub fn v1_type_expr_wf_needs_clone_param(
             }
         }
     })
-}
-
-pub fn v1_item_field_type_exprs_alias_hop_note() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "Threads declaration identity into the field-type-expression walk so a type ALIAS's right-hand side is followed exactly as far as the emitter renders it structurally, per map_key_alias_hop_gap_note's DISSOLVE-ON: the alias arm below fires only when the alias's own (dag_name, decl_file) resolves to no Rust checkpoint (lookup_checkpoint == Absent), meaning the emitter has no native realization for it and renders its declared structure. `type Hash = Fnv1a64Structural` in v2.std.node has no checkpoint row, so its RHS is the walk's one field type expression and the map-key fixpoint reaches Fnv1a64Structural. `type Int = AbelianGroup<GroupCompletion<Nat>>` and `type Nat = CommutativeSemiring<Magnitude>` DO have checkpoint rows (they realize as i64), so lookup_checkpoint returns Present and the arm below contributes nothing for them -- the measured false positive (AbelianGroup/CommutativeSemiring at map-key position) that sank the earlier attempt never recurs, because the gate is keyed on realization, not on 'is this a bare alias'. Safe to fold into the single shared v1_item_field_type_exprs rather than a map-key-only variant: is_bare_leaf_item requires params.count == 0, so no alias item is ever a member of v1_generic_declared_type_names (params > 0), and every OTHER caller of this function (the clone-bound wf/impl fixpoints) is seeded exclusively from that generic-only population -- the alias arm is therefore dead code on every path except the map-key propagation this note exists for, and reusing one function keeps the field-type-expression authority single (DESIGN section 2/3) instead of forking a second copy that could drift.".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
 }
 
 pub fn v1_item_alias_hop_type_exprs(

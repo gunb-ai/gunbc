@@ -1,39 +1,33 @@
 //! Host realization for the required `emit-compile` phase: emit one entry's closure,
 //! write it as a crate, and run cargo over it.
 //!
-//! WHY THIS MODULE EXISTS. DESIGN's Building-&-checks section carries a declared rung drop
-//! headed "A BLOCKING EMIT-STAGE DIAGNOSTIC CAN SIT ON MAIN INDEFINITELY WITH NO REQUIRED
-//! PHASE THAT FAILS", and its restoration trigger names a required phase that emits over a
-//! closure and compiles it. The `v2-emission` phase beside this one emits and stops: its own
-//! header says so in as many words -- what it does not catch is "a rustc error in the emitted
-//! tree (nothing here compiles the emission)". This module is that missing conjunct, and it is
-//! deliberately the SAME PRODUCER (`compile_entry_emission`), so a green there and a green here
-//! cannot be two different facts about two different emissions.
+//! WHY THIS MODULE EXISTS. DESIGN's Building-&-checks section carries a declared rung drop headed
+//! "A BLOCKING EMIT-STAGE DIAGNOSTIC CAN SIT ON MAIN INDEFINITELY WITH NO REQUIRED PHASE THAT
+//! FAILS", whose restoration trigger names a required phase that emits over a closure and
+//! compiles it. The `v2-emission` phase emits and stops — its header says it does not catch "a
+//! rustc error in the emitted tree (nothing here compiles the emission)". This module is that
+//! missing conjunct, deliberately the SAME PRODUCER (`compile_entry_emission`), so a green there
+//! and here cannot be two facts about two emissions.
 //!
-//! THE SUBJECT IS A CLOSURE, NOT A FILE. DESIGN's row measures its own specimen as reachable
-//! from an entry whose closure INCLUDES the offending call site and unreachable from the file
-//! that HOLDS it, and measures the holding module compiling clean in isolation. So a per-file
-//! or per-module check answers a different question; the subject here is the emitted closure of
+//! THE SUBJECT IS A CLOSURE, NOT A FILE. DESIGN's row measures its specimen as reachable from an
+//! entry whose closure INCLUDES the offending call site, unreachable from the file HOLDING it,
+//! and the holding module compiling clean in isolation. So the subject is the emitted closure of
 //! a declared entry, compiled whole.
 //!
-//! THE DISCRIMINATION IS EXECUTED, NOT ASSERTED. A phase that runs cargo and cannot go red is
-//! worse than absent (DESIGN 4b): it gets cited as coverage. So every run of this phase
-//! establishes its own red BY MUTATION rather than by inspection -- baseline green, then ONE
-//! injected fault in ONE emitted file which must fail ALONE, then a byte-exact restore which
-//! must return the tree to green. A run in which the mutated tree still compiles FAILS THE
-//! PHASE, because at that point the cargo verdict is known to be insensitive to the bytes it
-//! was handed and the green above it carries no information. The restore is as much of the
-//! evidence as the failure is: without it, a red could be residue from the emission rather
-//! than from the fault. A FAILED RESTORE IS TERMINAL FOR THE RUN and is not recoverable by
-//! re-running the phase -- see `run_required_emit_compile`, which stops there and reports every
-//! later entry as `NotExecuted` rather than measuring it through a target directory whose state
-//! is no longer known.
+//! THE DISCRIMINATION IS EXECUTED, NOT ASSERTED. A cargo phase that cannot go red is worse than
+//! absent (DESIGN 4b): it gets cited as coverage. So every run establishes its own red BY
+//! MUTATION: baseline green, then ONE injected fault in ONE emitted file which must fail ALONE,
+//! then a byte-exact restore which must return green. A mutated tree that still compiles FAILS
+//! THE PHASE — the cargo verdict is insensitive to its bytes and the green above carries no
+//! information. The restore is evidence too: without it a red could be emission residue. A
+//! FAILED RESTORE IS TERMINAL FOR THE RUN and not recoverable by re-running — see
+//! `run_required_emit_compile`, which stops there and reports every later entry as `NotExecuted`
+//! rather than measuring through a target directory of unknown state.
 //!
-//! WHAT THIS PHASE IS NOT. It carries no baseline, no diagnostic count and no ratchet. Cargo's
-//! own exit status is the whole verdict, and warnings are not errors here. Pinning a
-//! diagnostic population measured on the current tree would be the tree-copied oracle DESIGN 5
-//! rejects; an identity-grain debt contract over the emitted population is a separate
-//! construction with a separate argument.
+//! WHAT THIS PHASE IS NOT. No baseline, no diagnostic count, no ratchet. Cargo's exit status is
+//! the whole verdict; warnings are not errors here. Pinning a diagnostic population measured on
+//! the current tree would be the tree-copied oracle DESIGN 5 rejects; an identity-grain debt
+//! contract over the emitted population is a separate construction with a separate argument.
 
 use std::path::{Path, PathBuf};
 
@@ -54,22 +48,19 @@ const PROBE_ROOT_DIR_NAME: &str = "gunbc-emit-compile";
 
 /// The crate name the emitted closure is compiled under — DERIVED PER ENTRY, not shared.
 ///
-/// WHY IT IS NOT ONE NAME FOR EVERY ENTRY, WHICH IS WHAT IT WAS. The entries share one
-/// `CARGO_TARGET_DIR` deliberately: that is what keeps dependency artifacts warm across a roster,
-/// and rebuilding `im`, `serde` and the seed crate once per entry would multiply the phase's cost
-/// by its roster size. But a shared target directory plus one package name and version means the
-/// only thing separating two entries' fingerprints is cargo's use of the manifest path. That is
-/// an implementation detail of a tool, load-bearing for a merge gate, and nothing here states it.
+/// WHY IT IS NOT ONE NAME FOR EVERY ENTRY, WHICH IS WHAT IT WAS. Entries share one
+/// `CARGO_TARGET_DIR` deliberately — rebuilding `im`, `serde` and the seed crate per entry would
+/// multiply cost by roster size. But a shared target dir plus one package name and version leaves
+/// only cargo's use of the manifest path separating two entries' fingerprints: a tool
+/// implementation detail, load-bearing for a merge gate, stated nowhere.
 ///
 /// THE FAILURE IT WOULD PRODUCE IS FAIL-OPEN, WHICH IS WHY IT IS WORTH A NAME RATHER THAN A
-/// COMMENT SAYING CARGO HANDLES IT. If one entry's build were ever judged fresh against another's
-/// artifacts, cargo would replay the other's cached diagnostics — and a replayed clean compile is
-/// byte-identical in the output to a real one. The arm would report `Completed status=0` for an
-/// entry it never compiled, and the gate would go green over it.
+/// COMMENT SAYING CARGO HANDLES IT. A build judged fresh against another entry's artifacts
+/// replays its cached diagnostics, and a replayed clean compile is byte-identical to a real one:
+/// `Completed status=0` for an entry never compiled, and the gate greens over it.
 ///
-/// Deriving the name from the entry makes each probe crate its own package, so the fingerprints
-/// cannot alias whatever cargo keys on. Dependencies are separate packages and stay shared, so
-/// the warmth the shared target dir buys is untouched.
+/// Deriving the name per entry makes each probe crate its own package, so fingerprints cannot
+/// alias; dependencies are separate packages and stay warm.
 fn probe_package_name(entry: &str) -> String {
     let slug: String = entry
         .chars()
@@ -78,14 +69,12 @@ fn probe_package_name(entry: &str) -> String {
     format!("gunbc-emitted-closure-{slug}")
 }
 
-/// THE INJECTED FAULT. A type error rather than a syntax error, deliberately: a syntax error
-/// would also be caught by anything that merely parses the file, so it cannot discriminate a
-/// cargo verdict from a cheaper reader. `E0308` requires rustc to have type-checked the
-/// module, which is exactly the reach being claimed. The name is unique enough that it cannot
-/// collide with emitted output, and the item is `pub` so no dead-code lint can elide it.
-/// The symbol the injected item declares. The faulted arm's diagnostics must NAME it: that is
-/// what makes the red attributable to this phase's own fault rather than to anything else that
-/// happened to be wrong in the emitted tree at the same moment.
+/// THE INJECTED FAULT. A type error, not a syntax error: a syntax error is caught by anything
+/// that merely parses, so cannot discriminate a cargo verdict from a cheaper reader. `E0308`
+/// requires rustc to have type-checked the module — the reach being claimed. The name cannot
+/// collide with emitted output, and the item is `pub` so no dead-code lint elides it.
+/// The symbol the injected item declares. The faulted arm's diagnostics must NAME it — that is
+/// what attributes the red to this phase's fault rather than anything else wrong in the tree.
 const MUTATION_PROBE_SYMBOL: &str = "EMIT_COMPILE_MUTATION_PROBE";
 
 const MUTATION_ITEM: &str =
@@ -94,8 +83,8 @@ const MUTATION_ITEM: &str =
 /// The `.dag` entry paths whose emitted closure a required phase compiles, read live from
 /// `gunbc.ci_layer_roots` `required_emit_compile_entries`.
 ///
-/// A `List<String>` for the same reason the emission roster is one: the axis is WHICH ENTRIES,
-/// so a second entry is a row and never a second host reader.
+/// A `List<String>` as the emission roster is: the axis is WHICH ENTRIES, so a second entry is a
+/// row, never a second host reader.
 pub fn required_emit_compile_entries() -> Vec<String> {
     string_list_data_from_ci_layer_roots_source(
         ci_layer_roots_authority_content(),
@@ -105,10 +94,9 @@ pub fn required_emit_compile_entries() -> Vec<String> {
 
 /// What cargo did, at the grain the phase can act on.
 ///
-/// The three arms are the ones `PartitionCompileOutcome` already separates in this seed, and
-/// for the reason recorded there: a process killed without an exit status reports an empty
-/// diagnostic population, which renders identically to a clean build unless the disposition
-/// says otherwise.
+/// The three arms `PartitionCompileOutcome` already separates, for the reason recorded there: a
+/// process killed without an exit status reports an empty diagnostic population, which reads as
+/// a clean build unless the disposition says otherwise.
 #[derive(Debug, Clone)]
 pub enum CargoVerdict {
     /// The toolchain was never invoked.
@@ -117,12 +105,11 @@ pub enum CargoVerdict {
     DidNotComplete { detail: String },
     /// Ran to completion and reported its own exit status.
     ///
-    /// `probe_line` carries the first diagnostic line naming the injected probe symbol, scanned
-    /// from the WHOLE stderr rather than from `stderr_tail`. The two are different questions and
-    /// conflating them would reintroduce the defect this field exists for: the tail is the last
-    /// 20 lines, kept so a human can read a failure, and a genuine `E0308` for the injected item
-    /// can sit well above it when other diagnostics follow. Deciding attribution from the tail
-    /// would then fail a run whose fault WAS refused, for the reason that the receipt was short.
+    /// `probe_line` is the first diagnostic line naming the injected probe symbol, scanned from
+    /// the WHOLE stderr, not `stderr_tail`: the tail is the last 20 lines kept for a human
+    /// reader, and a genuine `E0308` for the injected item can sit above it when other
+    /// diagnostics follow. Attributing from the tail would fail a run whose fault WAS refused
+    /// because the receipt was short.
     Completed {
         status: i32,
         stderr_tail: String,
@@ -130,15 +117,13 @@ pub enum CargoVerdict {
     },
 }
 
-/// Only a completed, zero-status run compiled. Every other arm -- including the one that never
-/// launched -- is a refusal.
+/// Only a completed, zero-status run compiled; every other arm, including never launched, is a
+/// refusal.
 ///
-/// FREE FUNCTIONS RATHER THAN `impl` METHODS, throughout this module, and it is deliberate: an
-/// `impl` method has no `DeclarationRef` spelling (`std.decl_ref` offers `WholeDeclaration` or
-/// `NamedField`, and neither names a method on an impl block), so every method would grow the
-/// uncitable-item class `gunbc.seed_growth_admission` reports in
-/// `seed_growth_uncitable_item_keys`. `v1_compiler.declaration_index` took the same route for
-/// the same reason.
+/// FREE FUNCTIONS RATHER THAN `impl` METHODS, throughout this module: an `impl` method has no
+/// `DeclarationRef` spelling (`std.decl_ref` offers `WholeDeclaration` or `NamedField`), so every
+/// method would grow the uncitable-item class `gunbc.seed_growth_admission` reports in
+/// `seed_growth_uncitable_item_keys`. `v1_compiler.declaration_index` took the same route.
 pub fn cargo_verdict_compiled(verdict: &CargoVerdict) -> bool {
     matches!(verdict, CargoVerdict::Completed { status: 0, .. })
 }
@@ -169,37 +154,30 @@ pub fn cargo_verdict_stderr_tail(verdict: &CargoVerdict) -> &str {
 /// WHICH FILE THE FAULT WENT INTO -- AND IT IS THE ENTRY'S OWN EMITTED MODULE, BY CONSTRUCTION.
 ///
 /// THIS TYPE USED TO OFFER A CHOICE, AND THE CHOICE WAS THE DEFECT. The selector took the first
-/// declared module that was not the entry, which is a SHARED-CORE member in every closure that
-/// has one. Measured over the whole roster at the landing of the phase, 8 of 8 entries mutated a
-/// shared member -- 7 x `std_error_primitives` and 1 x `v1_rt`, the emitted runtime, which is in
-/// every closure. Every arm was honestly `Discriminated`; there was no missing arm to notice.
-/// The verdict established `cargo ran and refused when the shared core was broken`, and never
-/// `THIS entry's own closure is what was compiled` -- total at the level examined, blind one
-/// level down.
+/// declared non-entry module — a SHARED-CORE member in every closure that has one. Measured over
+/// the roster at landing, 8 of 8 entries mutated a shared member: 7 x `std_error_primitives`, 1 x
+/// `v1_rt`, the emitted runtime in every closure. Every arm was honestly `Discriminated`; the
+/// verdict established `cargo refused when the shared core was broken`, never `THIS entry's own
+/// closure was compiled` — total at the level examined, blind one level down.
 ///
 /// WHY THE ENTRY'S OWN MODULE IS THE ONLY SUBJECT WORTH THE FAULT. It is the one member NOTHING
-/// ELSE REFERENCES: the other members are its dependencies, and a dependency does not import the
-/// root. So it is exactly the file a faulty emission could DROP while the crate still compiled.
-/// A partial drop that breaks a reference is already caught by the baseline; the uncaught case is
-/// a REFERENCE-CLOSED drop, and the entry's own leaf is the canonical one. Mutating a shared core
-/// member cannot distinguish that case, because the shared member is reached whether or not the
-/// entry's own bytes are in the tree at all.
+/// ELSE REFERENCES (a dependency does not import the root), so it is exactly the file a faulty
+/// emission could DROP while the crate still compiled. A drop that breaks a reference is caught
+/// by the baseline; the uncaught case is a REFERENCE-CLOSED drop, and the entry's own leaf is the
+/// canonical one. A shared member is reached whether or not the entry's bytes are in the tree.
 ///
 /// SO THE CARRIER HOLDS ONE THING AND HAS NO SPELLING FOR THE OTHER. `mutation_subject` is the
-/// only constructor and it derives the module from the ENTRY, so `a shared member carried the
-/// fault` is unwritable here rather than merely unselected -- construction over validation, and
-/// there is no fallback arm to accept the bad case (DESIGN 5). Its absence is a typed refusal
-/// naming the entry (`MutationSubjectRefusal`), never a silent substitution.
+/// only constructor and derives the module from the ENTRY, so `a shared member carried the fault`
+/// is unwritable, not merely unselected — construction over validation, no fallback arm
+/// (DESIGN 5). Absence is a typed refusal naming the entry (`MutationSubjectRefusal`).
 ///
 /// THE PRIVACY BOUNDARY IS NAMED, BECAUSE RUST'S IS MODULE-SCOPED AND NOT FUNCTION-SCOPED. A
-/// private field on a struct declared beside its constructor is a wall against OTHER modules and
-/// mere convention within this one -- the sole-constructor finding this repository already
-/// records, which is that such a wall governs WHO constructs and says nothing inside the
-/// declaring module. So the carrier and its one constructor live in the submodule below and
-/// everything else in this file is OUTSIDE that boundary: `MutationSubject { rust_module: ... }`
-/// written anywhere else here does not compile, rather than compiling and being discouraged by a
-/// comment. That is the difference between structurally impossible and review diligence, and it
-/// is one `mod` block.
+/// private field beside its constructor walls OTHER modules and is convention within this one —
+/// the sole-constructor finding this repository records: such a wall governs WHO constructs and
+/// says nothing inside the declaring module. So carrier and constructor live in the submodule
+/// below and everything else is OUTSIDE it: `MutationSubject { rust_module: ... }` elsewhere in
+/// this file does not compile. Structurally impossible rather than review diligence, in one `mod`
+/// block.
 pub use entry_own_subject::{mutation_subject, subject_rust_module, MutationSubject};
 
 mod entry_own_subject {
@@ -208,31 +186,27 @@ mod entry_own_subject {
 
     #[derive(Debug, Clone)]
     pub struct MutationSubject {
-        /// PRIVATE, and the module wrapping it is what makes that mean something: the only route
-        /// to a value of this type from anywhere in the file is `mutation_subject`, which derives
-        /// the name from the ENTRY and cannot be handed any other module.
+        /// PRIVATE, made meaningful by the wrapping module: the only route to a value from
+        /// anywhere in the file is `mutation_subject`, which derives the name from the ENTRY.
         rust_module: String,
     }
 
-    /// A FREE FUNCTION AND NOT AN `impl` METHOD, and the reason is a receipt rather than taste.
-    /// `std.decl_ref` offers `WholeDeclaration` or `NamedField` and neither names a method on an
-    /// impl block, so a method is UNCITABLE: it cannot appear in this file's seed-growth roster,
-    /// and the roster's own census would then be silently short by exactly the items it cannot
-    /// spell. `gunbc.emitted_closure_compile_seed_growth` states that this file adds ZERO
-    /// uncitable items, and an `impl` here would have made that receipt false while the census
-    /// still reported a clean total. Inside the privacy boundary it reads the private field for
-    /// the same reason the constructor does, so nothing is given up by not being a method.
+    /// A FREE FUNCTION AND NOT AN `impl` METHOD, for a receipt rather than taste. `std.decl_ref`
+    /// offers `WholeDeclaration` or `NamedField`, neither naming an impl method, so a method is
+    /// UNCITABLE in this file's seed-growth roster and the census silently short.
+    /// `gunbc.emitted_closure_compile_seed_growth` states this file adds ZERO uncitable items; an
+    /// `impl` would falsify that while the census still reported clean. Inside the privacy
+    /// boundary it reads the private field as the constructor does.
     pub fn subject_rust_module(subject: &MutationSubject) -> &str {
         subject.rust_module.as_str()
     }
 
     /// THE FAULT GOES INTO THE ENTRY'S OWN EMITTED MODULE, OR NOWHERE.
     ///
-    /// There is no member-preferring arm and no fallback: the module name is DERIVED from the
-    /// entry, so the selector has nothing to select. What it decides is only whether that one
-    /// module is present, and absence is returned as a typed refusal naming the entry rather than
-    /// substituted for. The substitution is what this function used to do, and it is what made
-    /// every verdict on the roster a statement about the shared core (see `MutationSubject`).
+    /// No member-preferring arm and no fallback: the module name is DERIVED from the entry, so
+    /// only presence is decided, and absence is a typed refusal naming the entry. Substitution is
+    /// what this function used to do, making every roster verdict a statement about the shared
+    /// core (see `MutationSubject`).
     pub fn mutation_subject(
         crate_dir: &Path,
         entry_module: &str,
@@ -247,10 +221,9 @@ mod entry_own_subject {
                 })
             }
         };
-        // DECLARED AND WRITTEN ARE TWO FACTS AND BOTH ARE REQUIRED. A `pub mod` line with no file
-        // behind it does not compile, and a file no `pub mod` line reaches is not in the closure
-        // at all -- so checking only one of them would admit a subject that is not actually part
-        // of what cargo compiled, and the fault would then prove nothing about the closure.
+        // DECLARED AND WRITTEN ARE TWO FACTS AND BOTH ARE REQUIRED. A `pub mod` with no file does
+        // not compile; a file no `pub mod` reaches is not in the closure. Checking one would admit
+        // a subject cargo did not compile, and the fault would prove nothing.
         if !declared.iter().any(|m| m == entry_module) {
             return Err(MutationSubjectRefusal::EntryModuleNotDeclared {
                 entry_module: entry_module.to_string(),
@@ -274,25 +247,24 @@ pub fn mutation_subject_rust_module(subject: &MutationSubject) -> &str {
     entry_own_subject::subject_rust_module(subject)
 }
 
-/// The SUBJECT KIND, printed rather than inferred. There is one kind and the log still says it,
-/// so a reader of a receipt line never has to know this file to know what was mutated -- and if
-/// a second kind is ever admitted, every receipt already carries the field that distinguishes it.
+/// The SUBJECT KIND, printed rather than inferred. One kind, still logged, so a receipt reader
+/// need not know this file — and a second kind would find every receipt already carrying the
+/// field.
 pub fn mutation_subject_name(_subject: &MutationSubject) -> &'static str {
     "EntryOwnModule"
 }
 
 /// WHY THE ENTRY'S OWN MODULE WAS NOT AVAILABLE TO CARRY THE FAULT.
 ///
-/// Three causes with three different owners, kept apart rather than collapsed into one string:
-/// an unreadable manifest is a probe-crate defect, a module the manifest never declares is an
-/// EMISSION defect (the closure did not carry its own root), and a declared module with no file
-/// is a WRITE defect. Collapsing them would send a reader looking in the wrong place, which is
-/// the state-space conflation DESIGN names.
+/// Three causes with three owners, kept apart: an unreadable manifest is a probe-crate defect, a
+/// module the manifest never declares is an EMISSION defect (the closure lost its own root), a
+/// declared module with no file is a WRITE defect. Collapsing them is the state-space conflation
+/// DESIGN names.
 ///
 /// MEASURED AS REACHABLE-BUT-EMPTY, WHICH IS A HEALTHY QUIET GUARD AND NOT A DECORATION: all 8
-/// rostered entries emit their own module as its own `.rs`, so no arm here fires today. The
-/// mechanism that produces it plainly exists -- a dropped or renamed root is what this phase is
-/// for -- and a fixture authors every arm directly, so its RED is authorable (DESIGN 4b).
+/// rostered entries emit their own module as its own `.rs`, so no arm fires today. The mechanism
+/// exists — a dropped or renamed root is what this phase is for — and a fixture authors every arm
+/// directly, so its RED is authorable (DESIGN 4b).
 #[derive(Debug, Clone)]
 pub enum MutationSubjectRefusal {
     ClosureManifestUnreadable {
@@ -336,26 +308,23 @@ pub fn mutation_subject_refusal_summary(refusal: &MutationSubjectRefusal) -> Str
 
 /// WHETHER THIS RUN'S CARGO VERDICT IS SENSITIVE TO THE BYTES IT WAS HANDED.
 ///
-/// Only `Discriminated` is a pass. Every other arm says the baseline green above it carries no
-/// information, which is a phase failure rather than a note -- the whole point of the arm is
-/// that a decoration must not be able to report coverage.
+/// Only `Discriminated` is a pass. Every other arm says the baseline green carries no
+/// information — a phase failure, not a note: a decoration must not report coverage.
 #[derive(Debug, Clone)]
 pub enum MutationVerdict {
-    /// No fault was injected. Carries why: a baseline that never went green has nothing to
-    /// discriminate against, and a tree with no writable module has nowhere to put the fault.
+    /// No fault was injected. Carries why: a red baseline has nothing to discriminate against; a
+    /// tree with no writable module has nowhere to put the fault.
     NotAttempted { reason: String },
     /// The fault went in and cargo still compiled the tree. THE INSTRUMENT IS NOT MEASURING
     /// WHAT IT CLAIMS TO.
     NotDiscriminating { detail: String },
-    /// THE ENTRY'S OWN EMITTED MODULE WAS NOT THERE TO CARRY THE FAULT, and no other module
-    /// stood in for it. Its own arm rather than a `NotAttempted` reason string, because this is
-    /// not `the tree had nowhere to put a fault` -- it is a POSITIVE FINDING ABOUT THE EMISSION,
-    /// with a different owner and a different repair, and it is the exact case a silent fallback
-    /// to a shared member would have reported as `Discriminated`.
+    /// THE ENTRY'S OWN EMITTED MODULE WAS NOT THERE TO CARRY THE FAULT, and nothing stood in for
+    /// it. Its own arm, not a `NotAttempted` reason string: a POSITIVE FINDING ABOUT THE EMISSION
+    /// with its own owner and repair — the case a silent fallback to a shared member would have
+    /// reported as `Discriminated`.
     SubjectRefused { refusal: MutationSubjectRefusal },
-    /// The fault produced a red, and the restore did not return the tree to the state it
-    /// started in -- either the bytes differ, or the restored tree does not compile. The red is
-    /// then unattributable: it may be residue rather than the fault.
+    /// The fault produced a red and the restore did not return the starting state -- bytes
+    /// differ, or the restored tree does not compile. The red is unattributable: possibly residue.
     RestoreFailed { detail: String },
     /// Red under the fault, green again after a byte-exact restore.
     Discriminated {
@@ -391,10 +360,9 @@ pub fn mutation_verdict_summary(verdict: &MutationVerdict) -> String {
 
 /// One entry's whole story, and every verdict is reached THROUGH the stage that produced it.
 ///
-/// `EmissionRefused` and `CrateNotWritten` have no cargo verdict to carry, so "cargo found
-/// nothing wrong" and "cargo was never reached" cannot share a spelling -- the
-/// execution-provenance-loss failure DESIGN names, which is exactly what a `passed: bool`
-/// beside an optional cause would have reintroduced.
+/// `EmissionRefused` and `CrateNotWritten` carry no cargo verdict, so "cargo found nothing
+/// wrong" and "cargo was never reached" cannot share a spelling -- the execution-provenance loss
+/// DESIGN names, which a `passed: bool` beside an optional cause would reintroduce.
 #[derive(Debug, Clone)]
 pub enum EmitCompileOutcome {
     /// The emission transaction did not complete. The emitted tree does not exist, so nothing
@@ -406,9 +374,8 @@ pub enum EmitCompileOutcome {
     },
     /// Emission completed and the crate could not be laid out on disk.
     CrateNotWritten { entry: String, cause: String },
-    /// The entry was never reached, because an earlier entry's restore failed and a failed
-    /// restore is TERMINAL for the run. Carries the entry that ended it, so "not reached" can
-    /// never be read as "reached and clean".
+    /// Never reached: an earlier entry's restore failed, which is TERMINAL for the run. Carries
+    /// the entry that ended it, so "not reached" is never read as "reached and clean".
     NotExecuted { entry: String, cause: String },
     /// The crate exists and both arms ran.
     Measured {
@@ -420,9 +387,8 @@ pub enum EmitCompileOutcome {
     },
 }
 
-/// A pass is a completed emission, a green baseline AND an executed discrimination. The third
-/// conjunct is not decoration: without it the first two are satisfied by an instrument that
-/// cannot fail.
+/// A pass is a completed emission, a green baseline AND an executed discrimination. Without the
+/// third, the first two are satisfied by an instrument that cannot fail.
 pub fn emit_compile_outcome_passed(outcome: &EmitCompileOutcome) -> bool {
     match outcome {
         EmitCompileOutcome::Measured {
@@ -464,26 +430,24 @@ pub fn emit_compile_outcome_summary(outcome: &EmitCompileOutcome) -> String {
 /// The manifest for the probe crate, rendered from the modeled cargo authorities rather than
 /// authored as markup.
 ///
-/// The package header comes from `extdeps.rust.version` `render_cargo_package_header_prefix`,
-/// the dependency rows from `v1.compiler.stage0_crates`
-/// `stage0_foundation_runtime_dependencies` -- the seed's own runtime dependency set, which is
-/// what emitted code links against -- and each row is rendered by that module's
-/// `render_stage0_crate_dep`. No `[lib]` section is written because `src/lib.rs` is cargo's own
-/// default library path, so naming it would be a second spelling of a fact cargo already owns.
+/// Package header from `extdeps.rust.version` `render_cargo_package_header_prefix`; dependency
+/// rows from `v1.compiler.stage0_crates` `stage0_foundation_runtime_dependencies` (the seed's
+/// runtime dependency set, which emitted code links against), each rendered by that module's
+/// `render_stage0_crate_dep`. No `[lib]` section: `src/lib.rs` is cargo's own default, so naming
+/// it would be a second spelling.
 ///
-/// A hand-authored TOML string was available and is deliberately not used: the corpus already
-/// carries one (`tools.self_host_curated_seed_linked_harness`
-/// `cssl_v1_compiled_probe_lib_cargo_toml`), it is marked scaffold debt in its own module for
-/// being concat-authored markup, and adding a required gate as a consumer of it would have
-/// pinned that debt open on the merge path.
+/// The corpus's hand-authored TOML string (`tools.self_host_curated_seed_linked_harness`
+/// `cssl_v1_compiled_probe_lib_cargo_toml`) is deliberately not used: it is marked scaffold debt
+/// in its own module as concat-authored markup, and a required gate consuming it would pin that
+/// debt open on the merge path.
 fn probe_manifest(workspace: &Path, entry: &str) -> String {
     let mut deps: Vec<CargoDependency> = stage0_foundation_runtime_dependencies()
         .iter()
         .map(|dep| (**dep).clone())
         .collect();
-    // The emitted closure links against the seed crate for the runtime surface it does not
-    // emit for itself (`v1_rt` and friends). A path dependency, absolute, because the probe
-    // crate is written outside the repository and a relative path would not resolve from it.
+    // The emitted closure links against the seed crate for the runtime surface it does not emit
+    // (`v1_rt` and friends). An absolute path dependency: the probe crate is written outside the
+    // repository.
     deps.push(CargoDependency {
         name: "v1-compiler".to_string(),
         source: std::rc::Rc::new(CargoDepSource::LocalPathDep {
@@ -497,25 +461,20 @@ fn probe_manifest(workspace: &Path, entry: &str) -> String {
         .join("");
     // THE FEATURE SECTION IS NOT OPTIONAL, AND CI IS WHERE ITS ABSENCE BITES.
     //
-    // The emitted `v1_rt.rs` gates on `#[cfg(feature = "text_lookup_work_counter")]`. A crate
-    // that references a feature it does not declare earns the `unexpected_cfgs` lint, which is a
-    // WARNING locally and a hard ERROR under CI's `RUSTFLAGS=-D warnings` — so the probe crate
-    // compiled clean on a workstation and failed `status=101` on every entry in CI, with the
-    // baseline arm reporting a red that had nothing to do with the emitted closure.
+    // The emitted `v1_rt.rs` gates on `#[cfg(feature = "text_lookup_work_counter")]`. Referencing
+    // an undeclared feature earns `unexpected_cfgs` — a WARNING locally, a hard ERROR under CI's
+    // `RUSTFLAGS=-D warnings` — so the probe crate compiled clean on a workstation and failed
+    // `status=101` on every entry in CI, the baseline reporting a red unrelated to the closure.
     //
-    // Rendered from the same modeled authority the partition crates use --
-    // `stage0_features_for_crate_kind`, which is what the call below reaches and which the
-    // partition rows themselves reach through `stage0_partition_row_features` -- rather than
-    // authored here: the corpus already carries two hand-concatenated `[features]` blocks for
-    // exactly this reason, each with a note explaining the failure, and adding a third string
-    // would be the second representation those notes are evidence against.
-    // THE KIND IS THE WHOLE SUBJECT, so the kind is what is passed. An earlier revision handed
-    // over a fabricated `GeneratedPartitionCrateRow` -- blank crate_dir, empty module lists --
-    // to reach a function that reads `row.kind` and nothing else. That row was not merely
-    // wasteful: it ASSERTED this probe is a generated partition crate, which it is not. It is a
-    // per-entry crate written outside the repository, and the only thing it shares with a
-    // partition crate is needing the foundation kind's feature set, because the emitted
-    // `v1_rt.rs` gates on it.
+    // Rendered from the partition crates' own authority, `stage0_features_for_crate_kind` (which
+    // the partition rows reach through `stage0_partition_row_features`), not authored here: the
+    // corpus already carries two hand-concatenated `[features]` blocks for this reason, each with
+    // a note, and a third string would be the second representation those notes argue against.
+    // THE KIND IS THE WHOLE SUBJECT, so the kind is what is passed. An earlier revision handed a
+    // fabricated `GeneratedPartitionCrateRow` -- blank crate_dir, empty module lists -- to a
+    // function reading only `row.kind`. That row ASSERTED this probe is a generated partition
+    // crate; it is a per-entry crate outside the repository sharing only the foundation kind's
+    // feature set, because the emitted `v1_rt.rs` gates on it.
     let features = render_stage0_crate_features_section(stage0_features_for_crate_kind(
         GeneratedPartitionCrateKind::GeneratedFoundationCrate,
     ));
@@ -525,25 +484,22 @@ fn probe_manifest(workspace: &Path, entry: &str) -> String {
     )
 }
 
-/// Where one entry's probe crate is written. Outside the repository deliberately: a crate under
-/// the workspace root is inferred into the workspace by cargo and would have to declare its own
-/// `[workspace]` to escape, which is a manifest fact invented to work around its own location.
+/// Where one entry's probe crate is written. Outside the repository: a crate under the workspace
+/// root is inferred into the workspace and would need its own `[workspace]` to escape — a manifest
+/// fact invented to work around its location.
 ///
 /// RUNNER-SCOPED, NOT HOST-SHARED, AND THIS WAS MEASURED THE HARD WAY. A fixed path in the host's
 /// `/tmp` is shared by every tenant of a SELF-HOSTED runner and persists across runs, slots and
-/// jobs. On the first required run the directory already existed there owned by another uid, so
-/// creating the lock inside it returned `EACCES` and the phase refused — permanently, on every
-/// subsequent PR landing on that runner, with the only closing move being someone deleting a
-/// directory over SSH. A required gate whose sole remedy is manual host intervention outside the
-/// repository has no reachable green, which is the shape DESIGN records for a gate that launders
-/// rather than gates.
+/// jobs. On the first required run the directory existed owned by another uid, so creating the
+/// lock returned `EACCES` and the phase refused — permanently, on every PR landing on that
+/// runner, the only closing move being someone deleting a directory over SSH. A required gate
+/// whose sole remedy is manual host intervention has no reachable green: the shape DESIGN records
+/// for a gate that launders rather than gates.
 ///
-/// `RUNNER_TEMP` is created and torn down per job and owned by the process that needs it, so two
-/// tenants no longer name one path. Therefore its ABSENCE IS A REFUSAL, not permission to inspect
-/// or write the host-shared system temp directory and hope this particular runner happens to make
-/// it safe. It changes nothing the shared target directory buys: the entries of ONE run still
-/// share `workspace/target`, and per-entry package names still separate their fingerprints within
-/// it.
+/// `RUNNER_TEMP` is created and torn down per job and owned by the process needing it, so two
+/// tenants never name one path. Its ABSENCE IS A REFUSAL, not permission to write the host-shared
+/// system temp and hope this runner makes it safe. The shared target dir is untouched: one run's
+/// entries still share `workspace/target`, with per-entry package names separating fingerprints.
 ///
 /// This refusal governs `required_ci_probe_root_from_runner_temp` and its environment-reading
 /// wrapper `required_ci_emit_compile_probe_root`; `local_emit_compile_probe_root` deliberately
@@ -589,9 +545,8 @@ fn write_probe_crate(
         .find(|emission| emission.target_name == "rust")
         .ok_or_else(|| "the emission carries no rust target".to_string())?;
     let dir = probe_crate_dir(probe_root, entry);
-    // A STALE TREE IS NOT A SUBJECT. The previous run's bytes under the same slug would let a
-    // module deleted from the closure keep compiling, so the directory is removed rather than
-    // written over.
+    // A STALE TREE IS NOT A SUBJECT. A previous run's bytes under the same slug would let a module
+    // deleted from the closure keep compiling, so the directory is removed, not written over.
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(dir.join("src"))
         .map_err(|e| format!("creating {}: {e}", dir.display()))?;
@@ -622,16 +577,14 @@ fn write_probe_crate(
 
 /// Run cargo over the probe crate.
 ///
-/// `build --release` INTO THE WORKSPACE TARGET DIRECTORY, and both halves are cost decisions
-/// with one reason. The lane's own first step is `cargo build --release -p v1-compiler --bins`,
-/// so the seed crate this probe depends on is already compiled there under exactly that
-/// profile; a `check`, or a private target directory, would share no fingerprint with it and
-/// would rebuild the whole dependency graph inside a required phase. Sharing it means the
-/// baseline arm compiles the emitted crate and nothing else, and the two further arms are
-/// incremental on top of that.
+/// `build --release` INTO THE WORKSPACE TARGET DIRECTORY, both halves one cost decision: the
+/// lane's first step is `cargo build --release -p v1-compiler --bins`, so the seed crate is
+/// already compiled there under that profile; a `check` or a private target dir would share no
+/// fingerprint and rebuild the whole dependency graph inside a required phase. The baseline arm
+/// thus compiles only the emitted crate, and the two further arms are incremental.
 ///
-/// The phases inside one required run are sequential in one process, so nothing else is holding
-/// cargo's lock on that directory while this runs.
+/// Phases within one required run are sequential in one process, so nothing else holds cargo's
+/// lock on that directory.
 fn run_cargo(crate_dir: &Path, workspace: &Path) -> CargoVerdict {
     let cargo = std::env::var("CARGO").unwrap_or_else(|_| "cargo".to_string());
     let mut command = std::process::Command::new(&cargo);
@@ -669,11 +622,10 @@ fn run_cargo(crate_dir: &Path, workspace: &Path) -> CargoVerdict {
 
 /// The rust module basenames the emitted `lib.rs` declares, in its own order.
 ///
-/// AN UNREADABLE MANIFEST IS RETURNED, NOT RENDERED AS AN EMPTY CLOSURE. The empty vector reads
-/// identically to `this crate declares no modules`, and a caller asking whether the entry's own
-/// module is declared would then answer `no` for a crate it never managed to read -- the
-/// execution-provenance loss DESIGN names, in the one place it would misattribute an emission
-/// defect to a filesystem one.
+/// AN UNREADABLE MANIFEST IS RETURNED, NOT RENDERED AS AN EMPTY CLOSURE. An empty vector reads as
+/// `this crate declares no modules`, so a caller would answer `entry module not declared` for a
+/// crate it never read -- execution-provenance loss, misattributing a filesystem defect to the
+/// emission.
 fn closure_modules(lib_rs: &Path) -> Result<Vec<String>, String> {
     let content = std::fs::read_to_string(lib_rs).map_err(|e| e.to_string())?;
     Ok(content
@@ -689,18 +641,16 @@ fn closure_modules(lib_rs: &Path) -> Result<Vec<String>, String> {
 
 /// THE DISCRIMINATING RED, ESTABLISHED BY MUTATION AND RESTORED BEFORE THE PHASE REPORTS.
 ///
-/// One fault, in one file, failing alone -- the baseline immediately above it is the control,
-/// and the restore immediately after it is the second control. A round in which several things
-/// change at once would establish that cargo responds to damage, not that this instrument reads
-/// this closure.
+/// One fault, in one file, failing alone -- the baseline before is the control, the restore after
+/// the second control. Several things changing at once would show cargo responds to damage, not
+/// that this instrument reads this closure.
 fn establish_discriminating_red(
     crate_dir: &Path,
     workspace: &Path,
     entry_module: &str,
 ) -> MutationVerdict {
-    // NO FALLBACK ARM. A closure missing its own entry module is the finding, not an obstacle to
-    // route around -- substituting any other member here would hand the phase a `Discriminated`
-    // verdict computed over precisely the tree that is broken.
+    // NO FALLBACK ARM. A closure missing its own entry module is the finding -- substituting
+    // another member would yield `Discriminated` over precisely the broken tree.
     let subject = match mutation_subject(crate_dir, entry_module) {
         Ok(subject) => subject,
         Err(refusal) => return MutationVerdict::SubjectRefused { refusal },
@@ -723,26 +673,23 @@ fn establish_discriminating_red(
 
     let red = run_cargo(crate_dir, workspace);
 
-    // THE RESTORE RUNS WHATEVER THE FAULTED ARM ANSWERED. Leaving a faulted tree behind would
-    // make the next run's baseline red for a reason that has nothing to do with the corpus.
+    // THE RESTORE RUNS WHATEVER THE FAULTED ARM ANSWERED, or the next run's baseline goes red for
+    // a reason unrelated to the corpus.
     let restore_write = std::fs::write(&path, &original);
     let restored_bytes = std::fs::read_to_string(&path).unwrap_or_default();
 
     // RESTORATION IS ADJUDICATED BEFORE ANY FAULT VERDICT, AND THE ORDER IS THE WHOLE POINT.
     //
-    // Every fault-verdict arm below returns `NotDiscriminating`, which fails this entry and lets
-    // SIBLINGS CONTINUE. `RestoreFailed` is the only verdict that ends the run. So if the restore
-    // failed at the same moment the fault arm was green, incomplete, or unattributed, deciding
-    // the fault first would report the non-terminal verdict and swallow the terminal one — and
-    // the next entry's baseline would then run against a target directory whose state nobody
-    // established, which is exactly the unattributable measurement the terminal rule exists to
-    // prevent. The two conditions are independent, so they co-occur; whichever is checked first
-    // wins, and only one of them is safe to lose.
+    // Every fault-verdict arm below returns `NotDiscriminating`, failing this entry while SIBLINGS
+    // CONTINUE; `RestoreFailed` alone ends the run. The two conditions are independent and
+    // co-occur, so deciding the fault first would report the non-terminal verdict and swallow the
+    // terminal one — the next entry's baseline then runs against a target directory of
+    // unestablished state, the unattributable measurement the terminal rule prevents. Whichever
+    // is checked first wins, and only one is safe to lose.
     //
-    // The BYTE half is adjudicated here because it is a filesystem fact, already in hand and
-    // free. Whether the RESTORED TREE COMPILES stays below the fault verdicts deliberately: it
-    // costs a third cargo invocation, and it is a question about attributing THIS entry's red,
-    // which is moot once the arm has already refused to claim one.
+    // The BYTE half is adjudicated here: a filesystem fact, in hand and free. Whether the RESTORED
+    // TREE COMPILES stays below the fault verdicts: a third cargo invocation, and a question about
+    // attributing THIS entry's red, moot once the arm has refused to claim one.
     if let Err(e) = restore_write {
         return MutationVerdict::RestoreFailed {
             detail: format!("restoring {}: {e}", path.display()),
@@ -759,26 +706,23 @@ fn establish_discriminating_red(
 
     // THE FAULTED ARM MUST HAVE COMPLETED, AND ITS RED MUST BE ATTRIBUTABLE TO THE FAULT.
     //
-    // A NONZERO EXIT IS NOT EVIDENCE ON ITS OWN, which is the hole this block closes. Cargo can
-    // be killed, fail to spawn, run out of disk, or die for a reason having nothing to do with
-    // the injected item — and `!cargo_verdict_compiled(&red)` is true in every one of those
-    // cases. Accepting them would let the phase report `Discriminated` while establishing
-    // nothing about sensitivity to the mutation, and then green a merge gate on it: a fabricated
-    // red, which is the fabricated-plausible-output failure aimed at the phase's own evidence.
+    // A NONZERO EXIT IS NOT EVIDENCE ON ITS OWN. Cargo can be killed, fail to spawn, run out of
+    // disk, or die for reasons unrelated to the injected item — `!cargo_verdict_compiled(&red)`
+    // is true in every case. Accepting them reports `Discriminated` while establishing nothing
+    // about sensitivity, and greens a merge gate on a fabricated red.
     //
-    // THIS IS NOT HYPOTHETICAL. Verifying the blunted-mutation arm, a concurrent run produced
-    // exactly this shape — a `Discriminated` verdict whose red line quoted a `#[cfg]` WARNING
-    // over a cargo run that had actually said `Finished`. The probe-root lock closes the cause;
-    // this closes the arm that accepted the result, and the two are different defects.
+    // THIS IS NOT HYPOTHETICAL. Verifying the blunted-mutation arm, a concurrent run produced a
+    // `Discriminated` verdict whose red line quoted a `#[cfg]` WARNING over a cargo run that said
+    // `Finished`. The probe-root lock closes the cause; this closes the arm that accepted the
+    // result — different defects.
     //
     // So the arm demands three things of the faulted run, in order of what they rule out:
-    //   1. `Completed` — cargo ran to a verdict, so `NotAttempted`/`DidNotComplete` fail rather
+    //   1. `Completed` — cargo reached a verdict, so `NotAttempted`/`DidNotComplete` fail rather
     //      than passing as a red;
     //   2. a nonzero status — it refused;
-    //   3. a diagnostic naming THE INJECTED SYMBOL — it refused for OUR reason. Requiring the
-    //      symbol rather than merely the code is what distinguishes the injected fault from an
-    //      unrelated `E0308` that was already in the emitted tree; the code alone would accept a
-    //      pre-existing type error as the phase's own evidence.
+    //   3. a diagnostic naming THE INJECTED SYMBOL — it refused for OUR reason. The symbol rather
+    //      than the code distinguishes the injected fault from an unrelated `E0308` already in the
+    //      emitted tree.
     match &red {
         CargoVerdict::Completed { status: 0, .. } => {
             return MutationVerdict::NotDiscriminating {
@@ -832,9 +776,8 @@ fn establish_discriminating_red(
         };
     }
 
-    // The reported line is the diagnostic that NAMES THE FAULT, which is the same line the
-    // attribution check above accepted -- so the receipt a reader sees is the evidence the arm
-    // actually decided on, rather than a separately-chosen line that could disagree with it.
+    // The reported line is the diagnostic NAMING THE FAULT, the same line the attribution check
+    // accepted -- the receipt is the evidence the arm decided on, not a separately chosen line.
     MutationVerdict::Discriminated {
         subject,
         red_line: attributed,
@@ -861,12 +804,11 @@ pub fn run_emit_compile_entry(
 ) -> EmitCompileOutcome {
     // PROGRESS IS REPORTED AS THE STAGE IS ENTERED, NOT WHEN THE ENTRY FINISHES.
     //
-    // This is not decoration. Every stage below is a long host effect -- a whole-index emission,
-    // then up to three cargo invocations -- and a phase that reports only on completion renders a
-    // HANG and a KILL identically to a reader, and both identically to a slow run. That is the
-    // execution-provenance loss DESIGN names, arriving in the instrument's own output: measured
-    // the hard way, when two verification runs died inside this function and produced no line at
-    // all, so nothing in the log distinguished "still emitting" from "killed".
+    // Every stage below is a long host effect -- a whole-index emission, then up to three cargo
+    // invocations -- and reporting only on completion renders a HANG, a KILL and a slow run
+    // identically: execution-provenance loss in the instrument's own output. Measured when two
+    // verification runs died inside this function with no line at all, so nothing distinguished
+    // "still emitting" from "killed".
     eprintln!("emit-compile: {entry} emitting");
     let workspace = process_workspace_root();
     let run = compile_entry_emission(
@@ -924,10 +866,9 @@ pub fn run_emit_compile_entry(
         "emit-compile: {entry} baseline {} — mutation",
         cargo_verdict_summary(&baseline)
     );
-    // THE DISCRIMINATION IS NOT ATTEMPTED OVER A RED BASELINE, and it says so rather than
-    // reporting a red it cannot attribute: a tree that already fails would go red under the
-    // fault for a reason the fault did not cause, which is a green control wearing a red one's
-    // clothes.
+    // THE DISCRIMINATION IS NOT ATTEMPTED OVER A RED BASELINE, and says so: an already-failing
+    // tree goes red under the fault for a reason the fault did not cause -- a green control
+    // wearing a red one's clothes.
     let mutation = if cargo_verdict_compiled(&baseline) {
         establish_discriminating_red(&crate_dir, &workspace, &entry_module)
     } else {
@@ -950,36 +891,33 @@ pub fn run_emit_compile_entry(
 }
 
 /// Every configured entry, each run whatever the previous one did -- the stopped-line audit
-/// shape the required run already uses: report everything, green nothing.
+/// shape: report everything, green nothing.
 ///
-/// AN EMPTY ROSTER REFUSES. Zero entries compiled is not zero breaks; it is the phase failing
-/// to reach any subject, and reporting it as clean is the empty-observation narrow.
+/// AN EMPTY ROSTER REFUSES. Zero entries compiled is the phase reaching no subject, not zero
+/// breaks; reporting it clean is the empty-observation narrow.
 /// THE NUMERATOR, IN THE SAME UNIT AS THE DENOMINATOR: modules the cover's closures REACHED.
 ///
-/// WHY NOT THE ENTRY COUNT. `covered_entries=8 of 3900 authored modules` is not a fraction — the
-/// numerator is entries and the denominator is modules — and it reads as a coverage ratio
-/// precisely because it is formatted like one. It understates by a wide and unknown margin, since
-/// eight closures reach far more than eight modules, and understating is not the safe direction:
-/// a number that looks that bad invites growing the entry roster, which is exactly the move the
+/// WHY NOT THE ENTRY COUNT. `covered_entries=8 of 3900 authored modules` is not a fraction —
+/// entries over modules — yet reads as a coverage ratio because it is formatted like one. It
+/// understates by a wide, unknown margin (eight closures reach far more than eight modules), and
+/// understating is not safe: a number that bad invites growing the entry roster, the move the
 /// retirement trigger forbids (a trigger satisfied at forty-one entries leaves the corpus
 /// unmeasured). An unpaired count tells no lie; a mismatched fraction does.
 ///
-/// This is the union of the emitted module sets, read from the crates the phase already wrote, so
-/// it costs a readdir per entry and no extra compilation. It moves for the right reason: up when
-/// the cover reaches new code, unchanged when an unrelated emitter repair lands.
+/// The union of the emitted module sets, read from crates already written: a readdir per entry,
+/// no extra compilation. It moves up when the cover reaches new code, and not when an unrelated
+/// emitter repair lands.
 ///
-/// WHAT IT DOES NOT DISTINGUISH, said here rather than left for a reader to assume: reached AS AN
-/// ENTRY and reached ONLY AS A DEPENDENCY are both counted. The second is real coverage of a
-/// weaker kind — a dependency module is compiled, but no run ever emits from its own closure, so
-/// an emit-stage diagnostic reachable only from ITS entry is still invisible. Splitting the two
-/// numerators is strictly better and is not done here.
+/// WHAT IT DOES NOT DISTINGUISH: reached AS AN ENTRY and reached ONLY AS A DEPENDENCY are both
+/// counted. The second is weaker coverage — a dependency module is compiled, but no run emits
+/// from its own closure, so an emit-stage diagnostic reachable only from ITS entry is invisible.
+/// Splitting the two numerators is strictly better and not done here.
 pub fn emit_compile_modules_reached(outcomes: &[EmitCompileOutcome]) -> usize {
-    // `src/lib.rs` IS NOT DEDUPLICABLE BY NAME, AND UNIONING IT WOULD UNDER-COUNT.
-    // The emission writes each entry's own root module as `lib.rs` — the compiler refuses the
-    // crate outright without one — so every entry contributes a DIFFERENT root under the SAME
-    // file name. Unioning names would collapse N distinct roots into one, which is a numerator
-    // that shrinks as the cover grows. The roots are therefore counted per measured entry and
-    // the dependency modules unioned by name, which is what "reached" means.
+    // `src/lib.rs` IS NOT DEDUPLICABLE BY NAME, AND UNIONING IT WOULD UNDER-COUNT. Each entry's
+    // root module is written as `lib.rs` (the compiler refuses a crate without one), so every
+    // entry contributes a DIFFERENT root under the SAME name; unioning would collapse N roots into
+    // one, a numerator shrinking as the cover grows. Roots are counted per measured entry and
+    // dependency modules unioned by name.
     let mut reached: Vec<String> = Vec::new();
     let mut roots = 0usize;
     for outcome in outcomes {
@@ -1005,17 +943,16 @@ pub fn emit_compile_modules_reached(outcomes: &[EmitCompileOutcome]) -> usize {
 
 /// THE SELECTION, WITH ITS REMAINDER CARRIED AT IDENTITY GRAIN.
 ///
-/// WHY THIS REPLACES THE COVERAGE FRACTION RATHER THAN JOINING IT. A fraction — however
-/// unit-consistent — is the wrong instrument for an uncovered remainder, because §4b(3) asks a
-/// rung drop for a BOUNDED POPULATION and a percentage is not one: it says how much is missing
-/// and never WHICH, so nothing downstream can join it, refuse on it, or watch it shrink. The
-/// identities are the population. A percentage may stand as context and may never be the gap's
-/// identity or its dissolution trigger.
+/// WHY THIS REPLACES THE COVERAGE FRACTION RATHER THAN JOINING IT. §4b(3) asks a rung drop for a
+/// BOUNDED POPULATION, and a percentage is not one: it says how much is missing, never WHICH, so
+/// nothing downstream can join it, refuse on it, or watch it shrink. The identities are the
+/// population; a percentage may stand as context, never as the gap's identity or dissolution
+/// trigger.
 ///
-/// The universe is authored `.dag` modules under the invoked source roots; the selection is the
-/// declared roster; the remainder is the set difference, RETAINED — written to a file beside the
-/// run and digested, so the phase's own output names where the unselected identities are rather
-/// than summarising them away. Counts and digests are printed; the identities are persisted.
+/// Universe: authored `.dag` modules under the invoked source roots. Selection: the declared
+/// roster. Remainder: the set difference, RETAINED — written to a file beside the run and
+/// digested, so the output names where the unselected identities are. Counts and digests are
+/// printed; identities are persisted.
 pub struct EmitCompileSelection {
     pub universe: Vec<String>,
     pub selected: Vec<String>,
@@ -1048,8 +985,8 @@ pub fn emit_compile_selection(source_roots: &[String]) -> EmitCompileSelection {
     selected.dedup();
 
     // THE SELECTION IS NOT ASSUMED TO BE A SUBSET, IT IS INTERSECTED. A roster row naming a path
-    // the walk does not find is a defect worth seeing rather than a silent membership; it shows
-    // up here as a selected identity absent from the universe, and the remainder stays exact.
+    // the walk does not find shows up as a selected identity absent from the universe, and the
+    // remainder stays exact.
     let not_selected: Vec<String> = universe
         .iter()
         .filter(|module| !selected.contains(module))
@@ -1075,9 +1012,8 @@ pub fn emit_compile_selection_not_selected_digest(selection: &EmitCompileSelecti
     digest_of_identities(&selection.not_selected)
 }
 
-/// Persist the unselected identities beside the run. RETAINED means retained: the phase writes
-/// the list rather than reporting its size, so the remainder is a population a later operation can
-/// read, and not a number a later reader must trust.
+/// Persist the unselected identities beside the run. RETAINED means retained: the list, not its
+/// size, so the remainder is a population a later operation can read.
 pub fn retain_not_selected_identities(
     selection: &EmitCompileSelection,
     dir: &str,
@@ -1098,13 +1034,11 @@ pub fn retain_not_selected_identities(
 /// THE ONE REPORT BOTH SURFACES PRINT.
 ///
 /// The required phase and the standalone `--required-emit-compile` mode are two callers of one
-/// producer, and a report authored twice is one fact with two authorities — free to disagree about
-/// exactly the numbers a reader compares across the two surfaces. So the selection, the remainder
-/// and the context line are rendered here, once, and each caller prints what it is given.
+/// producer; a report authored twice is one fact with two authorities, free to disagree on the
+/// numbers a reader compares. So selection, remainder and context line are rendered here once.
 ///
-/// Retention is attempted here and its failure is RETURNED rather than swallowed, because the
-/// remainder is the declared population of what this phase does not observe: a run reporting a
-/// remainder it could not persist has published a count with nothing behind it.
+/// Retention failure is RETURNED, not swallowed: the remainder is the declared population of what
+/// this phase does not observe, and a count it could not persist has nothing behind it.
 pub fn emit_compile_report(
     outcomes: &[EmitCompileOutcome],
     source_roots: &[String],
@@ -1124,12 +1058,11 @@ pub fn emit_compile_report(
     ));
     // THROUGH `probe_root()`, NEVER BY RESPELLING IT. This line composed the directory name a
     // second time, so when the root moved to `RUNNER_TEMP` one spelling was repaired and the
-    // other kept the old behaviour: in one run, the crate dirs were written under the runner's
-    // per-job temp while the retention file was still being written to the host-shared `/tmp`,
-    // where it hit the same `EACCES` the reroot existed to escape. Two homes for one fact is the
-    // §3 violation, and the tell was visible in the phase's own log as two different paths in
-    // adjacent lines. The caller-selected `probe_root` is the authority for this run; nothing
-    // below the mode boundary chooses another root.
+    // other not: crate dirs went under the per-job temp while the retention file went to the
+    // host-shared `/tmp` and hit the same `EACCES` the reroot escaped. Two homes for one fact is
+    // the §3 violation; the tell was two different paths in adjacent log lines. The
+    // caller-selected `probe_root` is the authority; nothing below the mode boundary chooses
+    // another root.
     let retained_dir = probe_root.to_string_lossy().to_string();
     let retention_error = match retain_not_selected_identities(&selection, &retained_dir) {
         Ok(path) => {
@@ -1155,30 +1088,25 @@ pub fn emit_compile_report(
 
 /// A ROOT WHOSE LAST WRITER DIED IS NOT A ROOT TO SILENTLY BUILD ON, SO A SECOND HOLDER REFUSES.
 ///
-/// WHAT THIS LOCK IS FOR HAS NARROWED, and saying so matters because the argument below was
-/// written for the wider case. Under a per-job `RUNNER_TEMP` root two CONCURRENT runs cannot
-/// collide by construction — there is no path they both name — so the lock is no longer the
-/// mechanism preventing interleaving in CI. What it still catches is a previous attempt in THIS
-/// job that died mid-flight, or two invocations explicitly given the same runner temp. Both are
-/// cases where the tree's state is unestablished, which is the thing worth refusing on.
+/// WHAT THIS LOCK IS FOR HAS NARROWED; the argument below was written for the wider case. Under a
+/// per-job `RUNNER_TEMP` root two CONCURRENT runs cannot collide — no path they both name — so
+/// the lock no longer prevents interleaving in CI. It still catches a previous attempt in THIS
+/// job that died mid-flight, or two invocations given the same runner temp: both leave the tree's
+/// state unestablished, which is what is worth refusing on.
 ///
-/// The arms deliberately share one probe root and one cargo target directory — that is what makes
-/// the baseline warm and the restore comparable. It also means two runs interleave: one run's
-/// faulted tree is the other run's baseline, and one run's restore erases the other's red before
-/// it is read. Neither process observes anything wrong; both report confidently.
+/// The arms share one probe root and one cargo target directory — what makes the baseline warm
+/// and the restore comparable. So two runs interleave: one's faulted tree is the other's
+/// baseline, one's restore erases the other's red before it is read. Both report confidently.
 ///
 /// MEASURED, NOT ANTICIPATED. Verifying the blunted-mutation arm, a stale background invocation
-/// overlapped a foreground one. The phase reported `Discriminated` with a red line quoting a
-/// `#[cfg]` WARNING, over a cargo run whose own tail said `Finished` — a green compile reported as
-/// a discriminating red. The arm that exists to catch a non-discriminating verdict was itself
-/// given a fabricated one. A clean re-run answered `NotDiscriminating` correctly.
+/// overlapped a foreground one: `Discriminated` with a red line quoting a `#[cfg]` WARNING over a
+/// cargo run whose tail said `Finished` — a green compile reported as a discriminating red, handed
+/// to the very arm that exists to catch one. A clean re-run answered `NotDiscriminating`.
 ///
 /// The refusal is a lock file created exclusively, NOT a wait and NOT a private directory per run.
-/// Waiting would serialize into the same shared state with the same ambiguity about whose
-/// artifacts are whose; a private directory would buy isolation by throwing away the warm target
-/// dir the phase is built around. Refusing is the fail-closed arm: the line stops, the cause is
-/// typed and located, and the operator sees that two runs were attempted rather than receiving a
-/// verdict computed across both.
+/// Waiting serializes into the same shared state with the same ambiguity; a private directory
+/// throws away the warm target dir. Refusing is the fail-closed arm: line stops, cause typed and
+/// located, operator sees two runs were attempted rather than a verdict computed across both.
 fn acquire_probe_root_lock(root: &Path) -> Result<PathBuf, String> {
     std::fs::create_dir_all(root).map_err(|e| {
         format!(
@@ -1199,12 +1127,11 @@ fn acquire_probe_root_lock(root: &Path) -> Result<PathBuf, String> {
              Remove the lock only after establishing no other run is live.",
             lock.display()
         )),
-        // A LIVE PEER AND AN UNWRITABLE ROOT ARE OPPOSITE REMEDIES, so they are opposite
-        // refusals. `AlreadyExists` says wait or investigate a concurrent run; `PermissionDenied`
-        // says this process cannot write here at all and the ROOT is wrong — nobody should go
-        // looking for a peer that does not exist. Collapsing the two is the state-space
-        // conflation DESIGN names, and it cost a triage cycle when the catch-all string sent a
-        // reader hunting a concurrent run on a runner that had none.
+        // A LIVE PEER AND AN UNWRITABLE ROOT ARE OPPOSITE REMEDIES, so opposite refusals.
+        // `AlreadyExists` says investigate a concurrent run; `PermissionDenied` says the ROOT is
+        // wrong and no peer exists. Collapsing them is the state-space conflation DESIGN names,
+        // and cost a triage cycle when the catch-all string sent a reader hunting a concurrent
+        // run on a runner that had none.
         Err(e) if e.kind() == std::io::ErrorKind::PermissionDenied => Err(format!(
             "the probe root {} is not writable by this process ({e}) — this is NOT a concurrent \
              run; the caller-selected root itself is wrong.",
@@ -1227,19 +1154,17 @@ pub fn run_required_emit_compile(
     }
     // See `acquire_probe_root_lock`: a second concurrent run refuses rather than interleaving.
     let lock = acquire_probe_root_lock(probe_root)?;
-    // A FAILED RESTORE ENDS THE RUN, and it is not merely reported per entry.
+    // A FAILED RESTORE ENDS THE RUN, not merely the entry.
     //
-    // WHY IT IS TERMINAL RATHER THAN A FINDING SIBLINGS CONTINUE PAST, which is the shape every
-    // other refusal here takes: the arms share ONE cargo target directory, so after a restore
-    // fails the tree that directory holds is unknown -- it may carry artifacts of a faulted
-    // crate. Every later entry's baseline is then unattributable, and reporting those baselines
-    // would be the execution-provenance loss this module exists to refuse, one level out.
+    // WHY IT IS TERMINAL RATHER THAN A FINDING SIBLINGS CONTINUE PAST, as every other refusal
+    // here is: the arms share ONE cargo target directory, so after a failed restore its tree is
+    // unknown -- possibly artifacts of a faulted crate. Every later baseline is unattributable,
+    // and reporting them is execution-provenance loss one level out.
     //
     // AND IT MUST NOT BE PAPERABLE OVER BY A RE-RUN. A re-run re-emits from scratch, so a
-    // transient restore failure simply vanishes and the phase greens -- at which point the
-    // byte-exact restore has stopped being evidence and has become a flaky step people re-run.
-    // Ending the run means the head that produced it has NO green from this phase at all, rather
-    // than a green whose restore arm was never established.
+    // transient restore failure vanishes and the phase greens -- the byte-exact restore becomes a
+    // flaky step people re-run. Ending the run means the head has NO green from this phase,
+    // rather than a green whose restore arm was never established.
     let mut outcomes = Vec::new();
     for entry in &entries {
         let outcome = run_emit_compile_entry(source_roots, probe_root, entry);
@@ -1266,29 +1191,27 @@ pub fn run_required_emit_compile(
             break;
         }
     }
-    // The lock is released here, at the one exit this function has below the acquisition: every
-    // branch of the loop pushes an outcome and falls through. A run killed before this point
-    // leaves the lock behind deliberately -- a probe root whose last writer died is not a state a
-    // later run should silently build on, and the stale lock is what says so.
+    // The lock is released at the one exit below the acquisition: every loop branch pushes an
+    // outcome and falls through. A run killed before this point leaves the lock deliberately --
+    // a probe root whose last writer died is not a state to silently build on.
     let _ = std::fs::remove_file(&lock);
     Ok(outcomes)
 }
 
-/// THESE ARE LOCAL-ONLY EVIDENCE AND ARE LABELLED AS SUCH. The Rust suite was removed from CI
-/// on 2026-07-11 (DESIGN, Building & checks), so nothing here executes on the merge path and
-/// none of it may be cited as coverage. THE EXECUTED EVIDENCE FOR THIS PHASE IS THE PHASE
-/// ITSELF: `establish_discriminating_red` runs on every required run, and a mutation that fails
-/// to go red stops the line. What these add is the discrimination the in-run arm cannot perform
-/// on itself -- that a non-`Discriminated` mutation is a FAILURE rather than a note, and that
-/// the fault targets the ENTRY'S OWN emitted module, with its absence refused rather than
-/// substituted for.
+/// THESE ARE LOCAL-ONLY EVIDENCE AND ARE LABELLED AS SUCH. The Rust suite was removed from CI on
+/// 2026-07-11 (DESIGN, Building & checks), so nothing here runs on the merge path or may be cited
+/// as coverage. THE EXECUTED EVIDENCE FOR THIS PHASE IS THE PHASE ITSELF:
+/// `establish_discriminating_red` runs on every required run, and a mutation that fails to go red
+/// stops the line. These add what the in-run arm cannot check on itself: a non-`Discriminated`
+/// mutation is a FAILURE, not a note, and the fault targets the ENTRY'S OWN emitted module, its
+/// absence refused rather than substituted for.
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    /// The manifest is DERIVED, so this asserts the derivation reached the modeled rows rather
-    /// than asserting a golden string: a package header from the version authority, the seed's
-    /// runtime dependency set, and the path dependency the emitted closure links against.
+    /// The manifest is DERIVED, so this asserts the derivation reached the modeled rows, not a
+    /// golden string: version-authority package header, the seed's runtime dependency set, and
+    /// the path dependency the emitted closure links against.
     #[test]
     fn manifest_carries_the_modeled_dependency_rows() {
         let manifest = probe_manifest(Path::new("/repo"), "dag/std/logic.dag");
@@ -1298,10 +1221,10 @@ mod tests {
             manifest.starts_with("[package]\nname = \"gunbc-emitted-closure-dag-std-logic-dag\"")
         );
         assert!(manifest.contains("edition = \"2021\""));
-        // THE FEATURE SECTION IS A REGRESSION GUARD, not decoration: the emitted `v1_rt.rs` gates
-        // on this feature, and a crate referencing a feature it does not declare compiles clean
-        // locally and fails under the required lane's `RUSTFLAGS=-D warnings`. Its absence is
-        // therefore invisible to every default-flag run, which is how it reached CI once.
+        // THE FEATURE SECTION IS A REGRESSION GUARD: the emitted `v1_rt.rs` gates on this feature,
+        // and an undeclared feature compiles clean locally but fails under the required lane's
+        // `RUSTFLAGS=-D warnings` -- invisible to every default-flag run, which is how it reached
+        // CI once.
         assert!(manifest.contains("[features]"));
         assert!(manifest.contains("text_lookup_work_counter = []"));
         for name in ["im", "serde", "serde_json", "stacker"] {
@@ -1330,10 +1253,9 @@ mod tests {
 
     /// THE SUBJECT IS THE ENTRY'S OWN MODULE EVEN WHEN A SHARED MEMBER IS DECLARED FIRST.
     ///
-    /// This is the measured shape of 7 of the 8 rostered entries: a shared-core member first, the
-    /// entry second-to-last, the emitted runtime last. The old selector took the first member that
-    /// was not the entry and therefore mutated `std_error_primitives` here -- a verdict about the
-    /// shared core wearing this entry's name.
+    /// The measured shape of 7 of the 8 rostered entries: shared-core member first, entry
+    /// second-to-last, emitted runtime last. The old selector mutated `std_error_primitives` here
+    /// -- a verdict about the shared core wearing this entry's name.
     #[test]
     fn the_subject_is_the_entry_own_module_past_a_leading_shared_member() {
         let dir = probe_tree(
@@ -1347,10 +1269,9 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
-    /// AND WHEN IT IS DECLARED FIRST, which is the other measured shape (2 of 8: `std_abi`,
-    /// `std_logic`). Stated as its own case because ORDER IS NOT THE MECHANISM in either
-    /// direction: the tempting repair -- mutate the LAST module -- picks `v1_rt`, the emitted
-    /// runtime, in all 8, which is strictly more shared than what it replaced.
+    /// AND WHEN IT IS DECLARED FIRST, the other measured shape (2 of 8: `std_abi`, `std_logic`).
+    /// Its own case because ORDER IS NOT THE MECHANISM: the tempting repair -- mutate the LAST
+    /// module -- picks `v1_rt`, the emitted runtime, in all 8, strictly more shared.
     #[test]
     fn the_subject_is_the_entry_own_module_when_it_is_declared_first() {
         let dir = probe_tree(
@@ -1365,9 +1286,9 @@ mod tests {
 
     /// THE ABSENT ENTRY MODULE REFUSES AND NAMES THE ENTRY -- IT DOES NOT FALL BACK.
     ///
-    /// This is the whole point of the change, and it is the case a fallback would have reported
-    /// as `Discriminated`: the closure has lost its own root and still compiles, because every
-    /// remaining member is a dependency of the missing root and nothing references it back.
+    /// The whole point of the change, and the case a fallback would report as `Discriminated`:
+    /// the closure lost its own root and still compiles, since every remaining member is a
+    /// dependency of the missing root and nothing references it back.
     #[test]
     fn an_entry_module_missing_from_the_closure_refuses_rather_than_substituting() {
         let dir = probe_tree(
@@ -1388,8 +1309,8 @@ mod tests {
         }
         let summary = mutation_subject_refusal_summary(&refusal);
         assert!(summary.contains("v2_std_node"), "{summary}");
-        // The members that WERE available are named, so a reader can see what a fallback would
-        // have chosen and that nothing chose it.
+        // The members that WERE available are named: what a fallback would have chosen, and that
+        // nothing chose it.
         assert!(summary.contains("std_error_primitives"), "{summary}");
         let _ = std::fs::remove_dir_all(&dir);
     }
@@ -1411,9 +1332,9 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
-    /// AN UNREADABLE MANIFEST IS NOT AN EMPTY CLOSURE. Rendering it as one would report the
-    /// EMISSION arm -- `the entry's own module is not declared` -- for a crate nobody managed to
-    /// read, sending the reader to the emitter over a filesystem fault.
+    /// AN UNREADABLE MANIFEST IS NOT AN EMPTY CLOSURE. Rendering it as one reports the EMISSION
+    /// arm -- `the entry's own module is not declared` -- for a crate nobody read, sending the
+    /// reader to the emitter over a filesystem fault.
     #[test]
     fn an_unreadable_closure_manifest_refuses_on_its_own_cause() {
         let dir = std::env::temp_dir().join(format!(
@@ -1431,9 +1352,8 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
-    /// AN ENTRY THE RUN NEVER REACHED IS NOT A PASS. The terminal-restore arm exists precisely
-    /// so that "not reached" has a spelling of its own; if it could pass, ending the run early
-    /// would silently green every entry after the failure.
+    /// AN ENTRY THE RUN NEVER REACHED IS NOT A PASS. The terminal-restore arm gives "not reached"
+    /// its own spelling; if it could pass, ending early would silently green every later entry.
     #[test]
     fn an_unreached_entry_is_not_a_pass() {
         assert!(!emit_compile_outcome_passed(
@@ -1444,26 +1364,23 @@ mod tests {
         ));
     }
 
-    /// EVERY NON-`Discriminated` MUTATION ARM FAILS THE PHASE. Stated as a test because the
-    /// tempting weakening -- treating the mutation as advisory beside a green baseline -- is
-    /// exactly what would turn this phase into the decoration it exists not to be.
+    /// EVERY NON-`Discriminated` MUTATION ARM FAILS THE PHASE. A test because the tempting
+    /// weakening -- mutation advisory beside a green baseline -- would make this phase the
+    /// decoration it exists not to be.
     /// THE PROBE ROOT HAS EXACTLY ONE SPELLING.
     ///
-    /// It had two. When the root moved to `RUNNER_TEMP`, the `probe_root()` authority was
-    /// repaired and a hand-composed copy inside the report was not, so one run wrote its crate
-    /// dirs under the runner's per-job temp and its retention file to the host-shared `/tmp` --
-    /// where it hit the very `EACCES` the reroot existed to escape. The defect was not a missed
-    /// callsite; it was the directory name being a fact with two homes.
+    /// It had two. When the root moved to `RUNNER_TEMP`, `probe_root()` was repaired and a
+    /// hand-composed copy in the report was not: crate dirs under the per-job temp, retention
+    /// file in the host-shared `/tmp`, hitting the very `EACCES` the reroot escaped. Not a missed
+    /// callsite -- a fact with two homes.
     ///
-    /// So this pins the SPELLING rather than the behaviour: a second composition of the name is
-    /// exactly what a behavioural test would not catch, because both spellings are correct until
-    /// the authority moves.
+    /// So this pins the SPELLING, not the behaviour: a behavioural test cannot catch a second
+    /// composition, because both spellings are correct until the authority moves.
     #[test]
     fn the_probe_root_name_is_composed_in_exactly_one_place() {
         let src = include_str!("emitted_closure_compile_host.rs");
-        // The needle is ASSEMBLED rather than written, because a literal one appears in this
-        // file the moment it is written down -- the test would then count itself and report two
-        // spellings where there is one. Caught by the test failing on its own text.
+        // The needle is ASSEMBLED, not written: a literal would appear in this file and the test
+        // would count itself as a second spelling. Caught by the test failing on its own text.
         let dir_name = format!("{}{}", "gunbc-emit-", "compile");
         let needle = format!("{dir_name:?}");
         let compositions = src.matches(needle.as_str()).count();
@@ -1477,9 +1394,8 @@ mod tests {
     /// A REQUIRED PATH DOES NOT PROBE THE HOST-SHARED FALLBACK.
     ///
     /// The safety property is that `RUNNER_TEMP` identifies a per-job directory. Falling back to
-    /// the system temp directory and then checking whether today's path is writable makes safety
-    /// an accidental property of the runner's current filesystem state. The missing and empty
-    /// arms therefore refuse before a path exists to inspect.
+    /// system temp and checking writability makes safety an accident of the runner's filesystem
+    /// state. The missing and empty arms refuse before a path exists to inspect.
     #[test]
     fn the_probe_root_does_not_exist_without_runner_temp() {
         for absent in [None, Some(std::ffi::OsStr::new(""))] {
@@ -1498,16 +1414,14 @@ mod tests {
 
     /// A FAILED RESTORE MUST WIN OVER EVERY NON-TERMINAL FAULT VERDICT.
     ///
-    /// The two conditions are independent and therefore co-occur: the fault arm can be green,
-    /// incomplete or unattributed at the same moment the restore fails. Only `RestoreFailed`
-    /// ends the run; every `NotDiscriminating` arm lets siblings continue against a tree whose
-    /// state nobody established. This pins the ORDER rather than the arms, because both orders
-    /// typecheck and only one is safe -- which is how the ordering was wrong to begin with.
+    /// The two conditions are independent and co-occur: the fault arm can be green, incomplete
+    /// or unattributed while the restore fails. Only `RestoreFailed` ends the run; every
+    /// `NotDiscriminating` arm lets siblings continue against an unestablished tree. This pins
+    /// the ORDER, because both orders typecheck and only one is safe -- how it was wrong before.
     #[test]
     fn a_failed_restore_is_not_masked_by_a_non_terminal_fault_verdict() {
-        // The source order of the checks is the guarantee. Both restore adjudications must
-        // appear before the first fault-verdict return, or a masked terminal failure is
-        // reachable again.
+        // Source order is the guarantee: both restore adjudications must precede the first
+        // fault-verdict return, or a masked terminal failure is reachable again.
         let src = include_str!("emitted_closure_compile_host.rs");
         let body = &src[src
             .find("fn establish_discriminating_red")
@@ -1543,9 +1457,8 @@ mod tests {
             MutationVerdict::RestoreFailed {
                 detail: "d".to_string(),
             },
-            // THE REFUSAL IS A PHASE FAILURE, not a note beside a green baseline. A closure that
-            // lost its own entry module is exactly the emission defect this phase exists to
-            // catch, so an entry reaching this arm must never be reported as measured.
+            // THE REFUSAL IS A PHASE FAILURE, not a note beside a green baseline: a closure that
+            // lost its own entry module is the emission defect this phase exists to catch.
             MutationVerdict::SubjectRefused {
                 refusal: MutationSubjectRefusal::EntryModuleNotDeclared {
                     entry_module: "v2_std_node".to_string(),
@@ -1566,13 +1479,11 @@ mod tests {
                 emit_compile_outcome_summary(&outcome)
             );
         }
-        // THE SUBJECT IS OBTAINED THE ONLY WAY IT CAN BE: through `mutation_subject`, over a
-        // real tree. An earlier revision of this test wrote `MutationSubject { rust_module: .. }`
-        // directly, and moving the carrier behind a privacy boundary turned that line into a
-        // COMPILE ERROR (`E0451: field rust_module is private`) rather than a comment nobody
-        // reads. That refusal is the executed evidence that the wall is structural inside this
-        // file and not merely conventional -- Rust privacy is module-scoped, so a private field
-        // declared beside its constructor would have left this literal compiling.
+        // THE SUBJECT IS OBTAINED THE ONLY WAY IT CAN BE: through `mutation_subject`, over a real
+        // tree. An earlier revision wrote `MutationSubject { rust_module: .. }` directly; the
+        // privacy boundary turned that into a COMPILE ERROR (`E0451: field rust_module is
+        // private`) -- executed evidence the wall is structural, since module-scoped privacy
+        // beside the constructor would have left the literal compiling.
         let dir = probe_tree("passing_subject", "pub mod std_logic;\n", &["std_logic"]);
         let subject = mutation_subject(&dir, "std_logic").expect("the entry's own module");
         let discriminated = EmitCompileOutcome::Measured {
