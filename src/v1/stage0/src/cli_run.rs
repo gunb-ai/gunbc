@@ -898,20 +898,34 @@ mod roadmap_acceptance_history_projection_tests {
         else {
             panic!("jsonl parse refused");
         };
-        assert_eq!(
-            prior.len(),
-            current.len(),
-            "event count prior={} current={}",
+        // THE LAW IS APPEND-ONLY PREFIX, NOT EQUALITY, and this assertion was equality only
+        // because the carrier had never grown. Measured: the migration wrote 16 events and the
+        // carrier still held exactly 16 when the SCM excision appended the first five real
+        // events after it, so `prior.len() == current.len()` had never once been asked about a
+        // history that moved. As written it forbade EVERY future acceptance and revocation --
+        // recording a new acceptance would have redded it just as withdrawing one did -- which
+        // is a frozen snapshot wearing a continuity check's name.
+        //
+        // The invariant the model actually enforces is gunbc.roadmap_model
+        // acceptance_history_extends_prior: the merge-base projection must be an exact PREFIX of
+        // the current carrier. That is strictly what protects history -- no prior event may be
+        // edited, reordered or dropped -- while admitting the append the whole carrier exists to
+        // receive. Prefix equality is checked on the SERIALIZED bytes, so a silently rewritten
+        // field in any prior event still fails here.
+        assert!(
+            current.len() >= prior.len(),
+            "carrier shrank: prior={} current={}",
             prior.len(),
             current.len()
         );
         let prior_jsonl = serialize_roadmap_acceptance_events_to_jsonl(&prior, &ctx)
             .expect("serialize projected events");
-        let current_jsonl = serialize_roadmap_acceptance_events_to_jsonl(&current, &ctx)
-            .expect("serialize carrier events");
+        let current_prefix_jsonl =
+            serialize_roadmap_acceptance_events_to_jsonl(&current[..prior.len()], &ctx)
+                .expect("serialize carrier prefix");
         assert_eq!(
-            prior_jsonl, current_jsonl,
-            "jsonl carrier mismatch after projection"
+            prior_jsonl, current_prefix_jsonl,
+            "jsonl carrier prefix mismatch after projection"
         );
     }
 }
