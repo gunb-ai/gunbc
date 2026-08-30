@@ -36,7 +36,18 @@ data ci_isolate_echo_rustup_home_command: String = "echo \"RUSTUP_HOME=$RUNNER_T
 
 data ci_isolate_echo_makeflags_command: String = "echo \"MAKEFLAGS=\" >> \"$GITHUB_ENV\""
 
-data ci_native_cache_root_note: String = "Durable native-artifact cache root (extdeps.realization.native_artifact_cache, PerRunnerFilesystem): RUNNER_TOOL_CACHE survives the per-run RUNNER_TEMP wipe on self-hosted runners, so emit-on-demand cargo workspaces warm across runs (compile_skipped receipts). The cached transport rebases only the declared /tmp/gunbc_ scratch prefix onto this root; content-hash path components stay the key, so cross-branch sharing on one runner is benign-by-identity. The rustc-version segment derived after setup-rust-toolchain remains a coarse operator-readable partition; correctness no longer depends on it because extdeps.realization.emit_on_demand_host places the host-observed resolved build-context identity (tools + constructed environment + Cargo configuration) beneath each input realization before .native_ready is consulted. Fail-closed: rustc -V must succeed — a fabricated toolchain-unresolved slug would poison every native-cache write into one shared root (DESIGN 5). Falsifier cold control: GUNBC_CI_NATIVE_CACHE_COLD_CONTROL."
+// Durable native-artifact cache root (extdeps.realization.native_artifact_cache,
+// PerRunnerFilesystem): RUNNER_TOOL_CACHE survives the per-run RUNNER_TEMP wipe on self-hosted
+// runners, so emit-on-demand cargo workspaces warm across runs (compile_skipped receipts). The
+// cached transport rebases only the declared /tmp/gunbc_ scratch prefix onto this root;
+// content-hash path components stay the key, so cross-branch sharing on one runner is
+// benign-by-identity. The rustc-version segment derived after setup-rust-toolchain remains a coarse
+// operator-readable partition; correctness no longer depends on it because
+// extdeps.realization.emit_on_demand_host places the host-observed resolved build-context identity
+// (tools + constructed environment + Cargo configuration) beneath each input realization before
+// .native_ready is consulted. Fail-closed: rustc -V must succeed — a fabricated
+// toolchain-unresolved slug would poison every native-cache write into one shared root (DESIGN 5).
+// Falsifier cold control: GUNBC_CI_NATIVE_CACHE_COLD_CONTROL.
 
 data ci_native_cache_root_toolchain_segment_capture_command: String = "if ! GUNBC_TOOLCHAIN_SEG_RAW=$(rustc -V 2>/dev/null); then echo \"::error::rustc -V failed after setup-rust-toolchain: cannot derive native-cache toolchain segment\"; exit 1; fi"
 

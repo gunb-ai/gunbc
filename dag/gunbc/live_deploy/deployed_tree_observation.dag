@@ -153,7 +153,6 @@ fn deployed_tree_root_tree_argv(repo: NonEmptyStr) -> List<String> {
 // `unspecified`. .gitattributes is generated from gunbc.gitattributes_emit, whose two attribute
 // constants are literals with no mechanism to admit a third, so the premise is structural rather than
 // merely observed.
-
 // THE COMPOSED CLAIM, stated because the status leg alone proves less than it looks like it proves.
 // `status` reports HEAD-versus-index as well as worktree-versus-index. Here the temp index is built
 // from the revision the rev-parse leg OBSERVED, so the HEAD-versus-index half is equal by
@@ -339,7 +338,6 @@ fn deployed_tree_content_reading(entries_nul: String, ignored_nul: String) -> De
 // second is required anyway -- publication has to hold it -- so the atomic read arrives as a property
 // of the lease rather than as a separate mechanism, and building the v2 scanner first would be a
 // second grammar for one concept that the lease then obsoletes.
-
 // BOTH READINGS OR NEITHER. The revision read is attempted first and a failure there ends the
 // observation, because a modification count without a revision to attach it to is a fact about no
 // particular commit -- and reporting it beside a fabricated or absent revision is the state-space

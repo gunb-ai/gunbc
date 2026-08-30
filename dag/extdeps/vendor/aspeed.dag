@@ -17,7 +17,10 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   }
 }
 
-data aspeed_registrant_note: String = "ASPEED Technology Inc. is cited from its corporate About page as the manufacturer of the AST2500 integrated remote-management processor family. The chip's mechanical and electrical facts live in extdeps.bmc.aspeed_ast2500 under the datasheet citation there; this module owns only the company entity."
+// ASPEED Technology Inc. is cited from its corporate About page as the manufacturer of the AST2500
+// integrated remote-management processor family. The chip's mechanical and electrical facts live in
+// extdeps.bmc.aspeed_ast2500 under the datasheet citation there; this module owns only the company
+// entity.
 
 data aspeed: Vendor<Hardware> = Vendor { legal_name: "ASPEED Technology Inc." }
 

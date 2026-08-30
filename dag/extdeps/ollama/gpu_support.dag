@@ -50,7 +50,9 @@ data ollama_gb10_minimum_nvidia_driver: OllamaNvidiaDriverVersion = OllamaNvidia
   major: 550,
 }
 
-data ollama_gb10_driver_requirement_note: String = "docs.ollama.com/gpu documents GB10 (DGX Spark) at compute capability 12.1 with NVIDIA driver 550 or newer. An old driver does not refuse install — Ollama falls back to CPU — so an unobserved driver must not read as satisfied."
+// docs.ollama.com/gpu documents GB10 (DGX Spark) at compute capability 12.1 with NVIDIA driver 550
+// or newer. An old driver does not refuse install — Ollama falls back to CPU — so an unobserved
+// driver must not read as satisfied.
 
 type OllamaNvidiaDriverRequirementVerdict
   = OllamaNvidiaDriverRequirementSatisfied

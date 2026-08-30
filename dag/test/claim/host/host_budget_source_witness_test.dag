@@ -50,9 +50,36 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // These rows are about the RELATION between a kernel family and a budget source, not about the machine running them, so they are SubstrateInputsOnly and give the same verdict on every platform. That is deliberate and is the point: the defect being walled is a claim the code makes about a platform, and a check that could only run on the affected platform would be untestable from the fleet's own Linux CI — which is how the fabricated label survived in the first place.
 data all_kernels: List<KernelFamily> = [Linux, Darwin, WindowsNt, LinuxGuestOnWindows]
 
-data import_widening_shadowed_contains_note: String = "WHY THESE CALLS SAY string_contains RATHER THAN contains, and it is a receipt rather than a style choice. Deriving the declared_high expectation from its authority row required importing gunbc.runner_slot_allocation into this module. v1-seed fn names are NOT module-scoped, so widening the import closure pulled v2.std.algebra into it, and that module's contains(xs, item, eq) over FreeMonoid captured the bare name these lines were using for the STRING contains(haystack, needle). Four calls on lines unrelated to the change refused with 'no parameter named haystack', and the floor fold aborted during preparation -- so the whole 9782-witness roster failed to run over a two-line edit elsewhere in the file.\n\nTHE COST SHAPE IS THE POINT: an import added for one declaration silently re-resolved a bare name used by different declarations in the same module, and nothing local to those lines changed. string_contains is the unambiguous builtin and does not collide, so the calls are pinned to it. The gunbc.runner_slot_allocation import that first widened the closure is gone with the arm it fed, and the pinning deliberately stays: the hazard is the import closure, not that one import, so unpinning would only re-arm it for whoever widens the closure next. The general hazard is the same one std.decl_ref decl_ref_constructor_authority_note records for duplicated constructors -- unqualified seed names make an import closure a name-capture surface -- and it dissolves when v1 name resolution is namespace-scoped rather than bare."
+// WHY THESE CALLS SAY string_contains RATHER THAN contains, and it is a receipt rather than a style
+// choice. Deriving the declared_high expectation from its authority row required importing
+// gunbc.runner_slot_allocation into this module. v1-seed fn names are NOT module-scoped, so
+// widening the import closure pulled v2.std.algebra into it, and that module's contains(xs, item,
+// eq) over FreeMonoid captured the bare name these lines were using for the STRING
+// contains(haystack, needle). Four calls on lines unrelated to the change refused with 'no
+// parameter named haystack', and the floor fold aborted during preparation -- so the whole
+// 9782-witness roster failed to run over a two-line edit elsewhere in the file.
+//
+// THE COST SHAPE IS THE POINT: an import added for one declaration silently re-resolved a bare name
+// used by different declarations in the same module, and nothing local to those lines changed.
+// string_contains is the unambiguous builtin and does not collide, so the calls are pinned to it.
+// The gunbc.runner_slot_allocation import that first widened the closure is gone with the arm it
+// fed, and the pinning deliberately stays: the hazard is the import closure, not that one import,
+// so unpinning would only re-arm it for whoever widens the closure next. The general hazard is the
+// same one std.decl_ref decl_ref_constructor_authority_note records for duplicated constructors --
+// unqualified seed names make an import closure a name-capture surface -- and it dissolves when v1
+// name resolution is namespace-scoped rather than bare.
 
-data declared_high_is_derived_not_retyped_note: String = "THIS ROW USED TO RETYPE THE MIRROR VALUE IT WAS MEASURING, and the arm it measured is now deleted, so the receipt is kept without the row. Both call sites constructed BudgetSourceMemAvailableCappedAtDeclaredHigh with byte_size(13958643712) -- the seed constant's own number, copied into the expectation -- so the witness greened whichever way the mirror went and could not have caught the eleven-day drift it sat next to. A measurement copied from the tree under test is not an oracle (2026-08-01 ruling).\n\nThe arm went away for a different reason than this note: capping a host-shared reading at one fleet's declared slot line was a substitution, not a bound (gunbc.host_budget_source host_budget_unreadable_cgroup_receipt_note). The lesson survives the arm, which is why this row does — a fixture derived from the tree under test is inert whatever it is measuring."
+// THIS ROW USED TO RETYPE THE MIRROR VALUE IT WAS MEASURING, and the arm it measured is now
+// deleted, so the receipt is kept without the row. Both call sites constructed
+// BudgetSourceMemAvailableCappedAtDeclaredHigh with byte_size(13958643712) -- the seed constant's
+// own number, copied into the expectation -- so the witness greened whichever way the mirror went
+// and could not have caught the eleven-day drift it sat next to. A measurement copied from the tree
+// under test is not an oracle (2026-08-01 ruling).
+//
+// The arm went away for a different reason than this note: capping a host-shared reading at one
+// fleet's declared slot line was a substitution, not a bound (gunbc.host_budget_source
+// host_budget_unreadable_cgroup_receipt_note). The lesson survives the arm, which is why this row
+// does — a fixture derived from the tree under test is inert whatever it is measuring.
 
 data all_sources: List<HostBudgetSource> = [
   BudgetSourceEnvOverride,
@@ -84,7 +111,12 @@ test fn every_procfs_path_renders_an_absolute_proc_path() -> Bool {
   )
 }
 
-data degraded_is_private_limit_note: String = "The degraded axis is asserted as a PARTITION of the arms rather than arm-by-arm, so adding a source cannot leave the question unanswered: degraded is asserted to be exactly the complement of host_budget_source_bounds_this_process over all_sources, so the two axes cannot drift apart and a new arm must answer both. A witness that listed only the degraded arms would still pass if a new arm defaulted to non-degraded, which is the direction that actually costs something — a host-shared signal silently trusted as a private limit is the 2026-07-21 srv3 exit-137 shape."
+// The degraded axis is asserted as a PARTITION of the arms rather than arm-by-arm, so adding a
+// source cannot leave the question unanswered: degraded is asserted to be exactly the complement of
+// host_budget_source_bounds_this_process over all_sources, so the two axes cannot drift apart and a
+// new arm must answer both. A witness that listed only the degraded arms would still pass if a new
+// arm defaulted to non-degraded, which is the direction that actually costs something — a
+// host-shared signal silently trusted as a private limit is the 2026-07-21 srv3 exit-137 shape.
 
 test fn degraded_is_exactly_the_non_private_sources() -> Bool {
   all(
@@ -97,7 +129,21 @@ test fn degraded_is_exactly_the_non_private_sources() -> Bool {
     && host_budget_source_is_degraded(s: BudgetSourceDarwinPhysicalMemory)
 }
 
-data buildbuddy_substitution_red_note: String = "THE DISCRIMINATING PAIR FOR THE 2026-08-30 BUILDBUDDY SIGKILL, and it is a pair for the same reason the platform-wall pair below is: either half alone is satisfied by a degenerate predicate. The RED asserts that on a kernel WITH a private-limit mechanism, no source that fails to bound this process may serve as the budget — the sentence the deleted MemAvailable arm violated on every Linux runner whose cgroup files it could not read. The control asserts those same sources stay admissible on the kernels that have no such mechanism, which is what keeps hw.memsize legitimate on a Mac; without it, a predicate that refused everything would pass the RED and leave macOS unable to name any budget at all.\n\nA note on what the RED can and cannot catch now. The three meminfo arms are DELETED, so today the only source with a false bounds_this_process is the Darwin one and this row's Linux arm is carried by it. That is deliberate rather than incidental: the deletion is the wall (no constructor, so no substitution is authorable), and this predicate is the wall for the NEXT arm someone adds — it goes red the moment a host-shared reading is reintroduced and pointed at Linux, which is exactly how the deleted arm entered."
+// THE DISCRIMINATING PAIR FOR THE 2026-08-30 BUILDBUDDY SIGKILL, and it is a pair for the same
+// reason the platform-wall pair below is: either half alone is satisfied by a degenerate predicate.
+// The RED asserts that on a kernel WITH a private-limit mechanism, no source that fails to bound
+// this process may serve as the budget — the sentence the deleted MemAvailable arm violated on
+// every Linux runner whose cgroup files it could not read. The control asserts those same sources
+// stay admissible on the kernels that have no such mechanism, which is what keeps hw.memsize
+// legitimate on a Mac; without it, a predicate that refused everything would pass the RED and leave
+// macOS unable to name any budget at all.
+//
+// A note on what the RED can and cannot catch now. The three meminfo arms are DELETED, so today the
+// only source with a false bounds_this_process is the Darwin one and this row's Linux arm is
+// carried by it. That is deliberate rather than incidental: the deletion is the wall (no
+// constructor, so no substitution is authorable), and this predicate is the wall for the NEXT arm
+// someone adds — it goes red the moment a host-shared reading is reintroduced and pointed at Linux,
+// which is exactly how the deleted arm entered.
 
 test fn RED_a_non_bounding_source_is_inadmissible_where_a_private_limit_exists() -> Bool {
   all(
@@ -128,7 +174,16 @@ test fn cgroup_v2_provision_follows_the_kernel_not_the_name() -> Bool {
     && !kernel_provides_cgroup_v2(kernel: WindowsNt)
 }
 
-data cgroup_kernels_promise_nothing_statically_note: String = "THE ROW THAT WOULD HAVE CAUGHT THE OLD SHAPE. host_budget_source_for_kernel answered BudgetSourceMemTotal for Linux: a declaration-time promise that a Linux host always has a budget, redeemable only by reading the whole machine. This asserts the opposite — a kernel that CAN express a private limit makes no static promise, because whether it does express one is a runtime fact — and it is red for any future edit that hands a procfs kernel a static source again.\n\nIts control is the Darwin arm: a kernel with no private-limit mechanism MUST answer statically, because there is nothing to wait for and refusing a Mac outright would be an over-refusal rather than a wall. WindowsNt answers UnmodeledPlatform, which is a third state and must not be reachable by either of the other two."
+// THE ROW THAT WOULD HAVE CAUGHT THE OLD SHAPE. host_budget_source_for_kernel answered
+// BudgetSourceMemTotal for Linux: a declaration-time promise that a Linux host always has a budget,
+// redeemable only by reading the whole machine. This asserts the opposite — a kernel that CAN
+// express a private limit makes no static promise, because whether it does express one is a runtime
+// fact — and it is red for any future edit that hands a procfs kernel a static source again.
+//
+// Its control is the Darwin arm: a kernel with no private-limit mechanism MUST answer statically,
+// because there is nothing to wait for and refusing a Mac outright would be an over-refusal rather
+// than a wall. WindowsNt answers UnmodeledPlatform, which is a third state and must not be
+// reachable by either of the other two.
 
 test fn RED_a_kernel_with_a_private_limit_promises_no_static_source() -> Bool {
   all(
@@ -161,7 +216,17 @@ test fn darwin_sources_statically_and_windows_is_unmodeled() -> Bool {
     }
 }
 
-data platform_wall_red_control_note: String = "THE DISCRIMINATING PAIR, and it is the whole reason this file exists. The live defect is that read_host_budget_bytes reports BudgetSourceMemTotal on a Darwin host — a procfs-reading source named on a kernel that provides no procfs. The first witness asserts every procfs-reading arm is INADMISSIBLE on both non-procfs kernels; the second asserts those same arms stay admissible on both procfs kernels.\n\nOne without the other proves nothing. Asserting only inadmissibility is satisfied by a predicate that refuses everything, which would make the governor unable to name a legitimate cgroup read on Linux; asserting only admissibility is satisfied by the predicate that returns true unconditionally, which is the behaviour today. Together they pin the boundary exactly at 'reads procfs AND kernel lacks procfs', which is the sentence the bug violates."
+// THE DISCRIMINATING PAIR, and it is the whole reason this file exists. The live defect is that
+// read_host_budget_bytes reports BudgetSourceMemTotal on a Darwin host — a procfs-reading source
+// named on a kernel that provides no procfs. The first witness asserts every procfs-reading arm is
+// INADMISSIBLE on both non-procfs kernels; the second asserts those same arms stay admissible on
+// both procfs kernels.
+//
+// One without the other proves nothing. Asserting only inadmissibility is satisfied by a predicate
+// that refuses everything, which would make the governor unable to name a legitimate cgroup read on
+// Linux; asserting only admissibility is satisfied by the predicate that returns true
+// unconditionally, which is the behaviour today. Together they pin the boundary exactly at 'reads
+// procfs AND kernel lacks procfs', which is the sentence the bug violates.
 
 test fn RED_procfs_sources_are_inadmissible_on_kernels_without_procfs() -> Bool {
   all(
@@ -199,7 +264,13 @@ test fn each_kernel_selects_a_source_admissible_on_itself() -> Bool {
   )
 }
 
-data refusal_is_not_a_number_note: String = "THE REFUSAL WITNESS, and it is the one that pins the operator ruling rather than restating it. HostBudgetUnreadable must yield NO bytes — not a ceiling, not a floor, not a zero. Each of those is a number a consumer would happily admit against, and the ceiling in particular is what cli_run's unwrap_or produced and what OOM-killed this corpus twice on the developer's machine. Asserting the absence of a value is the only form of this claim that a permissive default cannot satisfy: a fallback that returned ANY number would red this row, which is precisely the discrimination the previous shape could not express."
+// THE REFUSAL WITNESS, and it is the one that pins the operator ruling rather than restating it.
+// HostBudgetUnreadable must yield NO bytes — not a ceiling, not a floor, not a zero. Each of those
+// is a number a consumer would happily admit against, and the ceiling in particular is what
+// cli_run's unwrap_or produced and what OOM-killed this corpus twice on the developer's machine.
+// Asserting the absence of a value is the only form of this claim that a permissive default cannot
+// satisfy: a fallback that returned ANY number would red this row, which is precisely the
+// discrimination the previous shape could not express.
 
 test fn RED_unreadable_budget_yields_no_number_at_all() -> Bool {
   all(
@@ -221,7 +292,10 @@ test fn a_resolved_budget_does_yield_its_bytes() -> Bool {
   }
 }
 
-data label_carries_no_unread_path_note: String = "The label is the surface a human actually reads, so the wall has to hold there too and not only on the discriminant. This asserts the unavailable arm's rendering never claims a /proc path — the exact text `/proc/meminfo MemTotal` is what ships today on a machine with no /proc, and a typed source whose label still said that would have fixed nothing a reader can see."
+// The label is the surface a human actually reads, so the wall has to hold there too and not only
+// on the discriminant. This asserts the unavailable arm's rendering never claims a /proc path — the
+// exact text `/proc/meminfo MemTotal` is what ships today on a machine with no /proc, and a typed
+// source whose label still said that would have fixed nothing a reader can see.
 
 test fn no_selected_source_label_claims_a_path_its_kernel_lacks() -> Bool {
   all(
@@ -245,7 +319,12 @@ test fn procfs_reading_labels_do_name_their_path() -> Bool {
     && string_contains(s: host_budget_source_label(s: BudgetSourceEnvOverride) as String, pattern: "GUNBC_MEMORY_BUDGET_BYTES")
 }
 
-data unreadable_reason_names_the_remedy_note: String = "The refusal above proves the resolution carries no NUMBER; this proves it carries the two things a stopped operator needs, because a line-stop that does not say how to restart the line is a stop nobody can analyze (DESIGN section 5, the factory model). The reason must name what was unreadable — the cgroup limit files — and the env var that supplies the bound. On the BuildBuddy runner that motivated this change those are the only two facts that separate a rc=137 with no output from a run that completes."
+// The refusal above proves the resolution carries no NUMBER; this proves it carries the two things
+// a stopped operator needs, because a line-stop that does not say how to restart the line is a stop
+// nobody can analyze (DESIGN section 5, the factory model). The reason must name what was
+// unreadable — the cgroup limit files — and the env var that supplies the bound. On the BuildBuddy
+// runner that motivated this change those are the only two facts that separate a rc=137 with no
+// output from a run that completes.
 
 test fn the_unreadable_reason_names_both_the_missing_bound_and_the_remedy() -> Bool {
   all(

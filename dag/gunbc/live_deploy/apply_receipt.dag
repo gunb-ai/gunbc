@@ -24,8 +24,28 @@ import gunbc.actions_run_binding {
   ActionsVariablePresent, ActionsVariableAbsent,
 }
 
-data live_deploy_apply_receipt_note: String = "THE DASHBOARD TRANSACTION'S TYPED RECEIPT. gunbc.live_deploy.apply live_deploy_apply_srv1_wet observes the candidate, decides the target, applies, gates on readiness and reads the digest back -- and then flattens all of it to ProcessExit, so the workflow that dispatched it could name no revision it installed, no tree it verified, no transaction it belonged to. This receipt is minted by the receipted entry (live_deploy_apply_srv1_transaction_wet) around that same composition: the fold is reused, not re-implemented, and what is added is the expected revision the operator typed (RLM_EXPECTED_REVISION), the candidate's root-tree object identity, the fleet plan/apply provenance the dispatch named, and one independent readiness observation taken AFTER the apply returned.\n\nTHE PLAN HASH IS PROVENANCE HERE, NOT ELIGIBILITY. R is the shared safety key across the four runs; the plan and apply run identities ride on this receipt so the final join cannot pair an arbitrary fleet transaction with an arbitrary dashboard transaction, but nothing about a plan hash decides whether this deploy may proceed -- that stays with the target decision and the candidate observation the existing fold already performs.\n\nTHE CANDIDATE TREE OID IS `git rev-parse HEAD:` -- the colon form names the root tree of HEAD, and it is the one spelling of that object the fleet portability wall admits (gunbc.fleet_known_hosts_anchor portable_remote_word_char_allowed admits ':' and refuses '^', '{' and '}'), so the candidate side and the deployed side (gunbc.live_deploy.deployed_tree_observation deployed_tree_root_tree_argv) read the same object the same way."
-
+// THE DASHBOARD TRANSACTION'S TYPED RECEIPT. gunbc.live_deploy.apply live_deploy_apply_srv1_wet
+// observes the candidate, decides the target, applies, gates on readiness and reads the digest back
+// -- and then flattens all of it to ProcessExit, so the workflow that dispatched it could name no
+// revision it installed, no tree it verified, no transaction it belonged to. This receipt is minted
+// by the receipted entry (live_deploy_apply_srv1_transaction_wet) around that same composition: the
+// fold is reused, not re-implemented, and what is added is the expected revision the operator typed
+// (RLM_EXPECTED_REVISION), the candidate's root-tree object identity, the fleet plan/apply
+// provenance the dispatch named, and one independent readiness observation taken AFTER the apply
+// returned.
+// 
+// THE PLAN HASH IS PROVENANCE HERE, NOT ELIGIBILITY. R is the shared safety key across the four
+// runs; the plan and apply run identities ride on this receipt so the final join cannot pair an
+// arbitrary fleet transaction with an arbitrary dashboard transaction, but nothing about a plan
+// hash decides whether this deploy may proceed -- that stays with the target decision and the
+// candidate observation the existing fold already performs.
+// 
+// THE CANDIDATE TREE OID IS `git rev-parse HEAD:` -- the colon form names the root tree of HEAD,
+// and it is the one spelling of that object the fleet portability wall admits
+// (gunbc.fleet_known_hosts_anchor portable_remote_word_char_allowed admits ':' and refuses '^', '{'
+// and '}'), so the candidate side and the deployed side
+// (gunbc.live_deploy.deployed_tree_observation deployed_tree_root_tree_argv) read the same object
+// the same way.
 data live_deploy_apply_receipt_schema: String = "live-deploy-apply-receipt/v1"
 data live_deploy_apply_receipt_path: String = "target/live-deploy-srv1-receipt.json"
 data live_deploy_apply_receipt_dir: String = "target/live-deploy-srv1-receipt"

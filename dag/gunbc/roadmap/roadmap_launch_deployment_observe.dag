@@ -16,10 +16,30 @@ import gunbc.roadmap_belt_actuate {
   belt_tick_receipt_decode,
 }
 
-data roadmap_launch_deployment_observe_note: String = "LIVE HTTP OBSERVATIONS OF THE DEPLOYED PUBLIC ROUTES, DECODED INTO THE TYPES THE ROUTES SERIALIZE. The RLM-2 ruling (section 5) rejects renderers as evidence: gunbc.roadmap_site_surface_render healthz_body_with_release_identity CONSTRUCTS the expected /healthz body and gunbc.roadmap_serve serve_workflow_response_for_instance CONSTRUCTS the /workflow.json response, so calling either in the receipt process proves what the code would say, not what the routed service said. This module performs the GETs (extdeps.http.client GetLocalhostBounded, the same operation gunbc.live_deploy.readiness uses for its local probe) and decodes the bytes that came back.\n\nTHE DECODERS ARE THE INVERSE OF THE PRODUCERS, member for member: /healthz through gunbc.running_release_identity observe_running_release_identity (the existing inverse); /instance.json through the members gunbc.roadmap_serve dashboard_instance_json writes; /workflow.json through the schema and belt_tick members gunbc.roadmap_belt_actuate belt_workflow_attempts_json_value_for_instance writes, with the nested tick decoded by the receipt's own decoder so a v3 or damaged embedded tick is Unreadable here exactly as it is on disk. HTTP 200 is not sufficient for /workflow.json: a valid document whose belt_tick is absent or unreadable refuses RLM-2 rather than reading as Idle.\n\nTICK FRESHNESS is decided on two clock readings the receipt run does not control -- the tick's own observed_at and the dashboard receipt's completed_at, both rendered by extdeps.clock Now on srv1 as `%Y-%m-%dT%H:%M:%SZ` -- against the receipt run's own now. The bound is derived from the emitted timer cadence (gunbc.live_deploy.emit belt_tick_cadence, 60s) times a fixed multiplier, never typed as an independent number."
-
+// LIVE HTTP OBSERVATIONS OF THE DEPLOYED PUBLIC ROUTES, DECODED INTO THE TYPES THE ROUTES
+// SERIALIZE. The RLM-2 ruling (section 5) rejects renderers as evidence:
+// gunbc.roadmap_site_surface_render healthz_body_with_release_identity CONSTRUCTS the expected
+// /healthz body and gunbc.roadmap_serve serve_workflow_response_for_instance CONSTRUCTS the
+// /workflow.json response, so calling either in the receipt process proves what the code would say,
+// not what the routed service said. This module performs the GETs (extdeps.http.client
+// GetLocalhostBounded, the same operation gunbc.live_deploy.readiness uses for its local probe) and
+// decodes the bytes that came back.
+// 
+// THE DECODERS ARE THE INVERSE OF THE PRODUCERS, member for member: /healthz through
+// gunbc.running_release_identity observe_running_release_identity (the existing inverse);
+// /instance.json through the members gunbc.roadmap_serve dashboard_instance_json writes;
+// /workflow.json through the schema and belt_tick members gunbc.roadmap_belt_actuate
+// belt_workflow_attempts_json_value_for_instance writes, with the nested tick decoded by the
+// receipt's own decoder so a v3 or damaged embedded tick is Unreadable here exactly as it is on
+// disk. HTTP 200 is not sufficient for /workflow.json: a valid document whose belt_tick is absent
+// or unreadable refuses RLM-2 rather than reading as Idle.
+// 
+// TICK FRESHNESS is decided on two clock readings the receipt run does not control -- the tick's
+// own observed_at and the dashboard receipt's completed_at, both rendered by extdeps.clock Now on
+// srv1 as `%Y-%m-%dT%H:%M:%SZ` -- against the receipt run's own now. The bound is derived from the
+// emitted timer cadence (gunbc.live_deploy.emit belt_tick_cadence, 60s) times a fixed multiplier,
+// never typed as an independent number.
 // ---------------------------------------------------------------- HTTP GET
-
 type HttpBodyRead
   = HttpBodyServed { body: String }
   | HttpBodyRefused { url: String, detail: String }
@@ -43,7 +63,6 @@ data instance_route_path: String = "/instance.json"
 data workflow_route_path: String = "/workflow.json"
 
 // ---------------------------------------------------------------- /healthz
-
 type HealthzObservation
   = HealthzServed { body: String, identity: RunningReleaseIdentity }
   | HealthzRefused { detail: String }
@@ -60,7 +79,6 @@ fn observe_healthz(port: Int) -> HealthzObservation {
 }
 
 // ---------------------------------------------------------------- /instance.json
-
 data dashboard_instance_document_schema: String = "roadmap-dashboard-instance/v1"
 
 type DashboardInstanceDocument {
@@ -130,7 +148,6 @@ fn observe_instance_document(port: Int) -> DashboardInstanceObservation {
 }
 
 // ---------------------------------------------------------------- /workflow.json
-
 data roadmap_workflow_document_schema: String = "roadmap-workflow/v1"
 
 type RoadmapWorkflowDocument {
@@ -211,7 +228,6 @@ fn observe_workflow_document(port: Int) -> RoadmapWorkflowObservation {
 }
 
 // ---------------------------------------------------------------- instants
-
 // `%Y-%m-%dT%H:%M:%SZ` to seconds since 1970-01-01T00:00:00Z. Days-from-civil is the proleptic
 // Gregorian algorithm (Howard Hinnant, "chrono-Compatible Low-Level Date Algorithms"), exact for
 // every date the format can spell. Anything that is not exactly that shape refuses.
@@ -271,7 +287,6 @@ fn iso8601_utc_epoch_seconds(text: String) -> Int? {
 }
 
 // ---------------------------------------------------------------- tick freshness
-
 // THE BOUND IS DERIVED FROM THE EMITTED CADENCE: the belt timer fires OnUnitInactiveSec after each
 // tick completes, so a live timer produces a receipt at most one cadence plus one tick duration
 // old. Three cadences is the admission; a receipt older than that came from a timer that is not

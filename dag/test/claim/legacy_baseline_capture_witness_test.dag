@@ -52,11 +52,11 @@ type LbcTestOutcome
   = LbcObserved
   | LbcUnobserved
 
-// THE FIXTURE CANNOT NAME A COMMIT WITHOUT GOING THROUGH THE VALIDATING CONSTRUCTOR, which is the
-// regrounding working rather than a nuisance: there is no cast from text to GitObjectId, so an
-// arm below cannot smuggle in a malformed base to see what happens. The transport and the git id
-// both refuse, so every arm carries a fixture-refused branch -- collapsing those into a capture
-// verdict would let a fixture that never reached the capture read like one that reached it.
+// THE FIXTURE CANNOT NAME A COMMIT WITHOUT GOING THROUGH THE VALIDATING CONSTRUCTOR — the
+// regrounding working, not a nuisance: there is no cast from text to GitObjectId, so an arm below
+// cannot smuggle in a malformed base. The transport and the git id both refuse, so every arm
+// carries a fixture-refused branch -- collapsing those into a capture verdict would let a fixture
+// that never reached the capture read like one that did.
 type LbcOutcome
   = LbcComputed { verdict: String }
   | LbcFixtureRefused

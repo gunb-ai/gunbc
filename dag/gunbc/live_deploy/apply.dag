@@ -97,10 +97,7 @@ import gunbc.running_release_identity {
   observe_running_release_identity, RunningReleaseIdentified, RunningReleaseUnidentified,
 }
 
-
-
 data single_deployment_note: String = "ONE DEPLOYMENT, ONE PORT. Blue/green was deleted at the root on 2026-08-19 by operator directive, and the reason is the one its own predecessor note recorded against itself: blue/green is sound for a STATELESS server, and this dashboard is stateful. The compromise it reached -- the slot owns source, binary, unit and port while dispatch worktrees, attempt evidence and the tmux server stay host-shared -- is a two-copy deployment that is only half two copies, and it cost more to reason about than the zero-downtime swap was worth for a single-operator dashboard.\n\nWHAT WENT, AS ONE POPULATION: the slot selection coproduct and its Tailscale-status read, the deploy-idle-then-flip-then-retire fold, the slot/route/retiring spec projections, and the second HostDashboardInstance. What replaces them is this: apply converges deployment_spec_srv1 IN PLACE, members in declared order, and the Tailscale mapping is an ordinary member pointing at the one port rather than a route flipped between two.\n\nWHAT IS HONESTLY LOST is the property blue/green existed to buy: a failed candidate can no longer be discovered on an idle slot while the old process keeps serving. A bad deploy now restarts the one service, and the readiness gate refuses AFTER the restart rather than before a flip -- so the failure mode is downtime, not a silent bad cutover. That trade is the point of the directive, not an oversight, and the mitigation is that every member is idempotent and a retract remains available.\n\nTHE HAZARD THIS ALSO CLOSES: two slots meant two belt timers, both enabled, sharing one dispatch-worktree root and one attempt-state root. Nothing prevented a collision except that both belts happened to be crashing; with one deployment there is one belt and the prepare/activate split it would have needed is no longer owed.\n\nA SECOND ORDERING CONSEQUENCE, named because the loss above is not the only one. Under the deleted cutover fold the route write ran AFTER the candidate slot converged, readiness gate included. The mapping is now an ordinary member, last in deployment_owned_steps and inside the mutation, so the route is asserted BEFORE live_deploy_apply_readiness_gate runs -- which is, in shape, the pre-blue/green ordering that blue_green_spec_partition_note recorded as having recreated a 502 window. It is not that defect here, because with one port the write is an idempotent re-assert of the same endpoint-to-8080 mapping rather than a redirection to an unverified process, so it opens no window beyond the restart downtime already accepted above. The residual is bounded by the realization: if the Tailscale mapping is ever applied as remove-then-add rather than as a replace, the route is briefly ABSENT while the service is unverified. That is a property of extdeps.tailscale.serve, not of this fold, and it is stated here so the ordering is a known quantity rather than something a later reader rediscovers as a surprise."
-
 
 fn live_deploy_preflight_intent(access: DeployAccess) -> HostEffectIntent {
   HostEffectIntent {
@@ -367,8 +364,14 @@ fn live_deploy_apply_srv1_with_access(
   )
 }
 
-data retract_carries_no_candidate_note: String = "A RETRACT OBSERVES NO CANDIDATE, WHICH IS WHY IT CANNOT FAIL FOR WANT OF ONE. It removes what this deployment owns; there is no release being installed, so there is nothing whose identity a retract could state and nothing for readiness to compare. While the revision rode on DeploymentServiceConfig this path had to construct one anyway, and worse, it called observe_candidate_release first — so a retract could refuse because git HEAD was unreadable, a condition with no bearing whatsoever on tearing down a unit.\\n\\nThe fold now passes RevisionNotInstalled, so the arm that would render an ExecStart refuses loudly instead of naming a revision this operation never had."
-
+// A RETRACT OBSERVES NO CANDIDATE, WHICH IS WHY IT CANNOT FAIL FOR WANT OF ONE. It removes what
+// this deployment owns; there is no release being installed, so there is nothing whose identity a
+// retract could state and nothing for readiness to compare. While the revision rode on
+// DeploymentServiceConfig this path had to construct one anyway, and worse, it called
+// observe_candidate_release first — so a retract could refuse because git HEAD was unreadable, a
+// condition with no bearing whatsoever on tearing down a unit.\n\nThe fold now passes
+// RevisionNotInstalled, so the arm that would render an ExecStart refuses loudly instead of naming
+// a revision this operation never had.
 fn live_deploy_retract_srv1_with_access(
   access: DeployAccess,
 ) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
@@ -551,9 +554,18 @@ func live_deploy_retract_srv1_operator_wet() -> ProcessExit {
 
 
 // ---------------------------------------------------------------- the receipted transaction entry
-
-data live_deploy_transaction_entry_note: String = "THE DASHBOARD-DEPLOY MODE OF THE RLM-2 TRANSACTION. live_deploy_apply_srv1_wet stays as the operator's plain entry; this one is what the fleet-converge workflow's dashboard_deploy mode invokes, and it differs in exactly three ways, all of them additions around the SAME fold: (1) it binds its run and refuses unless GITHUB_SHA equals RLM_EXPECTED_REVISION and the observed candidate equals it too -- a deploy asked to install R must not install what it happens to have checked out; (2) it reads the fleet plan/apply provenance the dispatch named (RLM_PLAN_RUN_ID, RLM_APPLY_RUN_ID, RLM_PLAN_ARTIFACT_HASH) and carries it as provenance, never as eligibility; (3) it mints gunbc.live_deploy.apply_receipt LiveDeployApplyReceipt after the fold returns, with one independent post-apply /healthz observation and a completion instant, and writes it to the artifact path the workflow uploads. A TerminalNoOp target decision is recorded as such and exits nonzero HERE, unlike the plain entry: within the transaction, 'R was already running' means this run installed nothing, and the join must see that rather than a converged-looking receipt."
-
+// THE DASHBOARD-DEPLOY MODE OF THE RLM-2 TRANSACTION. live_deploy_apply_srv1_wet stays as the
+// operator's plain entry; this one is what the fleet-converge workflow's dashboard_deploy mode
+// invokes, and it differs in exactly three ways, all of them additions around the SAME fold: (1) it
+// binds its run and refuses unless GITHUB_SHA equals RLM_EXPECTED_REVISION and the observed
+// candidate equals it too -- a deploy asked to install R must not install what it happens to have
+// checked out; (2) it reads the fleet plan/apply provenance the dispatch named (RLM_PLAN_RUN_ID,
+// RLM_APPLY_RUN_ID, RLM_PLAN_ARTIFACT_HASH) and carries it as provenance, never as eligibility; (3)
+// it mints gunbc.live_deploy.apply_receipt LiveDeployApplyReceipt after the fold returns, with one
+// independent post-apply /healthz observation and a completion instant, and writes it to the
+// artifact path the workflow uploads. A TerminalNoOp target decision is recorded as such and exits
+// nonzero HERE, unlike the plain entry: within the transaction, 'R was already running' means this
+// run installed nothing, and the join must see that rather than a converged-looking receipt.
 fn live_deploy_transaction_decision_label(decision: DeployTargetDecision) -> LiveDeployTargetDecisionLabel {
   match decision {
     DeployTargetProceed { note: _ } => DecisionProceed

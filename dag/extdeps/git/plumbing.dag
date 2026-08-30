@@ -37,7 +37,12 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
 // plumbing is a different reading of git from porcelain even though it is the same
 // upstream product (DESIGN, external upstream decomposition -- one product may be
 // grounded by several modules; it may not be forked across several authorities).
-data git_plumbing_service_note: String = "Git's object-store plumbing surface: object database (hash-object, cat-file, unpack-file), index and tree (read-tree, update-index, write-tree, checkout-index), commit (commit-tree) and ref store (rev-parse --verify, update-ref). Every operation names its repository as a typed input rather than inheriting the process working directory, per extdeps.git remote_url_takes_its_repository_as_a_parameter_note. No plumbing argv is spelled outside this service."
+// Git's object-store plumbing surface: object database (hash-object, cat-file, unpack-file), index
+// and tree (read-tree, update-index, write-tree, checkout-index), commit (commit-tree) and ref
+// store (rev-parse --verify, update-ref). Every operation names its repository as a typed input
+// rather than inheriting the process working directory, per extdeps.git
+// remote_url_takes_its_repository_as_a_parameter_note. No plumbing argv is spelled outside this
+// service.
 
 // EVERY OPERATION REPORTS `exit_code` AND `stderr`, NEVER A `success` BOOL. The seed
 // derives `exit_success` as exactly `exit_code == 0` (v1_interpreter.rs, the shell dispatch
@@ -51,7 +56,9 @@ data git_plumbing_service_note: String = "Git's object-store plumbing surface: o
 // NO OPERATION DECLARES AN `exit` BLOCK, per extdeps.git ls_remote_carries_no_exit_block_note:
 // those arms are parsed, re-emitted, and never realized, so authoring one here would mint
 // fresh declared-but-unrealized instances rather than inherit existing ones.
-data git_plumbing_outcome_shape_note: String = "Operations report exit_code and stderr and declare no exit block. Two of them - CatFileExists and ObserveRef - answer a QUESTION with a nonzero exit, which is why pre-judging termination as success is not available to this layer at all."
+// Operations report exit_code and stderr and declare no exit block. Two of them - CatFileExists and
+// ObserveRef - answer a QUESTION with a nonzero exit, which is why pre-judging termination as
+// success is not available to this layer at all.
 
 // REPOSITORY ADDRESSING IS ONE AXIS, NOT TWO OPERATION FAMILIES. Git accepts a repository
 // two ways and they are not interchangeable: `-C <path>` changes directory and then

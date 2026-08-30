@@ -1453,7 +1453,22 @@ fn rust_collection_representation_parameters() -> Map<Symbol, TargetRepresentati
   )
 }
 
-data rust_capability_bridge_note: String = "THE SOLE AUTHORITY CONNECTING RUST'S CLOSED CAPABILITY ALPHABET TO THE OPEN INTERFACE KEY SPACE. Three declarations carry this concept and each has exactly one home: TargetCapabilityKey, the open Symbol brand that unrelated modules share, in v2.std.compilers.target_model; RustCapability, the closed alphabet that keeps rust_trait_derive_spelling total by exhaustive match, in extdeps.languages.rust.capabilities; and this bridge. WHY A BRIDGE RATHER THAN LITERALS: an earlier revision of this migration deleted it, because after parameterizing the std predicate on the carrier NOTHING CALLED IT -- the seed path speaks the alphabet end to end and v2 spelled its keys as caret literals directly. That reading was wrong and the deletion was the section 3 fork wearing the costume of a removed dead function: with no bridge, RustClone and the literal caret target_capability_clone corresponded ONLY BY MATCHING SPELLING, with no authority enforcing it and nothing that would refuse if they diverged. The correspondence is a fact and facts need one home. THE BRIDGE LIVES IN v2 rather than beside the alphabet because it names TargetCapabilityKey, and extdeps.languages.rust.capabilities is inside the src/v1 regen import closure, which cannot reach src/v2 -- see the closure invariant in std.trait_derive_shape trait_derive_shape_note. It is exhaustive over RustCapability with no wildcard, so a seventeenth capability is a hard diagnostic here rather than a silently unbridged key."
+// THE SOLE AUTHORITY CONNECTING RUST'S CLOSED CAPABILITY ALPHABET TO THE OPEN INTERFACE KEY SPACE.
+// Three declarations carry this concept and each has exactly one home: TargetCapabilityKey, the
+// open Symbol brand that unrelated modules share, in v2.std.compilers.target_model; RustCapability,
+// the closed alphabet that keeps rust_trait_derive_spelling total by exhaustive match, in
+// extdeps.languages.rust.capabilities; and this bridge. WHY A BRIDGE RATHER THAN LITERALS: an
+// earlier revision of this migration deleted it, because after parameterizing the std predicate on
+// the carrier NOTHING CALLED IT -- the seed path speaks the alphabet end to end and v2 spelled its
+// keys as caret literals directly. That reading was wrong and the deletion was the section 3 fork
+// wearing the costume of a removed dead function: with no bridge, RustClone and the literal caret
+// target_capability_clone corresponded ONLY BY MATCHING SPELLING, with no authority enforcing it
+// and nothing that would refuse if they diverged. The correspondence is a fact and facts need one
+// home. THE BRIDGE LIVES IN v2 rather than beside the alphabet because it names
+// TargetCapabilityKey, and extdeps.languages.rust.capabilities is inside the src/v1 regen import
+// closure, which cannot reach src/v2 -- see the closure invariant in std.trait_derive_shape
+// trait_derive_shape_note. It is exhaustive over RustCapability with no wildcard, so a seventeenth
+// capability is a hard diagnostic here rather than a silently unbridged key.
 
 fn rust_capability_key(c: RustCapability) -> TargetCapabilityKey {
   match c {
@@ -2047,11 +2062,28 @@ fn rust_emit_host_runtime_primitive_type_node() -> Node {
   }
 }
 
-data rust_emit_host_toolchain_pin_note: String = "Toolchain pin materialized into every emitted cargo workspace (fleet incident 2026-07-22: runners with no rustup default refuse cargo builds in $RUNNER_TOOL_CACHE workspaces — the repo checkout builds only because rust-toolchain.toml is present there; srv1 masked this via a hand-set default). The channel literal mirrors the sole in-repo authority rust-toolchain.toml; dissolve-on: the emitter derives this row from that file instead of a mirrored literal."
+// Toolchain pin materialized into every emitted cargo workspace (fleet incident 2026-07-22: runners
+// with no rustup default refuse cargo builds in $RUNNER_TOOL_CACHE workspaces — the repo checkout
+// builds only because rust-toolchain.toml is present there; srv1 masked this via a hand-set
+// default). The channel literal mirrors the sole in-repo authority rust-toolchain.toml;
+// dissolve-on: the emitter derives this row from that file instead of a mirrored literal.
 
 data rust_emit_host_toolchain_pin: String = "[toolchain]\nchannel = \"1.93.0\"\n"
 
-data rust_emit_host_lint_envelope_note: String = "The emitted crate declares its lint envelope in its own manifest (CI2-0, 2026-08-08): the Rust TargetMatchShape wraps every match scrutinee in parens because a struct-literal scrutinee REQUIRES them (rust_variant_construct), while a bare-identifier scrutinee makes the same parens the warn-by-default unused_parens lint — and floor runners whose admitted build env denies warnings turned that lint into a deterministic cold-build refusal (cargo exit 101; four days of counted interpreter fallback, receipt docs/plans/ci2-native-cutover-reobservation.md). One shape cannot serve both scrutinee forms without conditional grouping, so until the match shape models scrutinee grouping structurally, the generated crate pins the specific lint to allow — the cargo lints table is per-lint and a specific level beats the RUSTFLAGS warnings-group deny, proven by execution both ways. Precedent: stage0's crate-wide clippy allow. Deliberately NOT allow(warnings): every other lint class stays live so a real defect in emitted code still surfaces. Dissolve-on: TargetMatchShape scrutinee grouping becomes conditional on the scrutinee's structural form (grouping only where the target grammar requires it), at which point the emitted code is lint-clean and this table entry deletes."
+// The emitted crate declares its lint envelope in its own manifest (CI2-0, 2026-08-08): the Rust
+// TargetMatchShape wraps every match scrutinee in parens because a struct-literal scrutinee
+// REQUIRES them (rust_variant_construct), while a bare-identifier scrutinee makes the same parens
+// the warn-by-default unused_parens lint — and floor runners whose admitted build env denies
+// warnings turned that lint into a deterministic cold-build refusal (cargo exit 101; four days of
+// counted interpreter fallback, receipt docs/plans/ci2-native-cutover-reobservation.md). One shape
+// cannot serve both scrutinee forms without conditional grouping, so until the match shape models
+// scrutinee grouping structurally, the generated crate pins the specific lint to allow — the cargo
+// lints table is per-lint and a specific level beats the RUSTFLAGS warnings-group deny, proven by
+// execution both ways. Precedent: stage0's crate-wide clippy allow. Deliberately NOT
+// allow(warnings): every other lint class stays live so a real defect in emitted code still
+// surfaces. Dissolve-on: TargetMatchShape scrutinee grouping becomes conditional on the scrutinee's
+// structural form (grouping only where the target grammar requires it), at which point the emitted
+// code is lint-clean and this table entry deletes.
 
 data rust_emit_host_cargo_manifest: String = "[package]\nname = \"gunbc_emit_host\"\nversion = \"0.0.0\"\nedition = \"2021\"\n\n[lints.rust]\nunused_parens = \"allow\"\n\n[[bin]]\nname = \"emit_host\"\npath = \"src/main.rs\"\n"
 
@@ -2846,7 +2878,6 @@ fn rust_struct_general_decl_structural_target_model() -> TargetModel {
     runtime_row: target_emit_host_runtime_row_unconfigured
   }
 }
-
 
 fn rust_grammar_production_fn_add() -> GrammarProduction {
   GrammarProduction {

@@ -50,13 +50,12 @@ func srv3_bmcweb_session_login() -> ProcessExit
   }
 }
 
-// THE EMPTY-TOKEN CHECK THAT STOOD IN THIS FOLD IS DELETED, NOT MOVED (DESIGN §4b,
-// dissolution on climb). It ran shell.Test.IsNonEmpty on srv3_bmcweb_token_path — the file
-// the extract step had just written — so it conceded that writing an empty credential file
-// was a reachable state and merely reported it afterwards. gunbc.host_effect_realize
-// `bmcweb_token_extraction_verdict` now refuses an absent, null or blank token BEFORE
-// Filesystem.Write, so a converged extract cannot have produced an empty file and a second
-// reading of that file has nothing left to discover.
+// THE EMPTY-TOKEN CHECK THAT STOOD IN THIS FOLD IS DELETED, NOT MOVED (DESIGN §4b, dissolution on
+// climb). It ran shell.Test.IsNonEmpty on srv3_bmcweb_token_path — the file the extract step had
+// just written — so it conceded that writing an empty credential file was reachable and merely
+// reported it afterwards. gunbc.host_effect_realize `bmcweb_token_extraction_verdict` now refuses an
+// absent, null or blank token BEFORE Filesystem.Write, so a converged extract cannot have produced
+// an empty file and a second reading has nothing left to discover.
 func srv3_bmcweb_session_login_resolved(resolution: BmcCredentialResolution) -> ProcessExit
   uses net: std.resources.Network
 {
@@ -116,10 +115,9 @@ func srv3_nbd_proxy_serve() -> ProcessExit
   )
 }
 
-// The step count was never the subject — that the plan is DERIVED from the solved
-// mechanism was. srv3's BMC upgrade propagates through that derivation and the
-// plan now refuses, which is the observable that distinguishes a derived plan
-// from a hardcoded three-step one: a hardcoded plan would still be Ready.
+// The step count was never the subject — that the plan is DERIVED from the solved mechanism was.
+// srv3's BMC upgrade propagates through that derivation and the plan now refuses, which is what
+// distinguishes a derived plan from a hardcoded three-step one: a hardcoded plan would still be Ready.
 fn srv3_os_install_actuator_plan_refuses_on_unestablished_path() -> Bool {
   match srv3_os_install_actuator_plan_standing {
     ActuatorPlanRefused { cause: _ } => true

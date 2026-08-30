@@ -19,7 +19,13 @@ data webassembly_language_further_authority_1: ExternalAuthority = ExternalAutho
   }
 }
 
-data webassembly_language_subject_note: String = "WEBASSEMBLY, cited to the WebAssembly Specification (verified live 2026-08-04 by fetching the cited locator and confirming its title and publisher from the response, per the D0 verify-or-refuse rule): the fetched document is titled 'WebAssembly Specification' at WebAssembly 3.0, edited by Andreas Rossberg and published by the WebAssembly Community Group under W3C. The core specification is the subject here; the JavaScript and Web embedding interfaces are separate documents and, if this repository ever targets them, separate concerns rather than arms of this subject."
+// WEBASSEMBLY, cited to the WebAssembly Specification (verified live 2026-08-04 by fetching the
+// cited locator and confirming its title and publisher from the response, per the D0
+// verify-or-refuse rule): the fetched document is titled 'WebAssembly Specification' at WebAssembly
+// 3.0, edited by Andreas Rossberg and published by the WebAssembly Community Group under W3C. The
+// core specification is the subject here; the JavaScript and Web embedding interfaces are separate
+// documents and, if this repository ever targets them, separate concerns rather than arms of this
+// subject.
 
 type WebAssembly
   = | WebAssemblyTarget

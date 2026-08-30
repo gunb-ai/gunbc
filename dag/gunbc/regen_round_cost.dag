@@ -267,6 +267,28 @@ type AffectedSetDisposition
   = DerivableNow { from: String, residual: String }
   | BlockedOn { fact: String }
 
+// The instrument, not the number: re-run `claim_executor --regen-round-cost --source-root dag
+// --source-root src/v2` on a tree and read its receipt (target/stage0-regen-round-cost.txt). A
+// change-denominated regen is bounded above by the reverse closure
+// (regen_affected_set_disposition); a change-denominated REBUILD is bounded below by one
+// whole-crate compile until the stage0 partition (gunbc.stage0_crate_partition_generated) carries
+// the mirrors, which is the larger of the two costs on every measured host.
+
+// WHERE THE ROUND'S TIME GOES, read from the instrument on 2026-08-30 (producer: this module's
+// receipt; hosts srv1 and BuildBuddy runner 192.168.241.2; trees 75bc5007 and 677988a2). The
+// numbers live in the receipts those runs printed and are not restated here; the SHAPE is:
+// every phase runs at CPU ~= wall except the two cargo builds, so the regen process is one core
+// end to end; emit is the largest regen phase at roughly half the regen process and a fifth of
+// a round with a real edit; the two cargo builds of the seed (before the round, and
+// rebuild-from-installed) are the majority of such a round even for a one-mirror change,
+// because every mirror compiles into one crate and cargo recompiles that crate whole; the
+// corpus WAS read twice (corpus_load then a corpus_reload inside compile_stage0) and rustfmt
+// normalized the whole population three times (mirror_write, adjudicate, digest) -- both
+// closed in the change after the measurement: one read threaded to both consumers, and one
+// normalize per distinct input through a memo plus a per-rustfmt-version disk cache under
+// target/stage0-regen-rustfmt-cache whose entries are honoured only when the stored raw input
+// is byte-equal to the request. rustfmt_spawns on the receipt is the count the fixed-point
+// control is checked against.
 // Two planted edits, both measured by `claim_executor --regen-round-cost` on the tree named.
 //
 // (1) v1.compiler.runtime_rust (the runtime template): reverse import closure predicts nine
@@ -297,23 +319,6 @@ type AffectedSetDisposition
 // correct over-approximation (DESIGN section 5: a structural over-approximation computed AS
 // the answer), not an exact set.
 data regen_affected_set_disposition: AffectedSetDisposition = DerivableNow {
-  from: "the .dag dependency closure the regen already builds: cli_run regen_input_sources_over_roots / extend_sources_to_both_closure_fixpoint (imports, dotted and bare references), read in reverse from the edited module, restricted to the compared mirror population, plus the runtime template products (v1_rt.rs) whenever v1.compiler.runtime_rust is in the set",
-  residual: "the emitting seed's own baked mirrors are a generation-level input to every emitted byte (the two-round bootstrap); the reverse closure over-approximates -- 72 predicted against 1 changed for a std.content_hash data row -- and exactness needs the per-module emit itself"
+  from: "gunbc.regen_affected_set regen_affected_set, whose bound is the .dag dependency closure the regen already builds: cli_run regen_input_sources_over_roots / extend_sources_to_both_closure_fixpoint (imports, dotted and bare references), read in reverse from the edited module, restricted to the compared mirror population, plus the declared bootstrap edge (regen_bootstrap_edges: v1_rt.rs whenever v1.compiler.runtime_rust is in the set); an edited path the tree cannot name refuses (EditedSetUnlocatable) rather than widening",
+  residual: "the emitting seed's own baked mirrors are a generation-level input to every emitted byte (the two-round bootstrap); the reverse closure over-approximates -- 72 predicted against 1 changed for a std.content_hash data row -- so an edit under regen_generation_input_prefixes answers WholePopulation; the AffectedMirrors arm over-approximates -- 72 predicted against 1 changed for a std.content_hash data row -- and exactness needs the per-module emit itself"
 }
-
-// WHERE THE ROUND'S TIME GOES, read from the instrument on 2026-08-30 (producer: this module's
-// receipt; hosts srv1 and BuildBuddy runner 192.168.241.2; trees 75bc5007 and 677988a2). The
-// numbers live in the receipts those runs printed and are not restated here; the SHAPE is:
-// every phase runs at CPU ~= wall except the two cargo builds, so the regen process is one core
-// end to end; emit is the largest regen phase at roughly half the regen process and a fifth of
-// a round with a real edit; the two cargo builds of the seed (before the round, and
-// rebuild-from-installed) are the majority of such a round even for a one-mirror change,
-// because every mirror compiles into one crate and cargo recompiles that crate whole; the
-// corpus WAS read twice (corpus_load then a corpus_reload inside compile_stage0) and rustfmt
-// normalized the whole population three times (mirror_write, adjudicate, digest) -- both
-// closed in the change after the measurement: one read threaded to both consumers, and one
-// normalize per distinct input through a memo plus a per-rustfmt-version disk cache under
-// target/stage0-regen-rustfmt-cache whose entries are honoured only when the stored raw input
-// is byte-equal to the request. rustfmt_spawns on the receipt is the count the fixed-point
-// control is checked against.
-data regen_round_cost_shape_note: String = "The instrument, not the number: re-run `claim_executor --regen-round-cost --source-root dag --source-root src/v2` on a tree and read its receipt (target/stage0-regen-round-cost.txt). A change-denominated regen is bounded above by the reverse closure (regen_affected_set_disposition); a change-denominated REBUILD is bounded below by one whole-crate compile until the stage0 partition (gunbc.stage0_crate_partition_generated) carries the mirrors, which is the larger of the two costs on every measured host."

@@ -17,7 +17,6 @@ module gunbc.fleet_workflow_steps
 // constructors, because its build is one cargo invocation with no artifact handoff, and reusing
 // a cross-job artifact-transfer vocabulary to express that would be borrowing an architecture it
 // does not have.
-
 import std.measure { minute_count }
 import std.types { Duration }
 import extdeps.languages.yaml.types { yaml_string, yaml_int, yaml_bool, kv }
@@ -189,7 +188,6 @@ fn ci_setup_rust_step() -> Step {
     timeout_minutes: none
   }
 }
-
 
 fn ci_cache_cargo_step() -> Step {
   UsesStep {
@@ -416,12 +414,18 @@ fn ci_fleet_key_agent_cleanup_step() -> Step {
 
 data ci_native_cache_derive_step_name: String = "Derive native-cache root (rustc-version segment; after setup-rust-toolchain)"
 
-
-data ci_native_cache_prelude_order_bridge_note: String = "Adjacency-as-proxy ordering witness (not a structural Step-order predicate): ci_native_cache_prelude_order_bridge builds the setup-rust HOME env line immediately followed by the native-cache step name at the emitter's six-space yaml indent. witness_prelude_native_cache_root_step_follows_setup_rust asserts expected_ci_yml/falsifier_yml contain that substring. The real invariant is only that segment derivation runs after setup-rust-toolchain installs rustc; this check over-constrains to textual adjacency and can false-RED on a legitimate step inserted between setup-rust and native-cache, emitter yaml reformatting, or setup-rust gaining fields after HOME — but not false-green if ordering regresses. A hand-rolled match on Step would be the structural alternative; non-fold-residue forbids the wildcard arms that predicate would need (receipt: nfr floor on 14bc815db4). Dissolves when prelude ordering is witnessed without coproduct-residue match arms."
-
-
+// Adjacency-as-proxy ordering witness (not a structural Step-order predicate):
+// ci_native_cache_prelude_order_bridge builds the setup-rust HOME env line immediately followed by
+// the native-cache step name at the emitter's six-space yaml indent.
+// witness_prelude_native_cache_root_step_follows_setup_rust asserts expected_ci_yml/falsifier_yml
+// contain that substring. The real invariant is only that segment derivation runs after
+// setup-rust-toolchain installs rustc; this check over-constrains to textual adjacency and can
+// false-RED on a legitimate step inserted between setup-rust and native-cache, emitter yaml
+// reformatting, or setup-rust gaining fields after HOME — but not false-green if ordering
+// regresses. A hand-rolled match on Step would be the structural alternative; non-fold-residue
+// forbids the wildcard arms that predicate would need (receipt: nfr floor on 14bc815db4). Dissolves
+// when prelude ordering is witnessed without coproduct-residue match arms.
 data ci_release_bins_artifact_name: String = "release-bins"
-
 
 data gunbc_ci_aux_step_timeout_minutes: Duration = 5
 
@@ -439,20 +443,42 @@ DISSOLVE-ON: the first successful srv6 canary produces the measurement this enve
 
 data gunbc_ci_v1_compiler_tests_compile_gate_timeout_minutes: Duration = 15
 
-data gunbc_ci_v1_compiler_tests_compile_gate_timeout_note: String = "v1-compiler-tests retained-kernel execution gate step budget. Originally a compile-contract gate (operator ruling 2026-08-05, PR A / fierce-heron-177): reordered after the release build and switched to cargo test --release --no-run so v1-compiler compiles once per job. --no-run removed 2026-08-11 with the suite cutover; the crate shrank from 98 modules / 740 tests to the 9 declared retained modules / 30 tests, which execute rather than only compile. Warm runs should complete in seconds once the release artifact is warm; 15m retains the prior cold-host envelope without raising the cap."
-
+// v1-compiler-tests retained-kernel execution gate step budget. Originally a compile-contract gate
+// (operator ruling 2026-08-05, PR A / fierce-heron-177): reordered after the release build and
+// switched to cargo test --release --no-run so v1-compiler compiles once per job. --no-run removed
+// 2026-08-11 with the suite cutover; the crate shrank from 98 modules / 740 tests to the 9 declared
+// retained modules / 30 tests, which execute rather than only compile. Warm runs should complete in
+// seconds once the release artifact is warm; 15m retains the prior cold-host envelope without
+// raising the cap.
 data gunbc_ci_stage0_partition_compile_gate_timeout_minutes: Duration = 15
 
-data gunbc_ci_stage0_partition_compile_gate_timeout_note: String = "stage0 partition compile gate step budget (sharp-fox-403 C1): seven sequential cargo check -p v1-stage0-* partition crates enrolled as the build-job compile backstop over stage0_partition_crate_rows. Cold-host envelope matches v1-compiler-tests compile gate until a dedicated receipt exists; warm partition crates are smaller than the monolith test crate."
-
+// stage0 partition compile gate step budget (sharp-fox-403 C1): seven sequential cargo check -p
+// v1-stage0-* partition crates enrolled as the build-job compile backstop over
+// stage0_partition_crate_rows. Cold-host envelope matches v1-compiler-tests compile gate until a
+// dedicated receipt exists; warm partition crates are smaller than the monolith test crate.
 data gunbc_ci_v1_compiler_test_targets_compile_gate_timeout_minutes: Duration = 10
 
-data gunbc_ci_v1_compiler_test_targets_compile_gate_timeout_note: String = "v1-compiler test-targets compile gate step budget. 10 minutes against 67s MEASURED for this step's exact argv (cargo check -p v1-compiler --all-targets, cold, remote runner, on the repaired tree after gunbc#8167 / gunbc#8173 landed the lib-test compile fix). The earlier figure recorded here was 99s from cargo check --workspace --all-targets, which was an upper BOUND rather than this step's cost — it was all that could be measured while main's lib test target did not compile, and it is superseded rather than kept beside the real number. Deliberately BELOW the 15m carried by the v1-compiler-tests and partition gates rather than copied from them: those two inherited a cold-host envelope with no dedicated receipt, and repeating a number nobody measured is how an unmeasured envelope becomes precedent. The gate runs AFTER the release build for the same reason the retained-kernel gate does — v1-compiler is already compiled in release with the shared feature set, so the check reuses that artifact instead of forcing a second compile. Raising this needs a measurement, not a round number."
-
+// v1-compiler test-targets compile gate step budget. 10 minutes against 67s MEASURED for this
+// step's exact argv (cargo check -p v1-compiler --all-targets, cold, remote runner, on the repaired
+// tree after gunbc#8167 / gunbc#8173 landed the lib-test compile fix). The earlier figure recorded
+// here was 99s from cargo check --workspace --all-targets, which was an upper BOUND rather than
+// this step's cost — it was all that could be measured while main's lib test target did not
+// compile, and it is superseded rather than kept beside the real number. Deliberately BELOW the 15m
+// carried by the v1-compiler-tests and partition gates rather than copied from them: those two
+// inherited a cold-host envelope with no dedicated receipt, and repeating a number nobody measured
+// is how an unmeasured envelope becomes precedent. The gate runs AFTER the release build for the
+// same reason the retained-kernel gate does — v1-compiler is already compiled in release with the
+// shared feature set, so the check reuses that artifact instead of forcing a second compile.
+// Raising this needs a measurement, not a round number.
 data gunbc_ci_artifact_transfer_step_timeout_minutes: Duration = 10
 
-data gunbc_ci_artifact_transfer_step_note: String = "Cross-job handoff of the release bins (operator job-split ruling 2026-07-11): the build job packs ci_floor_required_artifact_names into one tgz (tar preserves the executable bits a raw artifact zip would drop) and uploads it; the ci floor job downloads, unpacks into target/release, and re-verifies via claim_executor --verify-build-artifacts before any step consumes a bin (fail-closed: a missing or truncated artifact reds the job at the verify, never as a mid-floor bin fallback). 10m is the transfer envelope for a ~200MB archive under fleet pressure; upload uses if-no-files-found: error so an empty pack is loud."
-
+// Cross-job handoff of the release bins (operator job-split ruling 2026-07-11): the build job packs
+// ci_floor_required_artifact_names into one tgz (tar preserves the executable bits a raw artifact
+// zip would drop) and uploads it; the ci floor job downloads, unpacks into target/release, and
+// re-verifies via claim_executor --verify-build-artifacts before any step consumes a bin
+// (fail-closed: a missing or truncated artifact reds the job at the verify, never as a mid-floor
+// bin fallback). 10m is the transfer envelope for a ~200MB archive under fleet pressure; upload
+// uses if-no-files-found: error so an empty pack is loud.
 data gunbc_ci_prelude_allowance_minutes: Duration = 5
 
 data gunbc_ci_release_build_step_timeout_minutes: Duration = 45
@@ -526,14 +552,63 @@ data gunbc_ci_fleet_job_worst_case_mode_aux_step_count: Int = 1
 
 data gunbc_ci_fleet_job_worst_case_mode_spark_step_count: Int = 1
 
-data gunbc_ci_fleet_job_backstop_timeout_note: String = "SUPERSEDES the 2026-08-21 first correction (prelude + 7*aux + 3*transfer + 5*spark = 370m), which fixed the tier miscount in the prior 11*aux+2*spark formula but kept its structural error: summing every tier-step COUNT as though every step in fleet_converge_job() executes in one run. It does not. The job's steps are gated by the single-select `mode` DispatchInput (InputChoice, exactly one value per dispatch — fleet_converge_workflow.dag DispatchInput \"mode\"), so plan/apply/spark_linger/spark_grants/spark_observe/spark_reboot/spark_durability are MUTUALLY EXCLUSIVE per run, not concurrent tiers to sum. Recounted from fleet_converge_job()'s actual step list (fleet_converge_workflow.dag:280-303) by what a single dispatch can actually execute: ALWAYS-RUN, no if_condition or if_condition: always() — ci_release_bins_download_step (transfer), ci_release_bins_unpack_verify_step, ci_fleet_wif_auth_step, ci_fleet_key_agent_step, ci_spark_admin_credential_cleanup_step, ci_fleet_key_agent_cleanup_step (5 aux + 1 transfer, always). MODE-GATED, at most one bundle applies per dispatch: mode=plan adds fleet_converge_plan_step(aux)+fleet_converge_plan_upload_step(transfer)=15m; mode=apply adds fleet_converge_plan_download_step(transfer)+fleet_converge_apply_step(aux)+fleet_converge_apply_receipt_upload_step(transfer)=25m (the typed apply receipt upload, RLM-2a); mode=spark_linger/spark_observe/spark_reboot/spark_durability each add exactly one spark step=60m; mode=spark_grants adds ci_spark_admin_credential_step(aux)+fleet_converge_spark_grants_step(spark)=65m, the WORST CASE because it is the only mode combining an aux-tier step with a spark-tier step. Worst-case single-run total: 5 + (5+1)*5 + 1*10 + 1*60 = 105m, comfortably inside extdeps.github.actions max_job_timeout_minutes (360m) — the >360 conflict raised on review of the first correction (bright-ferret-335, gunbc#8782) dissolves under the corrected model rather than needing a rounded-down number or a job split; checked_job_timeout_minutes below still guards the class for any future per-tier raise. The mode roster shrank on 2026-08-27 when the session-container lane was deleted; session_demand_observe was one aux-tier-shaped step under a spark-tier budget, strictly below the spark_grants worst case, so removing it does not move this figure either -- the value derives from the always-run counts plus that worst case and never from the roster size. These counts remain hand-authored cardinals against fleet_converge_job()'s step list (fleet_workflow_steps cannot import fleet_converge_workflow without a cycle), so this note is the single authority to update alongside any change to that job's step composition, if_condition gating, or mode set. UPDATED for the dashboard_deploy mode, which was added after that deletion: THIS job's bound is unchanged, and the reason is the load-bearing part rather than the arithmetic. dashboard_deploy does not add a step to fleet_converge_job() at all -- it is a separate job (fleet_converge_workflow fleet_converge_dashboard_deploy_job), because fleet_host_mutation_concurrency_group_expression requires JOB-GRAIN concurrency that a step inside this job could not carry. So the mode is gated by that job's own if_condition and budgeted by its own backstop (gunbc_ci_dashboard_deploy_job_backstop_timeout_minutes, a straight sum because every step in it runs on every dispatch of it), and the 105m worst case here still belongs to spark_grants. A future reader checking whether a new mode moved this bound should ask FIRST whether the mode added a step to this job: adding a mode and adding a step to this job are different events, and only the second one moves this number. The rlm_launch_deployment_receipt mode (RLM-2a) is, like dashboard_deploy, its OWN job (fleet_converge_workflow fleet_converge_rlm_launch_deployment_receipt_job) with its own backstop (gunbc_ci_rlm_launch_deployment_receipt_job_backstop_timeout_minutes), so it does not move this figure either."
-
+// SUPERSEDES the 2026-08-21 first correction (prelude + 7*aux + 3*transfer + 5*spark = 370m), which
+// fixed the tier miscount in the prior 11*aux+2*spark formula but kept its structural error:
+// summing every tier-step COUNT as though every step in fleet_converge_job() executes in one run.
+// It does not. The job's steps are gated by the single-select `mode` DispatchInput (InputChoice,
+// exactly one value per dispatch — fleet_converge_workflow.dag DispatchInput "mode"), so
+// plan/apply/spark_linger/spark_grants/spark_observe/spark_reboot/spark_durability are MUTUALLY
+// EXCLUSIVE per run, not concurrent tiers to sum. Recounted from fleet_converge_job()'s actual step
+// list (fleet_converge_workflow.dag:280-303) by what a single dispatch can actually execute:
+// ALWAYS-RUN, no if_condition or if_condition: always() — ci_release_bins_download_step (transfer),
+// ci_release_bins_unpack_verify_step, ci_fleet_wif_auth_step, ci_fleet_key_agent_step,
+// ci_spark_admin_credential_cleanup_step, ci_fleet_key_agent_cleanup_step (5 aux + 1 transfer,
+// always). MODE-GATED, at most one bundle applies per dispatch: mode=plan adds
+// fleet_converge_plan_step(aux)+fleet_converge_plan_upload_step(transfer)=15m; mode=apply adds
+// fleet_converge_plan_download_step(transfer)+fleet_converge_apply_step(aux)+fleet_converge_apply_receipt_upload_step(transfer)=25m
+// (the typed apply receipt upload, RLM-2a);
+// mode=spark_linger/spark_observe/spark_reboot/spark_durability each add exactly one spark
+// step=60m; mode=spark_grants adds
+// ci_spark_admin_credential_step(aux)+fleet_converge_spark_grants_step(spark)=65m, the WORST CASE
+// because it is the only mode combining an aux-tier step with a spark-tier step. Worst-case
+// single-run total: 5 + (5+1)*5 + 1*10 + 1*60 = 105m, comfortably inside extdeps.github.actions
+// max_job_timeout_minutes (360m) — the >360 conflict raised on review of the first correction
+// (bright-ferret-335, gunbc#8782) dissolves under the corrected model rather than needing a
+// rounded-down number or a job split; checked_job_timeout_minutes below still guards the class for
+// any future per-tier raise. The mode roster shrank on 2026-08-27 when the session-container lane
+// was deleted; session_demand_observe was one aux-tier-shaped step under a spark-tier budget,
+// strictly below the spark_grants worst case, so removing it does not move this figure either --
+// the value derives from the always-run counts plus that worst case and never from the roster size.
+// These counts remain hand-authored cardinals against fleet_converge_job()'s step list
+// (fleet_workflow_steps cannot import fleet_converge_workflow without a cycle), so this note is the
+// single authority to update alongside any change to that job's step composition, if_condition
+// gating, or mode set. UPDATED for the dashboard_deploy mode, which was added after that deletion:
+// THIS job's bound is unchanged, and the reason is the load-bearing part rather than the
+// arithmetic. dashboard_deploy does not add a step to fleet_converge_job() at all -- it is a
+// separate job (fleet_converge_workflow fleet_converge_dashboard_deploy_job), because
+// fleet_host_mutation_concurrency_group_expression requires JOB-GRAIN concurrency that a step
+// inside this job could not carry. So the mode is gated by that job's own if_condition and budgeted
+// by its own backstop (gunbc_ci_dashboard_deploy_job_backstop_timeout_minutes, a straight sum
+// because every step in it runs on every dispatch of it), and the 105m worst case here still
+// belongs to spark_grants. A future reader checking whether a new mode moved this bound should ask
+// FIRST whether the mode added a step to this job: adding a mode and adding a step to this job are
+// different events, and only the second one moves this number. The rlm_launch_deployment_receipt
+// mode (RLM-2a) is, like dashboard_deploy, its OWN job (fleet_converge_workflow
+// fleet_converge_rlm_launch_deployment_receipt_job) with its own backstop
+// (gunbc_ci_rlm_launch_deployment_receipt_job_backstop_timeout_minutes), so it does not move this
+// figure either.
 type JobTimeoutBudget
   = JobTimeoutWithinCeiling { minutes: Int }
   | JobTimeoutExceedsCeiling { minutes: Int, ceiling: Int }
 
-data checked_job_timeout_minutes_note: String = "Consumes extdeps.github.actions max_job_timeout_minutes by construction (operator review, bright-ferret-335, gunbc#8782): a computed backstop that would exceed GitHub Actions' platform ceiling must refuse rather than emit a timeout-minutes value the platform will reject or silently clamp — clamping is the fabricated-plausible-output failure one layer up, since the job would then die at the clamped cap while the model believed it had the computed value. This is a wall on any future per-tier raise, not evidence the current backstop is at risk: see gunbc_ci_fleet_job_backstop_timeout_note for why the honest worst-case-single-run total sits well under the ceiling today."
-
+// Consumes extdeps.github.actions max_job_timeout_minutes by construction (operator review,
+// bright-ferret-335, gunbc#8782): a computed backstop that would exceed GitHub Actions' platform
+// ceiling must refuse rather than emit a timeout-minutes value the platform will reject or silently
+// clamp — clamping is the fabricated-plausible-output failure one layer up, since the job would
+// then die at the clamped cap while the model believed it had the computed value. This is a wall on
+// any future per-tier raise, not evidence the current backstop is at risk: see
+// gunbc_ci_fleet_job_backstop_timeout_note for why the honest worst-case-single-run total sits well
+// under the ceiling today.
 fn checked_job_timeout_minutes(computed: Int) -> JobTimeoutBudget {
   if computed <= max_job_timeout_minutes {
     JobTimeoutWithinCeiling { minutes: computed }

@@ -589,7 +589,9 @@ data converge_cli_receipt_owner_readback_required: Bool = true
 // Interim owner readback routes through gunbc.command_runner.stat_owner_name_capture
 // (command_runner_scaffold population). Dissolve-on: extdeps.filesystem.filesystem_io
 // typed owner observation retires the stat argv arm.
-data converge_cli_receipt_owner_readback_interim_note: String = "Owner readback uses command_runner stat_owner_name_capture (command_runner_scaffold) until extdeps.filesystem.filesystem_io carries a typed owner observation; then converge_cli_receipt_owner_readback routes through that extdep."
+// Owner readback uses command_runner stat_owner_name_capture (command_runner_scaffold) until
+// extdeps.filesystem.filesystem_io carries a typed owner observation; then
+// converge_cli_receipt_owner_readback routes through that extdep.
 
 fn converge_cli_expected_receipt_owner_name() -> String {
   fleet_posix_operator_user.name

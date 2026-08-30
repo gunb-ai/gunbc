@@ -65,7 +65,15 @@ import std.observation {
   PsiPressure,
 }
 
-data observation_tty_render_note: String = "P2 of the progress-and-observation lane: the interactive TTY renderer, a SIBLING projection of the same std.observation carriers the CI renderer projects — not a second model and not the CI renderer's successor. The two differ only where the medium differs. A terminal can be repainted, so routine progress overwrites one line in place and stays quiet; a CI log cannot, so it appends. Everything the two share — the event vocabulary, the density authority, the glyph table, the duration and byte and percent projections, the hold-cause text — is imported from the CI renderer or the model, never re-derived. That sharing is the proof that one event stream drives N renderers (DESIGN section 2); a TTY renderer that re-spelled ci_human_duration would be the fork this lane exists to avoid."
+// P2 of the progress-and-observation lane: the interactive TTY renderer, a SIBLING projection of
+// the same std.observation carriers the CI renderer projects — not a second model and not the CI
+// renderer's successor. The two differ only where the medium differs. A terminal can be repainted,
+// so routine progress overwrites one line in place and stays quiet; a CI log cannot, so it appends.
+// Everything the two share — the event vocabulary, the density authority, the glyph table, the
+// duration and byte and percent projections, the hold-cause text — is imported from the CI renderer
+// or the model, never re-derived. That sharing is the proof that one event stream drives N
+// renderers (DESIGN section 2); a TTY renderer that re-spelled ci_human_duration would be the fork
+// this lane exists to avoid.
 
 // The three upgrades over the reference implementation studied for this lane, all inherited from the model rather than re-earned here: outcome lines carry durations (ci_event_line already appends them), Refused is distinct from Failed (the outcome sum and the glyph authority keep them apart), and dwell escalation is recursive rather than one-level (observation_escalation_subject walks the whole tree). The reference has none of these; the TTY renderer gets them for free by projecting the same carriers.
 type PreambleFields {
@@ -75,7 +83,12 @@ type PreambleFields {
   entry_total: Nat
 }
 
-data observation_tty_preamble_note: String = "The preamble is REQUIRED — no anonymous process. The reference implementation makes this a construction rule (a titled, described process or nothing), and it is kept: a TTY run opens with what is running, why it was triggered, and how much work it faces, so the first thing on screen answers the question the crawl window could not. The diff-to-runs selection summary is the centre of it (section 6b), but its declaration-grain form rides the namespace lane; this carrier holds the fields that exist today and grows without a format change when decl-grain selection lands."
+// The preamble is REQUIRED — no anonymous process. The reference implementation makes this a
+// construction rule (a titled, described process or nothing), and it is kept: a TTY run opens with
+// what is running, why it was triggered, and how much work it faces, so the first thing on screen
+// answers the question the crawl window could not. The diff-to-runs selection summary is the centre
+// of it (section 6b), but its declaration-grain form rides the namespace lane; this carrier holds
+// the fields that exist today and grows without a format change when decl-grain selection lands.
 
 fn tty_preamble_line(fields: PreambleFields) -> RenderedLine {
   RenderedLine {
@@ -108,7 +121,10 @@ fn tty_cursor_action(density: ObservationDensity, attention: AttentionLevel, cap
   }
 }
 
-data observation_tty_group_note: String = "The live group line is a repainting projection of the currently-running subject: a spinner, the phase, and the k-of-n counter, overwritten each tick. It names the current entry the way the reference's group line does, and it carries the same identity-first discipline as the heartbeat — the spinner says alive, the text says what is alive."
+// The live group line is a repainting projection of the currently-running subject: a spinner, the
+// phase, and the k-of-n counter, overwritten each tick. It names the current entry the way the
+// reference's group line does, and it carries the same identity-first discipline as the heartbeat —
+// the spinner says alive, the text says what is alive.
 
 fn tty_group_line(active: ObservationSubject, k: Nat, n: Nat, spinner: SymbolId) -> RenderedLine {
   let detail = ci_subject_detail_text(subject: active)

@@ -94,7 +94,8 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 // ordinary spawn". Advancing desired to whatever last landed makes that comparison agree
 // unconditionally, so the gate passes silently. Gating the advance is what gives the
 // dispatch gate something real to compare against.
-data fleet_desired_admission_note: String = "The live consumer of gunbc.fleet_main_revision decide_fleet_desired_advance. See the annotation above it."
+// The live consumer of gunbc.fleet_main_revision decide_fleet_desired_advance. See the annotation
+// above it.
 
 // The floor run's event payload, copied to a modeled path by the workflow step so the
 // decision reads a path this module names rather than an environment variable it cannot

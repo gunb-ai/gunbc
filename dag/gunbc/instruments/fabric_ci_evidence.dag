@@ -1,0 +1,265 @@
+module tools.fabric_ci_evidence
+
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import v2.std.optional { Present, Absent }
+import std.content_hash { ContentHash, content_hash_of_value }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import tools.fabric_ci_evidence_projection_fixture {
+  FabricCiCalibrationProjection,
+  FabricCiCalibrationAlpha,
+  FabricCiCalibrationBeta,
+  fabric_ci_calibration_projection_wire,
+}
+
+type FabricCiEvidenceRole
+  = FabricCiAssertionRole
+  | FabricCiTransportRole
+  | FabricCiProjectionRole
+  | FabricCiHostDriverRole
+
+type FabricCiEvidenceContract {
+  roles: List<FabricCiEvidenceRole>
+  assertion_result: NonEmptyStr
+  transport_result: NonEmptyStr
+  projection_requirement: NonEmptyStr
+  host_driver_authority: NonEmptyStr
+}
+
+data fabric_ci_evidence_contract: FabricCiEvidenceContract = {
+  roles: [FabricCiAssertionRole, FabricCiTransportRole, FabricCiProjectionRole, FabricCiHostDriverRole]
+  assertion_result: "ProcessExit"
+  transport_result: "Filesystem.Write-then-ProcessExit"
+  projection_requirement: "total-distinct-framed-decodable"
+  host_driver_authority: "status-and-sequence-only"
+}
+
+data fabric_ci_evidence_wire_prefix: NonEmptyStr = "FCIE0X"
+
+type FabricCiEvidenceDecode
+  = FabricCiEvidenceDecoded { value: NonEmptyStr }
+  | FabricCiEvidenceUndecodable
+
+fn fabric_ci_hex_digit(n: Int) -> String {
+  substring(s: "0123456789ABCDEF", start: n, end: n + 1)
+}
+
+fn fabric_ci_hex_scalar(cp: Int) -> String {
+  join([
+    fabric_ci_hex_digit(n: (cp / 1048576) % 16),
+    fabric_ci_hex_digit(n: (cp / 65536) % 16),
+    fabric_ci_hex_digit(n: (cp / 4096) % 16),
+    fabric_ci_hex_digit(n: (cp / 256) % 16),
+    fabric_ci_hex_digit(n: (cp / 16) % 16),
+    fabric_ci_hex_digit(n: cp % 16),
+  ], "")
+}
+
+fn fabric_ci_evidence_wire(value: NonEmptyStr) -> String {
+  fold(chars(value as String), init: fabric_ci_evidence_wire_prefix as String, f: fn(acc, cp) {
+    concat(acc, fabric_ci_hex_scalar(cp: cp))
+  })
+}
+
+fn fabric_ci_framed_coordinate(value: NonEmptyStr) -> NonEmptyStr {
+  join([to_string(value.length()), ":", value as String], "") as NonEmptyStr
+}
+
+fn fabric_ci_framed_coordinates(values: List<NonEmptyStr>) -> NonEmptyStr {
+  fold(values, init: join(["coordinates:", to_string(values.length()), ":"], "") as NonEmptyStr, f: fn(acc, value) {
+    concat(acc, fabric_ci_framed_coordinate(value: value)) as NonEmptyStr
+  })
+}
+
+// Shell-crossing collections enter content hashing only after every coordinate has a canonical NonEmptyStr projection.
+fn fabric_ci_shell_crossing_coordinates_hash(values: List<NonEmptyStr>) -> ContentHash {
+  content_hash_of_value(value: fabric_ci_framed_coordinates(values: values))
+}
+
+fn fabric_ci_hex_value(c: String) -> Int? {
+  let found = fold([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15], init: -1, f: fn(acc, i) {
+    if substring(s: "0123456789ABCDEF", start: i, end: i + 1) == c { i } else { acc }
+  })
+  if found < 0 { none } else { Present { value: found } }
+}
+
+fn fabric_ci_decode_scalar(wire: String, at: Int) -> Int? {
+  match fabric_ci_hex_value(c: char_at(s: wire, i: at)) {
+    Absent => Absent
+    Present { value: a } => match fabric_ci_hex_value(c: char_at(s: wire, i: at + 1)) {
+      Absent => Absent
+      Present { value: b } => match fabric_ci_hex_value(c: char_at(s: wire, i: at + 2)) {
+        Absent => Absent
+        Present { value: c } => match fabric_ci_hex_value(c: char_at(s: wire, i: at + 3)) {
+          Absent => Absent
+          Present { value: d } => match fabric_ci_hex_value(c: char_at(s: wire, i: at + 4)) {
+            Absent => Absent
+            Present { value: e } => match fabric_ci_hex_value(c: char_at(s: wire, i: at + 5)) {
+              Absent => Absent
+              Present { value: f } => Present { value: a * 1048576 + b * 65536 + c * 4096 + d * 256 + e * 16 + f }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+type FabricCiDecodeState
+  = FabricCiDecodeBuilding { value: String }
+  | FabricCiDecodeRefused
+
+fn fabric_ci_decode_step(wire: String, at: Int, stop: Int, state: FabricCiDecodeState) -> FabricCiDecodeState {
+  match state {
+    FabricCiDecodeRefused => FabricCiDecodeRefused
+    FabricCiDecodeBuilding { value: value } =>
+      if at == stop { FabricCiDecodeBuilding { value: value } } else {
+        match fabric_ci_decode_scalar(wire: wire, at: at) {
+          Absent => FabricCiDecodeRefused
+          Present { value: cp } =>
+            if cp > 1114111 || (cp >= 55296 && cp <= 57343) { FabricCiDecodeRefused }
+            else { fabric_ci_decode_step(wire: wire, at: at + 6, stop: stop, state: FabricCiDecodeBuilding { value: concat(value, from_code_point(cp)) }) }
+        }
+      }
+  }
+}
+
+fn decode_fabric_ci_evidence_wire(wire: String) -> FabricCiEvidenceDecode {
+  let prefix_len = fabric_ci_evidence_wire_prefix.length()
+  let payload_len = wire.length() - prefix_len
+  if !starts_with(wire, prefix: fabric_ci_evidence_wire_prefix as String)
+    || payload_len <= 0 || payload_len % 6 != 0 {
+    FabricCiEvidenceUndecodable
+  } else {
+    match fabric_ci_decode_step(wire: wire, at: prefix_len, stop: wire.length(), state: FabricCiDecodeBuilding { value: "" }) {
+      FabricCiDecodeRefused => FabricCiEvidenceUndecodable
+      FabricCiDecodeBuilding { value: "" } => FabricCiEvidenceUndecodable
+      FabricCiDecodeBuilding { value: value } => FabricCiEvidenceDecoded { value: value as NonEmptyStr }
+    }
+  }
+}
+
+func fabric_ci_calibration_assertion_success() -> ProcessExit { ExitSuccess }
+
+func fabric_ci_calibration_bool_must_refuse() -> Bool { true }
+
+func fabric_ci_calibration_raw_coproduct_must_not_cross() -> FabricCiCalibrationProjection {
+  FabricCiCalibrationAlpha { payload: "raw-coproduct" }
+}
+
+func fabric_ci_calibration_diagnostic_forgery(path: String) -> String {
+  fabric_ci_calibration_alpha_wire()
+}
+
+fn fabric_ci_calibration_alpha_wire() -> String {
+  fabric_ci_evidence_wire(value: fabric_ci_calibration_projection_wire(value: FabricCiCalibrationAlpha { payload: "apostrophe-' newline-\n delimiter-|" }) as NonEmptyStr)
+}
+
+fn fabric_ci_calibration_beta_wire() -> String {
+  fabric_ci_evidence_wire(value: fabric_ci_calibration_projection_wire(value: FabricCiCalibrationBeta { payload: "different-value" }) as NonEmptyStr)
+}
+
+fn fabric_ci_write_wire(path: String, wire: String) -> ProcessExit {
+  let written = Filesystem.Write(path: path, content: wire)
+  if !written.success { exit_failure(reason: concat("FCI-EVIDENCE-0 value write refused: ", written.error)) }
+  else if written.path != path { exit_failure(reason: "FCI-EVIDENCE-0 value write reported a different path") }
+  else if written.bytes_written != wire.length() { exit_failure(reason: "FCI-EVIDENCE-0 value write reported a different byte count") }
+  else { ExitSuccess }
+}
+
+func fabric_ci_calibration_transport_alpha(path: String) -> ProcessExit {
+  fabric_ci_write_wire(path: path, wire: fabric_ci_calibration_alpha_wire())
+}
+
+func fabric_ci_calibration_transport_beta(path: String) -> ProcessExit {
+  fabric_ci_write_wire(path: path, wire: fabric_ci_calibration_beta_wire())
+}
+
+func fabric_ci_calibration_transport_ignores_write_failure(path: String) -> ProcessExit {
+  let ignored = Filesystem.Write(path: "/proc/fci-evidence-ignored-write", content: fabric_ci_calibration_alpha_wire())
+  ExitSuccess
+}
+
+func fabric_ci_calibration_assert_transport(wire: String) -> ProcessExit {
+  match decode_fabric_ci_evidence_wire(wire: wire) {
+    FabricCiEvidenceUndecodable => exit_failure(reason: "FCI-EVIDENCE-0 transport undecodable")
+    FabricCiEvidenceDecoded { value: decoded } =>
+      if (decoded as String) == fabric_ci_calibration_projection_wire(value: FabricCiCalibrationAlpha { payload: "apostrophe-' newline-\n delimiter-|" }) {
+        ExitSuccess
+      } else { exit_failure(reason: "FCI-EVIDENCE-0 transported bytes changed") }
+  }
+}
+
+func fabric_ci_calibration_collapsed_projection_must_red() -> ProcessExit {
+  let alpha = fabric_ci_calibration_projection_wire(value: FabricCiCalibrationAlpha { payload: "same" })
+  let beta = fabric_ci_calibration_projection_wire(value: FabricCiCalibrationBeta { payload: "same" })
+  if alpha == beta || starts_with(alpha, prefix: beta) || starts_with(beta, prefix: alpha) {
+    ExitSuccess
+  } else { exit_failure(reason: "FCI-EVIDENCE-0 decisive red: projection arms remain distinct") }
+}
+
+func fabric_ci_calibration_assert_beta_transport(wire: String) -> ProcessExit {
+  match decode_fabric_ci_evidence_wire(wire: wire) {
+    FabricCiEvidenceUndecodable => exit_failure(reason: "FCI-EVIDENCE-0 beta transport undecodable")
+    FabricCiEvidenceDecoded { value: decoded } =>
+      if (decoded as String) == fabric_ci_calibration_projection_wire(value: FabricCiCalibrationBeta { payload: "different-value" }) { ExitSuccess }
+      else { exit_failure(reason: "FCI-EVIDENCE-0 status did not distinguish transported values") }
+  }
+}
+
+type FabricCiCalibrationStep
+  = FabricCiCalibrationExpectStatus { function: NonEmptyStr, status: Int }
+  | FabricCiCalibrationTransportAssert { producer: NonEmptyStr, coordinate: NonEmptyStr, assertion: NonEmptyStr }
+  | FabricCiCalibrationTransportCrossRed { producer: NonEmptyStr, coordinate: NonEmptyStr, wrong_assertion: NonEmptyStr }
+  | FabricCiCalibrationDiagnosticNotChannel { function: NonEmptyStr, coordinate: NonEmptyStr }
+  | FabricCiCalibrationAlteredByteRed { producer: NonEmptyStr, coordinate: NonEmptyStr, assertion: NonEmptyStr }
+  | FabricCiCalibrationAssertionRed { function: NonEmptyStr }
+  | FabricCiCalibrationWriteFailureRed { function: NonEmptyStr, path: NonEmptyStr }
+  | FabricCiCalibrationIgnoredWriteRed { function: NonEmptyStr, coordinate: NonEmptyStr }
+  | FabricCiCalibrationDeleteProjectionArmRed { subject: NonEmptyStr, selector: NonEmptyStr }
+  | FabricCiCalibrationFinalAssertion { function: NonEmptyStr }
+
+fn fabric_ci_calibration_steps() -> List<FabricCiCalibrationStep> {
+  [
+    FabricCiCalibrationExpectStatus { function: "fabric_ci_calibration_assertion_success", status: 0 },
+    FabricCiCalibrationExpectStatus { function: "fabric_ci_calibration_bool_must_refuse", status: 2 },
+    FabricCiCalibrationExpectStatus { function: "fabric_ci_calibration_raw_coproduct_must_not_cross", status: 2 },
+    FabricCiCalibrationTransportAssert { producer: "fabric_ci_calibration_transport_alpha", coordinate: "alpha", assertion: "fabric_ci_calibration_assert_transport" },
+    FabricCiCalibrationTransportAssert { producer: "fabric_ci_calibration_transport_beta", coordinate: "beta", assertion: "fabric_ci_calibration_assert_beta_transport" },
+    FabricCiCalibrationTransportCrossRed { producer: "fabric_ci_calibration_transport_beta", coordinate: "beta-cross", wrong_assertion: "fabric_ci_calibration_assert_transport" },
+    FabricCiCalibrationDiagnosticNotChannel { function: "fabric_ci_calibration_diagnostic_forgery", coordinate: "diagnostic-only" },
+    FabricCiCalibrationAlteredByteRed { producer: "fabric_ci_calibration_transport_alpha", coordinate: "alpha-alter", assertion: "fabric_ci_calibration_assert_transport" },
+    FabricCiCalibrationAssertionRed { function: "fabric_ci_calibration_collapsed_projection_must_red" },
+    FabricCiCalibrationWriteFailureRed { function: "fabric_ci_calibration_transport_alpha", path: "/proc/fci-evidence-write-refusal" },
+    FabricCiCalibrationIgnoredWriteRed { function: "fabric_ci_calibration_transport_ignores_write_failure", coordinate: "ignored" },
+    FabricCiCalibrationDeleteProjectionArmRed {
+      subject: "dag/gunbc/instruments/fabric_ci_evidence_projection_fixture.dag"
+      selector: "FabricCiCalibrationBeta { payload: payload } =>"
+    },
+    FabricCiCalibrationFinalAssertion { function: "fabric_ci_calibration_assertion_success" },
+  ]
+}
+
+// Total, default-free projection: the host carrier sequences only rows authored by this coproduct.
+fn fabric_ci_calibration_step_wire(step: FabricCiCalibrationStep) -> String {
+  match step {
+    FabricCiCalibrationExpectStatus { function, status } => join(["expect-status|", function as String, "|", to_string(status)], "")
+    FabricCiCalibrationTransportAssert { producer, coordinate, assertion } => join(["transport-assert|", producer as String, "|", coordinate as String, "|", assertion as String], "")
+    FabricCiCalibrationTransportCrossRed { producer, coordinate, wrong_assertion } => join(["transport-cross-red|", producer as String, "|", coordinate as String, "|", wrong_assertion as String], "")
+    FabricCiCalibrationDiagnosticNotChannel { function, coordinate } => join(["diagnostic-not-channel|", function as String, "|", coordinate as String], "")
+    FabricCiCalibrationAlteredByteRed { producer, coordinate, assertion } => join(["altered-byte-red|", producer as String, "|", coordinate as String, "|", assertion as String], "")
+    FabricCiCalibrationAssertionRed { function } => join(["assertion-red|", function as String], "")
+    FabricCiCalibrationWriteFailureRed { function, path } => join(["write-failure-red|", function as String, "|", path as String], "")
+    FabricCiCalibrationIgnoredWriteRed { function, coordinate } => join(["ignored-write-red|", function as String, "|", coordinate as String], "")
+    FabricCiCalibrationDeleteProjectionArmRed { subject, selector } => join(["delete-projection-arm-red|", subject as String, "|", selector as String], "")
+    FabricCiCalibrationFinalAssertion { function } => join(["final-assertion|", function as String], "")
+  }
+}
+
+fn fabric_ci_calibration_plan_wire() -> String {
+  concat(join(map(fabric_ci_calibration_steps(), step => fabric_ci_calibration_step_wire(step: step)), "\n"), "\n")
+}
+
+func fabric_ci_calibration_write_plan(path: String) -> ProcessExit {
+  fabric_ci_write_wire(path: path, wire: fabric_ci_calibration_plan_wire())
+}

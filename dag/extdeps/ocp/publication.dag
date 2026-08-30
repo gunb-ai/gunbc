@@ -12,7 +12,11 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   }
 }
 
-data ocp_publication_vocabulary_note: String = "OCP LICENCE VOCABULARY GROUNDED ON OWFa 1.0. Owfa1_0FinalSpecificationAgreement and OcpContributionLicenseAgreement are closed variants for subject anchors; the anchor cites the Open Web Foundation Final Specification Agreement text that defines the open-licence arm. Upstream document facts and read receipts live in subject modules and gunbc.specification_citation_read_provenance respectively."
+// OCP LICENCE VOCABULARY GROUNDED ON OWFa 1.0. Owfa1_0FinalSpecificationAgreement and
+// OcpContributionLicenseAgreement are closed variants for subject anchors; the anchor cites the
+// Open Web Foundation Final Specification Agreement text that defines the open-licence arm.
+// Upstream document facts and read receipts live in subject modules and
+// gunbc.specification_citation_read_provenance respectively.
 
 type Owfa1_0FinalSpecificationAgreement {}
 

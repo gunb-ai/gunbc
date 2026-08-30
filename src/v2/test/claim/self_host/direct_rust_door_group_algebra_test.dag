@@ -80,7 +80,16 @@ import v2.std.node { Symbol }
 import v2.std.optional { Absent, Present }
 import v2.std.text { String }
 
-data direct_rust_door_group_algebra_note: String = "FAST lane: discriminates the direct-rust-door group ALGEBRA over PLANTED observations, paying ZERO production walks — no ingest, assemble, infer, or emit runs here. This is the cheap half of the composition pilot: the one canonical heavy root in long/direct_rust_door_production_group_test.dag establishes what production actually does, and these controls establish what the group does with any observation it is handed. Splitting them is what keeps the expensive walk to ONE PER GROUP CONSTRUCTION while the group behaviour stays fully discriminated. That is a claim about the walk per construction and about there being ONE production implementation authority --- it is NOT a claim about the schedule, which today constructs the group TWICE because an expensive-and-known-red root must join two rosters to earn its budget. schedule_occurrence_multiplicity_test measures that and reds at 2."
+// FAST lane: discriminates the direct-rust-door group ALGEBRA over PLANTED observations, paying
+// ZERO production walks — no ingest, assemble, infer, or emit runs here. This is the cheap half of
+// the composition pilot: the one canonical heavy root in
+// long/direct_rust_door_production_group_test.dag establishes what production actually does, and
+// these controls establish what the group does with any observation it is handed. Splitting them is
+// what keeps the expensive walk to ONE PER GROUP CONSTRUCTION while the group behaviour stays fully
+// discriminated. That is a claim about the walk per construction and about there being ONE
+// production implementation authority --- it is NOT a claim about the schedule, which today
+// constructs the group TWICE because an expensive-and-known-red root must join two rosters to earn
+// its budget. schedule_occurrence_multiplicity_test measures that and reds at 2.
 
 fn planted_emission_rejected() -> ProvenancedRustEmissionObservation {
   EmissionRejected {
@@ -299,7 +308,13 @@ test fn wrong_producer_refuses_producer_leaf_and_not_the_seed_leaf() -> Bool {
     && !leaf_refused(leaf: direct_rust_door_seed_emitter_absence_leaf(group: g))
 }
 
-data seed_reachable_unmintable_note: String = "The seed-reachable-with-correct-producer world is NOT tested as a leaf refusal because it is UNCONSTRUCTIBLE: emitter_producer_mint_admission refuses V2Emitter* whenever v1.compiler.emit_rust is in the realized closure, so no such artifact can exist to project a leaf from. Asserting the wall is the honest control — a leaf test would have had to forge a receipt past the construction wall that makes the state unwritable (DESIGN 4b: the higher rung replaces the validator, it does not accumulate beside it). The seed leaf's refusal arm stays reachable for a V1SeedEmitter artifact, which the producer-identity test covers."
+// The seed-reachable-with-correct-producer world is NOT tested as a leaf refusal because it is
+// UNCONSTRUCTIBLE: emitter_producer_mint_admission refuses V2Emitter* whenever
+// v1.compiler.emit_rust is in the realized closure, so no such artifact can exist to project a leaf
+// from. Asserting the wall is the honest control — a leaf test would have had to forge a receipt
+// past the construction wall that makes the state unwritable (DESIGN 4b: the higher rung replaces
+// the validator, it does not accumulate beside it). The seed leaf's refusal arm stays reachable for
+// a V1SeedEmitter artifact, which the producer-identity test covers.
 
 test fn v2_producer_with_seed_reachable_closure_is_unmintable() -> Bool {
   match mint_producer_emission_receipt(
@@ -331,7 +346,11 @@ test fn missing_qualification_refuses_only_the_qualification_leaf() -> Bool {
     && !leaf_refused(leaf: direct_rust_door_producer_identity_leaf(group: g))
 }
 
-data direct_rust_door_observation_projection_note: String = "THE EXECUTING CONSUMER for the first-failure observation vocabulary. Without these rows the projection would be specification-without-execution (DESIGN 5): the module's long witness was deleted as a duplicate production walk, so nothing else reaches it. These run over PLANTED groups and pay no production cost, which is the whole point — the vocabulary is exercised without reconstructing the compiler graph."
+// THE EXECUTING CONSUMER for the first-failure observation vocabulary. Without these rows the
+// projection would be specification-without-execution (DESIGN 5): the module's long witness was
+// deleted as a duplicate production walk, so nothing else reaches it. These run over PLANTED groups
+// and pay no production cost, which is the whole point — the vocabulary is exercised without
+// reconstructing the compiler graph.
 
 test fn projection_names_the_refusing_stage() -> Bool {
   match project_direct_rust_door_observation(
@@ -421,7 +440,21 @@ test fn seed_reachable_closure_refuses_the_seed_absence_leaf() -> Bool {
     && !leaf_refused(leaf: direct_rust_door_source_fidelity_leaf(group: g))
 }
 
-data behavioral_probe_promotion_wall_note: String = "CONTROLS for the probe/qualification admission wall (operator finding 2026-08-05). BehavioralProbeUnbound previously DESCRIBED the absence of behavioral evidence without preventing the strongest behavioral qualification from sitting beside it — mint reconciled producer against closure but not qualifications against the probe, and the behavioral advance read build result and qualifications and never looked at the probe. These rows fix both directions at once: the legal pre-behavior receipts must stay mintable (walling them would make an ordinary source-produced or cargo-green receipt unwritable, which is a worse defect than the one being closed), and the promotion must refuse through BOTH doors, direct mint and advance. The last row is the positive control: with a BOUND probe the existing advance path is still reachable, so the wall is discriminating rather than blanket. NOT claimed here: that the Boolean advance argument is itself executed evidence — that remains the separate executed-verdict obligation, and this wall only makes the Unbound state non-promotable. The negative fixture above changed WITH this wall: it used to plant behavioral_equivalent_qualifications to exercise a missing SourceProduced, which the wall now makes unmintable, so it plants an empty qualification list — still missing SourceProduced, and legal."
+// CONTROLS for the probe/qualification admission wall (operator finding 2026-08-05).
+// BehavioralProbeUnbound previously DESCRIBED the absence of behavioral evidence without preventing
+// the strongest behavioral qualification from sitting beside it — mint reconciled producer against
+// closure but not qualifications against the probe, and the behavioral advance read build result
+// and qualifications and never looked at the probe. These rows fix both directions at once: the
+// legal pre-behavior receipts must stay mintable (walling them would make an ordinary
+// source-produced or cargo-green receipt unwritable, which is a worse defect than the one being
+// closed), and the promotion must refuse through BOTH doors, direct mint and advance. The last row
+// is the positive control: with a BOUND probe the existing advance path is still reachable, so the
+// wall is discriminating rather than blanket. NOT claimed here: that the Boolean advance argument
+// is itself executed evidence — that remains the separate executed-verdict obligation, and this
+// wall only makes the Unbound state non-promotable. The negative fixture above changed WITH this
+// wall: it used to plant behavioral_equivalent_qualifications to exercise a missing SourceProduced,
+// which the wall now makes unmintable, so it plants an empty qualification list — still missing
+// SourceProduced, and legal.
 
 fn probe_mint(
   qualifications: List<EmissionQualification>,

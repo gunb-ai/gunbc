@@ -92,8 +92,35 @@ import gunbc.roadmap_launch_deployment_receipt {
 }
 import gunbc.generated_artifact { artifact_path, FleetConvergeYamlArtifact }
 
-data roadmap_launch_deployment_cli_note: String = "THE RECEIPT MODE'S WET ENTRY (fleet-converge mode rlm_launch_deployment_receipt). It is the fourth run of the RLM-2 transaction and it MUTATES NOTHING on the host except the receipt it persists: every other read is an observation. Order: bind this run (repository, workflow, run id, GITHUB_SHA == RLM_EXPECTED_REVISION); fix the subject from the operator's inputs and this checkout; open the observation window; read the three predecessor receipts the workflow downloaded; take every fact; close the window; fold; persist Complete OR Incomplete; exit zero only for Complete that was persisted.\n\nPERSISTENCE IS CONTENT-ADDRESSED AND NO-OVERWRITE (ruling section 10). The canonical document is written once to a staging path in the run's workspace, its SHA-256 is computed over those exact bytes by sha256sum, and the same bytes are written with Filesystem.WriteOwnerOnly (O_EXCL) to <instance receipts dir>/launch-deployment/<sha256>.json. A pre-existing file at that path with the same digest is the SAME document -- the address is the content -- and is accepted after a readback digest comparison; a pre-existing file whose digest differs is a refusal, because a collision at a content address is precisely the corruption the address exists to make visible. The staging copy is what the workflow uploads as the run artifact, so the manager can compare host and GitHub copies by digest.\n\nTHE PRINCIPAL IS OBSERVED, NOT ASSUMED. Footprint, provider and dispatch preflights are only meaningful as the belt's effective service principal (gunbc.roadmap_belt_actuate belt_footprint_admission_note), so the receipt run records `whoami` and the join refuses when it is not the emitted ServiceUser. If srv1's runner principal is not that user, the wet run produces an Incomplete receipt naming `principal`, and the repair is a modeled execution-as-principal step, not a relaxation here.\n\nTHE PROVIDER PREFLIGHT runs for the provider production would select for an unsized node under the instance's own inventory (gunbc.roadmap_dispatch_actuator dispatch_actuator_selection), which is the belt's own selection path; a selection refusal is recorded as the provider fact's refusal rather than skipped."
-
+// THE RECEIPT MODE'S WET ENTRY (fleet-converge mode rlm_launch_deployment_receipt). It is the
+// fourth run of the RLM-2 transaction and it MUTATES NOTHING on the host except the receipt it
+// persists: every other read is an observation. Order: bind this run (repository, workflow, run id,
+// GITHUB_SHA == RLM_EXPECTED_REVISION); fix the subject from the operator's inputs and this
+// checkout; open the observation window; read the three predecessor receipts the workflow
+// downloaded; take every fact; close the window; fold; persist Complete OR Incomplete; exit zero
+// only for Complete that was persisted.
+// 
+// PERSISTENCE IS CONTENT-ADDRESSED AND NO-OVERWRITE (ruling section 10). The canonical document is
+// written once to a staging path in the run's workspace, its SHA-256 is computed over those exact
+// bytes by sha256sum, and the same bytes are written with Filesystem.WriteOwnerOnly (O_EXCL) to
+// <instance receipts dir>/launch-deployment/<sha256>.json. A pre-existing file at that path with
+// the same digest is the SAME document -- the address is the content -- and is accepted after a
+// readback digest comparison; a pre-existing file whose digest differs is a refusal, because a
+// collision at a content address is precisely the corruption the address exists to make visible.
+// The staging copy is what the workflow uploads as the run artifact, so the manager can compare
+// host and GitHub copies by digest.
+// 
+// THE PRINCIPAL IS OBSERVED, NOT ASSUMED. Footprint, provider and dispatch preflights are only
+// meaningful as the belt's effective service principal (gunbc.roadmap_belt_actuate
+// belt_footprint_admission_note), so the receipt run records `whoami` and the join refuses when it
+// is not the emitted ServiceUser. If srv1's runner principal is not that user, the wet run produces
+// an Incomplete receipt naming `principal`, and the repair is a modeled execution-as-principal
+// step, not a relaxation here.
+// 
+// THE PROVIDER PREFLIGHT runs for the provider production would select for an unsized node under
+// the instance's own inventory (gunbc.roadmap_dispatch_actuator dispatch_actuator_selection), which
+// is the belt's own selection path; a selection refusal is recorded as the provider fact's refusal
+// rather than skipped.
 data rlm1_merge_commit: String = "0beef8a2c1a035f4f1f0507e77075bdeaba74cba"
 data rlm1_contract_digest_frozen: String = "8b884d701d7a356e"
 data rlm_dashboard_run_id_env_name: String = "RLM_DASHBOARD_RUN_ID"
@@ -114,7 +141,6 @@ fn rlm_receipt_host_path(instance: HostDashboardInstance, digest_hex: String) ->
 }
 
 // ---------------------------------------------------------------- revision reads
-
 type RemoteRefRead
   = RemoteRefHex { hex: String }
   | RemoteRefUnreadable { detail: String }
@@ -155,7 +181,6 @@ fn remote_ref_text(r: RemoteRefRead) -> String {
 }
 
 // ---------------------------------------------------------------- window snapshot
-
 fn transition_text(s: ActuationStanding) -> String {
   match s {
     ActuationPermitted => "permitted"
@@ -210,7 +235,6 @@ func window_snapshot(context: FleetSshExecutionContext, instance: HostDashboardI
 }
 
 // ---------------------------------------------------------------- persistence
-
 type ReceiptPersistence
   = ReceiptPersisted { host_path: String, digest_hex: String }
   | ReceiptPersistenceRefused { detail: String }
@@ -265,7 +289,6 @@ func persist_receipt(instance: HostDashboardInstance, document: String) -> Recei
 }
 
 // ---------------------------------------------------------------- facts
-
 fn read_run_id_input(name: String) -> String? {
   match actions_variable_read(name: name) {
     ActionsVariablePresent { value: v } => Present { value: v }
@@ -333,7 +356,6 @@ func unit_standing_fact(revision: String) -> LaunchUnitStanding
 }
 
 // ---------------------------------------------------------------- the entry
-
 func rlm_launch_deployment_receipt_wet() -> ProcessExit
   uses net: Network
 {

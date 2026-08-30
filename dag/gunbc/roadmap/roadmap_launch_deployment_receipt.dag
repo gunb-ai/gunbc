@@ -36,10 +36,30 @@ import gunbc.roadmap_launch_deployment_observe {
   TickFreshness, TickFresh, TickStale, TickBeforeDeploy, TickInstantUnparseable, tick_freshness_text,
 }
 
-data roadmap_launch_deployment_receipt_note: String = "THE ONE JOIN THE ROADMAP LAUNCH MVP'S RLM-2 GATE PRODUCES. Every independent read RUNS -- desired revision, plan receipt, apply receipt, dashboard receipt, deployed root tree, release binding, readiness, transition, unit standing, tick standing, footprint, provider preflight, dispatch preflight, the three public routes, the effective principal, the observed host, and the observation window -- and the fact population is TOTAL: each member is a typed standing with its own refusal arms, none is optional, and the verdict fold consults all of them before deciding. The ruling (docs/plans/roadmap-launch-mvp-plan.md, RLM-2 sections 3 and 9) rejected the earlier `Complete | Incomplete { first blocking member }` because it discarded sibling evidence after the first refusal and made diagnosis depend on evaluation order; here `first_blocker` is a presentation projection over a nonempty blocker list, and `further_blockers` is the rest of that list.\n\nDeploymentComplete CANNOT BE AUTHORED. Its `proof` member is a sole_constructor record declared in this module, so no other module can write the literal; the only producer is roadmap_launch_deployment_verdict, which builds the proof exactly when the blocker fold is empty. A witness that wants a Complete verdict must hand the fold a fact population the fold accepts -- which is what the red controls do, one substituted member at a time.\n\nEVERY EQUALITY IS AGAINST THE SUBJECT, not against a sibling fact: R, the candidate tree, the host, the active instance, the four run ids and the service principal are fixed in the subject FIRST (from the operator's inputs and this run's own binding), and each fact is then held to them. Facts are never compared to each other where the subject can stand between them, so a coincidence between two wrong facts cannot green the join."
-
+// THE ONE JOIN THE ROADMAP LAUNCH MVP'S RLM-2 GATE PRODUCES. Every independent read RUNS -- desired
+// revision, plan receipt, apply receipt, dashboard receipt, deployed root tree, release binding,
+// readiness, transition, unit standing, tick standing, footprint, provider preflight, dispatch
+// preflight, the three public routes, the effective principal, the observed host, and the
+// observation window -- and the fact population is TOTAL: each member is a typed standing with its
+// own refusal arms, none is optional, and the verdict fold consults all of them before deciding.
+// The ruling (docs/plans/roadmap-launch-mvp-plan.md, RLM-2 sections 3 and 9) rejected the earlier
+// `Complete | Incomplete { first blocking member }` because it discarded sibling evidence after the
+// first refusal and made diagnosis depend on evaluation order; here `first_blocker` is a
+// presentation projection over a nonempty blocker list, and `further_blockers` is the rest of that
+// list.
+// 
+// DeploymentComplete CANNOT BE AUTHORED. Its `proof` member is a sole_constructor record declared
+// in this module, so no other module can write the literal; the only producer is
+// roadmap_launch_deployment_verdict, which builds the proof exactly when the blocker fold is empty.
+// A witness that wants a Complete verdict must hand the fold a fact population the fold accepts --
+// which is what the red controls do, one substituted member at a time.
+// 
+// EVERY EQUALITY IS AGAINST THE SUBJECT, not against a sibling fact: R, the candidate tree, the
+// host, the active instance, the four run ids and the service principal are fixed in the subject
+// FIRST (from the operator's inputs and this run's own binding), and each fact is then held to
+// them. Facts are never compared to each other where the subject can stand between them, so a
+// coincidence between two wrong facts cannot green the join.
 // ---------------------------------------------------------------- subject
-
 type RoadmapLaunchDeploymentSubject {
   rlm1_merge_commit: String
   rlm1_contract_digest: String
@@ -57,7 +77,6 @@ type RoadmapLaunchDeploymentSubject {
 }
 
 // ---------------------------------------------------------------- facts
-
 type DesiredRevisionFact
   = DesiredRevisionObserved { main_hex: String, desired_hex: String }
   | DesiredRevisionUnobserved { detail: String }
@@ -139,7 +158,6 @@ type RoadmapLaunchDeploymentFacts {
 }
 
 // ---------------------------------------------------------------- blockers
-
 type RoadmapLaunchDeploymentBlocker {
   member: String
   detail: String
@@ -480,7 +498,6 @@ fn roadmap_launch_deployment_blockers(s: RoadmapLaunchDeploymentSubject, f: Road
 }
 
 // ---------------------------------------------------------------- verdict
-
 // THE PROOF IS sole_constructor: only this module can write the literal, and this module writes
 // it in exactly one place -- the arm of roadmap_launch_deployment_verdict where the blocker list is
 // empty. There is no public record literal that authors DeploymentComplete.
@@ -526,7 +543,6 @@ fn verdict_blockers(v: RoadmapLaunchDeploymentVerdict) -> List<RoadmapLaunchDepl
 }
 
 // ---------------------------------------------------------------- rendering
-
 fn subject_json(s: RoadmapLaunchDeploymentSubject) -> JsonValue {
   json_object(members: [
     json_kv(key: "rlm1_merge_commit", value: json_string(s: s.rlm1_merge_commit)),

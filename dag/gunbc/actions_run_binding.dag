@@ -16,8 +16,17 @@ import extdeps.languages.json.parse {
 }
 import gunbc.running_release_identity { release_revision_text_valid }
 
-data actions_run_binding_note: String = "ONE RUN BINDING, READ ONCE PER RUN, CARRIED ON EVERY RECEIPT THE RUN PRODUCES. The Roadmap Launch MVP's RLM-2 transaction is four workflow runs (plan, apply, dashboard deploy, final receipt) that must all have executed at ONE main revision R, in ONE repository, through ONE workflow file. Each run therefore records the four facts the runner supplies about itself -- GITHUB_REPOSITORY, GITHUB_WORKFLOW_REF, GITHUB_RUN_ID, GITHUB_SHA (extdeps.github.actions_environment) -- and every downstream join compares bindings rather than trusting a workflow input. The expected revision is an INDEPENDENT input (RLM_EXPECTED_REVISION, a workflow_dispatch input the operator types), so `run_revision == expected` is a comparison of two origins and can fail; deriving both from the checkout would compare git to itself (gunbc.live_rust_observation live_rust_observation_note). Every absence is its own typed arm: outside Actions the variables are legitimately unset, and a run must refuse to mint a receipt it cannot bind rather than mint one bound to nothing."
-
+// ONE RUN BINDING, READ ONCE PER RUN, CARRIED ON EVERY RECEIPT THE RUN PRODUCES. The Roadmap Launch
+// MVP's RLM-2 transaction is four workflow runs (plan, apply, dashboard deploy, final receipt) that
+// must all have executed at ONE main revision R, in ONE repository, through ONE workflow file. Each
+// run therefore records the four facts the runner supplies about itself -- GITHUB_REPOSITORY,
+// GITHUB_WORKFLOW_REF, GITHUB_RUN_ID, GITHUB_SHA (extdeps.github.actions_environment) -- and every
+// downstream join compares bindings rather than trusting a workflow input. The expected revision is
+// an INDEPENDENT input (RLM_EXPECTED_REVISION, a workflow_dispatch input the operator types), so
+// `run_revision == expected` is a comparison of two origins and can fail; deriving both from the
+// checkout would compare git to itself (gunbc.live_rust_observation live_rust_observation_note).
+// Every absence is its own typed arm: outside Actions the variables are legitimately unset, and a
+// run must refuse to mint a receipt it cannot bind rather than mint one bound to nothing.
 type ActionsRunBinding {
   repository: String
   workflow_ref: String

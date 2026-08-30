@@ -461,8 +461,16 @@ test fn witness_partition_fold_compat_wrapper_not_receipt_path() -> Bool {
   }
 }
 
-
-data c_spelling_safety_witness_note: String = "C-realization spelling controls for review 2026-08-01 finding 1. CompilationUnitId is a branded NonEmptyStr with NO spelling law, so ../peer, a/b, a-backslash-b, embedded CR/LF/NUL and the double-quote character all inhabit it and previously reached .h/.c/.o paths verbatim, with the header path concatenated between the include directive open-quote and close-quote. These controls execute against c_translation_unit_basename (the reversible encoder), not against the brand. Four acceptance axes, all executed: encoding-or-refusal for each hostile codepoint; the cu-one positive control that must stay byte-unchanged; injectivity, proven by escaping the percent marker itself so no unencoded id can collide with an encoded one (two distinct ids can never contend for one .o); and a C-source control proving the rendered include remains exactly one directive with no embedded newline and no premature string termination."
+// C-realization spelling controls for review 2026-08-01 finding 1. CompilationUnitId is a branded
+// NonEmptyStr with NO spelling law, so ../peer, a/b, a-backslash-b, embedded CR/LF/NUL and the
+// double-quote character all inhabit it and previously reached .h/.c/.o paths verbatim, with the
+// header path concatenated between the include directive open-quote and close-quote. These controls
+// execute against c_translation_unit_basename (the reversible encoder), not against the brand. Four
+// acceptance axes, all executed: encoding-or-refusal for each hostile codepoint; the cu-one
+// positive control that must stay byte-unchanged; injectivity, proven by escaping the percent
+// marker itself so no unencoded id can collide with an encoded one (two distinct ids can never
+// contend for one .o); and a C-source control proving the rendered include remains exactly one
+// directive with no embedded newline and no premature string termination.
 
 test fn witness_c_basename_positive_control_unchanged() -> Bool {
   (c_translation_unit_basename(unit_id: witness_unit_one) as String) == "cu-one"
@@ -492,8 +500,6 @@ test fn witness_c_basename_encodes_carriage_return() -> Bool {
 test fn witness_c_basename_encodes_nul() -> Bool {
   (c_translation_unit_basename(unit_id: hostile_nul) as String) == "a%000000b"
 }
-
-
 
 test fn witness_c_basename_kills_parent_directory_segments() -> Bool {
   (c_translation_unit_basename(unit_id: hostile_dot) as String) == "%00002e"
@@ -533,15 +539,21 @@ test fn witness_c_object_path_shares_unit_id_spelling() -> Bool {
     && c_unit_source_path(unit_id: hostile_slash) == "a%00002fb.c"
 }
 
-
-
-
-
-
-
-
-
-data c_spelling_control_expressibility_note: String = "DISSOLVED 2026-08-01. This row previously recorded a coverage boundary: the round-2 review asked for controls over slash, backslash, CR, LF, NUL and double-quote, and CR and NUL could not be witnessed directly because .dag string literals had no numeric-escape form -- backslash-r lexed as literal backslash-then-r, and the backslash-u brace form lexed as its raw characters, both measured. The note carried the dissolve-on trigger: when .dag string literals gain a numeric-escape form, add the direct CR and NUL rows here and delete this note. Main landed Unicode string escapes (#7585) and the trigger fired. The escapes were RE-MEASURED on this head rather than assumed from the commit title: backslash-u{000d} and backslash-u{0000} each yield exactly one character, of codepoint 13 and 0 respectively. So witness_c_basename_encodes_carriage_return and witness_c_basename_encodes_nul are now DIRECT rows above, and both codepoints also join the output-always-safe control. The whole requested hostile set is therefore witnessed against the real encoder, with no argument from escape-branch genericity standing in for any member of it. This row is retained only as the receipt that the boundary was declared, triggered and discharged rather than quietly dropped; it makes no live claim and names no residual gap."
+// DISSOLVED 2026-08-01. This row previously recorded a coverage boundary: the round-2 review asked
+// for controls over slash, backslash, CR, LF, NUL and double-quote, and CR and NUL could not be
+// witnessed directly because .dag string literals had no numeric-escape form -- backslash-r lexed
+// as literal backslash-then-r, and the backslash-u brace form lexed as its raw characters, both
+// measured. The note carried the dissolve-on trigger: when .dag string literals gain a
+// numeric-escape form, add the direct CR and NUL rows here and delete this note. Main landed
+// Unicode string escapes (#7585) and the trigger fired. The escapes were RE-MEASURED on this head
+// rather than assumed from the commit title: backslash-u{000d} and backslash-u{0000} each yield
+// exactly one character, of codepoint 13 and 0 respectively. So
+// witness_c_basename_encodes_carriage_return and witness_c_basename_encodes_nul are now DIRECT rows
+// above, and both codepoints also join the output-always-safe control. The whole requested hostile
+// set is therefore witnessed against the real encoder, with no argument from escape-branch
+// genericity standing in for any member of it. This row is retained only as the receipt that the
+// boundary was declared, triggered and discharged rather than quietly dropped; it makes no live
+// claim and names no residual gap.
 
 test fn witness_c_basename_escape_branch_is_codepoint_generic() -> Bool {
   (c_translation_unit_basename(unit_id: hostile_high_codepoint) as String) == "a%0000e9b"

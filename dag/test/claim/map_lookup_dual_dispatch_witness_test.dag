@@ -1,6 +1,5 @@
 module test.claim.map_lookup_dual_dispatch_witness_test
 
-
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 test fn map_get_method_routes_through_dual_dispatch_chokepoint() -> Bool {
@@ -21,7 +20,11 @@ test fn lookup_builtin_routes_through_dual_dispatch_chokepoint() -> Bool {
   }
 }
 
-data lookup_witness_contract_note: String = "lookup routes through the dual-dispatch chokepoint, which wraps the hit in the Optional coproduct (Present { value } | Absent) — the v1_rt Witness<V> carrier was deleted (v1_rt-witness-diagnostic-carrier-decouple-design.md); lookup now returns Option<V> natively. Matching Present is still the discriminating form — a raw 7 here would mean the bare builtin BYPASSED the chokepoint, and Present/Absent proves the modeled dispatch runs."
+// lookup routes through the dual-dispatch chokepoint, which wraps the hit in the Optional coproduct
+// (Present { value } | Absent) — the v1_rt Witness<V> carrier was deleted
+// (v1_rt-witness-diagnostic-carrier-decouple-design.md); lookup now returns Option<V> natively.
+// Matching Present is still the discriminating form — a raw 7 here would mean the bare builtin
+// BYPASSED the chokepoint, and Present/Absent proves the modeled dispatch runs.
 
 test fn std_graph_build_adjacency_views_evaluates() -> Bool {
   let names = ["a", "b"]

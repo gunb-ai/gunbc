@@ -24,22 +24,21 @@ use bootstrap_stage0_crate_layout_generated::{
 
 /// Bumped from `.v1` when the flat eight-field record split into the two-variant carrier below.
 ///
-/// THE BUMP IS LOAD-BEARING ONLY BECAUSE `read_receipt` COMPARES IT. An earlier revision of this
-/// comment claimed a stale `.v1` receipt "fails to deserialize into the new shape". That was
-/// FALSE, and review caught it: serde ignores unknown fields by default, and a v1 record carries
-/// every field the reader requires plus the removed `fixed_point_equal`, so it parsed cleanly.
-/// The version string was written three times and read zero times -- decoration, not a version.
-/// Two things now make the claim true rather than aspirational: `deny_unknown_fields` on the
-/// carrier, and an explicit equality check in `read_receipt`. Writing a version nobody compares is
-/// the same class of defect as the impersonation this module exists to close -- an artifact
-/// asserting a property that nothing establishes.
+/// THE BUMP IS LOAD-BEARING ONLY BECAUSE `read_receipt` COMPARES IT. An earlier revision claimed a
+/// stale `.v1` receipt "fails to deserialize into the new shape". FALSE, caught in review: serde
+/// ignores unknown fields by default, and a v1 record carries every required field plus the
+/// removed `fixed_point_equal`, so it parsed cleanly. The version string was written three times
+/// and read zero times -- decoration. Two things now make the claim true: `deny_unknown_fields` on
+/// the carrier, and an explicit equality check in `read_receipt`. A version nobody compares is the
+/// same defect class as the impersonation this module closes -- an artifact asserting a property
+/// nothing establishes.
 const RECEIPT_SCHEMA: &str = "gunbc.regen_receipt.v2";
 
 /// Evidence produced by the FIRST regen pass, referenced by the second.
 ///
-/// It carries the `commit_sha` it was measured at so that a consumer READS which tree these facts
-/// describe instead of inferring it from the receipt that quotes them. A reference that did not
-/// name its subject would be the impersonation this type exists to end, wearing better vocabulary.
+/// Carries the `commit_sha` it was measured at so a consumer READS which tree these facts describe
+/// instead of inferring it from the quoting receipt. A reference not naming its subject would be
+/// the impersonation this type ends, wearing better vocabulary.
 #[derive(Debug, Serialize, serde::Deserialize)]
 pub struct PriorReceiptRef {
     pub commit_sha: String,
@@ -52,20 +51,18 @@ pub struct PriorReceiptRef {
 /// A RECEIPT MAY REFERENCE PRIOR EVIDENCE BUT MAY NOT IMPERSONATE PRIOR EVIDENCE AS SOMETHING IT
 /// MEASURED ITSELF (operator ruling, 2026-08-20).
 ///
-/// This was one flat eight-field record, which forced the second pass to populate fields it had
-/// not measured. The only source available was the receipt the first pass left on disk, so four of
-/// six were copied through verbatim: `committed_generated_digest`, `first_generation_equal`,
-/// `changed_paths`, `candidate_artifact`. The product is stamped with the SECOND pass `commit_sha`
-/// while carrying the FIRST pass answers -- internally consistent, schema-valid, and silent about
-/// which tree four of its fields describe. Validating stayed impossible because nothing in the
-/// artifact recorded the provenance that would have been validated.
+/// This was one flat eight-field record, forcing the second pass to populate fields it had not
+/// measured; the only source was the first pass's on-disk receipt, so four of six were copied
+/// verbatim: `committed_generated_digest`, `first_generation_equal`, `changed_paths`,
+/// `candidate_artifact`. The product was stamped with the SECOND pass `commit_sha` while carrying
+/// FIRST pass answers -- consistent, schema-valid, silent about which tree four fields describe,
+/// and unvalidatable because nothing recorded the provenance to validate.
 ///
 /// The split makes the fabrication UNWRITABLE rather than detectable: `FixedPoint` has no
-/// `first_generation_equal` field to fill in, so there is no value to copy and no check to pass
-/// (DESIGN 4b structural impossibility, one rung above the validation that would otherwise sit
-/// here). Computing all six in the second pass was the alternative and is worse -- it would make
-/// pass two re-derive `first_generation_equal` against the committed tree, which is pass one's
-/// question, fusing two authorities into one row (DESIGN 3).
+/// `first_generation_equal` field, so there is no value to copy and no check to pass (DESIGN 4b
+/// structural impossibility, one rung above validation). Computing all six in the second pass is
+/// worse -- pass two would re-derive `first_generation_equal` against the committed tree, pass
+/// one's question, fusing two authorities into one row (DESIGN 3).
 ///
 /// Authority: `gunbc.regen_receipt`.
 #[derive(Debug, Serialize, serde::Deserialize)]
@@ -84,32 +81,29 @@ pub enum RegenReceipt {
     },
     /// A POPULATION REFUSAL HAS NO MEASUREMENT, AND THIS VARIANT HAS NOWHERE TO WRITE ONE.
     ///
-    /// The refusal happens BEFORE any content comparison, so there is no first generation to have
-    /// a digest of and no comparison to have an answer to. Written as a `FirstGeneration` receipt
-    /// this forced three fabrications into a persisted artifact: two `refused:population` strings
-    /// standing in digest positions, and `first_generation_equal: false` standing where "not
-    /// asked" belonged. The Bool was the load-bearing one, because unlike the string sentinels it
-    /// is INDISTINGUISHABLE from a real answer -- `false` is exactly what an honest unequal
-    /// comparison writes.
+    /// The refusal happens BEFORE any content comparison, so there is no first generation to
+    /// digest and no comparison to answer. Written as a `FirstGeneration` receipt this forced
+    /// three fabrications into a persisted artifact: two `refused:population` strings in digest
+    /// positions, and `first_generation_equal: false` where "not asked" belonged. The Bool was
+    /// load-bearing: unlike the string sentinels it is INDISTINGUISHABLE from a real answer --
+    /// `false` is what an honest unequal comparison writes.
     ///
-    /// It was not merely misleading in place, it CROSSED THE PROCESS BOUNDARY. The receipt file is
-    /// the only carrier between the two passes, `read_receipt` returned the fabricated `false` as
-    /// a `PriorMeasurement`, `PriorReceiptRef` copied it into the fixed-point receipt, and
-    /// `claim_executor` printed it as `referenced_first_generation_equal=false`. A standalone
-    /// `--required-regen-fixed-point` at the same commit passes the cross-tree guard precisely
-    /// BECAUSE the refusal happened at this commit, so the guard admits it rather than catching
-    /// it. The run still reds -- pass 2's real digest cannot equal `refused:population` -- so this
-    /// was diagnostic harm, not fail-open: the operator was told the first generation compared
-    /// unequal when it never compared at all.
+    /// It CROSSED THE PROCESS BOUNDARY: the receipt file is the only carrier between the passes,
+    /// `read_receipt` returned the fabricated `false` as a `PriorMeasurement`, `PriorReceiptRef`
+    /// copied it into the fixed-point receipt, and `claim_executor` printed
+    /// `referenced_first_generation_equal=false`. A standalone `--required-regen-fixed-point` at
+    /// the same commit passes the cross-tree guard precisely BECAUSE the refusal happened at this
+    /// commit. The run still reds -- pass 2's real digest cannot equal `refused:population` -- so
+    /// this was diagnostic harm, not fail-open: the operator was told the first generation
+    /// compared unequal when it never compared.
     ///
-    /// "Not asked" was already modelled correctly THREE times in this same file --
+    /// "Not asked" was already modelled correctly THREE times in this file --
     /// `FirstGeneration::NotMeasured`, the `first_generation_equal()` accessor's documented
-    /// `Option`, and `fixed_point_equal()`'s mirror of it -- so the Bool was a fourth
-    /// representation disagreeing with three correct neighbours, not a missing state (DESIGN §3).
-    /// The fix follows the move this file already made when the flat eight-field record split:
-    /// the variant has no `first_generation_equal` field and no digest fields, so the fabrication
-    /// is UNWRITABLE rather than detectable (DESIGN §4b, structural impossibility). What it
-    /// carries instead is the one thing a refusal actually knows -- why it refused.
+    /// `Option`, and `fixed_point_equal()`'s mirror -- so the Bool was a fourth representation
+    /// disagreeing with three correct neighbours, not a missing state (DESIGN §3). The fix repeats
+    /// the eight-field split's move: the variant has no `first_generation_equal` and no digest
+    /// fields, so the fabrication is UNWRITABLE (DESIGN §4b, structural impossibility). It carries
+    /// the one thing a refusal knows -- why it refused.
     #[serde(rename = "refused")]
     Refused {
         schema: String,
@@ -180,17 +174,15 @@ impl RegenReceipt {
     /// The referenced first-pass evidence, present only on `FixedPoint`.
     /// The digest of the tree THIS pass emitted.
     ///
-    /// `Some` exactly where a candidate digest was measured. This accessor was TOTAL while the
-    /// only two variants both measured one; `Refused` measures none, so the argument that made it
-    /// total no longer holds and the honest signature follows the same rule its Option-returning
-    /// siblings already state -- Option because the other variant genuinely does not measure that
-    /// fact. Returning a sentinel string here instead would put the fabrication straight back,
-    /// one accessor lower than where it was removed.
+    /// `Some` exactly where a candidate digest was measured. This accessor was TOTAL while both
+    /// variants measured one; `Refused` measures none, so it follows the rule its Option-returning
+    /// siblings state. A sentinel string here would put the fabrication back one accessor lower
+    /// than where it was removed.
     ///
-    /// Its consumer is the composed `--required-ci` run, which hands pass 1's digest to the
-    /// fixed-point pass IN MEMORY rather than having it re-read the receipt file the previous
-    /// process wrote. `run_required_regen_fixed_point` has always taken `pass1_digest:
-    /// Option<String>`; before the phases shared a process there was no way to supply it.
+    /// Consumer: the composed `--required-ci` run, which hands pass 1's digest to the fixed-point
+    /// pass IN MEMORY rather than re-reading the previous process's receipt file.
+    /// `run_required_regen_fixed_point` has always taken `pass1_digest: Option<String>`; before
+    /// the phases shared a process there was no way to supply it.
     pub fn candidate_generated_digest(&self) -> Option<&str> {
         match self {
             RegenReceipt::FirstGeneration {
@@ -205,9 +197,8 @@ impl RegenReceipt {
         }
     }
 
-    /// Why the pass refused, present only on `Refused`. The refusal reason is the one fact a
-    /// refusal genuinely measured, and carrying it on the receipt is what lets the next pass
-    /// refuse with the ORIGINAL cause instead of inventing a comparison result to stand for it.
+    /// Why the pass refused, present only on `Refused` -- the one fact a refusal measured, carried
+    /// so the next pass refuses with the ORIGINAL cause instead of an invented comparison result.
     pub fn refusal_reason(&self) -> Option<&str> {
         match self {
             RegenReceipt::FirstGeneration { .. } => None,
@@ -232,16 +223,14 @@ pub struct RequiredRegenOutcome {
     /// WHETHER PASS ONE ACTUALLY EMITTED, kept OFF the receipt's digest fields on purpose.
     ///
     /// A population refusal happens before any content comparison, so there is no first
-    /// generation to have a digest OF. This field carries that distinction for the IN-PROCESS
-    /// handoff; `RegenReceipt::Refused` now carries it across the process boundary, so neither
-    /// route has a digest position for a refusal to fill. The receipt previously did have one and
-    /// filled it with the sentinel `refused:population`, which is why this field was introduced:
-    /// handing the receipt to the fixed-point phase would have compared a real pass-two digest
-    /// against sentinel prose and reported a determinism failure nobody measured -- a fabricated
-    /// plausible output (DESIGN §5), and a convincing one, since the message names two digests
-    /// and looks exactly like a genuine mismatch. Both carriers now model it; this one is not
-    /// redundant with the receipt, because the in-process handoff must not have to go through a
-    /// file at all.
+    /// generation to digest. This field carries that for the IN-PROCESS handoff;
+    /// `RegenReceipt::Refused` carries it across the process boundary, so neither route has a
+    /// digest position for a refusal to fill. The receipt previously filled one with the sentinel
+    /// `refused:population`, which is why this field exists: handing that receipt to the
+    /// fixed-point phase would compare a real pass-two digest against sentinel prose and report a
+    /// determinism failure nobody measured -- a fabricated plausible output (DESIGN §5), convincing
+    /// because it names two digests. Not redundant with the receipt: the in-process handoff must
+    /// not go through a file.
     pub first_generation: FirstGeneration,
 }
 
@@ -272,16 +261,15 @@ pub fn run_required_regen(
     let stage0_src = workspace.join("src/v1/stage0/src");
     let run_started = Instant::now();
 
-    // ADMISSION, AND IT IS THE FIRST THING THIS PHASE DOES. Every normalize below needs the
-    // formatter, so an absent one is decidable here -- before an emit, a digest or a comparison
-    // has been paid for. It used to be discovered at the first spawn, ~50 minutes in.
+    // ADMISSION, FIRST. Every normalize below needs the formatter, so an absent one is decidable
+    // here, before any emit, digest or comparison is paid for; it used to surface at the first
+    // spawn, ~50 minutes in.
     let formatter = ResolvedFormatter::admit()?;
 
     let commit_sha = git_head_sha(&workspace)?;
-    // PHASE MARKS. Every boundary below is stamped through `v1_rt::trace_mark`, the same
-    // instrument compile.dag already uses for its stages, so `--regen-round-cost` reads one
-    // ledger for the whole round rather than a second set of clocks kept beside the first.
-    // The labels are `gunbc.regen_round_cost` `regen_round_phase_label`, verbatim.
+    // PHASE MARKS. Every boundary below is stamped through `v1_rt::trace_mark`, the instrument
+    // compile.dag uses for its stages, so `--regen-round-cost` reads one ledger for the round.
+    // Labels: `gunbc.regen_round_cost` `regen_round_phase_label`, verbatim.
     v1_rt::trace_mark("regen.corpus_load.begin".to_string());
     let sources = super::regen_input_sources(&workspace)?;
     v1_rt::trace_mark("regen.corpus_load.done".to_string());
@@ -290,33 +278,29 @@ pub fn run_required_regen(
 
     // PRODUCTION, THEN ADJUDICATION -- and the order is the whole repair.
     //
-    // Every refusal below used to return BEFORE the candidate tree was written, so the run that
-    // refuses was exactly the run that destroyed the artifact needed to close it. The population
-    // arm is not a hypothetical: adding a module to the v1 seed closure emits a mirror the
-    // committed tree does not have, which is `emitted_not_committed` by construction on that
-    // module's first commit, and the author's only route to the file they are being told to
-    // commit is this tree.
+    // Every refusal below used to return BEFORE the candidate tree was written, so the refusing
+    // run destroyed the artifact needed to close it. The population arm is real: adding a module
+    // to the v1 seed closure emits a mirror the committed tree lacks -- `emitted_not_committed` by
+    // construction on that module's first commit -- and this tree is the author's only route to
+    // the file they are told to commit.
     //
-    // THIS IS WHY THE SHARED MEASUREMENT IS SPLIT IN TWO rather than called whole. The extraction
-    // main landed is right -- one producer of the drift fact, shared by the drift gate, the
-    // behavioural receipt and this path -- but it fused emit with adjudication, and a fused
-    // measurement can only refuse before anything is written. `emit_generated_surface` and
-    // `adjudicate_generated_surface` are the two halves; `measure_generated_surface` is still
-    // their composition and still the single entry for every caller that wants the whole answer,
-    // so nothing gained a second producer. This path is the one caller that needs to act BETWEEN
-    // them.
+    // THIS IS WHY THE SHARED MEASUREMENT IS SPLIT IN TWO. The extraction main landed is right --
+    // one producer of the drift fact for the drift gate, the behavioural receipt and this path --
+    // but it fused emit with adjudication, so it could only refuse before anything was written.
+    // `emit_generated_surface` and `adjudicate_generated_surface` are the halves;
+    // `measure_generated_surface` is still their composition and the single entry for every caller
+    // wanting the whole answer, so nothing gained a second producer. This path alone acts BETWEEN.
     //
-    // Writing first is not a relaxation. The gate refuses exactly the same populations it refused
-    // before, with the same typed causes; what changes is that the emitter's product survives the
-    // refusal, because it is emit's output and not a reward for agreeing with the committed tree.
-    // Authority for the ordering: `v2.workflow.required_regen` `required_regen_run`, whose verdict
-    // arms cannot be spelled without the tree they judged.
+    // Writing first is not a relaxation: the gate refuses the same populations with the same typed
+    // causes; the emitter's product merely survives the refusal, being emit's output and not a
+    // reward for agreeing with the committed tree. Authority for the ordering:
+    // `v2.workflow.required_regen` `required_regen_run`, whose verdict arms cannot be spelled
+    // without the tree they judged.
     let (emitted, emitted_basenames) = match emit_generated_surface(&sources)? {
-        // EMIT PRODUCED NOTHING IS NOT A VERDICT ABOUT A TREE. Writing a receipt here would name a
-        // `candidate_artifact` no pass had written, which is the impersonation the receipt split
-        // above exists to end, one field over. `CandidateTreeUnproduced` in
-        // `v2.workflow.required_regen` is the modeled arm and it carries no tree; the host
-        // spelling of an outcome with no tree and no verdict is a refusal of the run itself.
+        // EMIT PRODUCED NOTHING IS NOT A VERDICT ABOUT A TREE. A receipt here would name a
+        // `candidate_artifact` no pass wrote -- the impersonation the receipt split ends, one field
+        // over. `CandidateTreeUnproduced` in `v2.workflow.required_regen` is the modeled arm and
+        // carries no tree; the host spelling of no tree and no verdict is a refusal of the run.
         GeneratedSurfaceEmit::EmitRefused { reason } => {
             return Err(format!(
                 "{reason} — no candidate tree produced, nothing to compare"
@@ -337,11 +321,10 @@ pub fn run_required_regen(
     write_emitted_tree(&formatter, &fresh_src, &emitted)?;
     copy_hand_maintained_support(&stage0_src, &fresh_src)?;
     v1_rt::trace_mark("regen.mirror_write.done".to_string());
-    // Verified against what EMIT produced, not against what is committed. Those two populations
-    // are equal on a clean tree and differ in precisely the case this ordering exists to serve, so
-    // checking the committed population here would re-impose the refusal one line after the write
-    // and fail the producer on the run that needs it. The invariant a producer owes is that its
-    // own product landed whole.
+    // Verified against what EMIT produced, not what is committed: the two populations are equal on
+    // a clean tree and differ in precisely the case this ordering serves, so checking the committed
+    // population here would re-impose the refusal one line after the write. A producer owes only
+    // that its own product landed whole.
     v1_rt::trace_mark("regen.candidate_verify.begin".to_string());
     verify_candidate_tree(&fresh_src, &emitted_basenames)?;
     v1_rt::trace_mark("regen.candidate_verify.done".to_string());
@@ -381,9 +364,8 @@ pub fn run_required_regen(
     let changed_paths = sync.drifted_paths.clone();
 
     // Every field here was measured by THIS pass against THIS tree. The old shape also carried
-    // `fixed_point_equal: false`, which was not a measurement at all -- the first pass never asks
-    // that question, so a literal `false` asserted a negative answer where the honest content was
-    // "not asked". The variant has no such field, so the placeholder is now unwritable.
+    // `fixed_point_equal: false` -- not a measurement, since the first pass never asks; a literal
+    // `false` asserted a negative where "not asked" belonged. The variant has no such field.
     let first_generation = FirstGeneration::Measured(candidate_digest.clone());
     let receipt = RegenReceipt::FirstGeneration {
         schema: RECEIPT_SCHEMA.to_string(),
@@ -454,25 +436,23 @@ pub fn run_required_regen(
 
 /// Reconcile the two available answers to "what did the first generation emit".
 ///
-/// TWO SOURCES FOR ONE FACT, RECONCILED BY REFUSAL RATHER THAN BY PRECEDENCE. The receipt file
-/// is read unconditionally — the cross-tree refusal and the `PriorReceiptRef` are provenance
-/// facts only the file carries — so whenever a caller ALSO supplies the digest in memory it
-/// exists twice. The previous form was `pass1_digest.unwrap_or(prior)`, which silently preferred
-/// the argument: two representations of one fact with a precedence rule, so a disagreement
-/// decided nothing and reported nothing (DESIGN §3).
+/// TWO SOURCES FOR ONE FACT, RECONCILED BY REFUSAL RATHER THAN BY PRECEDENCE. The receipt file is
+/// read unconditionally — the cross-tree refusal and the `PriorReceiptRef` are provenance facts
+/// only the file carries — so a caller ALSO supplying the digest in memory makes it exist twice.
+/// The previous `pass1_digest.unwrap_or(prior)` silently preferred the argument: two
+/// representations with a precedence rule, so a disagreement decided and reported nothing
+/// (DESIGN §3).
 ///
-/// WHO MADE IT REACHABLE, stated because it changes whose defect this is: until the phases
-/// shared a process every caller passed `None`, so the file was the only source. The composed
-/// `--required-ci` run is what supplies the argument, so the change that creates the second
-/// source is the change that closes it.
+/// WHO MADE IT REACHABLE: until the phases shared a process every caller passed `None`, so the
+/// file was the only source. The composed `--required-ci` run supplies the argument, so the change
+/// creating the second source is the change closing it.
 ///
-/// AND WHAT IT IS *NOT*: this does not guard an active defect on the composed path. There,
+/// WHAT IT IS *NOT*: not a guard on an active defect on the composed path, where
 /// `run_required_regen` writes the receipt and returns the same digest in one pass, so the two
-/// agree by construction and this arm is unreachable. It guards the FUNCTION's contract, for a
-/// caller that supplies a digest against a receipt written by some other run at this commit —
-/// a rebuild between passes, a mutated `target/`, or a first pass that refused after writing.
-/// Extracted from the call site precisely so that claim can be tested without running a
-/// seven-minute emit to reach it.
+/// agree by construction. It guards the FUNCTION's contract for a caller supplying a digest
+/// against a receipt written by some other run at this commit — a rebuild between passes, a
+/// mutated `target/`, a first pass that refused after writing. Extracted from the call site so
+/// that claim is testable without a seven-minute emit.
 fn reconcile_pass1_digest(supplied: Option<String>, prior: &str) -> Result<String, String> {
     match supplied {
         Some(supplied) if supplied != prior => Err(format!(
@@ -497,19 +477,17 @@ pub fn run_required_regen_fixed_point(
     let prior = read_receipt(&receipt_path)?;
 
     // THE CROSS-TREE REFUSAL. The two passes are separate process invocations sharing one file
-    // under `target/`, and nothing requires the first to have run in this process, at this commit,
-    // or at all. Without this arm a developer iterating on the determinism half alone -- the
-    // ordinary thing to do -- over a `target/` warm from an earlier commit produces a receipt
-    // stamped with TODAY's `commit_sha` carrying YESTERDAY's `changed_paths` and
-    // `first_generation_equal`. In CI the arm is currently unreachable because actions/checkout's
-    // default clean removes the ignored `target/` each run (measured: two consecutive main runs
-    // each compiled 105 crates starting at proc-macro2, where a warm tree compiles zero) -- but
-    // that is a property of a checkout default nobody declared, one cache-reuse change from live
-    // on a required path.
+    // under `target/`; nothing requires the first to have run in this process, at this commit, or
+    // at all. Without this arm a developer iterating on the determinism half over a `target/` warm
+    // from an earlier commit produces a receipt stamped with TODAY's `commit_sha` carrying
+    // YESTERDAY's `changed_paths` and `first_generation_equal`. In CI the arm is unreachable
+    // because actions/checkout's default clean removes the ignored `target/` each run (measured:
+    // two consecutive main runs each compiled 105 crates starting at proc-macro2, where a warm
+    // tree compiles zero) -- a checkout default nobody declared, one cache-reuse change from live.
     //
-    // It refuses rather than recomputing: silently re-running the first pass here would fuse the
-    // two authorities, and silently proceeding is the fabrication. The `PriorReceiptRef` shape
-    // makes the impersonation unwritable; this makes referencing the WRONG tree loud.
+    // It refuses rather than recomputing: re-running the first pass here would fuse the two
+    // authorities, and proceeding is the fabrication. `PriorReceiptRef` makes the impersonation
+    // unwritable; this makes referencing the WRONG tree loud.
     if prior.commit_sha != commit_sha {
         return Err(format!(
             "refusal: prior regen receipt was measured at commit {} but HEAD is {} -- the \
@@ -539,10 +517,9 @@ pub fn run_required_regen_fixed_point(
     let fixed_point_equal = pass1 == pass2;
 
     // `commit_sha` is what THIS pass ran against; `prior` names the tree its referenced evidence
-    // came from. They are checked for equality above and a mismatch refuses, so a receipt reaching
-    // this point never quotes another tree -- but the field is carried regardless, because a
-    // reference whose subject is only guaranteed by an upstream check is one refactor away from
-    // being a reference that does not name its subject.
+    // came from. Equality is checked above and a mismatch refuses, so no receipt here quotes
+    // another tree -- but the field is carried regardless: a subject guaranteed only by an
+    // upstream check is one refactor from a reference that does not name its subject.
     let receipt = RegenReceipt::FixedPoint {
         schema: RECEIPT_SCHEMA.to_string(),
         commit_sha,
@@ -580,24 +557,21 @@ pub fn run_required_regen_fixed_point(
 
 /// The emit-and-compare sequence, performed ONCE and in ONE place.
 ///
-/// This exists because an earlier revision of this file had two producers of a single fact —
-/// which mirrors drifted. `measure_generated_drift` re-typed the same five calls that
-/// `run_required_regen` performs, and nothing kept the copies in step. The receipt is on the
-/// record: #8618 repaired a defect INSIDE `compare_generated_surfaces` (the committed side was
-/// being normalized, so the comparison was `normalize(normalize(x))` against `normalize(x)` — a
-/// false-positive drift with no reachable green). A repair landing in one of two copies of this
-/// sequence leaves the other answering the old way, and the copies agreeing on the day they are
-/// written is exactly what makes the duplication easy to leave in place.
+/// An earlier revision had two producers of one fact — which mirrors drifted:
+/// `measure_generated_drift` re-typed the five calls `run_required_regen` performs, and nothing
+/// kept them in step. On record: #8618 repaired a defect INSIDE `compare_generated_surfaces` (the
+/// committed side was normalized, so the comparison was `normalize(normalize(x))` against
+/// `normalize(x)` — a false-positive drift with no reachable green). A repair in one copy leaves
+/// the other answering the old way; copies agreeing on the day they are written is what makes the
+/// duplication easy to leave.
 ///
-/// The two callers genuinely differ, but they differ in their FAILURE POLICY, not in the
-/// measurement: `run_required_regen` routes a refusal to `regen_refusal_outcome`, which writes a
-/// receipt and returns `Ok` carrying failures, while the drift gate wants `Err`. So the refusal
-/// is returned as a value and each caller applies its own policy — one `match` at the call site
-/// rather than a second copy of the five calls above it.
+/// The callers differ in FAILURE POLICY, not measurement: `run_required_regen` routes a refusal to
+/// `regen_refusal_outcome`, which writes a receipt and returns `Ok` carrying failures; the drift
+/// gate wants `Err`. So the refusal is returned as a value and each caller applies its policy —
+/// one `match` at the call site, not a second copy of the five calls.
 enum GeneratedSurfaceMeasured {
     /// The comparison was taken. `emitted` and `committed` are returned because the regen path
-    /// needs them for the candidate tree and its digests, and recomputing them would mean running
-    /// the whole emit twice.
+    /// needs them for the candidate tree and its digests; recomputing means emitting twice.
     Measured {
         emitted: HashMap<String, String>,
         committed: Vec<String>,
@@ -613,9 +587,9 @@ enum GeneratedSurfaceMeasured {
 
 /// What the emitter PRODUCED, before anything has been compared to it.
 ///
-/// The half of the measurement that exists on its own because one caller must act between the two:
-/// `run_required_regen` writes the candidate tree here, so that a later adjudication refusal
-/// leaves the author holding the mirror it tells them to commit instead of destroying it.
+/// Exists on its own because one caller must act between the halves: `run_required_regen` writes
+/// the candidate tree here, so a later adjudication refusal leaves the author holding the mirror
+/// it tells them to commit.
 enum GeneratedSurfaceEmit {
     Emitted {
         emitted: HashMap<String, String>,
@@ -669,10 +643,9 @@ fn adjudicate_generated_surface(
 
 /// THE COMPOSITION, and still the single entry for every caller that wants the whole answer.
 ///
-/// Splitting the two halves above did not create a second producer of anything: emit happens in
-/// exactly one place, adjudication in exactly one place, and this function is their sequence. The
-/// drift gate and the behavioural receipt call it unchanged; only the regen path, which has to
-/// write the candidate BETWEEN them, reaches for the halves.
+/// The split created no second producer: emit happens in one place, adjudication in one, and this
+/// is their sequence. The drift gate and behavioural receipt call it unchanged; only the regen
+/// path, which writes the candidate BETWEEN them, reaches for the halves.
 fn measure_generated_surface(
     formatter: &ResolvedFormatter,
     sources: &[(String, String)],
@@ -704,18 +677,16 @@ fn measure_generated_surface(
 
 /// The emitted generated surface, keyed by basename.
 ///
-/// Routed through the SAME `measure_generated_surface` the drift gate and the regen path use, so
-/// the bytes a behavioural receipt compiles are the bytes the drift gate compared. A second emit
-/// here would be a second producer of the candidate itself -- the one fact a receipt absolutely
-/// cannot afford to have two of.
+/// Routed through the SAME `measure_generated_surface` the drift gate and regen path use, so the
+/// bytes a behavioural receipt compiles are the bytes the drift gate compared; a second emit here
+/// would be a second producer of the candidate itself.
 pub fn emitted_generated_sources() -> Result<HashMap<String, String>, String> {
     let workspace = workspace_root();
     let stage0_src = workspace.join("src/v1/stage0/src");
-    // A THIRD ADMISSION SITE, AND THE PARAMETER IS WHAT FOUND IT. This entry serves the
-    // behavioural receipt rather than the regen phase, and reading the code for "who spawns
-    // rustfmt" would not have named it -- it is three calls above the spawn. Threading the
-    // resolved formatter as an argument made the omission a compile error instead of a fourth
-    // way to discover an absent formatter fifty minutes in.
+    // A THIRD ADMISSION SITE, FOUND BY THE PARAMETER. This entry serves the behavioural receipt,
+    // three calls above the rustfmt spawn, so reading for "who spawns rustfmt" would not name it.
+    // Threading the resolved formatter as an argument made the omission a compile error instead
+    // of a fourth way to discover an absent formatter fifty minutes in.
     let formatter = ResolvedFormatter::admit()?.with_normalize_cache(&workspace)?;
     let sources = super::regen_input_sources(&workspace)?;
     let emitted = match measure_generated_surface(&formatter, &sources, &stage0_src)? {
@@ -724,15 +695,13 @@ pub fn emitted_generated_sources() -> Result<HashMap<String, String>, String> {
     };
     // KEYED BY BASENAME, and the conversion happens HERE rather than at the call site.
     //
-    // Emit keys carry a `src/` prefix; everything that joins against a committed mirror keys on
-    // `file_name()`. `generated_basenames_from_emit` already carries the warning that comparing
-    // the two key spaces "made every file mismatch in both directions" -- and a caller of this
-    // function walked straight into it anyway, looking up `std_pareto.rs` in a map keyed by emit
-    // path and getting nothing. It refused rather than reporting equivalence, which is the design
-    // working, but the refusal was about the key space rather than about the candidate.
-    //
-    // Returning the raw map invites that mistake from every future caller. Doing the derivation
-    // once, through the same `emit_path_basename` the population census uses, removes it.
+    // Emit keys carry a `src/` prefix; everything joining against a committed mirror keys on
+    // `file_name()`. `generated_basenames_from_emit` already warns that comparing the two key
+    // spaces "made every file mismatch in both directions" -- and a caller walked into it anyway,
+    // looking up `std_pareto.rs` in a map keyed by emit path and getting nothing. It refused
+    // rather than reporting equivalence, but about the key space, not the candidate. Returning the
+    // raw map invites that from every caller; deriving once through the same `emit_path_basename`
+    // the population census uses removes it.
     let mut out: HashMap<String, String> = HashMap::new();
     for (path, content) in emitted {
         if !path.ends_with(".rs") || is_hand_maintained_path(&path) {
@@ -740,8 +709,7 @@ pub fn emitted_generated_sources() -> Result<HashMap<String, String>, String> {
         }
         let base = emit_path_basename(&path).to_string();
         // A collision would silently drop one candidate and compare the wrong bytes. The flat
-        // generated surface makes basenames unique, so a duplicate means that assumption has
-        // stopped holding, and a receipt built on a stale assumption is worse than no receipt.
+        // generated surface makes basenames unique; a duplicate means that assumption broke.
         if let Some(prior) = out.insert(base.clone(), content) {
             let _ = prior;
             return Err(format!(
@@ -761,9 +729,8 @@ struct SyncReport {
 struct HandVerifyReport {
     unverifiable: Vec<(String, String)>,
     /// Declared in `EMITTER_PRODUCED_DIVERGENT_STAGE0_FILES` and measured divergent: the rung
-    /// drop holding as declared. Reported and counted, never a failure -- that is what "declared"
-    /// buys, and the count is the whole point: a suppression nobody counts has a frequency of zero
-    /// by construction and can never rank for repair.
+    /// drop holding as declared. Reported and counted, never a failure -- a suppression nobody
+    /// counts has frequency zero by construction and never ranks for repair.
     declared_divergent: Vec<String>,
     /// Emitted, divergent, and NOT declared. A failure: a new divergence cannot be hidden by
     /// adding a basename to the exclusion list, because the exclusion list is not the authority
@@ -784,10 +751,9 @@ fn is_declared_divergent(file_name: &str) -> bool {
 }
 
 /// ONE READ OF THE CLOSURE, SUPPLIED BY THE CALLER. This used to call `regen_input_sources`
-/// itself, so every regen walked and read the corpus twice -- once for the authority digest
-/// and once here -- and the receipt priced the second walk at a quarter of the first phase
-/// (`regen.corpus_reload`, measured 2026-08-30: 24 s on srv1, 17 s on BuildBuddy). The
-/// sources are one fact; the caller reads them once and both consumers take that one value.
+/// itself, so every regen read the corpus twice -- authority digest and here -- and the receipt
+/// priced the second walk at a quarter of the first phase (`regen.corpus_reload`, measured
+/// 2026-08-30: 24 s on srv1, 17 s on BuildBuddy). The caller reads once; both consumers share it.
 fn compile_stage0(sources: &[(String, String)]) -> Result<HashMap<String, String>, String> {
     let source_files: Vec<Rc<SourceFile>> = sources
         .iter()
@@ -814,22 +780,19 @@ fn compile_stage0(sources: &[(String, String)]) -> Result<HashMap<String, String
 // ONE AUTHORITY FOR "WHAT THE REGEN COMPARES", read from both sides.
 //
 // `generated_basenames_from_emit` and `committed_generated_basenames` answer the same question
-// about two different populations -- the emit and the committed tree -- and each carried its own
-// copy of the membership rule. That is the fork this whole lane keeps finding: two readers of one
-// fact, which agree until they do not, and here they sat inside the very file whose job is to
-// detect that class. They now share this predicate, so a file cannot be compared on one side and
-// skipped on the other.
+// about two populations -- the emit and the committed tree -- and each carried its own copy of the
+// membership rule: two readers of one fact, inside the very file whose job is to detect that
+// class. They now share this predicate, so a file cannot be compared on one side and skipped on
+// the other.
 //
-// THE EMITTED-POPULATION MANIFEST NEEDS NO EXCEPTION HERE, AND THAT IS BY CONSTRUCTION RATHER
-// THAN BY LUCK. `emitted_population.rs` (v1.compiler.emit_rust, `emit_emitted_population_manifest`)
-// is the emitter's declaration of what it produced, and it is emitted as a `.rs` of comment lines
-// precisely so that this rule already admits it: it enters the compared population, the drift
-// comparison, the tree digest and candidate verification with nothing named and nothing added.
-// An earlier revision made it a `.txt` and named it in this predicate as an exception. That was
-// refused by execution, not by review -- every compared member is rustfmt-normalized before its
-// digest is taken, so the `.txt` failed to parse as Rust ("expected one of `!` or `::`, found
-// `.`"). The refusal was the right one: the compared population is Rust-shaped end to end, and an
-// artifact that wants its gating has to be Rust.
+// THE EMITTED-POPULATION MANIFEST NEEDS NO EXCEPTION HERE, BY CONSTRUCTION. `emitted_population.rs`
+// (v1.compiler.emit_rust, `emit_emitted_population_manifest`) is the emitter's declaration of what
+// it produced, emitted as a `.rs` of comment lines precisely so this rule admits it: it enters the
+// compared population, drift comparison, tree digest and candidate verification with nothing
+// added. An earlier revision made it a `.txt` named here as an exception; execution refused it --
+// every compared member is rustfmt-normalized before its digest, so the `.txt` failed to parse as
+// Rust ("expected one of `!` or `::`, found `.`"). Rightly: the compared population is Rust-shaped
+// end to end, and an artifact wanting its gating has to be Rust.
 fn is_compared_generated_basename(basename: &str) -> bool {
     basename.ends_with(".rs")
 }
@@ -894,26 +857,24 @@ fn committed_generated_basenames(stage0_src: &Path) -> Result<Vec<String>, Strin
 /// The only seam where `HAND_MAINTAINED_STAGE0_DIRS` reaches the population comparison, and it
 /// CLASSIFIES a refusal rather than excluding anything from one.
 ///
-/// Both compared populations key on basename, and the committed walk enumerates only the top level
-/// of the stage0 crate, so a file living inside a hand-maintained DIRECTORY is invisible to it. An
-/// emitted basename equal to one of those files therefore lands in `emitted_not_committed`, where
-/// the two remedies on offer -- install the produced mirror, or investigate an emitter that
-/// invented a surface -- BOTH destroy hand-authored code: installing overwrites it with generated
-/// bytes, deleting removes it. This map lets that population be named under its own cause with the
-/// remedy that actually applies (de-collide the module name).
+/// Both compared populations key on basename, and the committed walk enumerates only the stage0
+/// crate's top level, so a file inside a hand-maintained DIRECTORY is invisible to it. An emitted
+/// basename equal to one of those files lands in `emitted_not_committed`, whose two remedies --
+/// install the produced mirror, or investigate an emitter that invented a surface -- BOTH destroy
+/// hand-authored code (installing overwrites it, deleting removes it). This map names that
+/// population under its own cause with the remedy that applies (de-collide the module name).
 ///
-/// IT DOES NOT EXCLUDE, AND THAT IS THE WHOLE DESIGN. Teaching `is_hand_maintained_path` about the
-/// directory list would drop the colliding path out of the compared population entirely, which
-/// silently stops comparing a genuinely generated surface -- a wrong refusal traded for no
-/// refusal. Same failure as making the committed walk descend, entered from the other side.
+/// IT DOES NOT EXCLUDE. Teaching `is_hand_maintained_path` the directory list would drop the
+/// colliding path from the compared population, silently ceasing to compare a genuinely generated
+/// surface -- a wrong refusal traded for none. Same failure as making the committed walk descend,
+/// from the other side.
 ///
-/// ZERO EXPOSURE, stated so this is not read as repairing a live defect. Emitted Rust filenames are
-/// flat by construction (`v1.compiler.emit_core_support` `module_to_filename` is split(".") joined
-/// with "_" under `rust_source_root()`), so the emitter cannot write into a hand-maintained
-/// directory; the collision is reachable only by authoring a module whose bare name equals one of
-/// those files. Measured 2026-08-22: zero collisions in the corpus, required-regen green on main
-/// at 90986d19469, and no upstream guard was found that would refuse such a module name (the
-/// nearest candidates, `gunbc.stage0_rust_source_lifecycle_scaffold`
+/// ZERO EXPOSURE, so this is not read as repairing a live defect. Emitted Rust filenames are flat
+/// by construction (`v1.compiler.emit_core_support` `module_to_filename` is split(".") joined with
+/// "_" under `rust_source_root()`), so the emitter cannot write into a hand-maintained directory;
+/// the collision needs a module whose bare name equals one of those files. Measured 2026-08-22:
+/// zero collisions in the corpus, required-regen green on main at 90986d19469, and no upstream
+/// guard refuses such a module name (the nearest, `gunbc.stage0_rust_source_lifecycle_scaffold`
 /// `classified_residue_disjoint_holds` and the generated/hand disposition joins beside it, are
 /// scoped to top-level stage0 paths and cannot see a subdirectory file).
 fn hand_maintained_dir_shadows(stage0_src: &Path) -> Result<BTreeMap<String, Vec<String>>, String> {
@@ -1000,13 +961,12 @@ fn validate_compared_populations(
     // the split: `v2.workflow.required_regen` `MirrorMissingForEmittedSurface` and
     // `CommittedMirrorNoLongerEmitted`.
     //
-    // NEITHER IS ADMITTED, and the first one is where that matters. "An author introduced a module"
+    // NEITHER IS ADMITTED, and the first is where that matters. "An author introduced a module"
     // and "the emitter invented a surface nobody authored" produce the SAME population, and the
-    // second is what this check exists to catch, so no arm computed from the populations can tell
-    // them apart -- admitting the first would be this same conflation pointing the other way. The
-    // refusal therefore names the fork and leaves the decision with the author; what changed is
-    // that the install branch is now actionable, because the ordering above wrote the bytes before
-    // this check ran instead of discarding them.
+    // second is what this check catches, so no arm computed from the populations can tell them
+    // apart -- admitting the first would be the same conflation the other way. The refusal names
+    // the fork and leaves the decision with the author; the install branch is now actionable
+    // because the ordering above wrote the bytes before this check ran.
     let mut reasons = Vec::new();
     if !emitted_not_committed.is_empty() {
         reasons.push(format!(
@@ -1020,9 +980,8 @@ fn validate_compared_populations(
     }
     if !shadowing_hand_maintained.is_empty() {
         // A THIRD CAUSE BECAUSE THE OTHER TWO REMEDIES DAMAGE THIS CLASS. Authority:
-        // `v2.workflow.required_regen` `MirrorMissingShadowsHandMaintainedSource`. The refusal is
-        // not softer than the one above -- the line still stops -- it is the same stop pointed at
-        // the move that actually resolves the state.
+        // `v2.workflow.required_regen` `MirrorMissingShadowsHandMaintainedSource`. Not softer --
+        // the line still stops -- but pointed at the move that resolves the state.
         reasons.push(format!(
             "refusal: emitted surface collides with hand-maintained source — {shadowing_hand_maintained:?}; the emitted basename addresses a file that is hand-authored under a hand-maintained directory, so BOTH remedies for a missing mirror would damage it (installing overwrites hand-authored code with generated bytes; deleting destroys it). Rename the emitting module so its basename no longer collides, or move the hand-maintained file — do NOT install anything for this class"
         ));
@@ -1080,13 +1039,12 @@ fn regen_refusal_outcome(
     reason: String,
 ) -> Result<RequiredRegenOutcome, String> {
     let receipt_path = workspace.join(receipt_rel);
-    // A population refusal happens BEFORE any content comparison, so there is nothing here that a
-    // digest or an equality could be ABOUT. The previous shape wrote a `FirstGeneration` receipt
-    // and filled the three unmeasured positions with `refused:population`, `refused:population`
-    // and `false`. `Refused` has none of those three fields, so the placeholders are unwritable
-    // rather than merely discouraged, and the receipt carries the refusal's actual content --
-    // its cause. See the variant's own comment for the route the fabricated Bool took off this
-    // machine.
+    // A population refusal happens BEFORE any content comparison, so nothing here is what a digest
+    // or equality could be ABOUT. The previous shape wrote a `FirstGeneration` receipt with
+    // `refused:population`, `refused:population` and `false` in the three unmeasured positions.
+    // `Refused` has none of those fields, so the placeholders are unwritable and the receipt
+    // carries the refusal's cause. The variant's comment traces the fabricated Bool's route off
+    // this machine.
     let receipt = RegenReceipt::Refused {
         schema: RECEIPT_SCHEMA.to_string(),
         commit_sha,
@@ -1117,18 +1075,15 @@ fn compare_generated_surfaces(
         let committed_path = stage0_src.join(basename);
         // The committed side is read RAW and compared against exactly the bytes
         // `write_emitted_tree` puts in the candidate tree -- `normalize_generated_source(emitted)`.
-        // It previously normalized the committed side too, which made the comparison
-        // `normalize(normalize(emitted))` vs `normalize(emitted)` once a candidate had been
-        // installed. That is only an identity if rustfmt is idempotent, and it is not:
-        // measured 2026-08-20, `v1_compiler_infer.rs` reformats on a second pass (a
-        // `let ... = if (long_receiver_chain)` splits differently), so the fold reported the
-        // same single file as drifted at generation 2, 3 and 4 with the candidate on disk
-        // BYTE-IDENTICAL to the committed file it was compared against. No number of
-        // generations could clear it: the check had no reachable green, and the only way to
-        // silence it was to hand-edit the mirror -- validation standing where construction was
-        // available (DESIGN 5). Comparing against the written artifact makes "install the
-        // candidate" a guaranteed remedy by construction, and makes the two derivations of the
-        // candidate one fact rather than two (DESIGN 3).
+        // Normalizing the committed side too made the comparison `normalize(normalize(emitted))`
+        // vs `normalize(emitted)` once a candidate was installed -- an identity only if rustfmt is
+        // idempotent, and it is not: measured 2026-08-20, `v1_compiler_infer.rs` reformats on a
+        // second pass (a `let ... = if (long_receiver_chain)` splits differently), so the fold
+        // reported the same file as drifted at generation 2, 3 and 4 with the candidate on disk
+        // BYTE-IDENTICAL to the committed file. No reachable green; the only silence was
+        // hand-editing the mirror -- validation where construction was available (DESIGN 5).
+        // Comparing against the written artifact makes "install the candidate" a guaranteed
+        // remedy by construction, and the two derivations of the candidate one fact (DESIGN 3).
         let committed = fs::read_to_string(&committed_path)
             .map_err(|e| format!("read committed {}: {e}", committed_path.display()))?;
         let candidate = lookup_emitted(emitted, basename)
@@ -1161,10 +1116,9 @@ fn verify_hand_maintained(
             .get(&format!("src/{file_name}"))
             .or_else(|| emitted.get(*file_name));
         let Some(candidate) = candidate else {
-            // Not in the emitted population at all. For 35 of the 36 entries (measured by
-            // execution 2026-08-21) this is the ordinary case and there is nothing to compare:
-            // the emitter does not produce the file, so excluding it from the comparison costs
-            // nothing. For a DECLARED row it is a defect in the declaration, not in the tree.
+            // Not in the emitted population. For 35 of the 36 entries (measured by execution
+            // 2026-08-21) this is ordinary and there is nothing to compare. For a DECLARED row it
+            // is a defect in the declaration, not the tree.
             if is_declared_divergent(file_name) {
                 unproduced_declarations.push((*file_name).to_string());
             }
@@ -1177,14 +1131,14 @@ fn verify_hand_maintained(
             Ok(committed_norm) => {
                 match normalize_with_workdir(formatter, candidate, work_dir, "candidate") {
                     Ok(candidate_norm) => {
-                        // THE MEASUREMENT ABOVE USED TO BE DISCARDED HERE. The divergent branch was
-                        // an empty block under a comment saying drift is expected on a clean tree,
-                        // which is the absorbing fallback (DESIGN section 5) in its authoring form:
-                        // the comparison ran, found a real divergence between the authority and the
-                        // committed artifact, and produced no typed, located, countable output -- so
-                        // the deficit's frequency was zero by construction and it could never rank for
-                        // repair. Membership in HAND_MAINTAINED_STAGE0_FILES was doing the silencing
-                        // while claiming only to describe what the emitter does not produce.
+                        // THE MEASUREMENT ABOVE USED TO BE DISCARDED HERE: the divergent branch was
+                        // an empty block under a comment saying drift is expected on a clean tree
+                        // -- the absorbing fallback (DESIGN section 5) in authoring form. A real
+                        // divergence between authority and committed artifact produced no typed,
+                        // located, countable output, so its frequency was zero by construction and
+                        // never ranked for repair. Membership in HAND_MAINTAINED_STAGE0_FILES did
+                        // the silencing while claiming only to describe what the emitter does not
+                        // produce.
                         if committed_norm != candidate_norm {
                             if is_declared_divergent(file_name) {
                                 declared_divergent.push((*file_name).to_string());
@@ -1356,25 +1310,23 @@ const NORMALIZE_FIXED_POINT_MAX_PASSES: usize = 8;
 /// Run rustfmt to a FIXED POINT, not once.
 ///
 /// rustfmt is not idempotent. Measured 2026-08-20 on `v1_compiler_infer.rs`: a
-/// `let x = if (long.receiver.chain)` re-splits on a second pass. A single pass therefore puts
-/// this repository's two gates in direct contradiction on such a file, because they consume
-/// different passes of the same formatter:
+/// `let x = if (long.receiver.chain)` re-splits on a second pass. A single pass therefore puts the
+/// repository's two gates in contradiction on such a file, since they consume different passes:
 ///
 ///   * `cargo fmt --all --check` (pre-commit, and the fmt gate) demands pass N+1 of whatever is
 ///     committed -- it re-formats the file in place;
 ///   * `write_emitted_tree` wrote pass 1 of the emitted bytes, and `compare_generated_surfaces`
 ///     compares against exactly those bytes.
 ///
-/// Satisfying either one broke the other, in a loop with no exit: install the candidate and fmt
-/// rewrites it; run fmt and regen reports drift. The only state satisfying both simultaneously is
-/// a FIXED POINT of rustfmt, so that is what the emitted artifact must be -- then `cargo fmt` is a
-/// no-op on it by definition, and byte-comparing the committed file against it is exact.
+/// Satisfying either broke the other, with no exit: install the candidate and fmt rewrites it; run
+/// fmt and regen reports drift. The only state satisfying both is a FIXED POINT of rustfmt, so the
+/// emitted artifact must be one -- then `cargo fmt` is a no-op on it by definition and the byte
+/// comparison is exact.
 ///
-/// This is construction rather than validation (DESIGN 5): the disagreement is not detected and
-/// reported, it is made unrepresentable, because the artifact is written in the one form both
-/// consumers agree on. Iterating here rather than teaching the comparator to tolerate a second
-/// pass is deliberate -- tolerance would have to be granted to the fmt gate too, and a tolerance
-/// shared by two gates is a hole in both.
+/// Construction, not validation (DESIGN 5): the disagreement is made unrepresentable by writing the
+/// artifact in the one form both consumers agree on. Iterating here rather than teaching the
+/// comparator to tolerate a second pass is deliberate -- the fmt gate would need the tolerance
+/// too, and a tolerance shared by two gates is a hole in both.
 fn normalize_generated_source(
     formatter: &ResolvedFormatter,
     content: &str,
@@ -1457,41 +1409,35 @@ fn normalize_generated_source_uncached(
 
 /// THE FORMATTER, RESOLVED ONCE AT ADMISSION INSTEAD OF LOOKED UP AT EVERY SPAWN.
 ///
-/// Both normalize paths used to spawn a BARE `rustfmt`, so the program was resolved from
-/// ambient PATH at the moment of use -- which in a required run is 45-50 minutes deep. A run on
-/// 2026-08-24 (run 32693719649, srv2-05) failed there with `spawn rustfmt: No such file or
-/// directory` after the job's own toolchain probe had printed `/home/ghrunner/.cargo/bin/rustfmt`
-/// 48 minutes earlier in the same shell environment. The cost of that shape is not the ENOENT, it
-/// is WHERE it lands: a question about PATH became a fifty-minute-deep failure in a phase that
-/// has nothing to do with PATH.
+/// Both normalize paths used to spawn a BARE `rustfmt`, resolved from ambient PATH at the moment
+/// of use -- 45-50 minutes into a required run. On 2026-08-24 (run 32693719649, srv2-05) that
+/// failed with `spawn rustfmt: No such file or directory` after the job's own toolchain probe had
+/// printed `/home/ghrunner/.cargo/bin/rustfmt` 48 minutes earlier in the same shell environment.
+/// The cost is WHERE it lands: a PATH question became a fifty-minute-deep failure in a phase
+/// unrelated to PATH.
 ///
-/// WHAT THIS FIXES AND WHAT IT DOES NOT, stated because the distinction is the whole honesty of
-/// the row. It fixes the class where the formatter is ABSENT AT ADMISSION: that now refuses
-/// immediately, naming the PATH searched, instead of running most of an hour first. It does NOT
-/// prevent a formatter that is present at admission and gone at spawn -- resolving a path is not
-/// holding a file open, and nothing here can make a concurrent process stop replacing a shim.
-/// What it does for that case is make the failure ATTRIBUTABLE: the spawn error names the exact
-/// program resolved at admission and states that it existed then, which turns an ambiguous ENOENT
-/// into direct evidence that the environment mutated under the run -- the question the workflow's
-/// toolchain probe is currently collecting baselines for, and which no run has yet answered.
+/// WHAT THIS FIXES AND WHAT IT DOES NOT. It fixes the formatter ABSENT AT ADMISSION: that refuses
+/// immediately, naming the PATH searched. It does NOT prevent a formatter present at admission and
+/// gone at spawn -- resolving a path is not holding a file open, and nothing here stops a
+/// concurrent process replacing a shim. For that case it makes the failure ATTRIBUTABLE: the spawn
+/// error names the program resolved at admission and states it existed then, turning an ambiguous
+/// ENOENT into evidence that the environment mutated under the run -- the question the workflow's
+/// toolchain probe is collecting baselines for, which no run has yet answered.
 ///
-/// AUTHORITY, AND THE RUNG THIS SITS AT. The refusal this type produces is named by the carrier
-/// as `v2.workflow.required_regen` `RequiredRegenRefusal`'s `FormatterUnavailable`, added in the
-/// same change. It is modeled there rather than only here because this host is a MIRROR of that
-/// carrier -- DESIGN.md records `run_required_regen`'s hand-written ordering at *mitigatable*,
-/// with derivation from the carrier as its next-rung trigger -- and a refusal the host can
-/// produce that the carrier cannot name is precisely the divergence that trigger exists to
-/// close. WHAT IS NOT CLAIMED: this host reports refusals as `String`, as every other refusal on
-/// this path does, so the correspondence is held by review and by this citation, NOT by the type
-/// system; introducing a typed carrier for this one refusal alone would be a second
-/// representation of a vocabulary the carrier already owns. The class therefore stays at
-/// *mitigatable* and inherits the host's existing next-rung trigger rather than adding a new one.
+/// AUTHORITY, AND THE RUNG. The refusal is named by the carrier as `v2.workflow.required_regen`
+/// `RequiredRegenRefusal`'s `FormatterUnavailable`, added in the same change, because this host is
+/// a MIRROR of that carrier -- DESIGN.md records `run_required_regen`'s hand-written ordering at
+/// *mitigatable*, with derivation from the carrier as its next-rung trigger -- and a refusal the
+/// host can produce that the carrier cannot name is the divergence that trigger closes. WHAT IS
+/// NOT CLAIMED: this host reports refusals as `String` like every other refusal on this path, so
+/// the correspondence is held by review and this citation, NOT the type system; a typed carrier
+/// for this one refusal would be a second representation of a vocabulary the carrier owns. The
+/// class stays at *mitigatable* and inherits the host's existing next-rung trigger.
 ///
-/// NO FALLBACK ARM EXISTS AND NONE MAY BE ADDED. There is no retry, no tolerated absence, no
-/// "skip normalization and compare raw" path. The emitted artifact must be a fixed point of the
-/// formatter or the comparison is meaningless (see `normalize_generated_source`), so a run
-/// without a formatter has nothing to say and must stop. The line still stops; it stops at
-/// admission rather than at minute fifty.
+/// NO FALLBACK ARM EXISTS AND NONE MAY BE ADDED: no retry, no tolerated absence, no "skip
+/// normalization and compare raw". The emitted artifact must be a fixed point of the formatter or
+/// the comparison is meaningless (see `normalize_generated_source`), so a run without one must
+/// stop -- at admission rather than at minute fifty.
 #[derive(Debug, Clone)]
 pub struct ResolvedFormatter {
     program: PathBuf,
@@ -1500,22 +1446,22 @@ pub struct ResolvedFormatter {
     searched: String,
     /// NORMALIZE ONCE PER DISTINCT INPUT. Every regen pass normalized the whole emitted
     /// population THREE times -- `write_emitted_tree`, `compare_generated_surfaces`,
-    /// `tree_digest_from_map` each called `normalize_generated_source` on the same bytes --
-    /// and each normalize is at least two rustfmt spawns (the fixed-point seek). Measured
-    /// 2026-08-30 by `--regen-round-cost`: mirror_write + adjudicate + digest = 67 s on the
-    /// BuildBuddy runner, 97 s on srv1, for one population. The memo is keyed by the RAW
-    /// input bytes, so a hit is exact by construction; clones share it so the three
-    /// consumers see one table.
+    /// `tree_digest_from_map` each called `normalize_generated_source` on the same bytes -- at
+    /// two or more rustfmt spawns each (the fixed-point seek). Measured 2026-08-30 by
+    /// `--regen-round-cost`: mirror_write + adjudicate + digest = 67 s on the BuildBuddy runner,
+    /// 97 s on srv1, for one population. Keyed by the RAW input bytes, so a hit is exact by
+    /// construction; clones share it so the three consumers see one table.
     memo: Rc<std::cell::RefCell<HashMap<String, String>>>,
     /// The on-disk half, keyed by rustfmt's own version string, so a fixed-point run on a tree
-    /// whose emit did not change pays ZERO rustfmt spawns. Each entry stores the raw input
-    /// beside the normalized output and is honoured only when the stored raw is byte-equal to
-    /// the request -- a digest-named file is a LOCATION, never the identity, so a hash
-    /// collision cannot serve another input's formatting (DESIGN section 5).
+    /// whose emit did not change pays ZERO rustfmt spawns. Each entry stores the raw input beside
+    /// the normalized output and is honoured only when the stored raw is byte-equal to the
+    /// request -- a digest-named file is a LOCATION, never the identity, so a hash collision
+    /// cannot serve another input's formatting (DESIGN section 5).
     disk_cache: Option<PathBuf>,
 }
 
-/// Every rustfmt spawn this process has made. Read by `--regen-round-cost` before and after
+/// Every NORMALIZE spawn this process has made -- the `--version` probe in `with_normalize_cache`
+/// is not counted, since the fixed-point claim is about normalizations. Read by `--regen-round-cost` before and after
 /// the round so the receipt carries the count -- the fixed-point control's claim is that it
 /// is ~0, and a claim about a count is checked against the count.
 static RUSTFMT_SPAWNS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
@@ -1558,12 +1504,11 @@ impl ResolvedFormatter {
         ))
     }
 
-    /// PATH RESOLUTION REQUIRES THE EXECUTE BIT, not merely a file. The OS skips a
-    /// non-executable entry and keeps searching, so a resolver keyed on `is_file` would ADMIT a
-    /// file the kernel would have stepped over -- shadowing a real formatter further down PATH
-    /// and failing where a bare `Command::new("rustfmt")` would have succeeded. Matching the
-    /// kernel's own predicate is what keeps this resolver a faithful model of the lookup it
-    /// replaces rather than a second, more permissive one.
+    /// PATH RESOLUTION REQUIRES THE EXECUTE BIT, not merely a file. The OS skips a non-executable
+    /// entry and keeps searching, so an `is_file` resolver would ADMIT a file the kernel steps
+    /// over -- shadowing a real formatter further down PATH and failing where a bare
+    /// `Command::new("rustfmt")` succeeds. Matching the kernel's predicate keeps this a faithful
+    /// model of the lookup it replaces, not a more permissive one.
     #[cfg(unix)]
     fn is_executable_file(candidate: &Path) -> bool {
         use std::os::unix::fs::PermissionsExt;
@@ -1581,11 +1526,10 @@ impl ResolvedFormatter {
         candidate.is_file()
     }
 
-    /// EXECUTING THE PROGRAM ONCE IS THE ADMISSION, because the metadata above is a proxy and
-    /// this is the fact itself. A mode bit does not establish that the file runs: a broken shim,
-    /// a wrong-architecture binary, or a dangling interpreter line all carry the bit and all die
-    /// at the first real normalize -- which is the ~50-minute failure this row exists to move.
-    /// `--version` is chosen because it is total, cheap and reads nothing from the tree.
+    /// EXECUTING THE PROGRAM ONCE IS THE ADMISSION; the metadata above is a proxy. A broken shim,
+    /// a wrong-architecture binary, or a dangling interpreter line all carry the mode bit and die
+    /// at the first real normalize -- the ~50-minute failure this row moves. `--version` is
+    /// total, cheap and reads nothing from the tree.
     fn probe(&self) -> Result<(), String> {
         let observed = Command::new(&self.program).arg("--version").output();
         match observed {
@@ -1655,9 +1599,9 @@ impl ResolvedFormatter {
         Command::new(&self.program)
     }
 
-    /// The spawn-failure message, which is the attributable half described on the type. It says
-    /// the program EXISTED at admission, because that is the fact a reader cannot recover later
-    /// and the one that discriminates "never installed" from "replaced under the run".
+    /// The spawn-failure message, the attributable half described on the type: it says the program
+    /// EXISTED at admission -- the fact a reader cannot recover later, discriminating "never
+    /// installed" from "replaced under the run".
     fn spawn_refusal(&self, cause: std::io::Error) -> String {
         format!(
             concat!(
@@ -1743,11 +1687,10 @@ fn git_head_sha(workspace: &Path) -> Result<String, String> {
 
 /// The first-pass measurement the second pass builds on.
 ///
-/// This was a separate `RegenReceiptStored` struct mirroring the carrier's field list -- a second
-/// representation of one fact (DESIGN 3), and the place the false fail-closed claim hid: it
-/// silently accepted any JSON containing its fields, so it read a v1 record as happily as a v2
-/// one. It is gone. `read_receipt` now deserializes the REAL carrier and destructures it, so the
-/// reader cannot drift from the writer -- there is only one shape.
+/// This was a separate `RegenReceiptStored` struct mirroring the carrier's fields -- a second
+/// representation (DESIGN 3), and where the false fail-closed claim hid: it accepted any JSON
+/// containing its fields, reading a v1 record as happily as a v2. Gone: `read_receipt`
+/// deserializes the REAL carrier and destructures it, so reader cannot drift from writer.
 struct PriorMeasurement {
     commit_sha: String,
     committed_generated_digest: String,
@@ -1770,9 +1713,8 @@ struct PriorMeasurement {
 ///   * the variant match rejects a `fixed_point` receipt, because the second pass must build on a
 ///     FIRST-pass measurement and a receipt left by another second pass is not one.
 ///
-/// The third was already true by construction (a `fixed_point` record lacks four required fields),
-/// but it is stated as an explicit arm rather than left to a missing-field parse error, because a
-/// parse error would report the symptom -- a missing field name -- instead of the cause.
+/// The third was already true by construction (a `fixed_point` record lacks four required fields)
+/// but is an explicit arm so the refusal reports the cause rather than a missing field name.
 fn read_receipt(path: &Path) -> Result<PriorMeasurement, String> {
     let bytes =
         fs::read_to_string(path).map_err(|e| format!("read receipt {}: {e}", path.display()))?;
@@ -1806,14 +1748,13 @@ fn read_receipt(path: &Path) -> Result<PriorMeasurement, String> {
             })
         }
         // THE ROUTE THE FABRICATED BOOL USED TO TAKE. Before `Refused` existed, a population
-        // refusal left a `FirstGeneration` receipt on disk and this arm read it as an ordinary
-        // measurement: `first_generation_equal: false` became a `PriorMeasurement`, then a
-        // `PriorReceiptRef`, then `referenced_first_generation_equal=false` on the operator's
-        // terminal -- a comparison result reported for a comparison that never ran. The
-        // cross-tree guard above cannot catch it, because the refusal happened AT this commit,
-        // which is exactly the condition that guard admits. Now the variant carries no such
-        // field, and this arm refuses with the ORIGINAL cause rather than a derived one: what
-        // the operator has to fix is the refusal, not the fixed point.
+        // refusal left a `FirstGeneration` receipt and this arm read it as a measurement:
+        // `first_generation_equal: false` became a `PriorMeasurement`, then a `PriorReceiptRef`,
+        // then `referenced_first_generation_equal=false` on the operator's terminal -- a result
+        // for a comparison that never ran. The cross-tree guard cannot catch it: the refusal
+        // happened AT this commit, exactly what the guard admits. Now the variant carries no such
+        // field and this arm refuses with the ORIGINAL cause: the fix is the refusal, not the
+        // fixed point.
         RegenReceipt::Refused { reason, .. } => Err(format!(
             "refusal: the first-generation pass at this commit REFUSED ({reason}) — there is no \
              first-generation measurement for the fixed-point pass to reference. Close that \
@@ -1857,12 +1798,11 @@ mod tests {
         path
     }
 
-    /// BOTH REFUSALS ARE THE PRODUCT OF THIS ROW, so their TEXT is under test, not just their
-    /// substrings. A multi-line non-raw literal silently absorbs the indentation of its
-    /// continuation lines, and `cargo fmt` reflows such literals on its own -- so a message can
-    /// go garbled without anyone editing it, and every `contains` assertion still passes because
-    /// the runs of spaces sit BETWEEN the fragments being matched. This guard is what makes that
-    /// regression loud; it went red on the form that shipped in this PR's first revision.
+    /// BOTH REFUSALS ARE THE PRODUCT OF THIS ROW, so their TEXT is under test, not just substrings.
+    /// A multi-line non-raw literal absorbs its continuation indentation, and `cargo fmt` reflows
+    /// such literals -- so a message garbles with nobody editing it while every `contains` still
+    /// passes, the runs of spaces sitting BETWEEN matched fragments. This guard went red on the
+    /// form that shipped in this PR's first revision.
     fn assert_message_is_not_reflowed(message: &str) {
         assert!(
             !message.contains("  "),
@@ -1873,16 +1813,16 @@ mod tests {
 
     /// THE REFUSAL NAMES WHAT WAS SEARCHED, AND THE PAIR IS THE ASSERTION.
     ///
-    /// RED against the pre-change code: there was no admission at all, so the absent-formatter
-    /// case had no return value to assert on -- it surfaced as `spawn rustfmt: No such file or
-    /// directory` from whichever normalize happened to run first, ~50 minutes into a required
-    /// run. The empty-PATH arm is the discriminating input; the real-PATH arm is the control
-    /// without which a resolver that refused everything would also pass.
+    /// RED against the pre-change code: with no admission, the absent-formatter case had no return
+    /// value to assert on -- it surfaced as `spawn rustfmt: No such file or directory` from
+    /// whichever normalize ran first, ~50 minutes into a required run. The empty-PATH arm is the
+    /// discriminating input; the real-PATH arm is the control without which a resolver refusing
+    /// everything would pass.
     ///
-    /// `from_path_var` takes the PATH rather than reading the environment precisely so this test
-    /// does not mutate a process-global that every other test in this binary shares -- a
-    /// `set_var("PATH", "")` here would make unrelated tests fail depending on thread order,
-    /// which is the flake class that costs more to diagnose than the check is worth.
+    /// `from_path_var` takes the PATH rather than reading the environment so this test does not
+    /// mutate a process-global shared by every test in this binary -- `set_var("PATH", "")` would
+    /// fail unrelated tests by thread order, a flake class costing more to diagnose than the
+    /// check is worth.
     #[test]
     fn an_absent_formatter_refuses_at_admission_and_names_the_path_searched() {
         let refused = ResolvedFormatter::from_path_var("/nonexistent/aa:/nonexistent/bb")
@@ -1914,12 +1854,11 @@ mod tests {
 
     /// A NON-EXECUTABLE FILE NAMED `rustfmt` MUST NOT SHADOW A REAL ONE FURTHER DOWN PATH.
     ///
-    /// This is the RED for review 55506's first finding. Against the `is_file`-keyed resolver
-    /// this test FAILS: the unusable file is admitted, the real formatter below it is never
-    /// reached, and the run then dies at the first normalize -- the exact ~50-minute failure
-    /// this row exists to move, reintroduced by the row itself. The kernel skips such an entry
-    /// when resolving PATH, so the old resolver was strictly more permissive than the lookup it
-    /// replaced.
+    /// The RED for review 55506's first finding. Against the `is_file`-keyed resolver this FAILS:
+    /// the unusable file is admitted, the real formatter below it never reached, and the run dies
+    /// at the first normalize -- the ~50-minute failure this row moves, reintroduced by the row.
+    /// The kernel skips such an entry, so the old resolver was strictly more permissive than the
+    /// lookup it replaced.
     #[test]
     fn a_non_executable_file_does_not_shadow_a_real_formatter_later_on_path() {
         let shadow = temp_dir("formatter-shadow");
@@ -1974,11 +1913,10 @@ mod tests {
         assert_message_is_not_reflowed(&refused);
     }
 
-    /// THE SPAWN REFUSAL DISTINGUISHES "NEVER INSTALLED" FROM "REPLACED UNDER THE RUN", which is
-    /// the fact the run that motivated this row could not report. It is asserted on the message
-    /// rather than by staging a mid-run deletion: nothing here can portably make a live process
-    /// lose a file it already resolved, and faking it by pointing at a path that never existed
-    /// would assert the message while proving nothing about the case it describes.
+    /// THE SPAWN REFUSAL DISTINGUISHES "NEVER INSTALLED" FROM "REPLACED UNDER THE RUN" -- the fact
+    /// the motivating run could not report. Asserted on the message rather than by staging a
+    /// mid-run deletion: nothing here can portably make a live process lose a resolved file, and
+    /// pointing at a path that never existed would assert the message while proving nothing.
     #[test]
     fn the_spawn_refusal_says_the_program_existed_at_admission() {
         let formatter = ResolvedFormatter::admit().expect("rustfmt on PATH for this test");
@@ -2088,19 +2026,18 @@ mod tests {
 
     // THE SENTINEL HAS NO ROUTE TO THE FIXED-POINT PHASE -- ON EITHER CARRIER.
     //
-    // The defect this pins, found in review of gunbc#8647: a population refusal returns `Ok`, and
-    // the receipt it left behind held `refused:population` in both digest positions and
+    // The defect pinned, found in review of gunbc#8647: a population refusal returns `Ok`, and
+    // its receipt held `refused:population` in both digest positions and
     // `first_generation_equal: false` where "not asked" belonged. Two carriers cross out of that
     // function -- the in-process `RequiredRegenOutcome` and the on-disk receipt -- and the typed
-    // `FirstGeneration` closed only the first. The receipt is the one that crosses the PROCESS
-    // boundary, so the fabricated Bool reached a standalone `--required-regen-fixed-point` run
-    // through `read_receipt` and printed as `referenced_first_generation_equal=false`.
+    // `FirstGeneration` closed only the first. The receipt crosses the PROCESS boundary, so the
+    // fabricated Bool reached a standalone `--required-regen-fixed-point` run through
+    // `read_receipt` and printed as `referenced_first_generation_equal=false`.
     //
-    // Both halves are asserted here. The in-memory half is the original test, unchanged in
-    // substance: `pass1_digest_for_fixed_point` yields `None` for a refusal, and making it answer
-    // from the receipt fails it. The on-disk half is new and is what this pass adds: the refusal
-    // variant has no Bool and no digest to read, and `read_receipt` refuses a refused prior with
-    // its ORIGINAL cause rather than passing a derived answer along.
+    // Both halves are asserted. In-memory (the original test): `pass1_digest_for_fixed_point`
+    // yields `None` for a refusal, and answering from the receipt fails it. On-disk (new): the
+    // refusal variant has no Bool and no digest to read, and `read_receipt` refuses a refused
+    // prior with its ORIGINAL cause rather than a derived answer.
     #[test]
     fn a_refused_first_generation_hands_no_digest_to_the_fixed_point() {
         let refused_receipt = || RegenReceipt::Refused {
@@ -2120,11 +2057,11 @@ mod tests {
         };
         assert_eq!(pass1_digest_for_fixed_point(&refused), None);
 
-        // THE HALF THAT USED TO BE THE GAP. The old test asserted the OPPOSITE of this line --
-        // that the sentinel "IS still sitting in the receipt ... the wrong answer is right there
-        // to be read" -- and called the coproduct load-bearing for keeping the outcome clean
-        // while the receipt stayed fabricated. There is now no digest to read and no equality to
-        // misread; both are absent from the variant rather than absent by convention.
+        // THE HALF THAT USED TO BE THE GAP. The old test asserted the OPPOSITE -- that the
+        // sentinel "IS still sitting in the receipt ... the wrong answer is right there to be
+        // read" -- and called the coproduct load-bearing for a clean outcome over a fabricated
+        // receipt. Now no digest and no equality exist to misread; absent from the variant, not
+        // by convention.
         assert_eq!(refused.receipt.candidate_generated_digest(), None);
         assert_eq!(refused.receipt.first_generation_equal(), None);
         assert_eq!(
@@ -2133,10 +2070,10 @@ mod tests {
         );
 
         // POSITIVE CONTROL: ordinary drift is not a refusal. Pass one emitted, the comparison
-        // disagreed, and the fixed point still has a subject -- skipping it there would lose a
-        // determinism signal exactly when drift makes it interesting. Note this control now
-        // carries a REAL digest and a REAL `false`, which is the distinction the whole change is
-        // about: `false` here is an answer, and there is no longer any receipt on which it is not.
+        // disagreed, and the fixed point still has a subject -- skipping it would lose the
+        // determinism signal exactly when drift makes it interesting. This control carries a REAL
+        // digest and a REAL `false`: here `false` is an answer, and no receipt remains on which it
+        // is not.
         let drifted = RequiredRegenOutcome {
             receipt: RegenReceipt::FirstGeneration {
                 schema: RECEIPT_SCHEMA.to_string(),
@@ -2160,14 +2097,12 @@ mod tests {
         assert_eq!(drifted.receipt.refusal_reason(), None);
     }
 
-    // THE ON-DISK HALF, THROUGH THE REAL READER. `read_receipt` is the function that turned the
-    // fabricated Bool into a `PriorMeasurement`, so the refusal has to be asserted THROUGH it and
-    // not against the variant alone.
+    // THE ON-DISK HALF, THROUGH THE REAL READER. `read_receipt` turned the fabricated Bool into a
+    // `PriorMeasurement`, so the refusal is asserted THROUGH it, not against the variant alone.
     //
     // RED: give `RegenReceipt::Refused` a `first_generation_equal: bool` field and let this arm
-    // build a `PriorMeasurement` from it, and this test fails -- which is the whole defect
-    // restored. The positive control beside it is what keeps the refusal from being satisfied by
-    // a reader that refuses everything.
+    // build a `PriorMeasurement` from it -- the defect restored -- and this test fails. The
+    // positive control keeps the refusal from being satisfied by a reader refusing everything.
     #[test]
     fn read_receipt_refuses_a_refused_prior_with_its_original_cause() {
         let tmp = temp_dir("required-regen-refused-prior");
@@ -2220,21 +2155,18 @@ mod tests {
         let _ = fs::remove_dir_all(&tmp);
     }
 
-    // LOCAL RUST RED CONTROL FOR THE DUAL-INPUT REFUSAL — local, NOT enrolled. The Rust suite
-    // has been out of CI since the 2026-07-11 operator ruling, so this executes for whoever runs
-    // it and for no gate. Said plainly because the previous heading claimed "ENROLLED", which is
-    // the rung inflation DESIGN §4b calls worse than sitting low: an unenrolled control that
-    // says it is enrolled never ranks for enrolling.
+    // LOCAL RUST RED CONTROL FOR THE DUAL-INPUT REFUSAL — local, NOT enrolled. The Rust suite has
+    // been out of CI since the 2026-07-11 operator ruling, so this executes for whoever runs it
+    // and for no gate. The previous heading claimed "ENROLLED" — the rung inflation DESIGN §4b
+    // calls worse than sitting low: an unenrolled control claiming enrollment never ranks for it.
     //
-    // The arm it guards is UNREACHABLE from the
-    // composed `--required-ci` path — there `run_required_regen` writes the receipt and returns
-    // the same digest in one pass, so the two agree by construction — which is exactly why the
-    // decision was extracted from its call site: reaching it through the real function would
-    // require a seven-minute emit, and a wall no test can reach is a wall nobody knows works.
+    // The arm it guards is UNREACHABLE from the composed `--required-ci` path — there
+    // `run_required_regen` writes the receipt and returns the same digest in one pass — which is
+    // why the decision was extracted from its call site: through the real function it needs a
+    // seven-minute emit, and a wall no test can reach is a wall nobody knows works.
     //
     // RED: restoring `pass1_digest.unwrap_or(prior)` makes the disagreement case return Ok and
-    // fails the first assertion. The None and agreeing cases are the positive controls, without
-    // which a function that refused everything would also pass.
+    // fails the first assertion. The None and agreeing cases are the positive controls.
     #[test]
     fn pass1_digest_disagreement_refuses_rather_than_preferring_one() {
         let err = reconcile_pass1_digest(Some("supplied-abc".to_string()), "receipt-xyz")
@@ -2263,23 +2195,22 @@ mod tests {
 //
 // The round is the convergence recipe `gunbc.generated_artifact_merge_driver`
 // `generated_artifact_merge_driver_repair_steps` prints: build the seed, emit from it, install
-// what drifted, rebuild from the installed seed. This driver runs exactly that sequence ONCE,
-// through the same `run_required_regen` the required phase runs (never a second emit path),
-// with `v1_rt::trace_mark` armed so every phase boundary lands in one ledger, and renders the
-// receipt through `gunbc.regen_round_cost` `regen_round_cost_render` via the interpreter — there
-// is no Rust copy of the receipt format to drift from the model.
+// what drifted, rebuild from the installed seed. This driver runs that sequence ONCE, through the
+// same `run_required_regen` the required phase runs (never a second emit path), with
+// `v1_rt::trace_mark` armed so every phase boundary lands in one ledger, and renders the receipt
+// through `gunbc.regen_round_cost` `regen_round_cost_render` via the interpreter — no Rust copy
+// of the receipt format to drift from the model.
 //
-// IT MUTATES THE TREE, AND SAYS SO. Installing the drifted mirrors into src/v1/stage0/src is
-// the step an author performs by hand today, and the round's rebuild is only a measurement of
-// "rebuild from the installed seed" if the seed was actually installed. A read-only variant
-// would price a round nobody runs. The receipt names the tree (HEAD sha, dirty flag) and lists
-// every installed path by identity, so what the round changed is on the record.
+// IT MUTATES THE TREE, AND SAYS SO. Installing the drifted mirrors into src/v1/stage0/src is the
+// step an author performs by hand today, and the rebuild measures "rebuild from the installed
+// seed" only if the seed was installed; a read-only variant would price a round nobody runs. The
+// receipt names the tree (HEAD sha, dirty flag) and lists every installed path by identity.
 //
 // THE SEED THAT EMITS IS THE SEED THAT WAS BUILT, OR THE RUN REFUSES. The emit runs in THIS
-// process, whose binary is the product of the seed build only if that build was a no-op on the
-// running executable. The executable's bytes are hashed before and after the build; a changed
-// hash means the round measured a stale seed's emit, and the only honest answer is to stop and
-// say so rather than report a candidate the built seed never produced.
+// process, whose binary is the seed build's product only if that build was a no-op on the running
+// executable. Its bytes are hashed before and after the build; a changed hash means a stale
+// seed's emit was measured, and the honest answer is to stop rather than report a candidate the
+// built seed never produced.
 // ---------------------------------------------------------------------------------------------
 
 pub struct RegenRoundCostOutcome {
@@ -2325,10 +2256,10 @@ fn seed_cargo_build(workspace: &Path, label: &str) -> Result<CargoBuildObservati
     Ok(CargoBuildObservation { compiled_crates })
 }
 
-/// The seed binary ON DISK at the path this process was started from. After a cargo build
-/// replaces that file, Linux reports the running image as `<path> (deleted)`; the digest is
-/// taken from the path itself so the comparison is "what is installed there now" against "what
-/// was installed there before the build", which is the question the refusal asks.
+/// The seed binary ON DISK at the path this process started from. After a cargo build replaces
+/// that file, Linux reports the running image as `<path> (deleted)`; digesting the path itself
+/// compares "installed there now" against "installed there before the build" -- the refusal's
+/// question.
 fn current_exe_digest() -> Result<String, String> {
     let exe = std::env::current_exe().map_err(|e| format!("current_exe: {e}"))?;
     let shown = exe.to_string_lossy().into_owned();
@@ -2588,12 +2519,12 @@ pub fn run_regen_round_cost(
         install_candidate_paths(&candidate_src, &stage0_src, &drifted)?;
         v1_rt::trace_mark("round.install.done".to_string());
         // A REBUILD THAT FAILS IS A MEASURED FACT ABOUT THE ROUND, NOT A REFUSAL OF THE
-        // MEASUREMENT: every phase before it was priced, and the receipt is the only record of
-        // that. Measured on 2026-08-30 (srv1 and BuildBuddy, same tree): the emitting seed was
-        // built with the OLD runtime template baked into its emitter mirror, so its emit
-        // installed the old `v1_rt.rs` over the hand-synced one and the rebuild refused --
-        // exactly the two-round bootstrap the merge-driver recipe's step 3 exists for. The
-        // receipt still renders; the failure is carried beside it and fails the exit code.
+        // MEASUREMENT: every prior phase was priced and the receipt is the only record. Measured
+        // 2026-08-30 (srv1 and BuildBuddy, same tree): the emitting seed carried the OLD runtime
+        // template in its emitter mirror, so its emit installed the old `v1_rt.rs` over the
+        // hand-synced one and the rebuild refused -- the two-round bootstrap the merge-driver
+        // recipe's step 3 exists for. The receipt still renders; the failure rides beside it and
+        // fails the exit code.
         match seed_cargo_build(&workspace, "round.rebuild_from_installed") {
             Ok(rebuild) => rebuild_compiled_crates = rebuild.compiled_crates,
             Err(failure) => round_failures.push(format!("rebuild_from_installed: {failure}")),
@@ -2701,5 +2632,620 @@ mod regen_round_cost_tests {
         if let (Some(b), Some(a)) = (before, after) {
             assert!(a >= b, "cpu went backwards: {b} -> {a}");
         }
+    }
+}
+
+// ===========================================================================================
+// THE AFFECTED SET OF ONE EDIT -- host realization of `gunbc.regen_affected_set`.
+//
+// The host does what the model cannot: read the edit (the floor's git diff range), read the tree
+// (module names from the edited files, the seed's closure edge index, the committed mirror
+// population), and take the reverse walk over the full edge index at native cost. The VERDICT --
+// which arm, which members -- is the model's: the host hands `regen_affected_set` the edited
+// modules, the unlocatable paths, the edges among the modules its walk reached, the compared rows,
+// and the declared bootstrap rows, and prints the answer. The host's walk is held to the model's
+// answer on every run (`lockstep` below): a disagreement is a refusal, never a preferred side.
+// ===========================================================================================
+
+const REGEN_AFFECTED_SET_PRODUCER: &str = "claim_executor --regen-affected-set";
+const REGEN_AFFECTED_SET_ENTRY_UNDER_ROOT: &str = "gunbc/regen_affected_set.dag";
+
+pub struct RegenAffectedSetOutcome {
+    /// Provenance, the edited population, the bound line, and one `member` line per mirror.
+    pub rendered: String,
+    /// The model's arm name (`AffectedMirrors` | `WholePopulation` | `EditedSetUnlocatable`).
+    pub arm: String,
+    /// The mirrors the bound names, by committed basename; empty for the two non-selecting arms.
+    pub members: Vec<String>,
+}
+
+/// The model's answer for one edited population, as the host consumes it.
+pub struct AffectedSetBound {
+    pub line: String,
+    pub arm: String,
+    pub members: Vec<String>,
+}
+
+/// The edited population, classified. `unlocatable` is every `.dag` path the diff names that the
+/// tree cannot name as a module -- departed, unreadable, or without a `module` line -- and a
+/// non-empty list is the model's refusal arm. Paths that are not `.dag` are not the selection's
+/// subject (a hand edit to a mirror is what the regen's own diff catches) and are only counted.
+#[derive(Debug, PartialEq, Eq)]
+pub struct EditedPopulation {
+    pub edited_modules: Vec<String>,
+    pub unlocatable: Vec<String>,
+    pub non_dag_paths: Vec<String>,
+}
+
+pub fn edited_population_from_diff(workspace: &Path, diff_text: &str) -> EditedPopulation {
+    let departed = super::parse_unified_diff_departed_paths(diff_text);
+    let mut paths: BTreeSet<String> = super::parse_unified_diff_changed_new_lines(diff_text)
+        .keys()
+        .cloned()
+        .collect();
+    paths.extend(super::parse_unified_diff_added_paths(diff_text));
+    paths.extend(departed.iter().cloned());
+    let mut edited_modules: BTreeSet<String> = BTreeSet::new();
+    let mut unlocatable = Vec::new();
+    let mut non_dag_paths = Vec::new();
+    for path in paths {
+        if !path.ends_with(".dag") {
+            non_dag_paths.push(path);
+            continue;
+        }
+        if departed.contains(&path) {
+            unlocatable.push(format!(
+                "{path} (departed: no module line remains in the tree)"
+            ));
+            continue;
+        }
+        match fs::read_to_string(workspace.join(&path)) {
+            Ok(content) => match super::extract_module_path_public(&content) {
+                Some(module) => {
+                    edited_modules.insert(module);
+                }
+                None => unlocatable.push(format!("{path} (no module line)")),
+            },
+            Err(e) => unlocatable.push(format!("{path} (unreadable: {e})")),
+        }
+    }
+    EditedPopulation {
+        edited_modules: edited_modules.into_iter().collect(),
+        unlocatable,
+        non_dag_paths,
+    }
+}
+
+/// The seed's closure edges, module to module, off the SAME edge index the regen's closure walk
+/// uses (`both_closure_edge_index`: dotted references, which include every import line, plus bare
+/// references) -- one authority for "what pulls what", read here in reverse. A file the index
+/// names but cannot map to a module is a refusal: an edge dropped silently would shrink the bound.
+pub fn regen_module_edges(
+    workspace: &Path,
+) -> Result<(Vec<(String, String)>, Vec<String>), String> {
+    let abs_roots: Vec<String> = super::regen_source_roots()
+        .all()
+        .iter()
+        .map(|root| {
+            workspace
+                .join(root.repo_relative_path())
+                .to_string_lossy()
+                .into_owned()
+        })
+        .collect();
+    let index = super::build_multi_entry_index(&abs_roots);
+    let edge_index = super::both_closure_edge_index(&index)?;
+    let mut module_of_path: HashMap<String, String> = HashMap::new();
+    let mut modules: BTreeSet<String> = BTreeSet::new();
+    for (module, source) in index.source_files.iter() {
+        module_of_path.insert(
+            super::workspace_relative_repo_path(&source.path),
+            module.clone(),
+        );
+        modules.insert(module.clone());
+    }
+    let mut edges: BTreeSet<(String, String)> = BTreeSet::new();
+    let mut unmapped: BTreeSet<String> = BTreeSet::new();
+    for table in [&edge_index.ref_out, &edge_index.bare_out] {
+        for (from_path, to_paths) in table {
+            let from_key = super::workspace_relative_repo_path(from_path);
+            let Some(from) = module_of_path.get(&from_key) else {
+                unmapped.insert(from_key);
+                continue;
+            };
+            for to_path in to_paths {
+                let to_key = super::workspace_relative_repo_path(to_path);
+                match module_of_path.get(&to_key) {
+                    Some(to) if to != from => {
+                        edges.insert((from.clone(), to.clone()));
+                    }
+                    Some(_) => {}
+                    None => {
+                        unmapped.insert(to_key);
+                    }
+                }
+            }
+        }
+    }
+    if !unmapped.is_empty() {
+        return Err(format!(
+            "refusal: {} closure edge endpoint(s) name no module in the index, so the reverse \
+             walk would be missing edges: {:?}",
+            unmapped.len(),
+            unmapped.iter().take(8).collect::<Vec<_>>()
+        ));
+    }
+    Ok((edges.into_iter().collect(), modules.into_iter().collect()))
+}
+
+/// The host's reverse walk: every module from which an edited module is reachable. The model's
+/// `regen_reverse_closure` is the same relation as a bounded fold; `lockstep` holds them equal.
+pub fn regen_reverse_closure_host(
+    edited: &[String],
+    edges: &[(String, String)],
+) -> BTreeSet<String> {
+    let mut dependents_of: HashMap<&str, Vec<&str>> = HashMap::new();
+    for (from, to) in edges {
+        dependents_of
+            .entry(to.as_str())
+            .or_default()
+            .push(from.as_str());
+    }
+    let mut reached: BTreeSet<String> = edited.iter().cloned().collect();
+    let mut frontier: Vec<String> = edited.to_vec();
+    while let Some(module) = frontier.pop() {
+        if let Some(dependents) = dependents_of.get(module.as_str()) {
+            for dependent in dependents {
+                if reached.insert((*dependent).to_string()) {
+                    frontier.push((*dependent).to_string());
+                }
+            }
+        }
+    }
+    reached
+}
+
+/// The committed mirror population as `(module, basename)` rows: a module whose mirror basename
+/// (`a.b.c` -> `a_b_c.rs`) is a committed generated file. Rows are the join of two authorities the
+/// regen already owns -- the module index and the committed generated population -- never a list.
+pub fn compared_mirror_rows(
+    stage0_src: &Path,
+    modules: &[String],
+) -> Result<Vec<(String, String)>, String> {
+    let committed: BTreeSet<String> = committed_generated_basenames(stage0_src)?
+        .into_iter()
+        .collect();
+    Ok(modules
+        .iter()
+        .filter_map(|module| {
+            let basename = format!("{}.rs", module.replace('.', "_"));
+            committed
+                .contains(&basename)
+                .then(|| (module.clone(), basename))
+        })
+        .collect())
+}
+
+fn affected_set_entry(source_roots: &[String]) -> Result<String, String> {
+    source_roots
+        .iter()
+        .map(|root| Path::new(root).join(REGEN_AFFECTED_SET_ENTRY_UNDER_ROOT))
+        .find(|candidate| candidate.is_file())
+        .map(|found| found.to_string_lossy().into_owned())
+        .ok_or_else(|| {
+            format!(
+                "refusal: {REGEN_AFFECTED_SET_ENTRY_UNDER_ROOT} is not under any declared source \
+                 root {source_roots:?}, so the bound has no authority to answer from"
+            )
+        })
+}
+
+/// Ask the model. The edges handed over are those whose target the host's walk reached -- the
+/// subgraph on which the model's bounded fold re-derives the same closure at interpreter cost --
+/// and `modules` is that reached set, which bounds the fold (a path among n modules has at most
+/// n-1 edges). The bootstrap rows are the model's own declaration; nothing is passed for them.
+pub fn render_affected_set_bound(
+    source_roots: &[String],
+    edited: &[String],
+    unlocatable: &[String],
+    edges: &[(String, String)],
+    compared: &[(String, String)],
+) -> Result<AffectedSetBound, String> {
+    use crate::v1_interpreter::{self, str_value, ExecutionMode, Value};
+    let entry = affected_set_entry(source_roots)?;
+    let index = super::process_shared_index(source_roots);
+    let (graph, indices) = super::resolve_entry_with_index_for_discovery_corpus(&index, &entry)
+        .map_err(|e| {
+            format!("refusal: {entry} did not resolve, so the bound cannot answer: {e}")
+        })?;
+    let ctx = super::make_eval_context(&graph, indices, ExecutionMode::Hermetic);
+
+    let reached = regen_reverse_closure_host(edited, edges);
+    let edge_values: Vec<Value> = edges
+        .iter()
+        .filter(|(_, to)| reached.contains(to))
+        .map(|(from, to)| Value::Record {
+            type_name: ctx.sym("DependencyEdge"),
+            fields: Rc::new(vec![
+                (ctx.sym("from"), str_value(from.clone())),
+                (ctx.sym("to"), str_value(to.clone())),
+            ]),
+        })
+        .collect();
+    let compared_values: Vec<Value> = compared
+        .iter()
+        .map(|(module, basename)| Value::Record {
+            type_name: ctx.sym("MirrorRow"),
+            fields: Rc::new(vec![
+                (ctx.sym("module"), str_value(module.clone())),
+                (ctx.sym("basename"), str_value(basename.clone())),
+            ]),
+        })
+        .collect();
+    let strs = |items: &[String]| {
+        let values: Vec<Value> = items.iter().map(str_value).collect();
+        Value::List(Rc::new(values.into()))
+    };
+    let reached_list: Vec<String> = reached.iter().cloned().collect();
+    let args = vec![
+        (Some("edited".to_string()), strs(edited)),
+        (Some("unlocatable".to_string()), strs(unlocatable)),
+        (
+            Some("edges".to_string()),
+            Value::List(Rc::new(edge_values.into())),
+        ),
+        (
+            Some("compared".to_string()),
+            Value::List(Rc::new(compared_values.into())),
+        ),
+        (Some("modules".to_string()), strs(&reached_list)),
+    ];
+    let bound = v1_interpreter::with_active_context(&ctx, || {
+        v1_interpreter::run_in_context_with_args(&ctx, "regen_affected_set", &args, false)
+    })
+    .map_err(|e| format!("refusal: regen_affected_set did not answer: {e}"))?;
+    let bound_arg = vec![(Some("bound".to_string()), bound)];
+    let line = match v1_interpreter::with_active_context(&ctx, || {
+        v1_interpreter::run_in_context_with_args(
+            &ctx,
+            "regen_affected_set_bound_line",
+            &bound_arg,
+            false,
+        )
+    })
+    .map_err(|e| format!("refusal: regen_affected_set_bound_line did not render: {e}"))?
+    {
+        Value::Str(s) => s.to_string(),
+        other => {
+            return Err(format!(
+                "refusal: regen_affected_set_bound_line returned {} where a String was expected",
+                other.type_label_public()
+            ))
+        }
+    };
+    let members: Vec<String> = match v1_interpreter::with_active_context(&ctx, || {
+        v1_interpreter::run_in_context_with_args(
+            &ctx,
+            "regen_affected_set_members",
+            &bound_arg,
+            false,
+        )
+    })
+    .map_err(|e| format!("refusal: regen_affected_set_members did not answer: {e}"))?
+    {
+        Value::List(items) => items
+            .iter()
+            .map(|item| match item {
+                Value::Str(s) => Ok(s.to_string()),
+                other => Err(format!(
+                    "refusal: regen_affected_set_members holds a {} where a String was expected",
+                    other.type_label_public()
+                )),
+            })
+            .collect::<Result<Vec<_>, _>>()?,
+        other => {
+            return Err(format!(
+                "refusal: regen_affected_set_members returned {} where a List was expected",
+                other.type_label_public()
+            ))
+        }
+    };
+    let arm = line
+        .strip_prefix("regen-affected-set: ")
+        .and_then(|rest| rest.split_whitespace().next())
+        .ok_or_else(|| format!("refusal: bound line has no arm: {line}"))?
+        .to_string();
+    // LOCKSTEP, every run: on the selecting arm the model's mirrors must be exactly the host's
+    // reached modules joined to the compared rows. Either side alone could be wrong; agreement is
+    // the evidence, and disagreement stops the line rather than electing a side.
+    if arm == "AffectedMirrors" {
+        let host_mirrors: BTreeSet<String> = compared
+            .iter()
+            .filter(|(module, _)| reached.contains(module))
+            .map(|(_, basename)| basename.clone())
+            .collect();
+        let model_mirrors: BTreeSet<String> = members
+            .iter()
+            .filter(|m| host_mirrors.contains(*m) || compared.iter().any(|(_, b)| b == *m))
+            .cloned()
+            .collect();
+        if host_mirrors != model_mirrors {
+            return Err(format!(
+                "refusal: lockstep disagreement -- host reverse walk names {} mirror(s), the model's \
+                 regen_affected_set names {}; host-only {:?}, model-only {:?}",
+                host_mirrors.len(),
+                model_mirrors.len(),
+                host_mirrors.difference(&model_mirrors).take(8).collect::<Vec<_>>(),
+                model_mirrors.difference(&host_mirrors).take(8).collect::<Vec<_>>()
+            ));
+        }
+    }
+    Ok(AffectedSetBound { line, arm, members })
+}
+
+/// The bound for an edited population against the live tree: edges and compared rows from the
+/// tree, verdict from the model.
+pub fn affected_set_bound_for(
+    workspace: &Path,
+    source_roots: &[String],
+    edited: &[String],
+    unlocatable: &[String],
+) -> Result<AffectedSetBound, String> {
+    let (edges, modules) = regen_module_edges(workspace)?;
+    let compared = compared_mirror_rows(&workspace.join("src/v1/stage0/src"), &modules)?;
+    render_affected_set_bound(source_roots, edited, unlocatable, &edges, &compared)
+}
+
+/// `claim_executor --regen-affected-set`: the edited population is the floor's own diff range
+/// (the same "what changed" the required floor selects witnesses from), so the selection and the
+/// gate read one edit.
+pub fn run_regen_affected_set(source_roots: &[String]) -> Result<RegenAffectedSetOutcome, String> {
+    let workspace = workspace_root();
+    let tree = git_head_sha(&workspace)?;
+    let tree_dirty = git_tree_dirty(&workspace)?;
+    let diff_text = super::required_floor_runner::floor_git_diff_range()?;
+    let population = edited_population_from_diff(&workspace, &diff_text);
+    let bound = affected_set_bound_for(
+        &workspace,
+        source_roots,
+        &population.edited_modules,
+        &population.unlocatable,
+    )?;
+    let mut rendered = format!(
+        "regen-affected-set: producer={REGEN_AFFECTED_SET_PRODUCER} host={} tree={tree} tree_dirty={tree_dirty}\n",
+        host_name()
+    );
+    for module in &population.edited_modules {
+        rendered.push_str(&format!("regen-affected-set: edited {module}\n"));
+    }
+    for path in &population.unlocatable {
+        rendered.push_str(&format!("regen-affected-set: unlocatable {path}\n"));
+    }
+    rendered.push_str(&format!(
+        "regen-affected-set: non_dag_paths={}\n",
+        population.non_dag_paths.len()
+    ));
+    rendered.push_str(&bound.line);
+    rendered.push('\n');
+    for member in &bound.members {
+        rendered.push_str(&format!("regen-affected-set: member {member}\n"));
+    }
+    Ok(RegenAffectedSetOutcome {
+        rendered,
+        arm: bound.arm,
+        members: bound.members,
+    })
+}
+
+#[cfg(test)]
+mod regen_affected_set_tests {
+    use super::*;
+
+    fn roots() -> Vec<String> {
+        ["dag", "src/v2"]
+            .iter()
+            .map(|r| workspace_root().join(r).to_string_lossy().into_owned())
+            .collect()
+    }
+
+    fn s(x: &str) -> String {
+        x.to_string()
+    }
+
+    /// The witness's fixture graph, so the host walk and the model fold are held to one answer on
+    /// the same edges the .dag witness asserts against.
+    fn fixture_edges() -> Vec<(String, String)> {
+        vec![
+            (s("std.b"), s("std.a")),
+            (s("gunbc.c"), s("std.b")),
+            (s("gunbc.d"), s("std.x")),
+            (s("v1.compiler.emit_rust"), s("std.a")),
+        ]
+    }
+
+    fn fixture_compared() -> Vec<(String, String)> {
+        [
+            "std.a",
+            "std.b",
+            "gunbc.c",
+            "gunbc.d",
+            "std.x",
+            "v1.compiler.emit_rust",
+        ]
+        .iter()
+        .map(|m| (s(m), format!("{}.rs", m.replace('.', "_"))))
+        .collect()
+    }
+
+    #[test]
+    fn host_walk_and_model_fold_agree_on_the_fixture_graph() {
+        let host = regen_reverse_closure_host(&[s("std.a")], &fixture_edges());
+        assert_eq!(
+            host,
+            ["std.a", "std.b", "gunbc.c", "v1.compiler.emit_rust"]
+                .iter()
+                .map(|m| s(m))
+                .collect::<BTreeSet<_>>()
+        );
+        let bound = render_affected_set_bound(
+            &roots(),
+            &[s("std.a")],
+            &[],
+            &fixture_edges(),
+            &fixture_compared(),
+        )
+        .expect("the model answers on the fixture");
+        assert_eq!(bound.arm, "AffectedMirrors");
+        assert_eq!(
+            bound.line,
+            "regen-affected-set: AffectedMirrors edited=1 mirrors=4 bootstrap_products=0"
+        );
+        let members: BTreeSet<String> = bound.members.into_iter().collect();
+        assert_eq!(
+            members,
+            [
+                "std_a.rs",
+                "std_b.rs",
+                "gunbc_c.rs",
+                "v1_compiler_emit_rust.rs"
+            ]
+            .iter()
+            .map(|m| s(m))
+            .collect()
+        );
+    }
+
+    /// RED CONTROL: an unlocatable path refuses with no members, and does not widen to the
+    /// population -- the arm is the refusal, and the edited module beside it is not walked.
+    #[test]
+    fn an_unlocatable_edited_path_refuses_and_selects_nothing() {
+        let bound = render_affected_set_bound(
+            &roots(),
+            &[s("std.a")],
+            &[s(
+                "dag/std/gone.dag (departed: no module line remains in the tree)",
+            )],
+            &fixture_edges(),
+            &fixture_compared(),
+        )
+        .expect("the refusal is an arm, not an error");
+        assert_eq!(bound.arm, "EditedSetUnlocatable");
+        assert!(bound.members.is_empty());
+        assert!(bound
+            .line
+            .starts_with("regen-affected-set: EditedSetUnlocatable unlocatable=1 reason="));
+    }
+
+    /// The edit reader on a synthetic diff: an existing module is named, a departed `.dag` and an
+    /// added `.dag` that is not in the tree are unlocatable, and a `.rs` is only counted.
+    #[test]
+    fn edited_population_classifies_named_departed_and_missing_paths() {
+        let diff = "\
+diff --git a/dag/std/content_hash.dag b/dag/std/content_hash.dag
+--- a/dag/std/content_hash.dag
++++ b/dag/std/content_hash.dag
+@@ -1,1 +1,2 @@
+ module std.content_hash
++data planted: Int = 1
+diff --git a/dag/std/gone.dag b/dag/std/gone.dag
+deleted file mode 100644
+--- a/dag/std/gone.dag
++++ /dev/null
+@@ -1,1 +0,0 @@
+-module std.gone
+diff --git a/dag/std/never_written.dag b/dag/std/never_written.dag
+new file mode 100644
+--- /dev/null
++++ b/dag/std/never_written.dag
+@@ -0,0 +1,1 @@
++module std.never_written
+diff --git a/src/v1/stage0/src/v1_rt.rs b/src/v1/stage0/src/v1_rt.rs
+--- a/src/v1/stage0/src/v1_rt.rs
++++ b/src/v1/stage0/src/v1_rt.rs
+@@ -1,1 +1,2 @@
+ // x
++// y
+";
+        let population = edited_population_from_diff(&workspace_root(), diff);
+        assert_eq!(population.edited_modules, vec![s("std.content_hash")]);
+        assert_eq!(
+            population.unlocatable.len(),
+            2,
+            "{:?}",
+            population.unlocatable
+        );
+        assert!(population.unlocatable[0].starts_with("dag/std/gone.dag (departed"));
+        assert!(population.unlocatable[1].starts_with("dag/std/never_written.dag (unreadable"));
+        assert_eq!(
+            population.non_dag_paths,
+            vec![s("src/v1/stage0/src/v1_rt.rs")]
+        );
+    }
+
+    /// THE LIVE-TREE CONTROLS, one index build for all three: the three measured edits of
+    /// 2026-08-30 (tree 677988a2 / 0fe2c517) each land on the arm and members the measurement
+    /// drifted. A leaf std edit names its own mirror and not the runtime shim; the runtime
+    /// template names its mirror AND the shim through the declared bootstrap edge; an emitter
+    /// edit is the whole population.
+    #[test]
+    fn live_tree_controls_land_on_the_measured_arms() {
+        let workspace = workspace_root();
+        let (edges, modules) = regen_module_edges(&workspace).expect("the closure edge index maps");
+        let compared = compared_mirror_rows(&workspace.join("src/v1/stage0/src"), &modules)
+            .expect("committed population");
+        assert!(compared.iter().any(|(m, _)| m == "std.content_hash"));
+
+        let leaf =
+            render_affected_set_bound(&roots(), &[s("std.content_hash")], &[], &edges, &compared)
+                .expect("leaf edit answers");
+        assert_eq!(leaf.arm, "AffectedMirrors", "{}", leaf.line);
+        assert!(
+            leaf.members.iter().any(|m| m == "std_content_hash.rs"),
+            "{:?}",
+            leaf.members
+        );
+        assert!(
+            !leaf.members.iter().any(|m| m == "v1_rt.rs"),
+            "{:?}",
+            leaf.members
+        );
+        assert!(
+            leaf.members.len() < compared.len(),
+            "the leaf bound is a proper subset"
+        );
+
+        let template = render_affected_set_bound(
+            &roots(),
+            &[s("v1.compiler.runtime_rust")],
+            &[],
+            &edges,
+            &compared,
+        )
+        .expect("template edit answers");
+        assert_eq!(template.arm, "AffectedMirrors", "{}", template.line);
+        assert!(
+            template
+                .members
+                .iter()
+                .any(|m| m == "v1_compiler_runtime_rust.rs"),
+            "{:?}",
+            template.members
+        );
+        assert!(
+            template.members.iter().any(|m| m == "v1_rt.rs"),
+            "{:?}",
+            template.members
+        );
+
+        let emitter = render_affected_set_bound(
+            &roots(),
+            &[s("v1.compiler.emit_rust")],
+            &[],
+            &edges,
+            &compared,
+        )
+        .expect("emitter edit answers");
+        assert_eq!(emitter.arm, "WholePopulation", "{}", emitter.line);
+        assert!(emitter.members.is_empty());
     }
 }

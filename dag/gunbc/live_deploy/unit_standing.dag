@@ -13,8 +13,36 @@ import extdeps.systemd.unit_file {
   SystemdServiceDirective, SystemdTimerDirective,
 }
 
-data unit_standing_note: String = "EXACT SYSTEMD SERVICE AND TIMER STANDING, MODELED ON WHAT THE EMITTED UNITS ACTUALLY ARE. Readiness plus a fresh tick receipt cannot prove the belt timer is enabled now: a service can be invoked by hand, write one fresh receipt, and sit behind a disabled timer. The RLM-2 ruling (section 7) therefore keeps unit standing in scope and rejects the naive 'service and timer both enabled and active', because gunbc.live_deploy.emit deliberately gives the three units different semantics -- the dashboard serve service is Type=simple, the belt service is Type=oneshot with no [Install] section, and the belt timer is what is enabled under timers.target. The positive standing is one row per unit, and the discriminating POSITIVE control is that a correctly completed, currently INACTIVE oneshot stays green.\n\nTHE OBSERVER IS `systemctl show --property=X --value` (extdeps.systemd.systemctl ShowProperty), system scope, which this module widened with the properties it needs rather than adding a second show surface. There is still no modeled system-scope `is-enabled` operation (systemctl.dag's own note); UnitFileState carries the same fact through the show surface, which is the read that already existed.\n\nWHAT IS COMPARED EXACTLY AND WHAT IS COMPARED STRUCTURALLY, stated so the residue is visible. ExecStart, User and WorkingDirectory are compared exactly against the directives of R's emitted unit file (gunbc.live_deploy.emit live_deploy_serve_unit_file / live_deploy_belt_service_unit_file), reading systemd's `{ path=... ; argv[]=... ; ... }` rendering by its `argv[]=` segment. The timer's target unit is compared exactly through the Unit property. The timer's cadence is compared STRUCTURALLY: TimersMonotonic must carry both an OnBootUSec and an OnUnitInactiveUSec entry, but their VALUES are not compared, because systemd renders '60s' as '1min' and the repository has no systemd duration normalization to ground an equality on. That is a declared residue with its trigger: an extdeps.systemd duration model that can equate the emitted spelling to the rendered one, at which point the cadence equality lands here as a fourth timer conjunct.\n\nEVERY REFUSAL NAMES THE UNIT AND THE PROPERTY that disagreed; an unreadable property is a refusal, never a pass by vacancy."
-
+// EXACT SYSTEMD SERVICE AND TIMER STANDING, MODELED ON WHAT THE EMITTED UNITS ACTUALLY ARE.
+// Readiness plus a fresh tick receipt cannot prove the belt timer is enabled now: a service can be
+// invoked by hand, write one fresh receipt, and sit behind a disabled timer. The RLM-2 ruling
+// (section 7) therefore keeps unit standing in scope and rejects the naive 'service and timer both
+// enabled and active', because gunbc.live_deploy.emit deliberately gives the three units different
+// semantics -- the dashboard serve service is Type=simple, the belt service is Type=oneshot with no
+// [Install] section, and the belt timer is what is enabled under timers.target. The positive
+// standing is one row per unit, and the discriminating POSITIVE control is that a correctly
+// completed, currently INACTIVE oneshot stays green.
+// 
+// THE OBSERVER IS `systemctl show --property=X --value` (extdeps.systemd.systemctl ShowProperty),
+// system scope, which this module widened with the properties it needs rather than adding a second
+// show surface. There is still no modeled system-scope `is-enabled` operation (systemctl.dag's own
+// note); UnitFileState carries the same fact through the show surface, which is the read that
+// already existed.
+// 
+// WHAT IS COMPARED EXACTLY AND WHAT IS COMPARED STRUCTURALLY, stated so the residue is visible.
+// ExecStart, User and WorkingDirectory are compared exactly against the directives of R's emitted
+// unit file (gunbc.live_deploy.emit live_deploy_serve_unit_file /
+// live_deploy_belt_service_unit_file), reading systemd's `{ path=... ; argv[]=... ; ... }`
+// rendering by its `argv[]=` segment. The timer's target unit is compared exactly through the Unit
+// property. The timer's cadence is compared STRUCTURALLY: TimersMonotonic must carry both an
+// OnBootUSec and an OnUnitInactiveUSec entry, but their VALUES are not compared, because systemd
+// renders '60s' as '1min' and the repository has no systemd duration normalization to ground an
+// equality on. That is a declared residue with its trigger: an extdeps.systemd duration model that
+// can equate the emitted spelling to the rendered one, at which point the cadence equality lands
+// here as a fourth timer conjunct.
+// 
+// EVERY REFUSAL NAMES THE UNIT AND THE PROPERTY that disagreed; an unreadable property is a
+// refusal, never a pass by vacancy.
 type UnitPropertyRead
   = UnitPropertyValue { value: String }
   | UnitPropertyUnreadable { unit: String, property: String }
