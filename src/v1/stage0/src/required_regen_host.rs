@@ -2566,6 +2566,7 @@ struct RegenConvergenceStageReceipt {
     build_target: String,
     build_invocation: String,
     build_terminal: RegenConvergenceBuildTerminalReceipt,
+    build_compiled_crates: u64,
     output_seed_digest: String,
     next_generation_receipt_id: String,
 }
@@ -3403,7 +3404,6 @@ fn install_convergence_stage(
         });
     }
     let build = seed_cargo_build(workspace, "round.rebuild_from_installed")?;
-    let _ = build.compiled_crates;
     let seed_after = current_exe_digest()?;
     for surface in &mut surfaces {
         surface.terminal = true;
@@ -3423,6 +3423,7 @@ fn install_convergence_stage(
         build_target: "claim_executor".to_string(),
         build_invocation: "cargo build --release --bin claim_executor".to_string(),
         build_terminal: RegenConvergenceBuildTerminalReceipt::Passed,
+        build_compiled_crates: build.compiled_crates,
         output_seed_digest: seed_after,
         next_generation_receipt_id: format!("generation-{}", ordinal + 1),
     })
@@ -3636,7 +3637,11 @@ pub fn run_regen_round_cost(
             .map_err(|e| format!("remove completed convergence journal: {e}"))?;
     }
 
-    let rebuild_compiled_crates = 0;
+    let rebuild_compiled_crates = transaction_receipt
+        .stages
+        .iter()
+        .map(|stage| stage.build_compiled_crates)
+        .sum();
     let convergence_stage_receipt_ids = ordered_stage_receipt_ids;
 
     // The runtime's `Vec` is the persistent vector its emitted programs use; the receipt

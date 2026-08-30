@@ -373,6 +373,7 @@ type RegenStageReceipt {
   build_target: String
   build_invocation: String
   build_terminal: RegenStageBuildTerminal
+  build_compiled_crates: Int
   output_seed_digest: String
   next_generation_receipt_id: String
 }
