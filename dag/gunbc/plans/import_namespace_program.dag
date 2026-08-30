@@ -130,7 +130,7 @@ fn section_9() -> List<MarkdownBlock> {
   [
     h2(text: "9. What this plan does NOT claim"),
     ul(items: [
-      li(text: "**No CI mechanism enforces any of this** — no ratchet, no phase, no gate over the import population. **As of the 2026-08-26 ruling this is a BLOCKER rather than a disclosure**: it now gates Step 1 by name. A plan that reads as governed when it is not is worse than one that reads as unguarded, and this gap has since been given an executable consequence rather than left as candour."),
+      li(text: "**The CI-mechanism gap is CLOSED and this bullet is its record, not its claim.** Earlier revisions said no phase or gate covered the import population, then ruled that gap a Step-1 blocker. The wave-admission wall has since landed as the required `namespace-wave-admission` phase (gunbc#9365), phase enrolment is a substrate fact (`gunbc.required_ci_phase_roster`, joined against the executor's realization on every required run), and the milestone reads it derived: run `gunbc.compiler_frontend_program_status` `where_are_we` rather than trusting any sentence here. The remaining governance gaps are the ones that report names as NOT-DERIVABLE, each with its missing instrument."),
       li(text: "**No population figure here is live.** Section 5 says why."),
       li(text: "**Step ownership is not carried by any authority.** Section 4 says which half is assumed."),
       li(text: "**The ordering relation to self-host is RULED and is no longer a gap** — section 7 projects `gunbc.compiler_frontend_program_interlock`. It is listed here only so a reader of an older revision does not go looking for the open question."),
@@ -152,6 +152,9 @@ data import_namespace_program_bindings: List<DeclarationRef> = [
   decl_ref(module_path: "gunbc.compiler_frontend_program_interlock", decl_name: "NamespaceChangeClass"),
   decl_ref(module_path: "gunbc.compiler_frontend_program_interlock", decl_name: "NamespaceDeltaDisposition"),
   decl_ref(module_path: "gunbc.namespace_cut_landing_order", decl_name: "namespace_cut_grammar_last_ruling"),
+  decl_ref(module_path: "gunbc.required_ci_phase_roster", decl_name: "required_ci_phases"),
+  decl_ref(module_path: "gunbc.namespace_cut_stage", decl_name: "stage_prerequisites"),
+  decl_ref(module_path: "gunbc.namespace_cut_subject_roster", decl_name: "namespace_cut_subjects"),
 ]
 
 fn import_namespace_program_body() -> List<MarkdownBlock> {
