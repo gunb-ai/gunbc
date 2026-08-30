@@ -1,0 +1,116 @@
+module std.repair_input_origin
+
+import std.types { String, List }
+
+// XL-0A splits the emitter's six candidate-bearing inputs BEFORE their historical string union.
+// The source branch is deliberately named Candidate rather than DeclarationCarrier: XL-0B/C will
+// carry DeclarationRef from the resolver and summary authorities. Claiming it here would require
+// the emitter-side registry reconstruction the split-domain ruling forbids.
+type CandidateSpelling
+  = BareCandidate { name: String }
+  | QualifiedCandidate { authored_qualifier: String, member: String }
+
+type SourceCarrierOrigin
+  = UnlistedTypeResolutionOrigin
+  | ValueReferenceResolutionOrigin
+  | ItemEmitSurfaceOrigin
+  | FieldImportSurfaceOrigin
+  | VariantPayloadSurfaceOrigin
+
+type RenderedTypeSurfaceOrigin {}
+
+type SourceCarrierCandidateIdentity {
+  emitting_module: String
+  candidate_spelling: CandidateSpelling
+  producer_origin: SourceCarrierOrigin
+}
+
+type RenderedTargetVocabularyIdentity {
+  emitting_module: String
+  rendered_identifier: String
+  producer_origin: RenderedTypeSurfaceOrigin
+}
+
+type RepairInputOriginCandidate
+  = SourceCarrierCandidate { identity: SourceCarrierCandidateIdentity }
+  | RenderedTargetVocabularyCarrier { identity: RenderedTargetVocabularyIdentity }
+
+fn candidate_spelling_from_text(name: String) -> CandidateSpelling {
+  let segments = name |> split(delimiter: ".")
+  if (segments |> count) > 1 {
+    QualifiedCandidate {
+      authored_qualifier: segments |> take(n: (segments |> count) - 1) |> join(separator: "."),
+      member: match segments |> last { Present { value: member } => member  Absent => "" }
+    }
+  } else {
+    BareCandidate { name: name }
+  }
+}
+
+fn source_origin_candidates(
+  emitting_module: String,
+  names: List<String>,
+  origin: SourceCarrierOrigin,
+) -> List<RepairInputOriginCandidate> {
+  names |> map(name => SourceCarrierCandidate { identity: SourceCarrierCandidateIdentity {
+    emitting_module: emitting_module,
+    candidate_spelling: candidate_spelling_from_text(name: name),
+    producer_origin: origin,
+  } })
+}
+
+fn rendered_origin_candidates(
+  emitting_module: String,
+  names: List<String>,
+) -> List<RepairInputOriginCandidate> {
+  names |> map(name => RenderedTargetVocabularyCarrier { identity: RenderedTargetVocabularyIdentity {
+    emitting_module: emitting_module,
+    rendered_identifier: name,
+    producer_origin: RenderedTypeSurfaceOrigin {},
+  } })
+}
+
+// SOLE PRE-UNION ASSEMBLY FOR XL-0A. Every source channel has its own closed arm and the rendered
+// channel inhabits a different branch. No filter, eligibility fact, provider lookup or repair
+// disposition is accepted here. The old name union is now only the compatibility projection below.
+fn repair_input_origin_candidates(
+  emitting_module: String,
+  unlisted_type_names: List<String>,
+  value_reference_names: List<String>,
+  item_emit_surface_names: List<String>,
+  field_import_surface_names: List<String>,
+  variant_payload_surface_names: List<String>,
+  rendered_type_surface_names: List<String>,
+) -> List<RepairInputOriginCandidate> {
+  concat(
+    source_origin_candidates(emitting_module: emitting_module, names: unlisted_type_names, origin: UnlistedTypeResolutionOrigin),
+    concat(
+      source_origin_candidates(emitting_module: emitting_module, names: value_reference_names, origin: ValueReferenceResolutionOrigin),
+      concat(
+        source_origin_candidates(emitting_module: emitting_module, names: item_emit_surface_names, origin: ItemEmitSurfaceOrigin),
+        concat(
+          source_origin_candidates(emitting_module: emitting_module, names: field_import_surface_names, origin: FieldImportSurfaceOrigin),
+          concat(
+            source_origin_candidates(emitting_module: emitting_module, names: variant_payload_surface_names, origin: VariantPayloadSurfaceOrigin),
+            rendered_origin_candidates(emitting_module: emitting_module, names: rendered_type_surface_names)
+          )
+        )
+      )
+    )
+  )
+}
+
+fn repair_input_origin_candidate_name(candidate: RepairInputOriginCandidate) -> String {
+  match candidate {
+    SourceCarrierCandidate { identity } =>
+      match identity.candidate_spelling {
+        BareCandidate { name } => name
+        QualifiedCandidate { authored_qualifier, member } => concat(authored_qualifier, ".", member)
+      }
+    RenderedTargetVocabularyCarrier { identity } => identity.rendered_identifier
+  }
+}
+
+fn repair_input_origin_compatibility_names(candidates: List<RepairInputOriginCandidate>) -> List<String> {
+  candidates |> map(candidate => repair_input_origin_candidate_name(candidate: candidate))
+}

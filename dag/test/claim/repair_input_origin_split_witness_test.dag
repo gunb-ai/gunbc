@@ -1,0 +1,59 @@
+module test.claim.repair_input_origin_split_witness_test
+
+import std.types { String, Bool }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.repair_input_origin {
+  RepairInputOriginCandidate,
+  SourceCarrierCandidate,
+  RenderedTargetVocabularyCarrier,
+  repair_input_origin_candidates,
+  repair_input_origin_compatibility_names,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn is_rendered(candidate: RepairInputOriginCandidate, want: String) -> Bool {
+  match candidate {
+    RenderedTargetVocabularyCarrier { identity } => identity.rendered_identifier == want
+    SourceCarrierCandidate { identity: _ } => false
+  }
+}
+
+fn is_source(candidate: RepairInputOriginCandidate, want: String) -> Bool {
+  match candidate {
+    SourceCarrierCandidate { identity } =>
+      repair_input_origin_compatibility_names(candidates: [SourceCarrierCandidate { identity: identity }]) |> any(name => name == want)
+    RenderedTargetVocabularyCarrier { identity: _ } => false
+  }
+}
+
+// XL-0A RED 1: a target-only token is born in the rendered partition. A producer that unions
+// strings before tagging cannot establish the negative half (there is no source row for Vec).
+test fn realized_only_token_has_one_rendered_origin_and_no_source_origin() -> Bool {
+  let candidates = repair_input_origin_candidates(
+    emitting_module: "fixture.consumer",
+    unlisted_type_names: [],
+    value_reference_names: [],
+    item_emit_surface_names: [],
+    field_import_surface_names: [],
+    variant_payload_surface_names: [],
+    rendered_type_surface_names: ["Vec"],
+  )
+  (candidates |> filter(candidate => is_rendered(candidate: candidate, want: "Vec")) |> count) == 1
+    && (candidates |> filter(candidate => is_source(candidate: candidate, want: "Vec")) |> count) == 0
+    && repair_input_origin_compatibility_names(candidates: candidates) == ["Vec"]
+}
+
+// XL-0A RED 2: emitted text is qualification evidence, never a seventh origin. With every ruled
+// producer channel empty, an emitted-text-only spelling has no constructor in this population.
+test fn emitted_text_only_token_is_not_an_origin() -> Bool {
+  repair_input_origin_candidates(
+    emitting_module: "fixture.consumer",
+    unlisted_type_names: [],
+    value_reference_names: [],
+    item_emit_surface_names: [],
+    field_import_surface_names: [],
+    variant_payload_surface_names: [],
+    rendered_type_surface_names: [],
+  ) |> count == 0
+}

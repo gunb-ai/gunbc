@@ -48,6 +48,9 @@ use crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic;
 pub use crate::std_primitive_projection::{
     primitive_identity_runtime_name, primitive_projection_row_for_declaration,
 };
+pub use crate::std_repair_input_origin::{
+    repair_input_origin_candidates, repair_input_origin_compatibility_names,
+};
 use crate::std_serialization::VariantEncoding::*;
 use crate::std_serialization::VariantNaming::*;
 pub use crate::std_serialization::{CoproductWireContract, VariantEncoding, VariantNaming};
@@ -8394,25 +8397,26 @@ pub fn reference_derived_use_line_plan(
             v1_rt::rc_empty_map::<String, bool>(),
             |acc: Rc<HashMap<String, bool>>, t: String| v1_rt::rc_map_insert(acc, t.clone(), true),
         );
+        let origin_candidates = crate::std_repair_input_origin::repair_input_origin_candidates(
+            this_module_name.clone(),
+            unlisted_type_names.clone(),
+            value_names.clone(),
+            type_surface_names.clone(),
+            field_surface_names.clone(),
+            variant_payload_structs.clone(),
+            realized_surface_names.clone(),
+        );
         let candidates = Rc::new({
             let mut __result = Vec::new();
             for name in Rc::new({
                 let mut __result = Vec::new();
                 for name in Rc::new({
                     let mut __result = Vec::new();
-                    for name in crate::v1_compiler_emit_core_support::unique_strings(v1_rt::concat(
-                        v1_rt::concat(
-                            v1_rt::concat(
-                                v1_rt::concat(
-                                    v1_rt::concat(unlisted_type_names.clone(), value_names.clone()),
-                                    type_surface_names.clone(),
-                                ),
-                                field_surface_names.clone(),
-                            ),
-                            variant_payload_structs.clone(),
+                    for name in crate::v1_compiler_emit_core_support::unique_strings(
+                        crate::std_repair_input_origin::repair_input_origin_compatibility_names(
+                            origin_candidates.clone(),
                         ),
-                        realized_surface_names.clone(),
-                    ))
+                    )
                     .iter()
                     .cloned()
                     {
