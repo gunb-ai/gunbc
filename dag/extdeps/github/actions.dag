@@ -199,6 +199,28 @@ type RunnerSpec
 // self_hosted_labels takes them as an ordinary list.
 data self_hosted_provenance_label: String = "self-hosted"
 
+// THE DEFAULT-LABEL DIRECTORY (operator question 2026-08-30: "are self-hosted and those
+// platform labels like defaults?" - YES, and upstream's docs scatter rather than list
+// them, so THIS ROW IS THE DIRECTORY). Per the using-labels page, every self-hosted
+// runner automatically receives exactly three default labels at registration:
+//   self-hosted           - provenance, applied to every self-hosted runner
+//   linux | windows | macOS  - the runner host's operating system
+//   x64 | ARM | ARM64        - the runner host's processor architecture
+// Everything else a runner carries is a CUSTOM label somebody assigned.
+//
+// ASSIGNMENT MECHANICS, cited from the same page (read 2026-08-30):
+// - at INITIAL configuration only: ./config.sh --labels a,b,c (comma-separated; a label
+//   is created if it does not exist). config.sh CANNOT relabel an existing runner.
+// - for an EXISTING runner: the REST API only.
+// - REPLACING a runner drops its custom labels - reassignment is an obligation of every
+//   runner replacement, which matters for ephemeral/auto-scaled fleets.
+// - A LABEL IS A CLAIM, NOT A MEASUREMENT: default labels may be hand-assigned via
+//   --labels and GitHub "accepts them as given and does not validate that the runner is
+//   actually using that operating system or architecture." So runner labels ground
+//   ROUTING, never facts about the host - a host fact needs its own observation, and a
+//   workflow trusting an arch label on a mislabeled runner gets an Exec format error,
+//   not a refusal.
+
 fn runner_os_label(kernel: KernelFamily) -> String {
   match kernel {
     Linux => "linux"
