@@ -6,6 +6,7 @@ import extdeps.ssh.session { SshSessionExecResult }
 import gunbc.spark.serving_observation_transaction {
   SparkServingObservationTransaction,
   SparkServingProbeCapture,
+  SparkServingTransactionAdmission,
   SparkServingProbeLeg,
   ProbeIsActive,
   ProbeLoadState,
@@ -15,7 +16,8 @@ import gunbc.spark.serving_observation_transaction {
   spark_serving_transaction_capture,
   spark_serving_transaction_result,
   spark_serving_transaction_duplicated_legs,
-  spark_serving_admit_transaction,
+  spark_serving_probe_capture_of,
+  spark_serving_observation_transaction_of,
   SparkServingTransactionAdmitted,
   SparkServingTransactionRefused,
 }
@@ -30,15 +32,28 @@ fn ok(out: String) -> SshSessionExecResult {
 }
 
 fn capture(leg: SparkServingProbeLeg, out: String) -> SparkServingProbeCapture {
-  SparkServingProbeCapture { leg: leg, argv: ["systemctl", "is-active"], result: ok(out: out) }
+  spark_serving_probe_capture_of(
+    leg: leg,
+    argv: ["systemctl", "is-active"],
+    result: ok(out: out),
+  )
 }
 
-fn txn_of(captures: List<SparkServingProbeCapture>) -> SparkServingObservationTransaction {
-  SparkServingObservationTransaction {
+fn admission(captures: List<SparkServingProbeCapture>) -> SparkServingTransactionAdmission {
+  spark_serving_observation_transaction_of(
     host: subject_host,
     attempt: "witness-attempt" as NonEmptyStr,
     locus: "fleet-automation" as NonEmptyStr,
     captures: captures,
+  )
+}
+
+// The witness reads through the admitted arm exactly as production must: there is no other way to
+// obtain a transaction, so a claim cannot test a shape the mint would have refused.
+fn txn_of(captures: List<SparkServingProbeCapture>) -> SparkServingObservationTransaction? {
+  match admission(captures: captures) {
+    SparkServingTransactionAdmitted { txn: t } => Present { value: t }
+    SparkServingTransactionRefused { cause: _ } => none
   }
 }
 
@@ -49,7 +64,9 @@ test fn every_leg_has_a_distinct_key() -> Bool {
 }
 
 test fn a_captured_leg_is_readable_and_an_uncaptured_one_is_absent() -> Bool {
-  let t = txn_of(captures: [capture(leg: ProbeIsActive, out: "active")])
+  match txn_of(captures: [capture(leg: ProbeIsActive, out: "active")]) {
+    Absent => false
+    Present { value: t } =>
   match spark_serving_transaction_result(txn: t, leg: ProbeIsActive) {
     Absent => false
     Present { value: r } =>
@@ -59,6 +76,7 @@ test fn a_captured_leg_is_readable_and_an_uncaptured_one_is_absent() -> Bool {
           Present { value: _ } => false
         }
   }
+  }
 }
 
 // A DERIVATION CANNOT MANUFACTURE A LEG NOBODY RAN.
@@ -67,10 +85,13 @@ test fn a_captured_leg_is_readable_and_an_uncaptured_one_is_absent() -> Bool {
 // reads Absent, and there is no transport in scope for a derivation to reach for, so a missing leg
 // surfaces as a refusal instead of becoming an extra round trip nobody counted.
 test fn an_uncaptured_leg_cannot_be_answered_from_a_neighbouring_one() -> Bool {
-  let t = txn_of(captures: [capture(leg: ProbeIsActive, out: "active")])
-  match spark_serving_transaction_capture(txn: t, leg: ProbeLoadState) {
-    Absent => true
-    Present { value: _ } => false
+  match txn_of(captures: [capture(leg: ProbeIsActive, out: "active")]) {
+    Absent => false
+    Present { value: t } =>
+      match spark_serving_transaction_capture(txn: t, leg: ProbeLoadState) {
+        Absent => true
+        Present { value: _ } => false
+      }
   }
 }
 
@@ -80,37 +101,37 @@ test fn an_uncaptured_leg_cannot_be_answered_from_a_neighbouring_one() -> Bool {
 // again inside the user-unit observer -- so this is the regression control for the class, expressed
 // at the grain where it can be detected rather than at the call sites where it was invisible.
 test fn a_leg_captured_twice_refuses_the_transaction() -> Bool {
-  let t = txn_of(captures: [
+  match admission(captures: [
     capture(leg: ProbeIsActive, out: "active"),
     capture(leg: ProbeIsActive, out: "inactive"),
-  ])
-  length(spark_serving_transaction_duplicated_legs(txn: t)) > 0
-    && match spark_serving_admit_transaction(txn: t) {
-      SparkServingTransactionRefused { cause: _ } => true
-      SparkServingTransactionAdmitted { txn: _ } => false
-    }
+  ]) {
+    SparkServingTransactionRefused { cause: _ } => true
+    SparkServingTransactionAdmitted { txn: _ } => false
+  }
 }
 
 // The positive control: distinct legs are not duplicates, so the refusal above discriminates rather
 // than rejecting every transaction with more than one capture.
 test fn distinct_legs_admit_the_transaction() -> Bool {
-  let t = txn_of(captures: [
+  match admission(captures: [
     capture(leg: ProbeIsActive, out: "active"),
     capture(leg: ProbeLoadState, out: "loaded"),
-  ])
-  length(spark_serving_transaction_duplicated_legs(txn: t)) == 0
-    && match spark_serving_admit_transaction(txn: t) {
-      SparkServingTransactionAdmitted { txn: admitted } => admitted.host == subject_host
-      SparkServingTransactionRefused { cause: _ } => false
-    }
+  ]) {
+    SparkServingTransactionAdmitted { txn: t } =>
+      length(spark_serving_transaction_duplicated_legs(txn: t)) == 0 && t.host == subject_host
+    SparkServingTransactionRefused { cause: _ } => false
+  }
 }
 
 // The transaction names its host, attempt and locus, so a value derived from it can state which
 // credential path produced it and which instant it belongs to. Joining facts across two attempts is
 // the thing the carrier exists to make visible.
 test fn the_transaction_names_its_host_attempt_and_locus() -> Bool {
-  let t = txn_of(captures: [])
-  t.host == subject_host
-    && t.attempt == ("witness-attempt" as NonEmptyStr)
-    && t.locus == ("fleet-automation" as NonEmptyStr)
+  match txn_of(captures: []) {
+    Absent => false
+    Present { value: t } =>
+      t.host == subject_host
+        && t.attempt == ("witness-attempt" as NonEmptyStr)
+        && t.locus == ("fleet-automation" as NonEmptyStr)
+  }
 }

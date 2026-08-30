@@ -143,6 +143,37 @@ type SparkServingTransactionAdmission
   = SparkServingTransactionAdmitted { txn: SparkServingObservationTransaction }
   | SparkServingTransactionRefused { cause: NonEmptyStr }
 
+fn spark_serving_probe_capture_of(
+  leg: SparkServingProbeLeg,
+  argv: List<String>,
+  result: SshSessionExecResult,
+) -> SparkServingProbeCapture {
+  SparkServingProbeCapture { leg: leg, argv: argv, result: result }
+}
+
+// THE MINT IS THE ADMISSION, SO A DUPLICATED TRANSACTION IS NOT A VALUE THAT EXISTS.
+//
+// An admit-after-construct arm would leave the invalid state writable and make safety depend on
+// every caller remembering to run the check -- validation standing exactly where construction was
+// available. Both types are sole_constructor and this is their only mint, so the refusal is not a
+// gate in front of the value: it is the reason the value was never made. A caller that ignores the
+// refused arm has no transaction to proceed with.
+fn spark_serving_observation_transaction_of(
+  host: HostIdentity,
+  attempt: NonEmptyStr,
+  locus: NonEmptyStr,
+  captures: List<SparkServingProbeCapture>,
+) -> SparkServingTransactionAdmission {
+  spark_serving_admit_transaction(
+    txn: SparkServingObservationTransaction {
+      host: host,
+      attempt: attempt,
+      locus: locus,
+      captures: captures,
+    },
+  )
+}
+
 fn spark_serving_admit_transaction(
   txn: SparkServingObservationTransaction,
 ) -> SparkServingTransactionAdmission {
