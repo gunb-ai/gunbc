@@ -1,4 +1,5 @@
 //! CLI for generic seed-shim closure assembly (curated self-host harness).
+#![allow(clippy::disallowed_macros)]
 
 use clap::Parser;
 use std::path::PathBuf;

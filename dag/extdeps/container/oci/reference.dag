@@ -29,15 +29,13 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
 
 // HOW AN IMAGE IS NAMED, WHICH THE OCI MODEL IN THIS DIRECTORY DID NOT CARRY.
 //
-// manifest.dag and image_config.dag model what an image IS once you hold its bytes. Nothing
-// modelled how a party REFERS to one, so the only way to say "run this image" was a String -- the
-// anemic leaf DESIGN section 2 names, hiding a registry host, a repository path and a mutable-or-
-// immutable identifier behind one opaque scalar.
+// manifest.dag and image_config.dag model what an image IS; nothing modelled how a party REFERS to
+// one, so "run this image" was a String -- the anemic leaf of DESIGN section 2, hiding a registry
+// host, a repository path and a mutable-or-immutable identifier behind one scalar.
 //
-// BOTH IDENTIFIER ARMS ARE MODELLED, INCLUDING THE MUTABLE ONE, AND THAT IS DELIBERATE. A tag is a
-// real thing the distribution spec defines; refusing to admit a tag is POLICY, and policy in an
-// extdeps module is the layer inversion DESIGN section 3 rules out. The spec says what may be
-// written; the consumer says what it will accept.
+// BOTH IDENTIFIER ARMS ARE MODELLED, INCLUDING THE MUTABLE ONE. The distribution spec defines tags;
+// refusing a tag is POLICY, and policy in extdeps is the layer inversion DESIGN section 3 rules
+// out. The spec says what may be written; the consumer says what it will accept.
 
 fn oci_code_point_at(text: String, index: Int) -> Int {
   code_point(substring(s: text, start: index, end: index + 1))
@@ -54,9 +52,9 @@ fn oci_separator_code_point(cp: Int) -> Bool {
 // path-component := alpha-numeric [separator alpha-numeric]*
 // separator      := "." | "_" | "__" | "-"+
 //
-// The separator alternatives are enumerated rather than collapsed to "one or more of ._-" because
-// the spec admits a DOUBLE underscore and a single dot, and nothing else doubled: "a..b" and "a___b"
-// are not repository names. A permissive reading here would be a fail-open at the naming boundary.
+// Separators are enumerated, not collapsed to "one or more of ._-": the spec admits a DOUBLE
+// underscore and a single dot and nothing else doubled, so "a..b" and "a___b" are not repository
+// names. A permissive reading would fail open at the naming boundary.
 fn oci_hyphen_run(text: String, index: Int) -> Bool {
   if index >= text.length() {
     text.length() > 0
@@ -157,17 +155,16 @@ type OciRepositoryName {
 
 // THE ONE AXIS THAT DECIDES WHETHER A REFERENCE NAMES FIXED BYTES.
 //
-// A digest reference resolves to exactly one set of bytes forever; a tag resolves to whatever the
-// registry currently points it at, so two pulls of one tag are two different programs. That is a
-// difference in KIND, not a nullable field, which is why this is a coproduct: a record with both
-// slots optional admits "neither" and "both", neither of which a reference can be.
+// A digest resolves to one set of bytes forever; a tag resolves to whatever the registry currently
+// points at, so two pulls of one tag are two programs. A difference in KIND, hence a coproduct: a
+// record with both slots optional admits "neither" and "both", which no reference can be.
 type OciReferenceIdentifier
   = ReferenceByDigest(OciContentDigest)
   | ReferenceByTag(OciTag)
 
-// registry is optional because the spec's grammar makes the host optional; what a bare name
-// resolves to is a CLIENT default (Docker Hub for one client, a mirror for another), so filling it
-// in here would author a policy fact as an upstream one.
+// registry is optional because the spec's grammar makes the host optional; a bare name resolves to
+// a CLIENT default (Docker Hub for one, a mirror for another), so filling it in here would author
+// policy as an upstream fact.
 type OciImageReference {
   registry: OciRegistry?
   repository: OciRepositoryName
@@ -243,9 +240,9 @@ fn oci_registry_wire(registry: OciRegistry) -> String {
   }
 }
 
-// Emission is the structural inverse of the grammar above, not a second spelling of it: the
-// separator between repository and identifier is "@" for a digest and ":" for a tag, which is
-// exactly the distinction OciReferenceIdentifier carries.
+// Emission is the structural inverse of the grammar above, not a second spelling: the separator
+// before the identifier is "@" for a digest and ":" for a tag, the distinction
+// OciReferenceIdentifier carries.
 fn render_oci_image_reference(reference: OciImageReference) -> String {
   let named = match reference.registry {
     Absent => oci_repository_name_wire(name: reference.repository)

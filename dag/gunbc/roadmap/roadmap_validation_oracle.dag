@@ -76,20 +76,84 @@ import extdeps.languages.json.emit {
   serialize_json,
 }
 
-data validation_oracle_authority_note: String = "The single authority for WHAT a verification run is run AGAINST, kept separate from whether that run passed. Verify used to be hardcoded pending, so a finished agent left an uncommitted diff and a human ran the receipts by hand; running them automatically is only worth anything if the thing being run cannot be edited by the agent whose work it judges. That is what this module models: the oracle a declared validation names, its observed identity, and the pin captured before the agent started. Per-oracle identity is std.content_hash.Fnv1a64Structural — content_hash_tagged_structural and content_hash_atom, the same fnv1a64 structural authority v1's surface fingerprints and v2's node hashing already use — and the ordered set fold combines those structurals into one ContentHash for the pin seam; cryptographic families are unwritable on OracleFound.identity (review 45483). Pin expected-versus-observed is extdeps.pin via admit_pin_integrity: this module supplies the SUBJECT and the OBSERVATION and borrows the adjudication."
+// The single authority for WHAT a verification run is run AGAINST, kept separate from whether that
+// run passed. Verify used to be hardcoded pending, so a finished agent left an uncommitted diff and
+// a human ran the receipts by hand; running them automatically is only worth anything if the thing
+// being run cannot be edited by the agent whose work it judges. That is what this module models:
+// the oracle a declared validation names, its observed identity, and the pin captured before the
+// agent started. Per-oracle identity is std.content_hash.Fnv1a64Structural —
+// content_hash_tagged_structural and content_hash_atom, the same fnv1a64 structural authority v1's
+// surface fingerprints and v2's node hashing already use — and the ordered set fold combines those
+// structurals into one ContentHash for the pin seam; cryptographic families are unwritable on
+// OracleFound.identity (review 45483). Pin expected-versus-observed is extdeps.pin via
+// admit_pin_integrity: this module supplies the SUBJECT and the OBSERVATION and borrows the
+// adjudication.
 
 data validation_oracle_grain_note: String = "WHY THE PINNED IDENTITY IS THE ENTRY FILE AND NOT THE NAMED DECLARATION ALONE, recorded because the narrower grain is the intuitive choice and it is UNSOUND for this purpose. A declared validation is `gunbc run --claim-run --entry E --function F`. Pinning only F's declaration text would leave every helper, data row, and fixture in E editable by the agent whose work F judges — and a witness is overwhelmingly assertions ABOUT values declared beside it, so weakening a fixture weakens the oracle just as effectively as weakening the assertion. The digest is therefore over the whole entry file. Going FURTHER — pinning the entry's whole import closure — is equally wrong in the opposite direction: the subject under test is IN that closure (a frontier witness imports the frontier it tests), so a closure pin would refuse the very diff the node exists to produce. The entry file is the boundary that separates oracle from subject, and it is not an arbitrary one: the corpus already enforces it structurally, because a `test fn` outside a `*_test.dag` file is a naming-hygiene violation at the floor. So the pin's grain rides an existing wall rather than inventing a line. THE RESIDUE THIS GRAIN LEAVES IS NOT DEFERRED — it is made unreachable, and validation_oracle_unpinned_dependency_note owns that decision, its measurement, and its lane. An earlier version of this note ended here with a dissolve-on and shipped the hole; review 45278 was right that a fail-open in the feature's own safety property cannot be a declared scaffold, and the correction is recorded there rather than re-spelled here."
 
-data validation_oracle_declaration_scan_note: String = "The declaration count is a LINE-START scan over the entry source, and its limits are stated rather than discovered. A top-level .dag declaration is unindented, so requiring the line to BEGIN with a declaration keyword followed by `<name>(` or `<name><` excludes the common false positive — the same identifier appearing inside one of this corpus's large note strings — without pretending to be a parse. Both keywords are enumerated because a claim entry point is overwhelmingly `test fn` while its helpers are `fn`, and either may be the function a contract names; matching only the bare keyword reported every witness entry as a missing oracle, which is how this was found — the paired green/red controls went red together, which a scanner that recognised nothing would also produce, and that is precisely why the non-vacuity control sits beside them. It is used for exactly one decision, how MANY declarations answer to the contract's name, because that count is what separates three genuinely different states with three different remedies: none is a missing oracle, one is the oracle, and more than one means the contract does not determine which declaration the claim runner will pick. That last state is not hypothetical here — this substrate accepts a duplicate top-level declaration silently and fn names are not module-scoped — so the arm has a real producer rather than being coverage by illusion. dissolve-on: feature:cited-symbol-resolution — the same trigger extdeps.pin already names; when identifiers resolve against the containment tree, this scan is replaced by that resolution and the ambiguity arm is answered structurally instead of textually."
+// The declaration count is a LINE-START scan over the entry source, and its limits are stated
+// rather than discovered. A top-level .dag declaration is unindented, so requiring the line to
+// BEGIN with a declaration keyword followed by `<name>(` or `<name><` excludes the common false
+// positive — the same identifier appearing inside one of this corpus's large note strings — without
+// pretending to be a parse. Both keywords are enumerated because a claim entry point is
+// overwhelmingly `test fn` while its helpers are `fn`, and either may be the function a contract
+// names; matching only the bare keyword reported every witness entry as a missing oracle, which is
+// how this was found — the paired green/red controls went red together, which a scanner that
+// recognised nothing would also produce, and that is precisely why the non-vacuity control sits
+// beside them. It is used for exactly one decision, how MANY declarations answer to the contract's
+// name, because that count is what separates three genuinely different states with three different
+// remedies: none is a missing oracle, one is the oracle, and more than one means the contract does
+// not determine which declaration the claim runner will pick. That last state is not hypothetical
+// here — this substrate accepts a duplicate top-level declaration silently and fn names are not
+// module-scoped — so the arm has a real producer rather than being coverage by illusion.
+// dissolve-on: feature:cited-symbol-resolution — the same trigger extdeps.pin already names; when
+// identifiers resolve against the containment tree, this scan is replaced by that resolution and
+// the ambiguity arm is answered structurally instead of textually.
 
 type ValidationOracleRef {
   entry: FilePath
   function: NonEmptyStr
 }
 
-data validation_oracle_observation_note: String = "Three arms because three remedies. OracleFound carries the identity that the pin is adjudicated against. OracleMissing means the entry source was obtained and the contract's function is NOT declared in it, or the source could not be obtained at all; the host's own reason travels in `detail` rather than being reclassified here. Those two causes share an arm deliberately and the sharing is bounded: neither can green, both stop the line, and the located detail says which one happened. What is NOT claimed is that this arm distinguishes a deleted file from an unreadable one — the Filesystem.Read surface reports success plus a message and exposes no typed absence, so inventing that distinction from an error string would be a classification this module cannot decide. dissolve-on: feature:filesystem-read-typed-absence — the read surface carries absent as its own arm, and OracleMissing splits along it. OracleAmbiguous is the count>1 state above."
+// Three arms because three remedies. OracleFound carries the identity that the pin is adjudicated
+// against. OracleMissing means the entry source was obtained and the contract's function is NOT
+// declared in it, or the source could not be obtained at all; the host's own reason travels in
+// `detail` rather than being reclassified here. Those two causes share an arm deliberately and the
+// sharing is bounded: neither can green, both stop the line, and the located detail says which one
+// happened. What is NOT claimed is that this arm distinguishes a deleted file from an unreadable
+// one — the Filesystem.Read surface reports success plus a message and exposes no typed absence, so
+// inventing that distinction from an error string would be a classification this module cannot
+// decide. dissolve-on: feature:filesystem-read-typed-absence — the read surface carries absent as
+// its own arm, and OracleMissing splits along it. OracleAmbiguous is the count>1 state above.
 
-data validation_oracle_unpinned_dependency_note: String = "review 45278, and the reviewer was right that a declared residue is not good enough HERE. The entry-file pin closes the direct attack — an agent editing the witness that judges it — but a witness may import assertions and fixtures from OTHER test modules, and those are oracle, not subject. dag/test/claim/roadmap/roadmap_launch_admission_witness_test.dag is the measured specimen: it imports two test.claim modules, so weakening test.claim.roadmap_launch_canary_witness would green Verify without moving the pinned digest. That is the same fail-open the pin exists to close, reached one import away, and shipping it behind a dissolve-on would have been exactly the unmarked-scaffold move DESIGN section 5 forbids — a green that means nothing for 125 of the corpus's 928 witness files (measured, not estimated).\n\nSo the residue is made UNREACHABLE rather than deferred: an oracle whose entry imports a test-side module REFUSES, typed and counted, instead of verifying against a partially pinned oracle. This is deliberately the cheaper of the two remedies the review named. The complete fix — pinning the whole oracle-side dependency partition — needs a transitive import closure, and computing one here would mint a SECOND import resolver beside the containment tree the namespace lane is making the single naming authority (DESIGN section 3). Refusing needs only the module NAME, which the import line already states, so it forks nothing.\n\nWhat this does NOT catch, stated because the boundary is real: a test helper that is not named as a test module — a plain fn file under a non-test module path — is structurally indistinguishable from a subject module here, so it neither refuses nor is pinned. Closing that requires the same partition as the complete fix.\n\nLANE, because a trigger with no owner is a park and the review was right to say so: this dissolves on v2.compiler.source_authority's derived path-module rows (the module identity vs storage thread in DESIGN's open threads), which is what makes an entry's closure computable without a second resolver. When those rows land, the oracle-side partition is pinned in full and these refusals become verifications."
+// review 45278, and the reviewer was right that a declared residue is not good enough HERE. The
+// entry-file pin closes the direct attack — an agent editing the witness that judges it — but a
+// witness may import assertions and fixtures from OTHER test modules, and those are oracle, not
+// subject. dag/test/claim/roadmap/roadmap_launch_admission_witness_test.dag is the measured specimen: it
+// imports two test.claim modules, so weakening test.claim.roadmap_launch_canary_witness would
+// green Verify without moving the pinned digest. That is the same fail-open the pin exists to
+// close, reached one import away, and shipping it behind a dissolve-on would have been exactly the
+// unmarked-scaffold move DESIGN section 5 forbids — a green that means nothing for 125 of the
+// corpus's 928 witness files (measured, not estimated).
+//
+// So the residue is made UNREACHABLE rather than deferred: an oracle whose entry imports a
+// test-side module REFUSES, typed and counted, instead of verifying against a partially pinned
+// oracle. This is deliberately the cheaper of the two remedies the review named. The complete fix —
+// pinning the whole oracle-side dependency partition — needs a transitive import closure, and
+// computing one here would mint a SECOND import resolver beside the containment tree the namespace
+// lane is making the single naming authority (DESIGN section 3). Refusing needs only the module
+// NAME, which the import line already states, so it forks nothing.
+//
+// What this does NOT catch, stated because the boundary is real: a test helper that is not named as
+// a test module — a plain fn file under a non-test module path — is structurally indistinguishable
+// from a subject module here, so it neither refuses nor is pinned. Closing that requires the same
+// partition as the complete fix.
+//
+// LANE, because a trigger with no owner is a park and the review was right to say so: this
+// dissolves on v2.compiler.source_authority's derived path-module rows (the module identity vs
+// storage thread in DESIGN's open threads), which is what makes an entry's closure computable
+// without a second resolver. When those rows land, the oracle-side partition is pinned in full and
+// these refusals become verifications.
 
 type OracleObservation
   = OracleFound {
@@ -231,7 +295,18 @@ fn validation_oracle_observe_from_source(
   }
 }
 
-data validation_oracle_pin_scope_note: String = "Not every declared validation names an oracle this pin can cover, and the ones that do not REFUSE rather than verifying unpinned. A gunbc claim validation names an exact entry file and function, so its oracle is a modeled artifact with an observable identity. A cargo test or a rustfmt check does not: the first names a filter over a Rust test corpus whose extent is decided by cargo at run time, the second names a tool whose oracle is its own formatting rules. Both have real oracles; neither has one this module can observe today. Verifying them anyway would hand back a green whose meaning is 'the agent's own edits passed the agent's own tests', which is precisely the fail-open this lane exists to close, so the honest answer is a typed, counted refusal that names the validation that could not be pinned. dissolve-on: feature:validation-oracle-nondag-subjects — a cargo test target and a formatter's rule set each carry an observable identity, at which point these become OraclePinnable rows and this arm loses its producers."
+// Not every declared validation names an oracle this pin can cover, and the ones that do not REFUSE
+// rather than verifying unpinned. A gunbc claim validation names an exact entry file and function,
+// so its oracle is a modeled artifact with an observable identity. A cargo test or a rustfmt check
+// does not: the first names a filter over a Rust test corpus whose extent is decided by cargo at
+// run time, the second names a tool whose oracle is its own formatting rules. Both have real
+// oracles; neither has one this module can observe today. Verifying them anyway would hand back a
+// green whose meaning is 'the agent's own edits passed the agent's own tests', which is precisely
+// the fail-open this lane exists to close, so the honest answer is a typed, counted refusal that
+// names the validation that could not be pinned. dissolve-on:
+// feature:validation-oracle-nondag-subjects — a cargo test target and a formatter's rule set each
+// carry an observable identity, at which point these become OraclePinnable rows and this arm loses
+// its producers.
 
 type OraclePinScope
   = OraclePinnable { oracle: ValidationOracleRef }
@@ -358,7 +433,14 @@ fn validation_oracle_set_observe(
   }
 }
 
-data validation_verdict_note: String = "The typed verdict stored beside the attempt and projected into the Verify lamp. Passed and Failed are the two ANSWERS a run can produce — the claim runner exits nonzero when its Bool entry returns false, so a red witness is data this module adjudicates, not a fault. Every other outcome is a REFUSAL that names its own cause, and no arm widens: there is no arm that runs the validation without a satisfied pin, no arm that treats an unobservable oracle as a pass, and no arm that treats a refusal as a red. The distinction between a refusal and a red is the whole point of the second oracle control — a deleted witness must not read as a failing witness, because the remedies are opposite: one restores the oracle, the other fixes the subject."
+// The typed verdict stored beside the attempt and projected into the Verify lamp. Passed and Failed
+// are the two ANSWERS a run can produce — the claim runner exits nonzero when its Bool entry
+// returns false, so a red witness is data this module adjudicates, not a fault. Every other outcome
+// is a REFUSAL that names its own cause, and no arm widens: there is no arm that runs the
+// validation without a satisfied pin, no arm that treats an unobservable oracle as a pass, and no
+// arm that treats a refusal as a red. The distinction between a refusal and a red is the whole
+// point of the second oracle control — a deleted witness must not read as a failing witness,
+// because the remedies are opposite: one restores the oracle, the other fixes the subject.
 
 type ValidationRefusalCause
   = ValidationContractUnspecified
@@ -399,7 +481,18 @@ type ValidationRefusalCause
       cause: ChangeWindowPreparationRefusal,
     }
 
-data validation_not_run_note: String = "review 45271. ValidationNotRun exists so that the ABSENCE of a receipt stops being a state the verification seam has to interpret. The seam previously asked `is the receipt text empty` and got `\"\"` from three different worlds — no file, an unreadable file, and an empty one — then RAN THE VALIDATION AND OVERWROTE whatever was there. Absent and unreadable have opposite correct actions (run it; stop and do not touch the evidence), so collapsing them let an I/O fault regenerate a verdict against a worktree the agent may have moved since. The fix is construction rather than a better classifier, because the Filesystem.Read surface exposes no typed absence and deciding it from an error string would be a guess: dispatch WRITES this verdict beside the attempt during state initialization, exactly as it already writes an empty provider-events.jsonl so that stream's absence is meaningful. After that, a receipt is always present, so a failed read is unambiguously a fault and refuses. The Verify lamp reads this as pending — which makes its pending state evidence-backed rather than inferred from nothing."
+// review 45271. ValidationNotRun exists so that the ABSENCE of a receipt stops being a state the
+// verification seam has to interpret. The seam previously asked `is the receipt text empty` and got
+// `""` from three different worlds — no file, an unreadable file, and an empty one — then RAN THE
+// VALIDATION AND OVERWROTE whatever was there. Absent and unreadable have opposite correct actions
+// (run it; stop and do not touch the evidence), so collapsing them let an I/O fault regenerate a
+// verdict against a worktree the agent may have moved since. The fix is construction rather than a
+// better classifier, because the Filesystem.Read surface exposes no typed absence and deciding it
+// from an error string would be a guess: dispatch WRITES this verdict beside the attempt during
+// state initialization, exactly as it already writes an empty provider-events.jsonl so that
+// stream's absence is meaningful. After that, a receipt is always present, so a failed read is
+// unambiguously a fault and refuses. The Verify lamp reads this as pending — which makes its
+// pending state evidence-backed rather than inferred from nothing.
 
 type ValidationVerdict
   = ValidationNotRun
@@ -528,7 +621,13 @@ type ValidationOracleGate
   = ValidationOracleAdmitted { identity: ContentHash }
   | ValidationOracleGateRefused { cause: ValidationRefusalCause }
 
-data validation_oracle_gate_note: String = "The one place a validation run becomes permitted. It is a GATE rather than a check beside the runner because the run is an effect: the only way to reach the exec is through an Admitted answer carrying the identity that admitted it, so there is no code path that runs the declared command with an unsatisfied pin. That is weaker than making the bad state unwritable in the type system and it is not claimed to be more — a caller could ignore this fn — but it removes the shape where a run happens first and its pin is consulted afterwards, which is the shape that greens an agent's edits to its own witness."
+// The one place a validation run becomes permitted. It is a GATE rather than a check beside the
+// runner because the run is an effect: the only way to reach the exec is through an Admitted answer
+// carrying the identity that admitted it, so there is no code path that runs the declared command
+// with an unsatisfied pin. That is weaker than making the bad state unwritable in the type system
+// and it is not claimed to be more — a caller could ignore this fn — but it removes the shape where
+// a run happens first and its pin is consulted afterwards, which is the shape that greens an
+// agent's edits to its own witness.
 
 fn validation_oracle_gate(
   contract: WorkItemExecutionContract,
@@ -839,7 +938,19 @@ fn validation_verdict_detail(verdict: ValidationVerdict) -> String {
 
 data validation_receipt_schema: NonEmptyStr = "roadmap-validation-receipt/v1"
 
-data validation_receipt_identity_note: String = "The persisted verdict used to be identified by its LEADING BYTES: the emitter always writes schema then verdict first, so a reader required the document to START with the byte prefix this same emitter derives for a given verdict. That defeated the attack it was built for - a reader that SCANS for the word `passed` is satisfied from any value position, so a refusal whose detail carries the word reads as a pass, and no nested value can occupy a document prefix. It was honest about its ceiling and it has now been reached: a prefix recovers only LEADING members, so every field after the second is unreadable, which is why the receipt could be identified but never actually read. The reader below parses the document into a JsonValue and reads schema and verdict as MEMBERS. That subsumes the positional guarantee rather than weakening it - a `passed` sitting in a detail string is a different member and cannot be mistaken for the verdict, because the reader asks for the verdict by name instead of asking where the bytes fall - and it lifts the ceiling, so the exact-head subject fields the Verify rework adds become readable by the same mechanism with no new decoder."
+// The persisted verdict used to be identified by its LEADING BYTES: the emitter always writes
+// schema then verdict first, so a reader required the document to START with the byte prefix this
+// same emitter derives for a given verdict. That defeated the attack it was built for - a reader
+// that SCANS for the word `passed` is satisfied from any value position, so a refusal whose detail
+// carries the word reads as a pass, and no nested value can occupy a document prefix. It was honest
+// about its ceiling and it has now been reached: a prefix recovers only LEADING members, so every
+// field after the second is unreadable, which is why the receipt could be identified but never
+// actually read. The reader below parses the document into a JsonValue and reads schema and verdict
+// as MEMBERS. That subsumes the positional guarantee rather than weakening it - a `passed` sitting
+// in a detail string is a different member and cannot be mistaken for the verdict, because the
+// reader asks for the verdict by name instead of asking where the bytes fall - and it lifts the
+// ceiling, so the exact-head subject fields the Verify rework adds become readable by the same
+// mechanism with no new decoder.
 
 // Why the identity members are read with json_object_unique_member rather than a find-first: RFC 8259 permits duplicate names and does not say which wins, so a document carrying two verdict members is well-formed JSON with no committed answer. A reader that takes the first or the last silently picks one, and last-wins in particular means appending a second verdict to a refusal turns it into a pass. Duplication is therefore refused here, not resolved, and the same rule extends unchanged to head_sha, attempt_key and node_identity when Verify adds them - which is the point of putting the exactly-once rule in this decoder rather than in the generic parser.
 data validation_receipt_verdict_keys: List<String> = ["not_run", "passed", "failed", "refused"]

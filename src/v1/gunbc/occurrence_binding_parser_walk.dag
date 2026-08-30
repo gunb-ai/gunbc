@@ -29,7 +29,13 @@ import v1.std.core {
   NewlineIndex,
 }
 
-data occurrence_binding_parser_walk_authority_note: String = "Parser-to-P2-walk bridge (namespace-reference-derived-closure slice B): authored source is parsed through v1.compiler.parse.parse_with_table; OccurrenceTransport and module path come from the parser only. OccurrenceBindingCandidateInputs are projected from parser facts — module paths for every indexed occurrence, authored order from diagnostic_span.start (never OccurrenceId.value), and DeclarationExposure from containment shape (empty / single-ancestor => ModuleExposure, else LexicalExposure with parent scope). Category is never read for exposure. Index-build refusals are carried intact as StructuralBindingWalkRefused — never coarsened to a unit variant (blocker 6)."
+// Parser-to-P2-walk bridge (namespace-reference-derived-closure slice B): authored source is parsed
+// through v1.compiler.parse.parse_with_table; OccurrenceTransport and module path come from the
+// parser only. OccurrenceBindingCandidateInputs are projected from parser facts — module paths for
+// every indexed occurrence, authored order from diagnostic_span.start (never OccurrenceId.value),
+// and DeclarationExposure from containment shape (empty / single-ancestor => ModuleExposure, else
+// LexicalExposure with parent scope). Category is never read for exposure. Index-build refusals are
+// carried intact as StructuralBindingWalkRefused — never coarsened to a unit variant (blocker 6).
 
 type ParsedOccurrenceBindingSource
   = ParsedOccurrenceBindingSourceReady {
@@ -69,7 +75,8 @@ fn authored_order_row_from_entry(entry: OccurrenceIndexEntry) -> AuthoredOrderRo
   }
 }
 
-data occurrence_binding_inputs_accumulator_note: String = "Input projection accumulates by prepend during fold and reverses once at the end — never concat(acc, [row]) (§6 bare-minimum cost / blocker 6)."
+// Input projection accumulates by prepend during fold and reverses once at the end — never
+// concat(acc, [row]) (§6 bare-minimum cost / blocker 6).
 
 fn occurrence_binding_inputs_from_transport(
   module_path: NonEmptyStr,

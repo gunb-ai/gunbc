@@ -71,7 +71,9 @@ import v2.std.node {
   TypeNode,
 }
 
-data trait_derive_completeness_predicate_note: String = "Derisk witnesses for Gate-1 sub-wall #2: trait_derive_completeness.dag is the agnostic predicate authority; rust.dag owns surface-binding rows. RED: Int kernel must satisfy Add but not vice versa for String; unknown atom refuses Ord; nullary enum selects copy derive binding."
+// Derisk witnesses for Gate-1 sub-wall #2: trait_derive_completeness.dag is the agnostic predicate
+// authority; rust.dag owns surface-binding rows. RED: Int kernel must satisfy Add but not vice
+// versa for String; unknown atom refuses Ord; nullary enum selects copy derive binding.
 
 fn tdc_nullary_enum_node() -> Node {
   Node {

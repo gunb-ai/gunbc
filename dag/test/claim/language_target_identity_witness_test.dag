@@ -59,7 +59,17 @@ import std.language_target_identity {
   integrity_violation_count,
 }
 
-data language_target_identity_witness_note: String = "GREEN and discriminating RED controls for the language-target join kernel (operator verdict 2026-08-04). Every RED here is a state the census would otherwise report as a resolved target, which is the failure this join exists to make unwritable: a surface with no identity, a surface naming a subject nobody registered, two registrations of one subject, and a surface two rows disagree about. The Bash subject is the live specimen and is referenced SYMBOLICALLY through extdeps.languages.bash.subject rather than by spelling its module path in a string, so a rename of that declaration breaks this witness rather than silently passing (DESIGN section 3 cite-the-symbol). WHAT THIS WITNESS DOES NOT COVER, stated rather than implied: these fns are pure in the rows handed to them, so nothing here proves the surface census is COMPLETE — a target-bearing surface nobody authored a row for is invisible to every assertion below. Population completeness is the registry totality wall's job and is not established here."
+// GREEN and discriminating RED controls for the language-target join kernel (operator verdict
+// 2026-08-04). Every RED here is a state the census would otherwise report as a resolved target,
+// which is the failure this join exists to make unwritable: a surface with no identity, a surface
+// naming a subject nobody registered, two registrations of one subject, and a surface two rows
+// disagree about. The Bash subject is the live specimen and is referenced SYMBOLICALLY through
+// extdeps.languages.bash.subject rather than by spelling its module path in a string, so a rename
+// of that declaration breaks this witness rather than silently passing (DESIGN section 3
+// cite-the-symbol). WHAT THIS WITNESS DOES NOT COVER, stated rather than implied: these fns are
+// pure in the rows handed to them, so nothing here proves the surface census is COMPLETE — a
+// target-bearing surface nobody authored a row for is invisible to every assertion below.
+// Population completeness is the registry totality wall's job and is not established here.
 
 fn ref_of(module_path: String, decl_name: String) -> DeclarationRef {
   DeclarationRef {
@@ -127,7 +137,15 @@ test fn green_clean_join_reports_no_violations() -> Bool {
   )
 }
 
-data neutral_key_note: String = "THE NEUTRAL-KEY CONTROL, and it is the discriminating one for the P0 the review relayed on 2026-08-04. The kernel previously keyed every surface row, resolution outcome, tally and projection on an EXTERNAL subject reference while its own target_grounding_law concluded canonical identity is a DeclarationRef — so a project-grounded target had to be wrapped in a carrier documented as pointing at an independently governed upstream subject, asserting a governance it does not have. The observable consequence was that project targets could not be projected at all. This control joins a PROJECT-grounded registration through the same fold as the external one, so the two arms are proven to share one key by execution rather than by the types merely lining up."
+// THE NEUTRAL-KEY CONTROL, and it is the discriminating one for the P0 the review relayed on
+// 2026-08-04. The kernel previously keyed every surface row, resolution outcome, tally and
+// projection on an EXTERNAL subject reference while its own target_grounding_law concluded
+// canonical identity is a DeclarationRef — so a project-grounded target had to be wrapped in a
+// carrier documented as pointing at an independently governed upstream subject, asserting a
+// governance it does not have. The observable consequence was that project targets could not be
+// projected at all. This control joins a PROJECT-grounded registration through the same fold as the
+// external one, so the two arms are proven to share one key by execution rather than by the types
+// merely lining up.
 
 test fn green_project_grounded_target_joins_through_the_same_key() -> Bool {
   let row = LanguageTargetSurfaceRow {
@@ -214,7 +232,14 @@ test fn red_duplicate_registration_refuses() -> Bool {
   })
 }
 
-data duplicate_registration_grain_control_note: String = "The grain control for review 48205's first finding. red_duplicate_registration_refuses above proves the class is EMITTED, which stayed true while the count was wrong — three registrations of one subject produced three violations for one defect, because the fold reported per ROW rather than per SUBJECT. Emission and grain are different properties and only the first had a control, which is exactly how the surface-side version of this bug survived until it was fixed in the same module. Three rather than two registrations is deliberate: a per-row implementation returns 2 for two rows and 3 for three, so pinning at three discriminates against both the old shape and an off-by-one dedup."
+// The grain control for review 48205's first finding. red_duplicate_registration_refuses above
+// proves the class is EMITTED, which stayed true while the count was wrong — three registrations of
+// one subject produced three violations for one defect, because the fold reported per ROW rather
+// than per SUBJECT. Emission and grain are different properties and only the first had a control,
+// which is exactly how the surface-side version of this bug survived until it was fixed in the same
+// module. Three rather than two registrations is deliberate: a per-row implementation returns 2 for
+// two rows and 3 for three, so pinning at three discriminates against both the old shape and an
+// off-by-one dedup.
 
 test fn duplicate_registration_reported_once_not_per_row() -> Bool {
   let thrice = [bash_registration(), bash_registration(), bash_registration()]
@@ -267,7 +292,13 @@ test fn red_two_rows_disagreeing_about_one_surface_refuse_as_ambiguous() -> Bool
   }
 }
 
-data outcome_naming_note: String = "This arm was called TargetSubjectUnresolvable while the fold that produces it performs NO declaration resolution — it tests registry membership. So 'names a valid subject nobody registered' and 'names a DeclarationRef that resolves nowhere on disk' were one arm wearing the second's name, and the law claimed the second reached it. Renamed to TargetNotRegistered, which is what is actually decided. The on-disk resolution outcome is deliberately NOT minted as an empty variant beside it: a typed arm with no producer is the inert-carrier defect this same PR already had to close once, and disk resolution belongs to the extdeps roster machinery."
+// This arm was called TargetSubjectUnresolvable while the fold that produces it performs NO
+// declaration resolution — it tests registry membership. So 'names a valid subject nobody
+// registered' and 'names a DeclarationRef that resolves nowhere on disk' were one arm wearing the
+// second's name, and the law claimed the second reached it. Renamed to TargetNotRegistered, which
+// is what is actually decided. The on-disk resolution outcome is deliberately NOT minted as an
+// empty variant beside it: a typed arm with no producer is the inert-carrier defect this same PR
+// already had to close once, and disk resolution belongs to the extdeps roster machinery.
 
 test fn red_surface_naming_subject_absent_from_registry_is_not_registered() -> Bool {
   let rows = [
@@ -357,7 +388,13 @@ test fn multi_target_surface_reported_once_not_per_row() -> Bool {
     }) == 1
 }
 
-data distinct_target_dedup_note: String = "THE CONTROL THE SUITE WAS MISSING (review relayed 2026-08-04). surface_named_targets pushed every occurrence with no deduplication, so two rows naming the SAME target reached TallyMany and were reported as a surface joining multiple targets — false, because that surface has one target and a duplicated row. The old suite covered two genuinely different targets and a three-row case, both of which pass either way, so nothing distinguished 'two identities' from 'two rows'. These two controls pin both halves: same locus plus same subject twice must NOT be ambiguity, and must instead be reported as the duplication it is."
+// THE CONTROL THE SUITE WAS MISSING (review relayed 2026-08-04). surface_named_targets pushed every
+// occurrence with no deduplication, so two rows naming the SAME target reached TallyMany and were
+// reported as a surface joining multiple targets — false, because that surface has one target and a
+// duplicated row. The old suite covered two genuinely different targets and a three-row case, both
+// of which pass either way, so nothing distinguished 'two identities' from 'two rows'. These two
+// controls pin both halves: same locus plus same subject twice must NOT be ambiguity, and must
+// instead be reported as the duplication it is.
 
 fn duplicated_same_target_rows() -> List<LanguageTargetSurfaceRow> {
   [
@@ -411,7 +448,14 @@ test fn red_duplicated_surface_row_emits_duplicate_locus_not_multi_target() -> B
   dup && !multi
 }
 
-data accounting_discrimination_note: String = "THE CONTROLS THAT MAKE THE ACCOUNTING PREDICATE MEAN SOMETHING. Its predecessor compared TOTAL violations to census rows with a <=, so it held for any census and would have held against an empty violation list. The replacement is an exact equality between identified rows plus reported missing-identity rows and the census, and these controls plant each way it can break: a row naming an unregistered subject is in NEITHER class, so the sum falls short; and the integrity wall is asserted separately so the two cannot mask each other. The second control is the one that would have caught the original defect — under the old predicate it passes, under this one it fails."
+// THE CONTROLS THAT MAKE THE ACCOUNTING PREDICATE MEAN SOMETHING. Its predecessor compared TOTAL
+// violations to census rows with a <=, so it held for any census and would have held against an
+// empty violation list. The replacement is an exact equality between identified rows plus reported
+// missing-identity rows and the census, and these controls plant each way it can break: a row
+// naming an unregistered subject is in NEITHER class, so the sum falls short; and the integrity
+// wall is asserted separately so the two cannot mask each other. The second control is the one that
+// would have caught the original defect — under the old predicate it passes, under this one it
+// fails.
 
 fn clean_population() -> List<LanguageTargetSurfaceRow> {
   [

@@ -33,7 +33,8 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
 
 data cursor_sdk_authority_note: String = "Slice-E modeling only (provider-control-interface-audit §6, §12). No press trip, inventory wiring, or WorkerTurn fork — those wait on slices B/C. OBSERVED @cursor/sdk 1.0.26 via docs/probes/provider_interface_acquisition_2026-08-03.json. LocalAgentOptions.cwd is the belt-owned worktree; CloudAgentOptions is a separate workspace realization. RunStatus / Run.supports(operation) land with the press trip when slices B/C wire live SDK control — not modeled as dead types in this slice."
 
-data cursor_sdk_belt_worktree_note: String = "Belt-owned local worktree (audit slice E): LocalAgentOptions.cwd points at the dashboard attempt worktree. cursor-agent -w/--worktree is deliberately unused — recorded in extdeps.llm.cursor_cli."
+// Belt-owned local worktree (audit slice E): LocalAgentOptions.cwd points at the dashboard attempt
+// worktree. cursor-agent -w/--worktree is deliberately unused — recorded in extdeps.llm.cursor_cli.
 
 type CursorSdkLocalWorkspace {
   cwd: FilePath
@@ -42,7 +43,11 @@ type CursorSdkLocalWorkspace {
 type CursorSdkLocalCredential
   = CursorSdkApiKeySecretRef { secret_ref: SecretRef }
 
-data cursor_sdk_credential_note: String = "API key materializes INTO the SDK call (Agent.create / Agent.prompt apiKey or CURSOR_API_KEY at process env), NEVER into argv. CursorApiKeySecretRef is the automation path; CursorLocalLoginRef is interactive-only and refuses at SDK local binding. Contrast extdeps.llm.cursor_cli CursorApiKeyArgument which puts --api-key on argv for the legacy CLI — that path is not the SDK local interface."
+// API key materializes INTO the SDK call (Agent.create / Agent.prompt apiKey or CURSOR_API_KEY at
+// process env), NEVER into argv. CursorApiKeySecretRef is the automation path; CursorLocalLoginRef
+// is interactive-only and refuses at SDK local binding. Contrast extdeps.llm.cursor_cli
+// CursorApiKeyArgument which puts --api-key on argv for the legacy CLI — that path is not the SDK
+// local interface.
 
 type CursorSdkApiKeyMaterialization
   = CursorSdkApiKeyFromSecretRef {
@@ -65,7 +70,9 @@ fn cursor_sdk_environment_api_key_materialization() -> CursorSdkApiKeyMaterializ
   CursorSdkApiKeyFromEnvironment { env_var: cursor_api_key_env_var }
 }
 
-data cursor_sdk_argv_projection_note: String = "SDK local credential delivery is in-call apiKey or process environment only. argv projection is structurally refused — contrast extdeps.llm.cursor_cli CursorApiKeyArgument, which is the legacy CLI argv leak surface and is not an admitted SDK-local arm."
+// SDK local credential delivery is in-call apiKey or process environment only. argv projection is
+// structurally refused — contrast extdeps.llm.cursor_cli CursorApiKeyArgument, which is the legacy
+// CLI argv leak surface and is not an admitted SDK-local arm.
 
 type CursorSdkCredentialProjection
   = CursorSdkCredentialProjected {

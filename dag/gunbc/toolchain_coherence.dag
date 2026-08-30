@@ -14,25 +14,24 @@ import gunbc.build_cache_instance { RunnerSlotIdentity }
 import v2.std.optional { Present, Absent }
 import std.disposition { Disposition, Terminal }
 
-// THE RELATION IS TERMINAL; ITS PRODUCTION STANDING IS A STALL. Those are two facts and this row
-// keeps them apart, because naming the carrier as though coherence had been achieved is the rung
-// inflation DESIGN 4b(1) calls worse than sitting low. NEXT-RUNG TRIGGER, named as a seam rather
-// than as "observe later": a spawn operation emits tool identity, resolved executable, executable
-// digest, pass identity and spawn identity at the moment of spawn; two such observations sharing
-// one tool role within one pass are handed to toolchain_coherence_of. That producer belongs to the
-// shared spawn/execution substrate the aggregate-demand instrument will also read, NOT to a
-// capacity-only reader -- a bespoke producer would give this fact a second home.
+// THE RELATION IS TERMINAL; ITS PRODUCTION STANDING IS A STALL. Two facts, kept apart, because
+// naming the carrier as though coherence had been achieved is the rung inflation DESIGN 4b(1) calls
+// worse than sitting low. NEXT-RUNG TRIGGER, named as a seam rather than "observe later": a spawn
+// operation emits tool identity, resolved executable, executable digest, pass identity and spawn
+// identity at the moment of spawn; two such observations sharing one tool role within one pass are
+// handed to toolchain_coherence_of. That producer belongs to the shared spawn/execution substrate
+// the aggregate-demand instrument will also read, NOT to a capacity-only reader — a bespoke
+// producer would give this fact a second home.
 data gunbc_toolchain_coherence_disposition: Disposition = Terminal {
   reason: "Relation-only carrier: classifies spawn observations as Single, Differed, or one of three NotEvaluated causes. NO PRODUCER EXISTS. Nothing in this repository observes a spawn, so no production claim of toolchain coherence is available from it and it must not be cited as coverage that successive spawns reached the same bytes -- they are unmeasured. SpawnObservationProducerAbsent is the honest standing today; ToolchainNeverObserved is reserved for an observation transaction that RAN and found no comparable spawn pair, and the fold cannot return the former because a fold speaks only about the list it was handed. Witnesses establish the classifier's distinctions and nothing about any host."
 }
 
-// THE SUBJECT IS ONE SPAWN, NOT ONE JOB, and that grain is the whole point of the carrier. A job
-// that spawns rustfmt eleven times has eleven opportunities to exec different bytes, so a
-// job-grained receipt would report a coherence it never established -- the denominator error where
-// a fact about a population is asserted from a sample of one. The digest is taken AT SPAWN and
-// travels with the observation, rather than being resolved once and looked up later: resolving a
-// pathname and re-launching it afterwards is the defect this carrier exists to detect, so a shape
-// that permits it would be the defect wearing a receipt.
+// THE SUBJECT IS ONE SPAWN, NOT ONE JOB; that grain is the point of the carrier. A job spawning
+// rustfmt eleven times has eleven opportunities to exec different bytes, so a job-grained receipt
+// would report a coherence it never established — the denominator error where a population fact is
+// asserted from a sample of one. The digest is taken AT SPAWN and travels with the observation, not
+// resolved once and looked up later: resolving a pathname and re-launching it afterwards is the
+// defect this carrier detects, so a shape permitting it would be the defect wearing a receipt.
 type ToolchainSpawn {
   pass: NonEmptyStr
   spawn: NonEmptyStr
@@ -42,33 +41,32 @@ type ToolchainSpawn {
 }
 
 // NOT-EVALUATED IS REACHED BY CONSTRUCTION, NEVER BY REMEMBERING TO SET IT. The empty observation
-// list folds to ToolchainNeverObserved because that is what the fold's base case IS, so absence of
-// evidence cannot render as agreement. That direction is the fail-closed one: a masked run and a
-// clean run must not produce the same value, and today's standing -- nothing establishes that
-// successive spawns reached the same bytes -- is honestly NotEvaluated rather than passed.
+// list folds to ToolchainNeverObserved because that IS the fold's base case, so absence of evidence
+// cannot render as agreement. That is the fail-closed direction: a masked run and a clean run must
+// not produce the same value, and today's standing — nothing establishes that successive spawns
+// reached the same bytes — is honestly NotEvaluated rather than passed.
 //
 // THE CAUSES ARE NOT COLLAPSED, and the split is not cosmetic: "we could not tell" and "we checked
 // and they differed" have opposite remedies. Incomparable is its own cause rather than a silent
-// false because std.content_hash refuses to collapse a cross-family pair -- comparing an fnv1a64
-// fingerprint against a sha256 digest establishes nothing about the bytes, and reporting that as
-// "differed" would manufacture a finding while reporting it as "equal" would manufacture a pass.
-// PRODUCER-ABSENT IS NOT NEVER-OBSERVED, and collapsing them is the execution-provenance loss
-// DESIGN names: a masked run and a clean run must not render identically. ToolchainNeverObserved
-// is what an observation transaction returns when it RAN and its subject held no comparable spawn
-// pair. SpawnObservationProducerAbsent is what holds when nothing observes spawns at all -- which
-// is the standing today. The fold below can never return it, and that is correct rather than a
-// dead arm: the fold speaks only about the list it was handed, while producer absence is a claim
-// about the world that only a declaration or a real observation transaction may make. Without this
-// split, the first producer to be wired would render its own absence as "we checked and found no
-// pair", which is the absent-as-clean failure this carrier exists to refuse.
+// false because std.content_hash refuses to collapse a cross-family pair — an fnv1a64 fingerprint
+// against a sha256 digest establishes nothing about the bytes; "differed" would manufacture a
+// finding, "equal" a pass. PRODUCER-ABSENT IS NOT NEVER-OBSERVED, and collapsing them is the
+// execution-provenance loss DESIGN names: a masked run and a clean run must not render identically.
+// ToolchainNeverObserved is what an observation transaction returns when it RAN and its subject
+// held no comparable spawn pair. SpawnObservationProducerAbsent holds when nothing observes spawns
+// at all — the standing today. The fold below can never return it, correctly rather than as a dead
+// arm: the fold speaks only about the list it was handed, while producer absence is a claim about
+// the world only a declaration or a real observation transaction may make. Without this split, the
+// first wired producer would render its own absence as "we checked and found no pair", the
+// absent-as-clean failure this carrier exists to refuse.
 type ToolchainCoherenceUnevaluated
   = ToolchainNeverObserved
   | SpawnObservationProducerAbsent { cause: NonEmptyStr }
   | ToolchainIdentityIncomparable { tool_name: NonEmptyStr }
 
-// DIFFERED IS A FINDING AND SITS BESIDE NotEvaluated RATHER THAN INSIDE IT. It is the one arm that
-// says the shared mutable path actually bit: two spawns of one tool in one pass reached different
-// bytes. Folding it into NotEvaluated would lose exactly the signal the carrier was built to carry.
+// DIFFERED IS A FINDING AND SITS BESIDE NotEvaluated, NOT INSIDE IT. It is the one arm saying the
+// shared mutable path actually bit: two spawns of one tool in one pass reached different bytes.
+// Folding it into NotEvaluated would lose the signal the carrier was built to carry.
 type ToolchainCoherence
   = ToolchainCoherenceNotEvaluated { cause: ToolchainCoherenceUnevaluated }
   | ToolchainIdentitiesDiffered {
@@ -78,11 +76,11 @@ type ToolchainCoherence
     }
   | ToolchainIdentitySingle { tool_name: NonEmptyStr }
 
-// THE SCAN IS EXPLICIT RECURSION rather than a fold, and the reason is short-circuit: the first
-// divergence decides the verdict, so a fold would keep comparing hashes after the answer is fixed.
-// An earlier revision of this note claimed the corpus had no lambda-taking fold. That was false --
-// std.graph and std.markdown both use one -- and it is corrected rather than softened, because a
-// note asserting a corpus-wide absence is a claim about a population nobody measured.
+// THE SCAN IS EXPLICIT RECURSION rather than a fold, for short-circuit: the first divergence
+// decides the verdict, so a fold would keep comparing hashes after the answer is fixed. An earlier
+// revision of this note claimed the corpus had no lambda-taking fold. That was false — std.graph
+// and std.markdown both use one — and is corrected rather than softened, because a note asserting a
+// corpus-wide absence is a claim about a population nobody measured.
 fn toolchain_coherence_scan(
   spawns: List<ToolchainSpawn>,
   baseline: ToolchainSpawn,

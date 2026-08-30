@@ -1,10 +1,10 @@
 # Generated-file conflict policy — lane charter (operator-ruled 2026-08-01)
 
-Status: RULED. This document records the operator ruling of 2026-08-01 on how generated
-files, hand-authored authorities, and keyed rosters integrate under concurrent branches,
-and charters four lanes to land it. The ruling's mechanism principle: **the authority is
-the existing `.dag` model of artifacts, storage, commit workflow, and Git state —
-`.gitattributes` and Git config are downstream projections of it, never the policy.**
+Status: RULED. Records the operator ruling of 2026-08-01 on how generated files,
+hand-authored authorities, and keyed rosters integrate under concurrent branches, and
+charters four lanes to land it. Mechanism principle: **the authority is the existing
+`.dag` model of artifacts, storage, commit workflow, and Git state — `.gitattributes` and
+Git config are downstream projections of it, never the policy.**
 
 ```text
 existing .dag authorities
@@ -39,8 +39,8 @@ Three distinct failure classes were being experienced as "conflicts on generated
    (git saw two list appends), main carried 11 duplicate paths, the placement gate went
    red, batch-1 stalled, and the fleet's witness corpus stopped while multiple sessions
    diagnosed it as their own regression (calm-badger-682). For append-only rosters a
-   clean merge is the dangerous case and a conflict is the safe one; a conflict-only
-   policy fixes the visible half and leaves the expensive half.
+   clean merge is the dangerous case and a conflict the safe one; a conflict-only policy
+   fixes the visible half and leaves the expensive half.
 
 A registration that can disagree with reality is a second authority (§3), and it did:
 `generated_stage0_files` registered a projection whose file did not exist (#7559) and
@@ -68,7 +68,7 @@ key is `path`. A generated-artifact merge driver there would hide decisions.
   dual representation this lane exists to remove.
 - **No fused policy dimensions.** Linguist presentation, generated provenance, merge
   behavior, line-ending behavior, and diff presentation are orthogonal questions answered
-  independently by the model. Generated ⇏ linguist-hidden.
+  independently. Generated ⇏ linguist-hidden.
 - **Sparse projection over a total model.** The model may be total over tracked paths
   while `.gitattributes` stays sparse: ordinary files derive Git's default three-way
   behavior and the emitter writes only non-default attribute rows. No one-row-per-file
@@ -128,9 +128,9 @@ repository-path policy."* Contents derive from existing authorities only:
 ```
 
 The second population is `committed_generated_artifact_paths()` verbatim — adding or
-deleting a generated artifact automatically adds/deletes its attribute row.
-`.gitattributes` classifies **itself** through the same derivation; no handwritten
-self-row. (`.gitignore` is the precedent inversion: it already consumes the registry.)
+deleting a generated artifact adds/deletes its attribute row. `.gitattributes`
+classifies **itself** through the same derivation; no handwritten self-row.
+(`.gitignore` is the precedent inversion: it already consumes the registry.)
 
 The merge-driver *definition* is repository-local Git state, not `.gitattributes`
 content. It is modeled as desired state with: a generated config fragment or typed
@@ -157,10 +157,10 @@ can write a merge commit containing the provisional "ours" bytes and the drift g
 merely detects the bad transition after it exists.
 
 **Acceptance wall (operator second-pass review, 2026-08-01):** repo-local config
-converges *before the first Git consumer in each clone* — in the CI heal job that means
-before the first `git merge`, since an actuator that runs after its consumer governs
-nothing in an ephemeral checkout; the executable acceptance is fresh clone → observe
-config absent → converge → real conflicting merge over a generated artifact → provisional
+converges *before the first Git consumer in each clone* — in the CI heal job, before the
+first `git merge`, since an actuator that runs after its consumer governs nothing in an
+ephemeral checkout; the executable acceptance is fresh clone → observe config absent →
+converge → real conflicting merge over a generated artifact → provisional
 generated-artifact resolution → regenerate → byte equality, not merely a temp-repo
 config write/read-back. Deferred clone populations (session worktrees, developer clones)
 are a *named, countable rollout carrier* — population, converged count, missing count,
@@ -175,11 +175,10 @@ explicit follow-up PR, never an unnamed postscript.
 **Documentation correction rides in the same change:** the `.gitattributes` row of
 `gunbc.plans.invert_hand_maintained` `invert_hand_maintained_body` (projected into
 `docs/plans/invert-hand-maintained.md`) says `.gitattributes` must NOT be inverted (sound
-under its premise — no upstream authority existed then). The premise is superseded by
-this ruling; amend the row
-to record that `.gitattributes` is now an emitted Git compatibility projection whose
-non-default rows derive from repository artifact/storage/integration authorities, with no
-independently authored classification.
+under its premise — no upstream authority existed then). This ruling supersedes the
+premise; amend the row to record that `.gitattributes` is now an emitted Git
+compatibility projection whose non-default rows derive from repository
+artifact/storage/integration authorities, with no independently authored classification.
 
 **Interim status, stated so no two-instructions reading exists (operator sequencing):**
 the amendment rides with lane 2's *implementation* — deliberately not with this charter —
@@ -187,11 +186,11 @@ because amending the row before the modeled policy lands would make the planning
 authority assert an emitted `.gitattributes` while the tree's file is still hand-authored:
 a false statement standing in an authority, the worse §3 state. Until lane 2 merges, the
 invert-hand-maintained row remains the live instruction for the tree as it exists, and
-this charter is the record of its *scheduled* supersession — it does not instruct anyone
-to invert `.gitattributes` today. The two documents therefore never disagree about any
-tree state: one describes the tree before lane 2, the other the ruling that lane 2
-realizes, and lane 2's change flips both atomically (amended `.dag` row + regenerated
-projection + the emitted `.gitattributes` itself).
+this charter records its *scheduled* supersession — it does not instruct anyone to invert
+`.gitattributes` today. The two documents never disagree about any tree state: one
+describes the tree before lane 2, the other the ruling lane 2 realizes, and lane 2's
+change flips both atomically (amended `.dag` row + regenerated projection + the emitted
+`.gitattributes` itself).
 
 ## Lane 3 — derive stage0 output membership (gates the emitted-Rust extension)
 
@@ -206,7 +205,7 @@ stage0 emission plan → produced module/file identities → canonical output pa
 ```
 
 That route is not available: `gunbc.stage0_emit_plan` was deleted at the root by the
-regen cut (#8406), which is also what left the roster producerless. A derivation did land
+regen cut (#8406), which is also what left the roster producerless. A derivation landed
 in its place — `gunbc.stage0_rust_source_lifecycle_scaffold derived_generated_stage0_repo_paths`,
 which reads the emitter's own declared population at a revision and intersects it with the
 tracked tree. **The last sentence of the old text — "the derived paths feed the merge-attribute
@@ -228,9 +227,9 @@ at one commit could disagree about what it must contain.
 the stage0 source root, followed by one unset row per `v2.compiler.self_host.stage0_crate_layout`
 `hand_maintained_stage0_filenames` member that is not itself a registry artifact. Row order is
 load-bearing — the last matching attributes line wins, so an unset row above the glob is inert in
-the dangerous direction. A newly emitted stage0 source is covered by construction, which is what
-a roster of any kind cannot do: the population gained three files during the hours this defect was
-being diagnosed.
+the dangerous direction. A newly emitted stage0 source is covered by construction, which no
+roster can do: the population gained three files during the hours this defect was being
+diagnosed.
 
 **RECOVERY GUIDANCE, CORRECTED.** The old text said to rerun `regen_stage0`. That binary was
 deleted by #8406, so the instruction named nothing for as long as it stood. The route is
@@ -262,7 +261,7 @@ invalid duplicate-key population, so the construction/admission wall is the fix.
 grain + server-side.)
 
 **Acceptance wall (operator second-pass review, 2026-08-01):** generic kernel machinery
-plus fixture tests do *not* satisfy the lane — the wall is satisfied only when a live
+plus fixture tests do *not* satisfy the lane — it is satisfied only when a live
 path-keyed roster consumes keyed construction end-to-end: a typed Built|Refused outcome
 at the carrier, its consumer accepting only Built, per-PR admission executing it, and the
 exact #7565/#7580 overlap shape witnessed against that carrier. Production integrations

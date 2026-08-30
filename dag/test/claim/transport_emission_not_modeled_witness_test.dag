@@ -33,7 +33,14 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // The two shell/rest rows are NOT decoration. Without them this file cannot distinguish "the file
 // arm behaves" from "the transport dispatch is broken for everything", which is the failure mode
 // that would make a green suite defend a total outage.
-data transport_emission_not_modeled_witness_note: String = "Paired control for the file-transport emission wall via compile_dag_diagnostic_census (rust target). A service whose operations declare `transport file` with a modeled verb, a renderable path and modeled output channels must now EMIT with zero TransportEmissionNotModeled rows; an operation declaring an unmodeled verb, an unmodeled output channel, or a payload verb with no `content` input must refuse with exactly one counted row. The mixed row is the discriminator: it pins both the emission and the refusal to the OPERATION rather than to the service or the module, so a wall that poisoned every sibling operation -- or a handler that emitted every sibling regardless of its declaration -- would go red here while the single-operation rows stayed green."
+// Paired control for the file-transport emission wall via compile_dag_diagnostic_census (rust
+// target). A service whose operations declare `transport file` with a modeled verb, a renderable
+// path and modeled output channels must now EMIT with zero TransportEmissionNotModeled rows; an
+// operation declaring an unmodeled verb, an unmodeled output channel, or a payload verb with no
+// `content` input must refuse with exactly one counted row. The mixed row is the discriminator: it
+// pins both the emission and the refusal to the OPERATION rather than to the service or the module,
+// so a wall that poisoned every sibling operation -- or a handler that emitted every sibling
+// regardless of its declaration -- would go red here while the single-operation rows stayed green.
 
 data file_transport_source: String = "module tfx_file\nservice Fs \{\n  operation Write \{\n    input \{ path: String, content: String \}\n    output \{ success: Bool from \"write_success\" \}\n    transport file \{ path: \"\{path\}\" \}\n  \}\n  operation Read \{\n    input \{ path: String \}\n    output \{ content: String from \"content\", success: Bool from \"read_success\" \}\n    readonly\n    transport file \{ path: \"\{path\}\" \}\n  \}\n  operation Delete \{\n    input \{ path: String \}\n    output \{ success: Bool from \"delete_success\" \}\n    transport file \{ path: \"\{path\}\", verb: \"delete\" \}\n  \}\n  operation List \{\n    input \{ path: String \}\n    output \{ entries: String from \"entries\", success: Bool from \"list_success\" \}\n    readonly\n    transport file \{ path: \"\{path\}\", verb: \"list\" \}\n  \}\n\}\n"
 

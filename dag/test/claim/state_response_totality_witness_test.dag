@@ -17,7 +17,12 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-data state_response_totality_witness_note: String = "Composition slice 1's census consumer (the interaction-totality law): every (dispatch state x stateful channel) cell resolves in-family over the EMITTED stylesheet or sits under a declared ConstantByLaw ruling; cells counted, zero undeclared, cross-family and dropped-member REDs live below as planted fixtures. Shaped for later StandingIntent enrollment per gunbc.design.state_response.state_response_census_note; the registry is deliberately not built here."
+// Composition slice 1's census consumer (the interaction-totality law): every (dispatch state x
+// stateful channel) cell resolves in-family over the EMITTED stylesheet or sits under a declared
+// ConstantByLaw ruling; cells counted, zero undeclared, cross-family and dropped-member REDs live
+// below as planted fixtures. Shaped for later StandingIntent enrollment per
+// gunbc.design.state_response.state_response_census_note; the registry is deliberately not built
+// here.
 
 test fn state_response_family_census_clean_on_live_emission() -> Bool {
   return family_census_clean(css: roadmap_css(), f: dispatch_state_family, channels: dispatch_stateful_channels)
@@ -30,7 +35,13 @@ test fn state_response_census_counts_hold() -> Bool {
     && constant_rulings_all_located(channels: dispatch_stateful_channels)
 }
 
-data cross_wired_family_note: String = "The planted cross-family fixture: the ok member's selector bound to the FAIL band key — the round-5 flash class, synthesized at the roster grain. Emitting this family through the same realize folds and running the census with the TRUE roster must locate the ok cells as CrossFamilyValue naming fail. The var roots come from the real band_root_css. The fixture is selector-scoped (no base rule in the synthetic emission), so the rest member's cells also count ChannelValueMissing there — the assertion targets the located cross-family defect, never a defect-count of one."
+// The planted cross-family fixture: the ok member's selector bound to the FAIL band key — the
+// round-5 flash class, synthesized at the roster grain. Emitting this family through the same
+// realize folds and running the census with the TRUE roster must locate the ok cells as
+// CrossFamilyValue naming fail. The var roots come from the real band_root_css. The fixture is
+// selector-scoped (no base rule in the synthetic emission), so the rest member's cells also count
+// ChannelValueMissing there — the assertion targets the located cross-family defect, never a
+// defect-count of one.
 
 data cross_wired_family: StateFamily = StateFamily {
   component_class: "dispatch-btn",
@@ -67,7 +78,11 @@ test fn state_response_census_reds_on_cross_family_press() -> Bool {
     && count(defects |> filter(d => defect_is_cross_family_ok_to_fail(d: d))) > 0
 }
 
-data dropped_member_family_note: String = "The planted dropped-member fixture: the loud member absent from the roster the emission was realized from. The census with the TRUE roster must count every loud cell ChannelValueMissing — the totality question the round-5 defect never got asked (one pressed var presenting as total), now a standing red. Same selector-scoped caveat as the cross-wired fixture: rest cells also count Missing in the synthetic; the assertion targets the located loud defect."
+// The planted dropped-member fixture: the loud member absent from the roster the emission was
+// realized from. The census with the TRUE roster must count every loud cell ChannelValueMissing —
+// the totality question the round-5 defect never got asked (one pressed var presenting as total),
+// now a standing red. Same selector-scoped caveat as the cross-wired fixture: rest cells also count
+// Missing in the synthetic; the assertion targets the located loud defect.
 
 data dropped_member_family: StateFamily = StateFamily {
   component_class: "dispatch-btn",
@@ -95,7 +110,9 @@ test fn state_response_census_reds_on_dropped_member() -> Bool {
     && count(defects |> filter(d => defect_is_loud_missing(d: d))) > 0
 }
 
-data receipt_totality_note: String = "The fold-totality claim proven structurally, not by reading: the receipt realization must yield exactly one response rule per roster member — the shape whose absence let one pressed var present as total. This reds if the fold ever gains a filter or an arm that skips a member."
+// The fold-totality claim proven structurally, not by reading: the receipt realization must yield
+// exactly one response rule per roster member — the shape whose absence let one pressed var present
+// as total. This reds if the fold ever gains a filter or an arm that skips a member.
 
 test fn state_response_receipt_rules_cover_the_roster() -> Bool {
   return count(dispatch_btn_receipt_rules(timing: respond_fast)) == count(dispatch_state_family.members)

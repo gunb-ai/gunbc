@@ -128,11 +128,11 @@ fn collect_called_func_names(texpr: Node, source_indices: Map<String, NewlineInd
 // collect_called_func_names walked the WHOLE body tree of every item on each pass, up to 5 full
 // corpus AST traversals per resolve to recompute the same lists.
 //
-// They are precomputed ONCE, in the same nesting and the same order as the fold that consumes
-// them, deliberately as a positional list rather than a map keyed by item name: the registry
-// treats item names as global keys, so two modules declaring the same authored name share a key,
-// and a name-keyed precompute would silently hand one item the other's callees. Position preserves
-// the original iteration exactly, including that collision.
+// They are precomputed ONCE, in the same nesting and order as the fold that consumes them, as a
+// positional list rather than a map keyed by item name: the registry treats item names as global
+// keys, so two modules declaring the same authored name share a key, and a name-keyed precompute
+// would silently hand one item the other's callees. Position preserves the original iteration
+// exactly, including that collision.
 type ItemCallees {
   item_name: String
   has_body: Bool

@@ -77,15 +77,6 @@ use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
 use std::rc::Rc;
 
-pub fn occurrence_binding_candidates_authority_note() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "P2a: THE structural candidate producer that hands supplied candidates to std.occurrence_binding_resolve.resolve_reference_occurrence_binding (P1). P1 owns exact-identity transport validation, category admissibility, and the single occurrence_binding_from_candidates cardinality fold; it decides nothing about which declarations are structurally exposed to a reference. This module owns exactly that: exposure (namespace-resolution-design.md 13 / namespace-unique-on-chain-operational-plan.md 2), deterministic source-order gating, an indexed candidate catalogue (declarations bucketed by authored spelling, so per-reference lookup is not an O(declarations) rescan), and the BoundReferenceProvider / DirectModuleDependency projections of an accepted P1 decision. It never folds cardinality itself and never treats an authored import list as visibility evidence. ROADMAP lane: namespace-reference-derived-closure.".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
-}
-
 pub fn occurrence_binding_candidates_roadmap_anchor() -> String {
     thread_local! {
         static CACHED: String = {
@@ -95,37 +86,10 @@ pub fn occurrence_binding_candidates_roadmap_anchor() -> String {
     CACHED.with(|c: &String| c.clone())
 }
 
-pub fn occurrence_binding_candidates_prefix_bug_note() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "The pre-strip P1 exposure predicate (git show ba4d1f22671^:dag/std/occurrence_binding_resolve.dag, declaration_exposed_on_reference_chain) tested only occurrence_containment_path_is_prefix_of(declaration.containment, reference.containment): a declaration is exposed exactly when its own occurrence id sits somewhere on the reference's ancestor chain. That is correct for genuine lexical nesting (a let, a lambda/function parameter, a pattern binder all scope-wrap what they enclose, so the binder's own node is a literal ancestor of every reference inside it) but it structurally MISSES module-scope siblings: two ordinary functions declared side by side in one module do not nest inside each other, so neither's occurrence id is ever an ancestor of a reference in the other's body, and the prefix test alone always answers false. occurrence_containment_path_is_prefix_of is imported from std.occurrence_identity (single authority) and the module-sibling disjunct is added beside it, never in place of it.".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
-}
-
-pub fn occurrence_module_path_row_note() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "OccurrenceModulePathRow is the P2a-owned association between one occurrence and the module path its authored text belongs to — which authored source unit the text lives in. It is deliberately independent of OccurrenceContainmentPath and of DeclarationExposure: module membership for projection is not proof of module-scope exposure, and a nested declaration can share a module path without being a module sibling candidate.".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
-}
-
 pub fn occurrence_module_path_convergence_note() -> String {
     thread_local! {
         static CACHED: String = {
             "Convergence, not fork: OccurrenceModulePathRow.module_path matches std.decl_ref.DeclarationRef.module_path (NonEmptyStr) — the single declaration-identity authority's existing representation, not a weaker String parallel and not a premature v2.std.qualified_name import (zero dag/std→v2 imports exist today). module_path becomes v2.std.qualified_name.QualifiedName when the namespace and module-identity lanes land those carriers (same trigger as std.observation observation_segment_grounding_note). Until then the representation is std's existing one, so there is nothing new to migrate.".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
-}
-
-pub fn declaration_exposure_note() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "DeclarationExposure is THE deciding authority for whether a declaration is structurally exposed to a reference (namespace-resolution-design.md 13 / namespace-unique-on-chain-operational-plan.md 2). LexicalExposure{exposing_scope} exposes exactly when its exposing_scope contains the reference (occurrence_containment_path_is_prefix_of); ModuleExposure{module} exposes when the reference shares that module and the declaration's AuthoredTokenOrdinal is strictly before the reference's; RootExposure exposes on every candidate lookup (root declarations on every applicable chain). Raw declaration.containment must never remain a parallel binding rule beside the carrier — containment may derive LexicalExposure when rows are produced, but the decision reads only DeclarationExposure. Category must never be substituted for exposure.".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
@@ -147,15 +111,6 @@ pub enum DeclarationExposure {
 pub struct DeclarationExposureRow {
     pub occurrence: OccurrenceId,
     pub exposure: Rc<DeclarationExposure>,
-}
-
-pub fn authored_order_note() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "AuthoredOrderRow carries the authored token ordinal for one occurrence — the source-order axis, distinct from OccurrenceId identity. Module-sibling gating compares ordinals only; never OccurrenceId.value as a proxy for authored order. AuthoredTokenOrdinal authority is std.occurrence_identity (feature:occurrence-ordinal-value-measure dissolve-on) — this module does not mint a parallel Int brand.".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -753,15 +708,6 @@ pub fn authored_order_validate_transport(
     }
 }
 
-pub fn occurrence_module_sibling_exposure_note() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "ModuleExposure arm of the DeclarationExposure authority (namespace-unique-on-chain-operational-plan.md 2, rule 1): a declaration is exposed as a module sibling only when its DeclarationExposure is ModuleExposure for the same module as the reference, the declaration's AuthoredTokenOrdinal is strictly before the reference's ordinal (rule 4 — never a declaration below the occurrence), and both module paths are present for projection. OccurrenceCategory is not consulted. LexicalExposure and RootExposure are decided on their own arms — never by falling through to a raw containment-prefix test. Index build refuses MissingDeclarationExposure / MissingAuthoredOrderRow before any reference is answered, so Absent ordinal/exposure arms below are defensive dead code, never a silent Unbound.".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
-}
-
 pub fn declaration_lexically_exposed(
     exposing_scope: Rc<OccurrenceContainmentPath>,
     reference: Rc<ReferenceOccurrence>,
@@ -835,15 +781,6 @@ pub fn declaration_exposed_on_reference_chain(
     }
 }
 
-pub fn occurrence_candidate_index_note() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "OccurrenceCandidateIndex is built exactly once per transport (occurrence_candidate_index_build). declarations_by_name buckets every declaration by its authored spelling so a single reference's candidate lookup is a map_get plus a scan of only the same-spelled declarations, never a rescan of the whole declaration population -- the O(declarations x references) shape the pre-strip candidate scan had. entries_by_id is the same validated lookup authority std.occurrence_binding_resolve builds internally; it is retained here only to read authored_name, never to re-decide cardinality.".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
-}
-
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct OccurrenceCandidateIndex {
     pub entries_by_id: Rc<HashMap<i64, Rc<OccurrenceIndexEntry>>>,
@@ -870,15 +807,6 @@ pub fn declarations_by_name_insert(
             v1_rt::concat(Rc::new(vec![declaration.clone()]), existing.clone()),
         ),
     }
-}
-
-pub fn declarations_by_name_build_note() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "declarations_by_name_build refuses MissingDeclarationIndexEntry when a transported declaration is absent from entries_by_id — never silent-skips (Absent => acc). A vanished declaration would shrink the candidate population and reopen the vanishing-population fail-open. After occurrence_transport_validate the Absent arm is unreachable (declaration_occurrence_refusal already demands index membership); the typed refusal keeps that impossibility loud if the constructor is ever reached with an inconsistent pair.".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -1049,15 +977,6 @@ pub fn occurrence_candidate_index_build(
     }
 }
 
-pub fn occurrence_candidate_cardinality_note() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "candidate_occurrence_ids_for_reference produces a population, never a decision: zero, one, or many exposed declarations all pass through unchanged as a plain List<OccurrenceId>. Cardinality (0/1/many -> Unbound/Bound/Ambiguous) is decided exactly once, downstream, by std.occurrence_binding_resolve.resolve_reference_occurrence_binding's call into std.occurrence_binding.occurrence_binding_from_candidates -- never here, and never by deduping same-spelled candidates: two structurally exposed declarations with equal text are two distinct OccurrenceIds and both are supplied (namespace-unique-on-chain-operational-plan.md 2 rule 5).".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
-}
-
 pub fn candidate_occurrence_ids_for_reference(
     index: Rc<OccurrenceCandidateIndex>,
     reference: Rc<ReferenceOccurrence>,
@@ -1100,30 +1019,12 @@ pub fn candidate_occurrence_ids_for_reference(
     }
 }
 
-pub fn bound_reference_provider_note() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "BoundReferenceProvider is the post-bind projection of one accepted OccurrenceBound decision: which reference resolved to which declaration, and which module each side's authored text belongs to. It is produced only from OccurrenceBound (never Unbound or Ambiguous) and only when both occurrences carry an OccurrenceModulePathRow -- a missing module row is a typed, located ReferenceBindingProjectionModulePathMissing refusal, never a silently-omitted edge. Same-module ruling (operator on PR 7515 / slice A): a BoundReferenceProvider whose consumer_module equals provider_module is retained as a binding receipt; the DirectModuleDependency projection emits NO M→M self-edge from it.".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
-}
-
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct BoundReferenceProvider {
     pub reference_occurrence: OccurrenceId,
     pub declaration_occurrence: OccurrenceId,
     pub consumer_module: NonEmptyStr,
     pub provider_module: NonEmptyStr,
-}
-
-pub fn direct_module_dependency_note() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "DirectModuleDependency is a projection of accepted bindings, never a second authored dependency statement (namespace-resolution-design.md 7.2 / roadmap recut 7517): it dedupes BoundReferenceProvider down to the distinct (consumer_module, provider_module) pairs the bindings require — the reference-derived successor to an authored import list. Same-module ruling (carrier law): same-module BoundReferenceProvider rows are preserved; this projection emits NO DirectModuleDependency self-edge (consumer_module == provider_module is skipped in direct_module_dependency_dedup_step — M→M is not a dependency and invites self-cycles). Dedup happens ONLY at this module-edge projection via a typed two-level index (Map consumer_module → Set provider_module; membership is map_get + set_contains, never a NUL-concatenated string key), with first-seen edges accumulated in provider-traversal order (prepend during fold, single reverse at end — never map_values hash-order readback). Output order is first occurrence of each cross-module edge in the input provider list. direct_module_dependencies_from_bound_population refuses unless BoundReferencePopulation is AllReferencesBound — a refused population never becomes an empty edge list.".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -1231,15 +1132,6 @@ pub enum BoundReferencePopulation {
         first_failure: Rc<ReferenceBindingProjection>,
         more_failures: Rc<Vec<Rc<ReferenceBindingProjection>>>,
     },
-}
-
-pub fn bound_reference_population_note() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "BoundReferencePopulation is total over a required reference projection list: either every reference is ReferenceBindingProjectionBound (AllReferencesBound) or at least one failure is surfaced (ReferencePopulationRefused with a nonempty failure list). No direct module dependency graph may be derived from a partial success — callers must use bound_reference_population_from_projections and refuse on ReferencePopulationRefused rather than fabricating a partial provider list.".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -1483,15 +1375,6 @@ pub fn direct_module_dependencies_from_bound_population(
     }
 }
 
-pub fn module_path_file_row_note() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "ModulePathFileRow is the parser-embedded storage-realization join for cross-file binding provenance at the N3-B substrate seam: one symbolic module path maps to exactly one authored file path. Single authority for path⇄module binding is v2.compiler.source_authority.ModuleStorageBinding / ModuleStorageIndex (module_storage_binding_authority_note); this row is a scaffold projection of that fact from parser-walk inputs until B2 wires OrdinaryLoadedCompilationClosure through source_authority directly. Deliberately separate from OccurrenceModulePathRow (module membership only) and from import lists (transitional loading data). File projection refuses when either side of a bound reference lacks a row — never fabricates a path from module_to_filename heuristics at this seam. Duplicate identical rows are ModulePathFileDuplicateSame; conflicting paths for one module are ModulePathFileConflict — last-write-wins map_insert is forbidden.".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
-}
-
 pub fn module_path_file_row_dissolution_note() -> String {
     thread_local! {
         static CACHED: String = {
@@ -1669,15 +1552,6 @@ pub enum StructuralBindingWalk {
     },
 }
 
-pub fn cross_file_binding_provenance_note() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "CrossFileBindingProvenance is the file-grain post-bind receipt parallel to BoundReferenceProvider: which reference resolved to which declaration, and which storage file each side's authored text belongs to. It is produced only from OccurrenceBound providers after joining consumer_module and provider_module through ModulePathFileRow — a missing row is ReferenceBindingProjectionFilePathMissing, never a silent omission. Same-file ruling (carrier law, parallel to DirectModuleDependency): consumer_file == provider_file rows are retained as binding receipts; the file-dependency projection emits NO self-edge from them.".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
-}
-
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct CrossFileBindingProvenance {
     pub reference_occurrence: OccurrenceId,
@@ -1823,15 +1697,6 @@ pub fn cross_file_binding_provenance_from_bound_population(
             }
         }
     }
-}
-
-pub fn direct_file_dependency_note() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "DirectFileDependency is the file-grain projection of accepted cross-file bindings (namespace-reference-derived-closure clause e / P2aReferenceDependencyProjection7515): it dedupes CrossFileBindingProvenance down to distinct (consumer_file, provider_file) pairs required by the bindings — the reference-derived successor to import-list loading edges at storage grain. Same-file ruling: consumer_file == provider_file rows are preserved in the provenance population; this projection emits NO self-edge. Dedup happens ONLY here via a two-level index (Map consumer_file → Set provider_file), with first-seen provider files accumulated in provider-traversal order (prepend during fold, single reverse at end).".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -2038,15 +1903,6 @@ pub enum ReferenceDerivedProviderFileProjection {
     },
 }
 
-pub fn reference_derived_dependency_projection_note() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "ReferenceDerivedDependencyProjection is the clause-(e) seam exposing BOTH products required by namespace-reference-derived-closure and its N3-C successor: (1) binding_provenance — one CrossFileBindingProvenance per accepted reference, occurrence grain, NO collapse; (2) file_dependencies — distinct (consumer_file, provider_file) edges with repeated-mention collapse ONLY here. bound_population is carried intact for pool-perturbation differential (N3-C): a pool coincidence can reselect the target declaration while leaving the target-file set unchanged, so file_dependencies alone is insufficient.".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
-}
-
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum ReferenceDerivedDependencyProjection {
@@ -2082,15 +1938,6 @@ pub fn reference_derived_dependency_projection(
     more_failures: more_failures.clone(),
 }),
 }
-}
-
-pub fn reference_derived_dependency_binding_reference_filter_note() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "Clause-(e) structural walks bind only reference categories that occurrence_category_clause_e_dependency_inducing_verdict classifies as OccurrenceCategoryClauseEDependencyInducing. TypeOccurrence references are N2's resolve_type_reference_containment_binding lane — parser-produced return-type annotations must not refuse the whole population when Int is not module-declared. Parser witnesses that need per-name resolution already avoid whole-transport walks for this reason; production assembled-closure projection applies the same boundary here.".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
 }
 
 pub fn reference_derived_dependency_binding_references(
@@ -2193,15 +2040,6 @@ pub fn structural_binding_walk(
         inputs.clone(),
         transport.references.clone(),
     )
-}
-
-pub fn cross_file_binding_closure_assembly_note() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "Collision-free cross-file assembly substrate (N3-B0): two independently parsed transports each mint raw OccurrenceId values from their own zero-based allocator, so a naive merge collides. occurrence_id_remap_state_with_fresh_map gives each transport its own old-ID => closure-ID remap keyed by the RAW id.value (never reused across transports); remap_occurrence_id/remap_containment_path/rekey_occurrence_transport/rekey_occurrence_binding_inputs rekey index, declarations, references, module paths, exposure rows, and authored-order rows TOGETHER against that one remap map, so every row for one transport lands on the SAME closure identity for the same raw id. assemble_cross_file_binding_closure rekeys the consumer with a fresh allocator and a fresh remap map, then folds providers each with a FRESH remap map but the ALLOCATOR CARRIED FORWARD from the prior step -- this is the mechanism that makes two transports that both minted raw id 0 land on distinct closure ids. module_path_file_index_from_rows validates the accumulated module=>file rows fail-closed (ModulePathFileDuplicateSame vs ModulePathFileConflict), never last-write-wins.".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -2667,15 +2505,6 @@ pub struct AssembledCrossFileFold {
     pub remap_state: Rc<OccurrenceIdRemapState>,
 }
 
-pub fn assemble_cross_file_binding_closure_cost_note() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "The provider fold accumulates each provider's rekeyed rows by PREPENDING onto seven `_reversed` populations (index entries, declarations, references, module paths, exposure rows, authored-order rows, module=>file rows) rather than by re-concatenating the whole left-hand assembled graph onto each small provider chunk -- that pairwise-append shape cost O(total assembled rows) per provider (O(n^2) over all providers) because concat's cost is proportional to its first argument's length. Prepending a provider's own (small, per-file-bounded) chunk onto the accumulator costs O(that provider's row count) regardless of how much has already been assembled, so the fold is linear in the total row count across all providers. Each `_reversed` population is reversed exactly once, at the end, never per provider.".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
-}
-
 pub fn assemble_cross_file_binding_closure(
     consumer: Rc<CrossFileBindingClosureRow>,
     providers: Rc<Vec<Rc<CrossFileBindingClosureRow>>>,
@@ -3065,15 +2894,6 @@ pub enum ReferenceBindingProjection {
     },
 }
 
-pub fn resolve_type_reference_containment_binding_note() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "N2 typed entry (gunbc.type_reference_containment_binding slice 1): refuses non-TypeOccurrence references at the API boundary before candidate enumeration — category is part of the binding contract, not an after-the-fact filter. TypeOccurrence references delegate to resolve_reference_binding_via_structural_candidates unchanged.".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
-}
-
 pub fn resolve_type_reference_containment_binding(
     transport: Rc<OccurrenceTransport>,
     inputs: Rc<OccurrenceBindingCandidateInputs>,
@@ -3092,15 +2912,6 @@ pub fn resolve_type_reference_containment_binding(
             },
         ),
     }
-}
-
-pub fn resolve_reference_via_structural_candidates_note() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "THE P2a entry point. It builds the exact candidate population for one reference from the precomputed index (candidate_occurrence_ids_for_reference) and hands that population to std.occurrence_binding_resolve.resolve_reference_occurrence_binding as supplied_candidates -- P1's fold over occurrence_binding_from_candidates is the only cardinality decision in this path. Only the OccurrenceBound arm is projected into a BoundReferenceProvider; Unbound and Ambiguous are surfaced as their own typed, located outcomes so a caller can never mistake 'no edge' for 'one edge'.".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
 }
 
 pub fn resolve_reference_via_structural_candidates(
@@ -3245,15 +3056,6 @@ pub fn resolve_all_references_via_structural_candidates(
         }
         __result
     })
-}
-
-pub fn occurrence_binding_candidates_section13_conformance_note() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "P2a first-slice scoped conformance roster (namespace-unique-on-chain-operational-plan.md section 2 population laws). Acceptance requires zero declared laws lacking either a joined exact-head executing observation or an explicitly admitted deferred row — the closed-denominator pattern. Section13PopulationLawExecuting is never self-attesting: section13_population_law_roster_adjudicate joins each Executing receipt to an exact-head Section13ExactHeadExecutionObservation (passed=true at required_head). DeclarationRef.module_path rows are symbolic module names (test.claim.x), never file paths. Section13RepeatedDiscoverySameIdentityCollapse stays Deferred with blocker ProductionOccurrenceCollectorMissing (dissolve_on occurrence_safe_collector_dedup_receipt). No roster-count pin: coverage is derived by section13_roster_covers_all_laws, not (count == N).".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
 }
 
 pub fn occurrence_safe_collector_dedup_receipt() -> String {
@@ -3405,15 +3207,6 @@ pub fn section13_population_law_id_eq(
             }
         }
     }
-}
-
-pub fn section13_module_path_is_symbolic_note() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "Interim oracle only: refuses DeclarationRef.module_path strings that look positional (contain '/' or '.dag'). This is a §5 heuristic standing where a type should stand — the same class occurrence_module_path_convergence_note names. It is NOT the long-term authority for symbolic vs positional module identity.".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
 }
 
 pub fn section13_module_path_is_symbolic(module_path: String) -> bool {

@@ -34,11 +34,33 @@ import extdeps.languages.json.parse {
   JsonMemberNotAnObject,
 }
 
-data publish_producer_note: String = "PUBLICATION IS ADJUDICATED AGAINST AN EXACT HEAD, NOT LOOKED UP BY BRANCH (operator ruling, 2026-07-31). An earlier cut of this module answered 'which pull request belongs to this branch', which is a lookup rather than a judgment: it reported whatever head that pull request happened to carry and left the caller to compare. Every downstream obligation — verify, review, audit, acceptance — is about one exact commit, so the question Publication has to answer is whether THIS commit is the one on offer.\\n\\nThe branch is a lookup and publication handle. A completed judgment belongs to a head sha.\\n\\nTHE ARM THAT MOTIVATES THE REWRITE is PublicationHeadDiverged. A pull request exists, its branch matches, and its head is NOT the commit under judgment — the ordinary state after a worker pushes a revision while a review is in flight. Under a branch lookup that reads as a successful publication, and every later receipt binds to a commit nobody assessed. It is the one outcome a lookup cannot express and the one most likely to occur."
+// PUBLICATION IS ADJUDICATED AGAINST AN EXACT HEAD, NOT LOOKED UP BY BRANCH (operator ruling,
+// 2026-07-31). An earlier cut answered 'which pull request belongs to this branch' — a lookup, not a
+// judgment: it reported whatever head that pull request carried and left the caller to compare.
+// Every downstream obligation — verify, review, audit — is about one exact commit, so Publication
+// must answer whether THIS commit is the one on offer.\n\nThe branch is a lookup and publication
+// handle. A completed judgment belongs to a head sha.\n\nTHE ARM THAT MOTIVATES THE REWRITE is
+// PublicationHeadDiverged: a pull request exists, its branch matches, and its head is NOT the commit
+// under judgment — the ordinary state after a worker pushes a revision mid-review. A branch lookup
+// reads that as a successful publication, and every later receipt binds to a commit nobody
+// assessed. It is the one outcome a lookup cannot express and the one most likely to occur.
 
-data expected_head_vocabulary_note: String = "The subject is EXPECTED HEAD, not 'candidate' (operator ruling, 2026-07-31). The first trip has no candidate entity — the pushed commit sha IS the subject of Publication, Verify, Review and Audit — so carrying the word 'candidate' in this API would invite the abstraction back by vocabulary alone, which is how a rejected thesis returns without anyone deciding to reinstate it."
+// The subject is EXPECTED HEAD, not 'candidate' (operator ruling, 2026-07-31). The first trip has
+// no candidate entity — the pushed commit sha IS the subject of Publication, Verify, Review and
+// Audit — and carrying 'candidate' in this API would invite the rejected abstraction back by
+// vocabulary alone.
 
-data belt_observes_note: String = "THE BELT OBSERVES; THIS ADJUDICATES. Nothing here pushes a branch or opens a pull request, and nothing here calls a service. The adjudicator takes observations a caller already holds, so every arm is reachable from constructed values with no network and no token — which is what lets the judgment be witnessed at all.\\n\\nThe observations are COPRODUCTS rather than bare lists because a failed read must not be indistinguishable from an empty one. 'No pull requests exist' and 'I could not find out' have different remedies, and a caller handed an empty list for both would report the branch unpublished when the truth is that nothing was learned. That is the ignorance-as-answer conflation, arriving in the direction that looks like an ordinary negative result.\\n\\nThis also replaces the previous module's honest but awkward position that a refusal arm could not be built because the interpreter raises on transport failure. It could not be built THERE, in a function that called the service itself. Here the caller performs the read and reports what happened, so the refusal is an ordinary value and the arm is reachable."
+// THE BELT OBSERVES; THIS ADJUDICATES. Nothing here pushes a branch, opens a pull request, or calls
+// a service. The adjudicator takes observations the caller already holds, so every arm is reachable
+// from constructed values with no network and no token — which is what lets the judgment be
+// witnessed.\n\nThe observations are COPRODUCTS rather than bare lists because a failed read must
+// not be indistinguishable from an empty one. 'No pull requests exist' and 'I could not find out'
+// have different remedies; an empty list for both reports the branch unpublished when nothing was
+// learned — ignorance-as-answer, arriving as an ordinary negative result.\n\nThis also replaces the
+// previous module's position that a refusal arm could not be built because the interpreter raises
+// on transport failure. It could not be built THERE, in a function calling the service itself. Here
+// the caller performs the read and reports what happened, so the refusal is an ordinary value and
+// the arm is reachable.
 
 type RemoteBranch {
   remote: NonEmptyStr
@@ -46,7 +68,25 @@ type RemoteBranch {
   head_sha: CommitSha
 }
 
-// FOUR CAUSES, FOUR REMEDIES, PREVIOUSLY ONE STRING - the same repair remote_branch_read_failure_note describes, applied to the peer observation that did not get it. PullRequestsUnreadable carried `detail: String`, and the four failures that reach it are not four phrasings of one event. No usable credential is a LOCAL decision taken before any request exists, and the remedy is to supply one. A status refusal means the request WAS transported and a remote authority answered - the remedy depends entirely on which status, and the body is usually the only place the remote says why. A transport refusal means no status exists at all, so the remedy is an environment or reachability fix and nothing about the repository has been learned. An undecodable body means a status arrived and the payload beneath it could not be read, which is a decoder or contract fault, not an access one.\n\nA caller handed a sentence can only re-derive which of the four it holds by matching on the prose. That is the classifier-by-substring move, and it is exactly what a 401 needs to avoid: the single most decidable failure in this whole path would arrive as the least tractable kind of value.\n\nWHY THIS TYPE APPEARS NOW AND NOT EARLIER: until the REST realization carried a non-2xx response back as data, three of these four arms were unreachable through the real transport, because dispatch_rest raised. Producing a typed carrier for states no producer could construct would have been vocabulary without execution. The opt-in outcome field on github.Pulls.List is what makes all four reachable, so the type lands with its producer rather than ahead of it.\n\nTHE OPERATION IS NAMED, NOT THE URL. render_pull_request_read_failure labels github.Pulls.List through its OperationRef for the same reason the ls-remote renderer names its operation rather than its argv: the path and query are one realization of that operation and will change when the invocation is derived, while the operation identity will not.
+// FOUR CAUSES, FOUR REMEDIES, PREVIOUSLY ONE STRING - the repair remote_branch_read_failure_note
+// describes, applied to the peer observation. PullRequestsUnreadable carried `detail: String`, and
+// the four failures reaching it are not four phrasings of one event. No usable credential is a
+// LOCAL decision taken before any request exists; the remedy is to supply one. A status refusal
+// means the request WAS transported and a remote authority answered - the remedy depends on which
+// status, and the body is usually the only place the remote says why. A transport refusal means no
+// status exists; the remedy is an environment or reachability fix and nothing about the repository
+// was learned. An undecodable body means a status arrived and the payload could not be read - a
+// decoder or contract fault, not an access one.\n\nA caller handed a sentence can only recover
+// which of the four it holds by matching on prose - the classifier-by-substring move - so a 401,
+// the most decidable failure on this path, would arrive as the least tractable value.\n\nWHY THIS
+// TYPE APPEARS NOW AND NOT EARLIER: until the REST realization carried a non-2xx response back as
+// data, three of the four arms were unreachable through the real transport because dispatch_rest
+// raised; a typed carrier for states no producer could construct would be vocabulary without
+// execution. The opt-in outcome field on github.Pulls.List makes all four reachable, so the type
+// lands with its producer.\n\nTHE OPERATION IS NAMED, NOT THE URL. render_pull_request_read_failure
+// labels github.Pulls.List through its OperationRef, as the ls-remote renderer names its operation
+// rather than its argv: the path and query are one realization that will change when the invocation
+// is derived; the operation identity will not.
 type PullRequestReadFailure
   = PullRequestCredentialUnavailable { repository: String, reason: String }
   | PullRequestStatusRefused { repository: String, status: HttpStatus, body: String }
@@ -133,7 +173,13 @@ type RemoteBranchObservation
   = RemoteBranchesRead { branches: List<RemoteBranch> }
   | RemoteBranchesUnreadable { cause: RemoteBranchReadFailure }
 
-data remote_ref_identity_note: String = "A REMOTE REF NAME IS NOT A PUBLICATION (review correction, 2026-07-31). The previous cut observed remote branches as bare strings, so the branch-without-pull-request arm established only that a ref with the right NAME existed — which is exactly the exact-head thesis this module claims to enforce, abandoned on the one path that had no pull request to compare against. A branch left over from an earlier attempt, or one the worker pushed and then rewrote, satisfied it.\\n\\nSo the observation carries ref identity, and the arm splits: at the expected head, or diverged from it. The diverged arm matters most on this path precisely because there is no pull request whose head would otherwise reveal the mismatch."
+// A REMOTE REF NAME IS NOT A PUBLICATION (review correction, 2026-07-31). The previous cut observed
+// remote branches as bare strings, so the branch-without-pull-request arm established only that a
+// ref with the right NAME existed — the exact-head thesis abandoned on the one path with no pull
+// request to compare against. A branch left over from an earlier attempt, or pushed and then
+// rewritten, satisfied it.\n\nSo the observation carries ref identity, and the arm splits: at the
+// expected head, or diverged from it. The diverged arm matters most here precisely because no pull
+// request head would otherwise reveal the mismatch.
 
 type PublicationOutcome
   = PublicationBound {
@@ -177,7 +223,11 @@ type PublicationOutcome
       detail: String,
     }
 
-data draft_is_carried_not_judged_note: String = "Draft is REPORTED, never derived from. A draft pull request is a perfectly good publication surface for the roadmap's own review process — readiness for review is decided by the roadmap's Run Review action, not by the forge's draft flag — so this module carries the flag and refuses to conclude anything from it. Treating draft as not-yet-published would import a forge convention into a roadmap decision, and would make the roadmap's own trigger unable to review a subject the operator deliberately kept out of the forge's review queue."
+// Draft is REPORTED, never derived from. A draft pull request is a good publication surface for the
+// roadmap's own review — readiness is decided by the roadmap's Run Review action, not the forge's
+// draft flag — so this module carries the flag and concludes nothing from it. Treating draft as
+// not-yet-published would import a forge convention into a roadmap decision and stop the roadmap's
+// trigger reviewing a subject the operator deliberately kept out of the forge's review queue.
 
 data no_silent_pick_note: String = "0/1/MANY, NEVER first() (review correction, 2026-07-31). The previous cut selected the FIRST pull request whose head ref matched the branch. Nothing in the model establishes that the match is unique — a branch can carry pull requests against different bases — so first() silently picked one and reported it as THE publication. That is the same silent-pick defect the namespace lane is eliminating, reintroduced in a module whose whole thesis is that the subject must be exact.\\n\\nUniqueness is therefore established rather than assumed: the match is keyed by head branch AND expected base, and a two-or-more result is its own arm carrying every matching number, so an ambiguous binding is visible instead of resolved by list order.\\n\\nTHE SAME RULE, APPLIED TO THE FOLD BESIDE IT (self-review, 2026-07-31). The first cut of this correction fixed the pull-request fold and left adjudicate_remote_branch handling 0 and then taking the first of the rest — so the note above declared a rule the module did not uniformly keep, one screen below where it was written. A well-formed ref listing cannot carry two refs of one name, so no live observation reaches it; that is exactly the argument this note already rejects for pull requests, because the observation is a caller-supplied list and nothing in the MODEL establishes the uniqueness the code was relying on. Both folds are now 0/1/many. The old singleton arm was worse than a silent pick on top of that: count was already known to be nonzero, so its Absent branch was unreachable, and if reached it answered BranchNotPublished — a confident wrong answer to a question it had not decided. An unreachable arm still has to name what it would mean, and the honest meaning is that the binding was not established, never that the branch is absent.\\n\\nWHAT `NEVER first()` MEANS, because a grep falsifies the headline and the distinction is the whole point. first() survives in the pull-request fold and sole_remote_branch does the same job below, and both are correct: they run only AFTER count has proven the match set is a singleton, so they EXTRACT the one element rather than SELECT among several. The banned move is reaching for the head of a list whose length was never established — that is where list order silently becomes the answer. Extraction after a proven count is not that move, and reading the rule as banning the call rather than the selection would push a reviewer toward replacing a correct guarded extractor with something less clear."
 
@@ -336,7 +386,10 @@ fn adjudicate_publication(
   }
 }
 
-data publication_detail_note: String = "The segment detail is derived from the outcome rather than authored beside it, so a new arm cannot render as a stale sentence. Every divergence arm names BOTH shas, because the operator's next action depends on which is stale: a worker that pushed during review needs a re-review of the new head, while a ref pointing at an older commit than the one verified needs a push."
+// The segment detail is derived from the outcome, not authored beside it, so a new arm cannot
+// render as a stale sentence. Every divergence arm names BOTH shas, because the next action depends
+// on which is stale: a worker that pushed during review needs a re-review of the new head; a ref
+// older than the verified commit needs a push.
 
 fn publication_detail(outcome: PublicationOutcome) -> String {
   match outcome {
@@ -404,9 +457,33 @@ fn publication_detail(outcome: PublicationOutcome) -> String {
   }
 }
 
-data offers_the_expected_head_note: String = "The single question a downstream obligation asks of Publication: is the commit I am about to judge the one actually on offer? Exactly ONE arm answers yes, and it is the arm that saw a pull request at the expected head. A remote ref at the expected head is deliberately NOT enough — there is nothing to review, and the review lane's subject is a pull request. Every divergence, ambiguity and refusal answers no, so ignorance never becomes permission.\\n\\nIT IS ANSWERED ONCE, ON THE RECEIPT OUTCOME, AND THE LIVE OUTCOME DELEGATES. Two functions answering one question over two shapes of the same coproduct is how the two drift: a ninth arm added to one and defaulted in the other, and the disagreement shows up as a lamp that completes while the producer keeps re-observing. So the receipt-side answer is the authority and the live-side one is a projection through publication_receipt_outcome_of, which is total.\\n\\nAND THE CONSUMERS ARE NOT SYMMETRIC, which is why the question is worth naming rather than inlining. A downstream obligation asks it to decide whether it may proceed. The belt's publish gate asks it to decide whether a receipt is SETTLED - because every other outcome is a snapshot of remote state that has not stopped moving, and halting on one would pin the row to a negative answer that can no longer be revised."
+// The single question a downstream obligation asks of Publication: is the commit I am about to
+// judge the one on offer? Exactly ONE arm answers yes — a pull request at the expected head. A
+// remote ref at the expected head is deliberately NOT enough: there is nothing to review, and the
+// review lane's subject is a pull request. Every divergence, ambiguity and refusal answers no, so
+// ignorance never becomes permission.\n\nIT IS ANSWERED ONCE, ON THE RECEIPT OUTCOME, AND THE LIVE
+// OUTCOME DELEGATES. Two functions answering one question over two shapes of one coproduct drift: a
+// ninth arm added to one and defaulted in the other shows up as a lamp that completes while the
+// producer keeps re-observing. So the receipt-side answer is the authority and the live-side one is
+// a projection through publication_receipt_outcome_of, which is total.\n\nAND THE CONSUMERS ARE
+// NOT SYMMETRIC, which is why the question is named rather than inlined. A downstream obligation
+// asks whether it may proceed. The belt's publish gate asks whether a receipt is SETTLED - every
+// other outcome is a snapshot of remote state still moving, and halting on one would pin the row to
+// a negative answer that can no longer be revised.
 
-data publication_subject_note: String = "ONE SUBJECT VALUE, CARRIED BY EVERY STAGE, BECAUSE THE ALTERNATIVE ALREADY FAILED HERE. A publication judgment is about one exact commit, on one branch, of one repository, for one attempt of one node. Before this type those six facts travelled as separate parameters that each stage re-derived, which is how the receipt consumer came to hold a stored head and a rendered sentence and no way to tell whether either was about the row it was painting.\\n\\nTHE REPOSITORY IS THE GITHUB IDENTITY, not the derived clone URL. The URL is one projection of owner and name (extdeps.github.github repository_remote_url_note) and projecting it is lossy in the direction that matters: two Repository values can share a URL spelling, and a consumer that stored the URL could not ask the pull-request API anything. The subject stores what identifies the repository and derives the URL where a git remote is needed.\\n\\nWHY expected_base IS PART OF THE SUBJECT and not a loose argument: adjudicate_publication uses it to decide which pull requests are even candidates, so two runs with different bases can reach different outcomes about the same head. A receipt that did not record it would be unfalsifiable about the question it answered."
+// ONE SUBJECT VALUE, CARRIED BY EVERY STAGE, BECAUSE THE ALTERNATIVE ALREADY FAILED HERE. A
+// publication judgment is about one exact commit, on one branch, of one repository, for one attempt
+// of one node. Before this type those six facts travelled as separate parameters each stage
+// re-derived, which is how the receipt consumer came to hold a stored head and a rendered sentence
+// with no way to tell whether either was about the row it was painting.\n\nTHE REPOSITORY IS THE
+// GITHUB IDENTITY, not the derived clone URL. The URL is one projection of owner and name
+// (extdeps.github.github repository_remote_url_note), lossy in the direction that matters: two
+// Repository values can share a URL spelling, and a consumer storing the URL could not ask the
+// pull-request API anything. The subject stores what identifies the repository and derives the URL
+// where a git remote is needed.\n\nWHY expected_base IS PART OF THE SUBJECT and not a loose
+// argument: adjudicate_publication uses it to decide which pull requests are candidates, so two runs
+// with different bases can reach different outcomes about the same head. A receipt not recording it
+// would be unfalsifiable about the question it answered.
 
 type RoadmapPublicationSubject {
   node_id: String
@@ -421,13 +498,34 @@ fn publication_subject_remote(subject: RoadmapPublicationSubject) -> NonEmptyStr
   github_https_clone_url(repo: subject.repository)
 }
 
-data publication_subject_observation_note: String = "THE CONSUMER CANNOT CHECK A RECEIPT AGAINST A SUBJECT IT DOES NOT HAVE, so not having one is a state and gets a name. The exact head of an attempt is READ from the attempt's worktree, and that read can fail: the worktree may be gone, git may refuse, the attempt may exist only as a branch name. Under those conditions a consumer holds a receipt and nothing to compare it to.\\n\\nTHE ARM THAT MATTERS IS UNOBSERVED, and it must not resolve to `treat the receipt as evidence`. That is the exact move this whole module was rewritten to eliminate, arriving through the back door: a projection that cannot establish its subject and paints from the document anyway has looked the answer up by path, which is the branch lookup with a file name standing in for the branch. So an unobserved subject REFUSES, and the refusal names what could not be read.\\n\\nIt is deliberately not an Optional. `no subject` and `subject present` are the two cases, but the reason the subject is missing is what a reader acts on, and an Optional discards it at the moment it is known."
+// THE CONSUMER CANNOT CHECK A RECEIPT AGAINST A SUBJECT IT DOES NOT HAVE, so not having one is a
+// named state. The exact head of an attempt is READ from its worktree, and that read can fail: the
+// worktree may be gone, git may refuse, the attempt may exist only as a branch name. Then a consumer
+// holds a receipt and nothing to compare it to.\n\nTHE ARM THAT MATTERS IS UNOBSERVED, and it must
+// not resolve to `treat the receipt as evidence` - the move this module was rewritten to eliminate,
+// through the back door: a projection that cannot establish its subject and paints from the
+// document anyway has looked the answer up by path, the branch lookup with a file name standing in
+// for the branch. So an unobserved subject REFUSES, naming what could not be read.\n\nIt is
+// deliberately not an Optional: `no subject` and `subject present` are the two cases, but the
+// reason the subject is missing is what a reader acts on, and an Optional discards it at the moment
+// it is known.
 
 type PublicationSubjectObservation
   = PublicationSubjectObserved { subject: RoadmapPublicationSubject }
   | PublicationSubjectUnobserved { reason: String }
 
-data publication_receipt_outcome_note: String = "THE RECEIPT PRESERVES THE VARIANT'S FIELDS, NOT A KEY AND A SENTENCE. An earlier cut of this module serialized every PublicationOutcome to an outcome key plus publication_detail's rendered prose, discarding pr_number, pr_head, url, draft, the observed remote head, and the ambiguous sets - all of which existed in the typed value at the moment of serialization.\\n\\nWHAT THAT COST, concretely and not hypothetically: Review's whole input is the pull-request binding this module establishes. A Review producer reading that receipt could recover the PR number only by parsing an English sentence, or by asking GitHub again and re-deriving a fact Publication had already decided. Re-deriving it is worse than it sounds, because the second query can disagree with the first - which is the divergence this module exists to catch, reintroduced by the carrier meant to record it.\\n\\nSO detail IS A PROJECTION, NEVER DURABLE AUTHORITY. publication_detail renders from these fields; nothing reads the rendered string back. That also collapses the three-way string fork the earlier cut carried - an outcome-key writer, a key allow-list, and a key-to-segment-state mapper, three places spelling the same eight constructors - into one coproduct that a consumer matches exhaustively."
+// THE RECEIPT PRESERVES THE VARIANT'S FIELDS, NOT A KEY AND A SENTENCE. An earlier cut serialized
+// every PublicationOutcome to an outcome key plus publication_detail's rendered prose, discarding
+// pr_number, pr_head, url, draft, the observed remote head, and the ambiguous sets - all present in
+// the typed value at serialization.\n\nWHAT THAT COST: Review's whole input is the pull-request
+// binding this module establishes. A Review producer reading that receipt could recover the PR
+// number only by parsing an English sentence, or by asking GitHub again and re-deriving a fact
+// Publication had already decided - and the second query can disagree with the first, which is the
+// divergence this module exists to catch, reintroduced by the carrier meant to record it.\n\nSO
+// detail IS A PROJECTION, NEVER DURABLE AUTHORITY. publication_detail renders from these fields;
+// nothing reads the rendered string back. That also collapses the earlier cut's three-way string
+// fork - an outcome-key writer, a key allow-list, and a key-to-segment-state mapper, three places
+// spelling the same eight constructors - into one coproduct a consumer matches exhaustively.
 
 data receipt_bound_carries_no_head_note: String = "ReceiptBound DELIBERATELY HAS NO pr_head FIELD, AND THAT ABSENCE IS THE GUARANTEE. The variant means exactly one thing: a pull request is open whose head is the subject's expected_head. So the head it offers IS subject.expected_head - already in the same document, and already the receipt's own filename. Storing it a second time inside the outcome would be one fact in two places, and the second copy is precisely what can disagree with the first.\\n\\nWHAT THAT WOULD ADMIT, concretely: a receipt naming this subject but carrying some other pull request's head would decode cleanly, match the subject on all six subject fields, and complete Publication for a head no pull request actually offers - the exact class this module exists to refuse, walked in through the carrier meant to record it. Checking the two copies against each other at decode time would catch it, but a check concedes the contradictory document is writable; deleting the field means it cannot be written or represented at all.\\n\\nWHY ReceiptHeadDiverged KEEPS ITS pr_head: there the head is genuinely new information - the DIFFERENT head the pull request was found at, which appears nowhere else in the document. A field is redundant only when the fact is already fixed elsewhere, and divergence is the case where it is not."
 
@@ -504,7 +602,6 @@ fn publication_offers_the_expected_head(outcome: PublicationOutcome) -> Bool {
     outcome: publication_receipt_outcome_of(outcome: outcome),
   )
 }
-
 
 type PublicationReceipt {
   subject: RoadmapPublicationSubject
@@ -645,13 +742,29 @@ fn publication_receipt_member(doc: JsonValue, key: String) -> PublicationReceipt
   }
 }
 
-data publication_receipt_decode_is_lossless_note: String = "THE DECODE RETURNS THE TYPED RECEIPT, NOT A SUMMARY OF IT. What publication_receipt_json wrote, publication_receipt_decode reconstructs: the six-part subject and the outcome variant with its own fields. That is what makes the receipt usable as Review's input rather than as a lamp colour - Review needs the pull-request number and head, and a decoder that returned a key and a sentence would force it to parse prose or re-query GitHub.\\n\\nEVERY REFUSAL IS TYPED AND SEPARATE. A wrong schema, a missing subject member, a missing outcome field, an unrecognized outcome kind, and a document that is not JSON are five different situations with five different remedies, and none of them is the sixth situation - a well-formed receipt about a DIFFERENT subject - which is not a decode failure at all and is decided by the consumer (publication_receipt_subject_match)."
+// THE DECODE RETURNS THE TYPED RECEIPT, NOT A SUMMARY OF IT. What publication_receipt_json wrote,
+// publication_receipt_decode reconstructs: the six-part subject and the outcome variant with its
+// own fields. That is what makes the receipt usable as Review's input rather than a lamp colour -
+// Review needs the pull-request number and head; a decoder returning a key and a sentence would
+// force it to parse prose or re-query GitHub.\n\nEVERY REFUSAL IS TYPED AND SEPARATE. A wrong
+// schema, a missing subject member, a missing outcome field, an unrecognized outcome kind, and a
+// document that is not JSON are five situations with five remedies, and none is the sixth - a
+// well-formed receipt about a DIFFERENT subject - which is not a decode failure and is decided by
+// the consumer (publication_receipt_subject_match).
 
 type PublicationReceiptDecode
   = ReceiptDecoded { receipt: PublicationReceipt }
   | ReceiptUndecodable { reason: String }
 
-// A REFUSAL THAT DOES NOT NAME WHAT WAS WRONG IS A TYPED SHRUG. The first cut of these decoders returned Optionals, so five different situations - not an object, member absent, member present with the wrong JSON type, an outcome kind nobody writes, a kind whose own fields are missing - all arrived as `none` and were rendered by the caller as one sentence about `a required member`. Whoever read that sentence had to open the document and diff it against the encoder by hand, which is the work the decoder had already done and thrown away.\n\nSO EACH DECODER RETURNS ITS OWN COPRODUCT and the reason names the member, and for an outcome the KIND as well - because `publication-bound is missing pr_number` and `nobody writes published-ok` send a reader to different places. The reason is built where the fact is known, not reconstructed by the caller.
+// A REFUSAL THAT DOES NOT NAME WHAT WAS WRONG IS A TYPED SHRUG. The first cut of these decoders
+// returned Optionals, so five situations - not an object, member absent, member present with the
+// wrong JSON type, an outcome kind nobody writes, a kind whose own fields are missing - all arrived
+// as `none` and rendered as one sentence about `a required member`. The reader then had to diff
+// the document against the encoder by hand - work the decoder had already done and thrown
+// away.\n\nSO EACH DECODER RETURNS ITS OWN COPRODUCT and the reason names the member, and for an
+// outcome the KIND as well - `publication-bound is missing pr_number` and `nobody writes
+// published-ok` send a reader to different places. The reason is built where the fact is known, not
+// reconstructed by the caller.
 fn publication_receipt_int_member(doc: JsonValue, key: String) -> Int? {
   match json_object_unique_member(v: doc, key: key) {
     JsonMemberFound { value: v } =>
@@ -674,7 +787,11 @@ fn publication_receipt_bool_member(doc: JsonValue, key: String) -> Bool? {
   }
 }
 
-data pr_numbers_survive_the_round_trip_note: String = "THE AMBIGUOUS SET IS DECODED, NOT REPLACED BY AN EMPTY ONE. An earlier cut of this decoder answered `publication-binding-ambiguous` with `pr_numbers: []`, discarding the very list the encoder had just written - so a receipt recording that four pull requests matched decoded to one recording that none did, while reporting the same outcome kind and passing every claim that only checked the kind. An ambiguity whose members are gone is not an ambiguity anyone can resolve."
+// THE AMBIGUOUS SET IS DECODED, NOT REPLACED BY AN EMPTY ONE. An earlier cut answered
+// `publication-binding-ambiguous` with `pr_numbers: []`, discarding the list the encoder had just
+// written - a receipt recording four matching pull requests decoded to one recording none, with the
+// same outcome kind, passing every claim that only checked the kind. An ambiguity whose members are
+// gone is not one anyone can resolve.
 
 fn publication_receipt_int_array_member(doc: JsonValue, key: String) -> List<Int>? {
   match json_object_unique_member(v: doc, key: key) {
@@ -818,7 +935,16 @@ fn publication_receipt_outcome_decode(doc: JsonValue) -> PublicationOutcomeDecod
   }
 }
 
-data repository_survives_the_round_trip_note: String = "THE REPOSITORY IS STORED, NOT RECONSTRUCTED. An earlier cut of this decoder wrote only owner and name and then rebuilt the rest: full_name by concatenation, private as false, and default_branch from the subject's expected_base. The last one is the defect and the first two are how it hid - for this repository the base IS the default branch, so the round trip compared equal and nothing was visibly wrong.\\n\\nWHERE IT WOULD HAVE BITTEN: a subject whose expected_base is not the default branch. The decoded repository would then carry a default_branch nobody recorded, the subject comparison would find a repository mismatch, and a perfectly good receipt would be reported as being about another subject - a fabricated value causing a false refusal in the one function whose whole job is to tell those apart.\\n\\nSo all five fields are written and read back. The receipt records the Repository the judgment was made against, which is what a later reader needs, rather than a plausible reconstruction of it."
+// THE REPOSITORY IS STORED, NOT RECONSTRUCTED. An earlier cut wrote only owner and name and rebuilt
+// the rest: full_name by concatenation, private as false, and default_branch from the subject's
+// expected_base. The last is the defect and the first two are how it hid - for this repository the
+// base IS the default branch, so the round trip compared equal.\n\nWHERE IT WOULD HAVE BITTEN: a
+// subject whose expected_base is not the default branch. The decoded repository would carry a
+// default_branch nobody recorded, the subject comparison would find a repository mismatch, and a
+// good receipt would be reported as about another subject - a fabricated value causing a false
+// refusal in the one function whose job is to tell those apart.\n\nSo all five fields are written
+// and read back: the receipt records the Repository the judgment was made against, not a plausible
+// reconstruction of it.
 
 type PublicationSubjectDecode
   = SubjectDecoded { subject: RoadmapPublicationSubject }
@@ -958,7 +1084,22 @@ fn publication_receipt_decode(receipt: String) -> PublicationReceiptDecode {
   }
 }
 
-data publication_receipt_subject_match_note: String = "A READABLE RECEIPT ABOUT ANOTHER SUBJECT IS NOT EVIDENCE, AND THIS IS THE FUNCTION AN EARLIER CUT OF THIS MODULE CLAIMED TO HAVE AND DID NOT. Its note said comparing the stored head against the caller's current head is how a consumer detects a receipt answering an obsolete question - and no consumer compared anything. The projection took a receipt string, decoded it, and mapped publication-bound straight to Complete, so a document naming an older branch at an older sha marked the CURRENT attempt published, provided it appeared at the path.\\n\\nThat is exactly the failure this module was rewritten to prevent, one layer down. The rewrite's thesis is that publication is adjudicated against an exact head rather than looked up by branch; a consumer that looks a receipt up BY PATH and trusts what it finds has reintroduced the lookup, with the file location standing in for the branch name.\\n\\nSO MISMATCH IS ITS OWN OUTCOME, neither absent nor undecodable. Absent means nothing has been established. Undecodable means something was written that cannot be read. Mismatched means something was written, read perfectly, and is about a different question - and it is the only one of the three where the document looks entirely healthy. It names WHICH field differs, because `stale` and `wrong repository` send a reader to different places.\\n\\nEVERY FIELD IS COMPARED, not just the head. A receipt from another node, another attempt of the same node, another repository, or against another base is wrong in a way that a head comparison alone would miss whenever the heads coincide - and attempt keys and node ids collide far more readily than shas do."
+// A READABLE RECEIPT ABOUT ANOTHER SUBJECT IS NOT EVIDENCE, AND THIS IS THE FUNCTION AN EARLIER CUT
+// CLAIMED TO HAVE AND DID NOT. Its note said comparing the stored head against the caller's current
+// head is how a consumer detects a receipt answering an obsolete question - and no consumer
+// compared anything. The projection decoded a receipt string and mapped publication-bound straight
+// to Complete, so a document naming an older branch at an older sha marked the CURRENT attempt
+// published, provided it appeared at the path.\n\nThat is the failure this module was rewritten to
+// prevent, one layer down: a consumer that looks a receipt up BY PATH and trusts what it finds has
+// reintroduced the branch lookup, with the file location standing in for the branch name.\n\nSO
+// MISMATCH IS ITS OWN OUTCOME, neither absent nor undecodable. Absent means nothing has been
+// established. Undecodable means something was written that cannot be read. Mismatched means
+// something was written, read perfectly, and is about a different question - the only one of the
+// three where the document looks entirely healthy. It names WHICH field differs, because `stale`
+// and `wrong repository` send a reader to different places.\n\nEVERY FIELD IS COMPARED, not just
+// the head. A receipt from another node, another attempt of the same node, another repository, or
+// against another base is wrong in a way a head comparison misses whenever the heads coincide - and
+// attempt keys and node ids collide far more readily than shas do.
 
 type PublicationSubjectMatch
   = SubjectMatches
@@ -1021,7 +1162,23 @@ type PublicationEvidence
       found: String,
     }
 
-data receipt_source_is_not_a_bool_note: String = "ABSENT AND UNREADABLE ARE OPPOSITE INSTRUCTIONS, SO THEY CANNOT SHARE A CARRIER. This function used to take (readable: Bool, text: String) and answer EvidenceAbsent whenever the read had failed. Filesystem.Read reports success=false for a file that does not exist AND for a file that exists but could not be read, so one bit stood for two worlds whose correct actions are opposites: absent means go observe and write the receipt, unreadable means stop and do not touch evidence you could not read. The producer's gate maps EvidenceAbsent to PublishProceed, so an I/O fault on an existing receipt would have overwritten it - a fail-open in the one place this lane promises not to be, reported by review 46148.\\n\\nTHE REPOSITORY HAD ALREADY PAID FOR THIS LESSON at the Verify seam: roadmap_validation_oracle's validation_not_run_note records the identical defect (empty text arriving from three different worlds, then the validation re-run and the evidence overwritten) and the identical resolution - make the absence a state somebody ESTABLISHED rather than a value inferred from a failure. This is that fix applied to Publication, and taking the coproduct here rather than a Bool is what stops the conflation being re-introduced by a future caller: there is no longer a spelling for `I could not read it, treat it as gone`.\\n\\nA PRESENT BUT EMPTY FILE IS UNREADABLE, NOT ABSENT. Something wrote it, so the write either lost its content or was interrupted; concluding `nothing has been published` from a truncated file is the same fabrication one step down. The caller establishes absence by successfully listing a directory that exists - never by a read that failed."
+// ABSENT AND UNREADABLE ARE OPPOSITE INSTRUCTIONS, SO THEY CANNOT SHARE A CARRIER. This function
+// used to take (readable: Bool, text: String) and answer EvidenceAbsent whenever the read failed.
+// Filesystem.Read reports success=false for a file that does not exist AND for one that exists but
+// could not be read, so one bit stood for two worlds with opposite actions: absent means go observe
+// and write the receipt; unreadable means stop and do not touch evidence you could not read. The
+// producer's gate maps EvidenceAbsent to PublishProceed, so an I/O fault on an existing receipt
+// would have overwritten it - a fail-open in the one place this lane promises not to be, reported
+// by review 46148.\n\nTHE REPOSITORY HAD ALREADY PAID FOR THIS LESSON at the Verify seam:
+// roadmap_validation_oracle's validation_not_run_note records the identical defect (empty text
+// arriving from three worlds, then the validation re-run and the evidence overwritten) and the
+// identical resolution - make the absence a state somebody ESTABLISHED, not a value inferred from a
+// failure. Taking the coproduct here rather than a Bool is what stops a future caller re-introducing
+// the conflation: there is no spelling for `I could not read it, treat it as gone`.\n\nA PRESENT
+// BUT EMPTY FILE IS UNREADABLE, NOT ABSENT. Something wrote it, so the write lost its content or
+// was interrupted; concluding `nothing has been published` from a truncated file is the same
+// fabrication one step down. The caller establishes absence by successfully listing a directory
+// that exists - never by a read that failed.
 
 type PublicationReceiptSource
   = ReceiptSourceAbsent

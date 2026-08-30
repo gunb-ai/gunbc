@@ -1,6 +1,5 @@
 module extdeps.filesystem.filesystem_io
 
-
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import std.types { Bool, Int, List, String }
@@ -11,7 +10,8 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   }
 }
 
-data write_owner_only_realization_note: String = "v1 realization: Unix OpenOptions create_new + mode 0600 at creation (O_EXCL); non-Unix hosts refuse rather than degrading to unmodeled write."
+// v1 realization: Unix OpenOptions create_new + mode 0600 at creation (O_EXCL); non-Unix hosts
+// refuse rather than degrading to unmodeled write.
 
 // The operation below carries the transport observation as independent channels: the read
 // either supplied content or supplied an error, but the wire itself does not make those states
@@ -82,7 +82,24 @@ fn filesystem_listing_names_entry(listing: String, name: String) -> Bool {
 // that section's open item and not this module's to close. And it is a wall over the consumers that
 // ROUTE THROUGH IT, not over the corpus: the raw operations remain callable, so adoption is the
 // separate obligation recorded in `filesystem_absence_establishment_adoption_standing`.
-data filesystem_absence_establishment_wall_receipt: String = "THE WALL ABOVE IS MEASURED RATHER THAN ASSERTED, and it is recorded here because no enrolled witness can hold it: the claim is about what the COMPILER REFUSES, its subject is source text rather than a value, and a hermetic witness that asserted it would be a permanently-green arm over a state it cannot express -- the decoration section 4b calls worse than absent. MEASURED BY EXECUTION: a fixture module importing FilesystemEstablishedAbsence and writing the record literal `FilesystemEstablishedAbsence { directory: \"/nowhere\", name: \"marker.json\" }` in a function body, resolved by `claim_batch --source-root dag --source-root src/v2 --source-root <fixture root> --entry <fixture>`, is REFUSED at the literal's own position with `sole_constructor type 'FilesystemEstablishedAbsence' cannot be constructed outside its defining module`. THE POSITIVE CONTROL IS ENROLLED AND IS NOT A SECOND FIXTURE: test.claim.filesystem_absence_establishment_witness_test an_established_absence_names_its_directory_and_its_entry obtains an absence FROM THE MINT, cross-module, and reads its fields -- so the refusal above is the construction being confined and not the type being unusable. WHAT THIS DOES NOT ESTABLISH: the mechanism's general coverage, which is gunbc.guarantee_probe_corpus sole_constructor_cross_module_class and its probes -- DESIGN records that family as discovered and declined by the floor, so this measurement is one execution of a wall whose corpus-wide arms nothing currently re-runs. It is the fixture-boundary red section 4b asks for, taken once, not a standing gate."
+// THE WALL ABOVE IS MEASURED RATHER THAN ASSERTED, and it is recorded here because no enrolled
+// witness can hold it: the claim is about what the COMPILER REFUSES, its subject is source text
+// rather than a value, and a hermetic witness that asserted it would be a permanently-green arm
+// over a state it cannot express -- the decoration section 4b calls worse than absent. MEASURED BY
+// EXECUTION: a fixture module importing FilesystemEstablishedAbsence and writing the record literal
+// `FilesystemEstablishedAbsence { directory: "/nowhere", name: "marker.json" }` in a function body,
+// resolved by `claim_batch --source-root dag --source-root src/v2 --source-root <fixture root>
+// --entry <fixture>`, is REFUSED at the literal's own position with `sole_constructor type
+// 'FilesystemEstablishedAbsence' cannot be constructed outside its defining module`. THE POSITIVE
+// CONTROL IS ENROLLED AND IS NOT A SECOND FIXTURE:
+// test.claim.filesystem_absence_establishment_witness_test
+// an_established_absence_names_its_directory_and_its_entry obtains an absence FROM THE MINT,
+// cross-module, and reads its fields -- so the refusal above is the construction being confined and
+// not the type being unusable. WHAT THIS DOES NOT ESTABLISH: the mechanism's general coverage,
+// which is gunbc.guarantee_probe_corpus sole_constructor_cross_module_class and its probes --
+// DESIGN records that family as discovered and declined by the floor, so this measurement is one
+// execution of a wall whose corpus-wide arms nothing currently re-runs. It is the fixture-boundary
+// red section 4b asks for, taken once, not a standing gate.
 
 type FilesystemDirectoryListing sole_constructor {
   directory: String

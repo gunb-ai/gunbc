@@ -3,22 +3,21 @@
 **Status:** DESIGN for operator review (directed 2026-07-24: "I need to be able to actually
 work out of this soon"). Three pillars, each with exists/missing stated honestly. Authority
 migrates to carriers as slices land; this doc is the discussion artifact.
-**Normalization pass (post-merge review, 2026-07-24):** the doc accreted operator passes in
-layers; this pass makes the END-TO-END CONTRACT the single controlling text (earlier layers
-that disagreed — the P3b pulse, the P2b status-chip overload, the Sequencing order — are
-corrected in place), repoints the dead squash hash, and records the two verified modeling
-gaps (session terminal states have no observable source; the tmux read-back carries no
-timestamps) so PR-B starts from the honest exists/missing line.
+**Normalization pass (post-merge review, 2026-07-24):** makes the END-TO-END CONTRACT the
+single controlling text (earlier layers that disagreed — the P3b pulse, the P2b status-chip
+overload, the Sequencing order — are corrected in place), repoints the dead squash hash, and
+records the two verified modeling gaps (session terminal states have no observable source; the
+tmux read-back carries no timestamps) so PR-B starts from the honest exists/missing line.
 
 ## Thesis
 
 The dashboard stops being a rendering of the roadmap and becomes the operator's working
 surface: every task readable at a glance, every dispatched session observable while it runs,
-every interaction physically acknowledged. The governing laws already exist — the register
-thesis (quiet at arm's length / responsive up close / every response true) and the
-behavioral-intricacy law (coverage × consistency × timing — the Discord re-read, now joined
-by the Animal Crossing reference: acknowledgment is immediate, physical, and *settles*).
-This plan implements them on the workspace.
+every interaction physically acknowledged. The governing laws exist — the register thesis
+(quiet at arm's length / responsive up close / every response true) and the
+behavioral-intricacy law (coverage × consistency × timing — the Discord re-read, joined by the
+Animal Crossing reference: acknowledgment is immediate, physical, and *settles*). This plan
+implements them on the workspace.
 
 ## Pillar 1 — Readable (largely LANDED 2026-07-24, residue named)
 
@@ -33,10 +32,10 @@ This plan implements them on the workspace.
 ## Pillar 2 — Observable dispatch (the stateful workflow — the daily-work blocker)
 
 What exists: belt B has spawn/observe/reap (#6836), the single dispatch authority (#6914),
-and the button already flips typed per-dispatch states (`requested / ok / refused`). What's
-missing is exactly what the operator sensed: **no live session state after the dispatch
-moment** — no GET /sessions surface, no Stop verb, re-dispatch after stop one-shot-broken
-(all already filed on `ts-dispatch-redispatch`).
+and the button already flips typed per-dispatch states (`requested / ok / refused`). Missing,
+as the operator sensed: **no live session state after the dispatch moment** — no GET
+/sessions surface, no Stop verb, re-dispatch after stop one-shot-broken (all filed on
+`ts-dispatch-redispatch`).
 
 - **P2a — sessions surface:** belt B gains `GET /sessions` — (session × node × state ×
   started × last-activity). The route is genuinely small (a `RoadmapServeRouteSpec` row + a
@@ -132,11 +131,11 @@ austerity). A control that can't engage gives blocked travel — the refusal dip
 sound is the mechanism's click, not a notification chime — the named later axis, now with
 its design language fixed in advance.
 
-What already exists (the register is ahead of the critique): `gunbc.design.interaction`
-models verbs × responses × timing tokens with a coverage law, and the button already has
-rows — Approach → border-brighten (hover+focus, 90ms) and Dispatch → press receipt
-(OnActive background flip). What's missing is physical motion (responses are color-only),
-an overshoot easing, and everything AFTER the click. The story:
+What exists (the register is ahead of the critique): `gunbc.design.interaction` models
+verbs × responses × timing tokens with a coverage law, and the button has rows — Approach →
+border-brighten (hover+focus, 90ms) and Dispatch → press receipt (OnActive background flip).
+Missing: physical motion (responses are color-only), an overshoot easing, and everything
+AFTER the click. The story:
 
 1. **rest** — quiet confidence: figure-role border, still. *Approach*: border brightens +
    1px lift (extends the existing row with a transform response).
@@ -236,11 +235,10 @@ anti-shelf-ware test.
 
 This section predates the exemplar contract and disagrees with it on two points, so the
 contract controls: delivery is **PR-A then PR-B** (button theater first, sessions second —
-not "P2a/P2b first"), and **P1b is parked** (not "land now"), along with P3c, sound, and
-any second control's rows, until the exemplar ships. What survives from this section: P2c
-waits on the observation PR by declared contract, and the serve-refresh finding rides PR-B
-as a precondition of its live walkthrough (checkpoint 6). P3c lands with the register
-library's Phase A when unparked.
+not "P2a/P2b first"), and **P1b is parked** (not "land now"), with P3c, sound, and any
+second control's rows, until the exemplar ships. What survives: P2c waits on the observation
+PR by declared contract, and the serve-refresh finding rides PR-B as a precondition of its
+live walkthrough (checkpoint 6). P3c lands with the register library's Phase A when unparked.
 
 ## Non-goals
 
