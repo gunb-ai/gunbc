@@ -17,6 +17,7 @@ import gunbc.fabric_cell_converge {
   fabric_cell_desired_state_digest,
   fabric_cell_root_path,
   fabric_cell_attempt_root_path,
+  fabric_cell_base_dir,
   fabric_cell_slice_name,
 }
 import gunbc.fabric_cell_effect {
@@ -70,7 +71,8 @@ fn changed(address: FabricCellResourceAddress) -> MemberAction<FabricCellMember,
 // `slice_memory_swap_max`, `slice_tasks_max` and `slice_cpu_weight`, and the refusal survived only
 // on a comment describing a two-arm shape the tree no longer had. When the wall's premise died the
 // expecting-red row flipped to this permanent positive control: a full cell of three additions
-// realizes THREE effects -- two directory ensures and one slice ensure carrying all five desired
+// realizes FOUR effects -- the host-scoped base directory, two address directories, and one slice
+// ensure carrying all five desired
 // directives -- and a regression that re-refuses the boundary goes red here.
 test fn witness_a_full_cell_of_additions_realizes_all_three_addresses() -> Bool {
   let full_cell = [
@@ -80,7 +82,7 @@ test fn witness_a_full_cell_of_additions_realizes_all_three_addresses() -> Bool 
   ]
   match fabric_cell_realization(actions: full_cell) {
     CellPlanRealizable { effects: es } =>
-      list_length(items: es) == 3
+      list_length(items: es) == 4
         && fold(es, init: false, f: (acc, e) => acc || (match e {
           FabricCellSliceEnsure { slice_unit: u, directives: ds } =>
             (u as String) == fabric_cell_slice_name(slot: srv3_fabric_slot())
@@ -114,7 +116,8 @@ test fn witness_one_unrealizable_address_refuses_the_whole_cell_and_emits_no_eff
 }
 
 // THE POSITIVE CONTROL AT DIRECTORY GRAIN, kept from the original suite: the two directory
-// addresses alone realize both ensures, so the refusal above is caused by the unrealizable action
+// addresses alone realize their two ensures plus the shared base ensure, so the refusal above is
+// caused by the unrealizable action
 // and not by the family being unable to realize anything.
 test fn witness_directory_addresses_alone_realize_both_ensures() -> Bool {
   let dirs_only = [
@@ -122,7 +125,7 @@ test fn witness_directory_addresses_alone_realize_both_ensures() -> Bool {
     added(address: FabricCellAttemptRootAddress),
   ]
   match fabric_cell_realization(actions: dirs_only) {
-    CellPlanRealizable { effects: es } => list_length(items: es) == 2
+    CellPlanRealizable { effects: es } => list_length(items: es) == 3
     CellPlanRefused { refusals: _ } => false
   }
 }
@@ -144,7 +147,9 @@ test fn witness_substrate_is_root_owned_and_only_the_attempt_root_is_delegated()
     f: (acc, e) =>
       acc && (match e {
         FabricCellDirectoryEnsure { path: p, owner: o } =>
-          if (p as String) == fabric_cell_root_path(slot: srv3_fabric_slot()) {
+          if (p as String) == fabric_cell_base_dir {
+            match o { CellSubstrateRootOwned => true CellAttemptWriterOwned => false }
+          } else if (p as String) == fabric_cell_root_path(slot: srv3_fabric_slot()) {
             match o { CellSubstrateRootOwned => true CellAttemptWriterOwned => false }
           } else {
             (p as String) == fabric_cell_attempt_root_path(slot: srv3_fabric_slot())
