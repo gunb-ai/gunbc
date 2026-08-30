@@ -454,7 +454,6 @@ pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[Transition
     disposition: NamespaceDeltaDisposition::TargetChanged,
 }];
 
-
 /// The denominators a green must name (DESIGN §5): a run that cannot say what it covered is an
 /// instrument failure wearing coverage's clothes.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]

@@ -12,12 +12,13 @@ import std.literal_elaboration {
 }
 import std.operator_realization {
   HostNumericOperand, StructuralOperand, OperandIdentityUnavailable, HostRealizedOperand, KernelMintedType,
+  UnnamedSynthesizedType,
   OperandShapeFacts, OperandIdentityUnavailableAt,
   HostOperator, StructuralEquality, StructuralComparison, OperatorRealizationRefused,
   NoStructuralOperationDeclared, OrderingIs, OrderingIsNot,
   operator_realization_for
 }
-import std.syntax { BinOp, Lt, Le, Gt, Ge, Eq, Div, Mod, Sub, And }
+import std.syntax { BinOp, Lt, Le, Gt, Ge, Eq, Div, Mod, Sub, And, Add }
 import gunbc.structural_realization_bindings { literal_homomorphism_rows, structural_ordering_rows }
 import v2.std.nat {
   Nat, Zero, Succ,
@@ -279,6 +280,19 @@ test fn operand_without_a_readable_declaration_refuses() -> Bool {
     _ => false
   }
   ordering_refuses && arithmetic_refuses
+}
+
+// AN UNNAMED SYNTHESIZED TYPE NODE IS HOST BY CONSTRUCTION UNDER EVERY OPERATOR, including the
+// arithmetic ones that refuse on a NAMED unreadable declaration. A structural declaration is reached
+// by a name, so a node with none is not a reference to one -- the discriminator, not a catch-all.
+// Its live subject is v2.compiler.02_parse parse_current_position (`t.start + 1`, t bound by a
+// match arm over the generic ListHeadResult<T>), which this lane's own refusal arm reddened before
+// the arm was narrowed to named operands.
+test fn an_unnamed_synthesized_operand_is_host_under_arithmetic() -> Bool {
+  match operator_realization_for(op: Add, operand: HostRealizedOperand { reason: UnnamedSynthesizedType }, ordering_rows: structural_ordering_rows) {
+    HostOperator => true
+    _ => false
+  }
 }
 
 // EQUALITY ON THE SAME OPERAND IS THE HOST TOKEN BY CONSTRUCTION: structural and host equality are
