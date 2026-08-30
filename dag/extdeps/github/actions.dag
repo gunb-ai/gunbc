@@ -12,7 +12,9 @@ import extdeps.github.log_annotations {
   annotation_stop_commands_prefix
 }
 import extdeps.languages.yaml.types { YamlValue, YamlKeyValue }
-import std.types { NonEmptyStr, SecretName, Unit }
+import std.types { NonEmptyStr, SecretName, Unit, String, List }
+import std.os.types { KernelFamily }
+import extdeps.toolchain.types { Architecture }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 
@@ -224,6 +226,70 @@ type RunnerSpec
   | SelfHosted { labels: List<String> }
 
   | RunsOnExpression { expression: String }
+
+// SELF-HOSTED RUNNER LABEL VOCABULARY - GitHub's names, cited, one authority.
+// The runner agent applies DEFAULT labels automatically at registration: "self-hosted"
+// on every self-hosted runner, an OS label, and an architecture label
+// (docs.github.com/en/actions/hosting-your-own-runners/managing-self-hosted-runners/
+// using-labels-with-self-hosted-runners, read 2026-08-30). runs-on requires a runner
+// carrying ALL listed labels (AND semantics), and label matching is case-insensitive;
+// the wire strings below are the lowercase forms our registered fleet observably
+// matches. CUSTOM labels (host names like srv1) are user-applied FLEET facts - they are
+// deliberately not enumerated here (an upstream module may not enumerate our hosts, and
+// the typed-topology question is owned by the fabric recut's Cut D program), so
+// self_hosted_labels takes them as an ordinary list.
+data self_hosted_provenance_label: String = "self-hosted"
+
+// THE DEFAULT-LABEL DIRECTORY (operator question 2026-08-30: "are self-hosted and those
+// platform labels like defaults?" - YES, and upstream's docs scatter rather than list
+// them, so THIS ROW IS THE DIRECTORY). Per the using-labels page, every self-hosted
+// runner automatically receives exactly three default labels at registration:
+//   self-hosted           - provenance, applied to every self-hosted runner
+//   linux | windows | macOS  - the runner host's operating system
+//   x64 | ARM | ARM64        - the runner host's processor architecture
+// Everything else a runner carries is a CUSTOM label somebody assigned.
+//
+// ASSIGNMENT MECHANICS, cited from the same page (read 2026-08-30):
+// - at INITIAL configuration only: ./config.sh --labels a,b,c (comma-separated; a label
+//   is created if it does not exist). config.sh CANNOT relabel an existing runner.
+// - for an EXISTING runner: the REST API only.
+// - REPLACING a runner drops its custom labels - reassignment is an obligation of every
+//   runner replacement, which matters for ephemeral/auto-scaled fleets.
+// - A LABEL IS A CLAIM, NOT A MEASUREMENT: default labels may be hand-assigned via
+//   --labels and GitHub "accepts them as given and does not validate that the runner is
+//   actually using that operating system or architecture." So runner labels ground
+//   ROUTING, never facts about the host - a host fact needs its own observation, and a
+//   workflow trusting an arch label on a mislabeled runner gets an Exec format error,
+//   not a refusal.
+
+fn runner_os_label(kernel: KernelFamily) -> String {
+  match kernel {
+    Linux => "linux"
+    Darwin => "macos"
+    WindowsNt => "windows"
+    LinuxGuestOnWindows => "linux"
+  }
+}
+
+fn runner_arch_label(arch: Architecture) -> String {
+  match arch {
+    Aarch64 => "arm64"
+    X86_64 => "x64"
+    X86 => "x86"
+    Arm => "arm"
+    Armv7 => "arm"
+    Riscv64 => "riscv64"
+    Wasm32 => "wasm32"
+    Mips => "mips"
+    Mipsel => "mipsel"
+    Mips64 => "mips64"
+    Mips64el => "mips64el"
+  }
+}
+
+fn self_hosted_labels(kernel: KernelFamily, arch: Architecture, custom: List<String>) -> List<String> {
+  concat(concat([self_hosted_provenance_label, runner_os_label(kernel: kernel)], [runner_arch_label(arch: arch)]), custom)
+}
 
 type RunnerLabel
   = UbuntuLatest
