@@ -87,6 +87,13 @@ import gunbc.spark.serving_realization {
   ReloadUserManagerAfterRemoval,
 }
 import gunbc.ownership { Owned }
+import gunbc.remote_operation { remote_operations_argv_only }
+import gunbc.spark.serving_converge_apply {
+  SparkServingFrozenApplyResult,
+  SparkServingFrozenApplied,
+  SparkServingFrozenApplyRefused,
+  spark_serving_apply_reads_frozen_typed_rows,
+}
 import std.content_hash { serialize_content_hash }
 import gunbc.ollama_runtime_bundle {
   RuntimeMaterializationObservation,
@@ -106,6 +113,7 @@ import gunbc.spark.serving_observed_members {
 }
 import gunbc.fleet_converge_plan {
   FleetConvergeSparkServingTypedAction,
+  fleet_converge_plan_artifact_hash,
   fleet_converge_spark_serving_row_effects,
   SparkServingPlannedEffect,
   PlannedInstallEffect,
@@ -650,4 +658,79 @@ test fn w_a_plan_carrying_only_refusals_refuses_instead_of_freezing_empty() -> B
   }
   w_refuses(v: w_freeze_of(plan: removal_refused))
     && w_refuses(v: w_freeze_of(plan: duplicate_refused))
+}
+
+// ── THE APPLY READBACK, BECAUSE FOUR ROWS ON THE ARTIFACT IS NOT FOUR OPERATIONS ON THE HOST ─────
+//
+// The artifact claims above establish that the planner freezes four retirement rows. They do not
+// establish that the consumer which APPLIES frozen rows handles the retirement arm: apply reads the
+// operations the plan already realized into each row, so a retirement effect that realized to no
+// command would arrive here as four effects and zero steps -- reporting a retirement applied while
+// executing nothing, which is the fail-open the freeze exists to shut. So the claim continues
+// through the real apply reader and counts what it would actually run.
+fn w_retirement_apply(host: HostIdentity) -> SparkServingFrozenApplyResult {
+  match w_artifact(host: host) {
+    SparkServingPlanArtifactRefused { cause: c } =>
+      SparkServingFrozenApplyRefused { reason: c }
+    SparkServingPlanArtifactReady { artifact: a } =>
+      match fleet_converge_plan_artifact_hash(artifact: a) {
+        Absent => SparkServingFrozenApplyRefused { reason: "w: artifact carries no bundle hash" }
+        Present { value: hex } =>
+          spark_serving_apply_reads_frozen_typed_rows(artifact: a, claimed_bundle_hex: hex as String)
+      }
+  }
+}
+
+fn w_retirement_apply_argv() -> List<List<String>> {
+  match w_retirement_apply(host: operator_host_srv6) {
+    SparkServingFrozenApplyRefused { reason: _ } => []
+    SparkServingFrozenApplied { remote_steps: sts, effect_count: _ } =>
+      remote_operations_argv_only(operations: map(sts, st => st.operation))
+  }
+}
+
+fn w_argv_position_of(argvs: List<List<String>>, needle: String) -> Int {
+  fold(argvs, init: WIndexScan { seen: 0, found: 0 - 1 }, f: fn(acc, argv) {
+    if any(argv, word => word == needle) {
+      WIndexScan { seen: acc.seen + 1, found: acc.seen }
+    } else {
+      WIndexScan { seen: acc.seen + 1, found: acc.found }
+    }
+  }).found
+}
+
+// FOUR EFFECTS AND FOUR EXECUTABLE STEPS, not four effects and a silent nothing.
+test fn w_the_frozen_retirement_applies_as_four_real_operations() -> Bool {
+  match w_retirement_apply(host: operator_host_srv6) {
+    SparkServingFrozenApplyRefused { reason: _ } => false
+    SparkServingFrozenApplied { remote_steps: sts, effect_count: n } =>
+      n == 4 && length(remote_operations_argv_only(operations: map(sts, st => st.operation))) == 4
+  }
+}
+
+// AND THE ORDER SURVIVES THE ROUND TRIP TO ARGV, which the artifact-row claim cannot see: the rows
+// are frozen in schedule order, and this is the evidence that apply preserves it rather than
+// re-deriving or reordering. Both grounded precedences are asserted; the stop/disable pair is not,
+// because the partial order does not decide it.
+test fn w_the_applied_retirement_stops_and_disables_before_it_removes_and_removes_before_it_reloads() -> Bool {
+  let argvs = w_retirement_apply_argv()
+  let stop = w_argv_position_of(argvs: argvs, needle: "stop")
+  let disable = w_argv_position_of(argvs: argvs, needle: "disable")
+  let remove = w_argv_position_of(argvs: argvs, needle: "rm")
+  let reload = w_argv_position_of(argvs: argvs, needle: "daemon-reload")
+  length(argvs) == 4
+    && stop >= 0 && disable >= 0 && remove >= 0 && reload >= 0
+    && stop < remove
+    && disable < remove
+    && remove < reload
+}
+
+// AND NOT ONE OPERATION TOUCHES THE RETAINED CACHE. The model blob and the runtime closure are the
+// bytes P1 and the training runs both depend on; an `ollama rm` or a runtime deletion reaching the
+// host would be the retirement destroying what it was explicitly scoped to keep.
+test fn w_the_applied_retirement_runs_no_operation_against_the_retained_cache() -> Bool {
+  let argvs = w_retirement_apply_argv()
+  length(argvs) == 4
+    && !any(argvs, argv => any(argv, w => w == "ollama"))
+    && !any(argvs, argv => any(argv, w => w == "loginctl"))
 }

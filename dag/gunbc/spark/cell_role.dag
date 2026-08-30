@@ -124,9 +124,26 @@ fn spark_cell_role_lookup_refusal(lookup: SparkCellRoleLookup) -> NonEmptyStr? {
   }
 }
 
+// THE ROSTER PROJECTION ANSWERS THROUGH THE LOOKUP, SO THE TWO CANNOT DISAGREE.
+//
+// The shape this replaces filtered the raw assignment rows by role equality. On a roster with two
+// rows for one host that reads as a quiet disagreement between the two ways of asking the same
+// question: the point lookup refuses the host as ambiguous, while the roster still lists it and
+// every consumer projecting from the roster proceeds -- so `spark_serving_desired_hosts` would carry
+// a host the planner refuses individually. Ambiguity is an answer or it is not; having it be an
+// answer at one grain and invisible at another is the second representation §3 forbids.
+//
+// Selecting on the lookup makes the roster a projection of the same decision. An ambiguous host is
+// in no roster, which is the fail-closed reading: a cell whose purpose the roster does not decide is
+// not offered for either purpose.
 fn spark_hosts_with_role(role: SparkCellRole) -> List<HostIdentity> {
   flat_map(spark_cell_role_assignments, a =>
-    if spark_cell_role_eq(a: a.role, b: role) { [a.host] } else { [] })
+    match spark_cell_role_of(host: a.host) {
+      SparkCellRoleUnique { role: r } =>
+        if spark_cell_role_eq(a: r, b: role) { [a.host] } else { [] }
+      SparkCellRoleAmbiguous { assignments: _ } => []
+      SparkCellRoleAbsent => []
+    })
 }
 
 fn spark_serving_cell_hosts() -> List<HostIdentity> {
