@@ -73,7 +73,9 @@ parent that must remain current whenever an installation token is minted. That l
 `CredentialRuntimeDependency`. `runtime_dependency_standing` propagates missing, revoked, expired,
 owner-changed, and scope-changed standing from the real parent to every descendant. Fleet converge
 admits the material only when both the genealogy is structurally complete and the whole live chain
-is current.
+is current at the phase's observation time. A `CredentialCurrent` tag whose `valid_until` is already
+past, or a human-bootstrap receipt past `stale_after`, derives `TimeExpiry` and refuses; the tag
+cannot override its own horizon.
 
 ## Fleet-converge consumer
 

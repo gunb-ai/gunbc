@@ -55,8 +55,13 @@ type OrgActionsConvergePhase
 fn org_actions_converge_phase(
   material: SecretMaterial?,
   observation: OrgSettingsObservation?,
+  observed_at: NonEmptyStr,
 ) -> OrgActionsConvergePhase {
-  match admit_org_admin_credential(material: material, reader: FleetOrgActionsObserveLane) {
+  match admit_org_admin_credential(
+    material: material,
+    reader: FleetOrgActionsObserveLane,
+    observed_at: observed_at
+  ) {
     OrgAdminCredentialRefused { cause } =>
       OrgActionsConvergeRefused { cause: OrgActionsCredentialRefused { cause: cause } }
     OrgAdminCredentialAdmitted { material: _ } => match observation {
