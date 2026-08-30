@@ -735,7 +735,9 @@ pub fn occurrence_transport_refusal_diagnostic_span(
             diagnostic_span: span,
             ..
         } => Some(span.clone()),
-        OccurrenceTransportRefusal::UnknownOccurrenceIdentity { occurrence: _, .. } => None,
+        OccurrenceTransportRefusal::UnknownOccurrenceIdentity { occurrence: _, .. } => {
+            std::option::Option::None
+        }
     }
 }
 
@@ -810,7 +812,7 @@ pub fn diagnostic_to_span(d: Rc<CompilerDiagnostic>) -> Rc<SourceSpan> {
             refusal: refusal, ..
         } => match occurrence_transport_refusal_diagnostic_span(refusal.clone()) {
             Some(span) => span.clone(),
-            None => no_span(),
+            std::option::Option::None => no_span(),
         },
         CompilerDiagnostic::ContainerSpellingUnrecognized { span: s, .. } => s.clone(),
         CompilerDiagnostic::ServiceConfigReferenceJudgmentDeferred { span: s, .. } => s.clone(),
@@ -1069,7 +1071,7 @@ pub fn default_ident_span(name: String, span: Rc<SourceSpan>) -> Option<Rc<Sourc
 pub fn node_name_span(n: Rc<Node>) -> Rc<SourceSpan> {
     match n.ident_span.clone() {
         Some(s) => s.clone(),
-        None => n.span.clone(),
+        std::option::Option::None => n.span.clone(),
     }
 }
 
@@ -1200,7 +1202,7 @@ pub fn make_arg_node(
     {
         let arg_name = match name.clone() {
             Some(n) => n.clone(),
-            None => "".to_string(),
+            std::option::Option::None => "".to_string(),
         };
         Rc::new(Node {
             occurrence_identity: occurrence_identity.clone(),
@@ -1236,7 +1238,7 @@ pub fn make_arm_node(
     {
         let children = match guard.clone() {
             Some(g) => Rc::new(vec![g.clone(), body.clone()]),
-            None => Rc::new(vec![body.clone()]),
+            std::option::Option::None => Rc::new(vec![body.clone()]),
         };
         Rc::new(Node {
             occurrence_identity: occurrence_identity.clone(),
@@ -1302,7 +1304,7 @@ pub fn resource_use_name_at(
 pub fn resource_use_resource(n: Rc<Node>) -> Rc<Node> {
     match n.children.clone().first().cloned() {
         Some(v) => v.clone(),
-        None => make_expr_error_node(
+        std::option::Option::None => make_expr_error_node(
             Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
             ExprErrorKind::InternalExprError,
             "malformed resource-use: missing resource".to_string(),
@@ -1381,7 +1383,7 @@ pub fn field_binding_name_at(
 pub fn field_binding_pattern(n: Rc<Node>) -> Rc<MatchPattern> {
     match n.match_pattern.clone() {
         Some(p) => p.clone(),
-        None => Rc::new(MatchPattern::Wildcard),
+        std::option::Option::None => Rc::new(MatchPattern::Wildcard),
     }
 }
 
@@ -1456,7 +1458,7 @@ pub fn make_param_node(
     {
         let children = match default_value.clone() {
             Some(dv) => Rc::new(vec![type_expr.clone(), dv.clone()]),
-            None => Rc::new(vec![type_expr.clone()]),
+            std::option::Option::None => Rc::new(vec![type_expr.clone()]),
         };
         Rc::new(Node {
             occurrence_identity: occurrence_identity.clone(),
@@ -1494,7 +1496,7 @@ pub fn make_resolved_param_node(
     {
         let children = match default_value.clone() {
             Some(dv) => Rc::new(vec![type_expr.clone(), dv.clone()]),
-            None => Rc::new(vec![type_expr.clone()]),
+            std::option::Option::None => Rc::new(vec![type_expr.clone()]),
         };
         Rc::new(Node {
             occurrence_identity: occurrence_identity.clone(),
@@ -1550,7 +1552,7 @@ pub fn authored_name_at(
                     text.clone()
                 }
             }
-            None => {
+            std::option::Option::None => {
                 if ((v1_rt::string_length(&span.file.clone()) > 8)
                     && (v1_rt::substring(&span.file.clone(), 0, 8) == "<kernel:".to_string()))
                 {
@@ -1564,7 +1566,7 @@ pub fn authored_name_at(
                 }
             }
         },
-        None => "".to_string(),
+        std::option::Option::None => "".to_string(),
     }
 }
 
@@ -1586,7 +1588,7 @@ pub fn find_child_named(
     .cloned()
     {
         Some(ch) => Some(ch.clone()),
-        None => std::option::Option::None,
+        std::option::Option::None => std::option::Option::None,
     }
 }
 
@@ -1610,7 +1612,7 @@ pub fn has_child_named(
 pub fn param_node_type_expr(n: Rc<Node>) -> Rc<Node> {
     match n.children.clone().first().cloned() {
         Some(v) => v.clone(),
-        None => make_expr_error_node(
+        std::option::Option::None => make_expr_error_node(
             Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
             ExprErrorKind::InternalExprError,
             "malformed param: missing type_expr".to_string(),
@@ -1644,7 +1646,7 @@ pub fn make_field_node(
     {
         let children = match default_value.clone() {
             Some(dv) => Rc::new(vec![type_expr.clone(), dv.clone()]),
-            None => Rc::new(vec![type_expr.clone()]),
+            std::option::Option::None => Rc::new(vec![type_expr.clone()]),
         };
         Rc::new(Node {
             occurrence_identity: occurrence_identity.clone(),
@@ -1680,7 +1682,7 @@ pub fn field_node_name_at(
 pub fn field_node_type_expr(n: Rc<Node>) -> Rc<Node> {
     match n.children.clone().first().cloned() {
         Some(v) => v.clone(),
-        None => make_expr_error_node(
+        std::option::Option::None => make_expr_error_node(
             Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
             ExprErrorKind::InternalExprError,
             "malformed field: missing type_expr".to_string(),
@@ -1711,7 +1713,7 @@ pub fn field_node_from_key(
         source_indices.clone(),
     ) {
         Some(p) => Some(authored_name_at(source_indices.clone(), p.clone())),
-        None => std::option::Option::None,
+        std::option::Option::None => std::option::Option::None,
     }
 }
 
@@ -1927,7 +1929,7 @@ pub fn is_tree_size_preserving(func_name: String) -> bool {
             FunctionSizeEffect::PropertyContraction { domain_size: _, .. } => true,
             _ => false,
         },
-        None => false,
+        std::option::Option::None => false,
     }
 }
 
@@ -1937,7 +1939,7 @@ pub fn is_tree_size_reducing(func_name: String) -> bool {
             FunctionSizeEffect::TreeSizeReducing => true,
             _ => false,
         },
-        None => false,
+        std::option::Option::None => false,
     }
 }
 
@@ -1947,7 +1949,7 @@ pub fn is_property_contraction(func_name: String) -> bool {
             FunctionSizeEffect::PropertyContraction { domain_size: _, .. } => true,
             _ => false,
         },
-        None => false,
+        std::option::Option::None => false,
     }
 }
 
@@ -1961,7 +1963,7 @@ pub fn expr_child_at(texpr: Rc<Node>, index: i64, role: String) -> Rc<Node> {
         .next()
     {
         Some(v) => v.clone(),
-        None => make_expr_error_node(
+        std::option::Option::None => make_expr_error_node(
             Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
             ExprErrorKind::InternalExprError,
             v1_rt::concat("malformed node: missing ".to_string(), role.clone()),
@@ -1987,7 +1989,7 @@ pub fn arg_name_at(
 pub fn arg_value(n: Rc<Node>) -> Rc<Node> {
     match n.children.clone().first().cloned() {
         Some(v) => v.clone(),
-        None => make_expr_error_node(
+        std::option::Option::None => make_expr_error_node(
             Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
             ExprErrorKind::InternalExprError,
             "malformed arg: missing value".to_string(),
@@ -1999,7 +2001,7 @@ pub fn arg_value(n: Rc<Node>) -> Rc<Node> {
 pub fn arm_pattern(n: Rc<Node>) -> Rc<MatchPattern> {
     match n.match_pattern.clone() {
         Some(p) => p.clone(),
-        None => Rc::new(MatchPattern::Wildcard),
+        std::option::Option::None => Rc::new(MatchPattern::Wildcard),
     }
 }
 
@@ -2014,7 +2016,7 @@ pub fn arm_guard(n: Rc<Node>) -> Option<Rc<Node>> {
 pub fn arm_body(n: Rc<Node>) -> Rc<Node> {
     match n.children.clone().last().cloned() {
         Some(v) => v.clone(),
-        None => make_expr_error_node(
+        std::option::Option::None => make_expr_error_node(
             Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
             ExprErrorKind::InternalExprError,
             "malformed arm: missing body".to_string(),
@@ -2033,7 +2035,7 @@ pub fn field_init_node_name_at(
 pub fn field_init_node_value(n: Rc<Node>) -> Rc<Node> {
     match n.children.clone().first().cloned() {
         Some(v) => v.clone(),
-        None => make_expr_error_node(
+        std::option::Option::None => make_expr_error_node(
             Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
             ExprErrorKind::InternalExprError,
             "malformed field-init: missing value".to_string(),
@@ -2065,7 +2067,7 @@ pub fn call_named_arg_string_optional(
         for a in call.children.clone().iter().cloned() {
             if match arg_name_at(a.clone(), source_indices.clone()) {
                 Some(n) => (n.clone() == arg_name.clone()),
-                None => false,
+                std::option::Option::None => false,
             } {
                 __result.push(a);
             }
@@ -2076,7 +2078,7 @@ pub fn call_named_arg_string_optional(
     .cloned()
     {
         Some(arg) => expr_literal_string_optional(arg_value(arg.clone())),
-        None => std::option::Option::None,
+        std::option::Option::None => std::option::Option::None,
     }
 }
 
@@ -2108,9 +2110,9 @@ pub fn decl_ref_coords_from_call_expr(
                     module_path: mp.clone(),
                     decl_name: dn.clone(),
                 })),
-                None => std::option::Option::None,
+                std::option::Option::None => std::option::Option::None,
             },
-            None => std::option::Option::None,
+            std::option::Option::None => std::option::Option::None,
         }
     }
 }
@@ -2127,9 +2129,11 @@ pub fn admit_callers_entries_from_list(
                     Some(coords) => Rc::new(AdmitCallersEntry::AdmitCallersEntryCoords {
                         coords: coords.clone(),
                     }),
-                    None => Rc::new(AdmitCallersEntry::AdmitCallersEntryUninterpretable {
-                        span: e.span.clone(),
-                    }),
+                    std::option::Option::None => {
+                        Rc::new(AdmitCallersEntry::AdmitCallersEntryUninterpretable {
+                            span: e.span.clone(),
+                        })
+                    }
                 },
             );
         }
@@ -2157,7 +2161,7 @@ pub fn fn_admit_callers(
             field_init_node_value(p.clone()).children.clone(),
             source_indices.clone(),
         )),
-        None => None,
+        std::option::Option::None => std::option::Option::None,
     }
 }
 
@@ -2306,7 +2310,7 @@ pub fn field_access_spine(
                             field_access_field_at(texpr.clone(), source_indices.clone()),
                         ),
                     })),
-                    None => std::option::Option::None,
+                    std::option::Option::None => std::option::Option::None,
                 }
             }
             _ => std::option::Option::None,
@@ -2685,7 +2689,7 @@ pub fn rest_transport_node(
                 zero_span.clone(),
                 zero_span.clone(),
             )]),
-            None => Rc::new(vec![]),
+            std::option::Option::None => Rc::new(vec![]),
         };
         let path_props = match path.clone() {
             Some(p) => Rc::new(vec![make_field_init_node(
@@ -2695,7 +2699,7 @@ pub fn rest_transport_node(
                 zero_span.clone(),
                 zero_span.clone(),
             )]),
-            None => Rc::new(vec![]),
+            std::option::Option::None => Rc::new(vec![]),
         };
         let query_props = match query.clone() {
             Some(q) => Rc::new(vec![make_field_init_node(
@@ -2705,7 +2709,7 @@ pub fn rest_transport_node(
                 zero_span.clone(),
                 zero_span.clone(),
             )]),
-            None => Rc::new(vec![]),
+            std::option::Option::None => Rc::new(vec![]),
         };
         let body_props = match request_body.clone() {
             Some(b) => Rc::new(vec![make_field_init_node(
@@ -2715,7 +2719,7 @@ pub fn rest_transport_node(
                 zero_span.clone(),
                 zero_span.clone(),
             )]),
-            None => Rc::new(vec![]),
+            std::option::Option::None => Rc::new(vec![]),
         };
         let rf_props = match response_format.clone() {
             Some(rf) => Rc::new(vec![make_field_init_node(
@@ -2725,7 +2729,7 @@ pub fn rest_transport_node(
                 zero_span.clone(),
                 zero_span.clone(),
             )]),
-            None => Rc::new(vec![]),
+            std::option::Option::None => Rc::new(vec![]),
         };
         let props = v1_rt::concat(
             v1_rt::concat(
@@ -2797,7 +2801,7 @@ pub fn shell_transport_node(
                 zero_span.clone(),
                 zero_span.clone(),
             )]),
-            None => Rc::new(vec![]),
+            std::option::Option::None => Rc::new(vec![]),
         };
         let all_props = v1_rt::concat(env.clone(), stdin_props.clone());
         Rc::new(Node {
@@ -2849,7 +2853,7 @@ pub fn file_transport_node(
                     no_span(),
                 ),
             ]),
-            None => Rc::new(vec![path_field.clone()]),
+            std::option::Option::None => Rc::new(vec![path_field.clone()]),
         };
         make_transport_node(
             occurrence_identity.clone(),
@@ -2879,7 +2883,7 @@ pub fn find_property(
     .cloned()
     {
         Some(fi) => Some(field_init_node_value(fi.clone())),
-        None => std::option::Option::None,
+        std::option::Option::None => std::option::Option::None,
     }
 }
 
@@ -2890,7 +2894,7 @@ pub fn find_property_string(
 ) -> Option<String> {
     match find_property(props.clone(), prop_name.clone(), source_indices.clone()) {
         Some(n) => expr_literal_string_optional(n.clone()),
-        None => std::option::Option::None,
+        std::option::Option::None => std::option::Option::None,
     }
 }
 
@@ -2906,7 +2910,7 @@ pub fn expr_literal_int_optional(expr: Rc<Node>) -> Option<i64> {
                 ..
             } => match expr_literal_int_optional(unaryop_operand(expr.clone())) {
                 Some(v) => Some((0 - v.clone())),
-                None => std::option::Option::None,
+                std::option::Option::None => std::option::Option::None,
             },
             _ => std::option::Option::None,
         }
@@ -2985,9 +2989,9 @@ pub fn record_lit_named_field_value_optional(
         .cloned()
         {
             Some(fi) => Some(field_init_node_value(fi.clone())),
-            None => std::option::Option::None,
+            std::option::Option::None => std::option::Option::None,
         },
-        None => std::option::Option::None,
+        std::option::Option::None => std::option::Option::None,
     }
 }
 
@@ -3146,7 +3150,7 @@ pub fn transport_has_auth(
         source_indices.clone(),
     ) {
         Some(_) => true,
-        None => false,
+        std::option::Option::None => false,
     }
 }
 
@@ -3254,7 +3258,7 @@ pub fn transport_tls_posture(
         source_indices.clone(),
     ) {
         Some(n) => Some(authored_name_at(source_indices.clone(), n.clone())),
-        None => None,
+        std::option::Option::None => std::option::Option::None,
     }
 }
 
@@ -3464,7 +3468,7 @@ pub fn expr_has_non_tail_self_call(
                         in_tail.clone(),
                         source_indices.clone(),
                     ),
-                    None => false,
+                    std::option::Option::None => false,
                 };
                 ((cond_bad.clone() || then_bad.clone()) || else_bad.clone())
             }
@@ -3506,7 +3510,7 @@ pub fn expr_has_non_tail_self_call(
                         in_tail.clone(),
                         source_indices.clone(),
                     ),
-                    None => false,
+                    std::option::Option::None => false,
                 };
                 (val_bad.clone() || body_bad.clone())
             }
@@ -3560,7 +3564,7 @@ pub fn expr_has_non_tail_self_call(
                                 in_tail.clone(),
                                 source_indices.clone(),
                             ),
-                            None => false,
+                            std::option::Option::None => false,
                         };
                         (init_bad.clone() || last_bad.clone())
                     }
@@ -3685,7 +3689,7 @@ pub fn service_config_properties(
                 zero_span.clone(),
                 zero_span.clone(),
             )]),
-            None => Rc::new(vec![]),
+            std::option::Option::None => Rc::new(vec![]),
         };
         let auth_input_prop = match auth_input.clone() {
             Some(ai) => Rc::new(vec![make_field_init_node(
@@ -3695,7 +3699,7 @@ pub fn service_config_properties(
                 zero_span.clone(),
                 zero_span.clone(),
             )]),
-            None => Rc::new(vec![]),
+            std::option::Option::None => Rc::new(vec![]),
         };
         let auth_source_prop = match auth_source.clone() {
             Some(src) => Rc::new(vec![make_field_init_node(
@@ -3705,7 +3709,7 @@ pub fn service_config_properties(
                 zero_span.clone(),
                 zero_span.clone(),
             )]),
-            None => Rc::new(vec![]),
+            std::option::Option::None => Rc::new(vec![]),
         };
         let rate_prop = match rate_limit.clone() {
             Some(r) => Rc::new(vec![make_field_init_node(
@@ -3715,7 +3719,7 @@ pub fn service_config_properties(
                 zero_span.clone(),
                 zero_span.clone(),
             )]),
-            None => Rc::new(vec![]),
+            std::option::Option::None => Rc::new(vec![]),
         };
         v1_rt::concat(
             v1_rt::concat(
@@ -4290,7 +4294,7 @@ pub fn byte_to_line_col(index: Rc<NewlineIndex>, offset: i64) -> LineCol {
                 .next()
             {
                 Some(o) => (o.clone() + 1),
-                None => 0,
+                std::option::Option::None => 0,
             }
         };
         let col = ((clamped.clone() - line_start.clone()) + 1);
@@ -4316,7 +4320,7 @@ pub fn source_line_at(index: Rc<NewlineIndex>, line: i64) -> String {
                 .next()
             {
                 Some(o) => (o.clone() + 1),
-                None => src_len.clone(),
+                std::option::Option::None => src_len.clone(),
             }
         };
         let line_end = match index
@@ -4328,7 +4332,7 @@ pub fn source_line_at(index: Rc<NewlineIndex>, line: i64) -> String {
             .next()
         {
             Some(o) => o.clone(),
-            None => src_len.clone(),
+            std::option::Option::None => src_len.clone(),
         };
         v1_rt::chars_to_string(
             &index.char_codes.clone(),
@@ -4388,7 +4392,7 @@ pub fn intern(table: Rc<InternTable>, s: String) -> Rc<InternResult> {
             table: table.clone(),
             id: id.clone(),
         }),
-        None => {
+        std::option::Option::None => {
             let id = table.next_id.clone();
             Rc::new(InternResult {
                 table: Rc::new(InternTable {
@@ -4406,21 +4410,21 @@ pub fn intern(table: Rc<InternTable>, s: String) -> Rc<InternResult> {
 pub fn intern_str(table: Rc<InternTable>, id: i64) -> String {
     match table.strings.clone().get((id.clone()) as usize).cloned() {
         Some(s) => s.clone(),
-        None => "".to_string(),
+        std::option::Option::None => "".to_string(),
     }
 }
 
 pub fn intern_find(table: Rc<InternTable>, s: String) -> Option<i64> {
     match v1_rt::map_get(&table.index.clone(), s.clone()) {
         Some(id) => Some(id.clone()),
-        None => std::option::Option::None,
+        std::option::Option::None => std::option::Option::None,
     }
 }
 
 pub fn intern_find_or_empty(table: Rc<InternTable>, s: String) -> i64 {
     match v1_rt::map_get(&table.index.clone(), s.clone()) {
         Some(id) => id.clone(),
-        None => 0,
+        std::option::Option::None => 0,
     }
 }
 
@@ -4566,7 +4570,7 @@ pub fn module_path_segments(path: String) -> Rc<Vec<String>> {
 pub fn qualified_last_segment(name: String) -> String {
     match module_path_segments(name.clone()).last().cloned() {
         Some(s) => s.clone(),
-        None => name.clone(),
+        std::option::Option::None => name.clone(),
     }
 }
 
@@ -4583,7 +4587,7 @@ pub fn known_container_leaf(name: String) -> Option<String> {
         let leaf = qualified_last_segment(name.clone());
         match crate::std_types::container_expected_arity(leaf.clone()) {
             Some(_) => Some(leaf.clone()),
-            None => std::option::Option::None,
+            std::option::Option::None => std::option::Option::None,
         }
     }
 }
@@ -4593,11 +4597,11 @@ pub fn container_spelling_verdict(name: String) -> Rc<ContainerSpellingVerdict> 
         Some(arity) => Rc::new(ContainerSpellingVerdict::ContainerSpellingDeclared {
             arity: arity.clone(),
         }),
-        None => match known_container_leaf(name.clone()) {
+        std::option::Option::None => match known_container_leaf(name.clone()) {
             Some(leaf) => Rc::new(ContainerSpellingVerdict::ContainerSpellingUnknown {
                 container_leaf: leaf.clone(),
             }),
-            None => Rc::new(ContainerSpellingVerdict::NotAContainerSpelling),
+            std::option::Option::None => Rc::new(ContainerSpellingVerdict::NotAContainerSpelling),
         },
     }
 }
@@ -4609,9 +4613,9 @@ pub fn type_node_name_is_authored(
     match node.ident_span.clone() {
         Some(span) => match v1_rt::map_get(&source_indices, span.file.clone()) {
             Some(_) => true,
-            None => false,
+            std::option::Option::None => false,
         },
-        None => false,
+        std::option::Option::None => false,
     }
 }
 
@@ -4629,7 +4633,7 @@ pub fn authored_container_spelling_verdict(
             Some(arity) => Rc::new(ContainerSpellingVerdict::ContainerSpellingDeclared {
                 arity: arity.clone(),
             }),
-            None => Rc::new(ContainerSpellingVerdict::NotAContainerSpelling),
+            std::option::Option::None => Rc::new(ContainerSpellingVerdict::NotAContainerSpelling),
         }
     }
 }
