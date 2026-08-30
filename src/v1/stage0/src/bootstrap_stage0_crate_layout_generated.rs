@@ -19,7 +19,6 @@ pub const HAND_MAINTAINED_STAGE0_FILES: &[&str] = &[
     "derived_realization_schedule.rs",
     "memory_governor.rs",
     "namespace_wave_admission.rs",
-    "std_lens_verdict.rs",
     "v2_compiler_body_producer.rs",
     "v2_compiler_normalize.rs",
     "v2_compiler_target_carriers.rs",
