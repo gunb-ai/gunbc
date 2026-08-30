@@ -6473,10 +6473,23 @@ macro_rules! v1_bridge_family_arms {
     ($cb:ident, $fname:ident, $args:ident, $node:ident, $ctx:ident) => {
         $cb! {
             $fname, $args, $node, $ctx;
-            family STD_NODE_BRIDGE_FNS "v2.std.node"
-                lookup_eval_call_bridge_std_node eval_call_bridge__v2_std_node_arm {
+            // ONE FAMILY, TWO ARMS, AND THE MODULE IS v2.std.node_reflection RATHER THAN THE
+            // TWO MODULES THESE ARMS USED TO SIT IN. Both are host type-reflection seams whose
+            // whole body is a self-call, so emission -- which decides membership at MODULE grain
+            // -- wrote them into the v2 compiler's own emitted crate as unrealized-seam refusals
+            // purely because v2.std.node and v2.std.node_query carry vocabulary the compile
+            // closure needs. Segregating them into one reflection module drops both out of that
+            // closure by identity. `is_v4_bridge_family` matches the item registry's module name
+            // against this literal, so the literal is what actually moves the bridge; the family
+            // enum, lookup fn and arm macro named beside it are generated from the same
+            // `EvalCallBridgeFamilySite.module` in gunbc.v1_interpreter_primitive_surface, and a
+            // name that disagrees with the roster fails to compile.
+            family STD_NODE_REFLECTION_BRIDGE_FNS "v2.std.node_reflection"
+                lookup_eval_call_bridge_std_node_reflection eval_call_bridge__v2_std_node_reflection_arm {
                 arm "v4_bridge.resolve_type_node" { "resolve_type_node" } =>
                     crate::coproduct_reflection::eval_resolve_type_node($ctx, &$args),
+                arm "v4_bridge.coproduct_nullary_inhabitants" { "coproduct_nullary_inhabitants" } =>
+                    crate::coproduct_reflection::eval_coproduct_nullary_inhabitants($ctx, $node, &$args),
             }
             family STD_LEXING_BRIDGE_FNS "v2.std.compilers.lexing"
                 lookup_eval_call_bridge_std_compilers_lexing eval_call_bridge__v2_std_compilers_lexing_arm {
@@ -6489,11 +6502,6 @@ macro_rules! v1_bridge_family_arms {
                 lookup_eval_call_bridge_std_qualified_name eval_call_bridge__v2_std_qualified_name_arm {
                 arm "v4_bridge.qualified_name_from_dotted_string" { "qualified_name_from_dotted_string" } =>
                     crate::coproduct_reflection::eval_qualified_name_from_dotted_string($ctx, &$args),
-            }
-            family STD_NODE_QUERY_BRIDGE_FNS "v2.std.node_query"
-                lookup_eval_call_bridge_std_node_query eval_call_bridge__v2_std_node_query_arm {
-                arm "v4_bridge.coproduct_nullary_inhabitants" { "coproduct_nullary_inhabitants" } =>
-                    crate::coproduct_reflection::eval_coproduct_nullary_inhabitants($ctx, $node, &$args),
             }
             family STD_CONCEPT_INDEX_BRIDGE_FNS "v2.std.concept_index"
                 lookup_eval_call_bridge_std_concept_index eval_call_bridge__v2_std_concept_index_arm {
@@ -6598,12 +6606,8 @@ macro_rules! v1_map_grounding_dispatch {
 
 const V2_STD_COLLECTION_MODULE: &str = "v2.std.collection";
 
-pub fn std_node_bridge_fn_names() -> &'static [&'static str] {
-    STD_NODE_BRIDGE_FNS
-}
-
-pub fn std_node_query_bridge_fn_names() -> &'static [&'static str] {
-    STD_NODE_QUERY_BRIDGE_FNS
+pub fn std_node_reflection_bridge_fn_names() -> &'static [&'static str] {
+    STD_NODE_REFLECTION_BRIDGE_FNS
 }
 
 pub fn std_concept_index_bridge_fn_names() -> &'static [&'static str] {

@@ -58,13 +58,6 @@ data rust_algebra_inhabitants: List<InhabitantDecl> = [
     import_path: none,
     is_copy: false },
 
-  { algebra: "PartialFunction",
-    template: "HashMap<\{0\}, \{1\}>",
-    arity: 2,
-    identity_expr: "HashMap::new()",
-    import_path: none,
-    is_copy: false },
-
   { algebra: "FinitelySupportedFunction",
     template: "HashMap<\{0\}, \{1\}>",
     arity: 2,

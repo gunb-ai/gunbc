@@ -132,7 +132,7 @@ pub fn sha256_hex_digest(hex: String) -> Option<Rc<Sha256Digest>> {
     if content_hash_validate_lower_hex_length(hex.clone(), 64) {
         Some(Rc::new(Sha256Digest { hex: hex.clone() }))
     } else {
-        None
+        std::option::Option::None
     }
 }
 
@@ -140,7 +140,7 @@ pub fn sha1_hex_digest(hex: String) -> Option<Rc<Sha1Digest>> {
     if content_hash_validate_lower_hex_length(hex.clone(), 40) {
         Some(Rc::new(Sha1Digest { hex: hex.clone() }))
     } else {
-        None
+        std::option::Option::None
     }
 }
 
@@ -148,7 +148,7 @@ pub fn sha512_hex_digest(hex: String) -> Option<Rc<Sha512Digest>> {
     if content_hash_validate_lower_hex_length(hex.clone(), 128) {
         Some(Rc::new(Sha512Digest { hex: hex.clone() }))
     } else {
-        None
+        std::option::Option::None
     }
 }
 
@@ -156,7 +156,7 @@ pub fn fnv1a64_structural_hex_digest(hex: String) -> Option<Rc<Fnv1a64Structural
     if content_hash_validate_lower_hex_length(hex.clone(), 16) {
         Some(structural_content_hash(hex.clone()))
     } else {
-        None
+        std::option::Option::None
     }
 }
 
@@ -183,7 +183,7 @@ pub fn content_hash_of_value(value: String) -> Rc<ContentHash> {
 pub fn content_hash_from_structural_digest(digest: String) -> Option<Rc<ContentHash>> {
     match fnv1a64_structural_hex_digest(digest.clone()) {
         Some(structural) => Some(as_content_hash_structural(structural.clone())),
-        None => None,
+        None => std::option::Option::None,
     }
 }
 

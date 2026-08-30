@@ -38274,7 +38274,14 @@ pub fn run_required_regen_fixed_point(
     required_regen_host::run_required_regen_fixed_point(receipt_rel, pass1_digest)
 }
 
+pub use required_regen_host::RegenAffectedSetOutcome;
 pub use required_regen_host::RegenRoundCostOutcome;
+
+/// The affected-set bound of the floor's diff range — see
+/// `required_regen_host::run_regen_affected_set` and `gunbc.regen_affected_set`.
+pub fn run_regen_affected_set(source_roots: &[String]) -> Result<RegenAffectedSetOutcome, String> {
+    required_regen_host::run_regen_affected_set(source_roots)
+}
 
 /// One priced regen round — see `required_regen_host::run_regen_round_cost`.
 pub fn run_regen_round_cost(

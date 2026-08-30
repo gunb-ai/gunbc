@@ -135,7 +135,7 @@ pub fn inferred_to_outputs(
     span: Rc<SourceSpan>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<Vec<Rc<Node>>> {
-    if (inferred.clone() == None) {
+    if (inferred.clone() == std::option::Option::None) {
         Rc::new(vec![])
     } else {
         match (*inferred.clone().unwrap()).clone() {
@@ -147,7 +147,7 @@ pub fn inferred_to_outputs(
                     {
                         let is_product = (rt.connective.clone() == Connective::Conj);
                         if is_product.clone() {
-                            if (rt.ident_span.clone() == None) {
+                            if (rt.ident_span.clone() == std::option::Option::None) {
                                 Rc::new({
                                     let mut __result = Vec::new();
                                     for child in rt.children.clone().iter().cloned() {
@@ -166,7 +166,7 @@ pub fn inferred_to_outputs(
                                                 ),
                                                 child_type.clone(),
                                                 Cardinality::Required,
-                                                None,
+                                                std::option::Option::None,
                                                 Rc::new(vec![]),
                                                 span.clone(),
                                                 crate::v1_std_core::node_name_span(child.clone()),
@@ -181,7 +181,7 @@ pub fn inferred_to_outputs(
                                     "value".to_string(),
                                     rt.clone(),
                                     Cardinality::Required,
-                                    None,
+                                    std::option::Option::None,
                                     Rc::new(vec![]),
                                     span.clone(),
                                     crate::v1_std_core::no_span(),
@@ -193,7 +193,7 @@ pub fn inferred_to_outputs(
                                 "value".to_string(),
                                 rt.clone(),
                                 Cardinality::Required,
-                                None,
+                                std::option::Option::None,
                                 Rc::new(vec![]),
                                 span.clone(),
                                 crate::v1_std_core::no_span(),
@@ -211,7 +211,7 @@ pub fn inferred_to_outputs(
                             "value".to_string(),
                             rt.clone(),
                             Cardinality::Required,
-                            None,
+                            std::option::Option::None,
                             Rc::new(vec![]),
                             span.clone(),
                             crate::v1_std_core::no_span(),
@@ -226,23 +226,29 @@ pub fn inferred_to_outputs(
 pub fn item_kind(item: Rc<Node>) -> ItemKind {
     {
         let kind = if ((item.connective.clone() != Connective::NoConnective)
-            && (item.transport.clone() == None))
+            && (item.transport.clone() == std::option::Option::None))
         {
             ItemKind::TypeItem
         } else {
-            if (item.transport.clone() != None) {
+            if (item.transport.clone() != std::option::Option::None) {
                 ItemKind::ServiceItem
             } else {
-                if ((item.body.clone() != None) && ((item.uses.clone().len() as i64) > 0)) {
+                if ((item.body.clone() != std::option::Option::None)
+                    && ((item.uses.clone().len() as i64) > 0))
+                {
                     ItemKind::FuncItem
                 } else {
-                    if ((item.body.clone() != None) && ((item.params.clone().len() as i64) > 0)) {
+                    if ((item.body.clone() != std::option::Option::None)
+                        && ((item.params.clone().len() as i64) > 0))
+                    {
                         ItemKind::FnItem
                     } else {
-                        if ((item.body.clone() != None) && (item.type_annotation.clone() != None)) {
+                        if ((item.body.clone() != std::option::Option::None)
+                            && (item.type_annotation.clone() != std::option::Option::None))
+                        {
                             ItemKind::DataItem
                         } else {
-                            if (item.body.clone() != None) {
+                            if (item.body.clone() != std::option::Option::None) {
                                 ItemKind::FnItem
                             } else {
                                 ItemKind::OtherItem

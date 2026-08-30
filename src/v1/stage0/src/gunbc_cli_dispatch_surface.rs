@@ -179,7 +179,7 @@ pub fn gunbc_cli_subcommands() -> Rc<Vec<Rc<CliSubcommandRow>>> {
     field: "source_roots".to_string(),
     long: "source-root".to_string(),
     value: Rc::new(CliOptionValue::CliTextValue {
-    text_default: None,
+    text_default: std::option::Option::None,
 }),
     arity: CliOptionArity::CliRepeated,
     doc: Rc::new(vec!["Source root directories (searched recursively for .dag files).".to_string(), "Module imports are resolved transitively from these roots.".to_string()]),
@@ -188,7 +188,7 @@ pub fn gunbc_cli_subcommands() -> Rc<Vec<Rc<CliSubcommandRow>>> {
     field: "source_dir".to_string(),
     long: "source-dir".to_string(),
     value: Rc::new(CliOptionValue::CliTextValue {
-    text_default: None,
+    text_default: std::option::Option::None,
 }),
     arity: CliOptionArity::CliAtMostOne,
     doc: Rc::new(vec!["Legacy: single source directory (all .dag files loaded, no import resolution)".to_string()]),
@@ -197,7 +197,7 @@ pub fn gunbc_cli_subcommands() -> Rc<Vec<Rc<CliSubcommandRow>>> {
     field: "output_dir".to_string(),
     long: "output-dir".to_string(),
     value: Rc::new(CliOptionValue::CliTextValue {
-    text_default: None,
+    text_default: std::option::Option::None,
 }),
     arity: CliOptionArity::CliRequired,
     doc: Rc::new(vec![]),
@@ -224,7 +224,7 @@ pub fn gunbc_cli_subcommands() -> Rc<Vec<Rc<CliSubcommandRow>>> {
     field: "entry".to_string(),
     long: "entry".to_string(),
     value: Rc::new(CliOptionValue::CliTextValue {
-    text_default: None,
+    text_default: std::option::Option::None,
 }),
     arity: CliOptionArity::CliAtMostOne,
     doc: Rc::new(vec!["Entry `.dag` file: compile only this module and its transitive imports".to_string(), "(not every `.dag` file under the first --source-root). Scopes the compile".to_string(), "to a subtree so a small closure can be emitted without a whole-tree pass.".to_string()]),
@@ -241,7 +241,7 @@ pub fn gunbc_cli_subcommands() -> Rc<Vec<Rc<CliSubcommandRow>>> {
     field: "source_roots".to_string(),
     long: "source-root".to_string(),
     value: Rc::new(CliOptionValue::CliTextValue {
-    text_default: None,
+    text_default: std::option::Option::None,
 }),
     arity: CliOptionArity::CliRepeated,
     doc: Rc::new(vec!["Source root directories (searched recursively for .dag files)".to_string()]),
@@ -259,7 +259,7 @@ pub fn gunbc_cli_subcommands() -> Rc<Vec<Rc<CliSubcommandRow>>> {
     field: "entry".to_string(),
     long: "entry".to_string(),
     value: Rc::new(CliOptionValue::CliTextValue {
-    text_default: None,
+    text_default: std::option::Option::None,
 }),
     arity: CliOptionArity::CliAtMostOne,
     doc: Rc::new(vec!["Entry `.dag` file: load only this module and its transitive imports".to_string(), "(not every file under --source-root). Required for scoped TestClaim runs.".to_string()]),
@@ -275,7 +275,7 @@ pub fn gunbc_cli_subcommands() -> Rc<Vec<Rc<CliSubcommandRow>>> {
     field: "args".to_string(),
     long: "arg".to_string(),
     value: Rc::new(CliOptionValue::CliTextValue {
-    text_default: None,
+    text_default: std::option::Option::None,
 }),
     arity: CliOptionArity::CliRepeated,
     doc: Rc::new(vec!["Named argument for the entry function, repeatable: `--arg name=value`.".to_string(), "Values enter as String; a missing `=` refuses rather than guessing.".to_string()]),
@@ -294,7 +294,7 @@ pub fn gunbc_cli_subcommands() -> Rc<Vec<Rc<CliSubcommandRow>>> {
     field: "host".to_string(),
     long: "host".to_string(),
     value: Rc::new(CliOptionValue::CliTextValue {
-    text_default: None,
+    text_default: std::option::Option::None,
 }),
     arity: CliOptionArity::CliRequired,
     doc: Rc::new(vec!["Fleet host identity (e.g. \"srv1\") to converge".to_string()]),
@@ -320,7 +320,7 @@ pub fn gunbc_cli_subcommands() -> Rc<Vec<Rc<CliSubcommandRow>>> {
     field: "path".to_string(),
     long: "path".to_string(),
     value: Rc::new(CliOptionValue::CliTextValue {
-    text_default: None,
+    text_default: std::option::Option::None,
 }),
     arity: CliOptionArity::CliRequired,
     doc: Rc::new(vec!["Path to the repository document to read".to_string()]),
@@ -339,7 +339,7 @@ pub fn gunbc_cli_subcommands() -> Rc<Vec<Rc<CliSubcommandRow>>> {
     field: "source_roots".to_string(),
     long: "source-root".to_string(),
     value: Rc::new(CliOptionValue::CliTextValue {
-    text_default: None,
+    text_default: std::option::Option::None,
 }),
     arity: CliOptionArity::CliRepeated,
     doc: Rc::new(vec!["Source root directories (searched recursively for .dag files)".to_string()]),
@@ -348,7 +348,7 @@ pub fn gunbc_cli_subcommands() -> Rc<Vec<Rc<CliSubcommandRow>>> {
     field: "entry".to_string(),
     long: "entry".to_string(),
     value: Rc::new(CliOptionValue::CliTextValue {
-    text_default: None,
+    text_default: std::option::Option::None,
 }),
     arity: CliOptionArity::CliRequired,
     doc: Rc::new(vec!["Entry `.dag` file: load only this module and its transitive imports".to_string()]),
@@ -357,7 +357,7 @@ pub fn gunbc_cli_subcommands() -> Rc<Vec<Rc<CliSubcommandRow>>> {
     field: "function".to_string(),
     long: "function".to_string(),
     value: Rc::new(CliOptionValue::CliTextValue {
-    text_default: None,
+    text_default: std::option::Option::None,
 }),
     arity: CliOptionArity::CliRequired,
     doc: Rc::new(vec!["Handler function: fn(method: String, path: String, body: String) -> ServeWireResponse".to_string()]),
@@ -384,7 +384,7 @@ pub fn gunbc_cli_subcommands() -> Rc<Vec<Rc<CliSubcommandRow>>> {
     field: "release_revision".to_string(),
     long: "release-revision".to_string(),
     value: Rc::new(CliOptionValue::CliTextValue {
-    text_default: None,
+    text_default: std::option::Option::None,
 }),
     arity: CliOptionArity::CliRequired,
     doc: Rc::new(vec!["Release revision this process serves, bound ONCE at startup and".to_string(), "immutable for the process lifetime.".to_string()]),
@@ -393,7 +393,7 @@ pub fn gunbc_cli_subcommands() -> Rc<Vec<Rc<CliSubcommandRow>>> {
     field: "eval_budget_cpu_ms".to_string(),
     long: "eval-budget-cpu-ms".to_string(),
     value: Rc::new(CliOptionValue::CliMillisecondValue {
-    millisecond_default: None,
+    millisecond_default: std::option::Option::None,
 }),
     arity: CliOptionArity::CliAtMostOne,
     doc: Rc::new(vec!["Per-request THREAD-CPU evaluation budget in milliseconds.".to_string()]),
@@ -402,7 +402,7 @@ pub fn gunbc_cli_subcommands() -> Rc<Vec<Rc<CliSubcommandRow>>> {
     field: "eval_budget_wall_ms".to_string(),
     long: "eval-budget-wall-ms".to_string(),
     value: Rc::new(CliOptionValue::CliMillisecondValue {
-    millisecond_default: None,
+    millisecond_default: std::option::Option::None,
 }),
     arity: CliOptionArity::CliAtMostOne,
     doc: Rc::new(vec!["Per-request MONOTONIC-WALL evaluation budget in milliseconds.".to_string()]),
