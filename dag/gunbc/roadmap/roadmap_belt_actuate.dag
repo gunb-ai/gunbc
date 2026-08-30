@@ -2156,11 +2156,7 @@ fn belt_spawn_pass_outcome_from(
   match host_refusal {
     Present { value: r } => BeltPassRefused { reason: launch_refusal_reason(r: r) }
     Absent =>
-    if count(spawn_outcomes |> filter(o => match o {
-      SpawnFailed { node_id: _, step: _, detail: _, provider: _, launch: _ } => true
-      Spawned { node_id: _, session_name: _, provider: _, launch: _ } => false
-      SpawnNotAdmitted { node_id: _, refusal: _ } => false
-    })) > 0 {
+    if belt_spawn_tally(outcomes: spawn_outcomes).failed > 0 {
       BeltPassFailed { reason: belt_spawn_failure_reason(spawn_outcomes: spawn_outcomes) }
     } else {
       BeltPassRecorded
@@ -2535,14 +2531,7 @@ fn belt_tick_admit_and_spawn(
   )
 }
 
-fn belt_tick_deferred_count(outcomes: List<BeltSpawnOutcome>) -> Int {
-  count(outcomes |> filter(o => match o {
-    SpawnNotAdmitted { node_id: _, refusal: LaunchNoCapacity { occupied: _, max_concurrent: _ } } => true
-    SpawnNotAdmitted { node_id: _, refusal: _ } => false
-    Spawned { node_id: _, session_name: _, provider: _, launch: _ } => false
-    SpawnFailed { node_id: _, step: _, detail: _, provider: _, launch: _ } => false
-  }))
-}
+fn belt_tick_deferred_count(outcomes: List<BeltSpawnOutcome>) -> Int { belt_spawn_tally(outcomes: outcomes).deferred }
 
 fn belt_tick_launch_identities(outcomes: List<BeltSpawnOutcome>) -> List<LaunchIdentity> {
   fold(outcomes, init: [], f: (acc, o) => match o {
@@ -2575,42 +2564,34 @@ fn belt_tick_default_workdir(
   belt_tick(state: state, frontier: frontier, cap: cap, spawn_workdir: belt_actuate_workdir as String)
 }
 
-fn belt_spawn_ok(o: BeltSpawnOutcome) -> Bool {
-  match o {
-    Spawned { node_id: _, session_name: _, provider: _, launch: _ } => true
-    SpawnFailed { node_id: _, step: _, detail: _, provider: _, launch: _ } => false
-    SpawnNotAdmitted { node_id: _, refusal: _ } => false
-  }
+data belt_spawn_tally_note: String = "ONE fold over the tick's spawn outcomes to a typed tally; every count the tick JSON, the receipt and the deferred figure report is a field of it. This replaces four variant-to-Bool predicates (belt_spawn_ok / _failed / _not_admitted and the NoCapacity filter) that each re-eliminated the outcome coproduct to answer one arm -- the predicate-dissolution shape review 57498 refused."
+
+type BeltSpawnTally {
+  spawned: Int
+  failed: Int
+  not_admitted: Int
+  deferred: Int
 }
 
-fn belt_spawn_failed(o: BeltSpawnOutcome) -> Bool {
-  match o {
-    Spawned { node_id: _, session_name: _, provider: _, launch: _ } => false
-    SpawnFailed { node_id: _, step: _, detail: _, provider: _, launch: _ } => true
-    SpawnNotAdmitted { node_id: _, refusal: _ } => false
-  }
+fn belt_spawn_tally(outcomes: List<BeltSpawnOutcome>) -> BeltSpawnTally {
+  fold(outcomes, init: BeltSpawnTally { spawned: 0, failed: 0, not_admitted: 0, deferred: 0 }, f: (acc, o) => match o {
+    Spawned { node_id: _, session_name: _, provider: _, launch: _ } =>
+      BeltSpawnTally { spawned: acc.spawned + 1, failed: acc.failed, not_admitted: acc.not_admitted, deferred: acc.deferred }
+    SpawnFailed { node_id: _, step: _, detail: _, provider: _, launch: _ } =>
+      BeltSpawnTally { spawned: acc.spawned, failed: acc.failed + 1, not_admitted: acc.not_admitted, deferred: acc.deferred }
+    SpawnNotAdmitted { node_id: _, refusal } =>
+      match refusal {
+        LaunchNoCapacity { occupied: _, max_concurrent: _ } =>
+          BeltSpawnTally { spawned: acc.spawned, failed: acc.failed, not_admitted: acc.not_admitted + 1, deferred: acc.deferred + 1 }
+        _ =>
+          BeltSpawnTally { spawned: acc.spawned, failed: acc.failed, not_admitted: acc.not_admitted + 1, deferred: acc.deferred }
+      }
+  })
 }
 
-fn belt_spawn_not_admitted(o: BeltSpawnOutcome) -> Bool {
-  match o {
-    Spawned { node_id: _, session_name: _, provider: _, launch: _ } => false
-    SpawnFailed { node_id: _, step: _, detail: _, provider: _, launch: _ } => false
-    SpawnNotAdmitted { node_id: _, refusal: _ } => true
-  }
-}
-
-fn belt_tick_spawn_ok_count(t: BeltTickResult) -> Int {
-  count(t.spawn_outcomes |> filter(o => belt_spawn_ok(o: o)))
-}
-
-fn belt_tick_spawn_failed_count(t: BeltTickResult) -> Int {
-  count(t.spawn_outcomes |> filter(o => belt_spawn_failed(o: o)))
-}
-
-fn belt_tick_spawn_not_admitted_count(t: BeltTickResult) -> Int {
-  count(t.spawn_outcomes |> filter(o => belt_spawn_not_admitted(o: o)))
-}
-
+fn belt_tick_spawn_ok_count(t: BeltTickResult) -> Int { belt_spawn_tally(outcomes: t.spawn_outcomes).spawned }
+fn belt_tick_spawn_failed_count(t: BeltTickResult) -> Int { belt_spawn_tally(outcomes: t.spawn_outcomes).failed }
+fn belt_tick_spawn_not_admitted_count(t: BeltTickResult) -> Int { belt_spawn_tally(outcomes: t.spawn_outcomes).not_admitted }
 fn belt_tick_teardown_ok_count(t: BeltTickResult) -> Int {
   count(t.teardown_outcomes |> filter(o => belt_teardown_ok(o: o)))
 }
@@ -5052,11 +5033,19 @@ fn belt_launch_host_standing_complete(instance: HostDashboardInstance, standing:
   }
 }
 
-fn belt_launch_row_needs_sessions(standing: LaunchHostStanding, graph: LaunchGraphStanding, merged: List<Int>, node_id: String) -> Bool {
-  match launch_admission_staged(cause: Operator, standing: standing, graph: graph, merged: merged, node_id: node_id, reserved: 0) {
-    LaunchStageNeedsSessions => true
-    LaunchStageDecided { admission: _ } => false
-  }
+type BeltPageSessionsNeed
+  = PageSessionsNotNeeded
+  | PageSessionsNeeded { first_node_id: String }
+
+fn belt_page_sessions_need(standing: LaunchHostStanding, graph: LaunchGraphStanding, merged: List<Int>, nodes: List<RoadmapNode>) -> BeltPageSessionsNeed {
+  fold(nodes, init: PageSessionsNotNeeded, f: (acc, n) => match acc {
+    PageSessionsNeeded { first_node_id } => PageSessionsNeeded { first_node_id: first_node_id }
+    PageSessionsNotNeeded =>
+      match launch_admission_staged(cause: Operator, standing: standing, graph: graph, merged: merged, node_id: n.node as String, reserved: 0) {
+        LaunchStageNeedsSessions => PageSessionsNeeded { first_node_id: n.node as String }
+        LaunchStageDecided { admission: _ } => PageSessionsNotNeeded
+      }
+  })
 }
 
 fn belt_launch_host_standing_for_page(instance: HostDashboardInstance) -> LaunchHostStanding {
@@ -5066,10 +5055,9 @@ fn belt_launch_host_standing_for_page(instance: HostDashboardInstance) -> Launch
     RoadmapAuthorityProjected { doc, accepted: _ } => {
       let graph = launch_graph_of_document(doc: doc)
       let merged = authored_merged_prs()
-      if any(doc_all_nodes(doc: doc), n => belt_launch_row_needs_sessions(standing: pre, graph: graph, merged: merged, node_id: n.node as String)) {
-        belt_launch_host_standing_complete(instance: instance, standing: pre)
-      } else {
-        pre
+      match belt_page_sessions_need(standing: pre, graph: graph, merged: merged, nodes: doc_all_nodes(doc: doc)) {
+        PageSessionsNeeded { first_node_id: _ } => belt_launch_host_standing_complete(instance: instance, standing: pre)
+        PageSessionsNotNeeded => pre
       }
     }
   }

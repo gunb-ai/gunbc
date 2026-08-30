@@ -747,8 +747,16 @@ type LaunchStagedAdmission
   = LaunchStageDecided { admission: LaunchAdmission }
   | LaunchStageNeedsSessions
 
-fn launch_ledger_pre_session_rows(l: LaunchGateLedger) -> List<LaunchGateRow> {
-  launch_ledger_rows(l: l) |> filter(row => match row.stage { PreSessionGate => true SessionGate => false })
+type LaunchLedgerStages {
+  pre_session: List<LaunchGateRow>
+  session: List<LaunchGateRow>
+}
+
+fn launch_ledger_stages(l: LaunchGateLedger) -> LaunchLedgerStages {
+  fold(launch_ledger_rows(l: l), init: LaunchLedgerStages { pre_session: [], session: [] }, f: (acc, row) => match row.stage {
+    PreSessionGate => LaunchLedgerStages { pre_session: concat(acc.pre_session, [row]), session: acc.session }
+    SessionGate => LaunchLedgerStages { pre_session: acc.pre_session, session: concat(acc.session, [row]) }
+  })
 }
 
 fn launch_admission_staged(
@@ -760,7 +768,7 @@ fn launch_admission_staged(
   reserved: Int,
 ) -> LaunchStagedAdmission {
   let l = launch_gate_ledger(cause: cause, standing: standing, graph: graph, merged: merged, node_id: node_id, reserved: reserved)
-  let pre = fold(launch_ledger_pre_session_rows(l: l), init: FoldOpen, f: fn(acc, row) { launch_fold_step(acc: acc, row: row) })
+  let pre = fold(launch_ledger_stages(l: l).pre_session, init: FoldOpen, f: fn(acc, row) { launch_fold_step(acc: acc, row: row) })
   match pre {
     FoldRefused { refusal } => LaunchStageDecided { admission: LaunchRefused { refusal: refusal } }
     FoldOpen =>
