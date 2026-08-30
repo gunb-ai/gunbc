@@ -1,6 +1,7 @@
 module tools.fabric_control_plane_live_probe
 
-import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.types { Bool, Int, List, NonEmptyStr, String, GitRef }
+import std.algebra { trim }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import extdeps.currency.currency { Usd }
 import std.measure {
@@ -58,6 +59,10 @@ import gunbc.fabric_required_build_cell {
   RequiredBuildCellLifetimeSampleDecode, RequiredBuildCellLifetimeSampleDecoded, RequiredBuildCellLifetimeSampleUndecodable,
   FabricCellPreReservationStanding, FabricCellPreReservationClean, FabricCellPreReservationAbsent,
   FabricCellPreReservationRefused,
+  AllocationStorePrestate, AllocationStoreAbsent, AllocationStoreFree, AllocationStoreHeld,
+  AllocationStoreUnreadable, AllocationStoreUndecodable,
+  AllocationStoreRestoration, AllocationStoreReturnedFree,
+  AllocationStoreRestorationRefused,
   observe_required_build_cell_wet, required_build_cell_lifetime_sample,
   required_build_cell_lifetime_sample_wire, decode_required_build_cell_lifetime_sample,
   required_build_cell_lifetime_verdict, required_build_cell_lifetime_verdict_wire,
@@ -270,10 +275,21 @@ fn fci1_required_build_work() -> RequiredBuildWorkBinding {
     Absent => RequiredBuildWorkRefused { cause: RequiredBuildCoordinateMissing { coordinate: "source-commit" } }
     Present { value: commit } => match git_sha1_object_id(hex: fci1_work_source_tree) {
       Absent => RequiredBuildWorkRefused { cause: RequiredBuildCoordinateMissing { coordinate: "source-tree" } }
-      Present { value: tree } => match verify_git_commit_tree(commit: commit, declared_tree: tree, observed_commit_tree: tree) {
-        GitCommitTreeMismatch { commit: _, declared_tree: _, observed_commit_tree: _ } =>
-          RequiredBuildWorkRefused { cause: RequiredBuildCoordinateMissing { coordinate: "commit-tree-verification" } }
-        GitCommitTreeVerified { subject } => required_witnesses_build_work(source: ExactGitSource { subject: subject })
+      Present { value: tree } => {
+        let repo = git.Inspect.Toplevel()
+        let observed = git.Core.CommitTreeInRepo(repository_path: repo.path as String, commit: fci1_work_source_commit as GitRef)
+        if observed.exit_code != 0 {
+          RequiredBuildWorkRefused { cause: RequiredBuildCoordinateMissing { coordinate: "observed-commit-tree" } }
+        } else {
+          match git_sha1_object_id(hex: trim(s: observed.tree)) {
+            Absent => RequiredBuildWorkRefused { cause: RequiredBuildCoordinateMissing { coordinate: "observed-commit-tree" } }
+            Present { value: observed_tree } => match verify_git_commit_tree(commit: commit, declared_tree: tree, observed_commit_tree: observed_tree) {
+              GitCommitTreeMismatch { commit: _, declared_tree: _, observed_commit_tree: _ } =>
+                RequiredBuildWorkRefused { cause: RequiredBuildCoordinateMissing { coordinate: "commit-tree-verification" } }
+              GitCommitTreeVerified { subject } => required_witnesses_build_work(source: ExactGitSource { subject: subject })
+            }
+          }
+        }
       }
     }
   }
@@ -494,47 +510,96 @@ func fci1_live_binding_sample_wire(root: NonEmptyStr, path: String) -> ProcessEx
   }
 }
 
-// The durable CAS generation is monotone, so release cannot restore byte-identical slot bytes: an
-// absent slot becomes a present Free successor and an existing Free slot advances. The invariant
-// FCI-1 owns is availability -- never a held reservation -- projected identically for both clean
-// pre-states. Unreadable, undecodable, and held are deliberately distinct.
-fn fci1_allocation_availability_wire(root: NonEmptyStr) -> NonEmptyStr {
+fn fci1_allocation_prestate(root: NonEmptyStr) -> AllocationStorePrestate {
   match observe_cas_slot_state(root: root, key: fabric_cell_allocation_key(slot: cp_probe_slot())) {
-    CasObservedUnreadable { cause: _ } => "allocation-unreadable"
-    CasObservedReadable { readable: CasReadableAbsent } => "allocation-available"
+    CasObservedUnreadable { cause: _ } => AllocationStoreUnreadable { path: root }
+    CasObservedReadable { readable: CasReadableAbsent } => AllocationStoreAbsent { path: root }
     CasObservedReadable { readable: CasReadablePresent { version: version } } =>
       match decode_cell_slot_payload(payload: version.value) {
-        CellSlotDecoded { state: CellFree { released_by: _ } } => "allocation-available"
-        CellSlotDecoded { state: CellHeld { reservation: _ } } => "allocation-held"
-        CellSlotUndecodable { detail: _ } => "allocation-undecodable"
+        CellSlotDecoded { state: CellFree { released_by: _ } } => AllocationStoreFree { path: root, generation: version.generation }
+        CellSlotDecoded { state: CellHeld { reservation: _ } } => AllocationStoreHeld { path: root, generation: version.generation }
+        CellSlotUndecodable { detail: _ } => AllocationStoreUndecodable { path: root, generation: version.generation }
       }
   }
 }
 
-func fci1_live_allocation_availability(root: NonEmptyStr, path: String) -> ProcessExit {
+fn fci1_allocation_prestate_wire(prestate: AllocationStorePrestate) -> NonEmptyStr {
+  match prestate {
+    AllocationStoreAbsent { path: p } => join(["absent\n", p as String], "") as NonEmptyStr
+    AllocationStoreFree { path: p, generation: g } => join(["free\n", p as String, "\n", to_string(g)], "") as NonEmptyStr
+    AllocationStoreHeld { path: p, generation: g } => join(["held\n", p as String, "\n", to_string(g)], "") as NonEmptyStr
+    AllocationStoreUnreadable { path: p } => join(["unreadable\n", p as String], "") as NonEmptyStr
+    AllocationStoreUndecodable { path: p, generation: g } => join(["undecodable\n", p as String, "\n", to_string(g)], "") as NonEmptyStr
+  }
+}
+
+fn fci1_decode_allocation_prestate(wire: String) -> AllocationStorePrestate {
+  let fields = split(s: wire, delimiter: "\n")
+  match fields.first() {
+    Absent => AllocationStoreUnreadable { path: "invalid-before-wire" }
+    Present { value: tag } => match fields.skip(n: 1).first() {
+      Absent => AllocationStoreUnreadable { path: "invalid-before-wire" }
+      Present { value: path } => if path == "" { AllocationStoreUnreadable { path: "invalid-before-wire" } } else {
+        if tag == "absent" && list_length(items: fields) == 2 { AllocationStoreAbsent { path: path as NonEmptyStr } }
+        else { match fields.skip(n: 2).first() {
+          Absent => AllocationStoreUnreadable { path: path as NonEmptyStr }
+          Present { value: generation_text } => match parse_int(s: generation_text) {
+            Absent => AllocationStoreUnreadable { path: path as NonEmptyStr }
+            Present { value: generation } =>
+              if tag == "free" { AllocationStoreFree { path: path as NonEmptyStr, generation: generation } }
+              else if tag == "held" { AllocationStoreHeld { path: path as NonEmptyStr, generation: generation } }
+              else { AllocationStoreUndecodable { path: path as NonEmptyStr, generation: generation } }
+          }
+        } }
+      }
+    }
+  }
+}
+
+func fci1_live_allocation_prestate(root: NonEmptyStr, path: String) -> ProcessExit {
   fabric_ci_write_wire(
     path: path,
-    wire: fabric_ci_evidence_wire(value: fci1_allocation_availability_wire(root: root)),
+    wire: fabric_ci_evidence_wire(value: fci1_allocation_prestate_wire(prestate: fci1_allocation_prestate(root: root))),
   )
 }
 
 func fci1_assert_allocation_available(root: NonEmptyStr) -> ProcessExit {
-  let observed = fci1_allocation_availability_wire(root: root)
-  if observed == "allocation-available" { ExitSuccess }
-  else { exit_failure(reason: join(["FCI-1 allocation store is not available: ", observed as String], "")) }
+  match fci1_allocation_prestate(root: root) {
+    AllocationStoreAbsent { path: _ } => exit_failure(reason: "FCI-1 allocation store substrate is absent")
+    AllocationStoreFree { path: _, generation: _ } => ExitSuccess
+    AllocationStoreHeld { path: _, generation: _ } => exit_failure(reason: "FCI-1 allocation store remains held")
+    AllocationStoreUnreadable { path: _ } => exit_failure(reason: "FCI-1 allocation store unreadable")
+    AllocationStoreUndecodable { path: _, generation: _ } => exit_failure(reason: "FCI-1 allocation store undecodable")
+  }
+}
+
+fn fci1_allocation_restoration(root: NonEmptyStr, before_wire: String) -> AllocationStoreRestoration {
+  match decode_fabric_ci_evidence_wire(wire: before_wire) {
+    FabricCiEvidenceUndecodable => AllocationStoreRestorationRefused { path: root }
+    FabricCiEvidenceDecoded { value: before } => {
+      let prestate = fci1_decode_allocation_prestate(wire: before as String)
+      let poststate = fci1_allocation_prestate(root: root)
+      match prestate {
+        AllocationStoreAbsent { path: _ } => AllocationStoreRestorationRefused { path: root }
+        AllocationStoreFree { path: p, generation: pre } => match poststate {
+          AllocationStoreFree { path: q, generation: post } => if p == q && post > pre { AllocationStoreReturnedFree { path: q, pre_generation: pre, post_generation: post } } else { AllocationStoreRestorationRefused { path: root } }
+          AllocationStoreAbsent { path: _ } => AllocationStoreRestorationRefused { path: root }
+          AllocationStoreHeld { path: _, generation: _ } => AllocationStoreRestorationRefused { path: root }
+          AllocationStoreUnreadable { path: _ } => AllocationStoreRestorationRefused { path: root }
+          AllocationStoreUndecodable { path: _, generation: _ } => AllocationStoreRestorationRefused { path: root }
+        }
+        AllocationStoreHeld { path: _, generation: _ } => AllocationStoreRestorationRefused { path: root }
+        AllocationStoreUnreadable { path: _ } => AllocationStoreRestorationRefused { path: root }
+        AllocationStoreUndecodable { path: _, generation: _ } => AllocationStoreRestorationRefused { path: root }
+      }
+    }
+  }
 }
 
 func fci1_assert_allocation_restored(root: NonEmptyStr, before_wire: String) -> ProcessExit {
-  match decode_fabric_ci_evidence_wire(wire: before_wire) {
-    FabricCiEvidenceUndecodable => exit_failure(reason: "FCI-1 allocation pre-state wire undecodable")
-    FabricCiEvidenceDecoded { value: before } => {
-      let after = fci1_allocation_availability_wire(root: root)
-      if before == "allocation-available" && after == "allocation-available" { ExitSuccess }
-      else { exit_failure(reason: join([
-        "FCI-1 allocation availability not restored; before=", before as String,
-        "; after=", after as String,
-      ], "")) }
-    }
+  match fci1_allocation_restoration(root: root, before_wire: before_wire) {
+    AllocationStoreReturnedFree { path: _, pre_generation: _, post_generation: _ } => ExitSuccess
+    AllocationStoreRestorationRefused { path: _ } => exit_failure(reason: "FCI-1 allocation store restoration refused")
   }
 }
 

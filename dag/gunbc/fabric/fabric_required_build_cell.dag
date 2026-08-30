@@ -55,6 +55,17 @@ type FabricCellPreReservationStanding
   | FabricCellPreReservationAbsent { cell: CellId }
   | FabricCellPreReservationRefused { cell: CellId }
 
+type AllocationStorePrestate
+  = AllocationStoreAbsent { path: NonEmptyStr }
+  | AllocationStoreFree { path: NonEmptyStr, generation: Int }
+  | AllocationStoreHeld { path: NonEmptyStr, generation: Int }
+  | AllocationStoreUnreadable { path: NonEmptyStr }
+  | AllocationStoreUndecodable { path: NonEmptyStr, generation: Int }
+
+type AllocationStoreRestoration
+  = AllocationStoreReturnedFree { path: NonEmptyStr, pre_generation: Int, post_generation: Int }
+  | AllocationStoreRestorationRefused { path: NonEmptyStr }
+
 // Mode remains outside the observed guarantee until the same exact-path producer reports it.
 fn fci1_directory_mode_unobserved(path: NonEmptyStr, desired_mode: NonEmptyStr) -> DirectoryModeStanding {
   DirectoryModeUnobserved {

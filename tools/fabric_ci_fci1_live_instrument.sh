@@ -18,6 +18,7 @@ mutation_runtime=fci1-submitter-owned-reservation
 mutation_root=/run/$mutation_runtime
 subject="$repo_root/dag/gunbc/fabric/fabric_required_build_cell.dag"
 canonical_reservation_may_be_held=0
+allocation_before=
 
 cleanup() {
   local original_status=$?
@@ -29,7 +30,8 @@ cleanup() {
     "$FABRIC_CI_GUNBC_BIN" run --source-root "$repo_root/dag" --source-root "$repo_root/src/v2" \
       --entry "$FABRIC_CI_ENTRY" --function fci1_live_release --arg root="$canonical_root" >/dev/null 2>&1
     "$FABRIC_CI_GUNBC_BIN" run --source-root "$repo_root/dag" --source-root "$repo_root/src/v2" \
-      --entry "$FABRIC_CI_ENTRY" --function fci1_assert_allocation_available --arg root="$canonical_root"
+      --entry "$FABRIC_CI_ENTRY" --function fci1_assert_allocation_restored \
+      --arg root="$canonical_root" --arg before_wire="$allocation_before"
     cleanup_status=$?
   fi
   rm -f "$FABRIC_CI_LOG"
@@ -57,7 +59,7 @@ fabric_ci_run_assertion fci1_assert_host_preconditions
 fabric_ci_run_assertion fci1_assert_clean_cell_prestate
 fabric_ci_run_assertion fci1_assert_cell_admitted
 cell_before=$(fabric_ci_capture_transport fci1_live_cell_observation cell-before)
-allocation_before=$(fabric_ci_capture_transport fci1_live_allocation_availability allocation-before --arg root="$canonical_root")
+allocation_before=$(fabric_ci_capture_transport fci1_live_allocation_prestate allocation-before --arg root="$canonical_root")
 fabric_ci_run_assertion fci1_assert_allocation_available --arg root="$canonical_root"
 
 capture_submitter_transport() {
