@@ -50,13 +50,24 @@ type OperandRealization
 
 // AN OPERAND THAT REALIZES AS A HOST VALUE BY CONSTRUCTION, without a declaration to ask: the type
 // the parser mints for a kernel literal or a builtin's result (a `<kernel:...>` file, not a
-// declaration in the corpus), a generic type parameter (the host bound carries the operator), and a
-// host container (Vec/HashMap realize the container and its comparisons). Each is a decidable arm,
-// named so that "no identity" never stands in for "host by construction".
+// declaration in the corpus), a generic type parameter (the host bound carries the operator), a
+// host container (Vec/HashMap realize the container and its comparisons), and a type node inference
+// SYNTHESIZED with no authored name at all. Each is a decidable arm, named so that "no identity"
+// never stands in for "host by construction".
+//
+// THE UNNAMED ARM IS A DISCRIMINATOR, NOT A CATCH-ALL, and it was measured before it was written.
+// A structural declaration is reached by a NAME -- that is what a declaration reference is -- so a
+// resolved type node whose authored name is empty is not a reference to one; it is a node inference
+// built for a field access or a match-arm binder over a generic coproduct (measured: v2.compiler.02_parse
+// parse_current_position, `t.start + 1` where t binds the value of ListHeadResult<T>, is the whole
+// unnamed-operand population of the v2 closure under an arithmetic operator). Refusing there would
+// refuse an operand nothing suggests is structural. What still refuses is the case the refusal is
+// FOR: a type node that DOES name a declaration whose identity the caller could not resolve.
 type HostRealizationReason
   = KernelMintedType
   | GenericTypeParameter
   | HostContainer
+  | UnnamedSynthesizedType
 
 // AN OPERAND WITHOUT A READABLE DECLARATION decides BY OPERATOR CLASS, never by guessing a
 // declaration. Equality and the connectives do not depend on the declaration at all: every

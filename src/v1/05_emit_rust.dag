@@ -125,7 +125,8 @@ import v1.compiler.infer_env { TypeEnv, TypeBinding, authored_name, lookup_type_
 import std.operator_realization {
   OperatorRealization, HostOperator, StructuralEquality, StructuralComparison, OperatorRealizationRefused,
   OperandRealization, HostNumericOperand, StructuralOperand, OperandIdentityUnavailable,
-  HostRealizedOperand, KernelMintedType, GenericTypeParameter, HostContainer, OperandShapeFacts, OperandDeclaration,
+  HostRealizedOperand, KernelMintedType, GenericTypeParameter, HostContainer, UnnamedSynthesizedType,
+  OperandShapeFacts, OperandDeclaration,
   StructuralOrderingBinding, OrderingTest, OrderingIs, OrderingIsNot,
   operator_realization_for, operator_realization_refusal_message
 }
@@ -12327,6 +12328,8 @@ fn rust_operand_realization_of_type(rt: Node, scope: InferScope, fuel: Int) -> O
     HostRealizedOperand { reason: GenericTypeParameter }
   } else if is_container_type(name: qualified_last_segment(name: authored)) {
     HostRealizedOperand { reason: HostContainer }
+  } else if authored == "" {
+    HostRealizedOperand { reason: UnnamedSynthesizedType }
   } else {
   match type_reference_declaration_ref(n: rt, source_indices: scope.type_env.source_indices, env: scope.type_env) {
     Absent => OperandIdentityUnavailable { facts: OperandShapeFacts {
