@@ -11,7 +11,7 @@ import gunbc.spark.cell_role {
   spark_cell_role_of,
   spark_cell_role_eq,
 }
-import extdeps.curl.exit_status { curl_exit_failed_to_connect }
+import extdeps.iproute2.ss { ss_enumeration_is_empty }
 import extdeps.procps.pgrep { pgrep_exit_no_match }
 import extdeps.systemd { systemd_unit_load_state_not_found_wire }
 import gunbc.spark.serving_terminal_health {
@@ -94,14 +94,30 @@ fn spark_serving_absence_refusal(a: SparkServingAbsence) -> NonEmptyStr? {
 // The unit axis is the one that proves the old rule could not have been patched with a code: its
 // absence evidence arrives as a successful answer, so "nonzero means gone" was not merely too broad
 // there, it was inverted.
+//   - a listening-socket enumeration completes and prints one line per listener, so the EMPTY
+//     completed answer is the absence, and no status code is asked to carry it
+//
+// THE ENDPOINT AXIS USED A DIAL'S EXIT CODE, AND THAT WAS STRONGER THAN ITS SOURCE.
+//
+// It read curl exit 7 as proof that nothing was listening. curl(1) documents 7 as
+// CURLE_COULDNT_CONNECT, "Failed to connect() to host or proxy" -- one code for every reason a
+// connect failed, with curl's own documentation telling callers the numeric code does not carry the
+// complete cause. What a 7 establishes is `curl did not connect`. What the proof needs is that the
+// intended host was reached, that the intended port was tested directly, that no proxy intervened
+// and that no listener exists. A transport failure was standing in the good-news arm of a proof that
+// authorizes training onto the machine -- the same fail-open class as the "any nonzero" decoder this
+// module already repaired once, one rung subtler, and mine.
+//
+// So the endpoint axis enumerates instead of dialing, and the empty answer is a population rather
+// than a status. A connect failure now establishes nothing at all.
 type SparkServingAbsenceEvidence
   = AbsenceByExitCode { absent_exit_code: Int, tool: NonEmptyStr }
   | AbsenceByAnsweredLexeme { absent_lexeme: NonEmptyStr, tool: NonEmptyStr }
+  | AbsenceByEmptyEnumeration { tool: NonEmptyStr }
 
 fn spark_serving_endpoint_absence_evidence() -> SparkServingAbsenceEvidence {
-  AbsenceByExitCode {
-    absent_exit_code: curl_exit_failed_to_connect,
-    tool: "curl" as NonEmptyStr,
+  AbsenceByEmptyEnumeration {
+    tool: "ss -H -l -t -n sport" as NonEmptyStr,
   }
 }
 
@@ -151,6 +167,10 @@ fn spark_serving_absence_from_probe(
           ServingAbsenceUnobserved {
             cause: join([subject as String, ": ", t as String, " exited ", to_string(code), " — this subject proves absence by ANSWERING, so a nonzero exit means the query itself failed — ", err], "") as NonEmptyStr,
           }
+        AbsenceByEmptyEnumeration { tool: t } =>
+          ServingAbsenceUnobserved {
+            cause: join([subject as String, ": ", t as String, " exited ", to_string(code), " — the enumeration did not complete, so the listener population was never observed — ", err], "") as NonEmptyStr,
+          }
       }
     ProbeAnswered { stdout: out } =>
       match evidence {
@@ -166,6 +186,16 @@ fn spark_serving_absence_from_probe(
           } else {
             ServingStillPresent {
               evidence: join([subject as String, ": ", t as String, " answered ", trim(s: out)], "") as NonEmptyStr,
+            }
+          }
+        AbsenceByEmptyEnumeration { tool: t } =>
+          if ss_enumeration_is_empty(stdout: out) {
+            ServingAbsent {
+              evidence: join([subject as String, ": ", t as String, " completed and enumerated no listening socket on the serving port"], "") as NonEmptyStr,
+            }
+          } else {
+            ServingStillPresent {
+              evidence: join([subject as String, ": ", t as String, " enumerated a listening socket — ", trim(s: out)], "") as NonEmptyStr,
             }
           }
       }
