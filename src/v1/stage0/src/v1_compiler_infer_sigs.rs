@@ -61,15 +61,6 @@ pub struct CallEdge {
     pub callee: String,
 }
 
-pub fn sigs_env_flat_parents_note() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "Cost shape (§6 bare-minimum cost): ResolvedFuncEnv.parents is the module's transitive import closure held FLAT — precedence-ordered (first = highest precedence: the last direct import's closure first, then earlier imports'; own local always wins before any parent), deduped by env name keeping the first occurrence. The prior shape nested each parent env recursively and lookup walked the shared import DAG as a TREE with no visited state, so a shared ancestor was probed once per PATH, not per module (measured: identical 541 signature requests cost 53.3M env probes, and 902.8M after one merge widened the host-effect closure by 54 modules — 16.95x from visibility alone), with a quadratic parents-prefix copy per recursion step. Flattening at the two assembly points (resolve_func_sigs at typecheck time; rewire_func_env_parent_links post-fold) makes lookup one ordered scan over closure members' own local maps: probes are bounded by distinct closure modules, never paths. The name dedup is load-bearing: without it flat lists compose additively along every import path and the list length re-becomes the path count. Shadowing is preserved exactly — the old deep-first, last-import-first walk linearizes to closure-of-last-import before closure-of-earlier-imports, and a member's own local precedes its parents' contributions.".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
-}
-
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct FlattenAccum {
     pub seen: Rc<HashMap<String, bool>>,

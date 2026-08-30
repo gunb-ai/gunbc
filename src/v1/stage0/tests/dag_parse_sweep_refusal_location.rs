@@ -1,35 +1,30 @@
 // THE PARSE SWEEP'S REFUSALS CARRY THE LOCATION THE DIAGNOSTIC ALREADY HELD.
 //
-// WHAT WENT WRONG AND WHY IT COST AN HOUR. `AnnotationAttachmentRefusal` carries `origin:
-// SourceSpan` and `diagnostic_to_span` reads it, but `run_dag_parse_sweep` rendered only the
-// path and the message. A file with 52 unattachable annotations therefore produced 52
-// byte-identical sentences and no way to tell which `//` line was at fault. The span was
-// computed and dropped at the last step -- a typed, LOCATED diagnostic rendered as untyped
-// prose, which is the opposite of what DESIGN section 5 requires.
+// WHAT WENT WRONG (cost an hour). `AnnotationAttachmentRefusal` carries `origin: SourceSpan`
+// and `diagnostic_to_span` reads it, but `run_dag_parse_sweep` rendered only path and message:
+// a file with 52 unattachable annotations gave 52 byte-identical sentences and no way to tell
+// which `//` line was at fault. A typed, LOCATED diagnostic rendered as untyped prose — the
+// opposite of DESIGN section 5.
 //
-// ONE DEFECT, THREE INSTANCES. `AnnotationAttachmentRefusal` has three arms --
-// `UnattachedAtScopeEnd`, `TrailingNotModeled`, `BodyGrainNotModeled` -- and all three carry
-// `origin`. They were all unlocated for the same single reason (one printer, not three), so the
-// repair is arm-independent: it reads `diagnostic_to_span`, which every variant answers. The
-// third and fourth tests hold the other two arms so that "arm-independent" is executed rather
-// than argued.
+// ONE DEFECT, THREE INSTANCES. All three arms -- `UnattachedAtScopeEnd`, `TrailingNotModeled`,
+// `BodyGrainNotModeled` -- carry `origin` and were unlocated by the one printer, so the repair
+// is arm-independent: it reads `diagnostic_to_span`, which every variant answers. The third and
+// fourth tests hold the other two arms so "arm-independent" is executed, not argued.
 //
-// WHY THE SECOND TEST IS NOT REDUNDANT. A printer that emits a constant position is
-// indistinguishable from a fixed one by the first test alone. The control moves the offending
-// annotation down a known number of lines in an otherwise identical file and requires the
-// reported line to move with it, so a hardcoded `1:1` fails here even though it passes there.
+// WHY THE SECOND TEST IS NOT REDUNDANT. The first test cannot tell a constant-position printer
+// from a fixed one. The control moves the offending annotation down a known number of lines in
+// an otherwise identical file and requires the reported line to move with it, so a hardcoded
+// `1:1` fails here though it passes there.
 
 use std::path::{Path, PathBuf};
 
-// A FREE FUNCTION RATHER THAN AN RAII GUARD, and the reason is the seed's own accounting: a
-// `struct` + two `impl` blocks would add four more hand-authored Rust items to `src/v1`, and
-// every `impl` method among them is UNCITABLE as a `DeclarationRef` (`std.decl_ref` has no
-// `ImplMethod` field), so the guard would have grown exactly the class
-// `gunbc.seed_growth_admission` reports separately and asks authors not to grow. Cleanup runs
-// on the way IN, which is what makes the run deterministic anyway: a tree left behind by a
-// killed run cannot make the next one pass or fail for the wrong reason. There is no
-// `tempfile` dev-dependency in this crate and this test does not earn one; the directory is
-// named after the test, so the four tests cannot collide.
+// A FREE FUNCTION RATHER THAN AN RAII GUARD: a `struct` + two `impl` blocks would add four
+// hand-authored Rust items to `src/v1`, every `impl` method UNCITABLE as a `DeclarationRef`
+// (`std.decl_ref` has no `ImplMethod` field) — exactly the class `gunbc.seed_growth_admission`
+// reports and asks authors not to grow. Cleanup runs on the way IN, which makes the run
+// deterministic: a tree left by a killed run cannot decide the next one. No `tempfile`
+// dev-dependency exists in this crate and this test does not earn one; the directory is named
+// after the test, so the four tests cannot collide.
 fn scratch_root(name: &str) -> PathBuf {
     let dir = std::env::temp_dir().join(format!("gunbc_parse_sweep_{name}"));
     let _ = std::fs::remove_dir_all(&dir);
@@ -96,9 +91,8 @@ fn parse_sweep_refusal_location_follows_the_annotation() {
     );
 }
 
-// THE OTHER TWO ARMS, so the claim that this is one defect rather than one of three is executed.
-// Neither needs its own printer change; both are here because a printer that located only the
-// arm someone tested would look identical to a printer that located all of them.
+// THE OTHER TWO ARMS, so "one defect, not three" is executed. Neither needs its own printer
+// change; a printer locating only the tested arm would look identical to one locating all.
 
 #[test]
 fn parse_sweep_locates_a_trailing_annotation_refusal() {

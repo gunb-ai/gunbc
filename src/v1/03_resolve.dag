@@ -304,11 +304,10 @@ fn check_duplicate_modules(modules: List<Node>, source_indices: Map<String, Newl
 
 // A module's top-level declarations are indexed by qualified name into SymbolIndex.entries
 // (v1.compiler.env symbol_index_insert), a map_insert keyed on that name: a second declaration of
-// one name in one module therefore REPLACED the first and every reference resolved to the last one
-// written, with no diagnostic anywhere. Two authorities for one fact (DESIGN section 3) that no
-// behavioural witness can see when the two definitions agree -- green-by-execution proves
-// behaviour and is structurally blind to duplicate authorship. The refusal is per-module over that
-// module's own item list, so it reads nothing outside the module it judges.
+// one name in one module REPLACED the first and every reference resolved to the last one written,
+// with no diagnostic. Two authorities for one fact (DESIGN section 3) that no behavioural witness
+// can see when the definitions agree -- green-by-execution is blind to duplicate authorship. The
+// refusal is per-module over that module's own item list; it reads nothing outside the module.
 fn check_duplicate_declarations(module: Node, source_indices: Map<String, NewlineIndex>) -> List<ErrorNode> {
   let module_name = authored_name_at(source_indices: source_indices, node: module)
   let result = module_items(n: module) |> fold(init: DuplicateCheckState {

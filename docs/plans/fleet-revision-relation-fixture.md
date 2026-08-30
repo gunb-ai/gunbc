@@ -8,9 +8,9 @@ Rebuild recipe for the controlled git repository behind
 The pure merge-base fold is already witnessed by authored exit codes, and
 `git.Inspect.MergeBase` itself is witnessed by record/replay. Neither covers the
 *composition* — `observe_fleet_revision_relation_in` → `MergeBase` →
-`fleet_revision_relation_from_merge_base` — which is where a swapped operand, a dropped
-`trim`, or a mis-decoded stdout would live. A fold fed authored inputs cannot catch any of
-those, because authoring the inputs is the step under test.
+`fleet_revision_relation_from_merge_base` — where a swapped operand, a dropped `trim`, or a
+mis-decoded stdout would live. A fold fed authored inputs cannot catch those: authoring the
+inputs is the step under test.
 
 ## The graph
 
@@ -25,9 +25,8 @@ those, because authoring the inputs is the step under test.
 ```
 
 Every commit carries a branch **on purpose**. `C` was originally created on a detached
-HEAD, which left it unreachable; `merge-base` still answered because the object had not
-been collected yet. A fixture whose correctness depends on gc not having run is not a
-fixture.
+HEAD and so unreachable; `merge-base` still answered only because the object had not been
+collected yet. A fixture whose correctness depends on gc not having run is not a fixture.
 
 ## Recipe
 
@@ -90,8 +89,8 @@ cannot tell them apart at all — the live residual recorded on `MergeBaseOutcom
 ## Record, replay, and the controls
 
 Commands are in the exclusion row's dissolution description
-(`gunbc.ci_layer_roots`, pattern `fleet_revision_relation_wet_matrix_test.dag`) so that the
-recipe and the reason a reader is looking it up sit together.
+(`gunbc.ci_layer_roots`, pattern `fleet_revision_relation_wet_matrix_test.dag`) so the recipe
+sits beside the reason a reader looks it up.
 
 Measured results:
 
@@ -99,9 +98,9 @@ Measured results:
   (six, not seven, because case 5 and case 6 each appear twice across the nine rows).
 - **replay (hermetic, exact store)** — 9/9 PASS.
 - **control: empty store** — the two short-circuit rows still PASS; the other seven FAIL
-  with `missing recorded fixture`, each naming a **distinct** input hash. This is what
-  proves the passing replay consumed recorded observations rather than reaching live git,
-  and separately proves the short-circuit is real.
+  with `missing recorded fixture`, each naming a **distinct** input hash. This proves the
+  passing replay consumed recorded observations rather than reaching live git, and separately
+  that the short-circuit is real.
 - **control: wrong input hash** — one fixture renamed to a bogus hash, the rest left in
   place. Its case refuses with its own exact hash while a sibling case still passes from
   the same store. The store is an exact observation map, not a nearest-match catalog.
@@ -111,8 +110,8 @@ the repository participates in the key rather than being ambient.
 
 ## What this does not cover
 
-The file does not run in the required floor. `git.Inspect.MergeBase` publishes no
-`mock_response`, and there is no way to hand recorded shell observations to a floor run:
+The file does not run in the required floor: `git.Inspect.MergeBase` publishes no
+`mock_response`, and recorded shell observations cannot reach a floor run —
 `WitnessEvaluationFrame` carries only `rest_fixtures`, and `--fixture-store` is a
 `claim_batch` flag with no `claim_executor` equivalent. The exclusion row carries the
 substantiated reason and the dissolution trigger — a shell/service fixture arm on

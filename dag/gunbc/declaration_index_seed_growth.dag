@@ -338,19 +338,467 @@ data declaration_index_seed_growth_justification: SeedGrowthJustification = Seed
   current_boundary: "src/v1/stage0/src/declaration_index.rs; src/v1/stage0/src/cli_run.rs run_dag_parse_sweep; src/v1/stage0/tests/declaration_index_integrity.rs; src/v1/stage0/src/bin/claim_executor.rs; src/v1/stage0/src/bin/v1_src_dag_parse.rs; dag/gunbc/declaration_index_seed_growth.dag"
 }
 
-data declaration_index_kernel_named_import_escape_note: String = "THE ONE HOLE THE IMPORT-MEMBER ARM DOES NOT CLOSE, HELD OPEN DELIBERATELY AND HELD COUNTABLE. v1.compiler.resolve get_exported_names builds a module's export surface as item names, variant names, the names that module itself LISTS in its own import blocks, and every key of kernel_type_set. The last term means EVERY module in the corpus exports every kernel type name, so the claim import m -- Int -- is admitted whatever m declares. The index mirrors that rather than refusing it, because refusing source the seed compiler accepts is a change to what the seed ACCEPTS, and editing get_exported_names classifies as NewLanguageBehavior, which the v1 freeze refuses and which a refusal dominates every admission of.\n\nMEASURED AGAINST THE INSTALLED COMPILER, not inferred from the code. On a throwaway source root, a module whose entire body is one fn returning Int was imported as import extdeps.probe_missing_anchor -- Int, String, Bool -- and compiled to 6 files with 0 diagnostics. THE ZERO IS READABLE BECAUSE THE NONZERO WAS RUN BESIDE IT: the same source root with a member named probe_absent_member_RED refused with a located MissingExport at the member token, 0 files emitted. So the wall is live and this class walks through it.\n\nTHE SPECIMEN IS NOT SYNTHETIC, and it is a finding in its own right rather than a count. std.types declares no Int, no String and no Float anywhere -- it names them as KEYS of kernel_type_set, which is a different fact -- and modules across the corpus author import std.types -- Int, String. Every one of those claims is false about std.types and always has been. The reason nobody noticed is precisely the escape: the claim is unfalsifiable, so its frequency is zero by construction, which is the absorbing-fallback shape in its purest form -- a deficit whose frequency is zero because nothing can ever report it, not because it does not occur.\n\nKERNEL-NAMED AND DECLARED ARE INDEPENDENT AXES, AND THE SPLIT IS THE FINDING. Measured over dag/std/types.dag against the eight keys of kernel_type_set: FIVE are genuinely declared there -- Bool, Secret, Json, Unit, Bytes -- and THREE are not -- Int, String, Float. So import std.types -- Bool is a TRUE claim and import std.types -- Int is a FALSE one, and a counter that renders them identically would be reporting that a name appears in kernel_type_set, which needs no census to learn. import_member_is_kernel_named splits them by ORDER: it asks import_surface_has FIRST and consults the kernel set only when the target really declares nothing. An ordering is an implementation detail until something asserts the behaviour it produces, so kernel_named_counter_splits_declared_from_undeclared plants both arms under one member name -- a module that declares it and one that does not -- and requires the counter to answer 1 rather than 2. Reversing the two conjuncts leaves every other arm green and reds that one. The COUNT over the live corpus is not transcribed here: it is emitted as import_members_kernel_named on every required run, and a number copied into prose is the positional citation DESIGN section 3 forbids.\n\nWHAT THIS CHANGE DOES ABOUT IT, which is the only thing DESIGN section 5 permits an arm that widens to do: make the frequency OBSERVABLE. A bare continue would have zeroed the deficit exactly as the corpus does, so the class could never rank for repair -- section 6 prices by displaced cost and a masked cost displaces nothing. It is now counted as import_members_kernel_named on DeclarationIndexPopulation and printed beside every other denominator in both the required-ci and the standalone sweep lines, so a green names it. It is NOT reported as a finding and does not stop the line.\n\nTHE EVIDENCE IS AT THE FIXTURE BOUNDARY, where DESIGN section 4b requires it and where the corpus cannot reach: kernel_named_import_member_is_admitted_but_counted plants the claim and requires BOTH no finding AND a count of exactly one, and a_declared_member_does_not_count_as_kernel_named requires a real member to leave the counter at zero. The first assertion alone would be satisfied by re-silencing the escape; the pair is what makes that a RED.\n\nNEXT-RUNG TRIGGER: get_exported_names grounds its export surface in DEFINITIONS rather than appending the kernel set to every module, at which point import_member_is_kernel_named deletes and the members it admits become ordinary ImportMemberAbsent findings. That is a v1 language-behavior change and is out of scope here; this row is what keeps it ranked."
+// THE ONE HOLE THE IMPORT-MEMBER ARM DOES NOT CLOSE, HELD OPEN DELIBERATELY AND HELD COUNTABLE.
+// v1.compiler.resolve get_exported_names builds a module's export surface as item names, variant
+// names, the names that module itself LISTS in its own import blocks, and every key of
+// kernel_type_set. The last term means EVERY module in the corpus exports every kernel type name,
+// so the claim import m -- Int -- is admitted whatever m declares. The index mirrors that rather
+// than refusing it, because refusing source the seed compiler accepts is a change to what the seed
+// ACCEPTS, and editing get_exported_names classifies as NewLanguageBehavior, which the v1 freeze
+// refuses and which a refusal dominates every admission of.
+//
+// MEASURED AGAINST THE INSTALLED COMPILER, not inferred from the code. On a throwaway source root,
+// a module whose entire body is one fn returning Int was imported as import
+// extdeps.probe_missing_anchor -- Int, String, Bool -- and compiled to 6 files with 0 diagnostics.
+// THE ZERO IS READABLE BECAUSE THE NONZERO WAS RUN BESIDE IT: the same source root with a member
+// named probe_absent_member_RED refused with a located MissingExport at the member token, 0 files
+// emitted. So the wall is live and this class walks through it.
+//
+// THE SPECIMEN IS NOT SYNTHETIC, and it is a finding in its own right rather than a count.
+// std.types declares no Int, no String and no Float anywhere -- it names them as KEYS of
+// kernel_type_set, which is a different fact -- and modules across the corpus author import
+// std.types -- Int, String. Every one of those claims is false about std.types and always has been.
+// The reason nobody noticed is precisely the escape: the claim is unfalsifiable, so its frequency
+// is zero by construction, which is the absorbing-fallback shape in its purest form -- a deficit
+// whose frequency is zero because nothing can ever report it, not because it does not occur.
+//
+// KERNEL-NAMED AND DECLARED ARE INDEPENDENT AXES, AND THE SPLIT IS THE FINDING. Measured over
+// dag/std/types.dag against the eight keys of kernel_type_set: FIVE are genuinely declared there --
+// Bool, Secret, Json, Unit, Bytes -- and THREE are not -- Int, String, Float. So import std.types
+// -- Bool is a TRUE claim and import std.types -- Int is a FALSE one, and a counter that renders
+// them identically would be reporting that a name appears in kernel_type_set, which needs no census
+// to learn. import_member_is_kernel_named splits them by ORDER: it asks import_surface_has FIRST
+// and consults the kernel set only when the target really declares nothing. An ordering is an
+// implementation detail until something asserts the behaviour it produces, so
+// kernel_named_counter_splits_declared_from_undeclared plants both arms under one member name -- a
+// module that declares it and one that does not -- and requires the counter to answer 1 rather than
+// 2. Reversing the two conjuncts leaves every other arm green and reds that one. The COUNT over the
+// live corpus is not transcribed here: it is emitted as import_members_kernel_named on every
+// required run, and a number copied into prose is the positional citation DESIGN section 3 forbids.
+//
+// WHAT THIS CHANGE DOES ABOUT IT, which is the only thing DESIGN section 5 permits an arm that
+// widens to do: make the frequency OBSERVABLE. A bare continue would have zeroed the deficit
+// exactly as the corpus does, so the class could never rank for repair -- section 6 prices by
+// displaced cost and a masked cost displaces nothing. It is now counted as
+// import_members_kernel_named on DeclarationIndexPopulation and printed beside every other
+// denominator in both the required-ci and the standalone sweep lines, so a green names it. It is
+// NOT reported as a finding and does not stop the line.
+//
+// THE EVIDENCE IS AT THE FIXTURE BOUNDARY, where DESIGN section 4b requires it and where the corpus
+// cannot reach: kernel_named_import_member_is_admitted_but_counted plants the claim and requires
+// BOTH no finding AND a count of exactly one, and a_declared_member_does_not_count_as_kernel_named
+// requires a real member to leave the counter at zero. The first assertion alone would be satisfied
+// by re-silencing the escape; the pair is what makes that a RED.
+//
+// NEXT-RUNG TRIGGER: get_exported_names grounds its export surface in DEFINITIONS rather than
+// appending the kernel set to every module, at which point import_member_is_kernel_named deletes
+// and the members it admits become ordinary ImportMemberAbsent findings. That is a v1
+// language-behavior change and is out of scope here; this row is what keeps it ranked.
 
-data declaration_index_authorship_arm_is_not_a_mandatory_tag_region_note: String = "WHY THE LENS AUTHORSHIP ARM IS HOST-SIDE RATHER THAN A SECOND MandatoryTagRegion, recorded because it is the first thing a reviewer will propose and because the reason is a measurement rather than a preference.\n\nv2.lens.mandatory_tag already models exactly this shape: a MandatoryTagRegion names a dotted prefix, a required declaration name and a required type name, and mandatory_tag_law states that a violating module FAILS COMPILATION with a typed, located diagnostic -- unwritable at definition admission, not flagged post-hoc by a corpus scan. mandatory_tag_lens is enrolled in v2.compiler.00_compile always_required_root_lenses. So the obvious move is one more region with prefix v2.lens., required declaration construction_justification, required type ConstructionJustification.\n\nIT DOES NOT FIRE. Measured on the installed compiler: a module declaring itself extdeps.probe_missing_anchor, carrying no extdeps_external_authority_anchor and matched by none of that region's exempt_modules, exempt_module_prefixes or exempt_module_suffixes rows, compiled to 5 files with 0 diagnostics. The v2 compile door is not on the gunbc compile path; the executing compiler is the v1 seed. The zero is readable because the same source root produced a located MissingExport refusal in the control described in the sibling row above, so the compiler does refuse at ingestion -- this gate is simply not reached.\n\nWHAT IS AND IS NOT CLAIMED. This is a note about REACHABILITY of one gate from one path, and it is not a defect finding filed against v2.lens.mandatory_tag, whose fold is correct and whose own witness exercises it. It is the reason the authorship obligation is answered here instead: an arm enrolled in a door that the required run never opens would be green by construction, which DESIGN section 4b calls worse than absent because it gets cited as coverage. When the v2 compile door is the executing ingestion, this arm is the one that should dissolve into a MandatoryTagRegion, and that is its next rung."
+// WHY THE LENS AUTHORSHIP ARM IS HOST-SIDE RATHER THAN A SECOND MandatoryTagRegion, recorded
+// because it is the first thing a reviewer will propose and because the reason is a measurement
+// rather than a preference.
+//
+// v2.lens.mandatory_tag already models exactly this shape: a MandatoryTagRegion names a dotted
+// prefix, a required declaration name and a required type name, and mandatory_tag_law states that a
+// violating module FAILS COMPILATION with a typed, located diagnostic -- unwritable at definition
+// admission, not flagged post-hoc by a corpus scan. mandatory_tag_lens is enrolled in
+// v2.compiler.00_compile always_required_root_lenses. So the obvious move is one more region with
+// prefix v2.lens., required declaration construction_justification, required type
+// ConstructionJustification.
+//
+// IT DOES NOT FIRE. Measured on the installed compiler: a module declaring itself
+// extdeps.probe_missing_anchor, carrying no extdeps_external_authority_anchor and matched by none
+// of that region's exempt_modules, exempt_module_prefixes or exempt_module_suffixes rows, compiled
+// to 5 files with 0 diagnostics. The v2 compile door is not on the gunbc compile path; the
+// executing compiler is the v1 seed. The zero is readable because the same source root produced a
+// located MissingExport refusal in the control described in the sibling row above, so the compiler
+// does refuse at ingestion -- this gate is simply not reached.
+//
+// WHAT IS AND IS NOT CLAIMED. This is a note about REACHABILITY of one gate from one path, and it
+// is not a defect finding filed against v2.lens.mandatory_tag, whose fold is correct and whose own
+// witness exercises it. It is the reason the authorship obligation is answered here instead: an arm
+// enrolled in a door that the required run never opens would be green by construction, which DESIGN
+// section 4b calls worse than absent because it gets cited as coverage. When the v2 compile door is
+// the executing ingestion, this arm is the one that should dissolve into a MandatoryTagRegion, and
+// that is its next rung.
 
-data declaration_index_citation_debt_contract_note: String = "THE FOUR CONDITIONS DESIGN SECTION 5 PUTS ON A MONOTONE DEBT CONTRACT, ANSWERED ONE BY ONE, because without all four a one-sided ratchet over hand-authored rows is only a quieter snapshot -- it counts the subjects someone remembered to author.\n\n1. INDEPENDENTLY DISCOVERED AND CLOSED SUBJECT UNIVERSE. The universe is every authored DeclarationRef in a non-fixture module, discovered by this index from the corpus's own parse rather than enrolled by anyone. It is CLOSED because membership is decided by the same walk that decides the wall: a citation is in the universe if a swept module's source contains it, and there is no route by which a citation exists and the universe does not contain it. This is the condition the mechanism this change replaces FAILED -- v2.lens.cited_symbol_resolution's population was five hand-listed carriers, so a carrier nobody enrolled was outside the universe by default, and the census could not see DESIGN's own worked example.\n\n2. IDENTITY GRAIN, NOT COUNT. A row is the quintuple of CITING module path, the CITING DECLARATION that carries the citation, cited module path, cited declaration name and cited field. The citing module was added by gunbc#9328 and it is the difference between a contract and a permanent exemption: keyed on the cited target alone, one row suppressed that target's citations FROM EVERY MODULE, so the universe was closed over targets while the citing side stayed open and a citation authored tomorrow inherited a row authored today. Nothing anywhere compares a total. One row being replaced by a duplicate of another is not a state this contract can occupy, because the rows are a set of identities and the check is membership.\n\n3. ROADMAP-JUSTIFIED DIRECTION. The direction is toward zero authored citations that name nothing, which is the executing half of DESIGN section 3's cite-the-symbol-not-the-position rule; the lane that owns it is the one this carrier already names, v1-hand-queue-drain. The roster's terminal state is empty, at which point PRE_EXISTING_CITATION_DEBT and citation_debt_findings both delete.\n\n4. TYPED DISPOSITION ON EVERY REMOVAL, and this is the one worth spelling out because two edits that look identical in a diff must not be the same act. A row leaves this roster in exactly one way: the citation it names stops refusing, because someone repaired it. Both other directions are REFUSED, in opposite arms, which is what makes this a contract rather than a suppression list. Delete a row while its citation still refuses and the citation becomes an ordinary CitedDeclarationAbsent finding and stops the line -- so a row cannot be dropped to buy a green. Repair a citation and LEAVE its row standing and citation_debt_findings emits CitationDebtRowStale naming the spent row -- so the roster cannot rot into a list of things that used to be true. The two arms close the loop in both directions, and neither is a judgement call: each is decided by re-running the same resolution the wall runs.\n\nWHAT IS NOT CLAIMED. The rows are not repaired here, and that is a scope decision rather than a coverage claim: the repair for a citation is a judgement about what its author MEANT, across 38 distinct targets with 38 owners, and guessing it is how a stale citation becomes a confidently wrong one."
+// THE FOUR CONDITIONS DESIGN SECTION 5 PUTS ON A MONOTONE DEBT CONTRACT, ANSWERED ONE BY ONE,
+// because without all four a one-sided ratchet over hand-authored rows is only a quieter snapshot
+// -- it counts the subjects someone remembered to author.
+//
+// 1. INDEPENDENTLY DISCOVERED AND CLOSED SUBJECT UNIVERSE. The universe is every authored
+// DeclarationRef in a non-fixture module, discovered by this index from the corpus's own parse
+// rather than enrolled by anyone. It is CLOSED because membership is decided by the same walk that
+// decides the wall: a citation is in the universe if a swept module's source contains it, and there
+// is no route by which a citation exists and the universe does not contain it. This is the
+// condition the mechanism this change replaces FAILED -- v2.lens.cited_symbol_resolution's
+// population was five hand-listed carriers, so a carrier nobody enrolled was outside the universe
+// by default, and the census could not see DESIGN's own worked example.
+//
+// 2. IDENTITY GRAIN, NOT COUNT. A row is the quintuple of CITING module path, the CITING
+// DECLARATION that carries the citation, cited module path, cited declaration name and cited field.
+// The citing module was added by gunbc#9328 and it is the difference between a contract and a
+// permanent exemption: keyed on the cited target alone, one row suppressed that target's citations
+// FROM EVERY MODULE, so the universe was closed over targets while the citing side stayed open and
+// a citation authored tomorrow inherited a row authored today. Nothing anywhere compares a total.
+// One row being replaced by a duplicate of another is not a state this contract can occupy, because
+// the rows are a set of identities and the check is membership.
+//
+// 3. ROADMAP-JUSTIFIED DIRECTION. The direction is toward zero authored citations that name
+// nothing, which is the executing half of DESIGN section 3's cite-the-symbol-not-the-position rule;
+// the lane that owns it is the one this carrier already names, v1-hand-queue-drain. The roster's
+// terminal state is empty, at which point PRE_EXISTING_CITATION_DEBT and citation_debt_findings
+// both delete.
+//
+// 4. TYPED DISPOSITION ON EVERY REMOVAL, and this is the one worth spelling out because two edits
+// that look identical in a diff must not be the same act. A row leaves this roster in exactly one
+// way: the citation it names stops refusing, because someone repaired it. Both other directions are
+// REFUSED, in opposite arms, which is what makes this a contract rather than a suppression list.
+// Delete a row while its citation still refuses and the citation becomes an ordinary
+// CitedDeclarationAbsent finding and stops the line -- so a row cannot be dropped to buy a green.
+// Repair a citation and LEAVE its row standing and citation_debt_findings emits
+// CitationDebtRowStale naming the spent row -- so the roster cannot rot into a list of things that
+// used to be true. The two arms close the loop in both directions, and neither is a judgement call:
+// each is decided by re-running the same resolution the wall runs.
+//
+// WHAT IS NOT CLAIMED. The rows are not repaired here, and that is a scope decision rather than a
+// coverage claim: the repair for a citation is a judgement about what its author MEANT, across 38
+// distinct targets with 38 owners, and guessing it is how a stale citation becomes a confidently
+// wrong one.
 
-data declaration_index_false_quantifier_residue_note: String = "DECLARED RESIDUE: THIS WALL CLOSES THE STALE-SYMBOL HALF AND LEAVES THE FALSE-QUANTIFIER HALF ENTIRELY OPEN. Named here so the next reader finds the gap rather than assuming the citation wall covers it.\n\nWHAT THE WALL CHECKS: that a named symbol RESOLVES. What it does not check: that a QUANTIFIED CLAIM ABOUT A POPULATION is true. The two are independent, and the distinction is not hypothetical -- it was measured twice on this branch, both times inside typed carriers, both times a claim about a population that nobody had counted.\n\nSPECIMEN ONE, in the debt roster's own doc comment: FOUR ROWS AT THE END ARE NOT DEBT ... the deleted census's planted controls. The rows were never added, only described, and the wall's first corpus run reported all four controls as ordinary refusals -- so prose describing rows that do not exist produced a real, imminent, wrong red.\n\nSPECIMEN TWO, in this very carrier, authored by the same hand that built the wall: decl_facts is no longer consulted by any required check. False. decl_facts has live .dag consumers and several are floor-discovered witness modules, so that corpus walk still executes inside the required floor.\n\nWHY THE WALL CANNOT REACH EITHER OF THEM, and this is the structural point rather than an omission: decl_facts is a REAL SYMBOL that RESOLVES. The sentence claiming nothing consults it would pass a cited-symbol census cleanly, because every name in it is true and only the QUANTIFIER is false. A resolver answers does this name exist; nothing in this construction answers is this count right. Section 4c states the general form -- prose is unfalsifiable by construction, which is exactly why an invariant, receipt, count or dissolution condition belongs in a typed carrier and not in a sentence.\n\nHOW THEY WERE ACTUALLY CAUGHT, stated because it is the honest rung: by running the wall over the corpus, and by re-reading the carrier against the request before merge. The first is a mechanism; the second is review diligence, which DESIGN calls strictly weaker in exactly the way it calls the deleted inert-lens census's replacement weaker. So this class sits at MITIGATABLE and nothing here climbs it.\n\nNEXT-RUNG TRIGGER: a quantified claim in a carrier is DERIVED rather than AUTHORED -- the count is a projection of the population it describes, so the sentence cannot disagree with the corpus because it is not a sentence. Until that lands, a prose quantifier inside a typed carrier is debt, and the two specimens above are its measured instances rather than its bound."
+// DECLARED RESIDUE: THIS WALL CLOSES THE STALE-SYMBOL HALF AND LEAVES THE FALSE-QUANTIFIER HALF
+// ENTIRELY OPEN. Named here so the next reader finds the gap rather than assuming the citation wall
+// covers it.
+//
+// WHAT THE WALL CHECKS: that a named symbol RESOLVES. What it does not check: that a QUANTIFIED
+// CLAIM ABOUT A POPULATION is true. The two are independent, and the distinction is not
+// hypothetical -- it was measured twice on this branch, both times inside typed carriers, both
+// times a claim about a population that nobody had counted.
+//
+// SPECIMEN ONE, in the debt roster's own doc comment: FOUR ROWS AT THE END ARE NOT DEBT ... the
+// deleted census's planted controls. The rows were never added, only described, and the wall's
+// first corpus run reported all four controls as ordinary refusals -- so prose describing rows that
+// do not exist produced a real, imminent, wrong red.
+//
+// SPECIMEN TWO, in this very carrier, authored by the same hand that built the wall: decl_facts is
+// no longer consulted by any required check. False. decl_facts has live .dag consumers and several
+// are floor-discovered witness modules, so that corpus walk still executes inside the required
+// floor.
+//
+// WHY THE WALL CANNOT REACH EITHER OF THEM, and this is the structural point rather than an
+// omission: decl_facts is a REAL SYMBOL that RESOLVES. The sentence claiming nothing consults it
+// would pass a cited-symbol census cleanly, because every name in it is true and only the
+// QUANTIFIER is false. A resolver answers does this name exist; nothing in this construction
+// answers is this count right. Section 4c states the general form -- prose is unfalsifiable by
+// construction, which is exactly why an invariant, receipt, count or dissolution condition belongs
+// in a typed carrier and not in a sentence.
+//
+// HOW THEY WERE ACTUALLY CAUGHT, stated because it is the honest rung: by running the wall over the
+// corpus, and by re-reading the carrier against the request before merge. The first is a mechanism;
+// the second is review diligence, which DESIGN calls strictly weaker in exactly the way it calls
+// the deleted inert-lens census's replacement weaker. So this class sits at MITIGATABLE and nothing
+// here climbs it.
+//
+// NEXT-RUNG TRIGGER: a quantified claim in a carrier is DERIVED rather than AUTHORED -- the count
+// is a projection of the population it describes, so the sentence cannot disagree with the corpus
+// because it is not a sentence. Until that lands, a prose quantifier inside a typed carrier is
+// debt, and the two specimens above are its measured instances rather than its bound.
 
-data declaration_index_hand_rust_roster_rot_specimen_note: String = "THE OUTSIDE-INDEX BOUNDARY IS NOT THEORETICAL: IT ROTTED THIS PR'S OWN ROSTER INSIDE THIS PR, AND REVIEW CAUGHT IT RATHER THAN THE WALL (review 55899, 2026-08-25). Recorded rather than quietly corrected, for the same reason the false-quantifier row above records its two specimens: a defect found in the carrier that declares the mechanism is evidence about the mechanism.\n\nWHAT HAPPENED. The roster below cited v1_compiler.declaration_index citation_is_pre_existing_debt. That predicate was RENAMED to citation_in_roster earlier on this same branch, as part of the repair that made the debt roster a PARAMETER defaulted to the identity element. The rename updated the code and every caller; it did not update this roster row, so the carrier declaring this PR's hand-Rust obligation cited a symbol this PR had deleted.\n\nWHY THE NEW WALL DID NOT REFUSE IT, and this is the structural point rather than an excuse. The wall resolves a citation against the INDEX, and the index is built from swept .dag modules. v1_compiler is a hand-Rust namespace root that no swept module declares, so citation_is_outside_index counts the row rather than refusing it -- exactly as the boundary disclosed in the note above says it will. The consequence was not disclosed there and is disclosed here: the seed-growth carriers are PRECISELY the rosters that name hand-Rust items, so they are the one population where a rename in the same commit silently rots its own citation. The wall's coverage and the rosters that most need covering are disjoint.\n\nMEASURED AFTER THE REPAIR, over all 55 rows rather than the one review named, because fixing the reported instance and not the class is how a second one survives: 55 rows, 54 resolved against a definition in the five hand-Rust files this carrier enumerates, 1 unresolved -- the row above, now corrected. The +55 enumeration claim in the main note is therefore true, and was true of the COUNT while being false of one row's CONTENT.\n\nNEXT-RUNG TRIGGER. A citation into a hand-Rust namespace resolves against an index of hand-Rust declarations -- the same keyed lookup, over a second source of records derived from the .rs files this carrier already enumerates -- at which case citation_is_outside_index narrows to genuinely unindexed roots and this class stops being writable. That is a strictly larger construction than this PR and is not attempted here; until it lands, a DeclarationRef into v1_compiler is checked by review diligence, which is the same MITIGATABLE rung the false-quantifier row sits at."
+// THE OUTSIDE-INDEX BOUNDARY IS NOT THEORETICAL: IT ROTTED THIS PR'S OWN ROSTER INSIDE THIS PR, AND
+// REVIEW CAUGHT IT RATHER THAN THE WALL (review 55899, 2026-08-25). Recorded rather than quietly
+// corrected, for the same reason the false-quantifier row above records its two specimens: a defect
+// found in the carrier that declares the mechanism is evidence about the mechanism.
+//
+// WHAT HAPPENED. The roster below cited v1_compiler.declaration_index
+// citation_is_pre_existing_debt. That predicate was RENAMED to citation_in_roster earlier on this
+// same branch, as part of the repair that made the debt roster a PARAMETER defaulted to the
+// identity element. The rename updated the code and every caller; it did not update this roster
+// row, so the carrier declaring this PR's hand-Rust obligation cited a symbol this PR had deleted.
+//
+// WHY THE NEW WALL DID NOT REFUSE IT, and this is the structural point rather than an excuse. The
+// wall resolves a citation against the INDEX, and the index is built from swept .dag modules.
+// v1_compiler is a hand-Rust namespace root that no swept module declares, so
+// citation_is_outside_index counts the row rather than refusing it -- exactly as the boundary
+// disclosed in the note above says it will. The consequence was not disclosed there and is
+// disclosed here: the seed-growth carriers are PRECISELY the rosters that name hand-Rust items, so
+// they are the one population where a rename in the same commit silently rots its own citation. The
+// wall's coverage and the rosters that most need covering are disjoint.
+//
+// MEASURED AFTER THE REPAIR, over all 55 rows rather than the one review named, because fixing the
+// reported instance and not the class is how a second one survives: 55 rows, 54 resolved against a
+// definition in the five hand-Rust files this carrier enumerates, 1 unresolved -- the row above,
+// now corrected. The +55 enumeration claim in the main note is therefore true, and was true of the
+// COUNT while being false of one row's CONTENT.
+//
+// NEXT-RUNG TRIGGER. A citation into a hand-Rust namespace resolves against an index of hand-Rust
+// declarations -- the same keyed lookup, over a second source of records derived from the .rs files
+// this carrier already enumerates -- at which case citation_is_outside_index narrows to genuinely
+// unindexed roots and this class stops being writable. That is a strictly larger construction than
+// this PR and is not attempted here; until it lands, a DeclarationRef into v1_compiler is checked
+// by review diligence, which is the same MITIGATABLE rung the false-quantifier row sits at.
 
-data declaration_index_fixture_carrier_exemption_grain_note: String = "CARRIER IDENTITY IS NOT A LICENCE: THE FIXTURE EXEMPTION MOVED FROM MODULE GRAIN TO CITATION GRAIN (review 55939, 2026-08-26). Recorded here rather than silently amended, because the row above -- WHAT THE ARMS DO NOT COVER -- DISCLOSED this exemption as a bounded scope decision, and the disclosure was wrong about the boundary rather than merely incomplete about it.\n\nWHAT WAS HERE. Both citation arms skipped every citation in a module module_is_fixture_carrier answered true for. The justification was real and still is: a witness proving the resolver refuses an absent symbol has to AUTHOR an absent symbol, so its false citation is its evidence rather than its defect. The defect was that the EXEMPTION WAS KEYED ON THE MODULE while the justification is a property of THE CITATION. Carrier identity establishes that SOME citations in a witness are deliberately false; it never establishes that ALL are.\n\nWHAT SETTLED IT WAS THE MEASUREMENT, NOT THE ARGUMENT, and the ratio is the finding: of 161 citations authored inside fixture carriers, 128 RESOLVE. They are ordinary citations of real authorities that happen to live in a test module. The module-grained skip was shielding 128 real citations in order to protect 33 sites. Reporting the excluded population as in_fixtures did not restore integrity -- a counted hole is still a hole, and DESIGN section 5 says so about exactly this move.\n\nTHE HOLE WAS OCCUPIED, WHICH IS WHAT SEPARATES A DEFECT FROM A DISCLOSED BOUNDARY. Two of the enrolled identities are ordinary staleness with nothing to do with fixture intent: dag.test.claim.witness_purpose_taxonomy_witness is a dag.-prefixed module path no module declares -- the real module is test.claim.witness_purpose_taxonomy_witness, so a plain typo -- and std.disposition Disposition marker names a real authority and a real declaration with an absent field, cited twice. Both were invisible for as long as the skip stood, and both are the class this whole change exists to make decidable.\n\nWHAT THE ROSTER IS. FIXTURE_CARRIER_CITATION_EXEMPTIONS, 41 identities at the (citing module, citing declaration, module, declaration, field) grain -- the citing module and declaration both added by gunbc#9328, and the count moved with the grain rather than with the corpus. It is NOT a debt contract and does not claim to be: condition 3 of section 5's four requires a terminal state of empty, and this roster's is not -- a planted control such as NoSuchDecl_G1_RED is permanent by design and will never be repaired. What it shares with the debt contract is the property that makes either safe rather than a suppression list: it is MONOTONE and it REFUSES WHEN SPENT, through the same inverse arm, so a row whose citation stops refusing is reported and a row deleted while its citation still refuses turns that citation into an ordinary finding that stops the line. Neither direction is a judgement call.\n\nWHAT IS NOT CLASSIFIED, stated rather than hidden: the rows are not sorted into deliberate-control versus genuine-staleness. The two specimens above are named because they are decidable by inspection; deciding what the other authors MEANT is the judgement section 5 warns turns a stale citation into a confidently wrong one, and it is the same scope decision the 42 debt rows already carry. NEXT RUNG: a witness declares its planted controls as typed rows, at which point the deliberate half becomes DERIVABLE and only the genuine half survives here as debt.\n\nHOW THE ROWS WERE OBTAINED, because the first attempt was wrong and the mechanism caught it. Extracting the identities by parsing rendered diagnostics silently dropped the FIELD -- a CitedDeclarationAbsent message never prints one -- so rows for citations carrying a NamedField whose DECLARATION is absent matched nothing. The corpus run then reported the same citation as BOTH refusing AND its row as spent: the paired-inverse-arm desynchronization this carrier already documents, firing on its own author within one run. The rows are now derived from the index itself, from the same CitedSymbol values the matcher compares. Five further refusing identities are deliberately absent because they are already enrolled in PRE_EXISTING_CITATION_DEBT or PLANTED_CONTROL_CITATIONS, and a second row for one citation is duplicate authority with a double stale-arm report.\n\nRUNG: unchanged at MECHANICALLY PREVENTABLE, and this is a WIDENING of the enrolled population rather than a climb -- 128 citations that were never judged now are. The red is authorable and authored at the FIXTURE boundary: a_refusing_citation_inside_a_fixture_carrier_is_judged plants one in a module asserted to BE a fixture carrier, a_fixture_citation_exemption_suppresses_only_its_own_identity plants two siblings and requires exempting one to leave the other refusing, and a_fixture_exemption_whose_citation_resolves_is_spent_and_refuses plants a resolving citation and requires the spent-row arm to name the roster holding it."
+// CARRIER IDENTITY IS NOT A LICENCE: THE FIXTURE EXEMPTION MOVED FROM MODULE GRAIN TO CITATION
+// GRAIN (review 55939, 2026-08-26). Recorded here rather than silently amended, because the row
+// above -- WHAT THE ARMS DO NOT COVER -- DISCLOSED this exemption as a bounded scope decision, and
+// the disclosure was wrong about the boundary rather than merely incomplete about it.
+//
+// WHAT WAS HERE. Both citation arms skipped every citation in a module module_is_fixture_carrier
+// answered true for. The justification was real and still is: a witness proving the resolver
+// refuses an absent symbol has to AUTHOR an absent symbol, so its false citation is its evidence
+// rather than its defect. The defect was that the EXEMPTION WAS KEYED ON THE MODULE while the
+// justification is a property of THE CITATION. Carrier identity establishes that SOME citations in
+// a witness are deliberately false; it never establishes that ALL are.
+//
+// WHAT SETTLED IT WAS THE MEASUREMENT, NOT THE ARGUMENT, and the ratio is the finding: of 161
+// citations authored inside fixture carriers, 128 RESOLVE. They are ordinary citations of real
+// authorities that happen to live in a test module. The module-grained skip was shielding 128 real
+// citations in order to protect 33 sites. Reporting the excluded population as in_fixtures did not
+// restore integrity -- a counted hole is still a hole, and DESIGN section 5 says so about exactly
+// this move.
+//
+// THE HOLE WAS OCCUPIED, WHICH IS WHAT SEPARATES A DEFECT FROM A DISCLOSED BOUNDARY. Two of the
+// enrolled identities are ordinary staleness with nothing to do with fixture intent:
+// dag.test.claim.witness_purpose_taxonomy_witness is a dag.-prefixed module path no module declares
+// -- the real module is test.claim.witness_purpose_taxonomy_witness, so a plain typo -- and
+// std.disposition Disposition marker names a real authority and a real declaration with an absent
+// field, cited twice. Both were invisible for as long as the skip stood, and both are the class
+// this whole change exists to make decidable.
+//
+// WHAT THE ROSTER IS. FIXTURE_CARRIER_CITATION_EXEMPTIONS, 41 identities at the (citing module,
+// citing declaration, module, declaration, field) grain -- the citing module and declaration both
+// added by gunbc#9328, and the count moved with the grain rather than with the corpus. It is NOT a
+// debt contract and does not claim to be: condition 3 of section 5's four requires a terminal state
+// of empty, and this roster's is not -- a planted control such as NoSuchDecl_G1_RED is permanent by
+// design and will never be repaired. What it shares with the debt contract is the property that
+// makes either safe rather than a suppression list: it is MONOTONE and it REFUSES WHEN SPENT,
+// through the same inverse arm, so a row whose citation stops refusing is reported and a row
+// deleted while its citation still refuses turns that citation into an ordinary finding that stops
+// the line. Neither direction is a judgement call.
+//
+// WHAT IS NOT CLASSIFIED, stated rather than hidden: the rows are not sorted into
+// deliberate-control versus genuine-staleness. The two specimens above are named because they are
+// decidable by inspection; deciding what the other authors MEANT is the judgement section 5 warns
+// turns a stale citation into a confidently wrong one, and it is the same scope decision the 42
+// debt rows already carry. NEXT RUNG: a witness declares its planted controls as typed rows, at
+// which point the deliberate half becomes DERIVABLE and only the genuine half survives here as
+// debt.
+//
+// HOW THE ROWS WERE OBTAINED, because the first attempt was wrong and the mechanism caught it.
+// Extracting the identities by parsing rendered diagnostics silently dropped the FIELD -- a
+// CitedDeclarationAbsent message never prints one -- so rows for citations carrying a NamedField
+// whose DECLARATION is absent matched nothing. The corpus run then reported the same citation as
+// BOTH refusing AND its row as spent: the paired-inverse-arm desynchronization this carrier already
+// documents, firing on its own author within one run. The rows are now derived from the index
+// itself, from the same CitedSymbol values the matcher compares. Five further refusing identities
+// are deliberately absent because they are already enrolled in PRE_EXISTING_CITATION_DEBT or
+// PLANTED_CONTROL_CITATIONS, and a second row for one citation is duplicate authority with a double
+// stale-arm report.
+//
+// RUNG: unchanged at MECHANICALLY PREVENTABLE, and this is a WIDENING of the enrolled population
+// rather than a climb -- 128 citations that were never judged now are. The red is authorable and
+// authored at the FIXTURE boundary: a_refusing_citation_inside_a_fixture_carrier_is_judged plants
+// one in a module asserted to BE a fixture carrier,
+// a_fixture_citation_exemption_suppresses_only_its_own_identity plants two siblings and requires
+// exempting one to leave the other refusing, and
+// a_fixture_exemption_whose_citation_resolves_is_spent_and_refuses plants a resolving citation and
+// requires the spent-row arm to name the roster holding it.
 
+// THE SUPPRESSION ROSTERS MOVED FROM TARGET GRAIN TO SITE GRAIN (gunbc#9328). Recorded here rather
+// than silently amended, for the reason the two rows above are: the grain of an exemption roster is
+// the whole content of whether it is a contract or a hole, and this carrier had disclosed the
+// previous grain as if it were sound.
+//
+// WHAT WAS HERE. All three rosters -- PRE_EXISTING_CITATION_DEBT, PLANTED_CONTROL_CITATIONS,
+// FIXTURE_CARRIER_CITATION_EXEMPTIONS -- were keyed (cited module, declaration, field).
+// citation_in_roster read the CITED symbol only, so a row exempted that target corpus-wide and
+// permanently. A patch could author a BRAND NEW dangling DeclarationRef naming any enrolled target,
+// from a module that had never cited it, and the wall stayed silent -- a fail-open inside the
+// mechanism built to refuse exactly that class, and decidable from the patch alone.
+//
+// OCCUPIED, NOT MERELY REACHABLE, measured over DAG_PARSE_SWEEP_ROOTS: the 70 target-keyed rows
+// covered 87 refusing sites, and seven targets were already cited from more than one module --
+// gunbc.host_effect host_effect_apply from three, std.bytes builtin_function_registry from three,
+// extdeps.network.mac parse_mac_address from two, four more from two apiece. Every extra site was
+// suppressed by a row authored about a different module.
+//
+// WHAT LANDED. A row is (citing module, citing declaration, cited module, declaration, field) and
+// exempts THE SITE THAT AUTHORED IT. Both inverse arms read that one identity through a single
+// refusing_sites set, because a suppression arm and a staleness arm keyed differently is the
+// desynchronization this carrier already records once. The rosters are re-derived from the
+// measurement rather than hand-extended: 42 debt, 41 fixture, 4 control, 87 sites, corpus clean.
+//
+// THE FIRST DERIVATION WAS TAKEN OVER THE WRONG DENOMINATOR, and it is recorded because it is this
+// carrier's own recurring class arriving a third time. The sweep's roots are src/v1, dag and
+// src/v2; the first measurement used only the last two, so five sites in modules the narrow walk
+// never read were absent from the rosters and the required run refused them. A roster derived from
+// a subset of the subject it governs is not a smaller roster, it is a wrong one.
+//
+// HAND-ITEM DELTA: +5, enumerated in the roster above rather than counted -- citation_site,
+// refusing_sites and site_owned in declaration_index.rs, and two discriminating tests,
+// a_new_citation_of_an_enrolled_target_from_another_module_still_refuses and
+// a_roster_row_exempts_its_own_citer_and_no_other. No file is added, no impl block is introduced,
+// and every one of the five is citable as a WholeDeclaration. The trigger is unchanged and now
+// names 60: these dissolve with the index, not separately.
+//
+// RUNG: unchanged at MECHANICALLY PREVENTABLE. This is a repair of an open direction in an existing
+// wall, not a climb -- the invalid state stays writable and safety still depends on the phase
+// executing. The red is authorable and authored at the FIXTURE boundary: both tests above go GREEN
+// under the target-keyed form, which is the state they exist to forbid.
+//
+// THE DECLARATION WAS ADDED AFTER REVIEW AND IT IS THE SAME REPAIR ONE LEVEL IN (review 56227). The
+// first cut keyed a row on the citing MODULE, which left two citations of one target inside one
+// module sharing a row -- so a new dangling citation authored BESIDE an enrolled one stayed
+// suppressed. That was DISCLOSED as residue rather than closed, and the objection was that a
+// residue whose closing identity is already available is not a residue. It was available:
+// record_from_module already iterates top-level items, so the enclosing declaration name costs one
+// string at extraction, and it is a NAME reachable from the containment tree rather than the offset
+// DESIGN section 3 forbids. Closed, with
+// a_second_citation_of_an_enrolled_target_in_another_declaration_still_refuses as the
+// discriminating red -- it reports zero findings under the module grain.
+//
+// WHAT IS NOT REACHED, stated because a closed residue must not be reported as a total one: two
+// citations of one target inside ONE DECLARATION still share a row. Only a position separates
+// those, and a position is what this grain exists not to be, so this is a CEILING rather than a
+// stall. The next rung would be an occurrence ordinal within the declaration -- representable in
+// the record, needed by no measured site today.
 
+// THE REFERENCE CHANNEL BECAME SELECTIVE BY NODE KIND (gunbc, this change). Recorded here rather
+// than only in the Rust doc comment, because the previous behaviour was DECLARED SOUND on this
+// carrier's own construction -- record_from_module collected every authored name in a module's tree
+// and the field's doc argued the over-collection was harmless -- and a refuted argument has to be
+// retired where it was made.
+//
+// THE ARGUMENT AND WHY IT IS WRONG. It read: the over-collection is SYMMETRIC across the two trees
+// v1_compiler.namespace_wave_admission compares, so a spelling that denotes nothing on both sides
+// contributes no delta. A symmetric COLLECTOR does not give a symmetric VERDICT. The supplier set
+// the wall computes for a row is a function of the CORPUS, not of the site, so deleting an
+// unrelated declaration moves it under every site that merely spells the same word -- and a field
+// label spells words.
+//
+// THE SPECIMEN, MEASURED RATHER THAN PREDICTED. On gunbc#9106 a witness module deleted a helper fn
+// live_tree_declined_entries and kept twelve RECORD FIELD LABELS of that spelling. Twelve labels,
+// twelve enclosing declarations, twelve NewUnresolvedness rows, one-to-one, against a correct cut.
+// The delta was TRUE about the declaration and FALSE about every site it named: a label binds to
+// nothing and needs no supplier at all.
+//
+// WHAT LANDED, IN THE SHAPE THE CITED COLLECTOR ON THE SAME WALK ALREADY USED -- decide by node
+// kind, never by name. Two kinds stop being references. First, a record literal's FIELD LABELS:
+// ExprRecordLit's children are its field initializers and nothing else, so the label is decidable
+// from the parent's kind with no guessing, and the initializer's VALUE is still walked because that
+// is where a reference lives. Second, a field projection's MEMBER name: f.widget names a field of a
+// value, not a declaration. The whole dotted spelling is still recorded, which is what
+// module_prefix_of needs to keep a module-qualified reference such as probe.home.widget resolving,
+// and the wall keys on the last segment either way. A name-based suppression list was refused: it
+// would be the same defect one layer up.
+//
+// WHAT IS NOT REPAIRED, stated because a partial repair reported as a total one is worse than none.
+// A record TYPE declaration's field labels, a named call argument's label, a parameter binder and a
+// coproduct's variant names are STILL collected as references, and each can fabricate the same
+// refusal from a different position. Measured on a fixture rather than assumed: a type declaring a
+// field named tag contributes tag, and a call passing an argument labelled tag contributes tag.
+// They are not swept in here because the parent kinds carrying them also carry children that ARE
+// real references -- a refinement's base type expression is a Connective Conj child with a real
+// type name -- so a parent-kind rule for them cannot be lifted from this one and needs its own
+// fixture. Excluding them by guessing would risk the opposite defect, which is strictly worse: a
+// wall that stops seeing genuine unresolvedness is a decoration.
+//
+// EVIDENCE, BOTH DIRECTIONS, AT THE FIXTURE BOUNDARY, in the wave wall's own fixture file. RED:
+// deleting_a_declaration_a_record_field_label_merely_spells_carries_no_delta, which reports exactly
+// the specimen's NewUnresolvedness under the previous collector and nothing under this one. GREEN,
+// and this is the half that matters:
+// deleting_a_declaration_a_body_still_references_is_still_unresolvedness and
+// deleting_a_declaration_a_qualified_spelling_reaches_is_still_unresolvedness both require the wall
+// to KEEP refusing a deletion that a real reference reaches, one bare and one dotted. The second is
+// the control on the projection half specifically, because a repair that had dropped the dotted
+// spelling instead of the member name would green the red and silence that arm with it.
+//
+// RUNG: unchanged at MECHANICALLY PREVENTABLE. This is a repair of a fabricated-refusal direction
+// in an existing wall, not a climb. HAND-ITEM DELTA: plus one, collect_reference_occurrences,
+// enumerated in the roster above; record_from_module's inline walk is replaced by a call to it
+// rather than duplicated, and no other declaration is added. The three test arms live in the wave
+// wall's fixture file, whose carrier gunbc.namespace_wave_admission enumerates lib declarations
+// rather than test arms.
+// TWO AUTHORED REFERENCES THE INDEX COULD NOT REACH, AND THE FALSE GREEN THEY PRODUCED (gunbc, this
+// change). Recorded beside the selectivity note above rather than only in the Rust doc comment,
+// because the two are the SAME FUNCTION moving in OPPOSITE DIRECTIONS -- that one removed
+// fabricated references, this one recovers missing ones -- and a reader who finds only one will
+// conclude the channel is being narrowed or widened as a policy rather than corrected against what
+// the source authors.
+//
+// WHAT WAS MISSING. collect_reference_occurrences walks a Node through seven child slots. Two
+// authored references are reachable through NEITHER. A VARIANT PATTERN HEAD is a raw String on
+// MatchPattern, not a Node, so a module whose only use of an imported coproduct is naming its
+// variants in match arms contributed nothing. A DECLARED FIELD TYPE is parked by v1.02_parse
+// field_to_child_node in the inferred slot, and every authored-name reader correctly declines to
+// read a slot whose contract says DERIVED.
+//
+// WHAT THE CONSEQUENCE WAS. v1_compiler.namespace_wave_admission membership_bound_through answered
+// NO about an import whose name is still referenced in the very tree it examined, and the wall
+// reported the live import as UnusedSubjectMembershipRemoved. That is a GREEN, not a refusal, so
+// nothing stops -- and the verdict's natural next action is to delete the import the wall failed to
+// see.
+//
+// THE CONSTRUCTION, AND IT IS THE SECOND ONE AUTHORED FOR THIS DEFECT. The first read both facts
+// back off the final Node. An operator ruling narrowed the permitted construction to consuming the
+// parser's existing OccurrenceTransport, and the RATIONALE is what decides the shape rather than
+// the letter: the parser already stamps the fact exactly, so a Node-reading projection is a SECOND
+// AUTHORITY free to diverge from the first. Measured, that is exact for the declared field type --
+// stamp_parsed_inferred stamps a Resolved inferred node as ParsedOccurrenceReference
+// TypeOccurrence, and the stamp is on the SLOT, so the generic-over-the-form property the first
+// construction gained is precisely the property the transport already owned. The first construction
+// was reimplementing stamp_parsed_inferred from its own output. The seam is one argument wide:
+// CensusFillParse already carries occurrence_transport and both callers already hold one at the
+// line they call record_from_module, so the fact was PRODUCED AND DISCARDED at a return boundary
+// rather than absent.
+//
+// WHY THE PATTERN HEAD STILL READS AN AUTHORED STRING, and this is a scope finding rather than an
+// exception taken. The rationale has NO REFERENT for that position:
+// MatchPattern.VariantPattern.name is a String, stamp_parsed_pattern stamps field_bindings only,
+// ConstructorOccurrence is stamped NOWHERE in v1_compiler_parse, and occurrence ids are minted per
+// Node so a String can never carry one. The parser mints nothing there, so there is no first
+// authority to be second to -- reading the authored String is not re-derivation, it is the only
+// derivation, and a prohibition whose stated reason does not apply is not extended by its letter.
+// The transport repair for that half is BLOCKED ON A RULING, NOT ON A RISK: the obvious objection
+// was that a new stamp shifts every id allocated after it in a sequential allocator, and that
+// objection is answered -- v2.std.node content_hash folds node kind, edge labels and child hashes
+// and NOT the occurrence id, and v2.workflow.legacy_binding_delta states outright that an
+// OccurrenceId is not a stable cross-compile name BECAUSE the counter is consumed in DFS order,
+// naming inserted tokens as exactly the edit that shifts ids. The corpus does not merely lack a
+// dependency on id stability, it declares that dependency illegitimate. What remains is that
+// stamping a new occurrence is a parser change, which is an authority question.
+//
+// A PEER FIELD, NOT A WIDENED referenced, as the ruling directs, and the reason survives the
+// ruling: the two sets have different authorities and different precision, and fusing them would
+// hide which is which behind one name. authored_type_references carries the transport's answer;
+// referenced remains the index's own walk. The consumer takes the union, so nothing downstream
+// needs to know which channel supplied a row, and the walk can shrink toward zero as more positions
+// gain transport entries.
+//
+// THE FILTER THAT IS LOAD-BEARING RATHER THAN TIDINESS. Only references enclosed by a declaration
+// THIS MODULE DECLARES are taken. The transport stamps an IMPORT MEMBER NAME as a TypeOccurrence
+// enclosed by the import target -- measured, import probe.other { gadget } yields the row
+// (probe.other, gadget) -- so consuming every TypeOccurrence makes each import bound-through by its
+// own member and UnusedSubjectMembershipRemoved becomes UNREACHABLE. A disposition going
+// permanently quiet is strictly worse than the false green this change closes: one wrong verdict
+// against a wall that can no longer fire. It was caught by a PRE-EXISTING arm, not by review and
+// not by any arm authored here.
+//
+// EVIDENCE, SEVEN ARMS AT THE FIXTURE BOUNDARY, ON THE REMOVAL SIDE DELIBERATELY, WITH A THREE-WAY
+// MUTATION RECEIPT RE-TAKEN AGAINST THIS CONSTRUCTION. The add side cannot test this at all:
+// gunbc#9490 made an import claim answer membership outright for ADD, so an add-side fixture goes
+// green with the repair AND with it reverted -- measured, that arm stayed green under both channel
+// mutations. Deleting the pattern-head read fails 2; yielding nothing from the transport fails 3;
+// deleting the import-member filter fails 2, one of them the pre-existing unused-removal arm;
+// unmutated, 27 pass. The scope question was settled by execution: a type alias RHS reproduces the
+// same false green and is enrolled, a function return type does not reproduce and is recorded as a
+// measured negative rather than enrolled, because an arm there would pass either way.
+//
+// RUNG: unchanged at MECHANICALLY PREVENTABLE. A repair of a false-green direction in an existing
+// wall, the mirror of the selectivity note's false-refusal repair. HAND-ITEM DELTA: plus one,
+// authored_type_references_from_transport, enumerated in the roster above; the pattern-head block
+// sits inside collect_reference_occurrences which the roster already enumerates, and
+// record_from_module gains one parameter rather than a declaration.
 // THE ENROLLED ROWS ARE NOT DISTINGUISHED BETWEEN DELIBERATE-ABSENT AND STALE, AND THAT IS A STALL
 // RATHER THAN A SETTLED BOUNDARY. Two of the thirty-one are decidable by inspection and are named
 // in the carrier prose; the twenty-nine below are not, and a permanently-enrolled unclassified row
@@ -401,9 +849,3 @@ data declaration_index_fixture_exemption_classification_stall: GuaranteeStall = 
   },
   next_rung_trigger: "a witness declares each citation it plants to refuse as a typed row beside the citation -- at which point the deliberate half of this roster is DERIVED rather than enrolled, this roster shrinks to the genuinely stale remainder, and that remainder becomes ordinary debt with a terminal state of empty. Until then a new stale citation authored inside a fixture carrier is caught by the wall, but an existing enrolled one is indistinguishable from a control",
 }
-
-data declaration_index_site_grain_roster_note: String = "THE SUPPRESSION ROSTERS MOVED FROM TARGET GRAIN TO SITE GRAIN (gunbc#9328). Recorded here rather than silently amended, for the reason the two rows above are: the grain of an exemption roster is the whole content of whether it is a contract or a hole, and this carrier had disclosed the previous grain as if it were sound.\n\nWHAT WAS HERE. All three rosters -- PRE_EXISTING_CITATION_DEBT, PLANTED_CONTROL_CITATIONS, FIXTURE_CARRIER_CITATION_EXEMPTIONS -- were keyed (cited module, declaration, field). citation_in_roster read the CITED symbol only, so a row exempted that target corpus-wide and permanently. A patch could author a BRAND NEW dangling DeclarationRef naming any enrolled target, from a module that had never cited it, and the wall stayed silent -- a fail-open inside the mechanism built to refuse exactly that class, and decidable from the patch alone.\n\nOCCUPIED, NOT MERELY REACHABLE, measured over DAG_PARSE_SWEEP_ROOTS: the 70 target-keyed rows covered 87 refusing sites, and seven targets were already cited from more than one module -- gunbc.host_effect host_effect_apply from three, std.bytes builtin_function_registry from three, extdeps.network.mac parse_mac_address from two, four more from two apiece. Every extra site was suppressed by a row authored about a different module.\n\nWHAT LANDED. A row is (citing module, citing declaration, cited module, declaration, field) and exempts THE SITE THAT AUTHORED IT. Both inverse arms read that one identity through a single refusing_sites set, because a suppression arm and a staleness arm keyed differently is the desynchronization this carrier already records once. The rosters are re-derived from the measurement rather than hand-extended: 42 debt, 41 fixture, 4 control, 87 sites, corpus clean.\n\nTHE FIRST DERIVATION WAS TAKEN OVER THE WRONG DENOMINATOR, and it is recorded because it is this carrier's own recurring class arriving a third time. The sweep's roots are src/v1, dag and src/v2; the first measurement used only the last two, so five sites in modules the narrow walk never read were absent from the rosters and the required run refused them. A roster derived from a subset of the subject it governs is not a smaller roster, it is a wrong one.\n\nHAND-ITEM DELTA: +5, enumerated in the roster above rather than counted -- citation_site, refusing_sites and site_owned in declaration_index.rs, and two discriminating tests, a_new_citation_of_an_enrolled_target_from_another_module_still_refuses and a_roster_row_exempts_its_own_citer_and_no_other. No file is added, no impl block is introduced, and every one of the five is citable as a WholeDeclaration. The trigger is unchanged and now names 60: these dissolve with the index, not separately.\n\nRUNG: unchanged at MECHANICALLY PREVENTABLE. This is a repair of an open direction in an existing wall, not a climb -- the invalid state stays writable and safety still depends on the phase executing. The red is authorable and authored at the FIXTURE boundary: both tests above go GREEN under the target-keyed form, which is the state they exist to forbid.\n\nTHE DECLARATION WAS ADDED AFTER REVIEW AND IT IS THE SAME REPAIR ONE LEVEL IN (review 56227). The first cut keyed a row on the citing MODULE, which left two citations of one target inside one module sharing a row -- so a new dangling citation authored BESIDE an enrolled one stayed suppressed. That was DISCLOSED as residue rather than closed, and the objection was that a residue whose closing identity is already available is not a residue. It was available: record_from_module already iterates top-level items, so the enclosing declaration name costs one string at extraction, and it is a NAME reachable from the containment tree rather than the offset DESIGN section 3 forbids. Closed, with a_second_citation_of_an_enrolled_target_in_another_declaration_still_refuses as the discriminating red -- it reports zero findings under the module grain.\n\nWHAT IS NOT REACHED, stated because a closed residue must not be reported as a total one: two citations of one target inside ONE DECLARATION still share a row. Only a position separates those, and a position is what this grain exists not to be, so this is a CEILING rather than a stall. The next rung would be an occurrence ordinal within the declaration -- representable in the record, needed by no measured site today."
-
-data declaration_index_reference_channel_selectivity_note: String = "THE REFERENCE CHANNEL BECAME SELECTIVE BY NODE KIND (gunbc, this change). Recorded here rather than only in the Rust doc comment, because the previous behaviour was DECLARED SOUND on this carrier's own construction -- record_from_module collected every authored name in a module's tree and the field's doc argued the over-collection was harmless -- and a refuted argument has to be retired where it was made.\n\nTHE ARGUMENT AND WHY IT IS WRONG. It read: the over-collection is SYMMETRIC across the two trees v1_compiler.namespace_wave_admission compares, so a spelling that denotes nothing on both sides contributes no delta. A symmetric COLLECTOR does not give a symmetric VERDICT. The supplier set the wall computes for a row is a function of the CORPUS, not of the site, so deleting an unrelated declaration moves it under every site that merely spells the same word -- and a field label spells words.\n\nTHE SPECIMEN, MEASURED RATHER THAN PREDICTED. On gunbc#9106 a witness module deleted a helper fn live_tree_declined_entries and kept twelve RECORD FIELD LABELS of that spelling. Twelve labels, twelve enclosing declarations, twelve NewUnresolvedness rows, one-to-one, against a correct cut. The delta was TRUE about the declaration and FALSE about every site it named: a label binds to nothing and needs no supplier at all.\n\nWHAT LANDED, IN THE SHAPE THE CITED COLLECTOR ON THE SAME WALK ALREADY USED -- decide by node kind, never by name. Two kinds stop being references. First, a record literal's FIELD LABELS: ExprRecordLit's children are its field initializers and nothing else, so the label is decidable from the parent's kind with no guessing, and the initializer's VALUE is still walked because that is where a reference lives. Second, a field projection's MEMBER name: f.widget names a field of a value, not a declaration. The whole dotted spelling is still recorded, which is what module_prefix_of needs to keep a module-qualified reference such as probe.home.widget resolving, and the wall keys on the last segment either way. A name-based suppression list was refused: it would be the same defect one layer up.\n\nWHAT IS NOT REPAIRED, stated because a partial repair reported as a total one is worse than none. A record TYPE declaration's field labels, a named call argument's label, a parameter binder and a coproduct's variant names are STILL collected as references, and each can fabricate the same refusal from a different position. Measured on a fixture rather than assumed: a type declaring a field named tag contributes tag, and a call passing an argument labelled tag contributes tag. They are not swept in here because the parent kinds carrying them also carry children that ARE real references -- a refinement's base type expression is a Connective Conj child with a real type name -- so a parent-kind rule for them cannot be lifted from this one and needs its own fixture. Excluding them by guessing would risk the opposite defect, which is strictly worse: a wall that stops seeing genuine unresolvedness is a decoration.\n\nEVIDENCE, BOTH DIRECTIONS, AT THE FIXTURE BOUNDARY, in the wave wall's own fixture file. RED: deleting_a_declaration_a_record_field_label_merely_spells_carries_no_delta, which reports exactly the specimen's NewUnresolvedness under the previous collector and nothing under this one. GREEN, and this is the half that matters: deleting_a_declaration_a_body_still_references_is_still_unresolvedness and deleting_a_declaration_a_qualified_spelling_reaches_is_still_unresolvedness both require the wall to KEEP refusing a deletion that a real reference reaches, one bare and one dotted. The second is the control on the projection half specifically, because a repair that had dropped the dotted spelling instead of the member name would green the red and silence that arm with it.\n\nRUNG: unchanged at MECHANICALLY PREVENTABLE. This is a repair of a fabricated-refusal direction in an existing wall, not a climb. HAND-ITEM DELTA: plus one, collect_reference_occurrences, enumerated in the roster above; record_from_module's inline walk is replaced by a call to it rather than duplicated, and no other declaration is added. The three test arms live in the wave wall's fixture file, whose carrier gunbc.namespace_wave_admission enumerates lib declarations rather than test arms."
-
-data declaration_index_authored_reference_channels_note: String = "TWO AUTHORED REFERENCES THE INDEX COULD NOT REACH, AND THE FALSE GREEN THEY PRODUCED (gunbc, this change). Recorded beside the selectivity note above rather than only in the Rust doc comment, because the two are the SAME FUNCTION moving in OPPOSITE DIRECTIONS -- that one removed fabricated references, this one recovers missing ones -- and a reader who finds only one will conclude the channel is being narrowed or widened as a policy rather than corrected against what the source authors.\n\nWHAT WAS MISSING. collect_reference_occurrences walks a Node through seven child slots. Two authored references are reachable through NEITHER. A VARIANT PATTERN HEAD is a raw String on MatchPattern, not a Node, so a module whose only use of an imported coproduct is naming its variants in match arms contributed nothing. A DECLARED FIELD TYPE is parked by v1.02_parse field_to_child_node in the inferred slot, and every authored-name reader correctly declines to read a slot whose contract says DERIVED.\n\nWHAT THE CONSEQUENCE WAS. v1_compiler.namespace_wave_admission membership_bound_through answered NO about an import whose name is still referenced in the very tree it examined, and the wall reported the live import as UnusedSubjectMembershipRemoved. That is a GREEN, not a refusal, so nothing stops -- and the verdict's natural next action is to delete the import the wall failed to see.\n\nTHE CONSTRUCTION, AND IT IS THE SECOND ONE AUTHORED FOR THIS DEFECT. The first read both facts back off the final Node. An operator ruling narrowed the permitted construction to consuming the parser's existing OccurrenceTransport, and the RATIONALE is what decides the shape rather than the letter: the parser already stamps the fact exactly, so a Node-reading projection is a SECOND AUTHORITY free to diverge from the first. Measured, that is exact for the declared field type -- stamp_parsed_inferred stamps a Resolved inferred node as ParsedOccurrenceReference TypeOccurrence, and the stamp is on the SLOT, so the generic-over-the-form property the first construction gained is precisely the property the transport already owned. The first construction was reimplementing stamp_parsed_inferred from its own output. The seam is one argument wide: CensusFillParse already carries occurrence_transport and both callers already hold one at the line they call record_from_module, so the fact was PRODUCED AND DISCARDED at a return boundary rather than absent.\n\nWHY THE PATTERN HEAD STILL READS AN AUTHORED STRING, and this is a scope finding rather than an exception taken. The rationale has NO REFERENT for that position: MatchPattern.VariantPattern.name is a String, stamp_parsed_pattern stamps field_bindings only, ConstructorOccurrence is stamped NOWHERE in v1_compiler_parse, and occurrence ids are minted per Node so a String can never carry one. The parser mints nothing there, so there is no first authority to be second to -- reading the authored String is not re-derivation, it is the only derivation, and a prohibition whose stated reason does not apply is not extended by its letter. The transport repair for that half is BLOCKED ON A RULING, NOT ON A RISK: the obvious objection was that a new stamp shifts every id allocated after it in a sequential allocator, and that objection is answered -- v2.std.node content_hash folds node kind, edge labels and child hashes and NOT the occurrence id, and v2.workflow.legacy_binding_delta states outright that an OccurrenceId is not a stable cross-compile name BECAUSE the counter is consumed in DFS order, naming inserted tokens as exactly the edit that shifts ids. The corpus does not merely lack a dependency on id stability, it declares that dependency illegitimate. What remains is that stamping a new occurrence is a parser change, which is an authority question.\n\nA PEER FIELD, NOT A WIDENED referenced, as the ruling directs, and the reason survives the ruling: the two sets have different authorities and different precision, and fusing them would hide which is which behind one name. authored_type_references carries the transport's answer; referenced remains the index's own walk. The consumer takes the union, so nothing downstream needs to know which channel supplied a row, and the walk can shrink toward zero as more positions gain transport entries.\n\nTHE FILTER THAT IS LOAD-BEARING RATHER THAN TIDINESS. Only references enclosed by a declaration THIS MODULE DECLARES are taken. The transport stamps an IMPORT MEMBER NAME as a TypeOccurrence enclosed by the import target -- measured, import probe.other { gadget } yields the row (probe.other, gadget) -- so consuming every TypeOccurrence makes each import bound-through by its own member and UnusedSubjectMembershipRemoved becomes UNREACHABLE. A disposition going permanently quiet is strictly worse than the false green this change closes: one wrong verdict against a wall that can no longer fire. It was caught by a PRE-EXISTING arm, not by review and not by any arm authored here.\n\nEVIDENCE, SEVEN ARMS AT THE FIXTURE BOUNDARY, ON THE REMOVAL SIDE DELIBERATELY, WITH A THREE-WAY MUTATION RECEIPT RE-TAKEN AGAINST THIS CONSTRUCTION. The add side cannot test this at all: gunbc#9490 made an import claim answer membership outright for ADD, so an add-side fixture goes green with the repair AND with it reverted -- measured, that arm stayed green under both channel mutations. Deleting the pattern-head read fails 2; yielding nothing from the transport fails 3; deleting the import-member filter fails 2, one of them the pre-existing unused-removal arm; unmutated, 27 pass. The scope question was settled by execution: a type alias RHS reproduces the same false green and is enrolled, a function return type does not reproduce and is recorded as a measured negative rather than enrolled, because an arm there would pass either way.\n\nRUNG: unchanged at MECHANICALLY PREVENTABLE. A repair of a false-green direction in an existing wall, the mirror of the selectivity note's false-refusal repair. HAND-ITEM DELTA: plus one, authored_type_references_from_transport, enumerated in the roster above; the pattern-head block sits inside collect_reference_occurrences which the roster already enumerates, and record_from_module gains one parameter rather than a declaration."

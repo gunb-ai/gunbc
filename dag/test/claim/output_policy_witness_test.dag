@@ -1,5 +1,7 @@
 module test.claim.output_policy_witness
 
+import gunbc.output_policy { ExpectedOutcome }
+
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn dec_is(d: OutputDecision, suppressed: Bool, condensed: Bool, full: Bool) -> Bool {
@@ -137,7 +139,9 @@ test fn w_neutralization_is_the_only_route_to_surfaced_text() -> Bool {
   subject_text_line_guard == "| "
 }
 
-data w_quiet_ambient_silent_but_divergence_still_surfaces_note: String = "Observation dissolve: Quiet suppresses Ambient ShellTrace scaffolding, but stream disposition follows divergence — Anomaly is never silenced by channel Suppressed (DESIGN section 5). Verbose still surfaces every stream (Full)."
+// Observation dissolve: Quiet suppresses Ambient ShellTrace scaffolding, but stream disposition
+// follows divergence — Anomaly is never silenced by channel Suppressed (DESIGN section 5). Verbose
+// still surfaces every stream (Full).
 
 test fn w_quiet_ambient_silent_but_divergence_still_surfaces() -> Bool {
   disp_is(d: shell_stream(verbosity: Quiet, expected: ExpectFailure, observed: ObservedSuccess),
@@ -189,7 +193,6 @@ test fn w_outcome_is_data_is_exit_invariant() -> Bool {
   let oid_still = disp_surfaces(d: p.outcome_is_data_observed_success) == disp_surfaces(d: p.outcome_is_data_observed_failure)
   es_flips && ef_flips && oid_still
 }
-
 
 // The display grain is the fact Suppressed | Condensed | Full structurally cannot carry: those three
 // decide what becomes of one line, while the rollup grain decides whether a line exists at all.

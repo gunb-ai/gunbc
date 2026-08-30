@@ -13,7 +13,20 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   }
 }
 
-data icestorm_subject_note: String = "PROJECT ICESTORM, AND WHY IT IS A SEPARATE AUTHORITY FROM LATTICE. IceStorm is an independently governed open-source project (ISC licensed, per its own copyright file, read from the installed package 2026-08-13) that documented the iCE40 bitstream format and pin placement by reverse engineering rather than by vendor specification. It is what nextpnr actually consults to decide whether a pin constraint is legal, so it is the authority a generated constraint file must satisfy — and it is NOT the vendor's pin assignment table. Modelling one as the other would fuse a specification with a reverse-engineering of it, which is the browser-engine-versus-standard split this repository already draws elsewhere. THE PIN POPULATION BELOW is the package position roster IceStorm carries for the HX1K in TQ144: which numbered package pins are usable I/O. It carries the DESIGNATORS only. The tile coordinates beside them in IceStorm's database are the toolchain's placement internals, not facts a board consults, so they are deliberately not copied — a board needs to know that pin 47 exists and is an I/O, not which tile it lands on. THE CROSS-CHECK THAT MAKES THIS MORE THAN A COPIED LIST: Lattice's own per-bank table for this device and package sums to ninety-two general-purpose plus four configuration pins, and this roster has ninety-six entries. Two authorities produced independently, agreeing at a count. A witness executes that agreement rather than a reader noticing it."
+// PROJECT ICESTORM, AND WHY IT IS A SEPARATE AUTHORITY FROM LATTICE. IceStorm is an independently
+// governed open-source project (ISC licensed per its copyright file, read from the installed
+// package 2026-08-13) that documented the iCE40 bitstream format and pin placement by reverse
+// engineering, not vendor specification. nextpnr consults it to decide whether a pin constraint is
+// legal, so it is the authority a generated constraint file must satisfy — NOT the vendor's pin
+// assignment table. Fusing the two would fuse a specification with its reverse-engineering, the
+// browser-engine-versus-standard split drawn elsewhere. THE PIN POPULATION BELOW is IceStorm's
+// package position roster for the HX1K in TQ144: which numbered pins are usable I/O, DESIGNATORS
+// only. The tile coordinates beside them in IceStorm's database are placement internals, not facts
+// a board consults, so they are not copied — a board needs to know pin 47 exists and is an I/O, not
+// which tile it lands on. THE CROSS-CHECK THAT MAKES THIS MORE THAN A COPIED LIST: Lattice's own
+// per-bank table for this device and package sums to ninety-two general-purpose plus four
+// configuration pins; this roster has ninety-six entries. Two independent authorities agree at a
+// count, and a witness executes that agreement rather than a reader noticing it.
 
 type IcestormPackagePinRoster {
   device: NonEmptyStr
@@ -29,11 +42,10 @@ fn roster_admits_pin(r: IcestormPackagePinRoster, pin: NonEmptyStr) -> Bool {
   fold(r.pins, init: false, f: fn(acc, p) { acc || (p as String) == (pin as String) })
 }
 
-// A DESIGNATOR APPEARING TWICE WOULD MAKE THE ROSTER'S COUNT A LIE, and the count is one half of
-// the two-authority agreement this package rests on: Lattice's per-bank table says 96 and the
-// roster says 96, which is evidence only if the roster's 96 are 96 DISTINCT positions. A duplicate
-// would hold the count while shrinking the real population, so the agreement would still read
-// green against a roster that had quietly lost a pin.
+// A DESIGNATOR APPEARING TWICE WOULD MAKE THE ROSTER'S COUNT A LIE, and the count is half of the
+// two-authority agreement: Lattice's per-bank table says 96 and the roster says 96, evidence only
+// if those are 96 DISTINCT positions. A duplicate holds the count while shrinking the population,
+// so the agreement would read green against a roster that quietly lost a pin.
 fn roster_pin_occurrences(r: IcestormPackagePinRoster, pin: NonEmptyStr) -> Nat {
   fold(r.pins, init: 0, f: fn(acc, p) { if (p as String) == (pin as String) { acc + 1 } else { acc } })
 }

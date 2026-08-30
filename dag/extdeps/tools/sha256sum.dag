@@ -73,14 +73,23 @@ service sha256sum.Sha256 {
   }
 }
 
-data sha256_verify_shape_doc: String = "DESIGN §3 shape/transport/policy split: Sha256Verify(path, expected_digest) is the interface shape, cited to extdeps.crypto.hash extdeps_external_authority_anchor (FIPS 180-4 — the SHA-256 algorithm itself, not a particular CLI, and consumed from the module that owns that citation rather than re-minted here). sha256sum_verify_via_shell is ONE transport handler realizing that shape via the coreutils sha256sum CLI (sha256sum_cli_tool / CheckFile above); a future native/library digest realization is another handler bound to the same shape, not a rewrite."
+// DESIGN §3 shape/transport/policy split: Sha256Verify(path, expected_digest) is the interface
+// shape, cited to extdeps.crypto.hash extdeps_external_authority_anchor (FIPS 180-4 — the SHA-256
+// algorithm itself, not a particular CLI, and consumed from the module that owns that citation
+// rather than re-minted here). sha256sum_verify_via_shell is ONE transport handler realizing that
+// shape via the coreutils sha256sum CLI (sha256sum_cli_tool / CheckFile above); a future
+// native/library digest realization is another handler bound to the same shape, not a rewrite.
 
 type Sha256VerifyVerdict
   = Sha256Matches
   | Sha256Mismatch
   | Sha256VerifyInfraFailure { reason: NonEmptyStr }
 
-data sha256_verify_infra_failure_doc: String = "Sha256VerifyInfraFailure is DESIGN §5 state-space de-conflation (cursor review, PR #6596): mktemp/checksum-file-write failures are environment/tooling failures, not evidence about path's digest, so they must not collapse into Sha256Mismatch alongside a genuine sha256sum mismatch - a caller that surfaces Sha256Mismatch as HashMismatchRefusal would otherwise mislabel a broken mktemp as a corrupted download."
+// Sha256VerifyInfraFailure is DESIGN §5 state-space de-conflation (cursor review, PR #6596):
+// mktemp/checksum-file-write failures are environment/tooling failures, not evidence about path's
+// digest, so they must not collapse into Sha256Mismatch alongside a genuine sha256sum mismatch - a
+// caller that surfaces Sha256Mismatch as HashMismatchRefusal would otherwise mislabel a broken
+// mktemp as a corrupted download.
 
 data sha256_verify_native_transport_frontier_rows: List<FrontierRow> = [
   frontier_row_decl(

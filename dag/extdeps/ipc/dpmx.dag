@@ -18,7 +18,19 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 // page does NOT state a current revision designation, so no revision is recorded here; a
 // revision is a fact this repository does not yet hold, and inventing "Revision C" from
 // recollection would be exactly the fabricated citation DESIGN §3 rules against.
-data ipc_dpmx_subject_note: String = "IPC-DPMX (IPC-2581), the PCB and assembly manufacturing description exchange format, cited to its own consortium. Purpose, quoted exactly from the fetched page: 'a generic standard for printed circuit board and assembly manufacturing description data and transfer methodology'. THE REVISION IS DELIBERATELY ABSENT: the consortium landing page states no revision designation, and this repository has not read the standard document itself, so the revision — which a manufacturing handoff genuinely depends on — is an unresolved obligation rather than a field filled from memory. WHY THIS IS A SEPARATE SUBJECT FROM GERBER: they are independently governed by different organizations (IPC-2581 Consortium here, Ucamco for Gerber), so they are two upstream authorities under DESIGN §3 external upstream decomposition, never one 'PCB output format' enum. WHAT THIS SUBJECT DOES NOT ESTABLISH: schema validity of a file in this format is not correctness, completeness, or manufacturability of the board it describes — those are separate admissions carried at the product layer, and conflating them is the nearby-question failure a green emitter test invites."
+// IPC-DPMX (IPC-2581), the PCB and assembly manufacturing description exchange format, cited to its
+// own consortium. Purpose, quoted exactly from the fetched page: 'a generic standard for printed
+// circuit board and assembly manufacturing description data and transfer methodology'. THE REVISION
+// IS DELIBERATELY ABSENT: the consortium landing page states no revision designation, and this
+// repository has not read the standard document itself, so the revision — which a manufacturing
+// handoff genuinely depends on — is an unresolved obligation rather than a field filled from
+// memory. WHY THIS IS A SEPARATE SUBJECT FROM GERBER: they are independently governed by different
+// organizations (IPC-2581 Consortium here, Ucamco for Gerber), so they are two upstream authorities
+// under DESIGN §3 external upstream decomposition, never one 'PCB output format' enum. WHAT THIS
+// SUBJECT DOES NOT ESTABLISH: schema validity of a file in this format is not correctness,
+// completeness, or manufacturability of the board it describes — those are separate admissions
+// carried at the product layer, and conflating them is the nearby-question failure a green emitter
+// test invites.
 
 type IpcDpmxFormat
   = | IpcDpmxFormatTarget

@@ -5,23 +5,22 @@ out of the live tree), **derived** (a consequence of a verified claim plus an au
 **proposed** (a design position awaiting a discriminating witness or an operator ruling).
 
 This note supersedes an earlier draft on the same branch that modelled merge as a three-way diff
-over parsed trees. §9 records what was rejected and why, because that reasoning is the most useful
-part of the history; the scenario corpus from that draft survives unchanged in §8.
+over parsed trees. §9 records what was rejected and why; the scenario corpus from that draft
+survives unchanged in §8.
 
 ---
 
 ## 1. Vocabulary — git's words, git's constraints deliberately not inherited
 
-Operator ruling: **anchor on git's terms.** Not from familiarity — from anti-forking. Coining a new
-word for a concept that already has an industry-standard one is the nicknaming DESIGN §3 forbids,
-and git's vocabulary is the shared one. New vocabulary must earn its place by naming something git
+Operator ruling: **anchor on git's terms** — for anti-forking, not familiarity. Coining a new word
+for a concept that already has an industry-standard one is the nicknaming DESIGN §3 forbids, and
+git's vocabulary is the shared one. New vocabulary must earn its place by naming something git
 genuinely fuses or lacks.
 
-The rule that separates the two goals: **keep the word for what it *means*; drop what git *does* to
-implement it.** "Commit" means *record a state I can point at later* — that survives entirely.
-Git's mechanism for it — a whole-tree snapshot fused with one parent, an author and a timestamp —
-is one realization, not the meaning. This is the interface/realization split of DESIGN §3 applied
-to naming.
+The separating rule: **keep the word for what it *means*; drop what git *does* to implement it.**
+"Commit" means *record a state I can point at later* — that survives. Git's mechanism — a whole-tree
+snapshot fused with one parent, an author and a timestamp — is one realization, not the meaning:
+DESIGN §3's interface/realization split applied to naming.
 
 | term | meaning here |
 |---|---|
@@ -33,12 +32,12 @@ to naming.
 | **acceptance** | agreement to use a commit — the one new term |
 | **deploy** | make an accepted commit active |
 
-`acceptance` earns its place because git's `commit` fuses three questions that are separate here:
-*is this program valid?*, *have we agreed to use it?*, and *is it what is running?* Merging those
-back into one word would re-create the fusion this model exists to remove.
+`acceptance` earns its place because git's `commit` fuses three separate questions: *is this program
+valid?*, *have we agreed to use it?*, and *is it what is running?* Merging them back into one word
+would re-create the fusion this model exists to remove.
 
-**Terms deliberately refused**, and the pattern is worth noticing — every one names a *mechanism*
-rather than something a person wants, and each exists to repair a model that loses information:
+**Terms deliberately refused** — every one names a *mechanism* rather than something a person wants,
+and each exists to repair a model that loses information:
 
 | refused | why |
 |---|---|
@@ -75,42 +74,41 @@ authoring, formatting, **SCM**, and annotation lenses consume and preserve the a
 Four consequences, all of them features:
 
 1. **A comment-only change is provably a semantic no-op** — new authored identity, identical
-   semantic identity. The system states this as a fact rather than guessing from bytes.
+   semantic identity, stated as a fact rather than guessed from bytes.
 2. **Comments never cause semantic conflicts.** Annotations are keyed by their subject, so two
    people annotating different declarations never interact.
 3. **An annotation collision is its own lower-stakes conflict**, reportable separately from a
    semantic one.
 4. **Reformatting is free**, and the authored form still round-trips because captures carry the raw
-   `lexeme` — the delimiter included — with normalization performed on read, never on capture. That
-   field distinction is load-bearing: its own carrier records that a realization stripping the
-   delimiter where another does not makes parse→render→parse either double it or silently change
-   content.
+   `lexeme` — delimiter included — normalized on read, never on capture. That distinction is
+   load-bearing: its own carrier records that a realization stripping the delimiter where another
+   does not makes parse→render→parse either double it or silently change content.
 
-**Comments are eternal carried debt** (operator framing, and the carrier agrees — the type is
-literally `SourceAnnotationDebt`). DESIGN calls plain annotations modeling debt: prose that has not
-yet migrated into typed carriers, carried forward in the hope that someone models it properly. The
-SCM's obligation is therefore to **carry them faithfully without enshrining them** as permanently
-first-class, so the debt stays payable rather than becoming load-bearing.
+**Comments are eternal carried debt** (operator framing; the type is literally
+`SourceAnnotationDebt`). DESIGN calls plain annotations modeling debt: prose not yet migrated into
+typed carriers, carried forward until someone models it properly. The SCM's obligation is to **carry
+them faithfully without enshrining them** as permanently first-class, so the debt stays payable
+rather than load-bearing.
 
 ## 3. The model
 
-**The store is append-only and immutable.** Editing never modifies anything; it creates another
-object. Objects are content-addressed, so identical content is automatically one object. Nothing in
-the store ever conflicts.
+**The store is append-only and immutable.** Editing creates another object, never modifies one.
+Objects are content-addressed, so identical content is one object. Nothing in the store ever
+conflicts.
 
-**A program is an act of exclusion, and that is why the store alone is not enough.** The store only
-grows — adding an object never invalidates anything — but choosing one `foo` means not the other.
-A monotonic store cannot by itself produce that non-monotonic fact, so something must *close* a
-selection and be nameable. This is A3 (agreement holds only on what stays stable across time)
-reaching the design directly.
+**A program is an act of exclusion, so the store alone is not enough.** The store only grows —
+adding an object never invalidates anything — but choosing one `foo` means not the other. A
+monotonic store cannot produce that non-monotonic fact, so something must *close* a selection and be
+nameable. This is A3 (agreement holds only on what stays stable across time) reaching the design
+directly.
 
 **A commit is that closed thing: one root object identity whose every reachable edge names exact
-content.** It has no parent list, no author, no timestamp, no message, no branch. Those are facts
-about proposals and acceptances, not about the program.
+content.** No parent list, author, timestamp, message, or branch — those are facts about proposals
+and acceptances, not the program.
 
-**Selection must not stay live after a commit.** If a program re-queried the store at use time,
-later additions would retroactively change what it means. The output of merge is an immutable exact
-graph, which is why the unit of agreement is a commit root rather than a choice function.
+**Selection must not stay live after a commit.** A program re-querying the store at use time would
+let later additions retroactively change its meaning. Merge outputs an immutable exact graph, which
+is why the unit of agreement is a commit root rather than a choice function.
 
 Five facts, kept apart:
 
@@ -131,16 +129,15 @@ content similarity is the heuristic §4 forbids. **It is also unnecessary:** ide
 merge is transporting a patch to the right place, and combining proposals transports nothing.
 
 **A name identifies a binding role in a context, not a thing.** Renaming changes a binding; the
-value is untouched. This is why content equality does not imply one program occurrence — one object
-may sit at several positions, sharing storage while remaining independently addressable by path.
+value is untouched. So content equality does not imply one program occurrence — one object may sit
+at several positions, sharing storage while independently addressable by path.
 
-**"Latest" is a query, not an identity.** This repository already ruled it: `extdeps.pin`
-`pin_selection_note` — *execution always resolves an exact identity, because resolving "latest" at
-execution is nondeterminism at the substrate boundary; re-resolution is an explicit action producing
-a reviewable diff.* Pinning a moving reference is not a contradiction: you resolve the moving
-reference to an exact identity and record that it came from a channel. `Pin<Subject>` is already the
-shape for that, already subject-generic by operator ruling, and `Pin<NodeName>` is an instantiation
-rather than a new concept.
+**"Latest" is a query, not an identity.** Already ruled here: `extdeps.pin` `pin_selection_note` —
+*execution always resolves an exact identity, because resolving "latest" at execution is
+nondeterminism at the substrate boundary; re-resolution is an explicit action producing a reviewable
+diff.* Pinning a moving reference is no contradiction: resolve it to an exact identity and record
+that it came from a channel. `Pin<Subject>` is already that shape, subject-generic by operator
+ruling, and `Pin<NodeName>` is an instantiation, not a new concept.
 
 ## 4. What merge is
 
@@ -148,13 +145,13 @@ Two proposals combine by taking both. A conflict exists only where one binding i
 two different objects — a genuine disagreement about what the code should be, never a collision of
 positions.
 
-Where the substrate says an edge is `Named`, recursion is keyed by that name; where it says
-`Positional`, **order carries meaning** — list elements, match-arm order — and the region is
-compared whole. Refusing there is the safety half of the design: merging positional edits by
-identity would fabricate a sequence nobody wrote, which is precisely what line-based merge does and
-calls success. *Verified:* `v2.std.node` already carries `EdgeLabel = Named { name } | Positional`
-per-edge at every depth, and named edges reach deep — `match_arm_pattern`, `binding`, `field`, and a
-function attaching to its parent as `Named { name: fn_name }`.
+Where the substrate says an edge is `Named`, recursion is keyed by that name; where `Positional`,
+**order carries meaning** — list elements, match-arm order — and the region is compared whole.
+Refusing there is the safety half of the design: merging positional edits by identity would
+fabricate a sequence nobody wrote, which is precisely what line-based merge does and calls success.
+*Verified:* `v2.std.node` carries `EdgeLabel = Named { name } | Positional` per-edge at every depth,
+and named edges reach deep — `match_arm_pattern`, `binding`, `field`, and a function attaching to
+its parent as `Named { name: fn_name }`.
 
 **One grain — the node.** Depth is not a parameter; it falls out of where the substrate says
 identity is by name versus by order.
@@ -162,16 +159,15 @@ identity is by name versus by order.
 ## 5. What this model does not claim
 
 **Merges are not "always safe."** Deep semantic understanding makes conflicts rarer and better
-explained; it does not remove them. Two changes can each be valid alone and interact — a new call to
-`foo` plus a narrowing of `foo`'s contract. Structural combination and **validity** are separate,
-and the second genuinely refuses: a structurally clean rename plus a stale reference produces a
-broken program. The honest claim is *far fewer conflicts, each a real question in the user's own
-vocabulary.*
+explained, not absent. Two changes can each be valid alone and interact — a new call to `foo` plus a
+narrowing of `foo`'s contract. Structural combination and **validity** are separate, and the second
+genuinely refuses: a structurally clean rename plus a stale reference is a broken program. The
+honest claim is *far fewer conflicts, each a real question in the user's own vocabulary.*
 
 **The hard part is not removed, only the accidental part.** Two proposals may admit no common
-program, or several materially distinct ones. That residue is the same compatibility problem merge
-always addressed. What is gone is everything around it: mutable files, patch transport, branch
-topology, global history, working-tree alignment, rebasing, and cloning.
+program, or several materially distinct ones — the same compatibility problem merge always
+addressed. Gone is everything around it: mutable files, patch transport, branch topology, global
+history, working-tree alignment, rebasing, and cloning.
 
 **Identity is currently weaker than the model needs.** *Verified:* `v2.std.node` `Hash` is
 `Fnv1a64Structural` — 64-bit, non-cryptographic — and no SHA-256 *computation* exists in `.dag`
@@ -189,25 +185,25 @@ either has an answer or admits it does not.
 
 **Git's answer is a non-answer**, and that is the design input. A secret in git history requires
 rewriting every subsequent commit; every hash changes; every clone, fork and open PR diverges. On a
-public repository this is not merely expensive but *ineffective* — the objects are already
-distributed. The answer practitioners actually use is "rotate the credential and assume the bytes
-are permanently public." We must not build a better version of that theater.
+public repository this is *ineffective*, not merely expensive — the objects are already distributed.
+Practitioners actually "rotate the credential and assume the bytes are permanently public." We must
+not build a better version of that theater.
 
 **Five independent facts git fuses into one.** Prevention, current-state retraction,
 audience-history retraction, credential invalidation, and bounded erasure are separate, and the
-distinction between the two retractions is load-bearing rather than pedantic:
+distinction between the two retractions is load-bearing:
 
 - **Prevention** — bytes never reach the public store. *The only operation that preserves
   confidentiality.*
-- **Current-state retraction** — the head no longer contains the material. **This is not enough**:
-  a clone that replays from the original root still recovers it.
+- **Current-state retraction** — the head no longer contains the material. **Not enough**: a clone
+  replaying from the original root still recovers it.
 - **Audience-history retraction** — new readers begin from a sanitized anchor and never receive the
-  material at all. This is what people mean by redaction, and it is a different fact from the above.
+  material. This is what people mean by redaction, and a different fact from the above.
 - **Invalidation** — rotate the credential so leaked bytes are worthless. **Already modeled**:
   `gunbc.auth.secret_rotation`, with exactly-once walls, receipt-backed retirement, and no stored
   payload digest.
-- **Erasure** — bytes unrecoverable. Claimable only inside a closed sanitization scope covering every
-  key, wrap, backup, cache, derivative, index and recovery path. Never "delete one key."
+- **Erasure** — bytes unrecoverable. Claimable only inside a closed sanitization scope covering
+  every key, wrap, backup, cache, derivative, index and recovery path. Never "delete one key."
 
 **Derived rule:** on a committed secret, SCM performs retraction, the rotation kernel performs
 invalidation, and erasure is claimable only in the private realm. **The SCM must never report
@@ -215,36 +211,35 @@ retraction as erasure.** Once disclosure escapes a controlled scope, `Uncontroll
 a **terminal standing** and **no global-erasure constructor exists** — the impossible claim is made
 unwritable rather than merely discouraged.
 
-Two consequences that are easy to get wrong in opposite directions. Invalidation is **not**
-established by the secret manager disabling a version: the underlying service may still accept the
-leaked token, so invalidation needs a subject-specific negative authentication probe. And a rewrite
-that lacks a complete sanitization receipt is `PrivateHistoryReanchored`, **not** erased.
+Two consequences easy to get wrong in opposite directions. Invalidation is **not** established by
+the secret manager disabling a version: the service may still accept the leaked token, so
+invalidation needs a subject-specific negative authentication probe. And a rewrite lacking a
+complete sanitization receipt is `PrivateHistoryReanchored`, **not** erased.
 
 **Where the wall sits.** Merge-time or CI-time checking is structurally incapable of confidentiality
 — the deleted Stage-0 placement gate established exactly this: a required check could refuse `main`,
 but pushed objects had already reached public storage. The chronology must be private capture →
 private merge and admission → derive an audience-authorized projection → serialize → write public
-storage. The public writer must not accept an arbitrary `Node`, blob or patch, only a projection
-minted by the authoritative private context. **Corollary:** a public PR branch cannot safely carry
-secret bytes on the theory that squash-landing removes them. And the surface is wider than file
-content: a secret in a commit message, path, diagnostic, workflow log, or projection metadata is the
-same disclosure.
+storage. The public writer accepts only a projection minted by the authoritative private context,
+never an arbitrary `Node`, blob or patch. **Corollary:** a public PR branch cannot safely carry
+secret bytes on the theory that squash-landing removes them. The surface is wider than file content:
+a secret in a commit message, path, diagnostic, workflow log, or projection metadata is the same
+disclosure.
 
 **Retraction without rewriting.** Where a commit is *accepted parent plus sparse transformation*,
 retraction can be an ordinary **appended transformation** — no existing identity changes, no
-downstream clone is invalidated. **This holds only if public history is an audience projection rather
-than a replayable copy of private transitions**; otherwise replay from an early checkpoint
-reconstructs the secret on the way to the head, and what was achieved is current-state retraction
-only. The resolution is an **audience-specific projection epoch with a sanitized anchor**: re-anchor
-the *public projection*, never the authoritative history.
+downstream clone is invalidated. **This holds only if public history is an audience projection
+rather than a replayable copy of private transitions**; otherwise replay from an early checkpoint
+reconstructs the secret on the way to the head, achieving current-state retraction only. The
+resolution is an **audience-specific projection epoch with a sanitized anchor**: re-anchor the
+*public projection*, never the authoritative history.
 
-Three constraints on that epoch, each of which an earlier draft of this note got wrong by being
-vague. The sanitized epoch must have **no public predecessor relation** to the contaminated one — a
-tombstone naming the old root, the path, or the incident reason is itself the leak, so the mapping is
-retained privately or not at all. The old epoch must be **retired from authoritative service**, since
-a clean head while the old refs are still advertised is not retraction. And **hiding a ref is not
-retraction** if direct object retrieval still serves the bytes. *(Proposed — the least settled part
-of this note.)*
+Three constraints on that epoch, each of which an earlier draft got wrong by vagueness. The
+sanitized epoch must have **no public predecessor relation** to the contaminated one — a tombstone
+naming the old root, path, or incident reason is itself the leak, so the mapping is retained
+privately or not at all. The old epoch must be **retired from authoritative service**: a clean head
+with the old refs still advertised is not retraction. And **hiding a ref is not retraction** if
+direct object retrieval still serves the bytes. *(Proposed — the least settled part of this note.)*
 
 **No confidentiality receipt carries secret bytes or a secret-derived digest**, following the
 rotation kernel's existing rule. Receipts retain opaque incident identity, subject references,
@@ -262,15 +257,15 @@ hard `CouldNotLand`.
 
 **`.env` does not belong in the graph.** Secret *values* live in a secret store; the graph holds
 `SecretRef` nodes, schema, and required binding identities, and `.env` becomes a local
-materialization rather than source-control authority. A marker inside the file cannot self-authorize:
+materialization, not source-control authority. A marker inside the file cannot self-authorize:
 removing `secret=true` must be an authorized policy change, not an ordinary content edit.
 
 **Node-grain withholding survives only at a real interface/realization boundary**, consistent with
 the existing refusal of per-statement holes. Public signature with encrypted body: allowed. Public
 body with one expression silently missing: refused.
 
-**Erasure is not strictly harder than git's** — git is already a Merkle DAG, and finer grain can help
-because a secret subtree can carry its own key instead of requiring a whole file's destruction. But
+**Erasure is not strictly harder than git's** — git is already a Merkle DAG, and finer grain can
+help: a secret subtree can carry its own key instead of requiring a whole file's destruction. But
 *accounting* is harder, and two hazards are specific to this design: never publish the private
 canonical root hash as the public root, and **never deduplicate secret plaintext across audience
 realms — cross-audience content-address equality is an oracle.**
@@ -280,14 +275,14 @@ realms — cross-audience content-address equality is an oracle.**
 **Honest feasibility ruling first.** An executable slice exists without the parked authoring-capture
 surface, but it **cannot honestly merge arbitrary concurrent edits to existing `.dag` files**.
 Without capture, nothing can tell from two file endpoints which proposal, deletion, rename or frame
-the author intended, and claiming otherwise reconstructs patch inference under new vocabulary. So
-the first slice merges **explicitly authored proposals**, and says so.
+the author intended; claiming otherwise reconstructs patch inference under new vocabulary. So the
+first slice merges **explicitly authored proposals**, and says so.
 
-Three operations. No base, no ancestor, no parent, no branch pointer, no working copy, no patch.
-**This is the shipped signature, corrected 2026-08-21 against `dag/gunbc/scm/merge.dag` as merged in
-#8719** — the draft below it specified a two-proposal call and a `ChoiceRequired` arm, neither of
-which exists, and a stale authority describing an operation nobody can invoke is the premise
-contamination DESIGN documents against its own CI paragraph:
+Three operations. No base, ancestor, parent, branch pointer, working copy, or patch. **This is the
+shipped signature, corrected 2026-08-21 against `dag/gunbc/scm/merge.dag` as merged in #8719** — the
+draft below it specified a two-proposal call and a `ChoiceRequired` arm, neither of which exists,
+and a stale authority describing an operation nobody can invoke is the premise contamination DESIGN
+documents against its own CI paragraph:
 
 ```
 merge(store, target, target_dependencies, proposals)
@@ -299,34 +294,32 @@ checkout(store, commit) -> CheckedOut { program } | CheckoutRefused { cause }
 ```
 
 **Why the signature grew a target and lost a proposal count** (operator direction, 2026-08-20). The
-two-proposal form had nothing to preserve *from*, so the only thing it could do with two proposals
-was union their bindings — which is neither the literal closed-scope reading nor a dependency model,
-and which ships a program referencing a deleted node when one proposal adds `k` depending on `f`
-while the other deletes `f`. The target supplies every fact outside the implication frontier, and
-**silence means preserve it**. Proposals became a list because a contest is a property of the whole
-population rather than of a pair.
+two-proposal form had nothing to preserve *from*, so all it could do was union bindings — neither
+the literal closed-scope reading nor a dependency model — and it ships a program referencing a
+deleted node when one proposal adds `k` depending on `f` while the other deletes `f`. The target
+supplies every fact outside the implication frontier, and **silence means preserve it**. Proposals
+became a list because a contest is a property of the whole population, not a pair.
 
 **Why the outcome arms are named for less than they conclude.** `MergeRefused` rather than
-`CouldNotLand`: the engine cannot establish terminality, since an unsupported dependency kind may be
-unmodelled implementation and a missing target root may be an incomplete fetch.
-`MergeRolesContested` rather than `ChoiceRequired`: that distinct alternatives exist is what this
-layer establishes; that a *user* must choose requires proving they survive the admitted equivalence
-quotient, that the candidate population is closed, and that no further machine work resolves them —
-none of which lives here. **`MergeRolesContested` is complete over the proposal population supplied
-to that call and proves nothing about global candidate-space closure.** That boundary is currently
-held by this paragraph and by the type name, not structurally; the landing seam is where it becomes
-structural.
+`CouldNotLand`: the engine cannot establish terminality — an unsupported dependency kind may be
+unmodelled implementation, a missing target root an incomplete fetch. `MergeRolesContested` rather
+than `ChoiceRequired`: this layer establishes that distinct alternatives exist; that a *user* must
+choose requires proving they survive the admitted equivalence quotient, that the candidate
+population is closed, and that no further machine work resolves them — none of which lives here.
+**`MergeRolesContested` is complete over the proposal population supplied to that call and proves
+nothing about global candidate-space closure.** That boundary is held by this paragraph and the type
+name, not structurally; the landing seam is where it becomes structural.
 
 A proposal is a set of authored requirements — `RequireBinding { role, value }` or
 `RequireBindingAbsent { role }` — meaning *the resulting program must contain this exact value at
-this named binding*, or *must not bind this role at all*. Absence is authored rather than implied,
-because silence already means preserve: a delete expressed by omission would read as "leave it
-alone", the exact inversion of the request. Both sides normalize to a requested state
-(`DesiredRoleValue`) before any contest is decided, so identical authorings are **agreement**, not a
-question with identical alternatives. Distinct bindings combine by construction; two different
-requested states at one binding produce `MergeRolesContested` carrying **every** distinct
-alternative — accumulated over the whole population so arrival order cannot decide which evidence
-survives, and never latest-wins, first-wins, or branch-priority-wins.
+this named binding*, or *must not bind this role at all*. Absence is authored, not implied, because
+silence already means preserve: a delete by omission would read as "leave it alone", the inversion
+of the request. Both sides normalize to a requested state (`DesiredRoleValue`) before any contest is
+decided, so identical authorings are **agreement**, not a question with identical alternatives.
+Distinct bindings combine by construction; two different requested states at one binding produce
+`MergeRolesContested` carrying **every** distinct alternative — accumulated over the whole
+population so arrival order cannot decide which evidence survives, and never latest-wins,
+first-wins, or branch-priority-wins.
 
 `checkout` follows exact object links from the commit root and consults **nothing else** — not
 names, branches, proposals, acceptances, or the live store beyond the identities it was given.
@@ -365,33 +358,32 @@ combination without identity.
 the first consumer would fuse a model proof with unrelated frontend and performance work.
 
 **Direction after `NATIVE-COMMIT-0`, operator ruling 2026-08-21: a CLI vertical before the depth
-recursion**, which reverses the "headline win is the next slice" ordering stated above. The reason is
-DESIGN §5's specification-without-execution trap rather than a change of view about which slice is
-more valuable. Nothing has ever *consumed* this kernel: the 15 claims in
-`test.claim.scm_merge_witness` are assertions **about** it, authored alongside it, and a witness
-suite is not a consumer. A CLI is the first artifact that uses the store, checkout, identity and
-merge together under conditions nobody authored to make them pass.
+recursion**, reversing the "headline win is the next slice" ordering above. The reason is DESIGN
+§5's specification-without-execution trap, not a changed view of which slice is more valuable.
+Nothing has ever *consumed* this kernel: the 15 claims in `test.claim.scm_merge_witness` are
+assertions **about** it, authored alongside it, and a witness suite is not a consumer. A CLI is the
+first artifact that uses the store, checkout, identity and merge together under conditions nobody
+authored to make them pass.
 
 The ordering is safe because **depth changes how `merge` combines, not how `add` authors**. A user
 adds a module either way; whether merge recurses into it is orthogonal, so the command surface built
 now survives the recursion landing later.
 
-The known cost, stated so it is designed for rather than discovered: a CLI makes the
-top-level-binding limitation *user-visible*, since the first thing anyone tries is editing two
-functions in one module — which today asks a question instead of combining. That refusal must say
-exactly that, in those terms, rather than reading as a defect.
+The known cost, designed for rather than discovered: a CLI makes the top-level-binding limitation
+*user-visible*, since the first thing anyone tries is editing two functions in one module — which
+today asks a question instead of combining. That refusal must say exactly that, in those terms,
+rather than reading as a defect.
 
 ## 8. Scenario corpus (retained)
 
 No merge kernel should be built without these. Each is a RED unless marked otherwise.
 
 **Structural merge — with measured coverage as of 2026-08-21 (#8719 merged).** The corpus opens "no
-merge kernel should be built without these", and a kernel was built, so the honest thing is to state
-which of them it actually answers rather than leave the reader to assume. **4 of 13 are covered.**
-The `witness` column names the claim in `test.claim.scm_merge_witness`; the `blocked on` column says
-what would close each gap, because "uncovered" collapses three different situations — a gap the
-current grain could close today, a gap that needs the sub-node recursion, and a gap that needs
-vocabulary the model does not yet have at all.
+merge kernel should be built without these", and a kernel was built, so this states which rows it
+actually answers. **4 of 13 are covered.** The `witness` column names the claim in
+`test.claim.scm_merge_witness`; the `blocked on` column says what would close each gap, because
+"uncovered" collapses three situations — a gap the current grain could close today, a gap needing
+the sub-node recursion, and a gap needing vocabulary the model does not yet have.
 
 | scenario | required result | covered | witness / blocked on |
 |---|---|---|---|
@@ -410,15 +402,15 @@ vocabulary the model does not yet have at all.
 | only one side changed a node | **preserved — the §6 asymmetry regression control** | **yes** | `an_independent_sibling_is_preserved_exactly` |
 
 **What the partition says about the next slice.** Four gaps are one job — the sub-node recursion of
-§4's named-edge rule. Three are a second job needing rename/move vocabulary the model does not have.
-Two are the positional-merge non-goal. **One — duplicate named siblings — is closable now**, and it
-is the only structural scenario that neither waits on depth nor on new vocabulary, which makes it
-the cheapest real coverage available.
+§4's named-edge rule. Three are a second job needing rename/move vocabulary the model lacks. Two are
+the positional-merge non-goal. **One — duplicate named siblings — is closable now**: the only
+structural scenario waiting on neither depth nor new vocabulary, hence the cheapest real coverage
+available.
 
-**Coverage claims about this table must be measured, not recalled.** The number above was produced
-by joining the 15 claims in `test.claim.scm_merge_witness` against these rows one at a time. An
-earlier estimate from reading was "roughly five", which was close enough to feel safe and wrong
-enough to have mis-scoped the next slice.
+**Coverage claims about this table must be measured, not recalled.** The number above came from
+joining the 15 claims in `test.claim.scm_merge_witness` against these rows one at a time. An earlier
+estimate from reading was "roughly five" — close enough to feel safe, wrong enough to mis-scope the
+next slice.
 
 **Admission and capture**
 
@@ -462,14 +454,13 @@ satisfy the suite.
 Kept because the reasoning is the most reusable part of this note.
 
 **Three-way merge over parsed trees.** The first draft modelled merge as `capture(base, proposal)`
-producing a patch, keyed by declaration name. It works, and it is better than line-based merge, but
-it is diff-and-patch with a semantic key — it reconstructs intent from endpoints because the
-information was destroyed before it was seen. It also inherits a base, and through the base a
-timeline.
+producing a patch keyed by declaration name. It works and beats line-based merge, but it is
+diff-and-patch with a semantic key — reconstructing intent from endpoints because the information
+was destroyed before it was seen. It also inherits a base, and through the base a timeline.
 
 **Cross-revision node identity.** Pursued for most of a day as the way to make renames carry. Closed
-by `occurrence_identity_scope_law` and, more importantly, shown to be unnecessary: identity exists to
-transport patches.
+by `occurrence_identity_scope_law` and, more importantly, unnecessary: identity exists to transport
+patches.
 
 **`std.change` `keyed_three_way_fold` as the merge kernel.** *Verified:* its leaf verdict returns
 `KeyedConflict` when only one side changed a value — correct for reconciliation, where `desired` is
@@ -478,11 +469,11 @@ fleet-reconcile spine; the verdict is not.
 
 **The seven inherited assumptions.** Text as storage, commit-as-whole-tree-snapshot, one global
 timeline, branch-as-mutable-pointer, merge-as-invoked-event, the working copy, and the repository as
-a unit. Three are simply wrong here. Four contain a real requirement wearing a git costume: a state
-commitment is load-bearing even though the snapshot is not; arbitration is real at a unique effectful
-target even though compare-and-swap is not fundamental to content; a sparse working *context* is real
-even though a materialized tree is not; and authority domain, confidentiality realm, retention scope
-and trust policy are real boundaries that must not be re-fused into a "repository" type.
+a unit. Three are simply wrong here. Four contain a real requirement in a git costume: a state
+commitment is load-bearing though the snapshot is not; arbitration is real at a unique effectful
+target though compare-and-swap is not fundamental to content; a sparse working *context* is real
+though a materialized tree is not; and authority domain, confidentiality realm, retention scope and
+trust policy are real boundaries that must not be re-fused into a "repository" type.
 
 **The existing P1 kernel.** `gunbc.source_integration_proof_kernel` is built around an
 `accepted_parent` and a before/after delta — the mutation-and-parent assumptions this model rejects.

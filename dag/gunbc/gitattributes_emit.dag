@@ -14,11 +14,35 @@ type GitattributesGenerationOutcome
   = GitattributesGenerated { content: String }
   | GitattributesGenerationRefused
 
-data gitattributes_emit_authority_note: String = "THE committed byte projection through which Git receives the relevant subset of the modeled repository-path policy (generated-file conflict policy charter, lane 2, operator-ruled 2026-08-01). Presentation-policy rows (linguist) and integration-policy rows (merge driver attribute) are orthogonal facts derived from separate authorities — generated provenance does not imply linguist-hidden, and neither row is hand-authored in the committed file. The merge-attribute population is gunbc.generated_projection_paths deterministic_generated_projection_merge_rows(), which joins TWO arms: the committed generated-artifact registry, at exact-path grain with duplicate paths refused before row emission; and the stage0 seed mirror, as a directory glob over the stage0 source root's direct children plus one unset row per hand-maintained member, ordered glob-first because the last matching attributes line wins. THIS SENTENCE PREVIOUSLY DESCRIBED AN ARM THAT DID NOT EXIST — it claimed a join with plan-derived stage0 Rust for months after the #8406 regen cut deleted gunbc.stage0_emit_plan at the root, while the population was in fact the registry alone and every emitted stage0 source carried no merge attribute at all. The prose was the only place the arm survived, which is why it is corrected here rather than quietly widened: a note asserting an arm nobody can execute is what let the gap stand. committed_generated_artifact_paths() remains the heal/registry authority. .gitattributes classifies itself through the same derivation with no handwritten self-row. The merge-driver DEFINITION lives in repository-local Git config (gunbc.repo_local_git_config), not in this file."
+// THE committed byte projection through which Git receives the relevant subset of the modeled
+// repository-path policy (generated-file conflict policy charter, lane 2, operator-ruled
+// 2026-08-01). Presentation-policy rows (linguist) and integration-policy rows (merge driver
+// attribute) are orthogonal facts derived from separate authorities — generated provenance does not
+// imply linguist-hidden, and neither row is hand-authored in the committed file. The
+// merge-attribute population is gunbc.generated_projection_paths
+// deterministic_generated_projection_merge_rows(), which joins TWO arms: the committed
+// generated-artifact registry, at exact-path grain with duplicate paths refused before row
+// emission; and the stage0 seed mirror, as a directory glob over the stage0 source root's direct
+// children plus one unset row per hand-maintained member, ordered glob-first because the last
+// matching attributes line wins. THIS SENTENCE PREVIOUSLY DESCRIBED AN ARM THAT DID NOT EXIST — it
+// claimed a join with plan-derived stage0 Rust for months after the #8406 regen cut deleted
+// gunbc.stage0_emit_plan at the root, while the population was in fact the registry alone and every
+// emitted stage0 source carried no merge attribute at all. The prose was the only place the arm
+// survived, which is why it is corrected here rather than quietly widened: a note asserting an arm
+// nobody can execute is what let the gap stand. committed_generated_artifact_paths() remains the
+// heal/registry authority. .gitattributes classifies itself through the same derivation with no
+// handwritten self-row. The merge-driver DEFINITION lives in repository-local Git config
+// (gunbc.repo_local_git_config), not in this file.
 
-
-data generated_projection_paths_join_seam_note: String = "Seam history for the two-arm population. #7609 (operator sequence step 4, 2026-08-01) established deterministic_generated_projection_paths() as the registry roster joined with a stage0 arm derived from gunbc.stage0_emit_plan. The #8406 regen cut deleted that plan at the root and the arm went with it silently, because this consumer sat outside the deletion census. The arm is restored as a COMPLEMENT rather than a path list, for reasons carried at its construction site in gunbc.generated_projection_paths: a path list — hand-authored or derived — leaves the invalid state writable, and the only surviving derived population takes live git observations as inputs, which a committed byte projection may not depend on. Duplicate refusal remains fail-closed inside the registry arm (counted diagnostic), not silent dedup."
-
+// Seam history for the two-arm population. #7609 (operator sequence step 4, 2026-08-01) established
+// deterministic_generated_projection_paths() as the registry roster joined with a stage0 arm
+// derived from gunbc.stage0_emit_plan. The #8406 regen cut deleted that plan at the root and the
+// arm went with it silently, because this consumer sat outside the deletion census. The arm is
+// restored as a COMPLEMENT rather than a path list, for reasons carried at its construction site in
+// gunbc.generated_projection_paths: a path list — hand-authored or derived — leaves the invalid
+// state writable, and the only surviving derived population takes live git observations as inputs,
+// which a committed byte projection may not depend on. Duplicate refusal remains fail-closed inside
+// the registry arm (counted diagnostic), not silent dedup.
 
 data dag_linguist_presentation_policy_pattern: String = "**/*.dag"
 data dag_linguist_presentation_policy_attribute: String = "linguist-language=Rust"

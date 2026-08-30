@@ -1,9 +1,13 @@
 module test.claim.materialization_ladder_witness
 
-
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-data ladder_witness_note: String = "Each test is one cell of the operator's state x decision table (2026-07-09): the decision is a function of WHEN the redundancy is knowable and WHETHER what was knowable was prepared for. Errors fire only on knowable-but-unprepared; genuine emergence and declared triviality are typed acceptances, never silence. Fixtures mirror the live worked example: a workflow (isolated children) over jobs (shared-state steps), a retry frame (declared replay), a fleet frame (unbounded sibling runs over time)."
+// Each test is one cell of the operator's state x decision table (2026-07-09): the decision is a
+// function of WHEN the redundancy is knowable and WHETHER what was knowable was prepared for.
+// Errors fire only on knowable-but-unprepared; genuine emergence and declared triviality are typed
+// acceptances, never silence. Fixtures mirror the live worked example: a workflow (isolated
+// children) over jobs (shared-state steps), a retry frame (declared replay), a fleet frame
+// (unbounded sibling runs over time).
 
 fn wf() -> std.materialization_ladder.Frame { std.materialization_ladder.Frame { name: "workflow", kind: IsolatedChildrenFrame } }
 fn job(name: String) -> std.materialization_ladder.Frame { std.materialization_ladder.Frame { name: name, kind: SharedStateFrame } }
@@ -266,7 +270,12 @@ test fn zero_demand_effect_is_the_use_not_dead() -> Bool {
   deploy_ok && measure_ok
 }
 
-data value_tier_witness_note: String = "Value-tier mirror witnesses: each asserts the refactored ladder verdict agrees cell-by-cell with v1.compiler.ownership semantics — make_decision (take_count = semantic_consumer_count: Consumed only), build_read_only_params (plurality = binding_fan_out: CarryAccess excluded; all access readonly), build_movable_set (borrows = whole_value_borrow_count: Read + Carry, NOT Project). The fold-accumulator case (carries + one take → demoted, v1 re-earns the move via FoldAccUnwrapProof) is asserted at the conservative pre-unwrap semantics."
+// Value-tier mirror witnesses: each asserts the refactored ladder verdict agrees cell-by-cell with
+// v1.compiler.ownership semantics — make_decision (take_count = semantic_consumer_count: Consumed
+// only), build_read_only_params (plurality = binding_fan_out: CarryAccess excluded; all access
+// readonly), build_movable_set (borrows = whole_value_borrow_count: Read + Carry, NOT Project). The
+// fold-accumulator case (carries + one take → demoted, v1 re-earns the move via FoldAccUnwrapProof)
+// is asserted at the conservative pre-unwrap semantics.
 
 fn rust_value_providers() -> List<CacheProvider> {
   [rust_reference_provider(), rust_clone_provider()]

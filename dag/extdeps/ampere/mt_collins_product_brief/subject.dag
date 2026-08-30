@@ -15,7 +15,10 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   }
 }
 
-data mt_collins_product_brief_subject_note: String = "PUBLIC MARKETING COLLATERAL ONLY. Mt. Collins is dual-socket 2U reference hardware whose engineering documents are NDA-gated through Customer Connect; this brief is recorded so the lane does not repeat the search. HOW THIS REPOSITORY READ THE LOCATOR IS RECORDED AS A GUNBC RECEIPT WITH A DeclarationRef TO mt_collins_public_product_brief, NOT AS A FIELD ON THIS RECORD."
+// PUBLIC MARKETING COLLATERAL ONLY. Mt. Collins is dual-socket 2U reference hardware whose
+// engineering documents are NDA-gated through Customer Connect; this brief is recorded so the lane
+// does not repeat the search. HOW THIS REPOSITORY READ THE LOCATOR IS RECORDED AS A GUNBC RECEIPT
+// WITH A DeclarationRef TO mt_collins_public_product_brief, NOT AS A FIELD ON THIS RECORD.
 
 type MtCollinsBrief2022V2 {}
 

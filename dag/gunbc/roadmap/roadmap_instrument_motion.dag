@@ -49,7 +49,10 @@ THE PHYSICS IS NOT COMPUTED HERE. The frame sequence is decided in gunbc.design.
 
 data motion_page_title: String = "gunbc — instrument motion lab"
 
-data frames_are_emitted_not_computed_note: String = "The client receives a decided sequence rather than a physics implementation. This is the same reading-direction discipline the emitter uses elsewhere: the model decides, the target renders. It also means the browser cannot disagree with the witness — the list asserted green in dag/test/claim/instrument_bob_witness_test.dag is the list the page ships."
+// The client receives a decided sequence rather than a physics implementation. This is the same
+// reading-direction discipline the emitter uses elsewhere: the model decides, the target renders.
+// It also means the browser cannot disagree with the witness — the list asserted green in
+// dag/test/claim/instrument_bob_witness_test.dag is the list the page ships.
 
 data motion_frame_interval_ms: Milliseconds = 16
 
@@ -64,7 +67,12 @@ fn frame_wire(f: BobFrame) -> String {
   to_string(f.displacement_px)
 }
 
-data refusal_removes_the_attribute_note: String = "A REFUSED SEQUENCE SHIPS NO WIRE AT ALL. The button is not rendered as a button: the tap becomes a visible line naming the refusal, its cause, how many frames it managed and the budget it was given. The client binds taps by the presence of the frames attribute, so a refusal cannot be clicked and there is no attribute for a renderer to parse — never a plausible-looking list, and never a control whose press does nothing without saying why. A page cannot render motion the model refused to decide."
+// A REFUSED SEQUENCE SHIPS NO WIRE AT ALL. The button is not rendered as a button: the tap becomes
+// a visible line naming the refusal, its cause, how many frames it managed and the budget it was
+// given. The client binds taps by the presence of the frames attribute, so a refusal cannot be
+// clicked and there is no attribute for a renderer to parse — never a plausible-looking list, and
+// never a control whose press does nothing without saying why. A page cannot render motion the
+// model refused to decide.
 
 data wire_takes_frames_not_a_tap_note: String = "THE SERIALIZER TAKES FRAMES, NOT A TAP (review finding, 2026-08-07). It used to take a strength and a preference and resolve the sequence itself, which meant it had to answer for a refusal — and it answered by rendering the empty string, exactly the absorbing fallback this lane exists to remove. Two things went wrong at once: a refused sequence became indistinguishable from a settled sequence of no frames, and every assertion of the form string_contains(html, wire) went VACUOUSLY TRUE, because every string contains the empty one. So the control that was supposed to pin the shipped sequence would have passed on a page that shipped nothing.
 
@@ -117,12 +125,15 @@ fn motion_rules() -> List<BuildRule> {
   ]
 }
 
-data motion_css_composes_the_register_note: String = "The page's stylesheet is the instrument register's own sheet plus this page's three rules, in that order, because the plate and the buttons are painted in role variables the register defines. Emitting only the local rules would leave every role_var undefined and the page would render unstyled while every rule in it was correct — a failure that looks like a styling bug and is actually a missing composition."
+// The page's stylesheet is the instrument register's own sheet plus this page's three rules, in
+// that order, because the plate and the buttons are painted in role variables the register defines.
+// Emitting only the local rules would leave every role_var undefined and the page would render
+// unstyled while every rule in it was correct — a failure that looks like a styling bug and is
+// actually a missing composition.
 
 fn instrument_motion_css() -> String {
   join([instrument_css(), serialize_rules(rules: motion_rules())], "\n")
 }
-
 
 fn tap_label(t: SyntheticTapStrength) -> String {
   join([
@@ -164,7 +175,10 @@ fn tap_button(t: SyntheticTapStrength) -> Fragment {
   }
 }
 
-data straddle_is_shown_note: String = "The three buttons are labelled with their magnitudes and with whether each clears the discriminating floor, because the straddle is the argument: a light tap is below the threshold a real knock would have to clear, and showing that is what stops the control from reading as a volume knob."
+// The three buttons are labelled with their magnitudes and with whether each clears the
+// discriminating floor, because the straddle is the argument: a light tap is below the threshold a
+// real knock would have to clear, and showing that is what stops the control from reading as a
+// volume knob.
 
 fn tap_row() -> Fragment {
   el_class("div", "motion-taps", [
@@ -221,7 +235,11 @@ fn plate_section() -> Fragment {
   ])
 }
 
-data probe_section_note: String = "Two probes, run separately and reported separately, because they answer different questions. DeviceMotion is the cross-engine route the Accelerometer specification itself points new projects at; LinearAccelerationSensor is the route whose lifecycle produces a NAMED error when it cannot connect, which is the only way to tell a missing backend from a missing permission from missing hardware. Neither is dropped in favour of the other."
+// Two probes, run separately and reported separately, because they answer different questions.
+// DeviceMotion is the cross-engine route the Accelerometer specification itself points new projects
+// at; LinearAccelerationSensor is the route whose lifecycle produces a NAMED error when it cannot
+// connect, which is the only way to tell a missing backend from a missing permission from missing
+// hardware. Neither is dropped in favour of the other.
 
 fn probe_section() -> Fragment {
   el("section", [

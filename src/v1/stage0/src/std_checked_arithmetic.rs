@@ -13,15 +13,6 @@ use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
 use std::rc::Rc;
 
-pub fn checked_arithmetic_bound_note() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "The bound is stated as i64's inclusive range because that is what the seed and the emitted Rust actually use. It is one literal pair here, replacing the six copies that were open-coded inside std.induction's checked operations - the same constant repeated per call site is the redundancy DESIGN section 2 names, and a repeated bound is worse than most because a single stale copy is a silently wrong answer rather than a compile error. GROUNDING FRONTIER, stated rather than implied: extdeps.languages.rust.primitives already carries i64's range as a cited row (range_min_inclusive / range_max_inclusive), and extdeps.languages.go.primitives carries the same numbers for its own int64. This module does NOT yet consume those rows, because they are String-typed wire values on language-surface rows and decoding them is its own increment. Until it does, this is a second representation of a cited fact - declared debt, not a claim of grounding.".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
-}
-
 pub fn int_inclusive_max() -> i64 {
     9223372036854775807
 }
@@ -281,15 +272,6 @@ pub fn checked_int_magnitude(a: i64) -> Rc<CheckedNat> {
             value: nat_magnitude(a.clone()),
         })
     }
-}
-
-pub fn nat_magnitude_residue_note() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "WHY THIS IS A SEPARATE FUNCTION, and what remains unguarded about it. The Int-to-Nat crossing is admitted at a function RETURN position (std.coercion grounded_primitive_coproduct_identities registers Int -> Nat as an identity: a Nat IS an Int, grounded construction-side by the numeric tower), but not in a record-field position, so the crossing cannot happen inside the CheckedNatReady literal and has to be its own declaration. THE RESIDUE, named rather than left for a reader to find: nat_magnitude is correct for every input except the minimum representable value, whose magnitude is one past the maximum and where the realization's negation overflows. checked_int_magnitude is the sanctioned entry and refuses exactly that input. This is strictly better than the int_to_nat_nonnegative it replaces - no input maps to a fabricated zero, and the one unrepresentable case has a typed refusal rather than a silent clamp - but it is NOT a construction wall: nothing stops a caller invoking nat_magnitude directly. DISSOLVE-ON: a record-field-position crossing (which makes the guard and the crossing one expression) or sole_constructor over the magnitude carrier.".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
 }
 
 pub fn nat_magnitude(a: i64) -> Nat {

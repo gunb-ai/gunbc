@@ -25,7 +25,12 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
   further_citations: []
 }
 
-data scp_diagnostic_scope_subject_note: String = "THE SUBJECT IS THE AMPERE SCP/SMpro/PMpro DIAGNOSTIC TOKEN STREAM AND ITS STRUCTURED BOOT-PROGRESS INTERFACE, as an upstream surface only. Deliberately NO token-to-meaning function exists: no codebook has been obtained, so a token is an identity this repository may compare and count and may not interpret. The read-effect axis is part of the subject because the interface is an acknowledged queue rather than a sampled register, which decides whether a reader may poll it. NOT gunbc receipts about a host, NOT any verdict about fatality."
+// THE SUBJECT IS THE AMPERE SCP/SMpro/PMpro DIAGNOSTIC TOKEN STREAM AND ITS STRUCTURED
+// BOOT-PROGRESS INTERFACE, as an upstream surface only. Deliberately NO token-to-meaning function
+// exists: no codebook has been obtained, so a token is an identity this repository may compare and
+// count and may not interpret. The read-effect axis is part of the subject because the interface is
+// an acknowledged queue rather than a sampled register, which decides whether a reader may poll it.
+// NOT gunbc receipts about a host, NOT any verdict about fatality.
 
 // AMPERE owns the SCP / SMpro / PMpro diagnostic interfaces and the token
 // namespace. This module models that upstream shape; it does NOT record what
@@ -153,10 +158,18 @@ data ampere_smpro_error_queue_interfaces: List<AmpereDiagnosticInterface> = [
   AmpereDiagnosticInterface { sysfs_attribute: "overflow_mem_ue", read_effect: ReadSnapshot },
 ]
 
-fn scp_token_is_error_class(token: AmpereScpConsoleToken) -> Bool {
-  token.class == ScpECode
-}
+// The E prefix classifies a token's NAMESPACE, not its consequence. Public boot output from an
+// ALTRAD8UD-1L2T / Altra Max M128-30 machine that boots successfully contains E559 and E571, so an
+// E token is routinely non-fatal. Conversely P012 appears in that same successful progression
+// immediately after 'PMpro output complete', so it is ordinary progress context rather than a stall
+// marker. Any claim that a specific token is fatal must come from an observed transition on an
+// observed host — token, then reset — and belongs in a fleet receipt, never in this upstream
+// module. scp_token_is_error_class answers which NAMESPACE a token belongs to and nothing else;
+// there is intentionally no token-to-meaning function here, because with no codebook obtained every
+// implementation of one would be invention.
 
 // Deliberately absent: any function from a token to a verdict, a severity, or
 // a description. There is no codebook, so no such function can be honest.
-data ampere_scp_token_class_is_not_a_verdict_note: String = "The E prefix classifies a token's NAMESPACE, not its consequence. Public boot output from an ALTRAD8UD-1L2T / Altra Max M128-30 machine that boots successfully contains E559 and E571, so an E token is routinely non-fatal. Conversely P012 appears in that same successful progression immediately after 'PMpro output complete', so it is ordinary progress context rather than a stall marker. Any claim that a specific token is fatal must come from an observed transition on an observed host — token, then reset — and belongs in a fleet receipt, never in this upstream module. scp_token_is_error_class answers which NAMESPACE a token belongs to and nothing else; there is intentionally no token-to-meaning function here, because with no codebook obtained every implementation of one would be invention."
+fn scp_token_is_error_class(token: AmpereScpConsoleToken) -> Bool {
+  token.class == ScpECode
+}

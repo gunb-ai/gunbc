@@ -51,7 +51,15 @@ import v2.lens.module_impact_query {
   changed_surface_skip_authority,
 }
 
-data module_impact_query_witness_note: String = "Controlled fixtures: every input population and every expected population is authored here, so no assertion is a measurement of the current tree copied back onto itself (DESIGN 5 oracle rule). Three discriminating families. (1) The cycle pair - all_import vs mixed - has identical topology and different provenance, so a union-grain classifier reds on one while passing the other. (2) The two-disjoint-cycles fixture is the regression control for review 50459: the pre-fix union-level verdict greened its own suite while suppressing a real violation. (3) The pool-mismatch fixture is the control for the operator's F3 finding: an edge whose target is declared-but-absent from the pool used to vanish silently while the reading still answered complete."
+// Controlled fixtures: every input population and every expected population is authored here, so no
+// assertion is a measurement of the current tree copied back onto itself (DESIGN 5 oracle rule).
+// Three discriminating families. (1) The cycle pair - all_import vs mixed - has identical topology
+// and different provenance, so a union-grain classifier reds on one while passing the other. (2)
+// The two-disjoint-cycles fixture is the regression control for review 50459: the pre-fix
+// union-level verdict greened its own suite while suppressing a real violation. (3) The
+// pool-mismatch fixture is the control for the operator's F3 finding: an edge whose target is
+// declared-but-absent from the pool used to vanish silently while the reading still answered
+// complete.
 
 data fixture_nodes: List<ModuleDeclarationFact> = [
   ModuleDeclarationFact { module: "m.a", path: "fixture/a.dag" },
@@ -71,7 +79,10 @@ data pool_independence_unavailable: List<ReferenceDerivedClosureAdmission> = [
   },
 ]
 
-data pool_independence_established_note: String = "ReferenceDerivedClosureAcceptanceReceipt is sole_constructor, so a consumer CANNOT fabricate an Established capability from outside the admission module - the wall refused this witness's first attempt to hand-build the receipt, which is exactly the point of the wall. The admission module's own `established` constructor is the only legitimate route, so the witness goes through it."
+// ReferenceDerivedClosureAcceptanceReceipt is sole_constructor, so a consumer CANNOT fabricate an
+// Established capability from outside the admission module - the wall refused this witness's first
+// attempt to hand-build the receipt, which is exactly the point of the wall. The admission module's
+// own `established` constructor is the only legitimate route, so the witness goes through it.
 
 data pool_independence_established: List<ReferenceDerivedClosureAdmission> = [
   established(capability: UnrelatedLoadedFileExcluded),
@@ -226,7 +237,13 @@ data declared_but_absent_edges: List<ModuleDependencyEdge> = [
   ModuleDependencyEdge { path: "fixture/b.dag", target_module: "m.ghost", target_declared: true },
 ]
 
-data pool_mismatch_note: String = "F3 control (operator ruling 2026-08-08). m.ghost is target_declared TRUE but has no ModuleDeclarationFact in fixture_nodes - the producer believed it declared, the supplied pool does not carry it. The pre-recut implementation resolved that edge to zero rows, dropped it from adjacency/closure/cycles, and computed completeness from the raw declared flag alone, so the reading answered CLOSED on an inconsistent pool. The two observations are now independent, so this must surface as DeclaredTargetAbsentFromPool and must NOT be reported as an undeclared target."
+// F3 control (operator ruling 2026-08-08). m.ghost is target_declared TRUE but has no
+// ModuleDeclarationFact in fixture_nodes - the producer believed it declared, the supplied pool
+// does not carry it. The pre-recut implementation resolved that edge to zero rows, dropped it from
+// adjacency/closure/cycles, and computed completeness from the raw declared flag alone, so the
+// reading answered CLOSED on an inconsistent pool. The two observations are now independent, so
+// this must surface as DeclaredTargetAbsentFromPool and must NOT be reported as an undeclared
+// target.
 
 test fn witness_declared_but_absent_target_is_not_silently_dropped() -> Bool {
   let reading = module_impact_reading(
@@ -388,10 +405,13 @@ test fn witness_no_component_merges_modules_from_distinct_cycles() -> Bool {
   }) == false
 }
 
-
-
-
-data changed_surface_witness_note: String = "CAPSULE 2 acceptance, REWORKED under the operator ruling 2026-08-08. The earlier revision's five controls were good for what they tested but the SELECTED contract was not the PRODUCT contract: deletions were discarded, every subject resolved against head, an unresolved subject did not contaminate the typed result, and nothing stopped a partial answer authorizing a skip. These witnesses pin the reworked contract, including the two the operator named explicitly: an unresolved subject makes the WHOLE outcome Partial, and a Partial outcome can never yield a skip authority."
+// CAPSULE 2 acceptance, REWORKED under the operator ruling 2026-08-08. The earlier revision's five
+// controls were good for what they tested but the SELECTED contract was not the PRODUCT contract:
+// deletions were discarded, every subject resolved against head, an unresolved subject did not
+// contaminate the typed result, and nothing stopped a partial answer authorizing a skip. These
+// witnesses pin the reworked contract, including the two the operator named explicitly: an
+// unresolved subject makes the WHOLE outcome Partial, and a Partial outcome can never yield a skip
+// authority.
 
 data no_departed: List<String> = []
 
@@ -526,7 +546,13 @@ test fn witness_a_complete_but_pool_relative_outcome_withholds_skip_authority() 
   }
 }
 
-data differential_control_note: String = "OPERATOR ruling item 6. The production selector asks, per entry, whether any touched path lies in that entry's FORWARD dependency closure; this lane answers it once in reverse. The two must agree exactly over the same edge population: entry E's forward closure contains M if and only if E is among the reverse consumers of M. This witness asserts that biconditional in BOTH directions over every module in a fixture population — a one-directional check would pass on a reverse answer that silently narrows, which is the failure mode that matters when a selector decides what NOT to run."
+// OPERATOR ruling item 6. The production selector asks, per entry, whether any touched path lies in
+// that entry's FORWARD dependency closure; this lane answers it once in reverse. The two must agree
+// exactly over the same edge population: entry E's forward closure contains M if and only if E is
+// among the reverse consumers of M. This witness asserts that biconditional in BOTH directions over
+// every module in a fixture population — a one-directional check would pass on a reverse answer
+// that silently narrows, which is the failure mode that matters when a selector decides what NOT to
+// run.
 
 fn forward_closure_of(entry: ModuleIdentity) -> List<ModuleIdentity> {
   module_impact_reading(
@@ -583,8 +609,11 @@ test fn witness_the_differential_control_can_fail() -> Bool {
     && count_where(xs: forward_closure_of(entry: mod_c), predicate: fn(_) { true }) == 1
 }
 
-
-data fully_unresolved_witness_note: String = "Addendum to the operator ruling (verification pass, 2026-08-08). The earlier fully-unresolved case asserted only that nothing was reached, which INSTITUTIONALISED the exact bug item 3 names: a surface where NO input resolved produced reached=0 and a result a machine consumer would read as affects-nothing. Reaching nothing and knowing nothing are different states. This asserts the whole-result arm."
+// Addendum to the operator ruling (verification pass, 2026-08-08). The earlier fully-unresolved
+// case asserted only that nothing was reached, which INSTITUTIONALISED the exact bug item 3 names:
+// a surface where NO input resolved produced reached=0 and a result a machine consumer would read
+// as affects-nothing. Reaching nothing and knowing nothing are different states. This asserts the
+// whole-result arm.
 
 test fn witness_a_fully_unresolved_surface_is_partial_not_an_empty_answer() -> Bool {
   let outcome = surface_outcome(changed: ["README.md", "docs/plans/x.md"], departed: no_departed)
@@ -598,8 +627,12 @@ test fn witness_a_fully_unresolved_surface_is_partial_not_an_empty_answer() -> B
     }
 }
 
-
-data departed_overlap_witness_note: String = "The earlier fixtures authored changed_paths and departed_paths as DISJOINT lists, which is not how git reports a deletion: touched_paths carries every entry's path including deleted ones, so a deleted path appears in both. The fixture was therefore not a model of the real observation, and the bug it hid - one deletion producing two subjects, a spurious NoModuleDeclaredAtPath beside the correct BaseGraphUnavailable - was found by a real-diff receipt instead. This witness authors the overlap the way git actually produces it."
+// The earlier fixtures authored changed_paths and departed_paths as DISJOINT lists, which is not
+// how git reports a deletion: touched_paths carries every entry's path including deleted ones, so a
+// deleted path appears in both. The fixture was therefore not a model of the real observation, and
+// the bug it hid - one deletion producing two subjects, a spurious NoModuleDeclaredAtPath beside
+// the correct BaseGraphUnavailable - was found by a real-diff receipt instead. This witness authors
+// the overlap the way git actually produces it.
 
 test fn witness_a_deleted_path_present_in_both_lists_yields_one_base_subject() -> Bool {
   let outcome = surface_outcome(

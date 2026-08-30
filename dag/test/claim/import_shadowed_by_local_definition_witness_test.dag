@@ -30,7 +30,9 @@ module test.claim.import_shadowed_by_local_definition_witness_test
 
 import std.types { Bool, String }
 
-data import_shadow_witness_note: String = "Fixtures shadow a real std symbol because the harness compiles ONE source: a two-module collision is not authorable here, and importing from the live corpus expresses the same collision in one module."
+// Fixtures shadow a real std symbol because the harness compiles ONE source: a two-module collision
+// is not authorable here, and importing from the live corpus expresses the same collision in one
+// module.
 
 fn import_shadow_negative_fixture_source() -> String {
   "module ish.probe\n\nimport std.types { String }\nimport std.algebra { trim }\n\nfn trim(value: String) -> String {\n  trim(value)\n}\n"

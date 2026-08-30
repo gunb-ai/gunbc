@@ -16,7 +16,13 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-data ts0_no_new_debt_gate_note: String = "TS-0 exact-edge no-new-debt gate (language-support-completion design LANG-2/TS-0, census re-run 2026-08-06): the five current live-corpus leak edges are frozen at (importer_path, vocab_module) identity grain on v2.lens.realization_vocabulary_containment realization_vocab_grandfathered_edge_roster; a NEW exact edge outside that roster still refuses. Per-PR mechanism coverage only — synthetic predicate receipts over hand-built LayerImportFact rows, not a second live-tree census. The irreducible live-corpus receipt runs on the falsifier substrate long lane (realization_vocab_live_corpus_receipt_holds)."
+// TS-0 exact-edge no-new-debt gate (language-support-completion design LANG-2/TS-0, census re-run
+// 2026-08-06): the five current live-corpus leak edges are frozen at (importer_path, vocab_module)
+// identity grain on v2.lens.realization_vocabulary_containment
+// realization_vocab_grandfathered_edge_roster; a NEW exact edge outside that roster still refuses.
+// Per-PR mechanism coverage only — synthetic predicate receipts over hand-built LayerImportFact
+// rows, not a second live-tree census. The irreducible live-corpus receipt runs on the falsifier
+// substrate long lane (realization_vocab_live_corpus_receipt_holds).
 
 data typescript_sidecar_module: String = "extdeps.languages.typescript.program"
 

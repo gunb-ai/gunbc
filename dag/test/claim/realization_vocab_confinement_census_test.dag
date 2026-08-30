@@ -65,7 +65,12 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-data confinement_census_witness_note: String = "THE SUBJECT ROSTERS ARE READ FROM THE REAL LENS MODULE, not restated here. Every expected key in this file is taken from v2.lens.realization_vocabulary_containment's own declared data, so a roster edit moves both the census and its expectation together and this file never becomes a second copy of the confinement surface. What it does independently is COUNT and CROSS-CHECK: the arithmetic below sums the four rosters, which is a different assembly than either the census enumeration or its classification performs."
+// THE SUBJECT ROSTERS ARE READ FROM THE REAL LENS MODULE, not restated here. Every expected key in
+// this file is taken from v2.lens.realization_vocabulary_containment's own declared data, so a
+// roster edit moves both the census and its expectation together and this file never becomes a
+// second copy of the confinement surface. What it does independently is COUNT and CROSS-CHECK: the
+// arithmetic below sums the four rosters, which is a different assembly than either the census
+// enumeration or its classification performs.
 
 data confinement_census_witness_revision_commit: String = "0000000000000000000000000000000000000b0b"
 
@@ -109,7 +114,14 @@ test fn witness_the_real_confinement_surface_reconciles_exactly() -> Bool {
   confinement_witness_coverage_established()
 }
 
-data confinement_self_join_separability_note: String = "THIS WITNESS IS AN IMPLICATION, NOT A CONJUNCTION, and the difference is the separability rule applied to itself. Written as 'a receipt exists AND its denominator is independent' it cannot be individually falsified: a mutation that removes the receipt entirely reds it without saying anything about independence, so independence would be licensed by a red that never examined it. Split, the two halves land on their own witnesses — receipt existence is witness_the_real_confinement_surface_reconciles_exactly, and what remains here is the conditional. The refusal arm is therefore vacuously true rather than false, which is only sound BECAUSE existence is asserted separately; on its own it would be a hole."
+// THIS WITNESS IS AN IMPLICATION, NOT A CONJUNCTION, and the difference is the separability rule
+// applied to itself. Written as 'a receipt exists AND its denominator is independent' it cannot be
+// individually falsified: a mutation that removes the receipt entirely reds it without saying
+// anything about independence, so independence would be licensed by a red that never examined it.
+// Split, the two halves land on their own witnesses — receipt existence is
+// witness_the_real_confinement_surface_reconciles_exactly, and what remains here is the
+// conditional. The refusal arm is therefore vacuously true rather than false, which is only sound
+// BECAUSE existence is asserted separately; on its own it would be a hole.
 
 test fn witness_the_confinement_receipt_if_present_has_an_independent_denominator() -> Bool {
   match confinement_surface_coverage(revision: confinement_witness_revision()) {
@@ -123,7 +135,11 @@ test fn witness_the_confinement_receipt_if_present_has_an_independent_denominato
   }
 }
 
-data confinement_conformance_witness_note: String = "THE CONFORMANCE CONTROLS ARE ASSERTED SEPARATELY FROM THE CEILING THEY FEED, so a red says whether the classifier stopped discriminating or whether something downstream broke. The discriminating half is the load-bearing one: it asserts that the census REFUSES a classification with one axis dropped, which is probe 5 turned into an enrolled control that re-runs on every affected change rather than a mutation in a worktree that no longer exists."
+// THE CONFORMANCE CONTROLS ARE ASSERTED SEPARATELY FROM THE CEILING THEY FEED, so a red says
+// whether the classifier stopped discriminating or whether something downstream broke. The
+// discriminating half is the load-bearing one: it asserts that the census REFUSES a classification
+// with one axis dropped, which is probe 5 turned into an enrolled control that re-runs on every
+// affected change rather than a mutation in a worktree that no longer exists.
 
 test fn witness_the_discriminating_control_is_refused_by_the_census() -> Bool {
   census_coverage_is_refused(
@@ -250,7 +266,12 @@ test fn witness_an_undeclared_key_is_absent_from_the_claimed_population() -> Boo
   }
 }
 
-data confinement_prefix_grain_witness_note: String = "THE GRAIN CHECK, RUN AGAINST THE REAL ROSTER. 'v2.workflow.bash' is a declared confinement key and 'v2.workflow.bash_command_fold_serialize' is a real module the bash lane names — the second is matched by the first as a STRING PREFIX while being no namespace descendant of it at all. This witness asserts that relationship holds on the live roster rather than on a fixture, because a sweep that read those keys as namespace containment is precisely how a phantom was manufactured in this lane."
+// THE GRAIN CHECK, RUN AGAINST THE REAL ROSTER. 'v2.workflow.bash' is a declared confinement key
+// and 'v2.workflow.bash_command_fold_serialize' is a real module the bash lane names — the second
+// is matched by the first as a STRING PREFIX while being no namespace descendant of it at all. This
+// witness asserts that relationship holds on the live roster rather than on a fixture, because a
+// sweep that read those keys as namespace containment is precisely how a phantom was manufactured
+// in this lane.
 
 test fn witness_a_confinement_prefix_key_matches_a_non_descendant_by_string_prefix() -> Bool {
   let prefix = "v2.workflow.bash"

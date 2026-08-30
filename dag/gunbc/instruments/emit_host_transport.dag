@@ -44,7 +44,18 @@ import gunbc.retained_shell_script { retained_foreign }
 
 data fixture_cargo_toml: String = "[package]\nname = \"emit_host_fixture\"\nversion = \"0.0.0\"\nedition = \"2021\"\n\n[[bin]]\nname = \"fixture\"\npath = \"src/main.rs\""
 
-data typed_smoke_doc: String = "run_rust_smoke and run_python_smoke are runtime-present sites: gunbc invokes each step, so per the shell-emission-model rule they are typed service operations (shell.Mktemp/Mkdir/Remove, Filesystem.Write for the heredoc bodies, cargo.Build.BuildManifest, python.Interpreter.RunFile, gunbc.WitnessBin.Run), never serialized bash. The former wc -c byte-count check strengthened to CONTENT equality: the fixtures emit NUL bytes precisely because printable output could pass a count check with wrong content; the expected string is built in-substrate from the same stdout_byte_count authority (repeat_string of from_code_point(0)), and NULs survive the transport's trailing-whitespace trim. Cleanup runs unconditionally (the old set -e script leaked the tempdir on mid-script failure). run_go_smoke, run_ts_smoke, and run_node_http_serve_smoke provision missing toolchains under WORKDIR before the smoke body (go.dev tarball; nodejs.org official linux tarball — npx ships in the same bin/) so self-hosted runners without a fleet-wide node install still pass emit_host_gate_passes."
+// run_rust_smoke and run_python_smoke are runtime-present sites: gunbc invokes each step, so per
+// the shell-emission-model rule they are typed service operations (shell.Mktemp/Mkdir/Remove,
+// Filesystem.Write for the heredoc bodies, cargo.Build.BuildManifest, python.Interpreter.RunFile,
+// gunbc.WitnessBin.Run), never serialized bash. The former wc -c byte-count check strengthened to
+// CONTENT equality: the fixtures emit NUL bytes precisely because printable output could pass a
+// count check with wrong content; the expected string is built in-substrate from the same
+// stdout_byte_count authority (repeat_string of from_code_point(0)), and NULs survive the
+// transport's trailing-whitespace trim. Cleanup runs unconditionally (the old set -e script leaked
+// the tempdir on mid-script failure). run_go_smoke, run_ts_smoke, and run_node_http_serve_smoke
+// provision missing toolchains under WORKDIR before the smoke body (go.dev tarball; nodejs.org
+// official linux tarball — npx ships in the same bin/) so self-hosted runners without a fleet-wide
+// node install still pass emit_host_gate_passes.
 
 data emit_host_node_bootstrap_shell_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: emit_host_node_bootstrap_script — concat-interpolated bash fragment (curl/tar nodejs.org linux tarball into WORKDIR/nodeboot) spliced into run_ts_smoke and run_node_http_serve_smoke via toolchain_provision_shell_exec; transport scaffold parallel to run_go_smoke's inline go.dev tarball provision. DISSOLVES WHEN emit_host TS/node smokes route through typed extdeps ops like run_rust_smoke/run_python_smoke (shell.Mktemp/Mkdir, modeled curl/tar or node runtime provision row) and this string carrier retires from dag/gunbc/instruments/emit_host_transport.dag.")
 
@@ -87,37 +98,37 @@ fn run_python_smoke() -> Bool {
 
 // WHY THE OCTET COMPARISON LEFT THE SHELL SCRIPT.
 //
-// These three smokes used to end in a shell `test` of the byte count against the expected one (and, for the http probe, a bare
-// `process.exit(1)`), so the script's exit status was the only thing that crossed into .dag. That
-// status is true for a missing toolchain, a failed download, a compile error AND a fixture that
-// emitted the wrong number of octets -- four states with four different owners, aliased below the
-// substrate where no carrier can reach them. A typed verdict at the .dag layer cannot separate what
-// the transport already collapsed.
+// These three smokes used to end in a shell `test` of the byte count against the expected one (and,
+// for the http probe, a bare `process.exit(1)`), so the script's exit status was the only thing
+// that crossed into .dag. That status is true for a missing toolchain, a failed download, a compile
+// error AND a fixture emitting the wrong number of octets — four states with four owners, aliased
+// below the substrate where no carrier can reach them. A typed verdict at the .dag layer cannot
+// separate what the transport already collapsed.
 //
-// So the script now REPORTS rather than adjudicates: it prints the byte count (or the probe's status
-// marker) and exits, and the comparison is performed here against the same in-substrate authority the
-// fixtures are built from. The script's own exit status keeps exactly one meaning -- the harness
-// could not pose the question -- and the comparison keeps the other -- the subject answered wrongly.
-// Both are still folded into one Bool at the return type; that fold is the class-B migration and is
-// deliberately not done here, because splitting the two states has to happen before a carrier can
-// name them, and this change is the half that no carrier shape depends on.
+// So the script now REPORTS rather than adjudicates: it prints the byte count (or the probe's
+// status marker) and exits, and the comparison is performed here against the same in-substrate
+// authority the fixtures are built from. The script's exit status keeps exactly one meaning — the
+// harness could not pose the question — and the comparison the other — the subject answered
+// wrongly. Both still fold into one Bool at the return type; that fold is the class-B migration,
+// deliberately not done here: splitting the two states must precede a carrier naming them, and this
+// change is the half no carrier shape depends on.
 
 // THE DECISION, TAKEN OVER SCALARS SO A HERMETIC CONTROL CAN AUTHOR ITS INPUTS.
 //
 // These take the reported stdout and the harness bit as plain values rather than the run record,
-// because shell.Exec.Run returns an anonymous output record no fixture can construct. Passing scalars
-// is what makes the cause-swap control in test.claim.emit_host_reported_comparison_cause_swap_test
-// authorable with no host effect at all: the two failure causes it distinguishes are supplied
-// directly, so the control measures THE PREDICATE rather than the toolchain.
+// because shell.Exec.Run returns an anonymous output record no fixture can construct. Scalars make
+// the cause-swap control in test.claim.emit_host_reported_comparison_cause_swap_test authorable
+// with no host effect: the two failure causes it distinguishes are supplied directly, so the
+// control measures THE PREDICATE rather than the toolchain.
 fn emit_host_reported_octets_match(reported_stdout: String, expected_text: String) -> Bool {
   reported_stdout == expected_text
 }
 
 // The fold that is still a fold. harness_ok false means the script could not pose the question;
-// octets_match false means the fixture answered with the wrong number of octets. Both still collapse
-// into one Bool HERE, and that is the class-B migration's job, not this change's -- what this change
-// establishes is that the two are separately computable at all, which they were not while the
-// comparison lived inside the script.
+// octets_match false means the fixture answered with the wrong number of octets. Both still
+// collapse into one Bool HERE — the class-B migration's job, not this change's, which establishes
+// only that the two are separately computable, as they were not while the comparison lived inside
+// the script.
 fn emit_host_smoke_holds(harness_ok: Bool, reported_stdout: String, expected_text: String) -> Bool {
   harness_ok && emit_host_reported_octets_match(reported_stdout: reported_stdout, expected_text: expected_text)
 }
@@ -235,7 +246,10 @@ fn c_emit_host_inject_fault_refuses_holds() -> Bool {
   }
 }
 
-data c_emit_host_smoke_red_doc: String = "Discriminating control for run_c_smoke (wet — exercised by emit_host_gate_passes, not hermetic discovery): the inject-fault arm deliberately calls add(2,2) while the green oracle expects add(2,3)=5 in the fixed-width stdout codec — a regression that accepts the fault path or drops the RED half goes RED here."
+// Discriminating control for run_c_smoke (wet — exercised by emit_host_gate_passes, not hermetic
+// discovery): the inject-fault arm deliberately calls add(2,2) while the green oracle expects
+// add(2,3)=5 in the fixed-width stdout codec — a regression that accepts the fault path or drops
+// the RED half goes RED here.
 
 fn run_c_smoke() -> Bool {
   c_emit_host_green_holds() && c_emit_host_inject_fault_refuses_holds()

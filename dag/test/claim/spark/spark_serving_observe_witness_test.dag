@@ -36,6 +36,7 @@ import gunbc.ollama_runtime_bundle {
 }
 import gunbc.fleet_known_hosts_anchor { portable_remote_words }
 import gunbc.spark.serving_observe {
+  spark_serving_host_observation,
   SparkServingCurrentBootDurabilityStanding,
   CurrentBootDurabilityExhibitedFleetWide,
   CurrentBootDurabilityNotExhibited,
@@ -51,6 +52,10 @@ import gunbc.spark.serving_observe {
   spark_serving_unit_outcome_from_probe_results,
   spark_serving_runtime_materialization_receipt_probe_argv,
   SparkServingObservationReportRefused,
+  SparkServingObservationReportRefusal,
+  SparkServingObservationScopeEmpty,
+  SparkServingObservationCoverageIncomplete,
+  SparkServingObservationPrerequisiteRefused,
   SparkServingObservationsProduced,
   spark_serving_observation_report_succeeded,
   spark_serving_observation_succeeded,
@@ -169,7 +174,8 @@ test fn absent_readback_derives_absent_observation() -> Bool {
   }
 }
 
-data unreachable_host_red_control_note: String = "RED CONTROL: an unreachable host or any probe leg that did not run must refuse observation, never license SparkServingAbsent (empty-observation narrow)."
+// RED CONTROL: an unreachable host or any probe leg that did not run must refuse observation, never
+// license SparkServingAbsent (empty-observation narrow).
 
 test fn unreachable_readback_does_not_derive_absent_observation() -> Bool {
   match derive_spark_serving_observation(readback: readback_unreachable()) {
@@ -218,7 +224,8 @@ test fn load_state_probe_leg_absent_refuses_unit_outcome() -> Bool {
   }
 }
 
-data version_parse_positive_control_note: String = "POSITIVE CONTROL: a real ollama /api/version payload must parse to the reported version string, never the desired pin."
+// POSITIVE CONTROL: a real ollama /api/version payload must parse to the reported version string,
+// never the desired pin.
 
 test fn version_json_positive_parses_reported_version() -> Bool {
   match spark_serving_parse_version_json(stdout: witness_version_json_positive) {
@@ -308,7 +315,7 @@ test fn runtime_receipt_probe_words_target_executor_receipt_path() -> Bool {
     )
 }
 
-data version_parse_malformed_red_control_note: String = "RED CONTROL: malformed /api/version output must refuse rather than return any version."
+// RED CONTROL: malformed /api/version output must refuse rather than return any version.
 
 test fn malformed_version_json_refuses_parse() -> Bool {
   match spark_serving_parse_version_json(stdout: "{\"version\":") {
@@ -318,7 +325,8 @@ test fn malformed_version_json_refuses_parse() -> Bool {
   }
 }
 
-data version_drift_red_control_note: String = "RED CONTROL: a different reported runtime version must not converge to the pinned release identity."
+// RED CONTROL: a different reported runtime version must not converge to the pinned release
+// identity.
 
 test fn different_runtime_version_refuses_loaded_identity() -> Bool {
   match derive_loaded_spark_serving_release_identity(readback: SparkServingReadback {
@@ -485,19 +493,78 @@ test fn api_field_refusal_surfaces_before_fingerprint_refusal() -> Bool {
 test fn observation_report_refused_is_not_success() -> Bool {
   !spark_serving_observation_report_succeeded(
     report: SparkServingObservationReportRefused {
-      cause: "attempt identity is not a safe path segment" as NonEmptyStr,
+      refusal: SparkServingObservationPrerequisiteRefused { cause: "attempt identity is not a safe path segment" as NonEmptyStr },
     },
   )
 }
 
 // The report carries readback + observation together; these fixtures only vary the observation, so
 // the readback is a fixed bare one and the wrapping stays out of every assertion below.
-fn ho(observation: SparkServingObservation) -> SparkServingHostObservation {
-  SparkServingHostObservation {
-    readback: readback_absent(),
-    observation: observation,
-    account: ManagedAccountProbeRefused { cause: "fixture: no account probe was run" },
+// THE FIXTURE NOW MINTS THROUGH THE CONSTRUCTOR, and that changed what it can express.
+//
+// It used to take an arbitrary observation and staple it to a fixed readback -- which is exactly the
+// disagreeing state review of #9754 found: the observation's host was free to differ from
+// readback.host. It cannot be supplied independently any more, so the fixture takes the READBACK and
+// lets the observation be derived. Tests that want a particular observation arm now select it by
+// choosing a readback that derives to it, which is the same thing the production path does.
+// HOST-PARAMETERISED READBACKS. With SparkServingHostObservation minted through its constructor, a
+// test selects an observation arm by choosing a readback that DERIVES to it -- the same move the
+// production path makes -- rather than by stapling an arm onto an unrelated readback.
+fn readback_absent_at(host: HostIdentity) -> SparkServingReadback {
+  SparkServingReadback {
+    host: host,
+    unit_outcome: SparkServingUnitAbsent,
+    runtime_version: SparkServingReadbackAbsent,
+    runtime_materialization_identity: SparkServingReadbackAbsent,
+    model_name: SparkServingReadbackAbsent,
+    model_tag: SparkServingReadbackAbsent,
+    model_manifest_digest: SparkServingReadbackAbsent,
+    nvidia_driver: SparkServingReadbackAbsent,
+    bind_address: SparkServingReadbackAbsent,
+    boot_provenance: BootProvenanceUnobserved { cause: "fixture readback carries no boot probe" as NonEmptyStr },
+    grants: GrantProbeRefused { cause: "fixture readback carries no grant probe" },
   }
+}
+
+// Derives SparkServingObservationRefused: the unit is present but inactive.
+fn readback_inactive_at(host: HostIdentity) -> SparkServingReadback {
+  SparkServingReadback {
+    host: host,
+    unit_outcome: SparkServingUnitInactive,
+    runtime_version: SparkServingReadbackAbsent,
+    runtime_materialization_identity: SparkServingReadbackAbsent,
+    model_name: SparkServingReadbackAbsent,
+    model_tag: SparkServingReadbackAbsent,
+    model_manifest_digest: SparkServingReadbackAbsent,
+    nvidia_driver: SparkServingReadbackAbsent,
+    bind_address: SparkServingReadbackAbsent,
+    boot_provenance: BootProvenanceUnobserved { cause: "fixture readback carries no boot probe" as NonEmptyStr },
+    grants: GrantProbeRefused { cause: "fixture readback carries no grant probe" },
+  }
+}
+
+// Derives SparkServingObserved.
+fn readback_active_complete_at(host: HostIdentity) -> SparkServingReadback {
+  SparkServingReadback {
+    host: host,
+    unit_outcome: SparkServingUnitActive,
+    runtime_version: SparkServingReadbackPresent { value: witness_pinned_runtime_version_wire },
+    runtime_materialization_identity: witness_runtime_materialization_identity_present(hex: witness_required_release_asset_digest_hex),
+    model_name: SparkServingReadbackPresent { value: "gpt-oss" },
+    model_tag: SparkServingReadbackPresent { value: "20b" },
+    model_manifest_digest: SparkServingReadbackPresent { value: witness_model_digest },
+    nvidia_driver: witness_nvidia_driver_present(wire: witness_nvidia_driver_satisfied_wire),
+    bind_address: SparkServingReadbackAbsent,
+    boot_provenance: BootProvenanceUnobserved { cause: "fixture readback carries no boot probe" as NonEmptyStr },
+    grants: GrantProbeRefused { cause: "fixture readback carries no grant probe" },
+  }
+}
+
+fn ho_from(readback: SparkServingReadback) -> SparkServingHostObservation {
+  spark_serving_host_observation(
+    readback: readback,
+    account: ManagedAccountProbeRefused { cause: "fixture: no account probe was run" },
+  )
 }
 
 test fn per_host_refusal_report_is_not_success() -> Bool {
@@ -505,12 +572,9 @@ test fn per_host_refusal_report_is_not_success() -> Bool {
     SparkServingObserved { host: _, loaded_release: loaded } =>
       !spark_serving_observation_report_succeeded(
         report: SparkServingObservationsProduced {
-          first: ho(observation: SparkServingObserved { host: "srv5", loaded_release: loaded }),
+          first: ho_from(readback: readback_active_complete_at(host: "srv5")),
           more: [
-            ho(observation: SparkServingObservationRefused {
-              host: "srv6",
-              cause: "gunbc-spark-serving.service is inactive" as NonEmptyStr,
-            }),
+            ho_from(readback: readback_inactive_at(host: "srv6")),
           ],
         },
       )
@@ -578,7 +642,7 @@ test fn driver_too_old_report_is_not_success() -> Bool {
     SparkServingObservationRefused { host: h, cause: c } =>
       !spark_serving_observation_report_succeeded(
         report: SparkServingObservationsProduced {
-          first: ho(observation: SparkServingObservationRefused { host: h, cause: c }),
+          first: ho_from(readback: readback_inactive_at(host: h)),
           more: [],
         },
       )
@@ -587,7 +651,8 @@ test fn driver_too_old_report_is_not_success() -> Bool {
   }
 }
 
-data p0_6_loaded_release_note: String = "P0-6: SparkServingReadback carries no configuration_digest or capacity fields; derive_loaded_spark_serving_release builds SparkServingRelease from runtime closure + model only."
+// P0-6: SparkServingReadback carries no configuration_digest or capacity fields;
+// derive_loaded_spark_serving_release builds SparkServingRelease from runtime closure + model only.
 
 test fn loaded_release_derivation_excludes_desired_policy_fields() -> Bool {
   match derive_loaded_spark_serving_release_identity(readback: readback_active_complete()) {
@@ -650,12 +715,9 @@ test fn absent_observation_was_made_though_it_did_not_succeed() -> Bool {
 test fn report_with_a_refused_host_refuses_even_when_a_sibling_answered() -> Bool {
   spark_serving_report_observations_were_made(
     report: SparkServingObservationsProduced {
-      first: ho(observation: SparkServingAbsent { host: "srv5" }),
+      first: ho_from(readback: readback_absent_at(host: "srv5")),
       more: [
-        ho(observation: SparkServingObservationRefused {
-          host: "srv6",
-          cause: "ssh exec refused" as NonEmptyStr,
-        }),
+        ho_from(readback: readback_inactive_at(host: "srv6")),
       ],
     },
   ) == false
@@ -664,23 +726,215 @@ test fn report_with_a_refused_host_refuses_even_when_a_sibling_answered() -> Boo
 test fn report_of_two_bare_hosts_counts_as_observed() -> Bool {
   spark_serving_report_observations_were_made(
     report: SparkServingObservationsProduced {
-      first: ho(observation: SparkServingAbsent { host: "srv5" }),
-      more: [ho(observation: SparkServingAbsent { host: "srv6" })],
+      first: ho_from(readback: readback_absent_at(host: "srv5")),
+      more: [ho_from(readback: readback_absent_at(host: "srv6"))],
     },
   )
 }
 
-test fn empty_observation_list_produces_no_report_rather_than_a_clean_one() -> Bool {
-  match spark_serving_observation_report_from_observations(observations: []) {
-    Absent => true
-    Present { value: _ } => false
+// P0-C2 CONTROLS AGAINST THE PRODUCTION REPORT CONSTRUCTOR.
+//
+// The coverage relation's own claims live beside it in v2.test.claim.spark_observation_scope and
+// exercise the pure join. These are deliberately different: they run the CONSTRUCTION PATH the
+// converge actually calls, because a correct helper wired to nothing is the specification-without-
+// execution trap, and the incident being repaired was exactly a green production report over a
+// narrowed roster.
+fn ho_at(host: HostIdentity) -> SparkServingHostObservation {
+  ho_from(readback: readback_absent_at(host: host))
+}
+
+fn ho_at_refused(host: HostIdentity) -> SparkServingHostObservation {
+  ho_from(readback: readback_inactive_at(host: host))
+}
+
+fn report_is_refused(r: SparkServingObservationReport) -> Bool {
+  match r {
+    SparkServingObservationsProduced { first: _, more: _ } => false
+    SparkServingObservationReportRefused { refusal: _ } => true
   }
+}
+
+// ASKING WHICH REFUSAL, NOT MERELY WHETHER. The seven controls below originally reduced every
+// coverage defect to report_is_refused, which established that the constructor refused and nothing
+// about what it carried -- so an implementation that computed the three typed populations and then
+// discarded them into a formatted string passed all seven. It did, and review of #9754 found it.
+// "Identity join versus cardinality" and "typed result versus rendered cause" are two different
+// properties and need two different controls.
+fn refusal_missing(r: SparkServingObservationReport) -> List<HostIdentity> {
+  match r {
+    SparkServingObservationsProduced { first: _, more: _ } => []
+    SparkServingObservationReportRefused { refusal: x } =>
+      match x {
+        SparkServingObservationCoverageIncomplete { missing: m, foreign: _, duplicated: _ } => m
+        SparkServingObservationScopeEmpty => []
+        SparkServingObservationPrerequisiteRefused { cause: _ } => []
+      }
+  }
+}
+
+fn refusal_foreign(r: SparkServingObservationReport) -> List<HostIdentity> {
+  match r {
+    SparkServingObservationsProduced { first: _, more: _ } => []
+    SparkServingObservationReportRefused { refusal: x } =>
+      match x {
+        SparkServingObservationCoverageIncomplete { missing: _, foreign: f, duplicated: _ } => f
+        SparkServingObservationScopeEmpty => []
+        SparkServingObservationPrerequisiteRefused { cause: _ } => []
+      }
+  }
+}
+
+fn refusal_duplicated(r: SparkServingObservationReport) -> List<HostIdentity> {
+  match r {
+    SparkServingObservationsProduced { first: _, more: _ } => []
+    SparkServingObservationReportRefused { refusal: x } =>
+      match x {
+        SparkServingObservationCoverageIncomplete { missing: _, foreign: _, duplicated: d } => d
+        SparkServingObservationScopeEmpty => []
+        SparkServingObservationPrerequisiteRefused { cause: _ } => []
+      }
+  }
+}
+
+fn refusal_is_scope_empty(r: SparkServingObservationReport) -> Bool {
+  match r {
+    SparkServingObservationsProduced { first: _, more: _ } => false
+    SparkServingObservationReportRefused { refusal: x } =>
+      match x {
+        SparkServingObservationScopeEmpty => true
+        SparkServingObservationCoverageIncomplete { missing: _, foreign: _, duplicated: _ } => false
+        SparkServingObservationPrerequisiteRefused { cause: _ } => false
+      }
+  }
+}
+
+fn only_host(hosts: List<HostIdentity>, host: HostIdentity) -> Bool {
+  (hosts |> count) == 1 && any(hosts, h => h == host)
+}
+
+// The narrowed roster names srv6 as MISSING specifically -- not merely "something was wrong".
+test fn the_narrowed_roster_refusal_names_srv6_as_missing() -> Bool {
+  let r = spark_serving_observation_report_from_observations(
+    expected: ["srv5", "srv6"],
+    observations: [ho_at(host: "srv5")],
+  )
+  only_host(hosts: refusal_missing(r: r), host: "srv6")
+    && ((refusal_foreign(r: r) |> count) == 0)
+    && ((refusal_duplicated(r: r) |> count) == 0)
+}
+
+// A foreign host is a SCOPE DISAGREEMENT and must not be reported as a missing one.
+test fn the_foreign_host_refusal_names_srv7_as_foreign_and_nothing_as_missing() -> Bool {
+  let r = spark_serving_observation_report_from_observations(
+    expected: ["srv5", "srv6"],
+    observations: [ho_at(host: "srv5"), ho_at(host: "srv6"), ho_at(host: "srv7")],
+  )
+  only_host(hosts: refusal_foreign(r: r), host: "srv7")
+    && ((refusal_missing(r: r) |> count) == 0)
+}
+
+// A duplicate is a roster that counted one machine twice, and srv6 is missing in the same breath --
+// two distinct defects carried separately rather than summed into one sentence.
+test fn the_duplicate_refusal_names_srv5_duplicated_and_srv6_missing() -> Bool {
+  let r = spark_serving_observation_report_from_observations(
+    expected: ["srv5", "srv6"],
+    observations: [ho_at(host: "srv5"), ho_at(host: "srv5")],
+  )
+  any(refusal_duplicated(r: r), h => h == "srv5")
+    && only_host(hosts: refusal_missing(r: r), host: "srv6")
+}
+
+// The empty scope is its OWN arm, not a coverage result with empty populations -- those are
+// different facts and a consumer must be able to tell them apart.
+test fn the_empty_scope_refusal_is_its_own_arm_not_an_empty_coverage_result() -> Bool {
+  refusal_is_scope_empty(r: spark_serving_observation_report_from_observations(
+    expected: [],
+    observations: [ho_at(host: "srv5")],
+  ))
+}
+
+test fn a_coverage_defect_is_never_reported_through_the_prerequisite_arm() -> Bool {
+  let r = spark_serving_observation_report_from_observations(
+    expected: ["srv5", "srv6"],
+    observations: [ho_at(host: "srv5")],
+  )
+  !refusal_is_scope_empty(r: r) && ((refusal_missing(r: r) |> count) > 0)
+}
+
+// (1) The incident itself: expected {srv5,srv6}, only srv5 answered. Nonempty, and refused.
+test fn a_narrowed_roster_refuses_even_though_the_observation_list_is_nonempty() -> Bool {
+  report_is_refused(r: spark_serving_observation_report_from_observations(
+    expected: ["srv5", "srv6"],
+    observations: [ho_at(host: "srv5")],
+  ))
+}
+
+// (2) A probe that did not answer still COVERS its subject. Coverage and answered-ness are two
+// questions, and collapsing them would make a refused probe look like an unprobed host.
+test fn a_refused_probe_satisfies_coverage_while_failing_the_observation_terminal() -> Bool {
+  let r = spark_serving_observation_report_from_observations(
+    expected: ["srv5", "srv6"],
+    observations: [ho_at(host: "srv5"), ho_at_refused(host: "srv6")],
+  )
+  !report_is_refused(r: r) && (spark_serving_report_observations_were_made(report: r) == false)
+}
+
+// (3) The post-retirement state a read-only instrument must accept: srv6 absent is a real
+// observation, not a gap.
+test fn an_absent_host_satisfies_coverage_and_the_read_only_report_succeeds() -> Bool {
+  let r = spark_serving_observation_report_from_observations(
+    expected: ["srv5", "srv6"],
+    observations: [ho_at(host: "srv5"), ho_at(host: "srv6")],
+  )
+  !report_is_refused(r: r) && spark_serving_report_observations_were_made(report: r)
+}
+
+// (4) A host nobody expected is a scope disagreement, not a bonus.
+test fn a_foreign_host_refuses() -> Bool {
+  report_is_refused(r: spark_serving_observation_report_from_observations(
+    expected: ["srv5", "srv6"],
+    observations: [ho_at(host: "srv5"), ho_at(host: "srv6"), ho_at(host: "srv7")],
+  ))
+}
+
+// (5) A duplicate is a roster that counted one machine twice, and the count it inflates is exactly
+// the one the deleted cardinality guard used to read.
+test fn a_duplicated_host_refuses_despite_the_row_count_looking_right() -> Bool {
+  report_is_refused(r: spark_serving_observation_report_from_observations(
+    expected: ["srv5", "srv6"],
+    observations: [ho_at(host: "srv5"), ho_at(host: "srv5")],
+  ))
+}
+
+// (6) Coverage over an empty expected roster is vacuously true -- no host is missing from a roster
+// that demands nobody -- which is why the scope is admitted on its own arm before the join runs.
+//
+// THE OBSERVATIONS HERE ARE DELIBERATELY NONEMPTY. An earlier draft of this claim passed [] for both
+// arguments and was measured to pass under a control that restored the old count guard, because an
+// empty observation list refuses under EITHER implementation -- the right verdict for the wrong
+// reason, which is a claim that cannot see the thing it was written to see. With a real observation
+// against an empty scope the two implementations disagree: the count guard produces a clean report,
+// the coverage join refuses.
+test fn an_empty_expected_scope_refuses_rather_than_covering_vacuously() -> Bool {
+  report_is_refused(r: spark_serving_observation_report_from_observations(
+    expected: [],
+    observations: [ho_at(host: "srv5")],
+  ))
+}
+
+// (7) The old guard's case still refuses -- through the join now, not through a count. Nonemptiness
+// is derived from an admitted scope plus exact coverage, so nothing was lost by deleting it.
+test fn an_empty_observation_list_against_a_real_scope_still_refuses() -> Bool {
+  report_is_refused(r: spark_serving_observation_report_from_observations(
+    expected: ["srv5", "srv6"],
+    observations: [],
+  ))
 }
 
 test fn a_refused_report_is_never_read_as_observed() -> Bool {
   spark_serving_report_observations_were_made(
     report: SparkServingObservationReportRefused {
-      cause: "no host was probed" as NonEmptyStr,
+      refusal: SparkServingObservationPrerequisiteRefused { cause: "no host was probed" as NonEmptyStr },
     },
   ) == false
 }
@@ -743,8 +997,8 @@ test fn an_absent_boot_probe_leg_is_unobserved_at_the_wiring() -> Bool {
 test fn the_emitted_report_text_carries_boot_provenance_per_host() -> Bool {
   let text = spark_serving_observation_report_text(
     report: SparkServingObservationsProduced {
-      first: ho(observation: SparkServingAbsent { host: "srv5" }),
-      more: [ho(observation: SparkServingAbsent { host: "srv6" })],
+      first: ho_from(readback: readback_absent_at(host: "srv5")),
+      more: [ho_from(readback: readback_absent_at(host: "srv6"))],
     },
     probed_at: "2026-08-20T00:00:00Z",
     attempt_raw: "fixture",
@@ -761,7 +1015,7 @@ test fn the_emitted_report_text_carries_boot_provenance_per_host() -> Bool {
 test fn the_emitted_report_text_carries_the_grant_standing() -> Bool {
   let text = spark_serving_observation_report_text(
     report: SparkServingObservationsProduced {
-      first: ho(observation: SparkServingAbsent { host: "srv5" }),
+      first: ho_from(readback: readback_absent_at(host: "srv5")),
       more: [],
     },
     probed_at: "2026-08-20T00:00:00Z",
@@ -928,32 +1182,29 @@ test fn undecodable_key_file_output_keeps_the_account_and_reports_unread() -> Bo
   }
 }
 
-
 // ═══════════════════════════════════════════════════════════════════════════════════════
 // CURRENT-BOOT DURABILITY STANDING
 // ═══════════════════════════════════════════════════════════════════════════════════════
 
+// THIS FIXTURE CARRIED THE EXACT MISMATCH THE MINT NOW FORBIDS: a readback saying SparkServingUnitAbsent
+// -- which derives SparkServingAbsent -- stapled to a hand-written SparkServingObservationRefused. The
+// two disagreed about what had been seen, and nothing noticed, because the observation was a free
+// parameter. Its readback is now SparkServingUnitInactive, which DERIVES the refused arm the fixture
+// meant, and the boot provenance these tests actually read is unaffected.
 fn ho_with_provenance(p: SparkServingBootProvenance) -> SparkServingHostObservation {
-  SparkServingHostObservation {
-    readback: SparkServingReadback {
-      host: "srv5",
-      unit_outcome: SparkServingUnitAbsent,
-      runtime_version: SparkServingReadbackAbsent,
-      runtime_materialization_identity: SparkServingReadbackAbsent,
-      model_name: SparkServingReadbackAbsent,
-      model_tag: SparkServingReadbackAbsent,
-      model_manifest_digest: SparkServingReadbackAbsent,
-      nvidia_driver: SparkServingReadbackAbsent,
-      bind_address: SparkServingReadbackAbsent,
-      boot_provenance: p,
-      grants: GrantProbeRefused { cause: "fixture readback carries no grant probe" },
-    },
-    observation: SparkServingObservationRefused {
-      host: "srv5",
-      cause: "fixture: standing tests read boot provenance only" as NonEmptyStr,
-    },
-    account: ManagedAccountProbeRefused { cause: "fixture: no account probe was run" },
-  }
+  ho_from(readback: SparkServingReadback {
+    host: "srv5",
+    unit_outcome: SparkServingUnitInactive,
+    runtime_version: SparkServingReadbackAbsent,
+    runtime_materialization_identity: SparkServingReadbackAbsent,
+    model_name: SparkServingReadbackAbsent,
+    model_tag: SparkServingReadbackAbsent,
+    model_manifest_digest: SparkServingReadbackAbsent,
+    nvidia_driver: SparkServingReadbackAbsent,
+    bind_address: SparkServingReadbackAbsent,
+    boot_provenance: p,
+    grants: GrantProbeRefused { cause: "fixture readback carries no grant probe" },
+  })
 }
 
 data fixture_started_at_boot: SparkServingBootProvenance = UnitStartedByManagerAtBoot {
@@ -998,7 +1249,7 @@ test fn one_host_not_up_with_its_boot_drops_the_fleet_standing() -> Bool {
 // narrow this standing is built to refuse.
 test fn a_refused_report_is_unobserved_not_a_measured_negative() -> Bool {
   match spark_serving_current_boot_durability_standing(
-    report: SparkServingObservationReportRefused { cause: "transport refused every leg" as NonEmptyStr },
+    report: SparkServingObservationReportRefused { refusal: SparkServingObservationPrerequisiteRefused { cause: "transport refused every leg" as NonEmptyStr } },
   ) {
     CurrentBootDurabilityUnobserved { cause: c } => string_contains(s: c as String, pattern: "transport refused")
     _ => false
@@ -1025,4 +1276,25 @@ test fn the_unobserved_wire_names_a_coverage_gap() -> Bool {
   )
   string_contains(s: line, pattern: "unobserved")
     && string_contains(s: line, pattern: "coverage gap")
+}
+
+// The property the mint buys, asserted rather than assumed: whatever host the readback names is the
+// host the derived observation names. Before #9754's review this was true of the production path by
+// coincidence and false of the type; it is now the only state that has a constructor.
+test fn the_minted_observation_cannot_disagree_with_its_readback_about_the_host() -> Bool {
+  let o = ho_from(readback: readback_inactive_at(host: "srv6"))
+  match o.observation {
+    SparkServingObserved { host: h, loaded_release: _ } => h == o.readback.host
+    SparkServingAbsent { host: h } => h == o.readback.host
+    SparkServingObservationRefused { host: h, cause: _ } => h == o.readback.host
+  }
+}
+
+test fn the_coverage_join_reads_the_host_the_observation_also_reports() -> Bool {
+  let o = ho_from(readback: readback_absent_at(host: "srv6"))
+  match o.observation {
+    SparkServingObserved { host: h, loaded_release: _ } => h == "srv6"
+    SparkServingAbsent { host: h } => h == "srv6"
+    SparkServingObservationRefused { host: h, cause: _ } => h == "srv6"
+  }
 }
