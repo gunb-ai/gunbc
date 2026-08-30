@@ -1587,6 +1587,7 @@ fn required_lanes_run_id_expression() -> String {
 // to emit any yaml at all. A `Rejected` fold can therefore never reach a published step.
 data required_lanes_gate_build_var: String = "BUILD"
 data required_lanes_gate_floor_var: String = "FLOOR"
+data required_lanes_gate_fabric_var: String = "FABRIC_EVIDENCE"
 data required_lanes_gate_pull_request_var: String = "PULL_REQUEST"
 data required_lanes_gate_event_name_var: String = "EVENT_NAME"
 data required_lanes_gate_measured_head_var: String = "MEASURED_HEAD"
@@ -1601,6 +1602,7 @@ fn required_lanes_aggregate_script_outcome() -> String? {
     stmts: required_lanes_gate_stmts(
       build_var: required_lanes_gate_build_var,
       floor_var: required_lanes_gate_floor_var,
+      fabric_var: required_lanes_gate_fabric_var,
       pull_request_var: required_lanes_gate_pull_request_var,
       event_name_var: required_lanes_gate_event_name_var,
       measured_head_var: required_lanes_gate_measured_head_var,
@@ -1655,6 +1657,7 @@ fn required_lanes_aggregate_step_env() -> List<YamlKeyValue> {
   [
     kv(key: required_lanes_gate_build_var, value: yaml_string(s: required_lane_result_expression(job_id: build_lane_job_id))),
     kv(key: required_lanes_gate_floor_var, value: yaml_string(s: required_lane_result_expression(job_id: floor_lane_job_id))),
+    kv(key: required_lanes_gate_fabric_var, value: yaml_string(s: required_lane_result_expression(job_id: fabric_evidence_job_id))),
     kv(key: required_lanes_gate_pull_request_var, value: yaml_string(s: required_lanes_pull_request_expression())),
     kv(key: required_lanes_gate_event_name_var, value: yaml_string(s: required_lanes_event_name_expression())),
     kv(key: required_lanes_gate_measured_head_var, value: yaml_string(s: required_lanes_measured_head_expression())),
@@ -1685,7 +1688,7 @@ fn required_lanes_aggregate_job() -> Job {
     name: none,
     runner: gunbc_ci_selected_runner_spec(),
     steps: [required_lanes_aggregate_step()],
-    needs: [build_lane_job_id, floor_lane_job_id],
+    needs: [build_lane_job_id, floor_lane_job_id, fabric_evidence_job_id],
     env: none,
     outputs: none,
     if_condition: Present { value: required_lanes_aggregate_job_condition() },
