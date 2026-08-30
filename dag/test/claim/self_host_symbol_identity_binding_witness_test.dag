@@ -1,4 +1,4 @@
-module test.claim.symbol_identity_binding_witness
+module test.claim.self_host_symbol_identity_binding_witness
 
 import std.types { List, String, Bool, Int, NonEmptyStr }
 import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_eq, declaration_ref_in_list }

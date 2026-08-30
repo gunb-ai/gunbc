@@ -1,6 +1,8 @@
 module v2.lens.mandatory_tag
 
 import v2.lens.common.construction_justification { ConstructionJustification, WallNow }
+import std.disposition { SubstrateMandatoryTag }
+import std.decl_ref { decl_ref }
 import std.algebra { Cons, Empty }
 import v2.std.algebra { length }
 import v2.std.integer { Int }
@@ -455,5 +457,8 @@ fn mandatory_tag_compile_gate(node: Node) -> Outcome<Witness<Node>> {
 }
 
 data construction_justification: ConstructionJustification = ConstructionJustification {
-  class: WallNow
+  class: WallNow {
+    mechanism: SubstrateMandatoryTag,
+    authority: decl_ref(module_path: "v2.lens.mandatory_tag", decl_name: "mandatory_tag_compile_gate")
+  }
 }

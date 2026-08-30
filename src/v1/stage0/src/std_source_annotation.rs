@@ -283,12 +283,10 @@ pub fn module_root_pick_step(
 pub fn module_root_subject(
     subjects: Rc<Vec<Rc<AnnotationSubject>>>,
 ) -> Option<Rc<AnnotationSubject>> {
-    subjects
-        .iter()
-        .cloned()
-        .fold(None, |acc: _, row: Rc<AnnotationSubject>| {
-            module_root_pick_step(acc.clone(), row.clone())
-        })
+    subjects.iter().cloned().fold(
+        std::option::Option::None,
+        |acc: _, row: Rc<AnnotationSubject>| module_root_pick_step(acc.clone(), row.clone()),
+    )
 }
 
 pub fn earliest_member_start_after(
@@ -317,10 +315,10 @@ pub fn module_header_gap_subject(
     preceded_by_annotation_line: bool,
 ) -> Option<Rc<AnnotationSubject>> {
     if (preceded_by_blank_line.clone() || preceded_by_annotation_line.clone()) {
-        None
+        std::option::Option::None
     } else {
         match module_root_subject(subjects.clone()) {
-            None => None,
+            None => std::option::Option::None,
             Some(mod_subject) => {
                 let first_member_start = earliest_member_start_after(
                     subjects.clone(),
@@ -332,7 +330,7 @@ pub fn module_header_gap_subject(
                 {
                     Some(mod_subject.clone())
                 } else {
-                    None
+                    std::option::Option::None
                 }
             }
         }
@@ -358,7 +356,7 @@ pub fn annotation_subject_pick(
         None => subjects.iter().cloned().fold(
             Rc::new(AnnotationSubjectPick {
                 contained: false,
-                following: None,
+                following: std::option::Option::None,
             }),
             |acc: Rc<AnnotationSubjectPick>, subject: Rc<AnnotationSubject>| {
                 if ((origin.start.clone() >= subject.span.clone().start.clone())
@@ -626,7 +624,7 @@ pub fn attach_annotations(
             Rc::new(AnnotationAttachAcc {
                 rows: Rc::new(vec![]),
                 refusals: Rc::new(vec![]),
-                pending: None,
+                pending: std::option::Option::None,
                 pending_adjacent: false,
             }),
             |acc: Rc<AnnotationAttachAcc>, capture: Rc<NormalizedAnnotationCapture>| {

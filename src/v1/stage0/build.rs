@@ -2,7 +2,18 @@ use std::path::Path;
 use std::process::Command;
 
 fn git_output(args: &[&str]) -> Option<String> {
-    let out = Command::new("git").args(args).output().ok()?;
+    // NO OPTIONAL LOCKS: `git status` refreshes `.git/index` as a side effect, and this script
+    // watches that path (`rerun-if-changed` below). Refreshing it DURING the script's own run
+    // made the NEXT build see a changed input, rerun the script and recompile the whole crate
+    // with nothing changed -- measured 2026-08-30 on srv1 (tree fce29f50, quiescent worktree):
+    // cold 444 s, then a no-change build 382 s, then 0 s only once the index had settled; and
+    // inside every `--regen-round-cost` round, seed_build and rebuild-from-installed each
+    // recompiled the crate at changed_paths=0. `--no-optional-locks` makes the read a read.
+    let out = Command::new("git")
+        .arg("--no-optional-locks")
+        .args(args)
+        .output()
+        .ok()?;
     if out.status.success() {
         Some(String::from_utf8_lossy(&out.stdout).trim().to_string())
     } else {

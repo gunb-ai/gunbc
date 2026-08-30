@@ -616,7 +616,7 @@ pub fn occurrence_transport_index_build(
     index.entries.clone().iter().cloned().fold(
         Rc::new(OccurrenceTransportIndexBuild {
             entries_by_id: v1_rt::rc_empty_map::<i64, Rc<OccurrenceIndexEntry>>(),
-            refusal: None,
+            refusal: std::option::Option::None,
         }),
         |build: Rc<OccurrenceTransportIndexBuild>, entry: Rc<OccurrenceIndexEntry>| match build
             .refusal
@@ -647,7 +647,7 @@ pub fn occurrence_transport_index_build(
                                 entry.projection.clone().occurrence.clone().value.clone(),
                                 entry.clone(),
                             ),
-                            refusal: None,
+                            refusal: std::option::Option::None,
                         })
                     } else {
                         Rc::new(OccurrenceTransportIndexBuild {
@@ -686,7 +686,7 @@ pub fn occurrence_transport_role_index_build(
             Rc::new(OccurrenceTransportRoleIndexBuild {
                 declarations_by_id: v1_rt::rc_empty_map::<i64, Rc<DeclarationOccurrence>>(),
                 references_by_id: v1_rt::rc_empty_map::<i64, Rc<ReferenceOccurrence>>(),
-                refusal: None,
+                refusal: std::option::Option::None,
             }),
             |build: Rc<OccurrenceTransportRoleIndexBuild>,
              declaration: Rc<DeclarationOccurrence>| match build.refusal.clone() {
@@ -712,7 +712,7 @@ pub fn occurrence_transport_role_index_build(
                             declaration.clone(),
                         ),
                         references_by_id: build.references_by_id.clone(),
-                        refusal: None,
+                        refusal: std::option::Option::None,
                     }),
                 },
             },
@@ -745,7 +745,7 @@ pub fn occurrence_transport_role_index_build(
                                 reference.occurrence.clone().value.clone(),
                                 reference.clone(),
                             ),
-                            refusal: None,
+                            refusal: std::option::Option::None,
                         }),
                     },
                 },
@@ -782,7 +782,7 @@ pub fn declaration_occurrence_refusal(
                             diagnostic_span: declaration.diagnostic_span.clone(),
                         }))
                     }
-                    None => None,
+                    None => std::option::Option::None,
                 }
             } else {
                 Some(Rc::new(
@@ -824,7 +824,7 @@ pub fn reference_occurrence_refusal(
                             diagnostic_span: reference.diagnostic_span.clone(),
                         }))
                     }
-                    None => None,
+                    None => std::option::Option::None,
                 }
             } else {
                 Some(Rc::new(
@@ -890,7 +890,7 @@ pub fn occurrence_transport_validate(
                     None => {
                         let declaration_refusal =
                             transport.declarations.clone().iter().cloned().fold(
-                                None,
+                                std::option::Option::None,
                                 |refusal: _, declaration: Rc<DeclarationOccurrence>| match refusal
                                     .clone()
                                 {
@@ -911,7 +911,7 @@ pub fn occurrence_transport_validate(
                             None => {
                                 let reference_refusal =
                                     transport.references.clone().iter().cloned().fold(
-                                        None,
+                                        std::option::Option::None,
                                         |refusal: _, reference: Rc<ReferenceOccurrence>| {
                                             match refusal.clone() {
                                                 Some(_) => refusal.clone(),
@@ -953,7 +953,9 @@ pub fn occurrence_transport_refusal(
         OccurrenceTransportValidation::OccurrenceTransportRefused {
             refusal: refusal, ..
         } => Some(refusal.clone()),
-        OccurrenceTransportValidation::OccurrenceTransportValidated { transport: _, .. } => None,
+        OccurrenceTransportValidation::OccurrenceTransportValidated { transport: _, .. } => {
+            std::option::Option::None
+        }
     }
 }
 

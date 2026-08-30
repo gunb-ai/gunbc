@@ -45,14 +45,14 @@ pub fn same_spelling_different_declaration_does_not_realize_natively() -> bool {
     (crate::v1_compiler_emit_rust::rust_scalar_checkpoint_reference_base(
         "Nat".to_string(),
         "src/v2/std/nat.dag".to_string(),
-    ) == None)
+    ) == std::option::Option::None)
 }
 
 pub fn unknown_declaration_identity_refuses_rather_than_guessing() -> bool {
     (crate::v1_compiler_emit_rust::rust_scalar_checkpoint_reference_base(
         "Nat".to_string(),
         "".to_string(),
-    ) == None)
+    ) == std::option::Option::None)
 }
 
 pub fn residue_table_present_int_bypasses_identity() -> bool {
@@ -68,28 +68,28 @@ pub fn table_present_hash_refuses_under_structural_declaration() -> bool {
     (crate::v1_compiler_emit_rust::rust_scalar_checkpoint_reference_base(
         "Hash".to_string(),
         "src/v2/std/node.dag".to_string(),
-    ) == None)
+    ) == std::option::Option::None)
 }
 
 pub fn table_present_string_refuses_under_structural_declaration_text() -> bool {
     (crate::v1_compiler_emit_rust::rust_scalar_checkpoint_reference_base(
         "String".to_string(),
         "src/v2/std/text.dag".to_string(),
-    ) == None)
+    ) == std::option::Option::None)
 }
 
 pub fn table_present_string_refuses_under_structural_declaration_string_type() -> bool {
     (crate::v1_compiler_emit_rust::rust_scalar_checkpoint_reference_base(
         "String".to_string(),
         "dag/std/string_type.dag".to_string(),
-    ) == None)
+    ) == std::option::Option::None)
 }
 
 pub fn table_present_bool_refuses_under_structural_declaration_logic() -> bool {
     (crate::v1_compiler_emit_rust::rust_scalar_checkpoint_reference_base(
         "Bool".to_string(),
         "src/v2/std/logic.dag".to_string(),
-    ) == None)
+    ) == std::option::Option::None)
 }
 
 pub fn table_present_bool_renders_natively_for_the_corpus_prelude() -> bool {
@@ -116,7 +116,7 @@ pub fn literal_suffix_refuses_under_structural_declaration_text() -> bool {
         RenderTarget::Rust,
         "String".to_string(),
         "src/v2/std/text.dag".to_string(),
-    ) == None)
+    ) == std::option::Option::None)
 }
 
 pub fn literal_suffix_refuses_under_structural_declaration_string_type() -> bool {
@@ -124,7 +124,7 @@ pub fn literal_suffix_refuses_under_structural_declaration_string_type() -> bool
         RenderTarget::Rust,
         "String".to_string(),
         "dag/std/string_type.dag".to_string(),
-    ) == None)
+    ) == std::option::Option::None)
 }
 
 pub fn literal_suffix_production_call_site_never_threads_declaration_identity() -> bool {

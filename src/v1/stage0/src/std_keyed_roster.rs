@@ -116,8 +116,10 @@ pub fn keyed_roster_locate_second_row<K: Clone, V: Clone>(
         KeyedRosterSecondRowScan::KeyedRosterSecondRowScanFound { row: row, .. } => {
             Some(row.clone())
         }
-        KeyedRosterSecondRowScan::KeyedRosterSecondRowScanAbsent => None,
-        KeyedRosterSecondRowScan::KeyedRosterSecondRowScanAwaitingSecond => None,
+        KeyedRosterSecondRowScan::KeyedRosterSecondRowScanAbsent => std::option::Option::None,
+        KeyedRosterSecondRowScan::KeyedRosterSecondRowScanAwaitingSecond => {
+            std::option::Option::None
+        }
     }
 }
 
@@ -126,9 +128,9 @@ pub fn keyed_roster_locate_first_row<K: Clone, V: Clone>(
     wanted_key: K,
     key_eq: impl Fn(K, K) -> bool + Clone,
 ) -> Option<Rc<KeyedRow<K, V>>> {
-    rows.iter()
-        .cloned()
-        .fold(None, |acc: _, row: Rc<KeyedRow<K, V>>| match acc.clone() {
+    rows.iter().cloned().fold(
+        std::option::Option::None,
+        |acc: _, row: Rc<KeyedRow<K, V>>| match acc.clone() {
             Some(_) => acc.clone(),
             None => {
                 if key_eq(row.row_key.clone(), wanted_key.clone()) {
@@ -137,17 +139,17 @@ pub fn keyed_roster_locate_first_row<K: Clone, V: Clone>(
                     acc.clone()
                 }
             }
-        })
+        },
+    )
 }
 
 pub fn keyed_roster_locate_duplicate<K: Clone, V: Clone>(
     rows: Rc<Vec<Rc<KeyedRow<K, V>>>>,
     key_eq: impl Fn(K, K) -> bool + Clone,
 ) -> Option<Rc<KeyedRosterDuplicateEvidence<K, V>>> {
-    rows.clone()
-        .iter()
-        .cloned()
-        .fold(None, |acc: _, row: Rc<KeyedRow<K, V>>| match acc.clone() {
+    rows.clone().iter().cloned().fold(
+        std::option::Option::None,
+        |acc: _, row: Rc<KeyedRow<K, V>>| match acc.clone() {
             Some(_) => acc.clone(),
             None => {
                 if (keyed_occurrence_count(rows.clone(), row.row_key.clone(), key_eq.clone()) > 1) {
@@ -176,7 +178,8 @@ pub fn keyed_roster_locate_duplicate<K: Clone, V: Clone>(
                     acc.clone()
                 }
             }
-        })
+        },
+    )
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]

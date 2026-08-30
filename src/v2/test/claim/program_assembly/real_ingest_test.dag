@@ -1,9 +1,11 @@
 module v2.test.program_assembly.real_ingest
 import v2.compiler.source_authority {
   SourceRootIngest,
+  source_root_coverage_is_complete
+}
+import v2.compiler.source_authority_read {
   SourceRootIngestBuildOk,
   SourceRootIngestBuildReadFailed,
-  source_root_coverage_is_complete,
   source_root_ingest_build_from_source_refs
 }
 
