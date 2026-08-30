@@ -310,13 +310,14 @@ fn subject_currency_of_axes(axes: List<StaleAxis>) -> SubjectCurrency {
   }
 }
 
-// THE CANONICAL AXIS POPULATION AND ITS ORDER, declared once. Both the
-// constructor below and the merge in gunbc.machine_intake_disposition derive
-// their lists by FILTERING this roster, so a merged standing carries the same
-// order as a freshly compared one and neither can mint an axis the coproduct
-// does not declare. A union computed by concatenating two lists would order by
-// which side was measured first, which is a fact about the caller and not
-// about the machine.
+// THE CANONICAL AXIS POPULATION AND ITS ORDER, declared once and reduced
+// against in exactly one place: subject_currency_of_axes. Every standing --
+// freshly compared, merged, or minted by any caller at all -- carries this
+// roster's order and one occurrence per axis, because the mint filters this
+// list rather than preserving what it was handed. A union computed by
+// concatenating two populations would order by which side was measured first,
+// which is a fact about the caller and not about the machine; that is why the
+// merge concatenates and delegates rather than filtering a second time here.
 data stale_axes_all: List<StaleAxis> = [UnitKeyStale, AssemblyManifestStale, FirmwareManifestStale]
 
 fn compare_qualification_subject(admitted: QualificationSubject, observed: QualificationSubject) -> SubjectCurrency {

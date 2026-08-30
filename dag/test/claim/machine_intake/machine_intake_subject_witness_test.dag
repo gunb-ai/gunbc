@@ -229,8 +229,12 @@ test fn merging_two_one_axis_standings_is_the_canonical_ordered_union() -> Bool 
 // DIRECTLY with the adversarial population -- reversed order, one axis twice --
 // and requires the roster's order and one occurrence each. A pass-through
 // implementation returns [firmware, assembly, assembly] and goes red on both
-// halves; the merge-law witness above cannot catch it, because its callers
-// reduce before they reach here.
+// halves. The merge-law witness above ALSO goes red on that mutation, because
+// the merge now delegates its union to this mint rather than reducing first --
+// measured, not assumed. The two controls are still not redundant: this one
+// pins the PUBLIC MINT BOUNDARY that any importer can reach, where the merge
+// witness pins the merge law THROUGH that boundary, and only this one fails if
+// the mint is weakened while every internal caller keeps reducing.
 test fn the_mint_canonicalizes_whatever_a_caller_supplies() -> Bool {
   let noncanonical = subject_currency_of_axes(
     axes: [FirmwareManifestStale, AssemblyManifestStale, AssemblyManifestStale],
