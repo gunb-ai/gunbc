@@ -117,10 +117,11 @@ import gunbc.spark.serving_execution_schedule {
   ScheduledRows,
   scheduled_rows_empty,
   scheduled_rows_list,
-  SparkServingAxisProduct,
-  spark_serving_axis_product_rows,
-  spark_serving_axis_product_observed_members,
-  spark_serving_axis_product_unobserved,
+  SparkServingAxisDisposition,
+  SparkServingAxisNotApplicable,
+  spark_serving_axis_rows,
+  spark_serving_axis_observed_members,
+  spark_serving_axis_refusal,
 }
 
 import gunbc.fleet_converge_timer {
@@ -2239,9 +2240,11 @@ fn fabric_cell_apply_executable_lines(
 // `content_hash_of_value` is that function wrapped in the union -- so there is no union to match and
 // no arm to get wrong.
 //
-// The outcome type stays a sum rather than collapsing to a bare artifact, because assembling a plan
-// IS refusable for a reason this axis does not own: the Spark rows handed in may not exist, and the
-// caller that computed them is where that refusal is decided.
+// The outcome stays a sum because assembling a plan IS refusable, and the Refused arm now has a real
+// producer: a SparkServingAxisRefused disposition propagates here instead of being laundered into an
+// empty schedule. An earlier revision made the artifact total and left this arm with nothing
+// constructing it -- a permanently-green arm carrying no information, which DESIGN §4b calls worse
+// than absent because it gets cited as coverage.
 type FleetConvergePlanArtifactOutcome
   = FleetConvergePlanArtifactReady { artifact: FleetConvergePlanArtifact }
   | FleetConvergePlanArtifactRefused { cause: String }
@@ -2272,7 +2275,7 @@ fn fleet_converge_plan_artifact(
   prior_generation: Int,
   observed_timers: List<TimerRetirementMember>,
   observed_caps: List<CapMember>,
-  spark_axis: SparkServingAxisProduct<FleetConvergeSparkServingTypedAction>,
+  spark_axis: SparkServingAxisDisposition<FleetConvergeSparkServingTypedAction>,
   observed_slots: List<RunnerSlotMember>,
   observed_fabric_cells: FabricCellObservationDecision,
   observed_activation_readiness: RunnerActivationReadiness,
@@ -2281,7 +2284,7 @@ fn fleet_converge_plan_artifact(
     host: host,
     observed_timers: observed_timers,
     observed_caps: observed_caps,
-    observed_spark: spark_serving_axis_product_observed_members(a: spark_axis),
+    observed_spark: spark_serving_axis_observed_members(a: spark_axis),
     observed_slots: observed_slots,
     observed_fabric_cells: observed_fabric_cells,
   }
@@ -2360,16 +2363,20 @@ fn fleet_converge_plan_artifact(
       observed_activation_readiness: observed_activation_readiness,
     ),
   )
-  FleetConvergePlanArtifactReady {
-    artifact: FleetConvergePlanArtifact {
-      subject: subject,
-      prior_generation: prior_generation,
-      plan_lease: lease,
-      observed_baseline_hex: content_hash_atom(value: baseline as NonEmptyStr).digest,
-      plan_body: body,
-      apply_shell: apply_shell,
-      spark_serving_typed_actions: spark_serving_axis_product_rows(a: spark_axis),
-    },
+  match spark_serving_axis_refusal(a: spark_axis) {
+    Present { value: why } => FleetConvergePlanArtifactRefused { cause: why }
+    Absent =>
+      FleetConvergePlanArtifactReady {
+        artifact: FleetConvergePlanArtifact {
+          subject: subject,
+          prior_generation: prior_generation,
+          plan_lease: lease,
+          observed_baseline_hex: content_hash_atom(value: baseline as NonEmptyStr).digest,
+          plan_body: body,
+          apply_shell: apply_shell,
+          spark_serving_typed_actions: spark_serving_axis_rows(a: spark_axis),
+        },
+      }
   }
 }
 

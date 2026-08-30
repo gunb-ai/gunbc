@@ -21,10 +21,11 @@ import gunbc.membership_reconcile {
 }
 import gunbc.spark.serving_execution_schedule {
   ScheduledRows,
-  SparkServingAxisProduct,
-  spark_serving_axis_product,
-  spark_serving_axis_product_rows,
-  spark_serving_axis_product_observed_members,
+  SparkServingAxisDisposition,
+  SparkServingAxisPlanned,
+  SparkServingAxisRefused,
+  spark_serving_axis_rows,
+  spark_serving_axis_observed_members,
   SparkServingFrozenExecutionSchedule,
   SparkServingScheduleFrozen,
   SparkServingScheduleRefused,
@@ -444,7 +445,7 @@ fn spark_serving_fleet_converge_plan_artifact(
 // turned four fail-closed walls into four writes against states nobody measured.
 type SparkServingScheduledRowsVerdict
   = SparkServingScheduledRowsReady {
-      axis: SparkServingAxisProduct<FleetConvergeSparkServingTypedAction>
+      axis: SparkServingAxisDisposition<FleetConvergeSparkServingTypedAction>
       plan: SparkServingFullMembershipPlan
     }
   | SparkServingScheduledRowsRefused { cause: String }
@@ -503,10 +504,11 @@ fn spark_serving_scheduled_rows_for_release(
             SparkServingScheduledRowsRefused { cause: join(["plan-refused typed-actions ", why], "") }
           SparkServingTypedActionsProjected { rows: spark_rows } =>
             SparkServingScheduledRowsReady {
-              axis: spark_serving_axis_product(
+              axis: SparkServingAxisPlanned {
+                host: host as HostIdentity,
                 observed_members: observed_members,
                 rows: spark_rows,
-              ),
+              },
               plan: full_plan,
             }
         }
@@ -534,6 +536,19 @@ fn spark_serving_scheduled_rows_for(
   }
 }
 
+// THE AXIS SEAM. A caller that wants the Spark axis for a host gets a DISPOSITION, so a refusal
+// arrives as a refusal rather than as an empty plan the converge would read as "nothing to do".
+fn spark_serving_axis_for(
+  host: NonEmptyStr,
+  projection: SparkServingObservedMemberProjection,
+) -> SparkServingAxisDisposition<FleetConvergeSparkServingTypedAction> {
+  match spark_serving_scheduled_rows_for(host: host, projection: projection) {
+    SparkServingScheduledRowsRefused { cause: why } =>
+      SparkServingAxisRefused { host: host as HostIdentity, cause: why }
+    SparkServingScheduledRowsReady { axis: axis, plan: _ } => axis
+  }
+}
+
 fn spark_serving_fleet_converge_plan_artifact_for_release(
   host: NonEmptyStr,
   prior_generation: Int,
@@ -557,8 +572,8 @@ fn spark_serving_fleet_converge_plan_artifact_for_release(
           observed_timers: observed_timers,
           observed_caps: observed_caps,
           spark_plan: full_plan,
-          spark_rows: spark_serving_axis_product_rows(a: axis),
-          observed_spark: spark_serving_axis_product_observed_members(a: axis),
+          spark_rows: spark_serving_axis_rows(a: axis),
+          observed_spark: spark_serving_axis_observed_members(a: axis),
           observed_slots: [],
           observed_fabric_cells: fabric_cell_observation_unobserved(host: host as HostIdentity),
         ),

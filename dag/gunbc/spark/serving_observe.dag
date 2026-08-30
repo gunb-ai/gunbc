@@ -517,10 +517,18 @@ type SparkServingHostObservation sole_constructor {
 // moment with its enablement read at another. Two facts about one machine taken from two
 // observations are not an observation of that machine.
 //
-// So one physical observation attempt owns the probe results, and the report and the plan are both
-// PROJECTIONS OF THAT SAME PRODUCER. The field is what makes that structural rather than a
-// convention nobody can check -- and because this carrier is sole_constructor, there is no way to
-// obtain one whose projection came from a different observation than its readback.
+// WHAT IS TRUE TODAY, STATED AT ITS ACTUAL STRENGTH. Readback and projection are assembled during
+// one enclosing per-host call, but their captures are NOT yet owned by one typed probe transaction:
+// some facts are probed twice -- `is-active` for the readback and again inside the user-unit
+// projection, the runtime materialization receipt likewise -- and the via-locus path currently mixes
+// executor adapters, populating the readback through `spark_serving_probe_leg_via_locus` while the
+// projection helpers reach for the other leg.
+//
+// So "one observation, one producer" is the DESTINATION and not yet the state. An earlier revision
+// of this paragraph asserted it as fact, which is the failure this file is otherwise careful about:
+// an annotation is never evidence that a machine claim holds, because no Accepted program can read
+// one. The probe-transaction carrier is what would make the stronger sentence true, and this
+// paragraph should be replaced by it only once it is.
 //
 // THE MINT TAKES PROBES, NOT A FINISHED PROJECTION, AND THAT IS THE WHOLE PROVENANCE ARGUMENT.
 //
@@ -572,15 +580,18 @@ fn spark_serving_linger_probe_words() -> List<String> {
   ]
 }
 
-// LINGER IS THREE-VALUED AND THE SLICE COLLAPSED IT TO TWO.
+// THE CANONICAL THREE-VALUED LINGER DECODER, for the unified observation producer.
 //
-// serving_converge_slice_wet reads the probe into a Bool and then writes
-// `if linger_enabled { LingerObservedEnabled } else { LingerObservedDisabled }`, which turns "the
-// probe did not answer" into "linger is off". SparkServingObservedLingerState carries
-// LingerUnobservedState precisely so those stay apart, and the distinction is load-bearing rather
-// than fastidious: an unobserved property must not enter the observed member list, because absence
-// from that list is what makes membership_reconcile plan an ADDITION. Conflating them plans a write
-// against a state nobody measured.
+// WHY THE DISTINCTION IS LOAD-BEARING: an unobserved property must not enter the observed member
+// list, because absence from that list is what makes membership_reconcile plan an ADDITION. So
+// "the probe did not answer" and "linger is off" must not become one value.
+//
+// WHAT THIS DOES NOT DO, recorded because an earlier revision claimed it did.
+// serving_converge_slice_wet was described here as collapsing unobserved into disabled. That was
+// measured and is FALSE: the slice already refuses transport refusal, nonzero exit, and malformed
+// stdout -- setting LingerUnobserved with zero planned rows -- before any Boolean translation is
+// reached. The claim was inferred from a `Bool?` in a signature rather than from the control flow.
+// This function does not repair that slice; it serves a new consumer that needs the third value.
 fn spark_serving_observed_linger_from_probe(
   result: SshSessionExecResult?,
 ) -> SparkServingObservedLingerState {

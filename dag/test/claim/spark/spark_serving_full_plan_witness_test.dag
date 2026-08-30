@@ -27,7 +27,7 @@ import gunbc.ollama_runtime_bundle {
 }
 import gunbc.spark.serving_membership { spark_serving_membership_reconcile, spark_serving_user_unit_state_digest }
 import gunbc.spark.serving_execution_schedule {
-  spark_serving_axis_product_rows,
+  spark_serving_axis_rows,
   SparkServingScheduleFrozen,
   SparkServingScheduleRefused,
   spark_serving_freeze_execution_schedule,
@@ -1287,7 +1287,7 @@ fn c3_rows_count(v: SparkServingScheduledRowsVerdict) -> Int {
   match v {
     SparkServingScheduledRowsRefused { cause: _ } => 0 - 1
     SparkServingScheduledRowsReady { axis: axis, plan: _ } =>
-      length(scheduled_rows_list(scheduled: spark_serving_axis_product_rows(a: axis)))
+      length(scheduled_rows_list(scheduled: spark_serving_axis_rows(a: axis)))
   }
 }
 
@@ -1337,7 +1337,7 @@ test fn the_generic_artifact_carries_the_schedule_it_is_handed() -> Bool {
         FleetConvergePlanArtifactRefused { cause: _ } => false
         FleetConvergePlanArtifactReady { artifact: a } =>
           length(scheduled_rows_list(scheduled: a.spark_serving_typed_actions))
-            == length(scheduled_rows_list(scheduled: spark_serving_axis_product_rows(a: axis)))
+            == length(scheduled_rows_list(scheduled: spark_serving_axis_rows(a: axis)))
             && length(scheduled_rows_list(scheduled: a.spark_serving_typed_actions)) > 0
       }
   }

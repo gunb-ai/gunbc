@@ -64,7 +64,7 @@ import gunbc.fleet_converge_plan {
   fleet_converge_spark_serving_typed_actions_wire,
 }
 import gunbc.spark.serving_execution_schedule {
-  spark_serving_axis_product_unobserved,
+  SparkServingAxisNotApplicable,
   scheduled_rows_list,
 }
 
@@ -170,7 +170,7 @@ func fleet_converge_plan_wet() -> ProcessExit
     prior_generation: prior_generation,
     observed_timers: observed_timers,
     observed_caps: observed_caps,
-    spark_axis: spark_serving_axis_product_unobserved(),
+    spark_axis: SparkServingAxisNotApplicable { host: host as HostIdentity },
     observed_slots: observed_slots,
     observed_fabric_cells: admit_fabric_cell_probe(probe: fabric_cell_probe_wet(host: host as HostIdentity)),
     observed_activation_readiness: runner_activation_readiness_unobserved_no_transaction,
