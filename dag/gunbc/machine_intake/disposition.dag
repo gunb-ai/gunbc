@@ -8,6 +8,8 @@ import gunbc.machine_intake_subject {
   SubjectCurrent,
   SubjectStale,
   stale_axes_all,
+  stale_axes,
+  subject_currency_of_axes,
   compare_qualification_subject,
 }
 import gunbc.machine_intake_phase {
@@ -74,7 +76,7 @@ fn phase_standing(
       } else {
         let digest = intake_receipt_structural_fingerprint(envelope: r)
         match compare_qualification_subject(admitted: subject, observed: r.subject.subject) {
-          SubjectStale { axes: axes } =>
+          SubjectStale { first_axis: head_axis, further_axes: rest_axes } =>
             match acc {
               PhaseSatisfiedByReceipt { receipt: _ } => acc
               PhaseRefusedByReceipt { owner: _, cause: _, receipt: _ } => acc
@@ -82,7 +84,7 @@ fn phase_standing(
               PhaseUnobserved =>
                 PhaseReceiptSubjectMismatch {
                   receipt: digest,
-                  currency: SubjectStale { axes: axes },
+                  currency: SubjectStale { first_axis: head_axis, further_axes: rest_axes },
                 }
             }
           SubjectCurrent =>
@@ -147,13 +149,16 @@ type AdmissionFold {
 fn merge_subject_currency(left: SubjectCurrency, right: SubjectCurrency) -> SubjectCurrency {
   match left {
     SubjectCurrent => right
-    SubjectStale { axes: la } =>
+    SubjectStale { first_axis: lh, further_axes: lr } =>
       match right {
         SubjectCurrent => left
-        SubjectStale { axes: ra } =>
-          SubjectStale {
-            axes: stale_axes_all |> filter(a => (la |> any(x => x == a)) || (ra |> any(x => x == a))),
-          }
+        SubjectStale { first_axis: rh, further_axes: rr } =>
+          subject_currency_of_axes(
+            axes: stale_axes_all |> filter(a =>
+              (stale_axes(first_axis: lh, further_axes: lr) |> any(x => x == a))
+                || (stale_axes(first_axis: rh, further_axes: rr) |> any(x => x == a))
+            ),
+          )
       }
   }
 }

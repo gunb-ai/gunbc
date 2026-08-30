@@ -97,6 +97,18 @@ type ComponentKind
   | NicComponent
   | PsuComponent
 
+// THE LABEL IS THE STABLE FINGERPRINT IDENTITY, DELIBERATELY DECOUPLED FROM
+// THE VARIANT SPELLING (review 57621, non-blocking observation). It is the
+// only form the identity can take: atom_identity_hash and content_hash_atom
+// take a NonEmptyStr, so no .dag-authorable construction hashes a coproduct
+// variant directly today, and this fold is where the variant becomes hashable.
+// What that buys, once said out loud: a stored assembly digest survives a
+// variant RENAME, because the fingerprint is a function of these strings and
+// not of the constructor names. The reverse is the real hazard -- editing a
+// string here silently re-keys every previously admitted assembly manifest, so
+// these seven values are wire identities and are not renamed with the variant
+// they name. A rename cannot desynchronize them by accident: the match is
+// exhaustive, so it stops compiling until the author visits this exact site.
 fn component_kind_label(kind: ComponentKind) -> NonEmptyStr {
   match kind {
     ChassisComponent => "chassis"
@@ -237,9 +249,34 @@ type StaleAxis
   | AssemblyManifestStale
   | FirmwareManifestStale
 
+// SPLIT-FIELD, SO THE EMPTY STALE STANDING IS UNWRITABLE (review 57612, and
+// the correction that followed it). Carrying `axes: List<StaleAxis>` made the
+// empty list unreachable only along this module's constructor: any other
+// module could still author `SubjectStale { axes: [] }` -- a stale standing
+// naming nothing, which is SubjectCurrent wearing the other variant, the same
+// defect the three parallel Booleans had. std has no generic NonEmptyList
+// carrier, so this takes the shape the corpus already uses for a nonempty
+// population (extdeps.external_authority external_model_scope_citations_shape_note,
+// the gunbc.doc_graph_roots precedent): one required head plus the rest. The
+// bad state has no constructor now rather than no reachable caller.
 type SubjectCurrency
   = SubjectCurrent
-  | SubjectStale { axes: List<StaleAxis> }
+  | SubjectStale { first_axis: StaleAxis, further_axes: List<StaleAxis> }
+
+// The two directions across that split, so no consumer re-derives either.
+// subject_currency_of_axes is the ONE place a filtered axis population becomes
+// a standing, and it is what makes an empty population SubjectCurrent instead
+// of a stale standing with nothing in it.
+fn stale_axes(first_axis: StaleAxis, further_axes: List<StaleAxis>) -> List<StaleAxis> {
+  concat([first_axis], further_axes)
+}
+
+fn subject_currency_of_axes(axes: List<StaleAxis>) -> SubjectCurrency {
+  match axes.first() {
+    Absent => SubjectCurrent
+    Present { value: head } => SubjectStale { first_axis: head, further_axes: axes.skip(n: 1) }
+  }
+}
 
 // THE CANONICAL AXIS POPULATION AND ITS ORDER, declared once. Both the
 // constructor below and the merge in gunbc.machine_intake_disposition derive
@@ -254,16 +291,11 @@ fn compare_qualification_subject(admitted: QualificationSubject, observed: Quali
   let unit_changed = (admitted.unit_key as NonEmptyStr) != (observed.unit_key as NonEmptyStr)
   let assembly_changed = content_hash_equal(left: admitted.assembly_manifest_digest, right: observed.assembly_manifest_digest) == false
   let firmware_changed = content_hash_equal(left: admitted.firmware_manifest_digest, right: observed.firmware_manifest_digest) == false
-  let axes = stale_axes_all |> filter(a => match a {
+  subject_currency_of_axes(axes: stale_axes_all |> filter(a => match a {
     UnitKeyStale => unit_changed
     AssemblyManifestStale => assembly_changed
     FirmwareManifestStale => firmware_changed
-  })
-  if list_length(items: axes) == 0 {
-    SubjectCurrent
-  } else {
-    SubjectStale { axes: axes }
-  }
+  }))
 }
 
 type IntakeAttemptId = NonEmptyStr where brand("IntakeAttemptId")

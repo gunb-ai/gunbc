@@ -87,8 +87,8 @@ test fn changed_dimm_manifest_invalidates_prior_subject() -> Bool {
   let admitted = qualification_subject_of(unit_key: serial_a as UnitKey, assembly: assembly_before, firmware: firmware_v1)
   let observed = qualification_subject_of(unit_key: serial_a as UnitKey, assembly: assembly_after_dimm_swap, firmware: firmware_v1)
   match compare_qualification_subject(admitted: admitted, observed: observed) {
-    SubjectStale { axes: axes } =>
-      list_length(items: axes) == 1 && (axes |> any(x => x == AssemblyManifestStale))
+    SubjectStale { first_axis: head_axis, further_axes: rest_axes } =>
+      list_length(items: rest_axes) == 0 && head_axis == AssemblyManifestStale
     SubjectCurrent => false
   }
 }
@@ -104,8 +104,8 @@ test fn changed_bios_version_is_a_new_firmware_subject() -> Bool {
   let admitted = qualification_subject_of(unit_key: serial_a as UnitKey, assembly: assembly_before, firmware: firmware_v1)
   let observed = qualification_subject_of(unit_key: serial_a as UnitKey, assembly: assembly_before, firmware: firmware_v2)
   match compare_qualification_subject(admitted: admitted, observed: observed) {
-    SubjectStale { axes: axes } =>
-      list_length(items: axes) == 1 && (axes |> any(x => x == FirmwareManifestStale))
+    SubjectStale { first_axis: head_axis, further_axes: rest_axes } =>
+      list_length(items: rest_axes) == 0 && head_axis == FirmwareManifestStale
     SubjectCurrent => false
   }
 }

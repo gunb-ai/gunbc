@@ -378,8 +378,8 @@ test fn stale_currency_names_the_axes_that_moved() -> Bool {
   let flash_only = match currency_of(standing: admission_over(subject: subject_after_flash, receipts: full_ledger(subject: subject_before))) {
     Present { value: c } =>
       match c {
-        SubjectStale { axes: axes } =>
-          list_length(items: axes) == 1 && (axes |> any(x => x == FirmwareManifestStale))
+        SubjectStale { first_axis: head_axis, further_axes: rest_axes } =>
+          list_length(items: rest_axes) == 0 && head_axis == FirmwareManifestStale
         SubjectCurrent => false
       }
     Absent => false
@@ -387,10 +387,10 @@ test fn stale_currency_names_the_axes_that_moved() -> Bool {
   let both = match currency_of(standing: admission_over(subject: subject_after_flash, receipts: full_ledger(subject: subject_after))) {
     Present { value: c } =>
       match c {
-        SubjectStale { axes: axes } =>
-          list_length(items: axes) == 2
-            && (axes |> any(x => x == AssemblyManifestStale))
-            && (axes |> any(x => x == FirmwareManifestStale))
+        SubjectStale { first_axis: head_axis, further_axes: rest_axes } =>
+          list_length(items: rest_axes) == 1
+            && head_axis == AssemblyManifestStale
+            && (rest_axes |> any(x => x == FirmwareManifestStale))
         SubjectCurrent => false
       }
     Absent => false

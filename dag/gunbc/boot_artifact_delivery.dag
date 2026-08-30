@@ -236,17 +236,6 @@ type BootArtifactDelivery
   | UefiHttpBoot { params: UefiHttpBootParams }
   | PxeChainBoot { evidence: NetworkBootDeliveryEstablishment }
 
-fn boot_artifact_delivery_kind(delivery: BootArtifactDelivery) -> NonEmptyStr {
-  match delivery {
-    RedfishVirtualMediaPull { params: _ } => "redfish-virtualmedia-pull"
-    MegaRacRestRemoteMedia { params: _ } => "megarac-rest-remote-media"
-    OpenBmcNbdProxyWebsocket { params: _ } => "openbmc-nbdproxy-websocket"
-    OpenBmcConfigfsUsbGadget { params: _ } => "openbmc-configfs-usb-gadget"
-    UefiHttpBoot { params: _ } => "uefi-http-boot"
-    PxeChainBoot { evidence: _ } => "pxe-chain-boot"
-  }
-}
-
 fn boot_artifact_delivery_boot_control(delivery: BootArtifactDelivery) -> BootControlTarget {
   match delivery {
     RedfishVirtualMediaPull { params: _ } => BootFromRemovableMedia
