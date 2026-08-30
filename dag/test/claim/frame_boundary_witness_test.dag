@@ -13,7 +13,14 @@ import std.frame_boundary {
   boundary_admits,
 }
 
-// Discriminating witnesses for the frame-boundary SPEC (std.frame_boundary). The claim is fail-closed boundary admission (DESIGN 5): a frame runs only when every layer it requires closed is covered by the provided materialization; an uncovered required layer is a located BoundaryUnmaterialized naming that tree, never a silent pass. The build's common case: require the network layer (UriTree) closed; the Simulated/mock handler closes it at LifecycleByConvention (admissible, honestly weaker). RED control = refuses_uncovered_layer: if the coverage check were dropped, an uncovered UriTree would admit. Grade is the MEET across covered layers (only as strong as the weakest), pinned by grade_is_meet.
+// Discriminating witnesses for the frame-boundary SPEC (std.frame_boundary). Claim: fail-closed
+// boundary admission (DESIGN 5) — a frame runs only when every layer it requires closed is covered
+// by the provided materialization; an uncovered required layer is a located BoundaryUnmaterialized
+// naming that tree, never a silent pass. Common case: require the network layer (UriTree) closed;
+// the Simulated/mock handler closes it at LifecycleByConvention (admissible, honestly weaker). RED
+// control = refuses_uncovered_layer: with the coverage check dropped, an uncovered UriTree would
+// admit. Grade is the MEET across covered layers (as strong as the weakest), pinned by
+// grade_is_meet.
 data net_convention_provided: BoundaryMaterialization = BoundaryMaterialization {
   closures: [BoundaryClosure { tree: UriTree, grade: LifecycleByConvention }]
 }

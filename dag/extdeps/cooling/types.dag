@@ -29,12 +29,12 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
   further_citations: []
 }
 
-// supported_motherboards is grounded on the existing BaseboardModel authority rather than a bare
-// string: a cooler's supported-board population is a set of the same board identities the fleet
-// already binds, so comparing them must not route through label spelling. It was
-// List<NonEmptyStr> carrying "ALTRAD8UD-1L2T", which matched neither the BaseboardModel arm nor
-// the catalog model_label "ASRock Rack ALTRAD8UD-1L2T" — a String leaf hiding a named part,
-// decomposed here at its first consumer, product.cooling_qualification.
+// supported_motherboards is grounded on the existing BaseboardModel authority, not a bare string: a
+// cooler's supported-board population is the same board identities the fleet already binds, so
+// comparison must not route through label spelling. It was List<NonEmptyStr> carrying
+// "ALTRAD8UD-1L2T", matching neither the BaseboardModel arm nor the catalog model_label "ASRock
+// Rack ALTRAD8UD-1L2T" — a String leaf hiding a named part, decomposed at its first consumer,
+// product.cooling_qualification.
 type CpuCoolerCatalogRow {
   model: NonEmptyStr
   manufacturer: Vendor<Hardware>

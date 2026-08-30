@@ -61,7 +61,10 @@ fn contains_str(xs: List<String>, want: String) -> Bool {
   count_of(xs: xs, want: want) > 0
 }
 
-data two_source_note: String = "The discriminating half: provider_referenced is reachable ONLY through the reference producer. If the call site's reference arm were replaced by a second copy of the import arm, this edge would be absent and this reds — which is precisely the regression that reached main-adjacent review unnoticed."
+// The discriminating half: provider_referenced is reachable ONLY through the reference producer. If
+// the call site's reference arm were replaced by a second copy of the import arm, this edge would
+// be absent and this reds — which is precisely the regression that reached main-adjacent review
+// unnoticed.
 
 test fn witness_reference_only_dependency_reaches_the_union() -> Bool {
   let ref_targets = fact_targets(facts: fixture_reference_facts())

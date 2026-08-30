@@ -24,7 +24,9 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
   further_citations: []
 }
 
-data provider_interface_acquisition_authority_note: String = "Cited rows from provider_interface_acquisition_2026-08-03.json — disposable npm acquisition probe receipt (2026-08-03). Independent oracle for @cursor/sdk package-closure witnesses; consumers must join here, never re-assert cursor_sdk_facts constructor inputs."
+// Cited rows from provider_interface_acquisition_2026-08-03.json — disposable npm acquisition probe
+// receipt (2026-08-03). Independent oracle for @cursor/sdk package-closure witnesses; consumers
+// must join here, never re-assert cursor_sdk_facts constructor inputs.
 
 data provider_interface_acquisition_lockfile_sha256: String = "d45372139f3b3cfec9b32728a1e6994d4a212d9d286854e795ad67ed12ee2d70"
 data provider_interface_acquisition_lockfile_package_entry_count: Int = 124

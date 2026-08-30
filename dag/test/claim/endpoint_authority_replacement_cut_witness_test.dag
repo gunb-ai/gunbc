@@ -24,7 +24,21 @@ import gunbc.endpoint_authority_replacement_cut {
 }
 import gunbc.replacement_cut_registry { production_registry_standing }
 
-data endpoint_authority_replacement_cut_witness_note: String = "THE PRODUCTION ROWS, EXECUTED. The generic carrier suite exercises synthetic cuts and synthetic registries; whole-tree compilation proves these declarations typecheck. Neither establishes what the REAL endpoint cut and the REAL registry answer, so before this file the production rows could acquire a duplicate relation, an authoring-defect cause, a malformed region or a wrong evidence disposition while every reported suite stayed green. That is the specification-without-execution trap applied to the one part of the change that is not a mechanism but a claim about this repository.\n\nWHAT THE REFUSAL MUST AND MUST NOT CONTAIN is the whole point of the first two rows. The plan is EXPECTED to refuse -- Y does not exist, so every surviving consumer is CoverageOpen -- but it must refuse for exactly that reason and no other. An authoring defect (a duplicated relation, a coverage claim naming the old root, an undispositioned row, an empty region) would also produce PlanRefused, so asserting `refuses` alone would pass over a broken row. The partition is therefore asserted in both directions: every cause is UncoveredSurvivingConsumer, and the count equals the census."
+// THE PRODUCTION ROWS, EXECUTED. The generic carrier suite exercises synthetic cuts and synthetic
+// registries; whole-tree compilation proves these declarations typecheck. Neither establishes what
+// the REAL endpoint cut and the REAL registry answer, so before this file the production rows could
+// acquire a duplicate relation, an authoring-defect cause, a malformed region or a wrong evidence
+// disposition while every reported suite stayed green. That is the specification-without-execution
+// trap applied to the one part of the change that is not a mechanism but a claim about this
+// repository.
+//
+// WHAT THE REFUSAL MUST AND MUST NOT CONTAIN is the whole point of the first two rows. The plan is
+// EXPECTED to refuse -- Y does not exist, so every surviving consumer is CoverageOpen -- but it
+// must refuse for exactly that reason and no other. An authoring defect (a duplicated relation, a
+// coverage claim naming the old root, an undispositioned row, an empty region) would also produce
+// PlanRefused, so asserting `refuses` alone would pass over a broken row. The partition is
+// therefore asserted in both directions: every cause is UncoveredSurvivingConsumer, and the count
+// equals the census.
 
 fn causes_of(admission: PlanAdmission) -> List<CutRefusalCause> {
   match admission {

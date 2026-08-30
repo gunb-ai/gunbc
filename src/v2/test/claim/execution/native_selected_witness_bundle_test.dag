@@ -112,7 +112,12 @@ import std.dissolution { unbound_dissolution }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
-// First executable SelectedWitnessPlan slice: meet, join, and complement are emitted into one content-addressed Rust artifact. Its generated main directly invokes all three functions and one run_emit_host_cached call launches one process for the whole selected population. The interpreter is executed beside both the correct bundle and the deliberately all-wrong bundle; verdict equality admits failure==failure as the family's live discriminating RED. A second host invocation proves compile_skipped=true against the same content address.
+// First executable SelectedWitnessPlan slice: meet, join, and complement are emitted into one
+// content-addressed Rust artifact. Its generated main invokes all three functions and one
+// run_emit_host_cached call launches one process for the whole selected population. The
+// interpreter runs beside both the correct bundle and the deliberately all-wrong bundle; verdict
+// equality admits failure==failure as the family's live discriminating RED. A second host
+// invocation proves compile_skipped=true against the same content address.
 data selected_logic_bundle_cache_root: String = emit_on_demand_family_cache_root(
   family: "selected_witness_bundle_logic"
 )

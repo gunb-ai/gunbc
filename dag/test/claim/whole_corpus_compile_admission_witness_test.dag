@@ -96,7 +96,27 @@ test fn the_budget_the_superseded_figure_admitted_is_now_refused() -> Bool {
       })) == false
 }
 
-data runner_slot_refusal_note: String = "THIS ROW WAS INVERTED, NOT EDITED TO STAY GREEN, and the distinction is the whole reason it carries a note. It asserted the_runner_ci_actually_uses_is_admitted. Raising the declared demand to cover the highest measured COMPLETING peak (gunbc.whole_corpus_compile_admission whole_corpus_compile_measured_demand_note, review 57202 on gunbc#9545) put the threshold above the runner slot's reported budget, so the previous assertion became false about the tree. The two available responses were to change what the row asserts or to change the threshold until the row stayed true; the second is the failure this whole module exists to refuse, since it derives a safety literal from the outcome someone wanted.\n\nWHAT IT NOW ASSERTS AND WHY THAT IS THE CORRECT VERDICT RATHER THAN A CONCESSION. The budget resolved from a slot is memory_high -- the line the host has agreed to give before it throttles -- and the demand exceeds it. A completing run would in fact survive there, degrading into swap below the 16 GiB memory_max kill line, so this is an over-refusal measured against SURVIVAL and an exact refusal measured against the BUDGET. An admission arm that admits on the grounds that a host tolerates breaches past its own stated line is not fail-closed, so the refusal is the modelled answer and the survival margin is a fact about the host, not a licence.\n\nWHAT WOULD MAKE THIS ROW FLIP BACK: a slot provisioned above the demand, or a re-measured demand that is genuinely lower under this module's own re-measure trigger -- which only fires on a HIGHER reading, so the second path requires the trigger to be changed on its own argument and not as a side effect of wanting this green."
+// THIS ROW WAS INVERTED, NOT EDITED TO STAY GREEN, and the distinction is the whole reason it
+// carries a note. It asserted the_runner_ci_actually_uses_is_admitted. Raising the declared demand
+// to cover the highest measured COMPLETING peak (gunbc.whole_corpus_compile_admission
+// whole_corpus_compile_measured_demand_note, review 57202 on gunbc#9545) put the threshold above
+// the runner slot's reported budget, so the previous assertion became false about the tree. The two
+// available responses were to change what the row asserts or to change the threshold until the row
+// stayed true; the second is the failure this whole module exists to refuse, since it derives a
+// safety literal from the outcome someone wanted.
+//
+// WHAT IT NOW ASSERTS AND WHY THAT IS THE CORRECT VERDICT RATHER THAN A CONCESSION. The budget
+// resolved from a slot is memory_high -- the line the host has agreed to give before it throttles
+// -- and the demand exceeds it. A completing run would in fact survive there, degrading into swap
+// below the 16 GiB memory_max kill line, so this is an over-refusal measured against SURVIVAL and
+// an exact refusal measured against the BUDGET. An admission arm that admits on the grounds that a
+// host tolerates breaches past its own stated line is not fail-closed, so the refusal is the
+// modelled answer and the survival margin is a fact about the host, not a licence.
+//
+// WHAT WOULD MAKE THIS ROW FLIP BACK: a slot provisioned above the demand, or a re-measured demand
+// that is genuinely lower under this module's own re-measure trigger -- which only fires on a
+// HIGHER reading, so the second path requires the trigger to be changed on its own argument and not
+// as a side effect of wanting this green.
 
 test fn the_runner_ci_actually_uses_is_refused_at_the_completing_peak_demand() -> Bool {
   whole_corpus_compile_admits(a: whole_corpus_compile_admission(budget: fleet_runner_slot_budget())) == false

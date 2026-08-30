@@ -22,7 +22,9 @@ import std.types { List, String }
 // WHY THIS IS NOT IN THE CONTRACT MODULE: the v1 producer imports the contract module for the
 // subject and row types, so a builtin call there would close a cycle through the seed's emit
 // closure. The check stays pure; only this seam is host-bound.
-data namespace_structural_observations_production_note: String = "Host bridge from the ordinary v1 compile path to the dag closing check. Carries no policy: the subject is supplied by the caller, the observations are composed in the v1 producer, and the capability assessment is the one shared authority."
+// Host bridge from the ordinary v1 compile path to the dag closing check. Carries no policy: the
+// subject is supplied by the caller, the observations are composed in the v1 producer, and the
+// capability assessment is the one shared authority.
 
 fn namespace_structural_observations_production_admissions(
   subject: StructuralObservationSubject,

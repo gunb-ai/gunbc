@@ -31,7 +31,12 @@ fn cell_fixture(
   }
 }
 
-data witness_no_producer_is_unknown_note: String = "THE fail-closed conjunct. A phase with no live observation producer must derive UnknownRefused — the arm that says 'we have no way to ask this host'. If it ever derives Converged, the status matrix reports a subsumption that was never observed, and every count built on it (remaining work, coverage) silently becomes fiction. This is the same defect class as a stats probe that auto-starts the server it is measuring (#7213 Finding 2): evidence manufactured by the act of looking."
+// THE fail-closed conjunct. A phase with no live observation producer must derive UnknownRefused —
+// the arm that says 'we have no way to ask this host'. If it ever derives Converged, the status
+// matrix reports a subsumption that was never observed, and every count built on it (remaining
+// work, coverage) silently becomes fiction. This is the same defect class as a stats probe that
+// auto-starts the server it is measuring (#7213 Finding 2): evidence manufactured by the act of
+// looking.
 
 test fn witness_no_producer_derives_unknown_not_converged() -> Bool {
   match host_phase_verdict_from(observation: none) {
@@ -44,7 +49,15 @@ test fn witness_no_producer_derives_unknown_not_converged() -> Bool {
   }
 }
 
-data witness_orthogonality_note: String = "The two axes must stay independent, and this is the conjunct that CAUGHT them being fused. The cell type was first written as a sum (StatusUnmodeled | StatusObserved), so a DeclaredGap phase discarded its observation — and the one cell CARRYING AN OBSERVATION today, (srv3, prefix:os-install-actuated), is a DeclaredGap phase, so coverage computed as zero with a real Converged verdict one branch away. Four combinations must all be representable and distinct: modeled+converged (done), modeled+inaccessible (srv1/srv2 build-cache — a finished model the host refuses to answer for), unmodeled+unknown (ordinary remaining work), and unmodeled+converged (the host is in the desired condition by means the model cannot reproduce — srv3's OS install). A fused enum has to round the middle two to something false."
+// The two axes must stay independent, and this is the conjunct that CAUGHT them being fused. The
+// cell type was first written as a sum (StatusUnmodeled | StatusObserved), so a DeclaredGap phase
+// discarded its observation — and the one cell CARRYING AN OBSERVATION today, (srv3,
+// prefix:os-install-actuated), is a DeclaredGap phase, so coverage computed as zero with a real
+// Converged verdict one branch away. Four combinations must all be representable and distinct:
+// modeled+converged (done), modeled+inaccessible (srv1/srv2 build-cache — a finished model the host
+// refuses to answer for), unmodeled+unknown (ordinary remaining work), and unmodeled+converged (the
+// host is in the desired condition by means the model cannot reproduce — srv3's OS install). A
+// fused enum has to round the middle two to something false.
 
 test fn witness_modeled_and_observed_axes_are_independent() -> Bool {
   let modeled_inaccessible = cell_fixture(
@@ -73,7 +86,11 @@ test fn witness_modeled_and_observed_axes_are_independent() -> Bool {
     && !host_phase_cell_has_live_producer(c: unmodeled_unknown)
 }
 
-data witness_producer_refusal_is_coverage_note: String = "A producer that RAN and honestly refused is coverage; no producer at all is not. The distinction is load-bearing because the two have different owners — a refusing producer is a reach or observation defect to fix, an absent producer is a model to build — and the first version of this module conflated them by reading coverage off the verdict instead of off the observation's presence."
+// A producer that RAN and honestly refused is coverage; no producer at all is not. The distinction
+// is load-bearing because the two have different owners — a refusing producer is a reach or
+// observation defect to fix, an absent producer is a model to build — and the first version of this
+// module conflated them by reading coverage off the verdict instead of off the observation's
+// presence.
 
 test fn witness_refusing_producer_still_counts_as_coverage() -> Bool {
   let refused = cell_fixture(
@@ -95,7 +112,13 @@ test fn witness_unreachable_and_unknown_stay_distinct() -> Bool {
     && observation_verdict_eq(a: std.upsert_decision.Inaccessible, b: std.upsert_decision.Inaccessible)
 }
 
-data witness_widen_red_control_note: String = "The discriminating RED control, built on the PATH-shadow / DaemonUnsupervised precedent: the forbidden absorbing fallback is modeled as its own sketch (host_phase_verdict_absorbing_fallback_widen_sketch fabricates Converged when no observation exists), the gate REJECTS the sketch's output, and the authority's output PASSES the same gate. The perturbation is independent of the property checked, so this cannot pass tautologically — an authority that quietly acquired the widen arm would be rejected by the gate it currently satisfies."
+// The discriminating RED control, built on the PATH-shadow / DaemonUnsupervised precedent: the
+// forbidden absorbing fallback is modeled as its own sketch
+// (host_phase_verdict_absorbing_fallback_widen_sketch fabricates Converged when no observation
+// exists), the gate REJECTS the sketch's output, and the authority's output PASSES the same gate.
+// The perturbation is independent of the property checked, so this cannot pass tautologically — an
+// authority that quietly acquired the widen arm would be rejected by the gate it currently
+// satisfies.
 
 test fn witness_red_control_widen_on_absent_rejected_by_gate() -> Bool {
   let widened = host_phase_verdict_absorbing_fallback_widen_sketch(observation: none)
@@ -107,7 +130,12 @@ test fn witness_red_control_widen_on_absent_rejected_by_gate() -> Bool {
 
 data departed_host_fixture: HostIdentity = "srv-departed" as HostIdentity
 
-data witness_reconcile_non_vacuous_note: String = "The membership instantiation must be exercised on a NON-DEGENERATE diff, or it is an instantiation nobody has tested. The live fleet produces only Modified and Unchanged hunks today (no host has left), so the Removed arm — a cell observed for a host absent from fleet_intent — is supplied synthetically here. All three outcomes are asserted in one reconcile: a departed host's cell tears down (cells are Owned, so R5 permits it rather than refusing), an unconverged cell upserts, and a cell already at the desired state produces no hunk at all."
+// The membership instantiation must be exercised on a NON-DEGENERATE diff, or it is an
+// instantiation nobody has tested. The live fleet produces only Modified and Unchanged hunks today
+// (no host has left), so the Removed arm — a cell observed for a host absent from fleet_intent — is
+// supplied synthetically here. All three outcomes are asserted in one reconcile: a departed host's
+// cell tears down (cells are Owned, so R5 permits it rather than refusing), an unconverged cell
+// upserts, and a cell already at the desired state produces no hunk at all.
 
 test fn witness_reconcile_covers_upsert_teardown_and_noop() -> Bool {
   let at_desired = cell_fixture(
@@ -140,7 +168,19 @@ test fn witness_reconcile_covers_upsert_teardown_and_noop() -> Bool {
     && membership_refusal_count(plan: plan) == 0
 }
 
-data witness_matrix_shape_note: String = "Shape assertions over the derived matrix, pinned to the spine and the enrolled fleet rather than to hand-copied numbers: the matrix is an exact identity join over (host x the obligations that host's participation selects), duplicate-free and covering exactly the enrolled roster, so it cannot silently drop a phase or a host — nor hand a host an obligation its participation does not own, which the former rectangle count could not see. The coverage count is the frontier's CURRENT measure, and it is not yet an honest one — corrected 2026-08-09 in the same change that landed witness_covered_cell_verdict_is_selected_by_authorship_alone below. Exactly one cell carries an observation today, (srv3, prefix:os-install-actuated), and that observation is AUTHORED rather than execution-backed: it derives from srv3_post_install_lease_table_fixture, and no effect in the tree produces a DhcpLeaseTableObservation. So the count reads one where the executed population is zero, and raising it is what items 2 and 3 of the lane exist to do. Pinning it means adding a producer is a VISIBLE, counted event that must update this witness, never a silent improvement nobody can point at."
+// Shape assertions over the derived matrix, pinned to the spine and the enrolled fleet rather than
+// to hand-copied numbers: the matrix is an exact identity join over (host x the obligations that
+// host's participation selects), duplicate-free and covering exactly the enrolled roster, so it
+// cannot silently drop a phase or a host — nor hand a host an obligation its participation does not
+// own, which the former rectangle count could not see. The coverage count is the frontier's CURRENT
+// measure, and it is not yet an honest one — corrected 2026-08-09 in the same change that landed
+// witness_covered_cell_verdict_is_selected_by_authorship_alone below. Exactly one cell carries an
+// observation today, (srv3, prefix:os-install-actuated), and that observation is AUTHORED rather
+// than execution-backed: it derives from srv3_post_install_lease_table_fixture, and no effect in
+// the tree produces a DhcpLeaseTableObservation. So the count reads one where the executed
+// population is zero, and raising it is what items 2 and 3 of the lane exist to do. Pinning it
+// means adding a producer is a VISIBLE, counted event that must update this witness, never a silent
+// improvement nobody can point at.
 
 // An exact identity join, not a product. Every enrollment contributes exactly the obligations its
 // own participation selects — program_step_count over assimilation_program_for — so a host whose
@@ -184,7 +224,11 @@ test fn witness_unmodeled_cells_track_spine_gaps() -> Bool {
   host_phase_unmodeled_count(enrollments: fleet_subsumption_enrollments) == gap_cells.length()
 }
 
-data witness_remaining_work_note: String = "Remaining work is the reconcile's own upsert count, and it must equal every cell that is not already at the FULL desired state — modeled AND converged. Asserting it against an independently computed count is what stops the reconcile from silently retiring cells: if desired ever weakened to 'converged, disposition ignored', srv3's installed-but-unmodeled OS cell would drop out of the count and the lane would look one item closer to done than it is."
+// Remaining work is the reconcile's own upsert count, and it must equal every cell that is not
+// already at the FULL desired state — modeled AND converged. Asserting it against an independently
+// computed count is what stops the reconcile from silently retiring cells: if desired ever weakened
+// to 'converged, disposition ignored', srv3's installed-but-unmodeled OS cell would drop out of the
+// count and the lane would look one item closer to done than it is.
 
 test fn witness_remaining_work_counts_every_unfinished_cell() -> Bool {
   let remaining = host_phase_remaining_work_count(enrollments: fleet_subsumption_enrollments)
@@ -193,8 +237,12 @@ test fn witness_remaining_work_counts_every_unfinished_cell() -> Bool {
   remaining == total - finished
 }
 
-
-data witness_program_scoping_note: String = "HOST-0 acceptance. The refactor's whole risk is that program scoping quietly CHANGES the runner fleet while looking tidy, so the identity conjunct is asserted rather than argued: a CI-participation enrollment must select the entire spine, because every phase authored to date exists to serve runner hosts. The complementary conjunct is the one the refactor exists for -- an inference enrollment must not carry a single runner or BMC obligation. Both are needed: the first alone would pass a no-op, the second alone would pass a refactor that broke srv1 through srv4."
+// HOST-0 acceptance. The refactor's whole risk is that program scoping quietly CHANGES the runner
+// fleet while looking tidy, so the identity conjunct is asserted rather than argued: a
+// CI-participation enrollment must select the entire spine, because every phase authored to date
+// exists to serve runner hosts. The complementary conjunct is the one the refactor exists for -- an
+// inference enrollment must not carry a single runner or BMC obligation. Both are needed: the first
+// alone would pass a no-op, the second alone would pass a refactor that broke srv1 through srv4.
 
 data synthetic_inference_enrollment: HostEnrollmentIntent = HostEnrollmentIntent {
   host: operator_host_srv3,
@@ -241,7 +289,13 @@ data synthetic_duplicated_enrollment: HostEnrollmentIntent = HostEnrollmentInten
   participation: [CiRunnerParticipation, CiRunnerParticipation, InferenceServingParticipation],
 }
 
-data witness_participation_set_semantics_note: String = "Participation is a set wearing a list's carrier, so the three enrollments below must be one program under BOTH readings -- the steps they select and the identity they derive. Selection was already order-blind and duplicate-blind because step_serves_any asks only whether SOME participation claims a step; identity was not, and joined whatever the caller happened to write. These conjuncts are the discriminating controls for that repair: each one reds against the pre-repair identity derivation, which is what distinguishes a real construction wall from a canonicalization function nobody calls."
+// Participation is a set wearing a list's carrier, so the three enrollments below must be one
+// program under BOTH readings -- the steps they select and the identity they derive. Selection was
+// already order-blind and duplicate-blind because step_serves_any asks only whether SOME
+// participation claims a step; identity was not, and joined whatever the caller happened to write.
+// These conjuncts are the discriminating controls for that repair: each one reds against the
+// pre-repair identity derivation, which is what distinguishes a real construction wall from a
+// canonicalization function nobody calls.
 
 test fn witness_participation_order_does_not_change_program_identity() -> Bool {
   let forward = assimilation_program_for(intent: synthetic_forward_order_enrollment)
@@ -266,7 +320,15 @@ test fn witness_distinct_participation_changes_identity_and_obligations() -> Boo
     && program_step_count(program: inference) < program_step_count(program: ci)
 }
 
-data witness_identity_is_exactly_canonical_note: String = "The DISCRIMINATING control, and the reason the three conjuncts above are not satisfied by any function that merely returns a constant. It pins the derived identity to an independently authored literal rather than to another projection of the same computation, and the literal is what the canonical roster REQUIRES it to be, not what the current code was measured to emit. Pre-repair, the duplicated enrollment joined its raw list and derived 'ci-runner+ci-runner+inference-serving'; this conjunct asserts that exact string is NOT the identity while the canonical two-label form IS. So it reds against the derivation this change replaced, which is what makes the repair a wall rather than a canonicalization helper sitting beside a still-writable path."
+// The DISCRIMINATING control, and the reason the three conjuncts above are not satisfied by any
+// function that merely returns a constant. It pins the derived identity to an independently
+// authored literal rather than to another projection of the same computation, and the literal is
+// what the canonical roster REQUIRES it to be, not what the current code was measured to emit.
+// Pre-repair, the duplicated enrollment joined its raw list and derived
+// 'ci-runner+ci-runner+inference-serving'; this conjunct asserts that exact string is NOT the
+// identity while the canonical two-label form IS. So it reds against the derivation this change
+// replaced, which is what makes the repair a wall rather than a canonicalization helper sitting
+// beside a still-writable path.
 
 test fn witness_program_identity_is_exactly_the_canonical_projection() -> Bool {
   let duplicated = assimilation_program_for(intent: synthetic_duplicated_enrollment)
@@ -410,7 +472,21 @@ test fn witness_runner_only_obligations_exist_on_runner_hosts() -> Bool {
   runner_only.length() > 0 && on_sparks.length() == 0
 }
 
-data witness_authored_observation_note: String = "THE SIBLING OF THE NOTE ABOVE, and the one the frontier does not yet catch. That note forbids evidence manufactured by the ACT OF LOOKING; this pair catches evidence manufactured by AUTHORING. host_phase_observation_coverage_count is designated by the frontier note as the number that measures the observation debt, and it counts a cell as covered exactly when host_phase_cell_has_live_producer holds -- which tests only that the observation is Present, never that anything executed to produce it. The single Present cell today, (srv3, prefix:os-install-actuated), derives its Converged verdict from srv3_post_install_lease_table_fixture, a data constant in gunbc.network_identity_subsumption whose one dynamic row carries the placeholder MAC 00:00:00:00:00:00. So the metric that measures the debt currently overstates coverage by its entire population. The frontier note states the rule this violates in its own words -- 'a cell earns a row here when an effect produces its verdict by execution' -- which is why the defect is worth an executing control rather than a correction in prose: the rule was already written down and was not enforceable, and no lens or witness would have reddened if a second host were wired in the same way. That is the exact move Spark collector-fact enrollment would have made for srv5 and srv6, which is how this was found."
+// THE SIBLING OF THE NOTE ABOVE, and the one the frontier does not yet catch. That note forbids
+// evidence manufactured by the ACT OF LOOKING; this pair catches evidence manufactured by
+// AUTHORING. host_phase_observation_coverage_count is designated by the frontier note as the number
+// that measures the observation debt, and it counts a cell as covered exactly when
+// host_phase_cell_has_live_producer holds -- which tests only that the observation is Present,
+// never that anything executed to produce it. The single Present cell today, (srv3,
+// prefix:os-install-actuated), derives its Converged verdict from
+// srv3_post_install_lease_table_fixture, a data constant in gunbc.network_identity_subsumption
+// whose one dynamic row carries the placeholder MAC 00:00:00:00:00:00. So the metric that measures
+// the debt currently overstates coverage by its entire population. The frontier note states the
+// rule this violates in its own words -- 'a cell earns a row here when an effect produces its
+// verdict by execution' -- which is why the defect is worth an executing control rather than a
+// correction in prose: the rule was already written down and was not enforceable, and no lens or
+// witness would have reddened if a second host were wired in the same way. That is the exact move
+// Spark collector-fact enrollment would have made for srv5 and srv6, which is how this was found.
 
 // THE DISCRIMINATING CONTROL. Both lease tables are authored data constants, and the verdict is a
 // pure function of WHICH ONE is wired into the frontier: the pre-install table (BMC row only)

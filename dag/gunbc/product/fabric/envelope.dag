@@ -20,7 +20,9 @@ import product.network_topology { NetworkEgressClass }
 // THE ROWS ARE MOVED VERBATIM, NOT RE-DERIVED. Every field, optionality and cited type is exactly
 // what fleet_container carried; this relocation changes the home and nothing else, so a reader
 // comparing against git history should find the definitions byte-identical.
-data fabric_envelope_note: String = "General resource-requirement vocabulary for brokered compute. Moved verbatim from gunbc.fleet_container, which now consumes it: the questions are machine questions, not container questions."
+// General resource-requirement vocabulary for brokered compute. Moved verbatim from
+// gunbc.fleet_container, which now consumes it: the questions are machine questions, not container
+// questions.
 
 type CpuRequirement { min_threads: HardwareThreadCount, architecture: Architecture? }
 

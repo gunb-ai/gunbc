@@ -1,15 +1,15 @@
 # Git plumbing as an extdeps authority
 
 LANDED, in part, by `GIT-PLUMBING-0`. This note scoped the dissolution of a split Git authority;
-the operation family and the whole devboot migration are now in tree, and §7 below records exactly
-which acceptance rows landed and which did not, so the note is neither read as a plan for work
-already done nor as a receipt for work that is not.
+the operation family and the whole devboot migration are now in tree, and §7 records exactly which
+acceptance rows landed and which did not, so the note reads neither as a plan for done work nor as
+a receipt for undone work.
 
 ## 1. The finding
 
 `extdeps.git` models Git's **porcelain and read** surface. `gunbc.devboot` privately models Git's
-**object-store plumbing** surface, as raw argv. Neither fact is written down anywhere, and together
-they are one authority split at the surface grain (DESIGN §3), not one un-lifted operation.
+**object-store plumbing** surface, as raw argv. Neither fact is written down, and together they are
+one authority split at the surface grain (DESIGN §3), not one un-lifted operation.
 
 Measured against the current tree:
 
@@ -25,8 +25,8 @@ Measured against the current tree:
   target-kind-refused arms. Its own `git_modeled_ref_transition_boundary_note` already rules that
   P3 must consume an executing transport observation and never promote the model to `Applied`.
 
-So the pure model exists and is good; the *operation* does not exist; the only realization in the
-tree is private to one service.
+So the pure model exists and is good; the *operation* does not; the only realization in the tree
+is private to one service.
 
 ## 2. Why this is a mis-aimed dissolution, not merely missing work
 
@@ -40,15 +40,15 @@ That target is correct for roughly 13 rows (`rm_rf`, `mkdir`, `cp`, `mv`, `chmod
 roughly 17** (the git plumbing above). A Git operation's terminus is a modeled `extdeps.git`
 service operation — DESIGN §3 (a), the dependency's interface shape, which extdeps owns — while
 `host_effect_apply` is §3 (b), a transport. Routing `git write-tree` into a generic host-effect
-actuator dissolves the *transport* and leaves Git's interface unmodeled permanently.
+actuator dissolves the *transport* and leaves Git's interface permanently unmodeled.
 
-The roster therefore conflates two dissolution classes under one target, and the git half's trigger
+The roster thus conflates two dissolution classes under one target, and the git half's trigger
 cannot fire correctly. This PR discharges declared debt rather than adding surface.
 
 ## 3. The operation family
 
 One closed mutation family, three arms. Create, exact advance and exact delete are distinct
-transitions with distinct preconditions in Git's own interface; they are not distinct authorities.
+transitions with distinct preconditions in Git's own interface, not distinct authorities.
 
 ```
 GitExactRefMutation
@@ -59,9 +59,9 @@ GitExactRefMutation
 
 `expected_old: Optional<GitObjectId>` is **refused**. An absent expected-old would conflate four
 states with different remedies — create-only, update unconditionally, the caller did not supply the
-fact, and the caller does not know the current value — which is the state-space conflation DESIGN §5
-names. The empty string devboot passes today is a transport encoding of Git's protocol, never a
-semantic value, and it disappears from the model.
+fact, the caller does not know the current value — the state-space conflation DESIGN §5 names. The
+empty string devboot passes today is a transport encoding of Git's protocol, never a semantic value,
+and disappears from the model.
 
 The pure model generalizes to the family while preserving every existing arm; `git_model_update_ref_exact`
 becomes the advance arm's caller-facing spelling, not a second authority. Create and delete must
@@ -70,10 +70,10 @@ target-kind validation.
 
 ### Outcome and read-back
 
-The operation does not decode Git's stderr into semantic causes. Devboot already establishes why:
-losing a race and failing to reach the store both exit 128 (`produce.dag`
-records this by measurement), so exit codes do not discriminate and messages are not a structural
-interface. The outcome is decided by **observation**, not by the process result alone:
+The operation does not decode Git's stderr into semantic causes. Devboot establishes why: losing a
+race and failing to reach the store both exit 128 (`produce.dag` records this by measurement), so
+exit codes do not discriminate and messages are not a structural interface. The outcome is decided
+by **observation**, not by the process result alone:
 
 ```
 exit 0   + desired state observed        => Applied
@@ -83,22 +83,22 @@ any exit + state not observable          => ObservationRefused
 exit 0   + desired state not observed    => ReadBackMismatch
 ```
 
-`Applied` is unreachable without an independent read-back, which is what the existing boundary note
-already requires of P3. Consumers project their own remedies from the common fact — a refused
-advance whose observed value differs is a stale parent and re-evaluates internally; a refused create
-whose ref is present is an attach.
+`Applied` is unreachable without an independent read-back, as the existing boundary note already
+requires of P3. Consumers project their own remedies from the common fact — a refused advance whose
+observed value differs is a stale parent and re-evaluates internally; a refused create whose ref is
+present is an attach.
 
 ## 4. The migration is the discriminator
 
 Replacing devboot's argv sites is the point of the PR, not a cleanup tail. Each site must declare
-which transition it is, and one site already fails that test:
+which transition it is; one already fails that test:
 
 **`gunbc.devboot.build` `publish_produced_tree` writes the produced-answer ref unconditionally.**
 The ref is per-request-token and holds one build answer; the function is reached from both the
 success path and `serve_refusal`. A re-serve of one token therefore silently overwrites a previous
-answer, and a client that read the old answer and a client reading the new one disagree with no
-signal. The ref is write-once by intent, so the correct transition is `GitCreateRefIfAbsent`, and a
-second publish for one token is a real conflict that must refuse loudly.
+answer, and a client that read the old answer and one reading the new disagree with no signal. The
+ref is write-once by intent, so the correct transition is `GitCreateRefIfAbsent`, and a second
+publish for one token is a real conflict that must refuse loudly.
 
 No unconditional arm is added to preserve that call. A site that can name neither create nor exact
 advance refuses until its intended transition is modeled.
@@ -109,12 +109,11 @@ DESIGN §3's replacement-migration rule is greedy root-first: attempt the maxima
 only on an exact refusal — Y-incomplete, an escaping consumer, or opaque — because a separate
 deeper cut pays admission surfaces, receipts and X-compatibility work the root cut never pays.
 
-An earlier draft of this note cut at ref mutation alone and left the other seven plumbing families
-private to `gunbc.devboot`. That had no refusal behind it. Ref mutation is the operation with an
-interesting transactional guarantee, which is a reason to sequence the *proof* there — not a reason
-to leave the authority split standing. Descoping would have left devboot the private authority for
-Git plumbing while each later family paid its own admission round, which is the attractor the rule
-exists to prevent.
+An earlier draft cut at ref mutation alone and left the other seven plumbing families private to
+`gunbc.devboot`, with no refusal behind it. Ref mutation's interesting transactional guarantee is a
+reason to sequence the *proof* there, not to leave the authority split standing. Descoping would
+have left devboot the private authority for Git plumbing while each later family paid its own
+admission round — the attractor the rule exists to prevent.
 
 So the cut is the split itself: **no `gunbc.devboot` declaration constructs a Git plumbing argv
 list, and the corresponding `RetainedWitnessRun` rows delete rather than being repointed.** The
@@ -150,7 +149,7 @@ Acceptance:
    at `host_effect_apply`.
 
 Out of scope: any SCM behavior. This PR makes the plumbing an authority with one real consumer cut
-over; M0 is the second consumer and proves the surface is not devboot-specific, in its own PR.
+over; M0, in its own PR, is the second consumer and proves the surface is not devboot-specific.
 
 ## 6. Deliberately undecided
 
@@ -163,22 +162,21 @@ contract as a transport and cannot inhabit the target's cache field at all — a
 object database plausibly occupies the same position. `ArtifactRequest` is additionally a closed
 coproduct with an explicit `request_fold`, so a new arm edits every consumer.
 
-Two facts found while scoping this note argue that the question is not merely open but currently
-**unanswerable in the adoption direction**, and both are recorded here so the next author does not
-rediscover them. Devboot decides reuse by `build_subject_equal` over the whole `BuildSubject` after
-the digest narrows to a candidate — the digest is documented there as an index, not a decision —
-whereas `provider_serve` decides on `ContentHash` equality alone. And `MaterializedArtifact` retains
-only `request_key` plus its parts, so the contract holds no subject that could differ from a
-request's: the same-key-different-subject state is not representable, which is why the provider's
-witness suite contains no collision test. Routing devboot into the contract as it stands would
-therefore lower a wall rather than share one.
+Two facts found while scoping make the question not merely open but currently **unanswerable in
+the adoption direction**, recorded so the next author need not rediscover them. Devboot decides
+reuse by `build_subject_equal` over the whole `BuildSubject` after the digest narrows to a candidate
+— the digest is documented there as an index, not a decision — whereas `provider_serve` decides on
+`ContentHash` equality alone. And `MaterializedArtifact` retains only `request_key` plus its parts,
+so the contract holds no subject that could differ from a request's: the same-key-different-subject
+state is not representable, which is why the provider's witness suite has no collision test.
+Routing devboot into the contract as it stands would lower a wall rather than share one.
 
-That is a finding about `std.materialization_provider`, not about devboot or about this PR, and it
-belongs to its own lane with its own operator ruling — the module is contract-stable after four
-review passes and seven consumers are scheduled to adopt it. Nothing here depends on its outcome:
-if the contract later grows an exact-comparison door, devboot's fold is the reference
-implementation; if it does not, devboot remains a build-domain materializer whose storage
-realization is Git. Either way its uniformity work is exactly §5's cut and nothing more.
+That is a finding about `std.materialization_provider`, not about devboot or this PR, and belongs
+to its own lane with its own operator ruling — the module is contract-stable after four review
+passes and seven consumers are scheduled to adopt it. Nothing here depends on its outcome: if the
+contract later grows an exact-comparison door, devboot's fold is the reference implementation; if
+not, devboot remains a build-domain materializer whose storage realization is Git. Either way its
+uniformity work is exactly §5's cut and nothing more.
 
 ## Dissolution trigger (DESIGN §6)
 
@@ -214,18 +212,18 @@ Landed:
   artifact bindings are creates for the same reason; the stranded-lease break is an exact delete.
 
 Did NOT land, and is not a stall: **acceptance row 1** — generalizing the *pure R0 model*
-`git_model_update_ref_exact` in `extdeps.git.object_store` to the three-arm family. It is left
-undone deliberately rather than forgotten. That model simulates a repository state; nothing in this
-cut consumes it, and devboot decides from an executing observation instead, so generalizing it here
-would have added authority with no consumer — the §6 tell this repository treats as a finding.
+`git_model_update_ref_exact` in `extdeps.git.object_store` to the three-arm family. Left undone
+deliberately, not forgotten: that model simulates a repository state, nothing in this cut consumes
+it, and devboot decides from an executing observation instead, so generalizing it here would have
+added authority with no consumer — the §6 tell this repository treats as a finding.
 NEXT TRIGGER: the first consumer that simulates a ref transition rather than performing one, which
 is the P3 boundary `git_modeled_ref_transition_boundary_note` already names. Until then the R0 model
 answers exactly the question it has always answered, and the execution-side family answers the other
 one.
 
 **Acceptance row 3 (execution against real repositories with independent read-back on every
-success) is likewise NOT claimed by this PR, and that bound is stated rather than left to be
-inferred from a green witness suite.** What executes is the DECISION: `git_ref_mutation_outcome`
+success) is likewise NOT claimed by this PR; the bound is stated rather than left to be inferred
+from a green witness suite.** What executes is the DECISION: `git_ref_mutation_outcome`
 takes the three values a caller holds after an attempt, so all five arms — including the pair that
 share exit 128 — are reachable hermetically and are claimed in
 `test.claim.git_plumbing_ref_mutation_witness_test`. What does not execute is any

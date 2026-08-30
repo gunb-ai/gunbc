@@ -28,7 +28,27 @@ import std.path_intent { NearestAncestorContaining, PathRefStart }
 import std.filesystem.types { RegularFile }
 import std.types { FilePathParts, NonEmptyStr }
 
-data ci_floor_peak_path_predicate_qualification_note: String = "PathPredicate IS DELIBERATELY ABSENT FROM THE std.path_intent IMPORT LIST ABOVE, and And / Not are written std.path_intent.And / std.path_intent.Not at their construction sites. v2.std.orchestration's Predicate and std.path_intent's PathPredicate both carry variants named And, Not and Or, and bringing both TYPES into one module is a hard typecheck refusal — 'variant And appears in both Predicate and PathPredicate' — never a shadowing warning. WHAT THE COLLISION IS ACTUALLY KEYED ON was established by execution rather than read off the message, because the message points somewhere else: the refusal is reported at std.path_intent's own declaration line, a file this module merely imports, so the obvious first repair — dropping And, Not and Or from the import list and qualifying every construction — CHANGES NOTHING and the identical three errors reappear. What clears it is dropping the TYPE NAME PathPredicate from the import list and annotating the declaration std.path_intent.PathPredicate, which is exactly the shape the v2.workflow.orchestration_while_emit witness already used and the reason that file compiles while a naive port of it does not. Two consequences worth separating. The refusal itself is CORRECT and wanted (the namespace lane's no-ambiguity-at-any-layer rule), and qualifying is the containment tree answering the question it exists to answer, so renaming either coproduct's boolean connectives to dodge it would be the nickname this repo forbids — a conjunction over path predicates and a conjunction over exit-status predicates are both correctly called And. But its LOCUS is wrong: the conflict is created by the importer that brings both types into scope, and blaming the imported declaration sends the reader to a shared std file that is not at fault and cannot be fixed there. Reported as a diagnostic-locus finding on the namespace lane rather than repaired here; std.path_intent and the resolver are load-bearing and this is a leaf-adoption PR."
+// PathPredicate IS DELIBERATELY ABSENT FROM THE std.path_intent IMPORT LIST ABOVE, and And / Not
+// are written std.path_intent.And / std.path_intent.Not at their construction sites.
+// v2.std.orchestration's Predicate and std.path_intent's PathPredicate both carry variants named
+// And, Not and Or, and bringing both TYPES into one module is a hard typecheck refusal — 'variant
+// And appears in both Predicate and PathPredicate' — never a shadowing warning. WHAT THE COLLISION
+// IS KEYED ON was established by execution, because the message points elsewhere: the refusal is
+// reported at std.path_intent's own declaration line, a file this module merely imports, so the
+// obvious first repair — dropping And, Not and Or from the import list and qualifying every
+// construction — CHANGES NOTHING and the identical three errors reappear. What clears it is
+// dropping the TYPE NAME PathPredicate from the import list and annotating the declaration
+// std.path_intent.PathPredicate, the shape the v2.workflow.orchestration_while_emit witness already
+// used and the reason that file compiles while a naive port does not. Two consequences. The
+// refusal itself is CORRECT and wanted (the namespace lane's no-ambiguity-at-any-layer rule), and
+// qualifying is the containment tree answering the question it exists to answer, so renaming
+// either coproduct's boolean connectives to dodge it would be the nickname this repo forbids — a
+// conjunction over path predicates and one over exit-status predicates are both correctly called
+// And. But its LOCUS is wrong: the conflict is created by the importer that brings both types into
+// scope, and blaming the imported declaration sends the reader to a shared std file that is not at
+// fault and cannot be fixed there. Reported as a diagnostic-locus finding on the namespace lane
+// rather than repaired here; std.path_intent and the resolver are load-bearing and this is a
+// leaf-adoption PR.
 
 data ci_floor_peak_emit_refused_poison: String = "__GUNBC_ORCH_EMIT_REFUSED__ floor-peak cgroup observation emission was rejected by v2.compiler.emit_orchestration; this marker is not valid workflow shell, so the committed ci.yml drift gate goes red rather than a hand-spelled fallback masking the refusal (DESIGN 5: refuse, never widen)\n"
 
@@ -39,7 +59,14 @@ data ci_floor_peak_nearest_ancestor_spec: NearestAncestorContaining = NearestAnc
   expected_kind: RegularFile,
 }
 
-data ci_floor_peak_cgroup_locate_vertical_note: String = "THE CGROUP LOCATE VERTICAL COMPOSEES TWO TYPED AUTHORITIES. extdeps.linux.proc_self_cgroup owns unified-hierarchy membership decode (language-independent). v2.extdeps.languages.bash_proc_self_cgroup lowers membership outcomes to shell assign (refuses missing/ambiguous/malformed distinctly; no head -1; no empty-path widen). std.path_intent NearestAncestorContaining names the nearest-ancestor search policy (start PathRefStart, stop_before mount, relative_entry memory.peak). bash_orch_if composes both lowerings without reimplementing the parser. Peak reset/cat/echo calibration leaves stay raw String — Phase 2 typed filesystem observation."
+// THE CGROUP LOCATE VERTICAL COMPOSEES TWO TYPED AUTHORITIES. extdeps.linux.proc_self_cgroup owns
+// unified-hierarchy membership decode (language-independent).
+// v2.extdeps.languages.bash_proc_self_cgroup lowers membership outcomes to shell assign (refuses
+// missing/ambiguous/malformed distinctly; no head -1; no empty-path widen). std.path_intent
+// NearestAncestorContaining names the nearest-ancestor search policy (start PathRefStart,
+// stop_before mount, relative_entry memory.peak). bash_orch_if composes both lowerings without
+// reimplementing the parser. Peak reset/cat/echo calibration leaves stay raw String — Phase 2 typed
+// filesystem observation.
 
 data ci_floor_peak_path_model_refused_poison: String = "__GUNBC_PATH_INTENT_LOWERING_REFUSED__ floor-peak cgroup path-intent leaf lowering was rejected by v2.extdeps.languages.bash_orch_if; this marker is not valid workflow shell, so the committed ci.yml drift gate goes red (DESIGN 5: refuse, never widen). WHY A POISON RATHER THAN EMPTY TEXT, on the measured facts rather than the intuitive ones: the Run.command seam is String-typed and cannot carry an Outcome, so the refusal arm has to be SOME string, and the sibling witness file's model-text helpers return \"\" there. An earlier draft of this row justified the poison by claiming an empty while-condition is an always-true loop that would spin forever. THAT IS FALSE, tested 2026-08-05 against /bin/sh, /bin/dash and /bin/bash: 'while ; do' is a SYNTAX ERROR in all three, so an empty leaf would fail loudly rather than hang. The real argument is smaller and survives the correction. An empty String is a well-typed, ordinary-looking value flowing through an untyped seam; it says nothing about which lowering refused or why, and its first observable symptom is a shell parse failure inside a generated workflow — attributed to ci.yml at CI runtime, several layers from the path model that actually refused. The poison carries the cause to the place the reader lands. In practice the drift gate catches either one, because both differ from the committed bytes; what the poison buys is a LOCATED refusal instead of an anonymous one, which is the half of DESIGN section 5 that a mere red does not supply."
 
@@ -120,7 +147,10 @@ data ci_floor_phase_journal_shell_emit_scaffold: Disposition = Scaffold {
 
 data ci_floor_phase_journal_shell_emit_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: ci_floor_phase_journal_if — bounded foreign-executor (GitHub Actions run:) shell transport for exactly four journal leaves: FileExists, column-name log, row-count summary log, and absent log. If/else control flow is already v2.std.orchestration intent; only those leaves remain medium-as-string Run.command values. DISSOLVES WHEN bash-emit (#5828 / ROADMAP shell-effectplan-to-bash / shell→intent Phase 2) binds typed filesystem observation plus diagnostic-log operations through host_effect_apply, so ci_floor_phase_journal_if contains no opaque shell command text.")
 
-data ci_floor_phase_journal_roadmap_citation_note: String = "The symbolic ROADMAP row `shell-effectplan-to-bash` above is intentional. Neighboring shell-emission dissolve markers still carry the pre-existing stale pointer `6-shell-slice0`, which names no roadmap_authority row and is tracked for a separate shell-lane correction; do not normalize this live citation back to that spelling."
+// The symbolic ROADMAP row `shell-effectplan-to-bash` above is intentional. Neighboring
+// shell-emission dissolve markers still carry the pre-existing stale pointer `6-shell-slice0`,
+// which names no roadmap_authority row and is tracked for a separate shell-lane correction; do not
+// normalize this live citation back to that spelling.
 
 data ci_floor_phase_journal_runner_scaffold_comment: String = concat("# ", dissolution_description(condition: ci_floor_phase_journal_shell_emit_dissolution_trigger))
 
@@ -165,7 +195,20 @@ fn ci_floor_peak_emit_pipeline(p: Pipeline) -> String {
   }
 }
 
-data ci_floor_peak_path_leaf_residue_note: String = "🟡 dissolve-on: v2.std.orchestration gains a path arm — Predicate carries PathPredicate and PipelineStep carries DirnameAscent — so the cgroup ascent while-loop is a typed node in the pipeline instead of derived text at a String seam. TODAY'S EXACT STATE: Predicate is ExitZero | LogMatches | StrEq | StrEmpty | StrNonempty | IntNe | Not | And | Or and PipelineStep is Do | Comment | Exit | If | For | While | Retry | Let | Call — neither coproduct has a path member, which is why ci_floor_peak_while_cond_command and ci_floor_peak_while_body_command lower to text HERE. When those arms exist they delete outright and orch_emit_step lowers the model at emission time; ci_floor_peak_nearest_ancestor_spec survives as the arm payload. LANDED IN THIS VERTICAL (not Phase 2 residue): unified-hierarchy membership decode is extdeps.linux.proc_self_cgroup; ci_floor_peak_assign_cgroup_dir_command composes v2.extdeps.languages.bash_proc_self_cgroup membership lowering with that path policy via bash_orch_if; procfs path is extdeps.linux.procfs ProcSelfCgroup. REMAINING Phase 2: the foreign-executor runtime-scan transport in bash_membership_assign_from_source (host_effect_apply typed observation) and peak reset/cat/echo calibration leaves (raw String — typed filesystem observation)."
+// 🟡 dissolve-on: v2.std.orchestration gains a path arm — Predicate carries PathPredicate and
+// PipelineStep carries DirnameAscent — so the cgroup ascent while-loop is a typed node in the
+// pipeline instead of derived text at a String seam. TODAY'S EXACT STATE: Predicate is ExitZero |
+// LogMatches | StrEq | StrEmpty | StrNonempty | IntNe | Not | And | Or and PipelineStep is Do |
+// Comment | Exit | If | For | While | Retry | Let | Call — neither has a path member, which is why
+// ci_floor_peak_while_cond_command and ci_floor_peak_while_body_command lower to text HERE. When
+// those arms exist they delete outright and orch_emit_step lowers the model at emission time;
+// ci_floor_peak_nearest_ancestor_spec survives as the arm payload. LANDED IN THIS VERTICAL (not
+// Phase 2 residue): unified-hierarchy membership decode is extdeps.linux.proc_self_cgroup;
+// ci_floor_peak_assign_cgroup_dir_command composes v2.extdeps.languages.bash_proc_self_cgroup
+// membership lowering with that path policy via bash_orch_if; procfs path is extdeps.linux.procfs
+// ProcSelfCgroup. REMAINING Phase 2: the foreign-executor runtime-scan transport in
+// bash_membership_assign_from_source (host_effect_apply typed observation) and peak reset/cat/echo
+// calibration leaves (raw String — typed filesystem observation).
 
 fn ci_floor_peak_cgroup_locate_while() -> PipelineStep {
   While {

@@ -1,29 +1,25 @@
 # Five-minute CI gate — program scoping
 
-Scoping only. No implementation lands from this note alone. Registers the
-operator-signed product boundary, six sub-lanes, and the **dependency sequence**
-in `gunbc.roadmap_authority` so dispatch, witnesses, and receipts share one
-program identity.
+Scoping only; nothing lands from this note alone. Registers the operator-signed
+product boundary, six sub-lanes, and the **dependency sequence** in
+`gunbc.roadmap_authority` so dispatch, witnesses, and receipts share one program identity.
 
 **Product boundary (re-anchored by operator ruling 2026-08-02):** every required
 operation performs the bare minimum computation needed to serve it — an ordinary
 source edit's verdict recomputes no semantic fact whose inputs did not change,
 and its cost is the touched closure's delta, not the corpus. **Five minutes is
-not the contract** — the operator's words: the earlier sentence presenting it as
-the contract was a mistake; five minutes is the distress ceiling ("holy crap
-this is hard / not working well"), retained only as the Stage C checkpoint
-bound. Reaching 5:00 does not complete the program while redundant computation
-remains on a required path; the bar is scoped by the realization/materialization
-goals, and wall-clock falls out of them.
+not the contract** (operator: the earlier sentence calling it the contract was a
+mistake); it is the distress ceiling ("holy crap this is hard / not working
+well"), kept only as the Stage C checkpoint bound. Reaching 5:00 does not
+complete the program while redundant computation remains on a required path;
+the bar is the realization/materialization goals, and wall-clock falls out of them.
 
-**This is a program, not a PR.** Each sub-lane is independently dispatchable;
-the parent carries the end-to-end contract and the ordered sequence below.
-Receipts stay on the sub-lane that owns them — the parent carries no stored
-rung or wall-clock field.
+**This is a program, not a PR.** Each sub-lane dispatches independently; the
+parent carries the end-to-end contract and the ordered sequence below, and no
+stored rung or wall-clock field — receipts stay on the owning sub-lane.
 
 **Native witness execution — settled at small scale (#7599 MERGED; #7671 enrollment MERGED).**
-The program no longer debates whether moving semantic execution out of the
-interpreter works at small scale. **Banked:** `native_at_small_scale_transition_receipt`.
+Moving semantic execution out of the interpreter works at small scale; no longer debated. **Banked:** `native_at_small_scale_transition_receipt`.
 **Open (operational):** fleet native rate on ordinary floors (closeout receipt:
 known fallback class; recoverable logs omit `native_count`). Do not credit Stage B
 wall from enrollment alone. Next mechanism work is shared entry-view construction
@@ -31,8 +27,8 @@ wall from enrollment alone. Next mechanism work is shared entry-view constructio
 
 **Interpreter endgame (linked, not duplicated):** moving `cli_run`/interpreter
 helpers to `.dag` improves authority but does **not** make CI fast while the
-`.dag` is still interpreted. The win arrives when `.dag` is the source
-authority for a native, reusable realization. See [witness realization plan](witness-realization-plan.md)
+`.dag` is still interpreted; the win arrives when `.dag` is the source authority
+for a native, reusable realization. See [witness realization plan](witness-realization-plan.md)
 and `dag/gunbc/plans/cli_run_hollowing_plan.dag`.
 
 ---
@@ -115,7 +111,7 @@ broad/cold p95 ≤ **10–15 min**; falsifier cadence ≤ **20–30 min** initia
 ## Verified receipts (execution-backed)
 
 Only figures verified by execution in this session or committed on main are cited
-at full altitude. Claimed-not-verified figures are typed separately.
+at full altitude; claimed-not-verified figures are typed separately.
 
 | receipt | source | what stands |
 |---|---|---|
@@ -156,9 +152,9 @@ at full altitude. Claimed-not-verified figures are typed separately.
 
 ## Dissolution trigger
 
-Delete this note when every sub-lane row is accepted or honestly retired and the
-program parent `five-minute-ci-gate` is accepted on fleet receipts showing Stage C
-on a representative leaf `.dag` PR — or when the operator recuts the program.
+Delete when every sub-lane row is accepted or honestly retired and the parent
+`five-minute-ci-gate` is accepted on fleet receipts showing Stage C on a
+representative leaf `.dag` PR — or when the operator recuts the program.
 
 DESIGN refs: §1 (time is the value), §2 (one materialization kernel), §5 (refuse,
 never widen), §6 (displaced cost priced in receipts).

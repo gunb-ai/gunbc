@@ -33,11 +33,11 @@ import gunbc.namespace_cut_subject_observation {
   probe_is_host,
 }
 
-// ReadsLiveTree by G1 carrier-closure honesty, exactly as v2.test.lens_enforcement.gate_test
-// records for itself: every arm below feeds AUTHORED values, but the loader closure imports the
-// observation module, which is a declared live-read carrier home, so a SubstrateInputsOnly stamp
-// would be a lying stamp. The LIVE execution evidence for this instrument is its own runnable
-// report (subject_roster_report), exercised by the manager rather than by the floor.
+// ReadsLiveTree by G1 carrier-closure honesty, as v2.test.lens_enforcement.gate_test records for
+// itself: every arm below feeds AUTHORED values, but the loader closure imports the observation
+// module, a declared live-read carrier home, so a SubstrateInputsOnly stamp would lie. The LIVE
+// execution evidence for this instrument is its own runnable report (subject_roster_report),
+// exercised by the manager rather than by the floor.
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
 fn fixture_probe() -> NamespaceCutSubjectProbe {
@@ -77,15 +77,14 @@ test fn a_host_probe_refuses_rather_than_answering_from_the_declaration_route() 
 }
 
 // ---------------------------------------------------------------------------------------------
-// THE HOST JOIN, ALL FOUR ARMS, AUTHORED. This is the arm set that makes the join safe to trust,
-// and it is authorable in full because observe_host_probe takes the observation as a parameter --
-// no tree state moves any of these.
+// THE HOST JOIN, ALL FOUR ARMS, AUTHORED. This arm set makes the join safe to trust, and it is
+// authorable in full because observe_host_probe takes the observation as a parameter -- no tree
+// state moves any of these.
 //
-// The load-bearing pair is the last two. A scanned file with no matching item is ABSENT (the
-// cut's success state), and a file the population never covered is UNOBSERVABLE. Collapsing the
-// second into the first is the absorbing fallback DESIGN section 5 forbids -- an unread file
-// silently joining the deleted -- and it is exactly one `else` away at all times, so it is
-// asserted rather than argued.
+// The load-bearing pair is the last two. A scanned file with no matching item is ABSENT (the cut's
+// success state); a file the population never covered is UNOBSERVABLE. Collapsing the second into
+// the first is the absorbing fallback DESIGN section 5 forbids -- an unread file silently joining
+// the deleted -- and it is one `else` away at all times, so it is asserted rather than argued.
 // ---------------------------------------------------------------------------------------------
 fn host_fixture_probe() -> NamespaceCutSubjectProbe {
   HostRustItemProbe { crate_relative_file: "src/v1/stage0/src/cli_run.rs", item_name: "extract_import_paths" }

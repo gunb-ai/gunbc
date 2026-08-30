@@ -11,7 +11,9 @@ import v2.lens.cost.copied_port_derivation { derive_copied_port_index_from_arrow
 import v2.std.collection { Absent, Present }
 import v2.std.logic { Bool }
 
-data wave1_gate1_c1_note: String = "Wave 1 Gate 1 C1 helpers: per-op cost derivation over ^arrow_body_edge retires the hand copied_port_fact_registry; unpriceable combiners stay fail-closed via copied_port_index_of => Absent."
+// Wave 1 Gate 1 C1 helpers: per-op cost derivation over ^arrow_body_edge retires the hand
+// copied_port_fact_registry; unpriceable combiners stay fail-closed via copied_port_index_of =>
+// Absent.
 
 fn wave1_gate1_c1_derived_indices_match_retired_registry_holds() -> Bool {
   match derive_copied_port_index_from_arrow(

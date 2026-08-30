@@ -16,7 +16,14 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   }
 }
 
-data tyco_electronics_amp_kk_note: String = "A SEPARATE ROW FROM extdeps.vendor.tyco_electronics, AND DELIBERATELY SO. Two application specifications read on the same day carry two different entities in their headers: the DDR4 socket document is issued by Tyco Electronics Corporation of Harrisburg, Pennsylvania, and the M.2 document by Tyco Electronics AMP K.K. of Kawasaki, Japan, with its own registered address. They trade under one brand and it would have been easy to fold them into one vendor row, which is exactly what DESIGN section 3 forbids: independently governed entities inhabiting a shared brand are not one authority, and merging them would make a correction to either one edit the other. What is NOT established here is the relationship between them - parent, subsidiary, or successor - because no document read establishes it, and asserting one would be inventing a corporate structure to tidy a roster."
+// A SEPARATE ROW FROM extdeps.vendor.tyco_electronics, DELIBERATELY. Two application
+// specifications read the same day carry different header entities: the DDR4 socket document is
+// issued by Tyco Electronics Corporation of Harrisburg, Pennsylvania, the M.2 document by Tyco
+// Electronics AMP K.K. of Kawasaki, Japan, with its own registered address. One brand, but folding
+// them into one vendor row is what DESIGN section 3 forbids: independently governed entities under
+// a shared brand are not one authority, and a correction to either would edit the other. NOT
+// established: their relationship - parent, subsidiary, or successor - because no document read
+// establishes it; asserting one would invent corporate structure to tidy a roster.
 
 data tyco_electronics_amp_kk: Vendor<Hardware> = Vendor { legal_name: "Tyco Electronics AMP K.K." }
 
