@@ -96,8 +96,9 @@ import v1.compiler.closure_stub_v2_std_text_rust { closure_stub_v2_std_text_sour
 import v1.compiler.coercion {
   coerce_primitive_type, is_copy, lookup_checkpoint, type_reference_decl_file,
   rust_seed_host_numeric_alias, target_callable, rust_lookup_exact_binding,
-  declaration_realizes_natively_on_rust
+  declaration_realizes_natively_on_rust, is_kernel_minted_file
 }
+import v1.compiler.dag_collect_support { connective_name }
 import v1.compiler.trait_derive_emit {
   v1_emit_enum_derives,
   v1_emit_struct_from_capability_table, v1_emit_enum_supplemental_impls,
@@ -124,6 +125,7 @@ import v1.compiler.infer_env { TypeEnv, TypeBinding, authored_name, lookup_type_
 import std.operator_realization {
   OperatorRealization, HostOperator, StructuralEquality, StructuralComparison, OperatorRealizationRefused,
   OperandRealization, HostNumericOperand, StructuralOperand, OperandIdentityUnavailable,
+  HostRealizedOperand, KernelMintedType, GenericTypeParameter, HostContainer, OperandShapeFacts,
   StructuralOrderingBinding, OrderingTest, OrderingIs, OrderingIsNot,
   operator_realization_for, operator_realization_refusal_message
 }
@@ -12045,8 +12047,24 @@ fn rust_operand_realization(operand: Node, scope: InferScope) -> OperandRealizat
 // (render_rust_alias_rhs_type hops is_where_refinement_type to the first child), so the operand
 // decision hops the same way, resolving the base through the env as where_refinement_chain does.
 fn rust_operand_realization_of_type(rt: Node, scope: InferScope, fuel: Int) -> OperandRealization {
+  let decl_file = type_reference_decl_file(n: rt)
+  let authored = authored_name_at(source_indices: scope.type_env.source_indices, node: rt)
+  let rt_is_type_var = match rt.inferred { Present { value: i } => is_type_variable(inferred: i)  Absent => false }
+  if is_kernel_minted_file(file: decl_file) {
+    HostRealizedOperand { reason: KernelMintedType }
+  } else if rt_is_type_var {
+    HostRealizedOperand { reason: GenericTypeParameter }
+  } else if is_container_type(name: qualified_last_segment(name: authored)) {
+    HostRealizedOperand { reason: HostContainer }
+  } else {
   match type_reference_declaration_ref(n: rt, source_indices: scope.type_env.source_indices, env: scope.type_env) {
-    Absent => OperandIdentityUnavailable
+    Absent => OperandIdentityUnavailable { facts: OperandShapeFacts {
+      authored_name: authored,
+      connective: connective_name(value: rt.connective),
+      child_count: rt.children |> count,
+      resolved: rt.inferred != none,
+      decl_file: decl_file
+    } }
     Present { value: d } =>
       if declaration_realizes_natively_on_rust(declaration: d, decl_file: type_reference_decl_file(n: rt)) {
         HostNumericOperand
@@ -12071,6 +12089,7 @@ fn rust_operand_realization_of_type(rt: Node, scope: InferScope, fuel: Int) -> O
           StructuralOperand { declaration: d }
         }
       }
+  }
   }
 }
 

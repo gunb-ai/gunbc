@@ -147,6 +147,13 @@ fn numeric_realization_declaring_modules() -> List<String> {
   ["dag/std/nat.dag", "dag/std/integer.dag", "<kernel:"]
 }
 
+// THE FILE A KERNEL-MINTED TYPE NODE CARRIES (v1.compiler.core kernel_span): the parser's own
+// `<kernel:Name>` pseudo-file, never a declaration in the corpus. One predicate for the three
+// places that read it, so the spelling lives here and not in each consumer.
+fn is_kernel_minted_file(file: String) -> Bool {
+  contains(file, "<kernel:")
+}
+
 fn decl_file_realizes_natively(decl_file: String) -> Bool {
   if decl_file == "" {
     false

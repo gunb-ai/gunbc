@@ -10,6 +10,9 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // operations on nontrivial Succ values and the generic decisions by row and identity -- is
 // v2.test.claim.self_host.peano_nat_structural_realization_test.
 //
+// The required images are spelled in the emitter's record-literal layout (emit_typed_record_lit:
+// one field per line, four-space indent, the closing brace at column zero), read off the same
+// probes compiled with the lane's fixed-point binary; a single-line spelling never matches.
 // The forbidden tokens are the emitter's rendering BEFORE this lane, read off the same probes
 // compiled with the pre-lane binary (recorded here so a reader can see what each row turns red on):
 //   arg boundary        crate::v2_std_nat::nat_add(n.clone(), 2)        -> E0308 Rc<Nat> vs integer
@@ -26,7 +29,7 @@ test fn w_literal_at_peano_argument_boundary_emits_its_image() -> Bool {
   compile_dag_rust_emit_check(
     "module test.claim.peano_arg_probe\nimport std.types { Bool }\nimport v2.std.nat { Nat, nat_add }\nfn probe(n: Nat) -> Nat { nat_add(a: n, b: 2) }\n",
     "src/test_claim_peano_arg_probe.rs",
-    ["Nat::Succ { prev: Rc::new(Nat::Succ { prev: Rc::new(Nat::Zero) }) }"],
+    ["Nat::Succ {\n    prev: Rc::new(Nat::Succ {\n    prev: Rc::new(Nat::Zero),\n})"],
     [", 2)"]
   )
 }
@@ -36,7 +39,7 @@ test fn w_literal_at_peano_return_boundary_emits_its_image() -> Bool {
   compile_dag_rust_emit_check(
     "module test.claim.peano_return_probe\nimport v2.std.nat { Nat }\nfn probe() -> Nat { 2 }\n",
     "src/test_claim_peano_return_probe.rs",
-    ["Nat::Succ { prev: Rc::new(Nat::Succ { prev: Rc::new(Nat::Zero) }) }"],
+    ["Nat::Succ {\n    prev: Rc::new(Nat::Succ {\n    prev: Rc::new(Nat::Zero),\n})"],
     ["{\n    2\n}"]
   )
 }
@@ -47,7 +50,7 @@ test fn w_literal_operand_of_peano_equality_emits_its_image() -> Bool {
   compile_dag_rust_emit_check(
     "module test.claim.peano_literal_eq_probe\nimport std.types { Bool }\nimport v2.std.nat { Nat }\nfn probe(a: Nat) -> Bool { a == 3 }\n",
     "src/test_claim_peano_literal_eq_probe.rs",
-    ["== Rc::new(Nat::Succ { prev: Rc::new(Nat::Succ { prev: Rc::new(Nat::Succ { prev: Rc::new(Nat::Zero) }) }) }))"],
+    ["== Rc::new(Nat::Succ {\n    prev: Rc::new(Nat::Succ {\n    prev: Rc::new(Nat::Succ {\n    prev: Rc::new(Nat::Zero),\n})"],
     ["== 3)"]
   )
 }

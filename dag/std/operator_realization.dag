@@ -32,8 +32,31 @@ import std.syntax { BinOp, Add, Sub, Mul, Div, Mod, Eq, Ne, Lt, Gt, Le, Ge, And,
 
 type OperandRealization
   = HostNumericOperand
+  | HostRealizedOperand { reason: HostRealizationReason }
   | StructuralOperand { declaration: DeclarationRef }
-  | OperandIdentityUnavailable
+  | OperandIdentityUnavailable { facts: OperandShapeFacts }
+
+// AN OPERAND THAT REALIZES AS A HOST VALUE BY CONSTRUCTION, without a declaration to ask: the type
+// the parser mints for a kernel literal or a builtin's result (a `<kernel:...>` file, not a
+// declaration in the corpus), a generic type parameter (the host bound carries the operator), and a
+// host container (Vec/HashMap realize the container and its comparisons). Each is a decidable arm,
+// named so that "no identity" never stands in for "host by construction".
+type HostRealizationReason
+  = KernelMintedType
+  | GenericTypeParameter
+  | HostContainer
+
+// WHAT THE CALLER SAW when it could not read the operand's declaration -- carried on the refusal so
+// a miss returns the shape, not a token rustc refuses later under E0369 (DESIGN section 5: a failure
+// arm refuses, never widens; the seed's host-token fallback here was the absorbing arm that hid this
+// lane's own defect behind an ordinary-looking `<`).
+type OperandShapeFacts {
+  authored_name: String
+  connective: String
+  child_count: Int
+  resolved: Bool
+  decl_file: String
+}
 
 // A structural declaration's declared ordering: the comparison to call and the Ordering declaration
 // whose variants its result is tested against. Keyed on the carrier's exact DeclarationRef.
@@ -134,6 +157,7 @@ fn binop_label(op: BinOp) -> String {
 type OperatorRealizationRefusal
   = NoStructuralOperationDeclared { declaration: DeclarationRef, operator: String }
   | StructuralOrderingDuplicated { declaration: DeclarationRef, row_count: Int }
+  | OperandIdentityUnavailableAt { operator: String, facts: OperandShapeFacts }
 
 type OperatorRealization
   = HostOperator
@@ -155,6 +179,12 @@ fn operator_realization_refusal_message(cause: OperatorRealizationRefusal) -> St
         d.module_path as String, ".", d.decl_name as String,
         " has more than one declared comparison (gunbc.structural_realization_bindings authoring defect)"
       )
+    OperandIdentityUnavailableAt { operator: o, facts: f } =>
+      concat(
+        "operator realization: host operator `", o, "` on an operand whose declaration could not be read",
+        " (authored `", f.authored_name, "`, connective ", f.connective, ", children ", to_string(value: f.child_count),
+        ", resolved ", if f.resolved { "yes" } else { "no" }, ", decl_file `", f.decl_file, "`)"
+      )
   }
 }
 
@@ -171,7 +201,9 @@ fn operator_realization_for(
 ) -> OperatorRealization {
   match operand {
     HostNumericOperand => HostOperator
-    OperandIdentityUnavailable => HostOperator
+    HostRealizedOperand { reason: _ } => HostOperator
+    OperandIdentityUnavailable { facts: f } =>
+      OperatorRealizationRefused { cause: OperandIdentityUnavailableAt { operator: binop_label(op: op), facts: f } }
     StructuralOperand { declaration: d } =>
       match op {
         Eq => StructuralEquality { declaration: d }

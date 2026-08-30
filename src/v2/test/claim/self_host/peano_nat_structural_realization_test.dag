@@ -11,7 +11,8 @@ import std.literal_elaboration {
   literal_homomorphism_for, elaborate_literal_at
 }
 import std.operator_realization {
-  HostNumericOperand, StructuralOperand, OperandIdentityUnavailable,
+  HostNumericOperand, StructuralOperand, OperandIdentityUnavailable, HostRealizedOperand, KernelMintedType,
+  OperandShapeFacts, OperandIdentityUnavailableAt,
   HostOperator, StructuralEquality, StructuralComparison, OperatorRealizationRefused,
   NoStructuralOperationDeclared, OrderingIs, OrderingIsNot,
   operator_realization_for
@@ -256,11 +257,23 @@ test fn host_numeric_operand_keeps_the_host_operator() -> Bool {
     HostOperator => true
     _ => false
   }
-  let unknown_holds = match operator_realization_for(op: Ge, operand: OperandIdentityUnavailable, ordering_rows: structural_ordering_rows) {
+  let by_construction_holds = match operator_realization_for(op: Ge, operand: HostRealizedOperand { reason: KernelMintedType }, ordering_rows: structural_ordering_rows) {
     HostOperator => true
     _ => false
   }
-  native_holds && unknown_holds
+  native_holds && by_construction_holds
+}
+
+// AN OPERAND WHOSE DECLARATION COULD NOT BE READ REFUSES, carrying what the caller saw. The seed's
+// host-token fallback here was an absorbing arm (DESIGN section 5): it rendered `a < b` on a Peano
+// operand as the host `<` with no signature, and the lane's own emitted-path rows went red on a
+// token rustc refuses later. This row pins that the unknown arm is a refusal, not a widen.
+test fn operand_without_a_readable_declaration_refuses() -> Bool {
+  let facts = OperandShapeFacts { authored_name: "Nat", connective: "NoConnective", child_count: 0, resolved: false, decl_file: "probe.dag" }
+  match operator_realization_for(op: Lt, operand: OperandIdentityUnavailable { facts: facts }, ordering_rows: structural_ordering_rows) {
+    OperatorRealizationRefused { cause: OperandIdentityUnavailableAt { operator: o, facts: f } } => o == "<" && f.authored_name == "Nat"
+    _ => false
+  }
 }
 
 test fn logical_connective_on_a_structural_operand_stays_host() -> Bool {
