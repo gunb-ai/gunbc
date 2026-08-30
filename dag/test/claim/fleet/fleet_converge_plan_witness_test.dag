@@ -1,6 +1,6 @@
 module test.claim.fleet_converge_plan_witness
 
-import std.types { Bool, String, NonEmptyStr, Int, list_length }
+import std.types { Bool, String, NonEmptyStr, Int, List, list_length }
 import gunbc.fleet_posix_accounts {
   ci_runner_sudo_binary_path, fleet_posix_ci_runner_sudo_grants,
   SudoInstall, SudoSystemctl, SudoRm,
@@ -11,7 +11,7 @@ import extdeps.github.actions_runner {
 }
 import gunbc.runner_slot_provision { gunbc_runner_slot_privileged_commands }
 import std.content_hash { serialize_content_hash }
-import gunbc.membership_reconcile { MemberRemoved }
+import gunbc.membership_reconcile { MemberAction, MemberAdded, MemberRemoved }
 import gunbc.host_axis_caps { CapMember }
 import gunbc.host_converge { gunbc_runner_per_slot_dropin_path }
 import gunbc.runner_service_activation { runner_activation_readiness_unobserved_no_transaction }
@@ -104,6 +104,10 @@ import gunbc.fleet_converge_plan {
   observed_baseline_text,
   fleet_converge_fabric_cell_lines,
   fleet_converge_fabric_cell_refusal_count,
+  fabric_cell_effect_plan_lines,
+  fabric_cell_effect_apply_command_lines,
+  fabric_cell_apply_executable_lines,
+  fabric_cell_apply_effects_header,
   timer_retirement_plan,
   fleet_converge_locked_apply_script,
   fleet_converge_plan_apply_shell_path,
@@ -124,6 +128,8 @@ import gunbc.fleet_converge_plan {
   fleet_converge_slot_lines,
   fleet_converge_slot_refusal_count,
 }
+import gunbc.fabric_cell_effect { fabric_cell_realization, CellPlanRealizable, CellPlanRefused }
+import gunbc.runner_host_deploy { srv3_runner_host_deploy }
 import gunbc.runner_slot_provision { runner_slot_member_from_instance_name }
 import extdeps.posix.shell_command_language { posix_single_quote }
 import gunbc.fleet_converge_plan_cli { fleet_converge_plan_cli_note }
@@ -1057,7 +1063,7 @@ test fn witness_fabric_cell_refusal_is_rendered_and_counted_not_silent() -> Bool
     observed_fabric_cells: fabric_cells_observed_empty(),
   )
   list_length(items: refused_lines) == 1
-    && list_length(items: empty_lines) == 3
+    && list_length(items: empty_lines) == 4
     && fleet_converge_fabric_cell_refusal_count(
         host: "srv3" as NonEmptyStr,
         observed_fabric_cells: fabric_cell_observation_unobserved(host: operator_host_srv3),
@@ -1070,6 +1076,35 @@ test fn witness_fabric_cell_refusal_is_rendered_and_counted_not_silent() -> Bool
         host: "srv3" as NonEmptyStr,
         observed_fabric_cells: fabric_cells_observed_empty(),
       ) == 0
+}
+
+// PLAN AND APPLY ARE EXACT PROJECTIONS OF THE SAME EFFECT POPULATION. The base-directory ensure
+// used to be authored only inside fabric_cell_apply_executable_lines, so apply executed one more
+// privileged operation than plan displayed. This RED is authorable because both production
+// surfaces can be compared with projections of the SAME freely inspected CellPlanRealizable value:
+// adding an operation to either renderer without adding its effect makes one of these equalities
+// false. No command or plan line is re-authored in the witness.
+test fn witness_fabric_cell_plan_and_apply_project_the_same_effects() -> Bool {
+  let actions: List<MemberAction<FabricCellMember, String>> = map(
+    fabric_cell_desired_members(host: operator_host_srv3),
+    m => MemberAdded { at: fabric_cell_member_key(member: m), to: m },
+  )
+  match fabric_cell_realization(actions: actions) {
+    CellPlanRealizable { effects: es } =>
+      fleet_converge_fabric_cell_lines(
+        host: "srv3" as NonEmptyStr,
+        observed_fabric_cells: fabric_cells_observed_empty(),
+      ) == fabric_cell_effect_plan_lines(effects: es)
+        && fabric_cell_apply_executable_lines(host: "srv3" as NonEmptyStr, effects: es)
+          == concat(
+            [fabric_cell_apply_effects_header],
+            fabric_cell_effect_apply_command_lines(
+              effects: es,
+              job_user: srv3_runner_host_deploy.job_user,
+            ),
+          )
+    CellPlanRefused { refusals: _ } => false
+  }
 }
 
 // A CONVERGED CELL PRODUCES NO ACTION. Without this row the family could be answering "add
@@ -1327,7 +1362,7 @@ test fn witness_fabric_cell_absent_address_plans_add_and_never_change() -> Bool 
     host: "srv3" as NonEmptyStr,
     observed_fabric_cells: admit_fabric_cell_probe(probe: fabric_probe_boundary_absent()),
   )
-  list_length(items: lines) == 1
+  list_length(items: lines) == 2
     && fabric_cell_line_occurrences(
         lines: lines,
         target: fabric_boundary_realize_line(),

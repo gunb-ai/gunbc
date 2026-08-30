@@ -3,7 +3,6 @@ module gunbc.namespace_cut_subject_roster
 import std.types { String, NonEmptyStr, Bool, List }
 import gunbc.namespace_cut_stage {
   NamespaceCutStage,
-  StageXL5Waves,
   StageXL6AtomicCutover,
   StageXL7GrammarDeletion,
   namespace_cut_stage_label,
@@ -60,12 +59,20 @@ fn namespace_cut_subject_label(s: NamespaceCutSubjectIdentity) -> NonEmptyStr {
   }
 }
 
-// A probe names ONE declaration-grain identity. Two probe kinds because the corpus has two
-// realization media on the deletion path: substrate declarations, observable today through the
-// declaration-fact reflection the observation sibling executes, and HOST RUST ITEMS, whose
-// observation instrument does not exist in this tree yet. A host probe is therefore honest about
-// its own standing: it names the item and refuses to claim Present or Absent (see the sibling's
-// observe_probe).
+// A probe names ONE declaration-grain identity. Three probe shapes across two realization media:
+// substrate declarations and declaration fields, resolved through the declaration-fact reflection
+// the observation sibling executes, and HOST RUST ITEMS, resolved against
+// gunbc.rust_item_host_observation's live hand-Rust population.
+//
+// THE HOST PROBE IS NO LONGER UNOBSERVABLE BY DEFAULT. An earlier revision of this comment said
+// its observation instrument does not exist in this tree, and that was false when it was written:
+// gunbc.rust_item_host_observation observe_current_live_hand_rust has been the item-grain host
+// authority for seed-growth admission since before this roster existed. Refusing every host probe
+// on that reading was an absent-authority claim about a present authority -- the same
+// authority_substitution shape read in reverse -- and it is what made XL-0 look like a stage
+// waiting on a tool. The sibling now JOINS against that producer and refuses only where the join
+// itself cannot reach: see observe_host_probe, which names what is missing rather than the
+// authority.
 type NamespaceCutSubjectProbe
   = DagDeclarationProbe { module_path: String, decl_name: String }
   | DagDeclarationFieldProbe { module_path: String, decl_name: String, field_name: String }
@@ -159,21 +166,47 @@ fn subject_probe_list(s: NamespaceCutSubjectIdentity) -> List<NamespaceCutSubjec
 }
 
 // WHICH STAGE DELETES EACH SUBJECT -- the join the stage standings fold over. Total, so a new
-// subject refuses to compile until its deleting stage is stated. The partition follows the
-// grammar-last ruling structurally: only the grammar and parse surfaces die at XL-7; everything
-// semantic dies in the waves; the adjacency/closure repoint lands with the cutover.
+// subject refuses to compile until its deleting stage is stated.
+//
+// NO SUBJECT IS ASSIGNED TO XL-5, AND THAT IS THE CORRECTION THIS ROW SET CARRIES.
+//
+// The first cut of this function assigned five subjects to the waves on the reading that
+// "everything semantic dies in the waves". Every one of those five is a ROOT AUTHORITY -- the
+// resolver's import-name universe, the inference scope overlays, the host text scanners, the
+// use-line emission inputs, the repair apparatus -- and deleting a root authority changes what
+// live resolution and closure ANSWER. That is the atomic cutover's motion by definition (DESIGN
+// section 3: the authority transition is one motion, and Y never resolves through X), so
+// scheduling it as a wave scheduled a partial authority transition, which is the observable
+// intermediate state the doctrine exists to forbid.
+//
+// XL-5 IS NOT EMPTY WORK; IT IS WORK THIS ROSTER CANNOT ADDRESS. The waves are exact corpus
+// rewrites -- the occurrence and import-declaration residual XL-2's rehearsal produces -- and that
+// residual is not a root-authority probe, so it has no row here and cannot be given one. XL-5's
+// standing is therefore derived from that residual's own census in
+// gunbc.compiler_frontend_program_status, which reports it NOT-DERIVABLE while no producer exists.
+// This is deliberate and load-bearing: a subject-derived XL-5 with zero rows would fold to CLEAR
+// and report a wave nobody has run as complete, which is exactly the rung inflation DESIGN
+// section 4b names as worse than sitting low.
+//
+// WHAT WOULD MOVE A SUBJECT BACK EARLIER: an EXECUTED proof that deleting it cannot change live
+// resolution or closure. Not an argument that it looks independent -- a run. Until then the
+// cutover owns it, and test.claim.compiler_frontend_program_status_witness executes the
+// no-subject-at-XL-5 rule so a reassignment reds rather than being noticed in review.
+//
+// XL-7 keeps grammar, parse surface and AST carriers, structurally, by the grammar-last ruling
+// (gunbc.namespace_cut_landing_order namespace_cut_grammar_last_ruling).
 fn subject_deleted_at_stage(s: NamespaceCutSubjectIdentity) -> NamespaceCutStage {
   match s {
     ImportGrammarProductions => StageXL7GrammarDeletion
     ImportParseSurfaceV1 => StageXL7GrammarDeletion
     ImportAstCarriers => StageXL7GrammarDeletion
-    ResolverImportNameUniverse => StageXL5Waves
-    ImportScopeOverlays => StageXL5Waves
+    ResolverImportNameUniverse => StageXL6AtomicCutover
+    ImportScopeOverlays => StageXL6AtomicCutover
     ImportDerivedModuleAdjacency => StageXL6AtomicCutover
     HostImportClosureAssembly => StageXL6AtomicCutover
-    HostTextImportScanners => StageXL5Waves
-    ImportDerivedUseLineInputs => StageXL5Waves
-    LegacyImportRepairApparatus => StageXL5Waves
+    HostTextImportScanners => StageXL6AtomicCutover
+    ImportDerivedUseLineInputs => StageXL6AtomicCutover
+    LegacyImportRepairApparatus => StageXL6AtomicCutover
     LayerImportFactsConsumers => StageXL6AtomicCutover
   }
 }
@@ -206,19 +239,4 @@ fn probe_render(p: NamespaceCutSubjectProbe) -> String {
     HostRustItemProbe { crate_relative_file, item_name } =>
       concat(crate_relative_file, concat(" ", item_name))
   }
-}
-
-// The pure denominator of unrealized observation rules: the probes whose observation cannot
-// currently answer, derived from probe kind alone (no live read). This is XL-0's outstanding
-// population in the stage standings -- the denominator stage is outstanding exactly while some
-// subject's pulse cannot be taken.
-fn unobservable_probe_renders() -> List<String> {
-  namespace_cut_subjects
-    |> flat_map(s => subject_probe_list(s: s))
-    |> filter(p => match p {
-      HostRustItemProbe { crate_relative_file: _, item_name: _ } => true
-      DagDeclarationProbe { module_path: _, decl_name: _ } => false
-      DagDeclarationFieldProbe { module_path: _, decl_name: _, field_name: _ } => false
-    })
-    |> map(p => probe_render(p: p))
 }
