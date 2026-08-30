@@ -613,7 +613,14 @@ data lazy_onboarding_drift_curve: BmcFanCurve = BmcFanCurve {
   ),
 }
 
-data lazy_onboarding_drift_curve_note: String = "The stripped onboarding-overwrite curve (fleet incident 2026-07-30): minimum 30 percent held through 90C, then a late panic ramp to 55/70/85/100 percent at 93/95/97/98C. It is deliberately NOT the fleet intent, which is now the srv3 2.07.00 vendor stock aggressive curve (byte-equal to asrock_altrad8ud_factory_temp_soc_fan_curve). This is the witness's genuine drift fixture: a BMC carrying it is drifted from fleet intent and must receive a typed apply plan back to the stock curve. The prior model instead carried the lazy curve AS the fleet intent, so its drift fixture was the factory aggressive curve and its apply plan would have converted srv4's factory default INTO this lazy curve."
+// The stripped onboarding-overwrite curve (fleet incident 2026-07-30): minimum 30 percent held
+// through 90C, then a late panic ramp to 55/70/85/100 percent at 93/95/97/98C. It is deliberately
+// NOT the fleet intent, which is now the srv3 2.07.00 vendor stock aggressive curve (byte-equal to
+// asrock_altrad8ud_factory_temp_soc_fan_curve). This is the witness's genuine drift fixture: a BMC
+// carrying it is drifted from fleet intent and must receive a typed apply plan back to the stock
+// curve. The prior model instead carried the lazy curve AS the fleet intent, so its drift fixture
+// was the factory aggressive curve and its apply plan would have converted srv4's factory default
+// INTO this lazy curve.
 
 test fn srv4_flash_overlay_is_observed_writable_and_live_overridden() -> Bool {
   match srv4_bmc_config_persistence_observation {

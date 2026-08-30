@@ -31,13 +31,14 @@ import v2.workflow.required_regen {
 
 data witness_note: String = "Discriminating RED controls for the required-regen admission wall: zero planned or executed populations must refuse rather than vacuously agree; a genuine match with independent denominators may admit."
 
-// The population arms above answer 'did the fold compare anything'. These answer
-// 'does the fold refuse what it was built to catch' — a committed surface whose
-// bytes disagree with the emitter is the stale-mirror class that let main's
-// v1_compiler_infer.rs sit behind its own .dag authority through #8513..#8579.
-// The refusal must NAME the drifted path, because a bare refusal cannot be
-// distinguished from a refusal fired by any of the other seven variants.
-data drift_witness_note: String = "Discriminating RED controls for the drift arms: a drifted surface, an emitted/committed population asymmetry, and an unverifiable hand-maintained row must each refuse and name their subject; hand-maintained DRIFT alone must still admit, which is what separates this wall from one that refuses on any non-match."
+// The population arms above answer 'did the fold compare anything'; these answer 'does the fold
+// refuse what it was built to catch' — a committed surface whose bytes disagree with the emitter
+// is the stale-mirror class that let main's v1_compiler_infer.rs sit behind its own .dag authority
+// through #8513..#8579. The refusal must NAME the drifted path; a bare refusal is
+// indistinguishable from one fired by any of the other seven variants. Discriminating RED controls
+// for the drift arms: a drifted surface, an emitted/committed population asymmetry, and an
+// unverifiable hand-maintained row must each refuse and name their subject; hand-maintained DRIFT
+// alone must still admit — what separates this wall from one refusing on any non-match.
 
 test fn witness_zero_planned_population_refuses() -> Bool {
   match required_regen_sync_admission(
@@ -124,13 +125,12 @@ test fn witness_drifted_surface_refuses_naming_the_path() -> Bool {
   }
 }
 
-// THE CONFLATION CONTROL. This test used to ASSERT the defect: it required both an
-// emitted-with-no-mirror path and a committed-no-longer-emitted path to land in one
-// GeneratedDrift list, which is exactly the union refusal that made a module's first landing
-// indistinguishable from the emitter losing a surface. It now asserts the opposite — three
-// states, three refusals, and no path under a remedy that does not apply to it. Written as a
-// separation check rather than a membership check: it fails if ANY of the three lists contains
-// a path belonging to another state, which is what a re-fusion would look like.
+// THE CONFLATION CONTROL. This test used to ASSERT the defect: it required an emitted-with-no-mirror
+// path and a committed-no-longer-emitted path to land in one GeneratedDrift list — the union
+// refusal that made a module's first landing indistinguishable from the emitter losing a surface.
+// It now asserts the opposite: three states, three refusals, no path under a remedy that does not
+// apply to it. Written as a separation check, not membership: it fails if ANY of the three lists
+// contains a path belonging to another state, which is what a re-fusion would look like.
 test fn witness_three_population_states_refuse_separately() -> Bool {
   match required_regen_sync_admission(
     generated_outcomes: [
@@ -173,12 +173,11 @@ test fn witness_three_population_states_refuse_separately() -> Bool {
   }
 }
 
-// THE ANTI-ADMISSION CONTROL, and it is the one that must never flip. A new surface with no
-// committed mirror REFUSES, alone, with nothing else wrong in the run. If someone later decides
-// a first mirror should be admitted automatically because the author obviously just added a
-// module, this goes red — which is the point, because that same population is what the emitter
-// inventing a surface nobody authored looks like, and the two are indistinguishable from the
-// populations alone.
+// THE ANTI-ADMISSION CONTROL, the one that must never flip. A new surface with no committed mirror
+// REFUSES, alone, with nothing else wrong. If a first mirror is later admitted automatically
+// because the author obviously just added a module, this goes red — the point, because that same
+// population is what the emitter inventing an unauthored surface looks like; the two are
+// indistinguishable from the populations alone.
 test fn witness_new_surface_alone_still_refuses() -> Bool {
   match required_regen_sync_admission(
     generated_outcomes: [
@@ -200,15 +199,14 @@ test fn witness_new_surface_alone_still_refuses() -> Bool {
   }
 }
 
-// THE DAMAGING-REMEDY CONTROL, and it has two halves that must hold TOGETHER.
-// An emitted basename that collides with hand-authored source under a hand-maintained directory
-// refuses under its OWN cause, naming the directory -- because the two remedies attached to
-// MirrorMissingForEmittedSurface (install the mirror, or investigate an invented surface) both
-// destroy hand-authored code when applied to this class.
-// The RED half is the second assertion: a genuine orphan mirror in the SAME run must STILL refuse
-// as MirrorMissingForEmittedSurface. A fix that silenced the collision by excluding it from the
-// compared population would take the orphan with it, and this test would go green on a wall that
-// no longer stands. Separation, not membership: neither path may appear under the other's cause.
+// THE DAMAGING-REMEDY CONTROL; two halves that must hold TOGETHER. An emitted basename colliding
+// with hand-authored source under a hand-maintained directory refuses under its OWN cause, naming
+// the directory — both remedies attached to MirrorMissingForEmittedSurface (install the mirror, or
+// investigate an invented surface) destroy hand-authored code when applied here. The RED half is
+// the second assertion: a genuine orphan mirror in the SAME run must STILL refuse as
+// MirrorMissingForEmittedSurface. A fix silencing the collision by excluding it from the compared
+// population would take the orphan with it, and this test would green on a fallen wall.
+// Separation, not membership: neither path may appear under the other's cause.
 test fn witness_hand_maintained_collision_refuses_under_its_own_remedy() -> Bool {
   match required_regen_sync_admission(
     generated_outcomes: [
@@ -271,10 +269,9 @@ test fn witness_hand_unverifiable_refuses_naming_the_entry() -> Bool {
   }
 }
 
-// The near-miss positive control. HandDrifted is one variant away from
-// HandUnverifiable and must NOT refuse: hand-maintained drift is expected on a
-// clean tree, so a wall that refused here would be refusing on any non-match and
-// the RED above would prove nothing about which distinction it draws.
+// The near-miss positive control. HandDrifted is one variant from HandUnverifiable and must NOT
+// refuse: hand-maintained drift is expected on a clean tree, so a wall refusing here would refuse
+// on any non-match and the RED above would prove nothing about which distinction it draws.
 test fn witness_hand_drift_alone_admits() -> Bool {
   match required_regen_sync_admission(
     generated_outcomes: [SurfaceMatches { relative_path: "std_algebra.rs" }],
@@ -292,13 +289,18 @@ test fn witness_hand_drift_alone_admits() -> Bool {
   }
 }
 
-data production_ordering_witness_note: String = "Discriminating RED controls for the production-before-adjudication ordering. The subject is the one population asymmetry an author can actually cause: a module added to the v1 seed closure emits a mirror the committed tree does not have, so the run REFUSES — and the author's only remedy is the very file the refusing run produced. The pre-#8663 host sequenced that refusal ahead of the write and returned with the tree unwritten, while regen_stage0 (the binary that used to write it unconditionally) had been deleted at the root, so the refusal named a file no route in the repository produced. These controls go red against a carrier whose refusal arms can omit the tree."
+// Discriminating RED controls for the production-before-adjudication ordering. The subject is the
+// one population asymmetry an author can actually cause: a module added to the v1 seed closure
+// emits a mirror the committed tree lacks, so the run REFUSES — and the author's only remedy is the
+// very file the refusing run produced. The pre-#8663 host sequenced that refusal ahead of the write
+// and returned with the tree unwritten, while regen_stage0 (which used to write it unconditionally)
+// had been deleted at the root, so the refusal named a file no route in the repository produced.
+// These controls go red against a carrier whose refusal arms can omit the tree.
 
-// THE DISCRIMINATING RED. It is not enough that the asymmetry refuses — the
-// pre-existing witness above already proves that. What must hold is that the refusal
-// arrives WITH the candidate tree, and that the tree contains the mirror the committed
-// population lacks. A carrier that permitted a bare `RequiredRegenSyncRefused` here
-// would fail to typecheck this test at all, which is the wall being asserted.
+// THE DISCRIMINATING RED. That the asymmetry refuses is already proven above; what must hold is
+// that the refusal arrives WITH the candidate tree, containing the mirror the committed population
+// lacks. A carrier permitting a bare `RequiredRegenSyncRefused` here would fail to typecheck this
+// test at all — the wall being asserted.
 test fn witness_new_seed_module_refuses_and_carries_the_first_mirror() -> Bool {
   match required_regen_run(
     production: CandidateTreeProduced {
@@ -328,10 +330,9 @@ test fn witness_new_seed_module_refuses_and_carries_the_first_mirror() -> Bool {
   }
 }
 
-// The near-miss control on the other side: emit itself producing nothing is NOT a
-// verdict about a tree, so it must land on the one arm that carries none. Without this,
-// the test above would be satisfied by a carrier that simply always carries a tree,
-// including one it fabricated for a run that produced no files.
+// The near-miss control on the other side: emit producing nothing is NOT a verdict about a tree,
+// so it lands on the one arm carrying none. Without this, the test above would be satisfied by a
+// carrier that always carries a tree, including one fabricated for a run that produced no files.
 test fn witness_unproduced_run_carries_no_tree_and_names_its_cause() -> Bool {
   match required_regen_run(
     production: CandidateTreeUnproduced { cause: EmptyEmitResult },

@@ -102,7 +102,7 @@ import gunbc.spark.serving_converge_realize {
 import gunbc.remote_operation { remote_operations_argv_only, remote_operation_count }
 import gunbc.spark.serving_desired { spark_serving_automation_principal_login }
 import gunbc.spark.serving_unit_identity { spark_serving_unit_name }
-import gunbc.spark.serving_realization { PlannedInstallEffect, EnableLingerForOwnAccount, ReloadUserManager, EnableUserUnit, RunContainerAsOwnUser }
+import gunbc.spark.serving_realization { EnableLingerForOwnAccount, ReloadUserManager, EnableUserUnit, RunContainerAsOwnUser }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -593,7 +593,7 @@ fn tamper_row(state: NonEmptyStr, ops: List<RemoteOperation>) -> FleetConvergeSp
       ),
     },
     first_execution: PlannedEffectExecution {
-      effect: PlannedInstallEffect { install: EnableLingerForOwnAccount },
+      effect: EnableLingerForOwnAccount,
       first_step: PlannedRemoteStep {
         identity: "tamper-head" as NonEmptyStr,
         operation: match ops.first() {

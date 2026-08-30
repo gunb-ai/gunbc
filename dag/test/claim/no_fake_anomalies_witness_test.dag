@@ -12,7 +12,18 @@ import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
-data no_fake_anomalies_note: String = "THE WALL for the expectation backfill (operator acceptance 2026-07-25). Converting the ~24 fake anomalies one call site at a time is a bounded backfill of a missing semantic axis, but the fix is a CONVENTION — 'annotate your red controls' — and conventions have half-lives: a red control written next month without an expectation paints an anomaly glyph again and the class regrows. This witness is what makes the class extinct instead of merely cleaned. It runs a PASSING corpus at DEFAULT verbosity in a child process and asserts its stderr carries no anomaly glyph at all, so the day anyone lands an unannotated deliberate-failure probe, CI reds on the PR rather than the noise accumulating silently. Decidable, cheap, and it needs no new mechanism — the glyphs are the observable the operator reads anyway. Checks BOTH glyph spellings because the child chooses its own rendering: emoji under GitHub Actions, ASCII on a plain terminal (gunbc.observation_seed_render), and a wall that only knew one spelling would pass vacuously in whichever environment it was not written for."
+// THE WALL for the expectation backfill (operator acceptance 2026-07-25). Converting the ~24 fake
+// anomalies one call site at a time is a bounded backfill of a missing semantic axis, but the fix
+// is a CONVENTION — 'annotate your red controls' — and conventions have half-lives: a red control
+// written next month without an expectation paints an anomaly glyph again and the class regrows.
+// This witness is what makes the class extinct instead of merely cleaned. It runs a PASSING corpus
+// at DEFAULT verbosity in a child process and asserts its stderr carries no anomaly glyph at all,
+// so the day anyone lands an unannotated deliberate-failure probe, CI reds on the PR rather than
+// the noise accumulating silently. Decidable, cheap, and it needs no new mechanism — the glyphs are
+// the observable the operator reads anyway. Checks BOTH glyph spellings because the child chooses
+// its own rendering: emoji under GitHub Actions, ASCII on a plain terminal
+// (gunbc.observation_seed_render), and a wall that only knew one spelling would pass vacuously in
+// whichever environment it was not written for.
 
 data anomaly_glyph_emoji: String = "❌"
 data anomaly_glyph_ascii: String = "✗"
@@ -49,7 +60,17 @@ test fn passing_run_shows_no_fake_anomaly_holds() -> Bool {
   !stderr_has_anomaly_glyph(stderr: stderr)
 }
 
-data no_fake_anomalies_red_control_note: String = "The RED control does not perturb anything: it points at an entry that STILL carries a deliberate anomaly — typed_witness_bin_run_loud_failure_red_control_holds calls gunbc.WitnessBin.Run(/bin/false) with no ExpectFailure / OutcomeIsData, so the observation layer paints ❌/✗. Re-pointed 2026-07-26 off typed_run_witness_bin_unbuildable_red_control_holds (WitnessBinNotEnrolled refuses before cargo — no glyph) and off a cargo.BuildInheritEnv missing-bin variant that restored the glyph but blew FLOOR-BATCH-OVER-BUDGET (~90s child wall). So the pair is genuine: an entry whose probes are all annotated shows no glyph, an entry with a real remaining one does. NOTE THE COUPLING, because it is load-bearing: if that Run is ever annotated, or the witness stops exercising it, THIS control goes vacuously green and the wall above loses its proof of discrimination. Re-point it at another entry carrying a deliberate anomaly at that moment — do not delete it, and do not let it pass by accident."
+// The RED control does not perturb anything: it points at an entry that STILL carries a deliberate
+// anomaly — typed_witness_bin_run_loud_failure_red_control_holds calls
+// gunbc.WitnessBin.Run(/bin/false) with no ExpectFailure / OutcomeIsData, so the observation layer
+// paints ❌/✗. Re-pointed 2026-07-26 off typed_run_witness_bin_unbuildable_red_control_holds
+// (WitnessBinNotEnrolled refuses before cargo — no glyph) and off a cargo.BuildInheritEnv
+// missing-bin variant that restored the glyph but blew FLOOR-BATCH-OVER-BUDGET (~90s child wall).
+// So the pair is genuine: an entry whose probes are all annotated shows no glyph, an entry with a
+// real remaining one does. NOTE THE COUPLING, because it is load-bearing: if that Run is ever
+// annotated, or the witness stops exercising it, THIS control goes vacuously green and the wall
+// above loses its proof of discrimination. Re-point it at another entry carrying a deliberate
+// anomaly at that moment — do not delete it, and do not let it pass by accident.
 
 test fn red_control_entry_with_real_anomaly_still_shows_glyph_holds() -> Bool {
   let stderr = run_corpus_capturing_stderr(

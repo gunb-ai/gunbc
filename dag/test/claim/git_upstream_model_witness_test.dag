@@ -132,7 +132,9 @@ import std.types { Bytes }
 import std.bytes { bytes_octets, octets_bytes, utf8_encode_bytes }
 import std.algebra { Cons, Empty }
 
-data git_upstream_witness_lit_note: String = "Witness-corpus Git object ids are constructed only through git_sha1_object_id / git_sha256_object_id (review 45376). The Absent arm below is unreachable for pinned corpus literals; it exists only because data initializers require a total GitObjectId."
+// Witness-corpus Git object ids are constructed only through git_sha1_object_id /
+// git_sha256_object_id (review 45376). The Absent arm below is unreachable for pinned corpus
+// literals; it exists only because data initializers require a total GitObjectId.
 
 fn witness_lit_git_sha1(hex: String) -> GitObjectId {
   match git_sha1_object_id(hex: hex) {
