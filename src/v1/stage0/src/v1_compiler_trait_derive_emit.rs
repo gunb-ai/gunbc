@@ -51,11 +51,14 @@ use crate::v1_std_core::Connective::{Arrow, NoConnective};
 use crate::v1_std_core::ContainerSpellingVerdict::{
     ContainerSpellingDeclared, ContainerSpellingUnknown, NotAContainerSpelling,
 };
+use crate::v1_std_core::InferredNode::Resolved;
 pub use crate::v1_std_core::{
     authored_container_spelling_verdict, authored_name_at, generic_param_name_at,
     param_node_type_expr, qualified_last_segment,
 };
-pub use crate::v1_std_core::{Connective, ContainerSpellingVerdict, NewlineIndex, Node};
+pub use crate::v1_std_core::{
+    Connective, ContainerSpellingVerdict, InferredNode, NewlineIndex, Node,
+};
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
@@ -2988,14 +2991,19 @@ pub fn v1_generic_params_needing_clone_bound(
         Rc::new({
             let mut __result = Vec::new();
             for g in generic_param_names.iter().cloned() {
-                if (v1_fn_param_wf_needs_clone(
+                if ((v1_fn_param_wf_needs_clone(
                     g.clone(),
                     value_params.clone(),
                     ret.clone(),
                     bounds.clone(),
                     type_decl_items.clone(),
                     source_indices.clone(),
-                ) || (!v1_phantom_only_param_names_contains(phantom_only.clone(), g.clone())
+                ) || v1_generic_param_cloned_by_returned_closure(
+                    g.clone(),
+                    value_params.clone(),
+                    ret.clone(),
+                    source_indices.clone(),
+                )) || (!v1_phantom_only_param_names_contains(phantom_only.clone(), g.clone())
                     && (v1_type_param_needs_clone_bound(
                         g.clone(),
                         return_is_bare_generic.clone(),
@@ -3018,6 +3026,95 @@ pub fn v1_generic_params_needing_clone_bound(
             }
             __result
         })
+    }
+}
+
+pub fn v1_generic_param_cloned_by_returned_closure(
+    param_name: String,
+    value_params: Rc<Vec<Rc<Node>>>,
+    ret: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    (((ret.params.clone().len() as i64) > 0) && {
+        let mut __found = false;
+        for vp in value_params.iter().cloned() {
+            if v1_arrow_type_expr_mentions_param(
+                param_name.clone(),
+                crate::v1_std_core::param_node_type_expr(vp.clone()),
+                source_indices.clone(),
+            ) {
+                __found = true;
+                break;
+            }
+        }
+        __found
+    })
+}
+
+pub fn v1_arrow_type_expr_mentions_param(
+    param_name: String,
+    type_expr: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    if ((type_expr.params.clone().len() as i64) == 0) {
+        false
+    } else {
+        {
+            let in_domain = {
+                let mut __found = false;
+                for p in type_expr.params.clone().iter().cloned() {
+                    if {
+                        let pt = crate::v1_std_core::param_node_type_expr(p.clone());
+                        (v1_type_expr_is_bare_param(
+                            param_name.clone(),
+                            pt.clone(),
+                            source_indices.clone(),
+                        ) || {
+                            let mut __found = false;
+                            for c in pt.children.clone().iter().cloned() {
+                                if v1_type_expr_is_bare_param(
+                                    param_name.clone(),
+                                    c.clone(),
+                                    source_indices.clone(),
+                                ) {
+                                    __found = true;
+                                    break;
+                                }
+                            }
+                            __found
+                        })
+                    } {
+                        __found = true;
+                        break;
+                    }
+                }
+                __found
+            };
+            let in_codomain = match type_expr.inferred.clone().as_deref().cloned() {
+                Some(InferredNode::Resolved { node: r, .. }) => {
+                    (v1_type_expr_is_bare_param(
+                        param_name.clone(),
+                        r.clone(),
+                        source_indices.clone(),
+                    ) || {
+                        let mut __found = false;
+                        for c in r.children.clone().iter().cloned() {
+                            if v1_type_expr_is_bare_param(
+                                param_name.clone(),
+                                c.clone(),
+                                source_indices.clone(),
+                            ) {
+                                __found = true;
+                                break;
+                            }
+                        }
+                        __found
+                    })
+                }
+                _ => false,
+            };
+            (in_domain.clone() || in_codomain.clone())
+        }
     }
 }
 
