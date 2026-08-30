@@ -4,8 +4,6 @@ import std.occurrence_identity { OccurrenceSynthetic }
 
 import v1.compiler.infer_env { TypeBinding }
 
-import v1.compiler.coercion { type_reference_decl_file, decl_file_declares_structurally, decl_file_realizes_natively }
-
 import std.types { SourceSpan, is_container_type, container_expected_arity, container_param_name, container_template_algebra, container_template_alias_algebra, container_template_alias_rows }
 
 import std.algebra {
@@ -900,7 +898,6 @@ fn node_type_compatible(left: Node, right: Node, source_indices: Map<String, New
     else if left_opt || right_opt { false }
     else {
       type_name_compatible(a: authored_name_at(source_indices: source_indices, node: left), b: authored_name_at(source_indices: source_indices, node: right))
-        && !structural_identity_disjoint(a: left, b: right, source_indices: source_indices)
     }
   }
 }
@@ -959,33 +956,26 @@ fn node_type_equals(left: Node, right: Node, source_indices: Map<String, Newline
   }
 }
 
-// IDENTITY WALL FOR THE SPELLING-COMPATIBILITY FALLBACK (XL-0T, structural text).
-// type_name_compatible answers from SPELLING alone (last-segment match), which is the honest
-// fallback where no declaration identity exists -- but where BOTH identities are known and they
-// name a declared-structural carrier on one side (v1.compiler.coercion
-// structural_declaration_modules_for: v2.std.text String, v2.std.logic Bool, v2 Hash) and a
-// native/kernel realization on the other (decl_file_realizes_natively, incl. the <kernel:...>
-// mints every literal-typed value carries), the two are DIFFERENT declarations that merely share
-// a token, and accepting them is the leaf-vs-structural conflation behind the self-host E0308
-// class (a kernel string_type value flowing into a FreeMonoid<Char> boundary). A kernel string
-// LITERAL at such a boundary is introduced through the declared homomorphism
-// (std.literal_elaboration, v1.compiler.infer literal_boundary_elaboration) BEFORE this
-// comparison runs, so what this wall refuses is exactly the residue with no declared
-// introduction: a non-literal kernel-String value at an exact structural-text boundary. Where
-// either identity is unknown (empty decl_file, no resolved reference) both predicates answer
-// false and the spelling fallback stands exactly as before -- the wall narrows only the
-// identified pairing, never the unknown one.
-fn structural_native_identity_pairing(structural: Node, native: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
-  let s_name = qualified_last_segment(name: authored_name_at(source_indices: source_indices, node: structural))
-  decl_file_declares_structurally(dag_name: s_name, decl_file: type_reference_decl_file(n: structural))
-    && decl_file_realizes_natively(decl_file: type_reference_decl_file(n: native))
-}
-
-fn structural_identity_disjoint(a: Node, b: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
-  structural_native_identity_pairing(structural: a, native: b, source_indices: source_indices)
-    || structural_native_identity_pairing(structural: b, native: a, source_indices: source_indices)
-}
-
+// WHY THE KERNEL-LEAF-VS-STRUCTURAL-STRING PAIRING IS STILL ACCEPTED HERE (XL-0T, structural
+// text; executed falsification, not a preference). An identity wall was landed in these arms --
+// refuse when one side's resolved declaration is roster-structural (v1.compiler.coercion
+// structural_declaration_modules_for) and the other realizes natively -- and it was REVERTED on
+// its first required-floor execution: the whole-corpus relation judges positions far wider than
+// declared boundaries, and at dag/gunbc/roadmap/roadmap_page.dag script_src_attr an if-branch
+// join of a String-typed field (resolved to the structural std.string_type declaration) against
+// a kernel "" accumulator refused CORRECT code -- correct because the String -> FreeMonoid<Char>
+// identity is GROUNDED (std.coercion grounded_primitive_coproduct_cast_note, operator Ruling 3,
+// 2026-07-15) and the v1 realization of both sides is the host string. A general-relation wall
+// here is therefore a fabricated refusal (DESIGN section 5 forbids it in exactly the way it
+// forbids a fabricated success). The self-host E0308 defect this wall aimed at is repaired at
+// its root instead: a kernel string LITERAL at an exact v2.std.text.String boundary is
+// introduced through the declared homomorphism (std.literal_elaboration, v1.compiler.infer
+// literal_boundary_elaboration) before any comparison runs. The residue -- a NON-literal
+// kernel-String value at an exact structural-text boundary -- stays ACCEPTED by this relation
+// today, and its refusal is blocked on the peeling declared-boundary conformance capability that
+// declared_type_conformance_note (v1.compiler.infer) names as its own dissolve-on: a judgment
+// scoped to declared boundaries can carry the identity discrimination; the corpus-wide equality
+// relation cannot.
 fn node_type_equals_core(left: Node, right: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
   let left_leaf = left.connective == NoConnective && left.children |> count == 0 && left.properties |> count == 0
   let right_leaf = right.connective == NoConnective && right.children |> count == 0 && right.properties |> count == 0
@@ -995,7 +985,6 @@ fn node_type_equals_core(left: Node, right: Node, source_indices: Map<String, Ne
   let right_name = authored_name_at(source_indices: source_indices, node: right)
   if left_leaf && right_leaf {
     type_name_compatible(a: left_name, b: right_name)
-      && !structural_identity_disjoint(a: left, b: right, source_indices: source_indices)
   }
   else if left_struct && right_struct {
     if !type_name_compatible(a: left_name, b: right_name) { false }
@@ -1012,11 +1001,9 @@ fn node_type_equals_core(left: Node, right: Node, source_indices: Map<String, Ne
   }
   else if left_leaf && right_struct {
     type_name_compatible(a: left_name, b: right_name)
-      && !structural_identity_disjoint(a: left, b: right, source_indices: source_indices)
   }
   else if left_struct && right_leaf {
     type_name_compatible(a: left_name, b: right_name)
-      && !structural_identity_disjoint(a: left, b: right, source_indices: source_indices)
   }
   else {
     let left_is_container = node_is_element_collection(n: left, source_indices: source_indices)
