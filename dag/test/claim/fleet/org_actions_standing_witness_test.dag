@@ -1,0 +1,148 @@
+module test.claim.org_actions_standing_witness
+
+import std.types { Bool, Int, NonEmptyStr, List }
+import gunbc.fleet.org_actions_standing {
+  RepoRunnerAccess, desired_repo_access, access_gunbc_private, access_gunbc,
+  OrgSettingsObservation, SettingsRead, SettingsReadRefusedTokenScope, ObservedGroupAccess,
+  OrgAccessStanding, HoldsBySettingsRead, DivergesBySettingsRead, HoldsByBehavior, Unobserved,
+  standing_from, repo_access_standing, observed_admits,
+  PublicForkPolicyStanding, MatchesDesired, DivergesFromDesired, UnobservableUntilSettingsRead,
+  public_exposure_standing, desired_allows_public_repositories,
+}
+
+// THE DISCRIMINATING CLAIMS, every observation arm exercised at group grain. (1) Channel
+// honesty under today's refused read: gunbc-private holds BY BEHAVIOR while unreceipted
+// gunbc derives Unobserved. (2) The read arm compares membership against the DESIRED
+// boolean, both directions (review 57611): required-and-admitted holds, required-but-
+// absent diverges, and a FORBIDDEN row that is nonetheless admitted derives divergence -
+// never a hold. (3) Public-fork exposure is decided by the SERVING group's flag: a
+// public-allowing group that admits the repo convicts and is NAMED; a public-allowing
+// group that does NOT admit it cannot convict; refused read is unobservable. (4) Every
+// desired row demands fleet reach.
+
+data grp_private_closed: ObservedGroupAccess = ObservedGroupAccess {
+  group_name: "default",
+  allows_public_repositories: false,
+  repositories: ["gunb-ai/gunbc-private"],
+}
+
+data grp_private_open: ObservedGroupAccess = ObservedGroupAccess {
+  group_name: "default",
+  allows_public_repositories: true,
+  repositories: ["gunb-ai/gunbc-private"],
+}
+
+data grp_other_open: ObservedGroupAccess = ObservedGroupAccess {
+  group_name: "sandbox",
+  allows_public_repositories: true,
+  repositories: ["gunb-ai/some-other-repo"],
+}
+
+data probe_read_private_only: OrgSettingsObservation = SettingsRead {
+  groups: [grp_private_closed],
+  observed_on: "2026-08-30",
+}
+
+data probe_read_exposing: OrgSettingsObservation = SettingsRead {
+  groups: [grp_private_open],
+  observed_on: "2026-08-30",
+}
+
+data probe_read_nonserving_open: OrgSettingsObservation = SettingsRead {
+  groups: [grp_private_closed, grp_other_open],
+  observed_on: "2026-08-30",
+}
+
+// The review-57611 case: a policy row FORBIDDING fleet reach, observed admitted anyway.
+data probe_forbidden_repo: RepoRunnerAccess = RepoRunnerAccess {
+  repository: "gunb-ai/gunbc-private",
+  must_reach_fleet: false,
+  reason: "probe: forbidden-access row",
+}
+
+// The variant-to-Bool helpers below are witness-local assertion instruments - the
+// corpus-standard shape for pinning one arm of a coproduct - not substrate query surfaces.
+fn holds_by_behavior(s: OrgAccessStanding) -> Bool {
+  match s {
+    HoldsByBehavior { run_id, observed_on } => true,
+    HoldsBySettingsRead { observed_on } => false,
+    DivergesBySettingsRead { observed_admitted, desired, observed_on } => false,
+    Unobserved => false,
+  }
+}
+
+fn holds_by_read(s: OrgAccessStanding) -> Bool {
+  match s {
+    HoldsBySettingsRead { observed_on } => true,
+    DivergesBySettingsRead { observed_admitted, desired, observed_on } => false,
+    HoldsByBehavior { run_id, observed_on } => false,
+    Unobserved => false,
+  }
+}
+
+fn diverges_by_read(s: OrgAccessStanding) -> Bool {
+  match s {
+    DivergesBySettingsRead { observed_admitted, desired, observed_on } => true,
+    HoldsBySettingsRead { observed_on } => false,
+    HoldsByBehavior { run_id, observed_on } => false,
+    Unobserved => false,
+  }
+}
+
+fn is_unobserved(s: OrgAccessStanding) -> Bool {
+  match s {
+    Unobserved => true,
+    HoldsBySettingsRead { observed_on } => false,
+    DivergesBySettingsRead { observed_admitted, desired, observed_on } => false,
+    HoldsByBehavior { run_id, observed_on } => false,
+  }
+}
+
+test fn witness_refused_read_is_channel_honest() -> Bool {
+  holds_by_behavior(s: repo_access_standing(r: access_gunbc_private))
+    && is_unobserved(s: repo_access_standing(r: access_gunbc))
+}
+
+test fn witness_read_arm_compares_desired_both_directions() -> Bool {
+  holds_by_read(s: standing_from(obs: probe_read_private_only, r: access_gunbc_private))
+    && diverges_by_read(s: standing_from(obs: probe_read_private_only, r: access_gunbc))
+    && diverges_by_read(s: standing_from(obs: probe_read_private_only, r: probe_forbidden_repo))
+}
+
+fn fork_matches(p: PublicForkPolicyStanding) -> Bool {
+  match p {
+    MatchesDesired { observed_on } => true,
+    DivergesFromDesired { exposing_groups, observed_on } => false,
+    UnobservableUntilSettingsRead => false,
+  }
+}
+
+fn fork_diverges_naming(p: PublicForkPolicyStanding, group: NonEmptyStr) -> Bool {
+  match p {
+    DivergesFromDesired { exposing_groups, observed_on } => count(filter(exposing_groups, g => g == group)) == 1,
+    MatchesDesired { observed_on } => false,
+    UnobservableUntilSettingsRead => false,
+  }
+}
+
+fn fork_unobservable(p: PublicForkPolicyStanding) -> Bool {
+  match p {
+    UnobservableUntilSettingsRead => true,
+    MatchesDesired { observed_on } => false,
+    DivergesFromDesired { exposing_groups, observed_on } => false,
+  }
+}
+
+test fn witness_public_exposure_convicts_only_the_serving_group() -> Bool {
+  desired_allows_public_repositories == false
+    && fork_matches(p: public_exposure_standing(obs: probe_read_private_only, r: access_gunbc_private))
+    && fork_diverges_naming(p: public_exposure_standing(obs: probe_read_exposing, r: access_gunbc_private), group: "default")
+    && fork_matches(p: public_exposure_standing(obs: probe_read_nonserving_open, r: access_gunbc_private))
+    && fork_unobservable(p: public_exposure_standing(obs: SettingsReadRefusedTokenScope { refusal_fragment: "probe", observed_on: "2026-08-30" }, r: access_gunbc_private))
+}
+
+test fn witness_desired_rows_demand_fleet_reach() -> Bool {
+  fold(desired_repo_access, init: true, f: fn(acc, r) { acc && r.must_reach_fleet })
+    && observed_admits(groups: [grp_private_closed], repository: "gunb-ai/gunbc-private")
+    && !observed_admits(groups: [grp_private_closed], repository: "gunb-ai/gunbc")
+}

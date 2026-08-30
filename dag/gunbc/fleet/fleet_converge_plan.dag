@@ -78,6 +78,11 @@ import gunbc.fabric_cell_effect {
 }
 import gunbc.runner_host_grants {
   fabric_cell_effect_operations,
+  fabric_allocation_store_effect_operations,
+}
+import gunbc.fabric_allocation_store_substrate {
+  fabric_allocation_store_substrate_spec,
+  fabric_allocation_store_ensure_effect,
 }
 import gunbc.executor_privileged_operation { executor_privileged_operation_shell_command }
 import gunbc.fabric_cell_observation_admission {
@@ -236,6 +241,7 @@ type TimerRetirementMemberAt = NonEmptyStr
 type FleetConvergeScope
   = FullHost
   | FabricExecutionCellsOnly
+  | FabricAllocationStoreOnly
 
 type FleetConvergeRequest
   = FullHostConverge {
@@ -250,11 +256,13 @@ type FleetConvergeRequest
       host: NonEmptyStr
       observed_fabric_cells: FabricCellObservationDecision
     }
+  | FabricAllocationStoreConverge { host: NonEmptyStr }
 
 fn fleet_converge_request_scope(request: FleetConvergeRequest) -> FleetConvergeScope {
   match request {
     FullHostConverge { host: _, observed_timers: _, observed_caps: _, observed_spark: _, observed_slots: _, observed_fabric_cells: _ } => FullHost
     FabricExecutionCellsConverge { host: _, observed_fabric_cells: _ } => FabricExecutionCellsOnly
+    FabricAllocationStoreConverge { host: _ } => FabricAllocationStoreOnly
   }
 }
 
@@ -262,6 +270,7 @@ fn fleet_converge_request_host(request: FleetConvergeRequest) -> NonEmptyStr {
   match request {
     FullHostConverge { host: h, observed_timers: _, observed_caps: _, observed_spark: _, observed_slots: _, observed_fabric_cells: _ } => h
     FabricExecutionCellsConverge { host: h, observed_fabric_cells: _ } => h
+    FabricAllocationStoreConverge { host: h } => h
   }
 }
 
@@ -273,6 +282,7 @@ fn fleet_converge_scope_wire(scope: FleetConvergeScope) -> String {
   match scope {
     FullHost => "scope:full-host"
     FabricExecutionCellsOnly => "scope:fabric-execution-cells-only"
+    FabricAllocationStoreOnly => "scope:fabric-allocation-store-only"
   }
 }
 
@@ -429,6 +439,8 @@ fn fleet_converge_scope_of_wire(wire: String) -> FleetConvergeScopeDecode {
     ScopeDecoded { scope: FullHost }
   } else if w == fleet_converge_scope_wire(scope: FabricExecutionCellsOnly) {
     ScopeDecoded { scope: FabricExecutionCellsOnly }
+  } else if w == fleet_converge_scope_wire(scope: FabricAllocationStoreOnly) {
+    ScopeDecoded { scope: FabricAllocationStoreOnly }
   } else {
     ScopeUndecodable {
       cause: concat("the planned scope artifact names no scope this build knows: ", w),
@@ -461,11 +473,19 @@ fn fleet_converge_scope_matches(planned: FleetConvergeScope, observed: FleetConv
       match observed {
         FullHost => true
         FabricExecutionCellsOnly => false
+        FabricAllocationStoreOnly => false
       }
     FabricExecutionCellsOnly =>
       match observed {
         FabricExecutionCellsOnly => true
         FullHost => false
+        FabricAllocationStoreOnly => false
+      }
+    FabricAllocationStoreOnly =>
+      match observed {
+        FabricAllocationStoreOnly => true
+        FullHost => false
+        FabricExecutionCellsOnly => false
       }
   }
 }
@@ -1426,6 +1446,14 @@ fn observed_baseline_text(request: FleetConvergeRequest) -> String {
           ],
           fabric_cell_baseline_rows(population: observed_fabric_cells),
         ),
+        "\n",
+      )
+    FabricAllocationStoreConverge { host: host } =>
+      join(
+        [
+          fleet_converge_scope_wire(scope: FabricAllocationStoreOnly),
+          concat("host:", host as String),
+        ],
         "\n",
       )
   }
@@ -2523,6 +2551,69 @@ fn fleet_converge_plan_artifact_assembled(
     plan_body: body,
     apply_shell: apply_shell,
     spark_serving_typed_actions: spark_rows,
+  }
+}
+
+// The allocation store has its own host-scoped transaction. It is not a cell member and therefore
+// cannot disappear when an already-converged cell family produces an empty action population.
+fn fleet_converge_allocation_store_plan_artifact(
+  host: NonEmptyStr,
+  prior_generation: Int,
+) -> FleetConvergePlanArtifact? {
+  let request = FabricAllocationStoreConverge { host: host }
+  let subject = fleet_converge_plan_subject(request: request)
+  let spec = fabric_allocation_store_substrate_spec()
+  let baseline = observed_baseline_text(request: request)
+  let planned_generation = prior_generation + 1
+  match runner_host_deploy_for(host: host as HostIdentity) {
+    RunnerHostDeployUnmodeled { host: _ } => Absent
+    RunnerHostDeployFound { deploy: deploy } => {
+      let operations = fabric_allocation_store_effect_operations(
+        effect: fabric_allocation_store_ensure_effect(),
+        job_user: deploy.job_user,
+      )
+      let body = join(
+        [
+          "# fleet-converge allocation-store plan",
+          concat("subject_host:", subject.host as String),
+          concat("subject_scope:", fleet_converge_scope_wire(scope: subject.scope)),
+          concat("subject_member_set:", serialize_content_hash(hash: subject.member_set_fingerprint) as String),
+          concat("plan_generation:", to_string(planned_generation)),
+          "# allocation-store",
+          concat("ensure-directory:path=", spec.path as String),
+          concat("ensure-directory:mode=", spec.mode as String),
+          "ensure-directory:owner=CellSubstrateRootOwned",
+          "# allocation-store-refusals=0",
+          "apply-admission:ready",
+        ],
+        "\n",
+      )
+      let apply_shell = join(
+        concat(
+          ["set -euo pipefail", "# allocation-store substrate (gunbc.fabric_allocation_store_substrate)"],
+          map(operations, op => executor_privileged_operation_shell_command(op: op)),
+        ),
+        "\n",
+      )
+      let owner_fp = content_hash_of_value(value: body as NonEmptyStr)
+      let lease = fleet_converge_plan_held_lease(
+        subject: subject,
+        prior_generation: prior_generation,
+        owner_fingerprint: owner_fp,
+      )
+      match content_hash_of_value(value: baseline as NonEmptyStr) {
+        Fnv1a64(structural) => Present { value: FleetConvergePlanArtifact {
+          subject: subject,
+          prior_generation: prior_generation,
+          plan_lease: lease,
+          observed_baseline_hex: structural.digest,
+          plan_body: body,
+          apply_shell: apply_shell,
+          spark_serving_typed_actions: scheduled_rows_empty(),
+        } }
+        _ => Absent
+      }
+    }
   }
 }
 

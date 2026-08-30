@@ -1,7 +1,7 @@
 
 module gunbc.generated_artifact
 
-import gunbc.os_install { HostAutoinstall, fleet_autoinstall_specs, InstallServerSpec, fleet_install_server_specs }
+import gunbc.os_install { HostAutoinstall, fleet_autoinstall_specs }
 import gunbc.plan { Plan, plan_doc_directory, plan_doc_name, PlanProjectsCommittedMarkdown, PlanIsAuthorityOnly }
 import gunbc.plan_registry { all_plans }
 import gunbc.generated_artifact_merge_driver { generated_artifact_merge_driver_script_directory, generated_artifact_merge_driver_script_name }
@@ -26,7 +26,6 @@ type GeneratedArtifact
   | Stage0CratePartitionGeneratedDagArtifact
   | V1InterpreterDispatchGeneratedRsArtifact
   | AutoinstallUserDataArtifact { spec: HostAutoinstall }
-  | ProxyDhcpDnsmasqArtifact { spec: InstallServerSpec }
   | RunnerHostSudoersArtifact { host: HostIdentity }
   | PlanArtifact { plan: Plan }
 
@@ -36,10 +35,7 @@ data generated_artifact_registry: List<GeneratedArtifact> = concat(
       [WitnessFloorYamlArtifact, FleetConvergeYamlArtifact, FleetDesiredAdmissionYamlArtifact, GitignoreArtifact, GitattributesArtifact, RoadmapArtifact, DesignArtifact, DesignLedgersArtifact, GithooksPrePushArtifact, GithooksPreCommitArtifact, GeneratedArtifactMergeDriverArtifact, RunnerDeployArtifact, Stage0CrateLayoutGeneratedDagArtifact, Stage0CrateLayoutGeneratedRsArtifact, Stage0CratePartitionGeneratedDagArtifact, V1InterpreterDispatchGeneratedRsArtifact],
       map(fleet_autoinstall_specs, s => AutoinstallUserDataArtifact { spec: s })
     ),
-    concat(
-      map(fleet_install_server_specs, s => ProxyDhcpDnsmasqArtifact { spec: s }),
-      map(fleet_intent_known_hosts, h => RunnerHostSudoersArtifact { host: h.identity })
-    )
+    map(fleet_intent_known_hosts, h => RunnerHostSudoersArtifact { host: h.identity })
   ),
   map(all_plans, pl => PlanArtifact { plan: pl })
 )
@@ -116,8 +112,6 @@ fn artifact_location(a: GeneratedArtifact) -> ArtifactLocation {
     V1InterpreterDispatchGeneratedRsArtifact => ArtifactLocation { directory: "src/v1/stage0/src", name: "v1_interpreter_dispatch_generated.rs" }
     AutoinstallUserDataArtifact { spec } =>
       ArtifactLocation { directory: concat("provisioning/", spec.host), name: "user-data" }
-    ProxyDhcpDnsmasqArtifact { spec } =>
-      ArtifactLocation { directory: concat("provisioning/", spec.host), name: "dnsmasq.conf" }
     RunnerHostSudoersArtifact { host } =>
       ArtifactLocation {
         directory: concat("provisioning/", host as String),
@@ -170,7 +164,6 @@ fn artifact_commit_policy(a: GeneratedArtifact) -> CommitPolicy {
     Stage0CratePartitionGeneratedDagArtifact => CommitRequired { consumer: GitProtocol }
     V1InterpreterDispatchGeneratedRsArtifact => CommitRequired { consumer: GitProtocol }
     AutoinstallUserDataArtifact { spec: _ } => NotCommitted
-    ProxyDhcpDnsmasqArtifact { spec: _ } => NotCommitted
     RunnerHostSudoersArtifact { host: _ } => CommitRequired { consumer: HostReconciler }
   }
 }
@@ -217,7 +210,6 @@ fn artifact_eq(a: GeneratedArtifact, b: GeneratedArtifact) -> Bool {
     Stage0CratePartitionGeneratedDagArtifact => match b { Stage0CratePartitionGeneratedDagArtifact => true  _ => false }
     V1InterpreterDispatchGeneratedRsArtifact => match b { V1InterpreterDispatchGeneratedRsArtifact => true  _ => false }
     AutoinstallUserDataArtifact { spec } => match b { AutoinstallUserDataArtifact { spec: spec2 } => spec.host == spec2.host  _ => false }
-    ProxyDhcpDnsmasqArtifact { spec } => match b { ProxyDhcpDnsmasqArtifact { spec: spec2 } => spec.host == spec2.host  _ => false }
     RunnerHostSudoersArtifact { host } => match b { RunnerHostSudoersArtifact { host: host2 } => (host as String) == (host2 as String)  _ => false }
     PlanArtifact { plan } => match b { PlanArtifact { plan: plan2 } => plan.slug == plan2.slug  _ => false }
   }

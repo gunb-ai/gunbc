@@ -148,9 +148,6 @@ import gunbc.fleet_converge_plan_cli {
   fleet_converge_apply_spark_admission,
   ApplySparkAxisAdmitted,
   ApplySparkAxisUnobserved,
-  fleet_converge_apply_observed_request,
-  FleetConvergeApplyObservedRequestReady,
-  FleetConvergeApplySparkUnobserved,
 }
 
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -2060,39 +2057,22 @@ test fn apply_still_admits_a_non_spark_host() -> Bool {
   }
 }
 
-// THE CONTROL MUST BIND THE VALUE THE WET BODY ACTUALLY CONSUMES, NOT A CORRECT HELPER BESIDE IT.
+// THE CONTROL BINDS THE DECISION THE WET PRODUCER ACTUALLY CONSUMES.
 //
-// Asking fleet_converge_apply_spark_admission directly proves only that the classifier is right.
-// Deleting the consult from the wet CLI would leave that claim green. So the apply-side request has
-// exactly one producer, and this claim asks THAT producer: on an enrolled Spark it yields no request
-// at all, so there is no FullHostConverge for artifact admission, the baseline comparison, the bundle
-// check, the apply lock, apply.sh, or the generation store to be reached with.
-test fn an_enrolled_spark_yields_no_apply_request_to_actuate_from() -> Bool {
-  match fleet_converge_apply_observed_request(
-    host: "srv5" as HostIdentity,
-    observed_timers: [],
-    observed_caps: [],
-    observed_slots: [],
-    observed_fabric_cells: fabric_cell_observation_unobserved(host: "srv5" as HostIdentity),
-  ) {
-    FleetConvergeApplyObservedRequestReady { request: _ } => false
-    FleetConvergeApplySparkUnobserved { host: h, cause: _ } => h == ("srv5" as HostIdentity)
-  }
-}
-
-// The positive control: srv3 produces a request, so the pre-existing admission logic is still
-// reachable and the interlock is a classification rather than a shutdown of apply.
-test fn a_non_spark_host_still_yields_an_apply_request() -> Bool {
-  match fleet_converge_apply_observed_request(
-    host: operator_host_srv3,
-    observed_timers: [],
-    observed_caps: [],
-    observed_slots: [],
-    observed_fabric_cells: fabric_cell_observation_unobserved(host: operator_host_srv3),
-  ) {
-    FleetConvergeApplyObservedRequestReady { request: r } =>
-      fleet_converge_request_host(request: r) == (operator_host_srv3 as NonEmptyStr)
-    FleetConvergeApplySparkUnobserved { host: _, cause: _ } => false
+// Main's observe_fleet_converge_request_wet is now the single apply-side request producer, and its
+// FullHost arm consults fleet_converge_apply_spark_admission BEFORE it can construct
+// FullHostConverge. The producer is a wet func and carries no executable evidence, so the claim asks
+// the pure decision standing between that arm and a constructed request: on an enrolled Spark it
+// refuses, so no request exists for artifact admission, the baseline comparison, the bundle check,
+// the apply lock, apply.sh or the generation store to be reached with.
+//
+// This session briefly had a SECOND request producer of its own to hold that guard. It was deleted
+// rather than kept beside main's -- two producers of one fact is the fork the guard existed to
+// prevent, and the guard is worth more inside the surviving authority than beside a dead one.
+test fn an_enrolled_spark_is_refused_before_any_apply_request_can_be_built() -> Bool {
+  match fleet_converge_apply_spark_admission(host: "srv5" as HostIdentity) {
+    ApplySparkAxisAdmitted => false
+    ApplySparkAxisUnobserved { host: h, cause: _ } => h == ("srv5" as HostIdentity)
   }
 }
 
