@@ -252,10 +252,24 @@ fn spark_serving_retirement_observation_from_probes(
 // all could be handed to the proof. The bytes come from a read on the host, after the retirement, so the number describes a
 // pool the serving process has already let go of. Reading it before would measure the wrong machine
 // state and would be indistinguishable in the type.
+// THE ORDERING IS CARRIED BY THE RETIREMENT ITSELF, NOT ASSERTED BY THE CALLER.
+//
+// The field this replaces was `observed_after_retirement: Bool`. `sole_constructor` protected the
+// carrier while the load-bearing fact walked in through the front door as a bare boolean: any caller
+// could pass `true` with no evidence of ordering whatsoever, and the readiness gate then VALIDATED
+// the assertion it had just been handed. That is validation standing exactly where construction was
+// available, and the tell §5 names applies literally -- the check could be satisfied by editing the
+// argument while the realization lied.
+//
+// So the observation carries the retirement observation it was taken after. A pool reading cannot be
+// constructed without one in hand, and the producer refuses unless that retirement is ESTABLISHED on
+// all three subjects. "Measured before the retirement" is therefore no longer a state a caller can
+// describe: the evidence that the retirement happened is the same value that proves the ordering,
+// because it did not exist to be passed until the retirement had been observed.
 type SparkUnifiedPoolObservation sole_constructor {
   host: HostIdentity
   free_pool: ByteSize
-  observed_after_retirement: Bool
+  after: SparkServingRetirementObservation
   producer: NonEmptyStr
 }
 
@@ -279,8 +293,17 @@ fn spark_unified_pool_observation_from_capture(
   host: HostIdentity,
   free_pool: ByteSize,
   capture: SparkServingProbeCapture,
-  observed_after_retirement: Bool,
+  after: SparkServingRetirementObservation,
 ) -> SparkUnifiedPoolReading {
+  let unretired = spark_serving_retirement_refusals(retirement: after)
+  if length(unretired) > 0 {
+    SparkUnifiedPoolUnread {
+      cause: join([
+        "spark_training_ready: the retirement this reading claims to follow is not established — ",
+        join(map(unretired, r => r as String), "; "),
+      ], "") as NonEmptyStr,
+    }
+  } else {
   match capture {
     ProbeNeverRan { cause: c } =>
       SparkUnifiedPoolUnread {
@@ -295,10 +318,11 @@ fn spark_unified_pool_observation_from_capture(
         observation: SparkUnifiedPoolObservation {
           host: host,
           free_pool: free_pool,
-          observed_after_retirement: observed_after_retirement,
+          after: after,
           producer: join(["free-pool read: ", out], "") as NonEmptyStr,
         },
       }
+  }
   }
 }
 
@@ -341,10 +365,19 @@ fn spark_serving_retirement_refusals(retirement: SparkServingRetirementObservati
   )
 }
 
+// THE GATE READS ONE VALUE, BECAUSE THE PAIRING WAS A THIRD THING TO GET WRONG.
+//
+// This took the retirement and the pool as two arguments and checked that they agreed. They cannot
+// disagree now: the pool carries the retirement it followed, so there is no second retirement to
+// hand in beside it and no arm needed to notice the mismatch. The retirement-not-established arm is
+// gone from here for the same reason -- the pool producer refuses to build a reading over an
+// unestablished retirement, so by the time a pool exists that check has already run and cannot be
+// bypassed. Its discriminating RED did not retire with it; it moved to the producer's claims, which
+// is where the refusal now lives.
 fn spark_training_readiness(
-  retirement: SparkServingRetirementObservation,
   pool: SparkUnifiedPoolObservation,
 ) -> SparkTrainingReadiness {
+  let retirement = pool.after
   match spark_cell_role_of(host: retirement.host) {
     SparkCellRoleAbsent =>
       SparkTrainingNotReady {
@@ -362,17 +395,6 @@ fn spark_training_readiness(
       } else if !host_identity_eq(a: pool.host, b: retirement.host) {
         SparkTrainingNotReady {
           cause: "spark_training_ready: the pool measurement and the retirement observation name different hosts — a capacity read from one machine cannot admit another" as NonEmptyStr,
-        }
-      } else if length(spark_serving_retirement_refusals(retirement: retirement)) > 0 {
-        SparkTrainingNotReady {
-          cause: join([
-            "spark_training_ready: the serving retirement is not terminally observed — ",
-            join(map(spark_serving_retirement_refusals(retirement: retirement), r => r as String), "; "),
-          ], "") as NonEmptyStr,
-        }
-      } else if !pool.observed_after_retirement {
-        SparkTrainingNotReady {
-          cause: "spark_training_ready: the unified pool was measured before the retirement, so it describes a machine that was still serving" as NonEmptyStr,
         }
       } else if byte_size_count(b: pool.free_pool) <= 0 {
         SparkTrainingNotReady {

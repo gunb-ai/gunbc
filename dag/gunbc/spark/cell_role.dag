@@ -60,26 +60,26 @@ data spark_cell_role_assignments: List<SparkCellRoleAssignment> = [
   srv6_cell_role,
 ]
 
-fn spark_cell_role_eq(a: SparkCellRole, b: SparkCellRole) -> Bool {
-  match a {
-    SparkServingCell =>
-      match b {
-        SparkServingCell => true
-        SparkTrainingCell => false
-      }
-    SparkTrainingCell =>
-      match b {
-        SparkServingCell => false
-        SparkTrainingCell => true
-      }
-  }
-}
-
+// THE ONE PLACE THE VARIANTS ARE ENUMERATED IS THE WIRE PROJECTION, AND EQUALITY READS IT.
+//
+// The shape this replaces was a hand-rolled 4-arm predicate matching the coproduct against itself.
+// It is a second enumeration of the same two variants beside this projection, so adding a role would
+// require both to be edited and only one of them would fail to compile if the other were forgotten.
+// Deriving equality from the canonical projection leaves ONE place that knows what the variants are.
+//
+// This is the idiom the corpus already uses for exactly this question --
+// gunbc.spark.serving_membership's address equality and serving_execution_schedule's fact equality
+// are both wire-equality over their own canonical projection -- so it is reuse rather than a local
+// convention invented here.
 fn spark_cell_role_wire(role: SparkCellRole) -> String {
   match role {
     SparkServingCell => "serving"
     SparkTrainingCell => "training"
   }
+}
+
+fn spark_cell_role_eq(a: SparkCellRole, b: SparkCellRole) -> Bool {
+  spark_cell_role_wire(role: a) == spark_cell_role_wire(role: b)
 }
 
 // ABSENT IS "NOT A SPARK CELL", WHICH IS NOT A ROLE -- AND TWO ROWS FOR ONE HOST IS NEITHER.
