@@ -2451,3 +2451,65 @@ pub fn run_regen_round_cost(
         round_failures,
     })
 }
+
+#[cfg(test)]
+mod regen_round_cost_tests {
+    use super::*;
+
+    /// THE SEED-TO-MODEL LOCKSTEP the .dag witness says it cannot hold: the host builds the
+    /// receipt Value with these field and variant names, and the model's renderer either
+    /// accepts them or refuses. A renamed field on either side reds here, not in a
+    /// forty-minute round. The expected text is the same fixture the .dag witness asserts.
+    #[test]
+    fn host_built_receipt_renders_through_the_model() {
+        let roots = vec![workspace_root().join("dag").to_string_lossy().into_owned()];
+        let marks = vec![
+            v1_rt::TraceLedgerRow {
+                label: "round.seed_build".to_string(),
+                wall_ms: 1500,
+                cpu_ms: Some(9000),
+            },
+            v1_rt::TraceLedgerRow {
+                label: "compile.emit".to_string(),
+                wall_ms: 300000,
+                cpu_ms: None,
+            },
+        ];
+        let rendered = render_round_cost_receipt(
+            &roots,
+            "srv1",
+            "2a11b317d2caf3c37d1d38a4421e8e0c06188925",
+            true,
+            0,
+            2,
+            &marks,
+            &["v1_rt.rs".to_string()],
+        )
+        .expect("the model renders a host-built receipt");
+        assert_eq!(
+            rendered,
+            "regen-round-cost: producer=claim_executor --regen-round-cost host=srv1 \
+             tree=2a11b317d2caf3c37d1d38a4421e8e0c06188925 tree_dirty=true \
+             seed_build_compiled_crates=0 rebuild_compiled_crates=2\n\
+             regen-round-cost: phase=seed_build wall_ms=1500 cpu_ms=9000\n\
+             regen-round-cost: phase=compile.emit wall_ms=300000 cpu_ms=na\n\
+             regen-round-cost: total wall_ms=301500 cpu_ms=na\n\
+             regen-round-cost: changed_paths=1 [v1_rt.rs]\n"
+        );
+    }
+
+    /// The process-tree clock reads on this host, and it is monotone across work.
+    #[test]
+    fn process_tree_cpu_reads_and_does_not_go_backwards() {
+        let before = v1_rt::trace_process_tree_cpu_ms();
+        let mut sink = 0u64;
+        for i in 0..2_000_000u64 {
+            sink = sink.wrapping_mul(31).wrapping_add(i);
+        }
+        assert_ne!(sink, 1);
+        let after = v1_rt::trace_process_tree_cpu_ms();
+        if let (Some(b), Some(a)) = (before, after) {
+            assert!(a >= b, "cpu went backwards: {b} -> {a}");
+        }
+    }
+}
