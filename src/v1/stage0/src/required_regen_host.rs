@@ -2984,6 +2984,15 @@ fn run_built_seed_regen(
     source_roots: &[String],
     affected_scope: bool,
 ) -> Result<(String, String, String, Vec<String>, String), String> {
+    let receipt_path = workspace.join(receipt_rel);
+    if receipt_path.exists() {
+        fs::remove_file(&receipt_path).map_err(|e| {
+            format!(
+                "refusal: cannot retire prior generation receipt {} before rebuilt-seed emit: {e}",
+                receipt_path.display()
+            )
+        })?;
+    }
     let exe = std::env::current_exe().map_err(|e| format!("current_exe: {e}"))?;
     let shown = exe.to_string_lossy().into_owned();
     let on_disk = PathBuf::from(shown.strip_suffix(" (deleted)").unwrap_or(&shown));
@@ -3006,7 +3015,23 @@ fn run_built_seed_regen(
         .map_err(|e| format!("spawn rebuilt seed {}: {e}", on_disk.display()))?;
     // Drift makes --required-regen exit one after it has written the candidate and receipt. The
     // receipt, not the process code, distinguishes ordinary drift from a production refusal.
-    let receipt = read_first_generation_receipt(&workspace.join(receipt_rel));
+    if !receipt_path.is_file() {
+        return Err(format!(
+            "rebuilt seed produced no fresh generation receipt at {}; status={} stderr_tail={}",
+            receipt_path.display(),
+            output.status,
+            String::from_utf8_lossy(&output.stderr)
+                .lines()
+                .rev()
+                .take(12)
+                .collect::<Vec<_>>()
+                .into_iter()
+                .rev()
+                .collect::<Vec<_>>()
+                .join(" | ")
+        ));
+    }
+    let receipt = read_first_generation_receipt(&receipt_path);
     match receipt {
         Ok(value) => Ok(value),
         Err(reason) => Err(format!(
@@ -3409,7 +3434,17 @@ fn install_convergence_stage(
     }
     let build = seed_cargo_build(workspace, "round.rebuild_from_installed")?;
     let seed_after = current_exe_digest()?;
+    if seed_after.is_empty() {
+        return Err("stage output executable absent or unbound after successful build".to_string());
+    }
     for surface in &mut surfaces {
+        let observed_after_build = path_digest(&workspace.join(&surface.projected_path))?;
+        if observed_after_build != surface.candidate_digest {
+            return Err(format!(
+                "installed digest changed during the seed build for {}: planned {}, observed {}",
+                surface.projected_path, surface.candidate_digest, observed_after_build
+            ));
+        }
         surface.terminal = true;
         surface.passed = true;
     }
