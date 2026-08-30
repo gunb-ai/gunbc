@@ -500,13 +500,13 @@ type RoadmapLaunchDeploymentVerdict
 fn roadmap_launch_deployment_verdict(subject: RoadmapLaunchDeploymentSubject, facts: RoadmapLaunchDeploymentFacts) -> RoadmapLaunchDeploymentVerdict {
   let blockers = roadmap_launch_deployment_blockers(s: subject, f: facts)
   match list_head(xs: blockers) {
-    Absent =>
+    HeadAbsent =>
       DeploymentComplete {
         subject: subject,
         facts: facts,
         proof: DeploymentCompleteProof { receipt_identity: roadmap_launch_deployment_receipt_identity_hex(subject: subject, facts: facts) },
       }
-    Present { value: first } =>
+    HeadFound { value: first } =>
       DeploymentIncomplete { subject: subject, facts: facts, first_blocker: first, further_blockers: blockers |> skip(1) }
   }
 }
