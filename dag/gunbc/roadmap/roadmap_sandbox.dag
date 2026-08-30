@@ -1,6 +1,6 @@
 module gunbc.roadmap_sandbox
 
-import std.types { Int, String, Bool, List }
+import std.types { Int, String, Bool, List, NonEmptyStr }
 import std.markup { Fragment, Element, FragmentText, RawNode, Attribute, attr }
 import gunbc.site.markup { txt, el, el_class, el_attrs }
 import gunbc.roadmap_page { roadmap_header, render_work_row, node_li_attributes, workspace_entries_ul }
@@ -41,6 +41,21 @@ import gunbc.roadmap_component {
   InstrumentLabLink, instrument_lab_links,
 }
 import gunbc.roadmap_belt_actuate { belt_dispatch_all_status_labels }
+import gunbc.roadmap_belt { ManualReady }
+import gunbc.roadmap_model { RoadmapNodeId }
+import gunbc.roadmap_launch_admission { LaunchAdmission, LaunchAdmitted, LaunchIdentity, Operator, launch_identity_null_revision }
+
+data sandbox_launch_admission_note: String = "The sandbox gallery is a UI fixture that never spawns (its click echoes a wire exemplar from /sandbox); its rows carry a SYNTHETIC admitted launch so the operable button exists to press. This is a fixture value for the pressable gallery only -- no production surface reads it, and the identity names the sandbox as its instance so it cannot be mistaken for a served admission."
+
+fn sandbox_launch_admission(node_id: String) -> LaunchAdmission {
+  LaunchAdmitted { identity: LaunchIdentity {
+    node_id: node_id as NonEmptyStr as RoadmapNodeId,
+    cause: Operator,
+    mode: ManualReady,
+    instance_id: "sandbox" as NonEmptyStr,
+    revision: launch_identity_null_revision(),
+  } }
+}
 
 data roadmap_sandbox_note: String = "The /sandbox design surface (P4): the register at every depth plus every component in every state, all DERIVED from the same authorities the live surfaces use, so the sandbox is a faithful mirror, never a hand mock. Roles are shown under BOTH themes at once (literal material paints inline — the one place a literal color is right, because it is DISPLAYING the role->material authority under two projections simultaneously, which var(--role) cannot do). The component gallery renders dispatch_button_component's states one-for-one; the terminal instances are exactly the wire vocabulary (totality is the P0 property, re-witnessed here as gallery coverage). The live section is one pressable instance per wire arm that POSTs /sandbox/echo?status=LABEL and renders through the SAME client program the real button uses — so every state is exercisable without dispatching a session, and the sandbox cannot drift from production render."
 
@@ -282,7 +297,7 @@ fn fixture_specimen_view(node_id: String, activity: ActivityView) -> WorkRowView
     scheduling: SchedulingReady,
     superseded_by: "",
     activity: activity,
-    action: action_view(scheduling: SchedulingReady, lifecycle: OpenLifecycle),
+    action: action_view(lifecycle: OpenLifecycle, admission: sandbox_launch_admission(node_id: node_id)),
     supporting_facts: [],
     disclosure: NoDisclosure,
   }
@@ -345,7 +360,7 @@ fn fixture_ready_view(node_id: String, headline: String) -> WorkRowView {
     scheduling: SchedulingReady,
     superseded_by: "",
     activity: NoActiveWork,
-    action: action_view(scheduling: SchedulingReady, lifecycle: OpenLifecycle),
+    action: action_view(lifecycle: OpenLifecycle, admission: sandbox_launch_admission(node_id: node_id)),
     supporting_facts: [],
     disclosure: NoDisclosure,
   }

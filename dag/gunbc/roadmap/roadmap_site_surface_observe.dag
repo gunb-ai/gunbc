@@ -14,6 +14,7 @@ import gunbc.roadmap_page {
   roadmap_page_for_projection,
   roadmap_daily_workspace_page_for_projection_observed,
 }
+import gunbc.roadmap_launch_admission { launch_host_unobserved_static_render }
 import gunbc.roadmap_component { dispatch_client_js_source, roadmap_dispatch_asset_path }
 import gunbc.roadmap_model { RoadmapNodeId }
 import gunbc.roadmap_site_surface_types {
@@ -90,6 +91,7 @@ fn render_roadmap_site_surface_bundle_for_projection(proj: RoadmapAuthorityProje
       proj: proj,
       attempts: [],
       attempts_refused: none,
+      launch: launch_host_unobserved_static_render(),
     )
   )
   let full_body = served_page_body(page: roadmap_page_for_projection(proj: proj))
