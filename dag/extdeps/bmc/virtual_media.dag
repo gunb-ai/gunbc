@@ -4,6 +4,8 @@ import std.types { NonEmptyStr, Int, String, List, Port }
 import std.logic { Bool }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
+import extdeps.bmc.redfish_virtual_media { RedfishVirtualMediaLocator, RedfishVirtualMediaTransferProtocol }
+import extdeps.bmc.megarac { MegaRacImageRedirectionRequired }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -44,14 +46,50 @@ type NbdProxyWebsocatParams {
   local_nbd_port: Port
 }
 
+// Standard DMTF Redfish VirtualMedia: the BMC PULLS the image from a URI the
+// staging service serves (InsertMedia with Image + TransferProtocolType), so
+// unlike the two push-shaped arms above, nothing is exported to the BMC from
+// the staging side except an HTTP/NFS/CIFS listener. Which protocols a given
+// BMC accepts is discovered per endpoint (extdeps.bmc.redfish_virtual_media).
+type RedfishVirtualMediaParams {
+  media: RedfishVirtualMediaLocator
+  image: Uri
+  transfer_protocol: RedfishVirtualMediaTransferProtocol
+}
+
+// MegaRAC's proprietary remote media (extdeps.bmc.megarac megarac_op_media_*):
+// the BMC mounts an NFS or CIFS share the staging service exports and
+// redirects a named image from it. The observed Foxconn Mt. Collins build
+// (BMC 0.32, no Redfish) boots from an ISO through exactly this path.
+type MegaRacRemoteShareType
+  = MegaRacShareNfs
+  | MegaRacShareCifs
+
+type MegaRacRemoteMediaParams {
+  share_type: MegaRacRemoteShareType
+  server_address: NonEmptyStr
+  source_path: NonEmptyStr
+  image_name: NonEmptyStr
+  image_redirection: MegaRacImageRedirectionRequired
+}
+
+// THE TRANSPORT AXIS. Four realizations of one intent; the third and fourth arms landed
+// with the 2026-08-29 machine-intake ruling, which forbade a second
+// burn-in-specific media system and required the standard Redfish path to be
+// one more inhabitant here. The dispatch that selects an arm is realization and
+// lives in gunbc.boot_artifact_delivery, never in this interface module.
 type VirtualMediaTransport
   = ConfigfsGadgetTransport { params: ConfigfsGadgetParams }
   | NbdProxyWebsocatTransport { params: NbdProxyWebsocatParams }
+  | RedfishVirtualMediaTransport { params: RedfishVirtualMediaParams }
+  | MegaRacRemoteMediaTransport { params: MegaRacRemoteMediaParams }
 
 fn virtual_media_transport_kind(transport: VirtualMediaTransport) -> String {
   match transport {
     ConfigfsGadgetTransport { params: _ } => "configfs-gadget"
     NbdProxyWebsocatTransport { params: _ } => "nbdproxy-websocat"
+    RedfishVirtualMediaTransport { params: _ } => "redfish-virtualmedia"
+    MegaRacRemoteMediaTransport { params: _ } => "megarac-remote-media"
   }
 }
 

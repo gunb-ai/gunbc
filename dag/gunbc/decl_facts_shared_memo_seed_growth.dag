@@ -1,0 +1,60 @@
+module gunbc.decl_facts_shared_memo_seed_growth
+
+import gunbc.roadmap_model { RoadmapNodeId }
+import gunbc.seed_growth { SeedGrowthJustification }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+
+// FORWARD-FREEZE RECEIPT for the hand Rust added by sharing the decl_facts census across the
+// witnesses of one prepared floor. Authored because gunbc.seed_growth_admission
+// seed_growth_forward_freeze_policy_note makes unenumerated hand growth in src/v1 a stop-line,
+// and this change adds two hand items to v1_compiler.coproduct_reflection. Requested by
+// review 57610 on gunbc#9690.
+//
+// WHAT THE CHANGE IS, AND WHAT IT IS NOT. It is a CACHE on an existing walk, not new compiler
+// infrastructure: decl_facts_for_roots, DeclFactRaw and the marshaling that reads them all
+// pre-exist on main, and this branch adds no fact, no field and no decision to any of them.
+// A hit returns the value the unmemoized walk returned for the identical canonical root set
+// under the identical prepared authority.
+//
+// WHY IT WAS ADDED. The walk re-parses every non-test file under the pool roots on every call,
+// and each required-floor witness evaluates its own module's data rows alone, so a file of four
+// witnesses over one pool paid the same parse four times -- and the FIRST evaluation of any of
+// them paid it inside the per-claim CPU fail-stop. On run 33311256002 the four
+// bmc_onboarding_quarantine_witness_test rows measured 196-225ms cpu solo and were all
+// BUDGET-REFUSED at 503-512ms on the CI host. That is the DESIGN section 6 bare-minimum-cost
+// class with an n that stopped being small, and the admissible repair is to stop recomputing,
+// never to raise the line.
+//
+// WHY IT IS RUST AND NOT .dag. The cached SUBJECT is a host walk: decl_facts_for_roots reads
+// the seed's own source loader over a prepared inventory the substrate cannot name, so a
+// .dag-side cache would key on something no modeled operation can express -- a layer inversion
+// rather than a migration, the same boundary gunbc.census_memo_seed_growth records one seam
+// over. The memo is co-located with the walk it caches and mirrors that sibling's discipline
+// exactly rather than minting a second caching authority beside it (DESIGN section 3): same
+// registration and clearing points, same shared-artifact fill attribution on both clocks.
+//
+// WHAT IS NOT NETTED. record_shared_artifact_fill_cpu and record_shared_artifact_fill_wall in
+// v1_compiler.cli_run are ExistingSeedItemModified per gunbc.seed_growth_admission
+// SeedGrowthChangeDisposition -- visibility only, from private to pub(crate), so the fill
+// accumulator stays ONE authority instead of the memo growing a second one -- and
+// register_floor_decl_parse_memo and clear_floor_decl_parse_memo likewise keep their names and
+// signatures while binding the new cell beside the one they already bound. The
+// namespace_wave_admission.rs change on this branch adds no declaration at all: it is a doc
+// comment recording a roster shrink.
+//
+// HAND-ITEM DELTA: +2 citable declarations, both in v1_compiler.coproduct_reflection. One
+// module-level thread-local (FLOOR_DECL_FACTS_MEMO) and one test module
+// (decl_facts_shared_memo_tests, holding the helper names and the single test
+// shared_walk_is_the_unmemoized_walk_by_identity_and_is_walked_once) are added and are NOT
+// citable declarations; they are named here rather than omitted, because a receipt that counts
+// only what the roster can cite under-reports its own growth.
+data decl_facts_shared_memo_seed_growth_justification: SeedGrowthJustification = SeedGrowthJustification {
+  hand_authored_declarations: [
+    DeclarationRef { module_path: "v1_compiler.coproduct_reflection", decl_name: "decl_facts_memo_key", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.coproduct_reflection", decl_name: "decl_facts_for_roots_shared", field: WholeDeclaration }
+  ],
+  reason: "Sharing a host walk is a property of the host that runs it. decl_facts_for_roots_shared is the memoized entry point and decl_facts_for_roots stays the unmemoized body, so the walk and the artifact keyed on it remain one authority; decl_facts_memo_key is the canonical key and exists as its own item because the key is the correctness content of the memo rather than an implementation detail of it.\n\nTHE KEY IS THE WHOLE ARGUMENT. It canonicalizes root ORDER and preserves root MULTIPLICITY: the walk sorts its output, so two spellings of one multiset are the same population, while [r] and [r, r] are different populations because the walk visits every supplied root and appends what it finds. A dedup here would have made the memo's answer a function of CALL ORDER -- whichever spelling filled first would serve the other -- which is a silently wrong answer and not a cost defect.\n\nENUMERATED RATHER THAN COUNTED. Both are free functions, so the citable count and the real count are both two; nothing lands in seed_growth_uncitable_item_keys. The thread-local cell and the test module are not declarations and are disclosed in this file's header instead.",
+  owning_dissolution_lane: "v1-hand-queue-drain" as RoadmapNodeId,
+  trigger: "Delete both when the decl_facts census is a MODELED operation over a modeled prepared inventory rather than a host walk -- at which point its cache is the substrate's own Realization memoization on a content hash (DESIGN section 2, one kernel spanning resolve-cost to sccache) and a hand-rolled per-walk map is exactly the duplicated caching authority that carrier dissolves. It migrates together with the compile-census memo gunbc.census_memo_seed_growth records: leaving one hand-rolled beside a modeled sibling would be the fork this receipt's own single-authority argument refuses.",
+  current_boundary: "Confined to one call site and one process. The cell is thread-local, is consulted only inside decl_facts_for_roots_shared, and is registered and cleared by register_floor_decl_parse_memo and clear_floor_decl_parse_memo beside the parse memo it accompanies -- so outside the floor's prepared authority the cell is absent, every call walks, and no caller observes the memo at all. It changes no verdict: the executing evidence is shared_walk_is_the_unmemoized_walk_by_identity_and_is_walked_once, which requires reordered spellings of one multiset to be Rc::ptr_eq, requires singleton and duplicate-root populations NOT to alias, requires each shared result to equal its corresponding unmemoized result including duplicate multiplicity, and requires the artifact to be dropped when the prepared authority is cleared. A MISS's fill interval is recorded through v1_compiler.cli_run record_shared_artifact_fill_cpu and record_shared_artifact_fill_wall, the same accumulators the sibling memos write, so the claim that pays the walk is charged its marginal half and the fill is reported beside it rather than silently taxing whichever witness happened to run first."
+}
