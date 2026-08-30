@@ -1,0 +1,106 @@
+module gunbc.fleet.org_actions_standing
+
+import std.types { NonEmptyStr, String, Bool, Int, List }
+import extdeps.github.org_actions {
+  OrgRunnerGroup, RunnerGroupVisibility, AllRepositories, SelectedRepositories,
+  org_runner_groups_endpoint, org_admin_scope_refusal_fragment,
+}
+
+// ORG ACTIONS SETTINGS AS A CONVERGED SURFACE (operator direction 2026-08-30: "we need
+// to connect the org github settings via fleet converge - basically this is all
+// unmodeled right now"). The org's runner-group access policy decides which repositories
+// reach the fleet, and until now it lived only in the GitHub settings UI - actuated by
+// hand, observed by nobody, exactly the unmodeled-authority shape fleet converge exists
+// to eliminate. This module declares the DESIRED state and the OBSERVATIONS; the
+// convergence loop (read settings -> diff -> refuse-or-apply) binds to fleet-converge
+// once its credential precondition is met, and that binding is this module's declared
+// next trigger, not something a hand edit in the UI satisfies.
+
+// ---------------------------------------------------------------------------------------------
+// Desired state - fleet policy.
+// ---------------------------------------------------------------------------------------------
+
+type RepoRunnerAccess {
+  repository: NonEmptyStr
+  must_reach_fleet: Bool
+  reason: NonEmptyStr
+}
+
+data access_gunbc: RepoRunnerAccess = RepoRunnerAccess {
+  repository: "gunb-ai/gunbc",
+  must_reach_fleet: true,
+  reason: "the public witness floor runs on [self-hosted, linux, arm64]",
+}
+
+data access_gunbc_private: RepoRunnerAccess = RepoRunnerAccess {
+  repository: "gunb-ai/gunbc-private",
+  must_reach_fleet: true,
+  reason: "the private witness roster moved to the fleet 2026-08-30 (hosted-minutes pool exhausted; the business dogfoods its own runners)",
+}
+
+data desired_repo_access: List<RepoRunnerAccess> = [access_gunbc, access_gunbc_private]
+
+// The public-fork trap stays closed as policy: whatever group serves these repositories
+// must NOT allow public repositories unless a hardened, isolated runner class exists for
+// them - the tenant-isolation program owns that question, not a settings toggle.
+data desired_allows_public_repositories: Bool = false
+
+// ---------------------------------------------------------------------------------------------
+// Observations - what we can actually see today, typed by HOW it was seen.
+// ---------------------------------------------------------------------------------------------
+
+type OrgSettingsObservation
+  = SettingsRead { groups: List<OrgRunnerGroup>, observed_on: NonEmptyStr }
+  | SettingsReadRefusedTokenScope { refusal_fragment: NonEmptyStr, observed_on: NonEmptyStr }
+
+type BehavioralReceipt {
+  repository: NonEmptyStr
+  runner_name: NonEmptyStr
+  run_id: NonEmptyStr
+  observed_on: NonEmptyStr
+}
+
+data settings_observation_current: OrgSettingsObservation = SettingsReadRefusedTokenScope {
+  refusal_fragment: org_admin_scope_refusal_fragment,
+  observed_on: "2026-08-30",
+}
+
+// A fleet runner EXECUTED a gunbc-private job - behavior proves the access policy admits
+// the repository today, even while the settings surface is unreadable to this credential.
+data receipt_private_on_fleet: BehavioralReceipt = BehavioralReceipt {
+  repository: "gunb-ai/gunbc-private",
+  runner_name: "srv4-01-1788089189-1873877",
+  run_id: "33309109321",
+  observed_on: "2026-08-30",
+}
+
+data behavioral_receipts: List<BehavioralReceipt> = [receipt_private_on_fleet]
+
+// ---------------------------------------------------------------------------------------------
+// Standing - derived, honest about the observation channel.
+// ---------------------------------------------------------------------------------------------
+
+type OrgAccessStanding
+  = HoldsBySettingsRead { observed_on: NonEmptyStr }
+  | HoldsByBehavior { run_id: NonEmptyStr, observed_on: NonEmptyStr }
+  | Unobserved
+
+fn repo_access_standing(r: RepoRunnerAccess) -> OrgAccessStanding {
+  match settings_observation_current {
+    SettingsRead { groups, observed_on } => HoldsBySettingsRead { observed_on: observed_on },
+    SettingsReadRefusedTokenScope { refusal_fragment, observed_on } =>
+      fold(behavioral_receipts, init: Unobserved, f: fn(acc, b) {
+        if b.repository == r.repository { HoldsByBehavior { run_id: b.run_id, observed_on: b.observed_on } } else { acc }
+      }),
+  }
+}
+
+fn standing_is_observed(s: OrgAccessStanding) -> Bool {
+  match s {
+    HoldsBySettingsRead { observed_on } => true,
+    HoldsByBehavior { run_id, observed_on } => true,
+    Unobserved => false,
+  }
+}
+
+data org_converge_binding_note: String = "NEXT TRIGGER, named as the capability: fleet-converge can converge this surface when (1) an org-administration-scoped credential is modeled in the fleet secret set - the repo-scoped integration token observably receives the 403 this module cites - and (2) the converge phase reads org_runner_groups_endpoint, diffs against desired_repo_access and desired_allows_public_repositories, and REFUSES on divergence it is not authorized to apply (a settings surface converged by silent overwrite would erase an operator's deliberate UI change; the diff is the deliverable, apply is gated). Until then the standing here is honest about its channel: HoldsByBehavior is weaker than HoldsBySettingsRead - behavior proves admission TODAY, not that the group's visibility row matches the desired shape - and a behavioral receipt cannot observe desired_allows_public_repositories at all, which is why that row has no standing fn: it is UNOBSERVABLE until the settings read lands, and deriving a green from its absence would be the reachability-read-as-occupancy failure."

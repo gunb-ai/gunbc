@@ -1,0 +1,39 @@
+module extdeps.github.org_actions
+
+import std.types { NonEmptyStr, String, Bool, Int, List }
+
+// ORG-LEVEL GITHUB ACTIONS SETTINGS - the upstream surface, cited. These are the org
+// settings that decide whether a repository's workflows can reach the org's self-hosted
+// runners at all: the runner GROUP is the access-control object, not the runner
+// (docs.github.com/en/rest/actions/self-hosted-runner-groups, read 2026-08-30). This
+// module owns the SHAPE the API returns; which groups our org should have and which
+// repositories they must admit is a fleet policy fact and lives in gunbc.fleet, never
+// here.
+
+type RunnerGroupVisibility
+  = AllRepositories
+  | SelectedRepositories
+
+// GET /orgs/:org/actions/runner-groups -> runner_groups[]. selected_repositories_url is
+// populated only when visibility is selected; allows_public_repositories gates whether
+// public-repo workflows may use the group (public forks running on self-hosted hardware
+// is the canonical self-hosted security trap, which is why it defaults false upstream).
+type OrgRunnerGroup {
+  id: Int
+  name: NonEmptyStr
+  visibility: RunnerGroupVisibility
+  allows_public_repositories: Bool
+}
+
+data org_runner_groups_endpoint: NonEmptyStr = "GET /orgs/:org/actions/runner-groups"
+data org_runner_group_repos_endpoint: NonEmptyStr = "GET /orgs/:org/actions/runner-groups/:runner_group_id/repositories"
+data org_actions_permissions_endpoint: NonEmptyStr = "GET /orgs/:org/actions/permissions"
+
+// TOKEN-SCOPE FACT, observed by execution 2026-08-30: these endpoints require org
+// administration scope. A repository-scoped integration token receives HTTP 403
+// {"message":"Resource not accessible by integration"} - observed against
+// /orgs/gunb-ai/actions/runners and /repos/gunb-ai/gunbc-private/actions/runners from
+// this session's gh credential. So a fleet convergence of org settings has a CREDENTIAL
+// precondition, not merely an API binding; the refusal string is the discriminator a
+// reader of a failed converge run should match against.
+data org_admin_scope_refusal_fragment: NonEmptyStr = "Resource not accessible by integration"

@@ -1,0 +1,40 @@
+module test.claim.org_actions_standing_witness
+
+import std.types { Bool, Int, NonEmptyStr, List }
+import gunbc.fleet.org_actions_standing {
+  RepoRunnerAccess, desired_repo_access, access_gunbc_private, access_gunbc,
+  OrgAccessStanding, HoldsBySettingsRead, HoldsByBehavior, Unobserved,
+  repo_access_standing, standing_is_observed, behavioral_receipts,
+  desired_allows_public_repositories,
+}
+
+// THE DISCRIMINATING CLAIMS. (1) The standing derivation is channel-honest: with the
+// settings read refused (today's observation), gunbc-private holds BY BEHAVIOR - the
+// receipt names the run - while a repository with no behavioral receipt derives
+// Unobserved rather than borrowing its neighbour's green. gunbc itself currently has no
+// receipt row, so it IS the discriminating negative: if the derivation ever widens to
+// answer for unreceipted repositories, this witness reds. (2) The public-fork policy row
+// is false. (3) Every desired row demands fleet reach (a row that does not is dead).
+
+fn holds_by_behavior(s: OrgAccessStanding) -> Bool {
+  match s {
+    HoldsByBehavior { run_id, observed_on } => true,
+    HoldsBySettingsRead { observed_on } => false,
+    Unobserved => false,
+  }
+}
+
+test fn witness_private_holds_by_behavior_only() -> Bool {
+  holds_by_behavior(s: repo_access_standing(r: access_gunbc_private))
+    && !standing_is_observed(s: repo_access_standing(r: access_gunbc))
+}
+
+test fn witness_public_fork_trap_stays_closed() -> Bool {
+  desired_allows_public_repositories == false
+}
+
+test fn witness_desired_rows_live() -> Bool {
+  count(desired_repo_access) == 2
+    && fold(desired_repo_access, init: true, f: fn(acc, r) { acc && r.must_reach_fleet })
+    && count(behavioral_receipts) == 1
+}
