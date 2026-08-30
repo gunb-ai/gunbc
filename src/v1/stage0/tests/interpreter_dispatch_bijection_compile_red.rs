@@ -25,7 +25,7 @@
 //! run is cheap and keeps the claim-A discriminator exercised without opt-in.
 
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 
 fn temp_fixture_root(name: &str) -> PathBuf {
@@ -38,7 +38,7 @@ fn temp_fixture_root(name: &str) -> PathBuf {
     base
 }
 
-fn write_fixture_crate(root: &PathBuf, lib_rs: &str) {
+fn write_fixture_crate(root: &Path, lib_rs: &str) {
     let src = root.join("src");
     fs::create_dir_all(&src).expect("src dir");
     fs::write(
