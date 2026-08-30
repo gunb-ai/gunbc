@@ -23,7 +23,10 @@ import gunbc.symbol_identity_census {
   symbol_identity_subject, symbol_identity_decision, symbol_representation_ruling,
   symbol_identity_census_blocks_decision
 }
-import std.symbol_semantics { symbol_semantics_decision_coherent, LexemeBackedNominal, InternedIdentity }
+import std.symbol_semantics {
+  symbol_semantics_decision_coherent, symbol_value_semantics_coherent, symbol_nominality_coherent,
+  SymbolSemanticsDecision, LexemeBacked, InternedIdentity, NominalityEnforced, NominalityNotEnforced
+}
 import std.reference_realization {
   ReferencePositionRendering, RenderProviderDeclarationByPolicy, RenderProviderDeclarationNoRealization,
   RenderTargetRepresentation, ReferenceRenderingRefused
@@ -55,6 +58,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 //   resolve Absent identity by falling to a bare spelling     -> w_missing_source_identity_refuses
 //   duplicate the Symbol row in rust_source_type_binding_rows -> w_corpus_bindings_are_unambiguous
 //   answer InternedIdentity while every law says lexeme       -> w_symbol_decision_is_coherent
+//   claim NominalityEnforced while text flows are admitted    -> w_symbol_decision_is_coherent
 
 // THE SAME-SPELLING SIBLINGS, all REAL declarations (the cited-declaration gate refuses a citation
 // of a declaration that does not exist, so the "another module declaring Symbol" falsifier is
@@ -212,15 +216,70 @@ test fn w_symbol_verdict_is_migrated_not_debt() -> Bool {
   }
 }
 
-fn decision_claims_lexeme_backed_nominal() -> Bool {
+fn decision_claims_lexeme_backed() -> Bool {
   match symbol_identity_decision.semantics {
-    LexemeBackedNominal => true
+    LexemeBacked => true
     InternedIdentity => false
   }
 }
 
+fn decision_admits_nominality_not_enforced() -> Bool {
+  match symbol_identity_decision.nominality {
+    NominalityEnforced => false
+    NominalityNotEnforced { cause: _, next_rung_trigger: _ } => true
+  }
+}
+
 test fn w_symbol_decision_is_coherent() -> Bool {
-  symbol_semantics_decision_coherent(decision: symbol_identity_decision) && decision_claims_lexeme_backed_nominal()
+  symbol_semantics_decision_coherent(decision: symbol_identity_decision)
+    && decision_claims_lexeme_backed()
+    && decision_admits_nominality_not_enforced()
+}
+
+// THE TWO CLAIMS MOVE INDEPENDENTLY. Mutating the nominality standing alone (claim enforcement while
+// the checker still admits text flows) breaks the nominality half and leaves the value half true;
+// mutating the value semantics alone (claim an intern table while every law says lexeme) breaks the
+// value half and leaves the nominality half true. A fused variant could not express either state.
+fn decision_with_nominality_claimed() -> SymbolSemanticsDecision {
+  SymbolSemanticsDecision {
+    semantics: symbol_identity_decision.semantics,
+    nominality: NominalityEnforced,
+    equality: symbol_identity_decision.equality,
+    ordering: symbol_identity_decision.ordering,
+    hashing: symbol_identity_decision.hashing,
+    serialization: symbol_identity_decision.serialization,
+    intern_table: symbol_identity_decision.intern_table,
+    text_operations_permitted_on_symbol: symbol_identity_decision.text_operations_permitted_on_symbol,
+    literals_canonicalized_beyond_lexeme: symbol_identity_decision.literals_canonicalized_beyond_lexeme,
+    distinct_lexemes_yield_distinct_symbols: symbol_identity_decision.distinct_lexemes_yield_distinct_symbols
+  }
+}
+
+fn decision_with_interning_claimed() -> SymbolSemanticsDecision {
+  SymbolSemanticsDecision {
+    semantics: InternedIdentity,
+    nominality: symbol_identity_decision.nominality,
+    equality: symbol_identity_decision.equality,
+    ordering: symbol_identity_decision.ordering,
+    hashing: symbol_identity_decision.hashing,
+    serialization: symbol_identity_decision.serialization,
+    intern_table: symbol_identity_decision.intern_table,
+    text_operations_permitted_on_symbol: symbol_identity_decision.text_operations_permitted_on_symbol,
+    literals_canonicalized_beyond_lexeme: symbol_identity_decision.literals_canonicalized_beyond_lexeme,
+    distinct_lexemes_yield_distinct_symbols: symbol_identity_decision.distinct_lexemes_yield_distinct_symbols
+  }
+}
+
+test fn w_nominality_standing_changes_independently_of_value_semantics() -> Bool {
+  !symbol_nominality_coherent(decision: decision_with_nominality_claimed())
+    && symbol_value_semantics_coherent(decision: decision_with_nominality_claimed())
+    && !symbol_semantics_decision_coherent(decision: decision_with_nominality_claimed())
+}
+
+test fn w_value_semantics_changes_independently_of_nominality_standing() -> Bool {
+  !symbol_value_semantics_coherent(decision: decision_with_interning_claimed())
+    && symbol_nominality_coherent(decision: decision_with_interning_claimed())
+    && !symbol_semantics_decision_coherent(decision: decision_with_interning_claimed())
 }
 
 test fn w_symbol_ruling_names_a_realizable_representation() -> Bool {

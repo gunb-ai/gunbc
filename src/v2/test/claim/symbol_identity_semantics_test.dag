@@ -10,7 +10,7 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-// EXECUTING EVIDENCE FOR gunbc.symbol_identity_census symbol_identity_decision (LexemeBackedNominal),
+// EXECUTING EVIDENCE FOR gunbc.symbol_identity_census symbol_identity_decision (value semantics LexemeBacked),
 // each row one of the decision's fields asked of the live substrate rather than of prose. Each must
 // go red under the OTHER semantics: an interned symbol whose id is not its lexeme fails the round
 // trip and the hash-coherence rows; a canonicalizing literal fails the distinctness row.

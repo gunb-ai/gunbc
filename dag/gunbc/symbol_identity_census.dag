@@ -3,14 +3,15 @@ module gunbc.symbol_identity_census
 import std.types { List, String, Bool, NonEmptyStr }
 import std.decl_ref { DeclarationRef, decl_ref }
 import std.symbol_semantics {
-  SymbolIdentitySemantics, LexemeBackedNominal, InternedIdentity,
+  SymbolValueSemantics, LexemeBacked, InternedIdentity,
+  SymbolNominalityStanding, NominalityEnforced, NominalityNotEnforced,
   IdentityLaw, DecidedByLexeme, DecidedByInternId,
   InternTableScope, NoInternTable,
   SymbolSemanticsDecision, SymbolConsumerClass, SymbolConsumerRow,
   SymbolIdentityComparison, SymbolOrdering, SymbolHashOrMapKey, SymbolLiteralConstruction,
   SymbolToLexeme, LexemeToSymbol, SymbolSerialization, SymbolPersistenceAcrossProcesses,
   SymbolUsedAsTextOperation, SymbolAtHostBoundary, UnresolvedOrAmbiguousUse,
-  symbol_consumer_class_blocks_decision
+  symbol_consumer_class_evidence_status, evidence_status_blocks
 }
 import extdeps.languages.rust.representation { RustRepresentation, RustStdString, RustSymbolNewtype }
 
@@ -46,7 +47,7 @@ fn symbol_identity_census_rows() -> List<SymbolConsumerRow> {
     symbol_census_row(consumer_class: SymbolOrdering, module_path: "v2.std.node", decl_name: "label_sort_key", evidence: "Edge ordering sorts by a Symbol key through sort_by; the only order a lexeme-valued key has is lexical, and canonical child order depends on it being deterministic across processes."),
     symbol_census_row(consumer_class: SymbolHashOrMapKey, module_path: "v2.std.node", decl_name: "symbol_identity_digest", evidence: "The content hash of a Symbol is content_hash_atom(value: sym), whose parameter is std.types NonEmptyStr: hashing CONSUMES THE LEXEME, and the call passes a Symbol where text is declared -- the source itself exploits the Symbol/String erasure, accepted by the v1 checker."),
     symbol_census_row(consumer_class: SymbolHashOrMapKey, module_path: "v2.std.compilers.lexing", decl_name: "TokenRule", evidence: "Symbol keys Map and Set carriers throughout src/v2 (the census script counts 238 `Map<Symbol,..>`/`Set<Symbol>` positions); a map keyed on a lexeme-valued symbol needs Eq/Hash coherent with lexical equality."),
-    symbol_census_row(consumer_class: SymbolToLexeme, module_path: "v2.std.compilers.lexing", decl_name: "symbol_lexeme", evidence: "Declared Symbol -> String with a self-call body (a host seam, std.primitive_projection symbol_lexeme_seam_disposition_note); realized as the identity in the interpreter (coproduct_reflection eval_symbol_lexeme) and in v1_rt."),
+    symbol_census_row(consumer_class: SymbolToLexeme, module_path: "v2.std.compilers.lexing", decl_name: "symbol_lexeme", evidence: "Declared Symbol -> String with a self-call body (a host seam, std.primitive_projection symbol_lexeme_seam_disposition_note); realized as the identity in the interpreter (coproduct_reflection eval_symbol_lexeme) and in v1_rt. WHAT THE IDENTITY BRIDGES PROVE AND WHAT THEY DO NOT: they support LexemeBacked (a symbol's lexeme is recoverable with no table and the round trip is total), and they say NOTHING about whether erasing the Symbol/String distinction at the target is permanently correct -- an identity bridge is exactly the realization that a nominal target would replace with wrap/unwrap, so its presence is evidence of the current standing, not a proof that the standing may stay."),
     symbol_census_row(consumer_class: LexemeToSymbol, module_path: "v2.std.compilers.lexing", decl_name: "symbol_intern_lexeme", evidence: "Declared Lexeme -> Symbol, the inverse seam; realized as the identity in both hosts, so intern(lexeme(s)) == s and lexeme(intern(l)) == l hold by construction and no table exists to scope."),
     symbol_census_row(consumer_class: SymbolSerialization, module_path: "v1.compiler.emit", decl_name: "emit_json_literal", evidence: "A LitSymbol serializes as the JSON string of its lexeme; Node identities in receipts are therefore lexeme-keyed on disk."),
     symbol_census_row(consumer_class: SymbolPersistenceAcrossProcesses, module_path: "std.content_hash", decl_name: "content_hash_atom", evidence: "Cross-process identity is the content hash of the lexeme (FNV-1a over the bytes), stable by construction across processes and generations; an intern id would NOT be, since no table is persisted or shared."),
@@ -57,24 +58,34 @@ fn symbol_identity_census_rows() -> List<SymbolConsumerRow> {
 }
 
 fn symbol_identity_census_blocks_decision() -> Bool {
-  symbol_identity_census_rows() |> any(r => symbol_consumer_class_blocks_decision(consumer_class: r.consumer_class))
+  symbol_identity_census_rows() |> any(r => evidence_status_blocks(status: symbol_consumer_class_evidence_status(consumer_class: r.consumer_class)))
 }
 
-// THE DECISION, each field answered by a row above, checkable against the semantics it claims by
-// std.symbol_semantics symbol_semantics_decision_coherent.
+// THE DECISION, each field answered by a row above, checkable against BOTH claims it makes by
+// std.symbol_semantics symbol_semantics_decision_coherent. The value semantics is LexemeBacked. The
+// nominality standing is NOT ENFORCED today and says so, with its cause read off the checker rows
+// above and the restoration trigger stated as the ordered capability chain the design authority
+// ruled (bright-ram-778, 2026-08-29): nominality becomes true in .dag first, then by construction in
+// the target. The newtype (RustSymbolNewtype) is selected at step (f) and nowhere earlier.
+data symbol_nominality_next_rung_trigger: NonEmptyStr = "In this order, each a capability the required floor executes: (a) LitSymbol is typed as v2.std.node Symbol by the source checker, not as the kernel string_type; (b) the source checker refuses Symbol->String, Symbol->NonEmptyStr and String->Symbol flows that carry no explicit conversion; (c) every text-consuming site that receives a Symbol is repaired to symbol_lexeme(sym) or to a Symbol-specific operation (for example a content_hash_symbol beside content_hash_atom); (d) symbol_intern_lexeme and symbol_lexeme remain round-trip inverses under the repaired checker; (e) the repaired source corpus passes the required floor; (f) only then is RustSymbolNewtype selected for v2.std.node Symbol, and the emitted Rust proves the refused substitutions impossible by construction." as NonEmptyStr
+
 data symbol_identity_decision: SymbolSemanticsDecision = SymbolSemanticsDecision {
-  semantics: LexemeBackedNominal,
+  semantics: LexemeBacked,
+  nominality: NominalityNotEnforced {
+    cause: "v1.compiler.types types a Symbol literal as the kernel string_type and the authored name String as the same type, so a Symbol flows into a String or NonEmptyStr parameter unrefused (content_hash_atom(value: sym) corpus-wide), and the chosen Rust representation std::string::String erases the distinction at the target as well; no checker and no realization enforces nominality today." as NonEmptyStr,
+    next_rung_trigger: symbol_nominality_next_rung_trigger
+  },
   equality: DecidedByLexeme,
   ordering: DecidedByLexeme,
   hashing: DecidedByLexeme,
   serialization: DecidedByLexeme,
   intern_table: NoInternTable,
-  text_operations_permitted_on_symbol: false,
+  text_operations_permitted_on_symbol: true,
   literals_canonicalized_beyond_lexeme: false,
   distinct_lexemes_yield_distinct_symbols: true
 }
 
-// THE REPRESENTATION, AND WHY IT IS NOT THE NEWTYPE. LexemeBackedNominal admits two Rust
+// THE REPRESENTATION, AND WHY IT IS NOT THE NEWTYPE. LexemeBacked admits two Rust
 // representations: `std::string::String` (the lexeme itself, nominal distinction erased at the
 // target) and `struct Symbol(std::string::String)` (nominal distinction enforced by rustc). The
 // newtype is the higher DESIGN section 4b rung and was not chosen, for a measured reason rather than
@@ -97,5 +108,5 @@ type SymbolRepresentationRuling {
 data symbol_representation_ruling: SymbolRepresentationRuling = SymbolRepresentationRuling {
   chosen: RustStdString,
   next_rung: RustSymbolNewtype,
-  next_rung_trigger: "The .dag type checker distinguishes v2.std.node Symbol from the kernel string type and from v2.std.text String -- refusing a Symbol at a String/NonEmptyStr parameter and a String at a Symbol parameter on the required floor -- with every SymbolUsedAsTextOperation site repaired through symbol_lexeme. Only then can struct Symbol(std::string::String) be emitted without the realization refusing an Accepted program." as NonEmptyStr
+  next_rung_trigger: symbol_nominality_next_rung_trigger
 }

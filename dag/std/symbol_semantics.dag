@@ -3,24 +3,38 @@ module std.symbol_semantics
 import std.types { List, String, Bool, NonEmptyStr }
 import std.decl_ref { DeclarationRef }
 
-// WHAT A SYMBOL TYPE IS, ASKED BEFORE HOW A TARGET SPELLS IT. A symbol is a name-valued atom; the
-// question a realization must answer is what its IDENTITY is decided by. Two semantics exist in
-// practice and they are not interchangeable:
-//   LexemeBackedNominal -- a symbol IS its lexeme. Equality, ordering, hashing and serialization are
-//                          all decided by the lexeme; interning and its inverse are bijective and
-//                          total; no table exists, so identity is stable across processes by
-//                          construction. What distinguishes the symbol from text is NOMINAL: text
-//                          operations are not defined on it, only on the lexeme obtained through the
-//                          declared conversion.
-//   InternedIdentity    -- a symbol is an index into an intern table. Equality and hashing are by
-//                          index; the lexeme is recovered through the table; ordering, serialization
-//                          and cross-process identity are facts about the TABLE's scope, and the
-//                          conversions are real operations rather than identities.
-// A realization that picks a representation without this decision is choosing semantics by
-// accident (DESIGN section 2: the concept first, the representation derived).
-type SymbolIdentitySemantics
-  = LexemeBackedNominal
+// WHAT A SYMBOL TYPE IS, ASKED BEFORE HOW A TARGET SPELLS IT -- AS TWO CLAIMS, NOT ONE. A symbol is
+// a name-valued atom, and a realization must answer two independent questions about it:
+//   SymbolValueSemantics    -- what decides its IDENTITY. LexemeBacked: a symbol IS its lexeme;
+//                              equality, ordering, hashing and serialization are decided by the
+//                              lexeme, interning and its inverse are bijective and total, no table
+//                              exists, so identity is stable across processes by construction.
+//                              InternedIdentity: a symbol is an index into an intern table; equality
+//                              and hashing are by index, the lexeme is recovered through the table,
+//                              ordering, serialization and cross-process identity are facts about
+//                              the TABLE's scope, and the conversions are real operations.
+//   SymbolNominalityStanding -- whether the DISTINCTION from text is ENFORCED anywhere: can a
+//                              symbol flow into a text parameter, or text into a symbol parameter,
+//                              without the declared conversion. This is a fact about the checker
+//                              and the realization, not about the value, and it changes on its own
+//                              clock: a lexeme-backed symbol can be nominal (a checker refuses the
+//                              flows) or erased (the checker admits them), with the value laws
+//                              unchanged either way. An earlier revision fused the two into one
+//                              variant, LexemeBackedNominal, and the ruling on it (bright-ram-778,
+//                              2026-08-29) found exactly the false green that fusion buys: the
+//                              variant SAID nominal while the source checker and the chosen
+//                              representation both erase, and the coherence law never looked.
+// Choosing a representation without both answers is choosing semantics by accident (DESIGN
+// section 2: the concept first, the representation derived).
+type SymbolValueSemantics
+  = LexemeBacked
   | InternedIdentity
+
+// NominalityNotEnforced carries its cause and the CAPABILITY that restores enforcement (DESIGN
+// section 4b(3): the trigger names a capability, never an artifact contributing to one).
+type SymbolNominalityStanding
+  = NominalityEnforced
+  | NominalityNotEnforced { cause: NonEmptyStr, next_rung_trigger: NonEmptyStr }
 
 type IdentityLaw
   = DecidedByLexeme
@@ -31,11 +45,14 @@ type InternTableScope
   | ProcessLocalInternTable
   | PersistentInternTable
 
-// The eight questions a consumer census must answer before a representation is chosen, carried as
-// typed fields so the decision is checkable against the semantics it claims (symbol_semantics_
-// decision_coherent) rather than asserted in prose.
+// The questions a consumer census must answer before a representation is chosen, carried as typed
+// fields so the decision is checkable against BOTH claims it makes (symbol_semantics_decision_
+// coherent) rather than asserted in prose. text_operations_permitted_on_symbol is the nominality
+// question asked of the live checker: true exactly when a symbol may be consumed as text without
+// the declared conversion.
 type SymbolSemanticsDecision {
-  semantics: SymbolIdentitySemantics
+  semantics: SymbolValueSemantics
+  nominality: SymbolNominalityStanding
   equality: IdentityLaw
   ordering: IdentityLaw
   hashing: IdentityLaw
@@ -70,19 +87,35 @@ type SymbolConsumerRow {
   evidence: NonEmptyStr
 }
 
-fn symbol_consumer_class_blocks_decision(consumer_class: SymbolConsumerClass) -> Bool {
+// ONE TOTAL CLASSIFIER, NOT A PREDICATE. "Which consumer classes block the decision" is a
+// distinction over the whole coproduct, so it is answered once, totally, and consumers FOLD the
+// status; a Bool that was true for one arm and false for ten (review 57460 on gunbc#9689) is a
+// classification hidden in a predicate, and the next distinction (a class that contributes but
+// weakly, say) would have had nowhere to go but a second predicate.
+type SymbolConsumerEvidenceStatus
+  = BlocksDecision
+  | ContributesEvidence
+
+fn symbol_consumer_class_evidence_status(consumer_class: SymbolConsumerClass) -> SymbolConsumerEvidenceStatus {
   match consumer_class {
-    SymbolIdentityComparison => false
-    SymbolOrdering => false
-    SymbolHashOrMapKey => false
-    SymbolLiteralConstruction => false
-    SymbolToLexeme => false
-    LexemeToSymbol => false
-    SymbolSerialization => false
-    SymbolPersistenceAcrossProcesses => false
-    SymbolUsedAsTextOperation => false
-    SymbolAtHostBoundary => false
-    UnresolvedOrAmbiguousUse => true
+    SymbolIdentityComparison => ContributesEvidence
+    SymbolOrdering => ContributesEvidence
+    SymbolHashOrMapKey => ContributesEvidence
+    SymbolLiteralConstruction => ContributesEvidence
+    SymbolToLexeme => ContributesEvidence
+    LexemeToSymbol => ContributesEvidence
+    SymbolSerialization => ContributesEvidence
+    SymbolPersistenceAcrossProcesses => ContributesEvidence
+    SymbolUsedAsTextOperation => ContributesEvidence
+    SymbolAtHostBoundary => ContributesEvidence
+    UnresolvedOrAmbiguousUse => BlocksDecision
+  }
+}
+
+fn evidence_status_blocks(status: SymbolConsumerEvidenceStatus) -> Bool {
+  match status {
+    BlocksDecision => true
+    ContributesEvidence => false
   }
 }
 
@@ -101,14 +134,25 @@ fn intern_table_is_absent(scope: InternTableScope) -> Bool {
   }
 }
 
-// THE Eq/Hash/Ord COHERENCE LAW, per semantics. Under LexemeBackedNominal every law is decided by
-// the lexeme, there is no table, canonicalization beyond the lexeme would make two spellings one
-// symbol (contradicting lexeme identity), and distinct lexemes are distinct symbols. Under
-// InternedIdentity equality and hashing are decided by the index and a table exists. A decision
-// that claims one semantics and answers the questions like the other is incoherent and refused.
-fn symbol_semantics_decision_coherent(decision: SymbolSemanticsDecision) -> Bool {
+fn nominality_is_enforced(standing: SymbolNominalityStanding) -> Bool {
+  match standing {
+    NominalityEnforced => true
+    NominalityNotEnforced { cause: _, next_rung_trigger: _ } => false
+  }
+}
+
+// THE COHERENCE LAW, over BOTH claims, and the two halves are independent by construction: the value
+// half reads only the value fields, the nominality half reads only text_operations_permitted_on_symbol
+// against the standing, so either can be mutated to incoherence while the other stays true (the
+// witness asserts exactly that). Value half: under LexemeBacked every law is decided by the lexeme,
+// there is no table, canonicalization beyond the lexeme would make two spellings one symbol, and
+// distinct lexemes are distinct symbols; under InternedIdentity equality and hashing are by index and
+// a table exists. Nominality half: enforced nominality means text operations are NOT permitted on a
+// symbol, and an unenforced standing means they ARE -- a decision claiming enforcement while
+// admitting the flows (or the reverse) is the false green this law exists to refuse.
+fn symbol_value_semantics_coherent(decision: SymbolSemanticsDecision) -> Bool {
   match decision.semantics {
-    LexemeBackedNominal =>
+    LexemeBacked =>
       identity_law_is_lexeme(law: decision.equality)
         && identity_law_is_lexeme(law: decision.ordering)
         && identity_law_is_lexeme(law: decision.hashing)
@@ -121,4 +165,12 @@ fn symbol_semantics_decision_coherent(decision: SymbolSemanticsDecision) -> Bool
         && !identity_law_is_lexeme(law: decision.hashing)
         && !intern_table_is_absent(scope: decision.intern_table)
   }
+}
+
+fn symbol_nominality_coherent(decision: SymbolSemanticsDecision) -> Bool {
+  decision.text_operations_permitted_on_symbol == !nominality_is_enforced(standing: decision.nominality)
+}
+
+fn symbol_semantics_decision_coherent(decision: SymbolSemanticsDecision) -> Bool {
+  symbol_value_semantics_coherent(decision: decision) && symbol_nominality_coherent(decision: decision)
 }
