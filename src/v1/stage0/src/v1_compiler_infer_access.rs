@@ -86,12 +86,12 @@ pub fn keyed_collection_parts(
                     key_type: crate::v1_compiler_infer_types::resolved_type(key_child.clone()),
                     value_type: crate::v1_compiler_infer_types::resolved_type(value_child.clone()),
                 })),
-                None => None,
+                None => std::option::Option::None,
             },
-            None => None,
+            None => std::option::Option::None,
         }
     } else {
-        None
+        std::option::Option::None
     }
 }
 

@@ -6373,6 +6373,7 @@ fn emit_item_header_clone_param_names(
       item: item,
       generic_param_names: generic_param_names,
       bounds: emit_info.clone_bounded_type_params,
+      type_decl_items: emit_info.type_decl_items,
       source_indices: source_indices
     )
   } else {
@@ -6906,6 +6907,9 @@ fn find_shared_enum_fields(children: List<Node>, env: TypeEnv) -> List<String> {
   )
 }
 
+// THE ACCESSOR RETURNS T BY VALUE FROM &self, so `__val.clone()` must be T::clone, not the
+// reference's; without `T: Clone` on the impl rustc clones the `&T` (E0308 expected `T`, found
+// `&T`, six generic carriers). The bound is on the impl the accessor lives in, not on the enum.
 fn emit_enum_shared_accessors(name: String, type_params: String, generic_param_names: List<String>, children: List<Node>, recursive_types: Set<String>, shared_types: Set<String>, env: TypeEnv, emit_info: EmitGraphInfo) -> String {
   let all_shared = find_shared_enum_fields(children: children, env: env)
   if all_shared |> count == 0 { return "" }
@@ -6951,7 +6955,10 @@ fn emit_enum_shared_accessors(name: String, type_params: String, generic_param_n
   )
   let fns_str = accessor_fns |> join(separator: "\n")
   let type_application_params = emit_bare_type_params(generic_param_names: generic_param_names)
-  concat("impl", type_params, " ", name, type_application_params, " {\n", fns_str, "\n}")
+  let impl_params = if (generic_param_names |> count) == 0 { type_params } else {
+    concat("<", generic_param_names |> map(g => concat(to_pascal(name: g), ": Clone")) |> join(separator: ", "), ">")
+  }
+  concat("impl", impl_params, " ", name, type_application_params, " {\n", fns_str, "\n}")
 }
 
 fn string_without_prefix(value: String, prefix: String) -> String? {
@@ -7237,6 +7244,14 @@ fn v1_fn_body_derived_clone_param_names(params: List<Node>, inferred: Node, body
   )
 }
 
+// A GENERIC STORED INTO A `dyn Fn` MUST OUTLIVE IT. The arrow carrier is `Rc<dyn Fn(..)>`, which
+// defaults to `'static`; a fn returning an arrow, or a record whose fields are arrows
+// (`Monoid { op: verdict_combine, .. }`), moves its generics into that object. The bound lands on
+// the generics only for the RECORD return: a fn item stored into a field is `'static` only when
+// its generics are (E0310 on `Subj`, `T` at verdict_monoid), while a returned closure captures
+// only its `impl Fn + 'static` parameters, so `compose<A, B, C>` stays bare -- pinned by
+// w_generic_forwarded_by_a_returned_closure_carries_clone, which went red when this gate was
+// first written over both surfaces.
 // Joins the two derivations onto one per-param trait list so a param earning both renders
 // `K: Clone + PartialEq`. Clone is listed first so the Clone-only case is byte-identical to what
 // the previous single-trait renderer emitted, which is what lets the regen fixed point act as the
@@ -7244,7 +7259,8 @@ fn v1_fn_body_derived_clone_param_names(params: List<Node>, inferred: Node, body
 fn v1_fn_bounds_by_param(
   clone_param_names: List<String>,
   eq_param_names: List<String>,
-  map_key_param_names: List<String>
+  map_key_param_names: List<String>,
+  static_param_names: List<String>
 ) -> Map<String, List<String>> {
   let with_clone = clone_param_names |> fold(init: empty_map(), f: (m, n) => map_insert(m, n, ["Clone"]))
   let with_eq = eq_param_names |> fold(init: with_clone, f: (m, n) =>
@@ -7253,10 +7269,16 @@ fn v1_fn_bounds_by_param(
       Absent => map_insert(m, n, ["PartialEq"])
     }
   )
-  map_key_param_names |> fold(init: with_eq, f: (m, n) =>
+  let with_key = map_key_param_names |> fold(init: with_eq, f: (m, n) =>
     match map_get(m, n) {
       Present { value: traits } => map_insert(m, n, concat(traits, rust_map_key_bound_traits()))
       Absent => map_insert(m, n, rust_map_key_bound_traits())
+    }
+  )
+  static_param_names |> fold(init: with_key, f: (m, n) =>
+    match map_get(m, n) {
+      Present { value: traits } => map_insert(m, n, concat(traits, ["'static"]))
+      Absent => map_insert(m, n, ["'static"])
     }
   )
 }
@@ -7689,18 +7711,22 @@ fn emit_fn_def(name: String, params: List<Node>, inferred: Node, body: Node, reg
     generic_param_names: generic_param_names,
     source_indices: si
   )
+  let returns_fn_field_record = type_has_fn_fields(name: rust_fn_sig_leaf_name(source_indices: si, n: inferred), emit_info: emit_info)
+  let returns_arrow_or_fn_field_record = (inferred.params |> count) > 0 || returns_fn_field_record
+  let static_param_names = if returns_fn_field_record { generic_param_names } else { [] }
   let bounds_by_param = v1_fn_bounds_by_param(
     clone_param_names: clone_param_names,
     eq_param_names: eq_param_names,
-    map_key_param_names: map_key_param_names
+    map_key_param_names: map_key_param_names,
+    static_param_names: static_param_names
   )
-  let needs_bound = (clone_param_names |> count) > 0 || (eq_param_names |> count) > 0 || (map_key_param_names |> count) > 0
+  let needs_bound = (clone_param_names |> count) > 0 || (eq_param_names |> count) > 0 || (map_key_param_names |> count) > 0 || (static_param_names |> count) > 0
   let type_params_str = if needs_bound {
     v1_emit_type_params_with_bounds(params: type_params, bounds_by_param: bounds_by_param, source_indices: si)
   } else {
     emit_type_params(params: type_params, source_indices: si)
   }
-  let params_str = emit_params(params: value_params, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: si, read_only_params: emit_info.read_only_params, variant_to_enum: emit_info.variant_to_enum, env: scope.type_env, enclosing_returns_arrow: (inferred.params |> count) > 0)
+  let params_str = emit_params(params: value_params, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: si, read_only_params: emit_info.read_only_params, variant_to_enum: emit_info.variant_to_enum, env: scope.type_env, enclosing_returns_arrow: returns_arrow_or_fn_field_record)
   let ret_str = emit_inferred(inferred: inferred, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: si, variant_to_enum: emit_info.variant_to_enum, env: scope.type_env)
   let body_scope = build_params_scope(scope: scope, params: value_params)
   let depth = 0
@@ -8419,6 +8445,10 @@ fn field_needs_rc_ref(field_name: String, rc_analysis: RcPatternAnalysis) -> Boo
   rc_analysis.ref_bound_fields |> any(name => name == field_name)
 }
 
+// A RECORD PATTERN HAS NO PARENT ENUM, BUT ITS CARRIER IS STILL SHARED. `Record { f, .. }`
+// over a scrutinee that renders `Rc<Record>` needs the same deref a shared enum's variant
+// gets; without it the pattern met the Rc (E0308 expected `Rc<AdmitExportsFold>`, found
+// `AdmitExportsFold`, four record sites). The record is decided by the same shared set.
 fn analyze_rc_pattern(pattern: MatchPattern, scrut_type: String, shared_types: Set<String>, emit_info: EmitGraphInfo, source_indices: Map<String, NewlineIndex>) -> RcPatternAnalysis {
   match pattern {
     VariantPattern { name: n, parent_enum: parent_enum, field_bindings: fbs } =>
@@ -8441,7 +8471,11 @@ fn analyze_rc_pattern(pattern: MatchPattern, scrut_type: String, shared_types: S
         let resolved_parent = pattern_parent_enum(name: bare_n, parent_enum: parent_enum, scrut_type: scrut_type, type_summaries: emit_info.type_summaries)
         let matches_rc_variant = match resolved_parent {
           Present { value: enum_name } => set_contains(shared_types, enum_name)
-          Absent => false
+          Absent =>
+            match map_get(emit_info.type_summaries, bare_n) {
+              Present { value: _ } => set_contains(shared_types, bare_n)
+              Absent => false
+            }
         }
         let ref_bound_fields = fbs |> flat_map(fb =>
           let fb_name = field_binding_name_at(n: fb, source_indices: source_indices)
@@ -9769,12 +9803,18 @@ fn emit_typed_call_expr(func: String, args: List<Node>, inferred: InferredNode?,
   } else { call_str }
 }
 
-fn rust_call_arg_fail_closed_unwrap(arg_str: String, arg: Node, callee: ItemInfo?, idx: Int, func: String) -> String {
+// A PARAMETER DECLARED `Optional<T>` IS OPTIONAL. The cardinality flag marks the `T?` sugar; the
+// applied carrier spelling carries no flag, so a caller passing an optional into
+// `witness_from_optional(opt: Optional<T>, ..)` earned a fail-closed `.expect(..)` that unwrapped
+// the very value the callee exists to inspect (E0308 expected Option<..>, found .. at six sites).
+// Both spellings name one carrier; the predicate asks both.
+fn rust_call_arg_fail_closed_unwrap(arg_str: String, arg: Node, callee: ItemInfo?, idx: Int, func: String, source_indices: Map<String, NewlineIndex>) -> String {
   match callee {
     Present { value: info } =>
       match function_value_params(params: info.params) |> skip(idx) |> first {
         Present { value: param } =>
-          let param_required = param_node_type_expr(n: param).return_cardinality != CardOptional
+          let param_type = param_node_type_expr(n: param)
+          let param_required = param_type.return_cardinality != CardOptional && !is_host_optional_carrier_type(n: param_type, source_indices: source_indices)
           let arg_optional = resolved_type(n: arg).return_cardinality == CardOptional
           if param_required && arg_optional {
             concat(arg_str, ".expect(\"fail-closed: an optional value flowed into non-optional parameter ", to_string(value: idx), " of ", func, " (empty Optional at runtime)\")")
@@ -10004,7 +10044,7 @@ fn emit_typed_call(func: String, args: List<Node>, callee_is_function_value: Boo
       concat("&", base)
     } else {
       let base = emit_cloned_arg(texpr: arg_value(n: a), registry: registry, scope: arg_scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
-      let unwrapped = rust_call_arg_fail_closed_unwrap(arg_str: base, arg: arg_value(n: a), callee: callee, idx: idx, func: func)
+      let unwrapped = rust_call_arg_fail_closed_unwrap(arg_str: base, arg: arg_value(n: a), callee: callee, idx: idx, func: func, source_indices: scope.type_env.source_indices)
       rust_call_arg_function_value_adapt(arg_str: unwrapped, arg: arg_value(n: a), callee: callee, idx: idx)
     }
   )

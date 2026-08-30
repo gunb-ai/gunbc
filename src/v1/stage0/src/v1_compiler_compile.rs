@@ -2018,7 +2018,8 @@ pub fn serialize_param(
 
 pub fn is_import_statement_node(n: Rc<Node>) -> bool {
     (crate::v1_std_core::import_is_all(n.clone())
-        || (((((n.children.clone().len() as i64) > 0) && (n.body.clone() == None))
+        || (((((n.children.clone().len() as i64) > 0)
+            && (n.body.clone() == std::option::Option::None))
             && (n.expr_data.clone() == Rc::new(ExprData::NoExprData)))
             && ((n.params.clone().len() as i64) == 0)))
 }
@@ -2371,13 +2372,13 @@ pub fn emittable_graph(resolved: Rc<ResolvedPipelineResult>) -> Option<Rc<Emitta
             __result
         });
         if ((blocking.clone().len() as i64) > 0) {
-            None
+            std::option::Option::None
         } else {
             match resolved.graph.clone() {
                 Some(typed) => Some(Rc::new(EmittableGraph {
                     graph: typed.clone(),
                 })),
-                None => None,
+                None => std::option::Option::None,
             }
         }
     }
@@ -2456,7 +2457,7 @@ pub fn resolve_frontend_occurrence_transport(
     match crate::std_occurrence_identity::occurrence_transport_refusal(occurrence_transport.clone())
     {
         Some(refusal) => Rc::new(FrontendOccurrenceResolution {
-            graph: None,
+            graph: std::option::Option::None,
             diagnostics: Rc::new(vec![crate::v1_std_core::make_error_node(
                 Rc::new(CompilerDiagnostic::OccurrenceTransportViolation {
                     refusal: refusal.clone(),
@@ -2864,7 +2865,7 @@ pub fn stage0_self_compile_refusal_message(
                     " emitted no files".to_string(),
                 ))
             } else {
-                None
+                std::option::Option::None
             }
         }
     }
@@ -2901,7 +2902,7 @@ pub fn compile_to_resolved_with_options(
         let newline_indices = frontend.newline_indices.clone();
         match frontend.graph.clone() {
             None => Rc::new(ResolvedPipelineResult {
-                graph: None,
+                graph: std::option::Option::None,
                 diagnostics: frontend.diagnostics.clone(),
                 source_indices: v1_rt::rc_empty_map::<String, Rc<NewlineIndex>>(),
                 complexity: crate::v1_compiler_complexity::empty_complexity_report(),
