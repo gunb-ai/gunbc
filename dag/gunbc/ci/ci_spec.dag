@@ -1078,9 +1078,23 @@ fn gunbc_ci_fleet_key_agent_prelude() -> List<PipelineStep> {
   ]
 }
 
+data gunbc_ci_fleet_key_agent_shell_emit_scaffold: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "gunbc.ci_spec",
+    decl_name: "gunbc_ci_fleet_key_agent_script",
+    field: WholeDeclaration
+  }
+}
+
+data gunbc_ci_fleet_key_agent_shell_emit_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: gunbc_ci_fleet_key_agent_script - orch-emitted foreign-executor (GitHub Actions run:) credential runner: WIF access token by env, one PINNED secret version fetched over curl, a 0600 key file under RUNNER_TEMP with a trap armed BEFORE the credential touches disk, fingerprint verified against the modeled authority, ssh-agent load, file wipe. The pipeline steps are modeled (gunbc_ci_fleet_key_agent_prelude) but the runner transport itself remains hand-shell; DISSOLVES WHEN bash-emit (#5828 / ROADMAP 6-shell-slice0 / shell-to-intent Phase 2) realizes the credential runner through orchestration emit or typed host_effect_apply without a medium-as-string concat scaffold")
+
 fn gunbc_ci_fleet_key_agent_script() -> String {
-  gunbc_invoke_step_emit_pipeline(
-    p: Pipeline { steps: gunbc_ci_fleet_key_agent_prelude(), on_failure: FailFast }
+  concat(
+    concat("# ", concat(dissolution_description(condition: gunbc_ci_fleet_key_agent_shell_emit_dissolution_trigger), "\n")),
+    gunbc_invoke_step_emit_pipeline(
+      p: Pipeline { steps: gunbc_ci_fleet_key_agent_prelude(), on_failure: FailFast }
+    )
   )
 }
 

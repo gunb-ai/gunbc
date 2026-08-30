@@ -88,7 +88,8 @@ import gunbc.roadmap_launch_deployment_receipt {
   WorkflowServedFact, WorkflowRefusedFact, InstanceServedFact, InstanceRefusedFact,
   PrincipalObserved, PrincipalUnobserved, HostObserved, HostUnobserved,
   WindowSnapshot, observation_window_fact, WindowUnobserved,
-  roadmap_launch_deployment_verdict, roadmap_launch_deployment_receipt_document, verdict_is_complete, verdict_blockers, verdict_receipt_identity,
+  roadmap_launch_deployment_verdict, roadmap_launch_deployment_receipt_document, verdict_blockers, verdict_receipt_identity,
+  RoadmapLaunchDeploymentVerdict, DeploymentComplete, DeploymentIncomplete,
 }
 import gunbc.generated_artifact { artifact_path, FleetConvergeYamlArtifact }
 
@@ -529,7 +530,13 @@ func rlm_launch_deployment_receipt_bound(
     ReceiptPersistenceRefused { detail: d } =>
       exit_failure(reason: join([document, "\nrlm_launch_deployment_receipt: ReceiptPersistenceRefused — ", d], ""))
     ReceiptPersisted { host_path: hp, digest_hex: digest } =>
-      if verdict_is_complete(v: verdict) {
+      match verdict {
+        DeploymentIncomplete { subject: _, facts: _, first_blocker: _, further_blockers: _ } =>
+          exit_failure(reason: join([
+            document,
+            "\nrlm_launch_deployment_receipt: DeploymentIncomplete — ", to_string(list_length(items: verdict_blockers(v: verdict))), " blocker(s); receipt persisted at ", hp, " sha256=", digest,
+          ], ""))
+        DeploymentComplete { subject: _, facts: _, proof: _ } => {
         let summary = Filesystem.Write(
           path: join([rlm_receipt_staging_dir, "/summary.txt"], ""),
           content: join(["DeploymentComplete receipt_identity=", verdict_receipt_identity(v: verdict), " sha256=", digest, " host_path=", hp, "\n"], ""),
@@ -539,11 +546,7 @@ func rlm_launch_deployment_receipt_bound(
         } else {
           exit_failure(reason: "rlm_launch_deployment_receipt: summary write refused after a persisted Complete receipt")
         }
-      } else {
-        exit_failure(reason: join([
-          document,
-          "\nrlm_launch_deployment_receipt: DeploymentIncomplete — ", to_string(list_length(items: verdict_blockers(v: verdict))), " blocker(s); receipt persisted at ", hp, " sha256=", digest,
-        ], ""))
+        }
       }
   }
 }

@@ -385,12 +385,6 @@ type LaunchUnitStanding {
   oneshot: BeltOneshotStanding
 }
 
-fn launch_unit_standing_holds(s: LaunchUnitStanding) -> Bool {
-  (match s.dashboard { DashboardServiceConverged { unit: _ } => true  DashboardServiceRefused { unit: _, property: _, expected: _, observed: _ } => false })
-    && (match s.timer { BeltTimerConverged { unit: _ } => true  BeltTimerRefused { unit: _, property: _, expected: _, observed: _ } => false })
-    && (match s.oneshot { BeltOneshotConverged { unit: _, active_state: _ } => true  BeltOneshotRefused { unit: _, property: _, expected: _, observed: _ } => false })
-}
-
 fn dashboard_service_standing_text(s: DashboardServiceStanding) -> String {
   match s {
     DashboardServiceConverged { unit: u } => join(["dashboard service ", u, " converged"], "")

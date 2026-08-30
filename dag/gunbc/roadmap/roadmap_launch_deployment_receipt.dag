@@ -24,7 +24,11 @@ import gunbc.live_deploy.release_binding {
 }
 import extdeps.git.object_store { git_object_id_wire_hex }
 import gunbc.deploy_transition { ActuationStanding, ActuationPermitted, ActuationInhibited, ActuationStandingUnreadable }
-import gunbc.live_deploy.unit_standing { LaunchUnitStanding, launch_unit_standing_holds, launch_unit_standing_text }
+import gunbc.live_deploy.unit_standing {
+  LaunchUnitStanding,
+  DashboardServiceConverged, DashboardServiceRefused, BeltTimerConverged, BeltTimerRefused, BeltOneshotConverged, BeltOneshotRefused,
+  dashboard_service_standing_text, belt_timer_standing_text, belt_oneshot_standing_text,
+}
 import gunbc.roadmap_belt_actuate {
   BeltTickReceipt, BeltTickReceiptRead, BeltTickReceiptPresent, BeltTickReceiptAbsent, BeltTickReceiptUnreadable,
   TickExecuted, TickExecutionWithheld, belt_tick_receipt_identity_hex,
@@ -349,8 +353,23 @@ fn transition_blockers(f: ActuationStanding) -> List<RoadmapLaunchDeploymentBloc
   }
 }
 
+// Matched per unit rather than through a Bool fold (predicate dissolution, review 57664): each
+// refused unit contributes the refusal's own rendering, so the blocker names WHICH unit and WHY
+// instead of discarding that into a joined line behind a Bool.
 fn unit_standing_blockers(f: LaunchUnitStanding) -> List<RoadmapLaunchDeploymentBlocker> {
-  if launch_unit_standing_holds(s: f) { [] } else { blocker(member: "unit_standing", detail: launch_unit_standing_text(s: f)) }
+  let dashboard = match f.dashboard {
+    DashboardServiceConverged { unit: _ } => []
+    DashboardServiceRefused { unit: _, property: _, expected: _, observed: _ } => blocker(member: "unit_standing", detail: dashboard_service_standing_text(s: f.dashboard))
+  }
+  let timer = match f.timer {
+    BeltTimerConverged { unit: _ } => []
+    BeltTimerRefused { unit: _, property: _, expected: _, observed: _ } => blocker(member: "unit_standing", detail: belt_timer_standing_text(s: f.timer))
+  }
+  let oneshot = match f.oneshot {
+    BeltOneshotConverged { unit: _, active_state: _ } => []
+    BeltOneshotRefused { unit: _, property: _, expected: _, observed: _ } => blocker(member: "unit_standing", detail: belt_oneshot_standing_text(s: f.oneshot))
+  }
+  concat(concat(dashboard, timer), oneshot)
 }
 
 fn tick_blockers(s: RoadmapLaunchDeploymentSubject, f: TickFact) -> List<RoadmapLaunchDeploymentBlocker> {
@@ -525,13 +544,6 @@ fn roadmap_launch_deployment_verdict(subject: RoadmapLaunchDeploymentSubject, fa
       }
     HeadFound { value: first } =>
       DeploymentIncomplete { subject: subject, facts: facts, first_blocker: first, further_blockers: blockers |> skip(1) }
-  }
-}
-
-fn verdict_is_complete(v: RoadmapLaunchDeploymentVerdict) -> Bool {
-  match v {
-    DeploymentComplete { subject: _, facts: _, proof: _ } => true
-    DeploymentIncomplete { subject: _, facts: _, first_blocker: _, further_blockers: _ } => false
   }
 }
 
