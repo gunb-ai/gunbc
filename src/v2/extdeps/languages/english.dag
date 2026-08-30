@@ -166,41 +166,48 @@ fn english_article_nonterminal() -> GrammarExpr {
   Nonterminal { production: ^english_production_article }
 }
 
-fn english_svo_sentence_expr() -> GrammarExpr {
+fn english_subject_expr() -> GrammarExpr {
+  english_grammar_sequence(
+    left: english_article_nonterminal(),
+    right: english_grammar_terminal(token_class: ^english_token_word)
+  )
+}
+
+fn english_subject_nonterminal() -> GrammarExpr {
+  Nonterminal { production: ^english_production_subject }
+}
+
+fn english_object_with_period_expr() -> GrammarExpr {
   english_grammar_sequence(
     left: english_article_nonterminal(),
     right: english_grammar_sequence(
       left: english_grammar_terminal(token_class: ^english_token_word),
-      right: english_grammar_sequence(
-        left: english_grammar_terminal(token_class: ^english_token_word),
-        right: english_grammar_sequence(
-          left: english_article_nonterminal(),
-          right: english_grammar_sequence(
-            left: english_grammar_terminal(token_class: ^english_token_word),
-            right: english_grammar_terminal(token_class: ^english_token_period)
-          )
-        )
-      )
+      right: english_grammar_terminal(token_class: ^english_token_period)
     )
   )
 }
 
-fn english_copula_sentence_expr() -> GrammarExpr {
+fn english_svo_predicate_expr() -> GrammarExpr {
   english_grammar_sequence(
-    left: english_article_nonterminal(),
-    right: english_grammar_sequence(
-      left: english_grammar_terminal(token_class: ^english_token_word),
-      right: english_grammar_sequence(
-        left: english_grammar_terminal(token_class: ^english_token_copula),
-        right: english_grammar_sequence(
-          left: english_article_nonterminal(),
-          right: english_grammar_sequence(
-            left: english_grammar_terminal(token_class: ^english_token_word),
-            right: english_grammar_terminal(token_class: ^english_token_period)
-          )
-        )
-      )
-    )
+    left: english_grammar_terminal(token_class: ^english_token_word),
+    right: english_object_with_period_expr()
+  )
+}
+
+fn english_copula_predicate_expr() -> GrammarExpr {
+  english_grammar_sequence(
+    left: english_grammar_terminal(token_class: ^english_token_copula),
+    right: english_object_with_period_expr()
+  )
+}
+
+fn english_sentence_expr() -> GrammarExpr {
+  english_grammar_sequence(
+    left: english_subject_nonterminal(),
+    right: Choice {
+      left: Nonterminal { production: ^english_production_svo_predicate },
+      right: Nonterminal { production: ^english_production_copula_predicate }
+    }
   )
 }
 
@@ -210,25 +217,27 @@ fn english_productions() -> List<GrammarProduction> {
     expression: english_article_expr(),
     emitted: grammar_atom(identity: ^english_surface_article)
   }
-  let svo = GrammarProduction {
-    name: ^english_production_svo_sentence,
-    expression: english_svo_sentence_expr(),
+  let subject = GrammarProduction {
+    name: ^english_production_subject,
+    expression: english_subject_expr(),
+    emitted: grammar_atom(identity: ^english_surface_subject)
+  }
+  let svo_predicate = GrammarProduction {
+    name: ^english_production_svo_predicate,
+    expression: english_svo_predicate_expr(),
     emitted: grammar_atom(identity: ^english_surface_svo)
   }
-  let copula = GrammarProduction {
-    name: ^english_production_copula_sentence,
-    expression: english_copula_sentence_expr(),
+  let copula_predicate = GrammarProduction {
+    name: ^english_production_copula_predicate,
+    expression: english_copula_predicate_expr(),
     emitted: grammar_atom(identity: ^english_surface_copula)
   }
   let sentence = GrammarProduction {
     name: ^english_production_sentence,
-    expression: Choice {
-      left: Nonterminal { production: ^english_production_svo_sentence },
-      right: Nonterminal { production: ^english_production_copula_sentence }
-    },
+    expression: english_sentence_expr(),
     emitted: grammar_atom(identity: ^english_surface_sentence)
   }
-  [sentence, article, svo, copula]
+  [sentence, subject, article, svo_predicate, copula_predicate]
 }
 
 fn english_grammar() -> ParseGrammar {
@@ -294,12 +303,20 @@ fn english_article_formal_production_indefinite() -> FormalProduction {
   }
 }
 
-fn english_svo_formal_production() -> FormalProduction {
+fn english_subject_formal_production() -> FormalProduction {
   FormalProduction {
-    lhs: grammar_formal_nonterminal(identity: ^english_production_svo_sentence),
+    lhs: grammar_formal_nonterminal(identity: ^english_production_subject),
     rhs: [
       grammar_formal_nonterminal_occurrence(identity: ^english_production_article),
-      grammar_formal_terminal(identity: ^english_token_word),
+      grammar_formal_terminal(identity: ^english_token_word)
+    ]
+  }
+}
+
+fn english_svo_predicate_formal_production() -> FormalProduction {
+  FormalProduction {
+    lhs: grammar_formal_nonterminal(identity: ^english_production_svo_predicate),
+    rhs: [
       grammar_formal_terminal(identity: ^english_token_word),
       grammar_formal_nonterminal_occurrence(identity: ^english_production_article),
       grammar_formal_terminal(identity: ^english_token_word),
@@ -308,16 +325,34 @@ fn english_svo_formal_production() -> FormalProduction {
   }
 }
 
-fn english_copula_formal_production() -> FormalProduction {
+fn english_copula_predicate_formal_production() -> FormalProduction {
   FormalProduction {
-    lhs: grammar_formal_nonterminal(identity: ^english_production_copula_sentence),
+    lhs: grammar_formal_nonterminal(identity: ^english_production_copula_predicate),
     rhs: [
-      grammar_formal_nonterminal_occurrence(identity: ^english_production_article),
-      grammar_formal_terminal(identity: ^english_token_word),
       grammar_formal_terminal(identity: ^english_token_copula),
       grammar_formal_nonterminal_occurrence(identity: ^english_production_article),
       grammar_formal_terminal(identity: ^english_token_word),
       grammar_formal_terminal(identity: ^english_token_period)
+    ]
+  }
+}
+
+fn english_svo_sentence_formal_production() -> FormalProduction {
+  FormalProduction {
+    lhs: grammar_formal_nonterminal(identity: ^english_production_sentence),
+    rhs: [
+      grammar_formal_nonterminal_occurrence(identity: ^english_production_subject),
+      grammar_formal_nonterminal_occurrence(identity: ^english_production_svo_predicate)
+    ]
+  }
+}
+
+fn english_copula_sentence_formal_production() -> FormalProduction {
+  FormalProduction {
+    lhs: grammar_formal_nonterminal(identity: ^english_production_sentence),
+    rhs: [
+      grammar_formal_nonterminal_occurrence(identity: ^english_production_subject),
+      grammar_formal_nonterminal_occurrence(identity: ^english_production_copula_predicate)
     ]
   }
 }
@@ -327,7 +362,7 @@ fn english_ingest_grammar_probe() -> GrammarSchemaProbeBinding {
     schema: english_ingest_grammar_schema(),
     probe: GrammarSchemaProbe {
       fixture: "the function is a handler.",
-      production: english_copula_formal_production(),
+      production: english_copula_sentence_formal_production(),
       expected_parse_surface: grammar_atom(identity: ^english_surface_copula)
     }
   }
