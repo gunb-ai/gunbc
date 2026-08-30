@@ -76,7 +76,6 @@
 // src/std_roster_frontier.rs
 // src/std_serialization.rs
 // src/std_source_annotation.rs
-// src/std_source_declaration_constructor.rs
 // src/std_syntax.rs
 // src/std_target_representation.rs
 // src/std_termination.rs

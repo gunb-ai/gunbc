@@ -1,7 +1,7 @@
 module v1.compiler.compile
 
 import std.syntax { LiteralValue, BinOp }
-import std.source_declaration_constructor { ParsedDeclarationConstructorRow }
+import std.occurrence_identity { ParsedDeclarationConstructorRow }
 import v1.std.core {
   CompileResult, TextFile, SourceSpan, authored_name_at, ErrorNode, CompilerDiagnostic,
   is_error_diagnostic, is_interpreter_blocking_diagnostic, diagnostic_to_message,

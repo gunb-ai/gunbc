@@ -47,18 +47,17 @@ use crate::std_interface_summary::ExportKind::{ExportData, ExportFn, ExportServi
 pub use crate::std_interface_summary::{interface_summary_rollup, signature_contract};
 pub use crate::std_interface_summary::{ExportEntry, ExportKind, InterfaceSummary};
 pub use crate::std_node::{compiler_inductive_fields, compiler_recursive_types};
-pub use crate::std_occurrence_identity::NodeOccurrenceIdentity;
 use crate::std_occurrence_identity::NodeOccurrenceIdentity::{
     OccurrenceMinted, OccurrenceProjected, OccurrenceSynthetic,
 };
 pub use crate::std_occurrence_identity::OccurrenceId;
-use crate::std_source_declaration_constructor::SourceDeclarationConstructor::{
+use crate::std_occurrence_identity::SourceDeclarationConstructor::{
     CoproductTypeDeclaration, DataDeclaration, FunctionDeclaration, InterfaceDeclaration,
     NamespaceAlias, NominalTypeDeclaration, PatternDeclaration, ProductTypeDeclaration,
     ResourceDeclaration, ServiceDeclaration, TransparentTypeAlias,
 };
-pub use crate::std_source_declaration_constructor::{
-    ParsedDeclarationConstructorRow, SourceDeclarationConstructor,
+pub use crate::std_occurrence_identity::{
+    NodeOccurrenceIdentity, ParsedDeclarationConstructorRow, SourceDeclarationConstructor,
 };
 use crate::std_syntax::BinOp::Add;
 use crate::std_syntax::BinOp::{And, Div, Eq, Ge, Gt, Le, Lt, Mod, Mul, Ne, NullCoalesce, Or, Sub};

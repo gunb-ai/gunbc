@@ -13,10 +13,9 @@ use crate::std_induction::RecursionShape::{
 };
 use crate::std_induction::SubValueRelation::{PreservedValue, SubValueUnknown};
 pub use crate::std_induction::{InductiveField, RecursionShape, SubValueRelation};
-pub use crate::std_occurrence_identity::NodeOccurrenceIdentity;
 use crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic;
-pub use crate::std_source_declaration_constructor::SourceDeclarationConstructor;
-use crate::std_source_declaration_constructor::SourceDeclarationConstructor::*;
+use crate::std_occurrence_identity::SourceDeclarationConstructor::*;
+pub use crate::std_occurrence_identity::{NodeOccurrenceIdentity, SourceDeclarationConstructor};
 pub use crate::std_types::is_kernel_type;
 pub use crate::std_types::SourceSpan;
 pub use crate::v1_compiler_infer_occurrence_binding::ModulePathBindingProjection;

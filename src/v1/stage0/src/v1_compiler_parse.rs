@@ -17,24 +17,22 @@ use crate::std_occurrence_identity::OccurrenceCategory::{
     CallableOccurrence, FieldOccurrence, LexicalValueOccurrence, MethodOccurrence,
     NamespaceSegmentOccurrence, TypeOccurrence,
 };
+use crate::std_occurrence_identity::SourceDeclarationConstructor::{
+    CoproductTypeDeclaration, DataDeclaration, FunctionDeclaration, InterfaceDeclaration,
+    NamespaceAlias, NominalTypeDeclaration, PatternDeclaration, ProductTypeDeclaration,
+    ResourceDeclaration, ServiceDeclaration, TransparentTypeAlias,
+};
 pub use crate::std_occurrence_identity::{
     alloc_occurrence_id, authored_token_ordinal_space_from_allocator,
     node_occurrence_identity_minted, occurrence_id_allocator_advance_to,
     occurrence_id_allocator_initial,
 };
 pub use crate::std_occurrence_identity::{
-    AuthoredTokenOrdinalSpace, DeclarationOccurrence, NodeOccurrenceIdentity, OccurrenceCategory,
-    OccurrenceContainmentPath, OccurrenceId, OccurrenceIdAllocResult, OccurrenceIdAllocator,
-    OccurrenceIndex, OccurrenceIndexEntry, OccurrenceProjection, OccurrenceTransport,
-    ReferenceOccurrence,
-};
-use crate::std_source_declaration_constructor::SourceDeclarationConstructor::{
-    CoproductTypeDeclaration, DataDeclaration, FunctionDeclaration, InterfaceDeclaration,
-    NamespaceAlias, NominalTypeDeclaration, PatternDeclaration, ProductTypeDeclaration,
-    ResourceDeclaration, ServiceDeclaration, TransparentTypeAlias,
-};
-pub use crate::std_source_declaration_constructor::{
-    AuthoredTypeTarget, ParsedDeclarationConstructorRow, SourceDeclarationConstructor,
+    AuthoredTokenOrdinalSpace, AuthoredTypeTarget, DeclarationOccurrence, NodeOccurrenceIdentity,
+    OccurrenceCategory, OccurrenceContainmentPath, OccurrenceId, OccurrenceIdAllocResult,
+    OccurrenceIdAllocator, OccurrenceIndex, OccurrenceIndexEntry, OccurrenceProjection,
+    OccurrenceTransport, ParsedDeclarationConstructorRow, ReferenceOccurrence,
+    SourceDeclarationConstructor,
 };
 use crate::std_syntax::BinOp::Add;
 use crate::std_syntax::BinOp::{And, Div, Eq, Ge, Gt, Le, Lt, Mod, Mul, Ne, NullCoalesce, Or, Sub};

@@ -1,6 +1,6 @@
 module v1.compiler.parse
 
-import std.source_declaration_constructor {
+import std.occurrence_identity {
   AuthoredTypeTarget,
   SourceDeclarationConstructor,
   FunctionDeclaration, DataDeclaration, ServiceDeclaration, ResourceDeclaration,

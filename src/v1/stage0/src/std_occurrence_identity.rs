@@ -8,6 +8,7 @@ use self::OccurrenceCategoryModuleScopeExposureVerdict::*;
 use self::OccurrenceRole::*;
 use self::OccurrenceTransportRefusal::*;
 use self::OccurrenceTransportValidation::*;
+use self::SourceDeclarationConstructor::*;
 pub use crate::std_algebra::FreeMonoid;
 pub use crate::std_content_hash::Fnv1a64Structural;
 pub use crate::std_dissolution::unbound_dissolution;
@@ -79,6 +80,37 @@ pub fn authored_token_ordinal_eq(left: AuthoredTokenOrdinal, right: AuthoredToke
 #[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct OccurrenceId {
     pub value: i64,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct AuthoredTypeTarget {
+    pub spelling: String,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "_variant")]
+pub enum SourceDeclarationConstructor {
+    FunctionDeclaration,
+    DataDeclaration,
+    ServiceDeclaration,
+    ResourceDeclaration,
+    PatternDeclaration,
+    InterfaceDeclaration,
+    NominalTypeDeclaration,
+    ProductTypeDeclaration,
+    CoproductTypeDeclaration,
+    TransparentTypeAlias {
+        representation_target: Rc<AuthoredTypeTarget>,
+    },
+    NamespaceAlias {
+        referent_key: String,
+    },
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct ParsedDeclarationConstructorRow {
+    pub declaration_occurrence: Rc<NodeOccurrenceIdentity>,
+    pub constructor: Rc<SourceDeclarationConstructor>,
 }
 
 pub fn occurrence_containment_storage_projection_note() -> String {

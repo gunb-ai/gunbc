@@ -11,7 +11,7 @@ import v1.std.core {
   NewlineIndex, authored_name_at,
 }
 import std.occurrence_identity { OccurrenceIndex, OccurrenceTransport }
-import std.source_declaration_constructor { ParsedDeclarationConstructorRow }
+import std.occurrence_identity { ParsedDeclarationConstructorRow }
 
 
 type ModuleGraph {

@@ -88,7 +88,6 @@ pub mod std_repair_input_origin;
 pub mod std_roster_frontier;
 pub mod std_serialization;
 pub mod std_source_annotation;
-pub mod std_source_declaration_constructor;
 pub mod std_syntax;
 pub mod std_target_representation;
 pub mod std_termination;

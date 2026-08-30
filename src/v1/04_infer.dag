@@ -1,7 +1,7 @@
 module v1.compiler.infer
 
 import std.occurrence_identity { NodeOccurrenceIdentity, OccurrenceSynthetic, OccurrenceMinted, OccurrenceProjected }
-import std.source_declaration_constructor {
+import std.occurrence_identity {
   SourceDeclarationConstructor,
   FunctionDeclaration, DataDeclaration, ServiceDeclaration, ResourceDeclaration,
   PatternDeclaration, InterfaceDeclaration,

@@ -44,6 +44,31 @@ type OccurrenceId {
   value: Int
 }
 
+// The parser mints the declaration-form axis at the same occurrence boundary that mints the
+// declaration identity. Later resolver and index stages preserve this row; they never infer a
+// constructor from a resolved Node shape.
+type AuthoredTypeTarget {
+  spelling: String
+}
+
+type SourceDeclarationConstructor
+  = FunctionDeclaration
+  | DataDeclaration
+  | ServiceDeclaration
+  | ResourceDeclaration
+  | PatternDeclaration
+  | InterfaceDeclaration
+  | NominalTypeDeclaration
+  | ProductTypeDeclaration
+  | CoproductTypeDeclaration
+  | TransparentTypeAlias { representation_target: AuthoredTypeTarget }
+  | NamespaceAlias { referent_key: String }
+
+type ParsedDeclarationConstructorRow {
+  declaration_occurrence: NodeOccurrenceIdentity
+  constructor: SourceDeclarationConstructor
+}
+
 data occurrence_containment_storage_projection_note: String = "OccurrenceContainmentPath is the concrete compact storage projection of std.occurrence_binding.ContainmentPath<OccurrenceId>. Generic stage0 emission of ContainmentPath<N> with #[derive] carriers needed v1.compiler.trait_derive_emit item-level Clone bounds (PR #7570); that emitter work is prerequisite but does not by itself dissolve this projection — std_occurrence_binding is not on the stage0 roster until PR #7515 lands and proves ContainmentPath<OccurrenceId> compiles there."
 
 type OccurrenceContainmentPath {

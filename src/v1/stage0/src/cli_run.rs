@@ -10340,7 +10340,7 @@ struct PoolParse {
     /// Workspace-relative file path → census-head module node.
     nodes_by_file: Vec<(String, Rc<Node>)>,
     declaration_constructors:
-        Vec<Rc<crate::std_source_declaration_constructor::ParsedDeclarationConstructorRow>>,
+        Vec<Rc<crate::std_occurrence_identity::ParsedDeclarationConstructorRow>>,
     combined_si: Rc<HashMap<String, Rc<NewlineIndex>>>,
 }
 
@@ -13706,11 +13706,7 @@ fn parse_module_heads_for_pool_census(
     (
         Rc<Node>,
         Rc<NewlineIndex>,
-        Rc<
-            im::Vector<
-                Rc<crate::std_source_declaration_constructor::ParsedDeclarationConstructorRow>,
-            >,
-        >,
+        Rc<im::Vector<Rc<crate::std_occurrence_identity::ParsedDeclarationConstructorRow>>>,
     ),
     String,
 > {
@@ -34696,7 +34692,26 @@ mod peel_alias_fixpoint_termination {
                 std::rc::Rc::new(
                     crate::v1_compiler_infer_env::GlobalBareLookupState::GlobalBareUniqueBinding {
                         module_path: "".to_string(),
-                        binding: census_binding,
+                        entry: std::rc::Rc::new(
+                            crate::v1_compiler_infer_env::SymbolIndexEntry {
+                                declaring_declaration: crate::std_decl_ref::decl_ref(
+                                    "".to_string(),
+                                    "PeelFixpointProbe".to_string(),
+                                ),
+                                provenance: std::rc::Rc::new(
+                                    crate::v1_compiler_infer_env::SymbolIndexEntryProvenance::OwnSourceDeclaration {
+                                        declaration: crate::std_decl_ref::decl_ref(
+                                            "".to_string(),
+                                            "PeelFixpointProbe".to_string(),
+                                        ),
+                                        constructor: std::rc::Rc::new(
+                                            crate::std_occurrence_identity::SourceDeclarationConstructor::NominalTypeDeclaration,
+                                        ),
+                                    },
+                                ),
+                                binding: census_binding,
+                            },
+                        ),
                     },
                 ),
             );
@@ -34706,6 +34721,9 @@ mod peel_alias_fixpoint_termination {
                 services: crate::v1_rt::rc_empty_map(),
                 transparent_alias_rep: crate::v1_rt::rc_empty_map(),
                 type_head_exposures: crate::v1_rt::rc_empty_map(),
+                insert_refusals: std::rc::Rc::new(im::vector![]),
+                inserted_count: 0,
+                already_present_same_identity_count: 0,
             });
             let env = std::rc::Rc::new(crate::v1_compiler_infer_env::TypeEnv {
                 module_path: "".to_string(),
