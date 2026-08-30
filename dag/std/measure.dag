@@ -288,6 +288,18 @@ fn gibibyte_to_byte_size(g: Gibibyte) -> ByteSize {
   byte_size(count: gibibyte_count(g) * gibibyte_scale_factor_bytes())
 }
 
+fn kibibyte(count: Nat) -> Kibibyte {
+  Measure { count: count }
+}
+
+fn kibibyte_count(k: Kibibyte) -> Nat {
+  measure_count(k)
+}
+
+fn kibibyte_to_byte_size(k: Kibibyte) -> ByteSize {
+  byte_size(count: kibibyte_count(k) * kibi_factor())
+}
+
 type BitWidth = Measure<Information, One, Nat>
 
 fn bits_per_byte() -> Nat {
