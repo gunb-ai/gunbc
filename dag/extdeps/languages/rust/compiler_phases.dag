@@ -127,7 +127,7 @@ data rustc_error_code_phase_rows: List<RustcErrorCodePhaseRow> = [
 ]
 
 fn rustc_error_code_phase(code: String) -> RustcErrorCodePhase {
-  match rustc_error_code_phase_rows |> find(r => r.code == code) {
+  match rustc_error_code_phase_rows |> filter(r => r.code == code) |> first {
     Present { value: row } => ErrorCodePlaced { phase: row.phase, authority: row.authority }
     Absent => ErrorCodeUnplaced { code: code, index: rustc_error_index_authority }
   }
