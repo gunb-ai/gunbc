@@ -4,6 +4,7 @@ import std.logic { Bool }
 import std.types { String, List }
 import std.measure { byte_size, byte_size_count }
 import std.os.types { KernelFamily, Linux, Darwin, WindowsNt, LinuxGuestOnWindows }
+import extdeps.linux.cgroup_v2 { kernel_provides_cgroup_v2 }
 import extdeps.linux.procfs {
   ProcfsPath,
   ProcMeminfo,
@@ -36,7 +37,6 @@ import gunbc.host_budget_source {
   host_budget_source_bounds_this_process,
   host_budget_source_admissible_on_kernel,
   host_budget_source_admissible_as_bound_on_kernel,
-  kernel_provides_private_memory_limit,
   kernel_budget_sourcing,
   kernel_budget_sourcing_static_source,
   host_budget_resolution_bytes,
@@ -121,11 +121,11 @@ test fn a_non_bounding_source_stays_admissible_where_no_private_limit_exists() -
   )
 }
 
-test fn private_limit_mechanism_follows_the_kernel_not_the_name() -> Bool {
-  kernel_provides_private_memory_limit(kernel: Linux)
-    && kernel_provides_private_memory_limit(kernel: LinuxGuestOnWindows)
-    && !kernel_provides_private_memory_limit(kernel: Darwin)
-    && !kernel_provides_private_memory_limit(kernel: WindowsNt)
+test fn cgroup_v2_provision_follows_the_kernel_not_the_name() -> Bool {
+  kernel_provides_cgroup_v2(kernel: Linux)
+    && kernel_provides_cgroup_v2(kernel: LinuxGuestOnWindows)
+    && !kernel_provides_cgroup_v2(kernel: Darwin)
+    && !kernel_provides_cgroup_v2(kernel: WindowsNt)
 }
 
 data cgroup_kernels_promise_nothing_statically_note: String = "THE ROW THAT WOULD HAVE CAUGHT THE OLD SHAPE. host_budget_source_for_kernel answered BudgetSourceMemTotal for Linux: a declaration-time promise that a Linux host always has a budget, redeemable only by reading the whole machine. This asserts the opposite — a kernel that CAN express a private limit makes no static promise, because whether it does express one is a runtime fact — and it is red for any future edit that hands a procfs kernel a static source again.\n\nIts control is the Darwin arm: a kernel with no private-limit mechanism MUST answer statically, because there is nothing to wait for and refusing a Mac outright would be an over-refusal rather than a wall. WindowsNt answers UnmodeledPlatform, which is a third state and must not be reachable by either of the other two."
@@ -134,7 +134,7 @@ test fn RED_a_kernel_with_a_private_limit_promises_no_static_source() -> Bool {
   all(
     all_kernels,
     k =>
-      if kernel_provides_private_memory_limit(kernel: k) {
+      if kernel_provides_cgroup_v2(kernel: k) {
         match kernel_budget_sourcing_static_source(g: kernel_budget_sourcing(kernel: k)) {
           Present { value: _ } => false
           Absent => true
