@@ -421,26 +421,17 @@ pub struct TransitionAdmission {
 /// `TargetChanged` firing on a deliberate declaration move is the wall working; these rows
 /// adjudicate exactly those two subjects and nothing else. They go STALE the moment #9698
 /// merges and MUST be removed then, exactly as the shrinks above were.
-pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
-    TransitionAdmission {
-        label: "required-ci lane vocabulary moved to its declared next-rung authority (#9698)",
-        subject: AdmissionSubject::Binding {
-            module: "gunbc.required_ci_host_verdict_census",
-            in_declaration: "required_ci_host_verdict_rows",
-            spelling: "BuildLane",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: "required-ci lane vocabulary moved to its declared next-rung authority (#9698)",
-        subject: AdmissionSubject::Binding {
-            module: "gunbc.required_ci_host_verdict_census",
-            in_declaration: "required_ci_host_verdict_rows",
-            spelling: "WitnessesLane",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-];
+/// SIXTH SHRINK, BY THE TRIGGER ABOVE AND NOT BY THIS LANE'S JUDGEMENT (2026-08-30). #9698
+/// merged (fa03a019395), so on every pull_request build from here the merge base and the head
+/// both carry the `RequiredCiLane` relocation, no run can produce the two deltas those rows
+/// named, and they report stale -- which REFUSES EVERY PULL REQUEST, not only the one that
+/// notices. Measured on run 33292088803: `FAILED PHASE namespace-wave-admission (0
+/// unadjudicated delta(s), 2 stale admission(s))`, naming both rows, on a branch whose own
+/// namespace delta was adjudicated ExplicitlyEvaluatedZeroDelta and passed.
+/// Removed here rather than in a shrink PR of its own only because main was already red and
+/// this phase stood between every branch and a green; the fourth shrink (#9705) is the
+/// standalone form and remains the normal one.
+pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[];
 
 /// The denominators a green must name (DESIGN §5). A run that cannot say what it covered is
 /// an instrument failure wearing coverage's clothes.
