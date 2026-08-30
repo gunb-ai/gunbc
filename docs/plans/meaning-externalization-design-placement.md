@@ -2,7 +2,7 @@
 
 **Status:** analysis only. This document recommends a supervised authority edit; it does **not** edit `gunbc.design_document`, `DESIGN.md`, `gunbc.recurring_failure_mode`, or `docs/design-ledgers.md`.
 
-**Reviewed public revision:** `gunb-ai/gunbc@b60fc7dd61e5bae6b8c2e493e87815a116d4e7a5`; re-baselined (ROOT-0) onto `main@826824d22e964058d872e5e02a8c1718d1128ac7` — the three intervening commits touch floor execution, regen affected-set bounds, and memory-per-vCPU market material, none of which is a DESIGN authority, ledger, projection route, or §3/§4b/§5 citation surface, so the census and evidence base below stand unchanged.
+**Reviewed public revision:** `gunb-ai/gunbc@b60fc7dd61e5bae6b8c2e493e87815a116d4e7a5`; re-baselined (ROOT-0) onto `main@0a6d177619267443c7f62ba271d00aed26c6c3db`. The intervening commits touch floor execution, regen affected-set bounds, memory-per-vCPU market material, machine-intake modeling, and memory-stall governance — none is a DESIGN authority, ledger, or projection-route edit; the citation census below is re-derived at this exact merged tree rather than argued forward.
 
 **Private source study:** `gunb-ai/gunbc-private` PR #25, `strategy/pricing-model-study@880facecf017767a2e80b3800823694e86536fa8`: `dag/strategy/pricing_decomposition.dag` (`strategy.pricing_decomposition`), `dag/test/claim/pricing_decomposition_witness_test.dag` (`test.claim.pricing_decomposition_witness`), and `docs/strategy/2026-08-30-pricing-model-study.md`.
 
@@ -16,7 +16,7 @@
 | Quality floor and named degradation | §4b, guarantee-ladder honesty | In `gunbc.design_document.section_4b_blocks`, immediately after the four meta-obligations and before “Every newly discovered error class…” | No third ledger class yet; concrete failures classify under `meaning_fork`, `externalized_degradation`, or rung inflation according to mechanism. |
 | Externalization | §5, fail-closed | In `gunbc.design_document.section_5_blocks`, immediately after the absorbing-fallback paragraph and before “A corollary on the refusal itself…” | Add `gunbc.recurring_failure_mode.externalized_degradation`. |
 
-Do not add a second normative externalization paragraph to §2. §2 supplies the premise—present convenience can defer cost onto a later fixer—and the §5 paragraph should name the boundary case where that fixer or burden-bearer is outside the firm. Stating the full rule in both places would make the document repeat itself rather than reason serially.
+Do not add a second normative externalization paragraph to §2. §2 supplies the premise—present convenience can defer cost onto a later fixer—and the §5 paragraph should name the boundary case where that burden is moved from the actor that accepted or caused it onto another principal. Stating the full rule in both places would make the document repeat itself rather than reason serially.
 
 ## Authority and projection trace
 
@@ -43,17 +43,17 @@ The authority and pipeline are therefore explicit. No stop/escalation condition 
 §3 currently names **nicknaming**: two names for one meaning. The missing dual is one name carrying two meanings. Both are violations at the semantic authority layer:
 
 - Nicknaming duplicates a semantic fact under multiple names.
-- A meaning fork collapses multiple material semantic contracts under one name.
+- A meaning fork collapses multiple material semantic referents under one name. Accuracy of meaning applies to terms in every layer; a commercial contract identity is one specialization of the referent, and for a contract-bearing name, differences in obligations, floor, refusal behavior, billing consequence, or remedy establish different referents.
 
 This applies beyond declaration identifiers. Product names, service names, tiers, statuses, units, and terms in every layer are carriers from which users and downstream programs infer obligations. Within one declared effective version or epoch, the same visible name cannot sometimes mean full-strength delivery and sometimes mean quantized delivery when that difference changes the quality floor, refusal behavior, billing consequence, or remedy.
 
 §2 explains why the shortcut is expensive: it buys present convenience by pushing ambiguity, distrust, and correction work downstream. §5 explains why a silent fork can become wrongness. Neither is the concept's home. The root question is still “how many meanings does this name authorize?”, so §3 should state it once as the dual of nicknaming.
 
-The public corpus already contains a direct specimen: `gunbc.provider_interface_binding.ProviderInterfaceBinding` records that “provider” is a homonym for the controlled coding-agent runtime and the inference backend. Today that distinction is an annotation and search instruction, not a structural one-name/one-contract guarantee.
+An adjacent public case, deliberately *not* claimed as a direct specimen: `gunbc.provider_interface_binding.ProviderInterfaceBinding` records that “provider” is a homonym for the controlled coding-agent runtime and the inference backend. Under the scoped key those two senses live in explicitly distinct naming surfaces (the binding module versus the upstream `model_providers` configuration vocabulary), so as declared it is legitimate same-spelling reuse plus a search-homonym hazard, not a meaning fork. Whether any shared unqualified surface (operator prose, dashboards) collapses the two senses into one naming surface is a question for the operator's carved-out corpus census.
 
 ### Externalization belongs once in §5, derived from §2
 
-Externalization begins with §2's cost-deferral shape but becomes a named fail-open trap only at an organizational boundary. The firm was paid, trusted, or assigned to absorb a risk or cost; an adverse state arrives; the firm silently makes a counterparty bear it while keeping the apparent name, price, or contract unchanged.
+Externalization begins with §2's cost-deferral shape but becomes a named fail-open trap at an accountability boundary — a boundary of responsibility and principal identity, not corporate topology, which is why employees and future maintainers can be its bearers without being "outside" anything. An actor accepted an obligation or caused a cost; an adverse state arrives; the burden is silently moved onto another principal while the apparent name, price, or contract stays unchanged. A disclosed, refusable allocation agreed before contract formation is the named-and-priced arm; an undisclosed or unilateral later shift is the refused one.
 
 That is a §5 failure because the missing information is load-bearing and the counterparty receives a plausible success surface. Surprise repricing, quiet service thinning, variable compensation that transfers demand risk, stretched seller terms, a low-disclosure liquidation, neighbor-borne operating cost, and unexplained future-maintainer burden differ in counterparty but share the same mechanism.
 
@@ -158,150 +158,184 @@ The section identifiers and their prior claims remain stable. Existing citations
 
 ## Current citation review surface
 
-This is a literal section-anchor census at the reviewed public revision. It includes `§3`, `§4b`, and `§5` references plus the repository's observed `DESIGN section …` / `DESIGN …` spellings. The spelled-out aliases add no new §3 or §4b artifacts; `DESIGN 5` adds `docs/plans/deploy-convergence-observed-side.md` to the §5 set. These are review surfaces, not proposed edits.
+This is a document-citation census over `docs/**/*.md`, re-derived at the exact merged tree of this branch (base `main@0a6d177619267443c7f62ba271d00aed26c6c3db`). It is derived, not transcribed: re-run the instrument below at any revision to reproduce the rosters, and treat the file identities — not the counts — as the census content.
 
-### Documents citing §3 (56)
+Derivation (run at the repository root; this plan file excludes itself as the census subject):
 
+```sh
+for k in 3 4b 5; do
+  { grep -rl "§$k" docs/ --include="*.md"; \
+    grep -rlE "DESIGN(\.md)? (section )?$k([^0-9b]|$)" docs/ --include="*.md"; } \
+    | grep -v meaning-externalization-design-placement | sort -u
+done
+```
+
+Inclusion rule: a document counts when it references DESIGN's §3, §4b, or §5 under any observed spelling — `§N`, `DESIGN §N`, `DESIGN.md §N`, `DESIGN section N`, `DESIGN N`. Bare `§N` is classified as a DESIGN reference by exception scan: the only documents that define their own `§`-numbered headings (`grep -rlE '^#{1,4} *§' docs/`) are `docs/plans/self-host-cargo-refusal-root-partition.md` (own headings start at §10) and `docs/plans/replacement-migration-doctrine.md` (its `§3 standing rule` heading itself names DESIGN §3); every `§3`/`§4b`/`§5` occurrence in both was read and refers to DESIGN, so no candidate was excluded at this revision. These are review surfaces, not proposed edits: they acquire the new consequences but need no mechanical rewriting.
+
+### Documents citing §3
+
+- `docs/design-ledgers.md`
 - `docs/plans/budget-tree.md`
-- `docs/plans/compile-clean-forcecheck.md`
-- `docs/plans/content-hash-family-grounding.md`
-- `docs/plans/seed-honesty-discharge-design.md`
-- `docs/plans/shell-intent-emit-realization-design.md`
-- `docs/plans/effect-namespace-grants.md`
+- `docs/plans/ci-floor-child-spawn-attribution.md`
+- `docs/plans/ci-humming.md`
+- `docs/plans/ci-minutes-product-design.md`
+- `docs/plans/cli-invocation-emission-design.md`
 - `docs/plans/cli-run-reconcile-defork.md`
-- `docs/plans/v2-self-hosting.md`
+- `docs/plans/compile-clean-forcecheck.md`
+- `docs/plans/compiler-guarantee-recovery-gap-analysis.md`
+- `docs/plans/compute-envelope-model.md`
+- `docs/plans/content-hash-family-grounding.md`
+- `docs/plans/dag-native-scm-design.md`
+- `docs/plans/dag-scm-design.md`
+- `docs/plans/dag-v2-defork-audit.md`
+- `docs/plans/deploy-convergence-observed-side.md`
+- `docs/plans/discrete-cost-derivation.md`
+- `docs/plans/dispatch-maintain-cc.md`
+- `docs/plans/dissolution-census-a-ci-layer-roots.md`
+- `docs/plans/effect-namespace-grants.md`
+- `docs/plans/emission-admission-stage-aware-pipeline-design.md`
+- `docs/plans/fabric-concept-reconciliation.md`
+- `docs/plans/fabric-recut-program.md`
+- `docs/plans/floor-cut-replacement-plan.md`
+- `docs/plans/floor-expected-red-shrink-monotonicity-design.md`
+- `docs/plans/floor-semantic-artifact-design.md`
+- `docs/plans/floor-time-namespace-walk-regression-diagnosis.md`
+- `docs/plans/generated-file-conflict-policy.md`
 - `docs/plans/git-plumbing-extdeps-authority-design.md`
 - `docs/plans/gunbc-served-dashboard-design.md`
-- `docs/plans/realization-measurement-loop.md`
-- `docs/design-ledgers.md`
-- `docs/plans/roadmap-spawner.md`
-- `docs/plans/ci-minutes-product-design.md`
-- `docs/plans/dag-v2-defork-audit.md`
-- `docs/plans/layering-imports-reference-repoint-design.md`
-- `docs/plans/ci-humming.md`
-- `docs/plans/resource-aware-scheduler.md`
-- `docs/plans/floor-cut-replacement-plan.md`
-- `docs/plans/fabric-concept-reconciliation.md`
-- `docs/plans/dispatch-maintain-cc.md`
-- `docs/plans/discrete-cost-derivation.md`
-- `docs/plans/witness-execution-closure.md`
-- `docs/plans/namespace-resolution-design.md`
-- `docs/plans/machine-shape-orthogonal-scheduling.md`
-- `docs/plans/dag-native-scm-design.md`
-- `docs/plans/type-env-single-authority-design.md`
-- `docs/plans/unconsumed-module-census.md`
-- `docs/plans/fabric-recut-program.md`
-- `docs/plans/dag-scm-design.md`
-- `docs/plans/dissolution-census-a-ci-layer-roots.md`
-- `docs/plans/parsed-body-projection-increment-spec.md`
-- `docs/plans/namespace-cut-replacement-plan.md`
-- `docs/plans/space-lens-minimal-project.md`
-- `docs/runbooks/bmc-assimilator-wif-setup.md`
-- `docs/plans/generated-file-conflict-policy.md`
-- `docs/plans/floor-semantic-artifact-design.md`
-- `docs/plans/v1-run-stability-throughline.md`
-- `docs/plans/membership-diff-reconcile-spine-design.md`
-- `docs/plans/cli-invocation-emission-design.md`
-- `docs/plans/rc-ownership-wrap-decision-design.md`
-- `docs/plans/ci-floor-child-spawn-attribution.md`
-- `docs/plans/deploy-convergence-observed-side.md`
+- `docs/plans/host-effect-orchestration.md`
 - `docs/plans/host-network-attachment-converge-design.md`
-- `docs/plans/unconsumed-module-residue-disposition.md`
-- `docs/plans/emission-admission-stage-aware-pipeline-design.md`
-- `docs/plans/t5b-closure-bearing-serde-debug-decision-2026-08-21.md`
-- `docs/plans/floor-expected-red-shrink-monotonicity-design.md`
-- `docs/probes/leading_minus_continuation_silently_truncates_2026-08-23.md`
+- `docs/plans/import-strip-witness-discovery-cascade-diagnosis.md`
+- `docs/plans/inert-layer-lens.md`
+- `docs/plans/keying-relation-design.md`
+- `docs/plans/layering-imports-reference-repoint-design.md`
+- `docs/plans/machine-intake-design.md`
+- `docs/plans/machine-shape-orthogonal-scheduling.md`
+- `docs/plans/membership-diff-reconcile-spine-design.md`
+- `docs/plans/model-realization-fork.md`
+- `docs/plans/namespace-cut-replacement-plan.md`
+- `docs/plans/namespace-resolution-design.md`
+- `docs/plans/namespace-unique-on-chain-operational-plan.md`
+- `docs/plans/parsed-body-projection-increment-spec.md`
+- `docs/plans/rc-ownership-wrap-decision-design.md`
+- `docs/plans/realization-measurement-loop.md`
+- `docs/plans/replacement-migration-doctrine.md`
+- `docs/plans/representation-minimization.md`
+- `docs/plans/resource-aware-scheduler.md`
+- `docs/plans/roadmap-spawner.md`
+- `docs/plans/seed-honesty-discharge-design.md`
 - `docs/plans/self-host-cargo-refusal-root-partition.md`
 - `docs/plans/shell-dag-census-0a-projection-blocker.md`
-- `docs/plans/floor-time-namespace-walk-regression-diagnosis.md`
-- `docs/plans/namespace-unique-on-chain-operational-plan.md`
+- `docs/plans/shell-intent-emit-realization-design.md`
 - `docs/plans/shell-to-dag-residual-census-and-arc-completion.md`
-- `docs/plans/import-strip-witness-discovery-cascade-diagnosis.md`
-- `docs/plans/keying-relation-design.md`
+- `docs/plans/space-lens-minimal-project.md`
+- `docs/plans/t5b-closure-bearing-serde-debug-decision-2026-08-21.md`
+- `docs/plans/type-env-single-authority-design.md`
+- `docs/plans/unconsumed-module-census.md`
+- `docs/plans/unconsumed-module-residue-disposition.md`
+- `docs/plans/v1-run-stability-throughline.md`
+- `docs/plans/v2-self-hosting.md`
+- `docs/plans/witness-cost-derives-from-purpose.md`
+- `docs/plans/witness-execution-closure.md`
+- `docs/probes/leading_minus_continuation_silently_truncates_2026-08-23.md`
+- `docs/runbooks/bmc-assimilator-wif-setup.md`
+- `docs/runbooks/bmc-redfish-operator-access.md`
 
-### Documents citing §4b (19)
+### Documents citing §4b
 
 - `docs/design-ledgers.md`
 - `docs/plans/ci-minutes-product-design.md`
-- `docs/plans/witness-execution-closure.md`
-- `docs/plans/fabric-recut-program.md`
-- `docs/plans/unconsumed-module-census.md`
-- `docs/plans/runner-service-capacity-convergence.md`
+- `docs/plans/cli-invocation-emission-design.md`
+- `docs/plans/compiler-guarantee-recovery-gap-analysis.md`
 - `docs/plans/dag-native-scm-design.md`
+- `docs/plans/discrete-cost-derivation.md`
+- `docs/plans/emission-admission-stage-aware-pipeline-design.md`
+- `docs/plans/fabric-recut-program.md`
 - `docs/plans/floor-cut-replacement-plan.md`
 - `docs/plans/floor-semantic-artifact-design.md`
-- `docs/plans/discrete-cost-derivation.md`
-- `docs/plans/cli-invocation-emission-design.md`
+- `docs/plans/membership-diff-reconcile-spine-design.md`
 - `docs/plans/namespace-cut-replacement-plan.md`
 - `docs/plans/rc-ownership-wrap-decision-design.md`
-- `docs/probes/leading_minus_continuation_silently_truncates_2026-08-23.md`
-- `docs/plans/membership-diff-reconcile-spine-design.md`
-- `docs/plans/unconsumed-module-residue-disposition.md`
+- `docs/plans/replacement-migration-doctrine.md`
+- `docs/plans/runner-service-capacity-convergence.md`
 - `docs/plans/self-host-cargo-refusal-root-partition.md`
-- `docs/plans/emission-admission-stage-aware-pipeline-design.md`
 - `docs/plans/shell-to-dag-residual-census-and-arc-completion.md`
-
-### Documents citing §5 (59)
-
-- `docs/plans/ci-humming.md`
-- `docs/plans/budget-tree.md`
-- `docs/plans/compile-clean-forcecheck.md`
-- `docs/plans/type-env-single-authority-design.md`
-- `docs/plans/s2-v2-self-emit-brief.md`
-- `docs/plans/s2-v2-self-emit-direction.md`
-- `docs/plans/resource-aware-scheduler.md`
-- `docs/plans/seed-honesty-discharge-design.md`
-- `docs/plans/cli-run-reconcile-defork.md`
-- `docs/plans/ci-floor-child-spawn-attribution.md`
-- `docs/plans/dag-v2-defork-audit.md`
-- `docs/design-ledgers.md`
-- `docs/plans/roadmap-spawner.md`
-- `docs/plans/space-lens-minimal-project.md`
-- `docs/plans/membership-diff-reconcile-spine-design.md`
-- `docs/plans/post-engine-pr-roadmap.md`
-- `docs/plans/v2-self-hosting.md`
-- `docs/plans/effect-namespace-grants.md`
-- `docs/plans/realization-measurement-loop.md`
-- `docs/probes/leading_minus_continuation_silently_truncates_2026-08-23.md`
-- `docs/plans/dispatch-maintain-cc.md`
-- `docs/plans/cli-run-hollowing-plan.md`
+- `docs/plans/unconsumed-module-census.md`
+- `docs/plans/unconsumed-module-residue-disposition.md`
 - `docs/plans/witness-execution-closure.md`
-- `docs/plans/dag-scm-design.md`
-- `docs/plans/floor-semantic-artifact-design.md`
-- `docs/plans/namespace-resolution-design.md`
-- `docs/plans/repo-stability-2026-08.md`
+- `docs/probes/leading_minus_continuation_silently_truncates_2026-08-23.md`
+
+### Documents citing §5
+
+- `docs/design-ledgers.md`
+- `docs/plans/budget-tree.md`
+- `docs/plans/ci-floor-child-spawn-attribution.md`
+- `docs/plans/ci-humming.md`
 - `docs/plans/ci-minutes-product-design.md`
-- `docs/plans/discrete-cost-derivation.md`
-- `docs/plans/v1-run-stability-throughline.md`
-- `docs/plans/keying-relation-design.md`
+- `docs/plans/cli-invocation-emission-design.md`
+- `docs/plans/cli-run-hollowing-plan.md`
+- `docs/plans/cli-run-reconcile-defork.md`
+- `docs/plans/compile-clean-forcecheck.md`
+- `docs/plans/compiler-guarantee-recovery-gap-analysis.md`
+- `docs/plans/compute-envelope-model.md`
 - `docs/plans/dag-native-scm-design.md`
+- `docs/plans/dag-scm-design.md`
+- `docs/plans/dag-v2-defork-audit.md`
+- `docs/plans/deploy-convergence-observed-side.md`
+- `docs/plans/discrete-cost-derivation.md`
+- `docs/plans/dispatch-maintain-cc.md`
+- `docs/plans/effect-namespace-grants.md`
+- `docs/plans/emission-admission-stage-aware-pipeline-design.md`
+- `docs/plans/fabric-concept-reconciliation.md`
 - `docs/plans/fabric-recut-program.md`
-- `docs/plans/parsed-body-projection-increment-spec.md`
-- `docs/plans/floor-shared-fill-ledger.md`
 - `docs/plans/five-minute-ci-gate-design.md`
 - `docs/plans/floor-expected-red-shrink-monotonicity-design.md`
-- `docs/plans/shell-intent-emit-realization-design.md`
-- `docs/plans/unconsumed-module-census.md`
-- `docs/plans/roadmap-workspace-remodel-plan.md`
-- `docs/plans/fabric-concept-reconciliation.md`
-- `docs/plans/parse-grammar-choice-overlap-residue-finding.md`
-- `docs/plans/cli-invocation-emission-design.md`
-- `docs/plans/machine-shape-orthogonal-scheduling.md`
-- `docs/plans/rc-ownership-wrap-decision-design.md`
-- `docs/plans/git-plumbing-extdeps-authority-design.md`
-- `docs/plans/host-network-attachment-converge-design.md`
-- `docs/plans/generated-file-conflict-policy.md`
-- `docs/plans/layering-imports-reference-repoint-design.md`
-- `docs/plans/emission-admission-stage-aware-pipeline-design.md`
+- `docs/plans/floor-semantic-artifact-design.md`
+- `docs/plans/floor-shared-fill-ledger.md`
 - `docs/plans/floor-time-namespace-walk-regression-diagnosis.md`
+- `docs/plans/generated-file-conflict-policy.md`
+- `docs/plans/git-plumbing-extdeps-authority-design.md`
+- `docs/plans/host-effect-orchestration.md`
+- `docs/plans/host-network-attachment-converge-design.md`
 - `docs/plans/import-strip-witness-discovery-cascade-diagnosis.md`
-- `docs/plans/unconsumed-module-residue-disposition.md`
-- `docs/plans/shell-dag-census-0a-projection-blocker.md`
-- `docs/plans/self-host-cargo-refusal-root-partition.md`
+- `docs/plans/inert-layer-lens.md`
+- `docs/plans/keying-relation-design.md`
+- `docs/plans/layering-imports-reference-repoint-design.md`
+- `docs/plans/machine-intake-design.md`
+- `docs/plans/machine-shape-orthogonal-scheduling.md`
+- `docs/plans/membership-diff-reconcile-spine-design.md`
+- `docs/plans/model-grounding-lens-extract.md`
 - `docs/plans/namespace-flip-last-28-root-a-two-std-defork.md`
+- `docs/plans/namespace-resolution-design.md`
+- `docs/plans/parsed-body-projection-increment-spec.md`
+- `docs/plans/parse-grammar-choice-overlap-residue-finding.md`
+- `docs/plans/post-engine-pr-roadmap.md`
+- `docs/plans/rc-ownership-wrap-decision-design.md`
+- `docs/plans/realization-measurement-loop.md`
+- `docs/plans/replacement-migration-doctrine.md`
+- `docs/plans/repo-stability-2026-08.md`
+- `docs/plans/representation-minimization.md`
+- `docs/plans/resource-aware-scheduler.md`
+- `docs/plans/roadmap-spawner.md`
+- `docs/plans/roadmap-workspace-remodel-plan.md`
+- `docs/plans/s2-v2-self-emit-brief.md`
+- `docs/plans/s2-v2-self-emit-direction.md`
+- `docs/plans/scaffold-admission-doctrine.md`
+- `docs/plans/seed-honesty-discharge-design.md`
+- `docs/plans/self-host-cargo-refusal-root-partition.md`
+- `docs/plans/shell-dag-census-0a-projection-blocker.md`
+- `docs/plans/shell-intent-emit-realization-design.md`
 - `docs/plans/shell-to-dag-residual-census-and-arc-completion.md`
+- `docs/plans/space-lens-minimal-project.md`
 - `docs/plans/t5b-closure-bearing-serde-debug-decision-2026-08-21.md`
-- `docs/plans/deploy-convergence-observed-side.md`
+- `docs/plans/type-env-single-authority-design.md`
+- `docs/plans/unconsumed-module-census.md`
+- `docs/plans/unconsumed-module-residue-disposition.md`
+- `docs/plans/v1-run-stability-throughline.md`
+- `docs/plans/v2-self-hosting.md`
+- `docs/plans/witness-cost-derives-from-purpose.md`
+- `docs/plans/witness-execution-closure.md`
+- `docs/probes/leading_minus_continuation_silently_truncates_2026-08-23.md`
 
 ## Downstream implications
 
@@ -319,7 +353,7 @@ The DESIGN additions do not themselves implement a wall. They make the following
 
 This is a representative implication census, not the operator's carved-out corpus-wide violation audit.
 
-- `gunbc.provider_interface_binding.ProviderInterfaceBinding` already documents one word, “provider,” denoting two subjects. A meaning-fork lens would turn that annotation-level warning into a check over declared subject/name carriers.
+- `gunbc.provider_interface_binding.ProviderInterfaceBinding` documents one spelling, “provider,” denoting two subjects in two declared scopes — a search-homonym hazard adjacent to the class. A meaning-fork mechanism would decide such cases by naming-surface identity rather than by spelling alone.
 - `product.fabric.isolation.IsolationGuarantee`, `IsolationProfile`, `tenant_workload_isolation_requirement`, and `unsatisfied_isolation_guarantees` already state service dimensions and missing guarantees at identity grain. The higher bar asks the customer-facing product contract to bind those guarantees to an admission refusal or remedy rather than merely carrying vocabulary.
 - `product.fabric.supply.SupplierOffer`, `OfferFungibility`, `IsolationNotProvided`, `DemandOfferAffordability`, and `offer_fungibility_for` already refuse several unmet service conditions. These are natural consumers for a named product contract and quality-floor relation; an offer cannot be advertised under a class whose material guarantees it cannot satisfy.
 - `product.fabric.supply.OfferQuote` already distinguishes an explicit zero price from absence of pricing, preventing an unpriced burden from being silently treated as free. Externalization makes that same distinction a general boundary rule.
@@ -350,10 +384,14 @@ The private PR is thus executing evidence for the proposed service-floor shape a
 
 1. Edit only `gunbc.design_document.section_3_blocks`, `section_4b_blocks`, and `section_5_blocks` using the source copy at the end of this plan.
 2. Add the two proposed `RecurringFailureMode` values and append them to `recurring_failure_mode_roster`.
-3. Run `gunbc.ci_spec.ci_heal_author_commit_regen_command`, which invokes `tools.generated_artifact_gate.main_wet`.
+3. Run `gunbc.ci_spec.ci_heal_author_commit_regen_command`, which invokes `tools.generated_artifact_gate.main_wet`. The printed command is not sufficient by itself; the executing preflight is:
+   - use a **repo-built `gunbc` from the exact ROOT-1 tree** (`cargo build --release -p v1-compiler --bin gunbc`); the installed `/usr/local/bin/gunbc` is explicitly not a valid route — measured 2026-08-30, it refuses the current corpus with 3,561 pre-existing resolution errors on clean main, a refusal receipt, not a second supported route;
+   - run under either a readable process-private cgroup memory bound or an explicit `GUNBC_MEMORY_BUDGET_BYTES`; on a runner with neither, `gunbc.host_budget_source` refuses with `HostBudgetUnreadable` — a correct line stop (measured on BuildBuddy 2026-08-30), never a reason to widen or bypass;
+   - derive the byte value from the runner slot's actual allocation or another named operator budget source, never an unexplained literal, and export it in the same dispatch body that invokes `main_wet` (remote dispatch forwards no environment by default);
+   - retain the budget source and byte value in the execution receipt.
 4. Require the generated diff to be limited to `DESIGN.md` and `docs/design-ledgers.md`, with the paragraph and roster changes enumerated above.
 5. Verify that `gunbc.design_document.design_drifted` and the design-ledger generated-artifact comparison are green.
-6. Review the generated prose in serial context, not as isolated inserts: §3 must introduce the semantic dual; §4b must apply rung honesty; §5 must derive the organizational-boundary trap from §2 without restating §2.
+6. Review the generated prose in serial context, not as isolated inserts: §3 must introduce the semantic dual; §4b must apply rung honesty; §5 must derive the accountability-boundary trap from §2 without restating §2.
 7. Leave the corpus-wide violation audit to the operator as ruled.
 
 ## §6 terminal-architecture consumption test
@@ -365,13 +403,13 @@ This plan passes §6's independent reviewer test because it has a named terminal
 ```dag
 data meaning_fork: RecurringFailureMode = RecurringFailureMode {
   identity: "meaning_fork" as NonEmptyStr,
-  authored: "**meaning fork** (one name carries materially different semantic contracts under hidden state. The subject is scoped: the key is the naming surface, the visible name, and the declared effective version or epoch — the same spelling in two explicitly distinct scopes or across a declared version transition is legitimate reuse, not a fork. Recognition rule: hold that key constant and vary the hidden state; if obligations, quality floor, refusal behavior, billing consequence, or remedy change without a distinct variant name, the name has forked. This is the one-name/two-meanings dual of nicknaming.)",
+  authored: "**meaning fork** (one scoped name carries more than one material semantic referent under hidden state; accuracy of meaning applies to terms in every layer, and for a contract-bearing name, differences in obligations, quality floor, refusal behavior, billing consequence, or remedy establish different referents. The subject is scoped: the key is the naming surface, the visible name, and the declared effective version or epoch — the same spelling in two explicitly distinct scopes or across a declared version transition is legitimate reuse, not a fork. Recognition rule: hold that key constant and vary the hidden state; if obligations, quality floor, refusal behavior, billing consequence, or remedy change without a distinct variant name, the name has forked. This is the one-name/two-meanings dual of nicknaming.)",
   evidence: [],
 }
 
 data externalized_degradation: RecurringFailureMode = RecurringFailureMode {
   identity: "externalized_degradation" as NonEmptyStr,
-  authored: "**externalized degradation** (an actor paid, trusted, or assigned to absorb a risk or cost silently shifts it to a counterparty while preserving the apparent name, price, or contract. Recognition rule: identify the risk receipt or assigned responsibility, trigger the adverse state, and follow who bears the marginal burden; if the counterparty's burden rises while the firm neither absorbs it through its reserve, refusal, or remedy path nor exposes a separately named and priced transfer, the risk was re-exported. The honest arms are absorb-and-reserve or separately name-and-price the transfer.)",
+  authored: "**externalized degradation** (an actor paid, trusted, or assigned to absorb a risk or cost silently shifts it to a counterparty while preserving the apparent name, price, or contract. Recognition rule: identify the risk receipt or assigned responsibility, trigger the adverse state, and follow who bears the marginal burden; if the counterparty's burden rises while the responsible actor neither absorbs it through its reserve, refusal, or remedy path nor exposes a separately named and priced transfer, the risk was re-exported. The honest arms are absorb-and-reserve or separately name-and-price the transfer.)",
   evidence: [],
 }
 ```
@@ -402,5 +440,5 @@ Insert in `gunbc.design_document.section_4b_blocks` immediately after the four m
 Insert in `gunbc.design_document.section_5_blocks` immediately after the absorbing-fallback paragraph:
 
 ```dag
-    p(text: "When §2's later fixer is outside the firm, deferred cost becomes **externalization**. A risk intermediary fails open across the organizational boundary when it quietly re-exports a risk or degradation that a counterparty paid it, trusted it, or assigned it to absorb, or pushes an unpriced cost onto users, employees, sellers, liquidation buyers, neighbors, or future maintainers. There are only two honest arms: absorb the risk and reserve for it, or expose the transfer as a separately named and priced contract; a materially degraded service is therefore its own product. Keeping the old name, price, or contract while the counterparty bears the changed burden is **externalized degradation**."),
+    p(text: "When §2's deferred cost is moved from the actor that accepted or caused it onto another principal, it becomes **externalization**. A risk intermediary or cost-causing actor fails open across an accountability boundary when it quietly re-exports an accepted risk or leaves a caused cost unpriced while preserving the apparent name, price, or contract — onto customers, employees, sellers, liquidation buyers, neighbors, or future maintainers. There are only two honest arms: absorb the risk and reserve for it, or expose the transfer as a separately named and priced contract; a materially degraded service is therefore its own product. Keeping the old name, price, or contract while the counterparty bears the changed burden is **externalized degradation**."),
 ```
