@@ -41,25 +41,6 @@ fn cargo_clippy_command(extra_args: List<String>, lint_args: List<String>) -> Ar
   )
 }
 
-// PATH-resolved program name, deliberately, for the reason extdeps.exec.command
-// program_spelling_is_an_observation_claim records once: an absolute path is a filesystem
-// observation this repository has not made about the host the command runs on.
-data cargo_program: NonEmptyStr = "cargo"
-
-// THE ONE PLACE THE CLIPPY VERB AND ITS LINT SEPARATOR ARE SPELLED. The Clippy operation below
-// carries the same shape fused to `transport shell`, which is unreachable from any expression --
-// the fork repo_self_build_authority_note measured and named. This builder is the first step of the
-// de-fusion that note declares as its dissolution trigger: the operation's argv shape, expressed
-// once as a value, so a SECOND realization of it (a workflow YAML line) is a projection of this
-// node rather than a second spelling of cargo's vocabulary in a consumer. `--` is part of the
-// operation and not the caller's, because it is what separates cargo's own arguments from the lint
-// levels rustc receives, and a caller free to omit it would hand `-D warnings` to cargo.
-fn cargo_clippy_command(extra_args: List<String>, lint_args: List<String>) -> ArgvCommand {
-  argv_command(
-    program: cargo_program,
-    arguments: append(append(["clippy"], items: extra_args), items: append(["--"], items: lint_args))
-  )
-}
 
 fn cargo_build_jobs_flag(count: Int) -> List<String> {
   ["--jobs", to_string(count)]
