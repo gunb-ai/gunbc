@@ -1346,6 +1346,16 @@ data hand_authored_doc_bind_incomings: List<HandAuthoredDocBind> = [
   },
   HandAuthoredDocBind {
     home: PlanDoc,
+    slug: "roadmap-launch-mvp-plan",
+    primary_work: DeclarationRef { module_path: "gunbc.roadmap_launch_canary", decl_name: "roadmap_launch_canary_execution_contract", field: WholeDeclaration },
+    additional_works: [
+      DeclarationRef { module_path: "gunbc.roadmap_launch_canary_sentinel", decl_name: "roadmap_launch_canary_sentinel", field: WholeDeclaration },
+      DeclarationRef { module_path: "gunbc.roadmap_spawner", decl_name: "node_is_spawnable", field: WholeDeclaration },
+    ],
+    dissolution: PlanRetiresWhen { condition: unbound_dissolution(description: "the RLM-6 terminal receipt is recorded -- one receipt joining every frozen identity of the serial gate chain (the canary parent Done by explicit acceptance, its child Ready, the parent's relaunch refused AlreadyAccepted); at that point the plan describes shipped behavior and the row deletes with the document") },
+  },
+  HandAuthoredDocBind {
+    home: PlanDoc,
     slug: "recursive-workflow-advancement-design",
     primary_work: DeclarationRef { module_path: "gunbc.workflow_reconcile", decl_name: "workflow_recursive_reconcile_note", field: WholeDeclaration },
     additional_works: [],
