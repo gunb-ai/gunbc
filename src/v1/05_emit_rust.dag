@@ -259,12 +259,21 @@ fn rust_type_node_is_arrow(n: Node) -> Bool {
 }
 
 fn render_rust_arrow_type(n: Node, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, emit_info: EmitGraphInfo) -> String {
+  render_rust_arrow_type_in_scope(n: n, generic_param_names: emit_info.fn_generic_param_names, shared_types: shared_types, source_indices: source_indices, variant_to_enum: emit_info.variant_to_enum, env: emit_info.fn_type_env)
+}
+
+// The arrow renderer keyed on the SCOPE it renders in rather than on EmitGraphInfo, so the
+// type-argument position -- which carries the scope's parts but no EmitGraphInfo -- asks the same
+// renderer instead of falling through: `Map<Symbol, fn(String) -> String>` at a record field
+// rendered its value type by the arrow's RESOLVED inference, i.e. the return type, as
+// `HashMap<Symbol, String>` (E0277 x2 at v2.std.compilers.target_model apply_emit_spelling_transform).
+fn render_rust_arrow_type_in_scope(n: Node, generic_param_names: List<String>, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, variant_to_enum: Map<String, String>, env: TypeEnv) -> String {
   let repr = target_callable(target: Rust)
-  let param_strs = n.params |> map(p => render_rust_arrow_position(n: param_node_type_expr(n: p), shared_types: shared_types, source_indices: source_indices, emit_info: emit_info))
+  let param_strs = n.params |> map(p => render_rust_fn_sig_type(n: param_node_type_expr(n: p), generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env))
   let param_str = param_strs |> join(separator: repr.param_separator)
   let spec = language_spec(target: Rust)
   let ret_str = match n.inferred {
-    Present { value: Resolved { node: rt } } => render_rust_arrow_position(n: rt, shared_types: shared_types, source_indices: source_indices, emit_info: emit_info)
+    Present { value: Resolved { node: rt } } => render_rust_fn_sig_type(n: rt, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env)
     _ => spec.void_type
   }
   match spec.callable_type_template {
@@ -1097,7 +1106,9 @@ fn render_rust_phantom_opaque_applied_decl_arg(n: Node, generic_param_names: Lis
 }
 
 fn render_rust_applied_type_arg(n: Node, generic_param_names: List<String>, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, variant_to_enum: Map<String, String>, env: TypeEnv) -> String {
-  if rust_type_arg_renders_as_unit(n: n, generic_param_names: generic_param_names, variant_to_enum: variant_to_enum, source_indices: source_indices) {
+  if rust_type_node_is_arrow(n: n) {
+    render_rust_arrow_type_in_scope(n: n, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env)
+  } else if rust_type_arg_renders_as_unit(n: n, generic_param_names: generic_param_names, variant_to_enum: variant_to_enum, source_indices: source_indices) {
     "()"
   } else if type_node_has_unbound_type_variable(n: n, generic_param_names: generic_param_names, source_indices: source_indices) {
     "_"
@@ -1336,11 +1347,16 @@ fn render_rust_decl_type(n: Node, generic_param_names: List<String>, shared_type
     Absent =>
       let name = rust_fn_sig_leaf_name(source_indices: source_indices, n: n)
       let exact_leaf = if n.connective == NoConnective && n.children |> count == 0 && !(generic_param_names |> any(g => g == name)) { rust_exact_reference_spelling(n: n, source_indices: source_indices, env: env) } else { none }
+      let bare_native_alias = if n.connective == NoConnective && n.children |> count == 0 && !(generic_param_names |> any(g => g == name)) {
+        rust_seed_host_numeric_alias(name: name, decl_file: type_reference_decl_file_in_env(n: n, env: env, source_indices: source_indices))
+      } else { none }
       match exact_leaf {
         Present { value: exact } => rust_carrier_optional_wrap(n: n, rendered: exact)
         Absent =>
       if n.connective == NoConnective && n.children |> count == 0 && (generic_param_names |> any(g => g == name)) {
         to_pascal(name: name)
+      } else if bare_native_alias != none {
+        rust_carrier_optional_wrap(n: n, rendered: bare_native_alias.value)
       } else if n.connective == NoConnective && n.children |> count == 0 && applied_prop == none && is_host_text_carrier_type(n: n, source_indices: source_indices) {
         rust_carrier_optional_wrap(n: n, rendered: render_rust_text_carrier(shared_types: shared_types))
       } else if n.connective == NoConnective && n.children |> count == 0 && applied_prop == none && set_contains(shared_types, name) {
@@ -10618,7 +10634,13 @@ fn emit_rust_sort_by_method_call(receiver: Node, args: List<Node>, registry: Map
       let elem_is_type_var = if elem.inferred != none { is_type_variable(inferred: elem.inferred.value) } else { false }
       if elem.ident_span != none && !elem_is_type_var {
         render_rust_type(n: elem, shared_types: shared_types, source_indices: scope.type_env.source_indices, emit_info: emit_info)
-      } else { "_" }
+      } else {
+        match elem.inferred {
+          Present { value: TypeVariable { id: tv } } =>
+            if type_var_in_fn_generic_scope(id: tv, generic_param_names: emit_info.fn_generic_param_names) { to_pascal(name: tv) } else { "_" }
+          _ => "_"
+        }
+      }
     _ => "_"
   }
   let sort_key_fn = match args |> first {

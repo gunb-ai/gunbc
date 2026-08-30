@@ -23975,6 +23975,7 @@ pub fn build_emit_graph_info(modules: Rc<Vec<Rc<TypedModule>>>) -> Rc<EmitGraphI
             fn_generic_param_names: Rc::new(vec![]),
             fn_type_env: crate::v1_compiler_infer_env::empty_type_env(),
             fn_return_type: std::option::Option::None,
+            expected_type: std::option::Option::None,
         })
     }
 }
