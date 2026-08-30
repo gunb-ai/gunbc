@@ -1245,29 +1245,48 @@ fn binding_declares_span(binding: TypeBinding, sp: SourceSpan) -> Bool {
 // matched on. Without this arm every recursive destination answered Absent here and fell to the
 // identity-unavailable arms downstream (measured: the Peano literal and ordering rows passed for
 // v2.std.logic Bool and failed for v2.std.nat Nat on the same compiler).
-fn type_reference_declaration_ref(n: Node, source_indices: Map<String, NewlineIndex>, env: TypeEnv) -> DeclarationRef? {
-  let rt = match n.inferred {
-    Present { value: Resolved { node: r } } => r
-    _ =>
-      match lookup_type_for(env: env, node: n) {
-        Present { value: bound } => bound
-        Absent => n
+fn declaration_ref_for_span(decl_name: String, sp: SourceSpan, env: TypeEnv) -> DeclarationRef? {
+  match map_get(env.symbol_index.global_bare, decl_name) {
+    Present { value: GlobalBareUniqueBinding { module_path: mp, binding: b } } =>
+      if binding_declares_span(binding: b, sp: sp) { Present { value: decl_ref(module_path: mp, decl_name: decl_name) } } else { none }
+    Present { value: GlobalBareAmbiguousBinding { candidates: cands } } =>
+      match cands |> filter(c => binding_declares_span(binding: c.binding, sp: sp)) |> first {
+        Present { value: c } => Present { value: decl_ref(module_path: c.module_path, decl_name: decl_name) }
+        Absent => none
       }
+    Absent => none
   }
+}
+
+fn declaration_ref_of_node(rt: Node, source_indices: Map<String, NewlineIndex>, env: TypeEnv) -> DeclarationRef? {
   let decl_name = qualified_last_segment(name: authored_name_at(source_indices: source_indices, node: rt))
   if decl_name == "" { return none }
   match rt.ident_span {
     Absent => none
-    Present { value: sp } =>
-      match map_get(env.symbol_index.global_bare, decl_name) {
-        Present { value: GlobalBareUniqueBinding { module_path: mp, binding: b } } =>
-          if binding_declares_span(binding: b, sp: sp) { Present { value: decl_ref(module_path: mp, decl_name: decl_name) } } else { none }
-        Present { value: GlobalBareAmbiguousBinding { candidates: cands } } =>
-          match cands |> filter(c => binding_declares_span(binding: c.binding, sp: sp)) |> first {
-            Present { value: c } => Present { value: decl_ref(module_path: c.module_path, decl_name: decl_name) }
-            Absent => none
-          }
-        Absent => none
+    Present { value: sp } => declaration_ref_for_span(decl_name: decl_name, sp: sp, env: env)
+  }
+}
+
+// TWO HOPS, SAME IDENTITY DISCIPLINE, TRIED IN ORDER. (1) The resolved node's own ident_span --
+// this answers when the resolver substituted the declaration node itself. (2) The env binding for
+// the reference (lookup_type_for) -- this answers both the recursive in-place case above AND the
+// resolved-ALIAS case, where the resolver's substitution carries the OCCURRENCE site's span rather
+// than the declaration's (measured: `type String = FreeMonoid<Char>` in v2.std.text resolved to a
+// node spelled String<Product(Char)> whose span is the annotation site, so hop (1) answered none
+// and every text.String literal boundary fell to DirectLiteral while the same fold worked for the
+// declared coproducts Bool and Nat). Both hops answer only from the census by declaration span,
+// never from a spelling, so an identity neither can supply is still Absent.
+fn type_reference_declaration_ref(n: Node, source_indices: Map<String, NewlineIndex>, env: TypeEnv) -> DeclarationRef? {
+  let from_resolved = match n.inferred {
+    Present { value: Resolved { node: r } } => declaration_ref_of_node(rt: r, source_indices: source_indices, env: env)
+    _ => none
+  }
+  match from_resolved {
+    Present { value: d } => Present { value: d }
+    Absent =>
+      match lookup_type_for(env: env, node: n) {
+        Present { value: bound } => declaration_ref_of_node(rt: bound, source_indices: source_indices, env: env)
+        Absent => declaration_ref_of_node(rt: n, source_indices: source_indices, env: env)
       }
   }
 }
