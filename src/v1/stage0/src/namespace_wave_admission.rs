@@ -408,62 +408,26 @@ pub struct TransitionAdmission {
 /// module, enclosing declaration and leaf, blast radius 0 on every one. DISSOLVE-ON: #9675
 /// merging -- base and head then both carry the relocation, the rows report stale, and they are
 /// removed by that trigger exactly as the four shrinks above were.
-pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
-    TransitionAdmission {
-        label: "rust-source-prefix-relocation-01",
-        subject: AdmissionSubject::Binding {
-            module: "gunbc.stage0_rust_product_reachability",
-            in_declaration: "path_is_test_harness",
-            spelling: "rust_source_prefix_stage0_test",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: "rust-source-prefix-relocation-02",
-        subject: AdmissionSubject::Binding {
-            module: "gunbc.stage0_rust_product_reachability",
-            in_declaration: "path_is_test_harness",
-            spelling: "rust_source_prefix_test_harness",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: "rust-source-prefix-relocation-03",
-        subject: AdmissionSubject::Binding {
-            module: "gunbc.stage0_rust_source_lifecycle_scaffold",
-            in_declaration: "rust_source_discovery_prefix_hints",
-            spelling: "rust_source_prefix_stage0_example",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: "rust-source-prefix-relocation-04",
-        subject: AdmissionSubject::Binding {
-            module: "gunbc.stage0_rust_source_lifecycle_scaffold",
-            in_declaration: "rust_source_discovery_prefix_hints",
-            spelling: "rust_source_prefix_stage0_test",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: "rust-source-prefix-relocation-05",
-        subject: AdmissionSubject::Binding {
-            module: "gunbc.stage0_rust_source_lifecycle_scaffold",
-            in_declaration: "rust_source_discovery_prefix_hints",
-            spelling: "rust_source_prefix_test_harness",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: "rust-source-prefix-relocation-06",
-        subject: AdmissionSubject::Binding {
-            module: "gunbc.stage0_rust_source_lifecycle_scaffold",
-            in_declaration: "rust_source_discovery_prefix_hints",
-            spelling: "rust_source_prefix_tooling",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-];
+/// FIFTH SHRINK, SAME RULE (2026-08-30). #9675 merged (e1905850789), so on every pull_request
+/// build from here the merge base and head both carry the relocation, no run can produce the
+/// deltas the six rows above named, and they report stale -- refusing every PR. Removed by
+/// the trigger they were authored with, in the first merge of main that carried the
+/// relocation on both sides.
+/// SIXTH POPULATION, SAME RULE (2026-08-29, #9698). Two rows for the `RequiredCiLane` move:
+/// `BuildLane` and `WitnessesLane` moved (not duplicated) from
+/// `gunbc.required_ci_host_verdict_census` to the new `gunbc.required_ci_phase_roster` --
+/// which the census itself named as its next rung -- so the census's
+/// `required_ci_host_verdict_rows` now binds those spellings through the roster.
+/// `TargetChanged` firing on a deliberate declaration move is the wall working; these rows
+/// adjudicate exactly those two subjects and nothing else. They go STALE the moment #9698
+/// merges and MUST be removed then, exactly as the shrinks above were.
+/// SIXTH SHRINK, SAME RULE (2026-08-30). #9698 merged, so the merge base and head of every
+/// run from here both carry the lane move, no run can produce the two deltas those rows
+/// named, and both report stale -- refusing every PR. Removed by the trigger they were
+/// authored with, in the first PR cut from the main that carries the move. The roster is
+/// EMPTY again and empty is not permissive: a run carrying a real namespace delta still
+/// refuses it as UNADJUDICATED until its author adds a row here.
+pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[];
 
 /// The denominators a green must name (DESIGN §5). A run that cannot say what it covered is
 /// an instrument failure wearing coverage's clothes.
@@ -517,7 +481,15 @@ fn direct_membership(
             out.insert(claim.target.clone());
         }
     }
-    for (_, spelling) in &record.referenced {
+    // Both authored-reference channels, the same union `membership_bound_through` takes and
+    // for the same measured reason: a declared type is parked in `inferred`, which the walk
+    // behind `referenced` never visits, so a module whose only reach into another is a
+    // declared type contributed no edge here -- the closure and blast radius under-reported.
+    for (_, spelling) in record
+        .referenced
+        .iter()
+        .chain(record.authored_type_references.iter())
+    {
         if let Some((module, _leaf)) = module_prefix_of(index, spelling) {
             if module != record.module_path {
                 out.insert(module);
@@ -661,7 +633,14 @@ fn binding_rows(
     record: &ModuleDeclarationRecord,
 ) -> BTreeMap<(String, String), BTreeSet<String>> {
     let mut out: BTreeMap<(String, String), BTreeSet<String>> = BTreeMap::new();
-    for (in_declaration, spelling) in &record.referenced {
+    // Both authored-reference channels, as in `direct_membership` and
+    // `membership_bound_through`: a cut that repoints a DECLARED type -- visible only through
+    // the parser's stamped channel -- must produce a row on both sides of the wall.
+    for (in_declaration, spelling) in record
+        .referenced
+        .iter()
+        .chain(record.authored_type_references.iter())
+    {
         let leaf = qualified_last_segment(spelling.clone());
         let candidates = declaring_candidates(index, record, spelling);
         out.entry((in_declaration.clone(), leaf))
