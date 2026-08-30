@@ -8257,6 +8257,16 @@ fn unique_variant_parent(type_summaries: Map<String, TypeSummary>, variant_name:
     none
   }
 }
+// THE HOST OPTIONAL'S VARIANT SPELLINGS, ONE AUTHORITY. Six sites spelled `Some`/`None` inline; a
+// module declaring a nullary variant named `None` (std.cache_interface `AuthScope`) also emits
+// `pub struct None;` at module scope, and a bare `None` PATTERN there binds the unit struct
+// (E0308 "`None` is interpreted as a unit struct", five arms on the first regen after the null
+// keyword row was qualified). The keyword row covers the expression; this covers the pattern and
+// the constructor, by path. `Some` stays bare: no corpus module declares a `Some`.
+fn rust_optional_variant_spelling(name: String) -> String {
+  if is_some_like_variant_name(name: name) { "Some" } else { "std::option::Option::None" }
+}
+
 
 fn is_optional_variant_name(name: String) -> Bool {
   name == "Present" || name == "Absent" || name == "Some" || name == "None"
@@ -8333,7 +8343,7 @@ fn emit_variant_pattern(name: String, parent_enum: String?, field_bindings: List
   let optional_variant = is_optional_variant_name(name: bare_name)
     && (is_optional_parent(parent_enum: resolved_parent) || resolved_parent == none)
   let rust_name = if optional_variant {
-    if is_some_like_variant_name(name: bare_name) { "Some" } else { "None" }
+    rust_optional_variant_spelling(name: bare_name)
   } else { bare_name }
   let qualified = if optional_variant {
     rust_name
@@ -8584,7 +8594,7 @@ fn emit_variant_pattern_rc_aware(name: String, parent_enum: String?, field_bindi
   let optional_variant = is_optional_variant_name(name: bare_name)
     && (is_optional_parent(parent_enum: resolved_parent) || resolved_parent == none)
   let rust_name = if optional_variant {
-    if is_some_like_variant_name(name: bare_name) { "Some" } else { "None" }
+    rust_optional_variant_spelling(name: bare_name)
   } else { bare_name }
   let qualified = if optional_variant {
     rust_name
@@ -8694,7 +8704,7 @@ fn variant_pattern_shape_for(name: String, parent_enum: String?, scrut_type: Str
   let optional_variant = is_optional_variant_name(name: bare_name)
     && (is_optional_parent(parent_enum: resolved_parent) || resolved_parent == none)
   let rust_name = if optional_variant {
-    if is_some_like_variant_name(name: bare_name) { "Some" } else { "None" }
+    rust_optional_variant_spelling(name: bare_name)
   } else { bare_name }
   let qualified = if optional_variant {
     rust_name
@@ -8956,7 +8966,7 @@ fn emit_var_ref(name: String, binding_kind: VarBindingKind?, resolved_type: Infe
         let body = if freemonoid_empty_from_variant_parent(leaf_name: leaf_name, enum_name: enum_name) {
           emit_freemonoid_empty_variant_body()
         } else if is_optional_variant_name(name: leaf_name) && is_optional_like_parent_name(name: enum_name) {
-          if is_some_like_variant_name(name: leaf_name) { "Some" } else { "None" }
+          rust_optional_variant_spelling(name: leaf_name)
         } else {
           rust_variant_path(parent: enum_name, rust_name: leaf_name)
         }
@@ -9019,7 +9029,7 @@ fn emit_typed_expr_base(texpr: Node, registry: Map<String, ItemInfo>, scope: Inf
               emit_freemonoid_empty_rc_value()
             } else {
             let qualified = if is_optional_variant_name(name: leaf_name) && is_optional_like_parent_name(name: enum_name) {
-              if is_some_like_variant_name(name: leaf_name) { "Some" } else { "None" }
+              rust_optional_variant_spelling(name: leaf_name)
             } else {
               rust_variant_path(parent: enum_name, rust_name: leaf_name)
             }
@@ -11896,7 +11906,7 @@ fn emit_typed_record_lit(type_name: String?, fields: List<Node>, parent_enum: St
       }
       let optional_variant = is_optional_variant_name(name: variant_surface_name) && (is_optional_parent(parent_enum: bare_parent_enum) || is_optional_parent(parent_enum: effective_parent) || resolved_type.return_cardinality == CardOptional)
       let rust_tn = if optional_variant {
-        if is_some_like_variant_name(name: variant_surface_name) { "Some" } else { "None" }
+        rust_optional_variant_spelling(name: variant_surface_name)
       } else { tn }
       let display_tn = if optional_variant { rust_tn }
         else {
