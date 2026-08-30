@@ -38293,8 +38293,14 @@ pub fn run_regen_round_cost(
     candidate_dir_rel: &str,
     receipt_rel: &str,
     source_roots: &[String],
+    affected_scope: bool,
 ) -> Result<RegenRoundCostOutcome, String> {
-    required_regen_host::run_regen_round_cost(candidate_dir_rel, receipt_rel, source_roots)
+    required_regen_host::run_regen_round_cost(
+        candidate_dir_rel,
+        receipt_rel,
+        source_roots,
+        affected_scope,
+    )
 }
 
 /// The emitted generated surface, keyed by basename, off the SAME `measure_generated_surface`
