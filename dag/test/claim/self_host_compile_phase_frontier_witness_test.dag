@@ -14,7 +14,26 @@ import gunbc.self_host_compile_phase_frontier {
   PhaseRatchetHeld,
   PhaseRatchetRefused,
   phase_ratchet,
+  phase_ratchet_with_dispositions,
+  NewlyExposedDiagnostic,
+  ExposedByPhaseAdvance,
   render_phase_board
+}
+
+fn fixture_borrow_board(borrow_ids: List<String>) -> RustcPhaseBoard {
+  RustcPhaseBoard {
+    rows: [
+      row_parse(n: 0, identities: []),
+      row_derived(phase: Expand, n: 0, identities: []),
+      row_derived(phase: Resolve, n: 0, identities: []),
+      row_derived(phase: Typeck, n: 0, identities: []),
+      row_derived(phase: Borrowck, n: count(borrow_ids), identities: borrow_ids)
+    ],
+    furthest_phase_reached: Borrowck,
+    furthest_phase_evidence: Observed,
+    census_identity_digest: content_hash_atom(value: "fixture-borrow-board" as NonEmptyStr),
+    partition_complete: true
+  }
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -92,6 +111,22 @@ test fn a_same_count_identity_swap_refuses_the_added_identity() -> Bool {
   ) {
     PhaseRatchetRefused { phase: Typeck, identities: ids, reason: why } =>
       ids == ["b"] && string_contains(s: why as String, pattern: "gained diagnostic identities")
+    verdict => false
+  }
+}
+
+test fn a_phase_advance_requires_and_accepts_a_typed_newly_exposed_disposition() -> Bool {
+  match phase_ratchet_with_dispositions(
+    previous: fixture_board(resolve_ids: [], typeck_ids: ["masking-typeck"]),
+    current: fixture_borrow_board(borrow_ids: ["new-borrowck"]),
+    dispositions: [
+      NewlyExposedDiagnostic {
+        identity: "new-borrowck",
+        cause: ExposedByPhaseAdvance { previous_phase: Typeck, reached_phase: Borrowck }
+      }
+    ]
+  ) {
+    PhaseRatchetHeld => true
     verdict => false
   }
 }

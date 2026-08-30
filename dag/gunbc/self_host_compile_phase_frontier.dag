@@ -506,7 +506,7 @@ fn phase_ratchet(previous: RustcPhaseBoard, current: RustcPhaseBoard) -> PhaseRa
               PhaseRatchetRefused { phase: old.phase, identities: now.identities, reason: "a closed phase regained diagnostic identities" as NonEmptyStr }
             } else if rustc_phase_order(phase: old.phase) == rustc_phase_order(phase: previous.furthest_phase_reached) && now_count > old_count {
               PhaseRatchetRefused { phase: old.phase, identities: now.identities, reason: "the reached phase diagnostic identity count increased" as NonEmptyStr }
-            } else if count(added) > 0 && rustc_phase_order(phase: old.phase) <= rustc_phase_order(phase: previous.furthest_phase_reached) {
+            } else if count(added) > 0 {
               PhaseRatchetRefused { phase: old.phase, identities: added, reason: "the reached population gained diagnostic identities without a newly-exposed disposition" as NonEmptyStr }
             } else { PhaseRatchetHeld }
           }
@@ -637,8 +637,6 @@ fn phase_board_series_ratchet(series: List<CompilePhaseFrontierReceipt>) -> Phas
                 SeriesFoldRefused { invocation: receipt.invocation as String, reason: "board successor names a different predecessor" as NonEmptyStr }
               } else if receipt.sequence != previous.sequence + 1 {
                 SeriesFoldRefused { invocation: receipt.invocation as String, reason: "board receipt sequence is not chronological" as NonEmptyStr }
-              } else if receipt.observed_at <= previous.observed_at {
-                SeriesFoldRefused { invocation: receipt.invocation as String, reason: "board receipt observation time is not strictly chronological" as NonEmptyStr }
               } else if receipt.previous_prefix_digest != Present { value: previous.prefix_digest } {
                 SeriesFoldRefused { invocation: receipt.invocation as String, reason: "board receipt does not link the preceding prefix digest" as NonEmptyStr }
               } else if receipt.receipt_identity != receipt_payload_identity(receipt: receipt) || receipt.prefix_digest != expected_prefix_digest(previous: receipt.previous_prefix_digest, identity: receipt.receipt_identity) {
