@@ -1422,3 +1422,204 @@ fn membership_declared_by_an_import_whose_member_is_authored_and_never_reference
             .collect::<Vec<_>>()
     );
 }
+
+// ── THE REMAINING FALSE-REFERENCE ROLES ──
+//
+// The same class as the record-literal pair above, reached from the three positions its repair
+// deliberately did not cover -- a record TYPE declaration's field label, a named call
+// argument's label, a parameter binder, a coproduct declaration's variant names -- each with
+// the discriminating twin one mutation away: the same deletion of the same spelling, reached
+// from a genuine reference in the same syntactic neighbourhood, must stay refused.
+
+#[test]
+fn deleting_a_declaration_a_type_field_label_merely_spells_carries_no_delta() {
+    let base =
+        "module probe.consumer\n\ndata widget: String = \"w\"\n\ntype Row { widget: String }\n";
+    let head = "module probe.consumer\n\ntype Row { widget: String }\n";
+    let report = compare(
+        "type_field_label",
+        &[("consumer.dag", base)],
+        &[("consumer.dag", head)],
+    );
+    assert!(
+        report.population.binding_rows_compared > 0,
+        "no binding row was compared, so the absence below is ignorance rather than agreement"
+    );
+    assert!(
+        dispositions_for(&report, "widget").is_empty(),
+        "`widget` here is a DECLARED FIELD LABEL of `type Row`, not a reference to the deleted \
+         `data widget`; it declares a name and needs no supplier. got: {:?}",
+        report
+            .deltas
+            .iter()
+            .map(|d| (disposition_label(d.disposition), d.detail.clone()))
+            .collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn deleting_a_type_a_declared_field_still_names_is_still_unresolvedness() {
+    // ONE MUTATION FROM THE ARM ABOVE, and it discriminates TWO repairs at once: the field's
+    // declared TYPE lives in the parser-stamped channel (`authored_type_references`), not in
+    // the tree walk, so this arm goes quiet if either the label repair over-suppresses or
+    // `binding_rows` stops unioning that channel.
+    let base =
+        "module probe.consumer\n\ntype Gadget { tag: String }\n\ntype Row { part: Gadget }\n";
+    let head = "module probe.consumer\n\ntype Row { part: Gadget }\n";
+    let report = compare(
+        "declared_field_type",
+        &[("consumer.dag", base)],
+        &[("consumer.dag", head)],
+    );
+    assert_eq!(
+        dispositions_for(&report, "Gadget"),
+        vec![NamespaceDeltaDisposition::NewUnresolvedness],
+        "`Gadget` is the declared TYPE of a field; deleting its only declaration leaves the \
+         field's type denoting nothing and the wall must say so. got: {:?}",
+        report.deltas
+    );
+}
+
+#[test]
+fn deleting_a_declaration_a_call_argument_label_merely_spells_carries_no_delta() {
+    let base = "module probe.consumer\n\ndata widget: String = \"w\"\n\nfn go() -> String { call_it(widget: \"z\") }\n";
+    let head = "module probe.consumer\n\nfn go() -> String { call_it(widget: \"z\") }\n";
+    let report = compare(
+        "call_arg_label",
+        &[("consumer.dag", base)],
+        &[("consumer.dag", head)],
+    );
+    assert!(
+        report.population.binding_rows_compared > 0,
+        "no binding row was compared, so the absence below is ignorance rather than agreement"
+    );
+    assert!(
+        dispositions_for(&report, "widget").is_empty(),
+        "`widget` here is a NAMED ARGUMENT LABEL; it addresses `call_it`'s parameter and never \
+         bound to the deleted `data widget`. got: {:?}",
+        report
+            .deltas
+            .iter()
+            .map(|d| (disposition_label(d.disposition), d.detail.clone()))
+            .collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn deleting_a_declaration_a_call_argument_value_still_names_is_still_unresolvedness() {
+    let base = "module probe.consumer\n\ndata widget: String = \"w\"\n\nfn go() -> String { call_it(tag: widget) }\n";
+    let head = "module probe.consumer\n\nfn go() -> String { call_it(tag: widget) }\n";
+    let report = compare(
+        "call_arg_value",
+        &[("consumer.dag", base)],
+        &[("consumer.dag", head)],
+    );
+    assert_eq!(
+        dispositions_for(&report, "widget"),
+        vec![NamespaceDeltaDisposition::NewUnresolvedness],
+        "an argument VALUE that names `widget` REFERENCES it, whatever label it travels under; \
+         if this arm goes quiet the label repair has widened past the label. got: {:?}",
+        report.deltas
+    );
+}
+
+#[test]
+fn deleting_a_declaration_a_parameter_binder_merely_spells_carries_no_delta() {
+    let base = "module probe.consumer\n\ndata widget: String = \"w\"\n\nfn use_own(widget: String) -> String { \"x\" }\n";
+    let head = "module probe.consumer\n\nfn use_own(widget: String) -> String { \"x\" }\n";
+    let report = compare(
+        "param_binder",
+        &[("consumer.dag", base)],
+        &[("consumer.dag", head)],
+    );
+    assert!(
+        report.population.binding_rows_compared > 0,
+        "no binding row was compared, so the absence below is ignorance rather than agreement"
+    );
+    assert!(
+        dispositions_for(&report, "widget").is_empty(),
+        "`widget` here is a PARAMETER BINDER; it declares \
+         a name the deleted `data widget` never supplied. got: {:?}",
+        report
+            .deltas
+            .iter()
+            .map(|d| (disposition_label(d.disposition), d.detail.clone()))
+            .collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn deleting_a_type_a_parameter_still_names_is_still_unresolvedness() {
+    // The param's declared type is `children[0]` of the binder node -- the genuine reference
+    // sharing the binder's own edge -- so this arm goes quiet if the `params` suppression ever
+    // propagates past the binder itself.
+    let base = "module probe.consumer\n\ntype Gadget { tag: String }\n\nfn use_it(g: Gadget) -> String { \"x\" }\n";
+    let head = "module probe.consumer\n\nfn use_it(g: Gadget) -> String { \"x\" }\n";
+    let report = compare(
+        "param_type",
+        &[("consumer.dag", base)],
+        &[("consumer.dag", head)],
+    );
+    assert_eq!(
+        dispositions_for(&report, "Gadget"),
+        vec![NamespaceDeltaDisposition::NewUnresolvedness],
+        "`Gadget` is a parameter's declared TYPE; deleting its only declaration leaves the \
+         signature denoting nothing and the wall must say so. got: {:?}",
+        report.deltas
+    );
+}
+
+#[test]
+fn deleting_a_declaration_a_variant_declaration_merely_spells_carries_no_delta() {
+    // Two drafts of this arm were DECORATIONS, measured rather than suspected: a same-module
+    // supplier only ever produced a self-candidate the variant's own declaration also
+    // produces, and an unimported cross-module supplier never entered the candidate set at
+    // all (bare spellings resolve through the module's own surface and its import claims,
+    // never pool-wide). The BLANKET import routes the supplier's surface into the candidate
+    // set, so deleting the supplier's declaration moves the set -- red before the repair --
+    // while after it the variant name contributes no occurrence row at all.
+    let supplier_base =
+        "module probe.home\n\ndata Widget: String = \"w\"\n\ndata other: String = \"o\"\n";
+    let supplier_head = "module probe.home\n\ndata other: String = \"o\"\n";
+    let consumer =
+        "module probe.consumer\n\nimport probe.home\n\ntype Verdict\n  = Widget\n  | Other\n";
+    let report = compare(
+        "variant_declaration",
+        &[("home.dag", supplier_base), ("consumer.dag", consumer)],
+        &[("home.dag", supplier_head), ("consumer.dag", consumer)],
+    );
+    assert!(
+        report.population.binding_rows_compared > 0,
+        "no binding row was compared, so the absence below is ignorance rather than agreement"
+    );
+    assert!(
+        dispositions_for(&report, "Widget").is_empty(),
+        "`Widget` here is a VARIANT NAME in `type Verdict`'s own declaration -- it DECLARES the \
+         variant (it is already on the module's export surface) and references nothing. got: {:?}",
+        report
+            .deltas
+            .iter()
+            .map(|d| (disposition_label(d.disposition), d.detail.clone()))
+            .collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn deleting_a_type_a_variant_payload_field_still_names_is_still_unresolvedness() {
+    // The payload field's declared type sits BELOW the suppressed variant child, reached only
+    // if the `Disj` suppression stops at the variant's own name and keeps walking its payload.
+    let base = "module probe.consumer\n\ntype Gadget { tag: String }\n\ntype Verdict\n  = Wrap { part: Gadget }\n  | Other\n";
+    let head = "module probe.consumer\n\ntype Verdict\n  = Wrap { part: Gadget }\n  | Other\n";
+    let report = compare(
+        "variant_payload_type",
+        &[("consumer.dag", base)],
+        &[("consumer.dag", head)],
+    );
+    assert_eq!(
+        dispositions_for(&report, "Gadget"),
+        vec![NamespaceDeltaDisposition::NewUnresolvedness],
+        "`Gadget` is a variant payload field's declared TYPE; deleting its only declaration \
+         leaves the payload denoting nothing and the wall must say so. got: {:?}",
+        report.deltas
+    );
+}
