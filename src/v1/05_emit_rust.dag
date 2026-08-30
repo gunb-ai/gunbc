@@ -3019,19 +3019,15 @@ fn emit_rust_selected(typed: ResolvedGraph, selection: RustModuleRenderSelection
     return EmitResult { files: [], diagnostics: filename_collisions }
   }
   let test_projections = ctx.test_projections
-  let selected_modules = typed.modules |> filter(tm => rust_module_render_selection_renders(
-    selection: selection,
-    module_name: authored_name_at(source_indices: tm.type_env.source_indices, node: tm.module)))
-  let module_paths = typed.modules |> map(tm => rust_module_emit_path(
-    module_name: authored_name_at(source_indices: tm.type_env.source_indices, node: tm.module)))
-  let module_emissions = selected_modules |> map(tm => emit_module_full_with_dispositions(typed_module: tm, ctx: ctx, typed_modules: typed.modules))
+  let module_emissions = typed.modules
+    |> filter(tm => rust_module_render_selection_renders(
+      selection: selection,
+      module_name: authored_name_at(source_indices: tm.type_env.source_indices, node: tm.module)))
+    |> map(tm => emit_module_full_with_dispositions(typed_module: tm, ctx: ctx, typed_modules: typed.modules))
   let module_files = module_emissions |> map(e => e.file)
   let import_refusals = module_emissions |> flat_map(e => e.import_refusals)
-  // A MODULE HAS A TEST MIRROR EXACTLY WHEN IT HAS PROJECTIONS, which is a fact about the
-  // resolved graph and not about rendered bytes -- so the population is decided here and the
-  // rendering is decided by the selection, instead of the old shape where an empty rendered
-  // file was filtered out after the fact. A test mirror follows its own module's selection
-  // rather than carrying a selection entry of its own: it is the same edit's product.
+  let module_paths = typed.modules |> map(tm => rust_module_emit_path(
+    module_name: authored_name_at(source_indices: tm.type_env.source_indices, node: tm.module)))
   let test_module_names = typed.modules
     |> map(tm => authored_name_at(source_indices: tm.type_env.source_indices, node: tm.module))
     |> filter(name => (test_projections |> filter(p => p.module_name == name)) |> count > 0)

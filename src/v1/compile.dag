@@ -1344,11 +1344,11 @@ fn emit_resolved_for_target(resolved: ResolvedPipelineResult, target: RenderTarg
 // clean, and the modules a scope declined to render had nothing to say.
 //
 // This is a construction rather than a claim about it: the `if` below is what makes the
-// implication true, and `emit_refusal_forces_empty_files` in
-// `v1.tests.claim.change_denominated_emit_witness_test` is the discriminating execution --
-// a fixture whose emit refuses, asserted to produce zero files rather than the ones that did
-// render. Delete the `if` and that witness goes red, which is the only form this argument can
-// take that a later reader can check.
+// implication true, and `an_emit_that_refuses_hands_back_no_files` in
+// `v1_compiler.required_regen_host` is its discriminating execution -- a fixture whose emit
+// refuses, asserted to produce zero files rather than the ones that did render. It runs in the
+// required unit step, so deleting the `if` goes red there, which is the only form this argument
+// can take that a later reader can check.
 fn emit_resolved_for_target_selected(resolved: ResolvedPipelineResult, target: RenderTarget, selection: RustModuleRenderSelection) -> PipelineResult {
   match emittable_graph(resolved: resolved) {
     Absent =>
