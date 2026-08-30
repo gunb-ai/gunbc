@@ -221,6 +221,27 @@ type ProducedDeclParamSegment
   | ProducedParamName { token_class: Symbol }
   | ProducedParamType
 
+// WHY THIS IS NOT THE GRAMMAR ROWS THEMSELVES, STATED AS A DECLARED TRIGGER RATHER THAN
+// AS AN "EVENTUALLY" (review 57546 asked exactly this, and it names the right terminal
+// target). The rows below are a SCHEMA over an arbitrary declaration; a GrammarRelationRow
+// is a GROUND instance — v2.extdeps.languages.rust rust_grammar_relation_row pairs one
+// production with one emitted node and one fully-bound token list in which `add`, `x`, `y`
+// and `i32` are literals. The two are a rule and one sentence that rule generates, not two
+// encodings of one fact, which is why this change did not grow the authority count: the
+// general half already existed as the `render` FN, and what changed is its representation.
+//
+// The capability that would let the schema BE grammar rows, named so the row is countable
+// rather than open-ended: `v2.std.grammar` TerminalStampMode carries StampClass /
+// StampBinding{binding: Symbol} / StampLexeme, where StampBinding binds a FIXED symbol —
+// there is no stamp meaning "this declaration's name" or "this parameter's name", so a
+// production cannot address a hole in the subject it renders. And GrammarExpr's
+// Repeat{element} carries no separator and no declared source of repetition, so it cannot
+// say "each parameter edge of the domain, comma-separated". DISSOLUTION TRIGGER: role
+// stamps on TerminalStampMode plus separated, subject-sourced repetition on GrammarExpr —
+// together sufficient for one production to render an arbitrary declaration — at which
+// point these rows and their fold are subsumed by the GrammarRelationRow forward reading
+// and delete together. Until that lands, a produced declaration has no grammar-row form to
+// consume, and the schema has to live somewhere the model layer can reify.
 type ProducedDeclRenderRows {
   signature: List<ProducedDeclSignatureSegment>
   param_layout: List<ProducedDeclParamSegment>
