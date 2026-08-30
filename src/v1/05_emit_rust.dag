@@ -323,8 +323,11 @@ fn render_rust_type_without_applied_binding(n: Node, shared_types: Set<String>, 
     match n.children |> first {
       Present { value: key_child } =>
         let key_node = child_type_node(ch: key_child)
+        // child_type_node projects the RESOLVED type, and an arrow's resolved type is its return:
+        // Map<Symbol, fn(String) -> String> rendered HashMap<Symbol, String>. The authored arrow
+        // child is the type; it must reach the arrow renderer intact.
         let val_node = match n.children |> skip(1) |> first {
-          Present { value: val_child } => child_type_node(ch: val_child)
+          Present { value: val_child } => if rust_type_node_is_arrow(n: val_child) { val_child } else { child_type_node(ch: val_child) }
           Absent => type_variable_node(id: "map_value")
         }
         let key_str = render_rust_type(n: key_node, shared_types: shared_types, source_indices: source_indices, emit_info: emit_info)
@@ -337,7 +340,7 @@ fn render_rust_type_without_applied_binding(n: Node, shared_types: Set<String>, 
   } else if node_is_element_collection(n: n, source_indices: source_indices) {
     match n.children |> first {
       Present { value: elem_child } =>
-        let elem_node = child_type_node(ch: elem_child)
+        let elem_node = if rust_type_node_is_arrow(n: elem_child) { elem_child } else { child_type_node(ch: elem_child) }
         let inner_str = render_rust_type(n: elem_node, shared_types: shared_types, source_indices: source_indices, emit_info: emit_info)
         let tn = authored_name_at(source_indices: source_indices, node: n)
         let base = emit_container(name: tn, inner: inner_str, target: Rust)
@@ -351,7 +354,15 @@ fn render_rust_type_without_applied_binding(n: Node, shared_types: Set<String>, 
     } else if is_host_text_carrier_type(n: n, source_indices: source_indices) {
       rust_carrier_optional_wrap(n: n, rendered: render_rust_text_carrier(shared_types: shared_types))
     } else {
-      render_node_type(n: n, target: Rust, shared_types: shared_types, source_indices: source_indices)
+      // The native-alias row is consulted BEFORE the target-generic renderer: render_node_type
+      // shared-wraps any leaf in the sharing set, so `predecessor: Nat` at a variant record field
+      // rendered `Rc<Nat>` in the full closure (Nat is shared there) while its constructor passed
+      // i64 -- the wrap was already inside the rendered string, a layer below the field-carrier
+      // decision rust_field_carrier_final_type projects.
+      match rust_seed_host_numeric_alias(name: qualified_last_segment(name: tn), decl_file: type_reference_decl_file_in_env(n: n, env: emit_info.fn_type_env, source_indices: source_indices)) {
+        Present { value: host } => rust_carrier_optional_wrap(n: n, rendered: host)
+        Absent => render_node_type(n: n, target: Rust, shared_types: shared_types, source_indices: source_indices)
+      }
     }
   }
 }
@@ -1338,6 +1349,9 @@ fn render_rust_applied_type_shared(n: Node, generic_param_names: List<String>, s
 }
 
 fn render_rust_decl_type(n: Node, generic_param_names: List<String>, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, variant_to_enum: Map<String, String>, env: TypeEnv) -> String {
+  if rust_type_node_is_arrow(n: n) {
+    return render_rust_arrow_type_in_scope(n: n, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env)
+  }
   if is_host_text_carrier_type(n: n, source_indices: source_indices) { return rust_carrier_optional_wrap(n: n, rendered: "String") }
   if is_host_optional_carrier_type(n: n, source_indices: source_indices) {
     return render_rust_optional_carrier_applied(n: n, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env)
