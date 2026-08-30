@@ -57,7 +57,7 @@ pub fn rust_keywords() -> Rc<HashMap<String, String>> {
             let mut __m = HashMap::new();
             __m.insert("true".to_string(), "true".to_string());
             __m.insert("false".to_string(), "false".to_string());
-            __m.insert("null".to_string(), "None".to_string());
+            __m.insert("null".to_string(), "std::option::Option::None".to_string());
             __m.insert("and".to_string(), "&&".to_string());
             __m.insert("or".to_string(), "||".to_string());
             __m.insert("not".to_string(), "!".to_string());
@@ -78,7 +78,6 @@ pub fn rust_container_templates() -> Rc<HashMap<String, String>> {
             __m.insert("optional".to_string(), "Option<{0}>".to_string());
             __m.insert("map".to_string(), "HashMap<{0}, {1}>".to_string());
             __m.insert("free_monoid".to_string(), "Vec<{0}>".to_string());
-            __m.insert("partial_function".to_string(), "HashMap<{0}, {1}>".to_string());
             __m.insert("boolean_algebra".to_string(), "bool".to_string());
             Rc::new(__m)
         };

@@ -5,11 +5,13 @@ import v2.compiler.source_authority {
   ModuleStorageDivergent,
   ModuleStorageUncovered,
   SourceRootIngest,
-  SourceRootIngestBuildOk,
-  SourceRootIngestBuildReadFailed,
   module_storage_bindings_from_ingest,
   module_storage_host_agrees_with_oracle,
-  module_storage_module_for_path,
+  module_storage_module_for_path
+}
+import v2.compiler.source_authority_read {
+  SourceRootIngestBuildOk,
+  SourceRootIngestBuildReadFailed,
   source_root_ingest_build_from_source_refs
 }
 import v2.test.workflow.host_module_binding_manifest {

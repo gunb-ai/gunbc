@@ -459,10 +459,10 @@ pub fn sub_value_to_call_pattern(relation: Rc<SubValueRelation>) -> Option<Rc<Ca
             })),
         },
         SubValueRelation::PreservedValue => Some(Rc::new(CallPattern::SameArgumentCall)),
-        SubValueRelation::NonIncreasingValue => None,
-        SubValueRelation::StrictAxisErased => None,
-        SubValueRelation::MixedTop => None,
-        SubValueRelation::SubValueUnknown => None,
+        SubValueRelation::NonIncreasingValue => std::option::Option::None,
+        SubValueRelation::StrictAxisErased => std::option::Option::None,
+        SubValueRelation::MixedTop => std::option::Option::None,
+        SubValueRelation::SubValueUnknown => std::option::Option::None,
     }
 }
 
@@ -484,7 +484,7 @@ pub fn sub_value_to_lowering_target(relation: Rc<SubValueRelation>) -> Option<Rc
                 param: f.field_name.clone(),
             }),
             evidence: DescentEvidence::Strict,
-            factor: None,
+            factor: std::option::Option::None,
         })),
         SubValueRelation::ArithmeticDescent {
             param: p,
@@ -500,17 +500,17 @@ pub fn sub_value_to_lowering_target(relation: Rc<SubValueRelation>) -> Option<Rc
             primitive: IterationPrimitive::Repeat,
             bound: Rc::new(SizeBound::Forever),
             evidence: DescentEvidence::NonIncreasing,
-            factor: None,
+            factor: std::option::Option::None,
         })),
         SubValueRelation::NonIncreasingValue => Some(Rc::new(LoweringTarget {
             primitive: IterationPrimitive::Repeat,
             bound: Rc::new(SizeBound::Forever),
             evidence: DescentEvidence::NonIncreasing,
-            factor: None,
+            factor: std::option::Option::None,
         })),
-        SubValueRelation::StrictAxisErased => None,
-        SubValueRelation::MixedTop => None,
-        SubValueRelation::SubValueUnknown => None,
+        SubValueRelation::StrictAxisErased => std::option::Option::None,
+        SubValueRelation::MixedTop => std::option::Option::None,
+        SubValueRelation::SubValueUnknown => std::option::Option::None,
     }
 }
 
@@ -713,10 +713,10 @@ pub struct RecurrenceForm {
 
 pub fn bounded_int_pow_exponent(k: i64) -> Option<i64> {
     if (k.clone() < 0) {
-        None
+        std::option::Option::None
     } else {
         if (k.clone() > crate::std_termination::peano_literal_materialization_cap()) {
-            None
+            std::option::Option::None
         } else {
             Some(k.clone())
         }
@@ -728,7 +728,7 @@ pub fn int_pow_bounded(base: i64, exp: i64) -> Option<i64> {
         512 * 1024,
         2 * 1024 * 1024,
         || match bounded_int_pow_exponent(exp.clone()) {
-            None => None,
+            None => std::option::Option::None,
             Some(e) => {
                 if (e.clone() == 0) {
                     Some(1)
@@ -758,10 +758,10 @@ pub fn int_pow_bounded(base: i64, exp: i64) -> Option<i64> {
                                             ),
                                         ) {
                                             Some(prod) => Some(prod.clone()),
-                                            None => None,
+                                            None => std::option::Option::None,
                                         }
                                     }
-                                    None => None,
+                                    None => std::option::Option::None,
                                 }
                             }
                         }
@@ -774,7 +774,7 @@ pub fn int_pow_bounded(base: i64, exp: i64) -> Option<i64> {
 
 pub fn ceil_log(base: i64, argument: i64) -> Option<i64> {
     if ((base.clone() < 2) || (argument.clone() < 1)) {
-        None
+        std::option::Option::None
     } else {
         ceil_log_iter(base.clone(), argument.clone(), 0, 1)
     }
@@ -789,14 +789,14 @@ pub fn ceil_log_iter(mut base: i64, mut argument: i64, mut k: i64, mut power: i6
                 crate::std_checked_arithmetic::checked_int_multiply(power.clone(), base.clone()),
             ) {
                 None => {
-                    break None;
+                    break std::option::Option::None;
                 }
                 Some(next_power) => {
                     match crate::std_checked_arithmetic::checked_int_optional(
                         crate::std_checked_arithmetic::checked_int_add(k.clone(), 1),
                     ) {
                         None => {
-                            break None;
+                            break std::option::Option::None;
                         }
                         Some(k1) => {
                             let __tco_0 = k1.clone();

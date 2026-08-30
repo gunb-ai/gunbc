@@ -49,7 +49,7 @@ fn rust_bound_declaration_refs() -> List<DeclarationRef> {
 }
 
 // THE VERDICT ON EVERY BARE-NAME ROW OF extdeps.languages.rust.types rust_type_checkpoints, one per
-// name that table carried when this authority landed. The witness test.claim.symbol_identity_binding
+// name that table carried when this authority landed. The witness test.claim.self_host_symbol_identity_binding
 // holds the roster and the table to each other: a Migrated name must be ABSENT from the bare table
 // (its deletion is the census), a Proven or Debt name must be PRESENT, and a table row with no
 // verdict is a refusal. So the spelling-keyed table can only shrink by a declared verdict.
