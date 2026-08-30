@@ -4657,6 +4657,17 @@ fn eval_expr_inner(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> Inter
     match (*node.expr_data).clone() {
         ExprData::ExprLiteral { value } => eval_literal(&value),
 
+        // An elaborated literal evaluates as its image under the selected homomorphism
+        // (std.literal_elaboration): the child is ordinary constructor nodes of the destination,
+        // which the interpreter's own numeric grounding folds exactly as authored ones.
+        ExprData::ExprElaboratedLiteral { .. } => match node.children.get(0) {
+            Some(image) => eval_expr(image, env, ctx),
+            None => Err(InterpError::TypeError {
+                msg: "elaborated literal carries no image (v1.compiler.infer unfold_literal_image)"
+                    .to_string(),
+            }),
+        },
+
         ExprData::ExprVar { binding_kind } => eval_var(node, binding_kind.as_deref(), env, ctx),
 
         ExprData::ExprBinOp { op, .. } => {
@@ -9639,6 +9650,7 @@ pub(crate) fn expr_data_form_name(expr_data: &ExprData) -> &'static str {
     match expr_data {
         ExprData::NoExprData => "NoExprData",
         ExprData::ExprLiteral { .. } => "ExprLiteral",
+        ExprData::ExprElaboratedLiteral { .. } => "ExprElaboratedLiteral",
         ExprData::ExprError { .. } => "ExprError",
         ExprData::ExprVar { .. } => "ExprVar",
         ExprData::ExprFieldAccess { .. } => "ExprFieldAccess",
@@ -16206,7 +16218,7 @@ pub fn list_cons_tail_split_snapshot() -> (u64, u64) {
     )
 }
 
-pub const EXPR_VARIANT_COUNT: usize = 22;
+pub const EXPR_VARIANT_COUNT: usize = 23;
 
 fn expr_variant_index(d: &ExprData) -> usize {
     match d {
@@ -16232,6 +16244,7 @@ fn expr_variant_index(d: &ExprData) -> usize {
         ExprData::ExprIndex => 19,
         ExprData::ExprSlice => 20,
         ExprData::ExprReturn => 21,
+        ExprData::ExprElaboratedLiteral { .. } => 22,
     }
 }
 
@@ -16259,6 +16272,7 @@ pub fn expr_variant_name(i: usize) -> &'static str {
         "ExprIndex",
         "ExprSlice",
         "ExprReturn",
+        "ExprElaboratedLiteral",
     ];
     NAMES.get(i).copied().unwrap_or("?")
 }

@@ -2,10 +2,11 @@ module v1.compiler.infer_env
 
 import std.occurrence_identity { OccurrenceSynthetic }
 
-import v1.std.core { Node, NewlineIndex, InternTable, empty_intern_table, merge_intern_tables, intern, intern_find, intern_str, source_text_at, authored_name_at, find_child_named, Cardinality, Connective, ExprData, InferredNode, kernel_span, module_path_segments, param_node_name_at, param_node_type_expr, CompilerDiagnostic, AmbiguousReference, UnresolvedType }
+import v1.std.core { Node, NewlineIndex, InternTable, Resolved, qualified_last_segment, empty_intern_table, merge_intern_tables, intern, intern_find, intern_str, source_text_at, authored_name_at, find_child_named, Cardinality, Connective, ExprData, InferredNode, kernel_span, module_path_segments, param_node_name_at, param_node_type_expr, CompilerDiagnostic, AmbiguousReference, UnresolvedType }
 import v1.compiler.type_head_exposure { TypeHeadExposure }
 
 import std.types { SourceSpan, is_kernel_type }
+import std.decl_ref { decl_ref, DeclarationRef }
 
 import std.induction { InductiveField, RecursionShape, DirectRecursion, ListRecursion, OptionalRecursion, SetRecursion, MapValueRecursion, SubValueRelation, SubValueUnknown, PreservedValue }
 import std.algebra { FreeMonoid, Empty, Cons }
@@ -1221,4 +1222,41 @@ fn env_with_type_variable_bindings(env: TypeEnv, tp_names: List<String>) -> Type
       unit_variant_index: updated_index
     }
   )
+}
+
+// THE EXACT PATH, AT ANY CONSUMER (relocated from v1.compiler.emit_rust, XL-0N). A type reference
+// carries its resolved declaration (`inferred: Resolved { node }`); the declaration's module is the
+// containment fact the corpus-wide bare-name census already holds (SymbolIndex.global_bare, one row
+// per declared name with its module_path and the declaration node), so the DeclarationRef is read
+// from that census by identity -- the candidate whose declaration node IS the resolved node, by
+// ident_span -- and never minted from a spelling. Identity the census cannot supply (a kernel mint,
+// a variant alias, an unresolved reference) is absent.
+fn binding_declares_span(binding: TypeBinding, sp: SourceSpan) -> Bool {
+  match binding.resolved.ident_span {
+    Present { value: s } => s.file == sp.file && s.start == sp.start
+    Absent => false
+  }
+}
+
+fn type_reference_declaration_ref(n: Node, source_indices: Map<String, NewlineIndex>, env: TypeEnv) -> DeclarationRef? {
+  let rt = match n.inferred {
+    Present { value: Resolved { node: r } } => r
+    _ => n
+  }
+  let decl_name = qualified_last_segment(name: authored_name_at(source_indices: source_indices, node: rt))
+  if decl_name == "" { return none }
+  match rt.ident_span {
+    Absent => none
+    Present { value: sp } =>
+      match map_get(env.symbol_index.global_bare, decl_name) {
+        Present { value: GlobalBareUniqueBinding { module_path: mp, binding: b } } =>
+          if binding_declares_span(binding: b, sp: sp) { Present { value: decl_ref(module_path: mp, decl_name: decl_name) } } else { none }
+        Present { value: GlobalBareAmbiguousBinding { candidates: cands } } =>
+          match cands |> filter(c => binding_declares_span(binding: c.binding, sp: sp)) |> first {
+            Present { value: c } => Present { value: decl_ref(module_path: c.module_path, decl_name: decl_name) }
+            Absent => none
+          }
+        Absent => none
+      }
+  }
 }

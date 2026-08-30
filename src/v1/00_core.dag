@@ -8,6 +8,7 @@ import std.syntax {
   AlgebraFieldKind, AlgAdd, AlgMul, AlgReciprocal, AlgQuotient, AlgRemainder, AlgCompare, AlgMeet, AlgJoin
 }
 import std.algebra { CollectionSizeEffect, CostShape, AlgebraFieldTemplate }
+import std.literal_elaboration { LiteralElaboration }
 import std.induction { SubValueRelation }
 import std.occurrence_identity {
   NodeOccurrenceIdentity,
@@ -165,6 +166,7 @@ type ExprErrorKind = ParseRecoveryError | SemanticExprError | InternalExprError 
 type ExprData
   = NoExprData
   | ExprLiteral { value: LiteralValue }
+  | ExprElaboratedLiteral { value: LiteralValue, elaboration: LiteralElaboration }
   | ExprError { kind: ExprErrorKind, message: String }
   | ExprVar { binding_kind: VarBindingKind? }
   | ExprFieldAccess { summary: FieldSummary? }
@@ -1486,6 +1488,11 @@ fn expr_literal_int_optional(expr: Node) -> Int? {
         LitInt { value: v } => Present { value: v }
         _ => none
       }
+    ExprElaboratedLiteral { value: lit, elaboration: _ } =>
+      match lit {
+        LitInt { value: v } => Present { value: v }
+        _ => none
+      }
     ExprUnaryOp { op: Neg } =>
       match expr_literal_int_optional(expr: unaryop_operand(texpr: expr)) {
         Present { value: v } => Present { value: 0 - v }
@@ -1524,6 +1531,7 @@ fn expr_is_any_literal(expr: Node) -> Bool {
         LitNull => false
         _ => true
       }
+    ExprElaboratedLiteral { value: _, elaboration: _ } => true
     ExprUnaryOp { op: Neg } => expr_is_any_literal(expr: unaryop_operand(texpr: expr))
     _ => false
   }
@@ -1754,6 +1762,7 @@ fn expr_has_non_tail_self_call(texpr: Node, fn_name: String, in_tail: Bool, sour
     ExprError { kind: _, message: _ } => false
     ExprVar { binding_kind: _ } => false
     ExprLiteral { value: _ } => false
+    ExprElaboratedLiteral { value: _, elaboration: _ } => false
     ExprFieldAccess { summary: _ } =>
       texpr.children |> any(child => expr_has_non_tail_self_call(texpr: child, fn_name: fn_name, in_tail: false, source_indices: source_indices))
     ExprMethodCall { method_semantics: _ } =>

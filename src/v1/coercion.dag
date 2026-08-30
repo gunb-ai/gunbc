@@ -338,6 +338,19 @@ fn rust_exact_realization_decision(source: DeclarationRef?) -> TypeRealizationDe
 // carries a verdict in gunbc.rust_source_type_bindings, and a name with no verdict is not a table
 // row at all (false here means the spelling-keyed arm refuses for it). Consulted by
 // type_realization_decision ahead of the table so a Migrated name cannot be answered by spelling.
+// Whether a DECLARATION realizes natively on the Rust target: the exact binding first
+// (gunbc.rust_source_type_bindings), then the spelling-keyed checkpoint under the declaration's own
+// identity gate (lookup_checkpoint, which refuses a known structural declaration and honours the
+// bare-row verdicts). This is the ONE question std.literal_elaboration and std.operator_realization
+// ask of the target (XL-0N): a native declaration takes the kernel literal and the host operator
+// directly; anything else is a structural operand.
+fn declaration_realizes_natively_on_rust(declaration: DeclarationRef, decl_file: String) -> Bool {
+  match rust_exact_realization_decision(source: Present { value: declaration }) {
+    Realized { checkpoint: _ } => true
+    _ => lookup_checkpoint(target: Rust, dag_name: declaration.decl_name as String, decl_file: decl_file) != none
+  }
+}
+
 fn rust_checkpoint_row_keeps_bare_row(dag_name: String) -> Bool {
   if dag_name == "" { false }
   else {
