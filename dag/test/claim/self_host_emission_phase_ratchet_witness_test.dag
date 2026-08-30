@@ -1,0 +1,88 @@
+module test.claim.self_host_emission_phase_ratchet_witness
+
+import std.types { Bool, Int, String, NonEmptyStr }
+import std.content_hash { content_hash_atom }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import extdeps.languages.rust.compiler_phases { RustcPhase, Parse, Expand, Resolve, Typeck, Borrowck }
+import gunbc.self_host_emission_board {
+  PhaseCount,
+  PhaseNotYetReached,
+  Observed,
+  DerivedFromRustcErrorIndex,
+  RustcPhaseBoardRow,
+  RustcPhaseBoard,
+  PhaseRatchetHeld,
+  PhaseRatchetRefused,
+  phase_ratchet,
+  render_phase_board
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn row_parse(n: Int, identities: List<String>) -> RustcPhaseBoardRow {
+  RustcPhaseBoardRow { phase: Parse, standing: PhaseCount { count: n, evidence: Observed }, identities: identities }
+}
+
+fn row_derived(phase: RustcPhase, n: Int, identities: List<String>) -> RustcPhaseBoardRow {
+  RustcPhaseBoardRow { phase: phase, standing: PhaseCount { count: n, evidence: DerivedFromRustcErrorIndex }, identities: identities }
+}
+
+fn fixture_board(resolve_ids: List<String>, typeck_ids: List<String>) -> RustcPhaseBoard {
+  RustcPhaseBoard {
+    rows: [
+      row_parse(n: 0, identities: []),
+      row_derived(phase: Expand, n: 0, identities: []),
+      row_derived(phase: Resolve, n: count(resolve_ids), identities: resolve_ids),
+      if count(resolve_ids) > 0 {
+        RustcPhaseBoardRow { phase: Typeck, standing: PhaseNotYetReached, identities: [] }
+      } else {
+        row_derived(phase: Typeck, n: count(typeck_ids), identities: typeck_ids)
+      },
+      RustcPhaseBoardRow { phase: Borrowck, standing: PhaseNotYetReached, identities: [] }
+    ],
+    furthest_phase_reached: if count(resolve_ids) > 0 { Resolve } else { Typeck },
+    furthest_phase_evidence: Observed,
+    census_identity_digest: content_hash_atom(value: "fixture-board" as NonEmptyStr)
+  }
+}
+
+// FALSIFIER 1: a phase already closed at zero cannot regain an identity. The refusal names both
+// the phase and the exact identity so a red never degrades into an unexplained Bool.
+test fn a_planted_regression_in_a_closed_phase_refuses_and_names_it() -> Bool {
+  match phase_ratchet(
+    previous: fixture_board(resolve_ids: [], typeck_ids: ["E0308\tsrc/a.rs:1:1\tmismatch"]),
+    current: fixture_board(resolve_ids: ["E0425\tsrc/a.rs:1:1\tmissing name"], typeck_ids: [])
+  ) {
+    PhaseRatchetRefused { phase: Resolve, identities: ids, reason: why } =>
+      ids == ["E0425\tsrc/a.rs:1:1\tmissing name"] && string_contains(s: why as String, pattern: "closed phase")
+    verdict => false
+  }
+}
+
+// FALSIFIER 2: new identities inside the currently reached phase are a regression even when no
+// earlier phase reopens.
+test fn a_planted_count_increase_in_the_reached_phase_refuses_and_names_it() -> Bool {
+  match phase_ratchet(
+    previous: fixture_board(resolve_ids: [], typeck_ids: ["a"]),
+    current: fixture_board(resolve_ids: [], typeck_ids: ["a", "b"])
+  ) {
+    PhaseRatchetRefused { phase: Typeck, identities: ids, reason: why } =>
+      ids == ["a", "b"] && string_contains(s: why as String, pattern: "count increased")
+    verdict => false
+  }
+}
+
+test fn a_smaller_population_at_the_same_reached_phase_holds() -> Bool {
+  match phase_ratchet(
+    previous: fixture_board(resolve_ids: [], typeck_ids: ["a", "b"]),
+    current: fixture_board(resolve_ids: [], typeck_ids: ["b"])
+  ) {
+    PhaseRatchetHeld => true
+    verdict => false
+  }
+}
+
+test fn milestone_render_never_calls_an_unreached_phase_zero() -> Bool {
+  render_phase_board(board: fixture_board(resolve_ids: [], typeck_ids: ["a", "b"]))
+    == "parse PASSES / expand PASSES / resolve PASSES / typeck 2 remaining / borrowck not yet reached"
+}
