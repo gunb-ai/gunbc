@@ -1762,8 +1762,7 @@ fn cross_claim_portable_args_match(
 }
 
 fn cross_claim_pure_admitted(fn_node: &Rc<Node>, func_name: &str) -> bool {
-    func_name == "prepare_grammar"
-        || CROSS_CLAIM_PURE_ROSTER.with(|r| r.borrow().contains(&(Rc::as_ptr(fn_node) as usize)))
+    false || CROSS_CLAIM_PURE_ROSTER.with(|r| r.borrow().contains(&(Rc::as_ptr(fn_node) as usize)))
 }
 
 fn cross_claim_observe_hit(func_name: &str) {

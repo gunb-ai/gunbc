@@ -73,10 +73,7 @@ import v2.std.text { String }
 // the produced-decl render transform is carried as declared rows the model layer can reify
 // rather than as a fn value — that modeling change is the named trigger, and until it lands
 // every emit claim keeps paying the ~125ms recompute this roster exists to delete.
-data floor_cross_claim_pure_producers_warm: List<String> = [
-  "v2.extdeps.languages.bash_command_fold.bash_fold_formal_productions",
-  "v2.extdeps.languages.bash_command_fold.bash_fold_lex"
-]
+data floor_cross_claim_pure_producers_warm: List<String> = []
 
 // The claim-forced rows carry claim-independent ARGUMENTS in practice (a production
 // catalog node, a production identity) but are not nullary, so they fill on first touch
@@ -96,9 +93,4 @@ data floor_cross_claim_pure_producers_warm: List<String> = [
 // live_deploy measurement): 21 apply witnesses rebuild one byte-identical script 21 times
 // (~3.4s each) because the eval-frame memo dies at the claim boundary; serving the
 // per-statement serialization from this tier makes the 20 repeats hits on one fill.
-data floor_cross_claim_pure_producers_claim_forced: List<String> = [
-  "v2.workflow.bash_command_fold_serialize.bash_fold_serialize_node",
-  "v2.compiler.translate.grammar_relation_row_for_emitted",
-  "v2.std.grammar.formal_productions_from_catalog_node",
-  "v2.extdeps.languages.bash_command_fold.bash_fold_relation_row_witness"
-]
+data floor_cross_claim_pure_producers_claim_forced: List<String> = []
