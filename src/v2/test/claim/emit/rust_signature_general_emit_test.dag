@@ -4,9 +4,12 @@ import v2.test.complexity_gate.table_fixture_add_subject_producer { table_fixtur
 import v2.compiler.translate { serialize_concrete_syntax_tokens_to_source }
 import v2.extdeps.languages.rust {
   rust_target_model_staging,
-  rust_signature_with_open_from_decl
+  rust_produced_decl_render_rows
 }
-import v2.std.compilers.target_model { TargetModel }
+import v2.std.compilers.target_model {
+  TargetModel,
+  produced_decl_signature_with_open_from_rows
+}
 import extdeps.communication.medium { Medium }
 import v2.std.diagnostic { Accepted, Outcome, Rejected, bind_outcome, outcome_accepted }
 import v2.std.logic { Bool }
@@ -28,7 +31,10 @@ fn rust_signature_add_text() -> Outcome<String> {
     o: rust_signature_add_decl(),
     f: fn(decl) {
       bind_outcome(
-        o: rust_signature_with_open_from_decl(decl: decl),
+        o: produced_decl_signature_with_open_from_rows(
+          rows: rust_produced_decl_render_rows,
+          decl: decl
+        ),
         f: fn(toks) {
           bind_outcome(
             o: serialize_concrete_syntax_tokens_to_source(
