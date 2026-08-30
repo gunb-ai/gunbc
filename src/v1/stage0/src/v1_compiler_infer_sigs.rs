@@ -17,7 +17,8 @@ use crate::v1_std_core::CompilerDiagnostic::MissingAnnotation;
 use crate::v1_std_core::ExprData::ExprCall;
 pub use crate::v1_std_core::{authored_name_at, expr_call_func_at, make_error_node, no_span};
 pub use crate::v1_std_core::{
-    CompilerDiagnostic, DeclaredFuncSig, ErrorNode, ExprData, NewlineIndex, Node,
+    CompilerDiagnostic, DeclaredCallableIdentity, DeclaredFuncSig, ErrorNode, ExprData,
+    NewlineIndex, Node,
 };
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
@@ -115,12 +116,6 @@ pub struct ParentSigScan {
     pub sig: Option<Rc<ResolvedFuncSig>>,
     pub match_count: i64,
     pub first_parent: Option<String>,
-}
-
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct DeclaredCallableIdentity {
-    pub owner_module_path: String,
-    pub decl_name: String,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]

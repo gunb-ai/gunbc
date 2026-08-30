@@ -6,6 +6,7 @@ import v1.std.core {
   ErrorNode, make_error_node,
   MissingAnnotation, no_span,
   DeclaredFuncSig,
+  DeclaredCallableIdentity,
   NewlineIndex,
   authored_name_at
 }
@@ -110,19 +111,10 @@ type ParentSigScan {
 // the collision this vocabulary exists to describe (gap-analysis row 30 -- `map_get` is both
 // `v2.std.collection.map_get` returning Outcome<Optional<V>> and a builtin returning
 // Optional<V>). So the candidate is the identity, and the label is a projection of it.
-// THE DECLARED HALF OF AN IDENTITY, HOISTED SO THE RESOLVED ARM CAN CARRY IT WITHOUT
-// CARRYING THE BUILTIN ARM.
-//
-// `decide_callable_candidates` proves a builtin never answers -- it can make a population
-// ambiguous and on its own hands the call back to the known-builtin bridge -- so the owner a
-// resolution binds is ALWAYS a declared one. Spelling FuncSigResolved's owner as
-// CallableIdentity would therefore admit a state the decision already ruled out, and spelling
-// it as a loose owner/decl String pair beside DeclaredCallable would be a second representation
-// of the pair this file already owns (DESIGN section 3). One record, two consumers.
-type DeclaredCallableIdentity {
-  owner_module_path: String
-  decl_name: String
-}
+// DeclaredCallableIdentity IS NOT DECLARED HERE ANY MORE. It moved to v1.std.core because
+// CallTargetIdentity -- which lives there, below this module -- now carries one, and a second
+// spelling of the pair in this file to break the import direction would be the nicknaming defect
+// DESIGN section 3 names. The reasoning for the record itself travels with the declaration.
 
 type CallableIdentity
   = DeclaredCallable { identity: DeclaredCallableIdentity }
