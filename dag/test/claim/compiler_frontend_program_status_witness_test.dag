@@ -68,7 +68,6 @@ import v2.workflow.legacy_baseline_capture {
   capture_blocked_reason,
 }
 import v2.compiler.self_host.stage0_crate_layout { emitter_produced_divergent_registrations }
-import gunbc.cli_dispatch_surface { gunbc_cli_shipped_dispatch_gap }
 import gunbc.compiler_frontend_program_status {
   MilestoneStanding,
   Clear,
@@ -260,15 +259,13 @@ fn standing_agrees_with_population(s: MilestoneStanding, expected: List<String>)
   }
 }
 
-// THE EMITTER'S EXPECTED POPULATION, RE-DERIVED FROM THE TWO SOURCES. This deliberately restates
+// THE EMITTER'S EXPECTED POPULATION, RE-DERIVED FROM ITS SOURCE. This deliberately restates
 // the fold's shape in the test rather than calling emitter_retained_artifact_outstanding(): an
 // oracle authored from the SOURCES is independent, whereas one obtained from the PRODUCER is the
 // self-comparison the previous commit removed from the count clause.
 fn emitter_expected_members() -> List<String> {
-  concat(
-    emitter_produced_divergent_registrations
-      |> map(row => concat("stage0-divergent:", row.basename)),
-    gunbc_cli_shipped_dispatch_gap() |> map(name => concat("cli-shipped-dispatch-gap:", name)))
+  emitter_produced_divergent_registrations
+    |> map(row => concat("stage0-divergent:", row.basename))
 }
 
 // THE FOUR-ROW TRUTH TABLE, AUTHORED. Every row is authorable at fixture grain because the variant

@@ -1292,8 +1292,6 @@ fn devboot_build_entry(
 // a local producer, a different transport, or a different source subject.
 data gunbc_build_cli_realization_path: String = ".gunbc/devboot-producer"
 data gunbc_build_cli_work_root: String = ".gunbc/devboot-work"
-data gunbc_build_cli_artifact_path: String = "gunbc"
-
 fn gunbc_build_cli_entry(program: String, receipt_path: String) -> ProcessExit {
   let configured = Filesystem.Read(path: gunbc_build_cli_realization_path)
   if !configured.success {
@@ -1310,12 +1308,13 @@ fn gunbc_build_cli_entry(program: String, receipt_path: String) -> ProcessExit {
       exit_failure(reason: refusal)
     }
   } else {
+    let invocation_artifact_path = concat(receipt_path, ".artifact")
     devboot_build_entry(
       program: program,
       repo_root: ".",
       work_root: gunbc_build_cli_work_root,
       endpoint: trim(s: configured.content),
-      out_path: gunbc_build_cli_artifact_path,
+      out_path: invocation_artifact_path,
       receipt_path: receipt_path,
     )
   }

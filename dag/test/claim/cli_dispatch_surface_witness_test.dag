@@ -166,10 +166,6 @@ test fn dirty_version_identity_cannot_impersonate_the_commit() -> Bool {
 // coverage while carrying no information (DESIGN section 4b). The guarantee climbed; the check
 // went with the machinery it replaced, and this note is what remains of it.
 
-// The gap is the reason the divergence registration for `main.rs` still stands. If it ever
-// empties, that registration's restoration trigger has fired and the row must be deleted -- so
-// this asserts the two are consistent TODAY, and goes red the moment the surface closes without
-// the registration being removed.
 // ---------------------------------------------------------------------------------------------
 // THE OPERAND AXIS
 // ---------------------------------------------------------------------------------------------

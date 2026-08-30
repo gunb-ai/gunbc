@@ -713,7 +713,7 @@ fn main() {
     let host = RetainedCliHost {
         dry_run: cli.dry_run,
     };
-    gunbc_cli_dispatch_generated::dispatch(cli.command, &host)
+    gunbc_cli_dispatch_generated::dispatch(cli.command, cli.dry_run, &host)
 }
 
 /// Severity of one diagnostic, as a TOTAL partition.

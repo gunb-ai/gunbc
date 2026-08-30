@@ -17762,6 +17762,16 @@ pub enum ExitClass {
     NotProcessExit { type_name: String },
 }
 
+fn bootstrap_invocation_receipt_path(receipt_root: &str) -> Result<std::path::PathBuf, String> {
+    static INVOCATION_SEQUENCE: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    std::fs::create_dir_all(receipt_root).map_err(|error| {
+        format!("could not create bootstrap receipt root `{receipt_root}`: {error}")
+    })?;
+    let sequence = INVOCATION_SEQUENCE.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    Ok(std::path::Path::new(receipt_root)
+        .join(format!("receipt-{}-{sequence}", std::process::id())))
+}
+
 /// Generic, temporary launcher for a successor-authored bootstrap operation whose import closure
 /// cannot enter the frozen v1 seed. All operation-specific facts arrive from the modeled CLI row;
 /// this declaration knows only source/declaration identity, named String bindings, an internal
@@ -17774,20 +17784,20 @@ pub fn run_bootstrap_dag_operation(
     declaration_name: &str,
     mut public_operands: Vec<(String, String)>,
     receipt_parameter: &str,
-    receipt_path: &str,
+    receipt_root: &str,
 ) -> ! {
     if source_roots.is_empty() || entry_path.is_empty() || declaration_module.is_empty() {
         eprintln!("REFUSED: known bootstrap operation has an incomplete modeled binding");
         std::process::exit(2);
     }
-    match std::fs::remove_file(receipt_path) {
-        Ok(()) => {}
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+    let receipt_path = match bootstrap_invocation_receipt_path(receipt_root) {
+        Ok(path) => path,
         Err(error) => {
-            eprintln!("REFUSED: could not clear bootstrap receipt `{receipt_path}`: {error}");
+            eprintln!("REFUSED: {error}");
             std::process::exit(1);
         }
-    }
+    };
+    let receipt_path = receipt_path.to_string_lossy().into_owned();
     let (graph, source_indices) = match resolve_entry_graph(source_roots, entry_path) {
         Ok(resolved) => resolved,
         Err(cause) => {
@@ -17815,7 +17825,7 @@ pub fn run_bootstrap_dag_operation(
         );
         std::process::exit(1);
     }
-    public_operands.push((receipt_parameter.to_string(), receipt_path.to_string()));
+    public_operands.push((receipt_parameter.to_string(), receipt_path.clone()));
     let arguments = public_operands
         .into_iter()
         .map(|(name, value)| (Some(name), str_value(value)))
@@ -17825,18 +17835,23 @@ pub fn run_bootstrap_dag_operation(
         source_indices,
         v1_interpreter::ExecutionMode::Wet,
     );
-    let terminal =
-        match v1_interpreter::run_in_context_with_args(&ctx, declaration_name, &arguments, true) {
-            Ok(value) => classify_exit(&value, &ctx),
-            Err(error) => {
-                eprintln!(
-                    "REFUSED: bootstrap operation `{declaration_module}.{declaration_name}` \
+    let qualified_declaration = format!("{declaration_module}.{declaration_name}");
+    let terminal = match v1_interpreter::run_in_context_with_args(
+        &ctx,
+        &qualified_declaration,
+        &arguments,
+        true,
+    ) {
+        Ok(value) => classify_exit(&value, &ctx),
+        Err(error) => {
+            eprintln!(
+                "REFUSED: bootstrap operation `{declaration_module}.{declaration_name}` \
                  evaluation failed: {error:?}"
-                );
-                std::process::exit(1);
-            }
-        };
-    let receipt = match std::fs::read_to_string(receipt_path) {
+            );
+            std::process::exit(1);
+        }
+    };
+    let receipt = match std::fs::read_to_string(&receipt_path) {
         Ok(receipt) => receipt,
         Err(error) => {
             eprintln!("REFUSED: bootstrap operation receipt `{receipt_path}` unreadable: {error}");
@@ -17876,6 +17891,34 @@ pub fn run_bootstrap_dag_operation(
             );
             std::process::exit(2);
         }
+    }
+}
+
+#[cfg(test)]
+mod bootstrap_operation_launcher_tests {
+    use super::bootstrap_invocation_receipt_path;
+
+    #[test]
+    fn concurrent_invocations_receive_distinct_receipt_and_artifact_paths() {
+        let root =
+            std::env::temp_dir().join(format!("gunbc-bootstrap-path-test-{}", std::process::id()));
+        let root_text = root.to_string_lossy().into_owned();
+        let left = std::thread::spawn({
+            let root_text = root_text.clone();
+            move || bootstrap_invocation_receipt_path(&root_text).unwrap()
+        });
+        let right = std::thread::spawn({
+            let root_text = root_text.clone();
+            move || bootstrap_invocation_receipt_path(&root_text).unwrap()
+        });
+        let left = left.join().unwrap();
+        let right = right.join().unwrap();
+        assert_ne!(left, right);
+        assert_ne!(
+            left.with_extension("artifact"),
+            right.with_extension("artifact")
+        );
+        let _ = std::fs::remove_dir_all(root);
     }
 }
 

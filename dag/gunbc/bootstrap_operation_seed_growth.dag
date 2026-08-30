@@ -18,6 +18,11 @@ data bootstrap_operation_seed_growth_justification: SeedGrowthJustification = Se
       decl_name: "run_bootstrap_dag_operation",
       field: WholeDeclaration,
     },
+    DeclarationRef {
+      module_path: "v1_compiler.cli_run",
+      decl_name: "bootstrap_invocation_receipt_path",
+      field: WholeDeclaration,
+    },
   ],
   reason: "PURPOSE admission serves the v2 self-host program. Classified against the five refused v1 classes: NewLanguageBehavior -- no compiler semantics change; NewCompatibilityObligation -- no predecessor route is retained; NewEscapeHatchOrAdmissionRow -- no, the binding is closed to BootstrapSuccessorOperation and every missing fact refuses; SeedFeatureCompletion -- no; PublicSurfaceGrowth -- yes, one modeled build verb. The successor operation transitively imports v2 and cannot enter the frozen seed closure, while mirroring it would duplicate its semantics. One generic in-process launcher therefore consumes only modeled source/declaration identity, named String bindings, an internal receipt channel, and ProcessExit. It names no product operation, host, transport, cache, provider, or interpreter selector.",
   owning_dissolution_lane: "BT-5-product-bootstrap-promotion" as RoadmapNodeId,

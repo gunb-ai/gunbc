@@ -132,6 +132,17 @@ type CliArmRealization
 // are data consumed by the generic emitter, never literals in an arm renderer.
 type CliBootstrapExecutionClass = BootstrapSuccessorOperation {}
 
+// Closed admission population for the temporary interpreter boundary. An ordinary target
+// producer has no constructor here, so it cannot acquire BootstrapSuccessorOperation by tagging
+// an arbitrary DeclarationRef.
+type AdmittedBootstrapOperationIdentity = GunbcProductBuildBootstrapOperation {}
+
+fn admitted_bootstrap_operation_declaration(identity: AdmittedBootstrapOperationIdentity) -> DeclarationRef {
+  match identity {
+    GunbcProductBuildBootstrapOperation {} => gunbc_build_operation_ref()
+  }
+}
+
 type CliBootstrapOperandBinding {
   parameter: String
   operand_field: String
@@ -143,7 +154,7 @@ type CliBootstrapReceiptChannel {
 }
 
 type CliBootstrapDagOperationBinding {
-  operation: DeclarationRef
+  operation: AdmittedBootstrapOperationIdentity
   entry_path: String
   source_roots: List<String>
   public_operands: List<CliBootstrapOperandBinding>
@@ -258,13 +269,13 @@ fn gunbc_build_operation_ref() -> DeclarationRef {
 
 fn gunbc_build_operation_binding() -> CliBootstrapDagOperationBinding {
   CliBootstrapDagOperationBinding {
-    operation: gunbc_build_operation_ref(),
+    operation: GunbcProductBuildBootstrapOperation {},
     entry_path: "dag/gunbc/devboot/build.dag",
     source_roots: ["dag", "src/v2"],
     public_operands: [
       CliBootstrapOperandBinding { parameter: "program", operand_field: "program" },
     ],
-    receipt: CliBootstrapReceiptChannel { parameter: "receipt_path", path: ".gunbc-build-receipt" },
+    receipt: CliBootstrapReceiptChannel { parameter: "receipt_path", path: ".gunbc-build-receipts" },
     execution_class: BootstrapSuccessorOperation {},
   }
 }
