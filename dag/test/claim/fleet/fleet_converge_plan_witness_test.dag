@@ -136,7 +136,8 @@ import gunbc.fabric_cell_effect { fabric_cell_realization, CellPlanRealizable, C
 import gunbc.runner_host_deploy { srv3_runner_host_deploy }
 import gunbc.runner_slot_provision { runner_slot_member_from_instance_name }
 import extdeps.posix.shell_command_language { posix_single_quote }
-import gunbc.fleet_converge_plan_cli { fleet_converge_plan_cli_note }
+import gunbc.fleet_converge_plan_cli { fleet_converge_plan_cli_note, spark_axis_for_unobserved_cli }
+import gunbc.spark.serving_execution_schedule { spark_serving_axis_refusal }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -1993,5 +1994,27 @@ test fn witness_a_foreign_artifact_reports_its_host_before_its_scope() -> Bool {
     ApplyScopeUndecodable { cause: _ } => false
     ApplyScopeMismatch { planned_wire: _, observed_wire: _ } => false
     ApplyMemberSetMismatch => false
+  }
+}
+
+// THE CLI HAS NO SERVING OBSERVER YET, AND SAYING SO IS NOT THE SAME AS SAYING THE AXIS DOES NOT APPLY.
+//
+// srv5 is an enrolled Spark by the procurement authority. A NotApplicable axis for it would assert
+// that the Spark serving axis does not govern srv5 -- false, and worse than the empty product it
+// replaced, because it turns missing evidence into a claim. The CLI consults the observation scope
+// and answers Unobserved, which refuses the artifact, so the unwired observer stops the line.
+test fn an_enrolled_spark_gets_an_unobserved_axis_from_the_cli_not_a_non_applicable_one() -> Bool {
+  match spark_serving_axis_refusal(a: spark_axis_for_unobserved_cli(host: "srv5" as HostIdentity)) {
+    Absent => false
+    Present { value: _ } => true
+  }
+}
+
+// The positive control: a host that is genuinely not a Spark still gets NotApplicable, so the arm
+// above is a discrimination on enrollment and not a blanket refusal.
+test fn a_non_spark_host_still_gets_a_non_applicable_axis_from_the_cli() -> Bool {
+  match spark_serving_axis_refusal(a: spark_axis_for_unobserved_cli(host: operator_host_srv3)) {
+    Absent => true
+    Present { value: _ } => false
   }
 }
