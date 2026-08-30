@@ -1816,3 +1816,538 @@ test fn ciprobe_english_receipt_diag_count_is_one() -> Bool {
     _ => false
   }
 }
+
+test fn ciprobe_english_receipt_is_rejected() -> Bool {
+  match english_emit_add_receipt {
+    Rejected { diagnostics: _ } => true
+    _ => false
+  }
+}
+test fn ciprobe_english_receipt_rejected_count_is_one() -> Bool {
+  match english_emit_add_receipt {
+    Rejected { diagnostics: ds } => is_empty(xs: ds.tail)
+    _ => false
+  }
+}
+test fn ciprobe_english_grammar_inverse_is_rejected() -> Bool {
+  match grammar_inverse_source_validated(target: english_emit_add_target_model, emitted: english_emit_add_emitted_root) {
+    Rejected { diagnostics: _ } => true
+    _ => false
+  }
+}
+test fn ciprobe_english_grammar_inverse_accepted_with_diags() -> Bool {
+  match grammar_inverse_source_validated(target: english_emit_add_target_model, emitted: english_emit_add_emitted_root) {
+    Accepted { value: _, diagnostics: Some { diagnostics: _ } } => true
+    _ => false
+  }
+}
+
+
+test fn ciprobe_english_rejected_reason_has_overlap() -> Bool {
+  match english_emit_add_receipt {
+    Rejected { diagnostics: ds } => string_contains(symbol_lexeme(sym: ds.head.reason), "overlap")
+    _ => false
+  }
+}
+test fn ciprobe_english_ginv_reason_has_overlap() -> Bool {
+  match grammar_inverse_source_validated(target: english_emit_add_target_model, emitted: english_emit_add_emitted_root) {
+    Rejected { diagnostics: ds } => string_contains(symbol_lexeme(sym: ds.head.reason), "overlap")
+    Accepted { value: _, diagnostics: Some { diagnostics: ds } } => string_contains(symbol_lexeme(sym: ds.head.reason), "overlap")
+    _ => false
+  }
+}
+
+
+test fn ciprobe_english_rejected_reason_has_choice() -> Bool {
+  match english_emit_add_receipt {
+    Rejected { diagnostics: ds } => string_contains(symbol_lexeme(sym: ds.head.reason), "choice")
+    _ => false
+  }
+}
+test fn ciprobe_english_ginv_reason_has_choice() -> Bool {
+  match grammar_inverse_source_validated(target: english_emit_add_target_model, emitted: english_emit_add_emitted_root) {
+    Rejected { diagnostics: ds } => string_contains(symbol_lexeme(sym: ds.head.reason), "choice")
+    Accepted { value: _, diagnostics: Some { diagnostics: ds } } => string_contains(symbol_lexeme(sym: ds.head.reason), "choice")
+    _ => false
+  }
+}
+
+
+test fn ciprobe_english_rejected_reason_has_nullable() -> Bool {
+  match english_emit_add_receipt {
+    Rejected { diagnostics: ds } => string_contains(symbol_lexeme(sym: ds.head.reason), "nullable")
+    _ => false
+  }
+}
+test fn ciprobe_english_ginv_reason_has_nullable() -> Bool {
+  match grammar_inverse_source_validated(target: english_emit_add_target_model, emitted: english_emit_add_emitted_root) {
+    Rejected { diagnostics: ds } => string_contains(symbol_lexeme(sym: ds.head.reason), "nullable")
+    Accepted { value: _, diagnostics: Some { diagnostics: ds } } => string_contains(symbol_lexeme(sym: ds.head.reason), "nullable")
+    _ => false
+  }
+}
+
+
+test fn ciprobe_english_rejected_reason_has_first() -> Bool {
+  match english_emit_add_receipt {
+    Rejected { diagnostics: ds } => string_contains(symbol_lexeme(sym: ds.head.reason), "first")
+    _ => false
+  }
+}
+test fn ciprobe_english_ginv_reason_has_first() -> Bool {
+  match grammar_inverse_source_validated(target: english_emit_add_target_model, emitted: english_emit_add_emitted_root) {
+    Rejected { diagnostics: ds } => string_contains(symbol_lexeme(sym: ds.head.reason), "first")
+    Accepted { value: _, diagnostics: Some { diagnostics: ds } } => string_contains(symbol_lexeme(sym: ds.head.reason), "first")
+    _ => false
+  }
+}
+
+
+test fn ciprobe_english_rejected_reason_has_prepare() -> Bool {
+  match english_emit_add_receipt {
+    Rejected { diagnostics: ds } => string_contains(symbol_lexeme(sym: ds.head.reason), "prepare")
+    _ => false
+  }
+}
+test fn ciprobe_english_ginv_reason_has_prepare() -> Bool {
+  match grammar_inverse_source_validated(target: english_emit_add_target_model, emitted: english_emit_add_emitted_root) {
+    Rejected { diagnostics: ds } => string_contains(symbol_lexeme(sym: ds.head.reason), "prepare")
+    Accepted { value: _, diagnostics: Some { diagnostics: ds } } => string_contains(symbol_lexeme(sym: ds.head.reason), "prepare")
+    _ => false
+  }
+}
+
+
+test fn ciprobe_english_rejected_reason_has_ambig() -> Bool {
+  match english_emit_add_receipt {
+    Rejected { diagnostics: ds } => string_contains(symbol_lexeme(sym: ds.head.reason), "ambig")
+    _ => false
+  }
+}
+test fn ciprobe_english_ginv_reason_has_ambig() -> Bool {
+  match grammar_inverse_source_validated(target: english_emit_add_target_model, emitted: english_emit_add_emitted_root) {
+    Rejected { diagnostics: ds } => string_contains(symbol_lexeme(sym: ds.head.reason), "ambig")
+    Accepted { value: _, diagnostics: Some { diagnostics: ds } } => string_contains(symbol_lexeme(sym: ds.head.reason), "ambig")
+    _ => false
+  }
+}
+
+
+test fn ciprobe_english_rejected_reason_has_catalog() -> Bool {
+  match english_emit_add_receipt {
+    Rejected { diagnostics: ds } => string_contains(symbol_lexeme(sym: ds.head.reason), "catalog")
+    _ => false
+  }
+}
+test fn ciprobe_english_ginv_reason_has_catalog() -> Bool {
+  match grammar_inverse_source_validated(target: english_emit_add_target_model, emitted: english_emit_add_emitted_root) {
+    Rejected { diagnostics: ds } => string_contains(symbol_lexeme(sym: ds.head.reason), "catalog")
+    Accepted { value: _, diagnostics: Some { diagnostics: ds } } => string_contains(symbol_lexeme(sym: ds.head.reason), "catalog")
+    _ => false
+  }
+}
+
+
+test fn ciprobe_english_rejected_reason_has_production() -> Bool {
+  match english_emit_add_receipt {
+    Rejected { diagnostics: ds } => string_contains(symbol_lexeme(sym: ds.head.reason), "production")
+    _ => false
+  }
+}
+test fn ciprobe_english_ginv_reason_has_production() -> Bool {
+  match grammar_inverse_source_validated(target: english_emit_add_target_model, emitted: english_emit_add_emitted_root) {
+    Rejected { diagnostics: ds } => string_contains(symbol_lexeme(sym: ds.head.reason), "production")
+    Accepted { value: _, diagnostics: Some { diagnostics: ds } } => string_contains(symbol_lexeme(sym: ds.head.reason), "production")
+    _ => false
+  }
+}
+
+
+test fn ciprobe_english_rejected_reason_has_medium() -> Bool {
+  match english_emit_add_receipt {
+    Rejected { diagnostics: ds } => string_contains(symbol_lexeme(sym: ds.head.reason), "medium")
+    _ => false
+  }
+}
+test fn ciprobe_english_ginv_reason_has_medium() -> Bool {
+  match grammar_inverse_source_validated(target: english_emit_add_target_model, emitted: english_emit_add_emitted_root) {
+    Rejected { diagnostics: ds } => string_contains(symbol_lexeme(sym: ds.head.reason), "medium")
+    Accepted { value: _, diagnostics: Some { diagnostics: ds } } => string_contains(symbol_lexeme(sym: ds.head.reason), "medium")
+    _ => false
+  }
+}
+
+
+test fn ciprobe_english_rejected_reason_has_unbound() -> Bool {
+  match english_emit_add_receipt {
+    Rejected { diagnostics: ds } => string_contains(symbol_lexeme(sym: ds.head.reason), "unbound")
+    _ => false
+  }
+}
+test fn ciprobe_english_ginv_reason_has_unbound() -> Bool {
+  match grammar_inverse_source_validated(target: english_emit_add_target_model, emitted: english_emit_add_emitted_root) {
+    Rejected { diagnostics: ds } => string_contains(symbol_lexeme(sym: ds.head.reason), "unbound")
+    Accepted { value: _, diagnostics: Some { diagnostics: ds } } => string_contains(symbol_lexeme(sym: ds.head.reason), "unbound")
+    _ => false
+  }
+}
+
+
+test fn ciprobe_english_rejected_reason_has_missing() -> Bool {
+  match english_emit_add_receipt {
+    Rejected { diagnostics: ds } => string_contains(symbol_lexeme(sym: ds.head.reason), "missing")
+    _ => false
+  }
+}
+test fn ciprobe_english_ginv_reason_has_missing() -> Bool {
+  match grammar_inverse_source_validated(target: english_emit_add_target_model, emitted: english_emit_add_emitted_root) {
+    Rejected { diagnostics: ds } => string_contains(symbol_lexeme(sym: ds.head.reason), "missing")
+    Accepted { value: _, diagnostics: Some { diagnostics: ds } } => string_contains(symbol_lexeme(sym: ds.head.reason), "missing")
+    _ => false
+  }
+}
+
+
+test fn ciprobe_english_rejected_reason_has_prose() -> Bool {
+  match english_emit_add_receipt {
+    Rejected { diagnostics: ds } => string_contains(symbol_lexeme(sym: ds.head.reason), "prose")
+    _ => false
+  }
+}
+test fn ciprobe_english_ginv_reason_has_prose() -> Bool {
+  match grammar_inverse_source_validated(target: english_emit_add_target_model, emitted: english_emit_add_emitted_root) {
+    Rejected { diagnostics: ds } => string_contains(symbol_lexeme(sym: ds.head.reason), "prose")
+    Accepted { value: _, diagnostics: Some { diagnostics: ds } } => string_contains(symbol_lexeme(sym: ds.head.reason), "prose")
+    _ => false
+  }
+}
+
+
+test fn ciprobe_english_rejected_reason_has_sentence() -> Bool {
+  match english_emit_add_receipt {
+    Rejected { diagnostics: ds } => string_contains(symbol_lexeme(sym: ds.head.reason), "sentence")
+    _ => false
+  }
+}
+test fn ciprobe_english_ginv_reason_has_sentence() -> Bool {
+  match grammar_inverse_source_validated(target: english_emit_add_target_model, emitted: english_emit_add_emitted_root) {
+    Rejected { diagnostics: ds } => string_contains(symbol_lexeme(sym: ds.head.reason), "sentence")
+    Accepted { value: _, diagnostics: Some { diagnostics: ds } } => string_contains(symbol_lexeme(sym: ds.head.reason), "sentence")
+    _ => false
+  }
+}
+
+
+test fn ciprobe_english_rejected_reason_has_relation() -> Bool {
+  match english_emit_add_receipt {
+    Rejected { diagnostics: ds } => string_contains(symbol_lexeme(sym: ds.head.reason), "relation")
+    _ => false
+  }
+}
+test fn ciprobe_english_ginv_reason_has_relation() -> Bool {
+  match grammar_inverse_source_validated(target: english_emit_add_target_model, emitted: english_emit_add_emitted_root) {
+    Rejected { diagnostics: ds } => string_contains(symbol_lexeme(sym: ds.head.reason), "relation")
+    Accepted { value: _, diagnostics: Some { diagnostics: ds } } => string_contains(symbol_lexeme(sym: ds.head.reason), "relation")
+    _ => false
+  }
+}
+
+
+test fn ciprobe_english_rejected_reason_has_inverse() -> Bool {
+  match english_emit_add_receipt {
+    Rejected { diagnostics: ds } => string_contains(symbol_lexeme(sym: ds.head.reason), "inverse")
+    _ => false
+  }
+}
+test fn ciprobe_english_ginv_reason_has_inverse() -> Bool {
+  match grammar_inverse_source_validated(target: english_emit_add_target_model, emitted: english_emit_add_emitted_root) {
+    Rejected { diagnostics: ds } => string_contains(symbol_lexeme(sym: ds.head.reason), "inverse")
+    Accepted { value: _, diagnostics: Some { diagnostics: ds } } => string_contains(symbol_lexeme(sym: ds.head.reason), "inverse")
+    _ => false
+  }
+}
+
+
+test fn ciprobe_english_rejected_reason_has_target() -> Bool {
+  match english_emit_add_receipt {
+    Rejected { diagnostics: ds } => string_contains(symbol_lexeme(sym: ds.head.reason), "target")
+    _ => false
+  }
+}
+test fn ciprobe_english_ginv_reason_has_target() -> Bool {
+  match grammar_inverse_source_validated(target: english_emit_add_target_model, emitted: english_emit_add_emitted_root) {
+    Rejected { diagnostics: ds } => string_contains(symbol_lexeme(sym: ds.head.reason), "target")
+    Accepted { value: _, diagnostics: Some { diagnostics: ds } } => string_contains(symbol_lexeme(sym: ds.head.reason), "target")
+    _ => false
+  }
+}
+
+
+test fn ciprobe_english_rejected_reason_has_model() -> Bool {
+  match english_emit_add_receipt {
+    Rejected { diagnostics: ds } => string_contains(symbol_lexeme(sym: ds.head.reason), "model")
+    _ => false
+  }
+}
+test fn ciprobe_english_ginv_reason_has_model() -> Bool {
+  match grammar_inverse_source_validated(target: english_emit_add_target_model, emitted: english_emit_add_emitted_root) {
+    Rejected { diagnostics: ds } => string_contains(symbol_lexeme(sym: ds.head.reason), "model")
+    Accepted { value: _, diagnostics: Some { diagnostics: ds } } => string_contains(symbol_lexeme(sym: ds.head.reason), "model")
+    _ => false
+  }
+}
+
+
+test fn ciprobe_english_rejected_reason_has_grammar() -> Bool {
+  match english_emit_add_receipt {
+    Rejected { diagnostics: ds } => string_contains(symbol_lexeme(sym: ds.head.reason), "grammar")
+    _ => false
+  }
+}
+test fn ciprobe_english_ginv_reason_has_grammar() -> Bool {
+  match grammar_inverse_source_validated(target: english_emit_add_target_model, emitted: english_emit_add_emitted_root) {
+    Rejected { diagnostics: ds } => string_contains(symbol_lexeme(sym: ds.head.reason), "grammar")
+    Accepted { value: _, diagnostics: Some { diagnostics: ds } } => string_contains(symbol_lexeme(sym: ds.head.reason), "grammar")
+    _ => false
+  }
+}
+
+
+test fn ciprobe_english_rejected_reason_has_emit() -> Bool {
+  match english_emit_add_receipt {
+    Rejected { diagnostics: ds } => string_contains(symbol_lexeme(sym: ds.head.reason), "emit")
+    _ => false
+  }
+}
+test fn ciprobe_english_ginv_reason_has_emit() -> Bool {
+  match grammar_inverse_source_validated(target: english_emit_add_target_model, emitted: english_emit_add_emitted_root) {
+    Rejected { diagnostics: ds } => string_contains(symbol_lexeme(sym: ds.head.reason), "emit")
+    Accepted { value: _, diagnostics: Some { diagnostics: ds } } => string_contains(symbol_lexeme(sym: ds.head.reason), "emit")
+    _ => false
+  }
+}
+
+
+test fn ciprobe_english_rejected_reason_has_serialize() -> Bool {
+  match english_emit_add_receipt {
+    Rejected { diagnostics: ds } => string_contains(symbol_lexeme(sym: ds.head.reason), "serialize")
+    _ => false
+  }
+}
+test fn ciprobe_english_ginv_reason_has_serialize() -> Bool {
+  match grammar_inverse_source_validated(target: english_emit_add_target_model, emitted: english_emit_add_emitted_root) {
+    Rejected { diagnostics: ds } => string_contains(symbol_lexeme(sym: ds.head.reason), "serialize")
+    Accepted { value: _, diagnostics: Some { diagnostics: ds } } => string_contains(symbol_lexeme(sym: ds.head.reason), "serialize")
+    _ => false
+  }
+}
+
+
+test fn ciprobe_english_rejected_reason_has_token() -> Bool {
+  match english_emit_add_receipt {
+    Rejected { diagnostics: ds } => string_contains(symbol_lexeme(sym: ds.head.reason), "token")
+    _ => false
+  }
+}
+test fn ciprobe_english_ginv_reason_has_token() -> Bool {
+  match grammar_inverse_source_validated(target: english_emit_add_target_model, emitted: english_emit_add_emitted_root) {
+    Rejected { diagnostics: ds } => string_contains(symbol_lexeme(sym: ds.head.reason), "token")
+    Accepted { value: _, diagnostics: Some { diagnostics: ds } } => string_contains(symbol_lexeme(sym: ds.head.reason), "token")
+    _ => false
+  }
+}
+
+
+test fn ciprobe_english_rejected_reason_has_lex() -> Bool {
+  match english_emit_add_receipt {
+    Rejected { diagnostics: ds } => string_contains(symbol_lexeme(sym: ds.head.reason), "lex")
+    _ => false
+  }
+}
+test fn ciprobe_english_ginv_reason_has_lex() -> Bool {
+  match grammar_inverse_source_validated(target: english_emit_add_target_model, emitted: english_emit_add_emitted_root) {
+    Rejected { diagnostics: ds } => string_contains(symbol_lexeme(sym: ds.head.reason), "lex")
+    Accepted { value: _, diagnostics: Some { diagnostics: ds } } => string_contains(symbol_lexeme(sym: ds.head.reason), "lex")
+    _ => false
+  }
+}
+
+
+test fn ciprobe_english_rejected_reason_has_realiz() -> Bool {
+  match english_emit_add_receipt {
+    Rejected { diagnostics: ds } => string_contains(symbol_lexeme(sym: ds.head.reason), "realiz")
+    _ => false
+  }
+}
+test fn ciprobe_english_ginv_reason_has_realiz() -> Bool {
+  match grammar_inverse_source_validated(target: english_emit_add_target_model, emitted: english_emit_add_emitted_root) {
+    Rejected { diagnostics: ds } => string_contains(symbol_lexeme(sym: ds.head.reason), "realiz")
+    Accepted { value: _, diagnostics: Some { diagnostics: ds } } => string_contains(symbol_lexeme(sym: ds.head.reason), "realiz")
+    _ => false
+  }
+}
+
+
+test fn ciprobe_english_rejected_reason_has_english() -> Bool {
+  match english_emit_add_receipt {
+    Rejected { diagnostics: ds } => string_contains(symbol_lexeme(sym: ds.head.reason), "english")
+    _ => false
+  }
+}
+test fn ciprobe_english_ginv_reason_has_english() -> Bool {
+  match grammar_inverse_source_validated(target: english_emit_add_target_model, emitted: english_emit_add_emitted_root) {
+    Rejected { diagnostics: ds } => string_contains(symbol_lexeme(sym: ds.head.reason), "english")
+    Accepted { value: _, diagnostics: Some { diagnostics: ds } } => string_contains(symbol_lexeme(sym: ds.head.reason), "english")
+    _ => false
+  }
+}
+
+
+test fn ciprobe_english_rejected_reason_has_share() -> Bool {
+  match english_emit_add_receipt {
+    Rejected { diagnostics: ds } => string_contains(symbol_lexeme(sym: ds.head.reason), "share")
+    _ => false
+  }
+}
+test fn ciprobe_english_ginv_reason_has_share() -> Bool {
+  match grammar_inverse_source_validated(target: english_emit_add_target_model, emitted: english_emit_add_emitted_root) {
+    Rejected { diagnostics: ds } => string_contains(symbol_lexeme(sym: ds.head.reason), "share")
+    Accepted { value: _, diagnostics: Some { diagnostics: ds } } => string_contains(symbol_lexeme(sym: ds.head.reason), "share")
+    _ => false
+  }
+}
+
+
+test fn ciprobe_english_rejected_reason_has_memo() -> Bool {
+  match english_emit_add_receipt {
+    Rejected { diagnostics: ds } => string_contains(symbol_lexeme(sym: ds.head.reason), "memo")
+    _ => false
+  }
+}
+test fn ciprobe_english_ginv_reason_has_memo() -> Bool {
+  match grammar_inverse_source_validated(target: english_emit_add_target_model, emitted: english_emit_add_emitted_root) {
+    Rejected { diagnostics: ds } => string_contains(symbol_lexeme(sym: ds.head.reason), "memo")
+    Accepted { value: _, diagnostics: Some { diagnostics: ds } } => string_contains(symbol_lexeme(sym: ds.head.reason), "memo")
+    _ => false
+  }
+}
+
+
+test fn ciprobe_english_rejected_reason_has_formal() -> Bool {
+  match english_emit_add_receipt {
+    Rejected { diagnostics: ds } => string_contains(symbol_lexeme(sym: ds.head.reason), "formal")
+    _ => false
+  }
+}
+test fn ciprobe_english_ginv_reason_has_formal() -> Bool {
+  match grammar_inverse_source_validated(target: english_emit_add_target_model, emitted: english_emit_add_emitted_root) {
+    Rejected { diagnostics: ds } => string_contains(symbol_lexeme(sym: ds.head.reason), "formal")
+    Accepted { value: _, diagnostics: Some { diagnostics: ds } } => string_contains(symbol_lexeme(sym: ds.head.reason), "formal")
+    _ => false
+  }
+}
+
+
+test fn ciprobe_english_rejected_reason_has_symbol() -> Bool {
+  match english_emit_add_receipt {
+    Rejected { diagnostics: ds } => string_contains(symbol_lexeme(sym: ds.head.reason), "symbol")
+    _ => false
+  }
+}
+test fn ciprobe_english_ginv_reason_has_symbol() -> Bool {
+  match grammar_inverse_source_validated(target: english_emit_add_target_model, emitted: english_emit_add_emitted_root) {
+    Rejected { diagnostics: ds } => string_contains(symbol_lexeme(sym: ds.head.reason), "symbol")
+    Accepted { value: _, diagnostics: Some { diagnostics: ds } } => string_contains(symbol_lexeme(sym: ds.head.reason), "symbol")
+    _ => false
+  }
+}
+
+
+test fn ciprobe_english_rejected_reason_has_terminal() -> Bool {
+  match english_emit_add_receipt {
+    Rejected { diagnostics: ds } => string_contains(symbol_lexeme(sym: ds.head.reason), "terminal")
+    _ => false
+  }
+}
+test fn ciprobe_english_ginv_reason_has_terminal() -> Bool {
+  match grammar_inverse_source_validated(target: english_emit_add_target_model, emitted: english_emit_add_emitted_root) {
+    Rejected { diagnostics: ds } => string_contains(symbol_lexeme(sym: ds.head.reason), "terminal")
+    Accepted { value: _, diagnostics: Some { diagnostics: ds } } => string_contains(symbol_lexeme(sym: ds.head.reason), "terminal")
+    _ => false
+  }
+}
+
+
+test fn ciprobe_english_rejected_reason_has_empty() -> Bool {
+  match english_emit_add_receipt {
+    Rejected { diagnostics: ds } => string_contains(symbol_lexeme(sym: ds.head.reason), "empty")
+    _ => false
+  }
+}
+test fn ciprobe_english_ginv_reason_has_empty() -> Bool {
+  match grammar_inverse_source_validated(target: english_emit_add_target_model, emitted: english_emit_add_emitted_root) {
+    Rejected { diagnostics: ds } => string_contains(symbol_lexeme(sym: ds.head.reason), "empty")
+    Accepted { value: _, diagnostics: Some { diagnostics: ds } } => string_contains(symbol_lexeme(sym: ds.head.reason), "empty")
+    _ => false
+  }
+}
+
+
+test fn ciprobe_english_rejected_reason_has_node() -> Bool {
+  match english_emit_add_receipt {
+    Rejected { diagnostics: ds } => string_contains(symbol_lexeme(sym: ds.head.reason), "node")
+    _ => false
+  }
+}
+test fn ciprobe_english_ginv_reason_has_node() -> Bool {
+  match grammar_inverse_source_validated(target: english_emit_add_target_model, emitted: english_emit_add_emitted_root) {
+    Rejected { diagnostics: ds } => string_contains(symbol_lexeme(sym: ds.head.reason), "node")
+    Accepted { value: _, diagnostics: Some { diagnostics: ds } } => string_contains(symbol_lexeme(sym: ds.head.reason), "node")
+    _ => false
+  }
+}
+
+
+test fn ciprobe_english_rejected_reason_has_edge() -> Bool {
+  match english_emit_add_receipt {
+    Rejected { diagnostics: ds } => string_contains(symbol_lexeme(sym: ds.head.reason), "edge")
+    _ => false
+  }
+}
+test fn ciprobe_english_ginv_reason_has_edge() -> Bool {
+  match grammar_inverse_source_validated(target: english_emit_add_target_model, emitted: english_emit_add_emitted_root) {
+    Rejected { diagnostics: ds } => string_contains(symbol_lexeme(sym: ds.head.reason), "edge")
+    Accepted { value: _, diagnostics: Some { diagnostics: ds } } => string_contains(symbol_lexeme(sym: ds.head.reason), "edge")
+    _ => false
+  }
+}
+
+
+test fn ciprobe_english_rejected_reason_has_fold() -> Bool {
+  match english_emit_add_receipt {
+    Rejected { diagnostics: ds } => string_contains(symbol_lexeme(sym: ds.head.reason), "fold")
+    _ => false
+  }
+}
+test fn ciprobe_english_ginv_reason_has_fold() -> Bool {
+  match grammar_inverse_source_validated(target: english_emit_add_target_model, emitted: english_emit_add_emitted_root) {
+    Rejected { diagnostics: ds } => string_contains(symbol_lexeme(sym: ds.head.reason), "fold")
+    Accepted { value: _, diagnostics: Some { diagnostics: ds } } => string_contains(symbol_lexeme(sym: ds.head.reason), "fold")
+    _ => false
+  }
+}
+
+
+test fn ciprobe_english_rejected_reason_has_refus() -> Bool {
+  match english_emit_add_receipt {
+    Rejected { diagnostics: ds } => string_contains(symbol_lexeme(sym: ds.head.reason), "refus")
+    _ => false
+  }
+}
+test fn ciprobe_english_ginv_reason_has_refus() -> Bool {
+  match grammar_inverse_source_validated(target: english_emit_add_target_model, emitted: english_emit_add_emitted_root) {
+    Rejected { diagnostics: ds } => string_contains(symbol_lexeme(sym: ds.head.reason), "refus")
+    Accepted { value: _, diagnostics: Some { diagnostics: ds } } => string_contains(symbol_lexeme(sym: ds.head.reason), "refus")
+    _ => false
+  }
+}
