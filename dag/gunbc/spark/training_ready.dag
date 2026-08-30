@@ -1,9 +1,9 @@
 module gunbc.spark.training_ready
 
 import std.types { String, Bool, List, NonEmptyStr, Int }
-import std.measure { ByteSize, byte_size_count }
+import std.measure { ByteSize, byte_size_count, kibibyte, kibibyte_to_byte_size }
 import std.algebra { trim }
-import product.placement_supply { HostIdentity, host_identity_eq }
+import product.placement_supply { HostIdentity }
 import gunbc.spark.cell_role {
   SparkCellRole,
   SparkServingCell,
@@ -287,8 +287,18 @@ fn spark_serving_retirement_observation_from_probes(
 // all three subjects. "Measured before the retirement" is therefore no longer a state a caller can
 // describe: the evidence that the retirement happened is the same value that proves the ordering,
 // because it did not exist to be passed until the retirement had been observed.
+// THERE IS NO HOST FIELD, BECAUSE THE RETIREMENT ALREADY NAMES ONE.
+//
+// A `host: HostIdentity` stood beside `after`, and the readiness gate compared the two. That is two
+// independently authored answers to one identity, reconciled by a check -- the same residual the
+// ordering Bool and the free-pool parameter each were, one field over. Deriving every downstream
+// host from `after.host` leaves one answer, so the carrier cannot name two hosts and there is
+// nothing left to compare.
+//
+// This does not claim the capture was actually produced on that host: nothing in a generic capture
+// establishes where it ran, which stays the P0-WET provenance obligation. It removes only the dry
+// defect, which is the carrier disagreeing with itself.
 type SparkUnifiedPoolObservation sole_constructor {
-  host: HostIdentity
   free_pool: ByteSize
   after: SparkServingRetirementObservation
   producer: NonEmptyStr
@@ -310,9 +320,21 @@ type SparkUnifiedPoolReading
   = SparkUnifiedPoolRead { observation: SparkUnifiedPoolObservation }
   | SparkUnifiedPoolUnread { cause: NonEmptyStr }
 
+// THE QUANTITY IS PARSED FROM THE READ, NOT PASSED BESIDE IT.
+//
+// This took `free_pool: ByteSize` as a parameter and copied the capture's stdout into a prose
+// `producer` string. So the capture certified that A read happened while the NUMBER came from the
+// caller: any successful probe, carrying any text at all, could mint a proof for an arbitrary
+// capacity. The paragraph above it already said "a quantity with no read behind it is a number
+// somebody typed" -- the comment was right and the signature did not implement it, which is the same
+// shape as the ordering Bool one field over.
+//
+// The free-pool parameter is gone. The count is decoded from the capture's own stdout, which is the
+// MemAvailable field of /proc/meminfo -- a decimal quantity in KIBIBYTES per proc(5), so the scale
+// conversion is a modeled Kibibyte -> ByteSize rather than a bare multiply. Text that does not parse
+// is a refusal, not a zero and not a default: an answered probe whose body is not a decimal count is
+// a read of something that is not the pool.
 fn spark_unified_pool_observation_from_capture(
-  host: HostIdentity,
-  free_pool: ByteSize,
   capture: SparkServingProbeCapture,
   after: SparkServingRetirementObservation,
 ) -> SparkUnifiedPoolReading {
@@ -335,13 +357,31 @@ fn spark_unified_pool_observation_from_capture(
         cause: join(["spark_training_ready: the pool probe failed, exit ", to_string(code)], "") as NonEmptyStr,
       }
     ProbeAnswered { stdout: out } =>
-      SparkUnifiedPoolRead {
-        observation: SparkUnifiedPoolObservation {
-          host: host,
-          free_pool: free_pool,
-          after: after,
-          producer: join(["free-pool read: ", out], "") as NonEmptyStr,
-        },
+      match parse_int(s: trim(s: out)) {
+        Absent =>
+          SparkUnifiedPoolUnread {
+            cause: join([
+              "spark_training_ready: the pool probe answered but its body is not a decimal MemAvailable count — ",
+              trim(s: out),
+            ], "") as NonEmptyStr,
+          }
+        Present { value: kib } =>
+          if kib <= 0 {
+            SparkUnifiedPoolUnread {
+              cause: join([
+                "spark_training_ready: the pool probe read a non-positive MemAvailable count — ",
+                to_string(kib),
+              ], "") as NonEmptyStr,
+            }
+          } else {
+            SparkUnifiedPoolRead {
+              observation: SparkUnifiedPoolObservation {
+                free_pool: kibibyte_to_byte_size(k: kibibyte(count: kib)),
+                after: after,
+                producer: join(["/proc/meminfo MemAvailable kB: ", trim(s: out)], "") as NonEmptyStr,
+              },
+            }
+          }
       }
   }
   }
@@ -412,10 +452,6 @@ fn spark_training_readiness(
       if !spark_cell_role_eq(a: role, b: SparkTrainingCell) {
         SparkTrainingNotReady {
           cause: "spark_training_ready: the host's role is serving — a serving cell is statically reserved and never becomes training capacity by observation" as NonEmptyStr,
-        }
-      } else if !host_identity_eq(a: pool.host, b: retirement.host) {
-        SparkTrainingNotReady {
-          cause: "spark_training_ready: the pool measurement and the retirement observation name different hosts — a capacity read from one machine cannot admit another" as NonEmptyStr,
         }
       } else if byte_size_count(b: pool.free_pool) <= 0 {
         SparkTrainingNotReady {

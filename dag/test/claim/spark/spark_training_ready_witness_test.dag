@@ -1,7 +1,6 @@
 module test.claim.spark.spark_training_ready_witness_test
 
 import std.types { String, Bool, List, NonEmptyStr, Int }
-import std.measure { ByteSize, byte_size }
 import product.placement_supply { HostIdentity }
 import gunbc.fleet_intent_network { operator_host_srv5, operator_host_srv6 }
 import gunbc.spark.serving_terminal_health {
@@ -33,7 +32,7 @@ import gunbc.spark.training_ready {
   SparkUnifiedPoolUnread,
 }
 
-data spark_training_ready_witness_note: String = "SPARK-PAIR-0 P0. The readiness gate's discriminating evidence. Every red here is a state the corpus can author — an unreached probe read as absence, a pool measured before the retirement, a serving cell presented as trainable — so none of these claims is green by construction."
+data spark_training_ready_witness_note: String = "SPARK-PAIR-0 P0. The readiness gate's discriminating evidence. Every red here is a state the corpus can still author — an unreached probe read as absence, a reading paired with an unestablished retirement, a capture whose body is not a count, a serving cell presented as trainable — so none of these claims is green by construction. Three states that USED to be authorable are absent from this file rather than asserted: a pool measured before the retirement, a pool naming a different host than its retirement, and a capacity passed beside the capture instead of parsed from it. Each lost its constructor when the carrier absorbed the fact, and the refusals they used to prove moved into the producer's claims."
 
 // THE FIXTURES GO THROUGH THE PRODUCERS, BECAUSE THE CARRIERS REFUSED TO BE FABRICATED.
 //
@@ -114,15 +113,14 @@ fn w_retired_unit_silent() -> SparkServingRetirementObservation {
   )
 }
 
+// THE FIXTURE HANDS OVER A READ, NOT A NUMBER. The stdout IS the quantity now -- a decimal
+// MemAvailable count in kibibytes -- so a claim cannot assert a capacity the capture does not carry.
 fn w_pool_or_refused(
-  host: HostIdentity,
-  free_pool: ByteSize,
+  meminfo_stdout: String,
   after: SparkServingRetirementObservation,
 ) -> SparkUnifiedPoolObservation? {
   match spark_unified_pool_observation_from_capture(
-    host: host,
-    free_pool: free_pool,
-    capture: ProbeAnswered { stdout: "MemAvailable" },
+    capture: ProbeAnswered { stdout: meminfo_stdout },
     after: after,
   ) {
     SparkUnifiedPoolRead { observation: o } => Present { value: o }
@@ -132,10 +130,9 @@ fn w_pool_or_refused(
 
 fn w_readiness(
   retirement: SparkServingRetirementObservation,
-  host: HostIdentity,
-  free_pool: ByteSize,
+  meminfo_stdout: String,
 ) -> Bool {
-  match w_pool_or_refused(host: host, free_pool: free_pool, after: retirement) {
+  match w_pool_or_refused(meminfo_stdout: meminfo_stdout, after: retirement) {
     Absent => false
     Present { value: pool } =>
       match spark_training_readiness(pool: pool) {
@@ -146,7 +143,7 @@ fn w_readiness(
 }
 
 test fn w_a_fully_retired_training_cell_is_ready() -> Bool {
-  w_readiness(retirement: w_retired_srv6(), host: operator_host_srv6, free_pool: byte_size(count: 100000000000))
+  w_readiness(retirement: w_retired_srv6(), meminfo_stdout: "97656250")
 }
 
 // THE POSITIVE CONTROL'S MIRROR: THE SERVING CELL IS NEVER READY.
@@ -157,16 +154,15 @@ test fn w_a_fully_retired_training_cell_is_ready() -> Bool {
 test fn w_a_serving_cell_refuses_even_with_a_perfect_retirement_observation() -> Bool {
   !w_readiness(
     retirement: w_retired(host: operator_host_srv5),
-    host: operator_host_srv5,
-    free_pool: byte_size(count: 100000000000),
+    meminfo_stdout: "97656250",
   )
 }
 
 // AN UNREACHED PROBE IS NOT ABSENCE, AND THIS IS THE CLAIM THAT COSTS THE MOST TO GET WRONG.
 test fn w_an_unobserved_subject_refuses_on_every_axis() -> Bool {
-  !w_readiness(retirement: w_retired_endpoint_silent(), host: operator_host_srv6, free_pool: byte_size(count: 100000000000))
-    && !w_readiness(retirement: w_retired_process_silent(), host: operator_host_srv6, free_pool: byte_size(count: 100000000000))
-    && !w_readiness(retirement: w_retired_unit_silent(), host: operator_host_srv6, free_pool: byte_size(count: 100000000000))
+  !w_readiness(retirement: w_retired_endpoint_silent(), meminfo_stdout: "97656250")
+    && !w_readiness(retirement: w_retired_process_silent(), meminfo_stdout: "97656250")
+    && !w_readiness(retirement: w_retired_unit_silent(), meminfo_stdout: "97656250")
 }
 
 // A SERVER THAT ANSWERED IS THE LOUD ARM: the retirement did not happen.
@@ -178,8 +174,7 @@ test fn w_a_still_serving_endpoint_refuses() -> Bool {
       process_capture: w_process_absent_capture(),
       unit_capture: w_unit_absent_capture(),
     ),
-    host: operator_host_srv6,
-    free_pool: byte_size(count: 100000000000),
+    meminfo_stdout: "97656250",
   )
 }
 
@@ -193,9 +188,7 @@ test fn w_a_still_serving_endpoint_refuses() -> Bool {
 // stage earlier, by the producer, and this is that refusal.
 test fn w_a_pool_over_an_unestablished_retirement_is_refused() -> Bool {
   match spark_unified_pool_observation_from_capture(
-    host: operator_host_srv6,
-    free_pool: byte_size(count: 100000000000),
-    capture: ProbeAnswered { stdout: "MemAvailable" },
+    capture: ProbeAnswered { stdout: "97656250" },
     after: w_retired_endpoint_silent(),
   ) {
     SparkUnifiedPoolUnread { cause: c } => length(c as String) > 0
@@ -203,19 +196,29 @@ test fn w_a_pool_over_an_unestablished_retirement_is_refused() -> Bool {
   }
 }
 
-test fn w_a_pool_measured_on_another_host_refuses() -> Bool {
-  !w_readiness(retirement: w_retired_srv6(), host: operator_host_srv5, free_pool: byte_size(count: 100000000000))
+// A BODY THAT IS NOT A DECIMAL COUNT IS A READ OF SOMETHING THAT IS NOT THE POOL.
+//
+// The claim this joins is the one the previous shape could not author at all: the quantity used to
+// arrive as a ByteSize parameter, so ANY answered capture -- including this one -- certified whatever
+// number the caller passed. Now the text is the measurement, and text that does not parse refuses.
+test fn w_a_capture_whose_body_is_not_a_count_is_refused() -> Bool {
+  match spark_unified_pool_observation_from_capture(
+    capture: ProbeAnswered { stdout: "MemAvailable:   97656250 kB" },
+    after: w_retired_srv6(),
+  ) {
+    SparkUnifiedPoolUnread { cause: c } => length(c as String) > 0
+    SparkUnifiedPoolRead { observation: _ } => false
+  }
 }
 
 test fn w_a_non_positive_pool_refuses_rather_than_offering_nothing() -> Bool {
-  !w_readiness(retirement: w_retired_srv6(), host: operator_host_srv6, free_pool: byte_size(count: 0))
+  !w_readiness(retirement: w_retired_srv6(), meminfo_stdout: "0")
 }
 
-// A CAPTURE THAT DID NOT ANSWER CANNOT CARRY A BYTE COUNT, whatever integer is passed beside it.
+// A CAPTURE THAT DID NOT ANSWER CANNOT CARRY A COUNT AT ALL, which is now true by construction
+// rather than by a check: there is no quantity parameter left to pass beside a probe that never ran.
 test fn w_a_pool_number_without_a_read_is_refused() -> Bool {
   match spark_unified_pool_observation_from_capture(
-    host: operator_host_srv6,
-    free_pool: byte_size(count: 100000000000),
     capture: ProbeNeverRan { cause: "ssh timed out" as NonEmptyStr },
     after: w_retired_srv6(),
   ) {

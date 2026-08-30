@@ -123,20 +123,19 @@ fn spark_serving_cell_hosts() -> List<HostIdentity> {
   spark_hosts_with_role(role: SparkServingCell)
 }
 
-fn spark_training_cell_hosts() -> List<HostIdentity> {
-  spark_hosts_with_role(role: SparkTrainingCell)
-}
-
-// THE OFFER ROSTER IS `spark_training_cell_hosts`, AND THERE IS NO PREDICATE BESIDE IT.
+// THE OFFER ROSTER, AND THERE IS NO PREDICATE BESIDE IT.
 //
-// A `spark_host_offerable_for_training(host) -> Bool` stood here, matching the lookup sum into
+// A `spark_host_offerable_for_training(host) -> Bool` stood below this, matching the lookup sum into
 // true/false. It had exactly one caller: its own claim. The justification offered for keeping it was
 // that P3's supply module would consume it -- which is the authored-ahead-of-its-consumer shape
 // trimmed from the curl, pgrep and ss rows earlier in this same stack, and it is no better for being
 // a function rather than a constant.
 //
-// The roster above is the canonical surface and answers the same question without a second
-// vocabulary: a host is offerable exactly when it appears in `spark_training_cell_hosts()`, which
-// already excludes serving cells, unassigned hosts, and hosts the roster cannot decide. When P3
-// needs the offer population it takes the list; if it then needs membership of one host, that
-// question gets its answer when a caller actually exists to ask it.
+// This roster is the canonical surface and answers the same question without a second vocabulary: a
+// host is offerable exactly when it appears here, and this list already excludes serving cells,
+// unassigned hosts, and hosts the roster cannot decide. When P3 needs the offer population it takes
+// the list; if it then needs membership of one host, that question gets its answer when a caller
+// actually exists to ask it.
+fn spark_training_cell_hosts() -> List<HostIdentity> {
+  spark_hosts_with_role(role: SparkTrainingCell)
+}
