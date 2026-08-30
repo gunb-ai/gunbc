@@ -58,23 +58,29 @@ pub fn semver_compare_non_negative_int(a: NonNegativeInt, b: NonNegativeInt) -> 
 
 pub fn semver_compare_identifier(a: Rc<SemVerIdentifier>, b: Rc<SemVerIdentifier>) -> Ordering {
     match (*a.clone()).clone() {
-    SemVerIdentifier::SemVerNumericIdentifier { value: av, .. } => match (*b.clone()).clone() {
-    SemVerIdentifier::SemVerNumericIdentifier { value: bv, .. } => semver_compare_non_negative_int(av.clone(), bv.clone()),
-    SemVerIdentifier::SemVerAlphanumericIdentifier { label: _, .. } => Ordering::Less,
-},
-    SemVerIdentifier::SemVerAlphanumericIdentifier { label: al, .. } => match (*b.clone()).clone() {
-    SemVerIdentifier::SemVerNumericIdentifier { value: _, .. } => Ordering::Greater,
-    SemVerIdentifier::SemVerAlphanumericIdentifier { label: bl, .. } => if compile_error!("operator realization: host operator `<` on structural operand std.types.NonEmptyStr -- the declaration has no host realization and declares no operation for this operator; spell the operation as a call to the declared structural operation") {
-        Ordering::Less
-    } else {
-        if compile_error!("operator realization: host operator `>` on structural operand std.types.NonEmptyStr -- the declaration has no host realization and declares no operation for this operator; spell the operation as a call to the declared structural operation") {
-            Ordering::Greater
-        } else {
-            Ordering::Equal
+        SemVerIdentifier::SemVerNumericIdentifier { value: av, .. } => match (*b.clone()).clone() {
+            SemVerIdentifier::SemVerNumericIdentifier { value: bv, .. } => {
+                semver_compare_non_negative_int(av.clone(), bv.clone())
+            }
+            SemVerIdentifier::SemVerAlphanumericIdentifier { label: _, .. } => Ordering::Less,
+        },
+        SemVerIdentifier::SemVerAlphanumericIdentifier { label: al, .. } => {
+            match (*b.clone()).clone() {
+                SemVerIdentifier::SemVerNumericIdentifier { value: _, .. } => Ordering::Greater,
+                SemVerIdentifier::SemVerAlphanumericIdentifier { label: bl, .. } => {
+                    if (al.clone() < bl.clone()) {
+                        Ordering::Less
+                    } else {
+                        if (al.clone() > bl.clone()) {
+                            Ordering::Greater
+                        } else {
+                            Ordering::Equal
+                        }
+                    }
+                }
+            }
         }
-    },
-},
-}
+    }
 }
 
 pub fn semver_compare_identifiers(
@@ -205,7 +211,7 @@ pub fn semver_identity_compare(a: NonEmptyStr, b: NonEmptyStr) -> Ordering {
     if (a.clone() == b.clone()) {
         Ordering::Equal
     } else {
-        if compile_error!("operator realization: host operator `<` on structural operand extdeps.version.VersionIdentity -- the declaration has no host realization and declares no operation for this operator; spell the operation as a call to the declared structural operation") {
+        if (a.clone() < b.clone()) {
             Ordering::Less
         } else {
             Ordering::Greater
