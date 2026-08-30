@@ -670,11 +670,124 @@ test fn report_of_two_bare_hosts_counts_as_observed() -> Bool {
   )
 }
 
-test fn empty_observation_list_produces_no_report_rather_than_a_clean_one() -> Bool {
-  match spark_serving_observation_report_from_observations(observations: []) {
-    Absent => true
-    Present { value: _ } => false
+// P0-C2 CONTROLS AGAINST THE PRODUCTION REPORT CONSTRUCTOR.
+//
+// The coverage relation's own claims live beside it in v2.test.claim.spark_observation_scope and
+// exercise the pure join. These are deliberately different: they run the CONSTRUCTION PATH the
+// converge actually calls, because a correct helper wired to nothing is the specification-without-
+// execution trap, and the incident being repaired was exactly a green production report over a
+// narrowed roster.
+fn ho_at(host: HostIdentity) -> SparkServingHostObservation {
+  SparkServingHostObservation {
+    readback: SparkServingReadback {
+      host: host,
+      unit_outcome: SparkServingUnitAbsent,
+      runtime_version: SparkServingReadbackAbsent,
+      runtime_materialization_identity: SparkServingReadbackAbsent,
+      model_name: SparkServingReadbackAbsent,
+      model_tag: SparkServingReadbackAbsent,
+      model_manifest_digest: SparkServingReadbackAbsent,
+      nvidia_driver: SparkServingReadbackAbsent,
+      bind_address: SparkServingReadbackAbsent,
+      boot_provenance: BootProvenanceUnobserved { cause: "fixture readback carries no boot probe" as NonEmptyStr },
+      grants: GrantProbeRefused { cause: "fixture readback carries no grant probe" },
+    },
+    observation: SparkServingAbsent { host: host },
+    account: ManagedAccountProbeRefused { cause: "fixture: no account probe was run" },
   }
+}
+
+fn ho_at_refused(host: HostIdentity) -> SparkServingHostObservation {
+  SparkServingHostObservation {
+    readback: SparkServingReadback {
+      host: host,
+      unit_outcome: SparkServingUnitAbsent,
+      runtime_version: SparkServingReadbackAbsent,
+      runtime_materialization_identity: SparkServingReadbackAbsent,
+      model_name: SparkServingReadbackAbsent,
+      model_tag: SparkServingReadbackAbsent,
+      model_manifest_digest: SparkServingReadbackAbsent,
+      nvidia_driver: SparkServingReadbackAbsent,
+      bind_address: SparkServingReadbackAbsent,
+      boot_provenance: BootProvenanceUnobserved { cause: "fixture readback carries no boot probe" as NonEmptyStr },
+      grants: GrantProbeRefused { cause: "fixture readback carries no grant probe" },
+    },
+    observation: SparkServingObservationRefused {
+      host: host,
+      cause: "fixture: the probe did not answer" as NonEmptyStr,
+    },
+    account: ManagedAccountProbeRefused { cause: "fixture: no account probe was run" },
+  }
+}
+
+fn report_is_refused(r: SparkServingObservationReport) -> Bool {
+  match r {
+    SparkServingObservationsProduced { first: _, more: _ } => false
+    SparkServingObservationReportRefused { cause: _ } => true
+  }
+}
+
+// (1) The incident itself: expected {srv5,srv6}, only srv5 answered. Nonempty, and refused.
+test fn a_narrowed_roster_refuses_even_though_the_observation_list_is_nonempty() -> Bool {
+  report_is_refused(r: spark_serving_observation_report_from_observations(
+    expected: ["srv5", "srv6"],
+    observations: [ho_at(host: "srv5")],
+  ))
+}
+
+// (2) A probe that did not answer still COVERS its subject. Coverage and answered-ness are two
+// questions, and collapsing them would make a refused probe look like an unprobed host.
+test fn a_refused_probe_satisfies_coverage_while_failing_the_observation_terminal() -> Bool {
+  let r = spark_serving_observation_report_from_observations(
+    expected: ["srv5", "srv6"],
+    observations: [ho_at(host: "srv5"), ho_at_refused(host: "srv6")],
+  )
+  !report_is_refused(r: r) && (spark_serving_report_observations_were_made(report: r) == false)
+}
+
+// (3) The post-retirement state a read-only instrument must accept: srv6 absent is a real
+// observation, not a gap.
+test fn an_absent_host_satisfies_coverage_and_the_read_only_report_succeeds() -> Bool {
+  let r = spark_serving_observation_report_from_observations(
+    expected: ["srv5", "srv6"],
+    observations: [ho_at(host: "srv5"), ho_at(host: "srv6")],
+  )
+  !report_is_refused(r: r) && spark_serving_report_observations_were_made(report: r)
+}
+
+// (4) A host nobody expected is a scope disagreement, not a bonus.
+test fn a_foreign_host_refuses() -> Bool {
+  report_is_refused(r: spark_serving_observation_report_from_observations(
+    expected: ["srv5", "srv6"],
+    observations: [ho_at(host: "srv5"), ho_at(host: "srv6"), ho_at(host: "srv7")],
+  ))
+}
+
+// (5) A duplicate is a roster that counted one machine twice, and the count it inflates is exactly
+// the one the deleted cardinality guard used to read.
+test fn a_duplicated_host_refuses_despite_the_row_count_looking_right() -> Bool {
+  report_is_refused(r: spark_serving_observation_report_from_observations(
+    expected: ["srv5", "srv6"],
+    observations: [ho_at(host: "srv5"), ho_at(host: "srv5")],
+  ))
+}
+
+// (6) Coverage over an empty expected roster is vacuously true, which is why the scope is admitted
+// on its own arm before the join runs.
+test fn an_empty_expected_scope_refuses_rather_than_covering_vacuously() -> Bool {
+  report_is_refused(r: spark_serving_observation_report_from_observations(
+    expected: [],
+    observations: [],
+  ))
+}
+
+// (7) The old guard's case still refuses -- through the join now, not through a count. Nonemptiness
+// is derived from an admitted scope plus exact coverage, so nothing was lost by deleting it.
+test fn an_empty_observation_list_against_a_real_scope_still_refuses() -> Bool {
+  report_is_refused(r: spark_serving_observation_report_from_observations(
+    expected: ["srv5", "srv6"],
+    observations: [],
+  ))
 }
 
 test fn a_refused_report_is_never_read_as_observed() -> Bool {

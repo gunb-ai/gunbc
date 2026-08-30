@@ -159,7 +159,12 @@ import gunbc.spark.serving_runtime_admission { spark_serving_parse_nvidia_driver
 import gunbc.spark.serving_desired {
   spark_serving_automation_principal_login,
 }
-import gunbc.spark.serving_observation_scope { spark_serving_observation_scope }
+import gunbc.spark.serving_observation_scope {
+  spark_serving_observation_scope,
+  spark_observation_coverage,
+  SparkObservationCovered,
+  SparkObservationIncomplete,
+}
 import gunbc.spark.serving_readback_parse {
   SparkServingReadbackField,
   SparkServingReadbackAbsent,
@@ -857,34 +862,99 @@ fn spark_serving_observations_from_hosts(
   map(hosts, h => spark_serving_observe_host(context: context, host: h))
 }
 
-fn spark_serving_observation_report_from_observations(
+// P0-C2: THE REPORT IS BUILT FROM AN IDENTITY JOIN, AND THE COUNT GUARD IS GONE RATHER THAN KEPT.
+//
+// What stood here refused only an EMPTY observation list, on the stated ground that empty is
+// ignorance and not a clean fleet. That is true, and it was useless in the incident it was supposed
+// to catch: the roster held {srv5}, which is not empty, so nothing fired while the one host that
+// mattered went unprobed. A count cannot tell "every expected host answered" from "some other host
+// answered instead" -- and fleet-converge run 33296910990 reported observed_hosts=1 with a green
+// report.
+//
+// So the guard is REPLACED, not joined. Keeping both would be two authorities for one question, and
+// the weaker one would keep answering first. Once an admitted nonempty expected scope and exact
+// identity coverage both hold, nonemptiness is DERIVED -- there is nothing left for a cardinality
+// check to add.
+//
+// THE EXPECTED SCOPE IS ADMITTED BEFORE THE JOIN, because an empty expected roster would make
+// coverage vacuously true: no host is missing from a roster that demands nobody. That is the
+// empty_observation_narrow failure wearing the join's clothes, so it refuses on its own arm with its
+// own cause rather than passing through as Covered.
+//
+// WHAT THIS FUNCTION DOES NOT DECIDE. Coverage asks whether the required subject roster produced one
+// result row per identity. It does NOT ask whether each probe answered -- that is
+// spark_serving_report_observations_were_made, and the two are deliberately not one Bool. A row for
+// srv6 carrying SparkServingAbsent SATISFIES coverage and is a genuine observation: the correct
+// post-retirement state for a read-only instrument. A row carrying SparkServingObservationRefused
+// also satisfies coverage while failing the observation terminal. Only a MISSING srv6 row refuses
+// here, before any "fleet observed" report exists at all.
+fn spark_serving_observed_host_keys(
   observations: List<SparkServingHostObservation>,
-) -> SparkServingObservationReport? {
-  if observations.length() == 0 {
-    none
+) -> List<HostIdentity> {
+  map(observations, o => o.readback.host)
+}
+
+fn spark_serving_host_identity_words(hosts: List<HostIdentity>) -> String {
+  if length(hosts) == 0 {
+    "none"
   } else {
-    Present {
-      value: SparkServingObservationsProduced {
-        first: observations.first(),
-        more: observations.skip(n: 1),
-      },
+    join(map(hosts, h => h as String), ",")
+  }
+}
+
+fn spark_serving_coverage_refusal_cause(
+  missing: List<HostIdentity>,
+  foreign: List<HostIdentity>,
+  duplicated: List<HostIdentity>,
+) -> NonEmptyStr {
+  join([
+    "spark serving observation does not cover its physical scope: missing=",
+    spark_serving_host_identity_words(hosts: missing),
+    " foreign=",
+    spark_serving_host_identity_words(hosts: foreign),
+    " duplicated=",
+    spark_serving_host_identity_words(hosts: duplicated),
+  ], "") as NonEmptyStr
+}
+
+fn spark_serving_observation_report_from_observations(
+  expected: List<HostIdentity>,
+  observations: List<SparkServingHostObservation>,
+) -> SparkServingObservationReport {
+  if length(expected) == 0 {
+    SparkServingObservationReportRefused {
+      cause: "spark serving observation scope is empty: coverage over an empty expected roster is vacuous, not clean" as NonEmptyStr,
+    }
+  } else {
+    match spark_observation_coverage(
+      expected: expected,
+      observed: spark_serving_observed_host_keys(observations: observations),
+    ) {
+      SparkObservationIncomplete { missing: m, foreign: f, duplicated: d } =>
+        SparkServingObservationReportRefused {
+          cause: spark_serving_coverage_refusal_cause(missing: m, foreign: f, duplicated: d),
+        }
+      SparkObservationCovered =>
+        SparkServingObservationsProduced {
+          first: observations.first(),
+          more: observations.skip(n: 1),
+        }
     }
   }
 }
 
+// The hosts probed and the hosts EXPECTED are the same roster here by construction, which is the
+// property that makes this entry's coverage meaningful rather than circular: the caller passes the
+// physical scope once, and a probe that fails to produce a row for one of them is exactly what the
+// join catches.
 fn spark_serving_observe_with_context(
   context: FleetSshExecutionContext,
   hosts: List<HostIdentity>,
 ) -> SparkServingObservationReport {
-  match spark_serving_observation_report_from_observations(
+  spark_serving_observation_report_from_observations(
+    expected: hosts,
     observations: spark_serving_observations_from_hosts(context: context, hosts: hosts),
-  ) {
-    Absent =>
-      SparkServingObservationReportRefused {
-        cause: "spark serving observation requires at least one host" as NonEmptyStr,
-      }
-    Present { value: report } => report
-  }
+  )
 }
 
 // ONE RENDERER FOR A HOST OBSERVATION, because there were two and that is why this change did not
@@ -1097,20 +1167,28 @@ fn spark_serving_all_observations_succeeded(observations: List<SparkServingObser
 // required gate closure, so it has never run in CI. An attempt to restate the claim under the executed
 // v2.test.* prefix was made and abandoned on measurement, not preference: importing this module to
 // reach these two predicates pulls its 46-import closure and the claim module is killed during resolve
-// with no rows, the same wall that holds the 59 nonterminal identities. Moving the predicates to the
-// light module where the type lives would fix that and force an edit to the inert test, which would
-// classify its witnesses as changed-and-declined and red the required floor.
+// with no rows, the same wall that holds the 59 nonterminal identities.
+//
+// CORRECTION (P0-C2): the sentence that stood here said editing that inert module would classify its
+// witnesses as changed-and-declined and red the required floor, and therefore that the predicates
+// could not be moved. That is no longer true and was already false when it merged. #9728 landed
+// PlannedAsChangedWitness, which seeds changed-witness modules into preparation EVEN WHEN THEY SIT
+// OUTSIDE THE FLOOR ROSTER, so an edit to a test.claim.spark.* module now executes in the required
+// sublane rather than being automatically declined -- measured on this lane, standing
+// planned-and-passed. The enrollment argument for leaving the predicates where they are has
+// dissolved; the resolve-cost argument above has not, and it is the one that still holds.
 //
 // So the honest standing of the swap is: correct by argument, controlled by an authored claim, and
 // NOT established by execution. It is recorded here rather than in a commit message because a reader
 // of this function is the person who needs to know it.
 //
 // RETAINED, NOT KEPT: by the trimming rule applied elsewhere in this stack, a row whose only consumers
-// are its own claims should be deleted until a real consumer exists. It survives here for a mechanical
-// reason worth stating rather than hiding -- its claims live in test.claim.spark.*, which is outside
-// the required gate closure, so editing that module would classify its witnesses as changed-and-
-// declined and red the required floor. The row is therefore load-bearing for nothing and blocked from
-// deletion by an enrollment gap, which is the same gap that owns the 59 nonterminal identities.
+// are its own claims should be deleted until a real consumer exists. The reason recorded here used to
+// be an enrollment gap -- that editing test.claim.spark.* would classify its witnesses as changed-and-
+// declined and red the floor. #9728 dissolved that gap (see the correction above), so it is no longer
+// what blocks the deletion. What blocks it now is that this predicate answers the ROLE question --
+// "is every observed host serving" -- which is a real question P0 has not finished asking, and which
+// is deliberately NOT the coverage question the report constructor above now decides.
 fn spark_serving_observation_report_succeeded(report: SparkServingObservationReport) -> Bool {
   match report {
     SparkServingObservationsProduced { first: f, more: m } =>
@@ -1248,13 +1326,10 @@ func spark_serving_observe_ci_with_context(
     spark_serving_observation_scope(),
     h => spark_serving_observe_host_via_locus(context: context, host: h),
   )
-  let report = match spark_serving_observation_report_from_observations(observations: observations) {
-    Absent =>
-      SparkServingObservationReportRefused {
-        cause: "spark_serving_observe_ci_wet: no host was probed — an empty observation list is ignorance, not a clean fleet" as NonEmptyStr,
-      }
-    Present { value: r } => r
-  }
+  let report = spark_serving_observation_report_from_observations(
+    expected: spark_serving_observation_scope(),
+    observations: observations,
+  )
   let body = join([
     join(["spark_serving_observe_ci_wet probed_at=", probed_at_word(reading: now) as String, "\n"], ""),
     join(["credential_locus=", fleet_locus_label(context: context), "\n"], ""),
