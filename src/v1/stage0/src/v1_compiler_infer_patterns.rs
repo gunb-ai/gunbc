@@ -10,7 +10,9 @@ use crate::std_syntax::LiteralValue::LitBool;
 use crate::std_syntax::LiteralValue::*;
 pub use crate::std_types::SourceSpan;
 pub use crate::v1_compiler_infer_env::TypeEnv;
-pub use crate::v1_compiler_infer_env::{lookup_type, lookup_type_by_name, symbol_index_lookup};
+pub use crate::v1_compiler_infer_env::{
+    lookup_type, lookup_type_by_name, lookup_type_for, symbol_index_lookup,
+};
 pub use crate::v1_compiler_infer_resolve::{
     is_user_generic_use_site, resolve_generic_use_decl, substitute_type_slots,
     substitute_type_slots_scoped,
@@ -836,13 +838,8 @@ pub fn check_match_exhaustiveness(
         let resolved_raw = if has_structure.clone() {
             scrutinee_type.clone()
         } else {
-            match crate::v1_compiler_infer_env::lookup_type_by_name(
-                env.clone(),
-                crate::v1_std_core::authored_name_at(
-                    env.source_indices.clone(),
-                    scrutinee_type.clone(),
-                ),
-            ) {
+            match crate::v1_compiler_infer_env::lookup_type_for(env.clone(), scrutinee_type.clone())
+            {
                 Some(def) => def.clone(),
                 None => scrutinee_type.clone(),
             }
