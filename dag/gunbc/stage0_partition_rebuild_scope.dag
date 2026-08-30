@@ -57,7 +57,7 @@ fn rebuild_scope_mirror_of_module(module_basename: String) -> String {
 // receipt to report. So the scope is derived and the assembly carries its own typed absence, with
 // the CAPABILITY that ends it named on the row rather than a date or an artifact.
 type ExecutableAssemblyTrigger
-  = PartitionedClaimExecutorAssembly
+  = PartitionedClaimExecutorAssembly { capability: String }
 
 type PartitionExecutableAssembly
   = PartitionAssembledExecutable { package_name: String, bin_name: String }
@@ -118,7 +118,9 @@ data rebuild_scope_shared_build_input_mirrors: List<String> = [
 // round claims to perform and this module must not let a consumer mistake it for one.
 fn stage0_next_pass_executable_assembly() -> PartitionExecutableAssembly {
   ExecutableAssemblyUnavailable {
-    trigger: PartitionedClaimExecutorAssembly,
+    trigger: PartitionedClaimExecutorAssembly {
+      capability: "building and running the next-pass claim_executor from partition artifacts alone, with every module in its closure owned by exactly one admitted assembly surface"
+    },
     detail: "claim_executor is a bin of the monolithic v1-compiler package, whose library declares the partition-owned mirrors a second time; no executable can be assembled from the partition packages alone"
   }
 }
@@ -364,7 +366,7 @@ fn stage0_partition_rebuild_decision_line(decision: PartitionRebuildDecision) ->
             match assembly {
               PartitionAssembledExecutable { package_name: p, bin_name: b } =>
                 concat(concat(" executable_assembly=assembled package=", p), concat(" bin=", b))
-              ExecutableAssemblyUnavailable { trigger: PartitionedClaimExecutorAssembly, detail: _ } =>
+              ExecutableAssemblyUnavailable { trigger: PartitionedClaimExecutorAssembly { capability: _ }, detail: _ } =>
                 " executable_assembly=unavailable trigger=PartitionedClaimExecutorAssembly"
             }
           )

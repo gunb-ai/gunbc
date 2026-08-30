@@ -17,7 +17,6 @@ import gunbc.stage0_partition_rebuild_scope {
   PartitionGenerationAuthorityChanged,
   PartitionRebuildDecision,
   PartitionRebuildScopeDerived,
-  PartitionedClaimExecutorAssembly,
   RebuildScopeRefused,
   SharedCompilerBuildInputChanged,
   WholeCompilerRebuildRequired,
@@ -252,7 +251,7 @@ test fn witness_today_derives_scope_with_unavailable_assembly_holds() -> Bool {
       witness_has(items: o, item: "v1-stage0-std-surface")
         && (count(c) > 1)
         && (match assembly {
-              ExecutableAssemblyUnavailable { trigger: PartitionedClaimExecutorAssembly, detail: _ } => true
+              ExecutableAssemblyUnavailable { trigger: PartitionedClaimExecutorAssembly { capability: _ }, detail: _ } => true
               PartitionAssembledExecutable { package_name: _, bin_name: _ } => false
             })
     WholeCompilerRebuildRequired { cause: _ } => false
@@ -274,7 +273,7 @@ test fn witness_assembled_executable_scope_is_actuatable_holds() -> Bool {
 
 test fn witness_next_pass_executable_assembly_is_unavailable_holds() -> Bool {
   match stage0_next_pass_executable_assembly() {
-    ExecutableAssemblyUnavailable { trigger: PartitionedClaimExecutorAssembly, detail: _ } => true
+    ExecutableAssemblyUnavailable { trigger: PartitionedClaimExecutorAssembly { capability: _ }, detail: _ } => true
     PartitionAssembledExecutable { package_name: _, bin_name: _ } => false
   }
 }
