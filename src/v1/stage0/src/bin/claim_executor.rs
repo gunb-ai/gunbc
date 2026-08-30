@@ -1413,6 +1413,13 @@ fn required_floor_outcome_is_clean(outcome: &v1_compiler::cli_run::RequiredFloor
         // roster that has stopped describing the tree, which voids the contract's monotone
         // claim, so it blocks exactly as `stale_quarantine` and `stale_route_gap` do.
         && outcome.stale_cost_debt.is_empty()
+        // A CHANGED witness identity that did not execute to a passing verdict — declined,
+        // absent from the disposition receipt, or without a terminal Passed verdict — reds the
+        // required context. The classification authority is
+        // `v2.workflow.floor_changed_witness.changed_witness_standing_blocks`; the population
+        // is only the identities this change's diff touched, never the standing declined
+        // corpus, so this conjunct cannot red a PR for debt it did not author.
+        && outcome.changed_witness_blocking.is_empty()
 }
 
 fn main() -> ExitCode {
