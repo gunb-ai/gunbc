@@ -563,3 +563,15 @@ test fn w_record_arms_differing_only_in_plain_bindings_group_into_a_nested_match
     ["if matches!(label.as_ref()"]
   )
 }
+
+// A `Violates` literal at a record field inhabits the FIELD's declared `Witness<C>`, not the
+// enclosing fn's return: the type argument must come from the field (`Witness::<i64>`), never
+// from the fn return (`Witness::<RecW>` / `Witness::<Rc<RecW>>`).
+test fn w_violates_at_a_record_field_takes_the_fields_declared_carrier() -> Bool {
+  compile_dag_rust_emit_check(
+    "module test.claim.witness_field_probe\nimport std.types { Bool, Int }\nimport v2.std.witness { Holds, Violates, Witness }\nimport v2.std.diagnostic { Diagnostic }\ntype RecW { inner: Witness<Int> }\nfn mk(ok: Bool, d: Diagnostic) -> RecW { RecW { inner: if ok { Holds { value: 1 } } else { Violates { diagnostic: d } } } }\n",
+    "src/test_claim_witness_field_probe.rs",
+    ["Witness::<i64>::Violates"],
+    ["Witness::<RecW>::Violates", "Witness::<Rc<RecW>>::Violates"]
+  )
+}

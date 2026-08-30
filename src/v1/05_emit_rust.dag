@@ -152,7 +152,7 @@ import v1.compiler.infer {
 import v1.compiler.infer_emit_info {
   EmitGraphInfo, TypeSummary, StructRepr, EnumRepr,
   lookup_emit_type_summary, lookup_emit_type_decl, empty_emit_graph_info,
-  emit_info_with_fn_type_context, emit_info_with_fn_return,
+  emit_info_with_fn_type_context, emit_info_with_fn_return, emit_info_with_expected_type,
   is_enum_in_summaries, find_variant_parent, is_known_variant,
   variant_belongs_to_enum, variant_summary_key,
   collect_type_node_import_surface_names
@@ -870,14 +870,14 @@ fn rust_witness_type_arg_from_holds_value_field(fields: List<Node>, shared_types
       let val_rt = resolved_type(n: field_init_node_value(n: f))
       match rust_witness_carrier_from_type_node(type_node: val_rt, shared_types: shared_types, emit_info: emit_info, source_indices: source_indices) {
         Present { value: arg } => Present { value: arg }
-        Absent => rust_witness_type_arg_from_fn_return(emit_info: emit_info, shared_types: shared_types, source_indices: source_indices)
+        Absent => rust_witness_type_arg_from_expected_type(emit_info: emit_info, shared_types: shared_types, source_indices: source_indices)
       }
     Absent => none
   }
 }
 
-fn rust_witness_type_arg_from_fn_return(emit_info: EmitGraphInfo, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>) -> String? {
-  match emit_info.fn_return_type {
+fn rust_witness_type_arg_from_expected_type(emit_info: EmitGraphInfo, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>) -> String? {
+  match emit_info.expected_type {
     Present { value: rt } => rust_witness_carrier_from_type_node(type_node: rt, shared_types: shared_types, emit_info: emit_info, source_indices: source_indices)
     Absent => none
   }
@@ -887,10 +887,10 @@ fn rust_witness_type_arg_for_variant(variant_name: String, resolved_type: Node, 
   if variant_name == "Holds" {
     match rust_witness_type_arg_from_holds_value_field(fields: fields, shared_types: shared_types, emit_info: emit_info, source_indices: source_indices) {
       Present { value: arg } => Present { value: arg }
-      Absent => rust_witness_type_arg_from_fn_return(emit_info: emit_info, shared_types: shared_types, source_indices: source_indices)
+      Absent => rust_witness_type_arg_from_expected_type(emit_info: emit_info, shared_types: shared_types, source_indices: source_indices)
     }
   } else if variant_name == "Violates" {
-    match rust_witness_type_arg_from_fn_return(emit_info: emit_info, shared_types: shared_types, source_indices: source_indices) {
+    match rust_witness_type_arg_from_expected_type(emit_info: emit_info, shared_types: shared_types, source_indices: source_indices) {
       Present { value: arg } => Present { value: arg }
       Absent => rust_witness_carrier_from_type_node(type_node: resolved_type, shared_types: shared_types, emit_info: emit_info, source_indices: source_indices)
     }
@@ -2866,7 +2866,8 @@ fn build_emit_rust_context(typed: ResolvedGraph) -> EmitRustContext {
     clone_impl_required_type_params: clone_impl_required,
     fn_generic_param_names: base_info.fn_generic_param_names,
     fn_type_env: base_info.fn_type_env,
-    fn_return_type: none
+    fn_return_type: none,
+    expected_type: none
   }
   let registry = merge_item_registries(
     bare: typed.item_registry,
@@ -3200,7 +3201,8 @@ fn emit_module(typed_module: TypedModule, registry: Map<String, ItemInfo>) -> Te
     clone_impl_required_type_params: clone_impl_required,
     fn_generic_param_names: base_info.fn_generic_param_names,
     fn_type_env: base_info.fn_type_env,
-    fn_return_type: none
+    fn_return_type: none,
+    expected_type: none
   }
   let shared_types = emit_info.shared_types
   let export_sets = build_module_export_sets(modules: [typed_module])
@@ -6261,7 +6263,8 @@ fn emit_typed_item(item: Node, module_name: String, registry: Map<String, ItemIn
       clone_impl_required_type_params: emit_info.clone_impl_required_type_params,
       fn_generic_param_names: emit_info.fn_generic_param_names,
       fn_type_env: emit_info.fn_type_env,
-      fn_return_type: emit_info.fn_return_type
+      fn_return_type: emit_info.fn_return_type,
+      expected_type: emit_info.expected_type
     }
 
     let is_effectful = match lookup_item(registry: registry, name: authored_name(env: env, node: item)) {
@@ -10473,7 +10476,8 @@ fn emit_rust_fold_method_call(method_call_node: Node, fold_accumulator_type: Nod
               clone_impl_required_type_params: emit_info.clone_impl_required_type_params,
               fn_generic_param_names: emit_info.fn_generic_param_names,
               fn_type_env: emit_info.fn_type_env,
-              fn_return_type: emit_info.fn_return_type
+              fn_return_type: emit_info.fn_return_type,
+              expected_type: emit_info.expected_type
             }
           Absent => emit_info
         }
@@ -10504,7 +10508,8 @@ fn emit_rust_fold_method_call(method_call_node: Node, fold_accumulator_type: Nod
               clone_impl_required_type_params: emit_info.clone_impl_required_type_params,
               fn_generic_param_names: emit_info.fn_generic_param_names,
               fn_type_env: emit_info.fn_type_env,
-              fn_return_type: emit_info.fn_return_type
+              fn_return_type: emit_info.fn_return_type,
+              expected_type: emit_info.expected_type
             }
           Absent => emit_info
         }
@@ -11739,10 +11744,25 @@ fn emit_field_value_with_context(field_value: Node, struct_node: Node, outer_typ
             rust_shared_wrap_ctor(inner_expr: raw)
           } else { raw }
         Absent =>
-          emit_typed_expr(texpr: field_value, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
+          emit_typed_expr(texpr: field_value, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info_with_expected_type(emit_info: emit_info, expected_type: record_field_expected_type(struct_node: struct_node, outer_type_name: outer_type_name, field_name: field_name, scope: scope, emit_info: emit_info)), fuel: 1024)
       }
     _ =>
-      emit_typed_expr(texpr: field_value, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
+      emit_typed_expr(texpr: field_value, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info_with_expected_type(emit_info: emit_info, expected_type: record_field_expected_type(struct_node: struct_node, outer_type_name: outer_type_name, field_name: field_name, scope: scope, emit_info: emit_info)), fuel: 1024)
+  }
+}
+
+// The declared type of a record-literal field: the resolved product node first, then the named
+// struct or variant declaration when the literal's node does not carry the field. None when
+// neither names it -- a field value never inhabits the enclosing fn's return type, so the
+// expectation is cleared rather than inherited.
+fn record_field_expected_type(struct_node: Node, outer_type_name: String?, field_name: String, scope: InferScope, emit_info: EmitGraphInfo) -> Node? {
+  match rust_struct_field_type_node_from_container(container: struct_node, field_name: field_name, source_indices: scope.type_env.source_indices) {
+    Present { value: n } => Present { value: n }
+    Absent =>
+      match outer_type_name {
+        Present { value: sn } => rust_struct_field_type_node_variant_aware(scope: scope, emit_info: emit_info, struct_name: sn, field_name: field_name)
+        Absent => none
+      }
   }
 }
 
