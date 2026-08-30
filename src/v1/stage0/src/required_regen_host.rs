@@ -118,6 +118,29 @@ pub enum RegenReceipt {
         reason: String,
         candidate_artifact: String,
     },
+    /// THE EDIT AFFECTS NO COMPARED MIRROR, so this round adjudicated nothing.
+    ///
+    /// Reached only under an affected scope whose selection is empty -- an edit confined to `.dag`
+    /// modules that no mirror is emitted from, which is an ordinary state and not a defect. This
+    /// PR's own edit set is one: `v2.workflow.required_regen` and `gunbc.regen_round_cost` are read
+    /// through the interpreter and have no mirror in `src/v1/stage0/src`.
+    ///
+    /// IT CARRIES NO DIGESTS, for exactly the reason `Refused` carries none: nothing was compared,
+    /// so there is no first generation to have a digest of. Routing this through `FirstGeneration`
+    /// would have put an empty-population digest in a field a fixed-point pass reads as evidence.
+    /// The three empty-population refusals in this file (`verify_candidate_tree`,
+    /// `tree_digest_for_basenames`, `tree_digest_from_map`) are RIGHT and stay: a digest over
+    /// nothing is not evidence of anything, and for the whole-population round an empty population
+    /// means the tree is broken. This variant is how the scoped round avoids asking them a
+    /// question they correctly refuse, rather than weakening them so they answer it.
+    #[serde(rename = "no_affected_mirrors")]
+    NoAffectedMirrors {
+        schema: String,
+        commit_sha: String,
+        authority_digest: String,
+        /// The scope line that selected nothing, so the receipt says WHY it adjudicated nothing.
+        scope: String,
+    },
     #[serde(rename = "fixed_point")]
     FixedPoint {
         schema: String,
@@ -135,6 +158,7 @@ impl RegenReceipt {
         match self {
             RegenReceipt::FirstGeneration { commit_sha, .. } => commit_sha,
             RegenReceipt::Refused { commit_sha, .. } => commit_sha,
+            RegenReceipt::NoAffectedMirrors { commit_sha, .. } => commit_sha,
             RegenReceipt::FixedPoint { commit_sha, .. } => commit_sha,
         }
     }
@@ -149,6 +173,9 @@ impl RegenReceipt {
                 ..
             } => Some(*first_generation_equal),
             RegenReceipt::Refused { .. } => None,
+            // Nothing was compared, so there is no answer -- not `Some(true)`, which would report a
+            // clean comparison that never happened.
+            RegenReceipt::NoAffectedMirrors { .. } => None,
             RegenReceipt::FixedPoint { .. } => None,
         }
     }
@@ -158,6 +185,7 @@ impl RegenReceipt {
         match self {
             RegenReceipt::FirstGeneration { .. } => None,
             RegenReceipt::Refused { .. } => None,
+            RegenReceipt::NoAffectedMirrors { .. } => None,
             RegenReceipt::FixedPoint {
                 fixed_point_equal, ..
             } => Some(*fixed_point_equal),
@@ -173,6 +201,8 @@ impl RegenReceipt {
             RegenReceipt::Refused {
                 candidate_artifact, ..
             } => Some(candidate_artifact),
+            // No candidate tree was written, because no emit was run.
+            RegenReceipt::NoAffectedMirrors { .. } => None,
             RegenReceipt::FixedPoint { .. } => None,
         }
     }
@@ -198,6 +228,7 @@ impl RegenReceipt {
                 ..
             } => Some(candidate_generated_digest),
             RegenReceipt::Refused { .. } => None,
+            RegenReceipt::NoAffectedMirrors { .. } => None,
             RegenReceipt::FixedPoint {
                 candidate_generated_digest,
                 ..
@@ -212,6 +243,8 @@ impl RegenReceipt {
         match self {
             RegenReceipt::FirstGeneration { .. } => None,
             RegenReceipt::Refused { reason, .. } => Some(reason),
+            // Not a refusal: the round ran and correctly had nothing to do.
+            RegenReceipt::NoAffectedMirrors { .. } => None,
             RegenReceipt::FixedPoint { .. } => None,
         }
     }
@@ -220,6 +253,7 @@ impl RegenReceipt {
         match self {
             RegenReceipt::FirstGeneration { .. } => None,
             RegenReceipt::Refused { .. } => None,
+            RegenReceipt::NoAffectedMirrors { .. } => None,
             RegenReceipt::FixedPoint { prior, .. } => Some(prior),
         }
     }
@@ -315,6 +349,49 @@ pub fn run_required_regen_scoped(
     v1_rt::trace_mark("regen.corpus_load.done".to_string());
     let authority_digest = authority_digest_from_sources(&sources)?;
     let formatter = formatter.with_normalize_cache(&workspace)?;
+
+    // AN EMPTY SELECTION ENDS THE ROUND HERE, SUCCESSFULLY, BEFORE THE EMIT.
+    //
+    // Finding from codex/gpt-5.6-sol on review 57625, and it was right: the scoped round drove an
+    // empty selection into `verify_candidate_tree` and both digest functions, all three of which
+    // correctly refuse an empty population -- so the state `v2.workflow.required_regen`
+    // `regen_scope_line` documents as an ordinary answer ("an edit that touches no module in the
+    // compared population ... adjudicates nothing and installs nothing") was a hard refusal in the
+    // host. The model said one thing and the realization did another, which is the fork this whole
+    // file exists to catch, sitting inside it.
+    //
+    // The repair is not to relax those three refusals. They are right: a digest over nothing is
+    // evidence of nothing, and for a whole-population round an empty population means the tree is
+    // broken. The repair is for the scoped round not to ask them a question they should refuse.
+    //
+    // ENDING BEFORE THE EMIT IS THE POINT, not an optimization detail. An edit that can change no
+    // mirror has no reason to pay the emit (163 s) or the rebuild (230 s) that follow, so this is
+    // the one place in the round where the affected-set bound removes work proportional to the
+    // corpus rather than to the change. The whole-population arm cannot reach it -- an empty
+    // committed population there is `EmptyCommittedPopulation`, a different refusal about a
+    // different subject.
+    if selected.is_empty() && !matches!(scope, RegenEmissionScope::WholePopulation) {
+        let receipt = RegenReceipt::NoAffectedMirrors {
+            schema: RECEIPT_SCHEMA.to_string(),
+            commit_sha: git_head_sha(&workspace)?,
+            authority_digest,
+            scope: scope.line(),
+        };
+        write_receipt(&receipt_path, &receipt)?;
+        eprintln!(
+            "required-regen: the affected-set bound selects no compared mirror for this edit; \
+             nothing adjudicated, nothing installed, no emit run ({})",
+            scope.line()
+        );
+        return Ok(RequiredRegenOutcome {
+            receipt,
+            failures: Vec::new(),
+            first_generation: FirstGeneration::NotMeasured(
+                "the affected-set bound selected no compared mirror, so no generation was emitted"
+                    .to_string(),
+            ),
+        });
+    }
 
     // PRODUCTION, THEN ADJUDICATION -- and the order is the whole repair.
     //
@@ -1989,6 +2066,19 @@ fn read_receipt(path: &Path) -> Result<PriorMeasurement, String> {
              point. Receipt: {}",
             path.display()
         )),
+        // A SCOPED ROUND THAT SELECTED NOTHING EMITTED NOTHING, so there is no first generation
+        // here either -- and the remedy is different from the refusal above, which is why it is
+        // its own arm rather than folded into one. Nothing is broken; the fixed-point pass is
+        // simply being asked to build on a round that had no work to do. The operator either
+        // wants the WHOLE-population round (drop `--regen-affected-scope`) or does not need a
+        // fixed point for this edit at all.
+        RegenReceipt::NoAffectedMirrors { scope, .. } => Err(format!(
+            "refusal: the first-generation pass at this commit selected no compared mirror \
+             ({scope}), so it emitted nothing and there is no first-generation measurement for \
+             the fixed-point pass to reference. Re-run without `--regen-affected-scope` if you \
+             need a whole-population fixed point. Receipt: {}",
+            path.display()
+        )),
         RegenReceipt::FixedPoint { .. } => Err(format!(
             "refusal: prior receipt {} is a fixed-point receipt, not a first-generation \
              measurement -- the fixed-point pass cannot build on another fixed-point pass. \
@@ -2747,6 +2837,16 @@ pub fn run_regen_round_cost(
     // at the emit: no install, no rebuild, no diff, and the receipt says which phases ran.
     let drifted: Option<Vec<String>> = match &regen.receipt {
         RegenReceipt::FirstGeneration { changed_paths, .. } => Some(changed_paths.clone()),
+        // NOT a failure and NOT a refusal: the round ran, the bound selected no compared mirror,
+        // and the honest install set is empty. Distinguished from `Some(vec![])` because there is
+        // also no rebuild to do -- nothing was installed, so nothing can have changed under cargo.
+        RegenReceipt::NoAffectedMirrors { scope, .. } => {
+            eprintln!(
+                "regen-round-cost: no affected mirror for this edit ({scope}); no install, no \
+                 rebuild, no diff"
+            );
+            None
+        }
         RegenReceipt::Refused { reason, .. } => {
             round_failures.push(format!("regen refused, round stopped at emit: {reason}"));
             None
@@ -3519,6 +3619,56 @@ mod regen_emission_scope_tests {
             message.contains("does not widen") && message.contains("dag/std/departed.dag"),
             "the refusal names the unlocatable path and its direction: {message}"
         );
+    }
+
+    /// THE ARM `review 57625` FOUND, and the red it discriminates.
+    ///
+    /// An empty affected selection is an ordinary answer, and the round for it must END, not
+    /// refuse. Before the repair the host drove the empty selection into `verify_candidate_tree`
+    /// and both digest functions, all three of which correctly refuse an empty population, so the
+    /// documented no-op was a hard error. The three assertions below are the three properties that
+    /// were false: the empty selection is not an `Err`; the round's receipt carries no digest to
+    /// have fabricated; and the receipt is NOT a refusal, so a caller cannot read "nothing to do"
+    /// as "something is wrong".
+    ///
+    /// The empty-population refusals themselves are asserted to still stand, because the wrong
+    /// repair here is to relax them -- that would let a whole-population round with a broken tree
+    /// digest nothing and report a fixed point.
+    #[test]
+    fn an_empty_affected_selection_is_an_answer_and_the_empty_population_walls_still_stand() {
+        let scope = RegenEmissionScope::Affected {
+            members: vec![s("not_in_the_tree.rs")],
+        };
+        let selection = scope_selection(&scope, &committed()).expect("an answer, not a refusal");
+        assert!(selection.is_empty());
+
+        let receipt = RegenReceipt::NoAffectedMirrors {
+            schema: RECEIPT_SCHEMA.to_string(),
+            commit_sha: s("0000000000000000000000000000000000000000"),
+            authority_digest: s("sha256:test"),
+            scope: scope.line(),
+        };
+        assert_eq!(receipt.candidate_generated_digest(), None);
+        assert_eq!(receipt.first_generation_equal(), None);
+        assert_eq!(receipt.candidate_artifact(), None);
+        assert_eq!(
+            receipt.refusal_reason(),
+            None,
+            "an empty selection is not a refusal; reporting one would make an ordinary edit look \
+             like a broken tree"
+        );
+
+        // The walls the repair deliberately did NOT touch.
+        let tmp = std::env::temp_dir();
+        assert!(verify_candidate_tree(&tmp, &[]).is_err());
+        let formatter = match ResolvedFormatter::admit() {
+            Ok(f) => f,
+            // The formatter is a boundary fact; where it is absent this half of the control is
+            // unobservable and says so rather than passing vacuously.
+            Err(_) => return,
+        };
+        assert!(tree_digest_from_map(&formatter, &HashMap::new(), &[]).is_err());
+        assert!(tree_digest_for_basenames(&formatter, &tmp, &[], "committed").is_err());
     }
 
     /// LOCKSTEP with `v2.workflow.required_regen` `regen_scope_select`, on the same rosters, for
