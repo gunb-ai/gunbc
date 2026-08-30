@@ -157,7 +157,6 @@ import gunbc.roadmap_launch_canary {
   roadmap_launch_canary_edge, roadmap_launch_canary_execution_contract,
 }
 import test.claim.roadmap_launch_canary_witness { canary_node, canary_parent, canary_child, canary_doc }
-import gunbc.roadmap_status { Unsigned }
 import gunbc.roadmap_dashboard_instance {
   DashboardInstanceResolved,
   DashboardInstanceRootUnknown,
