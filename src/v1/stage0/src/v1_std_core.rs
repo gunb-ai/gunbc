@@ -230,10 +230,17 @@ impl VarBindingKind {
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct DeclaredCallableIdentity {
+    pub owner_module_path: String,
+    pub decl_name: String,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum CallTargetIdentity {
     RuntimePrimitiveCall {
         primitive_name: String,
+        projected_from: Option<Rc<DeclaredCallableIdentity>>,
     },
     SourceDeclarationCall {
         owner_module_path: String,
