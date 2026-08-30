@@ -16,7 +16,8 @@ import v2.workflow.floor_terminal_ledger {
 import v2.std.collection { List }
 import v2.std.logic { Bool }
 import v2.std.text { String }
-import v2.std.integer { Int }
+import std.measure { ClockBasis, CpuClock, Millisecond, Nanosecond }
+import std.observation { Measured, MeasuredValue, MeasuredUnavailable, TimedMeasurement, observation_duration_of }
 
 // THE CHANGED-WITNESS PROJECTION (operator-relayed ruling, 2026-08-30).
 //
@@ -48,24 +49,53 @@ type ChangedWitnessExecutionStanding =
   | MissingDisposition
 
 // WHAT THE RUN MEASURED FOR ONE CHANGED COST-DEBT IDENTITY (FLOOR-CHANGED-COST-0, operator
-// ruling 2026-08-30). The ordinary CPU line travels WITH the measurement rather than being
-// looked up by a reader, so a published observation cannot be compared against a line the run
-// did not use.
+// ruling 2026-08-30).
+//
+// NO FIELD HERE CARRIES ITS UNIT OR ITS CLOCK IN ITS NAME. `std.measure`
+// `measure_clock_basis_note` rules on exactly this shape -- a duration whose meaning lives only
+// in the name of the field holding it, so `wall_nanos` and `cpu_nanos` compare, add and
+// threshold as if they were one quantity -- and `std.observation` already carries the resolution:
+// `List<TimedMeasurement>`, every clock tagged, read back by basis through
+// `observation_duration_of`. That is the same shape `gunbc.witness_row_cost`
+// `WitnessCostReceiptRow` uses for its `eval` term, so this is a reuse rather than a fourth
+// spelling. `Measured` keeps an unreadable clock a NAMED state with its cause instead of a
+// fabricated zero.
+//
+// THE LINE IS A `Millisecond` AND THE MEASUREMENTS ARE `Nanosecond`, per
+// `std.measure` `nanosecond_millisecond_projection_note`: nanosecond is the canonical exact
+// elapsed carrier, millisecond is the policy and presentation scale, and this line is policy --
+// it is `required_floor_claim_cpu_safety_limit_ms` verbatim. It travels WITH its basis, because
+// a budget and the figures compared against it are meaningless on different clocks (the same
+// reason `std.observation` `ObservationOutcome.TimedOut` carries one basis over its pair).
 //
 // THE OBSERVATION IS A RECEIPT, NOT A REPAYMENT. It never edits or deletes the authored roster
 // row: a single run landing under the line does not establish that a row whose observations
 // ranged through 505ms has become safely ordinary, and the row leaves through the explicit
-// debt-removal transaction or not at all.
+// debt-removal transaction.
 type ChangedWitnessCostObservation {
-  marginal_cpu_ms: Int
-  wall_ms: Int
-  cpu_line_ms: Int
+  measured: List<TimedMeasurement>
+  observed_against_basis: ClockBasis
+  observed_against: Millisecond
 }
 
-// WHETHER THE RUN HAS THAT MEASUREMENT. Absent is an arm and not a zero: a claim that executed
-// under the verdict-only override with NO published cost has had its CPU gate stood down and
-// nothing put in its place, which is the absorbing-fallback shape DESIGN section 5 forbids. It
-// therefore reds (`CostObservationMissingUnderVerdictOnly`) rather than passing as ordinary.
+// The measurement on the clock whose line was stood down. It is read by BASIS rather than by
+// field position, so an observation that carries the other clock only cannot be mistaken for one
+// that carries this one.
+fn changed_witness_gated_clock_measurement(
+  observation: ChangedWitnessCostObservation,
+) -> Measured<Nanosecond> {
+  observation_duration_of(
+    durations: observation.measured,
+    basis: observation.observed_against_basis,
+  )
+}
+
+// WHETHER THE RUN HAS THAT MEASUREMENT AT ALL. Absent is an arm and not a zero: a claim that
+// executed under the verdict-only override with NO published cost has had its CPU gate stood
+// down and nothing put in its place, which is the absorbing-fallback shape DESIGN section 5
+// forbids — the mechanism that stops gating also stops counting. It reds
+// (`CostObservationMissingUnderVerdictOnly`), and so does an observation whose GATED CLOCK is
+// `MeasuredUnavailable`, which is the same absence one level in.
 type ChangedWitnessCostReading =
     CostObserved { observation: ChangedWitnessCostObservation }
   | CostUnobserved
@@ -118,17 +148,26 @@ type ChangedWitnessDispositionReading =
 // the verdict-only override keeps the COST FACT in the standing rather than laundering it into
 // an ordinary pass, so a reader of the changed-set lines can never mistake a row that ran on a
 // stood-down CPU gate for a row that ran under one.
+fn changed_witness_verdict_only_standing(
+  cost: ChangedWitnessCostReading,
+) -> ChangedWitnessExecutionStanding {
+  match cost {
+    CostUnobserved => CostObservationMissingUnderVerdictOnly {}
+    CostObserved { observation: o } =>
+      match changed_witness_gated_clock_measurement(observation: o) {
+        MeasuredValue { value: _ } => PlannedAndPassedWithCostDebtObserved { observation: o }
+        MeasuredUnavailable { cause: _ } => CostObservationMissingUnderVerdictOnly {}
+      }
+  }
+}
+
 fn changed_witness_green_standing(
   cost_policy: ChangedWitnessCostPolicy,
   cost: ChangedWitnessCostReading,
 ) -> ChangedWitnessExecutionStanding {
   match cost_policy {
     OrdinaryChangedWitnessCostPolicy => PlannedAndPassed {}
-    ChangedCostDebtVerdictOnly =>
-      match cost {
-        CostObserved { observation: o } => PlannedAndPassedWithCostDebtObserved { observation: o }
-        CostUnobserved => CostObservationMissingUnderVerdictOnly {}
-      }
+    ChangedCostDebtVerdictOnly => changed_witness_verdict_only_standing(cost: cost)
   }
 }
 
@@ -161,12 +200,7 @@ fn changed_witness_planned_standing(
         PassedOverBudget =>
           match cost_policy {
             OrdinaryChangedWitnessCostPolicy => PlannedWithoutTerminalVerdict {}
-            ChangedCostDebtVerdictOnly =>
-              match cost {
-                CostObserved { observation: obs } =>
-                  PlannedAndPassedWithCostDebtObserved { observation: obs }
-                CostUnobserved => CostObservationMissingUnderVerdictOnly {}
-              }
+            ChangedCostDebtVerdictOnly => changed_witness_verdict_only_standing(cost: cost)
           }
         Failed => PlannedWithoutTerminalVerdict {}
         BudgetRefusedBeforeVerdict => PlannedWithoutTerminalVerdict {}

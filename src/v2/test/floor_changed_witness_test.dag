@@ -5,7 +5,7 @@ import v2.workflow.floor_changed_witness {
   PlannedAndPassed, PlannedAndKnownRedHeld, PlannedWithoutTerminalVerdict, Declined, MissingDisposition,
   ChangedWitnessTerminalReading, TerminalOutcome, NotExecuted,
   ChangedWitnessDispositionReading, DispositionRow, NoDispositionRow,
-  ChangedWitnessCostObservation,
+  ChangedWitnessCostObservation, changed_witness_gated_clock_measurement,
   ChangedWitnessCostReading, CostObserved, CostUnobserved,
   PlannedAndPassedWithCostDebtObserved, CostObservationMissingUnderVerdictOnly,
   ChangedWitnessRow,
@@ -38,7 +38,9 @@ import v2.std.algebra { Cons, Empty }
 import v2.std.collection { List }
 import v2.std.logic { Bool }
 import v2.std.text { String }
-import v2.std.integer { Int }
+import std.nat { Nat }
+import std.measure { CpuClock, WallClock, millisecond, millisecond_count, nanosecond, nanosecond_count }
+import std.observation { MeasuredValue, MeasuredUnavailable, TimedMeasurement, observation_durations_cpu_and_wall, observation_duration_of }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 // Every fixture below is authored in this source; the module reaches nothing outside the
@@ -89,14 +91,21 @@ fn verdict_only_changed_reading(
 // The measured shape of the specimen the ruling names: a semantic pass whose marginal CPU landed
 // ABOVE the ordinary 500ms line, which is the state the four `bootstrap_footprint_anchor` rows
 // oscillate through run to run.
-fn over_line_observation() -> ChangedWitnessCostReading {
+fn cost_observation(cpu_ms: Nat, wall_ms: Nat) -> ChangedWitnessCostReading {
   CostObserved {
     observation: ChangedWitnessCostObservation {
-      marginal_cpu_ms: 505,
-      wall_ms: 520,
-      cpu_line_ms: 500
+      measured: observation_durations_cpu_and_wall(
+        cpu: nanosecond(count: cpu_ms * 1000000),
+        wall: nanosecond(count: wall_ms * 1000000)
+      ),
+      observed_against_basis: CpuClock {},
+      observed_against: millisecond(count: 500)
     }
   }
+}
+
+fn over_line_observation() -> ChangedWitnessCostReading {
+  cost_observation(cpu_ms: 505, wall_ms: 520)
 }
 
 // One exhaustive observation surface for the standing shape. Tests compare its answer instead
@@ -376,18 +385,17 @@ test fn changed_ordinary_identity_keeps_the_ordinary_policy() -> Bool {
   ) == "ordinary"
 }
 
-// THE SAME 500ms FIGURE UNDER BOTH POLICIES, armed under one and observed-only under the other.
-// The override is not a higher ceiling.
-test fn the_override_observes_the_same_line_it_stops_gating() -> Bool {
+// ONE FIGURE, TWO ARMINGS. The override selects which clock is armed and never a different
+// number: the CPU line stays whatever `required_floor_claim_cpu_safety_limit_ms` says, and this
+// witness asserts the ARMING flips while that authority is untouched.
+test fn the_override_disarms_the_line_it_does_not_raise_it() -> Bool {
   match changed_witness_cpu_deadline(policy: OrdinaryChangedWitnessCostPolicy {}) {
-    CpuDeadlineArmed { limit_ms: armed } =>
+    CpuDeadlineArmed =>
       match changed_witness_cpu_deadline(policy: ChangedCostDebtVerdictOnly {}) {
-        CpuDeadlineObservedOnly { line_ms: observed } =>
-          armed == required_floor_claim_cpu_safety_limit_ms()
-            && observed == required_floor_claim_cpu_safety_limit_ms()
-        CpuDeadlineArmed { limit_ms: _ } => false
+        CpuDeadlineObservedOnly => required_floor_claim_cpu_safety_limit_ms() == 500
+        CpuDeadlineArmed => false
       }
-    CpuDeadlineObservedOnly { line_ms: _ } => false
+    CpuDeadlineObservedOnly => false
   }
 }
 
@@ -414,7 +422,16 @@ test fn the_published_observation_carries_both_clocks_and_the_line() -> Bool {
     )
   ) {
     PlannedAndPassedWithCostDebtObserved { observation: o } =>
-      o.marginal_cpu_ms == 505 && o.wall_ms == 520 && o.cpu_line_ms == 500
+      match changed_witness_gated_clock_measurement(observation: o) {
+        MeasuredValue { value: cpu } =>
+          nanosecond_count(n: cpu) == 505000000
+            && millisecond_count(m: o.observed_against) == 500
+            && match observation_duration_of(durations: o.measured, basis: WallClock {}) {
+              MeasuredValue { value: wall } => nanosecond_count(n: wall) == 520000000
+              MeasuredUnavailable { cause: _ } => false
+            }
+        MeasuredUnavailable { cause: _ } => false
+      }
     PlannedAndPassed => false
     PlannedAndKnownRedHeld => false
     CostObservationMissingUnderVerdictOnly => false
@@ -432,13 +449,7 @@ test fn verdict_only_ordinary_pass_still_publishes_its_cost() -> Bool {
     s: changed_standing_of(
       reading: verdict_only_changed_reading(
         terminal: TerminalOutcome { outcome: Passed {} },
-        cost: CostObserved {
-          observation: ChangedWitnessCostObservation {
-            marginal_cpu_ms: 474,
-            wall_ms: 480,
-            cpu_line_ms: 500
-          }
-        }
+        cost: cost_observation(cpu_ms: 474, wall_ms: 480)
       )
     )
   ) == "planned-and-passed-with-cost-debt-observed"
@@ -551,4 +562,28 @@ test fn home_declined_rostered_row_is_stale() -> Bool {
     && cost_debt_standing_of(
       disposition: DeclinedDiscoveryExcluded { matched_substring: "sandbox" }
     ) == "outside-this-runs-universe"
+}
+
+// THE SAME ABSENCE ONE LEVEL IN: an observation that carries only the clock that was NOT stood
+// down publishes nothing about the line it replaced, so it reds exactly as a missing one does.
+test fn an_observation_missing_its_gated_clock_reds() -> Bool {
+  standing_kind(
+    s: changed_standing_of(
+      reading: verdict_only_changed_reading(
+        terminal: TerminalOutcome { outcome: PassedOverBudget {} },
+        cost: CostObserved {
+          observation: ChangedWitnessCostObservation {
+            measured: [
+              TimedMeasurement {
+                basis: WallClock {},
+                elapsed: MeasuredValue { value: nanosecond(count: 520000000) }
+              }
+            ],
+            observed_against_basis: CpuClock {},
+            observed_against: millisecond(count: 500)
+          }
+        }
+      )
+    )
+  ) == "cost-observation-missing-under-verdict-only"
 }

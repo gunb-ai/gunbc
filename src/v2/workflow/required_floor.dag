@@ -841,28 +841,29 @@ fn required_floor_claim_cpu_safety_limit_ms() -> Int {
   500
 }
 
-// WHICH CLOCK IS ARMED FOR ONE CLAIM, DERIVED FROM THE POLICY RATHER THAN FROM THE CLAIM.
+// WHETHER THE CPU SAFETY DEADLINE IS ARMED FOR ONE CLAIM, derived from the policy rather than
+// from the claim (FLOOR-CHANGED-COST-0).
 //
-// The CPU figure is the SAME number in both arms and that is the point: the override does not
-// grant a rostered row a higher ceiling (DESIGN section 5 -- a row that broke the budget does not
-// get an exemption to keep spending it), it changes what the crossing MEANS. Armed, the crossing
-// interrupts before a verdict and blocks. Observed-only, the same 500ms line is measured against,
-// published against the debt identity, and decides nothing.
+// NEITHER ARM CARRIES THE FIGURE, and that is the point twice over. The number is the SAME 500ms
+// under both policies -- the override does not grant a rostered row a higher ceiling (DESIGN
+// section 5: a row that broke the budget does not get an exemption to keep spending it), it
+// changes what a crossing MEANS -- so a field restating it here would be a second home for a
+// fact `required_floor_claim_cpu_safety_limit_ms` above already owns, and the two could drift.
+// A reader of either arm reads that one function.
 //
-// THE OBSERVED-ONLY ARM CARRIES THE LINE rather than dropping it, because a policy that erased
-// the figure would leave the cost unreported -- the absorbing-fallback shape DESIGN section 5
-// forbids, where the mechanism that cannot gate also stops counting. The wall deadline is not
-// modeled here at all: it is unconditional, so a second arm restating it would be a decoration.
+// THE OBSERVED-ONLY ARM DOES NOT MEAN THE FIGURE IS DROPPED: the run publishes it, tagged with
+// its clock, through `v2.workflow.floor_changed_witness` `ChangedWitnessCostObservation`, which
+// is where a measurement belongs. A policy that stopped gating AND stopped counting would be the
+// absorbing fallback DESIGN section 5 forbids. The wall deadline is not modeled here at all: it
+// is armed under both policies, so a second arm restating it would be a decoration.
 type ClaimCpuDeadline =
-    CpuDeadlineArmed { limit_ms: Int }
-  | CpuDeadlineObservedOnly { line_ms: Int }
+    CpuDeadlineArmed
+  | CpuDeadlineObservedOnly
 
 fn changed_witness_cpu_deadline(policy: ChangedWitnessCostPolicy) -> ClaimCpuDeadline {
   match policy {
-    OrdinaryChangedWitnessCostPolicy =>
-      CpuDeadlineArmed { limit_ms: required_floor_claim_cpu_safety_limit_ms() }
-    ChangedCostDebtVerdictOnly =>
-      CpuDeadlineObservedOnly { line_ms: required_floor_claim_cpu_safety_limit_ms() }
+    OrdinaryChangedWitnessCostPolicy => CpuDeadlineArmed {}
+    ChangedCostDebtVerdictOnly => CpuDeadlineObservedOnly {}
   }
 }
 

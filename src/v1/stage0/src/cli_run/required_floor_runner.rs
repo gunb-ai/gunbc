@@ -1011,7 +1011,9 @@ pub(crate) fn emit_changed_witness_projection(
         let cost = match row.cost {
             Some(observation) => format!(
                 " marginal_cpu_ms={} wall_ms={} cpu_line_ms={}",
-                observation.marginal_cpu_ms, observation.wall_ms, observation.cpu_line_ms
+                observation.cpu_clock_nanos / 1_000_000,
+                observation.wall_clock_nanos / 1_000_000,
+                observation.cpu_line_ms
             ),
             None => String::new(),
         };
@@ -4788,8 +4790,8 @@ pub fn run_required_floor(
         // is the same quantity the CPU deadline would have enforced against.
         if claim.cost_policy == ChangedWitnessCostPolicy::ChangedCostDebtVerdictOnly {
             let observation = ChangedWitnessCostObservation {
-                marginal_cpu_ms: (receipt.cpu_nanos / 1_000_000) as u64,
-                wall_ms: (receipt.wall_nanos / 1_000_000) as u64,
+                cpu_clock_nanos: receipt.cpu_nanos,
+                wall_clock_nanos: receipt.wall_nanos,
                 cpu_line_ms: claim.cpu_safety_limit_ms,
             };
             eprintln!(
@@ -4799,8 +4801,8 @@ pub fn run_required_floor(
                 cost_debt_roster_standing_label(
                     &CostDebtRosterStanding::WithholdOverriddenForChangedVerdict
                 ),
-                observation.marginal_cpu_ms,
-                observation.wall_ms,
+                observation.cpu_clock_nanos / 1_000_000,
+                observation.wall_clock_nanos / 1_000_000,
                 observation.cpu_line_ms,
                 witness_execution_outcome_label(&result),
             );
@@ -6353,8 +6355,8 @@ mod changed_witness_projection_tests {
         map.insert(
             "m.a".to_string(),
             ChangedWitnessCostObservation {
-                marginal_cpu_ms: cpu,
-                wall_ms: cpu + 15,
+                cpu_clock_nanos: u128::from(cpu) * 1_000_000,
+                wall_clock_nanos: u128::from(cpu + 15) * 1_000_000,
                 cpu_line_ms: 500,
             },
         );
@@ -6394,7 +6396,10 @@ mod changed_witness_projection_tests {
             "planned-and-passed-with-cost-debt-observed"
         );
         assert!(!rows[0].blocks);
-        assert_eq!(rows[0].cost.expect("cost published").marginal_cpu_ms, 505);
+        assert_eq!(
+            rows[0].cost.expect("cost published").cpu_clock_nanos,
+            505_000_000
+        );
     }
 
     /// THE DISCRIMINATING CONTROL: the identical terminal outcome for an identity the cost-debt

@@ -36870,15 +36870,23 @@ pub enum ChangedWitnessCostPolicy {
 /// A single run landing under the line does not establish that a row whose observations ranged
 /// through 505ms has become safely ordinary; the row leaves through the explicit debt-removal
 /// transaction or not at all.
+///
+/// THE MEASUREMENTS ARE NANOSECONDS AND THE LINE IS MILLISECONDS, matching the modeled carrier:
+/// `std.measure` `nanosecond_millisecond_projection_note` makes nanosecond the canonical exact
+/// elapsed carrier and millisecond a policy and presentation scale, and the line IS policy. The
+/// millisecond figures are floored at the printing boundary only.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ChangedWitnessCostObservation {
-    /// Marginal CPU — shared-artifact fill already subtracted by `run_claim_measured`, the same
-    /// quantity the CPU deadline would have enforced against.
-    pub marginal_cpu_ms: u64,
-    /// Marginal wall, for the clock that remains armed.
-    pub wall_ms: u64,
-    /// The ordinary line the observation is reported against:
-    /// `required_floor_claim_cpu_safety_limit_ms`.
+    /// The CPU-clock reading: marginal CPU, with shared-artifact fill already subtracted by
+    /// `run_claim_measured` — the same quantity the CPU deadline would have enforced against.
+    /// Modeled as the `CpuClock` member of the observation's `List<TimedMeasurement>`.
+    pub cpu_clock_nanos: u128,
+    /// The wall-clock reading, for the deadline that remains armed. Modeled as the `WallClock`
+    /// member of the same list.
+    pub wall_clock_nanos: u128,
+    /// The policy line the observation is reported against
+    /// (`required_floor_claim_cpu_safety_limit_ms`), on the CPU clock — the model carries that
+    /// basis beside it as `observed_against_basis` rather than in this field's name.
     pub cpu_line_ms: u64,
 }
 
