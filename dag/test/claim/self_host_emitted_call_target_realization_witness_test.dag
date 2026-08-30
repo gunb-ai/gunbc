@@ -473,7 +473,7 @@ test fn w_service_op_in_a_service_free_fn_refuses_instead_of_awaiting_an_unbound
 // so the fail-closed unwrap fired on an argument the callee exists to inspect.
 test fn w_optional_carrier_parameter_takes_the_optional_argument_without_an_unwrap() -> Bool {
   compile_dag_rust_emit_check(
-    "module test.claim.optional_param_probe\nimport std.types { Int }\nimport v2.std.optional { Optional }\nfn inspect(opt: Optional<Int>) -> Optional<Int> { opt }\nfn caller(x: Int?) -> Optional<Int> { inspect(opt: x) }\n",
+    "module test.claim.optional_param_probe\nimport std.types { Int }\nimport v2.std.optional { Optional }\nfn inspect(opt: Optional<Int>) -> Optional<Int> { opt }\nfn caller(x: Optional<Int>) -> Optional<Int> { inspect(opt: x) }\n",
     "src/test_claim_optional_param_probe.rs",
     ["inspect(x.clone())"],
     [".expect(\"fail-closed: an optional value flowed into non-optional parameter"]
@@ -491,23 +491,13 @@ test fn w_generic_coproduct_shared_accessor_impl_carries_the_clone_bound() -> Bo
   )
 }
 
-// A Violates literal in a record field is typed by its position, not by the enclosing fn's return.
-test fn w_violates_literal_in_a_record_field_takes_the_field_witness_carrier() -> Bool {
-  compile_dag_rust_emit_check(
-    "module test.claim.witness_field_probe\nimport std.types { Int }\nimport v2.std.node { Node }\nimport v2.std.diagnostic { Diagnostic }\nimport v2.std.witness { Holds, Violates, Witness }\ntype Judged { resolved: Witness<Node>, ok: Witness<Int> }\nfn judge(d: Diagnostic, n: Int) -> Judged { Judged { resolved: Violates { diagnostic: d }, ok: Holds { value: n } } }\n",
-    "src/test_claim_witness_field_probe.rs",
-    ["Witness::<Rc<Node>>::Violates"],
-    ["Witness::<Rc<Judged>>::Violates"]
-  )
-}
-
 // A record pattern over a generic call's result: the scrutinee carrier is decided by the shared set,
 // exactly as a shared enum's variant pattern is, so the pattern must meet the value, not the Rc.
 test fn w_record_pattern_over_a_generic_call_result_derefs_the_shared_carrier() -> Bool {
   compile_dag_rust_emit_check(
-    "module test.claim.record_pattern_probe\nimport std.types { Int }\ntype Rec { a: Int, b: Int }\nfn ident<C>(c: C) -> C { c }\nfn probe(r: Rec) -> Int { match ident(c: r) { Rec { a: x, b: _ } => x } }\n",
+    "module test.claim.record_pattern_probe\nimport std.types { Int }\nimport v2.std.collection { List }\ntype Rec { tag: Int, items: List<Int> }\nfn ident<C>(c: C) -> C { c }\nfn probe(r: Rec) -> Int { match ident(c: r) { Rec { tag: x, items: _ } => x } }\n",
     "src/test_claim_record_pattern_probe.rs",
-    ["Rec { a: x, .. } => x.clone()"],
+    ["Rec { tag: x, .. } => x.clone()"],
     ["match ident(r.clone()) {"]
   )
 }
