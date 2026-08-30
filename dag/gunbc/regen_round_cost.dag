@@ -1,0 +1,319 @@
+module gunbc.regen_round_cost
+
+import std.types { String, Int, List, Bool, NonEmptyStr }
+import std.nat { Nat }
+import std.measure { ClockBasis, CpuClock, WallClock, Nanosecond, nanosecond, nanosecond_count }
+import std.observation { TimedMeasurement, Measured, MeasuredValue, MeasuredUnavailable, observation_duration_of }
+
+// ONE REGEN ROUND, PRICED BY PHASE, ON TWO CLOCKS -- the instrument behind
+// `claim_executor --regen-round-cost`. A round is the convergence recipe that
+// gunbc.generated_artifact_merge_driver generated_artifact_merge_driver_repair_steps prints
+// at every stranded author: build the seed, emit the mirrors from it, install what drifted,
+// rebuild from the installed seed, and read what changed. Every lane in the self-host program
+// pays that recipe on every edit inside the seed closure, and until this carrier existed the
+// only figures for it were wall times copied into prose ("~18 min a round") that named no
+// producer, no host and no tree -- exactly the transcription DESIGN section 6 forbids.
+//
+// WHY THIS IS AN EXTENSION OF v1_rt trace_mark AND NOT A SECOND INSTRUMENT. compile.dag already
+// stamps compile.frontend / compile.normalize / compile.reconcile / compile.analyses /
+// compile.emit through trace_mark, and those marks already print a wall elapsed. What they did
+// not have was a CPU clock beside the wall one (std.measure measure_clock_basis_note: two clocks
+// on one occurrence, neither substitutes) or any way for a consumer to READ them rather than
+// scrape stderr. So the runtime gained a process-tree CPU reading at every mark and an armed
+// ledger, the regen host gained marks at its own phase boundaries, and this module folds the
+// ledger into the receipt. One producer of every figure, read in one place.
+//
+// CPU IS THE PROCESS TREE, STATED SO THE NUMBER IS NOT MISREAD. The seed build and the rustfmt
+// normalization run in children; the compile runs in this process. A self-only clock would
+// price the seed build at zero and a children-only clock would price the emit at zero, so the
+// reading is utime+stime+cutime+cstime from the process's own accounting, and a child's CPU
+// lands on the mark that reaped it. A phase whose wall is large and whose CPU is near zero is
+// therefore waiting, not computing -- the discrimination cli_run's floor heartbeat exists for.
+//
+// WHERE THE READING CANNOT BE TAKEN IT IS UNREADABLE, NEVER ZERO. A mark's clocks are
+// std.observation TimedMeasurement rows -- the basis is always known, the elapsed is Measured
+// -- so an unreadable CPU clock is MeasuredUnavailable with its cause, and a renderer prints
+// the cause's sentinel rather than a 0 that reads as "free" (observation_measured_note; the
+// same refusal gunbc.observation_seed_render seed_heartbeat_unreadable_cause keeps one
+// instrument over). No unit lives in a field name here: every duration is a Nanosecond
+// carried by its clock basis (std.measure measure_clock_basis_note), and the receipt renders
+// milliseconds as a projection of that value.
+
+type RegenRoundPhase
+  = SeedBuild
+  | CorpusLoad
+  | Frontend
+  | Normalize
+  | Reconcile
+  | Analyses
+  | Emit
+  | MirrorWrite
+  | CandidateVerify
+  | Adjudicate
+  | HandVerify
+  | Digest
+  | Install
+  | RebuildFromInstalled
+  | Diff
+
+// A drained ledger row. `label` is the trace_mark label with its `.done` suffix removed (a plain
+// mark keeps its label whole); the wall duration is the elapsed since the matching `.begin`, or
+// since the previous mark when no begin was opened, which is the contract trace_mark already had;
+// the CPU duration is the process-tree CPU spent over the same span, on its own clock row.
+type TraceMark {
+  label: String
+  durations: List<TimedMeasurement>
+}
+
+data regen_round_cpu_unreadable_cause: NonEmptyStr = "process accounting unreadable" as NonEmptyStr
+
+fn regen_round_mark(label: String, wall: Nanosecond, cpu: Measured<Nanosecond>) -> TraceMark {
+  TraceMark {
+    label: label,
+    durations: [
+      TimedMeasurement { basis: WallClock, elapsed: MeasuredValue { value: wall } },
+      TimedMeasurement { basis: CpuClock, elapsed: cpu }
+    ]
+  }
+}
+
+data regen_round_nanoseconds_per_millisecond: Nat = 1000000
+
+// The receipt renders whole milliseconds; the carrier keeps the nanosecond the clock read.
+fn regen_round_ms_text(d: Measured<Nanosecond>) -> String {
+  match d {
+    MeasuredValue { value: v } => to_string(nanosecond_count(n: v) / regen_round_nanoseconds_per_millisecond)
+    MeasuredUnavailable { cause: c } => "na"
+  }
+}
+
+fn regen_round_mark_wall(mark: TraceMark) -> Measured<Nanosecond> {
+  observation_duration_of(durations: mark.durations, basis: WallClock)
+}
+
+fn regen_round_mark_cpu(mark: TraceMark) -> Measured<Nanosecond> {
+  observation_duration_of(durations: mark.durations, basis: CpuClock)
+}
+
+type RegenRoundPhaseAttribution
+  = Attributed { phase: RegenRoundPhase }
+  | Unattributed
+
+type RegenRoundCostReceipt {
+  producer: String
+  host: String
+  tree: String
+  tree_dirty: Bool
+  seed_build_compiled_crates: Nat
+  rebuild_compiled_crates: Nat
+  rustfmt_spawns: Nat
+  marks: List<TraceMark>
+  changed_paths: List<String>
+}
+
+fn regen_round_phase_tag(phase: RegenRoundPhase) -> String {
+  match phase {
+    SeedBuild => "seed_build"
+    CorpusLoad => "corpus_load"
+    Frontend => "compile.frontend"
+    Normalize => "compile.normalize"
+    Reconcile => "compile.reconcile"
+    Analyses => "compile.analyses"
+    Emit => "compile.emit"
+    MirrorWrite => "mirror_write"
+    CandidateVerify => "candidate_verify"
+    Adjudicate => "adjudicate"
+    HandVerify => "hand_verify"
+    Digest => "digest"
+    Install => "install"
+    RebuildFromInstalled => "rebuild_from_installed"
+    Diff => "diff"
+  }
+}
+
+// THE LABEL EACH PHASE IS STAMPED UNDER, and the one place both ends read it from. The compile
+// labels are compile.dag's existing marks verbatim; the regen.* and round.* labels are the marks
+// required_regen_host stamps. A mark under any other label is reported as Unattributed rather
+// than dropped -- a sub-mark like compile.emit.dag.collect.done is real time and hiding it
+// would make the phase lines sum to less than the round.
+fn regen_round_phase_label(phase: RegenRoundPhase) -> String {
+  match phase {
+    SeedBuild => "round.seed_build"
+    CorpusLoad => "regen.corpus_load"
+    Frontend => "compile.frontend"
+    Normalize => "compile.normalize"
+    Reconcile => "compile.reconcile"
+    Analyses => "compile.analyses"
+    Emit => "compile.emit"
+    MirrorWrite => "regen.mirror_write"
+    CandidateVerify => "regen.candidate_verify"
+    Adjudicate => "regen.adjudicate"
+    HandVerify => "regen.hand_verify"
+    Digest => "regen.digest"
+    Install => "round.install"
+    RebuildFromInstalled => "round.rebuild_from_installed"
+    Diff => "round.diff"
+  }
+}
+
+fn regen_round_phases() -> List<RegenRoundPhase> {
+  [SeedBuild, CorpusLoad, Frontend, Normalize, Reconcile, Analyses, Emit, MirrorWrite, CandidateVerify, Adjudicate, HandVerify, Digest, Install, RebuildFromInstalled, Diff]
+}
+
+fn regen_round_phase_of_label(label: String) -> RegenRoundPhaseAttribution {
+  fold(regen_round_phases(), init: Unattributed, f: fn(acc, phase) {
+    match acc {
+      Attributed { phase: p } => Attributed { phase: p }
+      Unattributed =>
+        if regen_round_phase_label(phase: phase) == label {
+          Attributed { phase: phase }
+        } else {
+          Unattributed
+        }
+    }
+  })
+}
+
+fn regen_round_mark_line(mark: TraceMark) -> String {
+  let subject = match regen_round_phase_of_label(label: mark.label) {
+    Attributed { phase: p } => concat("phase=", regen_round_phase_tag(phase: p))
+    Unattributed => concat("unattributed label=", mark.label)
+  }
+  concat(
+    concat("regen-round-cost: ", subject),
+    concat(
+      concat(" wall_ms=", regen_round_ms_text(d: regen_round_mark_wall(mark: mark))),
+      concat(" cpu_ms=", regen_round_ms_text(d: regen_round_mark_cpu(mark: mark)))
+    )
+  )
+}
+
+// A total on one clock is readable only when every row's reading on that clock is; one
+// unreadable row makes the sum a fabrication, and the total says so instead of summing the rows
+// it could read.
+fn regen_round_total(marks: List<TraceMark>, basis: ClockBasis) -> Measured<Nanosecond> {
+  fold(marks, init: MeasuredValue { value: nanosecond(count: 0) }, f: fn(acc, mark) {
+    match acc {
+      MeasuredUnavailable { cause: c } => MeasuredUnavailable { cause: c }
+      MeasuredValue { value: sum } =>
+        match observation_duration_of(durations: mark.durations, basis: basis) {
+          MeasuredUnavailable { cause: c } => MeasuredUnavailable { cause: c }
+          MeasuredValue { value: v } => MeasuredValue { value: nanosecond(count: nanosecond_count(n: sum) + nanosecond_count(n: v)) }
+        }
+    }
+  })
+}
+
+fn regen_round_bool_text(b: Bool) -> String {
+  if b { "true" } else { "false" }
+}
+
+fn regen_round_header_line(receipt: RegenRoundCostReceipt) -> String {
+  concat(
+    concat(concat("regen-round-cost: producer=", receipt.producer), concat(" host=", receipt.host)),
+    concat(
+      concat(concat(" tree=", receipt.tree), concat(" tree_dirty=", regen_round_bool_text(b: receipt.tree_dirty))),
+      concat(
+        concat(" seed_build_compiled_crates=", to_string(receipt.seed_build_compiled_crates)),
+        concat(
+          concat(" rebuild_compiled_crates=", to_string(receipt.rebuild_compiled_crates)),
+          concat(" rustfmt_spawns=", to_string(receipt.rustfmt_spawns))
+        )
+      )
+    )
+  )
+}
+
+fn regen_round_total_line(receipt: RegenRoundCostReceipt) -> String {
+  concat(
+    concat("regen-round-cost: total wall_ms=", regen_round_ms_text(d: regen_round_total(marks: receipt.marks, basis: WallClock))),
+    concat(" cpu_ms=", regen_round_ms_text(d: regen_round_total(marks: receipt.marks, basis: CpuClock)))
+  )
+}
+
+fn regen_round_changed_paths_line(receipt: RegenRoundCostReceipt) -> String {
+  let listed = fold(receipt.changed_paths, init: "", f: fn(acc, path) {
+    if acc == "" { path } else { concat(concat(acc, ", "), path) }
+  })
+  concat(
+    concat("regen-round-cost: changed_paths=", to_string(count(receipt.changed_paths))),
+    concat(concat(" [", listed), "]")
+  )
+}
+
+// The whole receipt as the lines the host prints, in ledger order. Rendered here and read by
+// the host through the interpreter, so there is no Rust mirror of this format to drift.
+fn regen_round_cost_render(receipt: RegenRoundCostReceipt) -> String {
+  let mark_lines = fold(receipt.marks, init: "", f: fn(acc, mark) {
+    concat(concat(acc, regen_round_mark_line(mark: mark)), "\n")
+  })
+  concat(
+    concat(concat(regen_round_header_line(receipt: receipt), "\n"), mark_lines),
+    concat(concat(regen_round_total_line(receipt: receipt), "\n"), concat(regen_round_changed_paths_line(receipt: receipt), "\n"))
+  )
+}
+
+// ---------------------------------------------------------------------------------------------
+// AFFECTED-SET SCOPING: which mirrors does ONE edit change, and is that set derivable today?
+//
+// Question (operator, 2026-08-30): does the emitted mirror for module M depend only on M's .dag
+// transitive import closure, or also on cross-module emitter state? Method: a planted
+// single-module edit, then the regen's own drift answer (`changed_paths`, identity grain)
+// compared against the reverse import closure computed from `import` lines over dag/, src/v1
+// and src/v2, restricted to modules whose mirror is in the compared population.
+// ---------------------------------------------------------------------------------------------
+
+type AffectedSetDisposition
+  = DerivableNow { from: String, residual: String }
+  | BlockedOn { fact: String }
+
+// Two planted edits, both measured by `claim_executor --regen-round-cost` on the tree named.
+//
+// (1) v1.compiler.runtime_rust (the runtime template): reverse import closure predicts nine
+//     mirrors; the drift set was {v1_compiler_runtime_rust.rs, v1_rt.rs}. v1_rt.rs is NOT a
+//     module's mirror and is NOT in the predicted set -- it is the template's product, emitted
+//     from the string baked into the EMITTING SEED's own v1_compiler_runtime_rust.rs mirror.
+//     That is the one cross-module state found: the emitter is compiled from the previous
+//     generation's mirrors, so the bytes it emits for the runtime depend on the seed binary,
+//     not on the closure. It is why a template edit needs two rounds (round 1 on srv1 and
+//     BuildBuddy, tree 0fe2c517: the stale seed emitted the OLD v1_rt.rs over the hand-synced
+//     one and rebuild-from-installed refused; round 2, tree 75bc5007, reached the fixed point).
+// (2) std.content_hash (an unreferenced data row): reverse import closure predicts 72 mirrors;
+//     the drift set was exactly {std_content_hash.rs} on BuildBuddy (tree 677988a2) and on
+//     srv1 (same tree). Contained, with a 71-mirror over-approximation.
+//
+// Both drift sets are contained in (reverse import closure) ∪ {runtime template products}, so
+// an affected-set regen is DERIVABLE NOW from the modeled import graph as an upper bound. The
+// closure authority already in the seed is `cli_run` `regen_input_sources_over_roots`
+// (`extend_sources_to_both_closure_fixpoint`: imports PLUS dotted PLUS bare references), which
+// is strictly wider than `import` lines and therefore contains every measured dependent.
+//
+// WHAT THE MEASUREMENT DOES NOT SHOW, stated so the bound is not over-read: `v1.compiler.emit_rust`
+// `reference_derived_use_lines` takes closure-wide arguments (registry, export_sets,
+// typed_modules, module_index, shared_types), so an edit that changes what M EXPORTS can change
+// the synthesized `use` lines of M's importers. Those importers are in M's reverse closure, so
+// the bound holds; what does not hold is the converse -- "unchanged importers" is not
+// derivable from the graph alone, only from emitting them. The affected set is therefore a
+// correct over-approximation (DESIGN section 5: a structural over-approximation computed AS
+// the answer), not an exact set.
+data regen_affected_set_disposition: AffectedSetDisposition = DerivableNow {
+  from: "the .dag dependency closure the regen already builds: cli_run regen_input_sources_over_roots / extend_sources_to_both_closure_fixpoint (imports, dotted and bare references), read in reverse from the edited module, restricted to the compared mirror population, plus the runtime template products (v1_rt.rs) whenever v1.compiler.runtime_rust is in the set",
+  residual: "the emitting seed's own baked mirrors are a generation-level input to every emitted byte (the two-round bootstrap); the reverse closure over-approximates -- 72 predicted against 1 changed for a std.content_hash data row -- and exactness needs the per-module emit itself"
+}
+
+// WHERE THE ROUND'S TIME GOES, read from the instrument on 2026-08-30 (producer: this module's
+// receipt; hosts srv1 and BuildBuddy runner 192.168.241.2; trees 75bc5007 and 677988a2). The
+// numbers live in the receipts those runs printed and are not restated here; the SHAPE is:
+// every phase runs at CPU ~= wall except the two cargo builds, so the regen process is one core
+// end to end; emit is the largest regen phase at roughly half the regen process and a fifth of
+// a round with a real edit; the two cargo builds of the seed (before the round, and
+// rebuild-from-installed) are the majority of such a round even for a one-mirror change,
+// because every mirror compiles into one crate and cargo recompiles that crate whole; the
+// corpus WAS read twice (corpus_load then a corpus_reload inside compile_stage0) and rustfmt
+// normalized the whole population three times (mirror_write, adjudicate, digest) -- both
+// closed in the change after the measurement: one read threaded to both consumers, and one
+// normalize per distinct input through a memo plus a per-rustfmt-version disk cache under
+// target/stage0-regen-rustfmt-cache whose entries are honoured only when the stored raw input
+// is byte-equal to the request. rustfmt_spawns on the receipt is the count the fixed-point
+// control is checked against.
+data regen_round_cost_shape_note: String = "The instrument, not the number: re-run `claim_executor --regen-round-cost --source-root dag --source-root src/v2` on a tree and read its receipt (target/stage0-regen-round-cost.txt). A change-denominated regen is bounded above by the reverse closure (regen_affected_set_disposition); a change-denominated REBUILD is bounded below by one whole-crate compile until the stage0 partition (gunbc.stage0_crate_partition_generated) carries the mirrors, which is the larger of the two costs on every measured host."

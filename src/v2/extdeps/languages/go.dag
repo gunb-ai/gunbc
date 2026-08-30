@@ -81,6 +81,8 @@ import v2.std.compilers.target_model {
   target_value_template_for_kind
 }
 import v2.std.host_transport {
+  HostBuildEnvironment,
+  host_process_location_names,
   EmitHostRuntimeRow,
   HostRuntimeRowPresent,
   TargetEmitHostRuntimeRow,
@@ -1786,8 +1788,15 @@ fn go_emit_host_runtime_primitive_type_node() -> Node {
   }
 }
 
+// The ambient variables this target's emitted program may see; see v2.std.host_transport
+// HostBuildEnvironment. Toolchain LOCATIONS only -- no flag carrier.
+fn go_host_build_environment() -> HostBuildEnvironment {
+  HostBuildEnvironment { ambient_names: concat(host_process_location_names(), ["GOROOT", "GOPATH", "GOCACHE", "GOMODCACHE"]) }
+}
+
 fn go_host_transport_descriptor() -> HostTransportDescriptor {
   HostTransportDescriptor {
+    build_environment: go_host_build_environment(),
     identity: ^go_host_transport_identity,
     workspace: [
       WorkspaceFile {
