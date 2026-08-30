@@ -65,7 +65,7 @@ import gunbc.machine_intake_access {
   BoundBmcAccessContextStanding,
 }
 import gunbc.machine_intake_subject { MachineIntakeSubject }
-import gunbc.machine_intake_receipt { EvidenceRef, content_hash_equal }
+import gunbc.machine_intake_receipt { EvidenceRef, content_hash_equal, same_intake_subject }
 import gunbc.install_transport_qualification {
   ConfigfsTransportRequirement,
   ReinstallPathEstablished,
@@ -382,6 +382,7 @@ type BootDeliveryPlan {
 
 type BootDeliveryRefusalCause
   = DeliveryAccessUnbound { standing: BoundBmcAccessContextStanding }
+  | DeliveryTargetContextMismatch { requested: BootDeliveryTarget, bound_subject: MachineIntakeSubject, bound_endpoint: BmcEndpoint }
   | DeliveryNoBootSourceOverride { firmware: BmcFirmwareVersion }
   | DeliveryNoEligibleTransport { firmware: BmcFirmwareVersion, considered: List<BootDeliveryCandidateVerdict> }
 
@@ -692,7 +693,10 @@ fn select_boot_artifact_delivery(
 }
 
 // THE SOLVER. No bound access context, no plan — the standing that refused
-// the binding is the refusal. Then boot-source override gates every arm (each
+// the binding is the refusal. The bound context must be THIS request's target
+// (same subject and attempt, same endpoint): a context bound for another unit
+// or another controller is a splice, refused before anything is judged. Then
+// boot-source override gates every arm (each
 // drives the host through a BMC one-shot target); then the candidates are
 // judged in the policy's order and the first eligible one is built. Every arm
 // is reached from something the request or the evidence NAMES, never from the
@@ -705,7 +709,9 @@ fn solve_boot_artifact_delivery(
 ) -> BootDeliverySolution {
   match ev.access {
     AccessContextBound { context: ctx } =>
-      if firmware_has_capability(row: ctx.capability_row, cap: CapabilityBootSourceOverride) == false {
+      if same_intake_subject(left: request.target.subject, right: ctx.subject) == false || (request.target.endpoint == ctx.endpoint) == false {
+        BootDeliveryRefused { cause: DeliveryTargetContextMismatch { requested: request.target, bound_subject: ctx.subject, bound_endpoint: ctx.endpoint } }
+      } else if firmware_has_capability(row: ctx.capability_row, cap: CapabilityBootSourceOverride) == false {
         BootDeliveryRefused { cause: DeliveryNoBootSourceOverride { firmware: ctx.capability_row.firmware } }
       } else {
         select_boot_artifact_delivery(

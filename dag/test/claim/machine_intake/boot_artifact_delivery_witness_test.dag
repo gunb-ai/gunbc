@@ -139,6 +139,7 @@ import gunbc.boot_artifact_delivery {
   DeliveryAccessUnbound,
   DeliveryNoBootSourceOverride,
   DeliveryNoEligibleTransport,
+  DeliveryTargetContextMismatch,
   IntakeLinuxEnvironment,
   IsoImage,
   MegaRacRestRemoteMedia,
@@ -458,6 +459,25 @@ test fn staged_artifact_digest_mismatch_refuses_the_plan() -> Bool {
             CandidateStagedArtifactMismatch { offered: _, requested: _ } => true
             _ => false
           }
+        _ => false
+      }
+    BootDeliveryPlanned { plan: _ } => false
+  }
+}
+
+// RED (ruling 3 §1) — a context bound for another controller is not this
+// request's target: the same subject observed at a different endpoint is
+// refused before any candidate is judged, and the refusal names both sides.
+test fn bound_context_for_another_endpoint_is_not_this_target() -> Bool {
+  let other_target = BootDeliveryTarget { subject: intake_subject, endpoint: BmcEndpoint { host: "192.168.1.61", protocol: Redfish } }
+  match solve_boot_artifact_delivery(
+    request: BootDeliveryRequest { target: other_target, artifact: intake_artifact, staging: staging_all },
+    ev: evidence_of(access: bind(profile: vm_profile, receipt: observed(surfaces: [SurfaceBootControl, SurfaceRedfishVirtualMedia], probe: Present { value: probe_https })), configfs: configfs_unestablished, network_boot: network_boot_unestablished),
+    policy: policy,
+  ) {
+    BootDeliveryRefused { cause: c } =>
+      match c {
+        DeliveryTargetContextMismatch { requested: r, bound_subject: _, bound_endpoint: e } => r.endpoint.host == "192.168.1.61" && e == megarac_endpoint
         _ => false
       }
     BootDeliveryPlanned { plan: _ } => false

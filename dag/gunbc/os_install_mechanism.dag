@@ -47,6 +47,8 @@ import gunbc.boot_artifact_delivery {
   BootDeliveryRefused,
   BootDeliverySolution,
   DeliveryAccessUnbound,
+  DeliveryTargetContextMismatch,
+  BootDeliveryTarget,
   DeliveryNoBootSourceOverride,
   DeliveryNoEligibleTransport,
   MegaRacRestRemoteMedia,
@@ -76,6 +78,7 @@ type OsInstallMechanismRefusalCause
   | InstallFirmwareVersionAmbiguous { firmware: BmcFirmwareVersion, count: Int }
   | InstallAccessProfileNotLookedUp { endpoint: BmcEndpoint }
   | InstallAccessContextUnbound { standing: BoundBmcAccessContextStanding }
+  | InstallTargetContextMismatch { requested: BootDeliveryTarget, bound_endpoint: BmcEndpoint }
   | InstallNoBootSourceOverride { firmware: BmcFirmwareVersion }
   | InstallNoEligibleTransport {
       firmware: BmcFirmwareVersion,
@@ -120,6 +123,7 @@ fn os_install_solution_of_delivery(solution: BootDeliverySolution) -> OsInstallM
             AccessContextProfileAmbiguous { observed_identity: _, count: _ } => OsInstallMechanismRefused { cause: InstallAccessContextUnbound { standing: s } }
             AccessContextCatalogRefused { standing: _ } => OsInstallMechanismRefused { cause: InstallAccessContextUnbound { standing: s } }
           }
+        DeliveryTargetContextMismatch { requested: r, bound_subject: _, bound_endpoint: e } => OsInstallMechanismRefused { cause: InstallTargetContextMismatch { requested: r, bound_endpoint: e } }
         DeliveryNoBootSourceOverride { firmware: fw } => OsInstallMechanismRefused { cause: InstallNoBootSourceOverride { firmware: fw } }
         DeliveryNoEligibleTransport { firmware: fw, considered: considered } =>
           OsInstallMechanismRefused { cause: InstallNoEligibleTransport { firmware: fw, considered: considered } }

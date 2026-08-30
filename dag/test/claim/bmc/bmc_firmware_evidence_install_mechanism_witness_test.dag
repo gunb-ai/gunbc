@@ -37,6 +37,7 @@ import gunbc.fleet_bmc_firmware_evidence {
 }
 import gunbc.os_install_mechanism {
   InstallAccessContextUnbound,
+  InstallTargetContextMismatch,
   InstallAccessProfileNotLookedUp,
   InstallDeliveryOutsideLegacyMechanism,
   InstallFirmwareEvidenceAbsent,
@@ -74,6 +75,7 @@ fn solution_refuses_at_profile_lookup_not_run(solution: OsInstallMechanismSoluti
         InstallFirmwareVersionUncatalogued { firmware: _ } => false
         InstallFirmwareVersionAmbiguous { firmware: _, count: _ } => false
         InstallAccessContextUnbound { standing: _ } => false
+        InstallTargetContextMismatch { requested: _, bound_endpoint: _ } => false
         InstallNoBootSourceOverride { firmware: _ } => false
         InstallNoEligibleTransport { firmware: _, considered: _ } => false
         InstallDeliveryOutsideLegacyMechanism { delivery: _ } => false
@@ -156,6 +158,7 @@ test fn unobserved_endpoint_refuses_with_absent_evidence_before_the_access_step(
         InstallFirmwareVersionAmbiguous { firmware: _, count: _ } => false
         InstallAccessProfileNotLookedUp { endpoint: _ } => false
         InstallAccessContextUnbound { standing: _ } => false
+        InstallTargetContextMismatch { requested: _, bound_endpoint: _ } => false
         InstallNoBootSourceOverride { firmware: _ } => false
         InstallNoEligibleTransport { firmware: _, considered: _ } => false
         InstallDeliveryOutsideLegacyMechanism { delivery: _ } => false
@@ -187,6 +190,7 @@ test fn uncatalogued_version_refuses_rather_than_matching_nearest() -> Bool {
         InstallFirmwareVersionAmbiguous { firmware: _, count: _ } => false
         InstallAccessProfileNotLookedUp { endpoint: _ } => false
         InstallAccessContextUnbound { standing: _ } => false
+        InstallTargetContextMismatch { requested: _, bound_endpoint: _ } => false
         InstallNoBootSourceOverride { firmware: _ } => false
         InstallNoEligibleTransport { firmware: _, considered: _ } => false
         InstallDeliveryOutsideLegacyMechanism { delivery: _ } => false
@@ -284,6 +288,7 @@ test fn ambiguous_catalog_propagates_to_a_mechanism_refusal() -> Bool {
         InstallFirmwareVersionUncatalogued { firmware: _ } => false
         InstallAccessProfileNotLookedUp { endpoint: _ } => false
         InstallAccessContextUnbound { standing: _ } => false
+        InstallTargetContextMismatch { requested: _, bound_endpoint: _ } => false
         InstallNoBootSourceOverride { firmware: _ } => false
         InstallNoEligibleTransport { firmware: _, considered: _ } => false
         InstallDeliveryOutsideLegacyMechanism { delivery: _ } => false
