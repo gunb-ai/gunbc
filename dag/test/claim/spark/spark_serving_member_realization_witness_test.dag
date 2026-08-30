@@ -24,7 +24,13 @@ import gunbc.spark.serving_membership {
 }
 import gunbc.spark.serving_member_realization {
   spark_serving_install_effects_for_member_effect,
-  spark_serving_install_effects_for_member_action,
+  spark_serving_realization_for_member_action,
+  SparkServingMemberInstalls,
+  SparkServingMemberRetires,
+  spark_serving_retirement_effects_for_address,
+  SparkServingRetirementRemedyPresent,
+  SparkServingRetirementRemedyRefused,
+  spark_serving_retirement_effects_include,
   spark_serving_install_effects_include,
 }
 import gunbc.spark.serving_realization {
@@ -45,6 +51,20 @@ import gunbc.spark.serving_realization {
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+
+// AN UNWRAP FOR THE INSTALL-ONLY CLAIMS BELOW, AND ITS EMPTY ARM IS A FAILING ARM.
+//
+// The projection now answers Absent for a retirement, because "you asked which installs this
+// produced and it produced none, it retired" is not the same answer as "it installed nothing". Each
+// claim below asserts a length of one, so an Absent reaching here fails the claim rather than
+// silently satisfying a weaker one -- the empty list is the failing value, not an accepted default.
+fn w_install_effects_or_empty(effect: MemberEffect<SparkServingMember>) -> List<ServingInstallEffect> {
+  match spark_serving_install_effects_for_member_effect(effect: effect) {
+    Present { value: es } => es
+    Absent => []
+  }
+}
 
 fn w_host() -> HostIdentity {
   operator_host_srv5
@@ -102,7 +122,7 @@ fn w_runtime_replace_effect() -> MemberEffect<SparkServingMember> {
 }
 
 test fn w_member_realization_runtime_change_is_install_owned_closure_only() -> Bool {
-  let effects = spark_serving_install_effects_for_member_effect(effect: w_runtime_replace_effect())
+  let effects = w_install_effects_or_empty(effect: w_runtime_replace_effect())
   length(effects) == 1
     && spark_serving_install_effects_include(
       effects: effects,
@@ -133,7 +153,7 @@ test fn w_member_realization_user_unit_content_change_writes_only() -> Bool {
     from: w_unit_member(state: "unit-v1" as NonEmptyStr),
     to: w_unit_member(state: "unit-v2" as NonEmptyStr),
   }
-  let effects = spark_serving_install_effects_for_member_effect(effect: effect)
+  let effects = w_install_effects_or_empty(effect: effect)
   length(effects) == 1
     && spark_serving_install_effects_include(effects: effects, needle: WriteUserUnitFile)
     && !spark_serving_install_effects_include(effects: effects, needle: ReloadUserManager)
@@ -146,7 +166,7 @@ test fn w_member_realization_model_slot_change_is_pull_model_artifact() -> Bool 
     from: w_model_member(state: "model-a" as NonEmptyStr),
     to: w_model_member(state: "model-b" as NonEmptyStr),
   }
-  let effects = spark_serving_install_effects_for_member_effect(effect: effect)
+  let effects = w_install_effects_or_empty(effect: effect)
   length(effects) == 1
     && spark_serving_install_effects_include(effects: effects, needle: MaterializeModelArtifact)
 }
@@ -156,7 +176,7 @@ test fn w_member_realization_linger_change_is_enable_linger() -> Bool {
     from: w_linger_member(state: "linger=0" as NonEmptyStr),
     to: w_linger_member(state: "linger=1" as NonEmptyStr),
   }
-  let effects = spark_serving_install_effects_for_member_effect(effect: effect)
+  let effects = w_install_effects_or_empty(effect: effect)
   length(effects) == 1
     && spark_serving_install_effects_include(effects: effects, needle: EnableLingerForOwnAccount)
 }
@@ -164,19 +184,23 @@ test fn w_member_realization_linger_change_is_enable_linger() -> Bool {
 test fn w_member_realization_member_changed_action_matches_effect_replace() -> Bool {
   let from = w_runtime_member(host: w_host(), state: "v1" as NonEmptyStr)
   let to = w_runtime_member(host: w_host(), state: "v2" as NonEmptyStr)
-  match spark_serving_install_effects_for_member_action(
+  match spark_serving_realization_for_member_action(
     action: MemberChanged {
       at: spark_serving_member_key(member: to),
       from: from,
       to: to,
     },
   ) {
-    Present { value: action_effects } =>
-      length(action_effects) == 1
-        && spark_serving_install_effects_include(
-          effects: action_effects,
-          needle: InstallOwnedRuntimeClosure,
-        )
+    Present { value: r } =>
+      match r {
+        SparkServingMemberInstalls { effects: action_effects } =>
+          length(action_effects) == 1
+            && spark_serving_install_effects_include(
+              effects: action_effects,
+              needle: InstallOwnedRuntimeClosure,
+            )
+        SparkServingMemberRetires { effects: _ } => false
+      }
     Absent => false
   }
 }

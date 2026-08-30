@@ -7,7 +7,7 @@ import gunbc.compile_diagnostic_census {
   census_rows_of_class,
   census_total_count
 }
-import std.types { String, Bool, Int }
+import std.types { String, NonEmptyStr, List, Bool, Int }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 // SUBSTRATE-ONLY BY DELIBERATE CHOICE, AND THE SIBLING FILE EXPLAINS WHY IN ITS OWN VOICE.
@@ -85,6 +85,64 @@ data undefined_name_arg_source: String = "module probe_inhabit_dc_reach\nimport 
 
 test fn w_undefined_name_at_the_direct_call_position_still_refuses() -> Bool {
   violation_count(source: undefined_name_arg_source, wanted: "InternalError") > 0
+}
+
+// THE TOP-LEVEL COLLECTION/NON-COLLECTION DISJOINTNESS ARM. Before this arm landed, a value
+// already inferred as List<String> bound to a NonEmptyStr parameter with no blocking diagnostic:
+// the kernel mismatch arm only judges a kernel ACTUAL, while the nominal-product arm explicitly
+// excludes containers. This is deliberately a variable rather than a list literal, so the
+// fixture reaches application with the produced List type and cannot pass on the list-literal
+// element judgment. A collection and a non-collection cannot be two representations of one
+// value, so the shared declared_type_inhabitance relation can refuse this pair without a
+// target-specific realization rule.
+data list_value_at_non_empty_str_source: String = "module probe_inhabit_list_at_text\nimport std.types { Int, String, NonEmptyStr, List }\nfn takes_text(text: NonEmptyStr) -> Int { 1 }\nfn probe() -> Int {\n  let words: List<String> = [\"forty\"]\n  takes_text(text: words)\n}\n"
+
+test fn w_list_typed_value_at_non_empty_str_argument_is_refused() -> Bool {
+  violation_count(source: list_value_at_non_empty_str_source, wanted: "DeclaredTypeNotInhabited") > 0
+}
+
+data collection_disjointness_positive_source: String = "module probe_inhabit_list_text_ok\nimport std.types { Int, String, NonEmptyStr, List }\nfn takes_text(text: NonEmptyStr) -> Int { 1 }\nfn takes_words(words: List<String>) -> Int { 1 }\nfn probe() -> Int {\n  let words: List<String> = [\"forty\"]\n  takes_text(text: \"forty\" as NonEmptyStr) + takes_words(words: words)\n}\n"
+
+test fn w_collection_disjointness_keeps_conforming_arguments_admitted() -> Bool {
+  violation_count(source: collection_disjointness_positive_source, wanted: "DeclaredTypeNotInhabited") == 0
+}
+
+data record_value_at_scalar_source: String = "module probe_inhabit_record_at_scalar\nimport std.types { Int, String }\ntype Box { value: String }\nfn make_box() -> Box { Box { value: \"forty\" } }\nfn takes_text(text: String) -> Int { 1 }\nfn probe() -> Int { takes_text(text: make_box()) }\n"
+
+test fn w_record_typed_value_at_scalar_argument_is_counted_until_identity_is_grounded() -> Bool {
+  violation_count(source: record_value_at_scalar_source, wanted: "DeclaredTypeInhabitanceUndecided") > 0
+    && violation_count(source: record_value_at_scalar_source, wanted: "DeclaredTypeNotInhabited") == 0
+}
+
+data coproduct_value_at_record_source: String = "module probe_inhabit_coproduct_at_record\nimport std.types { Int, String }\ntype Box { value: String }\ntype Choice = | ChoiceA { value: String } | ChoiceB\nfn make_choice() -> Choice { ChoiceA { value: \"forty\" } }\nfn takes_box(box: Box) -> Int { 1 }\nfn probe() -> Int { takes_box(box: make_choice()) }\n"
+
+test fn w_coproduct_typed_value_at_record_argument_is_refused() -> Bool {
+  violation_count(source: coproduct_value_at_record_source, wanted: "DeclaredTypeNotInhabited") > 0
+}
+
+data optional_value_at_required_source: String = "module probe_inhabit_optional_at_required\nimport std.types { Int, String }\nfn maybe_text() -> String? { none }\nfn takes_text(text: String) -> Int { 1 }\nfn probe() -> Int { takes_text(text: maybe_text()) }\n"
+
+test fn w_optional_value_at_required_binding_is_admitted_only_at_the_counted_boundary() -> Bool {
+  violation_count(source: optional_value_at_required_source, wanted: "DeclaredTypeInhabitanceUndecided") > 0
+    && violation_count(source: optional_value_at_required_source, wanted: "DeclaredTypeNotInhabited") == 0
+}
+
+// The syntax contrast that exposed the application hole. The cast seam already refused the same
+// optional-to-required transition; keep that independently typed refusal beside the binding RED
+// so neither seam can accidentally stand in as evidence for the other.
+data optional_value_cast_to_required_source: String = "module probe_inhabit_optional_cast_required\nimport std.types { String }\nfn maybe_text() -> String? { none }\nfn probe() -> String { maybe_text() as String }\n"
+
+test fn w_optional_value_cast_to_required_is_independently_refused() -> Bool {
+  violation_count(source: optional_value_cast_to_required_source, wanted: "OptionalCastNotEliminated") > 0
+}
+
+// DECLARED COUNTED BOUNDARY. A generic formal has no instantiated type evidence at this seam, so
+// this cut still admits it. Admission is not silence: the diagnostic census exposes one
+// DeclaredTypeInhabitanceUndecided obligation to consumers on every execution of this fixture.
+data generic_formal_counted_boundary_source: String = "module probe_inhabit_generic_boundary\nimport std.types { String }\nfn identity<T>(value: T) -> T { value }\nfn probe() -> String { identity(value: \"forty\") }\n"
+
+test fn w_generic_formal_admission_is_visible_in_the_diagnostic_census() -> Bool {
+  violation_count(source: generic_formal_counted_boundary_source, wanted: "DeclaredTypeInhabitanceUndecided") > 0
 }
 
 // THE LIST-ELEMENT GAP, AUTHORED AS A FIXTURE SO THE PRODUCTION SITE CAN BE REPAIRED.
