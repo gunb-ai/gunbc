@@ -210,7 +210,7 @@ import gunbc.spark.serving_readback_parse {
 
 // OBSERVATION PRODUCER (SPARK-SERVE-BIND-0 item B) over FleetSsh — callers supply a sealed
 // FleetSshExecutionContext rather than hardcoding one credential route.
-//
+
 // Wet observation only; a green witness over fixture strings is not proof gpt-oss:20b is serving.
 // Runtime closure identity requires the release-archive admission receipt under
 // ~/.local/share/gunbc/spark-serving/ (archive digest admitted at materialization — not proof of
@@ -824,28 +824,38 @@ fn spark_serving_captured_leg(
   spark_serving_probe_leg_capture_of(
     request: request,
     outcome: match request {
-      ModelBlobDigestsRequest { digests: [] } =>
-        SparkServingProbePrerequisiteRefused {
-          cause: join([
-            "the model manifest named no blob digests to verify, so there is no blob-digest command",
-            " to run: executing a bare digest over an empty list would report every required blob",
-            " verified by requiring none",
-          ], "") as NonEmptyStr,
+      ModelBlobDigestsRequest { digests: hexes } =>
+        if length(hexes) == 0 {
+          SparkServingProbePrerequisiteRefused {
+            cause: join([
+              "the model manifest named no blob digests to verify, so there is no blob-digest",
+              " command to run: executing a bare digest over an empty list would report every",
+              " required blob verified by requiring none",
+            ], "") as NonEmptyStr,
+          }
+        } else {
+          spark_serving_run_probe_request(context: context, host: host, request: request)
         }
-      _ =>
-        match run_typed_argv_transport(
-          argv: spark_serving_probe_request_argv(request: request),
-          transport: fleet_locus_transport(context: context, host: host),
-        ) {
-          TypedArgvExecConverged { result: r } => SparkServingProbeExecuted { result: r }
-          TypedArgvExecRefused { reason: why } =>
-            SparkServingProbeTransportRefused {
-              cause: join(["transport refused the leg, it was never attempted: ", why], "")
-                as NonEmptyStr,
-            }
-        }
+      _ => spark_serving_run_probe_request(context: context, host: host, request: request)
     },
   )
+}
+
+fn spark_serving_run_probe_request(
+  context: FleetSshExecutionContext,
+  host: HostIdentity,
+  request: SparkServingProbeRequest,
+) -> SparkServingProbeOutcome {
+  match run_typed_argv_transport(
+    argv: spark_serving_probe_request_argv(request: request),
+    transport: fleet_locus_transport(context: context, host: host),
+  ) {
+    TypedArgvExecConverged { result: r } => SparkServingProbeExecuted { result: r }
+    TypedArgvExecRefused { reason: why } =>
+      SparkServingProbeTransportRefused {
+        cause: join(["transport refused the leg, it was never attempted: ", why], "") as NonEmptyStr,
+      }
+  }
 }
 
 fn spark_serving_probe_leg_via_locus(
