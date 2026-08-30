@@ -16276,25 +16276,32 @@ fn hermetic_effect_ground_verdict(
 /// a control sharing nothing with its subject except a name. Extracting it costs nothing and is
 /// the difference between a test of the reconciliation and a test of a paraphrase of it.
 ///
-/// Returns (planned-without-terminal, terminal-without-planned, terminal-duplicated). Three sets
-/// rather than a first-failure verdict: an omission and a duplicate arrive together and cancel
-/// in every count, so reporting only the first found would hide the half that explains it.
-pub fn reconcile_terminal_ledger<'a>(
-    planned: &'a HashSet<String>,
-    rows: &'a [ClaimTerminalRow],
+/// Returns (expected-without-observed, observed-without-expected, observed-duplicated). Three
+/// sets rather than a first-failure verdict: an omission and a duplicate arrive together and
+/// cancel in every count, so reporting only the first found would hide the half that explains it.
+///
+/// IT TAKES IDENTITIES, NOT ROWS, because the floor performs this join at more than one seam and
+/// the join is one fact. Downstream it is planned-claim identities against terminal ledger rows;
+/// upstream it is the offered witness population against the disposition projection
+/// (`run_required_floor`, `FloorDispositionJoinInexact`). A per-seam copy keyed on that seam's
+/// row type would be the same loop written twice, drifting independently — so each caller
+/// projects its own rows to identities and hands them here.
+pub fn reconcile_identity_population<'a>(
+    expected: &'a HashSet<String>,
+    observed: impl Iterator<Item = &'a str>,
 ) -> (Vec<&'a str>, Vec<&'a str>, Vec<&'a str>) {
     let mut seen: HashMap<&str, usize> = HashMap::new();
-    for row in rows {
-        *seen.entry(row.qualified.as_str()).or_insert(0) += 1;
+    for identity in observed {
+        *seen.entry(identity).or_insert(0) += 1;
     }
-    let mut missing: Vec<&str> = planned
+    let mut missing: Vec<&str> = expected
         .iter()
         .map(|q| q.as_str())
         .filter(|q| !seen.contains_key(q))
         .collect();
     let mut foreign: Vec<&str> = seen
         .keys()
-        .filter(|q| !planned.contains(**q))
+        .filter(|q| !expected.contains(**q))
         .copied()
         .collect();
     let mut duplicated: Vec<&str> = seen
@@ -16306,6 +16313,111 @@ pub fn reconcile_terminal_ledger<'a>(
     foreign.sort_unstable();
     duplicated.sort_unstable();
     (missing, foreign, duplicated)
+}
+
+/// How one enrolled `v2.workflow.floor_cost_debt` identity relates to this run.
+///
+/// The roster's reverse join must answer questions a single boolean cannot separate, and
+/// conflating two of them is what this type exists to make unwritable.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CostDebtRosterStanding {
+    /// Withheld for cost: the operative debt. This is the only arm that may be counted as debt.
+    Withheld,
+    /// Declared by the tree, but preparation never offered it — its module is outside the gate
+    /// closure or was excluded from discovery. It withholds NOTHING on this run, so it is not
+    /// debt; it is kept as the record that the identity was once measured expensive, and it
+    /// becomes observable again the moment the gate admits its module.
+    OutsideThisRunsUniverse,
+    /// The tree declares no such identity. A roster line naming it withholds nothing and never
+    /// can, so it REFUSES.
+    Undeclared,
+    /// Declared and offered, but not withheld — renamed, or declined for a home reason that
+    /// outranks cost debt. Also REFUSES: the roster has stopped describing the tree.
+    DeclaredButNotWithheld,
+}
+
+/// Partition the cost-debt roster by DISPOSITION, which is the single authority for what this
+/// run did with each identity.
+///
+/// WHY THIS IS NOT A NAME TEST, which is the defect it replaces. The previous filter asked only
+/// whether an unseen roster identity's module path prefix-matched `required_gate_prefixes`, and
+/// counted every miss as "outside the gate". A module NAME cannot distinguish "declared, but this
+/// run's gate never loaded it" from "no such declaration anywhere", so an identity that does not
+/// exist — a typo, a renamed or deleted witness, a fabricated line — was silently absorbed into
+/// the outside-gate count and refused nothing. That is the hole the reverse join exists to close;
+/// its own comment names it ("the cheapest way to fake a green run: enrolling an identity that
+/// does not exist would otherwise cost nothing"), and the 2026-08-29 gate cut reopened it across
+/// the whole non-gate namespace, which is now the majority of the corpus.
+///
+/// WHY THE DISPOSITION IS THE *SOLE* INPUT, and why an earlier draft of this function was wrong.
+/// That draft consulted the fold's withheld set FIRST and fell back to the disposition, which
+/// made two structures answer one question — the §3 defect this repair exists to close, rebuilt
+/// inside the repair. It was not hypothetical: its test asserted that a withheld identity with NO
+/// disposition row is `Withheld`, blessing exactly the divergence the join should refuse. Since
+/// gunbc#9684 every declared identity carries exactly one disposition, so the disposition index
+/// is total over the declared universe and a separate declared-set parameter would be a third
+/// representation of the same fact. The withheld set is still computed for execution accounting,
+/// and it is RECONCILED against this classification rather than consulted by it — see
+/// `reconcile_withheld_against_dispositions`.
+pub fn partition_cost_debt_roster<'a>(
+    roster: &'a HashSet<String>,
+    dispositions: &HashMap<String, RequiredFloorDisposition>,
+) -> Vec<(&'a str, CostDebtRosterStanding)> {
+    let mut rows: Vec<(&str, CostDebtRosterStanding)> = roster
+        .iter()
+        .map(|identity| {
+            let q = identity.as_str();
+            let standing = match dispositions.get(q) {
+                None => CostDebtRosterStanding::Undeclared,
+                Some(RequiredFloorDisposition::DeclinedCostDebt) => {
+                    CostDebtRosterStanding::Withheld
+                }
+                Some(RequiredFloorDisposition::DeclinedOutsideGateClosure)
+                | Some(RequiredFloorDisposition::DeclinedDiscoveryExcluded { .. }) => {
+                    CostDebtRosterStanding::OutsideThisRunsUniverse
+                }
+                Some(_) => CostDebtRosterStanding::DeclaredButNotWithheld,
+            };
+            (q, standing)
+        })
+        .collect();
+    rows.sort_unstable_by(|a, b| a.0.cmp(b.0));
+    rows
+}
+
+/// The execution-accounting set and the disposition projection must name the SAME identities.
+///
+/// `cost_debt_seen` is accumulated by the build loop as it declines sites; the disposition rows
+/// are the projection of that same loop. They are two observations of one act, so they agree by
+/// construction or something is wrong with the loop — and a silent disagreement would be exactly
+/// the kind of drift `partition_cost_debt_roster` no longer permits itself. Rather than let one
+/// paper over the other, this returns both directions of the difference for the caller to refuse
+/// on.
+///
+/// Returns (withheld-without-a-cost-debt-disposition, cost-debt-dispositioned-but-not-withheld).
+pub fn reconcile_withheld_against_dispositions<'a>(
+    withheld: &'a HashSet<String>,
+    dispositions: &'a HashMap<String, RequiredFloorDisposition>,
+) -> (Vec<&'a str>, Vec<&'a str>) {
+    let mut withheld_without_disposition: Vec<&str> = withheld
+        .iter()
+        .map(|q| q.as_str())
+        .filter(|q| {
+            !matches!(
+                dispositions.get(*q),
+                Some(RequiredFloorDisposition::DeclinedCostDebt)
+            )
+        })
+        .collect();
+    let mut dispositioned_without_withhold: Vec<&str> = dispositions
+        .iter()
+        .filter(|(_, d)| matches!(d, RequiredFloorDisposition::DeclinedCostDebt))
+        .map(|(q, _)| q.as_str())
+        .filter(|q| !withheld.contains(*q))
+        .collect();
+    withheld_without_disposition.sort_unstable();
+    dispositioned_without_withhold.sort_unstable();
+    (withheld_without_disposition, dispositioned_without_withhold)
 }
 
 /// One terminal row per PLANNED identity, mirroring `v2.workflow.floor_terminal_ledger`
@@ -16335,7 +16447,7 @@ pub fn reconcile_terminal_ledger<'a>(
 /// not compare them — this file is not generated. The witnesses do not compare them — they
 /// exercise each side separately, never one against the other. So an arm added, renamed or
 /// re-meaned on either side leaves the other silently stale, and the seam is exactly the shape
-/// this change repaired one grain down: `reconcile_terminal_ledger` was extracted so its test
+/// this change repaired one grain down: `reconcile_identity_population` was extracted so its test
 /// could not be a control that shares only a name with its subject. That rule condemns this seam
 /// too, and here it is declared debt rather than repaired.
 ///
@@ -16348,7 +16460,7 @@ pub fn reconcile_terminal_ledger<'a>(
 /// self-emitted v2 claim executor. When the floor's execution is driven by v2 rather than by this
 /// seed, the producer that holds identity-and-outcome together IS the v2 side, so there is no
 /// seam to bridge and no second representation to keep in agreement — this struct,
-/// `claim_disposition`, `reconcile_terminal_ledger` and the refusal below are deleted whole, and
+/// `claim_disposition`, `reconcile_identity_population` and the refusal below are deleted whole, and
 /// `v2.workflow.floor_terminal_ledger` is left as the sole authority it already claims to be.
 pub struct ClaimTerminalRow {
     pub qualified: String,
@@ -35646,11 +35758,24 @@ pub struct PreparedRepository {
     pub subject_digest: String,
     pub modules_resolved: usize,
     pub modules_excluded: usize,
-    /// The witness sites preparation found, already folded. NOT the corpus bytes.
-    pub witness_files: Vec<InventoryWitnessFile>,
-    /// Admitted sources carrying zero `test` decls (`test fn` or `test data`). See
-    /// `PreparedSubject::test_decl_free_paths`.
-    pub test_decl_free_paths: Vec<String>,
+    /// Every source in the module index, including modules outside this prepared closure and
+    /// sources removed by discovery exclusions. The required floor folds the one modeled
+    /// discovery producer over this full population before classifying each resulting identity.
+    ///
+    /// IT IS MOVED OUT, NOT READ IN PLACE, and the field is empty for the rest of the run. Out-of-
+    /// closure sources are held by nothing else — the prepared graph is the gate closure — so
+    /// these `Rc`s are the only thing keeping the rest of the corpus alive, and leaving them here
+    /// would restore corpus-scale retention across the longest phase of the program. That is
+    /// growth in the lane `v2.workflow.required_floor` `RequiredFloorGrowthBudgetStanding`
+    /// records as having no measured memory margin, so it owes a named payment; taking the field
+    /// and dropping it when the fold ends is the alternative to owing one. See the `std::mem::take`
+    /// in `run_required_floor` and the measured release on the discovery-authority phase line
+    /// (`full_inventory_release_rss_kb_before` / `_trim_reclaimed_kb` / `_rss_kb_after`).
+    pub full_inventory: Vec<PreparedSourceView>,
+    /// Modules that reached the requested closure but preparation excluded, paired with the
+    /// exact substring that matched. Absence from both this map and `inventory` means outside
+    /// the prepared closure, keeping the two pre-offer dispositions distinguishable.
+    pub discovery_exclusions: HashMap<String, String>,
 }
 
 /// Shared view of one admitted source. Holds the same `Rc<SourceFile>` preparation already
@@ -35808,19 +35933,8 @@ fn register_floor_prepared_authority_guard(
 pub struct PreparedSubject {
     pub sources: Vec<Rc<v1_compiler_compile::SourceFile>>,
     pub inventory: Vec<PreparedSourceView>,
-    pub witness_files: Vec<InventoryWitnessFile>,
-    /// Admitted sources carrying ZERO `test` decls — neither `test fn` nor `test data` — by
-    /// repo-relative path. The vocabulary is `floor_discovery_scan_test_decl_names`'s, so this
-    /// population is the wall's own denominator rather than a narrower one that happens to
-    /// agree.
-    ///
-    ///
-    /// Preparation records the fact and judges nothing with it. Whether a path in here is a
-    /// VIOLATION is a policy question owned by `v2.workflow.floor_naming_hygiene`
-    /// (`floor_test_sidecar_suffix` / `floor_entry_is_barren_test_sidecar`), and the floor asks
-    /// it once, later, against the constant read from that module — so the rule keeps one home
-    /// and only its consumer moved.
-    pub test_decl_free_paths: Vec<String>,
+    pub full_inventory: Vec<PreparedSourceView>,
+    pub discovery_exclusions: HashMap<String, String>,
     pub subject_digest: String,
     pub modules_resolved: usize,
     pub modules_excluded: usize,
@@ -35865,6 +35979,14 @@ pub fn assemble_prepared_subject_closure(
     closure: Option<(&MultiEntryIndex, &[String])>,
 ) -> Result<PreparedSubject, String> {
     let full_index = build_module_index(source_roots);
+    let full_inventory: Vec<PreparedSourceView> = full_index
+        .iter()
+        .map(|(module_path, source)| PreparedSourceView {
+            module_path: module_path.clone(),
+            source: source.clone(),
+        })
+        .collect();
+    let mut discovery_exclusions: HashMap<String, String> = HashMap::new();
     let index: ModuleSourceIndex = match closure {
         None => full_index,
         Some((entry_index, prefixes)) => {
@@ -36008,60 +36130,23 @@ pub fn assemble_prepared_subject_closure(
         }
     };
     let total = index.len();
-    let mut witness_files: Vec<InventoryWitnessFile> = Vec::new();
-    let mut test_decl_free_paths: Vec<String> = Vec::new();
     let mut sources: Vec<Rc<v1_compiler_compile::SourceFile>> = Vec::with_capacity(total);
     let mut inventory: Vec<PreparedSourceView> = Vec::with_capacity(total);
     for (module_path, sf) in index.iter() {
         let p = sf.path.replace('\\', "/");
-        if exclude_substrings
+        if let Some(matched) = exclude_substrings
             .iter()
-            .any(|sub| p.contains(sub.as_str()) || module_path.contains(sub.as_str()))
+            .find(|sub| p.contains(sub.as_str()) || module_path.contains(sub.as_str()))
         {
+            discovery_exclusions.insert(module_path.clone(), matched.clone());
             continue;
         }
-        // THE DROP THAT MADE A WALL UNREACHABLE, NOW A RECORDED FACT.
-        //
-        // `witness_file_from_source` answers `None` for a file with no `test fn` decl, and this
-        // loop used to discard that answer. Since `run_required_floor` builds its whole roster
-        // from `witness_files`, a `*_test.dag` file declaring no `test fn` was not declined and
-        // not counted — it left the floor's universe entirely, one level ABOVE the
-        // `offered = routed + declined_long + declined_fixture` partition, which is why that line
-        // can be exact and still say nothing about it.
-        //
-        // The `.dag` producer has carried a wall for exactly this since it was written
-        // (`v2.workflow.floor_naming_hygiene` `floor_entry_is_barren_test_sidecar`, refused as
-        // `BarrenTestSidecar`), and it never fired, because the required floor does not take the
-        // path that reaches it — `invoke_floor_discovery_producer` is reachable only through
-        // `discover_floor_witness_roster`, which `run_required_floor` never calls.
-        //
-        // WHAT IS RECORDED HERE IS A CANDIDATE SET, NOT A VERDICT, and the distinction is the
-        // whole reason no second copy of the rule appears in Rust. This records every source
-        // `witness_file_from_source` declined, and asks nothing about suffixes. That question
-        // belongs to `v2.workflow.floor_naming_hygiene` and is put TO it, per candidate, by
-        // `floor_barren_test_sidecars`. Rust can only widen the question, never decide it, so a
-        // Rust/`.dag` disagreement cannot produce a wrong refusal — only a candidate the
-        // authority discards.
-        //
-        // AND THE RECORDED SET NOW USES THE RULE'S OWN VOCABULARY BY CONSTRUCTION, rather than by
-        // a second test standing beside it. `test data ` is a test decl to
-        // `floor_discovery_scan_test_decl_names`, which is what `floor_entry_is_barren_test_sidecar`
-        // composes; this loop used to agree with that rule by asking a SEPARATE question here
-        // (`site.is_none() && no line starts with "test data "`) because the roster builder below
-        // could not see `test data` at all. It can now, so `site.is_none()` means exactly
-        // "declares no test decl" in the wall's own vocabulary and the compensating second scan is
-        // deleted rather than left as a third spelling of the same fact (DESIGN §3, and §4b(4):
-        // a climb deletes the lower-rung machinery it obsoletes). A `test data`-only file
-        // therefore no longer reaches this set at all, where before the repair it did and the
-        // `.dag` predicate discarded it.
-        //
-        // The 40 `test data` claims that compensating scan was protecting from a
-        // wall-over-reach are, for the same reason, no longer dropped from the roster: they are
-        // offered, routed and executed like any other claim. See `witness_file_from_source`.
-        match witness_file_from_source(module_path, &sf.path, &sf.content) {
-            Some(site) => witness_files.push(site),
-            None => test_decl_free_paths.push(p.clone()),
-        }
+        // WHICH `test` DECLS A SOURCE ENROLLS IS NOT DECIDED HERE. Preparation admits the
+        // source and keeps its bytes beside its module name; the required floor hands both to
+        // `v2.workflow.floor_discovery_producer` (`discover_floor_rows_for_source`), the one
+        // authority for discovery, sidecar placement and barren sidecars. A Rust scan used to
+        // stand here and disagreed with that authority on
+        // placement — deleted, DESIGN §3.
         inventory.push(PreparedSourceView {
             module_path: module_path.clone(),
             source: sf.clone(),
@@ -36072,15 +36157,13 @@ pub fn assemble_prepared_subject_closure(
         return Err("whole-tree corpus is empty (no .dag modules under source roots)".to_string());
     }
     let modules_excluded = total - sources.len();
-    witness_files.sort_by(|a, b| a.path.cmp(&b.path));
-    test_decl_free_paths.sort();
     let subject_digest = subject_digest_for_closure(&sources);
     let modules_resolved = total - modules_excluded;
     Ok(PreparedSubject {
         sources,
         inventory,
-        witness_files,
-        test_decl_free_paths,
+        full_inventory,
+        discovery_exclusions,
         subject_digest,
         modules_resolved,
         modules_excluded,
@@ -36118,8 +36201,8 @@ pub fn prepare_repository_closure(
     let PreparedSubject {
         sources,
         inventory,
-        witness_files,
-        test_decl_free_paths,
+        full_inventory,
+        discovery_exclusions,
         subject_digest,
         modules_resolved,
         modules_excluded,
@@ -36133,8 +36216,8 @@ pub fn prepare_repository_closure(
             subject_digest,
             modules_resolved,
             modules_excluded,
-            witness_files,
-            test_decl_free_paths,
+            full_inventory,
+            discovery_exclusions,
         },
         inventory,
     ))
@@ -36779,6 +36862,23 @@ pub enum RequiredFloorDisposition {
     /// that also declines for a home reason keeps the home decline, so a roster line over it
     /// surfaces as a STALE row to delete rather than as a withhold that looks legitimate.
     DeclinedCostDebt,
+    /// Declined by PREPARATION, before the site was ever offered: the module carries no
+    /// required-gate prefix and the gate closure — the transitive import/reference closure of
+    /// the gate seeds — never reached it, so it was not in the prepared subject at all.
+    ///
+    /// NOT `DeclinedOutsideRequiredGate`, and the separation is the point. That arm speaks for a
+    /// module the subject CONTAINED whose authored name missed the prefix roster; this one for a
+    /// module the subject never held, discovered by re-reading the full index rather than by the
+    /// site loop. After the 2026-08-29 gate cut this arm is five figures and that one is two, and
+    /// this arm's population is the subject of the §4b rung drop "Required gate reduced to the
+    /// compiler floor" — one label over both would report that drop's whole population as a
+    /// rounding error on a nearby count.
+    DeclinedOutsideGateClosure,
+    /// Declined by PREPARATION because the module's path or authored name contains one of the
+    /// discovery `exclude_substrings`. Carries the substring that matched, so the row names its
+    /// own remedy. `collect_deferred_discovery_rows` receipts the same removal at ENTRY grain;
+    /// this is the identity grain the population join is keyed on.
+    DeclinedDiscoveryExcluded { matched_substring: String },
 }
 
 /// ONE EXECUTED CLAIM'S MEASURED OCCURRENCE, minted the instant `run_claim_measured`
@@ -36918,6 +37018,18 @@ pub struct RequiredFloorOutcome {
     pub declined_fixture_member: usize,
     /// Sites whose module matches no `required_gate_prefixes()` row (the static required gate).
     pub declined_outside_required_gate: usize,
+    /// EVERY witness identity DECLARED in the tree, not only those the prepared subject offered:
+    /// `sites_offered` plus the identities preparation dropped. It is the denominator the
+    /// disposition join runs over, and it is reported beside `sites_offered` rather than
+    /// replacing it — a subject-relative count and a tree-relative count answer different
+    /// questions and a reader comparing two runs needs both.
+    pub declared_identities: usize,
+    /// Declared identities whose module the gate closure never reached, so preparation never
+    /// held them. After the 2026-08-29 gate cut this is the largest population in the receipt and
+    /// it is the subject of the "Required gate reduced to the compiler floor" rung drop.
+    pub declined_outside_gate_closure: usize,
+    /// Declared identities excluded from discovery by an `exclude_substrings` match.
+    pub declined_discovery_excluded: usize,
     pub claims_planned: usize,
     pub claims_executed: usize,
     pub receipt_identities: usize,
@@ -37062,124 +37174,6 @@ pub struct RequiredFloorOutcome {
     pub long_home_storage_agreement: Vec<LongHomeStorageAgreementRow>,
 }
 
-/// A witness site as preparation found it — the file's path, its module, and the `test fn` /
-/// `test data` names it declares. Produced from bytes preparation had in hand, and retained INSTEAD of
-/// those bytes.
-pub struct InventoryWitnessFile {
-    pub path: String,
-    pub module_path: String,
-    pub functions: Vec<String>,
-    /// Whether the module declares `LiveTreeDisposition = ReadsLiveTree`.
-    ///
-    /// A SECOND, SYNTACTIC COMPUTATION OF A FACT `reads_live_tree_effective` DERIVES
-    /// SEMANTICALLY, and that is a §3 defect this change does not yet remove. See the comment
-    /// at its scan site below.
-    pub reads_live_tree: bool,
-}
-
-/// Decide whether ONE admitted file is a witness site, from the bytes preparation is holding
-/// at that moment. Called inside the preparation loop, so no corpus copy is retained to be
-/// scanned later and NO FILESYSTEM ACCESS occurs: the walk this replaces cost ~6 minutes of
-/// every floor run, acquired the repository a second time, and additionally built a
-/// whole-corpus module graph to answer a question about one file at a time.
-///
-/// `None` means the file declares no `test` decl, which is how a non-witness module is excluded
-/// — the predecessor expressed the same rule as `if !functions.is_empty()` after building the
-/// record.
-///
-/// A `test` decl is recognised at column zero only, which is the same rule the parser applies to
-/// a top-level declaration: an indented occurrence is inside a body and is not a declaration.
-///
-/// BOTH `test fn ` AND `test data ` ARE TEST DECLS HERE, and making that true is the whole of
-/// this function's most recent change. What a test decl IS had two answers in one binary:
-/// `v2.workflow.floor_naming_hygiene` `floor_discovery_scan_test_decl_names` — the authority the
-/// `BarrenTestSidecar` wall composes — counts both forms, while this roster builder counted only
-/// `test fn `. A file whose test decls are all `test data ` therefore SATISFIED the wall (its
-/// predicate found decls) and enrolled ZERO claims (this scan found none), which is partial
-/// enrollment made invisible by construction: nothing refuses, nothing runs, and the run's own
-/// `offered = routed + declined_long + declined_live` partition stays exact because the site was
-/// never offered. That is §3's two-authorities-for-one-fact defect with the two halves wired to
-/// opposite sides of the same gate.
-///
-/// The population this closed is exact and was declared before it was repaired (the note at
-/// `floor_entry_is_barren_test_sidecar`): 40 `test data` decls in 15 files over both source
-/// roots — 34 in 13 files carrying no `test fn` at all, 6 in 2 files the floor already enrolled
-/// partially. The second group is the one no wall could ever have caught.
-///
-/// The two SCANNERS are still two scanners, and that residue is unchanged by this: collapsing
-/// them needs the canonical parser to retain the authored `test` marker, which
-/// `v1_compiler_parse.rs` `drop_leading_test_marker` discards, and `test` cannot become a lex
-/// keyword because it is a live module-path segment. What is repaired here is that they no
-/// longer DISAGREE; what remains is that they are separately spelled.
-///
-/// A `test data` claim executes on exactly the same path as a `test fn` one: `run_claim` calls
-/// `run_in_context`, whose `lookup_fn` resolves a `DataItem` as readily as a function node and
-/// evaluates its initializer with no arguments. There is no second execution mechanism here,
-/// which is why the roster is the only thing that had to move.
-fn witness_file_from_source(
-    module_path: &str,
-    path: &str,
-    content: &str,
-) -> Option<InventoryWitnessFile> {
-    let mut functions: Vec<String> = Vec::new();
-    for line in content.lines() {
-        let Some(rest) = line
-            .strip_prefix("test fn ")
-            .or_else(|| line.strip_prefix("test data "))
-        else {
-            continue;
-        };
-        let name: String = rest
-            .chars()
-            .take_while(|c| c.is_ascii_alphanumeric() || *c == '_')
-            .collect();
-        if !name.is_empty() {
-            functions.push(name);
-        }
-    }
-    if functions.is_empty() {
-        return None;
-    }
-    // ONE FACT, TWO COMPUTATIONS, IN ONE BINARY — a §3 defect, recorded here rather than
-    // silently carried, and deliberately NOT fixed in this change.
-    //
-    // This column-zero TEXT SCAN and `reads_live_tree_effective` answer the same question by
-    // methods that cannot agree except by coincidence: the second reads the same declaration
-    // and then falls through to `effect_reach_derived_reads_live_tree_for_entry`, a SEMANTIC
-    // reachability derivation over the entry's import closure. A syntactic scan and an
-    // effect-reach derivation disagree as a function of the import graph.
-    //
-    // THE FIX IS NOT TO UNIFY THEM. The two consumers ask DIFFERENT QUESTIONS. Affected-set
-    // selection asks "does this entry's result depend on live tree state", which
-    // `reads_live_tree_effective` answers and keeps. The floor asks "can this identity
-    // execute", which no authored file-level boolean can answer — the interpreter decides it
-    // exactly, per identity, at the effect boundary, and now says so in a typed outcome
-    // (`ClaimOutcome::HostEffectRefused`). So the floor's copy is deleted rather than
-    // reconciled, and the population it was excluding is executed.
-    //
-    // MEASURED, so the deletion is not a hope: floor run 32345970386 removed this scan and ran
-    // the population. Of ~783 identities admitted, 626 PASS and 157 route-gap on real host
-    // operations (Mktemp.Dir 54, IsExecutable 26, Run 17, Write 8, git.Inspect 5, …) — not one
-    // a committed-source read. The premise was stale for the large majority of what it
-    // excluded.
-    //
-    // WHY IT IS STILL HERE: that same run surfaced 55 blockers — 6 witnesses that do not
-    // RESOLVE (`undefined variable`, `no such function`; never caught because nothing ever
-    // evaluated them) and 49 in a cost tail — and all 55 are newly-admitted. This change is the
-    // part that carries none of them. → `docs/plans/witness-execution-closure.md`.
-    let reads_live_tree = content.lines().any(|line| {
-        line.starts_with("data ")
-            && line.contains("LiveTreeDisposition")
-            && line.contains("ReadsLiveTree")
-    });
-    Some(InventoryWitnessFile {
-        path: path.replace('\\', "/"),
-        module_path: module_path.to_string(),
-        functions,
-        reads_live_tree,
-    })
-}
-
 fn str_list(items: impl IntoIterator<Item = String>) -> v1_interpreter::Value {
     v1_interpreter::Value::List(Rc::new(
         items
@@ -37196,16 +37190,21 @@ fn str_list(items: impl IntoIterator<Item = String>) -> v1_interpreter::Value {
 const REQUIRED_FLOOR_POLICY_MODULE: &str = "v2.workflow.required_floor";
 
 /// Modules the required floor's own runner evaluates BY NAME, outside any gate roster: the
-/// policy module (its rosters, via `floor_decode_module_prefix_roster`), the naming-hygiene
-/// authority (`floor_entries_requiring_test_sidecar`, `floor_entry_is_barren_test_sidecar`,
-/// qualified), and the output policy (`resolve_channel_policy` /
-/// `resolve_shell_trace_stream_policy`, bare, from `install_output_policy_in`). Every one is a
-/// closure seed of the gate-bounded prepared subject; a new by-name evaluation adds its module
-/// here or refuses at its own call site.
-const REQUIRED_FLOOR_RUNTIME_AUTHORITY_MODULES: [&str; 3] = [
+/// policy module (its rosters, via `floor_decode_module_prefix_roster`), the discovery authority
+/// (`discover_floor_rows_for_source` / `floor_discovery_finalize_source_outcomes`, qualified —
+/// the floor's roster IS that fold's answer), the output policy (`resolve_channel_policy` /
+/// `resolve_shell_trace_stream_policy`, bare, from `install_output_policy_in`), and the
+/// cross-claim pure-producer share roster (`floor_cross_claim_pure_producers_warm` /
+/// `..._claim_forced`, via `install_pure_producer_share`). Every one is a closure seed of the
+/// gate-bounded prepared subject; a new by-name evaluation adds its module here or refuses at
+/// its own call site. `v2.workflow.floor_naming_hygiene` is reached through the producer's
+/// import closure rather than asked directly: the barren-sidecar question the runner used to
+/// put to it is one arm of the producer's per-file fold.
+const REQUIRED_FLOOR_RUNTIME_AUTHORITY_MODULES: [&str; 4] = [
     REQUIRED_FLOOR_POLICY_MODULE,
-    "v2.workflow.floor_naming_hygiene",
+    "v2.workflow.floor_discovery_producer",
     "gunbc.output_policy",
+    "v2.workflow.floor_pure_producer_share",
 ];
 
 /// THE REQUIRED FLOOR, AS ONE ATTEMPT.
@@ -37567,8 +37566,23 @@ fn write_required_floor_claim_cost_tsv(
 fn write_required_floor_disposition_tsv(
     path: &str,
     rows: &[RequiredFloorDispositionRow],
+    terminal: &[ClaimTerminalRow],
 ) -> Result<(), String> {
     use std::io::Write;
+    // TWO AXES, NEVER FOLDED INTO ONE STATUS. The disposition says whether the identity was
+    // ADMITTED TO EXECUTION and why not; the outcome says what happened to the ones that ran.
+    // A single column would have to answer "declined" and "failed" in the same alphabet, and the
+    // first consumer that filtered on it would silently merge a coverage gap with a red — the
+    // state-space conflation this repository already rosters. So an identity that never ran
+    // reads `not_executed` in the outcome column, which is a STATEMENT rather than a blank.
+    //
+    // The outcome is read through `claim_disposition`, the same projection the terminal ledger
+    // and the `passed` derivation use, so this artifact cannot disagree with the run's own
+    // counts about what a row's outcome was.
+    let outcomes: HashMap<&str, ClaimDisposition> = terminal
+        .iter()
+        .map(|row| (row.qualified.as_str(), claim_disposition(row)))
+        .collect();
     let mut file = std::fs::File::create(path)
         .map_err(|e| format!("write_required_floor_disposition_tsv: create {path}: {e}"))?;
     let mut planned = 0usize;
@@ -37576,6 +37590,8 @@ fn write_required_floor_disposition_tsv(
     let mut declined_fixture = 0usize;
     let mut declined_cost_debt = 0usize;
     let mut declined_outside_gate = 0usize;
+    let mut declined_gate_closure = 0usize;
+    let mut declined_discovery_excluded = 0usize;
     for row in rows {
         match &row.disposition {
             RequiredFloorDisposition::Planned => planned += 1,
@@ -37583,29 +37599,40 @@ fn write_required_floor_disposition_tsv(
             RequiredFloorDisposition::DeclinedFixtureMember { .. } => declined_fixture += 1,
             RequiredFloorDisposition::DeclinedOutsideRequiredGate => declined_outside_gate += 1,
             RequiredFloorDisposition::DeclinedCostDebt => declined_cost_debt += 1,
+            RequiredFloorDisposition::DeclinedOutsideGateClosure => declined_gate_closure += 1,
+            RequiredFloorDisposition::DeclinedDiscoveryExcluded { .. } => {
+                declined_discovery_excluded += 1
+            }
         }
     }
     writeln!(
         file,
         "# summary\ttotal={}\tplanned={}\tdeclined_long_module={}\tdeclined_fixture_member={}\
-         \tdeclined_outside_required_gate={}\tdeclined_cost_debt={}",
+         \tdeclined_outside_required_gate={}\tdeclined_outside_gate_closure={}\
+         \tdeclined_discovery_excluded={}\tdeclined_cost_debt={}",
         rows.len(),
         planned,
         declined_long,
         declined_fixture,
         declined_outside_gate,
+        declined_gate_closure,
+        declined_discovery_excluded,
         declined_cost_debt
     )
     .map_err(|e| format!("write_required_floor_disposition_tsv: write {path}: {e}"))?;
-    writeln!(file, "identity\tdisposition\tmatched_prefix")
+    writeln!(file, "identity\tdisposition\tmatched_prefix\toutcome")
         .map_err(|e| format!("write_required_floor_disposition_tsv: write {path}: {e}"))?;
     for row in rows {
         writeln!(
             file,
-            "{}\t{}\t{}",
+            "{}\t{}\t{}\t{}",
             row.identity.replace(['\t', '\n'], " "),
             required_floor_disposition_label(&row.disposition),
             required_floor_disposition_matched_prefix(&row.disposition).replace(['\t', '\n'], " "),
+            outcomes
+                .get(row.identity.as_str())
+                .map(|d| claim_disposition_wire(*d))
+                .unwrap_or("not_executed"),
         )
         .map_err(|e| format!("write_required_floor_disposition_tsv: write {path}: {e}"))?;
     }
@@ -37774,6 +37801,270 @@ mod required_floor_disposition_and_storage_agreement_law {
         ]
     }
 
+    // ── the population join: every declared identity, exactly one disposition ──────────────
+
+    /// THE CALIBRATION PAIR FOR THE FLOOR'S SITE-PROJECTION SEAM.
+    ///
+    /// `run_required_floor` used to check its partition by COUNT — `offered == routed +
+    /// declined_long + declined_fixture + declined_outside_gate + declined_cost_debt` — and DESIGN
+    /// §5 names that shape: completeness is an identity join, not a count equality. This is the
+    /// population that proves the difference. It drops one identity from the projection and
+    /// writes another twice, so every count in the old form is still exactly equal while the
+    /// projection has lost a witness — the same swap `terminal_ledger_completeness_law` pins one
+    /// seam downstream, at the seam where the roster is BUILT rather than where it is receipted.
+    ///
+    /// It calls the production reconciliation, not a paraphrase: `reconcile_identity_population`
+    /// is the function the floor calls, so a drift in it fails here.
+    fn declared(names: &[&str]) -> HashSet<String> {
+        names.iter().map(|n| n.to_string()).collect()
+    }
+
+    fn disposition_row(identity: &str) -> RequiredFloorDispositionRow {
+        RequiredFloorDispositionRow {
+            identity: identity.to_string(),
+            disposition: RequiredFloorDisposition::Planned,
+        }
+    }
+
+    #[test]
+    fn a_dropped_identity_replaced_by_a_duplicate_is_caught_while_the_count_partition_holds() {
+        let offered = declared(&["m.a", "m.b", "m.c"]);
+        let healthy: Vec<RequiredFloorDispositionRow> = ["m.a", "m.b", "m.c"]
+            .iter()
+            .map(|i| disposition_row(i))
+            .collect();
+        // `m.c` never got a row; `m.a` got two.
+        let swapped: Vec<RequiredFloorDispositionRow> = ["m.a", "m.b", "m.a"]
+            .iter()
+            .map(|i| disposition_row(i))
+            .collect();
+
+        // THE OLD CHECK IS GREEN OVER THE BROKEN POPULATION. Stated as an assertion rather than
+        // as prose, because it is the whole reason the join replaced the sum: the count
+        // partition cannot tell these two apart.
+        assert_eq!(offered.len(), healthy.len());
+        assert_eq!(offered.len(), swapped.len());
+
+        let (missing, foreign, duplicated) =
+            reconcile_identity_population(&offered, healthy.iter().map(|r| r.identity.as_str()));
+        assert!(missing.is_empty() && foreign.is_empty() && duplicated.is_empty());
+
+        let (missing, foreign, duplicated) =
+            reconcile_identity_population(&offered, swapped.iter().map(|r| r.identity.as_str()));
+        assert_eq!(
+            missing,
+            vec!["m.c"],
+            "the identity with no disposition must be named"
+        );
+        assert!(foreign.is_empty());
+        assert_eq!(
+            duplicated,
+            vec!["m.a"],
+            "the doubly-dispositioned identity must be named"
+        );
+    }
+
+    // ── the cost-debt roster's standing: the disposition is the sole classifier ────────────
+
+    fn ident_set(names: &[&str]) -> HashSet<String> {
+        names.iter().map(|s| s.to_string()).collect()
+    }
+
+    fn disp_map(
+        rows: &[(&str, RequiredFloorDisposition)],
+    ) -> HashMap<String, RequiredFloorDisposition> {
+        rows.iter()
+            .map(|(q, d)| (q.to_string(), d.clone()))
+            .collect()
+    }
+
+    fn standing_of(
+        rows: &[(&str, CostDebtRosterStanding)],
+        identity: &str,
+    ) -> Option<CostDebtRosterStanding> {
+        rows.iter().find(|(q, _)| *q == identity).map(|(_, s)| *s)
+    }
+
+    /// THE DISCRIMINATING RED, and the reason this function exists.
+    ///
+    /// `gate.miss.no_such_witness` is enrolled and NOTHING DECLARES IT — a typo, a rename, or a
+    /// fabricated line in a module outside the gate. Under the previous name-derived filter it
+    /// prefix-missed `required_gate_prefixes`, was counted as outside-the-gate, and refused
+    /// nothing: a roster line naming an identity that does not exist rode out green. It must now
+    /// be `Undeclared`, which is a refusing arm.
+    ///
+    /// The sibling `gate.miss.real_witness` is the control: same module, same prefix miss — and it
+    /// IS declared, so it must land in the non-refusing `OutsideThisRunsUniverse` arm. A fix that
+    /// refused both would close the hole by breaking the 122 legitimate rows, and the two rows
+    /// differ ONLY in whether a disposition exists, so nothing but that join can tell them apart.
+    #[test]
+    fn an_undeclared_roster_identity_outside_the_gate_refuses_while_its_declared_sibling_does_not()
+    {
+        let roster = ident_set(&["gate.miss.no_such_witness", "gate.miss.real_witness"]);
+        let dispositions = disp_map(&[(
+            "gate.miss.real_witness",
+            RequiredFloorDisposition::DeclinedOutsideGateClosure,
+        )]);
+
+        let rows = partition_cost_debt_roster(&roster, &dispositions);
+
+        assert_eq!(
+            standing_of(&rows, "gate.miss.no_such_witness"),
+            Some(CostDebtRosterStanding::Undeclared),
+            "an enrolled identity the tree does not declare must refuse, not be absorbed into \
+             the outside-gate count"
+        );
+        assert_eq!(
+            standing_of(&rows, "gate.miss.real_witness"),
+            Some(CostDebtRosterStanding::OutsideThisRunsUniverse),
+            "a declared identity whose module the gate never loaded withholds nothing but is \
+             not stale: it must NOT refuse"
+        );
+    }
+
+    /// THE DISPOSITION IS THE SOLE CLASSIFIER, and this test is the REVERSE of one an earlier
+    /// draft carried.
+    ///
+    /// That draft consulted the fold's withheld set first and asserted that a withheld identity
+    /// with NO disposition row is `Withheld` — blessing a divergence between two structures that
+    /// answer one question, which is the §3 defect this whole repair exists to close, rebuilt
+    /// inside the repair. An identity with no disposition is `Undeclared` and refuses, whatever
+    /// any other structure believes about it; a missing or mismatched disposition must never take
+    /// precedence over the join.
+    #[test]
+    fn a_missing_disposition_refuses_and_is_never_overridden_by_another_structure() {
+        let roster = ident_set(&["m.no_row"]);
+        let dispositions = disp_map(&[]);
+
+        let rows = partition_cost_debt_roster(&roster, &dispositions);
+
+        assert_eq!(
+            standing_of(&rows, "m.no_row"),
+            Some(CostDebtRosterStanding::Undeclared),
+            "no disposition means undeclared, even for an identity another structure calls withheld"
+        );
+    }
+
+    /// Only `DeclinedCostDebt` is debt. A declared identity carrying any other disposition was
+    /// offered and not withheld, so it refuses — the pre-existing stale arm, preserved.
+    #[test]
+    fn only_the_cost_debt_disposition_counts_as_withheld() {
+        let roster = ident_set(&["m.debt", "m.long_home", "m.planned"]);
+        let dispositions = disp_map(&[
+            ("m.debt", RequiredFloorDisposition::DeclinedCostDebt),
+            (
+                "m.long_home",
+                RequiredFloorDisposition::DeclinedLongModule {
+                    matched_prefix: "m.".to_string(),
+                },
+            ),
+            ("m.planned", RequiredFloorDisposition::Planned),
+        ]);
+
+        let rows = partition_cost_debt_roster(&roster, &dispositions);
+
+        assert_eq!(
+            standing_of(&rows, "m.debt"),
+            Some(CostDebtRosterStanding::Withheld)
+        );
+        assert_eq!(
+            standing_of(&rows, "m.long_home"),
+            Some(CostDebtRosterStanding::DeclaredButNotWithheld)
+        );
+        assert_eq!(
+            standing_of(&rows, "m.planned"),
+            Some(CostDebtRosterStanding::DeclaredButNotWithheld)
+        );
+    }
+
+    /// The partition must be TOTAL and DISJOINT over the roster: one standing per enrolled
+    /// identity, none invented, none dropped. An arm that double-counted would inflate or deflate
+    /// the debt figure while every individual row looked right.
+    #[test]
+    fn every_enrolled_identity_gets_exactly_one_standing() {
+        let roster = ident_set(&["a.debt", "b.undeclared", "c.outside", "d.not_withheld"]);
+        let dispositions = disp_map(&[
+            ("a.debt", RequiredFloorDisposition::DeclinedCostDebt),
+            (
+                "c.outside",
+                RequiredFloorDisposition::DeclinedOutsideGateClosure,
+            ),
+            ("d.not_withheld", RequiredFloorDisposition::Planned),
+        ]);
+
+        let rows = partition_cost_debt_roster(&roster, &dispositions);
+
+        assert_eq!(
+            rows.len(),
+            roster.len(),
+            "one standing per enrolled identity"
+        );
+        let named: HashSet<&str> = rows.iter().map(|(q, _)| *q).collect();
+        assert_eq!(named.len(), rows.len(), "no identity may appear twice");
+        for identity in &roster {
+            assert!(
+                named.contains(identity.as_str()),
+                "{identity} lost its standing"
+            );
+        }
+        assert_eq!(
+            standing_of(&rows, "b.undeclared"),
+            Some(CostDebtRosterStanding::Undeclared)
+        );
+    }
+
+    /// The execution-accounting set and the disposition projection are two observations of one
+    /// act, so a disagreement is a defect in the build loop and must REFUSE rather than let
+    /// either side paper over the other. Both directions are reported: a withhold with no
+    /// cost-debt disposition, and a cost-debt disposition with no withhold.
+    #[test]
+    fn withheld_and_disposition_disagreement_is_reported_in_both_directions() {
+        let withheld = ident_set(&["m.agreed", "m.withheld_only"]);
+        let dispositions = disp_map(&[
+            ("m.agreed", RequiredFloorDisposition::DeclinedCostDebt),
+            (
+                "m.disposition_only",
+                RequiredFloorDisposition::DeclinedCostDebt,
+            ),
+            ("m.withheld_only", RequiredFloorDisposition::Planned),
+        ]);
+
+        let (withheld_without_disposition, dispositioned_without_withhold) =
+            reconcile_withheld_against_dispositions(&withheld, &dispositions);
+
+        assert_eq!(withheld_without_disposition, vec!["m.withheld_only"]);
+        assert_eq!(dispositioned_without_withhold, vec!["m.disposition_only"]);
+    }
+
+    /// The agreeing case reports nothing, so the refusal above cannot fire on a healthy run.
+    #[test]
+    fn withheld_and_disposition_agreement_reports_no_difference() {
+        let withheld = ident_set(&["m.a", "m.b"]);
+        let dispositions = disp_map(&[
+            ("m.a", RequiredFloorDisposition::DeclinedCostDebt),
+            ("m.b", RequiredFloorDisposition::DeclinedCostDebt),
+            ("m.other", RequiredFloorDisposition::Planned),
+        ]);
+
+        let (left, right) = reconcile_withheld_against_dispositions(&withheld, &dispositions);
+
+        assert!(left.is_empty() && right.is_empty());
+    }
+
+    /// A row for an identity nothing declared is the other direction of the same join: a
+    /// projection that INVENTS a disposition is as wrong as one that loses a witness, and the
+    /// count partition is equally blind to it when it accompanies a loss.
+    #[test]
+    fn a_disposition_for_an_undeclared_identity_is_foreign() {
+        let offered = declared(&["m.a"]);
+        let rows = vec![disposition_row("m.a"), disposition_row("m.stray")];
+        let (missing, foreign, duplicated) =
+            reconcile_identity_population(&offered, rows.iter().map(|r| r.identity.as_str()));
+        assert!(missing.is_empty());
+        assert_eq!(foreign, vec!["m.stray"]);
+        assert!(duplicated.is_empty());
+    }
+
     // ── disposition/agreement TSV writers: identity-grain, not a summary-only receipt ───────
 
     #[test]
@@ -37805,7 +38096,15 @@ mod required_floor_disposition_and_storage_agreement_law {
             },
         ];
 
-        write_required_floor_disposition_tsv(&path_str, &rows).expect("write tsv");
+        // THE OUTCOME AXIS IS JOINED FROM THE TERMINAL LEDGER, and the planted pair is what makes
+        // the column discriminating: `m.one.a` ran and passed, the two declines never ran. A
+        // writer that emitted one status alphabet could not produce this pair.
+        let terminal = vec![ClaimTerminalRow {
+            qualified: "m.one.a".to_string(),
+            expected_red: false,
+            outcome: ClaimOutcome::Pass,
+        }];
+        write_required_floor_disposition_tsv(&path_str, &rows, &terminal).expect("write tsv");
         let content = std::fs::read_to_string(&path).expect("read tsv");
         let _ = std::fs::remove_dir_all(&dir);
 
@@ -37816,17 +38115,19 @@ mod required_floor_disposition_and_storage_agreement_law {
         assert!(lines[0].contains("planned=1"));
         assert!(lines[0].contains("declined_long_module=1"));
         assert!(lines[0].contains("declined_fixture_member=1"));
-        assert_eq!(lines[1], "identity\tdisposition\tmatched_prefix");
-        assert_eq!(lines[2], "m.one.a\tplanned\t");
+        assert_eq!(lines[1], "identity\tdisposition\tmatched_prefix\toutcome");
+        assert_eq!(lines[2], "m.one.a\tplanned\t\tpassed");
+        // NOT EXECUTED IS WRITTEN, NOT LEFT BLANK. A blank cell is indistinguishable from a
+        // column the writer failed to fill, which is the empty-observation narrow one grain down.
         assert_eq!(
             lines[3],
-            "test.claim.long.two.b\tdeclined_long_module\ttest.claim.long."
+            "test.claim.long.two.b\tdeclined_long_module\ttest.claim.long.\tnot_executed"
         );
         // THE FIXTURE ARM CARRIES ITS MATCHED PREFIX, exactly as the long arm does. A decline
         // that cannot say WHICH prefix admitted it is a count, not a receipt.
         assert_eq!(
             lines[4],
-            "v2.test.fixture.walk_plan_stage.x.d\tdeclined_fixture_member\tv2.test.fixture.walk_plan_stage."
+            "v2.test.fixture.walk_plan_stage.x.d\tdeclined_fixture_member\tv2.test.fixture.walk_plan_stage.\tnot_executed"
         );
     }
 
@@ -38035,7 +38336,8 @@ mod terminal_ledger_completeness_law {
         rows: &'a [ClaimTerminalRow],
     ) -> (Vec<&'a str>, Vec<&'a str>, Vec<&'a str>) {
         let owned: HashSet<String> = planned.iter().map(|q| q.to_string()).collect();
-        let (m, f, d) = reconcile_terminal_ledger(&owned, rows);
+        let (m, f, d) =
+            reconcile_identity_population(&owned, rows.iter().map(|r| r.qualified.as_str()));
         (
             m.into_iter().map(|s| leak(s)).collect(),
             f.into_iter().map(|s| leak(s)).collect(),

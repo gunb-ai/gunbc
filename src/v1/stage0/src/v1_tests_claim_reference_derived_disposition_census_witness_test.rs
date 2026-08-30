@@ -86,6 +86,7 @@ pub fn fixture_disposition(
             crate::v1_compiler_emit_rust::build_module_index(Rc::new(vec![])),
             v1_rt::rc_empty_map::<String, Rc<TypeSummary>>(),
             v1_rt::rc_empty_map::<String, String>(),
+            false,
         ),
     )
 }
@@ -122,6 +123,7 @@ pub fn cross_module_candidate_with_export_proof_survives() -> bool {
         crate::v1_compiler_emit_rust::build_module_index(Rc::new(vec![])),
         v1_rt::rc_empty_map::<String, Rc<TypeSummary>>(),
         v1_rt::rc_empty_map::<String, String>(),
+        false,
     ) == Rc::new(ReferenceDerivedCandidateDisposition::CandidateSurvived {
         provider_module: "fixture.provider".to_string(),
     }))
@@ -234,6 +236,7 @@ pub fn known_variant_is_delegated_to_its_parent_not_registry_absent() -> bool {
             "V".to_string(),
             "E".to_string(),
         ),
+        false,
     ) == Rc::new(
         ReferenceDerivedCandidateDisposition::CandidateVariantDelegatedToParent {
             parent_enum: "E".to_string(),
@@ -286,7 +289,29 @@ pub fn a_variant_whose_parent_is_ambiguous_is_not_delegated_to_nothing() -> bool
             "V".to_string(),
             "".to_string(),
         ),
+        false,
     ) == Rc::new(ReferenceDerivedCandidateDisposition::CandidateVariantParentUnresolved))
+}
+
+pub fn a_known_variant_spelling_in_a_type_position_takes_the_registry_arm() -> bool {
+    (crate::v1_compiler_emit_rust::reference_derived_disposition_name(
+        crate::v1_compiler_emit_rust::reference_derived_candidate_disposition(
+            "V".to_string(),
+            "fixture.consumer".to_string(),
+            v1_rt::rc_empty_map::<String, Rc<ItemInfo>>(),
+            v1_rt::rc_empty_map::<String, Rc<HashMap<String, bool>>>(),
+            Rc::new(vec![]),
+            v1_rt::rc_empty_map::<String, Rc<NewlineIndex>>(),
+            crate::v1_compiler_emit_rust::build_module_index(Rc::new(vec![])),
+            fixture_variant_type_summaries(),
+            v1_rt::rc_map_insert(
+                v1_rt::rc_empty_map::<String, String>(),
+                "V".to_string(),
+                "E".to_string(),
+            ),
+            true,
+        ),
+    ) == "registry-absent".to_string())
 }
 
 pub fn an_unresolved_parent_is_not_reported_as_registry_absent() -> bool {
@@ -311,6 +336,7 @@ pub fn non_variant_name_still_answers_registry_absent() -> bool {
                 "V".to_string(),
                 "E".to_string(),
             ),
+            false,
         ),
     ) == "registry-absent".to_string())
 }

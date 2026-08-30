@@ -367,7 +367,14 @@ pub struct TransitionAdmission {
 /// the shape the paragraph above records for the first 53. Removed by the trigger they were
 /// authored with. The roster is EMPTY and empty is not permissive: a run carrying a real
 /// namespace delta still refuses it as UNADJUDICATED until its author adds a row here.
-/// FOURTH ENTRY, SAME RULE (2026-08-29, gunbc#9675). The four `rust_source_prefix_*` constants
+/// FOURTH SHRINK, SAME RULE (2026-08-30). gunbc#9665 authored four `DeclaredCallableIdentity`
+/// rows (`v1.compiler.infer_lookup` x3, `v1.compiler.infer_sigs` x1, `TargetChanged`) with the
+/// trigger "DISSOLVE-ON: this PR merging". It merged at ecdeb492fd2, so every pull_request build
+/// now has the declaration in `v1.std.core` on both sides, no run can produce those deltas, and
+/// all four reported stale -- refusing every unrelated PR, the shape the three shrinks above
+/// record. Removed here by the trigger they were authored with, in the merge that met them.
+///
+/// FIFTH ENTRY, SAME RULE (2026-08-29, gunbc#9675). The four `rust_source_prefix_*` constants
 /// moved from `gunbc.stage0_rust_source_lifecycle_scaffold` to `gunbc.rust_item_host_observation`
 /// -- the namespace table there needs the tooling prefix, and importing it the other way closes
 /// the cycle scaffold -> seed_growth_admission -> host_observation. Every spelling that bound to
