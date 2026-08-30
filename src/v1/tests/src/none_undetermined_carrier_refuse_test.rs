@@ -14,8 +14,12 @@
 //! Checkable receipt: `dag/test/retirement/none_undetermined_carrier_refuse_retained.dag`.
 
 use std::rc::Rc;
+use v1_compiler::v1_compiler_artifact::RenderTarget;
+use v1_compiler::v1_compiler_emit::emit_keyword;
 use v1_compiler::v1_compiler_emit_rust::emit_none_keyword_for_resolved_type;
-use v1_compiler::v1_std_core::{no_span, Cardinality, Connective, ExprData, InferredNode, Node};
+use v1_compiler::v1_std_core::{
+    no_span, Cardinality, Connective, ExprData, InferredNode, Node, NodeOccurrenceIdentity,
+};
 
 fn node_with_cardinality(cardinality: Cardinality) -> Rc<Node> {
     let span = no_span();
@@ -38,6 +42,7 @@ fn node_with_cardinality(cardinality: Cardinality) -> Rc<Node> {
         has_non_tail_self_call: false,
         match_pattern: None,
         expr_data: Rc::new(ExprData::NoExprData),
+        occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
     })
 }
 
@@ -63,9 +68,12 @@ fn card_optional_emits_none() {
     let rt = node_with_cardinality(Cardinality::CardOptional);
     let resolved = Some(Rc::new(InferredNode::Resolved { node: rt }));
     let out = emit_none_keyword_for_resolved_type(resolved);
+    // The spelling is the Rust keyword row's (`extdeps.languages.rust.emit`, key `null`), read
+    // through the same producer the emitter uses; a literal here would be a second copy of it.
     assert_eq!(
-        out, "None",
-        "CardOptional must type-direct to Rust None, got: {out}"
+        out,
+        emit_keyword("null".to_string(), RenderTarget::Rust),
+        "CardOptional must type-direct to the Rust null keyword row, got: {out}"
     );
 }
 
