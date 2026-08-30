@@ -550,3 +550,114 @@ fn spark_serving_admit_transaction(
     SparkServingTransactionAdmitted { txn: txn }
   }
 }
+
+// THE RECEIPT MUST BE ABLE TO SAY WHAT WAS ACQUIRED, NOT ONLY WHAT WAS CONCLUDED.
+//
+// A per-host receipt that prints readback, observation and account lines describes the CONCLUSIONS
+// and says nothing about the acquisition they came from -- so a reader cannot tell a host observed
+// under one credential locus in one attempt from one assembled some other way, which is exactly the
+// distinction the carrier was built to make. These are the acquisition facts, rendered from the
+// transaction rather than restated beside it.
+//
+// The counts are per outcome ARM rather than a single total, because "23 captures" is true of a
+// transaction whose every leg was refused by the transport. A reader needs the shape.
+fn spark_serving_transaction_outcome_counts(
+  txn: SparkServingObservationTransaction,
+) -> String {
+  join([
+    " executed=",
+    to_string(
+      length(
+        filter(
+          txn.captures,
+          c => match c.outcome {
+            SparkServingProbeExecuted { result: _ } => true
+            SparkServingProbeTransportRefused { cause: _ } => false
+            SparkServingProbePrerequisiteRefused { cause: _ } => false
+          },
+        ),
+      ),
+    ),
+    " transport-refused=",
+    to_string(
+      length(
+        filter(
+          txn.captures,
+          c => match c.outcome {
+            SparkServingProbeTransportRefused { cause: _ } => true
+            SparkServingProbeExecuted { result: _ } => false
+            SparkServingProbePrerequisiteRefused { cause: _ } => false
+          },
+        ),
+      ),
+    ),
+    " prerequisite-refused=",
+    to_string(
+      length(
+        filter(
+          txn.captures,
+          c => match c.outcome {
+            SparkServingProbePrerequisiteRefused { cause: _ } => true
+            SparkServingProbeExecuted { result: _ } => false
+            SparkServingProbeTransportRefused { cause: _ } => false
+          },
+        ),
+      ),
+    ),
+  ], "")
+}
+
+fn spark_serving_transaction_receipt_line(txn: SparkServingObservationTransaction) -> String {
+  join([
+    "spark-serving-transaction host=",
+    txn.host as String,
+    " observation-attempt=",
+    txn.attempt as String,
+    " credential-locus=",
+    txn.locus as String,
+    " required=",
+    to_string(length(spark_serving_required_probe_legs())),
+    " captured=",
+    to_string(length(txn.captures)),
+    " missing=",
+    to_string(length(spark_serving_transaction_missing_legs(txn: txn))),
+    " duplicated=",
+    to_string(length(spark_serving_transaction_duplicated_legs(txn: txn))),
+    spark_serving_transaction_outcome_counts(txn: txn),
+    "\n",
+  ], "")
+}
+
+// The provenance line for a value that has already been projected out of its transaction. The three
+// arms render differently ON PURPOSE: a receipt that printed the same shape for an acquired and a
+// hermetic observation would be the presentation-layer version of the fabricated provenance this
+// carrier just deleted.
+fn spark_serving_provenance_receipt_line(p: SparkServingObservationProvenance) -> String {
+  match p {
+    SparkServingObservationAcquired {
+      host: h, fleet_attempt: fa, phase: ph, observation_attempt: oa, credential: cr,
+    } =>
+      join([
+        "spark-serving-provenance host=", h as String,
+        " acquired fleet-attempt=", fa as String,
+        " phase=", spark_serving_observation_phase_key(phase: ph) as String,
+        " observation-attempt=", oa as String,
+        " credential-locus=", cr as String,
+        "\n",
+      ], "")
+    SparkServingObservationTransactionRefused { host: h, fleet_attempt: fa, phase: ph, cause: why } =>
+      join([
+        "spark-serving-provenance host=", h as String,
+        " transaction-refused fleet-attempt=", fa as String,
+        " phase=", spark_serving_observation_phase_key(phase: ph) as String,
+        " cause=", why as String,
+        "\n",
+      ], "")
+    SparkServingObservationHermeticFixture { host: h, fixture_identity: fid } =>
+      join([
+        "spark-serving-provenance host=", h as String,
+        " hermetic-fixture=", fid as String,
+        "\n",
+      ], "")
+  }
+}

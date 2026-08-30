@@ -132,6 +132,8 @@ import gunbc.spark.serving_observation_transaction {
   SparkServingObservationProvenance,
   spark_serving_acquired_provenance_of,
   spark_serving_refused_provenance_of,
+  spark_serving_provenance_receipt_line,
+  spark_serving_transaction_receipt_line,
   SparkServingObservationPhase,
   SparkServingPlanObservation,
   SparkServingPostApplyObservation,
@@ -1499,8 +1501,15 @@ fn spark_serving_report_body_lines(report: SparkServingObservationReport) -> Str
   )
 }
 
+// THE RECEIPT CARRIES ITS ACQUISITION, NOT ONLY ITS CONCLUSIONS.
+//
+// These three lines describe what was concluded and say nothing about the observation they came
+// from, so a reader could not tell a host measured under one credential locus in one attempt from a
+// value assembled some other way. The provenance line is what a canary reads to establish that every
+// fact in the report belongs to one acquisition.
 fn spark_serving_host_observation_lines(ho: SparkServingHostObservation) -> String {
   join([
+    spark_serving_provenance_receipt_line(p: ho.provenance),
     spark_serving_readback_line(readback: ho.readback),
     spark_serving_observation_line(observation: ho.observation),
     spark_serving_account_line(host: ho.readback.host, account: ho.account),
