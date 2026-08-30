@@ -772,12 +772,19 @@ test fn a_duplicated_host_refuses_despite_the_row_count_looking_right() -> Bool 
   ))
 }
 
-// (6) Coverage over an empty expected roster is vacuously true, which is why the scope is admitted
-// on its own arm before the join runs.
+// (6) Coverage over an empty expected roster is vacuously true -- no host is missing from a roster
+// that demands nobody -- which is why the scope is admitted on its own arm before the join runs.
+//
+// THE OBSERVATIONS HERE ARE DELIBERATELY NONEMPTY. An earlier draft of this claim passed [] for both
+// arguments and was measured to pass under a control that restored the old count guard, because an
+// empty observation list refuses under EITHER implementation -- the right verdict for the wrong
+// reason, which is a claim that cannot see the thing it was written to see. With a real observation
+// against an empty scope the two implementations disagree: the count guard produces a clean report,
+// the coverage join refuses.
 test fn an_empty_expected_scope_refuses_rather_than_covering_vacuously() -> Bool {
   report_is_refused(r: spark_serving_observation_report_from_observations(
     expected: [],
-    observations: [],
+    observations: [ho_at(host: "srv5")],
   ))
 }
 
