@@ -91,7 +91,6 @@ import std.syntax {
 
 import extdeps.languages.dag.syntax { dag_syntax_spec, dag_non_name_keywords }
 
-
 type TokenStream {
   all: List<Token>
   pos: Int
@@ -122,12 +121,12 @@ fn token_stream_peek(stream: TokenStream, offset: Int) -> Token? {
 }
 
 // `heads_only` selects the declaration-heads reading of the SAME grammar: every
-// module-scope declaration head is parsed exactly as it is under the full reading,
-// and a brace-delimited `fn` body is skipped at token grain instead of being built.
-// It is not a second parser and it is not a lenient one -- the heads reading is
-// defined by what its sole consumer (the pool census) retains, and the census
-// normalizes every body away 82ms later, so the two readings are required to agree
-// after that normalization. That agreement is the oracle, not a description.
+// module-scope declaration head is parsed exactly as under the full reading, and a
+// brace-delimited `fn` body is skipped at token grain instead of built. It is not a
+// second parser and not a lenient one -- the heads reading is defined by what its sole
+// consumer (the pool census) retains, and the census normalizes every body away 82ms
+// later, so the two readings must agree after that normalization. That agreement is
+// the oracle, not a description.
 type ParseContext {
   source_indices: Map<String, NewlineIndex>
   intern_table: InternTable
@@ -944,7 +943,17 @@ fn find_operator_binop(ops: List<OperatorSpec>, symbol: String) -> BinOp? {
   }
 }
 
-data operator_continuation_dual_role_exclusion_note: String = "Continuation-leading tokens are derived from dag_syntax_spec.operators via find_operator_bp, not a shape allowlist. PREFIX/INFIX INTERSECTION IS PROVABLY COMPLETE — not a remembered one-element hand-list. parse_prefix admits exactly two unary prefix shapes: ShBang → ExprUnaryOp { op: Not } and ShMinus → ExprUnaryOp { op: Neg } (UnaryOpKind is closed: Not | Neg only). The infix table carries '!=' but no bare '!', so operator-table derivation already excludes '!' without any exclusion row. '-' is the sole symbol with both a parse_prefix arm (unary Neg) and an infix OperatorSpec row (Sub). operator_continuation_dual_role_excluded_symbols is therefore the full intersection, with one member, and skipping '-' continuation keeps `let a = foo` newline `-bar(x)` as two statements (unary minus call) instead of silently re-parsing as `foo - bar(x)`. A future prefix/infix dual-role operator must extend UnaryOpKind and parse_prefix and will redd the singleton witness rather than silently changing existing code."
+// Continuation-leading tokens are derived from dag_syntax_spec.operators via find_operator_bp, not
+// a shape allowlist. PREFIX/INFIX INTERSECTION IS PROVABLY COMPLETE — not a remembered one-element
+// hand-list. parse_prefix admits exactly two unary prefix shapes: ShBang → ExprUnaryOp { op: Not }
+// and ShMinus → ExprUnaryOp { op: Neg } (UnaryOpKind is closed: Not | Neg only). The infix table
+// carries '!=' but no bare '!', so operator-table derivation already excludes '!' without any
+// exclusion row. '-' is the sole symbol with both a parse_prefix arm (unary Neg) and an infix
+// OperatorSpec row (Sub). operator_continuation_dual_role_excluded_symbols is therefore the full
+// intersection, with one member, and skipping '-' continuation keeps `let a = foo` newline
+// `-bar(x)` as two statements (unary minus call) instead of silently re-parsing as `foo - bar(x)`.
+// A future prefix/infix dual-role operator must extend UnaryOpKind and parse_prefix and will redd
+// the singleton witness rather than silently changing existing code.
 
 data operator_continuation_dual_role_excluded_symbols: List<String> = ["-"]
 
@@ -1834,20 +1843,19 @@ fn parse_with_table(tokens: List<Token>, source_indices: Map<String, NewlineInde
 
 // The declaration-heads reading of the same grammar. Every item head is parsed by the
 // same productions as `parse_with_table`; only a brace-delimited `fn` body is skipped
-// at token grain, and the skipped body is replaced by the loud `CensusHeadsBodyStripped`
-// stand-in so any consumer that descends into it refuses instead of reading a plausible
-// empty block.
+// at token grain, replaced by the loud `CensusHeadsBodyStripped` stand-in so any
+// consumer that descends into it refuses instead of reading a plausible empty block.
 //
-// THE ONE REFUSAL THIS READING DOES NOT MAKE, stated here rather than left to be
-// rediscovered. It refuses an unterminated body and every malformed item HEAD, exactly
-// as the full reading does. It does NOT refuse a well-braced but ungrammatical body --
-// those tokens are never handed to the expression grammar at all. That refusal is not
-// lost from the repository, and this is why the narrowing is a scope correction rather
-// than a hole: the required run's `.dag` parse sweep full-parses `src/v1`, `dag` and
-// `src/v2` and owns exactly that question. The pool census answering it a second time,
-// as a side effect of building declaration heads, was one fact with two authorities --
-// and the expensive one, since it coupled every pool-derived resolve in the process to
-// the grammaticality of every body in the corpus.
+// THE ONE REFUSAL THIS READING DOES NOT MAKE. It refuses an unterminated body and
+// every malformed item HEAD, exactly as the full reading does. It does NOT refuse a
+// well-braced but ungrammatical body -- those tokens never reach the expression
+// grammar. That refusal is not lost from the repository, which is why the narrowing
+// is a scope correction rather than a hole: the required run's `.dag` parse sweep
+// full-parses `src/v1`, `dag` and `src/v2` and owns exactly that question. The pool
+// census answering it a second time, as a side effect of building declaration heads,
+// was one fact with two authorities -- and the expensive one, since it coupled every
+// pool-derived resolve in the process to the grammaticality of every body in the
+// corpus.
 fn parse_heads_with_table(tokens: List<Token>, source_indices: Map<String, NewlineIndex>, intern_table: InternTable) -> ParseWithTableResult {
   parse_with_table_at(
     tokens: tokens,
@@ -1858,7 +1866,9 @@ fn parse_heads_with_table(tokens: List<Token>, source_indices: Map<String, Newli
   )
 }
 
-data parse_with_table_ready_module_path_note: String = "Projects the parsed module name without naming the module field through a cross-module keyword collision. Bridge consumers (occurrence_binding_parser_walk) read this Present only when parse succeeded."
+// Projects the parsed module name without naming the module field through a cross-module keyword
+// collision. Bridge consumers (occurrence_binding_parser_walk) read this Present only when parse
+// succeeded.
 
 fn parse_with_table_ready_module_path(parsed: ParseWithTableResult) -> String? {
   match parsed.result.error {
@@ -2283,15 +2293,15 @@ fn parse_type_body_from_prefix(prefix: ItemPrefixResult, start_span: SourceSpan)
 }
 
 // `type X = { a: A, b: B }` and `type X { a: A, b: B }` declare the same thing -- a named record
-// -- and before this function they parsed into two different item shapes: the brace form hoists
-// the fields onto the declaration (connective Conj, children = fields), the `=` form leaves them
-// inside an ANONYMOUS record type-expression under `inferred`. Every downstream consumer that
-// asks "is this a record named X" reads the first shape; the ones that read the second see an
-// unnamed 2-child Conj, which is exactly the shape a positional pair has, so the Rust emitter
-// rendered `type TranslateFoldAcc = (Rc<Node>, Rc<Node>)` while the SAME emitter kept writing
+// -- and before this function they parsed into two item shapes: the brace form hoists the fields
+// onto the declaration (connective Conj, children = fields), the `=` form leaves them inside an
+// ANONYMOUS record type-expression under `inferred`. Every downstream consumer asking "is this a
+// record named X" reads the first shape; the ones reading the second see an unnamed 2-child Conj,
+// exactly the shape of a positional pair, so the Rust emitter rendered
+// `type TranslateFoldAcc = (Rc<Node>, Rc<Node>)` while the SAME emitter kept writing
 // `TranslateFoldAcc { source: .., rebuilt: .. }` at construction and `.source` at every read --
 // accepted with 0 diagnostics, refused by rustc (7 blocks on the 03_ingest board, E0071/E0609).
-// The fork is a second representation of one concept, so it is closed here at the parse boundary
+// The fork is a second representation of one concept, so it is closed at the parse boundary
 // rather than compensated for in each target's renderer: after this, no stage can observe the
 // difference between the two spellings, and no emitter needs to know the `=` form exists.
 // A `where`-refined right-hand side is NOT a record: try_where_clause wraps its base in a Conj
@@ -2306,25 +2316,25 @@ fn parse_type_body_from_prefix(prefix: ItemPrefixResult, start_span: SourceSpan)
 // ONE MODIFIER IS STILL DROPPED ON THE `=` FORM, AND IT IS NOT THIS CHANGE'S TO CLOSE.
 // `sole_constructor` is threaded into the record arm below, so both spellings of a record
 // declaration carry the seal. On every OTHER `=` right-hand side -- a leaf alias, a coproduct --
-// parse_type_body_after_eq still discards it, exactly as it did before this change. That is one
-// pre-existing class, not two, and it is left whole rather than half-refused: the coproduct arm
-// has a live consumer (test.fixture.sole_constructor_variant_probe.definer declares
+// parse_type_body_after_eq still discards it, as before. That is one pre-existing class, not two,
+// and it is left whole rather than half-refused: the coproduct arm has a live consumer
+// (test.fixture.sole_constructor_variant_probe.definer declares
 // `type SealedChoice sole_constructor = SealedA { .. } | SealedB { .. }`, whose probe measures the
-// variant-construction hole DESIGN section 4b records as entirely unwired), so refusing there would
-// break the fixture that exists to measure it, while wiring it is that audit's work and would
-// change what its probe reports. Refusing ONLY the leaf-alias arm -- the one with zero authored
-// instances in dag/ or src/v2/ -- would make one construct refuse in the harmless arm and stay
-// silent in the arm that matters, which is a worse rule than the one declared here.
+// variant-construction hole DESIGN section 4b records as entirely unwired), so refusing there
+// would break the fixture that exists to measure it, while wiring it is that audit's work and
+// would change what its probe reports. Refusing ONLY the leaf-alias arm -- the one with zero
+// authored instances in dag/ or src/v2/ -- would refuse in the harmless arm and stay silent in the
+// arm that matters, a worse rule than the one declared here.
 //
-// NEXT-RUNG TRIGGER (DESIGN section 4b(2)): this class CAN CLIMB AFTER ONE GROUNDING -- it is not
-// a permanent ceiling and it is not merely unbuilt. It climbs when the variant-construction audit
-// wires coproduct construction through sole_constructor_construction_diags (the hole DESIGN
-// section 4b records as entirely unwired, measured by
-// test.claim.sole_constructor_completeness_audit_probe f13_variant_construction_refuses). At that
-// point the coproduct arm has somewhere for the flag to GO, refusing is no longer the only
-// alternative to silence, and the whole `=` family -- coproduct and leaf alias together -- is
-// threaded or refused in one motion by the lane that owns the wall. Until then the drop is
-// declared here rather than half-closed.
+// NEXT-RUNG TRIGGER (DESIGN section 4b(2)): this class CAN CLIMB AFTER ONE GROUNDING -- neither a
+// permanent ceiling nor merely unbuilt. It climbs when the variant-construction audit wires
+// coproduct construction through sole_constructor_construction_diags (the hole DESIGN section 4b
+// records as entirely unwired, measured by
+// test.claim.sole_constructor_completeness_audit_probe f13_variant_construction_refuses). Then the
+// coproduct arm has somewhere for the flag to GO, refusing is no longer the only alternative to
+// silence, and the whole `=` family -- coproduct and leaf alias together -- is threaded or refused
+// in one motion by the lane that owns the wall. Until then the drop is declared here rather than
+// half-closed.
 fn alias_rhs_is_anonymous_record(te: Node) -> Bool {
   te.connective == Conj
     && te.ident_span == none
@@ -4311,8 +4321,8 @@ type HeadsBlockSkipResult { tokens: TokenStream, err: ErrorNode? }
 // Token-grain skip of one brace-delimited block, depth-counted. It reads only brace
 // SHAPES, which the tokenizer has already decided -- a brace inside a string literal
 // or an annotation is not a brace token, so the depth count is over the same
-// delimiters the block grammar itself consumes, not over raw text. `depth` enters at
-// 1 with the opening brace already eaten; reaching 0 leaves the stream exactly where
+// delimiters the block grammar consumes, not raw text. `depth` enters at 1 with the
+// opening brace already eaten; reaching 0 leaves the stream exactly where
 // `parse_block` would have left it after its closing `}`.
 //
 // The failure arm REFUSES -- an unterminated or EOF-truncated body is a typed, located
@@ -4638,27 +4648,26 @@ fn infix_bp(tokens: TokenStream) -> BindingPower? {
 }
 
 // WHAT DECIDES THAT A DOTTED PIPE CALLEE IS A QUALIFIED CALLEE RATHER THAN A METHOD FOLLOWED
-// BY FIELD ACCESS, and why the discriminator is the application and not the shape of the path.
+// BY FIELD ACCESS, and why the discriminator is the application, not the shape of the path.
 // The parser cannot know that `a.b` names a module -- that fact lives in the symbol index, which
-// resolution owns and parse does not have. So the pipe production decides it syntactically:
-// `x |> a.b.f(...)` is the qualified callee `a.b.f` applied to `x`, and `x |> m.field` -- a
-// dotted path with NO application -- keeps the older reading, the method `m` on the receiver
-// followed by ordinary field access on its result.
+// resolution owns. So the pipe production decides syntactically: `x |> a.b.f(...)` is the
+// qualified callee `a.b.f` applied to `x`, and `x |> m.field` -- a dotted path with NO
+// application -- keeps the older reading, the method `m` on the receiver followed by ordinary
+// field access on its result.
 //
-// THE RECEIPT IS A LIVE SITE, and it is why this arm exists at all rather than the path being
-// consumed unconditionally. An earlier draft of this change consumed every `.segment` after the
-// pipe callee regardless of what followed, which silently re-denoted v1.compiler.emit_rust's
-// `field_names |> first.value` -- pipe into the kernel method `first`, then take `.value` off the
-// Optional it returns -- as a call to a function `value` in a module named `first`. A corpus scan
-// for a dotted pipe callee finds exactly one site and it is that one, so the population is small;
-// the point is that it is not empty, and the shape it uses is correct code that the unconditional
-// rule would have refused.
+// THE RECEIPT IS A LIVE SITE, and it is why this arm exists rather than the path being consumed
+// unconditionally. An earlier draft consumed every `.segment` after the pipe callee regardless of
+// what followed, which silently re-denoted v1.compiler.emit_rust's `field_names |> first.value`
+// -- pipe into the kernel method `first`, then take `.value` off the Optional it returns -- as a
+// call to a function `value` in a module named `first`. A corpus scan for a dotted pipe callee
+// finds exactly one site and it is that one; the population is small but not empty, and its
+// shape is correct code the unconditional rule would have refused.
 //
-// WHAT THIS COSTS, stated rather than left to be discovered: `(x |> m).f(...)` is no longer
-// spellable as `x |> m.f(...)`; it needs the parentheses that say what it means. That spelling has
-// zero occurrences in the corpus today. What it does NOT cost is a second resolution path -- both
-// pipe forms produce one ExprMethodCall node, and the qualified one is exactly the node shape
-// v1.compiler.infer's qualified_direct_call arm already reads off an ordinary call site.
+// WHAT THIS COSTS: `(x |> m).f(...)` is no longer spellable as `x |> m.f(...)`; it needs the
+// parentheses that say what it means. That spelling has zero occurrences in the corpus today.
+// What it does NOT cost is a second resolution path -- both pipe forms produce one
+// ExprMethodCall node, and the qualified one is exactly the node shape v1.compiler.infer's
+// qualified_direct_call arm already reads off an ordinary call site.
 
 fn pipe_callee_path_is_applied(candidate: PipeCalleeResult) -> Bool {
   match candidate.spine {
@@ -5364,7 +5373,26 @@ fn parse_match_arm_stmts(tokens: TokenStream, ctx: ParseContext, acc: List<Node>
   }
 }
 
-data qualified_arm_start_note: String = "WHERE AN UNBRACED ARM BODY ENDS IS DECIDED HERE, AND THE ANSWER WAS KEYED ON THE FIRST SEGMENT OF THE NEXT PATTERN. parse_match_arm_stmts consumes statements until looks_like_arm_start says the next tokens open a new arm. That predicate recognised only a bare `_` and an UPPERCASE-start leaf, so a NAMESPACE-QUALIFIED pattern -- whose first token is the lowercase module head, v1 in v1.std.core.ExprStringInterp -- answered false, the body kept consuming, it swallowed the next arm pattern as one more statement, and the parse died on the following FatArrow. The reported span is the ARROW, several lines below the arm that actually ended, which is why four separate reproductions of the surrounding shapes all parsed and the trigger had to be bisected rather than guessed. MINIMAL REPRODUCTION, and every clause is load-bearing: an unbraced arm body containing a `let`, followed by an arm whose pattern is DOTTED. Remove the let and the body is a single expression that never enters the statement loop; make the next pattern `_` or an uppercase leaf and the predicate already answers true. MEASURED: on the namespace-cut branch, where qualifying every pattern turns this from rare into ordinary, exactly one corpus file of 3875 reaches it -- src/v1/05_emit.dag -- and it is invalid under the parser that branch itself carries, surviving only because its built binary predates its own committed mirror. So this is not a cut-branch accommodation: it is a grammar gap that the cut merely made reachable, and it fails LOUDLY at preparation, which is the cheap failure discipline. The scan requires the TERMINAL segment to be uppercase and the arrow to follow the path (or its brace group), so a lowercase dotted expression ending a body is unaffected -- and an expression statement genuinely followed by a FatArrow was never a legal parse."
+// WHERE AN UNBRACED ARM BODY ENDS IS DECIDED HERE, AND THE ANSWER WAS KEYED ON THE FIRST SEGMENT OF
+// THE NEXT PATTERN. parse_match_arm_stmts consumes statements until looks_like_arm_start says the
+// next tokens open a new arm. That predicate recognised only a bare `_` and an UPPERCASE-start
+// leaf, so a NAMESPACE-QUALIFIED pattern -- whose first token is the lowercase module head, v1 in
+// v1.std.core.ExprStringInterp -- answered false, the body kept consuming, swallowed the next arm
+// pattern as one more statement, and the parse died on the following FatArrow. The reported span
+// is the ARROW, several lines below the arm that actually ended, which is why four separate
+// reproductions of the surrounding shapes all parsed and the trigger had to be bisected. MINIMAL
+// REPRODUCTION, every clause load-bearing: an unbraced arm body containing a `let`, followed by an
+// arm whose pattern is DOTTED. Remove the let and the body is a single expression that never
+// enters the statement loop; make the next pattern `_` or an uppercase leaf and the predicate
+// already answers true. MEASURED: on the namespace-cut branch, where qualifying every pattern
+// turns this from rare into ordinary, exactly one corpus file of 3875 reaches it --
+// src/v1/05_emit.dag -- and it is invalid under the parser that branch itself carries, surviving
+// only because its built binary predates its own committed mirror. So this is not a cut-branch
+// accommodation: it is a grammar gap the cut merely made reachable, and it fails LOUDLY at
+// preparation, the cheap failure discipline. The scan requires the TERMINAL segment to be
+// uppercase and the arrow to follow the path (or its brace group), so a lowercase dotted
+// expression ending a body is unaffected -- and an expression statement genuinely followed by a
+// FatArrow was never a legal parse.
 
 fn arm_start_after_qualified_path(tokens: TokenStream, offset: Int) -> Bool {
   if !peek_is_expected_at(tokens: tokens, offset: offset, expected: ExpectDot) {
@@ -5608,7 +5636,11 @@ fn parse_if(tokens: TokenStream, ctx: ParseContext) -> ExprResult {
   }
 }
 
-data required_expression_newline_continuation_note: String = "A newline is whitespace in a syntactically incomplete required-expression position (the parser has consumed a keyword or separator and still owes an expression). Authority: parse_required_expression_after_separator (parse_expr sites) and parse_required_expression_no_brace_after_separator (for-in collection after 'in'). Not at generic parse_expr entry — statement boundaries stay token-aligned."
+// A newline is whitespace in a syntactically incomplete required-expression position (the parser
+// has consumed a keyword or separator and still owes an expression). Authority:
+// parse_required_expression_after_separator (parse_expr sites) and
+// parse_required_expression_no_brace_after_separator (for-in collection after 'in'). Not at generic
+// parse_expr entry — statement boundaries stay token-aligned.
 
 fn parse_required_expression_after_separator(tokens: TokenStream, ctx: ParseContext) -> ExprResult {
   parse_expr(tokens: skip_newlines(tokens: tokens), ctx: ctx)

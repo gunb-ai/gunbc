@@ -284,6 +284,29 @@ type AffectedSetDisposition
   = DerivableNow { from: String, residual: String }
   | BlockedOn { fact: String }
 
+// The instrument, not the number: re-run `claim_executor --regen-round-cost --source-root dag
+// --source-root src/v2` on a tree and read its receipt (target/stage0-regen-round-cost.txt), and
+// add `--regen-affected-scope` for the same round with the bound consumed. A
+// change-denominated regen is bounded above by the reverse closure
+// (regen_affected_set_disposition); a change-denominated REBUILD is bounded below by one
+// whole-crate compile until the stage0 partition (gunbc.stage0_crate_partition_generated) carries
+// the mirrors, which is the larger of the two costs on every measured host.
+
+// WHERE THE ROUND'S TIME GOES, read from the instrument on 2026-08-30 (producer: this module's
+// receipt; hosts srv1 and BuildBuddy runner 192.168.241.2; trees 75bc5007 and 677988a2). The
+// numbers live in the receipts those runs printed and are not restated here; the SHAPE is:
+// every phase runs at CPU ~= wall except the two cargo builds, so the regen process is one core
+// end to end; emit is the largest regen phase at roughly half the regen process and a fifth of
+// a round with a real edit; the two cargo builds of the seed (before the round, and
+// rebuild-from-installed) are the majority of such a round even for a one-mirror change,
+// because every mirror compiles into one crate and cargo recompiles that crate whole; the
+// corpus WAS read twice (corpus_load then a corpus_reload inside compile_stage0) and rustfmt
+// normalized the whole population three times (mirror_write, adjudicate, digest) -- both
+// closed in the change after the measurement: one read threaded to both consumers, and one
+// normalize per distinct input through a memo plus a per-rustfmt-version disk cache under
+// target/stage0-regen-rustfmt-cache whose entries are honoured only when the stored raw input
+// is byte-equal to the request. rustfmt_spawns on the receipt is the count the fixed-point
+// control is checked against.
 // Two planted edits, both measured by `claim_executor --regen-round-cost` on the tree named.
 //
 // (1) v1.compiler.runtime_rust (the runtime template): reverse import closure predicts nine
@@ -313,24 +336,35 @@ type AffectedSetDisposition
 // derivable from the graph alone, only from emitting them. The affected set is therefore a
 // correct over-approximation (DESIGN section 5: a structural over-approximation computed AS
 // the answer), not an exact set.
+// THE BOUND IS CONSUMED, AND BY EXACTLY WHICH PHASES -- so a reader does not price the scope
+// against phases it does not touch. `v2.workflow.required_regen` `RegenEmissionScope` selects
+// which mirrors' BYTES a round reads, normalizes, compares, digests and writes, which is the
+// mirror_write, candidate_verify, adjudicate, hand_verify and digest rows on this receipt.
+// Install was ALREADY change-denominated (the regen's own drift answer is its install set), and
+// compile.emit is NOT: `v1.compiler.emit_rust` `emit_rust` renders every module before any
+// selection is consulted, and four aggregates in that same fold -- lib.rs, the emitted-population
+// manifest, and the two closure-stub decisions, which scan module file CONTENT -- are denominated
+// in the whole module population, so a per-module skip there is not byte-identical without also
+// threading the prior generation's population into the fold. Until that lands, a scoped round
+// pays the same compile.emit an unscoped one does, and the receipt shows it.
+//
+// TWO RESIDUES, TWO DIFFERENT NEXT STEPS, AND THEY ARE NOT INTERCHANGEABLE -- said explicitly
+// because a careful reader already merged them (claude/claude-opus-4-7, review 57630, read this
+// note as giving compile.emit's next step as the stage0 partition). They are:
+//   compile.emit            -> v1.compiler.emit_rust emit_rust, threading the prior generation's
+//                              population and the affected set through the CompilePipelineOptions
+//                              carrier compile_sources_with_options already takes.
+//   rebuild_from_installed  -> gunbc.stage0_crate_partition_generated carrying the mirrors, so
+//                              cargo recompiles a partition rather than one whole crate.
+// Neither one moves the other's phase, and they are owned by different lanes. A reader who takes
+// the partition as the emit phase's trigger will watch the wrong artifact for the wrong number.
+//
+// THE CONSUMER, by name: `claim_executor --regen-round-cost --regen-affected-scope`. The selection
+// is `v2.workflow.required_regen` `regen_scope_select` over the `gunbc.regen_affected_set` bound
+// for the floor's own diff range, and an edited path the tree cannot locate REFUSES the round
+// rather than widening it.
+//
 data regen_affected_set_disposition: AffectedSetDisposition = DerivableNow {
   from: "gunbc.regen_affected_set regen_affected_set, whose bound is the .dag dependency closure the regen already builds: cli_run regen_input_sources_over_roots / extend_sources_to_both_closure_fixpoint (imports, dotted and bare references), read in reverse from the edited module, restricted to the compared mirror population, plus the declared bootstrap edge (regen_bootstrap_edges: v1_rt.rs whenever v1.compiler.runtime_rust is in the set); an edited path the tree cannot name refuses (EditedSetUnlocatable) rather than widening",
   residual: "the emitting seed's own baked mirrors are a generation-level input to every emitted byte (the two-round bootstrap); the reverse closure over-approximates -- 72 predicted against 1 changed for a std.content_hash data row -- so an edit under regen_generation_input_prefixes answers WholePopulation; the AffectedMirrors arm over-approximates -- 72 predicted against 1 changed for a std.content_hash data row -- and exactness needs the per-module emit itself"
 }
-
-// WHERE THE ROUND'S TIME GOES, read from the instrument on 2026-08-30 (producer: this module's
-// receipt; hosts srv1 and BuildBuddy runner 192.168.241.2; trees 75bc5007 and 677988a2). The
-// numbers live in the receipts those runs printed and are not restated here; the SHAPE is:
-// every phase runs at CPU ~= wall except the two cargo builds, so the regen process is one core
-// end to end; emit is the largest regen phase at roughly half the regen process and a fifth of
-// a round with a real edit; the two cargo builds of the seed (before the round, and
-// rebuild-from-installed) are the majority of such a round even for a one-mirror change,
-// because every mirror compiles into one crate and cargo recompiles that crate whole; the
-// corpus WAS read twice (corpus_load then a corpus_reload inside compile_stage0) and rustfmt
-// normalized the whole population three times (mirror_write, adjudicate, digest) -- both
-// closed in the change after the measurement: one read threaded to both consumers, and one
-// normalize per distinct input through a memo plus a per-rustfmt-version disk cache under
-// target/stage0-regen-rustfmt-cache whose entries are honoured only when the stored raw input
-// is byte-equal to the request. rustfmt_spawns on the receipt is the count the fixed-point
-// control is checked against.
-data regen_round_cost_shape_note: String = "The instrument, not the number: re-run `claim_executor --regen-round-cost --source-root dag --source-root src/v2` on a tree and read its receipt (target/stage0-regen-round-cost.txt). A change-denominated regen is bounded above by the reverse closure (regen_affected_set_disposition); a change-denominated REBUILD is bounded below by one whole-crate compile until the stage0 partition (gunbc.stage0_crate_partition_generated) carries the mirrors, which is the larger of the two costs on every measured host."

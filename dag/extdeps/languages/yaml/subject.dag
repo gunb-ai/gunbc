@@ -12,7 +12,13 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   }
 }
 
-data yaml_format_subject_note: String = "YAML, cited to the YAML 1.2.2 specification (verified live 2026-08-04 by fetching the cited locator and confirming its title and publisher from the response, per the D0 verify-or-refuse rule): the fetched document is 'YAML Ain't Markup Language (YAML) version 1.2', revision 1.2.2 dated 1 October 2021, maintained by the YAML Language Development Team. The upstream states this revision makes no normative changes from YAML 1.2 and corrects errors and clarity only — so 1.2 is the normative content and 1.2.2 is the readable edition of it, which is why the locator names the revision while the subject stays revision-free."
+// YAML, cited to the YAML 1.2.2 specification (verified live 2026-08-04 by fetching the cited
+// locator and confirming its title and publisher from the response, per the D0 verify-or-refuse
+// rule): the fetched document is 'YAML Ain't Markup Language (YAML) version 1.2', revision 1.2.2
+// dated 1 October 2021, maintained by the YAML Language Development Team. The upstream states this
+// revision makes no normative changes from YAML 1.2 and corrects errors and clarity only — so 1.2
+// is the normative content and 1.2.2 is the readable edition of it, which is why the locator names
+// the revision while the subject stays revision-free.
 
 type Yaml
   = | YamlTarget

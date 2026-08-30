@@ -7,7 +7,19 @@ import v2.std.algebra { any, filter, fold_list, length }
 import v2.std.node { Symbol }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 
-data proactive_verification_ledger_law: String = "The PROACTIVE VERIFICATION LEDGER (operator no-soak ruling 2026-07-20; gunbc.roadmap_authority v1-verification-ledger, gating v1-interpreter-delete through the cutover chain): enumerated executed receipts — never calendar soak, never elapsed-time claims. Each row is ONE deliberate run with a typed execution shape, a disposition (ExecutableNow | KnownRedPendingUnquarantine | BlockedOnCiFloorCutover), and an execution outcome (OutcomeGreen | OutcomePending | OutcomeRed) recorded only after a real run — never fabricated. Spine rows carry hand-declared disposition (BlockedOnCiFloorCutover until cutover). Family disposition is DERIVED by projecting gunbc.ci_layer_roots known_red_probe_roster (derived from the gunbc.explicit_witness_admission rows) — never hand-declared (§3 single authority). Spine: (1) whole-corpus cold v1-vs-v2 witness parity — falsifier predict-only cadence, zero unexplained divergence; (2) compile-clean parity; (3) regen behavioral fixed point. Families: nine #6879 partition families as equals_eval receipts (meet_join contributes meet + join peer primaries — review 43336). Dissolve-on: ci_floor_cutover + ledger all OutcomeGreen."
+// The PROACTIVE VERIFICATION LEDGER (operator no-soak ruling 2026-07-20; gunbc.roadmap_authority
+// v1-verification-ledger, gating v1-interpreter-delete through the cutover chain): enumerated
+// executed receipts — never calendar soak, never elapsed-time claims. Each row is ONE deliberate
+// run with a typed execution shape, a disposition (ExecutableNow | KnownRedPendingUnquarantine |
+// BlockedOnCiFloorCutover), and an execution outcome (OutcomeGreen | OutcomePending | OutcomeRed)
+// recorded only after a real run — never fabricated. Spine rows carry hand-declared disposition
+// (BlockedOnCiFloorCutover until cutover). Family disposition is DERIVED by projecting
+// gunbc.ci_layer_roots known_red_probe_roster (derived from the gunbc.explicit_witness_admission
+// rows) — never hand-declared (§3 single authority). Spine: (1) whole-corpus cold v1-vs-v2 witness
+// parity — falsifier predict-only cadence, zero unexplained divergence; (2) compile-clean parity;
+// (3) regen behavioral fixed point. Families: nine #6879 partition families as equals_eval receipts
+// (meet_join contributes meet + join peer primaries — review 43336). Dissolve-on: ci_floor_cutover
+// + ledger all OutcomeGreen.
 
 type VerificationReceiptKind
   = WholeCorpusWitnessParityCold
@@ -46,11 +58,19 @@ type FamilyVerificationLedgerRow {
   dissolution: DissolutionCondition
 }
 
-data spine_compile_clean_recipe: String = "claim_executor batch-1 dag_compile_clean_gate (--target dag whole-tree). THE AUTHORITY THIS RECIPE NAMED IS DELETED: it read 'same authority as gunbc_ci_floor_plan', which the 2026-08-15 floor cut removed, and the recipe is retained as the historical spine rather than as a runnable command -- DESIGN records that compile-clean has no reachable entry point at all today, so no repointing would make this executable."
+// claim_executor batch-1 dag_compile_clean_gate (--target dag whole-tree). THE AUTHORITY THIS
+// RECIPE NAMED IS DELETED: it read 'same authority as gunbc_ci_floor_plan', which the 2026-08-15
+// floor cut removed, and the recipe is retained as the historical spine rather than as a runnable
+// command -- DESIGN records that compile-clean has no reachable entry point at all today, so no
+// repointing would make this executable.
 
 data spine_regen_recipe: String = "claim_executor --required-regen then --required-regen-fixed-point (RequiredRegenGate transport; first_generation_equal and fixed_point_equal are distinct invocations)"
 
-data family_partition_note: String = "Nine witness-realization families (#6879 kernel partition): add (serial kernel), match+loop+fold_closure (lane 3), field_access+complement (lane 2), meet_join+variant_construct+classical_not_ingested (lane 4). Emitter clean across all nine — eval/harness gaps closed by #6912 and #6917. Family KnownRed disposition = exact (entry, function) projection of known_red_probe_roster; un-quarantine deletes the probe row."
+// Nine witness-realization families (#6879 kernel partition): add (serial kernel),
+// match+loop+fold_closure (lane 3), field_access+complement (lane 2),
+// meet_join+variant_construct+classical_not_ingested (lane 4). Emitter clean across all nine —
+// eval/harness gaps closed by #6912 and #6917. Family KnownRed disposition = exact (entry,
+// function) projection of known_red_probe_roster; un-quarantine deletes the probe row.
 
 data proactive_verification_spine_rows: List<SpineVerificationLedgerRow> = [
   SpineVerificationLedgerRow {

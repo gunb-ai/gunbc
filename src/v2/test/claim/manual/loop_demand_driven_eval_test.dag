@@ -366,7 +366,10 @@ fn loop_eval_divergent_body_step_loop_holds() -> Bool {
   )
 }
 
-data loop_demand_driven_eval_non_keystone_manuals_note: String = "lit_one / pick_call_direct / arrow_lit_one manuals were never on the enrolled keystone (main = divergent pole only). Umbrella-dissolution briefly folded them into the keystone and CI red them (run 30223338595). Deleted rather than if-false/Symbol-pin (review 43557). Dissolve-on: re-land as test fns only when claim_batch shows Bool(true) on CI hardware."
+// lit_one / pick_call_direct / arrow_lit_one manuals were never on the enrolled keystone (main =
+// divergent pole only). Umbrella-dissolution briefly folded them into the keystone and CI red them
+// (run 30223338595). Deleted rather than if-false/Symbol-pin (review 43557). Dissolve-on: re-land
+// as test fns only when claim_batch shows Bool(true) on CI hardware.
 
 test fn loop_demand_driven_eval_keystone_holds() -> Bool {
   loop_eval_divergent_body_step_loop_holds()

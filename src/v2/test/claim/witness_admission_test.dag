@@ -26,7 +26,12 @@ import v2.std.text { String }
 data normalize_entry: String = "dag/test/claim/self_host_03_normalize_behavioral_witness_test.dag"
 data normalize_fn: String = "self_host_03_normalize_behavioral_receipt_holds"
 
-data normalize_wet_known_red_admission_note: String = "2026-07-25 review #7199: SelfEmitted wet bindings that red on assemble are Wet expect_red quarantine (falsifier_self_host_wet_known_red_entries). 03_normalize's behavioral receipt consumer is QuarantineProbeExpectRed via the explicit roster (takes priority); the file-grain exclusion stays OfflineLocalRecipe so sibling declared_source_refs_complete_holds is not orphaned (english_emit_add pattern). Dissolve-on: local wet greens → known-red entry deletes → SelfHostWetReceiptBinding restores."
+// 2026-07-25 review #7199: SelfEmitted wet bindings that red on assemble are Wet expect_red
+// quarantine (falsifier_self_host_wet_known_red_entries). 03_normalize's behavioral receipt
+// consumer is QuarantineProbeExpectRed via the explicit roster (takes priority); the file-grain
+// exclusion stays OfflineLocalRecipe so sibling declared_source_refs_complete_holds is not orphaned
+// (english_emit_add pattern). Dissolve-on: local wet greens → known-red entry deletes →
+// SelfHostWetReceiptBinding restores.
 
 data synthetic_orphan_entry: String = "dag/test/claim/synthetic_orphan_admission_witness_test.dag"
 data synthetic_orphan_fn: String = "synthetic_orphan_no_consumer_holds"
@@ -119,7 +124,14 @@ test fn witness_dispatch_bijection_real_roster_falsifier_wet_consumer_holds() ->
   }
 }
 
-data witness_infer_transform_add_vertical_flip_note: String = "POLARITY FLIPPED, not weakened or deleted (dashboard node adhoc-1eb1a9f9-ad9). Before 611fd02770/#8283 deleted falsifier.yml, this identity's cadence (FalsifierSubstrateLongLane) had a real scheduled route and witness_has_executing_consumer_for_row held. That route no longer exists — falsifier.yml is gone and no replacement executor exists — so witness_execution_standing_for_live_row now derives DeclaredCadenceUnrealized for this exact identity rather than WitnessHasExecutingConsumer. The identity is inside the derived population witness_cadence_has_scheduled_route names as unrealized, not beside it: this test now certifies the honest gap rather than the coverage claim that stopped being true at 611fd02770."
+// POLARITY FLIPPED, not weakened or deleted (dashboard node adhoc-1eb1a9f9-ad9). Before
+// 611fd02770/#8283 deleted falsifier.yml, this identity's cadence (FalsifierSubstrateLongLane) had
+// a real scheduled route and witness_has_executing_consumer_for_row held. That route is gone with
+// no replacement executor, so witness_execution_standing_for_live_row now derives
+// DeclaredCadenceUnrealized for this exact identity rather than WitnessHasExecutingConsumer. The
+// identity is inside the derived population witness_cadence_has_scheduled_route names as
+// unrealized, not beside it: this test certifies the honest gap, not the coverage claim that
+// stopped being true at 611fd02770.
 
 test fn witness_infer_transform_add_vertical_substrate_long_consumer_holds() -> Bool {
   match witness_consumer_cadence_for_row(

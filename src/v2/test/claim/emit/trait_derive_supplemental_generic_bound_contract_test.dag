@@ -107,7 +107,17 @@ import v2.std.optional {
   Present
 }
 
-data trait_derive_supplemental_generic_bound_contract_note: String = "Model-only carrier, target-bundle codec, and measured Rust collection policy. The selected representation choice owns keyed parameter slots and one keyed row per derive trait. Each derive-keyed contract value owns its upstream authority and complete slot-keyed, required-trait-keyed obligations, so contract metadata cannot drift from or silently discard its requirements. The wire decoder alone sees list-shaped malformed input and refuses duplicate or undeclared keys before constructing a choice. The production Vec surface is the emitter's im::Vector alias, so its contracts consume exact im 15.1.0 implementation authorities rather than inapplicable std::vec::Vec or serde Vec rows. Versioned Rust, serde, and im authorities flow with each contract and requirement. HashSet rows whose Hash obligation is outside TargetCapabilityKey remain absent and carry a typed, authority-backed coverage blocker instead of an incomplete contract."
+// Model-only carrier, target-bundle codec, and measured Rust collection policy. The selected
+// representation choice owns keyed parameter slots and one keyed row per derive trait. Each
+// derive-keyed contract value owns its upstream authority and complete slot-keyed,
+// required-trait-keyed obligations, so contract metadata cannot drift from or silently discard its
+// requirements. The wire decoder alone sees list-shaped malformed input and refuses duplicate or
+// undeclared keys before constructing a choice. The production Vec surface is the emitter's
+// im::Vector alias, so its contracts consume exact im 15.1.0 implementation authorities rather than
+// inapplicable std::vec::Vec or serde Vec rows. Versioned Rust, serde, and im authorities flow with
+// each contract and requirement. HashSet rows whose Hash obligation is outside TargetCapabilityKey
+// remain absent and carry a typed, authority-backed coverage blocker instead of an incomplete
+// contract.
 
 data sgb_type_param: Symbol = ^sgb_type_param
 data sgb_left_slot: Symbol = ^sgb_left_slot

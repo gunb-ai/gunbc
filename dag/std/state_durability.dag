@@ -18,7 +18,14 @@ data state_durability_boundary_contract: Disposition = Terminal {
   reason: "Desired world-state lifetime is explicit before realization: RuntimeLifetimeOnly or DurableAcross named lifecycle boundaries. The closed boundary coproduct prevents a generic Persistent label from standing in for service restart, control-plane restart, host restart, power loss, software replacement, or factory reset."
 }
 
-data state_durability_separation_note: String = "State durability is neither extdeps.storage.types.PersistenceKind nor std.materialization_ladder. PersistenceKind describes a storage device/medium; the materialization ladder decides where redundant computation is retained. This module asks a different reconciliation question: across WHICH lifecycle boundary must desired world state remain effective, can the selected realizer provide that lifetime with a commit barrier, and has that exact target + desired state + realization + capability generation been qualified by a perturbation and independent readback? Keeping the facts separate prevents a writable filesystem, an extant file, current runtime effectiveness, or a stale receipt from being misclassified as durable convergence."
+// State durability is neither extdeps.storage.types.PersistenceKind nor std.materialization_ladder.
+// PersistenceKind describes a storage device/medium; the materialization ladder decides where
+// redundant computation is retained. This module asks a different reconciliation question: across
+// WHICH lifecycle boundary must desired world state remain effective, can the selected realizer
+// provide that lifetime with a commit barrier, and has that exact target + desired state +
+// realization + capability generation been qualified by a perturbation and independent readback?
+// Keeping the facts separate prevents a writable filesystem, an extant file, current runtime
+// effectiveness, or a stale receipt from being misclassified as durable convergence.
 
 type LifecycleRestartMode
   = LifecycleGracefulRestart
@@ -52,7 +59,14 @@ type StateDurabilityBoundaryRequirements {
   additional_unique: List<StateDurabilityBoundary>
 }
 
-data state_durability_boundary_uniqueness_scaffold_note: String = "🟡 dissolve-on: docs/plans/hollow-alias-construction-wall.md makes refinement/bodyless declarations construction-enforced after its lens-first corpus proof. Nonemptiness is already unwritable through first + additional_unique. Uniqueness is decidable but remains a typed, reachable, counted refusal because .dag record literals are public and refinements are not construction-enforced; Set is the non-enumerable PointwisePower while durability qualification must enumerate every boundary. This is a corpus-wide language gap also visible in bare proof wrappers such as ValidatedGrammarRoot and ValidatedBmcFanCurve, not a license for a Map-as-set or bitset nickname."
+// 🟡 dissolve-on: docs/plans/hollow-alias-construction-wall.md makes refinement/bodyless
+// declarations construction-enforced after its lens-first corpus proof. Nonemptiness is already
+// unwritable through first + additional_unique. Uniqueness is decidable but remains a typed,
+// reachable, counted refusal because .dag record literals are public and refinements are not
+// construction-enforced; Set is the non-enumerable PointwisePower while durability qualification
+// must enumerate every boundary. This is a corpus-wide language gap also visible in bare proof
+// wrappers such as ValidatedGrammarRoot and ValidatedBmcFanCurve, not a license for a Map-as-set or
+// bitset nickname.
 
 type StateDurabilityBoundaryRequirementBuild {
   ordered: List<StateDurabilityBoundary>
@@ -131,7 +145,12 @@ type StateRealizationDefinitionLinkages {
   actuator: StateDefinitionLinkage
 }
 
-data state_definition_linkage_frontier_note: String = "🟡 dissolve-on: the namespace-only resolution lane lands its content-addressed SymbolIndex containment tree. Until then, every realization and capability definition is CallerAssertedDefinitionLinkage and durable qualification refuses with typed, located, counted assertions. The future mechanically-hashed arm MUST carry an opaque subtree-digest type whose only constructor is the SymbolIndex subtree-hashing operation; a bare ContentHash field is forbidden because callers could forge it from a label and recreate the lie this frontier removes."
+// 🟡 dissolve-on: the namespace-only resolution lane lands its content-addressed SymbolIndex
+// containment tree. Until then, every realization and capability definition is
+// CallerAssertedDefinitionLinkage and durable qualification refuses with typed, located, counted
+// assertions. The future mechanically-hashed arm MUST carry an opaque subtree-digest type whose
+// only constructor is the SymbolIndex subtree-hashing operation; a bare ContentHash field is
+// forbidden because callers could forge it from a label and recreate the lie this frontier removes.
 
 type StateDefinitionLinkageVerdict
   = StateDefinitionLinkageEvidence {

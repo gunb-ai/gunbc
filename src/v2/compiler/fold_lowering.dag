@@ -80,7 +80,14 @@ fn fold_seq_child(node: Node, name: Symbol) -> Optional<Node> {
   }
 }
 
-data step_fn_carrier_binder_note: String = "The step fn's FIRST param is the fold's accumulator binder (fn(acc, item) { .. }). fn_literal params are untyped lexeme-stamped idents (dag_grammar_untyped_params_helper = comma_list(terminal_lexeme(ident))), so the binder NAME is the captured atom's identity. Navigation follows the fn_literal grammar expression Seq(kw_fn, Seq(lparen, Seq(Optional(params), ..))): right, right, left lands on the params capture (Optional-absent = empty Conj -> Absent), whose comma_list capture is Conj[left -> first item]. A step fn with no readable first param cannot be a fold step: the caller refuses ^fold_lowering_shape_invalid, never fabricates a carrier."
+// The step fn's FIRST param is the fold's accumulator binder (fn(acc, item) { .. }). fn_literal
+// params are untyped lexeme-stamped idents (dag_grammar_untyped_params_helper =
+// comma_list(terminal_lexeme(ident))), so the binder NAME is the captured atom's identity.
+// Navigation follows the fn_literal grammar expression Seq(kw_fn, Seq(lparen, Seq(Optional(params),
+// ..))): right, right, left lands on the params capture (Optional-absent = empty Conj -> Absent),
+// whose comma_list capture is Conj[left -> first item]. A step fn with no readable first param
+// cannot be a fold step: the caller refuses ^fold_lowering_shape_invalid, never fabricates a
+// carrier.
 
 fn step_fn_carrier_binder_symbol(fn_literal: Node) -> Optional<Symbol> {
   match fold_seq_child(node: fn_literal, name: ^grammar_sequence_right_node_projection) {
@@ -149,27 +156,23 @@ type FoldCallLowering
   | FoldCallStepFormUnresolved { diagnostic: Diagnostic }
   | FoldCallStepShapeInvalid { diagnostic: Diagnostic }
 
-// WHY THIS COPRODUCT EXISTS, and it is a state-space split rather than a new
-// mechanism. fold_call_to_loop answered one question -- did this call lower --
-// with a two-state Outcome, so every reason it did not lower arrived as one
-// Rejected. Two of those reasons are not the same state. A fold-family call
-// carrying a malformed fn literal (no body, no first param) is decidable HERE:
-// the literal is in hand and it cannot be a step. A fold-family call carrying
-// NO fn literal is not decidable here at all -- the step may have been omitted,
-// or passed by name (v2.std.algebra fold_list(xs: t, empty: ..., cons: cons)),
-// or the callee may take an algebra record rather than a step at all
-// (v2.std.node fold_node(n:, algebra:)). Telling those apart requires reading
-// the callee declaration, which this stage deliberately does not do --
-// v2.lens.complexity_accumulator_copy.analyze fold_family_carrier already
-// records the named-step-fn case as a Stage B callee-resolution fact. Naming
-// that state shape_invalid asserts malformedness the stage cannot establish,
-// which is body_lowering_rejection_propagation_note's not-applicable-versus-
-// malformed conflation arriving from the other direction.
+// WHY THIS COPRODUCT EXISTS: a state-space split, not a new mechanism. fold_call_to_loop answered
+// one question -- did this call lower -- with a two-state Outcome, so every reason it did not lower
+// arrived as one Rejected. Two of those reasons are not the same state. A fold-family call carrying
+// a malformed fn literal (no body, no first param) is decidable HERE: the literal is in hand and
+// cannot be a step. A fold-family call carrying NO fn literal is not decidable here -- the step may
+// have been omitted, or passed by name (v2.std.algebra fold_list(xs: t, empty: ..., cons: cons)),
+// or the callee may take an algebra record rather than a step (v2.std.node fold_node(n:,
+// algebra:)). Telling those apart requires reading the callee declaration, which this stage
+// deliberately does not do -- v2.lens.complexity_accumulator_copy.analyze fold_family_carrier
+// already records the named-step-fn case as a Stage B callee-resolution fact. Naming that state
+// shape_invalid asserts malformedness the stage cannot establish:
+// body_lowering_rejection_propagation_note's not-applicable-versus-malformed conflation from the
+// other direction.
 //
-// No Loop is fabricated on any arm; that guarantee is what the refusal was
-// protecting and it is untouched. What changes is only which arm a caller may
-// treat as a counted frontier state rather than a refusal, and the sole caller
-// that does so is v2.compiler.body_lowering_fold body_lower_try_fold_loop.
+// No Loop is fabricated on any arm; that guarantee is untouched. What changes is only which arm a
+// caller may treat as a counted frontier state rather than a refusal, and the sole caller doing so
+// is v2.compiler.body_lowering_fold body_lower_try_fold_loop.
 fn fold_call_lowering(fold_call: Node) -> FoldCallLowering {
   match fold_call_head_symbol(fold_call: fold_call) {
     Absent =>
@@ -206,10 +209,9 @@ fn fold_call_lowering(fold_call: Node) -> FoldCallLowering {
   }
 }
 
-// The two-state projection of the authority above, kept byte-for-byte in its
-// old semantics: every non-lowered arm is still a refusal here. Consumers that
-// only ask "did it lower" -- the accumulator-copy lens -- keep asking exactly
-// that and are unaffected by the split.
+// The two-state projection of the authority above, kept byte-for-byte in its old semantics: every
+// non-lowered arm is still a refusal here. Consumers that only ask "did it lower" -- the
+// accumulator-copy lens -- are unaffected by the split.
 fn fold_call_to_loop(fold_call: Node) -> Outcome<Node> {
   match fold_call_lowering(fold_call: fold_call) {
     FoldCallLowered { seam_loop: seam_loop } => outcome_accepted(value: seam_loop)

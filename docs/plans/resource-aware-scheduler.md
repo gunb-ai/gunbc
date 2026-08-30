@@ -1,24 +1,24 @@
 # Resource-aware scheduler — larger allocations → larger throughput (always)
 
-> Companion to [`realization-measurement-loop.md`](realization-measurement-loop.md) (Phase 0 space arm + Phase 1). That doc covers the full realization arc; this one tracks the four-node implementation the operator scoped 2026-06-25. Dispatched from session `calm-carp-204`. DESIGN refs: §1 (time = cost), §2 (one concept every scale — width IS a resource fit count), §3 (single authority — cost lives on `Runnable`, width derives from it), §5 (fail-closed — wrong width is silent over/under-use; construction makes over-commit unwritable).
+> Companion to [`realization-measurement-loop.md`](realization-measurement-loop.md) (Phase 0 space arm + Phase 1), which covers the full realization arc; this one tracks the four-node implementation the operator scoped 2026-06-25. Dispatched from session `calm-carp-204`. DESIGN refs: §1 (time = cost), §2 (one concept every scale — width IS a resource fit count), §3 (single authority — cost lives on `Runnable`, width derives from it), §5 (fail-closed — wrong width is silent over/under-use; construction makes over-commit unwritable).
 
 ---
 
 ## The invariant
 
 `spawn_width = floor(available_memory / per_runnable_peak)` — derived, never hand-authored.
-Host gets more memory → width goes up automatically → throughput goes up. Enforced by construction, not convention.
+More host memory → higher width → higher throughput, by construction, not convention.
 
-Today this is violated: `gunbc_ci_floor_per_shard_peak_rss_bytes()` reads a static data row (`gunbc_ci_floor_measured_peak`) derived by dividing a whole-run cgroup peak by a concurrency count. The division is coarse; the value is stale; the width calculation is a side-channel in `ci_floor_plan.dag`, not a property of the plan itself.
+Violated today: `gunbc_ci_floor_per_shard_peak_rss_bytes()` reads a static data row (`gunbc_ci_floor_measured_peak`) derived by dividing a whole-run cgroup peak by a concurrency count — coarse, stale, and a side-channel in `ci_floor_plan.dag` rather than a property of the plan.
 
 ## Cost authority re-role (2026-06-25, operator design thread via sharp-stag-782)
 
 **Derivation is the authority; measurement is the falsifier.**
 
-Cost = `symbolic_cost(graph structure)` evaluated at a declared input envelope. Measuring where you can derive is the §5 fail-open smell — an unbounded input is the data-side of a non-terminating loop. So:
+Cost = `symbolic_cost(graph structure)` at a declared input envelope. Measuring where you can derive is the §5 fail-open smell — an unbounded input is the data-side of a non-terminating loop. So:
 
 - `CostBasis = Predicted` — the AUTHORITY. Derived from graph structure + declared input envelope. This is what `spawn_width` and `ci_budget_tree` read.
-- `CostBasis = Measured` — the FALSIFIER + calibration. `Measured.cost.space == Predicted.cost.space` must hold; a mismatch is a bug in the cost model. Also calibrates the host physical constants (allocator size-classes, `Value`-repr overhead) that the symbolic formula uses.
+- `CostBasis = Measured` — the FALSIFIER + calibration. `Measured.cost.space == Predicted.cost.space` must hold; a mismatch is a cost-model bug. Also calibrates the host physical constants (allocator size-classes, `Value`-repr overhead) the symbolic formula uses.
 
 **Implication for this plan's nodes:**
 - Node A (Rust plumbing, #5792): still lands as designed. `[measurement]` / `[calibration]` lines feed the **falsifier** role (§5 discriminating witness), not the scheduler directly.
@@ -50,19 +50,19 @@ Cost = `symbolic_cost(graph structure)` evaluated at a declared input envelope. 
 
 ### Node A — Measurement plumbing (v1 seed Rust)
 
-**Scope:** make per-shard RSS observable as a structured output, collectable by `claim_executor`. The text lines are **transport** (a Lossless projection of `PerformanceReceipt.cost`, §4 one-grammar-both-directions), not the authority — `PerformanceReceipt` is.
+**Scope:** make per-shard RSS a structured output collectable by `claim_executor`. The text lines are **transport** (a Lossless projection of `PerformanceReceipt.cost`, §4 one-grammar-both-directions); `PerformanceReceipt` is the authority.
 
 - `claim_batch` emits a machine-readable line at process exit:
   `[measurement] per-shard-peak-rss: N bytes`
   (uses `/proc/self/status` VmHWM — this is the Space axis of a per-shard measured `CostAccount<Nano>`)
 - `claim_executor` emits after the full walk:
   `[calibration] max-per-shard-peak-rss: N bytes at spawn_width=W`
-  Current implementation: derives `per_shard = floor_rss / width` (a sound approximation); Node D refinement: parse per-shard lines from child stderr and take `max`.
+  Currently derives `per_shard = floor_rss / width` (sound approximation); Node D refinement: parse per-shard lines from child stderr and take `max`.
 
 **Authority chain (design-locked 2026-06-25 with sharp-stag-782):**
 - `PerformanceReceipt.cost: CostAccount<Nano>` is the single measured authority (`cost.time` = wall_duration, `cost.space` = per-shard VmHWM, `cost.power` = unmeasured Watt(0), `basis = Measured`). Lives in `gunbc.fleet_intent` — `product.compute_fabric` was deleted at the root and never held the live carrier after #5904.
-- `wall_duration` field removed from `PerformanceReceipt` — becomes a pure projection `fn performance_receipt_wall_duration(r) -> r.cost.time` (no stored state that can drift).
-- `cache_state_summary` stays top-level on `PerformanceReceipt` — it is a measurement-context tag, not a cost axis. A cache-hit peak and a cold peak are different facts (§5 cache-impurity).
+- `wall_duration` removed from `PerformanceReceipt` — a pure projection `fn performance_receipt_wall_duration(r) -> r.cost.time` (no stored state to drift).
+- `cache_state_summary` stays top-level on `PerformanceReceipt` — a measurement-context tag, not a cost axis; a cache-hit peak and a cold peak are different facts (§5 cache-impurity).
 - `PerformanceReceiptSpaceContext { space: ByteSize, cache_state: NonEmptyStr? }` accessor gives sharp-stag-782's `ci_budget_tree` a paired (space, cache_state) without join risk.
 - The `[calibration]` / `[measurement]` text lines are the Lossless wire projection of this receipt crossing the Rust→.dag boundary.
 - **Shape PR:** nimble-tern-908 (work item `adhoc-e4d87b4e-49c`). Lands before any Rust emit format is finalized.
@@ -79,12 +79,12 @@ Cost = `symbolic_cost(graph structure)` evaluated at a declared input envelope. 
 
 - Add `cost: CostEstimate { space: ByteSize }` to `Runnable` in `std.realization_schedule`.
   (Already: `CostAccount<S>.space: ByteSize` exists as the roll-up; `CostEstimate` is the per-action input that feeds it.)
-- Populate `cost` in `ci_floor_plan.dag`'s `gate_runnable()` from the measurement data rows (initially the values from Node A's calibration output; can be `predicted_zero` until Node D closes the feedback loop).
+- Populate `cost` in `ci_floor_plan.dag`'s `gate_runnable()` from the measurement data rows (initially Node A's calibration output; may be `predicted_zero` until Node D closes the loop).
 - `RealizationPlan.total` becomes a derived rollup via `schedule_critical_path_time` instead of `cost_account_predicted_zero()`.
 
-**Depends on:** Node A (the measurements inform what value to put in the cost field).
+**Depends on:** Node A (measurements inform the cost value).
 
-Note: `realization-measurement-loop.md` Phase 0 covers the `CostAccount.time` arm. Node B extends the same Phase 0 to the `space` arm (per-shard RSS, not just wall-clock time). Same carrier, same phase, second axis.
+`realization-measurement-loop.md` Phase 0 covers the `CostAccount.time` arm; Node B extends it to the `space` arm (per-shard RSS). Same carrier, same phase, second axis.
 
 ---
 
@@ -94,13 +94,13 @@ Note: `realization-measurement-loop.md` Phase 0 covers the `CostAccount.time` ar
 
 - `v2.workflow.scheduler` (or `WidthBoundedRealization`) takes a `memory_budget: ByteSize` and reads `max(runnable.cost.space)` from the plan to derive:
   `spawn_width = floor(memory_budget / max_runnable_space)`
-- This makes `spawn_width` an output of `WidthBoundedRealization`, not a separately-computed side-channel in `ci_floor_plan.dag`.
+- `spawn_width` becomes an output of `WidthBoundedRealization`, not a side-channel in `ci_floor_plan.dag`.
 - Delete `gunbc_ci_floor_spawn_width_for_budget` from `ci_floor_plan.dag`.
 - Delete the separate `eval_spawn_width` call in `claim_executor.rs` — width comes from evaluating the plan function, not a second eval pass.
 
 **Depends on:** Node B (scheduler reads cost from `Runnable`).
 
-This is Phase 1 in `realization-measurement-loop.md` ("make parallelism visible + hardware-bounded width") — converges the width side-channel onto the same `PlacementSupplyRow` / `HardwareThreadCount` derivation the plan already models.
+Phase 1 in `realization-measurement-loop.md` ("make parallelism visible + hardware-bounded width"): converges the width side-channel onto the `PlacementSupplyRow` / `HardwareThreadCount` derivation the plan already models.
 
 ---
 
@@ -109,12 +109,12 @@ This is Phase 1 in `realization-measurement-loop.md` ("make parallelism visible 
 **Scope:** measured per-shard data auto-updates per-Runnable cost estimates; static hand-authored data rows retire.
 
 - After a run, the `[calibration]` output from Node A becomes the authority for `Runnable.cost.space` in Node B.
-- Either: a CI step that reads the calibration line and rewrites `gunbc_ci_floor_measured_peak` (simple first form), or a `PerformanceReceipt`-typed store that the execution layer writes and the plan reads on next invocation (the proper long-term form — the resolved-graph cache from #5789 is the first building block of this pattern).
-- Once landed: a host provisioning change (more memory) is reflected in `memory_budget` → scheduler derives higher `spawn_width` → throughput increases automatically. No manual data row edits required.
+- Either a CI step that reads the calibration line and rewrites `gunbc_ci_floor_measured_peak` (simple first form), or a `PerformanceReceipt`-typed store the execution layer writes and the plan reads on next invocation (the long-term form; the resolved-graph cache from #5789 is its first building block).
+- Once landed: more host memory → `memory_budget` → higher derived `spawn_width` → higher throughput, with no data row edits.
 
 **Depends on:** Nodes A + B + C.
 
-**Dissolution trigger:** `gunbc_ci_floor_measured_peak` and `gunbc_ci_floor_conservative_fallback_width` have no consumers outside `gunbc_ci_floor_per_shard_peak_rss_bytes()` and `gunbc_ci_floor_spawn_width_for_budget()` — both functions delete in Node C. The entire `ci_floor_measurement.dag` data section for concurrency/width becomes redundant once the scheduler self-calibrates.
+**Dissolution trigger:** `gunbc_ci_floor_measured_peak` and `gunbc_ci_floor_conservative_fallback_width` have no consumers outside `gunbc_ci_floor_per_shard_peak_rss_bytes()` and `gunbc_ci_floor_spawn_width_for_budget()`, both deleted in Node C; the `ci_floor_measurement.dag` concurrency/width data section is redundant once the scheduler self-calibrates.
 
 ---
 
@@ -130,22 +130,22 @@ C (scheduler, width from plan — replaces side-channel)
 D (calibration loop — data rows retire)
 ```
 
-A and B can proceed concurrently; B can use provisional values until D closes the loop. C should land with B (a model with no consumer is a scaffold; model + scheduler land together). D is its own PR after A+B+C.
+A and B may proceed concurrently; B may use provisional values until D closes the loop. C lands with B (a model with no consumer is a scaffold). D is its own PR after A+B+C.
 
 ---
 
 ## What this is NOT
 
-- Not a new caching mechanism — `realization-measurement-loop.md` owns the cache arc (Phase 0/P3 resolve-cache, Phase 2 cache kernel). This work is orthogonal: it's about *scheduling width*, not *whether to re-execute*.
-- Not a placement mechanism — `compute-envelope-model.md` owns the BUILD phase fan-out / host packing / G1–G3 arc. This work covers the RUN phase (corpus shard width). Per that doc: "width-up is pids-safe on its own" — the two invariants don't multiply.
+- Not a caching mechanism — `realization-measurement-loop.md` owns the cache arc (Phase 0/P3 resolve-cache, Phase 2 cache kernel). This is *scheduling width*, not *whether to re-execute*.
+- Not a placement mechanism — `compute-envelope-model.md` owns the BUILD phase fan-out / host packing / G1–G3 arc; this covers the RUN phase (corpus shard width). Per that doc, "width-up is pids-safe on its own" — the two invariants don't multiply.
 
 ## Floor-OOM root-cause analyses (what calibrated `per_runnable_peak`)
 
-The `per_runnable_peak` this scheduler divides into available memory is not a free parameter — it was driven down by two landed root fixes, each its own analysis. Both feed directly into the width invariant above (a smaller per-shard peak → larger derived `spawn_width`):
+`per_runnable_peak` is not a free parameter — two landed root fixes drove it down, each its own analysis, and both feed the width invariant (smaller per-shard peak → larger derived `spawn_width`):
 
-- [`resolved-graph-representation-minimization.md`](resolved-graph-representation-minimization.md) — the per-shard RSS root cause: `precompute_whole_tree_published_mock_keys` Strict-resolved all 608 dag modules to read 58 keys declared by only 13 (§2 irrelevant work). Scoping it to the declarers' closures cut the per-shard peak 8.7× (landed `7ce82319e5`). This *is* the floor's `per_shard` number.
-- [`emit-host-batch-isolation.md`](emit-host-batch-isolation.md) — the batch-placement constraint: `EmitHostGate` spawns rustc children (~1.5 GiB) yet got no serialize edge, so it co-located with the wide corpus shards and the concurrent peak blew the cgroup. Giving it a serialize edge keeps the host-compiler cost off the wide batch (landed #5837). The §3 distinction it preserves — *heavy whole-tree resolve* vs *spawns a host compiler* — is two grounded contributors to one "gate cost," not one nicknamed axis.
+- [`resolved-graph-representation-minimization.md`](resolved-graph-representation-minimization.md) — per-shard RSS root cause: `precompute_whole_tree_published_mock_keys` Strict-resolved all 608 dag modules to read 58 keys declared by only 13 (§2 irrelevant work). Scoping it to the declarers' closures cut the per-shard peak 8.7× (landed `7ce82319e5`). This *is* the floor's `per_shard` number.
+- [`emit-host-batch-isolation.md`](emit-host-batch-isolation.md) — batch-placement constraint: `EmitHostGate` spawns rustc children (~1.5 GiB) with no serialize edge, so it co-located with the wide corpus shards and the concurrent peak blew the cgroup; a serialize edge keeps the host-compiler cost off the wide batch (landed #5837). The §3 distinction preserved — *heavy whole-tree resolve* vs *spawns a host compiler* — is two grounded contributors to one "gate cost," not one nicknamed axis.
 
 ## Dissolution trigger (DESIGN §6)
 
-Delete this doc when: (a) `gunbc_ci_floor_measured_peak` is retired (no consumers), (b) `spawn_width` is derived from the plan via `WidthBoundedRealization` rather than a side-channel, and (c) a host memory increase is provably reflected in higher width without any `.dag` data row edits — at which point the invariant is a by-construction property and this tracker is redundant.
+Delete when (a) `gunbc_ci_floor_measured_peak` is retired (no consumers), (b) `spawn_width` derives from the plan via `WidthBoundedRealization`, not a side-channel, and (c) a host memory increase provably raises width with no `.dag` data row edits — then the invariant holds by construction and this tracker is redundant.

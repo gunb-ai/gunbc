@@ -19,7 +19,13 @@ data json_format_further_authority_1: ExternalAuthority = ExternalAuthority {
   }
 }
 
-data json_format_subject_note: String = "JSON, cited to RFC 8259 (verified live 2026-08-04 by fetching the cited locator and confirming its title and publisher from the response, per the D0 verify-or-refuse rule): the fetched document is 'The JavaScript Object Notation (JSON) Data Interchange Format', RFC 8259, an IETF Standards Track document edited by Tim Bray, published December 2017, obsoleting RFC 7159. The further citation is ECMA-404, the parallel Ecma International standard for the same syntax — two independently governed documents describing one interchange format, carried as two citations of ONE subject exactly as external_model_scope_law permits, rather than forked into two subjects."
+// JSON, cited to RFC 8259 (verified live 2026-08-04 by fetching the cited locator and confirming
+// its title and publisher from the response, per the D0 verify-or-refuse rule): the fetched
+// document is 'The JavaScript Object Notation (JSON) Data Interchange Format', RFC 8259, an IETF
+// Standards Track document edited by Tim Bray, published December 2017, obsoleting RFC 7159. The
+// further citation is ECMA-404, the parallel Ecma International standard for the same syntax — two
+// independently governed documents describing one interchange format, carried as two citations of
+// ONE subject exactly as external_model_scope_law permits, rather than forked into two subjects.
 
 type Json
   = | JsonTarget

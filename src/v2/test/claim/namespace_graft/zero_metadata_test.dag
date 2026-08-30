@@ -12,7 +12,10 @@ import v2.compiler.namespace_graft {
   ModuleRootEdgeRehomeProvenance
 }
 
-data zero_metadata_note: String = "Witness for checklist add #1 remaining half: dag_surface_module_header_metadata_edge is the sole module-root metadata-edge predicate in tree today (no doc/pragma/provenance arms on module roots). Graft output must contain zero such edges — complement-based body collection dissolves only the two header arms; every other edge kind rides the graft by default."
+// Witness for checklist add #1 remaining half: dag_surface_module_header_metadata_edge is the sole
+// module-root metadata-edge predicate in tree today (no doc/pragma/provenance arms on module
+// roots). Graft output must contain zero such edges — complement-based body collection dissolves
+// only the two header arms; every other edge kind rides the graft by default.
 
 test fn namespace_graft_metadata_predicate_matches_header_edges_only_holds() -> Bool {
   dag_surface_module_header_metadata_edge(name: ^dag_surface_module_header)

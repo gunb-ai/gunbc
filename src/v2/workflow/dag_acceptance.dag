@@ -41,13 +41,39 @@ import v2.std.node { Node, Symbol, node_subtree_count }
 import v2.std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import v2.std.text { String }
 
-data dag_acceptance_note: String = "STAGES MINT EVIDENCE, A CONTRACT MINTS ACCEPTANCE. Given a candidate .dag SOURCE STRING this authority answers how far it got and why it stopped, as typed per-stage evidence adjudicated by a NAMED acceptance contract — acceptance is never bound to one compiler stage. It exists to be the automated oracle for .dag model work: without one, every layer above it is judged by a person reading diffs, and iteration is capped at one person's attention.\n\nIT IS TRANSPORT-FREE ON PURPOSE. The product is a pure function of a String, so the resident-host question is a REALIZATION fact about it, never part of its interface (DESIGN section 3: interface, realization and policy are three facts). A route on gunbc serve was considered and REFUSED: that seam is a declared frozen quarry route — gunbc.roadmap_serve roadmap_serve_seam_restoration_note, mirrored at the Commands::Serve arm of src/v1/stage0/src/main.rs, states no new options, no new verbs, no new routes into the interpreter, no completion work — and its declared successor is roadmap_serve_interpreted_scaffold dissolving to emit-on-demand, a trigger that already fired in production. The amortization that route was reached for (one corpus load, many candidates) is satisfied by the existing batch executor, which builds its module index once at startup, with no new interpreter surface at all."
+// STAGES MINT EVIDENCE, A CONTRACT MINTS ACCEPTANCE. Given a candidate .dag SOURCE STRING this
+// authority answers how far it got and why it stopped, as typed per-stage evidence adjudicated by a
+// NAMED acceptance contract — never bound to one compiler stage. It is the automated oracle for
+// .dag model work; without one every layer above is judged by a person reading diffs, capping
+// iteration at one person's attention.
+//
+// IT IS TRANSPORT-FREE ON PURPOSE. The product is a pure function of a String, so the resident-host
+// question is a REALIZATION fact, never part of the interface (DESIGN section 3: interface,
+// realization and policy are three facts). A route on gunbc serve was REFUSED: that seam is a
+// declared frozen quarry route — gunbc.roadmap_serve roadmap_serve_seam_restoration_note, mirrored
+// at the Commands::Serve arm of src/v1/stage0/src/main.rs, states no new options, verbs, routes
+// into the interpreter, or completion work — and its declared successor
+// roadmap_serve_interpreted_scaffold dissolves to emit-on-demand, a trigger already fired in
+// production. The amortization that route offered (one corpus load, many candidates) is satisfied
+// by the existing batch executor, which builds its module index once at startup.
 
-data dag_acceptance_stage_graph_note: String = "The stage graph is NOT a linear ladder. tokenize -> parse -> normalize -> resolve -> infer is a chain; Eval and TranslateTo are SIBLING realizations over the same inferred tree and neither is later than the other; and TargetCompile is a FIFTH stage that the compiler does not perform at all — compile_inferred_translate is exactly emit(tree, target) and never invokes the target toolchain, so TranslateTo proves an emitter produced target source and proves NOTHING about whether that source compiles. Collapsing those two would inflate every metric built on this harness. The edges live in exactly one place, obligation_prerequisites, and the runner CONSULTS that function rather than re-spelling the order — so a new obligation cannot be added without answering what it needs."
+// The stage graph is NOT a linear ladder. tokenize -> parse -> normalize -> resolve -> infer is a
+// chain; Eval and TranslateTo are SIBLING realizations over the same inferred tree; TargetCompile
+// is a FIFTH stage the compiler does not perform — compile_inferred_translate is exactly emit(tree,
+// target) and never invokes the target toolchain, so TranslateTo proves an emitter produced target
+// source and NOTHING about whether it compiles. Collapsing those two would inflate every metric
+// built on this harness. The edges live only in obligation_prerequisites, which the runner CONSULTS
+// rather than re-spelling — a new obligation cannot be added without answering what it needs.
 
-data dag_acceptance_target_compile_construction_note: String = "TargetCompileClaim CARRIES the TranslationClaim whose output it consumes, so 'target-compile an emission nobody requested' has no spelling in this model — structural impossibility rather than a runtime refusal (DESIGN section 4b). The obligation's prerequisite is then DERIVED from the claim it already holds, not authored beside it, which is the same fact stated once."
+// TargetCompileClaim CARRIES the TranslationClaim whose output it consumes, so 'target-compile an
+// emission nobody requested' has no spelling — structural impossibility, not a runtime refusal
+// (DESIGN section 4b). The obligation's prerequisite is DERIVED from the claim it holds, not
+// authored beside it.
 
-data dag_acceptance_verdict_derivation_note: String = "THE VERDICT IS DERIVED, NEVER STORED. DagAcceptanceReceipt carries the contract identity, the candidate identity, and the executed rows; the verdict is a fold over those rows. There is no verdict field to transcribe, so rung inflation on this harness's own output is unrepresentable rather than lens-caught — the meta-obligation of DESIGN section 4b applied to the instrument itself."
+// THE VERDICT IS DERIVED, NEVER STORED. DagAcceptanceReceipt carries the contract identity, the
+// candidate identity, and the executed rows; the verdict is a fold over those rows. With no verdict
+// field to transcribe, rung inflation on this harness's own output is unrepresentable rather than
+// lens-caught — DESIGN section 4b's meta-obligation applied to the instrument itself.
 
 type DagCandidate {
   file: Symbol,
@@ -66,7 +92,13 @@ type CandidateEvalBudget
   = NoDeclaredCandidateBudget
   | CandidateCpuBudgetMs { limit_ms: Int }
 
-data eval_claim_coverage_obligation_note: String = "A COVERAGE OBLIGATION, DECLARED RATHER THAN LEFT AS AN IMPLIED PASS. An Eval claim names the runtime node to evaluate, and there is today no resolution from `evaluate the function named X in this candidate` to that node — so the Eval branch is NOT exercised end to end from a source string anywhere in this repository, and the fail-fast versus full-ledger split is proven at the decision function instead. That is a gap in what is OBSERVED, not a gap in what is modeled, and it is named here so it can be closed rather than rediscovered: the trigger is a candidate-relative entry-point resolution reaching this claim, at which point EvalClaim carries the resolved node and the policy split gets its end-to-end pair."
+// A COVERAGE OBLIGATION, DECLARED RATHER THAN LEFT AS AN IMPLIED PASS. An Eval claim names the
+// runtime node to evaluate, and nothing today resolves `evaluate the function named X in this
+// candidate` to that node — so the Eval branch is NOT exercised end to end from a source string
+// anywhere in this repository; the fail-fast versus full-ledger split is proven at the decision
+// function instead. A gap in what is OBSERVED, not what is modeled. Trigger: candidate-relative
+// entry-point resolution reaching this claim, at which point EvalClaim carries the resolved node
+// and the policy split gets its end-to-end pair.
 
 type EvalClaim {
   identity: Symbol,
@@ -82,7 +114,12 @@ type TranslationClaim {
   emitter_identity: Symbol
 }
 
-data target_compile_policy_absent_note: String = "THERE IS NO POLICY FIELD ON THIS CLAIM, AND THAT IS A MODELING DECISION RATHER THAN AN OMISSION. The acceptance rule is fixed today: a target toolchain that rejects the emitted source rejects the candidate, an unreadable failure is undecided, and an unavailable toolchain is not a verdict at all. A policy axis carrying exactly one point is a second name for that fixed rule — the nickname class DESIGN section 3 forbids — and it would read as configurability that does not exist. Next-rung trigger: a SECOND acceptance rule with a real consumer, at which point the axis is minted with two inhabitants and this row is deleted."
+// THERE IS NO POLICY FIELD ON THIS CLAIM, BY DECISION. The acceptance rule is fixed: a target
+// toolchain rejecting the emitted source rejects the candidate, an unreadable failure is undecided,
+// an unavailable toolchain is no verdict. A policy axis with one point is a second name for that
+// rule — the nickname class DESIGN section 3 forbids — and would read as configurability that does
+// not exist. Next-rung trigger: a SECOND acceptance rule with a real consumer, at which point the
+// axis is minted with two inhabitants and this row is deleted.
 
 type TargetCompileClaim {
   translation: TranslationClaim,
@@ -112,7 +149,10 @@ fn obligation_prerequisites(obligation: DagStageObligation) -> List<DagStageObli
   }
 }
 
-data obligation_identity_note: String = "Obligation equality is STRUCTURAL over the identities each claim already carries, never a discriminant comparison: two TranslateObligations naming different targets are different obligations, and folding them together would let one target's receipt satisfy another target's prerequisite. Every claim therefore names itself — an Eval claim that cannot say what was evaluated is not evidence, and 'the candidate passed Eval' is meaningless without it."
+// Obligation equality is STRUCTURAL over the identities each claim carries, never a discriminant
+// comparison: two TranslateObligations naming different targets are different obligations, and
+// folding them would let one target's receipt satisfy another's prerequisite. Every claim therefore
+// names itself — 'the candidate passed Eval' is meaningless without what was evaluated.
 
 fn translation_claim_eq(a: TranslationClaim, b: TranslationClaim) -> Bool {
   (a.target_identity == b.target_identity) && (a.emitter_identity == b.emitter_identity)
@@ -163,7 +203,12 @@ type AcceptancePolicy
   = InteractiveFailFast
   | FullLedger
 
-data acceptance_policy_note: String = "TWO POLICIES, ONE RECEIPT SHAPE. InteractiveFailFast is ordinary best-of-N candidate search: once a rejection is decisive, independent branches are skipped and say so as SkippedAfterDecisiveRejection. FullLedger is model promotion and recipe comparison: every requested independent branch runs even when a sibling rejects, because the stage-level spread is the measurement. They are one runner with a policy parameter, never two harnesses — a second harness would fork the contract and the two would answer differently within a week."
+// TWO POLICIES, ONE RECEIPT SHAPE. InteractiveFailFast is best-of-N candidate search: once a
+// rejection is decisive, independent branches are skipped as SkippedAfterDecisiveRejection.
+// FullLedger is model promotion and recipe comparison: every requested independent branch runs even
+// when a sibling rejects, because the stage-level spread is the measurement. One runner with a
+// policy parameter, never two harnesses — a second would fork the contract and the two would answer
+// differently within a week.
 
 type StageCostRow {
   obligation: DagStageObligation,
@@ -174,9 +219,23 @@ type VerifierBudgetLedger
   = VerifierBudgetUnbounded
   | VerifierBudgetTotal { total: Millisecond }
 
-data verifier_budget_measure_note: String = "DURATIONS ARE Millisecond, THE CITED std.measure CARRIER, NOT BARE Int. Two `_ms` scalars can be added and compared with nothing checking that they are the same quantity, and a module that carries its own millisecond scalars is a second representation of duration standing beside std/measure.dag (review 54506 caught exactly that in the first cut).\n\nAND THE LEDGER COUNTS WHAT IT HAS SPENT RATHER THAN WHAT REMAINS, which is a consequence of the same move. Nat is a CommutativeSemiring — it has addition and no subtraction — so a decrementing ledger would have needed an operation its own carrier does not provide. Admission is therefore `spent + required` against the declared total, and a refusal reports all three of required, total and already-spent rather than a single derived remainder, which is strictly more of the fact than the remainder carried."
+// DURATIONS ARE Millisecond, THE CITED std.measure CARRIER, NOT BARE Int. Two `_ms` scalars add and
+// compare with nothing checking they are the same quantity, and module-local millisecond scalars
+// are a second representation of duration beside std/measure.dag (review 54506 caught exactly that
+// in the first cut).
+//
+// AND THE LEDGER COUNTS WHAT IT HAS SPENT RATHER THAN WHAT REMAINS. Nat is a CommutativeSemiring —
+// addition, no subtraction — so a decrementing ledger would need an operation its carrier lacks.
+// Admission is `spent + required` against the declared total, and a refusal reports required, total
+// and already-spent rather than a derived remainder — strictly more of the fact.
 
-data verifier_budget_subject_note: String = "THE BUDGET FACTS HAVE TWO DIFFERENT SUBJECTS AND THE SAME SYMPTOM. A candidate that blows its declared CPU budget is a fact about the CANDIDATE and lands as a rejection. The verifier running out of budget before a stage starts is a fact about US and lands as StageNotRun VerifierBudgetUnavailable — it must never become a semantic rejection, or a slow machine reads as a bad model. Every duration here is a DECLARED input: the required cost comes from the contract's own cost policy and the total from the runner's ledger. This module never estimates either, because an invented cost would make the refusal a fabrication rather than a measurement."
+// THE BUDGET FACTS HAVE TWO DIFFERENT SUBJECTS AND THE SAME SYMPTOM. A candidate blowing its
+// declared CPU budget is a fact about the CANDIDATE and lands as a rejection. The verifier running
+// out of budget before a stage starts is a fact about US and lands as StageNotRun
+// VerifierBudgetUnavailable — never a semantic rejection, or a slow machine reads as a bad model.
+// Every duration is a DECLARED input: required cost from the contract's cost policy, total from the
+// runner's ledger. This module never estimates either; an invented cost would make the refusal a
+// fabrication.
 
 type DagAcceptanceContract {
   name: Symbol,
@@ -190,9 +249,29 @@ type TargetCompileObservation
   | TargetCompileFailedUnparsed { exit_code: Int, stderr_length: Int }
   | TargetCompilerUnavailable { cause: String }
 
-data target_compile_invocation_refusal_absent_note: String = "A CALL THAT REFUSES AND A TOOLCHAIN THAT IS ABSENT ARE DIFFERENT SUBJECTS, AND THIS MODEL CARRIES ONLY ONE OF THEM ON PURPOSE. An earlier revision declared both, and review 54507 caught what that cost: nothing produced the invocation-refusal arm, and the row mapping collapsed it onto the same ExecutorUnavailable row as the absent toolchain — a distinction asserted on the input side and erased on the output side, which is the state-space conflation the notes around it warn about, plus a constructor with no producer, which is specification without execution (DESIGN section 5). The surviving arm still refuses rather than fabricating a verdict, so the property that mattered — never assert a verdict over a call that did not answer — is preserved. Next-rung trigger: a transport that surfaces call-level refusal as its own observed fact, at which point the arm returns WITH a producer and WITH its own row, rather than as vocabulary waiting for one."
+// A CALL THAT REFUSES AND A TOOLCHAIN THAT IS ABSENT ARE DIFFERENT SUBJECTS, AND THIS MODEL CARRIES
+// ONLY ONE OF THEM ON PURPOSE. An earlier revision declared both; review 54507 found nothing
+// produced the invocation-refusal arm and the row mapping collapsed it onto the absent toolchain's
+// ExecutorUnavailable row — a distinction asserted on input and erased on output (state-space
+// conflation), plus a constructor with no producer (specification without execution, DESIGN section
+// 5). The surviving arm still refuses rather than fabricating a verdict, so 'never assert a verdict
+// over a call that did not answer' is preserved. Next-rung trigger: a transport surfacing
+// call-level refusal as its own observed fact, at which point the arm returns WITH a producer and
+// its own row.
 
-data target_compile_observation_note: String = "THE CANDIDATE-FACING HALF IS NOT MINTED HERE. Whether a target toolchain accepted or rejected a compilation is already modeled: v2.std.leaf_model_verification TargetCompileVerdict, with its accepted arm and its rejected arm carrying a diagnostic code. This observation REUSES it and adds only what a live invocation can be that a modeled expectation cannot — the floor caught the first cut of this file minting a second TargetCompileAccepted beside that authority, which is the section-3 nicknaming violation exactly, and it broke every existing consumer of the real one.\n\nSO: FOUR ARMS, THREE SUBJECTS. Decided is a fact about the CANDIDATE and defers to the existing verdict authority. Unavailable is a fact about US and may never read as the toolchain having said no — asserting a verdict over a refusing call is the fabricated-plausible-output failure at the host boundary. FailedUnparsed — the toolchain ran, failed, and produced nothing we could read — is neither: it is IGNORANCE, and rendering ignorance as rejection is the widen DESIGN section 5 forbids, so it gets its own execution arm and its own count."
+// THE CANDIDATE-FACING HALF IS NOT MINTED HERE. Toolchain accept/reject is already modeled:
+// v2.std.leaf_model_verification TargetCompileVerdict, with an accepted arm and a rejected arm
+// carrying a diagnostic code. This observation REUSES it and adds only what a live invocation can
+// be that a modeled expectation cannot — the floor caught the first cut minting a second
+// TargetCompileAccepted beside that authority, the section-3 nicknaming violation exactly, which
+// broke every consumer of the real one.
+//
+// SO: FOUR ARMS, THREE SUBJECTS. Decided is a fact about the CANDIDATE and defers to the existing
+// verdict authority. Unavailable is a fact about US and may never read as the toolchain saying no —
+// a verdict over a refusing call is fabricated plausible output at the host boundary.
+// FailedUnparsed — the toolchain ran, failed, produced nothing readable — is IGNORANCE; rendering
+// it as rejection is the widen DESIGN section 5 forbids, so it gets its own execution arm and
+// count.
 
 type TargetCompileExecutor {
   compile_target_source: fn(String) -> TargetCompileObservation
@@ -226,7 +305,11 @@ type StageNotRunReason
     }
   | ExecutorUnavailable { cause: String }
 
-data stage_not_run_reason_note: String = "BlockedByPrerequisite and SkippedAfterDecisiveRejection are DIFFERENT FACTS and conflating them is the state-space conflation DESIGN section 5 names. Resolve rejected means infer is IMPOSSIBLE — nothing could have run it. Eval rejected leaves TranslateTo entirely possible; a fail-fast policy CHOSE not to pay for it. The first is a property of the candidate, the second a property of our policy, and the remedies differ: one says fix the candidate, the other says re-run under FullLedger."
+// BlockedByPrerequisite and SkippedAfterDecisiveRejection are DIFFERENT FACTS; conflating them is
+// the state-space conflation DESIGN section 5 names. Resolve rejected means infer is IMPOSSIBLE.
+// Eval rejected leaves TranslateTo possible; fail-fast CHOSE not to pay. One is a property of the
+// candidate, the other of our policy, and the remedies differ: fix the candidate versus re-run
+// under FullLedger.
 
 type StageUndecidedCause
   = TargetCompileFailureUnparsed { exit_code: Int, stderr_length: Int }
@@ -242,9 +325,19 @@ type StageExecution
   | StageNotRun { obligation: DagStageObligation, reason: StageNotRunReason }
   | StageUndecided { obligation: DagStageObligation, cause: StageUndecidedCause }
 
-data stage_execution_frontier_note: String = "ACCEPTED CLEAN AND ACCEPTED-WITH-DIAGNOSTICS ARE DIFFERENT ARMS, and this is the difference between an oracle and a blindfold. A stage can return Accepted while carrying typed, located diagnostics — DESIGN names that state FrontierAccepted and calls it distinct from silent below-floor AND from a refusal, with live specimens in the compiler today. If this receipt folded it into an ordinary pass, every metric built on the harness would count a frontier candidate as clean, and the deficit frequency would be zero by construction. A separate CONSTRUCTOR rather than an optional field is deliberate: a consumer matching StagePassed cannot silently absorb the advisory case, because the advisory case is not a StagePassed."
+// ACCEPTED CLEAN AND ACCEPTED-WITH-DIAGNOSTICS ARE DIFFERENT ARMS — an oracle versus a blindfold. A
+// stage can return Accepted carrying typed, located diagnostics — DESIGN names that
+// FrontierAccepted, distinct from silent below-floor AND from refusal, with live specimens in the
+// compiler today. Folded into an ordinary pass, every harness metric would count a frontier
+// candidate as clean and the deficit frequency would be zero by construction. A separate
+// CONSTRUCTOR rather than an optional field: a consumer matching StagePassed cannot silently absorb
+// the advisory case.
 
-data stage_execution_arity_note: String = "FIVE ARMS, AND THE LAST TWO ARE THE ONES THAT USUALLY GO MISSING. Passed, Rejected and NotRun cannot express 'the stage executed and the result is unknowable', which is exactly what an unparseable target-toolchain failure is. Folding it into Rejected would inflate rejection counts with our own ignorance; folding it into NotRun would claim work we did pay for never happened. Undecided is counted, and it drives the verdict to Incomplete rather than to Rejected."
+// FIVE ARMS, AND THE LAST TWO ARE THE ONES THAT USUALLY GO MISSING. Passed, Rejected and NotRun
+// cannot express 'executed, result unknowable' — exactly an unparseable target-toolchain failure.
+// Folding it into Rejected inflates rejection counts with our ignorance; into NotRun claims
+// paid-for work never happened. Undecided is counted and drives the verdict to Incomplete, not
+// Rejected.
 
 type DagAcceptanceVerdict
   = AcceptanceContractSatisfied { frontier_stages: List<Symbol> }
@@ -257,7 +350,12 @@ type DagAcceptanceReceipt {
   rows: List<StageExecution>
 }
 
-data acceptance_accounting_note: String = "REPRESENT EVERY OBLIGATION, EXECUTE LAZILY. The receipt does not always RUN every stage; it always ACCOUNTS for every stage. The five unparameterized obligations therefore always carry a row — NotRequiredByContract when a shallow contract never needed them — and the parameterized ones carry a row for exactly the effective set, which is the contract's obligations closed under prerequisites. A stage a contract did not ask for and a stage that could not run are different facts, and only rows make that difference readable."
+// REPRESENT EVERY OBLIGATION, EXECUTE LAZILY. The receipt does not always RUN every stage; it
+// always ACCOUNTS for every stage. The five unparameterized obligations always carry a row —
+// NotRequiredByContract when a shallow contract never needed them — and the parameterized ones
+// carry a row for exactly the effective set: the contract's obligations closed under prerequisites.
+// A stage not asked for and a stage that could not run are different facts; only rows make that
+// readable.
 
 fn no_obligations() -> List<DagStageObligation> {
   []
@@ -456,7 +554,10 @@ fn first_prerequisite_label(obligation: DagStageObligation) -> Optional<Symbol> 
   })
 }
 
-data missing_step_reason_note: String = "The prerequisite named in a block is READ FROM obligation_prerequisites, never re-spelled here — one authority for the edges, consulted by every consumer of them. The no-prerequisite arm is the front end's first stage, for which a missing step means the staged fold returned nothing at all; that is our own executor failing, not a fact about the candidate, so it refuses as ExecutorUnavailable rather than being dressed up as a block behind a stage that does not exist."
+// The prerequisite named in a block is READ FROM obligation_prerequisites, never re-spelled here.
+// The no-prerequisite arm is the front end's first stage, where a missing step means the staged
+// fold returned nothing — our own executor failing, not a fact about the candidate — so it refuses
+// as ExecutorUnavailable rather than as a block behind a stage that does not exist.
 
 fn missing_step_reason(obligation: DagStageObligation) -> StageNotRunReason {
   match first_prerequisite_label(obligation: obligation) {
@@ -483,7 +584,10 @@ fn front_end_declared_cost(
   })
 }
 
-data front_end_budget_grain_note: String = "The front end is budget-gated ONCE, as the staged unit it executes as, against the SUM of the declared costs of the front-end obligations the contract actually needs. Gating its four stages individually would be a second story about how the work is performed: they run inside one staged fold, so a per-stage refusal after the fold had already run would report a saving that was never made."
+// The front end is budget-gated ONCE, as the staged unit it executes as, against the SUM of the
+// declared costs of the front-end obligations the contract needs. Gating its four stages
+// individually would be a second story about how the work is performed: they run inside one staged
+// fold, so a per-stage refusal after the fold ran would report a saving never made.
 
 fn front_end_run_resolved(run: FrontEndRun) -> Optional<Node> {
   match run.completion {
@@ -691,7 +795,13 @@ fn eval_expectation_row(
   }
 }
 
-data candidate_cpu_budget_rung_note: String = "A DECLARED CANDIDATE CPU BUDGET IS HONESTLY UNENFORCED HERE, AND IT REFUSES RATHER THAN PRETENDING. Nothing in this substrate observes thread CPU time, so a contract declaring a candidate CPU budget gets StageNotRun ExecutorUnavailable — a fact about the verifier, counted, with a named cause. The alternative was to run the eval and report a pass, which would claim a bound was enforced when nothing measured it: rung inflation on the exact axis the contract asked about. Next-rung trigger: an observed per-evaluation CPU measurement reaching this seam, at which point the arm becomes a candidate rejection carrying the observed cost."
+// A DECLARED CANDIDATE CPU BUDGET IS HONESTLY UNENFORCED HERE, AND IT REFUSES RATHER THAN
+// PRETENDING. Nothing in this substrate observes thread CPU time, so a contract declaring one gets
+// StageNotRun ExecutorUnavailable — a counted fact about the verifier with a named cause. Running
+// the eval and reporting a pass would claim a bound was enforced when nothing measured it: rung
+// inflation on the exact axis asked about. Next-rung trigger: an observed per-evaluation CPU
+// measurement reaching this seam, at which point the arm becomes a candidate rejection carrying the
+// observed cost.
 
 fn eval_execution(state: AcceptanceRunState, claim: EvalClaim) -> AcceptanceRunState {
   match claim.budget {
@@ -873,7 +983,11 @@ fn target_compile_execution(
   }
 }
 
-data policy_precedence_note: String = "PRECEDENCE, STATED SO IT IS NOT REDISCOVERED FROM THE CODE. A block dominates everything: a stage whose prerequisite did not pass is IMPOSSIBLE, not merely unpaid for. Then the fail-fast skip, because the policy decides not to pay BEFORE any budget is consulted — reporting a budget refusal for work the policy had already declined would attribute our own choice to a resource we never spent. The budget check comes last, and only for work we actually intended to do."
+// PRECEDENCE, STATED SO IT IS NOT REDISCOVERED FROM THE CODE. A block dominates: a stage whose
+// prerequisite did not pass is IMPOSSIBLE, not merely unpaid for. Then the fail-fast skip, because
+// the policy declines BEFORE any budget is consulted — a budget refusal for declined work would
+// attribute our choice to a resource never spent. The budget check comes last, only for work we
+// intended to do.
 
 fn declined_reason(
   contract: DagAcceptanceContract,

@@ -117,7 +117,13 @@ fn symbol_color(id: SymbolId) -> SemanticColor? {
   }
 }
 
-data reward_animal_note: String = "The reward animal shown on a terminal success lands as ROWS in the one glyph authority, never as a hardcoded function in a renderer — the reference implementation studied for this lane keeps its emoji table mirrored by hand between Go and shell, which is the maintained dual representation we are here to not have. Selection is DETERMINISTIC: the index is derived from the run's own identity, so replaying a captured run reproduces its animal exactly and the event stream stays replayable by construction. A random draw would make the stream unreplayable and would be a non-determinism root of precisely the kind the determinism gate walls."
+// The reward animal shown on a terminal success lands as ROWS in the one glyph authority, never as
+// a hardcoded function in a renderer — the reference implementation studied for this lane keeps its
+// emoji table mirrored by hand between Go and shell, which is the maintained dual representation we
+// are here to not have. Selection is DETERMINISTIC: the index is derived from the run's own
+// identity, so replaying a captured run reproduces its animal exactly and the event stream stays
+// replayable by construction. A random draw would make the stream unreplayable and would be a
+// non-determinism root of precisely the kind the determinism gate walls.
 
 data reward_animals: List<TierGlyphs> = [
   glyphs_for_tiers(emoji: glyph(text: "🦦"), unicode: glyph(text: "✦"), ascii: glyph(text: "otter")),

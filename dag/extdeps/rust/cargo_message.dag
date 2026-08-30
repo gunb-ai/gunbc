@@ -43,11 +43,39 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
   further_citations: [extdeps.cargo_build.extdeps_external_authority_anchor]
 }
 
-data cargo_message_subject_note: String = "WHY THIS MODULE EXISTS, stated as the defect it closes rather than the feature it adds. service cargo.Build in extdeps.cargo_build reports exactly three outputs on every operation — success, stdout, stderr — and none of them reports the PATH of the artifact the build produced. A consumer that needs the built binary therefore has to assemble the path by convention (target dir, profile, binary name), and a stale binary sitting at that conventional location satisfies the observation completely: the digest downstream would be honestly computed over real bytes that are the wrong bytes, with nothing in the chain able to tell. Cargo will name the artifact itself if asked, which is what --message-format=json is for, so the honest route is to read the path cargo REPORTED rather than the path we predicted. This module owns that reading; extdeps.cargo_build owns the invocation shape."
+// WHY THIS MODULE EXISTS, stated as the defect it closes rather than the feature it adds. service
+// cargo.Build in extdeps.cargo_build reports exactly three outputs on every operation — success,
+// stdout, stderr — and none of them reports the PATH of the artifact the build produced. A consumer
+// that needs the built binary therefore has to assemble the path by convention (target dir,
+// profile, binary name), and a stale binary sitting at that conventional location satisfies the
+// observation completely: the digest downstream would be honestly computed over real bytes that are
+// the wrong bytes, with nothing in the chain able to tell. Cargo will name the artifact itself if
+// asked, which is what --message-format=json is for, so the honest route is to read the path cargo
+// REPORTED rather than the path we predicted. This module owns that reading; extdeps.cargo_build
+// owns the invocation shape.
 
-data cargo_message_boundary_note: String = "SCOPE, deliberately narrow. This decodes ONE fact out of cargo's message stream: which executable a named target produced. It is not a general cargo-message model — compiler-message diagnostics, build-script-executed, and the timing messages are all skipped as OTHER REASONS rather than modeled, because a consumer that needs them should model them under its own subject instead of widening this one. What is NOT skipped is a line this module cannot understand at all: an unparseable line, a line that is not an object, a message carrying no reason, or a reason that is not a string each REFUSE the whole decode rather than being passed over. That asymmetry is the point — skipping a message whose reason we read and recognized is a decision, skipping a line we could not read is an absorbing fallback, and the second one is how a drifted or truncated stream reads as a clean build with no artifact."
+// SCOPE, deliberately narrow. This decodes ONE fact out of cargo's message stream: which executable
+// a named target produced. It is not a general cargo-message model — compiler-message diagnostics,
+// build-script-executed, and the timing messages are all skipped as OTHER REASONS rather than
+// modeled, because a consumer that needs them should model them under its own subject instead of
+// widening this one. What is NOT skipped is a line this module cannot understand at all: an
+// unparseable line, a line that is not an object, a message carrying no reason, or a reason that is
+// not a string each REFUSE the whole decode rather than being passed over. That asymmetry is the
+// point — skipping a message whose reason we read and recognized is a decision, skipping a line we
+// could not read is an absorbing fallback, and the second one is how a drifted or truncated stream
+// reads as a clean build with no artifact.
 
-data cargo_message_scan_not_fragment_note: String = "The scan parses each line with the shared RFC 8259 parser and looks members up by NAME, rather than searching the raw text for a reason or executable fragment. The distinction is load-bearing and the corpus has already paid for learning it: gunbc.roadmap_provider_events documents a fragment scan that let an agent message quoting a type token reclassify a pane, and repaired it to an anchored walk. A member-name lookup is stronger than an anchored walk here because it does not depend on cargo emitting members in any particular order — cargo documents the members a message carries, not their order, so a position-anchored read would be correct only by accident and would drift silently. Member lookup routes through json_object_unique_member, which reports a DUPLICATED member as its own outcome instead of resolving last-wins; on an identity field like reason or executable, last-wins is precisely how a stream carrying two values reads as whichever one was written second."
+// The scan parses each line with the shared RFC 8259 parser and looks members up by NAME, rather
+// than searching the raw text for a reason or executable fragment. The distinction is load-bearing
+// and the corpus has already paid for learning it: gunbc.roadmap_provider_events documents a
+// fragment scan that let an agent message quoting a type token reclassify a pane, and repaired it
+// to an anchored walk. A member-name lookup is stronger than an anchored walk here because it does
+// not depend on cargo emitting members in any particular order — cargo documents the members a
+// message carries, not their order, so a position-anchored read would be correct only by accident
+// and would drift silently. Member lookup routes through json_object_unique_member, which reports a
+// DUPLICATED member as its own outcome instead of resolving last-wins; on an identity field like
+// reason or executable, last-wins is precisely how a stream carrying two values reads as whichever
+// one was written second.
 
 data cargo_artifact_reason: String = "compiler-artifact"
 data cargo_message_reason_member: String = "reason"

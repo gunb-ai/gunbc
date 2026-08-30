@@ -153,9 +153,9 @@ test fn row_references_are_the_commits_intrinsic_keys() -> Bool {
 // THE DUPLICATE-ROOT CASE, WHICH IS WHY THE REFERENCE IS DERIVED FROM POSITION RATHER THAN BY
 // LOOKING THE ROOT UP. repository_envelope's header states that two commits may share a root and
 // differ only in message -- they name the same program, "which is the point of content addressing
-// and not a collision". An identity lookup answers the FIRST match, so both rows would advertise the
-// first row's reference and the second commit would be unreachable through the identifier its own
-// row carries.
+// and not a collision". An identity lookup answers the FIRST match, so both rows would advertise
+// the first row's reference and the second commit would be unreachable through its own row's
+// identifier.
 test fn two_commits_sharing_a_root_still_get_distinct_references() -> Bool {
   let a = log_witness_store_one(store: empty_store(), name: ^shared)
   let first = log_witness_mint(repo: log_witness_empty(store: a.store), root: a.identity, message: "relabelled once", parent: none)
