@@ -11983,11 +11983,12 @@ fn rust_operand_realization(operand: Node, scope: InferScope) -> OperandRealizat
 // v1_item_alias_hop_type_exprs). The seed's own semver and unicode modules compare NonEmptyStr and
 // add to Char; without the hop those were refused as structural. Fuel bounds an alias chain; a
 // chain longer than it is judged at its last declaration.
-// The resolver collapses a transparent primitive alias to its right-hand side's STRUCTURE under the
-// alias's identity (v1.compiler.resolve preserve_nominal_brand_on_resolve: `NonEmptyStr` resolves to a
-// childless `String` leaf that still names NonEmptyStr), so the resolved node is never an alias ITEM;
-// the structural fact is on the node itself: a NoConnective, childless leaf whose structural name is
-// a kernel type realizes as that kernel type on the host (structural_kernel_leaf below).
+// A `where`-refined declaration resolves to the parser's refinement wrapper -- a one-child Conj
+// carrying the predicate as its type_annotation (v1.compiler.parse try_where_clause), which is what
+// the operand's resolved node IS at these sites (measured under regen: Conj, one child, no inferred),
+// never an alias item. The type renderer already realizes such a node as its base
+// (render_rust_alias_rhs_type hops is_where_refinement_type to the first child), so the operand
+// decision hops the same way, resolving the base through the env as where_refinement_chain does.
 fn rust_operand_realization_of_type(rt: Node, scope: InferScope, fuel: Int) -> OperandRealization {
   match type_reference_declaration_ref(n: rt, source_indices: scope.type_env.source_indices, env: scope.type_env) {
     Absent => OperandIdentityUnavailable
@@ -11999,9 +12000,16 @@ fn rust_operand_realization_of_type(rt: Node, scope: InferScope, fuel: Int) -> O
           Present { value: Resolved { node: r } } => r
           _ => rt
         }
-        let structural_kernel_leaf = rt.connective == NoConnective && rt.children |> count == 0 && is_kernel_type(name: qualified_last_segment(name: rt.name))
-        if structural_kernel_leaf {
-          HostNumericOperand
+        if fuel > 0 && is_where_refinement_type(ty: rt) {
+          match rt.children |> first {
+            Present { value: base } =>
+              let base_resolved = match lookup_type_for(env: scope.type_env, node: base) {
+                Present { value: r } => r
+                Absent => base
+              }
+              rust_operand_realization_of_type(rt: base_resolved, scope: scope, fuel: fuel - 1)
+            Absent => StructuralOperand { declaration: d }
+          }
         } else if fuel > 0 && is_type_alias_item(item: decl, source_indices: scope.type_env.source_indices) {
           rust_operand_realization_of_type(rt: resolved_type(n: decl), scope: scope, fuel: fuel - 1)
         } else {
@@ -12023,7 +12031,7 @@ fn rust_operand_shape_facts(operand: Node, scope: InferScope) -> String {
     " decl.name=", decl.name, " decl.authored=", authored_name_at(source_indices: scope.type_env.source_indices, node: decl),
     " decl.conn=", if decl.connective == NoConnective { "none" } else { "some" },
     " decl.children=", to_string(value: decl.children |> count), " decl.inferred=", if decl.inferred == none { "absent" } else { "present" },
-    " decl.params=", to_string(value: decl.params |> count), " alias_item=", if is_type_alias_item(item: decl, source_indices: scope.type_env.source_indices) { "yes" } else { "no" }
+    " decl.params=", to_string(value: decl.params |> count), " rt.type_annotation=", if rt.type_annotation == none { "absent" } else { "present" }, " where_refinement=", if is_where_refinement_type(ty: rt) { "yes" } else { "no" }, " alias_item=", if is_type_alias_item(item: decl, source_indices: scope.type_env.source_indices) { "yes" } else { "no" }
   )
 }
 
