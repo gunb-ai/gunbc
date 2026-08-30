@@ -7,29 +7,30 @@ import std.decl_ref { DeclarationRef, decl_ref }
 //
 // Capacity has classes. Customer execution -- CI, agent tasks, batch -- is offerable. Control plane
 // -- scheduler, reconciliation, admission, receipts -- is not: if control capacity appears as
-// available vCPU, available RAM, or a cheap slot, the allocator can schedule customer work onto the
-// resources that run the allocator. Nothing in the fabric supply model expresses that distinction,
-// so nothing refuses it.
+// available vCPU, RAM, or a cheap slot, the allocator can schedule customer work onto the resources
+// that run the allocator. Nothing in the fabric supply model expresses that distinction, so
+// nothing refuses it.
 //
 // WHAT MAKES THIS A FINDING RATHER THAN A PREFERENCE is that the protection appears to exist and
 // does not reach. gunbc.fabric_control_plane_charge is real, host-parametric, and CHARGED: on the
-// owned fleet a control-plane resident is SUBTRACTED from what a host can commit, which is exactly
-// why control capacity never becomes offerable there. That mechanism is host-budget arithmetic and
-// it lives entirely on the fleet side. An Offer is a product-side record. Nothing joins them.
+// owned fleet a control-plane resident is SUBTRACTED from what a host can commit, which is why
+// control capacity never becomes offerable there. That is host-budget arithmetic living entirely
+// on the fleet side. An Offer is a product-side record. Nothing joins them.
 //
 // So the protection does not WEAKEN at the external-supplier seam -- it was never present on that
-// side of it. Reading "control-plane capacity is charged" as a property of the fabric is the
+// side. Reading "control-plane capacity is charged" as a property of the fabric is the
 // authority-substitution failure: the fact lives in gunbc.fleet_host_budget, the operation is
 // governed by product.fabric.supply, and no carrier claims the arrow between them.
-data fabric_capacity_class_gap_note: String = "Measured gap: the fabric supply model has no capacity class, so nothing structurally prevents control-plane capacity from being offered as customer-executable supply. The fleet-side charge that protects the owned fleet has no product-side reach."
+// Measured gap: the fabric supply model has no capacity class, so nothing structurally prevents
+// control-plane capacity from being offered as customer-executable supply. The fleet-side charge
+// protecting the owned fleet has no product-side reach.
 
 // EACH MEASUREMENT NAMES THE TREE IT WAS TAKEN AGAINST, BECAUSE THE OFFER RECORD IS MOVING.
 //
-// The Offer field census below was taken on the fabric/isolation-model head (gunbc#8981), which is
-// the WIDEST that record has ever been -- it adds isolation to the fields main carries. Measuring
-// the narrower record on main and reporting "no capacity class" would have been true of a smaller
-// surface and would have invited the reply that the field landed since. Naming the base makes the
-// measurement re-runnable rather than merely asserted.
+// The Offer field census below was taken on the fabric/isolation-model head (gunbc#8981), the
+// WIDEST that record has ever been -- it adds isolation to the fields main carries. Measuring the
+// narrower record on main would have been true of a smaller surface and invited the reply that the
+// field landed since. Naming the base makes the measurement re-runnable rather than asserted.
 data fabric_capacity_class_measurement_base: String = "gunbc#8981 head (fabric/isolation-model), the widest the Offer record has been; main carries a strict subset of these fields"
 
 type CapacityClassEvidence
@@ -49,11 +50,10 @@ type CapacityClassEvidence
       unreached_layer: NonEmptyStr
     }
 
-// MEASUREMENT ONE. The vocabulary a capacity class would have to be spelled in appears nowhere in
-// the supply model. The single hit is the word "customer" inside a prose comment about displacement
-// -- prose, not a declaration -- which is recorded rather than rounded to zero, because "one hit,
-// and here is why it does not count" is a stronger claim than "no hits" and survives someone
-// re-running the grep.
+// MEASUREMENT ONE. The vocabulary a capacity class would be spelled in appears nowhere in the
+// supply model. The single hit is the word "customer" inside a prose comment about displacement --
+// prose, not a declaration -- recorded rather than rounded to zero, because "one hit, and why it
+// does not count" is a stronger claim than "no hits" and survives someone re-running the grep.
 data no_class_carrier: CapacityClassEvidence = NoClassCarrierAnywhere {
   searched_modules: [
     decl_ref(module_path: "product.fabric.supply", decl_name: "Offer"),
@@ -66,9 +66,9 @@ data no_class_carrier: CapacityClassEvidence = NoClassCarrierAnywhere {
 }
 
 // MEASUREMENT TWO. The one field shaped like it could hold the distinction cannot hold it as a
-// fact. This is the measurement that makes the gap worse than an absence: a branded string can be
-// made to carry the class by convention, and a convention READS AS COVERAGE while being
-// unenforceable. Absence is at least visible.
+// fact. This makes the gap worse than an absence: a branded string can carry the class by
+// convention, and a convention READS AS COVERAGE while being unenforceable. Absence is at least
+// visible.
 data plausible_carrier_is_untyped: CapacityClassEvidence = PlausibleCarrierIsUntyped {
   carrier: decl_ref(module_path: "product.fabric.work", decl_name: "TrustDomainRef"),
   representation: "NonEmptyStr where brand" as NonEmptyStr,
@@ -95,16 +95,15 @@ data fabric_capacity_class_evidence: List<CapacityClassEvidence> = [
 //
 // Ruled by the product-direction lane 2026-08-23: THE CLASS GOES ON THE WORK, NOT THE OFFER.
 //
-// An offer is a thing a SUPPLIER SAYS ABOUT CAPACITY. Putting the class there asks the party with
-// the least knowledge and the most incentive to say yes to make the safety assertion, and a
-// supplier that simply omits the field is admitted -- the fail-open arm in its purest form. It is
-// also unfalsifiable from this side: we cannot check a claim about the nature of someone else's
-// machine.
+// An offer is what a SUPPLIER SAYS ABOUT CAPACITY. Putting the class there asks the party with the
+// least knowledge and the most incentive to say yes to make the safety assertion, and a supplier
+// that omits the field is admitted -- the fail-open arm in its purest form. It is also
+// unfalsifiable from this side: we cannot check a claim about someone else's machine.
 //
-// The work side is where the fact's authority already is. We know whether a unit of demand is
-// scheduler, reconciliation, admission or receipt work, because we originated it. Shape already
-// carries hard requirements and an envelope, so a capacity class beside them makes "the allocator
-// consumed the allocator" a MATCHING REFUSAL rather than a policy someone remembered to apply.
+// The work side already holds the fact's authority: we know whether a unit of demand is scheduler,
+// reconciliation, admission or receipt work, because we originated it. Shape already carries hard
+// requirements and an envelope, so a capacity class beside them makes "the allocator consumed the
+// allocator" a MATCHING REFUSAL rather than a policy someone remembered to apply.
 type CapacityClassRemedy
   = ClassOnWorkShape { rationale: NonEmptyStr }
   | ClassOnSupplierOffer { rationale: NonEmptyStr }
@@ -133,45 +132,46 @@ data capacity_class_refused_remedies: List<CapacityClassRemedy> = [
 
 // WHAT THIS CARRIER DOES AND DOES NOT ASSERT.
 //
-// It records three executed measurements and the ruling that followed them. It does NOT assert that
-// the class has been modeled, that any refusal exists, or that any offer is currently being checked
-// against one. Nothing in this module is consumed by admission, and that is the honest state: the
-// gap is open, and this is the row that keeps it countable rather than rediscovered.
+// It records three executed measurements and the ruling that followed. It does NOT assert that the
+// class has been modeled, that any refusal exists, or that any offer is checked against one.
+// Nothing here is consumed by admission: the gap is open, and this row keeps it countable rather
+// than rediscovered.
 //
-// RUNG: this class sits BELOW mitigatable, because there is no failure to contain -- the invalid
-// state is simply representable and unremarked. It is not on the ladder yet. Its next-rung trigger
-// is the ruled remedy landing on Shape, at which point it becomes a matching refusal and can be
-// measured as one. Recorded here rather than left to be rediscovered, per §4b(2): the difference
-// between "cannot climb" and "can climb now but unbuilt" is the whole point of naming the trigger.
+// RUNG: BELOW mitigatable, because there is no failure to contain -- the invalid state is simply
+// representable and unremarked. It is not on the ladder yet. Its next-rung trigger is the ruled
+// remedy landing on Shape, at which point it becomes a matching refusal and can be measured as one.
+// Recorded per §4b(2): the difference between "cannot climb" and "can climb now but unbuilt" is the
+// whole point of naming the trigger.
 // THE CITATIONS IN THIS MODULE WERE NOT CHECKED BY ANYTHING, AND THEY NOW ARE. The measurement
-// below is kept because it was taken rather than assumed, and because the state it found is the
-// exact gap that closed: as of 2026-08-25 `v1_compiler.declaration_index` resolves EVERY authored
+// below is kept because it was taken rather than assumed, and the state it found is the exact gap
+// that closed: as of 2026-08-25 `v1_compiler.declaration_index` resolves EVERY authored
 // `DeclarationRef` in a non-fixture module inside the parse phase of `--required-ci`, so the eight
-// above are enrolled and a stale citation here now stops the line. Read what follows as the
-// account of a closed gap, not a live one -- this heading asserted the opposite in the present
-// tense until 2026-08-26.
+// above are enrolled and a stale citation here stops the line. What follows is the account of a
+// closed gap, not a live one -- this heading asserted the opposite in the present tense until
+// 2026-08-26.
 //
-// The eight DeclarationRefs above look like the ones the cited-symbol gate enforces. They are not.
-// Replacing "TrustDomainRef" with a fabricated name and re-running --required-cited-symbol
+// The eight DeclarationRefs above look like the ones the cited-symbol gate enforces. They were
+// not. Replacing "TrustDomainRef" with a fabricated name and re-running --required-cited-symbol
 // REPORTED OK with checked=390, unchanged -- before and after this module gained an importing
-// witness. So a stale citation here would not be caught BY THAT CENSUS. Past tense as of
-// 2026-08-26: that flag and its census are deleted and the measurement cannot be re-taken through
-// them. What replaced them does not share the limitation that made this measurement worth taking:
-// the declaration index enrolls by walking the `Node` tree for `DeclarationRef` literals rather
-// than from a hand-named carrier population, so a module cannot be outside it by omission.
+// witness. So a stale citation here was not caught BY THAT CENSUS. Past tense as of 2026-08-26:
+// that flag and its census are deleted and the measurement cannot be re-taken through them. The
+// replacement does not share the limitation: the declaration index enrolls by walking the `Node`
+// tree for `DeclarationRef` literals rather than from a hand-named carrier population, so a
+// module cannot be outside it by omission.
 //
-// THIS IS A DECLARED SCOPE, NOT A DEFECT, and saying so is the point of writing it down. The lens's
-// own law states its population: every DeclarationRef enrolled in
-// hand_authored_production_doc_declaration_refs, "structural, not corpus text scan" -- the doc
-// graph's binds, which is exactly why a stale ref in gunbc.doc_graph_roots IS refused. Its declared
-// dissolve-on already names this: enrollment widens to every structural DeclarationRef carrier when
-// the Node-tree reader lands.
+// THIS IS A DECLARED SCOPE, NOT A DEFECT. The lens's own law states its population: every
+// DeclarationRef enrolled in hand_authored_production_doc_declaration_refs, "structural, not
+// corpus text scan" -- the doc graph's binds, which is why a stale ref in gunbc.doc_graph_roots IS
+// refused. Its declared dissolve-on already names this: enrollment widens to every structural
+// DeclarationRef carrier when the Node-tree reader lands.
 //
 // So the honest state for a reader of THIS module: its citations were verified once, by hand, at
-// authoring time, and nothing re-verifies them. That is strictly weaker than the gate a reader
-// would reasonably assume from seeing decl_ref used, and assuming it is the mistake this block
-// exists to prevent -- a citation that looks enforced and is not is worse than a plain string,
-// because the shape reads as coverage.
-data fabric_capacity_class_citation_coverage: String = "The DeclarationRefs in this module are OUTSIDE the cited-symbol lens population, which enrolls doc-graph binds rather than every carrier. Measured: a fabricated decl_name here leaves the gate green at checked=390. Verified by hand at authoring; nothing re-verifies. Closes when the lens's declared dissolve-on lands (enrollment widens to every structural DeclarationRef carrier)."
+// authoring time, and nothing re-verified them -- strictly weaker than the gate a reader would
+// assume from seeing decl_ref used. A citation that looks enforced and is not is worse than a
+// plain string, because the shape reads as coverage.
+// The DeclarationRefs in this module are OUTSIDE the cited-symbol lens population, which enrolls
+// doc-graph binds rather than every carrier. Measured: a fabricated decl_name here leaves the gate
+// green at checked=390. Verified by hand at authoring; nothing re-verifies. Closes when the lens's
+// declared dissolve-on lands (enrollment widens to every structural DeclarationRef carrier).
 
 data fabric_capacity_class_next_rung_trigger: String = "a capacity class on product.fabric.work Shape, making control-plane demand a matching refusal rather than an unexpressed distinction; until then this class is not on the guarantee ladder at all"

@@ -66,7 +66,12 @@ import extdeps.git {
   TwoDot
 }
 
-data repo_atlas_witness_note: String = "THE FIXTURES ARE AUTHORED, THE POPULATIONS ARE CONTROLLED, AND THE ORACLES ARE INDEPENDENT OF THE MEASUREMENT. Every count asserted below comes from a planted input — one planted collision, one path planted at two modules, one departed path — not from measuring the live tree and pinning what it happened to say (DESIGN 5, the test-oracle ruling). The live corpus appears in exactly one claim, and there the subject IS the live population's breadth, which is the one case that ruling admits."
+// THE FIXTURES ARE AUTHORED, THE POPULATIONS ARE CONTROLLED, AND THE ORACLES ARE INDEPENDENT OF THE
+// MEASUREMENT. Every count asserted below comes from a planted input — one planted collision, one
+// path planted at two modules, one departed path — not from measuring the live tree and pinning
+// what it happened to say (DESIGN 5, the test-oracle ruling). The live corpus appears in exactly
+// one claim, and there the subject IS the live population's breadth, which is the one case that
+// ruling admits.
 
 fn atlas_fixture_comparison() -> AtlasComparison {
   AtlasComparison { base: "HEAD^", head: "HEAD", relation: TwoDot }
@@ -104,7 +109,10 @@ test fn atlas_address_is_a_pure_function_of_identity() -> Bool {
   atlas_address_eq(a: once, b: twice)
 }
 
-data atlas_shuffle_note: String = "ACCEPTANCE 2. The same three identities in two different input orders must produce identical addresses. This is the discriminating claim for the whole stability property: a layout pass, a probing collision scheme, or any address that read the population would break here, and nothing else in the suite would notice."
+// ACCEPTANCE 2. The same three identities in two different input orders must produce identical
+// addresses. This is the discriminating claim for the whole stability property: a layout pass, a
+// probing collision scheme, or any address that read the population would break here, and nothing
+// else in the suite would notice.
 
 test fn atlas_address_is_invariant_under_input_order() -> Bool {
   let forward = map(
@@ -129,7 +137,11 @@ test fn atlas_address_is_invariant_under_input_order() -> Bool {
     && atlas_address_eq(a: g, b: atlas_address_of_module(identity: ModuleIdentity { name: "fixture.gamma" }))
 }
 
-data atlas_unrelated_addition_note: String = "ACCEPTANCE 3. Adding an unrelated module to the population must move no existing module. Asserted by computing an address from a one-module world and again from a three-module world: the address function never receives the population at all, so this holds by construction — and the claim exists so that a future refactor which STARTS passing the population reds here instead of silently re-addressing the atlas."
+// ACCEPTANCE 3. Adding an unrelated module to the population must move no existing module. Asserted
+// by computing an address from a one-module world and again from a three-module world: the address
+// function never receives the population at all, so this holds by construction — and the claim
+// exists so that a future refactor which STARTS passing the population reds here instead of
+// silently re-addressing the atlas.
 
 test fn adding_an_unrelated_module_moves_no_existing_module() -> Bool {
   let alone = atlas_address_of_module(identity: ModuleIdentity { name: "fixture.alpha" })
@@ -159,7 +171,12 @@ test fn two_distinct_identities_colliding_share_one_cell() -> Bool {
            && atlas_cell_occupant_count(cell: c) == 2)
 }
 
-data atlas_duplicate_fact_note: String = "THE SEPARATE DUPLICATE-FACT QUESTION, decided and recorded rather than left implicit. Two ModuleDeclarationFact rows naming the SAME ModuleIdentity are one semantic subject observed twice, not two subjects, so they must not raise a cell's occupant count and make the dot read denser. atlas_module_identities deduplicates by identity before cells are built, and this claim pins that: the same identity twice yields one occupant, while the two DISTINCT colliding identities above yield two."
+// THE SEPARATE DUPLICATE-FACT QUESTION, decided and recorded rather than left implicit. Two
+// ModuleDeclarationFact rows naming the SAME ModuleIdentity are one semantic subject observed
+// twice, not two subjects, so they must not raise a cell's occupant count and make the dot read
+// denser. atlas_module_identities deduplicates by identity before cells are built, and this claim
+// pins that: the same identity twice yields one occupant, while the two DISTINCT colliding
+// identities above yield two.
 
 test fn a_duplicated_module_fact_does_not_inflate_density() -> Bool {
   let dup_nodes = [
@@ -171,7 +188,9 @@ test fn a_duplicated_module_fact_does_not_inflate_density() -> Bool {
     && all(cells, c => atlas_cell_occupant_count(cell: c) == 1)
 }
 
-data atlas_not_observed_note: String = "THE ARM THAT WAS MISSING. An authored empty diff used to be indistinguishable from no comparison at all; both produced a projection with zero marks. These two claims assert the arms differ, which is the only way the page can honestly say changes not observed."
+// THE ARM THAT WAS MISSING. An authored empty diff used to be indistinguishable from no comparison
+// at all; both produced a projection with zero marks. These two claims assert the arms differ,
+// which is the only way the page can honestly say changes not observed.
 
 test fn no_observation_is_not_the_same_state_as_an_empty_comparison() -> Bool {
   let unobserved = atlas_change_overlay(
@@ -209,7 +228,8 @@ test fn an_unbound_head_refuses_the_overlay_with_a_located_cause() -> Bool {
   }
 }
 
-data atlas_comparison_identity_claim_note: String = "A projected overlay must carry the endpoints it was computed from, so the readout can print exact provenance rather than the phrase a named revision."
+// A projected overlay must carry the endpoints it was computed from, so the readout can print exact
+// provenance rather than the phrase a named revision.
 
 test fn a_projected_overlay_carries_its_comparison_endpoints() -> Bool {
   let overlay = atlas_change_overlay(
@@ -250,7 +270,8 @@ test fn every_address_falls_inside_the_ring_table() -> Bool {
   all(addresses, a => a.ring >= 0 && a.ring < 16 && a.slot >= 0)
 }
 
-data atlas_multi_seed_claim_note: String = "ACCEPTANCE 5. One changed path resolving to SEVERAL modules marks ALL of them. The pool plants two modules at one path; a first-wins projection would mark one and this reds."
+// ACCEPTANCE 5. One changed path resolving to SEVERAL modules marks ALL of them. The pool plants
+// two modules at one path; a first-wins projection would mark one and this reds.
 
 test fn one_path_resolving_to_several_modules_marks_all_of_them() -> Bool {
   let overlay = atlas_change_overlay(
@@ -269,7 +290,10 @@ test fn one_path_resolving_to_several_modules_marks_all_of_them() -> Bool {
   }
 }
 
-data atlas_departed_claim_note: String = "ACCEPTANCE 6. A deleted path, and a renamed entry's OLD path, are never resolved against the head. The renamed case is the sharper one: its new path legitimately projects while its old path must land in the readout, so a claim asserting only 'nothing was marked' would pass on a projection that dropped the rename entirely."
+// ACCEPTANCE 6. A deleted path, and a renamed entry's OLD path, are never resolved against the
+// head. The renamed case is the sharper one: its new path legitimately projects while its old path
+// must land in the readout, so a claim asserting only 'nothing was marked' would pass on a
+// projection that dropped the rename entirely.
 
 test fn a_deleted_path_is_never_resolved_against_the_head() -> Bool {
   let overlay = atlas_change_overlay(
@@ -337,7 +361,11 @@ test fn a_path_declaring_no_module_is_counted_not_dropped() -> Bool {
   }
 }
 
-data atlas_refusal_claim_note: String = "ACCEPTANCE 7. Each untrustworthy observation refuses the WHOLE overlay. Every claim below plants the bad entry BESIDE a good one, so a projection that dropped the bad entry and drew the rest would produce AtlasChangesProjected with one mark — visibly different from the refusal asserted here. Without the good neighbour these would pass against an implementation that simply produced an empty projection."
+// ACCEPTANCE 7. Each untrustworthy observation refuses the WHOLE overlay. Every claim below plants
+// the bad entry BESIDE a good one, so a projection that dropped the bad entry and drew the rest
+// would produce AtlasChangesProjected with one mark — visibly different from the refusal asserted
+// here. Without the good neighbour these would pass against an implementation that simply produced
+// an empty projection.
 
 test fn an_unmerged_entry_refuses_the_whole_overlay() -> Bool {
   let overlay = atlas_change_overlay(
@@ -413,7 +441,9 @@ test fn a_truncated_diff_observation_refuses_the_whole_overlay() -> Bool {
   }
 }
 
-data atlas_ordinary_statuses_note: String = "The refusal arms above are only honest if the ORDINARY statuses still project. Copied and type-changed are the two that carry no dedicated arm in the projection, so they are the ones a totality mistake would silently swallow."
+// The refusal arms above are only honest if the ORDINARY statuses still project. Copied and
+// type-changed are the two that carry no dedicated arm in the projection, so they are the ones a
+// totality mistake would silently swallow.
 
 test fn copied_and_type_changed_entries_still_project() -> Bool {
   let overlay = atlas_change_overlay(
@@ -437,9 +467,12 @@ test fn copied_and_type_changed_entries_still_project() -> Bool {
   }
 }
 
-data atlas_copied_source_note: String = "A COPIED entry's old_path still exists at head — the source was not removed — so it must NOT be reported as departed. The claim above asserts zero unprojected changes over a copy carrying an old_path, which is what discriminates 'has an old_path' from 'has a DEPARTED old_path'."
+// A COPIED entry's old_path still exists at head — the source was not removed — so it must NOT be
+// reported as departed. The claim above asserts zero unprojected changes over a copy carrying an
+// old_path, which is what discriminates 'has an old_path' from 'has a DEPARTED old_path'.
 
-data atlas_impact_claim_note: String = "ACCEPTANCE 8 and 9. No impact mark exists without a reading, and a provisional reading cannot present as exact."
+// ACCEPTANCE 8 and 9. No impact mark exists without a reading, and a provisional reading cannot
+// present as exact.
 
 fn atlas_fixture_reading(standing_is_exact: Bool) -> ImpactReading {
   ImpactReading {
@@ -472,7 +505,10 @@ test fn a_provisional_reading_cannot_render_as_exact() -> Bool {
     && atlas_impact_is_exact(overlay: exact)
 }
 
-data atlas_empty_reached_note: String = "The discriminating pair for the empty-observation narrow: a reading whose reached set is empty is NOT the same state as no reading at all. Both mark nothing, so a Bool-only consumer cannot tell them apart — which is exactly why the arms are distinct and why this claim asserts the ARM rather than the marking."
+// The discriminating pair for the empty-observation narrow: a reading whose reached set is empty is
+// NOT the same state as no reading at all. Both mark nothing, so a Bool-only consumer cannot tell
+// them apart — which is exactly why the arms are distinct and why this claim asserts the ARM rather
+// than the marking.
 
 test fn an_empty_reached_set_is_not_the_same_state_as_no_reading() -> Bool {
   let empty_reading = ImpactReading {
@@ -517,7 +553,9 @@ test fn a_snapshot_composes_the_four_facts_without_substitution() -> Bool {
   structure_present && changes_present && impact_absent
 }
 
-data atlas_refusal_does_not_erase_structure_note: String = "A refused change overlay must not take the STRUCTURE plane down with it. The four facts are independent, so an untrustworthy diff leaves the atlas drawable with no change marks — which is the honest presentation — rather than blanking the page."
+// A refused change overlay must not take the STRUCTURE plane down with it. The four facts are
+// independent, so an untrustworthy diff leaves the atlas drawable with no change marks — which is
+// the honest presentation — rather than blanking the page.
 
 test fn a_refused_overlay_leaves_the_structure_plane_intact() -> Bool {
   let snapshot = repo_atlas_snapshot(

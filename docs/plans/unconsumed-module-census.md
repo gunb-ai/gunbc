@@ -29,119 +29,107 @@ not residue.
 | — of those, **residue on every decoded surface** — what a deletion lane consumes (§4h) | **≤ 112** | DistinctModuleCount, `LowerBoundOnly` |
 
 **Every number in this table is a BOUND, not a measurement, and the inequality signs are
-load-bearing.** They are written into the cells because *a bounded number quoted without its
-boundary becomes an exact one in the next reader's hands* — which is exactly how **298**
-travelled out of this document and became a deletion list. 206 and 112 are `LowerBoundOnly`
-for the same reason 298 was, and the named blind surfaces (§2: dynamically composed argv,
-host-side invocation naming neither path nor module, an entry row declared inside an
-unreachable module, and the service-namespace credit of §2 defect 7(e)) can only move
-modules **out** of both. A later reader who decodes an eighth surface should expect these to
-fall again; that is the standing working, not the standing failing.
+load-bearing.** They sit in the cells because *a bounded number quoted without its boundary
+becomes an exact one in the next reader's hands* — which is how **298** left this document and
+became a deletion list. 206 and 112 are `LowerBoundOnly` for the same reason 298 was, and the
+named blind surfaces (§2: dynamically composed argv, host-side invocation naming neither path
+nor module, an entry row declared inside an unreachable module, and the service-namespace
+credit of §2 defect 7(e)) can only move modules **out** of both. A reader who decodes an
+eighth surface should expect both to fall again; that is the standing working, not failing.
 
-**The 298 is an over-count by at least 92 modules — roughly 31% — and the correction is
-concentrated in the batch this document proposed to delete first.** It is stated in the
-headline table rather than a footnote because the headline number is the one anyone acts on.
-**The two numbers answer different questions and must not be substituted for one another:**
-≤ 206 is the *unresolved population*, while ≤ 112 is what a deletion lane may actually
-consume — the 94-module difference is `AMBIGUOUS-SHARED-ONLY` plus `MISSING-FILE`, rows that
-are unresolved at identity grain rather than proven residue. See §2 defect 6 for the method
-and the buckets, and §4h for the residue list itself.
+**The 298 is an over-count by at least 92 modules — roughly 31% — concentrated in the batch
+this document proposed to delete first.** It is in the headline table because the headline
+number is the one anyone acts on. **The two numbers answer different questions and must not be
+substituted:** ≤ 206 is the *unresolved population*; ≤ 112 is what a deletion lane may
+actually consume — the 94-module difference is `AMBIGUOUS-SHARED-ONLY` plus `MISSING-FILE`,
+rows unresolved at identity grain rather than proven residue. Method and buckets: §2 defect 6;
+residue list: §4h.
 
-Every number in this document carries its unit, and two units are deliberately never
-interchangeable: a **DistinctFileCount** (how many files name a thing) and a
-**SourceOccurrenceCount** (how many times it is named). Reporting one as the other is what
-produced the false escalation in §4b, and the discipline is cheap: name the unit.
+Every number here carries its unit, and two are never interchangeable: a **DistinctFileCount**
+(how many files name a thing) and a **SourceOccurrenceCount** (how many times it is named).
+Reporting one as the other produced the false escalation in §4b; the discipline is cheap: name
+the unit.
 
-**298, not 337.** The inherited figure was an upper bound over a different question
-(*zero importers*), and it was correct to label it that way. Two independent corrections
-move it, in opposite directions, and they do not cancel:
+**298, not 337.** The inherited figure was an upper bound over a different question (*zero
+importers*), correctly labelled as such. Two independent corrections move it in opposite
+directions and do not cancel:
 
-- *Zero-importer is too narrow.* It cannot see an **island** — a cluster whose members
-  import each other and nothing outside imports any of them. `extdeps/colo/` is exactly
-  that: 18 of its 19 modules have zero importers, and the nineteenth (`extdeps.colo.types`)
-  has eighteen — all from inside the island. Reachability from roots catches all 19.
+- *Zero-importer is too narrow.* It cannot see an **island** — a cluster whose members import
+  each other and nothing outside imports any of them. `extdeps/colo/` is one: 18 of its 19
+  modules have zero importers, and the nineteenth (`extdeps.colo.types`) has eighteen, all
+  from inside the island. Reachability from roots catches all 19.
 - *Zero-importer is also too wide.* See the instrument defect in §2.
 
-Re-derived here from scratch; the inherited number was not reused for anything.
+Re-derived from scratch; the inherited number was not reused.
 
 ## 2. Instrument: the universe it decodes, and the defects found in building it
 
-**One cause produced most of what follows, and it is worth stating once instead of once
-per defect.** Every defect below except 1 and 4 has the same shape: *a conclusion was drawn
-without reading the surface that would settle it.* Defect 3 scored the accelerator family
-dead without reading qualified calls; defect 5 froze two `tools/` rows against a real
-re-add anchor without reading the `entry:` field surface, and ten more of that class turn
-out to be invoked (see the re-score below); defect 6 scored `module_refs` dead without
-reading bare-symbol resolution; defect 7 scored `pr_digests` dead without reading variant
-constructors, in an instrument built to catch exactly that. The sequencing inversion in §5 is the same failure applied
-to a decision rather than a measurement. **In every instance the reasoning was locally
-valid and the missing surface was the whole of the error**, which is why "was this
-argument sound" is the wrong review question here and "which surface settles this, and did
-you read it" is the right one.
+**One cause produced most of what follows.** Every defect below except 1 and 4 has the same
+shape: *a conclusion drawn without reading the surface that would settle it.* Defect 3 scored
+the accelerator family dead without reading qualified calls; defect 5 froze two `tools/` rows
+against a real re-add anchor without reading the `entry:` field surface, and ten more of that
+class turn out to be invoked (see the re-score below); defect 6 scored `module_refs` dead
+without reading bare-symbol resolution; defect 7 scored `pr_digests` dead without reading
+variant constructors, in an instrument built to catch exactly that. The sequencing inversion
+in §5 is the same failure applied to a decision. **In every instance the reasoning was locally
+valid and the missing surface was the whole error**, so the review question is not "was this
+argument sound" but "which surface settles this, and did you read it".
 
-**And the rule that catches all of it, which is stronger than any defect below:** *a
-control derived from the measurement it controls does not discriminate that measurement's
-blind spot.* Defect 7 was invisible to every counter this census produces — the reachable
-count and the CONSUMED-DECISIVE count both come from the instrument that had the defect, so
-they were structurally incapable of registering the case it could not see, and they read as
-reassurance *precisely because they stayed consistent*. What caught it was the **required
-floor**, an instrument that does not share the method: it refused a deletion with
-`unresolved type MergeReadinessVerdict`. A census's own numbers can never be its control;
-only an independent mechanism can.
+**The rule that catches all of it, stronger than any defect below:** *a control derived from
+the measurement it controls does not discriminate that measurement's blind spot.* Defect 7 was
+invisible to every counter this census produces — the reachable count and the
+CONSUMED-DECISIVE count both come from the defective instrument, so they could not register
+the case it could not see, and read as reassurance *precisely because they stayed consistent*.
+What caught it was the **required floor**, an instrument sharing no method: it refused a
+deletion with `unresolved type MergeReadinessVerdict`. A census's own numbers are never its
+control; only an independent mechanism is.
 
-**This rule is self-demonstrating twice over in its own filing, which is stated here rather
-than left for a reader to notice.** Defect 7 was checked against this census *only* because
-an independent instrument refused on a different branch — nothing in this document prompted
-it, and its counters had been stable across every revision. And the three further defects
-inside the fix for it (generic headers, multi-line variant records, `operation` declarations)
-were found by **hand-reading individual rows before publishing a number**; not one of them
-was surfaced by a counter, and the counters stayed consistent while all three were live. The
-practical form for anyone extending this document: **before you publish a count, read enough
-rows behind it to be wrong out loud** — and treat a number that has never disagreed with you
-as untested rather than confirmed.
+**This rule is self-demonstrating twice in its own filing.** Defect 7 was checked against this
+census *only* because an independent instrument refused on a different branch — nothing here
+prompted it, and the counters had been stable across every revision. And the three further
+defects inside its fix (generic headers, multi-line variant records, `operation` declarations)
+were found by **hand-reading individual rows before publishing a number**; no counter surfaced
+any of them, and the counters stayed consistent while all three were live. For anyone
+extending this document: **before publishing a count, read enough rows behind it to be wrong
+out loud** — and treat a number that has never disagreed with you as untested, not confirmed.
 
-A corollary, because it governs how this document should be read rather than how it was
-built: **where a confidence label and an explicit standing disagree, the standing
-governs.** `RESIDUE-UNMENTIONED` reads as strong evidence of deadness; §6's
-`LowerBoundOnly` says no class in this population is blind-spot-free. The label was
-attached to the thing being sequenced and the standing sat three sections away, so the
-label won and 13 live-called modules went into the lead deletion slot. A sequencing
-decision that cites a class name rather than the standing is unevidenced no matter how
-reasonable the name sounds.
+A corollary governing how this document is read: **where a confidence label and an explicit
+standing disagree, the standing governs.** `RESIDUE-UNMENTIONED` reads as strong evidence of
+deadness; §6's `LowerBoundOnly` says no class in this population is blind-spot-free. The label
+sat on the thing being sequenced and the standing three sections away, so the label won and 13
+live-called modules went into the lead deletion slot. A sequencing decision citing a class
+name rather than the standing is unevidenced however reasonable the name sounds.
 
-The same disease appears one level down, in the mechanism layer rather than the prose
-layer, and it is what made finding **f** plausible: **a name that implies enrolment while
-the mechanism keys on something else.** Floor discovery keys on the **file suffix**; 200
-modules are *named* `v2.test.*` without it, and 198 of them declare no test at all (§4h).
-The name asserts a test-hood nothing grants. Both corollaries are one rule — a word doing
-work only a mechanism can do — and the second is self-demonstrating, because this census
-read those names as enrolment until the suffix was checked.
+The same disease one level down, in the mechanism layer, is what made finding **f** plausible:
+**a name that implies enrolment while the mechanism keys on something else.** Floor discovery
+keys on the **file suffix**; 200 modules are *named* `v2.test.*` without it, and 198 declare
+no test at all (§4h). The name asserts a test-hood nothing grants. Both corollaries are one
+rule — a word doing work only a mechanism can do — and the second is self-demonstrating: this
+census read those names as enrolment until the suffix was checked.
 
-**That rule has three independent sightings, which is what makes it a pattern rather than
-an anecdote**, and they were found by three different lanes on one night:
+**That rule has three independent sightings, which makes it a pattern**, found by three lanes
+on one night:
 
 1. **200 modules named `v2.test.*`** whose file is not `_test.dag`, of which 2 declare a
    test (§4h). Named as tests, discovered as nothing.
 2. **`commit_closure_round_trip_probe`** (§4g): a carrier claiming its persistence is
-   *"verified by direct execution"* while the probe it names **is enrolled nowhere and
-   nothing executes it** — a §4b rung-honesty defect, volunteered by the module's own
-   author rather than found by any census.
+   *"verified by direct execution"* while the probe it names **is enrolled nowhere and nothing
+   executes it** — a §4b rung-honesty defect, volunteered by the module's own author, not
+   found by any census.
 3. **Vacuous witnesses** in the `spark` lane, reported separately.
 
-The variation across the three is worth naming, because it says where to look next: the
-unread surface is **discovery** in (1), **enrolment** in (2), and **assertion content** in
-(3). Same shape, three different mechanisms, and none of the three could be refused by
-anything — which is precisely why each survived. **A claim that no mechanism can refuse is
-not evidence, whatever it asserts about itself.**
+The variation says where to look next: the unread surface is **discovery** in (1),
+**enrolment** in (2), and **assertion content** in (3). Same shape, three mechanisms, and
+nothing could refuse any of them — which is why each survived. **A claim that no mechanism can
+refuse is not evidence, whatever it asserts about itself.**
 
-Attribution matters here, because a lesson that reads as one session's mistakes gets
-discounted. **Defects 1 and 2 were the dispatching lane's, self-reported** in the brief
-that commissioned this census. **Defect 3 was in both instruments** — theirs and this
-one's first pass. **Defects 4 and 5 were this census's own**, and neither was caught by
-its author: 4 by review of the first revision, after it had already produced a false
-escalation (§4b), and 5 by an architecture ruling that asked which call surfaces the
-number covered. Two of five were found by the measurer; three were found by someone
-reading the measurement.
+Attribution, because a lesson read as one session's mistakes gets discounted: **defects 1 and
+2 were the dispatching lane's, self-reported** in the brief that commissioned this census.
+**Defect 3 was in both instruments** — theirs and this one's first pass. **Defects 4 and 5
+were this census's own**, neither caught by its author: 4 by review of the first revision,
+after it had produced a false escalation (§4b); 5 by an architecture ruling asking which call
+surfaces the number covered. Two of five found by the measurer; three by someone reading the
+measurement.
 
 1. **Module name is not derivable from the path.** Names come from the declared `module`
    line. All 3816 files carry one (checked; zero missing).
@@ -155,87 +143,82 @@ reading the measurement.
    `dag/test/claim/accelerator_demo_gpu_witness_test.dag` calls
    `gunbc.accelerator_demo_gpu.witness_m5_gpu_execution_lane_count_grounded()` and never
    imports the module. An import-line census scores that module dead. Adding
-   qualified-reference edges (over string- and annotation-stripped source, so prose
-   mentions do not create false edges) moved the population 333 → 303 and returned the
-   whole `gunbc.accelerator_demo_*` family to *reachable*. **Any earlier orphan number in
-   this repo built from import lines alone over-reports by roughly 10%.**
+   qualified-reference edges (over string- and annotation-stripped source, so prose mentions
+   create no false edges) moved the population 333 → 303 and returned the whole
+   `gunbc.accelerator_demo_*` family to *reachable*. **Any earlier orphan number in this repo
+   built from import lines alone over-reports by roughly 10%.**
 
-**No instrument is committed with this document, deliberately.** A hand-authored census
-script beside a substrate that already reads the module graph is the §6 manual-application
-tell — the durable form is a lens over the same `Node` tree, and that is a separate,
-larger piece of work than this census. The method above is stated at the grain needed to
-re-derive the population independently, and §2's three defects are what a re-derivation
-must reproduce to agree.
+**No instrument is committed with this document, deliberately.** A hand-authored census script
+beside a substrate that already reads the module graph is the §6 manual-application tell — the
+durable form is a lens over the same `Node` tree, a separate, larger piece of work. The method
+is stated at the grain needed to re-derive the population independently, and §2's three
+defects are what a re-derivation must reproduce to agree.
 
-4. **NEW — a bare substring is not a reference, and one module name is a suffix of
-   another.** `v2.std.verification` *contains* `std.verification`. A substring mention
-   scan therefore reported `std.verification` as cited by 128 files; boundary-anchored
-   (not preceded by `[A-Za-z0-9_.]`, not followed by an identifier character) the true
-   count is **6 occurrences, one of which is the module's own `module` line**. This is the
-   same class as defect 3 from the other side — an instrument reading text where it should
-   read structure — and it was caught by review, not by me. Every mention count in §3 and
-   §6 is boundary-anchored; the census document itself is excluded from its own scan, which
-   is not pedantry: including it silently reclassified 40 rows out of RESIDUE-UNMENTIONED
-   by naming them. **Rule for whoever measures next: never a bare substring for a module
-   name.** Re-measuring the whole population this way moved only 4 rows, so the class was
-   narrow — but it was fatal on exactly the row the census had escalated.
+4. **NEW — a bare substring is not a reference, and one module name is a suffix of another.**
+   `v2.std.verification` *contains* `std.verification`, so a substring scan reported
+   `std.verification` as cited by 128 files; boundary-anchored (not preceded by
+   `[A-Za-z0-9_.]`, not followed by an identifier character) the true count is **6
+   occurrences, one of which is the module's own `module` line**. Same class as defect 3 from
+   the other side — an instrument reading text where it should read structure — and caught by
+   review, not by me. Every mention count in §3 and §6 is boundary-anchored; the census
+   document is excluded from its own scan, which is not pedantry: including it silently
+   reclassified 40 rows out of RESIDUE-UNMENTIONED by naming them. **Rule for whoever measures
+   next: never a bare substring for a module name.** Re-measuring the whole population this
+   way moved only 4 rows — a narrow class, but fatal on exactly the row the census had
+   escalated.
 
 5. **NEW — an entry row is not always spelled `--entry`.** The first revision decoded argv
-   `--entry` and a narrow `entry_file` form. It did not decode the `entry: "dag/…"` /
-   `<name>_entry_file: String = "…"` field rows that `gunbc.ci_spec` and the emitted
-   workflows actually use — 764 SourceOccurrenceCount of that shape against 116 of the
-   argv shape, so the undecoded surface was the *larger* one. Decoding it moved the
-   population 303 → 298 and returned three modules to consumed, two of which this document
-   had classified FROZEN-PENDING-RE-ADD on the strength of a re-add anchor:
-   `tools.floor_effect_gate_witness` and `tools.ci_heal_dispatch` are not frozen, they are
-   **invoked**. A carve-out argued from a named anchor was still wrong, because the
-   instrument had not looked at the surface that would have settled it.
+   `--entry` and a narrow `entry_file` form, not the `entry: "dag/…"` / `<name>_entry_file:
+   String = "…"` field rows that `gunbc.ci_spec` and the emitted workflows actually use — 764
+   SourceOccurrenceCount of that shape against 116 of the argv shape, so the undecoded surface
+   was the *larger* one. Decoding it moved the population 303 → 298 and returned three modules
+   to consumed, two of which this document had classified FROZEN-PENDING-RE-ADD on the
+   strength of a re-add anchor: `tools.floor_effect_gate_witness` and `tools.ci_heal_dispatch`
+   are not frozen, they are **invoked**. A carve-out argued from a named anchor was still
+   wrong, because the instrument had not read the settling surface.
 
 6. **NEW — whole-pool unqualified resolution is consumption with neither an import nor a
-   qualified name.** v2 resolves a bare symbol against the **whole module pool**, not
-   against a containment scope, so a consumer may use a declaration while naming neither
-   the declaring module nor its file. `src/v2/lens/extdeps_shape_transport_policy/`
-   `module_refs.dag` is the worked case: **26 consumer files, all of them floor-discovered
-   `*_test.dag`, and all 26 name neither `v2.lens.extdeps_shape_transport_policy.module_refs`
-   nor its path** — they write `extdeps_cargo_build_module` bare and the resolver finds it.
-   All 9 of the module's declarations are consumed this way. **Scope of that 26, stated
-   because a narrower probe gets a smaller number and the two must not be reconciled by
-   splitting the difference:** it counts consumers of *any* of the module's 9 declarations.
-   A probe of the single symbol `extdeps_cargo_build_module` returns **13 consumer files,
-   none of which names the module or the path**. Both figures are correct at their own
-   scope; the class is identical either way. *One caveat, because it recurred here:* run
-   that probe after this document names the module and it returns 14 with 1 naming it —
-   the fourteenth is **this file**. §2's defect 4 already set the rule (the census is
-   excluded from its own scan); it is repeated at the receipt because the contamination
-   arrives the moment the finding is written down, not when it is measured. This class is invisible to a
-   module-name surface and a file-path surface **by construction**, not by an oversight in
-   either: neither string occurs in any consumer. Defect 3 is its near neighbour and does
-   not cover it — a qualified call at least spells the module name, which is exactly what
-   makes defect 3 detectable by a name scan and this one not.
+   qualified name.** v2 resolves a bare symbol against the **whole module pool**, not a
+   containment scope, so a consumer may use a declaration while naming neither the declaring
+   module nor its file. `src/v2/lens/extdeps_shape_transport_policy/` `module_refs.dag` is the
+   worked case: **26 consumer files, all floor-discovered `*_test.dag`, and all 26 name
+   neither `v2.lens.extdeps_shape_transport_policy.module_refs` nor its path** — they write
+   `extdeps_cargo_build_module` bare and the resolver finds it. All 9 of the module's
+   declarations are consumed this way. **Scope of that 26, so a narrower probe's smaller
+   number is not reconciled by splitting the difference:** it counts consumers of *any* of the
+   module's 9 declarations. A probe of the single symbol `extdeps_cargo_build_module` returns
+   **13 consumer files, none naming the module or the path**. Both figures are correct at
+   their own scope; the class is identical. *One caveat, because it recurred:* run that probe
+   after this document names the module and it returns 14 with 1 naming it — the fourteenth is
+   **this file**. Defect 4's rule (the census is excluded from its own scan) is repeated at
+   the receipt because contamination arrives the moment the finding is written down. This
+   class is invisible to a module-name surface and a file-path surface **by construction**:
+   neither string occurs in any consumer. Defect 3 is its near neighbour and does not cover it
+   — a qualified call at least spells the module name, which is what makes defect 3 detectable
+   by a name scan and this one not.
 
-   *Direction, and what is NOT claimed.* Like every surface in §2 this one can only move
-   modules **out** of the population. It was measured on one module, reached by re-deriving
-   this census independently; **the whole 298 has not been re-scored against it**, so how
-   many rows it moves is unmeasured and no estimate is offered — §6's `LowerBoundOnly`
-   standing already covers exactly this and is the reason it does not need revising here.
-   **Rule for whoever measures next, beside the defect-4 rule:** a bare declaration name is
-   a reference too, and in `src/v2/lens/` it is the *normal* one. Restrict such a scan to
-   declaration names that are **unique corpus-wide**, or it reports collisions on common
-   words (`Stage`, `Review`, `Permission`) as consumption — measured, and the reason this
-   receipt counts unique-owner declarations only.
+   *Direction, and what is NOT claimed.* Like every §2 surface this one can only move modules
+   **out** of the population. It was measured on one module, reached by re-deriving this
+   census independently; **the whole 298 has not been re-scored against it**, so how many rows
+   it moves is unmeasured and no estimate is offered — §6's `LowerBoundOnly` standing already
+   covers this and needs no revision here. **Rule for whoever measures next, beside the
+   defect-4 rule:** a bare declaration name is a reference too, and in `src/v2/lens/` it is
+   the *normal* one. Restrict such a scan to declaration names **unique corpus-wide**, or it
+   reports collisions on common words (`Stage`, `Review`, `Permission`) as consumption —
+   measured, and the reason this receipt counts unique-owner declarations only.
 
 ### The defect-6 re-score of the whole population (2026-08-22)
 
-Defect 6 was found on one module, so the population was re-scored against it. **Method**,
-stated so it can be re-derived and disagreed with: for each of the 298, take its *declared
-symbols* — not its module name, not its path — and ask whether any other `.dag` file names
-one of them **bare**. Three deliberate restrictions, each of which removes a false-positive
-class that was **observed, not anticipated**:
+Defect 6 was found on one module, so the population was re-scored against it. **Method**, so
+it can be re-derived and disagreed with: for each of the 298, take its *declared symbols* —
+not its module name or path — and ask whether any other `.dag` file names one of them
+**bare**. Three restrictions, each removing a false-positive class that was **observed, not
+anticipated**:
 
 - **`.dag` consumers only.** Whole-pool resolution is a resolver behaviour; a mention in
   `.md` or `.rs` is prose, not consumption.
-- **Comments and string literals stripped with a character scanner, not a regex.** The
-  first pass used `"(?:[^"\\]|\\.)*"` and it *failed on real `.dag` strings* —
+- **Comments and string literals stripped with a character scanner, not a regex.** The first
+  pass used `"(?:[^"\\]|\\.)*"` and *failed on real `.dag` strings* —
   `dag/gunbc/plans/axiom_syllogism_lens.dag` embeds prose containing `\{` interpolation
   escapes, the regex terminated the literal early, and the exposed prose scored
   `std.syllogism` as consumed. Caught by hand-reading a sample, not by the instrument.
@@ -243,17 +226,16 @@ class that was **observed, not anticipated**:
   a qualified call's tail (`extdeps.ebay.ebay.create_offer` must not score `create_offer`
   as bare) and field projection; the second excludes record fields and parameter labels.
 
-**Each filter is reported with what it cost, because the intermediate values are what let
-a reader judge them:** the raw pass scored **98**, excluding qualified-tail and
-field/label identifiers took it to **93**, and the character-scanner string strip took it
-to **91**; defect 7's variant extraction and its three corrections took it to **93**, and
-the (e)/(f) corrections below took it to **92**.
-A bare final number would hide the fact that no single filter dominates — which is itself
-evidence that none of them is a fudge factor tuned to a target.
+**Each filter is reported with its cost, because the intermediate values let a reader judge
+them:** the raw pass scored **98**; excluding qualified-tail and field/label identifiers took
+it to **93**; the character-scanner string strip to **91**; defect 7's variant extraction and
+its three corrections to **93**; the (e)/(f) corrections below to **92**. A bare final number
+would hide that no single filter dominates — itself evidence that none is a fudge factor tuned
+to a target.
 
-**Attribution is by unique ownership, which is what makes a hit decisive.** A bare symbol
-declared by exactly one module in the corpus attributes to that module and nothing else. A
-symbol declared by several does not, and is never counted as consumption here.
+**Attribution is by unique ownership, which makes a hit decisive.** A bare symbol declared by
+exactly one module attributes to that module alone. A symbol declared by several does not, and
+is never counted as consumption here.
 
 | bucket | count | meaning |
 | --- | --- | --- |
@@ -281,85 +263,81 @@ the six import the module or qualify the name.**
 | PROSE-NAMED | 79 | 36 |
 | CITED-AUTHORITY | 103 | 22 |
 
-**RESIDUE-UNMENTIONED is the row to read.** §3 calls it *"Delete. Highest-confidence
-residue"* and §5 sequences it as batch B2 on the grounds that it is *"least exposed to the
-blind spots, because a module named nowhere in any surface is not waiting on a surface to
-be decoded."* That reasoning was sound and its premise was false: the surface it was
-waiting on had not been decoded yet, and **12 of those 67 are consumed by live callers**.
-The batch selected *because* it was the safest is the one carrying the most concentrated
-risk of deleting working code. RESIDUE-EMPTY at 0 of 8 is the control that shows the
-instrument is not simply finding consumption everywhere — a module declaring no symbols
+**RESIDUE-UNMENTIONED is the row to read.** §3 calls it *"Delete. Highest-confidence residue"*
+and §5 sequences it as batch B2 because it is *"least exposed to the blind spots, because a
+module named nowhere in any surface is not waiting on a surface to be decoded."* Sound
+reasoning, false premise: the surface it was waiting on had not been decoded, and **12 of
+those 67 are consumed by live callers**. The batch selected *because* it was safest carries
+the most concentrated risk of deleting working code. RESIDUE-EMPTY at 0 of 8 is the control
+showing the instrument is not finding consumption everywhere — a module declaring no symbols
 cannot be bare-referenced, and it scores zero.
 
-**FROZEN-PENDING-RE-ADD, 10 of 13, is the second correction and it repeats §2 defect 5's
-lesson exactly.** Those rows were frozen against a named re-add anchor; ten are *invoked
-now*, by live witnesses — `tools.infer_semantics_witness_transport` is called bare by
-`src/v2/test/claim/infer_semantics_witness_test.dag`. As with `tools.floor_effect_gate_witness`
-before them, the anchor was real and the conclusion was still wrong, because the instrument
-had not read the surface that settles it.
+**FROZEN-PENDING-RE-ADD, 10 of 13, is the second correction and repeats §2 defect 5 exactly.**
+Those rows were frozen against a named re-add anchor; ten are *invoked now*, by live witnesses
+— `tools.infer_semantics_witness_transport` is called bare by
+`src/v2/test/claim/infer_semantics_witness_test.dag`. As with
+`tools.floor_effect_gate_witness` before them, the anchor was real and the conclusion still
+wrong, because the instrument had not read the settling surface.
 
-**The ambiguity is a finding, not only instrument noise.** 93 modules are unresolvable
-because their symbols are not uniquely owned, and the distribution is not uniform:
-`extdeps_external_authority_anchor` is declared by **102 modules** (it is the boilerplate
-citation anchor of §3's extdeps duty), `extdeps_model_scope` by 27, and `main` by 11. Under
-whole-pool resolution a bare `main` has 11 candidate declarers. **The repository already
-measures this class and reports it every run** — the floor prints
-`[floor-bare-name-ambiguity] scopes_affected=961 of 1339 names_total=87040 worst_scope=125`,
-so 72% of scopes carry at least one ambiguous bare name. That line is the corroborating
-instrument for this bucket, and it is independent of this census. What the ambiguity means
-for *this* document is narrow and worth stating plainly: those 93 rows are **unresolved,
-not consumed** — they stay in the population, and no deletion should read their ambiguity
-as either evidence.
+**The ambiguity is a finding, not only instrument noise.** 93 modules are unresolvable because
+their symbols are not uniquely owned, and the distribution is not uniform:
+`extdeps_external_authority_anchor` is declared by **102 modules** (the boilerplate citation
+anchor of §3's extdeps duty), `extdeps_model_scope` by 27, and `main` by 11. Under whole-pool
+resolution a bare `main` has 11 candidate declarers. **The repository already measures this
+class every run** — the floor prints `[floor-bare-name-ambiguity] scopes_affected=961 of 1339
+names_total=87040 worst_scope=125`, so 72% of scopes carry at least one ambiguous bare name.
+That line is the corroborating instrument for this bucket, independent of this census. For
+*this* document the meaning is narrow: those 93 rows are **unresolved, not consumed** — they
+stay in the population, and no deletion should read their ambiguity as evidence either way.
 
 **What this re-score does NOT claim.** Not that 206 is the true count: `DEAD-CONSUMER-ONLY`
-and `AMBIGUOUS-SHARED-ONLY` are both unresolved rather than settled, the appendix rows were
-not individually re-read, and §6's `LowerBoundOnly` standing is unchanged and now applies to
+and `AMBIGUOUS-SHARED-ONLY` are both unresolved, the appendix rows were not individually
+re-read, and §6's `LowerBoundOnly` standing is unchanged and now applies to 206. It claims one
+thing, enough to block a deletion: **at least 92 of the 298 have a live caller.**
 206. It claims one thing, and it is enough to block a deletion: **at least 92 of the 298
 have a live caller.**
 
 7. **NEW — coproduct VARIANT CONSTRUCTORS are declared symbols, and declaration extraction
-   read only `fn`/`func`/`data`/`type`/`const`.** Defect 6 established that a bare symbol is
-   a reference; this is the same surface missed on its constructor half. `gunbc.pr_digests`
-   owns the type name `MergeReadinessVerdict` but its variants are `Ready` and `NotReady`,
-   and `gunbc.code_change_workflow` names `Ready` **bare, with no import**. Extraction that
-   stops at the `type` line does not own the variants, so `pr_digests` scored residue while
-   being consumed. **Found by an independent instrument — the required floor, refusing a
-   deletion with `unresolved type MergeReadinessVerdict` and `8x undefined variable Ready`
-   — not by reasoning about the census.** Re-scoring with variants moves this document's
-   population: CONSUMED-DECISIVE 91 → **92**, STILL-UNCONSUMED 96 → **78**, and the §4h
-   residue list 131 → **112**.
+   read only `fn`/`func`/`data`/`type`/`const`.** Defect 6 established that a bare symbol is a
+   reference; this is the same surface missed on its constructor half. `gunbc.pr_digests` owns
+   the type name `MergeReadinessVerdict` but its variants are `Ready` and `NotReady`, and
+   `gunbc.code_change_workflow` names `Ready` **bare, with no import**. Extraction that stops
+   at the `type` line does not own the variants, so `pr_digests` scored residue while
+   consumed. **Found by an independent instrument — the required floor, refusing a deletion
+   with `unresolved type MergeReadinessVerdict` and `8x undefined variable Ready` — not by
+   reasoning about the census.** Re-scoring with variants moves the population:
+   CONSUMED-DECISIVE 91 → **92**, STILL-UNCONSUMED 96 → **78**, and the §4h residue list 131 →
+   **112**.
 
-   *Three further defects were found inside the fix itself, all by hand-verifying rows
-   before publishing the number, and each one produced a **false** consumption claim:*
-   (a) a **generic** type header (`type UpsertDecision<P>`) defeated variant extraction, so
-   `std.upsert_decision` did not own `Apply` and `gunbc.apply` looked uniquely to own it;
-   (b) a **multi-line variant record** truncated the scan region, so `llvm_ir` did not own
+   *Three further defects were found inside the fix, all by hand-verifying rows before
+   publishing the number, each producing a **false** consumption claim:* (a) a **generic**
+   type header (`type UpsertDecision<P>`) defeated variant extraction, so
+   `std.upsert_decision` did not own `Apply` and `gunbc.apply` looked uniquely to own it; (b)
+   a **multi-line variant record** truncated the scan region, so `llvm_ir` did not own
    `Select` and `extdeps.transports.sql` looked to own it; (c) `operation Parse {` and
-   `operation Delete {` are **declarations in the flat service namespace**, and were being
-   read as references. Each created *false uniqueness*, which is the mechanism that turns a
-   collision into a confident wrong attribution. Filter costs across the whole re-score, so
-   a reader can price each: **98 → 93 → 91** (defect 6 filters), then **→ 93** with variants
-   and the three corrections above.
+   `operation Delete {` are **declarations in the flat service namespace**, and were read as
+   references. Each created *false uniqueness* — the mechanism that turns a collision into a
+   confident wrong attribution. Filter costs across the whole re-score: **98 → 93 → 91**
+   (defect 6 filters), then **→ 93** with variants and the three corrections.
 
-   **A fourth extraction bug exists and this document's numbers postdate its fix; a fifth
-   is a real gap with measured zero exposure.** Both were found by the deletion lane
-   running the four discriminating cases published with the extractor — which is the
-   argument for shipping discriminators rather than bug descriptions, since the check found
-   a bug its author did not have. (d) **Same-line coproducts**: `type PrerequisiteKind =
-   Capability | Credential | …` puts every variant on the type line, so a scan anchored to
-   lines *starting* with `=` or `|` never sees them. A region-based extractor handles it,
-   and all four cases pass on the extractor that produced the counts above, so
-   **every count in this document postdates (d)** — re-verified rather than assumed. (e) **`operation` / `service` /
-   `resource` rows are declarations** in the flat service namespace (338 / 8 / 5 in the
-   corpus). This document's instrument subtracts them from the *consuming* side but does
-   not credit them to the *declaring* side, so a module whose declarations were **only**
-   operation rows would own nothing and could score residue while consumed — the
-   delete-a-live-module direction. **Measured exposure on this population: zero.** No row
-   of the 298 declares nothing-but-operations, and more decisively, **not one of the 20
-   operation-bearing rows sits in STILL-UNCONSUMED** (13 AMBIGUOUS, 5 CONSUMED, 2
-   DEAD-CONSUMER-ONLY) — the bucket where a false residue would be dangerous contains none
-   of them. Mechanism real, no victim here; a lane extending this instrument to another
-   population must credit them.
+   **A fourth extraction bug exists and this document's numbers postdate its fix; a fifth is a
+   real gap with measured zero exposure.** Both were found by the deletion lane running the
+   four discriminating cases published with the extractor — the argument for shipping
+   discriminators rather than bug descriptions, since the check found a bug its author did not
+   have. (d) **Same-line coproducts**: `type PrerequisiteKind = Capability | Credential | …`
+   puts every variant on the type line, so a scan anchored to lines *starting* with `=` or `|`
+   never sees them. A region-based extractor handles it, and all four cases pass on the
+   extractor that produced the counts above, so **every count in this document postdates (d)**
+   — re-verified, not assumed. (e) **`operation` / `service` / `resource` rows are
+   declarations** in the flat service namespace (338 / 8 / 5 in the corpus). This instrument
+   subtracts them from the *consuming* side but does not credit them to the *declaring* side,
+   so a module whose declarations were **only** operation rows would own nothing and could
+   score residue while consumed — the delete-a-live-module direction. **Measured exposure on
+   this population: zero.** No row of the 298 declares nothing-but-operations, and **not one
+   of the 20 operation-bearing rows sits in STILL-UNCONSUMED** (13 AMBIGUOUS, 5 CONSUMED, 2
+   DEAD-CONSUMER-ONLY) — the bucket where a false residue would be dangerous contains none.
+   Mechanism real, no victim here; a lane extending this instrument to another population must
+   credit them.
 
    **(f) A generic type PARAMETER is a binder, not a reference — one false consumption
    claim, found while implementing (e).** `type GraphInvariant<Projection> { … }` binds
@@ -367,63 +345,61 @@ have a live caller.**
    link and had scored it CONSUMED-DECISIVE. Excluding the parameter list of a generic
    declaration moves it to AMBIGUOUS and takes CONSUMED-DECISIVE 93 → **92**.
 
-   ***(f) has two halves, and the obvious fix reaches only one.*** (f1) is the parameter
-   list in the header; **(f2) is every use of the bound name inside that declaration's
-   body** — `type GraphInvariant<Projection> { projection: Projection … }`, where the field
-   type on the next line is a *second, independent* false reference that survives stripping
-   the header. Reported by the deletion lane, whose extractor still failed the
-   discriminator after implementing (f1) exactly as this document first described it.
+   ***(f) has two halves, and the obvious fix reaches only one.*** (f1) is the parameter list
+   in the header; **(f2) is every use of the bound name inside that declaration's body** —
+   `type GraphInvariant<Projection> { projection: Projection … }`, where the field type on the
+   next line is a *second, independent* false reference that survives stripping the header.
+   Reported by the deletion lane, whose extractor still failed the discriminator after
+   implementing (f1) exactly as first described here.
 
-   **And the tempting fix for (f2) is the delete-a-live-module direction — this document
-   shipped it.** Shadowing the bound name **file-wide** is what the first implementation
-   here did, and it is wrong: a name bound as a parameter in one declaration may be
-   **genuinely referenced in another**, and removing references moves a live module *into*
-   the residue. The shadow must be scoped to the binding declaration's region — the same
-   region walk the variant extractor already performs, run over the reference side instead
-   of the declaration side. Correcting it **restored 5 real references and moved 5 modules
-   out of STILL-UNCONSUMED**, taking the §4h residue list 117 → **112**. Every one of those
-   five was a deletion candidate solely because of an over-broad fix to a false-positive
+   **The tempting fix for (f2) is the delete-a-live-module direction — this document shipped
+   it.** The first implementation here shadowed the bound name **file-wide**, which is wrong:
+   a name bound as a parameter in one declaration may be **genuinely referenced in another**,
+   and removing those references moves a live module *into* residue. The shadow must be scoped
+   to the binding declaration's region — the region walk the variant extractor already
+   performs, run over the reference side. Correcting it **restored 5 real references and moved
+   5 modules out of STILL-UNCONSUMED**, taking the §4h residue list 117 → **112**. Each of
+   those five was a deletion candidate solely because of an over-broad fix to a false-positive
    defect.
 
    **The symmetry is three-way, not two.** One construct — a generic header — *defeats*
-   declaration extraction (bug (a)), *inflates* reference extraction in the header (f1),
-   and *inflates it again* in the body (f2); and the body half survives the obvious fix for
-   the header half. A binder read as a reference is the representation-vs-subject error
-   this whole document is about, at the smallest grain the language has.
+   declaration extraction (bug (a)), *inflates* reference extraction in the header (f1), and
+   *inflates it again* in the body (f2); the body half survives the obvious fix for the header
+   half. A binder read as a reference is the representation-vs-subject error this document is
+   about, at the smallest grain the language has.
 
-   **(e) was implemented, and implementing it confirmed the zero rather than resting on
-   the measurement.** Crediting `operation`/`resource` names moved **zero** rows — the
-   earlier count-based prediction held. A first cut also credited the service's own short
-   name (`service gcp.Metadata` → `Metadata`), was blamed for a **false** consumption
-   claim on `extdeps.cloud.gcp.sts`, and was withdrawn on that basis. **Both halves of
-   that were wrong, and the correction is recorded here rather than quietly reverted.**
-   The false claim was caused by **(f)** — the consumer named `Metadata` as a generic type
-   parameter — and the service credit was merely standing next to it; with (f2) scoped,
-   restoring the credit moves **zero rows** and `gcp.sts` stays non-consumed. And the
-   stated reason ("no evidence any consumer names a service bare") was refuted by the
-   deletion lane's seventh discriminator: **`dag/extdeps/realization/artifact_store_fs.dag`
-   writes `Filesystem.Write`, `Filesystem.Read` and `Filesystem.Delete` with no import
-   naming `Filesystem`** — a consumer bare-resolving an undotted service through the
-   whole-pool namespace. Worse, withdrawing the credit is the *own-nothing* direction:
-   `Filesystem` is declared **twice** — `service Filesystem` in
-   `extdeps/filesystem/filesystem_io.dag` and `resource Filesystem` in `std/resources.dag`
-   — so dropping the service credit hands `std.resources` **false sole ownership** of a
-   symbol another module visibly declares. The credit is restored, and its justification is
-   correctness of ownership rather than measured effect, since the measured effect is nil. *Both of the wrong answers in this paragraph came
-   from the fix, not the defect* — which is now the pattern rather than the exception, and
-   the reason every row that moves is read before a number is published.
+   **(e) was implemented, and implementing it confirmed the zero.** Crediting
+   `operation`/`resource` names moved **zero** rows — the count-based prediction held. A first
+   cut also credited the service's own short name (`service gcp.Metadata` → `Metadata`), was
+   blamed for a **false** consumption claim on `extdeps.cloud.gcp.sts`, and was withdrawn.
+   **Both halves of that were wrong, and the correction is recorded rather than quietly
+   reverted.** The false claim was caused by **(f)** — the consumer named `Metadata` as a
+   generic type parameter — and the service credit merely stood next to it; with (f2) scoped,
+   restoring the credit moves **zero rows** and `gcp.sts` stays non-consumed. And the stated
+   reason ("no evidence any consumer names a service bare") was refuted by the deletion lane's
+   seventh discriminator: **`dag/extdeps/realization/artifact_store_fs.dag` writes
+   `Filesystem.Write`, `Filesystem.Read` and `Filesystem.Delete` with no import naming
+   `Filesystem`** — a consumer bare-resolving an undotted service through the whole-pool
+   namespace. Worse, withdrawing the credit is the *own-nothing* direction: `Filesystem` is
+   declared **twice** — `service Filesystem` in `extdeps/filesystem/filesystem_io.dag` and
+   `resource Filesystem` in `std/resources.dag` — so dropping the service credit hands
+   `std.resources` **false sole ownership** of a symbol another module visibly declares. The
+   credit is restored, justified by correctness of ownership since the measured effect is nil.
+   *Both wrong answers in this paragraph came from the fix, not the defect* — now the pattern
+   rather than the exception, and the reason every row that moves is read before a number is
+   published.
 
-   **Two non-equivalent fixes for (c), worth distinguishing rather than reconciling.**
-   Subtracting declaration-keyword names from the *consumer's* reference set (this
-   document) is more precise; adding them to the *declaring* module's owned set (the
-   deletion lane) is more conservative, because it pushes a row to AMBIGUOUS where
-   subtraction correctly leaves it in STILL-UNCONSUMED. The two therefore disagree in a
-   known direction, and **for a deletion lane the conservative error is the right one** —
-   so the implementations are deliberately not unified, and a residue *count* should come
-   from the precise one while a deletion *set* comes from the conservative one.
+   **Two non-equivalent fixes for (c), distinguished rather than reconciled.** Subtracting
+   declaration-keyword names from the *consumer's* reference set (this document) is more
+   precise; adding them to the *declaring* module's owned set (the deletion lane) is more
+   conservative, because it pushes a row to AMBIGUOUS where subtraction correctly leaves it in
+   STILL-UNCONSUMED. They disagree in a known direction, and **for a deletion lane the
+   conservative error is the right one** — so the implementations are deliberately not
+   unified: a residue *count* comes from the precise one, a deletion *set* from the
+   conservative one.
 
-   **Direction, and one row that went the other way.** At the population level this defect
-   can only move modules *out* of residue. At the *row* level it is not one-directional:
+   **Direction, and one row that went the other way.** At population level this defect can
+   only move modules *out* of residue. At *row* level it is not one-directional:
    `extdeps.access.zanzibar` moved CONSUMED-DECISIVE → AMBIGUOUS, because counting variants
    made a symbol it appeared to own uniquely into a shared one. Losing an attribution is a
    correction too.
@@ -448,9 +424,9 @@ was fixed, and it is retained as the standing discriminating control for that ar
 
 **Known limits of this instrument, stated rather than left to be found.** It cannot see a
 module invoked by a path assembled at runtime, and it treats an `--entry` argv literal
-anywhere in the tree — including in a doc — as a root, which is deliberately generous:
-this census over-admits consumption, so the population is a floor, and every row still
-needs the mention check in §3 before deletion.
+anywhere in the tree — including in a doc — as a root, deliberately generous: the census
+over-admits consumption, so the population is a floor, and every row still needs the §3
+mention check before deletion.
 
 ## 3. Dispositions
 
@@ -468,62 +444,60 @@ row can be re-derived and disagreed with.
 
 Per-module rows: appendix, §6.
 
-**ENTRY-INVOKED is zero here by construction.** The brief's first job was to build the
-entry index and subtract; it is built (48 entry-row roots + 79 seed mirrors) and
-subtracted *before* the population is formed, so every entry-invoked module is already
-outside the 298. The first revision's index was smaller (34 roots) because it decoded only
-the argv spelling; §2's defect 5 is what that cost, and it is the reason this section now
-reports the index by *surface* rather than as one number.
+**ENTRY-INVOKED is zero here by construction.** The brief's first job was to build the entry
+index and subtract; it is built (48 entry-row roots + 79 seed mirrors) and subtracted *before*
+the population is formed, so every entry-invoked module is already outside the 298. The first
+revision's index was smaller (34 roots) because it decoded only the argv spelling; §2 defect 5
+is what that cost, and why this section reports the index by *surface* rather than as one
+number.
 
 ## 4. Named findings
 
 These are the results worth a decision, as opposed to a row.
 
-**a. `extdeps/colo/` — a 19-module island, zero consumers.** Real colocation vendors
-(Equinix, CoreSite, Iron Mountain, QTS, …) with cited authority anchors, importing
-`extdeps.colo.types` and each other, consumed by nothing. This is one decision, not
-nineteen: does a siting consumer exist or is it planned? If not, the island is the largest
-single deletion in the census. Same shape, smaller: `extdeps/formats/elf/` (7),
-`extdeps/container/oci/` (5), `extdeps/boot/` (5), `extdeps/ebay/` (6),
-`extdeps/tcgplayer/` (5), `extdeps/llm/` (7).
+**a. `extdeps/colo/` — a 19-module island, zero consumers.** Real colocation vendors (Equinix,
+CoreSite, Iron Mountain, QTS, …) with cited authority anchors, importing `extdeps.colo.types`
+and each other, consumed by nothing. One decision, not nineteen: does a siting consumer exist
+or is it planned? If not, the island is the largest single deletion in the census. Same shape,
+smaller: `extdeps/formats/elf/` (7), `extdeps/container/oci/` (5), `extdeps/boot/` (5),
+`extdeps/ebay/` (6), `extdeps/tcgplayer/` (5), `extdeps/llm/` (7).
 
 **b. `std.verification` — delete it; the escalation this census originally raised was an
-instrument artifact.** The first revision reported 120 citing files and asked for an
-operator decision. That count was a substring match against `v2.std.verification` (§2,
-defect 4). Boundary-anchored and verified independently of the review that caught it, the
-real citation surface is small and the deletion is ordinary:
+instrument artifact.** The first revision reported 120 citing files and asked for an operator
+decision. That count was a substring match against `v2.std.verification` (§2, defect 4).
+Boundary-anchored and verified independently of the review that caught it, the real citation
+surface is small and the deletion ordinary:
 
 - **5 genuine name references, in 2 files**, both plan carriers:
   `gunbc.plans.resolver_type_name_collision_wall` and
   `gunbc.plans.realization_measurement_loop`.
 - **1 path reference the name-based scan could not see** — `src/v2/test/fixture/`
   `frontier_probe_elision_boundary_overlay.dag` pins `"dag/std/verification.dag"` by path
-  **with a content hash**. A fixture pinned by content hash is a consumer: the deletion
-  must move it, not just the prose. This site was not in the review's count either; a
-  name-only census would have found it during the deletion instead of before it.
+  **with a content hash**. A fixture pinned by content hash is a consumer: the deletion must
+  move it, not just the prose. This site was not in the review's count either; a name-only
+  census would have found it during the deletion instead of before it.
 
-The second-authority half is measured, not inferred: `dag/std/verification.dag` is 604
-bytes with 0 importers (`AssertKind`, `AssertionClaim`, `TestCase`); `src/v2/std/
-verification.dag` is 13,813 bytes with 118 importers (`TestgenTier`,
-`TestClassification`, …). Same name, same subject space, and the small one has no
-consumers — the §3 second-authority shape. Delete the 604-byte module and repair all three
-sites in the same PR: if a plan's claim is still true it points at `v2.std.verification`,
-and if it is not, the claim retires with the module. A pointer to a deleted authority is
-not an acceptable landing state.
+The second-authority half is measured, not inferred: `dag/std/verification.dag` is 604 bytes
+with 0 importers (`AssertKind`, `AssertionClaim`, `TestCase`); `src/v2/std/verification.dag`
+is 13,813 bytes with 118 importers (`TestgenTier`, `TestClassification`, …). Same name, same
+subject space, and the small one has no consumers — the §3 second-authority shape. Delete the
+604-byte module and repair all three sites in one PR: a plan claim still true points at
+`v2.std.verification`; one no longer true retires with the module. A pointer to a deleted
+authority is not an acceptable landing state.
 
 **c. `src/v2/extdeps/formatters/` (9) and `typecheckers/` (2) — cited config models, no
 consumer, no mention anywhere.** rustfmt, prettier, gofmt, black, ktfmt, clang-format,
 swift-format, google-java-format, lean4-format, mypy, pyright. Modeled upstream config
-surfaces with zero readers. Note the standing irony: DESIGN's fixed-point rule for the
-emitted mirror is *about* rustfmt, and `v2.extdeps.formatters.rustfmt` is not what
-implements it. Missing-consumer or residue — not a mechanical call.
+surfaces with zero readers. Standing irony: DESIGN's fixed-point rule for the emitted mirror
+is *about* rustfmt, and `v2.extdeps.formatters.rustfmt` is not what implements it.
+Missing-consumer or residue — not a mechanical call.
 
-**d. `dag/gunbc/instruments/` — 13 FROZEN, 5 residue, 2 that turned out to be invoked, and the split is per-module.** These are the
-`.dag` sides of capabilities whose invokers the floor cut (2026-08-15) and the regen root
-cut (2026-08-18) removed. DESIGN's CI paragraph names a **re-add queue** with a restoration
-trigger, and a module the queue exists to re-attach is §3 frozen-X, not residue — deleting
-it means re-authoring it worse from memory later. So the carve-out is granted **per module
-against a named anchor**, never to the group:
+**d. `dag/gunbc/instruments/` — 13 FROZEN, 5 residue, 2 that turned out to be invoked, and the
+split is per-module.** These are the `.dag` sides of capabilities whose invokers the floor cut
+(2026-08-15) and the regen root cut (2026-08-18) removed. DESIGN's CI paragraph names a
+**re-add queue** with a restoration trigger, and a module the queue exists to re-attach is §3
+frozen-X, not residue — deleting it means re-authoring it worse from memory later. So the
+carve-out is granted **per module against a named anchor**, never to the group:
 
 - **Eight witness transports** — `parse`, `bootstrap`, `dag_collect_fingerprint`,
   `infer_semantics`, `interp_recorded_fixture`, `effects_rest_transport`,
@@ -535,26 +509,25 @@ against a named anchor**, never to the group:
   (merge-admission stamping). Anchor: the gate is named on DESIGN's own unguarded list.
 - **NOT frozen after all: `tools.floor_effect_gate_witness` and `tools.ci_heal_dispatch`.**
   The first revision froze them on the unguarded-list anchor. Decoding the `entry:` field
-  surface (§2, defect 5) shows both are named by live entry rows — they are **invoked**,
-  and were never in the population. Recorded rather than quietly dropped: an anchor can be
-  real and the conclusion still wrong, when the instrument has not read the surface that
-  settles it.
-- **`tools.dag_compile_clean_seam`, `_seam_transport`, `_shard_transport`.** Anchor:
-  DESIGN's compile-clean entry-point trigger — **the weakest of the three anchors, and
-  flagged as such**: prose, no binary, no queue line. If that trigger is judged not to be a
-  queue entry, these three separate out as residue.
+  surface (§2, defect 5) shows both are named by live entry rows — **invoked**, never in the
+  population. Recorded rather than quietly dropped: an anchor can be real and the conclusion
+  still wrong when the instrument has not read the settling surface.
+- **`tools.dag_compile_clean_seam`, `_seam_transport`, `_shard_transport`.** Anchor: DESIGN's
+  compile-clean entry-point trigger — **the weakest of the three anchors, flagged as such**:
+  prose, no binary, no queue line. If that trigger is judged not a queue entry, these three
+  separate out as residue.
 
 **Not on any queue, therefore residue:** `tools.build`, `tools.readme`,
 `tools.roadmap_dispatch`, `tools.codegen` (empty), and `tools.gunbc_ci` — the last is
 **superseded**, not merely unreferenced: it shells out to the old `gunbc ci` generate-and-run
-script, and `gunbc.witness_floor_workflow` → `.github/workflows/witnesses.yml` is what
-actually runs CI now. That is the §3 second-authority find in this cluster.
+script, and `gunbc.witness_floor_workflow` → `.github/workflows/witnesses.yml` is what runs CI
+now. That is the §3 second-authority find in this cluster.
 
-Related, and the reason this cluster is worth naming at all: **12 of the 298 declare
-`main()`** — an entry shape with no argv anywhere that names it. Four are in `tools/`; the
-rest are `examples/` and three `extdeps` witnesses. An entry that lost its invoker is the
-exact residue a delete-first cut is supposed to surface loudly, and it did not surface,
-because nothing downstream could refuse.
+Related, and why this cluster is worth naming: **12 of the 298 declare `main()`** — an entry
+shape with no argv anywhere naming it. Four are in `tools/`; the rest are `examples/` and
+three `extdeps` witnesses. An entry that lost its invoker is exactly the residue a
+delete-first cut should surface loudly, and it did not, because nothing downstream could
+refuse.
 
 **e. Eight empty modules.** `std.list`, `std.containers`, `std.import`, `std.rational`,
 `tools.codegen`, `v2.bin.main`, `v2.std.inhabitant_bridge`,
@@ -567,135 +540,127 @@ is the one to look at twice: an empty `main` is a name reserving a seat.
 nothing names them. Likely a ladder that stopped being climbed — but "the rung above the
 one we execute" is a claim about intent, so it is flagged, not classified.
 
-**g. Three modules that landed AFTER this census and are unconsumed — none of them
-residue.** Surfaced by a second census run independently on 2026-08-22 (population: every
-`.dag` module scored zero on module name *and* file path; the 14 it returned were 11
-instrument artifacts of defects 3 and 6 plus these three). All three postdate #8803, which
-is why §6's appendix does not carry them. Dispositions, one per module:
+**g. Three modules that landed AFTER this census and are unconsumed — none residue.** Surfaced
+by a second census run independently on 2026-08-22 (population: every `.dag` module scoring
+zero on module name *and* file path; the 14 it returned were 11 instrument artifacts of
+defects 3 and 6 plus these three). All three postdate #8803, which is why §6's appendix does
+not carry them. Dispositions, one per module:
 
-*Why a naive re-run disagrees with the 298, recorded so the next reader does not
-re-derive it.* That second run scored 14 modules unreachable; **none of the 14 are in this
-document's 298**, and there is no contradiction to resolve. Eleven were reachable all
-along, through surfaces this document already names: ten by fully-qualified reference
-(§2, defect 3 — the run required an *exact* match against the module name, so
-`extdeps.bmc.access.redfish_rbac_policy` matched nothing because the reference string is
-*longer* than the module name), and one, `module_refs`, by whole-pool resolution (§2,
-defect 6 — the surface that run contributed). The `gunbc.accelerator_demo_*` family it
-returned as a four-module cluster is precisely the family §2's defect 3 records as having
-moved back to *reachable*, and `gunbc.accelerator_demo_gpu` is retained in §2's controls
-as the standing discriminator for that arm. The remaining three are the rows below, which
-postdate this document. **The general shape, which is the part worth keeping:** an
-import-line or exact-name census over this corpus does not merely under-count, it reports
-a **structural zero that is indistinguishable from a true zero** — deleting `module_refs`
-on such a reading would have taken 26 live floor-discovered witnesses with it while the
-census showed nothing. Before building a census instrument, search `docs/plans` for the
-census.
+*Why a naive re-run disagrees with the 298, recorded so the next reader does not re-derive
+it.* That second run scored 14 modules unreachable; **none are in this document's 298**, and
+there is no contradiction. Eleven were reachable all along through surfaces this document
+already names: ten by fully-qualified reference (§2, defect 3 — the run required an *exact*
+match against the module name, so `extdeps.bmc.access.redfish_rbac_policy` matched nothing
+because the reference string is *longer* than the module name), and one, `module_refs`, by
+whole-pool resolution (§2, defect 6 — the surface that run contributed). The
+`gunbc.accelerator_demo_*` four-module cluster it returned is the family §2 defect 3 records
+as moved back to *reachable*, and `gunbc.accelerator_demo_gpu` is retained in §2's controls as
+the standing discriminator for that arm. The remaining three are the rows below. **The general
+shape, the part worth keeping:** an import-line or exact-name census over this corpus does not
+merely under-count, it reports a **structural zero indistinguishable from a true zero** —
+deleting `module_refs` on such a reading would have taken 26 live floor-discovered witnesses
+with it while the census showed nothing. Before building a census instrument, search
+`docs/plans` for the census.
 
 - **`gunbc.empty_decl_file_checkpoint_bypass`** (`183e50a3469`) and
-  **`gunbc.generic_binder_field_projection_deficit`** (`aecb1fed927`) — **KEEP, and being
-  unconsumed is their correct state, not a defect.** Both are DESIGN §4b error-class
-  filings: declared rung found-at, ceiling with reason, next-rung trigger, dissolution
-  condition. §4b(2) *requires* a class below its ceiling to carry that row, and nothing in
-  §4b makes a code consumer part of the requirement — the row is the filing. Deleting them
-  deletes the safety ledger, and a future census that scores them residue is re-deriving a
-  question this row answers. **The ending event is each carrier's own stated dissolution
-  condition, and both are bounded events rather than an unbounded "later":** for the first,
-  `lookup_checkpoint` refusing on an empty `decl_file` with every production call site
-  threading identity; for the second, v2 inference resolving a generic coproduct's type
-  argument into the arm binder. Note for a reader who checks whether these should carry
-  witnesses: `generic_binder_field_projection_deficit` states in its own header why it does
-  not, and the reason is §5 construction-over-validation — its discriminating RED was
-  *refused at resolve* because the invalid state has no constructor, so the predicate and
-  its witness were deleted rather than kept as a green that cannot go red.
+  **`gunbc.generic_binder_field_projection_deficit`** (`aecb1fed927`) — **KEEP; being
+  unconsumed is their correct state, not a defect.** Both are DESIGN §4b error-class filings:
+  declared rung found-at, ceiling with reason, next-rung trigger, dissolution condition.
+  §4b(2) *requires* a class below its ceiling to carry that row, and nothing in §4b makes a
+  code consumer part of the requirement — the row is the filing. Deleting them deletes the
+  safety ledger, and a future census scoring them residue is re-deriving a question this row
+  answers. **The ending event is each carrier's own stated dissolution condition, both bounded
+  events rather than an unbounded "later":** for the first, `lookup_checkpoint` refusing on an
+  empty `decl_file` with every production call site threading identity; for the second, v2
+  inference resolving a generic coproduct's type argument into the arm binder. For a reader
+  checking whether these should carry witnesses: `generic_binder_field_projection_deficit`
+  states in its own header why it does not — §5 construction-over-validation: its
+  discriminating RED was *refused at resolve* because the invalid state has no constructor, so
+  the predicate and its witness were deleted rather than kept as a green that cannot go red.
 
-- **`gunbc.scm.commit_closure_store`** (#8807) — **DELETE. Cause: staged orphan at the
-  wrong grain.** Answered by the `#8820` author (SCM lane, `gentle-eagle-360`), who
-  disposed of it *and* refuted both arms this row originally offered — recorded because a
-  false cause attached to a true deletion is exactly the class this document exists to
-  catch, and because this row asserted both arms as the live possibilities.
+- **`gunbc.scm.commit_closure_store`** (#8807) — **DELETE. Cause: staged orphan at the wrong
+  grain.** Answered by the `#8820` author (SCM lane, `gentle-eagle-360`), who disposed of it
+  *and* refuted both arms this row originally offered — recorded because a false cause
+  attached to a true deletion is exactly the class this document exists to catch, and this row
+  had asserted both arms as the live possibilities.
 
-  **Arm A ("the envelope grew its own save/load and this deletes with the grain it
-  served") was false.** `gunbc.scm.repository_envelope` contains **zero `Filesystem`
-  operations and not one `func`** (verified independently here) — it is a pure codec,
-  `RepositoryEnvelope ↔ JsonValue`. Nothing superseded this module, so "replaced by the
-  envelope" would have been a false cause.
+  **Arm A ("the envelope grew its own save/load and this deletes with the grain it served")
+  was false.** `gunbc.scm.repository_envelope` contains **zero `Filesystem` operations and not
+  one `func`** (verified independently here) — a pure codec, `RepositoryEnvelope ↔ JsonValue`.
+  Nothing superseded this module, so "replaced by the envelope" would have been a false cause.
 
-  **Arm B ("the envelope should consume it") was false, and is the load-bearing half.**
-  The grains differ: this module persists **one root and its closure**, while a repository
-  has an empty initialized state with *no root*, several commits over one shared node
-  population, and a checked-out selection. Wiring the envelope to a carrier that demands a
-  root would force `init` to invent a phantom commit — a grain mismatch dressed as a fix.
+  **Arm B ("the envelope should consume it") was false, and is the load-bearing half.** The
+  grains differ: this module persists **one root and its closure**, while a repository has an
+  empty initialized state with *no root*, several commits over one shared node population, and
+  a checked-out selection. Wiring the envelope to a carrier that demands a root would force
+  `init` to invent a phantom commit — a grain mismatch dressed as a fix.
 
   So it was never wired, and the layer that will do this job is repository-grain and gets
-  written that way regardless. It is deleted rather than frozen because **a surviving X is
-  an attractor** (DESIGN §3): while it stands, nearby persistence questions keep being
-  answered in a vocabulary already scheduled to die. *Citation for this row is
-  `gentle-eagle-360`'s disposition message, deliberately **not** a pointer into the module
-  — the module is going away, and a citation into it dies with it.*
+  written that way regardless. Deleted rather than frozen because **a surviving X is an
+  attractor** (DESIGN §3): while it stands, nearby persistence questions keep being answered
+  in a vocabulary already scheduled to die. *Citation for this row is `gentle-eagle-360`'s
+  disposition message, deliberately **not** a pointer into the module — the module is going
+  away, and a citation into it dies with it.*
 
-  **One defect surfaced with the disposition, volunteered by its author and not found by
-  this census.** The module's header claims its persistence is *"verified by direct
-  execution in Wet mode"* and names `commit_closure_round_trip_probe` as the executable
-  subject. That was true when it was run **by hand**; it is not true now. **The probe is
-  enrolled nowhere and nothing executes it** — verified here: no reference to it exists
-  anywhere in the tree outside its own module, and the file is not `_test.dag`, so floor
-  discovery never sees it. A carrier asserting executed evidence for a probe that does not
-  run is a §4b **rung-honesty** defect — the reported rung exceeds what executed evidence
-  establishes — and it is the reason the claim survived unchallenged: nothing could refuse
-  it. The class is in §2's common cause, one sighting of three.
+  **One defect surfaced with the disposition, volunteered by its author, not found by this
+  census.** The module's header claims its persistence is *"verified by direct execution in
+  Wet mode"* and names `commit_closure_round_trip_probe` as the executable subject. True when
+  it was run **by hand**; not true now. **The probe is enrolled nowhere and nothing executes
+  it** — verified here: no reference to it exists anywhere outside its own module, and the
+  file is not `_test.dag`, so floor discovery never sees it. A carrier asserting executed
+  evidence for a probe that does not run is a §4b **rung-honesty** defect — the reported rung
+  exceeds what executed evidence establishes — and that is why the claim survived
+  unchallenged: nothing could refuse it. The class is in §2's common cause, one sighting of
+  three.
 
-**h. The list the cleanup directive actually points at is 112, not 298 — and two rows in
-it are not what their names say.** Combining the re-score's buckets: **78 STILL-UNCONSUMED
-(no bare reference on any surface) + 34 DEAD-CONSUMER-ONLY (named bare only from *inside*
-the population — §4a's island shape, which deletes as a group or not at all) = 112 modules
-that are residue on all three decoded surfaces.** That is the defensible starting point for
-the operator's *"clean up anything without consumers"* arm. The other 186 are not: 92 have
-live callers, and 93 are unresolvable at identity grain and need a per-row read before
-anything touches them. **The list was 131 before defect 7, and 117 before (f2) below** — and of the 19 that
-left it, only 2 became consumed; the rest moved to AMBIGUOUS, which means they are no
-longer provably unconsumed rather than proven consumed. That distinction is the whole
-reason the ambiguous bucket exists.
+**h. The list the cleanup directive actually points at is 112, not 298 — and two rows in it
+are not what their names say.** Combining the re-score's buckets: **78 STILL-UNCONSUMED (no
+bare reference on any surface) + 34 DEAD-CONSUMER-ONLY (named bare only from *inside* the
+population — §4a's island shape, deleting as a group or not at all) = 112 modules that are
+residue on all three decoded surfaces.** That is the defensible starting point for the
+operator's *"clean up anything without consumers"* arm. The other 186 are not: 92 have live
+callers, and 93 are unresolvable at identity grain and need a per-row read first. **The list
+was 131 before defect 7, and 117 before (f2) below** — of the 19 that left it, only 2 became
+consumed; the rest moved to AMBIGUOUS, meaning no longer provably unconsumed rather than
+proven consumed. That distinction is why the ambiguous bucket exists.
 
-Two observations from reading that population, neither of which the disposition classes
-capture:
+Two observations from reading that population, neither captured by the disposition classes:
 
-- **`v2.test.*` is a name, not an enrolment, and 22 of the 112 are the gap.** Floor
-  discovery is by **file suffix** (§2, defect 2), so a module *named* `v2.test.…` is
-  discovered only if its file ends `_test.dag`. Corpus-wide, **200 modules are named
-  `v2.test.*` whose file does not end `_test.dag`, and exactly 2 of those declare a
-  `test fn`.** Most are ordinary support modules consumed by real witnesses; the 22 in this
-  population are the ones consumed by nothing, and their names and paths disagree —
-  `v2.test.language_model.go_r1` lives at `src/v2/extdeps/language_model/go_r1.dag`,
-  `v2.test.algebra_laws.zip_eq_list_equality` at `src/v2/std/algebra_laws/`. This subsumes
-  and sharpens finding **f**: those language-model rungs are not merely unclimbed, they are
-  named as tests, declare no test, sit outside any test path, and execute nowhere. **A name
-  that implies enrolment while the mechanism keys on something else is the more useful form
-  of that finding** — the ladder metaphor invites "climb it", and the measurement says
-  "nothing here was ever wired to run."
-**The 35 island rows carry a constraint that is not a preference, and it belongs on the
-row rather than in a report.** A per-module verdict over a mutually-referencing island is
-incoherent: **each member looks consumed until its neighbours go**, so scoring them one at
-a time returns "consumed" for every one of them and the island never becomes eligible.
-They delete as a group or not at all, and the group is the connected component, not the
-directory. Whoever takes the deletion lane will otherwise meet this as a surprising
-refusal partway through a batch — which is the census working, but expensively.
+- **`v2.test.*` is a name, not an enrolment, and 22 of the 112 are the gap.** Floor discovery
+  is by **file suffix** (§2, defect 2), so a module *named* `v2.test.…` is discovered only if
+  its file ends `_test.dag`. Corpus-wide, **200 modules are named `v2.test.*` whose file does
+  not end `_test.dag`, and exactly 2 of those declare a `test fn`.** Most are ordinary support
+  modules consumed by real witnesses; the 22 here are consumed by nothing, and their names and
+  paths disagree — `v2.test.language_model.go_r1` lives at
+  `src/v2/extdeps/language_model/go_r1.dag`, `v2.test.algebra_laws.zip_eq_list_equality` at
+  `src/v2/std/algebra_laws/`. This subsumes and sharpens finding **f**: those language-model
+  rungs are not merely unclimbed; they are named as tests, declare no test, sit outside any
+  test path, and execute nowhere. **A name that implies enrolment while the mechanism keys on
+  something else is the more useful form of that finding** — the ladder metaphor invites
+  "climb it"; the measurement says "nothing here was ever wired to run."
+**The 35 island rows carry a constraint that is not a preference, and it belongs on the row
+rather than in a report.** A per-module verdict over a mutually-referencing island is
+incoherent: **each member looks consumed until its neighbours go**, so scoring them one at a
+time returns "consumed" for every one and the island never becomes eligible. They delete as a
+group or not at all, and the group is the connected component, not the directory. Otherwise
+the deletion lane meets this as a surprising refusal partway through a batch — the census
+working, but expensively.
 
 - **`gunbc.spark.provisioning`'s appendix row no longer resolves** — the path it names does
-  not exist in the tree. It was one of the two rows §5 excluded from every batch as
-  `fierce-lynx-647`'s area. The deletion was deliberate — ruled by the lane that
-  commissioned this census, on the grounds that the model predated knowledge of the real
-  procedure — so the row, not the deletion, is the defect. Recorded rather than
-  silently dropped, because an appendix row pointing at nothing is the same staleness class
-  this document polices elsewhere, and because it is a receipt that the population has a
+  not exist. It was one of the two rows §5 excluded from every batch as `fierce-lynx-647`'s
+  area. The deletion was deliberate — ruled by the lane that commissioned this census, on the
+  grounds that the model predated knowledge of the real procedure — so the row, not the
+  deletion, is the defect. Recorded because an appendix row pointing at nothing is the
+  staleness class this document polices elsewhere, and a receipt that the population has a
   clock on it.
 
-**A hazard for whoever measures next, cheap to hit and silent.** A fresh worktree of this
-repo can be **shallow-grafted** — the 2026-08-22 run found its clone rooted at a single
-4608-file import commit dated six days earlier, so `git log <file>` reported that graft
-commit as the first commit of every older module. Any census arm that asks *was this
-consumed until a recent cut* (the question that separates a severed consumer from §6
-experimental residue) silently answers from a truncated history. `git rev-parse
---is-shallow-repository` before trusting a history claim; `git fetch --unshallow` fixes it.
+**A hazard for whoever measures next, cheap to hit and silent.** A fresh worktree can be
+**shallow-grafted** — the 2026-08-22 run found its clone rooted at a single 4608-file import
+commit dated six days earlier, so `git log <file>` reported that graft commit as the first
+commit of every older module. Any census arm asking *was this consumed until a recent cut*
+(the question separating a severed consumer from §6 experimental residue) silently answers
+from a truncated history. `git rev-parse --is-shallow-repository` before trusting a history
+claim; `git fetch --unshallow` fixes it.
 
 ## 5. Proposed sequencing (for approval, not execution)
 
@@ -705,28 +670,27 @@ with `failed=` read and PASS counted against the roster.
 
 1. **B1 — RESIDUE-EMPTY (8).** Nothing to strand; a pure control batch that proves the
    deletion pipeline and the floor both behave.
-2. **B2 — RESIDUE-UNMENTIONED, non-extdeps (53 of 67). SUPERSEDED BY THE DEFECT-6
-   RE-SCORE — do not run this batch as written.** The rationale was that an unmentioned
-   module has no citation to repair and is least exposed to a blind spot; the re-score
-   (§2) found **12 of the 67 consumed by live bare-symbol callers**, so this batch would
-   delete working code, and the ordering argument that put it first is exactly what made
-   that risk invisible. It becomes eligible again only over the rows that survive the
-   re-score, and B1 replaces it as the batch to establish the mechanics on (RESIDUE-EMPTY
-   scored 0 of 8 consumed — a module declaring no symbols cannot be bare-referenced).
+2. **B2 — RESIDUE-UNMENTIONED, non-extdeps (53 of 67). SUPERSEDED BY THE DEFECT-6 RE-SCORE —
+   do not run this batch as written.** The rationale was that an unmentioned module has no
+   citation to repair and is least exposed to a blind spot; the re-score (§2) found **12 of
+   the 67 consumed by live bare-symbol callers**, so this batch would delete working code, and
+   the ordering argument that put it first is what made that risk invisible. It becomes
+   eligible again only over the rows surviving the re-score, and B1 replaces it as the batch
+   to establish the mechanics on (RESIDUE-EMPTY scored 0 of 8 consumed — a module declaring no
+   symbols cannot be bare-referenced).
 3. **B3 — RESIDUE-DOC-ONLY (28).** Deletion plus the doc/receipt citation repair in the
    same diff.
-4. **B4 — the five `tools/` rows that are NOT on the re-add queue (finding d)**, including
-   the superseded `tools.gunbc_ci`. The 13 FROZEN-PENDING-RE-ADD rows are in no batch: they
-   stay until their queued gate is re-derived, and their disposition is recorded here so a
-   future census does not re-derive the question and answer "residue".
+4. **B4 — the five `tools/` rows NOT on the re-add queue (finding d)**, including the
+   superseded `tools.gunbc_ci`. The 13 FROZEN-PENDING-RE-ADD rows are in no batch: they stay
+   until their queued gate is re-derived, and their disposition is recorded here so a future
+   census does not re-derive the question and answer "residue".
 5. **B5 — `std.verification` (finding b)** alone: delete the module, repoint the two plan
    carriers, and move the content-hash fixture pin, all in one PR.
 6. **B6+ — the extdeps islands (finding a, c)**, one island per PR, each gated on whether
    the citation is the deliverable.
 
-PROSE-NAMED (79) does not get a batch until each row's mention has been read; several will
-resolve to *missing consumer* and be wired up rather than deleted, which is the directive's
-second arm.
+PROSE-NAMED (79) gets no batch until each row's mention has been read; several will resolve to
+*missing consumer* and be wired up rather than deleted — the directive's second arm.
 
 **Excluded from every batch:** `dag/gunbc/spark/` — `fierce-lynx-647` owns that area and is
 mid-census there. Two of the 298 (`gunbc.spark.provisioning`,
@@ -737,34 +701,31 @@ only. `gunbc.spark.provisioning` is a live instance of the dangling-annotation h
 
 ## 6. Completeness standing
 
-**`LowerBoundOnly`.** 298 resolved-unconsumed modules over the universe declared in §2.
-Not `CompleteForDeclaredUniverse`, and the difference is not modesty: three call surfaces
-are named as undecoded in §2, and every one of them can only *remove* modules from the
-population, never add. Two prior revisions of this document each lost modules to a newly
-decoded surface (333 → 303 → 298), which is the empirical case for the standing rather
-than an argument for it.
+**`LowerBoundOnly`.** 298 resolved-unconsumed modules over the universe declared in §2. Not
+`CompleteForDeclaredUniverse`, and the difference is not modesty: three call surfaces are
+named undecoded in §2, and each can only *remove* modules from the population, never add. Two
+prior revisions each lost modules to a newly decoded surface (333 → 303 → 298) — the empirical
+case for the standing.
 
-What the instrument can support: *298 resolved consumers-of-none over universe U;
-standing LowerBoundOnly; blind spots as named.* What it cannot support, and what this
-document does not claim anywhere: *there are exactly 298 unconsumed modules.* The second
-sentence dies the moment someone decodes a fourth surface; the first survives it, and
-tells the reader what would change it.
+What the instrument can support: *298 resolved consumers-of-none over universe U; standing
+LowerBoundOnly; blind spots as named.* What it cannot, and this document nowhere claims:
+*there are exactly 298 unconsumed modules.* The second sentence dies the moment someone
+decodes a fourth surface; the first survives it and says what would change it.
 
-This standing is why §5's batches are ordered as they are — and the 2026-08-22 re-score is
-the case study for why the standing exists rather than a caveat about it. The original
-ordering argued RESIDUE-UNMENTIONED first because *"a module named nowhere in any surface
-is not waiting on a surface to be decoded."* The argument was valid; the premise was not,
-because a surface remained undecoded (§2, defect 6) and 12 of that batch turned out to have
-live callers. **A `LowerBoundOnly` standing is not compatible with treating any batch as
-blind-spot-free**, and the deletion order must follow from the standing rather than from a
+This standing is why §5's batches are ordered as they are — and the 2026-08-22 re-score is the
+case study for why the standing exists. The original ordering argued RESIDUE-UNMENTIONED first
+because *"a module named nowhere in any surface is not waiting on a surface to be decoded."*
+Valid argument, false premise: a surface remained undecoded (§2, defect 6) and 12 of that
+batch had live callers. **A `LowerBoundOnly` standing is not compatible with treating any
+batch as blind-spot-free**, and the deletion order must follow from the standing rather than a
 class name: B1 (RESIDUE-EMPTY) leads because a module declaring no symbols is unreachable by
 *construction* on the bare-symbol surface, not because nobody has mentioned it.
 
 ### Two broken entry strings, confirmed
 
 Decoding the entry-row surface also surfaced consumption that is *declared and broken* —
-neither consumed nor residue, and invisible to the import graph. Confirmed by reading both
-sites, not by the count:
+neither consumed nor residue, invisible to the import graph. Confirmed by reading both sites,
+not by the count:
 
 - **`dag/gunbc/spark/grant_install.dag`** — `gunbc.ci_spec` `gunbc_ci_spark_grant_install_invoke`
   names it as an entry with function `spark_grant_install_ci_wet`. **The file does not
@@ -776,22 +737,21 @@ sites, not by the count:
   `spark_serving_reboot_transition`, `spark_serving_durability_verdict`, `..._is_proven`,
   `..._wire`).
 
-Both are in `dag/gunbc/spark/`, which is `fierce-lynx-647`'s area — reported, not touched.
-A sibling lane found the same two independently; this is a second instrument agreeing, not
-a second report of one measurement.
+Both are in `dag/gunbc/spark/`, `fierce-lynx-647`'s area — reported, not touched. A sibling
+lane found the same two independently: a second instrument agreeing, not a second report of
+one measurement.
 
-**Not defects, and named so a future sweep does not "fix" them:** the raw scan also flags
+**Not defects, named so a future sweep does not "fix" them:** the raw scan also flags
 `dag/a.dag`, `dag/mini.dag`, `dag/gunbc/live_deploy/WRONG_ENTRY.dag`,
-`dag/test/claim/__no_such_entry_zzz.dag` and similar. Those are *deliberate negative
-controls* inside witness tests — an entry that must fail to resolve. An instrument that
-reports them is producing false positives, which is exactly what §7's last case exists to
-catch.
+`dag/test/claim/__no_such_entry_zzz.dag` and similar. Those are *deliberate negative controls*
+inside witness tests — an entry that must fail to resolve. An instrument reporting them is
+producing false positives, which is what §7's last case exists to catch.
 
 ## 7. Calibration benchmark for the next audit instrument
 
-Today's failures, written as cases rather than as prose, so a future instrument calibrates
+Today's failures, written as cases rather than prose, so a future instrument calibrates
 against a suite instead of rediscovering all five. Each case names a real subject in this
-tree, the wrong answer, and the answer that is honest.
+tree, the wrong answer, and the honest answer.
 
 | # | case | subject | wrong answer | required answer |
 | --- | --- | --- | --- | --- |
@@ -802,10 +762,10 @@ tree, the wrong answer, and the answer that is honest.
 | 5 | **string-bound entry** | `dag/gunbc/spark/serving_durability.dag` + `spark_serving_durability_ci_wet` | consumed (path resolves) | **resolution REFUSED** — path present, function absent; neither consumed nor residue |
 | 6 | **positive no-finding** | `dag/gunbc/live_deploy/WRONG_ENTRY.dag`, `dag/a.dag`, `__no_such_entry_zzz.dag`; and any healthy imported module | flagged as broken/orphaned | **no finding** — deliberate negative controls and ordinary live modules must come back clean |
 
-Case 6 is the one most likely to be skipped and the one that catches a broken audit: a
-suite built only from defects is passed by an instrument that reports *everything* as
-suspicious. Cases 1, 2, 4, 5 each have a live specimen in this tree, so the suite is
-executable against the real corpus rather than against a fixture someone has to maintain.
+Case 6 is the one most likely to be skipped and the one that catches a broken audit: a suite
+built only from defects is passed by an instrument reporting *everything* as suspicious. Cases
+1, 2, 4, 5 each have a live specimen in this tree, so the suite is executable against the real
+corpus rather than a fixture someone must maintain.
 
 ## 8. Appendix — the 298 rows
 

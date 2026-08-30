@@ -15,7 +15,12 @@ import gunbc.v1_complexity_decl_classification_types {
   AuthorityOf,
 }
 
-data v1_complexity_decl_classification_note: String = "C0(b2) of the v2 complexity capability parity program: derive the v1.compiler.complexity declaration population from DeclFact and classify every declaration exactly once. The population is OBSERVED from decl_facts over a pool that includes src/v1; the classification roster is the authored join keyed by decl_name. Witnesses prove bijection between population and roster, authority alignment with the C0(b1) inventory carriers, and that every semantic capability has at least one authority declaration."
+// C0(b2) of the v2 complexity capability parity program: derive the v1.compiler.complexity
+// declaration population from DeclFact and classify every declaration exactly once. The population
+// is OBSERVED from decl_facts over a pool that includes src/v1; the classification roster is the
+// authored join keyed by decl_name. Witnesses prove bijection between population and roster,
+// authority alignment with the C0(b1) inventory carriers, and that every semantic capability has at
+// least one authority declaration.
 
 data v1_complexity_source_rel_path: String = "src/v1/complexity.dag"
 
@@ -103,7 +108,19 @@ fn roster_names_distinct(roster: List<V1ComplexityDeclClassification>) -> Bool {
   length(xs: roster_distinct_decl_names(roster: roster)) == length(xs: roster)
 }
 
-data population_name_key_precondition_note: String = "classification_matches_fact joins a roster row to a DeclFact on BARE NAME, while DeclFact carries qualified_name and kind and could key exactly. That join is correct only while every top-level declaration of v1.compiler.complexity has a distinct name, and NOTHING HERE MAKES THAT TRUE — it is a property of the subject module, not a wall this carrier erects. Measured 2026-08-06: 201 top-level declarations (171 fn, 26 type, 4 data, 0 let), zero duplicate names. A measurement of the current tree is not an oracle (DESIGN §5), so the precondition is EXECUTED by population_names_distinct rather than assumed: if a duplicate top-level name ever appears, the witness reds instead of the join silently matching two declarations for one row. Note the existing roster_names_distinct does NOT cover this — it checks the AUTHORED side, and a duplicate on the DERIVED side is invisible to it, which is exactly the gap this closes. Dissolve-on: the roster carries exact DeclFact identity (qualified_name, or name plus kind) so the join is exact by construction and no precondition remains to check; that is a 201-row re-authoring and is deliberately not bundled here."
+// classification_matches_fact joins a roster row to a DeclFact on BARE NAME, while DeclFact carries
+// qualified_name and kind and could key exactly. That join is correct only while every top-level
+// declaration of v1.compiler.complexity has a distinct name, and NOTHING HERE MAKES THAT TRUE — it
+// is a property of the subject module, not a wall this carrier erects. Measured 2026-08-06: 201
+// top-level declarations (171 fn, 26 type, 4 data, 0 let), zero duplicate names. A measurement of
+// the current tree is not an oracle (DESIGN §5), so the precondition is EXECUTED by
+// population_names_distinct rather than assumed: if a duplicate top-level name ever appears, the
+// witness reds instead of the join silently matching two declarations for one row. Note the
+// existing roster_names_distinct does NOT cover this — it checks the AUTHORED side, and a duplicate
+// on the DERIVED side is invisible to it, which is exactly the gap this closes. Dissolve-on: the
+// roster carries exact DeclFact identity (qualified_name, or name plus kind) so the join is exact
+// by construction and no precondition remains to check; that is a 201-row re-authoring and is
+// deliberately not bundled here.
 
 fn population_distinct_decl_names(facts: List<DeclFact>) -> List<String> {
   fold(facts, init: [], f: fn(names, fact) {

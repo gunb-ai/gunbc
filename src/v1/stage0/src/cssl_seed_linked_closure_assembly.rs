@@ -102,20 +102,18 @@ fn sha256_hex(path: &Path) -> Result<String, AssemblyError> {
 
 /// Recover the emitted population from the emitter's own declaration of it.
 ///
-/// THIS REPLACES A RUST TEXT-PARSE, AND THAT IS THE POINT RATHER THAN A REFACTOR. Assembly
-/// used to recover closure membership by scraping `pub mod <name>;` lines out of the emitted
-/// `lib.rs` -- a hand-rolled reader of Rust surface syntax standing in for a fact the emitter
-/// already knows and already writes down. `v1.compiler.emit_rust` `emit_emitted_population_manifest`
-/// renders one line per produced path into `src/emitted_population.rs`, in the same `out_dir`,
-/// under a grammar both ends resolve from one authority
+/// THIS REPLACES A RUST TEXT-PARSE, AND THAT IS THE POINT RATHER THAN A REFACTOR. Assembly used
+/// to scrape `pub mod <name>;` lines out of the emitted `lib.rs` — a hand-rolled reader of Rust
+/// syntax standing in for a fact the emitter already writes down. `v1.compiler.emit_rust`
+/// `emit_emitted_population_manifest` renders one line per produced path into
+/// `src/emitted_population.rs` in the same `out_dir`, under one authority
 /// (`gunbc.stage0_emitted_population_manifest`): `line_prefix ++ path`, joined by the separator.
-/// Reading it is a split and a strip. No Rust grammar is involved on either side, which is
-/// exactly the property that made the artifact a file of `//` lines in the first place.
+/// Reading it is a split and a strip; no Rust grammar on either side, which is why the artifact
+/// is a file of `//` lines.
 ///
-/// A line that does not carry the prefix is DROPPED rather than guessed at, matching the modeled
-/// reader in `gunbc.stage0_rust_host_observation` `emitted_population_paths_from_manifest`: one
-/// grammar read in both directions (DESIGN section 4), never a second parser with its own idea
-/// of the shape.
+/// A line without the prefix is DROPPED, not guessed at, matching the modeled reader
+/// `gunbc.stage0_rust_host_observation` `emitted_population_paths_from_manifest`: one grammar
+/// read in both directions (DESIGN section 4), never a second parser.
 fn declared_emitted_paths(manifest: &Path) -> Result<Vec<String>, AssemblyError> {
     let content = fs::read_to_string(manifest)?;
     let prefix = emitted_population_manifest_line_prefix();
@@ -139,32 +137,28 @@ fn declared_emitted_paths(manifest: &Path) -> Result<Vec<String>, AssemblyError>
 ///
 /// THE LAST RUST TEXT-PARSE ON THIS PATH IS GONE, AND WITH IT THE SECOND AUTHORITY OVER
 /// EMITTED-POPULATION MEMBERSHIP. The prior revision derived the population from `lib.rs`'s
-/// `pub mod` lines and then asserted a sibling `.rs` existed for each. That check compared one
-/// emit artifact against another emit artifact -- `lib.rs`'s mod list is rendered FROM the same
-/// module file list the writer then writes out, so on the real path it could only ever agree
-/// with itself, and its only reachable red came from a hand-authored `lib.rs`. The manifest
-/// makes the question answerable at the grain that matters: the emitter DECLARES the paths it
-/// produced, and assembly refuses if any declared path is not materialized in `out_dir`. That is
+/// `pub mod` lines and asserted a sibling `.rs` for each — one emit artifact against another,
+/// since `lib.rs`'s mod list is rendered FROM the module list the writer writes out, so it could
+/// only agree with itself; its only reachable red was a hand-authored `lib.rs`. Now the emitter
+/// DECLARES the paths it produced and assembly refuses if any is not materialized in `out_dir`:
 /// strictly wider coverage (`Cargo.toml`, `lib.rs`, `main.rs`, every module, every test file and
-/// the manifest itself are all declared members) obtained by deleting a parser rather than by
-/// adding a check.
+/// the manifest itself) obtained by deleting a parser rather than adding a check.
 ///
-/// `BOOTSTRAP_INLINE_MODS` GOES WITH IT. It named `NonEmptyVec` and `NonEmptyBTreeSet`, whose
-/// only reason to exist was that a hand-authored shim `lib.rs` can carry `pub mod` lines for
-/// wrappers the emitter inlines as bare `struct`s rather than emitting as files. The manifest
-/// never declares them -- they are not files -- so the skip has no subject: the state it
-/// existed to tolerate is not representable in the population assembly now reads, which is
-/// DESIGN 4b's top rung rather than the one below it.
+/// `BOOTSTRAP_INLINE_MODS` GOES WITH IT. It named `NonEmptyVec` and `NonEmptyBTreeSet`, which
+/// existed only because a hand-authored shim `lib.rs` can carry `pub mod` lines for wrappers the
+/// emitter inlines as bare `struct`s. The manifest never declares them — they are not files — so
+/// the skip has no subject: the tolerated state is unrepresentable in the population assembly
+/// reads, DESIGN 4b's top rung rather than the one below it.
 ///
 /// THE COMPILER-SEED-RE-EXPORT ARM WAS DELETED EARLIER (gunbc#8690), AND WITH IT THE ONLY READ
-/// OF THE COMMITTED SEED `lib.rs`. That arm replaced a closure member's emitted bytes with
+/// OF THE COMMITTED SEED `lib.rs`. That arm replaced a member's emitted bytes with
 /// `pub use v1_compiler::{mod}::*` when the seed's `lib.rs` text carried a matching `pub mod`
-/// line -- a second authority over seed mod-tree membership, decided by text-parsing a file
-/// whose modeled authority is `v2.compiler.self_host.stage0_crate_layout`. The `repo_root`
-/// PARAMETER went with it, so assembly has no input from which the seed `lib.rs` location is
-/// derivable at all. `closure_compiler_mod_stays_emit_retained` remains enrolled as the
-/// regression control for that climb (DESIGN 4b(4)): a compiler-family closure member keeps its
-/// emitted bytes and never becomes a `pub use v1_compiler::` re-export.
+/// line — a second authority over seed mod-tree membership, text-parsed from a file whose modeled
+/// authority is `v2.compiler.self_host.stage0_crate_layout`. The `repo_root` PARAMETER went with
+/// it, so no assembly input can derive the seed `lib.rs` location.
+/// `closure_compiler_mod_stays_emit_retained` stays enrolled as the regression control for that
+/// climb (DESIGN 4b(4)): a compiler-family closure member keeps its emitted bytes and never
+/// becomes a `pub use v1_compiler::` re-export.
 pub fn assemble_seed_linked_closure(
     out_dir: &Path,
     entry_dag: &Path,
@@ -193,12 +187,11 @@ pub fn assemble_seed_linked_closure(
     }
 
     for declared_path in declared {
-        // Whole-closure default (cssl_closure_assembly_note): every member the emitter
-        // declared it produced is emit-retained, byte-untouched -- v2_std_*, std_*, v1_rt,
-        // v2_extdeps_*, v2_lens_*, gunbc_* product modules, test_* witnesses, tools_*, etc.
-        // Assembly's only obligation is that the declaration and the tree agree; refusal for
-        // anything the bytes then say relocates to the cargo verdict, not to assemble-time
-        // prefix whitelisting.
+        // Whole-closure default (cssl_closure_assembly_note): every declared member is
+        // emit-retained, byte-untouched -- v2_std_*, std_*, v1_rt, v2_extdeps_*, v2_lens_*,
+        // gunbc_* product modules, test_* witnesses, tools_*, etc. Assembly only checks that
+        // declaration and tree agree; what the bytes say is the cargo verdict's, not
+        // assemble-time prefix whitelisting.
         if !out_dir.join(&declared_path).is_file() {
             return Err(AssemblyError::RefusedDeclaredMember {
                 declared_path,
@@ -224,10 +217,9 @@ mod tests {
 
     /// Write the emitter's own declaration of what it produced, under the shared grammar.
     ///
-    /// Fixtures build this the way `emit_emitted_population_manifest` does -- one prefixed line
-    /// per produced path, the manifest naming itself, sorted -- rather than hand-spelling `// `
-    /// and `\n`, so a change to the grammar authority moves both ends at once instead of
-    /// leaving the fixtures agreeing with a spelling nothing else uses.
+    /// Built as `emit_emitted_population_manifest` does -- one prefixed line per produced path,
+    /// the manifest naming itself, sorted -- not hand-spelled `// ` and `\n`, so a grammar change
+    /// moves both ends at once.
     fn write_population_manifest(out: &Path, paths: &[String]) -> Result<(), AssemblyError> {
         let prefix = emitted_population_manifest_line_prefix();
         let separator = emitted_population_manifest_line_separator();
@@ -276,11 +268,9 @@ mod tests {
         Ok(out)
     }
 
-    /// Per-CASE root, not per-process. Every case builds its tree at `<root>/out`, and the
-    /// prior helper keyed the root on the pid alone, so the whole module shared one directory
-    /// while cargo ran the cases CONCURRENTLY -- each `remove_dir_all` racing every sibling's
-    /// fixture writes. It passed by timing rather than by construction; keying on the case name
-    /// makes the collision unrepresentable instead of unlikely.
+    /// Per-CASE root, not per-process. The prior helper keyed on pid alone, so concurrent cargo
+    /// cases shared one `<root>/out` and each `remove_dir_all` raced sibling fixture writes --
+    /// green by timing. Keying on the case name makes the collision unrepresentable.
     fn temp_fixture_root(case: &str) -> PathBuf {
         let base =
             std::env::temp_dir().join(format!("cssl_assembly_test_{}_{case}", std::process::id()));
@@ -324,12 +314,11 @@ mod tests {
     }
 
     #[test]
-    // REGRESSION CONTROL for the deleted compiler-seed-re-export arm. Its former subject --
-    // a seed `lib.rs` carrying the same `pub mod` line -- is no longer constructible: assembly
-    // takes no repo root, so no input names the seed tree. What remains checkable, and what
-    // the arm actually broke, is that a compiler-family closure member keeps its EMITTED bytes
-    // and never becomes a `pub use v1_compiler::` re-export. `ResolvedTree` is the discriminating
-    // payload: it is the type surface a seed stub would have lacked.
+    // REGRESSION CONTROL for the deleted compiler-seed-re-export arm. Its former subject -- a
+    // seed `lib.rs` with the same `pub mod` line -- is unconstructible: assembly takes no repo
+    // root. What remains checkable is that a compiler-family closure member keeps its EMITTED
+    // bytes and never becomes a `pub use v1_compiler::` re-export. `ResolvedTree` is the
+    // discriminating payload: the type surface a seed stub would have lacked.
     fn closure_compiler_mod_stays_emit_retained() {
         let root = temp_fixture_root("closure_compiler_mod_stays_emit_retained");
         let out = root.join("out");
@@ -511,11 +500,9 @@ mod tests {
     }
 
     /// RED, AND DISCRIMINATING FOR THE SWAP ITSELF. The manifest declares
-    /// `src/not_a_routable_mod.rs` and no such file exists, so assembly refuses -- while
-    /// `lib.rs` NEVER NAMES IT. The retired `pub mod` scrape read its population out of
-    /// `lib.rs`, so it saw nothing to check here and this fixture went green under it. The
-    /// refusal is therefore evidence that the manifest is the authority now, not merely that
-    /// some refusal survived the change.
+    /// `src/not_a_routable_mod.rs`, no such file exists, and `lib.rs` NEVER NAMES IT -- so the
+    /// retired `pub mod` scrape went green here. The refusal is evidence that the manifest is the
+    /// authority now, not merely that some refusal survived.
     #[test]
     fn declared_member_missing_from_out_dir_is_typed_refused() {
         let root = temp_fixture_root("declared_member_missing_from_out_dir_is_typed_refused");
@@ -547,9 +534,8 @@ mod tests {
         }
     }
 
-    /// The population has one authority, so its ABSENCE is a refusal and never a fall back to
-    /// reading `lib.rs`. An `out_dir` with a perfectly good `lib.rs` and no manifest is exactly
-    /// the state the retired parse would have accepted.
+    /// One authority, so its ABSENCE is a refusal, never a fallback to `lib.rs` -- a good `lib.rs`
+    /// with no manifest is exactly what the retired parse accepted.
     #[test]
     fn missing_population_manifest_is_typed_refused() {
         let root = temp_fixture_root("missing_population_manifest_is_typed_refused");
@@ -665,12 +651,11 @@ mod tests {
                 String::from_utf8_lossy(&assemble_status.stderr)
             );
         }
-        // Mirror the roster row's shim writes: the shared std surface comes from the
-        // std-bridge (one authority, not one copy per transport), the rest from this
-        // transport's own shim dir. Copying only shim_dir would leave the emitted std
-        // stubs in place and the control would then refuse for the wrong reason —
-        // non-discriminating, since the assertion below is about the dropped
-        // `pub mod v2_compiler_namespace_graft`, not about a broken std surface.
+        // Mirror the roster row's shim writes: shared std surface from the std-bridge (one
+        // authority, not one copy per transport), the rest from this transport's shim dir.
+        // Copying only shim_dir would leave emitted std stubs in place and the control would
+        // refuse for the wrong reason -- the assertion is about the dropped
+        // `pub mod v2_compiler_namespace_graft`, not a broken std surface.
         let std_bridge_dir = root.join("dag/gunbc/instruments/self_host_std_bridge_shims");
         for dir in [&std_bridge_dir, &shim_dir] {
             for entry in fs::read_dir(dir).expect("shim dir") {

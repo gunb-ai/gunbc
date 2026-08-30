@@ -91,7 +91,9 @@ import v2.std.collection { Absent, Present }
 // now they are one fact read in two directions, so renaming the job cannot leave the ruleset naming
 // a context nothing publishes (DESIGN section 3). That failure mode is specifically quiet: a
 // required context that no job publishes leaves the check permanently pending rather than red.
-data repo_ruleset_authority_note: String = "See the module-leading annotation. This row exists because the module's subject is a fact about the world rather than about the tree, and a reader arriving from gunbc.witness_floor_workflow needs the pointer."
+// See the module-leading annotation. This row exists because the module's subject is a fact about
+// the world rather than about the tree, and a reader arriving from gunbc.witness_floor_workflow
+// needs the pointer.
 
 // WHY THE RULESET IS ADDRESSED BY ID RATHER THAN BY NAME. GitHub's update endpoint is
 // PUT /repos/{owner}/{repo}/rulesets/{ruleset_id}; the name is a mutable label and two rulesets may

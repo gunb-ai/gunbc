@@ -291,7 +291,11 @@ type SeedCompiledFallbackInventoryRow {
   disposition: SeedCompiledFallbackDisposition
 }
 
-data fallback_arm_seed_inventory_note: String = "Seed compiled-fallback-table inventory (W2 deliverable 3, measured 2026-07-25): 25 .rs files under src/v1/stage0/src matching fallback|catch_all|default_arm|wildcard_arm (~198 mention sites). Inventory only — one disposition each. Delete-on-wall when a construction wall supersedes the table; parity-witnessed when a .dag mirror owns the fact (effect_stream precedent); legitimate-constant when the seed string is a true host constant with no .dag twin yet."
+// Seed compiled-fallback-table inventory (W2 deliverable 3, measured 2026-07-25): 25 .rs files
+// under src/v1/stage0/src matching fallback|catch_all|default_arm|wildcard_arm (~198 mention
+// sites). Inventory only — one disposition each. Delete-on-wall when a construction wall supersedes
+// the table; parity-witnessed when a .dag mirror owns the fact (effect_stream precedent);
+// legitimate-constant when the seed string is a true host constant with no .dag twin yet.
 
 data fallback_arm_seed_compiled_fallback_inventory: List<SeedCompiledFallbackInventoryRow> = [
   SeedCompiledFallbackInventoryRow { path: "src/v1/stage0/src/cli_run.rs", disposition: ParityWitnessed { precedent: "complexity_linearity_wildcard_facts / fallback_arm_census_facts host seam" } },

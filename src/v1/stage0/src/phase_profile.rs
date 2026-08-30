@@ -2,24 +2,24 @@
 //!
 //! Answers "what is this stuck/long-running executor doing right now?" via a **single-slot,
 //! process-global, last-writer-wins sampler** (`GLOBAL_INNER` behind one `Mutex`). Under
-//! `spawn_width>1`, concurrent batch threads all update the same slot; each emitted tick
-//! reports the **most-recently-entered** phase/context across threads — exactly right for
-//! heartbeat use ("is it stuck in resolve or eval?") and explicitly **not** per-thread or
-//! distributed attribution.
+//! `spawn_width>1` all batch threads update the same slot, so each tick reports the
+//! **most-recently-entered** phase/context across threads — right for a heartbeat ("stuck in
+//! resolve or eval?"), explicitly **not** per-thread or distributed attribution.
 //!
 //! **Transport only** (DESIGN §4): stderr `[phase-profile]` k=v lines are the Lossless wire
-//! projection crossing the Rust→log boundary — same pattern as `[gantt]`, `[measurement]`,
-//! and `[calibration]` in `claim_executor`. The authority is not this file.
+//! projection across the Rust→log boundary, like `[gantt]`, `[measurement]` and
+//! `[calibration]` in `claim_executor`. The authority is not this file.
 //!
 //! Zero cost when `GUNBC_FLOOR_PHASE_PROFILE` is unset.
 //!
-//! **Dissolution trigger (DESIGN §6):** delete `src/v1/stage0/src/phase_profile.rs`, remove the
-//! `set_phase` hooks in `cli_run.rs` / `claim_executor.rs`, and drop `GUNBC_FLOOR_PHASE_PROFILE`
-//! when realization_measurement_loop **Phase 0** (`docs/plans/realization-measurement-loop.md`) lands
-//! a `.dag` `PerformanceReceipt` phase-local tick carrier that a
-//! floor witness consumes by execution (the same retirement event that supersedes `GUNBC_FLOOR_GANTT`
-//! per `ci-floor-fractal-gantt (plan doc deleted 2026-08-28)` § dissolution). Receipt = that witness green with this
-//! module deleted and zero `[phase-profile]` stderr when profiling is enabled on the model path.
+//! **Dissolution trigger (DESIGN §6):** delete `src/v1/stage0/src/phase_profile.rs`, the
+//! `set_phase` hooks in `cli_run.rs` / `claim_executor.rs`, and `GUNBC_FLOOR_PHASE_PROFILE`
+//! when realization_measurement_loop **Phase 0** (`docs/plans/realization-measurement-loop.md`)
+//! lands a `.dag` `PerformanceReceipt` phase-local tick carrier consumed by execution by a floor
+//! witness (the event that also supersedes `GUNBC_FLOOR_GANTT` per
+//! `ci-floor-fractal-gantt (plan doc deleted 2026-08-28)` § dissolution). Receipt = that witness
+//! green with this module deleted and zero `[phase-profile]` stderr with profiling enabled on
+//! the model path.
 
 use std::io::{self, Write};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};

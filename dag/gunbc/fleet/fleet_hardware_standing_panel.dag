@@ -26,7 +26,9 @@ import gunbc.fleet_physical_inventory { fleet_dimm_verdicts, fleet_processor_ver
 // failed training and was reverted, so the tree asserted a memory population the machine did not
 // have, and the slot widths computed from it were wrong on the one host that differed. The verdict
 // existed the whole time and said so. Nobody could see it.
-data fleet_hardware_standing_panel_note: String = "Daily-workspace panel over gunbc.fleet_physical_inventory's per-host reconcile verdicts. Renders expectation-versus-observation standing for memory and processor; reads the verdicts directly rather than re-deriving them."
+// Daily-workspace panel over gunbc.fleet_physical_inventory's per-host reconcile verdicts. Renders
+// expectation-versus-observation standing for memory and processor; reads the verdicts directly
+// rather than re-deriving them.
 
 // THREE STANDINGS, NOT TWO, AND THE THIRD IS THE ONE THE PANEL EXISTS FOR.
 //

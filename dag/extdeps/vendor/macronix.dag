@@ -15,7 +15,10 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   }
 }
 
-data macronix_registrant_note: String = "Read 2026-08-14: an integrated device manufacturer of non-volatile memory, headquartered in Taiwan. The entry also gives the name in Chinese characters, which is not carried here because this row's legal_name is a single field and choosing which script it holds would be a decision no document read here makes; a later reader adding a script-aware name carrier is grounding something this row leaves open rather than correcting it."
+// Read 2026-08-14: an integrated device manufacturer of non-volatile memory, headquartered in
+// Taiwan. The entry also gives the name in Chinese characters, not carried because legal_name is a
+// single field and choosing its script is a decision no document read here makes; a later
+// script-aware name carrier grounds what this row leaves open rather than correcting it.
 
 data macronix: Vendor<Hardware> = Vendor { legal_name: "Macronix International Co., Ltd." }
 

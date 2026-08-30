@@ -1,6 +1,5 @@
 module v2.compiler.infer
 
-
 import std.occurrence_identity { OccurrenceSynthetic }
 import v2.std.algebra { length, list_snoc_item }
 import v2.std.bounded_lattice_completeness {
@@ -170,7 +169,12 @@ fn inferred_facts_descent(facts: InferredFacts) -> Witness<v2.std.cardinality.Te
   facts.descent
 }
 
-data infer_emit_shape_frontier_note: String = "Test-only emit-shape frontier (review 47246): empty facts map for orch-emit-compatible mock proofs (`orch_emit_facts_lookup`, `ingested_emit_shape_frontier_tree_from_source` in emit-host witnesses). Not a production carrier — production emit paths pass canonical infer output facts-flow-forward; erasing or relabeling infer judgments is forbidden (review 47234, review 47246). dissolve-on: v2-inferred-tree-completeness makes incomplete InferredTree unwritable on the production emit path."
+// Test-only emit-shape frontier (review 47246): empty facts map for orch-emit-compatible mock
+// proofs (`orch_emit_facts_lookup`, `ingested_emit_shape_frontier_tree_from_source` in emit-host
+// witnesses). Not a production carrier — production emit paths pass canonical infer output
+// facts-flow-forward; erasing or relabeling infer judgments is forbidden (review 47234, review
+// 47246). dissolve-on: v2-inferred-tree-completeness makes incomplete InferredTree unwritable on
+// the production emit path.
 
 fn infer_emit_shape_frontier_inferred_tree(root: Node) -> InferredTree {
   InferredTree {
@@ -366,7 +370,20 @@ fn algebra_ref_from_grounding(grounding: CanonicalGrounding) -> AlgebraRef {
   }
 }
 
-data canonical_grounding_admission_scope_note: String = "This predicate deliberately does NOT carry an 'evidence != node' conjunct, and the reason is worth recording because that conjunct was tried and withdrawn. As a read-path backstop against hand-built self-groundings it looked free, but it is a PROXY for the property actually at issue — 'was this grounding produced by a derivation?' — and the NodeGrounding carrier already answers that exactly. Proxies are what produced the defect in the first place: algebra_ref_is_grounded is a shape test on the connective, which is precisely why Conj/Disj type-node self-groundings walked through it. The proxy also has real false positives: v2_evaluator's bool fixture uses ONE atom as both the evaluand and the runtime value's primitive_type, so resolved == algebra there is the fixture's coherent encoding of 'this atom denotes Bool', not a fabrication. Refusing it would have meant rewriting a thesis-proof fixture to make a check go green — the inversion DESIGN §5 names explicitly. The wall therefore lives where it is exact: canonical_grounding_from_derived_type refuses self-evidence for every grounding the COMPILER mints, and GroundingNotDerived is what an underived node carries. A structurally hand-written CanonicalGrounding remains writable by any module; that residue is stated, not silently covered."
+// This predicate deliberately does NOT carry an 'evidence != node' conjunct; that conjunct was
+// tried and withdrawn. As a read-path backstop against hand-built self-groundings it looked free,
+// but it is a PROXY for the property at issue — 'was this grounding produced by a derivation?' —
+// which the NodeGrounding carrier already answers exactly. Proxies produced the defect in the
+// first place: algebra_ref_is_grounded is a shape test on the connective, which is why Conj/Disj
+// type-node self-groundings walked through it. The proxy also has real false positives:
+// v2_evaluator's bool fixture uses ONE atom as both the evaluand and the runtime value's
+// primitive_type, so resolved == algebra there is the fixture's coherent encoding of 'this atom
+// denotes Bool', not a fabrication. Refusing it would mean rewriting a thesis-proof fixture to
+// make a check go green — the inversion DESIGN §5 names. The wall therefore lives where it is
+// exact: canonical_grounding_from_derived_type refuses self-evidence for every grounding the
+// COMPILER mints, and GroundingNotDerived is what an underived node carries. A structurally
+// hand-written CanonicalGrounding remains writable by any module; that residue is stated, not
+// silently covered.
 
 fn canonical_grounding_admits_infer_facts(grounding: CanonicalGrounding) -> Bool {
   well_formed(n: grounding.node)
@@ -432,7 +449,16 @@ fn concat_inferred_facts_entries(
   })
 }
 
-data infer_node_facts_no_derivation_note: String = "infer_node_facts used to reach solve_constraints with the singleton candidate set [root] and the constraint-satisfaction predicate, whose preservation rule is (algebra == source_facts && candidate == source_facts) with algebra bound to the root itself — so the witness search reduced to root == root and always succeeded. The grounding it minted carried the source node as its own structural evidence, which inferred_facts_resolved_type reads as the node's resolved type. That is source identity standing where a derivation belongs. The Bool and Int arms now consume the typed canonical-literal query and raise those derivations to leaf facts; every other node on this path carries the typed GroundingNotDerived frontier. solve_constraints itself is untouched — it remains the structural-solve authority named by dag/gunbc/plans/solve_higher_order_design.dag, to be EXTENDED with real candidate generation, never forked."
+// infer_node_facts used to reach solve_constraints with the singleton candidate set [root] and the
+// constraint-satisfaction predicate, whose preservation rule is (algebra == source_facts &&
+// candidate == source_facts) with algebra bound to the root itself — so the witness search reduced
+// to root == root and always succeeded. The grounding it minted carried the source node as its own
+// structural evidence, which inferred_facts_resolved_type reads as the node's resolved type:
+// source identity standing where a derivation belongs. The Bool and Int arms now consume the
+// typed canonical-literal query and raise those derivations to leaf facts; every other node on
+// this path carries the typed GroundingNotDerived frontier. solve_constraints is untouched — it
+// remains the structural-solve authority named by dag/gunbc/plans/solve_higher_order_design.dag,
+// to be EXTENDED with real candidate generation, never forked.
 
 fn infer_node_facts(n: Node, partials: List<Node>) -> Outcome<InferredFacts> {
   match infer_bounded_lattice_consumer_gate(consumer: n, partials: partials) {
@@ -629,7 +655,13 @@ fn infer_find_arrow_domain_type_in_tree(root: Node, binding: Symbol) -> Optional
   }
 }
 
-data infer_branch_operand_type_frontier_note: String = "The literal and arrow-domain arms below derive a real type for the operand; the remaining arm falls through to the operand's own inferred facts. When those facts are the GroundingNotDerived frontier there is no operand type, and this now refuses (Violates) instead of returning the operand NODE as its own type. That fallback was the path by which the self-grounding fabrication entered branch/match/loop unification: two arms whose 'types' were their own expression nodes compared unequal and were reported as an arm-type mismatch, while two structurally identical arms compared equal and were reported as unified — in both cases the verdict was about node identity, not about types."
+// The literal and arrow-domain arms below derive a real type for the operand; the remaining arm
+// falls through to the operand's own inferred facts. When those facts are the GroundingNotDerived
+// frontier there is no operand type, and this now refuses (Violates) instead of returning the
+// operand NODE as its own type. That fallback was how the self-grounding fabrication entered
+// branch/match/loop unification: two arms whose 'types' were their own expression nodes compared
+// unequal and were reported as an arm-type mismatch, while two structurally identical arms
+// compared equal and were reported as unified — both verdicts about node identity, not types.
 
 fn infer_branch_operand_resolved_type_in_tree(
   node: Node,
@@ -702,7 +734,13 @@ fn infer_branch_type_is_int(type_node: Node) -> Bool {
   }
 }
 
-data infer_match_int_scrutinee_bool_literal_body_note: String = "Int-scrutinee bool-literal match arms ground body type as Int at arm-row construction (same octet 0/1 authority as eval allocate_literal), not a post-unification rewrite. dissolve-on: bool keywords carry Int type in Int-valued match bodies at normalize/ingest. scaffold-widen: Int scrutinee on bool-literal match emits infer_match_int_scrutinee_bool_literal_scaffold diagnostic (countable on Accepted path). paired-scaffold: emit half = target_value_expr_int_bool_octet_channel_dissolution_note (target_model.dag) — dissolve both halves together on octet↔bool codec inhabitation."
+// Int-scrutinee bool-literal match arms ground body type as Int at arm-row construction (same octet
+// 0/1 authority as eval allocate_literal), not a post-unification rewrite. dissolve-on: bool
+// keywords carry Int type in Int-valued match bodies at normalize/ingest. scaffold-widen: Int
+// scrutinee on bool-literal match emits infer_match_int_scrutinee_bool_literal_scaffold diagnostic
+// (countable on Accepted path). paired-scaffold: emit half =
+// target_value_expr_int_bool_octet_channel_dissolution_note (target_model.dag) — dissolve both
+// halves together on octet↔bool codec inhabitation.
 
 fn infer_match_bool_consumer_diagnostics_with_int_scrutinee_scaffold(
   consumer: Node,
@@ -1075,7 +1113,13 @@ fn infer_match_bool(
   }
 }
 
-data infer_loop_iteration_flag_c_note: String = "FLAG C (body-lowering design, operator-signed): the first cut types carrier-invariant loops only — every iteration-fold child must resolve to ONE carrier type τ, so the inferred tree states 'body : τ → τ, repeated under the measure'. A refinement-shaped loop (carrier narrows across iterations, e.g. Refined<τ> vs τ) lands in the located infer_loop_iteration_type_mismatch refusal by construction — refused, never silently fabricated as τ → τ. Dissolution trigger: the refinement-typed follow-on (monotone-narrowing carrier) replaces that refusal with a real refinement judgment."
+// FLAG C (body-lowering design, operator-signed): the first cut types carrier-invariant loops only
+// — every iteration-fold child must resolve to ONE carrier type τ, so the inferred tree states
+// 'body : τ → τ, repeated under the measure'. A refinement-shaped loop (carrier narrows across
+// iterations, e.g. Refined<τ> vs τ) lands in the located infer_loop_iteration_type_mismatch refusal
+// by construction — refused, never silently fabricated as τ → τ. Dissolution trigger: the
+// refinement-typed follow-on (monotone-narrowing carrier) replaces that refusal with a real
+// refinement judgment.
 
 fn infer_loop_iteration_fold_child_targets(node: Node) -> List<Node> {
   fold(node.children, init: [], f: fn(acc, e) {
@@ -1170,7 +1214,16 @@ fn infer_loop_iteration(
   }
 }
 
-data infer_transform_binary_infix_note: String = "First behavior-specific Transform derivation (v2-inferred-tree-completeness): binary infix Int add derives the unified Int type as the expression result — the add_probe body vertical. Operator recognition accepts dag_token_plus pre-resolve and the canonical add operation wire post-resolve (03_resolve.resolve_transform_operator_child). infer_gather_fold_init gates await_transform_row on infer_transform_is_binary_infix_int_add_shape so every other Transform stays GroundingNotDerived — refusal is reserved for add-shaped input that is malformed. Discriminating add vertical witness enrolled on FalsifierSubstrateLongLane via gunbc.explicit_witness_admission (SubstrateLongLaneEvalBudget); fast per-PR subtract dispatch control in body_lowering/infer_transform_binary_infix_witness_test.dag. dissolve-on: general operator/operand typing table subsumes this rule."
+// First behavior-specific Transform derivation (v2-inferred-tree-completeness): binary infix Int
+// add derives the unified Int type as the expression result — the add_probe body vertical. Operator
+// recognition accepts dag_token_plus pre-resolve and the canonical add operation wire post-resolve
+// (03_resolve.resolve_transform_operator_child). infer_gather_fold_init gates await_transform_row
+// on infer_transform_is_binary_infix_int_add_shape so every other Transform stays
+// GroundingNotDerived — refusal is reserved for add-shaped input that is malformed. Discriminating
+// add vertical witness enrolled on FalsifierSubstrateLongLane via gunbc.explicit_witness_admission
+// (SubstrateLongLaneEvalBudget); fast per-PR subtract dispatch control in
+// body_lowering/infer_transform_binary_infix_witness_test.dag. dissolve-on: general
+// operator/operand typing table subsumes this rule.
 
 fn infer_transform_operator_is_int_add(op_node: Node) -> Bool {
   match op_node.kind {
@@ -1564,7 +1617,11 @@ fn infer_gather_transform_row_on_entries(
   }
 }
 
-data infer_gather_dispatch_totality_note: String = "This dispatch is TOTAL over the closed node vocabulary (6 connectives + 6 behaviors) with no wildcard arm, and that is the construction half of the wall. The wildcard it replaces is what let eight kinds fall silently into the self-grounding fabrication; enumerating them means a thirteenth kind cannot be added without deciding, at this site, whether it derives its type or joins the counted frontier — the decision cannot be defaulted into by omission (DESIGN §4 closed vocabulary, §5 unwritable-by-construction)."
+// This dispatch is TOTAL over the closed node vocabulary (6 connectives + 6 behaviors) with no
+// wildcard arm -- the construction half of the wall. The wildcard it replaces let eight kinds fall
+// silently into the self-grounding fabrication; enumerating them means a thirteenth kind cannot be
+// added without deciding, at this site, whether it derives its type or joins the counted frontier
+// -- never defaulted into by omission (DESIGN §4 closed vocabulary, §5 unwritable-by-construction).
 
 fn infer_gather_fold_not_derived(n: Node, partials: List<Node>) -> InferGatherFoldAcc {
   match infer_node_facts(n: n, partials: partials) {
@@ -1676,7 +1733,11 @@ fn infer_gather_failed_non_empty(acc: InferGatherFoldAcc) -> NonEmptyDiagnostics
   }
 }
 
-data infer_literal_subtree_diagnostic_discharge_note: String = "An integer literal's modeled type derives from its canonical representation, including its sole named magnitude subtree. Its derivation discharges only that edge's local type frontier; propagating it past the literal would report GroundingNotDerived after Int was derived. Boolean literals are canonical only with no children, so no boolean payload can be discharged. Malformed literals remain GroundingNotDerived and retain every child diagnostic."
+// An integer literal's modeled type derives from its canonical representation, including its sole
+// named magnitude subtree. Its derivation discharges only that edge's local type frontier;
+// propagating it past the literal would report GroundingNotDerived after Int was derived. Boolean
+// literals are canonical only with no children, so no boolean payload can be discharged. Malformed
+// literals remain GroundingNotDerived and retain every child diagnostic.
 
 fn infer_literal_edge_diagnostics_derived(parent: Node, edge: Edge) -> Bool {
   match dag_canonical_literal_from_node(node: parent) {

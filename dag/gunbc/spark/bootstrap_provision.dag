@@ -41,7 +41,13 @@ import std.access {
 // exist in Secret Manager. What it deliberately does NOT own: actuation. The cloud executor is
 // the OIDC/WIF-authenticated workflow, and it consumes this model.
 
-data spark_provision_scope_note: String = "This module models subjects and allocations; it does not actuate. The prior revision's spark_secret_containers_create / spark_secret_iam_converge / spark_secret_material_write patterns were deleted rather than repaired in place, because each was unconditional: create with no prior Get, SetIamPolicy with no GetIamPolicy and no etag (which REPLACES a policy rather than amending it, so unrelated bindings on any secret that had them would have been dropped), and AddVersion with no attempt identity (which mints a version per call, so an interrupted run sprawls). Repairing them as patterns would have preserved the shape whose availability was the defect."
+// This module models subjects and allocations; it does not actuate. The prior revision's
+// spark_secret_containers_create / spark_secret_iam_converge / spark_secret_material_write patterns
+// were deleted rather than repaired in place, because each was unconditional: create with no prior
+// Get, SetIamPolicy with no GetIamPolicy and no etag (which REPLACES a policy rather than amending
+// it, so unrelated bindings on any secret that had them would have been dropped), and AddVersion
+// with no attempt identity (which mints a version per call, so an interrupted run sprawls).
+// Repairing them as patterns would have preserved the shape whose availability was the defect.
 
 // ── The population ────────────────────────────────────────────────────────────────────────
 // FOUR occurrences, not two. An earlier revision carried two global secret ids -- one hotspot,
@@ -462,7 +468,13 @@ fn spark_actuation_decision(
     b: spark_cloud_grant_decision(grant: grant, cell: cell))
 }
 
-data spark_access_adapter_note: String = "This module is an ADAPTER, not an access system. It supplies the domain operation population, the resource identity and the scope rows; std.access supplies AccessRequest, AccessDecision, the typed refusal coordinates and decision_meet. No second admitted/refused sum is minted here. Independence is a property of the grant -- principal x operation x resource x context -- and never of a username, a uid, a service-account count, or how many credential values happen to exist. Two passwords under one project-wide binding are not independent access; one short-lived token over two exact resources may be far tighter."
+// This module is an ADAPTER, not an access system. It supplies the domain operation population, the
+// resource identity and the scope rows; std.access supplies AccessRequest, AccessDecision, the
+// typed refusal coordinates and decision_meet. No second admitted/refused sum is minted here.
+// Independence is a property of the grant -- principal x operation x resource x context -- and
+// never of a username, a uid, a service-account count, or how many credential values happen to
+// exist. Two passwords under one project-wide binding are not independent access; one short-lived
+// token over two exact resources may be far tighter.
 
 // ── Effective access, at the strength the instrument supports ─────────────────────────────
 // WIF ISSUANCE and CAPABILITY are two observations, not one. The first is about the credential
@@ -577,7 +589,14 @@ fn spark_effective_access_standing() -> EffectiveAccessStanding {
 //                            compared by payload identity. The writer reporting its own returned
 //                            value is not a readback, and `latest` is a moving alias that cannot
 //                            witness which version this run wrote.
-data spark_convergence_shape_note: String = "observe container (Get before Create; absent/matching/conflicting/unreadable are four distinct verdicts) -> reconcile IAM (GetIamPolicy, membership diff, preserve unrelated bindings, SetIamPolicy with observed etag, readback) -> materialize (at most one AddVersion per attempt identity, receipt naming the exact version) -> independent readback (AccessVersion at that exact version, compared by payload identity). Secret material never crosses a string-shaped CLI boundary: base64 is wire encoding, not confidentiality, and gunbc.spark.bootstrap_credential's sensitive-input policy already refuses secrets appearing in argv or standard streams. Material is generated or fetched inside the admitted run and projected to base64 at the REST boundary."
+// observe container (Get before Create; absent/matching/conflicting/unreadable are four distinct
+// verdicts) -> reconcile IAM (GetIamPolicy, membership diff, preserve unrelated bindings,
+// SetIamPolicy with observed etag, readback) -> materialize (at most one AddVersion per attempt
+// identity, receipt naming the exact version) -> independent readback (AccessVersion at that exact
+// version, compared by payload identity). Secret material never crosses a string-shaped CLI
+// boundary: base64 is wire encoding, not confidentiality, and gunbc.spark.bootstrap_credential's
+// sensitive-input policy already refuses secrets appearing in argv or standard streams. Material is
+// generated or fetched inside the admitted run and projected to base64 at the REST boundary.
 
 // THE UNBUILT FRONTIER, MOVED OUT OF A `String` ROW for the same §4c reason: one reference, its own
 // declaration. The '0 of 4' in it is a claim a machine should be able to check and cannot, which is
@@ -845,7 +864,6 @@ fn compare_spark_readback(
   }
 }
 
-
 // ── Demand: derived from the SELECTED effects, never authored ─────────────────────────────
 // The population of access this workflow needs is a PROJECTION of the effects it will actually
 // perform. An earlier revision authored it: SparkCloudGrant.operations x SparkCloudScope.resources
@@ -964,7 +982,6 @@ fn spark_demand_decision_for(demand: ExternalAccessDemand, op: SecretManagerOper
   }
 }
 
-
 // THE CEILING, KEYED ON THE REAL OPERATION IDENTITY -- AND IT NOW DELEGATES, WHICH THIS NOTE ALREADY
 // CLAIMED IT DID.
 //
@@ -1064,7 +1081,15 @@ fn secret_demand_is_active(standing: SecretDemandStanding) -> Bool {
 // An ACTIVE standing with an empty consumer list is a contradiction, not an active demand: it
 // claims consumers exist while naming none. secret_demand_is_active refuses it above rather than
 // letting the arm's NAME stand in for the fact.
-data spark_secret_demand_note: String = "Demand is derived from named consumers and the operation each will perform, never from the credential roster. The factory hotspot credential is RetiredAfterOobe on both Sparks -- both machines are past out-of-box setup, so no selected workflow reads it -- and it therefore creates no access demand and cannot block serving. The administrator credential is RetainedForRecovery: reachable by an explicit recovery or rotation workflow, not by the standing grant a serving run carries. The fleet SSH key is Active with the managed host-access convergence executor as its consumer. The serving API credential's standing is Unobserved rather than assumed: the pinned artifact and its acquisition path are not yet selected, and authoring an Active row for it would fabricate a consumer that does not exist in any plan."
+// Demand is derived from named consumers and the operation each will perform, never from the
+// credential roster. The factory hotspot credential is RetiredAfterOobe on both Sparks -- both
+// machines are past out-of-box setup, so no selected workflow reads it -- and it therefore creates
+// no access demand and cannot block serving. The administrator credential is RetainedForRecovery:
+// reachable by an explicit recovery or rotation workflow, not by the standing grant a serving run
+// carries. The fleet SSH key is Active with the managed host-access convergence executor as its
+// consumer. The serving API credential's standing is Unobserved rather than assumed: the pinned
+// artifact and its acquisition path are not yet selected, and authoring an Active row for it would
+// fabricate a consumer that does not exist in any plan.
 
 // SERVING INSTALL SCOPE IS DERIVED FROM OBSERVED PRIVILEGE, NEVER CHOSEN.
 //

@@ -5,88 +5,84 @@ via fleet converge in the future? i don't really want to poke at my router anymo
 
 ## 1. The displaced cost
 
-The pain is concrete and was paid on 2026-08-27. Moving two DGX Sparks from ethernet to
-wifi required the operator to hand-edit DHCP reservations in the CR1000A web UI: delete two
-entries, wait on a stale dynamic lease that the UI refuses to remove, and re-author two
-static rows against MACs read off the hosts by hand. Every one of those acts is a fleet
-fact, none of them is expressible in the model, and the model's own record of the result
-was wrong in a way nobody could have caught from inside the repo — `dgx_procurement.dag`
-asserted two `StaticDhcpReservation` rows while the router had been handing out ordinary
-dynamic leases the whole time. A fact the repo cannot read is a fact the repo will
-eventually misstate.
+Paid on 2026-08-27: moving two DGX Sparks from ethernet to wifi meant hand-editing DHCP
+reservations in the CR1000A web UI — delete two entries, wait on a stale dynamic lease the UI
+refuses to remove, re-author two static rows against MACs read off the hosts by hand. Each act
+is a fleet fact, none is expressible in the model, and the model's record was wrong in a way
+nobody could catch from inside the repo — `dgx_procurement.dag` asserted two
+`StaticDhcpReservation` rows while the router had been handing out ordinary dynamic leases the
+whole time. A fact the repo cannot read is a fact the repo will eventually misstate.
 
-That is the cost to displace: **a host's address is currently owned by a device the fleet
-cannot observe, cannot converge, and cites only through a user-guide PDF.**
+The cost to displace: **a host's address is currently owned by a device the fleet cannot
+observe, cannot converge, and cites only through a user-guide PDF.**
 
 ## 2. Two paths, and why one is declined
 
 ### Path A — the host owns its address (RECOMMENDED)
 
-Take DHCP out of the loop for fleet hosts entirely. A host's address becomes a netplan
-fact, authored from the model and applied over the existing `host_effect_apply` path — the
-same transport that already converges hostname, toolchain, runner slots and build cache.
-The router's only remaining involvement is a **one-time** DHCP-pool shrink so the static
-range cannot collide, after which it is never touched again.
+Take DHCP out of the loop for fleet hosts. A host's address becomes a netplan fact, authored
+from the model and applied over the existing `host_effect_apply` path — the transport that
+already converges hostname, toolchain, runner slots and build cache. The router's only remaining
+involvement is a **one-time** DHCP-pool shrink so the static range cannot collide; after that it
+is never touched.
 
-This is the path that fits the machinery already in tree:
+This fits the machinery already in tree:
 
 - `extdeps.netplan.netplan` already models the applier half, including the load-bearing
   fact that presence in `/etc/netplan` is sufficient for application regardless of writer.
 - `host_effect_apply` already delivers typed effects to these exact hosts.
-- `membership_reconcile<M,K>` is the right spine: desired attachments vs observed
-  attachments, keyed by `(host, interface)`. Added/Modified → upsert, Removed →
-  teardown-or-refuse. A new medium is a new instantiation, not a forked reconcile.
-- It introduces **no new transport**. §3 permits a new transport as a Realization handler,
-  but the cheapest correct move is the one that needs none.
+- `membership_reconcile<M,K>` is the spine: desired vs observed attachments, keyed by
+  `(host, interface)`. Added/Modified → upsert, Removed → teardown-or-refuse. A new medium is
+  a new instantiation, not a forked reconcile.
+- **No new transport.** §3 permits one as a Realization handler, but the cheapest correct
+  move needs none.
 
 ### Path B — model the CR1000A admin transport (DECLINED, recorded)
 
 Converge DHCP reservations by driving the router. `Cr1000aAdminTransport` today is
-`WebUiManual | UnknownTransport`, so a real handler is the structurally sanctioned
-addition. It is declined on cost and on §5:
+`WebUiManual | UnknownTransport`, so a real handler is the structurally sanctioned addition.
+Declined on cost and on §5:
 
 - The CR1000A's local admin API is undocumented. The module's cited authority is a Verizon
-  user-guide PDF, which describes the UI and not an API — so any handler would be
-  reverse-engineered from a SPA's traffic and **could not be cited**, which is the
-  grounding requirement `extdeps/` exists to hold.
-- It is firmware-fragile: a Verizon-pushed update can change it with no notice and no
-  version to declare.
-- It buys strictly less than Path A. Even with it working, the address still lives in a
-  device that is not the fleet, and the model still has to transcribe it back.
+  user-guide PDF describing the UI, not an API — any handler would be reverse-engineered from
+  a SPA's traffic and **could not be cited**, the grounding requirement `extdeps/` exists to
+  hold.
+- Firmware-fragile: a Verizon-pushed update can change it with no notice and no version to
+  declare.
+- Buys strictly less than Path A: the address still lives in a device that is not the fleet,
+  and the model still has to transcribe it back.
 
-Declining is recorded here rather than left implicit, because the next reader will
-otherwise re-derive it: the router *is* the obvious place to converge a DHCP reservation,
-and the reason not to is not obvious.
+Recorded rather than left implicit because the next reader will otherwise re-derive it: the
+router *is* the obvious place to converge a DHCP reservation, and the reason not to is not
+obvious.
 
 ## 3. What is missing
 
-Four gaps, in dependency order. None is large; the first is the one everything else waits
-on.
+Four gaps, in dependency order. None is large; the first is what everything else waits on.
 
-**(a) A per-host interface roster, and its producer.** There is no model of "srv6 has
-`enP7s7` (ethernet, dark) and `wlP9s9` (wireless, up)". `InterfaceObservation` is a shape
-with **no live producer** — `host_network_diagnosis.host_network_observation` returns
-`none` for every host, and the module says so explicitly, counting the whole fleet as an
-honest deficit. Landing this producer is therefore not new scope: it is the thing an
-existing model is already waiting for, and its tally falling is the receipt.
+**(a) A per-host interface roster, and its producer.** No model of "srv6 has `enP7s7`
+(ethernet, dark) and `wlP9s9` (wireless, up)". `InterfaceObservation` is a shape with **no live
+producer** — `host_network_diagnosis.host_network_observation` returns `none` for every host,
+and the module says so, counting the whole fleet as an honest deficit. Landing the producer is
+not new scope: an existing model is already waiting for it, and its tally falling is the
+receipt.
 
-**(b) Wireless in netplan.** `extdeps.netplan.netplan` models the renderer and the
-interface, but not config *content* — no `addresses:`, no `wifis:`/`access-points:`. The
-wifi block needs an SSID and a key. **The PSK is a secret and must be a `SecretRef`**, never
-an inline literal, on the same reasoning `nvidia_dgx_spark_setup` already applies to the
-per-unit sticker credential: a shared home SSID password in source is the FactoryLogin
-mistake with a different subject.
+**(b) Wireless in netplan.** `extdeps.netplan.netplan` models the renderer and the interface,
+not config *content* — no `addresses:`, no `wifis:`/`access-points:`. The wifi block needs an
+SSID and a key. **The PSK is a secret and must be a `SecretRef`**, never an inline literal, on
+the reasoning `nvidia_dgx_spark_setup` already applies to the per-unit sticker credential: a
+shared home SSID password in source is the FactoryLogin mistake with a different subject.
 
 **(c) MAC grounding.** `MacAddress` is still the anemic `NonEmptyStr where brand` in
-`extdeps.dhcp.v4`, with a named dissolution to an unwritten `extdeps/network/mac.dag`. Two
-MACs per host makes this load-bearing rather than tidy: the model must be able to say
-*which interface's* MAC a row binds, and today it cannot. The 2026-08-27 incident is the
-witness — a reservation silently kept naming a dead port.
+`extdeps.dhcp.v4`, with a named dissolution to an unwritten `extdeps/network/mac.dag`. Two MACs
+per host makes this load-bearing: the model must say *which interface's* MAC a row binds, and
+today it cannot. The 2026-08-27 incident is the witness — a reservation silently kept naming a
+dead port.
 
-**(d) A medium axis on the attachment.** `NetworkPortMedium` carries `WirelessLan`, but it
-is a *hardware catalog* fact (what the box ships with), not an *attachment* fact (what the
-host is using). `product.network_topology.NetworkLocality` has `Lan` with no wired/wireless
-distinction, so the topology cannot currently express the change that just happened.
+**(d) A medium axis on the attachment.** `NetworkPortMedium` carries `WirelessLan`, but as a
+*hardware catalog* fact (what the box ships with), not an *attachment* fact (what the host is
+using). `product.network_topology.NetworkLocality` has `Lan` with no wired/wireless
+distinction, so the topology cannot express the change that just happened.
 
 ## 4. Staging
 
@@ -101,19 +97,18 @@ distinction, so the topology cannot currently express the change that just happe
   wifi. Requires the one-time pool shrink.
 - **Phase 3 — wireless.** `wifis:`/`access-points:` with the PSK as a `SecretRef`.
 
-**The standing hazard, stated once:** every phase after 0 can strand a host. These two boxes
-have no BMC and both ethernet ports are now dark, so a bad wireless apply is a physical
-trip. Wireless converge must land behind the same read-back-and-revert discipline the rest
-of the converge path uses, and Phase 2's wired-first ordering exists precisely so there is
-a second way in before the first one is edited.
+**The standing hazard:** every phase after 0 can strand a host. These two boxes have no BMC and
+both ethernet ports are now dark, so a bad wireless apply is a physical trip. Wireless converge
+must land behind the same read-back-and-revert discipline as the rest of the converge path, and
+Phase 2's wired-first ordering exists so there is a second way in before the first is edited.
 
 ## 5. Acceptance
 
 - Phase 0 RED: a host whose observation cannot be produced answers `UnknownRefused` and is
   **counted**, never defaulted to a plausible interface list.
 - Phase 2/3 RED: an attachment whose desired address collides with the router's live DHCP
-  pool **refuses** rather than applying — the collision is decidable from the pool bound and
-  the desired set, so it is a construction wall, not a post-check.
+  pool **refuses** rather than applying — decidable from the pool bound and the desired set,
+  so a construction wall, not a post-check.
 - The flagship: srv5/srv6's addresses become derived from converged attachment rows, and
   `dgx_procurement.dag`'s reservation rows stop being the address authority — at which
   point the CR1000A rows are observation-only, and the click-path is retired by having

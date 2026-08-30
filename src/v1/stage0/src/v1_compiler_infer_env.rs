@@ -3,8 +3,6 @@
 
 use self::GlobalBareLookupState::*;
 pub use crate::std_algebra::FreeMonoid;
-pub use crate::std_decl_ref::decl_ref;
-pub use crate::std_decl_ref::DeclarationRef;
 use crate::std_induction::RecursionShape::{
     DirectRecursion, ListRecursion, MapValueRecursion, OptionalRecursion, SetRecursion,
 };
@@ -12,7 +10,6 @@ use crate::std_induction::SubValueRelation::{PreservedValue, SubValueUnknown};
 pub use crate::std_induction::{InductiveField, RecursionShape, SubValueRelation};
 pub use crate::std_occurrence_identity::NodeOccurrenceIdentity;
 use crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic;
-pub use crate::std_operator_realization::OperandDeclaration;
 pub use crate::std_types::is_kernel_type;
 pub use crate::std_types::SourceSpan;
 pub use crate::v1_compiler_infer_occurrence_binding::ModulePathBindingProjection;
@@ -30,11 +27,11 @@ use crate::v1_std_core::Cardinality::*;
 use crate::v1_std_core::CompilerDiagnostic::{AmbiguousReference, UnresolvedType};
 use crate::v1_std_core::Connective::*;
 use crate::v1_std_core::ExprData::*;
-use crate::v1_std_core::InferredNode::Resolved;
+use crate::v1_std_core::InferredNode::*;
 pub use crate::v1_std_core::{
     authored_name_at, empty_intern_table, find_child_named, intern, intern_find, intern_str,
     kernel_span, merge_intern_tables, module_path_segments, param_node_name_at,
-    param_node_type_expr, qualified_last_segment, source_text_at,
+    param_node_type_expr, source_text_at,
 };
 pub use crate::v1_std_core::{
     Cardinality, CompilerDiagnostic, Connective, ExprData, InferredNode, InternTable, NewlineIndex,
@@ -284,15 +281,6 @@ pub fn global_bare_fallback_invariant() -> String {
     thread_local! {
         static CACHED: String = {
             "Corpus-wide bare-name census, resolved by ONE uniform containment walk (operator ruling 2026-07-18: global uniqueness is NOT a special tier — it is the shallowest level of the same walk; filepaths are irrelevant, the declared module path is the containment tree). SymbolIndex.global_bare is keyed on the bare declared name and built once by build_symbol_index_census over graph.modules before any module typechecks (order-independent). Tracking is decl-only via symbol_index_insert_decl / local_binding_for_item (type/fn/data names) plus corpus-globally-unique Disj variant aliases (unique across the WHOLE bare-name space: a variant whose name any type/fn/data decl claims stays qualified-only, never a global_bare candidate — else a type-vs-variant tie, e.g. actions.Job vs ExpressionContext.Job, refuses every far use of the TYPE); every homonym keeps its FULL candidate list (module_path + binding), never a candidate-free Ambiguous tombstone. Resolution (global_bare_lookup): a single candidate resolves from anywhere (the one-candidate degenerate case of the walk); multiple candidates resolve by nearest-ancestor containment under ImportScoped, while NamespaceOnlyY filters to the referencing module's containment chain and routes 0/1/many through module_path_owner_binding_decide. The production flip that removes the corpus fallback is downstream of reference-derived closure. lookup_binding_by_name consults global_bare only after str_bindings/ancestry_str_bindings/intern+bindings all miss. Variant arms additionally merge into per-module variant_locals via merge_global_bare_variant_locals (constructor_binding_authority — owner is the coproduct node).".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
-}
-
-pub fn qualified_module_projection_invariant() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "Grammar lane G1/G1b: container.member module projection in value/type/pattern and fn/data/let type-annotation positions resolves via symbol_index_lookup on the full qualified path (module projection), not value field-access — v2 resolve: TypeNode Conj QN spines; v1 typecheck: lookup_binding_by_name after global_bare; v1 patterns: lookup_variant_in_type routes dotted variant names through symbol_index_lookup. build_symbol_index_census materializes declared-module item paths plus module-unique Disj variant aliases (qualified path always; corpus-unique variants also enter global_bare — mirrors v2 symbol_index_fill_unique_variant_aliases); lookup_qualified_module_projection runs only when the reference carries a dot (fail-closed on miss — never widens to field-access semantics).".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
@@ -557,15 +545,6 @@ pub struct TypeEnvCache {
     pub variant_locals: Rc<HashMap<String, Rc<TypeBinding>>>,
 }
 
-pub fn visible_bindings_invariant() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "B1 build_type_env populates ancestry_str_bindings for import chains; lookup_binding_by_name is fail-closed on miss (str_bindings then ancestry_str_bindings then intern+bindings only; 6de571f3 reverted in 80ab63a). flatten_visible_bindings and merge_envs are DELETED (2026-07-06 operator ruling: the parent-recurse counter was a parallel representation guarding a fallback; the fallback is now unwritable by construction — no whole-env flatten exists to call). Visibility reads are one-level: local str_bindings/ancestry_str_bindings, or a fold over parent.str_bindings only (see collect_unit_variant_phantom_matches). Dissolve-on: namespace-as-sole-authority ruling — env maps become a derived projection of namespace reachability.".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
-}
-
 pub fn empty_type_env_cache() -> Rc<TypeEnvCache> {
     Rc::new(TypeEnvCache {
         deps_map: v1_rt::rc_empty_map::<String, Rc<Vec<String>>>(),
@@ -622,15 +601,6 @@ pub fn conflict_is_cross_tree(c: Rc<TypeEnvCacheMergeConflict>) -> bool {
 pub struct GuardedTypeEnvCacheMerge {
     pub cache: Rc<TypeEnvCache>,
     pub conflicts: Rc<Vec<Rc<TypeEnvCacheMergeConflict>>>,
-}
-
-pub fn guarded_cache_union_note() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "Cross-parent cache union (S2a move 2 increment B; lane ruling REVISED 2026-07-11: NOVELTY, not TREE, is the refusal axis). A name reachable from two PEER imports with different bindings is a binding FORK. The union is order-INDEPENDENT by construction: keys present in both sides carrying the SAME binding (declaration-site span fast path, structural fallback) are SKIPPED (also the retained-bytes fix - the unguarded merge materialized a fresh O(|ancestry|) HAMT per module via rc_map_merge path-copy, the measured ~16.3MiB/module residency class); keys carrying DIFFERENT bindings are recorded as a typed, located conflict AND resolved by the pre-cut import-order overlay-wins winner (behavior-preserving: main already resolves these by overlay-wins, so refusing retroactively would regress working resolution, NOT close a fail-open). These conflicts are LEDGERED (out-of-band binding_forks channel, partitioned by tree for dissolution), never diagnostics; refusal is reserved for forks a PR NEWLY introduces (the separate novelty gate). Positional layers keep overlay-wins outside the guard: the kernel scope layer (merge_type_env_cache below) and locals-over-ancestry are lexical nearest-wins from the containment ruling, not peer-merge forks.".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
 }
 
 pub fn binding_same_authority(a: Rc<TypeBinding>, b: Rc<TypeBinding>) -> bool {
@@ -1062,15 +1032,6 @@ pub fn lookup_binding_by_name(env: Rc<TypeEnv>, name: String) -> Option<Rc<TypeB
     }
 }
 
-pub fn closure_independent_bare_free_call_note() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "Closure-independent bare free-call binding (#6985 / #8062): symbols registered here refuse global_bare / pool-coincidence resolution unless the name is in source_visible_names (selective import or kernel surface). Dissolve-on: PrimitiveDefinition identity-join closes the denominator so every importable free fn is registered once with its definer module — not a hand-maintained trim-only list.".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
-}
-
 pub fn bare_free_call_requires_listed_import(name: String) -> bool {
     (name.clone() == "trim".to_string())
 }
@@ -1239,15 +1200,6 @@ pub fn global_bare_nearest_ancestor(
         Some(cand) => Some(cand.binding.clone()),
         None => None,
     }
-}
-
-pub fn unique_on_chain_policy_note() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "namespace-resolution-design.md 13 (operator-ratified 2026-07-21), landed as 8 step 1 with step-4 default ON = NamespaceOnlyY (name_resolution_policy_is_namespace_only; host bracket false = ImportScoped byte-for-byte): a bare homonym resolves to the UNIQUE binder on the referencing module's ancestor chain — a candidate is on the chain iff its declaring module path is a leading-segment prefix of (or equal to) TypeEnv.module_path. Exactly one on-chain candidate resolves; two-plus on-chain REFUSES as typed AmbiguousReference with the full chain population; zero on-chain REFUSES as UnresolvedType. Cardinality for the chain population routes through module_path_owner_binding_decide.".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
 }
 
 pub fn global_bare_chain_candidates(
@@ -1433,15 +1385,6 @@ pub fn borrowed_generic_param_names(
             }
         },
     )
-}
-
-pub fn qualify_declaration_position_invariant() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "qualify_borrowed_type_names rewrites REFERENCE positions only. Within a type expression, a NoConnective node's children are generic ARGS (references - rename-eligible); a STRUCTURED node's (Disj/Conj) children are DECLARATIONS (variant names, field names) whose names must never be rewritten - renaming them detaches bare patterns/projections from the decl (a projected coproduct's Independent became std.realization.Independent and every bare match arm missed). Declaration subtrees are walked by qualify_decl_reference_positions: keep the declared name, qualify the inferred payload (a type expr - reference position), recurse into child declarations. The census type-decl pass (census_upgrade_type_decl_binding) uses the SAME walk - one authority for the declaration/reference distinction.".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
 }
 
 pub fn qualify_decl_reference_positions(
@@ -1793,24 +1736,6 @@ pub fn lookup_type_by_name(env: Rc<TypeEnv>, name: String) -> Option<Rc<Node>> {
     }
 }
 
-pub fn type_ref_hit_ne_bind_measure_active_note() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "Host bracket in v1_rt (type_ref_hit_ne_bind_measure_active / _set / with_type_ref_hit_ne_bind_measure) — same shape as name_resolution_policy_is_namespace_only. Armed only by compile_dag_diagnostic_census for the nested synthetic compile (N1a). Default false = production fail-open. Zero production gates consult this. No .dag body can flip it.".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
-}
-
-pub fn type_ref_measure_binding_authority_fn_note() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "MEASUREMENT-ONLY — see gunbc.type_ref_hit_ne_bind_measure type_ref_measure_binding_authority_note. Two arms: bare exact import/local key; qualified self/ancestor containment + symbol_index hit. No same-leaf×span OR-arm.".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
-}
-
 pub fn type_ref_module_path_is_containment_prefix(ancestor: String, descendant: String) -> bool {
     {
         let a_segs = crate::v1_std_core::module_path_segments(ancestor.clone());
@@ -2041,15 +1966,6 @@ pub fn put_inductive_field_cross(
     }
 }
 
-pub fn merge_inductive_fields_dedupe_note() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "Set-semantics merge (v1-run-stability-throughline M1b + M1b-2, M0 receipt 2026-07-13): a type's inductive fields are a SET of (variant, field, shape, element) facts - multiplicity carries no information. The unguarded concat-on-collision compounded diamond ancestry multiplicatively along the import DAG (measured 409,240,584 retained InductiveField slots corpus-wide, ~3.3 GB of Vec slots alone; worst single module 22.6M entries at ~1,338 types), and even skip-if-equal alone left 95,050,553 slots because differing lists carried baked-in duplicate multiplicities (worst module still 4.1M at ~3k dupes/type). So the merge appends ONLY fields not already present (identity = variant|field|shape|element; type_name is the map key): equal or subset incoming lists SKIP (the sharing fast path - absent keys insert the incoming list Rc directly, never concat-with-empty), and every list is duplicate-free by induction (local collection is duplicate-free; merges never append a present fact). Genuinely new fields still append in the pre-cut encounter order. Same treatment class as guarded_union_str_bindings' skip-if-equal (#6487 cut 2); receipts on the throughline doc.".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
-}
-
 pub fn recursion_shape_key(shape: RecursionShape) -> String {
     match shape.clone() {
         RecursionShape::DirectRecursion => "direct".to_string(),
@@ -2225,97 +2141,4 @@ pub fn env_with_type_variable_bindings(env: Rc<TypeEnv>, tp_names: Rc<Vec<String
                 unit_variant_index: updated_index.clone(),
             })
         })
-}
-
-pub fn binding_declares_span(binding: Rc<TypeBinding>, sp: Rc<SourceSpan>) -> bool {
-    match binding.resolved.clone().ident_span.clone() {
-        Some(s) => ((s.file.clone() == sp.file.clone()) && (s.start.clone() == sp.start.clone())),
-        None => false,
-    }
-}
-
-pub fn type_reference_declaration(
-    n: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    env: Rc<TypeEnv>,
-) -> Option<Rc<OperandDeclaration>> {
-    {
-        let rt = match n.inferred.clone().as_deref().cloned() {
-            Some(InferredNode::Resolved { node: r, .. }) => r.clone(),
-            _ => match lookup_type_for(env.clone(), n.clone()) {
-                Some(bound) => bound.clone(),
-                None => n.clone(),
-            },
-        };
-        let decl_name = crate::v1_std_core::qualified_last_segment(
-            crate::v1_std_core::authored_name_at(source_indices.clone(), rt.clone()),
-        );
-        if (decl_name.clone() == "".to_string()) {
-            return std::option::Option::None;
-        }
-        match rt.ident_span.clone() {
-            None => std::option::Option::None,
-            Some(sp) => match v1_rt::map_get(
-                &env.symbol_index.clone().global_bare.clone(),
-                decl_name.clone(),
-            )
-            .as_deref()
-            .cloned()
-            {
-                Some(GlobalBareLookupState::GlobalBareUniqueBinding {
-                    module_path: mp,
-                    binding: b,
-                    ..
-                }) => {
-                    if binding_declares_span(b.clone(), sp.clone()) {
-                        Some(Rc::new(OperandDeclaration {
-                            declaration: crate::std_decl_ref::decl_ref(
-                                mp.clone(),
-                                decl_name.clone(),
-                            ),
-                            decl_file: sp.file.clone(),
-                        }))
-                    } else {
-                        std::option::Option::None
-                    }
-                }
-                Some(GlobalBareLookupState::GlobalBareAmbiguousBinding {
-                    candidates: cands,
-                    ..
-                }) => match Rc::new({
-                    let mut __result = Vec::new();
-                    for c in cands.iter().cloned() {
-                        if binding_declares_span(c.binding.clone(), sp.clone()) {
-                            __result.push(c);
-                        }
-                    }
-                    __result
-                })
-                .first()
-                .cloned()
-                {
-                    Some(c) => Some(Rc::new(OperandDeclaration {
-                        declaration: crate::std_decl_ref::decl_ref(
-                            c.module_path.clone(),
-                            decl_name.clone(),
-                        ),
-                        decl_file: sp.file.clone(),
-                    })),
-                    None => std::option::Option::None,
-                },
-                None => std::option::Option::None,
-            },
-        }
-    }
-}
-
-pub fn type_reference_declaration_ref(
-    n: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    env: Rc<TypeEnv>,
-) -> Option<Rc<DeclarationRef>> {
-    match type_reference_declaration(n.clone(), source_indices.clone(), env.clone()) {
-        Some(od) => Some(od.declaration.clone()),
-        None => std::option::Option::None,
-    }
 }

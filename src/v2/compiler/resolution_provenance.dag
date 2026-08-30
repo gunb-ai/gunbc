@@ -37,14 +37,13 @@ import v2.std.symbol_index {
 }
 import v2.extdeps.languages.dag { qualified_name_from_module_node }
 
-// Resolution already knows which declaration answered a name; it just throws the
-// answer's PATH away -- lookup_symbol_index_atom_identity keeps only the canonical
-// Symbol, so nothing downstream can say which module supplied a binding. That is
-// why dependency edges are currently matched from the reference SPELLING against
-// declared module paths, a syntactic guess DESIGN section 4 rules out. This module
-// keeps the path instead: one name resolved at one position answers with its
-// target and the module that CONTAINS the target, and the dependency derivation
-// below consumes those answers and nothing else.
+// Resolution already knows which declaration answered a name but throws the answer's PATH away --
+// lookup_symbol_index_atom_identity keeps only the canonical Symbol, so nothing downstream can say
+// which module supplied a binding. That is why dependency edges are currently matched from the
+// reference SPELLING against declared module paths, a syntactic guess DESIGN section 4 rules out.
+// This module keeps the path: one name resolved at one position answers with its target and the
+// module that CONTAINS it, and the dependency derivation below consumes those answers and nothing
+// else.
 
 type ReferenceSite {
   position: QualifiedName

@@ -1,7 +1,11 @@
 module v2.test.compile_door_ledger_ownership
 
-
-data ownership_witness_note: String = "Fast pure receipt (no door, no live tree) for the flip-trigger table: every frontier cause the histogram receipts pin is attributed to its owning lane, and an unknown cause is fail-closed UNATTRIBUTED (not silently bucketed). This is the DESIGN 5 tell that the burn-down table stays honest — a new frontier cause appearing over an affected set surfaces as cause_is_attributed = false, forcing an ownership decision rather than absorbing it. Pairs with the slow histogram witness in v2.test.long.compile_door_ledger, which pins the counts; this pins the ATTRIBUTION."
+// Fast pure receipt (no door, no live tree) for the flip-trigger table: every frontier cause the
+// histogram receipts pin is attributed to its owning lane, and an unknown cause is fail-closed
+// UNATTRIBUTED (not silently bucketed). This is the DESIGN 5 tell that the burn-down table stays
+// honest — a new frontier cause appearing over an affected set surfaces as cause_is_attributed =
+// false, forcing an ownership decision rather than absorbing it. Pairs with the slow histogram
+// witness in v2.test.long.compile_door_ledger, which pins the counts; this pins the ATTRIBUTION.
 
 fn lane_ok_this_lane(cause: Symbol) -> Bool {
   match cause_ownership_lookup(cause: cause) {
@@ -51,7 +55,12 @@ test fn unknown_cause_is_fail_closed_unattributed() -> Bool {
     && cause_is_attributed(cause: ^fact_density_hollow_alias_locus) == true
 }
 
-data affected_filter_note: String = "dag_module_paths is the .dag filter door_ledger_over_affected_set applies to the diff's changed_paths before ledgering — the live-diff path itself (git observation → filter → door) composes floor_diff_observe (own witnesses) with door_ledger (histogram witness), so this pins the one piece of new deterministic logic: only .dag modules are kept, non-.dag changes and the empty diff produce no rows (never a fabricated whole-corpus widen — that lives in the AffectedDiffRefused arm, exercised structurally by the door_ledger_over_affected_set resolve)."
+// dag_module_paths is the .dag filter door_ledger_over_affected_set applies to the diff's
+// changed_paths before ledgering — the live-diff path itself (git observation → filter → door)
+// composes floor_diff_observe (own witnesses) with door_ledger (histogram witness), so this pins
+// the one piece of new deterministic logic: only .dag modules are kept, non-.dag changes and the
+// empty diff produce no rows (never a fabricated whole-corpus widen — that lives in the
+// AffectedDiffRefused arm, exercised structurally by the door_ledger_over_affected_set resolve).
 
 test fn dag_module_paths_keeps_only_dag_modules() -> Bool {
   length(xs: dag_module_paths(paths: ["a.dag", "b.rs", "sub/c.dag", "d.yml", "e.dag"])) == 3

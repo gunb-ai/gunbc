@@ -33,7 +33,19 @@ data tps53688rsbr_part_details_authority: ExternalAuthority = ExternalAuthority 
   }
 }
 
-data ti_tps53688_note: String = "THIS ROW IS A MECHANICAL CANDIDATE AND NOT A SELECTED PART. Nothing here says the device suits any board role; a selection is a functional-compatibility join done at the product layer, and this row supplies only the package authority that join consumes. THE PACKAGE IDENTITY IS ESTABLISHED BY TWO CITED READINGS, NOT BY WHERE THE FILE WAS FOUND. The fetched datasheet yielded its mechanical pages cleanly but not its title page, so binding drawing RSB0040A to this device on the strength of the URL alone would have been a fact established by a file's location. The vendor's orderable part-details listing gives TPS53688RSBR as WQFN (RSB) 40, which is the package that drawing describes, and it is carried as a second authority in this module's scope rather than recounted in prose — an earlier revision of this note asserted the confirmation while the scope row listed no second citation, which left the load-bearing part-number-to-drawing join prose-backed. What this row carries is mechanical only: the multiphase controller's electrical facts, its phase count and its SVID and PMBus interfaces are not modelled here and are not implied by its presence."
+// THIS ROW IS A MECHANICAL CANDIDATE AND NOT A SELECTED PART. Nothing here says the device suits
+// any board role; a selection is a functional-compatibility join done at the product layer, and
+// this row supplies only the package authority that join consumes. THE PACKAGE IDENTITY IS
+// ESTABLISHED BY TWO CITED READINGS, NOT BY WHERE THE FILE WAS FOUND. The fetched datasheet yielded
+// its mechanical pages cleanly but not its title page, so binding drawing RSB0040A to this device
+// on the strength of the URL alone would have been a fact established by a file's location. The
+// vendor's orderable part-details listing gives TPS53688RSBR as WQFN (RSB) 40, which is the package
+// that drawing describes, and it is carried as a second authority in this module's scope rather
+// than recounted in prose — an earlier revision of this note asserted the confirmation while the
+// scope row listed no second citation, which left the load-bearing part-number-to-drawing join
+// prose-backed. What this row carries is mechanical only: the multiphase controller's electrical
+// facts, its phase count and its SVID and PMBus interfaces are not modelled here and are not
+// implied by its presence.
 
 data tps53688_rsb0040a_drawing: PackageDrawingRef = PackageDrawingRef {
   drawing_number: "4215000/A",

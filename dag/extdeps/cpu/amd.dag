@@ -33,16 +33,15 @@ data amd_ryzen_7_pro_8700ge_authority: ExternalAuthority = ExternalAuthority {
   }
 }
 
-// SOCKET AM5 IS LGA, NOT PGA. Both Zen 4 rows below recorded PinGridArray at 1718 contacts, which
-// is the termination AMD used through AM4 and abandoned at AM5 -- the socket is a zero insertion
-// force flip-chip land grid array, so the processor presents lands and the socket presents the
-// springs. The count was already right; the termination was carried over from the AM4 rows.
-// AM5 KEEPS AM4'S COOLER MOUNTING, AND THAT IS WHY THE MOUNT IS NOT THE SOCKET. AM4 and AM5 are
-// different sockets by every socket fact -- 1331 pin-grid against 1718 land-grid -- yet AMD retained
-// the AM4 retention geometry on AM5 so that AM4 coolers fit. A compatibility rule reading socket
-// identity therefore gets a real, common case WRONG in the refusing direction: it rejects a cooler
-// that physically fits and that the vendor says fits. This is the discriminating pair for the whole
-// correction, and it is why both rows below name one mount.
+// SOCKET AM5 IS LGA, NOT PGA. Both Zen 4 rows below recorded PinGridArray at 1718 contacts — the
+// termination AMD used through AM4 and abandoned at AM5: the socket is a zero insertion force
+// flip-chip land grid array, so the processor presents lands and the socket the springs. The count
+// was right; the termination was carried over from the AM4 rows. AM5 KEEPS AM4'S COOLER MOUNTING,
+// WHICH IS WHY THE MOUNT IS NOT THE SOCKET. AM4 and AM5 are different sockets by every socket fact
+// — 1331 pin-grid against 1718 land-grid — yet AMD retained the AM4 retention geometry on AM5 so
+// AM4 coolers fit. A compatibility rule reading socket identity gets a real, common case WRONG in
+// the refusing direction: it rejects a cooler that physically fits and that the vendor says fits.
+// This is the discriminating pair for the whole correction, and why both rows below name one mount.
 data amd_am4_cooling_mount: ProcessorCoolingMount = ProcessorCoolingMount {
   platform_owner: amd,
   designation: "AM4",
@@ -62,7 +61,8 @@ data amd_ryzen_9_7950x3d_authority: ExternalAuthority = ExternalAuthority {
   }
 }
 
-// cores and threads are cited from each model's AMD product page (authorities above). threads is stored as HardwareThreadCount — the comparable unit for hosted-runner vcpus in pricing extdeps.
+// cores and threads are cited from each model's AMD product page (authorities above). threads is
+// stored as HardwareThreadCount — the comparable unit for hosted-runner vcpus in pricing extdeps.
 data amd_zen2_l1_cache_geometry: CpuL1CacheGeometry = CpuL1CacheGeometry {
   data_capacity_per_core: byte_size(32768),
   instruction_capacity_per_core: byte_size(32768),
@@ -101,13 +101,13 @@ data amd_zen2_l3_cache_citations: List<FactCitation> = [
 ]
 
 // THE AM5 TERMINATION IS CITED, not asserted. Both Zen 4 rows previously read PinGridArray at the
-// correct 1718 count; an uncited socket field is what let a wrong termination sit beside a right
-// number without anything to check it against.
+// correct 1718 count; an uncited socket field let a wrong termination sit beside a right number
+// with nothing to check against.
 //
 // THE SOCKET IS A PLATFORM FACT AND NOW HAS ONE HOME PER PLATFORM, the shape extdeps.cpu.ampere
 // already uses for LGA4926. Each row previously minted its own CpuSocket literal, so the citation
-// lists beside them could name no declaration at all -- which is how a citation ends up keyed by a
-// field SPELLING ("package", a name CpuSocket has not carried since termination and attachment were
+// lists beside them could name no declaration — which is how a citation ends up keyed by a field
+// SPELLING ("package", a name CpuSocket has not carried since termination and attachment were
 // split) instead of by the declaration the containment tree already names.
 data amd_socket_am4: CpuSocket = CpuSocket {
   platform_owner: amd,
@@ -260,12 +260,11 @@ data ryzen_9_7950x3d_facts: CpuFacts = CpuFacts {
   },
 }
 
-// THE MODULE'S OWN ROSTER OF CATALOG ROWS. It lives here rather than in a witness so that a
-// consumer asking "every AMD processor this repository models" reads one authority, and so that
-// an author adding a row is editing the roster in the same file rather than remembering a test
-// elsewhere. The roster is still hand-authored -- a genuinely closed denominator would have to be
-// discovered from the module tree, which is lens work -- so this narrows the gap rather than
-// closing it, and says so.
+// THE MODULE'S OWN ROSTER OF CATALOG ROWS, here rather than in a witness so a consumer asking
+// "every AMD processor this repository models" reads one authority, and an author adding a row
+// edits the roster in the same file. The roster is still hand-authored — a genuinely closed
+// denominator would have to be discovered from the module tree, which is lens work — so this
+// narrows the gap rather than closing it, and says so.
 data amd_cpu_catalog_rows: List<CpuModelCatalogRow> = [
   ryzen_5_3600_catalog,
   ryzen_7_pro_8700ge_catalog,

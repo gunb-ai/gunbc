@@ -2,35 +2,34 @@
 //!
 //! Two halves, per the Lane A oracle in inner-cost-lanes-scoping (plan doc deleted 2026-08-28).
 //!
-//! EQUIVALENCE (`escape_decode_table`): the recognized decode vocabulary is unchanged. On its
-//! own it proves nothing about cost, because it is satisfied by changing nothing. The refusal
-//! table is the language-safety receipt: once a backslash enters the escape production,
-//! unsupported or malformed syntax becomes one located `ShUnknown` token.
+//! EQUIVALENCE (`escape_decode_table`): the recognized decode vocabulary is unchanged. Alone it
+//! proves nothing about cost -- changing nothing satisfies it. The refusal table is the
+//! language-safety receipt: once a backslash enters the escape production, unsupported or
+//! malformed syntax becomes one located `ShUnknown` token.
 //!
-//! SEPARATION (`escape_cost_is_linear_in_literal_length`): the discriminating half, and it is
-//! deliberately **`#[ignore]`d — a benchmark, not a gate**. It reds against the pre-migration
-//! implementation, which walked a raw `String` by index: `char_at` begins with an `is_ascii()`
-//! scan of the whole string and then `chars().nth(pos)`, and `string_length` re-counts, so a
-//! per-character loop was quadratic on any input. Measured on the seed before the change:
-//! 2,769 chars 7.8ms -> 44,019 chars 584ms, ~3.9x per doubling; after, 5.95ms at 44,019.
+//! SEPARATION (`escape_cost_is_linear_in_literal_length`): the discriminating half, deliberately
+//! **`#[ignore]`d -- a benchmark, not a gate**. It reds against the pre-migration implementation,
+//! which walked a raw `String` by index: `char_at` began with an `is_ascii()` scan of the whole
+//! string then `chars().nth(pos)`, and `string_length` re-counted, so a per-character loop was
+//! quadratic. Measured on the seed before the change: 2,769 chars 7.8ms -> 44,019 chars 584ms,
+//! ~3.9x per doubling; after, 5.95ms at 44,019.
 //!
-//! Why not gating: a wall-clock assertion can fail correct code when the larger run is the one
-//! that catches contention, and gating correctness on timing is against the hermetic-first test
-//! discipline (review 45416). The deterministic alternative does not rescue it either — the only
-//! work counter in the tree (`v1_rt::take_text_lookup_chars_walked`) sits behind the non-default
-//! `text_lookup_work_counter` feature, and `char_at`/`string_length` are not instrumented into it
-//! at all, so a counter-based test would be `#[cfg(feature = ...)]` and equally non-gating while
-//! also requiring a change to a core primitive. The durable regression guard for this class is a
-//! structural lens over the `Node` tree, the way `v2.lens.complexity_accumulator_copy` guards the
-//! copied-accumulator class — named as the dissolution trigger on
-//! `escape_receipt_seed_growth_mark`, not authored here.
+//! Why not gating: a wall-clock assertion can fail correct code when the larger run catches
+//! contention, and gating correctness on timing is against the hermetic-first test discipline
+//! (review 45416). The deterministic alternative does not rescue it: the only work counter in
+//! the tree (`v1_rt::take_text_lookup_chars_walked`) sits behind the non-default
+//! `text_lookup_work_counter` feature, and `char_at`/`string_length` are not instrumented into
+//! it, so a counter-based test would be `#[cfg(feature = ...)]`, equally non-gating, and require
+//! a change to a core primitive. The durable guard for this class is a structural lens over the
+//! `Node` tree, as `v2.lens.complexity_accumulator_copy` guards the copied-accumulator class --
+//! named as the dissolution trigger on `escape_receipt_seed_growth_mark`, not authored here.
 //!
 //! Run it deliberately:
 //!   cargo test -p v1-compiler --release --test tokenize_escape_receipt -- --ignored --nocapture
 //!
-//! Both halves drive `tokenize`, the real consumer, rather than the escape helpers directly:
-//! the helpers' signatures changed in the migration, and a receipt that could not run against
-//! both sides could not have shown the separation.
+//! Both halves drive `tokenize`, the real consumer, not the escape helpers: the helpers'
+//! signatures changed in the migration, and a receipt that could not run against both sides
+//! could not have shown the separation.
 
 use std::time::{Duration, Instant};
 use v1_compiler::v1_compiler_tokenize::tokenize;
@@ -129,9 +128,9 @@ fn escape_decode_table() {
         "\\x0d must decode to carriage return"
     );
 
-    // \u{H...}. Unlike \xNN this spans the full Unicode scalar range. The carriage-return
-    // pair is deliberately redundant across the two forms: it makes an implementation that
-    // changes only the assertion, or regresses the already-working \x arm, visible.
+    // \u{H...}. Unlike \xNN this spans the full Unicode scalar range. The carriage-return pair
+    // is deliberately redundant across the two forms: it exposes an implementation that changes
+    // only the assertion, or regresses the already-working \x arm.
     assert_eq!(
         decode_literal(r"\u{000d}"),
         "\r",
@@ -244,10 +243,10 @@ fn best_tokenize_time(repeats: usize, samples: usize) -> Duration {
     best
 }
 
-/// NOT A GATE. `#[ignore]`d on purpose -- see the module header. This is the cost-shape
-/// benchmark: run it by hand when touching the escape path, and read the printed ratio rather
-/// than trusting the bound. It is kept executable because it is what established the result
-/// (14.2x before, ~4x after), not because a wall-clock number belongs in a required suite.
+/// NOT A GATE. `#[ignore]`d on purpose -- see the module header. The cost-shape benchmark: run
+/// it by hand when touching the escape path and read the printed ratio rather than trusting the
+/// bound. Kept executable because it established the result (14.2x before, ~4x after), not
+/// because a wall-clock number belongs in a required suite.
 #[test]
 #[ignore = "wall-clock benchmark, not a correctness gate: run with --ignored"]
 fn escape_cost_is_linear_in_literal_length() {

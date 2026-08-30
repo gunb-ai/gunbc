@@ -25,7 +25,13 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-data sessions_panel_witness_note: String = "Sessions receipts keep five axes mechanically distinct on the wire and client: session-container presence, pane/process lifecycle, configured provider versus provider observation, readiness/phase, and cleanup eligibility. A retained dead pane remains session present, projects process exited, and offers clear; the unprobed fixture projects process unobserved and cleanup unavailable. Session-list refusal remains LOUD/503 and can never become an empty successful set. Production standing refusal omits tmux rows from admission (fixture_projection_standing_refusal_tmux_entry) — the wire must not fabricate a partial session row."
+// Sessions receipts keep five axes mechanically distinct on the wire and client: session-container
+// presence, pane/process lifecycle, configured provider versus provider observation,
+// readiness/phase, and cleanup eligibility. A retained dead pane stays session present, projects
+// process exited, and offers clear; the unprobed fixture projects process unobserved and cleanup
+// unavailable. Session-list refusal stays LOUD/503, never an empty successful set. Production
+// standing refusal omits tmux rows from admission (fixture_projection_standing_refusal_tmux_entry)
+// — the wire must not fabricate a partial session row.
 
 test fn witness_projection_standing_refusal_specimen_omits_wire_row() -> Bool {
   let o = Observed {
@@ -106,7 +112,12 @@ test fn sessions_refusal_is_loud_on_the_wire() -> Bool {
     && !string_contains(s: j, pattern: "\"sessions\"")
 }
 
-data sessions_client_decided_facts_note: String = "The A2 flip of this witness's pins (operator blocker 5): the client no longer composes any session prose — it paints the wire's DECIDED facts verbatim (sfx.line into the visible text, sfx.detail into the title, sact.label/detail/availability onto the cleanup chip). The former positives (sess.process_state, sess.cleanup_action, sess.cleanup_allowed, the composed 'session · present' literal) are now the discriminating NEGATIVES: any of them reappearing in the emitted source is a second session presentation authority standing back up."
+// The A2 flip of this witness's pins (operator blocker 5): the client composes no session prose —
+// it paints the wire's DECIDED facts verbatim (sfx.line into the visible text, sfx.detail into the
+// title, sact.label/detail/availability onto the cleanup chip). The former positives
+// (sess.process_state, sess.cleanup_action, sess.cleanup_allowed, the composed 'session · present'
+// literal) are now the discriminating NEGATIVES: any reappearing in the emitted source is a second
+// session presentation authority standing back up.
 
 test fn sessions_client_marks_presence_reobserves_and_shouts_refusal() -> Bool {
   let js = dispatch_client_js_source()
@@ -154,7 +165,11 @@ test fn sessions_client_serializes_each_observation_source() -> Bool {
     && string_contains(s: js, pattern: "gunbcAttemptsObservationPending = true")
 }
 
-data sessions_button_is_action_note: String = "Strengthened at A2 (the action/observation split): the sessions observer may never write the dispatch button's text at all — the former guarded caption flip ('session · present' on the button when idle) was the observation-in-the-control-position defect the falsifier exposed. Presence is recorded as a dataset fact for admission logic; the visible claim lives in the disclosure's session-facts line. The discriminating negatives are the exact strings the old mechanism emitted."
+// Strengthened at A2 (the action/observation split): the sessions observer may never write the
+// dispatch button's text — the former guarded caption flip ('session · present' on the button when
+// idle) was the observation-in-the-control-position defect the falsifier exposed. Presence is a
+// dataset fact for admission logic; the visible claim lives in the disclosure's session-facts line.
+// The discriminating negatives are the exact strings the old mechanism emitted.
 
 test fn sessions_presence_does_not_overwrite_dispatch_presentation() -> Bool {
   let js = dispatch_client_js_source()

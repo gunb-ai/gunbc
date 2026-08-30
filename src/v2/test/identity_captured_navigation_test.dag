@@ -1,9 +1,16 @@
 module v2.test.lens_identity_captured_navigation
 
-
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-data discoverable_witness_note: String = "Required-floor semantic controls hand-construct the exact synthetic Node shape identity_navigation_findings_at/classify_identity_match read - the same technique v2.lens.complexity_accumulator_copy_test.dag uses (a bare Atom fixture) generalized to the Conj-wrapper-with-two-named-edges production shape (mirrors v2.extdeps.languages.dag's own dag_grammar_atom/emit_grammar_relation_row helpers). This keeps the witness in the microsecond range while still exercising the real detection and fidelity-projection functions end-to-end, not mocked stand-ins. The separate identity_captured_navigation/long/roster_gate_test module contains only ReadsLiveTree corpus sweeps; inline source-standing controls live in the ordinary claim home."
+// Required-floor semantic controls hand-construct the exact synthetic Node shape
+// identity_navigation_findings_at/classify_identity_match read - the same technique
+// v2.lens.complexity_accumulator_copy_test.dag uses (a bare Atom fixture) generalized to the
+// Conj-wrapper-with-two-named-edges production shape (mirrors v2.extdeps.languages.dag's own
+// dag_grammar_atom/emit_grammar_relation_row helpers). This keeps the witness in the microsecond
+// range while still exercising the real detection and fidelity-projection functions end-to-end, not
+// mocked stand-ins. The separate identity_captured_navigation/long/roster_gate_test module contains
+// only ReadsLiveTree corpus sweeps; inline source-standing controls live in the ordinary claim
+// home.
 
 fn synth_atom(id: Symbol) -> Node {
   Node {

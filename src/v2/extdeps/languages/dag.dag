@@ -2527,7 +2527,11 @@ fn dag_grammar_primary_expr_expr() -> GrammarExpr {
   )
 }
 
-data dag_grammar_int_literal_stamp_lexeme_scaffold_note: String = "Interim: primary_expr_core and pattern_expr stamp int_literal with StampLexeme (was StampClass) so census-path operands carry distinct lexeme identities resolvable through body lowering. dissolve-on: ^migrate_when_general_body_producer_lands — general integer-literal ingestion supersedes grammar-level lexeme stamping. Fixture pick tokens (dag_pick_concrete_tokens) retain dag_grammar_pick_arm_literal_terminal with StampClass + branded bindings."
+// Interim: primary_expr_core and pattern_expr stamp int_literal with StampLexeme (was StampClass)
+// so census-path operands carry distinct lexeme identities resolvable through body lowering.
+// dissolve-on: ^migrate_when_general_body_producer_lands — general integer-literal ingestion
+// supersedes grammar-level lexeme stamping. Fixture pick tokens (dag_pick_concrete_tokens) retain
+// dag_grammar_pick_arm_literal_terminal with StampClass + branded bindings.
 
 fn dag_grammar_primary_expr_core() -> GrammarExpr {
   dag_grammar_choice(
@@ -3484,7 +3488,6 @@ fn dag_sync_tokens() -> List<Symbol> {
   ]
 }
 
-
 type DagTriviaNormalization
   = DagWhitespaceDeclaredNormalized
   | DagLineCommentFailClosed
@@ -4188,7 +4191,12 @@ fn dag_node_is_int_literal_atom(node: Node) -> Bool {
   }
 }
 
-data dag_eval_literal_atom_authority_note: String = "Single authority for eval literal-vs-binding dispatch (v2_eval_is_literal_shaped_node projects this). Fixture pick literals admit both token_class (^dag_pick_lit_*) and branded binding (^dag_binding_pick_lit_*) rows — same ingest surface, two spellings. Complement bool literals (^dag_complement_lit_*) are logic-ingest tokens used as scrutinee/body literals in complement fixtures. dissolve-on: general body producer lands grammar-owned literal classification and this roster folds into it."
+// Single authority for eval literal-vs-binding dispatch (v2_eval_is_literal_shaped_node projects
+// this). Fixture pick literals admit both token_class (^dag_pick_lit_*) and branded binding
+// (^dag_binding_pick_lit_*) rows — same ingest surface, two spellings. Complement bool literals
+// (^dag_complement_lit_*) are logic-ingest tokens used as scrutinee/body literals in complement
+// fixtures. dissolve-on: general body producer lands grammar-owned literal classification and this
+// roster folds into it.
 
 fn dag_symbol_is_fixture_pick_literal(id: Symbol) -> Bool {
   (id == ^dag_pick_lit_one)
@@ -4332,7 +4340,11 @@ fn dag_canonical_literal_shape_diagnostic(node: Node) -> Diagnostic {
   }
 }
 
-data dag_canonical_literal_query_note: String = "dag_canonical_literal_from_node is the single typed query for inference-facing DAG literal shape. It preserves the Bool-vs-Int distinction and the decoded integer magnitude in a coproduct instead of publishing sibling is_* predicates over Node storage. Bool literals admit exactly the childless true/false atoms. Int literals admit exactly one named, decodable magnitude child. Every other shape is a typed refusal."
+// dag_canonical_literal_from_node is the single typed query for inference-facing DAG literal shape.
+// It preserves the Bool-vs-Int distinction and the decoded integer magnitude in a coproduct instead
+// of publishing sibling is_* predicates over Node storage. Bool literals admit exactly the
+// childless true/false atoms. Int literals admit exactly one named, decodable magnitude child.
+// Every other shape is a typed refusal.
 
 fn dag_canonical_literal_from_node(node: Node) -> Outcome<DagCanonicalLiteral> {
   if dag_node_is_kw_true_atom(node: node) && (length(xs: node.children) == 0) {
@@ -6238,7 +6250,15 @@ fn namespace_graft_already_grafted(root: Node) -> Bool {
   }
 }
 
-data qualified_name_from_module_node_collapsed_note: String = "SINGLE-AUTHORITY QN reader (dissolves the interim compiler-layer dual-arm wrapper qualified_name_from_module_node_graft_aware, namespace-resolution-design.md section 10 dissolve 1). Grafted roots: QN from containment nesting position (qualified_name_from_graft_spine — the section 10/13 single naming authority; the spine cluster homes here so the reader needs no compiler-layer import). Pre-graft ingress: header-path read (parsed capture or emit-shaped Named edges — parse emits header metadata until the normalize graft fires; no header shim re-stamped onto grafted trees). Wet-ingest RED controls: program_assembly_real_ingest_module_roots_parse_holds + validate_module_roots_red_on_parsed_roots."
+// SINGLE-AUTHORITY QN reader (dissolves the interim compiler-layer dual-arm wrapper
+// qualified_name_from_module_node_graft_aware, namespace-resolution-design.md section 10 dissolve
+// 1). Grafted roots: QN from containment nesting position (qualified_name_from_graft_spine — the
+// section 10/13 single naming authority; the spine cluster homes here so the reader needs no
+// compiler-layer import). Pre-graft ingress: header-path read (parsed capture or emit-shaped Named
+// edges — parse emits header metadata until the normalize graft fires; no header shim re-stamped
+// onto grafted trees). Wet-ingest RED controls:
+// program_assembly_real_ingest_module_roots_parse_holds +
+// validate_module_roots_red_on_parsed_roots.
 
 fn qualified_name_from_module_node(root: Node) -> Outcome<QualifiedName> {
   if namespace_graft_already_grafted(root: root) {

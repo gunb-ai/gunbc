@@ -29,7 +29,17 @@ import v2.test.manual.infer_ground_add { fixture_add_resolved_tree }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-data compile_gate_witness_note: String = "RED/GREEN controls for the accumulator-copy compile gate at its two consumption grains. Gate grain (normalize output — the tree shape the lens provably reads): the quadratic snippet REJECTS with accumulator_copy_poly2_suspect located at the finding node; the identity fold ACCEPTS clean; the unregistered-combiner-carrying-carrier snippet ACCEPTS with the refusal ledger attached (typed per-cause, counted, non-gating — the stopped-line audit channel). Door grain (validate_then_compile): the resolved add fixture passes through the root-required roster with empty caller lenses — proving the roster RUNS on every door call and passes clean trees. The end-to-end door RED (real module with imports through tokenize->resolve->infer->gate) rides the PR-2 CI transport stage whose red control ingests a real corpus module; an import-free snippet cannot pass resolve (proven by execution 2026-07-13), so the door-grain suspect red is homed there, not here."
+// RED/GREEN controls for the accumulator-copy compile gate at its two consumption grains. Gate
+// grain (normalize output — the tree shape the lens provably reads): the quadratic snippet REJECTS
+// with accumulator_copy_poly2_suspect located at the finding node; the identity fold ACCEPTS clean;
+// the unregistered-combiner-carrying-carrier snippet ACCEPTS with the refusal ledger attached
+// (typed per-cause, counted, non-gating — the stopped-line audit channel). Door grain
+// (validate_then_compile): the resolved add fixture passes through the root-required roster with
+// empty caller lenses — proving the roster RUNS on every door call and passes clean trees. The
+// end-to-end door RED (real module with imports through tokenize->resolve->infer->gate) rides the
+// PR-2 CI transport stage whose red control ingests a real corpus module; an import-free snippet
+// cannot pass resolve (proven by execution 2026-07-13), so the door-grain suspect red is homed
+// there, not here.
 
 data quad_snippet: String = "module quad\n\nfn f(xs: List<Int>) -> Int {\n  fold(xs, init: 0, f: fn(acc, x) { list_append(left: acc, right: x) })\n}\n"
 

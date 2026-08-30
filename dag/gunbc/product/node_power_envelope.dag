@@ -40,60 +40,48 @@ import gunbc.memory_provisioning {
   PopulationOption,
 }
 
-// WHAT A NODE DRAWS AND WHAT ITS MEMORY DELIVERS — the electrical and bandwidth
-// half of a build, kept deliberately apart from what the build COSTS
-// (product.build_fulfillment). The two answer different questions and a reader
-// looking for one would not find it inside the other; fusing them was the shape
-// of the deleted product.hardware_selection, where a candidate record carried a
-// synthetic price beside a real wall-draw and neither could be used without the
-// other.
+// WHAT A NODE DRAWS AND WHAT ITS MEMORY DELIVERS — the electrical and bandwidth half of a build,
+// kept apart from what the build COSTS (product.build_fulfillment). They answer different questions;
+// fusing them was the shape of the deleted product.hardware_selection, where a candidate record
+// carried a synthetic price beside a real wall-draw and neither could be used without the other.
 //
-// RELOCATED, NOT REWRITTEN (2026-08-19). effective_data_rate_mts,
-// memory_bandwidth, memory_power, the DC/AC wall-draw pair and psu_is_adequate
-// came from product.hardware_selection when that module was deleted at the
-// root. What changed is their INPUTS: they take a cited PopulationOption from
-// gunbc.memory_provisioning and a cited CpuModelCatalogRow rather than the
-// deleted module's hand-authored Platform/CpuCandidate/MemoryConfig records,
-// so a population this repository refuses upstream has no way to be priced
-// electrically here. What did not change is the physics or its witnesses.
+// RELOCATED, NOT REWRITTEN (2026-08-19). effective_data_rate_mts, memory_bandwidth, memory_power,
+// the DC/AC wall-draw pair and psu_is_adequate came from product.hardware_selection when it was
+// deleted at the root. What changed is their INPUTS: a cited PopulationOption from
+// gunbc.memory_provisioning and a cited CpuModelCatalogRow replace the deleted module's
+// hand-authored Platform/CpuCandidate/MemoryConfig records, so a population this repository refuses
+// upstream cannot be priced electrically here. The physics and its witnesses did not change.
 //
-// NO PRICES LIVE HERE, and no candidate records. A power envelope is a fact
-// about hardware; a candidate is a decision about buying it.
+// NO PRICES LIVE HERE, and no candidate records. A power envelope is a fact about hardware; a
+// candidate is a decision about buying it.
 
 // --- the memory channel context this module needs ----------------------------------------------
 
-// WHAT THIS MODULE ADDS TO THE UPSTREAM GEOMETRY, AND NOTHING ELSE. Channel
-// count, admitted topology and DRAM generation are already
-// gunbc.memory_provisioning's MemoryChannelGeometry, so they are referenced
-// rather than restated — a second record carrying its own channels field would
-// be two authorities for one fact that could disagree. The genuinely new fact
-// is the platform's rated transfer rate, which is an electrical figure the
-// population derivation has no reason to carry.
+// WHAT THIS MODULE ADDS TO THE UPSTREAM GEOMETRY, AND NOTHING ELSE. Channel count, admitted
+// topology and DRAM generation are already gunbc.memory_provisioning's MemoryChannelGeometry, so
+// they are referenced, not restated — a second channels field would be two authorities for one
+// fact. The new fact is the platform's rated transfer rate, an electrical figure the population
+// derivation has no reason to carry.
 //
-// The POPULATED depth is not a field either: it is a property of the population
-// that was actually chosen, and it is read from that population's coverage
-// below. A board with two DIMMs per channel populated one-deep is electrically
-// a one-deep board, and the only authority for which of those happened is the
-// PopulationOption.
+// The POPULATED depth is not a field either: it is a property of the chosen population, read from
+// that population's coverage below. A board with two DIMMs per channel populated one-deep is
+// electrically one-deep, and the only authority for which happened is the PopulationOption.
 type MemoryElectricalContext {
   geometry: MemoryChannelGeometry
   max_data_rate: MegatransfersPerSecond
   two_dpc_ceilings: TwoDpcRateCeilingTable
 }
 
-// THE 2DPC DERATING TABLE, AND ITS EVIDENCE STANDING BESIDE IT. These ceilings
-// arrived with the physics relocated from the deleted product.hardware_selection,
-// where they were bare literals with no citation at all. Moving them into
-// extdeps/ under this repository's citation duty would require an authority that
-// has actually been read, and the Altra platform module states in its own
-// coverage note that it transcribes running text and NOT tables — a derating
-// table is exactly what it does not carry. Minting a citation there would be the
-// fabricated-symbol defect that module's notes exist to prevent.
+// THE 2DPC DERATING TABLE, AND ITS EVIDENCE STANDING BESIDE IT. These ceilings arrived with the
+// physics relocated from the deleted product.hardware_selection, where they were uncited literals.
+// Moving them into extdeps/ under the citation duty needs an authority actually read, and the Altra
+// platform module's coverage note says it transcribes running text and NOT tables — exactly what a
+// derating table is. Minting a citation there would be the fabricated-symbol defect its notes exist
+// to prevent.
 //
-// So the figures are carried where they are consumed, with their uncitedness
-// TYPED rather than invisible: a consumer can ask whether the ceiling it just
-// used is grounded, and the read obligation names what would ground it. This is
-// a declared boundary fact, not a silent constant.
+// So the figures are carried where consumed, with their uncitedness TYPED rather than invisible: a
+// consumer can ask whether the ceiling it used is grounded, and the read obligation names what
+// would ground it. A declared boundary fact, not a silent constant.
 type RateCeilingEvidence
   = CeilingCitedToAuthority { authority: ExternalAuthority }
   | CeilingTranscribedUncited { read_obligation: NonEmptyStr }
@@ -115,9 +103,8 @@ fn ceiling_is_cited(evidence: RateCeilingEvidence) -> Bool {
   }
 }
 
-// The ceilings this repository holds today, all uncited. Named as one
-// declaration so the population is countable and a later citation edits one row
-// rather than hunting literals.
+// The ceilings held today, all uncited. One declaration so the population is countable and a later
+// citation edits one row rather than hunting literals.
 data altra_two_dpc_ceilings: TwoDpcRateCeilingTable = TwoDpcRateCeilingTable {
   rows: [
     TwoDpcRateCeiling {
@@ -147,10 +134,9 @@ fn populated_dimms_per_channel(population: PopulationOption) -> Nat {
   }
 }
 
-// THE 2DPC DOWNCLOCK, and it is rank-dependent. A second module on a channel
-// loads the bus; how much depends on how many ranks that module presents, so a
-// single-rank pair keeps the platform's rated speed while a quad-rank pair
-// falls to 2400 MT/s. These figures are the platform's published 2DPC table.
+// THE 2DPC DOWNCLOCK, and it is rank-dependent. A second module on a channel loads the bus by an
+// amount depending on how many ranks it presents: a single-rank pair keeps the platform's rated
+// speed while a quad-rank pair falls to 2400 MT/s. These are the platform's published 2DPC table.
 fn min_nat(a: Nat, b: Nat) -> Nat {
   if a < b { a } else { b }
 }
@@ -161,10 +147,9 @@ fn min_rate(a: MegatransfersPerSecond, b: MegatransfersPerSecond) -> Megatransfe
   )
 }
 
-// The deepest ceiling any row applies to this rank count. A fold over the table
-// rather than a literal ladder, so a third derating row is data and not a new
-// branch — and so the table above is genuinely the authority for the numbers
-// rather than a restatement of what the code does.
+// The deepest ceiling any row applies to this rank count. A fold over the table, not a literal
+// ladder, so a third derating row is data, not a new branch — and the table above is genuinely the
+// authority for the numbers.
 fn ceiling_for_ranks(
   table: TwoDpcRateCeilingTable,
   rated: MegatransfersPerSecond,
@@ -248,22 +233,18 @@ fn memory_power(
 
 type EfficiencyRating = Plus80 | Bronze | Silver | Gold | Platinum | Titanium
 
-// 80 PLUS IS AN EXTERNAL PROGRAM AND THIS TABLE IS A SIMPLIFICATION OF IT,
-// stated rather than left to be discovered. The program certifies efficiency at
-// FOUR load points (10, 20, 50 and 100 percent) and at two input voltages, so a
-// single figure per rating is at best the 50-percent-load 115 V column — the
-// figures below arrived as bare literals with the physics relocated from the
-// deleted product.hardware_selection and no citation came with them.
+// 80 PLUS IS AN EXTERNAL PROGRAM AND THIS TABLE IS A SIMPLIFICATION OF IT. The program certifies
+// efficiency at FOUR load points (10, 20, 50 and 100 percent) and two input voltages, so one figure
+// per rating is at best the 50-percent-load 115 V column — the figures below arrived as uncited
+// literals with the physics relocated from the deleted product.hardware_selection.
 //
-// The consequence is real: a node idling at 15 percent of its supply's rating is
-// materially less efficient than this table says, so the derived wall figure is
-// optimistic for a lightly loaded machine. That is exactly why the measured arm
-// of this module exists, and why the divergence is reported signed rather than
-// reconciled.
+// The consequence is real: a node idling at 15 percent of its supply's rating is materially less
+// efficient than this table says, so the derived wall figure is optimistic for a lightly loaded
+// machine. That is why the measured arm of this module exists, and why the divergence is reported
+// signed rather than reconciled.
 //
-// DISSOLVES ON: the 80 PLUS specification cited in extdeps/ with its load-point
-// table, at which point efficiency becomes a function of load rather than of
-// rating alone.
+// DISSOLVES ON: the 80 PLUS specification cited in extdeps/ with its load-point table, at which
+// point efficiency becomes a function of load rather than of rating alone.
 fn efficiency_percent(e: EfficiencyRating) -> Percent {
   match e {
     Plus80 => percent(count: 80)
@@ -275,19 +256,16 @@ fn efficiency_percent(e: EfficiencyRating) -> Percent {
   }
 }
 
-// A POPULATION WHOSE EXACT PART IS NOT YET READ IS A REAL STATE OF A REAL
-// PURCHASE, and it is the state the operator's pending configuration is in
-// right now: eight 64 GiB RDIMMs are arriving and the exact part number has not
-// been read. Capacity is still answerable — the sticks state their capacity —
-// but DRAW IS NOT, because the chip count per rank comes from the module's data
-// width and its rank count, and a 64 GiB DDR4 module can be 2Rx4, 4Rx4 or a
-// stacked-die part with materially different device counts.
+// A POPULATION WHOSE EXACT PART IS NOT YET READ IS A REAL STATE OF A REAL PURCHASE — the state of
+// the operator's pending configuration now: eight 64 GiB RDIMMs are arriving and the part number
+// has not been read. Capacity is answerable (the sticks state it) but DRAW IS NOT, because chip
+// count per rank comes from the module's data width and rank count, and a 64 GiB DDR4 module can be
+// 2Rx4, 4Rx4 or a stacked-die part with materially different device counts.
 //
-// So this is a coproduct rather than an optional field, and the unread arm
-// carries what IS known plus the obligation that closes it. Assuming 2Rx4 to
-// keep the arithmetic runnable would be the fabricated plausible output at its
-// most expensive: the figure feeds a power allocation, and a wrong one is not
-// discovered until the rack is energised.
+// So this is a coproduct, not an optional field, and the unread arm carries what IS known plus the
+// obligation that closes it. Assuming 2Rx4 to keep the arithmetic runnable would be fabricated
+// plausible output at its most expensive: the figure feeds a power allocation, and a wrong one is
+// not discovered until the rack is energised.
 type MemoryPopulationEvidence
   = PopulationModuleRead { population: PopulationOption }
   | PopulationModuleUnread {
@@ -296,10 +274,9 @@ type MemoryPopulationEvidence
       read_obligation: NonEmptyStr
     }
 
-// A node's electrical inputs. Board idle draw and per-chip DRAM power are
-// declared by the caller because this repository cites no row for either yet;
-// naming them as fields keeps them visible as the two figures a reader must
-// supply, rather than burying a default inside the arithmetic.
+// A node's electrical inputs. Board idle draw and per-chip DRAM power are declared by the caller
+// because this repository cites no row for either yet; naming them as fields keeps them visible as
+// the two figures a reader must supply rather than a default buried in the arithmetic.
 type NodeElectricalInputs {
   label: NonEmptyStr
   sockets: Nat
@@ -312,11 +289,10 @@ type NodeElectricalInputs {
   psu_efficiency: EfficiencyRating
 }
 
-// WHY THE REFUSAL IS TYPED AND NOT A ZERO. A node whose memory draw could not be
-// derived is not a node that draws only its processor: reporting the CPU-plus-
-// board figure would be an answer a placement decision would happily divide a
-// power budget by. The refusal names the obligation, so the missing read is
-// countable and actionable rather than absorbed.
+// WHY THE REFUSAL IS TYPED AND NOT A ZERO. A node whose memory draw could not be derived does not
+// draw only its processor: a CPU-plus-board figure is an answer a placement decision would happily
+// divide a power budget by. The refusal names the obligation, so the missing read is countable and
+// actionable rather than absorbed.
 type DrawRefusalCause
   = MemoryModuleUnread {
       stick_capacity: ByteSize
@@ -338,10 +314,9 @@ fn memory_evidence_refusal(memory: MemoryPopulationEvidence) -> DrawRefusalCause
   }
 }
 
-// CPU draw is the catalog TDP, once per socket. An earlier home for this
-// arithmetic took a hand-authored 'typical_draw' beside the catalog row, which
-// is a second representation of one fact that could disagree with the first;
-// TDP is what the vendor states and it is what this reads.
+// CPU draw is the catalog TDP, once per socket. An earlier home took a hand-authored 'typical_draw'
+// beside the catalog row — a second representation of one fact; TDP is what the vendor states and
+// what this reads.
 fn cpu_draw_watts(inputs: NodeElectricalInputs) -> Watt {
   watt(count: watt_count(w: inputs.cpu.tdp_watts) * inputs.sockets)
 }
@@ -409,16 +384,15 @@ fn psu_adequacy(inputs: NodeElectricalInputs) -> PsuAdequacy {
 
 // --- derived and observed are two facts of the same shape --------------------------------------
 
-// THE MEASUREMENT SEAM. Once a host is built and qualified, someone puts a
-// meter on it, and the number that comes back is a DIFFERENT FACT from the one
-// derived above — same units, same shape, different epistemic standing. Neither
-// overwrites the other: a derived figure that disagreed with a measurement is
-// not corrected by deleting it, it is the most interesting thing in the record,
-// because the disagreement locates a modelling error the next node will repeat.
+// THE MEASUREMENT SEAM. Once a host is built and qualified, someone puts a meter on it, and that
+// number is a DIFFERENT FACT from the one derived above — same units, same shape, different
+// epistemic standing. Neither overwrites the other: a derived figure that disagrees with a
+// measurement is not corrected by deletion; the disagreement locates a modelling error the next
+// node will repeat.
 //
-// So a reading carries its provenance, and the comparison below reports the
-// divergence rather than reconciling it. There is deliberately no function that
-// takes a measurement and returns a corrected derivation.
+// So a reading carries its provenance, and the comparison below reports the divergence rather than
+// reconciling it. There is deliberately no function taking a measurement and returning a corrected
+// derivation.
 type WallPowerReading
   = WallPowerDerived { watts: Watt }
   | WallPowerMeasured { watts: Watt, host: NonEmptyStr, observed_at: EpochMs }
@@ -430,10 +404,9 @@ fn reading_watts(reading: WallPowerReading) -> Watt {
   }
 }
 
-// The divergence is signed and named in both directions, because over- and
-// under-prediction have different causes and different remedies: a derivation
-// that reads high is usually a TDP standing in for a typical draw, while one
-// that reads low usually means a component the model does not carry at all.
+// The divergence is signed and named in both directions, because over- and under-prediction have
+// different causes and remedies: reading high is usually a TDP standing in for a typical draw;
+// reading low usually means a component the model does not carry at all.
 type EnvelopeDivergence
   = EnvelopeAgrees { watts: Watt }
   | DerivationReadsHigh { derived: Watt, measured: Watt, excess: Watt }
@@ -480,11 +453,10 @@ fn derived_wall_power(inputs: NodeElectricalInputs) -> DerivedWallPower {
 
 // --- capacity, for the projector -----------------------------------------------------------------
 
-// CAPACITY ANSWERS EVEN WHEN DRAW REFUSES, and that asymmetry is the point
-// rather than an inconsistency: a stick states its capacity on the label, so an
-// unread part number costs nothing here — while the device count that decides
-// draw is exactly what the part number carries. Two questions, two different
-// evidence requirements, answered independently.
+// CAPACITY ANSWERS EVEN WHEN DRAW REFUSES, and the asymmetry is the point: a stick states its
+// capacity on the label, so an unread part number costs nothing here — while the device count that
+// decides draw is exactly what the part number carries. Two questions, two evidence requirements,
+// answered independently.
 fn node_memory_capacity(inputs: NodeElectricalInputs) -> ByteSize {
   match inputs.memory {
     PopulationModuleRead { population: p } =>

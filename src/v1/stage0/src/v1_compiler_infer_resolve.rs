@@ -29,10 +29,9 @@ use crate::v1_std_core::CompilerDiagnostic::{
 };
 use crate::v1_std_core::Connective::{Arrow, Conj, Disj, NoConnective};
 use crate::v1_std_core::ExprData::{
-    ExprBinOp, ExprBlock, ExprCall, ExprCast, ExprElaboratedLiteral, ExprError, ExprFieldAccess,
-    ExprForEach, ExprIf, ExprIndex, ExprLambda, ExprLet, ExprListLit, ExprLiteral, ExprMatch,
-    ExprMethodCall, ExprRecordLit, ExprReturn, ExprSlice, ExprStringInterp, ExprUnaryOp, ExprVar,
-    NoExprData,
+    ExprBinOp, ExprBlock, ExprCall, ExprCast, ExprError, ExprFieldAccess, ExprForEach, ExprIf,
+    ExprIndex, ExprLambda, ExprLet, ExprListLit, ExprLiteral, ExprMatch, ExprMethodCall,
+    ExprRecordLit, ExprReturn, ExprSlice, ExprStringInterp, ExprUnaryOp, ExprVar, NoExprData,
 };
 use crate::v1_std_core::ExprErrorKind::SemanticExprError;
 use crate::v1_std_core::InferredNode::{CompilerError, Resolved, TypeVariable};
@@ -735,15 +734,6 @@ pub fn resolve_node_bounded_masked_boundary() -> String {
     thread_local! {
         static CACHED: String = {
             "Selective-import fail-closed (§5): 'masked' is TRUE at the resolve_node source entry and INHERITS through structural recursions (product base :391, product child rt :406, optional inner :426, variant field rt :444, generic args :477, map k/v :519/:522, list elem :538), so every use-site type-argument reaches the leaf mask check masked. It flips FALSE only into GROUNDING recursions (peel_nominal_alias_identity :150/:151/:154/:163, resolve_alias_target :342, parameterized-alias target :494, resolved-name grounding :561), which descend into DEFINING-module structure (the import responsibility of that module, not the use-site). INVARIANT (reviewed lively-raven-355 2026-07-06): grounding recursions must only ever descend into defining-module structure; the :561 arm relies on the resolved.children==0 leaf guard AND the :550-552 coproduct-container short-circuit — if a future refactor lets a parameterized use reach :561, a use-site arg could be inlined into grounding and skipped (a false-NEGATIVE / missing diagnostic once this is a hard refusal, not an availability bug in diagnostic-collect). Mask check (:568 Present arm) emits UnlistedImportUse when masked && name NOT in env.source_visible_names; keeps 'resolved' intact (diagnostic-collect, advisory). source_visible_names = locals + kernel + selective specific_names + is_all-module exports + type-params (:971). SCAFFOLD dissolve-on (§6): the advisory/non-erroring posture (is_error_diagnostic=false, 00_core.dag) is diagnostic-collect, NOT the final wall. Dissolves when (a) family-closure SVN lands — each imported name resolves to its whole coproduct family (owner + ALL siblings, lively-raven-355 ruling 2026-07-06) so the variant-owner-reverse false-positive class (import variant B then use owner E, or sibling A) is gone, AND (b) the corpus burndown of genuine unlisted uses (Symbol in v2/std/diagnostic.dag, NonEmptyStr in gcp, ...) reaches zero — at which point UnlistedImportUse promotes to a hard UnresolvedType/Refused joining §5's fail-closed wall, and the empty-source_visible_names guard (:345 count>0, a §3 dual-signal with 'masked' — flagged by claude-opus-4-7) collapses so 'masked' is the sole authority.".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
-}
-
-pub fn type_ref_hit_ne_bind_measure_resolve_note() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "N1a MEASUREMENT ARM (quiet-hawk-219): when type_ref_hit_ne_bind_measure_active (v1_rt host bracket), a masked leaf pool-hit without type_ref_measure_binding_authority emits UnresolvedType via bare_name_miss_diagnostic — never Product(<anon>). Production (measure off) keeps the UnlistedImportUse advisory path. Leaf path only; is_user_generic_use_site unchanged. Dissolve-on: gunbc.type_ref_hit_ne_bind_measure type_ref_hit_ne_bind_measure_dissolve_trigger.".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
@@ -2391,10 +2381,6 @@ pub fn resolve_expr_types(
                 expr: texpr.clone(),
                 diagnostics: Rc::new(vec![]),
             }),
-            ExprData::ExprElaboratedLiteral { .. } => Rc::new(ExprResolveResult {
-                expr: texpr.clone(),
-                diagnostics: Rc::new(vec![]),
-            }),
             ExprData::ExprError { kind, message, .. } => Rc::new(ExprResolveResult {
                 expr: crate::v1_std_core::make_expr_error_node(
                     Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
@@ -2989,7 +2975,6 @@ pub fn resolve_expr_types(
             ExprData::ExprBinOp {
                 op,
                 algebra_field: af,
-                operand: od,
                 ..
             } => {
                 let ch = texpr.children.clone();
@@ -3013,7 +2998,6 @@ pub fn resolve_expr_types(
                         Rc::new(ExprData::ExprBinOp {
                             op: op.clone(),
                             algebra_field: af.clone(),
-                            operand: od.clone(),
                         }),
                         Rc::new(vec![lr.expr.clone(), rr.expr.clone()]),
                         texpr.inferred.clone(),

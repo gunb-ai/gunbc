@@ -17,7 +17,10 @@ import std.decl_ref { DeclarationRef, decl_ref }
 // well-formed and accepted; nothing in the ordinary compile path says the shape is unsupported. So
 // the author learns it from a Rust build failure in generated code they did not write, which is the
 // furthest possible position from the source construct that caused it.
-data emitted_record_deserialize_gap_note: String = "A .dag record embedding a coproduct whose variant carries a sole_constructor type emits a Rust record deriving Deserialize over a Serialize-only private-field struct. The seed then fails to compile with E0277, and reading the carried field fails with E0616. The .dag is accepted; the refusal appears only in emitted Rust."
+// A .dag record embedding a coproduct whose variant carries a sole_constructor type emits a Rust
+// record deriving Deserialize over a Serialize-only private-field struct. The seed then fails to
+// compile with E0277, and reading the carried field fails with E0616. The .dag is accepted; the
+// refusal appears only in emitted Rust.
 
 type EmittedRecordDeserializeEvidence
   = RustcRefusal {
@@ -121,7 +124,10 @@ data emitted_record_deserialize_gap_evidence: List<EmittedRecordDeserializeEvide
 // half yields an enrollable red, which is exactly the capability the trigger below names.
 data emitted_record_deserialize_gap_rung: String = "mitigatable"
 
-data emitted_record_deserialize_gap_path_coverage_measurement: String = "Measured 2026-08-28 on this branch over 4234 modules indexed under src/v1 + dag + src/v2: seed closure 134, emit-compile roster closures add 5, 139 covered, 4095 uncovered. On the uncovered majority the shape is accepted and nothing refuses it, which is the path that sets the rung under DESIGN 4b(1) minimum-across-paths."
+// Measured 2026-08-28 on this branch over 4234 modules indexed under src/v1 + dag + src/v2: seed
+// closure 134, emit-compile roster closures add 5, 139 covered, 4095 uncovered. On the uncovered
+// majority the shape is accepted and nothing refuses it, which is the path that sets the rung under
+// DESIGN 4b(1) minimum-across-paths.
 
 // THE PREMISE BEHIND THE TRIGGER WAS MEASURED, AFTER AN EARLIER REVISION ASSERTED IT.
 //
@@ -139,9 +145,22 @@ data emitted_record_deserialize_gap_path_coverage_measurement: String = "Measure
 // mirror of the DESIGN 4b(3) failure -- a trigger that cannot be satisfied while the capability is
 // alive, failing as quietly as one satisfied while it is dead, because a row that never retires
 // reads as diligence.
-data emitted_record_deserialize_gap_roster_closure_measurement: String = "Measured 2026-08-28 on this branch: of the eight entries in gunbc.ci_layer_roots required_emit_compile_entries, three -- gunbc.ci_layer_roots, gunbc.scm.load_standing, std.abi -- are outside the transitive import closure from src/v1 over src/v1 + dag, corroborated by their having no committed mirror under src/v1/stage0/src. The emit-compile phase therefore compiles non-seed modules already."
+// Measured 2026-08-28 on this branch: of the eight entries in gunbc.ci_layer_roots
+// required_emit_compile_entries, three -- gunbc.ci_layer_roots, gunbc.scm.load_standing, std.abi --
+// are outside the transitive import closure from src/v1 over src/v1 + dag, corroborated by their
+// having no committed mirror under src/v1/stage0/src. The emit-compile phase therefore compiles
+// non-seed modules already.
 
-data emitted_record_deserialize_gap_next_rung_trigger: String = "THE CAPABILITY: a route that compiles a module WHICH MUST FAIL TO COMPILE and asserts the failure -- an expected-red arm for emitted-crate compilation. Isolation from the seed is NOT the missing piece and this trigger no longer claims it is: the emit-compile phase already compiles three rostered entries the seed does not import. What is missing is that every route we have treats a compile failure as a line stop, so authoring this shape anywhere reachable makes a gate permanently red rather than producing an enrolled red. Adding a rostered entry is therefore still NOT sufficient -- not because the entry would be a seed module, but because a rostered entry carrying the shape breaks the required build instead of asserting it. When an expected-red compile arm exists, this row's minimal shape is enrolled as its discriminating red and the class becomes mechanically preventable."
+// THE CAPABILITY: a route that compiles a module WHICH MUST FAIL TO COMPILE and asserts the failure
+// -- an expected-red arm for emitted-crate compilation. Isolation from the seed is NOT the missing
+// piece and this trigger no longer claims it is: the emit-compile phase already compiles three
+// rostered entries the seed does not import. What is missing is that every route we have treats a
+// compile failure as a line stop, so authoring this shape anywhere reachable makes a gate
+// permanently red rather than producing an enrolled red. Adding a rostered entry is therefore still
+// NOT sufficient -- not because the entry would be a seed module, but because a rostered entry
+// carrying the shape breaks the required build instead of asserting it. When an expected-red
+// compile arm exists, this row's minimal shape is enrolled as its discriminating red and the class
+// becomes mechanically preventable.
 
 // The predicate is deliberately narrow: it says the finding is carried with its codes and its
 // shape, never that the gap is closed. A row asserting closure would be satisfied by editing this

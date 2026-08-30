@@ -290,9 +290,9 @@ test fn w_a_type_variable_type_argument_is_not_read_as_a_disagreement() -> Bool 
 // standing between that and a silent false match.
 data phantom_distinct_type_argument_source: String = "module probe_inhabit_phantom\nimport std.types { String }\ntype DemandKey { v: String }\ntype WorkKey { v: String }\ntype FabricIdentity<P, K> { principal: P, key: String }\nfn mk_work() -> FabricIdentity<String, WorkKey> { FabricIdentity { principal: \"p\", key: \"k\" } }\nfn takes_demand(x: FabricIdentity<String, DemandKey>) -> String { x.key }\nfn probe() -> String { takes_demand(x: mk_work()) }\n"
 
-test fn w_a_phantom_type_argument_with_identical_representation_is_still_separated() -> Bool {
-  violation_count(source: phantom_distinct_type_argument_source, wanted: "DeclaredTypeNotInhabited") > 0
-}
+// examples.nominal_distinctness_witness and examples.nominal_distinctness_twin were deleted when
+// this arm landed: the RED half was a corpus module that must not compile, and its discrimination
+// is carried by the enrolled fixture arms in this file.
 
 // WHERE THE examples.nominal_distinctness_witness PAIR WENT, recorded here because deleting a
 // module takes its evidence with it unless the evidence is named first. That pair was
@@ -313,4 +313,6 @@ test fn w_a_phantom_type_argument_with_identical_representation_is_still_separat
 // _call_are_refused above plus w_matching_applied_product_at_a_direct_call_argument_is_admitted,
 // both of which EXECUTE on every floor run. So the evidence did not move to a weaker home; it
 // moved from a home where it could never fire to one where it fires every run.
-data nominal_distinctness_example_disposition: String = "examples.nominal_distinctness_witness and examples.nominal_distinctness_twin were deleted when this arm landed: the RED half was a corpus module that must not compile, and its discrimination is carried by the enrolled fixture arms in this file."
+test fn w_a_phantom_type_argument_with_identical_representation_is_still_separated() -> Bool {
+  violation_count(source: phantom_distinct_type_argument_source, wanted: "DeclaredTypeNotInhabited") > 0
+}
