@@ -441,10 +441,11 @@ data clean_specimen: EmissionMeasurement = EmissionMeasured {
   subject: specimen_subject,
   emitted_files: FilesEmitted { count: 177 },
   emit_diagnostics: [],
+  emitted_artifact_identity: specimen_subject.compiler,
   rustfmt_parse_observation: RustfmtParseObservation {
     producer: "rustfmt --emit stdout --edition 2021",
     files_observed: 1,
-    parse_errors: 0
+    refused_files: []
   },
   cargo_clean: true,
   cargo_diagnostics: [],

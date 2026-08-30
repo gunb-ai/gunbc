@@ -141,17 +141,21 @@ fn first_failing_checked_phase(ds: List<RustcCodedDiagnostic>) -> RustcPhase {
   else { Borrowck }
 }
 
-fn cargo_phase_board(parse_errors: Int, ds: List<RustcCodedDiagnostic>) -> RustcPhaseBoardRead {
+fn cargo_phase_board(parse_observation: RustfmtParseObservation, ds: List<RustcCodedDiagnostic>) -> RustcPhaseBoardRead {
   let errors = ds |> filter(d => d.level == "error" && match d.identity {
     RustcCoded { code: _ } => true
     RustcUncoded => false
   })
   let unplaced = unplaced_identities(ds: errors)
+  let parse_errors = count(parse_observation.refused_files)
   let furthest = if parse_errors > 0 { Parse } else { first_failing_checked_phase(ds: errors) }
   let furthest_order = rustc_phase_order(phase: furthest)
   let all_identities = concat(
-    [concat("parse-errors:", to_string(parse_errors))],
-    deduplicate_identities(identities: errors |> map(d => rustc_diagnostic_row(d: d)))
+    ["self-host-compile-phase-census-v1"],
+    concat(
+      parse_observation.refused_files |> map(path => concat("rustfmt-refused\t", path)),
+      deduplicate_identities(identities: errors |> map(d => rustc_diagnostic_row(d: d)))
+    )
   )
   PhaseBoardDerived {
     board: RustcPhaseBoard {
@@ -159,7 +163,7 @@ fn cargo_phase_board(parse_errors: Int, ds: List<RustcCodedDiagnostic>) -> Rustc
           RustcPhaseBoardRow {
             phase: Parse,
             standing: PhaseCount { count: parse_errors, evidence: Observed },
-            identities: if parse_errors > 0 { [concat("rustfmt-parse-errors:", to_string(parse_errors))] } else { [] }
+            identities: parse_observation.refused_files
           },
           phase_row(ds: errors, phase: Expand, reached: furthest_order >= rustc_phase_order(phase: Expand)),
           phase_row(ds: errors, phase: Resolve, reached: furthest_order >= rustc_phase_order(phase: Resolve)),
@@ -184,11 +188,12 @@ fn self_host_compile_phase_frontier(entry: String) -> RustcPhaseBoardRead {
       subject: _,
       emitted_files: _,
       emit_diagnostics: _,
+      emitted_artifact_identity: _,
       rustfmt_parse_observation: parse,
       cargo_clean: _,
       cargo_diagnostics: ds,
       cargo_lines_scanned: _
-    } => cargo_phase_board(parse_errors: parse.parse_errors, ds: ds)
+    } => cargo_phase_board(parse_observation: parse, ds: ds)
     measurement => PhaseBoardMeasurementUnreached
   }
 }
@@ -284,7 +289,7 @@ fn parse_evidence_rows(evidence: ParsePhaseEvidence) -> List<String> {
     ParseReached { evidence: observation } => [
       observation.producer,
       to_string(observation.files_observed),
-      to_string(observation.parse_errors)
+      observation.refused_files |> join(separator: "\n")
     ]
   }
 }

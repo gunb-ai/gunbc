@@ -1,7 +1,7 @@
 module std.cache_interface
 
 import std.types { NonEmptyStr, Bool, Int, LogicalTime }
-import v2.std.optional { Absent, Optional, Present }
+import v2.std.optional { Optional }
 import std.decl_ref { DeclarationRef }
 import std.content_hash { ContentHash }
 import std.measure { Nano, ByteSize, Second, second, Nanosecond, nanosecond, nanosecond_count }
@@ -395,19 +395,14 @@ fn cache_reach_candidate_probe(
   id: CacheInterfaceId,
   catalog: List<CacheInterfaceFacts>,
   recompute: CostAccount<Nano>,
-) -> CacheReachCandidate? {
-  match cache_facts_for_id(id: id, catalog: catalog) {
-    Absent => none
-    Present { value: facts } =>
-      let fetch = read_latency_cost(facts: facts)
-      Present {
-        value: CacheReachCandidate {
-          layer: Present { value: id }
-          fetch_cost: fetch
-          recompute_saved: recompute.time
-          latency: fetch
-        }
-      }
+) -> CacheReachCandidate {
+  let facts = cache_facts_for_id(id: id, catalog: catalog)
+  let fetch = read_latency_cost(facts: facts)
+  CacheReachCandidate {
+    layer: Present { value: id }
+    fetch_cost: fetch
+    recompute_saved: recompute.time
+    latency: fetch
   }
 }
 
@@ -440,10 +435,7 @@ fn cache_layer_cost_justified(
   catalog: List<CacheInterfaceFacts>,
   recompute: CostAccount<Nano>,
 ) -> Bool {
-  match cache_facts_for_id(id: id, catalog: catalog) {
-    Absent => false
-    Present { value: facts } => nanosecond_count(n: recompute.time) >= nanosecond_count(n: read_latency_cost(facts: facts))
-  }
+  nanosecond_count(n: recompute.time) >= nanosecond_count(n: read_latency_cost(facts: cache_facts_for_id(id: id, catalog: catalog)))
 }
 
 fn cache_layer_beats_recompute_path(
@@ -451,16 +443,13 @@ fn cache_layer_beats_recompute_path(
   catalog: List<CacheInterfaceFacts>,
   recompute: CostAccount<Nano>,
 ) -> Bool {
-  match cache_reach_candidate_probe(id: id, catalog: catalog, recompute: recompute) {
-    Absent => false
-    Present { value: probe } =>
-      match cache_reach_dominates(
-        a: cache_reach_candidate_recompute(),
-        b: probe,
-      ) {
-        Dominates => false
-        _ => cache_layer_cost_justified(id: id, catalog: catalog, recompute: recompute)
-      }
+  let probe = cache_reach_candidate_probe(id: id, catalog: catalog, recompute: recompute)
+  match cache_reach_dominates(
+    a: cache_reach_candidate_recompute(),
+    b: probe,
+  ) {
+    Dominates => false
+    _ => cache_layer_cost_justified(id: id, catalog: catalog, recompute: recompute)
   }
 }
 
@@ -496,15 +485,15 @@ fn plan_cache_layers(
   }
 }
 
-fn cache_layer_plan_primary(plan: CacheLayerPlan) -> CacheInterfaceId? {
+fn cache_layer_plan_primary(plan: CacheLayerPlan) -> CacheInterfaceId {
   plan.layers.first()
 }
 
-fn cache_layer_plan_fallback(plan: CacheLayerPlan) -> CacheInterfaceId? {
+fn cache_layer_plan_fallback(plan: CacheLayerPlan) -> CacheInterfaceId {
   plan.layers.skip(n: 1).first()
 }
 
-fn cache_facts_for_id(id: CacheInterfaceId, catalog: List<CacheInterfaceFacts>) -> CacheInterfaceFacts? {
+fn cache_facts_for_id(id: CacheInterfaceId, catalog: List<CacheInterfaceFacts>) -> CacheInterfaceFacts {
   catalog
     |> filter(facts => facts.identity == id)
     |> first()
@@ -515,23 +504,21 @@ fn cache_layer_ids_respect_locality(
   catalog: List<CacheInterfaceFacts>,
   last_rank: Int,
 ) -> Bool {
-  match layers.first() {
-    Absent => true
-    Present { value: id } =>
-      match cache_facts_for_id(id: id, catalog: catalog) {
-        Absent => false
-        Present { value: facts } =>
-          let rank = persistence_locality_rank(locality: facts.locality)
-          if rank < last_rank {
-            false
-          } else {
-            cache_layer_ids_respect_locality(
-              layers: layers.skip(n: 1),
-              catalog: catalog,
-              last_rank: rank,
-            )
-          }
-      }
+  if layers.length() == 0 {
+    true
+  } else {
+    let id = layers.first()
+    let facts = cache_facts_for_id(id: id, catalog: catalog)
+    let rank = persistence_locality_rank(locality: facts.locality)
+    if rank < last_rank {
+      false
+    } else {
+      cache_layer_ids_respect_locality(
+        layers: layers.skip(n: 1),
+        catalog: catalog,
+        last_rank: rank,
+      )
+    }
   }
 }
 

@@ -246,6 +246,7 @@ type EmissionStage
   | StageEmitDecode
   | StageAssemble
   | StageManifest
+  | StageArtifactIdentity
   | StageParse
   | StageCargo
   | StageCargoDecode
@@ -259,6 +260,7 @@ fn emission_stage_name(stage: EmissionStage) -> String {
     StageEmitDecode => "emit-decode"
     StageAssemble => "assemble"
     StageManifest => "manifest"
+    StageArtifactIdentity => "artifact-identity"
     StageParse => "parse"
     StageCargo => "cargo"
     StageCargoDecode => "cargo-decode"
@@ -304,6 +306,7 @@ type EmissionMeasurement
       subject: EmissionMeasurementSubject
       emitted_files: EmittedFileCount
       emit_diagnostics: List<GunbcDiagnostic>
+      emitted_artifact_identity: Digest
       rustfmt_parse_observation: RustfmtParseObservation
       cargo_clean: Bool
       cargo_diagnostics: List<RustcCodedDiagnostic>
@@ -313,7 +316,40 @@ type EmissionMeasurement
 type RustfmtParseObservation {
   producer: String
   files_observed: Int
-  parse_errors: Int
+  refused_files: List<String>
+}
+
+type EmittedArtifactContentFold
+  = ArtifactContentHeld { bytes: String }
+  | ArtifactContentRefused { path: String, reason: String }
+
+fn emitted_artifact_digest(paths: List<String>, digest_path: String) -> Sha256FileDigest {
+  let content = fold(
+    paths,
+    init: ArtifactContentHeld { bytes: "" },
+    f: (state, path) => match state {
+      ArtifactContentRefused { path: p, reason: why } => ArtifactContentRefused { path: p, reason: why }
+      ArtifactContentHeld { bytes: prior } => {
+        let read = Filesystem.Read(path: path)
+        if read.success {
+          ArtifactContentHeld { bytes: concat(prior, read.content) }
+        } else {
+          ArtifactContentRefused { path: path, reason: read.error }
+        }
+      }
+    }
+  )
+  match content {
+    ArtifactContentRefused { path: p, reason: why } => Sha256FileDigestUnavailable { path: p as NonEmptyStr, reason: why }
+    ArtifactContentHeld { bytes: observed } => {
+      let written = Filesystem.Write(path: digest_path, content: observed)
+      if !written.success {
+        Sha256FileDigestUnavailable { path: digest_path as NonEmptyStr, reason: written.error }
+      } else {
+        sha256sum_file_digest_via_shell(path: digest_path as NonEmptyStr)
+      }
+    }
+  }
 }
 
 // THE SUBJECT PROJECTION, and it lives here rather than in a consumer because this module owns the
@@ -340,6 +376,7 @@ fn emission_measurement_subject(m: EmissionMeasurement) -> EmissionSubjectCarrie
       subject: sub,
       emitted_files: _,
       emit_diagnostics: _,
+      emitted_artifact_identity: _,
       rustfmt_parse_observation: _,
       cargo_clean: _,
       cargo_diagnostics: _,
@@ -358,7 +395,7 @@ fn emission_measurement_completed(m: EmissionMeasurement) -> Bool {
     EmissionUnreached { subject: _, stage: _, cause: _ } => false
     EmissionCargoUnreached { subject: _, stage: _, cause: _, emit_diagnostics: _, emitted_files: _ } => false
     EmissionEmitRefused { subject: _, exit_code: _, emit_diagnostics: _, emitted_files: _ } => true
-    EmissionMeasured { subject: _, emitted_files: _, emit_diagnostics: _, rustfmt_parse_observation: _, cargo_clean: _, cargo_diagnostics: _, cargo_lines_scanned: _ } => true
+    EmissionMeasured { subject: _, emitted_files: _, emit_diagnostics: _, emitted_artifact_identity: _, rustfmt_parse_observation: _, cargo_clean: _, cargo_diagnostics: _, cargo_lines_scanned: _ } => true
   }
 }
 
@@ -516,15 +553,27 @@ fn measure_cargo_half(
           }
         } else {
         let rust_files = split(s: listed_rust.stdout, sep: "\n") |> filter(path => path != "")
+        match emitted_artifact_digest(
+          paths: concat([concat(out_dir, "/Cargo.toml")], rust_files),
+          digest_path: concat(out_dir, "/.gunbc-emitted-artifact-bytes")
+        ) {
+          Sha256FileDigestUnavailable { path: p, reason: why } => EmissionCargoUnreached {
+            subject: subject,
+            stage: StageArtifactIdentity,
+            cause: concat(concat("could not digest emitted artifact bytes at ", p as String), concat(": ", why)),
+            emit_diagnostics: emit_diagnostics,
+            emitted_files: emitted_files
+          }
+          Sha256FileDigest { digest: artifact_identity } => {
         let parse_observation = fold(
           rust_files,
-          init: RustfmtParseObservation { producer: "rustfmt --emit stdout --edition 2021" , files_observed: 0, parse_errors: 0 },
+          init: RustfmtParseObservation { producer: "rustfmt --emit stdout --edition 2021" , files_observed: 0, refused_files: [] },
           f: (observation, path) => {
             let parsed = rustfmt.Parse.Files(workdir: out_dir, edition: "2021", files: [path])
             RustfmtParseObservation {
               producer: observation.producer,
               files_observed: observation.files_observed + 1,
-              parse_errors: observation.parse_errors + if parsed.success { 0 } else { 1 }
+              refused_files: if parsed.success { observation.refused_files } else { concat(observation.refused_files, [path]) }
             }
           }
         )
@@ -540,6 +589,7 @@ fn measure_cargo_half(
               subject: subject,
               emitted_files: emitted_files,
               emit_diagnostics: emit_diagnostics,
+              emitted_artifact_identity: artifact_identity,
               rustfmt_parse_observation: parse_observation,
               cargo_clean: ok,
               cargo_diagnostics: ds,
@@ -556,6 +606,8 @@ fn measure_cargo_half(
               emit_diagnostics: emit_diagnostics,
               emitted_files: emitted_files
             }
+        }
+          }
         }
         }
       }
@@ -768,6 +820,7 @@ fn emission_report_rows(m: EmissionMeasurement) -> List<String> {
       subject: subject,
       emitted_files: files,
       emit_diagnostics: ds,
+      emitted_artifact_identity: artifact_identity,
       rustfmt_parse_observation: parse,
       cargo_clean: clean,
       cargo_diagnostics: rs,
@@ -780,9 +833,10 @@ fn emission_report_rows(m: EmissionMeasurement) -> List<String> {
             [
               concat("outcome\tmeasured\tcargo_clean\t", to_string(clean)),
               concat("emitted_files\t", emitted_file_count_text(files: files)),
+              concat("emitted_artifact_sha256\t", artifact_identity.hex as String),
               concat("rustfmt_parse_producer\t", parse.producer),
               concat("rustfmt_parse_files\t", to_string(parse.files_observed)),
-              concat("rustfmt_parse_errors\t", to_string(parse.parse_errors))
+              concat("rustfmt_parse_errors\t", to_string(count(parse.refused_files)))
             ]
           ),
           concat(

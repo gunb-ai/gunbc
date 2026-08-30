@@ -1,9 +1,10 @@
 module extdeps.languages.rust.compiler_phases
 
-import std.types { Int, String }
+import std.types { Int, String, NonEmptyStr }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
+import std.content_hash { Fnv1a64Structural, content_hash_atom }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri { scheme: Https, locator: "rustc-dev-guide.rust-lang.org/overview.html" }
@@ -125,6 +126,15 @@ data rustc_error_code_phase_rows: List<RustcErrorCodePhaseRow> = [
   RustcErrorCodePhaseRow { code: "E0507", phase: Borrowck, authority: rustc_error_code_authority(code: "E0507") },
   RustcErrorCodePhaseRow { code: "E0382", phase: Borrowck, authority: rustc_error_code_authority(code: "E0382") }
 ]
+
+data rustc_phase_classification_policy_digest: Fnv1a64Structural = content_hash_atom(
+  value: concat(
+    "rustc-1.93-error-index-phase-policy-v1\n",
+    rustc_error_code_phase_rows
+      |> map(row => join([row.code, rustc_phase_name(phase: row.phase), row.authority.uri.locator], "\t"))
+      |> join(separator: "\n")
+  ) as NonEmptyStr
+)
 
 fn rustc_error_code_phase(code: String) -> RustcErrorCodePhase {
   match rustc_error_code_phase_rows |> filter(r => r.code == code) |> first {
