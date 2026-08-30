@@ -109,3 +109,21 @@ data megarac_api_operations: List<MegaRacApiOperation> = [
 ]
 
 data megarac_virtual_cd_boot_recipe_note: String = "THE EXECUTED HEADLESS BOOT-FROM-ISO SEQUENCE (Foxconn Mt. Collins build, 2026-08-29): export the ISO directory over NFS to the BMC address; PUT media config; wait for the rmedia retry to mount (images listing goes from refusal to listing); POST start-media WITH image_redirection:1; ipmitool chassis bootdev cdrom then power reset. Execution receipts available without any screen: the NFS server's read counter (bulk reads then quiet = image loaded), the configurations row (redirection_status/session_index), and the boot CPU's power rails rising while the second socket idles."
+
+// THE PARAMETER THE START-MEDIA CONTRACT CALLS REQUIRED, AS A TYPE. megarac_op_media_start
+// says the body MUST carry image_redirection:1 or the firmware refuses with opaque codes;
+// a profile for a MegaRAC build therefore carries this as a typed route fact, and a
+// remote-media binding can only be constructed from the Enabled arm
+// (extdeps.bmc.virtual_media MegaRacRemoteMediaParams.image_redirection).
+type MegaRacImageRedirection
+  = MegaRacImageRedirectionEnabled
+  | MegaRacImageRedirectionUnset
+
+type MegaRacImageRedirectionRequired
+  = | MegaRacImageRedirectionOn
+
+fn megarac_image_redirection_wire(r: MegaRacImageRedirectionRequired) -> NonEmptyStr {
+  match r {
+    MegaRacImageRedirectionOn => "1"
+  }
+}

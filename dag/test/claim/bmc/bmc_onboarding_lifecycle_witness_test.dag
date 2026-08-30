@@ -206,7 +206,7 @@ test fn install_boot_target_refuses_alike_for_both_3_22_00_hosts() -> Bool {
   match srv3_install_boot_target_standing {
     InstallBootTargetRefused { cause: c3 } =>
       match c3 {
-        InstallNoVirtualMediaAndNetworkBootUnestablished { firmware: _, missing: _ } => true
+        InstallAccessProfileNotLookedUp { endpoint: _ } => true
         _ => false
       }
     InstallBootTargetSelected { target: _ } => false
@@ -214,13 +214,14 @@ test fn install_boot_target_refuses_alike_for_both_3_22_00_hosts() -> Bool {
     && match srv4_install_boot_target_standing {
          InstallBootTargetRefused { cause: c } =>
            match c {
-             InstallNoVirtualMediaAndNetworkBootUnestablished { firmware: _, missing: _ } => true
+             InstallAccessProfileNotLookedUp { endpoint: _ } => true
              InstallFirmwareEvidenceAbsent { endpoint: _ } => false
              InstallFirmwareVersionUncatalogued { firmware: _ } => false
              InstallFirmwareVersionAmbiguous { firmware: _, count: _ } => false
+             InstallAccessContextUnbound { standing: _ } => false
              InstallNoBootSourceOverride { firmware: _ } => false
-             InstallFirmwareTransitionUnestablished { firmware: _, missing: _ } => false
-             InstallFirmwareTransitionAmbiguous { firmware: _, candidates: _ } => false
+             InstallNoEligibleTransport { firmware: _, considered: _ } => false
+             InstallDeliveryOutsideLegacyMechanism { delivery: _ } => false
            }
          InstallBootTargetSelected { target: _ } => false
        }

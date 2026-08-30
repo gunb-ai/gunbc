@@ -4,8 +4,23 @@ Operator ruling of 2026-08-29, transcribed as the authority for the `gunbc.machi
 lane. The `.dag` modules cite this document; this document does not restate what they declare.
 Where a section below names a type, the type is the authority and this is its rationale.
 
-Status: **INTAKE-0 and the BOOT-DELIVERY-0 modeling landed** (gunbc#9690), reworked under the
-operator's second ruling of 2026-08-29: the Mt. Collins family binding is an EXPECTATION
+Status: **INTAKE-0 and BOOT-DELIVERY-0 modeling in review** (gunbc#9690), reworked under the
+operator's second ruling of 2026-08-29 and the third ruling of 2026-08-30
+([machine-intake-ruling-3.md](machine-intake-ruling-3.md), which is the merge gate: neither
+slice is recorded complete until its seven items hold). Under ruling 3 the solver reads a
+`BootDeliveryRequest` (target unit and attempt, exact `BootArtifact`, staging offers each naming
+the digest they serve), a `BoundBootDeliveryEvidence` whose access context
+`gunbc.machine_intake_access` has already bound to this attempt (profile ∩ observation, capability
+row read off the profile, observation receipt digest checked), and a `BootDeliveryPolicy`; it
+answers with a `BootDeliveryPlan` that repeats target and artifact, derives the Redfish locator and
+protocol from the probe RECEIPT, requires the MegaRAC route's `image_redirection` fact, and names
+the profile provenance and observation receipt its eligibility came from. The capability-only
+legacy solver, its `FirmwareUpdateThenVirtualMedia` shortcut, `srv3_install_mechanism`,
+`fleet_install_server_specs` and the ProxyDHCP artifact path are deleted; `gunbc.os_install_mechanism`
+is a compatibility projection that refuses at `InstallAccessProfileNotLookedUp`. Firmware release
+identity is the raw vendor string (`BmcFirmwareReleaseIdentity`, so "0.32" is representable);
+`FirmwareTransition*` lives in `gunbc.bmc_firmware_transition` and `NetworkBoot*` in
+`gunbc.network_boot_delivery`. Under ruling 2: the Mt. Collins family binding is an EXPECTATION
 (`MtCollinsBmcImplementationExpected`) until a workflow-layer `BmcImplementationObserved`
 receipt exists; the one solver reads `BmcAccessProfile × BmcAccessObservation` through a total
 profile lookup (`BmcAccessProfileStanding`), plans the Redfish arm only at
@@ -72,10 +87,18 @@ absent or duplicated SPD serial is preserved as a limitation, never papered over
 ## 2. Platform facts vs live access observations
 
 `extdeps.bmc.access_profile`: `BmcAccessProfile` is platform/catalog data keyed by baseboard ×
-chassis part number × implementation × exact firmware, carrying candidate routes and OEM quirks
-(for Mt. Collins: the MegaRAC bootstrap credential kind and `image_redirection: 1`; for
-ASRock/OpenBMC: the OEM WebSocket locator or configfs/UDC parameters). `BmcAccessObservation` is
-per endpoint, per attempt. The solver selects a path only from their intersection.
+`ChassisApplicability` (an explicit arm, never absence-means-all) × implementation × exact raw
+firmware release (`BmcFirmwareReleaseIdentity`), carrying its routes as inhabitants
+(`BmcAccessRoute`: Redfish locators, IPMI lanplus, the MegaRAC REST route with its typed
+`image_redirection` fact, the OpenBMC shell, the OpenBMC NBD WebSocket path) so a no-Redfish
+build is representable without inventing locators, plus the capability row that release carries
+(a catalog row whose row firmware disagrees with its key is refused at lookup). Provenance is
+`ProfileFromExternalAuthority | ProfilePromotedFromObservation`, never the rendering declaration.
+`BmcAccessObservation` is per endpoint with its raw response digest and a resource-bound
+`RedfishVirtualMediaProbeReceipt?`; the lookup answers `Known | Uncatalogued | Ambiguous |
+CatalogRowRefused` (external facts only). Which attempt the observation belongs to and whether
+the lookup ran are WORKFLOW standings: `gunbc.machine_intake_access.bind_bmc_access_context`
+produces the one `BoundBmcAccessContext` the solver may read.
 
 `BmcFirmwareFamily` gained `AmiMegaRac` (`extdeps.bmc.endpoint`, gunbc#9678); the implementation
 module is `extdeps.bmc.megarac` and the vendor row `extdeps.vendor.ami`. The family-keyed
@@ -111,10 +134,12 @@ Platform mapping:
 | Firmware with observed UEFI HTTP support and reachable artifact service | UefiHttpBoot |
 | Firmware with all network-boot requirements established | PxeChainBoot |
 
-`gunbc.os_install_mechanism` is now a frozen projection of the delivery solver; its consumers
-migrate to `BootDeliverySolution` and it is then deleted (its frozen note carries the trigger). A
-`BootDeliveryPlanned` result is a candidate PLAN — insert, host consumption, eject and detach are
-established only by execution receipts.
+`gunbc.os_install_mechanism` is a compatibility projection of the delivery solver with no solver
+of its own; its consumers migrate to `BootDeliverySolution` and it is then deleted (its frozen note
+carries the trigger). A `BootDeliveryPlanned` result is a candidate PLAN bound to target and
+artifact — insert, host consumption, eject and detach are established only by execution receipts.
+The boot-control target is protocol-neutral (`BootControlTarget`); which BMC operation sets it is
+realization bound to the route the profile exposes.
 
 ## 4. The workflow: one `MachineIntake`, three transactions
 
@@ -259,8 +284,11 @@ byte/schema-equivalent receipt envelopes for both the Mt. Collins and ASRock tra
 | `extdeps.bmc.megarac`, `extdeps.vendor.ami` | implementation module (gunbc#9678: cited admin/admin default, IPMI floor, proprietary REST remote-media operations, executed Mt. Collins boot recipe) and vendor row |
 | `extdeps.bmc.access_profile` | profile/observation carriers and intersection (landed) |
 | `extdeps.bmc.redfish_virtual_media`, `extdeps.bmc.virtual_media` | DMTF shape; `RedfishVirtualMediaTransport` arm (landed) |
-| `gunbc.boot_artifact_delivery` | the one delivery solver (landed) |
-| `gunbc.os_install_mechanism` | frozen projection of the solver (landed) |
+| `gunbc.boot_artifact_delivery` | the one delivery solver: request × bound evidence × policy → plan (landed, ruling 3 §1-§2) |
+| `gunbc.machine_intake_access` | attempt-bound access context producer (landed, ruling 3 §1) |
+| `gunbc.bmc_firmware_transition`, `gunbc.network_boot_delivery` | standings cut out of the solver into their own authorities (landed, ruling 3 namespace ruling) |
+| `gunbc.os_install_mechanism` | compatibility projection; capability-only solver and `FirmwareUpdateThenVirtualMedia` deleted (landed, ruling 3 §3) |
+| `gunbc.os_install`, `gunbc.generated_artifact` | `fleet_install_server_specs`, `InstallServerSpec`, `gunbc.install_server_emit` and the `ProxyDhcpDnsmasqArtifact` path deleted (ruling 3 §3) |
 | `gunbc.bmc_implementation_dispatch` | family dispatch moved out of `extdeps.bmc.openbmc` (landed) |
 | `gunbc.machine_intake_*` | subject, phase, receipt, disposition, staging (landed) |
 | `gunbc.bmc_onboarding` | extract BMC access/security, provisioning, fabric joining (follow-up) |
@@ -273,7 +301,8 @@ is `StagingUnobserved`), not by prose.
 
 ## 15. Implementation sequence
 
-- **INTAKE-0 (landed):** subject, manifests, attempt, phase standing, refusal owner,
+- **INTAKE-0 (modeling in review; ruling 3 gate 5 — lifecycle-valid ledger, admission
+  provenance — in this PR):** subject, manifests, attempt, phase standing, refusal owner,
   disposition, fleet-admission derivation, receipt envelope; controls in
   `test.claim.machine_intake_subject_witness_test` and
   `test.claim.machine_intake_disposition_witness_test`.
@@ -281,8 +310,13 @@ is `StagingUnobserved`), not by prose.
   transport, solver consuming configfs/WebSocket, UEFI HTTP split from PXE; controls in
   `test.claim.boot_artifact_delivery_witness_test`. Acceptance: one executed Mt. Collins boot and
   one executed ASRock boot reaching the same nonce-bound intake-agent callback.
-- **INTAKE-AGENT-0:** minimal multi-arch artifact set (identity, inventory, receipt callback,
-  EDAC/RAS snapshot, sensors, cleanup coordination).
+- **INTAKE-AGENT-0A (next, per ruling 3):** deterministic x86-64 and AArch64 artifacts with
+  recorded content identities; a callback carrying attempt nonce, exact artifact digest,
+  architecture, raw board serial, assembly/firmware observation digests and boot time; replay and
+  duplicate-callback refusal; wrong-nonce/artifact/unit/architecture REDs; canonical durable receipt
+  bytes and their SHA identity; raw EDAC/RAS, inventory and sensor capture only; local execution of
+  the callback contract without a BMC. Then ACCESS-OBSERVE-0 / BOOT-DELIVERY-0E on hardware:
+  observation → profile lookup → plan → execute → agent callback → cleanup, on Mt. Collins and ASRock.
 - **MEMORY-0:** fast report ingestion, authoritative plan, EDAC/Redfish deltas, attribution,
   label/SPD binding, swap-pass diagnosis.
 - **SOAK-ADMISSION-0:** subsystem recipes, thermal/fan policy, wall-power producer, two soak
@@ -298,6 +332,12 @@ evidence; automating media attachment while the verdict stays manual is not it.
 | Change one DIMM while retaining the board serial | Old admission no longer applies | subject + disposition witnesses |
 | Leave factory credential working after rotation | BmcSecure refuses | BmcSecure (unbuilt) |
 | Remove Redfish VirtualMedia from live observation, keep it in the profile | Redfish transport not selected | boot delivery witness |
+| Stage a URI serving digest B for a request naming digest A | `CandidateStagedArtifactMismatch`, no plan | boot delivery witness |
+| Hand the solve an observation receipt from another attempt | `AccessContextObservationForOtherAttempt`, no plan | boot delivery witness |
+| Receipt digest differs from the observation's raw response | `AccessContextObservationEvidenceMismatch` | boot delivery witness |
+| Catalog row whose capability firmware differs from its key | lookup refuses the catalog | boot delivery witness |
+| Probe admitted NFS only, staging offers HTTPS | `CandidateRedfishProtocolNotAdmitted` | boot delivery witness |
+| MegaRAC route with `image_redirection` Unset | `CandidateOemParameterUnset`, no plan | boot delivery witness |
 | Remove virtual media and provide no network-boot evidence | No implicit PXE | boot delivery witness |
 | Preserve NFS/media activity, remove the report/callback | Boot verdict refuses | disposition witness |
 | Make EDAC unavailable | Memory standing unestablished, not zero-error | MEMORY-0 |

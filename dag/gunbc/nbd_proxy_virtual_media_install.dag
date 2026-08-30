@@ -40,7 +40,6 @@ import gunbc.os_install_mechanism {
   VirtualMediaInstall,
   NbdProxyVirtualMediaInstall,
   PxeHttpInstall,
-  FirmwareUpdateThenVirtualMedia,
   OsInstallMechanismRefusalCause,
   OsInstallMechanismRefused,
   OsInstallMechanismSelected,
@@ -115,12 +114,6 @@ fn os_install_actuator_steps(mechanism: OsInstallMechanism, export: NbdProxyServ
     ]
     PxeHttpInstall => [
       ActuatorPxeNetworkBootStaging,
-      boot_once_step(target: boot_target),
-      force_restart_step(),
-    ]
-    FirmwareUpdateThenVirtualMedia => [
-      ActuatorFirmwareUpdate,
-      ActuatorRedfishInsertMedia,
       boot_once_step(target: boot_target),
       force_restart_step(),
     ]

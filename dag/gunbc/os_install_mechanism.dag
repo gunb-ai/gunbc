@@ -9,22 +9,10 @@ import extdeps.bmc.types {
   BootTargetCd,
 }
 import extdeps.bmc.capability {
-  BmcCapability,
   BmcFirmwareCapabilityRow,
   BmcFirmwareVersion,
-  CapabilityBootSourceOverride,
-  CapabilityVirtualMedia,
-  CapabilityNbdProxyVirtualMedia,
-  CapabilityOemRemoteMedia,
-  CapabilityFirmwareUpdate,
-  firmware_has_capability,
-  catalog_has_vm_capable_firmware,
 }
-import extdeps.bmc.access_profile { AccessProfileNotLookedUp, BmcAccessObservationStanding, BmcAccessObserved, BmcAccessUnobserved }
-import extdeps.boards.asrock_rack {
-  asrock_altrad8ud_1l2t_bmc_firmware_capability_catalog,
-  asrock_altrad8ud_shipped_bmc_firmware_capabilities,
-}
+import extdeps.boards.asrock_rack { asrock_altrad8ud_1l2t_bmc_firmware_capability_catalog }
 import gunbc.fleet_bmc_firmware_evidence {
   BmcFirmwareCapabilityEvidenceAbsent,
   BmcFirmwareCapabilityResolved,
@@ -40,202 +28,102 @@ import gunbc.fleet_bmc_firmware_evidence {
   srv3_bmc_firmware_evidence,
   srv4_bmc_firmware_evidence,
 }
+import gunbc.machine_intake_access {
+  AccessContextBound,
+  AccessContextCatalogRefused,
+  AccessContextObservationEvidenceMismatch,
+  AccessContextObservationForOtherAttempt,
+  AccessContextProfileAmbiguous,
+  AccessContextProfileLookupNotRun,
+  AccessContextProfileUncatalogued,
+  AccessContextUnobserved,
+  BoundBmcAccessContextStanding,
+}
 import gunbc.boot_artifact_delivery {
   BootArtifactDelivery,
   BootDeliveryCandidateVerdict,
-  BootDeliveryEvidence,
+  BootDeliveryPlan,
   BootDeliveryPlanned,
   BootDeliveryRefused,
-  PreferStandardRedfishThenOemThenNetwork,
+  BootDeliverySolution,
+  DeliveryAccessUnbound,
   DeliveryNoBootSourceOverride,
   DeliveryNoEligibleTransport,
-  FirmwareTransitionAmbiguous,
-  FirmwareTransitionEstablished,
-  FirmwareTransitionRequirement,
-  FirmwareTransitionStanding,
-  FirmwareTransitionUnestablished,
-  NetworkBootDeliveryEstablished,
-  NetworkBootDeliveryStanding,
-  NetworkBootDeliveryUnestablished,
-  NetworkBootRequirement,
   MegaRacRestRemoteMedia,
   OpenBmcConfigfsUsbGadget,
   OpenBmcNbdProxyWebsocket,
   PxeChainBoot,
   RedfishVirtualMediaPull,
   UefiHttpBoot,
-  UefiHttpDeliveryUnestablished,
-  firmware_transition_requirements_all,
-  network_boot_requirements_all,
-  solve_boot_artifact_delivery,
-  uefi_http_requirements_all,
-}
-import gunbc.install_transport_qualification {
-  ReinstallPathStanding,
-  ReinstallPathUnestablished,
-  configfs_transport_requirements_all,
 }
 
-data os_install_mechanism_frozen_note: String = "FROZEN X UNDER A LIVE Y (DESIGN §3 replacement migration, machine-intake ruling 2026-08-29 §14 'generalize toward BootArtifactDelivery; do not create a second solver'). gunbc.boot_artifact_delivery is the ONE delivery solver. OsInstallMechanism survives only as the purpose-specialized PROJECTION of its result that these consumers still read: gunbc.os_install fleet_install_server_specs, gunbc.srv3_os_install_actuate_scope, gunbc.nbd_proxy_virtual_media_install and their witnesses. No new arm, row or consumer may be added here. solve_delivery_from_capability_row and solve_install_mechanism_from_evidence keep their signatures so their consumers keep compiling, and hand the delivery question to Y with the ONLY standings X can honestly assert — AccessProfileNotLookedUp and BmcAccessUnobserved — because nothing on X's path looks up an access profile or observes an endpoint's served surfaces. Consequence, executed by the witnesses: every host row here now refuses. srv1/srv2 used to SELECT NbdProxyVirtualMediaInstall from an attested 2.07.00 capability row; under the ruling's intersection rule that was establishment-by-catalog, and they now refuse with InstallVirtualMediaLiveSurfaceUnestablished carrying the considered set. Deliveries Y can select but X cannot represent (configfs gadget, UEFI HTTP) project to InstallDeliveryOutsideLegacyMechanism rather than to a nearest arm. DISSOLVES WHEN the three production consumers above read BootDeliverySolution directly; then OsInstallMechanism, both solve_* wrappers, the srv*_install_mechanism_solution rows and this note are DELETED together (the srv3_install_mechanism_board_default_residue row below has its own, older, GENERATED-REGISTRY-0 trigger and is retired by that and nothing else)."
-
+// THE LEGACY MECHANISM VOCABULARY. Three arms, each the name an existing
+// consumer (gunbc.os_install, gunbc.nbd_proxy_virtual_media_install,
+// gunbc.srv3_os_install_actuate_scope) matches on. FirmwareUpdateThenVirtualMedia
+// is gone: a firmware transition is not a delivery (gunbc.bmc_firmware_transition),
+// and the arm that preselected "then virtual media" from "some catalog row is
+// VM-capable" was the second solver ruling 3 §3 deleted.
 type OsInstallMechanism
   = VirtualMediaInstall
   | NbdProxyVirtualMediaInstall
   | PxeHttpInstall
-  | FirmwareUpdateThenVirtualMedia
 
-fn solve_install_mechanism(
-  current: BmcFirmwareCapabilityRow,
-  catalog: List<BmcFirmwareCapabilityRow>
-) -> OsInstallMechanism {
-  if firmware_has_capability(row: current, cap: CapabilityVirtualMedia) {
-    VirtualMediaInstall
-  } else if firmware_has_capability(row: current, cap: CapabilityNbdProxyVirtualMedia) {
-    NbdProxyVirtualMediaInstall
-  } else if firmware_has_capability(row: current, cap: CapabilityFirmwareUpdate)
-         && catalog_has_vm_capable_firmware(catalog: catalog) {
-    FirmwareUpdateThenVirtualMedia
-  } else {
-    PxeHttpInstall
-  }
-}
+data os_install_mechanism_frozen_note: String = "FROZEN X UNDER A LIVE Y (DESIGN §3 replacement migration, machine-intake ruling 2026-08-29 §14, ruling 3 §3). gunbc.boot_artifact_delivery is the one delivery solver. This module is a compatibility PROJECTION of its answer onto the three legacy mechanism names, kept only because gunbc.srv3_os_install_actuate_scope and gunbc.nbd_proxy_virtual_media_install still read OsInstallMechanismSolution and fail closed on its refusals. It has no solver of its own any more: the capability-only solve_install_mechanism (virtual media from a capability row alone, PXE by absence in its else-arm) and the FirmwareUpdateThenVirtualMedia precursor were deleted with ruling 3, together with srv3_install_mechanism, gunbc.os_install fleet_install_server_specs and the ProxyDhcpDnsmasqArtifact path that consumed them. The per-host rows here never bind an access context — nothing on the install path observes an endpoint or runs a profile lookup — so every host's solution is InstallAccessProfileNotLookedUp for its evidence endpoint, asserted, not defaulted. DISSOLVE-ON: each remaining consumer reading BootDeliverySolution directly, at which point this module is deleted whole; growth surfaces (new arms, new causes, new per-host rows) are closed."
 
 type OsInstallMechanismRefusalCause
   = InstallFirmwareEvidenceAbsent { endpoint: BmcEndpoint }
   | InstallFirmwareVersionUncatalogued { firmware: BmcFirmwareVersion }
   | InstallFirmwareVersionAmbiguous { firmware: BmcFirmwareVersion, count: Int }
+  | InstallAccessProfileNotLookedUp { endpoint: BmcEndpoint }
+  | InstallAccessContextUnbound { standing: BoundBmcAccessContextStanding }
   | InstallNoBootSourceOverride { firmware: BmcFirmwareVersion }
-  | InstallNoVirtualMediaAndNetworkBootUnestablished {
-      firmware: BmcFirmwareVersion,
-      missing: List<NetworkBootRequirement>,
-    }
-  | InstallVirtualMediaLiveSurfaceUnestablished {
+  | InstallNoEligibleTransport {
       firmware: BmcFirmwareVersion,
       considered: List<BootDeliveryCandidateVerdict>,
     }
   | InstallDeliveryOutsideLegacyMechanism { delivery: BootArtifactDelivery }
-  | InstallFirmwareTransitionUnestablished {
-      firmware: BmcFirmwareVersion,
-      missing: List<FirmwareTransitionRequirement>,
-    }
-  | InstallFirmwareTransitionAmbiguous {
-      firmware: BmcFirmwareVersion,
-      candidates: Int,
-    }
 
 type OsInstallMechanismSolution
   = OsInstallMechanismSelected { mechanism: OsInstallMechanism }
   | OsInstallMechanismRefused { cause: OsInstallMechanismRefusalCause }
 
-fn row_names_a_virtual_media_capability(row: BmcFirmwareCapabilityRow) -> Bool {
-  firmware_has_capability(row: row, cap: CapabilityVirtualMedia)
-    || firmware_has_capability(row: row, cap: CapabilityNbdProxyVirtualMedia)
-    || firmware_has_capability(row: row, cap: CapabilityOemRemoteMedia)
-}
-
-fn network_boot_missing(network_boot: NetworkBootDeliveryStanding) -> List<NetworkBootRequirement> {
-  match network_boot {
-    NetworkBootDeliveryUnestablished { missing: m } => m
-    NetworkBootDeliveryEstablished { evidence: _ } => []
+// X's projection of Y's plan. A planned delivery maps to the legacy arm that
+// names it, or to a typed refusal where no legacy arm exists.
+fn os_install_mechanism_of_plan(plan: BootDeliveryPlan) -> OsInstallMechanismSolution {
+  match plan.delivery {
+    RedfishVirtualMediaPull { params: _ } => OsInstallMechanismSelected { mechanism: VirtualMediaInstall }
+    OpenBmcNbdProxyWebsocket { params: _ } => OsInstallMechanismSelected { mechanism: NbdProxyVirtualMediaInstall }
+    PxeChainBoot { evidence: _ } => OsInstallMechanismSelected { mechanism: PxeHttpInstall }
+    MegaRacRestRemoteMedia { params: _ } => OsInstallMechanismRefused { cause: InstallDeliveryOutsideLegacyMechanism { delivery: plan.delivery } }
+    OpenBmcConfigfsUsbGadget { params: _ } => OsInstallMechanismRefused { cause: InstallDeliveryOutsideLegacyMechanism { delivery: plan.delivery } }
+    UefiHttpBoot { params: _ } => OsInstallMechanismRefused { cause: InstallDeliveryOutsideLegacyMechanism { delivery: plan.delivery } }
   }
 }
 
-// The precursor arm X still owns: a firmware whose catalogued row offers no
-// delivery but exposes an update operation, with a VM-capable release in the
-// catalog, is an install ONLY under an established transition (target release,
-// direction, board compatibility, artifact integrity, function preservation,
-// policy). Y has no firmware-update arm because a transition is not a delivery.
-fn firmware_transition_precursor(
-  row: BmcFirmwareCapabilityRow,
-  catalog: List<BmcFirmwareCapabilityRow>,
-  firmware_transition: FirmwareTransitionStanding,
-  network_boot: NetworkBootDeliveryStanding,
-) -> OsInstallMechanismSolution {
-  if firmware_has_capability(row: row, cap: CapabilityFirmwareUpdate)
-      && catalog_has_vm_capable_firmware(catalog: catalog) {
-    match firmware_transition {
-      FirmwareTransitionEstablished { from: _, to: _, artifact: _ } =>
-        OsInstallMechanismSelected { mechanism: FirmwareUpdateThenVirtualMedia }
-      FirmwareTransitionUnestablished { missing: m } =>
-        OsInstallMechanismRefused {
-          cause: InstallFirmwareTransitionUnestablished { firmware: row.firmware, missing: m },
-        }
-      FirmwareTransitionAmbiguous { candidates: n } =>
-        OsInstallMechanismRefused {
-          cause: InstallFirmwareTransitionAmbiguous { firmware: row.firmware, candidates: n },
-        }
-    }
-  } else {
-    OsInstallMechanismRefused {
-      cause: InstallNoVirtualMediaAndNetworkBootUnestablished {
-        firmware: row.firmware,
-        missing: network_boot_missing(network_boot: network_boot),
-      },
-    }
-  }
-}
-
-// X's projection of Y's answer. A selected delivery maps to the legacy arm
-// that names it, or to a typed refusal where no legacy arm exists; a refusal
-// keeps its cause at the grain X's consumers already match on, with the
-// virtual-media-but-no-live-surface case carried as its own arm rather than
-// collapsed into 'no virtual media'.
-fn solve_delivery_from_capability_row(
-  row: BmcFirmwareCapabilityRow,
-  catalog: List<BmcFirmwareCapabilityRow>,
-  live_access: BmcAccessObservationStanding,
-  network_boot: NetworkBootDeliveryStanding,
-  firmware_transition: FirmwareTransitionStanding,
-) -> OsInstallMechanismSolution {
-  match solve_boot_artifact_delivery(
-    ev: BootDeliveryEvidence {
-      row: row,
-      profile: AccessProfileNotLookedUp { endpoint: bmc_access_standing_endpoint(live_access: live_access) },
-      live_access: live_access,
-      preference: PreferStandardRedfishThenOemThenNetwork,
-      redfish_media: none,
-      megarac_media: none,
-      nbd_proxy: none,
-      configfs: ReinstallPathUnestablished { missing_probes: configfs_transport_requirements_all },
-      configfs_params: none,
-      uefi_http: UefiHttpDeliveryUnestablished { missing: uefi_http_requirements_all },
-      network_boot: network_boot,
-    },
-  ) {
-    BootDeliveryPlanned { delivery: d, considered: _ } =>
-      match d {
-        RedfishVirtualMediaPull { params: _ } => OsInstallMechanismSelected { mechanism: VirtualMediaInstall }
-        OpenBmcNbdProxyWebsocket { params: _ } => OsInstallMechanismSelected { mechanism: NbdProxyVirtualMediaInstall }
-        PxeChainBoot { evidence: _ } => OsInstallMechanismSelected { mechanism: PxeHttpInstall }
-        MegaRacRestRemoteMedia { params: _ } => OsInstallMechanismRefused { cause: InstallDeliveryOutsideLegacyMechanism { delivery: d } }
-        OpenBmcConfigfsUsbGadget { params: _ } => OsInstallMechanismRefused { cause: InstallDeliveryOutsideLegacyMechanism { delivery: d } }
-        UefiHttpBoot { params: _ } => OsInstallMechanismRefused { cause: InstallDeliveryOutsideLegacyMechanism { delivery: d } }
-      }
+// X's projection of Y's whole answer, refusals included, at the grain X's
+// consumers match on. An access context that never bound is named by the
+// standing that refused it; the path that never ran a lookup at all keeps its
+// own arm because it is a different fact from a lookup that found nothing.
+fn os_install_solution_of_delivery(solution: BootDeliverySolution) -> OsInstallMechanismSolution {
+  match solution {
+    BootDeliveryPlanned { plan: p } => os_install_mechanism_of_plan(plan: p)
     BootDeliveryRefused { cause: c } =>
       match c {
-        DeliveryNoBootSourceOverride { firmware: fw } =>
-          OsInstallMechanismRefused { cause: InstallNoBootSourceOverride { firmware: fw } }
-        DeliveryNoEligibleTransport { firmware: fw, considered: considered } =>
-          if row_names_a_virtual_media_capability(row: row) {
-            OsInstallMechanismRefused {
-              cause: InstallVirtualMediaLiveSurfaceUnestablished { firmware: fw, considered: considered },
-            }
-          } else {
-            firmware_transition_precursor(
-              row: row,
-              catalog: catalog,
-              firmware_transition: firmware_transition,
-              network_boot: network_boot,
-            )
+        DeliveryAccessUnbound { standing: s } =>
+          match s {
+            AccessContextProfileLookupNotRun { endpoint: e } => OsInstallMechanismRefused { cause: InstallAccessProfileNotLookedUp { endpoint: e } }
+            AccessContextBound { context: _ } => OsInstallMechanismRefused { cause: InstallAccessContextUnbound { standing: s } }
+            AccessContextUnobserved { endpoint: _ } => OsInstallMechanismRefused { cause: InstallAccessContextUnbound { standing: s } }
+            AccessContextObservationForOtherAttempt { expected: _, found: _ } => OsInstallMechanismRefused { cause: InstallAccessContextUnbound { standing: s } }
+            AccessContextObservationEvidenceMismatch { endpoint: _, receipt: _, raw_response: _ } => OsInstallMechanismRefused { cause: InstallAccessContextUnbound { standing: s } }
+            AccessContextProfileUncatalogued { observed_identity: _ } => OsInstallMechanismRefused { cause: InstallAccessContextUnbound { standing: s } }
+            AccessContextProfileAmbiguous { observed_identity: _, count: _ } => OsInstallMechanismRefused { cause: InstallAccessContextUnbound { standing: s } }
+            AccessContextCatalogRefused { standing: _ } => OsInstallMechanismRefused { cause: InstallAccessContextUnbound { standing: s } }
           }
+        DeliveryNoBootSourceOverride { firmware: fw } => OsInstallMechanismRefused { cause: InstallNoBootSourceOverride { firmware: fw } }
+        DeliveryNoEligibleTransport { firmware: fw, considered: considered } =>
+          OsInstallMechanismRefused { cause: InstallNoEligibleTransport { firmware: fw, considered: considered } }
       }
-  }
-}
-
-fn bmc_access_standing_endpoint(live_access: BmcAccessObservationStanding) -> BmcEndpoint {
-  match live_access {
-    BmcAccessUnobserved { endpoint: e } => e
-    BmcAccessObserved { observation: o } => o.endpoint
   }
 }
 
@@ -247,28 +135,19 @@ fn bmc_firmware_evidence_endpoint(ev: BmcFirmwareEvidence) -> BmcEndpoint {
   }
 }
 
-// The per-host entry point, and the reason this module imports host evidence at all:
-// solve_install_mechanism answers a question about a CAPABILITY ROW, and the defect this closes
-// was feeding it the board's shipped-firmware row for every host. A capability roster is per
-// firmware release, so the shipped row is a fact about what the board left the factory with,
-// never about what a given BMC is running now. Nothing on this path observes the endpoint's
-// served surfaces, so the live standing handed to Y is BmcAccessUnobserved for the evidence's
-// endpoint — asserted, not defaulted.
+// The per-host entry point. The firmware evidence still decides whether the
+// host's release is even catalogued (absent, uncatalogued and ambiguous are
+// facts about the evidence, kept at their own grain); a catalogued release then
+// refuses at the access step, because nothing on this path binds an access
+// context — no observation receipt, no profile lookup — and the projection may
+// not manufacture one from the catalog row (ruling 2 answer (a)).
 fn solve_install_mechanism_from_evidence(
   evidence: BmcFirmwareEvidence,
   catalog: List<BmcFirmwareCapabilityRow>,
-  network_boot: NetworkBootDeliveryStanding,
-  firmware_transition: FirmwareTransitionStanding,
 ) -> OsInstallMechanismSolution {
   match bmc_firmware_capability_standing(evidence: evidence, catalog: catalog) {
-    BmcFirmwareCapabilityResolved { row: r } =>
-      solve_delivery_from_capability_row(
-        row: r,
-        catalog: catalog,
-        live_access: BmcAccessUnobserved { endpoint: bmc_firmware_evidence_endpoint(ev: evidence) },
-        network_boot: network_boot,
-        firmware_transition: firmware_transition,
-      )
+    BmcFirmwareCapabilityResolved { row: _ } =>
+      OsInstallMechanismRefused { cause: InstallAccessProfileNotLookedUp { endpoint: bmc_firmware_evidence_endpoint(ev: evidence) } }
     BmcFirmwareCapabilityEvidenceAbsent { endpoint: e } =>
       OsInstallMechanismRefused { cause: InstallFirmwareEvidenceAbsent { endpoint: e } }
     BmcFirmwareCapabilityVersionUncatalogued { firmware: fw } =>
@@ -282,74 +161,24 @@ fn solve_install_mechanism_from_evidence(
 
 data srv3_firmware_catalog: List<BmcFirmwareCapabilityRow> = asrock_altrad8ud_1l2t_bmc_firmware_capability_catalog
 
-// Network-boot standings, per host. NOTHING in the fleet positively establishes a network-boot
-// delivery today: no host carries an observation of a completed network boot, of the client boot
-// mode its firmware negotiated, of the serving infrastructure being reachable at install time, or
-// of the boot artifacts being present. So every host is Unestablished with the full requirement
-// list, and PXE is selectable for none of them.
-//
-// The consequence is deliberate and is the honest reading of the evidence: srv4 has NO modeled
-// install path at all — its firmware offers neither virtual-media mechanism AND its network boot
-// is unestablished. "srv4 installs by PXE" is not something this repository can currently derive;
-// it is a claim awaiting the observations named above.
-data fleet_firmware_transition_standing: FirmwareTransitionStanding = FirmwareTransitionUnestablished {
-  missing: firmware_transition_requirements_all,
-}
-
-data srv1_network_boot_standing: NetworkBootDeliveryStanding = NetworkBootDeliveryUnestablished {
-  missing: network_boot_requirements_all,
-}
-
-data srv2_network_boot_standing: NetworkBootDeliveryStanding = NetworkBootDeliveryUnestablished {
-  missing: network_boot_requirements_all,
-}
-
-data srv3_network_boot_standing: NetworkBootDeliveryStanding = NetworkBootDeliveryUnestablished {
-  missing: network_boot_requirements_all,
-}
-
-data srv4_network_boot_standing: NetworkBootDeliveryStanding = NetworkBootDeliveryUnestablished {
-  missing: network_boot_requirements_all,
-}
-
 data srv1_install_mechanism_solution: OsInstallMechanismSolution = solve_install_mechanism_from_evidence(
   evidence: srv1_bmc_firmware_evidence,
   catalog: srv3_firmware_catalog,
-  network_boot: srv1_network_boot_standing,
-  firmware_transition: fleet_firmware_transition_standing
 )
 
 data srv2_install_mechanism_solution: OsInstallMechanismSolution = solve_install_mechanism_from_evidence(
   evidence: srv2_bmc_firmware_evidence,
   catalog: srv3_firmware_catalog,
-  network_boot: srv2_network_boot_standing,
-  firmware_transition: fleet_firmware_transition_standing
 )
 
 data srv3_install_mechanism_solution: OsInstallMechanismSolution = solve_install_mechanism_from_evidence(
   evidence: srv3_bmc_firmware_evidence,
   catalog: srv3_firmware_catalog,
-  network_boot: srv3_network_boot_standing,
-  firmware_transition: fleet_firmware_transition_standing
 )
 
-// srv4 is the row that makes this repair load-bearing rather than tidy: its observed firmware
-// is OpenBMC 3.22.00, whose catalogued capability row carries neither CapabilityVirtualMedia
-// nor CapabilityNbdProxyVirtualMedia, so the derived mechanism is PxeHttpInstall. The legacy
-// board-default read below would have answered NbdProxyVirtualMediaInstall for this host —
-// a delivery mechanism its BMC firmware does not implement.
 data srv4_install_mechanism_solution: OsInstallMechanismSolution = solve_install_mechanism_from_evidence(
   evidence: srv4_bmc_firmware_evidence,
   catalog: srv3_firmware_catalog,
-  network_boot: srv4_network_boot_standing,
-  firmware_transition: fleet_firmware_transition_standing
-)
-
-data srv3_install_mechanism_board_default_residue: String = "🟡 dissolve-on: srv3_install_mechanism is the last pre-repair row reading the BOARD's shipped-firmware capability row (asrock_altrad8ud_shipped_bmc_firmware_capabilities) instead of a host's own firmware ev. Its consumer set is now exactly ONE: gunbc.os_install fleet_install_server_specs, which feeds gunbc.generated_artifact — the generated-artifact registry is a total List<GeneratedArtifact> with no representation for a producer refusal, so migrating that last row requires the registry itself to become a standing (GENERATED-REGISTRY-0). srv3_install_boot_target was DELETED with this note's narrowing: gunbc.bmc_onboarding was its last consumer, and it did not need it — BmcOnboardingPlan carried os_install_boot_target while no production consumer read it, which is how srv4 came to carry srv3's board-default CD target despite having no derived install path at all. The remaining row NO LONGER agrees with srv3_install_mechanism_solution, and that is this note's own prediction coming true rather than a new defect: it reads the board's shipped 2.07.00 capabilities and still answers NbdProxyVirtualMediaInstall, while srv3's BMC is now 3.22.00 and the evidence-derived solution refuses with InstallNoVirtualMediaAndNetworkBootUnestablished. legacy_board_default_row_no_longer_agrees_with_evidence executes that divergence so the stale row cannot be read as a current plan, and there is deliberately no srv4 legacy row because it would be wrong. The refusal is UNESTABLISHED, not impossible: srv4 runs this same firmware and was installed over the configfs USB-gadget transport that extdeps.bmc.virtual_media models as ConfigfsGadgetTransport. As of 2026-08-29 gunbc.boot_artifact_delivery CAN select that transport (OpenBmcConfigfsUsbGadget from an established ReinstallPathStanding); what remains open is that no srv4 configfs probe observations are recorded, so its standing is still Unestablished, and that this projection cannot represent the arm even when Y selects it. DISSOLVES WHEN the registry becomes a standing and fleet_install_server_specs takes the evidence-derived solution; at that point the row, the coincidence witness and this note are all DELETED."
-
-data srv3_install_mechanism: OsInstallMechanism = solve_install_mechanism(
-  current: asrock_altrad8ud_shipped_bmc_firmware_capabilities,
-  catalog: srv3_firmware_catalog
 )
 
 fn install_boot_target_for(mechanism: OsInstallMechanism) -> RedfishBootSourceOverrideTarget {
@@ -357,7 +186,6 @@ fn install_boot_target_for(mechanism: OsInstallMechanism) -> RedfishBootSourceOv
     VirtualMediaInstall => BootTargetCd
     NbdProxyVirtualMediaInstall => BootTargetCd
     PxeHttpInstall => BootTargetPxe
-    FirmwareUpdateThenVirtualMedia => BootTargetCd
   }
 }
 

@@ -5,6 +5,7 @@ import std.logic { Bool }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import extdeps.bmc.redfish_virtual_media { RedfishVirtualMediaLocator, RedfishVirtualMediaTransferProtocol }
+import extdeps.bmc.megarac { MegaRacImageRedirectionRequired }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -63,6 +64,7 @@ type MegaRacRemoteMediaParams {
   server_address: NonEmptyStr
   source_path: NonEmptyStr
   image_name: NonEmptyStr
+  image_redirection: MegaRacImageRedirectionRequired
 }
 
 // THE TRANSPORT AXIS. Four realizations of one intent; the third and fourth arms landed

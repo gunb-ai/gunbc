@@ -2,6 +2,7 @@ module extdeps.bmc.redfish_virtual_media
 
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.types { Bool, List, NonEmptyStr, String }
+import std.content_hash { ContentHash }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
 
@@ -161,6 +162,23 @@ type RedfishVirtualMediaProbe
 // address. It is a Boot property, not a VirtualMedia one, and is modeled beside
 // the media shapes because the machine-intake ruling treats it as a peer
 // delivery constructor for the same obligation.
+// THE PROBE AS A RECEIPT: which resource was probed, how far the ladder got,
+// which transfer protocols the resource admitted, and the digest of the raw
+// response the reading came from. A bare ladder arm cannot be planned against —
+// an InsertSucceeded with no locator is a fact about some member, not this one —
+// so the solver derives the planned locator and protocol from THIS receipt and
+// never from separately supplied parameters (machine-intake ruling 3 §2).
+type RedfishVirtualMediaProbeReceipt {
+  locator: RedfishVirtualMediaLocator
+  progress: RedfishVirtualMediaProbe
+  admitted_protocols: List<RedfishVirtualMediaTransferProtocol>
+  raw_response: ContentHash
+}
+
+fn redfish_transfer_protocol_in(protocols: List<RedfishVirtualMediaTransferProtocol>, protocol: RedfishVirtualMediaTransferProtocol) -> Bool {
+  fold(protocols, init: false, f: (acc, p) => acc || p == protocol)
+}
+
 type RedfishHttpBootUri {
   uri: Uri
 }

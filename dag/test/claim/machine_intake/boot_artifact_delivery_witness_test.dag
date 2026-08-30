@@ -1,62 +1,98 @@
 module test.claim.boot_artifact_delivery_witness_test
 
 import std.types { Bool, List, NonEmptyStr, String, list_length }
+import std.content_hash { ContentHash, content_hash_of_value }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.uri { Uri, Https }
+import extdeps.toolchain.types { Aarch64 }
 import extdeps.firmware.types { firmware_semantic_version }
-import extdeps.bmc.endpoint { AmiMegaRac, BmcEndpoint, OpenBmc, Redfish }
+import extdeps.bmc.endpoint { AmiMegaRac, BmcEndpoint, Ipmi, Redfish }
 import extdeps.bmc.capability {
   BmcFirmwareCapabilityRow,
+  BmcFirmwareReleaseIdentity,
   BmcFirmwareVersion,
   CapabilityBootSourceOverride,
-  CapabilityNbdProxyVirtualMedia,
   CapabilityOemRemoteMedia,
   CapabilityPowerControl,
   CapabilityVirtualMedia,
+  bmc_firmware_release_identity_of_wire,
+}
+import extdeps.bmc.megarac {
+  MegaRacImageRedirectionEnabled,
+  MegaRacImageRedirectionOn,
+  MegaRacImageRedirectionUnset,
+  megarac_image_redirection_wire,
 }
 import extdeps.bmc.virtual_media {
-  ConfigfsGadgetParams,
-  MegaRacRemoteMediaParams,
   MegaRacShareNfs,
-  NbdProxyWebsocatParams,
   RedfishVirtualMediaParams,
   RedfishVirtualMediaTransport,
-  VirtualMediaTransport,
   virtual_media_transport_kind,
 }
 import extdeps.bmc.redfish_virtual_media {
   CollectionDiscovered,
-  ObservedAbsent,
-  RedfishVirtualMediaProbe,
-  TransferProtocolAdmitted,
   RedfishVirtualMediaLocator,
+  RedfishVirtualMediaProbe,
+  RedfishVirtualMediaProbeReceipt,
+  RedfishVirtualMediaTransferProtocol,
   TransferHttps,
+  TransferNfs,
+  TransferProtocolAdmitted,
   UnderManager,
   redfish_virtual_media_insert_action_path,
 }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.boards.types { AmpereMtCollins, AsrockRackAltrad8ud1l2t, BaseboardModel }
 import extdeps.bmc.access_profile {
-  AccessProfileAmbiguous,
-  AccessProfileIdentityMismatch,
+  AccessProfileCatalogRowRefused,
   AccessProfileKnown,
-  AccessProfileNotLookedUp,
   AccessProfileUncatalogued,
+  AllChassisVariants,
   BmcAccessObservation,
   BmcAccessObservationStanding,
   BmcAccessObserved,
   BmcAccessProfile,
   BmcAccessProfileCatalogRow,
   BmcAccessProfileKey,
-  BmcAccessProfileStanding,
+  BmcAccessRoute,
   BmcAccessSurface,
   BmcAccessUnobserved,
   BmcObservedIdentity,
-  bmc_access_profile_for,
+  CatalogRowCapabilityFirmwareMismatch,
+  ExactChassisPartNumber,
+  IpmiLanplusRoute,
+  MegaRacRestRoute,
+  ProfilePromotedFromObservation,
+  RedfishRoute,
   SurfaceBootControl,
-  SurfaceOemNbdWebsocket,
   SurfaceOemRestRemoteMedia,
   SurfaceRedfishVirtualMedia,
+  bmc_access_profile_for,
+}
+import gunbc.machine_intake_subject {
+  AssemblyManifest,
+  ComponentIdentity,
+  DimmComponent,
+  FirmwareEntry,
+  FirmwareManifest,
+  IntakeAttemptId,
+  MachineIntakeSubject,
+  QualificationSubject,
+  UnitKey,
+  qualification_subject_of,
+}
+import gunbc.machine_intake_receipt { EvidenceRef }
+import gunbc.machine_intake_access {
+  AccessContextBound,
+  AccessContextCatalogRefused,
+  AccessContextObservationEvidenceMismatch,
+  AccessContextObservationForOtherAttempt,
+  AccessContextProfileLookupNotRun,
+  AccessContextProfileUncatalogued,
+  AccessContextUnobserved,
+  AccessObservationReceipt,
+  BoundBmcAccessContextStanding,
+  bind_bmc_access_context,
 }
 import gunbc.install_transport_qualification {
   ReinstallPathEstablished,
@@ -64,57 +100,135 @@ import gunbc.install_transport_qualification {
   ReinstallPathUnestablished,
   configfs_transport_requirements_all,
 }
+import gunbc.network_boot_delivery {
+  NetworkBootBootArtifacts,
+  NetworkBootBootSourceOverride,
+  NetworkBootClientBootMode,
+  NetworkBootDeliveryEstablished,
+  NetworkBootDeliveryEstablishment,
+  NetworkBootDeliveryStanding,
+  NetworkBootDeliveryUnestablished,
+  NetworkBootRequirement,
+  NetworkBootRequirementEvidence,
+  NetworkBootServingInfrastructure,
+  network_boot_requirements_all,
+}
 import gunbc.boot_artifact_delivery {
-  BootDeliveryEvidence,
+  BootArtifact,
+  BootArtifactStagingBinding,
+  BootDeliveryPlan,
   BootDeliveryPlanned,
+  BootDeliveryPolicy,
   BootDeliveryRefused,
-  CandidateProfileObservationIdentityMismatch,
-  CandidateProfileUnestablished,
-  CandidateRedfishProbeBelowPlanFloor,
-  PreferStandardRedfishThenOemThenNetwork,
+  BootDeliveryRequest,
   BootDeliverySolution,
+  BootDeliveryTarget,
+  BootFromRemovableMedia,
+  BoundBootDeliveryEvidence,
   CandidateLiveSurfaceAbsent,
-  CandidateLiveSurfaceUnobserved,
   CandidateNetworkBootUnestablished,
-  CandidateOpenBmcNbdProxyWebsocket,
+  CandidateOemParameterUnset,
   CandidatePxeChainBoot,
+  CandidateRedfishProbeAbsent,
+  CandidateRedfishProbeBelowPlanFloor,
+  CandidateRedfishProtocolNotAdmitted,
   CandidateRedfishVirtualMedia,
+  CandidateMegaRacRestRemoteMedia,
+  CandidateStagedArtifactMismatch,
+  ConfigfsGadgetOffer,
+  DeliveryAccessUnbound,
   DeliveryNoBootSourceOverride,
   DeliveryNoEligibleTransport,
+  IntakeLinuxEnvironment,
+  IsoImage,
   MegaRacRestRemoteMedia,
-  NetworkBootDeliveryUnestablished,
+  MegaRacShareOffer,
   OpenBmcConfigfsUsbGadget,
-  OpenBmcNbdProxyWebsocket,
+  PreferStandardRedfishThenOemThenNetwork,
   PxeChainBoot,
+  RedfishImageOffer,
   RedfishVirtualMediaPull,
-  UefiHttpBoot,
   UefiHttpDeliveryUnestablished,
+  boot_artifact_staging_unbound,
   boot_delivery_candidate_standing_of,
-  network_boot_requirements_all,
   solve_boot_artifact_delivery,
   uefi_http_requirements_all,
 }
 import gunbc.os_install_mechanism {
-  InstallVirtualMediaLiveSurfaceUnestablished,
+  InstallAccessProfileNotLookedUp,
+  InstallDeliveryOutsideLegacyMechanism,
   OsInstallMechanismRefused,
   OsInstallMechanismSelected,
-  fleet_firmware_transition_standing,
-  solve_delivery_from_capability_row,
+  VirtualMediaInstall,
+  os_install_solution_of_delivery,
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
+// ---------------------------------------------------------------------------
+// The intake subject and attempt this solve is for.
+// ---------------------------------------------------------------------------
+data unit: UnitKey = "BRD-000777" as UnitKey
+
+data assembly: AssemblyManifest = AssemblyManifest {
+  chassis_part_number: "CH-2U-MTC",
+  components: [ComponentIdentity { kind: DimmComponent, slot: "A1", identity: "SPD-A1-777" }],
+}
+
+data firmware_manifest: FirmwareManifest = FirmwareManifest {
+  entries: [FirmwareEntry { component: "bmc", version: "1.2.3" }],
+  configuration_digests: [],
+}
+
+data attempt_one: IntakeAttemptId = "intake-20260830-0001" as IntakeAttemptId
+data attempt_two: IntakeAttemptId = "intake-20260830-0002" as IntakeAttemptId
+
+data intake_subject: MachineIntakeSubject = MachineIntakeSubject {
+  subject: qualification_subject_of(unit_key: unit, assembly: assembly, firmware: firmware_manifest),
+  attempt_id: attempt_one,
+}
+
+data other_attempt_subject: MachineIntakeSubject = MachineIntakeSubject {
+  subject: qualification_subject_of(unit_key: unit, assembly: assembly, firmware: firmware_manifest),
+  attempt_id: attempt_two,
+}
+
 data megarac_endpoint: BmcEndpoint = BmcEndpoint { host: "192.168.1.60", protocol: Redfish }
+data megarac_ipmi_endpoint: BmcEndpoint = BmcEndpoint { host: "192.168.1.60", protocol: Ipmi }
+
+data target: BootDeliveryTarget = BootDeliveryTarget { subject: intake_subject, endpoint: megarac_endpoint }
+
+// THE ARTIFACT. Everything staged must name this digest.
+data intake_artifact: BootArtifact = BootArtifact {
+  purpose: IntakeLinuxEnvironment,
+  architecture: Aarch64,
+  digest: content_hash_of_value(value: "intake-linux-aarch64-fixture"),
+  format: IsoImage,
+  entrypoint: "/EFI/BOOT/BOOTAA64.EFI",
+  build_identity: "intake-agent-0.1.0-fixture",
+}
+
+data other_digest: ContentHash = content_hash_of_value(value: "some-other-iso")
+
+// ---------------------------------------------------------------------------
+// Firmware release identities: the exact vendor string is the key; the
+// semantic reading is derived and may be Absent.
+// ---------------------------------------------------------------------------
+data megarac_release: BmcFirmwareReleaseIdentity = bmc_firmware_release_identity_of_wire(family: AmiMegaRac, wire: "1.2.3")
+data megarac_release_other: BmcFirmwareReleaseIdentity = bmc_firmware_release_identity_of_wire(family: AmiMegaRac, wire: "1.2.4")
+data mt_collins_raw_release: BmcFirmwareReleaseIdentity = bmc_firmware_release_identity_of_wire(family: AmiMegaRac, wire: "0.32")
 
 data megarac_fw: BmcFirmwareVersion = BmcFirmwareVersion { family: AmiMegaRac, version: firmware_semantic_version(major: 1, minor: 2, patch: 3) }
-data megarac_fw_other: BmcFirmwareVersion = BmcFirmwareVersion { family: AmiMegaRac, version: firmware_semantic_version(major: 1, minor: 2, patch: 4) }
 
-// A control-only MegaRAC row: the capability roster a platform profile would
-// carry. No fleet unit has been observed on this firmware; the row exists so
-// the witness can separate 'the catalog says so' from 'the endpoint served it'.
-data megarac_vm_row: BmcFirmwareCapabilityRow = BmcFirmwareCapabilityRow {
+// Control-only capability rows for the profiles below.
+data vm_and_oem_row: BmcFirmwareCapabilityRow = BmcFirmwareCapabilityRow {
   firmware: megarac_fw,
-  capabilities: [CapabilityPowerControl, CapabilityBootSourceOverride, CapabilityVirtualMedia],
+  capabilities: [CapabilityPowerControl, CapabilityBootSourceOverride, CapabilityVirtualMedia, CapabilityOemRemoteMedia],
+}
+
+data oem_only_row: BmcFirmwareCapabilityRow = BmcFirmwareCapabilityRow {
+  firmware: megarac_fw,
+  capabilities: [CapabilityPowerControl, CapabilityBootSourceOverride, CapabilityOemRemoteMedia],
 }
 
 data no_vm_row: BmcFirmwareCapabilityRow = BmcFirmwareCapabilityRow {
@@ -127,271 +241,136 @@ data no_override_row: BmcFirmwareCapabilityRow = BmcFirmwareCapabilityRow {
   capabilities: [CapabilityPowerControl, CapabilityVirtualMedia],
 }
 
-data redfish_params: RedfishVirtualMediaParams = RedfishVirtualMediaParams {
-  media: RedfishVirtualMediaLocator { parent: UnderManager { manager_id: "1" }, media_id: "CD1" },
-  image: Uri { scheme: Https, locator: "intake-staging/artifacts/sha256-abc/intake.iso" },
-  transfer_protocol: TransferHttps,
+// ---------------------------------------------------------------------------
+// Profiles. Control fixtures, promoted from fixture observation receipts —
+// no fleet unit has been observed on any of these releases.
+// ---------------------------------------------------------------------------
+data fixture_provenance: ProfilePromotedFromObservation = ProfilePromotedFromObservation {
+  observation_receipt: content_hash_of_value(value: "fixture-observation-receipt"),
+  promotion_receipt: content_hash_of_value(value: "fixture-promotion-receipt"),
 }
 
-data megarac_params: MegaRacRemoteMediaParams = MegaRacRemoteMediaParams {
-  share_type: MegaRacShareNfs,
-  server_address: "intake-staging",
-  source_path: "/srv/bmc/intake/artifacts/sha256-abc",
-  image_name: "intake.iso",
+data redfish_route: BmcAccessRoute = RedfishRoute {
+  system_locator: "/redfish/v1/Systems/1",
+  chassis_locator: "/redfish/v1/Chassis/1",
+  manager_locator: "/redfish/v1/Managers/1",
 }
 
-// The observed Mt. Collins build (gunbc#9678): no Redfish, the proprietary
-// remote-media surface present. The row names the OEM capability, the live
-// observation discovered the OEM surface, so the MegaRAC REST arm is selected.
-data mt_collins_observed_row: BmcFirmwareCapabilityRow = BmcFirmwareCapabilityRow {
-  firmware: megarac_fw,
-  capabilities: [CapabilityPowerControl, CapabilityBootSourceOverride, CapabilityOemRemoteMedia],
+fn profile_of(routes: List<BmcAccessRoute>, surfaces: List<BmcAccessSurface>, row: BmcFirmwareCapabilityRow) -> BmcAccessProfile {
+  BmcAccessProfile {
+    key: BmcAccessProfileKey { baseboard: AmpereMtCollins, chassis: AllChassisVariants, firmware: megarac_release },
+    routes: routes,
+    bootstrap_credential: none,
+    candidate_surfaces: surfaces,
+    capability_row: row,
+  }
 }
 
-// A control-only MegaRAC access profile for a Mt. Collins at megarac_fw: the
-// catalog side of the intersection. Its candidate surfaces name the DMTF
-// collection and the OEM remote-media surface; the live observation decides
-// which of them this endpoint actually serves.
-data mt_collins_control_profile: BmcAccessProfile = BmcAccessProfile {
-  key: BmcAccessProfileKey { baseboard: AmpereMtCollins, chassis_part_number: none, firmware: megarac_fw },
-  redfish_system_locator: "/redfish/v1/Systems/1",
-  redfish_chassis_locator: "/redfish/v1/Chassis/1",
-  redfish_manager_locator: "/redfish/v1/Managers/1",
-  bootstrap_credential: none,
-  candidate_surfaces: [SurfaceBootControl, SurfaceRedfishVirtualMedia, SurfaceOemRestRemoteMedia],
-  oem_parameters: [],
+fn catalog_of(profile: BmcAccessProfile) -> List<BmcAccessProfileCatalogRow> {
+  [BmcAccessProfileCatalogRow { profile: profile, provenance: fixture_provenance }]
 }
 
-data control_profile_catalog: List<BmcAccessProfileCatalogRow> = [
-  BmcAccessProfileCatalogRow {
-    profile: mt_collins_control_profile,
-    provenance: DeclarationRef { module_path: "test.claim.boot_artifact_delivery_witness_test", decl_name: "mt_collins_control_profile", field: WholeDeclaration },
-  },
-]
+// A build serving both the DMTF collection and the OEM REST surface.
+data vm_profile: BmcAccessProfile = profile_of(
+  routes: [redfish_route, IpmiLanplusRoute, MegaRacRestRoute { image_redirection: MegaRacImageRedirectionEnabled }],
+  surfaces: [SurfaceBootControl, SurfaceRedfishVirtualMedia, SurfaceOemRestRemoteMedia],
+  row: vm_and_oem_row,
+)
 
-fn identity_of(baseboard: BaseboardModel, firmware: BmcFirmwareVersion) -> BmcObservedIdentity {
+// The observed Mt. Collins shape: IPMI and the proprietary REST surface, no
+// Redfish route at all — representable without inventing a locator.
+data oem_only_profile: BmcAccessProfile = profile_of(
+  routes: [IpmiLanplusRoute, MegaRacRestRoute { image_redirection: MegaRacImageRedirectionEnabled }],
+  surfaces: [SurfaceBootControl, SurfaceOemRestRemoteMedia],
+  row: oem_only_row,
+)
+
+data oem_unset_profile: BmcAccessProfile = profile_of(
+  routes: [IpmiLanplusRoute, MegaRacRestRoute { image_redirection: MegaRacImageRedirectionUnset }],
+  surfaces: [SurfaceBootControl, SurfaceOemRestRemoteMedia],
+  row: oem_only_row,
+)
+
+data no_vm_profile: BmcAccessProfile = profile_of(routes: [IpmiLanplusRoute], surfaces: [SurfaceBootControl], row: no_vm_row)
+
+data no_override_profile: BmcAccessProfile = profile_of(routes: [redfish_route], surfaces: [SurfaceRedfishVirtualMedia], row: no_override_row)
+
+// ---------------------------------------------------------------------------
+// Observations and their receipts.
+// ---------------------------------------------------------------------------
+data discovery_digest: ContentHash = content_hash_of_value(value: "bmc-discovery-response-fixture")
+
+fn identity_of(baseboard: BaseboardModel, firmware: BmcFirmwareReleaseIdentity) -> BmcObservedIdentity {
   BmcObservedIdentity { baseboard: baseboard, chassis_part_number: none, firmware: firmware }
 }
 
-data mt_collins_identity: BmcObservedIdentity = identity_of(baseboard: AmpereMtCollins, firmware: megarac_fw)
+data mt_collins_identity: BmcObservedIdentity = identity_of(baseboard: AmpereMtCollins, firmware: megarac_release)
 
-data mt_collins_profile_standing: BmcAccessProfileStanding = bmc_access_profile_for(identity: mt_collins_identity, catalog: control_profile_catalog)
+data probe_https: RedfishVirtualMediaProbeReceipt = RedfishVirtualMediaProbeReceipt {
+  locator: RedfishVirtualMediaLocator { parent: UnderManager { manager_id: "1" }, media_id: "CD1" },
+  progress: TransferProtocolAdmitted { protocol: TransferHttps },
+  admitted_protocols: [TransferHttps, TransferNfs],
+  raw_response: content_hash_of_value(value: "virtualmedia-cd1-fixture"),
+}
 
-fn observed_with(surfaces: List<BmcAccessSurface>, identity: BmcObservedIdentity, probe: RedfishVirtualMediaProbe) -> BmcAccessObservationStanding {
-  BmcAccessObserved {
-    observation: BmcAccessObservation {
-      endpoint: megarac_endpoint,
-      identity: identity,
-      firmware: identity.firmware,
-      discovered_surfaces: surfaces,
-      redfish_virtual_media_probe: probe,
-      successful_read_surfaces: surfaces,
-      successful_write_surfaces: [],
-      observed_at: 1788000000000,
-    },
+data probe_nfs_only: RedfishVirtualMediaProbeReceipt = RedfishVirtualMediaProbeReceipt {
+  locator: RedfishVirtualMediaLocator { parent: UnderManager { manager_id: "1" }, media_id: "CD1" },
+  progress: TransferProtocolAdmitted { protocol: TransferNfs },
+  admitted_protocols: [TransferNfs],
+  raw_response: content_hash_of_value(value: "virtualmedia-cd1-nfs-fixture"),
+}
+
+data probe_collection_only: RedfishVirtualMediaProbeReceipt = RedfishVirtualMediaProbeReceipt {
+  locator: RedfishVirtualMediaLocator { parent: UnderManager { manager_id: "1" }, media_id: "CD1" },
+  progress: CollectionDiscovered,
+  admitted_protocols: [],
+  raw_response: content_hash_of_value(value: "virtualmedia-collection-fixture"),
+}
+
+fn observation_of(identity: BmcObservedIdentity, surfaces: List<BmcAccessSurface>, probe: RedfishVirtualMediaProbeReceipt?) -> BmcAccessObservation {
+  BmcAccessObservation {
+    endpoint: megarac_endpoint,
+    identity: identity,
+    discovered_surfaces: surfaces,
+    redfish_virtual_media_probe: probe,
+    successful_read_surfaces: surfaces,
+    successful_write_surfaces: [],
+    raw_response: discovery_digest,
+    observed_at: 1788000000000,
   }
 }
 
-fn observed(surfaces: List<BmcAccessSurface>, firmware: BmcFirmwareVersion) -> BmcAccessObservationStanding {
-  BmcAccessObserved {
-    observation: BmcAccessObservation {
-      endpoint: megarac_endpoint,
-      identity: identity_of(baseboard: AmpereMtCollins, firmware: firmware),
-      firmware: firmware,
-      discovered_surfaces: surfaces,
-      redfish_virtual_media_probe: TransferProtocolAdmitted { protocol: TransferHttps },
-      successful_read_surfaces: surfaces,
-      successful_write_surfaces: [],
-      observed_at: 1788000000000,
-    },
+fn receipt_of(subject: MachineIntakeSubject, standing: BmcAccessObservationStanding, digest: ContentHash) -> AccessObservationReceipt {
+  AccessObservationReceipt { subject: subject, standing: standing, evidence: EvidenceRef { label: "bmc-discovery", digest: digest } }
+}
+
+fn observed(surfaces: List<BmcAccessSurface>, probe: RedfishVirtualMediaProbeReceipt?) -> AccessObservationReceipt {
+  receipt_of(subject: intake_subject, standing: BmcAccessObserved { observation: observation_of(identity: mt_collins_identity, surfaces: surfaces, probe: probe) }, digest: discovery_digest)
+}
+
+// ---------------------------------------------------------------------------
+// Staging offers.
+// ---------------------------------------------------------------------------
+fn redfish_offer(digest: ContentHash, protocol: RedfishVirtualMediaTransferProtocol) -> RedfishImageOffer {
+  RedfishImageOffer {
+    artifact_digest: digest,
+    image: Uri { scheme: Https, locator: "intake-staging/artifacts/intake-linux-aarch64/intake.iso" },
+    transfer_protocol: protocol,
   }
 }
 
-fn delivery_evidence(row: BmcFirmwareCapabilityRow, live_access: BmcAccessObservationStanding, configfs: ReinstallPathStanding, configfs_params: ConfigfsGadgetParams?) -> BootDeliveryEvidence {
-  BootDeliveryEvidence {
-    row: row,
-    profile: mt_collins_profile_standing,
-    live_access: live_access,
-    preference: PreferStandardRedfishThenOemThenNetwork,
-    redfish_media: Present { value: redfish_params },
-    megarac_media: Present { value: megarac_params },
-    nbd_proxy: none,
-    configfs: configfs,
-    configfs_params: configfs_params,
-    uefi_http: UefiHttpDeliveryUnestablished { missing: uefi_http_requirements_all },
-    network_boot: NetworkBootDeliveryUnestablished { missing: network_boot_requirements_all },
+fn megarac_offer(digest: ContentHash) -> MegaRacShareOffer {
+  MegaRacShareOffer {
+    artifact_digest: digest,
+    share_type: MegaRacShareNfs,
+    server_address: "intake-staging",
+    source_path: "/srv/bmc/intake/artifacts/intake-linux-aarch64",
+    image_name: "intake.iso",
   }
 }
 
-data configfs_unestablished: ReinstallPathStanding = ReinstallPathUnestablished { missing_probes: configfs_transport_requirements_all }
-
-// POSITIVE CONTROL — catalog capability AND live-observed VirtualMedia surface
-// at the same firmware selects the Redfish pull.
-test fn redfish_virtual_media_selected_from_profile_and_live_intersection() -> Bool {
-  match solve_boot_artifact_delivery(ev: delivery_evidence(row: megarac_vm_row, live_access: observed(surfaces: [SurfaceBootControl, SurfaceRedfishVirtualMedia], firmware: megarac_fw), configfs: configfs_unestablished, configfs_params: none)) {
-    BootDeliveryPlanned { delivery: d, considered: _ } =>
-      match d {
-        RedfishVirtualMediaPull { params: p } => p.transfer_protocol == TransferHttps
-        _ => false
-      }
-    BootDeliveryRefused { cause: _ } => false
-  }
-}
-
-test fn observed_mt_collins_build_selects_megarac_rest_remote_media() -> Bool {
-  match solve_boot_artifact_delivery(ev: delivery_evidence(row: mt_collins_observed_row, live_access: observed(surfaces: [SurfaceBootControl, SurfaceOemRestRemoteMedia], firmware: megarac_fw), configfs: configfs_unestablished, configfs_params: none)) {
-    BootDeliveryPlanned { delivery: d, considered: _ } =>
-      match d {
-        MegaRacRestRemoteMedia { params: p } => p.image_name == "intake.iso"
-        _ => false
-      }
-    BootDeliveryRefused { cause: _ } => false
-  }
-}
-
-// CONTROL (ruling §16) — remove Redfish VirtualMedia from the LIVE observation
-// while retaining it in the profile: the Redfish transport is not selected,
-// and the considered set says the live surface was absent.
-test fn redfish_virtual_media_absent_from_live_observation_is_not_selected() -> Bool {
-  match solve_boot_artifact_delivery(ev: delivery_evidence(row: megarac_vm_row, live_access: observed(surfaces: [SurfaceBootControl], firmware: megarac_fw), configfs: configfs_unestablished, configfs_params: none)) {
-    BootDeliveryRefused { cause: c } =>
-      match c {
-        DeliveryNoEligibleTransport { firmware: _, considered: considered } =>
-          match boot_delivery_candidate_standing_of(verdicts: considered, candidate: CandidateRedfishVirtualMedia) {
-            CandidateLiveSurfaceAbsent { surface: s } => s == SurfaceRedfishVirtualMedia
-            _ => false
-          }
-        DeliveryNoBootSourceOverride { firmware: _ } => false
-      }
-    BootDeliveryPlanned { delivery: _, considered: _ } => false
-  }
-}
-
-// An observation of a DIFFERENT firmware than the profile does not bind to
-// it: the profile ∩ observation identity check refuses, not a version compare.
-test fn live_observation_at_another_firmware_does_not_bind_the_profile() -> Bool {
-  match solve_boot_artifact_delivery(ev: delivery_evidence(row: megarac_vm_row, live_access: observed(surfaces: [SurfaceBootControl, SurfaceRedfishVirtualMedia], firmware: megarac_fw_other), configfs: configfs_unestablished, configfs_params: none)) {
-    BootDeliveryRefused { cause: c } =>
-      match c {
-        DeliveryNoEligibleTransport { firmware: _, considered: considered } =>
-          match boot_delivery_candidate_standing_of(verdicts: considered, candidate: CandidateRedfishVirtualMedia) {
-            CandidateProfileObservationIdentityMismatch { surface: _ } => true
-            _ => false
-          }
-        DeliveryNoBootSourceOverride { firmware: _ } => false
-      }
-    BootDeliveryPlanned { delivery: _, considered: _ } => false
-  }
-}
-
-// RULING §2 CONTROL — same firmware, a DIFFERENT board: the profile lookup
-// refuses (uncatalogued for that identity), so no surface candidate is
-// eligible; equal firmware alone never pairs an endpoint with a profile.
-test fn same_firmware_on_another_board_does_not_pair_with_the_profile() -> Bool {
-  let asrock_identity = identity_of(baseboard: AsrockRackAltrad8ud1l2t, firmware: megarac_fw)
-  let standing = bmc_access_profile_for(identity: asrock_identity, catalog: control_profile_catalog)
-  let ev = BootDeliveryEvidence {
-    row: megarac_vm_row,
-    profile: standing,
-    live_access: observed_with(surfaces: [SurfaceBootControl, SurfaceRedfishVirtualMedia], identity: asrock_identity, probe: TransferProtocolAdmitted { protocol: TransferHttps }),
-    preference: PreferStandardRedfishThenOemThenNetwork,
-    redfish_media: Present { value: redfish_params },
-    megarac_media: none,
-    nbd_proxy: none,
-    configfs: configfs_unestablished,
-    configfs_params: none,
-    uefi_http: UefiHttpDeliveryUnestablished { missing: uefi_http_requirements_all },
-    network_boot: NetworkBootDeliveryUnestablished { missing: network_boot_requirements_all },
-  }
-  let lookup_refused = match standing {
-    AccessProfileUncatalogued { observed_identity: _ } => true
-    _ => false
-  }
-  lookup_refused
-    && match solve_boot_artifact_delivery(ev: ev) {
-         BootDeliveryRefused { cause: c } =>
-           match c {
-             DeliveryNoEligibleTransport { firmware: _, considered: considered } =>
-               match boot_delivery_candidate_standing_of(verdicts: considered, candidate: CandidateRedfishVirtualMedia) {
-                 CandidateProfileUnestablished { standing: _ } => true
-                 _ => false
-               }
-             DeliveryNoBootSourceOverride { firmware: _ } => false
-           }
-         BootDeliveryPlanned { delivery: _, considered: _ } => false
-       }
-}
-
-// RULING §2 CONTROL — collection discovered is NOT a plan floor: with the
-// surface present but the probe stopping at CollectionDiscovered, the Redfish
-// arm is not planned; the same evidence with TransferProtocolAdmitted is.
-test fn redfish_collection_discovery_alone_does_not_plan() -> Bool {
-  let below = solve_boot_artifact_delivery(ev: delivery_evidence(row: megarac_vm_row, live_access: observed_with(surfaces: [SurfaceBootControl, SurfaceRedfishVirtualMedia], identity: mt_collins_identity, probe: CollectionDiscovered), configfs: configfs_unestablished, configfs_params: none))
-  match below {
-    BootDeliveryRefused { cause: c } =>
-      match c {
-        DeliveryNoEligibleTransport { firmware: _, considered: considered } =>
-          match boot_delivery_candidate_standing_of(verdicts: considered, candidate: CandidateRedfishVirtualMedia) {
-            CandidateRedfishProbeBelowPlanFloor { probe: p } => p == CollectionDiscovered
-            _ => false
-          }
-        DeliveryNoBootSourceOverride { firmware: _ } => false
-      }
-    BootDeliveryPlanned { delivery: _, considered: _ } => false
-  }
-}
-
-test fn profile_lookup_binds_the_control_identity() -> Bool {
-  match mt_collins_profile_standing {
-    AccessProfileKnown { profile: p, provenance: _ } => p.key.baseboard == AmpereMtCollins
-    _ => false
-  }
-}
-
-test fn unobserved_endpoint_blocks_every_virtual_media_arm() -> Bool {
-  match solve_boot_artifact_delivery(ev: delivery_evidence(row: megarac_vm_row, live_access: BmcAccessUnobserved { endpoint: megarac_endpoint }, configfs: configfs_unestablished, configfs_params: none)) {
-    BootDeliveryRefused { cause: c } =>
-      match c {
-        DeliveryNoEligibleTransport { firmware: _, considered: considered } =>
-          match boot_delivery_candidate_standing_of(verdicts: considered, candidate: CandidateRedfishVirtualMedia) {
-            CandidateLiveSurfaceUnobserved { endpoint: e } => e == megarac_endpoint
-            _ => false
-          }
-        DeliveryNoBootSourceOverride { firmware: _ } => false
-      }
-    BootDeliveryPlanned { delivery: _, considered: _ } => false
-  }
-}
-
-// CONTROL (ruling §16) — no virtual media and no network-boot evidence: no
-// implicit PXE. The PXE candidate reports the four missing requirements.
-test fn no_virtual_media_and_no_network_boot_evidence_refuses_without_pxe() -> Bool {
-  match solve_boot_artifact_delivery(ev: delivery_evidence(row: no_vm_row, live_access: observed(surfaces: [SurfaceBootControl], firmware: megarac_fw), configfs: configfs_unestablished, configfs_params: none)) {
-    BootDeliveryRefused { cause: c } =>
-      match c {
-        DeliveryNoEligibleTransport { firmware: _, considered: considered } =>
-          match boot_delivery_candidate_standing_of(verdicts: considered, candidate: CandidatePxeChainBoot) {
-            CandidateNetworkBootUnestablished { missing: m } => list_length(items: m) == 4
-            _ => false
-          }
-        DeliveryNoBootSourceOverride { firmware: _ } => false
-      }
-    BootDeliveryPlanned { delivery: _, considered: _ } => false
-  }
-}
-
-test fn boot_source_override_gates_every_arm() -> Bool {
-  match solve_boot_artifact_delivery(ev: delivery_evidence(row: no_override_row, live_access: observed(surfaces: [SurfaceRedfishVirtualMedia], firmware: megarac_fw), configfs: configfs_unestablished, configfs_params: none)) {
-    BootDeliveryRefused { cause: c } =>
-      match c {
-        DeliveryNoBootSourceOverride { firmware: _ } => true
-        DeliveryNoEligibleTransport { firmware: _, considered: _ } => false
-      }
-    BootDeliveryPlanned { delivery: _, considered: _ } => false
-  }
-}
-
-data srv4_configfs_params: ConfigfsGadgetParams = ConfigfsGadgetParams {
+data configfs_offer: ConfigfsGadgetOffer = ConfigfsGadgetOffer {
+  artifact_digest: intake_artifact.digest,
   nbd_server_host: "intake-staging",
   nbd_port: 10809,
   export_name: "intake",
@@ -399,58 +378,460 @@ data srv4_configfs_params: ConfigfsGadgetParams = ConfigfsGadgetParams {
   udc: "1e6a0000.usb-vhub:p1",
 }
 
-// THE srv4 GAP, CLOSED: an established configfs reinstall path selects the
-// USB-gadget delivery the old install solver could not see...
-test fn established_configfs_path_selects_usb_gadget_delivery() -> Bool {
-  match solve_boot_artifact_delivery(ev: delivery_evidence(row: no_vm_row, live_access: observed(surfaces: [SurfaceBootControl], firmware: megarac_fw), configfs: ReinstallPathEstablished { qualified_by: [] }, configfs_params: Present { value: srv4_configfs_params })) {
-    BootDeliveryPlanned { delivery: d, considered: _ } =>
-      match d {
-        OpenBmcConfigfsUsbGadget { params: p } => p.udc == srv4_configfs_params.udc
+data staging_all: BootArtifactStagingBinding = BootArtifactStagingBinding {
+  redfish_image: Present { value: redfish_offer(digest: intake_artifact.digest, protocol: TransferHttps) },
+  megarac_share: Present { value: megarac_offer(digest: intake_artifact.digest) },
+  nbd_export: none,
+  configfs_gadget: Present { value: configfs_offer },
+}
+
+data staging_wrong_redfish_digest: BootArtifactStagingBinding = BootArtifactStagingBinding {
+  redfish_image: Present { value: redfish_offer(digest: other_digest, protocol: TransferHttps) },
+  megarac_share: none,
+  nbd_export: none,
+  configfs_gadget: none,
+}
+
+fn request_with(staging: BootArtifactStagingBinding) -> BootDeliveryRequest {
+  BootDeliveryRequest { target: target, artifact: intake_artifact, staging: staging }
+}
+
+data policy: BootDeliveryPolicy = BootDeliveryPolicy { preference: PreferStandardRedfishThenOemThenNetwork }
+
+data configfs_unestablished: ReinstallPathStanding = ReinstallPathUnestablished { missing_probes: configfs_transport_requirements_all }
+
+data network_boot_unestablished: NetworkBootDeliveryStanding = NetworkBootDeliveryUnestablished { missing: network_boot_requirements_all }
+
+fn evidence_of(access: BoundBmcAccessContextStanding, configfs: ReinstallPathStanding, network_boot: NetworkBootDeliveryStanding) -> BoundBootDeliveryEvidence {
+  BoundBootDeliveryEvidence {
+    access: access,
+    configfs: configfs,
+    uefi_http: UefiHttpDeliveryUnestablished { missing: uefi_http_requirements_all },
+    network_boot: network_boot,
+  }
+}
+
+fn bind(profile: BmcAccessProfile, receipt: AccessObservationReceipt) -> BoundBmcAccessContextStanding {
+  bind_bmc_access_context(subject: intake_subject, receipt: receipt, catalog: catalog_of(profile: profile))
+}
+
+fn solve(profile: BmcAccessProfile, receipt: AccessObservationReceipt, staging: BootArtifactStagingBinding) -> BootDeliverySolution {
+  solve_boot_artifact_delivery(
+    request: request_with(staging: staging),
+    ev: evidence_of(access: bind(profile: profile, receipt: receipt), configfs: configfs_unestablished, network_boot: network_boot_unestablished),
+    policy: policy,
+  )
+}
+
+// ===========================================================================
+// POSITIVE CONTROL — bound context, probe receipt at the plan floor, an offer
+// naming the requested digest: the Redfish pull is planned, and the plan binds
+// target, artifact, the probe's own locator, a removable-media boot control
+// and the observation receipt its eligibility came from.
+// ===========================================================================
+test fn redfish_virtual_media_planned_from_bound_context_and_probe_receipt() -> Bool {
+  match solve(profile: vm_profile, receipt: observed(surfaces: [SurfaceBootControl, SurfaceRedfishVirtualMedia, SurfaceOemRestRemoteMedia], probe: Present { value: probe_https }), staging: staging_all) {
+    BootDeliveryPlanned { plan: p } =>
+      match p.delivery {
+        RedfishVirtualMediaPull { params: params } =>
+          params.transfer_protocol == TransferHttps
+            && params.media.media_id == "CD1"
+            && p.artifact.build_identity == intake_artifact.build_identity
+            && p.target.endpoint == megarac_endpoint
+            && p.boot_control == BootFromRemovableMedia
+            && p.eligibility.observation_receipt.label == "bmc-discovery"
         _ => false
       }
     BootDeliveryRefused { cause: _ } => false
   }
 }
 
-// ...and the frozen legacy projection carries no access profile: a capability
-// row is not a profile, and the ruling forbids seeding one from memory, so even
-// with the surface live-observed the projection refuses with the
-// virtual-media-unestablished cause whose considered set shows the Redfish
-// candidate stopped at the profile step, standing AccessProfileNotLookedUp —
-// the executed reason X is frozen and its consumers must read
-// BootDeliverySolution directly.
-test fn legacy_projection_never_establishes_an_access_profile() -> Bool {
-  match solve_delivery_from_capability_row(
-    row: megarac_vm_row,
-    catalog: [megarac_vm_row],
-    live_access: observed(surfaces: [SurfaceBootControl, SurfaceRedfishVirtualMedia], firmware: megarac_fw),
-    network_boot: NetworkBootDeliveryUnestablished { missing: network_boot_requirements_all },
-    firmware_transition: fleet_firmware_transition_standing,
-  ) {
-    OsInstallMechanismRefused { cause: c } =>
+// RED (ruling 3 §1) — the staged URI serves digest B while the request names
+// digest A: the Redfish candidate stops at CandidateStagedArtifactMismatch and
+// nothing is planned.
+test fn staged_artifact_digest_mismatch_refuses_the_plan() -> Bool {
+  match solve(profile: vm_profile, receipt: observed(surfaces: [SurfaceBootControl, SurfaceRedfishVirtualMedia], probe: Present { value: probe_https }), staging: staging_wrong_redfish_digest) {
+    BootDeliveryRefused { cause: c } =>
       match c {
-        InstallVirtualMediaLiveSurfaceUnestablished { firmware: _, considered: considered } =>
+        DeliveryNoEligibleTransport { firmware: _, considered: considered } =>
           match boot_delivery_candidate_standing_of(verdicts: considered, candidate: CandidateRedfishVirtualMedia) {
-            CandidateProfileUnestablished { standing: s } =>
-              match s {
-                AccessProfileNotLookedUp { endpoint: _ } => true
-                AccessProfileKnown { profile: _, provenance: _ } => false
-                AccessProfileUncatalogued { observed_identity: _ } => false
-                AccessProfileAmbiguous { observed_identity: _, count: _ } => false
-                AccessProfileIdentityMismatch { profile: _, observed: _ } => false
-              }
+            CandidateStagedArtifactMismatch { offered: _, requested: _ } => true
             _ => false
           }
         _ => false
       }
+    BootDeliveryPlanned { plan: _ } => false
+  }
+}
+
+// RED (ruling 3 §1) — an observation taken for another attempt is not
+// evidence about this one, however well its identity fits.
+test fn observation_from_another_attempt_does_not_bind() -> Bool {
+  let receipt = receipt_of(subject: other_attempt_subject, standing: BmcAccessObserved { observation: observation_of(identity: mt_collins_identity, surfaces: [SurfaceBootControl, SurfaceRedfishVirtualMedia], probe: Present { value: probe_https }) }, digest: discovery_digest)
+  match solve(profile: vm_profile, receipt: receipt, staging: staging_all) {
+    BootDeliveryRefused { cause: c } =>
+      match c {
+        DeliveryAccessUnbound { standing: s } =>
+          match s {
+            AccessContextObservationForOtherAttempt { expected: _, found: f } => (f.attempt_id as NonEmptyStr) == (attempt_two as NonEmptyStr)
+            _ => false
+          }
+        _ => false
+      }
+    BootDeliveryPlanned { plan: _ } => false
+  }
+}
+
+// RED (ruling 3 §1) — the receipt names bytes the observation was not read
+// from: the context does not bind.
+test fn observation_whose_receipt_digest_differs_does_not_bind() -> Bool {
+  let receipt = receipt_of(subject: intake_subject, standing: BmcAccessObserved { observation: observation_of(identity: mt_collins_identity, surfaces: [SurfaceBootControl, SurfaceRedfishVirtualMedia], probe: Present { value: probe_https }) }, digest: other_digest)
+  match bind(profile: vm_profile, receipt: receipt) {
+    AccessContextObservationEvidenceMismatch { endpoint: e, receipt: _, raw_response: _ } => e == megarac_endpoint
+    _ => false
+  }
+}
+
+// RED (ruling 3 §1) — a catalog row whose capability row describes a different
+// release than its key refuses the whole lookup; and the real Mt. Collins
+// string "0.32" is representable as a release identity with no semantic
+// reading rather than fabricated as 0.32.0.
+test fn capability_row_for_another_release_refuses_the_catalog() -> Bool {
+  let raw_keyed = BmcAccessProfile {
+    key: BmcAccessProfileKey { baseboard: AmpereMtCollins, chassis: AllChassisVariants, firmware: mt_collins_raw_release },
+    routes: [IpmiLanplusRoute, MegaRacRestRoute { image_redirection: MegaRacImageRedirectionEnabled }],
+    bootstrap_credential: none,
+    candidate_surfaces: [SurfaceBootControl, SurfaceOemRestRemoteMedia],
+    capability_row: oem_only_row,
+  }
+  let raw_has_no_semantic = match mt_collins_raw_release.semantic_version {
+    Absent => true
+    Present { value: _ } => false
+  }
+  let raw_identity = identity_of(baseboard: AmpereMtCollins, firmware: mt_collins_raw_release)
+  let lookup_refused = match bmc_access_profile_for(identity: raw_identity, catalog: catalog_of(profile: raw_keyed)) {
+    AccessProfileCatalogRowRefused { standing: s } =>
+      match s {
+        CatalogRowCapabilityFirmwareMismatch { key: _, row: _ } => true
+        _ => false
+      }
+    _ => false
+  }
+  let receipt = receipt_of(subject: intake_subject, standing: BmcAccessObserved { observation: observation_of(identity: raw_identity, surfaces: [SurfaceBootControl, SurfaceOemRestRemoteMedia], probe: none) }, digest: discovery_digest)
+  let context_refused = match bind_bmc_access_context(subject: intake_subject, receipt: receipt, catalog: catalog_of(profile: raw_keyed)) {
+    AccessContextCatalogRefused { standing: _ } => true
+    _ => false
+  }
+  mt_collins_raw_release.raw_version == "0.32" && raw_has_no_semantic && lookup_refused && context_refused
+}
+
+// RED (ruling 3 §2) — the probe admitted NFS only; the staging service offers
+// HTTPS: the transport is not planned against a protocol the resource did not
+// admit.
+test fn offered_protocol_not_admitted_by_the_probe_refuses() -> Bool {
+  match solve(profile: vm_profile, receipt: observed(surfaces: [SurfaceBootControl, SurfaceRedfishVirtualMedia], probe: Present { value: probe_nfs_only }), staging: staging_all) {
+    BootDeliveryRefused { cause: c } =>
+      match c {
+        DeliveryNoEligibleTransport { firmware: _, considered: considered } =>
+          match boot_delivery_candidate_standing_of(verdicts: considered, candidate: CandidateRedfishVirtualMedia) {
+            CandidateRedfishProtocolNotAdmitted { offered: o, admitted: a } => o == TransferHttps && list_length(items: a) == 1
+            _ => false
+          }
+        _ => false
+      }
+    BootDeliveryPlanned { plan: _ } => false
+  }
+}
+
+// RED — a controller that served no Redfish VirtualMedia resource has no probe
+// receipt, and a plan cannot be derived from a locator that was never read.
+test fn absent_probe_receipt_refuses_the_redfish_arm() -> Bool {
+  match solve(profile: vm_profile, receipt: observed(surfaces: [SurfaceBootControl, SurfaceRedfishVirtualMedia], probe: none), staging: staging_wrong_redfish_digest) {
+    BootDeliveryRefused { cause: c } =>
+      match c {
+        DeliveryNoEligibleTransport { firmware: _, considered: considered } =>
+          match boot_delivery_candidate_standing_of(verdicts: considered, candidate: CandidateRedfishVirtualMedia) {
+            CandidateRedfishProbeAbsent => true
+            _ => false
+          }
+        _ => false
+      }
+    BootDeliveryPlanned { plan: _ } => false
+  }
+}
+
+// RULING §2 CONTROL — collection discovered is NOT a plan floor.
+test fn redfish_collection_discovery_alone_does_not_plan() -> Bool {
+  match solve(profile: vm_profile, receipt: observed(surfaces: [SurfaceBootControl, SurfaceRedfishVirtualMedia], probe: Present { value: probe_collection_only }), staging: staging_wrong_redfish_digest) {
+    BootDeliveryRefused { cause: c } =>
+      match c {
+        DeliveryNoEligibleTransport { firmware: _, considered: considered } =>
+          match boot_delivery_candidate_standing_of(verdicts: considered, candidate: CandidateRedfishVirtualMedia) {
+            CandidateRedfishProbeBelowPlanFloor { progress: p } => p == CollectionDiscovered
+            _ => false
+          }
+        _ => false
+      }
+    BootDeliveryPlanned { plan: _ } => false
+  }
+}
+
+// POSITIVE CONTROL — the observed Mt. Collins shape: no Redfish route at all,
+// the OEM REST surface live, the profile's MegaRAC route carrying
+// image_redirection Enabled. The plan's params carry the typed
+// MegaRacImageRedirectionOn the start-media contract requires.
+test fn observed_mt_collins_build_plans_megarac_rest_remote_media_with_image_redirection() -> Bool {
+  match solve(profile: oem_only_profile, receipt: observed(surfaces: [SurfaceBootControl, SurfaceOemRestRemoteMedia], probe: none), staging: staging_all) {
+    BootDeliveryPlanned { plan: p } =>
+      match p.delivery {
+        MegaRacRestRemoteMedia { params: params } =>
+          params.image_name == "intake.iso"
+            && megarac_image_redirection_wire(r: params.image_redirection) == "1"
+            && p.boot_control == BootFromRemovableMedia
+        _ => false
+      }
+    BootDeliveryRefused { cause: _ } => false
+  }
+}
+
+// RED (ruling 3 §2) — the same build with image_redirection Unset on its
+// route: the MegaRAC arm is not planned, and the standing names the parameter.
+test fn megarac_route_without_image_redirection_refuses() -> Bool {
+  match solve(profile: oem_unset_profile, receipt: observed(surfaces: [SurfaceBootControl, SurfaceOemRestRemoteMedia], probe: none), staging: staging_all) {
+    BootDeliveryRefused { cause: c } =>
+      match c {
+        DeliveryNoEligibleTransport { firmware: _, considered: considered } =>
+          match boot_delivery_candidate_standing_of(verdicts: considered, candidate: CandidateMegaRacRestRemoteMedia) {
+            CandidateOemParameterUnset { surface: s } => s == SurfaceOemRestRemoteMedia
+            _ => false
+          }
+        _ => false
+      }
+    BootDeliveryPlanned { plan: _ } => false
+  }
+}
+
+// CONTROL (ruling §16) — remove Redfish VirtualMedia from the LIVE observation
+// while retaining it in the profile: the Redfish transport is not selected.
+test fn redfish_virtual_media_absent_from_live_observation_is_not_selected() -> Bool {
+  match solve(profile: vm_profile, receipt: observed(surfaces: [SurfaceBootControl], probe: Present { value: probe_https }), staging: staging_wrong_redfish_digest) {
+    BootDeliveryRefused { cause: c } =>
+      match c {
+        DeliveryNoEligibleTransport { firmware: _, considered: considered } =>
+          match boot_delivery_candidate_standing_of(verdicts: considered, candidate: CandidateRedfishVirtualMedia) {
+            CandidateLiveSurfaceAbsent { surface: s } => s == SurfaceRedfishVirtualMedia
+            _ => false
+          }
+        _ => false
+      }
+    BootDeliveryPlanned { plan: _ } => false
+  }
+}
+
+// RULING §2 CONTROL — same release, a DIFFERENT board: the lookup is
+// uncatalogued for that identity, so no context binds.
+test fn same_release_on_another_board_does_not_pair_with_the_profile() -> Bool {
+  let asrock_identity = identity_of(baseboard: AsrockRackAltrad8ud1l2t, firmware: megarac_release)
+  let receipt = receipt_of(subject: intake_subject, standing: BmcAccessObserved { observation: observation_of(identity: asrock_identity, surfaces: [SurfaceBootControl, SurfaceRedfishVirtualMedia], probe: Present { value: probe_https }) }, digest: discovery_digest)
+  match bind(profile: vm_profile, receipt: receipt) {
+    AccessContextProfileUncatalogued { observed_identity: i } => i.baseboard == AsrockRackAltrad8ud1l2t
+    _ => false
+  }
+}
+
+// An observation of a DIFFERENT release than the profile is uncatalogued
+// against it: the key binds the raw release string, not a nearest version.
+test fn live_observation_at_another_release_does_not_bind_the_profile() -> Bool {
+  let receipt = receipt_of(subject: intake_subject, standing: BmcAccessObserved { observation: observation_of(identity: identity_of(baseboard: AmpereMtCollins, firmware: megarac_release_other), surfaces: [SurfaceBootControl, SurfaceRedfishVirtualMedia], probe: Present { value: probe_https }) }, digest: discovery_digest)
+  match bind(profile: vm_profile, receipt: receipt) {
+    AccessContextProfileUncatalogued { observed_identity: i } => i.firmware.raw_version == "1.2.4"
+    _ => false
+  }
+}
+
+// Chassis applicability is an explicit arm: a profile for one exact chassis
+// does not bind an identity that reported no chassis part number.
+test fn exact_chassis_profile_does_not_bind_an_unreported_chassis() -> Bool {
+  let exact = BmcAccessProfile {
+    key: BmcAccessProfileKey { baseboard: AmpereMtCollins, chassis: ExactChassisPartNumber { part_number: "CH-2U-MTC" }, firmware: megarac_release },
+    routes: vm_profile.routes,
+    bootstrap_credential: none,
+    candidate_surfaces: vm_profile.candidate_surfaces,
+    capability_row: vm_and_oem_row,
+  }
+  let unreported = bmc_access_profile_for(identity: mt_collins_identity, catalog: catalog_of(profile: exact))
+  let reported = bmc_access_profile_for(
+    identity: BmcObservedIdentity { baseboard: AmpereMtCollins, chassis_part_number: Present { value: "CH-2U-MTC" }, firmware: megarac_release },
+    catalog: catalog_of(profile: exact),
+  )
+  let unreported_refuses = match unreported {
+    AccessProfileUncatalogued { observed_identity: _ } => true
+    _ => false
+  }
+  let reported_binds = match reported {
+    AccessProfileKnown { profile: _, provenance: _ } => true
+    _ => false
+  }
+  unreported_refuses && reported_binds
+}
+
+test fn unobserved_endpoint_binds_no_context() -> Bool {
+  match solve(profile: vm_profile, receipt: receipt_of(subject: intake_subject, standing: BmcAccessUnobserved { endpoint: megarac_endpoint }, digest: discovery_digest), staging: staging_all) {
+    BootDeliveryRefused { cause: c } =>
+      match c {
+        DeliveryAccessUnbound { standing: s } =>
+          match s {
+            AccessContextUnobserved { endpoint: e } => e == megarac_endpoint
+            _ => false
+          }
+        _ => false
+      }
+    BootDeliveryPlanned { plan: _ } => false
+  }
+}
+
+// CONTROL (ruling §16) — no virtual media and no network-boot evidence: no
+// implicit PXE. The PXE candidate reports the four missing requirements.
+test fn no_virtual_media_and_no_network_boot_evidence_refuses_without_pxe() -> Bool {
+  match solve(profile: no_vm_profile, receipt: observed(surfaces: [SurfaceBootControl], probe: none), staging: staging_all) {
+    BootDeliveryRefused { cause: c } =>
+      match c {
+        DeliveryNoEligibleTransport { firmware: _, considered: considered } =>
+          match boot_delivery_candidate_standing_of(verdicts: considered, candidate: CandidatePxeChainBoot) {
+            CandidateNetworkBootUnestablished { missing: m } => list_length(items: m) == 4
+            _ => false
+          }
+        _ => false
+      }
+    BootDeliveryPlanned { plan: _ } => false
+  }
+}
+
+test fn boot_source_override_gates_every_arm() -> Bool {
+  match solve(profile: no_override_profile, receipt: observed(surfaces: [SurfaceRedfishVirtualMedia], probe: Present { value: probe_https }), staging: staging_all) {
+    BootDeliveryRefused { cause: c } =>
+      match c {
+        DeliveryNoBootSourceOverride { firmware: _ } => true
+        _ => false
+      }
+    BootDeliveryPlanned { plan: _ } => false
+  }
+}
+
+// THE srv4 GAP, CLOSED: an established configfs reinstall path with a staged
+// export naming the artifact selects the USB-gadget delivery.
+test fn established_configfs_path_selects_usb_gadget_delivery() -> Bool {
+  match solve_boot_artifact_delivery(
+    request: request_with(staging: staging_all),
+    ev: evidence_of(access: bind(profile: no_vm_profile, receipt: observed(surfaces: [SurfaceBootControl], probe: none)), configfs: ReinstallPathEstablished { qualified_by: [] }, network_boot: network_boot_unestablished),
+    policy: policy,
+  ) {
+    BootDeliveryPlanned { plan: p } =>
+      match p.delivery {
+        OpenBmcConfigfsUsbGadget { params: params } => params.udc == configfs_offer.udc
+        _ => false
+      }
+    BootDeliveryRefused { cause: _ } => false
+  }
+}
+
+// Network boot: every axis observed AND the establishment naming the
+// requested digest selects PXE; the same establishment naming another digest
+// is a staged-artifact mismatch, never a plan.
+fn control_network_boot_axis(requirement: NetworkBootRequirement) -> NetworkBootRequirementEvidence {
+  NetworkBootRequirementEvidence {
+    requirement: requirement,
+    observation: DeclarationRef {
+      module_path: "test.claim.boot_artifact_delivery_witness_test",
+      decl_name: "established_network_boot_for",
+      field: WholeDeclaration,
+    },
+    observed_at: 1788000000000,
+  }
+}
+
+fn established_network_boot_for(digest: ContentHash) -> NetworkBootDeliveryStanding {
+  NetworkBootDeliveryEstablished {
+    evidence: NetworkBootDeliveryEstablishment {
+      boot_source_override: control_network_boot_axis(requirement: NetworkBootBootSourceOverride),
+      client_boot_mode: control_network_boot_axis(requirement: NetworkBootClientBootMode),
+      serving_infrastructure: control_network_boot_axis(requirement: NetworkBootServingInfrastructure),
+      boot_artifacts: control_network_boot_axis(requirement: NetworkBootBootArtifacts),
+      artifact_digest: digest,
+    },
+  }
+}
+
+test fn established_network_boot_naming_the_artifact_selects_pxe_and_another_digest_does_not() -> Bool {
+  let planned = solve_boot_artifact_delivery(
+    request: request_with(staging: boot_artifact_staging_unbound),
+    ev: evidence_of(access: bind(profile: no_vm_profile, receipt: observed(surfaces: [SurfaceBootControl], probe: none)), configfs: configfs_unestablished, network_boot: established_network_boot_for(digest: intake_artifact.digest)),
+    policy: policy,
+  )
+  let mismatched = solve_boot_artifact_delivery(
+    request: request_with(staging: boot_artifact_staging_unbound),
+    ev: evidence_of(access: bind(profile: no_vm_profile, receipt: observed(surfaces: [SurfaceBootControl], probe: none)), configfs: configfs_unestablished, network_boot: established_network_boot_for(digest: other_digest)),
+    policy: policy,
+  )
+  let pxe_planned = match planned {
+    BootDeliveryPlanned { plan: p } =>
+      match p.delivery {
+        PxeChainBoot { evidence: _ } => true
+        _ => false
+      }
+    BootDeliveryRefused { cause: _ } => false
+  }
+  let pxe_refused = match mismatched {
+    BootDeliveryRefused { cause: c } =>
+      match c {
+        DeliveryNoEligibleTransport { firmware: _, considered: considered } =>
+          match boot_delivery_candidate_standing_of(verdicts: considered, candidate: CandidatePxeChainBoot) {
+            CandidateStagedArtifactMismatch { offered: _, requested: _ } => true
+            _ => false
+          }
+        _ => false
+      }
+    BootDeliveryPlanned { plan: _ } => false
+  }
+  pxe_planned && pxe_refused
+}
+
+// THE FROZEN PROJECTION reads the solver's answer and nothing else: a plan
+// maps to the legacy arm that names it, a MegaRAC plan to the typed
+// outside-legacy refusal, and the standing of a path that never ran a lookup
+// keeps its own cause.
+test fn legacy_projection_reads_the_solver_answer_and_names_the_unrun_lookup() -> Bool {
+  let redfish_plan = solve(profile: vm_profile, receipt: observed(surfaces: [SurfaceBootControl, SurfaceRedfishVirtualMedia, SurfaceOemRestRemoteMedia], probe: Present { value: probe_https }), staging: staging_all)
+  let megarac_plan = solve(profile: oem_only_profile, receipt: observed(surfaces: [SurfaceBootControl, SurfaceOemRestRemoteMedia], probe: none), staging: staging_all)
+  let not_run = BootDeliveryRefused { cause: DeliveryAccessUnbound { standing: AccessContextProfileLookupNotRun { endpoint: megarac_ipmi_endpoint } } }
+  let redfish_ok = match os_install_solution_of_delivery(solution: redfish_plan) {
+    OsInstallMechanismSelected { mechanism: m } => m == VirtualMediaInstall
+    OsInstallMechanismRefused { cause: _ } => false
+  }
+  let megarac_ok = match os_install_solution_of_delivery(solution: megarac_plan) {
+    OsInstallMechanismRefused { cause: c } =>
+      match c {
+        InstallDeliveryOutsideLegacyMechanism { delivery: _ } => true
+        _ => false
+      }
     OsInstallMechanismSelected { mechanism: _ } => false
   }
+  let not_run_ok = match os_install_solution_of_delivery(solution: not_run) {
+    OsInstallMechanismRefused { cause: c } =>
+      match c {
+        InstallAccessProfileNotLookedUp { endpoint: e } => e == megarac_ipmi_endpoint
+        _ => false
+      }
+    OsInstallMechanismSelected { mechanism: _ } => false
+  }
+  redfish_ok && megarac_ok && not_run_ok
 }
 
 // The Redfish transport arm is one more inhabitant of the shared
 // VirtualMediaTransport axis, and its action path is the DMTF one.
 test fn redfish_transport_inhabits_the_shared_axis_with_dmtf_action_path() -> Bool {
-  let transport = RedfishVirtualMediaTransport { params: redfish_params }
+  let params = RedfishVirtualMediaParams { media: probe_https.locator, image: redfish_offer(digest: intake_artifact.digest, protocol: TransferHttps).image, transfer_protocol: TransferHttps }
+  let transport = RedfishVirtualMediaTransport { params: params }
   virtual_media_transport_kind(transport: transport) == "redfish-virtualmedia"
-    && redfish_virtual_media_insert_action_path(locator: redfish_params.media) == "/redfish/v1/Managers/1/VirtualMedia/CD1/Actions/VirtualMedia.InsertMedia"
+    && redfish_virtual_media_insert_action_path(locator: params.media) == "/redfish/v1/Managers/1/VirtualMedia/CD1/Actions/VirtualMedia.InsertMedia"
 }

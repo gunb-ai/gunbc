@@ -2,15 +2,16 @@ module extdeps.bmc.access_profile
 
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.types { Bool, EpochMs, Int, List, NonEmptyStr, String }
+import std.content_hash { ContentHash }
 import v2.std.algebra { filter }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
 import std.credentials { FactoryLogin }
-import extdeps.bmc.endpoint { BmcEndpoint, BmcFirmwareFamily }
+import extdeps.bmc.endpoint { BmcEndpoint }
 import extdeps.boards.types { BaseboardModel }
-import extdeps.firmware.types { FirmwareSemanticVersion }
-import extdeps.bmc.capability { BmcFirmwareVersion, bmc_firmware_version_eq }
-import extdeps.bmc.redfish_virtual_media { RedfishVirtualMediaProbe }
+import extdeps.bmc.capability { BmcFirmwareCapabilityRow, BmcFirmwareReleaseIdentity, bmc_firmware_release_identity_eq, bmc_firmware_release_matches_version }
+import extdeps.bmc.megarac { MegaRacImageRedirection }
+import extdeps.bmc.redfish_virtual_media { RedfishVirtualMediaProbeReceipt }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -31,7 +32,7 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
   further_citations: []
 }
 
-data access_profile_two_carriers_note: String = "TWO CARRIERS, ONE INTERSECTION (machine-intake ruling 2026-08-29 §2). BmcAccessProfile is PLATFORM CATALOG data keyed by (baseboard, chassis part number, implementation, exact firmware): the routes and quirks a firmware release is documented or previously observed to expose. BmcAccessObservation is a LIVE, per-endpoint, per-attempt reading of what that endpoint served just now. A solver may select a surface only from their intersection — a platform row saying that firmware should expose virtual media does not establish that this endpoint currently does, and a live discovery on one endpoint does not become a platform fact. This module carries the two shapes and the intersection predicate; concrete profile rows live in the board and implementation modules that cite them, and observations are receipts in the workflow layer (DESIGN §3: observations are never authored inside an upstream module). It generalizes the strength extdeps.boards.asrock_rack already had — capabilities catalogued per exact firmware version, changing across 2.07.00, 3.06.00 and 3.22.00 — from one board's capability roster to a keyed profile any board can inhabit."
+data access_profile_two_carriers_note: String = "TWO CARRIERS, ONE INTERSECTION (machine-intake ruling 2026-08-29 §2, refined by ruling 3 §1-§2). BmcAccessProfile is PLATFORM CATALOG data keyed by (baseboard, chassis applicability, implementation, exact vendor release string): the routes and quirks a firmware release is documented or previously observed to expose, PLUS the capability row that release carries, so a solver never joins a capability row to a profile by hand. BmcAccessObservation is a LIVE, per-endpoint reading of what that endpoint served just now. A solver may select a surface only from their intersection — a platform row saying that firmware should expose virtual media does not establish that this endpoint currently does, and a live discovery on one endpoint does not become a platform fact. This module carries the two shapes, the lookup (Known | Uncatalogued | Ambiguous — external facts only) and the intersection predicate; which attempt an observation belongs to, whether a lookup ran at all, and the binding of profile+observation into one solve input are WORKFLOW standings and live in gunbc.machine_intake_access. Concrete profile rows live in the board and implementation modules that cite them, and observations are receipts in the workflow layer (DESIGN §3: observations are never authored inside an upstream module)."
 
 // The surfaces intake asks a BMC about. Each is a thing an endpoint either
 // served or did not when probed; none is a promise. SurfaceBmcShell is the
@@ -56,47 +57,96 @@ type BmcAccessSurface
   | SurfaceTelemetryMetrics
   | SurfaceBmcClock
 
+// Which chassis variants a profile applies to. An explicit arm, because an
+// absent part number that silently meant "every chassis" was universality by
+// omission (ruling 3 §2).
+type ChassisApplicability
+  = ExactChassisPartNumber { part_number: NonEmptyStr }
+  | AllChassisVariants
+
 type BmcAccessProfileKey {
   baseboard: BaseboardModel
-  chassis_part_number: NonEmptyStr?
-  firmware: BmcFirmwareVersion
+  chassis: ChassisApplicability
+  firmware: BmcFirmwareReleaseIdentity
 }
 
-// A vendor-specific parameter the profile has to carry verbatim (MegaRAC's
-// image_redirection, an ASRock UDC name). Named, not folded into prose.
-type BmcOemParameter {
-  name: NonEmptyStr
-  value: NonEmptyStr
-}
+// THE ROUTES A CONTROLLER EXPOSES, as inhabitants, not as mandatory Redfish
+// fields: the observed Mt. Collins build serves IPMI and the proprietary REST
+// surface and no Redfish at all, so a profile that REQUIRED three Redfish
+// locators could only describe it by inventing them. One controller may expose
+// several routes at once; the host identity is the endpoint, separate from any
+// route.
+type BmcAccessRoute
+  = RedfishRoute {
+      system_locator: NonEmptyStr
+      chassis_locator: NonEmptyStr
+      manager_locator: NonEmptyStr
+    }
+  | IpmiLanplusRoute
+  | MegaRacRestRoute { image_redirection: MegaRacImageRedirection }
+  | OpenBmcShellRoute
+  | OpenBmcNbdWebsocketRoute { ws_path: NonEmptyStr }
 
 type BmcAccessProfile {
   key: BmcAccessProfileKey
-  redfish_system_locator: NonEmptyStr
-  redfish_chassis_locator: NonEmptyStr
-  redfish_manager_locator: NonEmptyStr
+  routes: List<BmcAccessRoute>
   bootstrap_credential: FactoryLogin?
   candidate_surfaces: List<BmcAccessSurface>
-  oem_parameters: List<BmcOemParameter>
+  capability_row: BmcFirmwareCapabilityRow
+}
+
+// Where a profile's admissibility comes from. A DeclarationRef names the
+// catalog row that RENDERS the profile, not the producer that made it true; the
+// producer is either an external authority or the observation the row was
+// promoted from, and both are kept (ruling 3, layer-placement ruling).
+type BmcAccessProfileProvenance
+  = ProfileFromExternalAuthority { authority: ExternalAuthority }
+  | ProfilePromotedFromObservation { observation_receipt: ContentHash, promotion_receipt: ContentHash }
+
+type BmcAccessProfileCatalogRow {
+  profile: BmcAccessProfile
+  provenance: BmcAccessProfileProvenance
+}
+
+// A catalog row is admissible only when the capability row it carries
+// describes the release its key names. Membership is decidable here, so the
+// join is refused at the row, once, and no consumer re-checks it.
+type BmcAccessProfileCatalogRowStanding
+  = CatalogRowAdmitted { row: BmcAccessProfileCatalogRow }
+  | CatalogRowCapabilityFirmwareMismatch { key: BmcAccessProfileKey, row: BmcFirmwareCapabilityRow }
+
+fn bmc_access_profile_catalog_row_standing(row: BmcAccessProfileCatalogRow) -> BmcAccessProfileCatalogRowStanding {
+  if bmc_firmware_release_matches_version(rel: row.profile.key.firmware, version: row.profile.capability_row.firmware) {
+    CatalogRowAdmitted { row: row }
+  } else {
+    CatalogRowCapabilityFirmwareMismatch { key: row.profile.key, row: row.profile.capability_row }
+  }
 }
 
 // What the endpoint SAID it is, read at discovery: the board and chassis from
-// FRU/Chassis, the family and exact firmware from the Manager. This is the key
-// a profile lookup binds against — all of it, not the firmware alone, so a
-// same-version endpoint cannot be paired with an unrelated board's profile.
+// FRU/Chassis, the family and exact raw firmware string from the Manager. This
+// is the key a profile lookup binds against — all of it, not the firmware
+// alone, so a same-version endpoint cannot be paired with an unrelated board's
+// profile. The firmware is carried ONCE, here.
 type BmcObservedIdentity {
   baseboard: BaseboardModel
   chassis_part_number: NonEmptyStr?
-  firmware: BmcFirmwareVersion
+  firmware: BmcFirmwareReleaseIdentity
 }
 
+// A live reading. The Redfish probe is a receipt bound to the resource it read
+// and is Absent on a controller that serves no Redfish, rather than a ladder arm
+// pretending to describe a member that does not exist. raw_response is the
+// digest of the captured discovery bytes so an observation can be traced to what
+// was actually read.
 type BmcAccessObservation {
   endpoint: BmcEndpoint
   identity: BmcObservedIdentity
-  firmware: BmcFirmwareVersion
   discovered_surfaces: List<BmcAccessSurface>
-  redfish_virtual_media_probe: RedfishVirtualMediaProbe
+  redfish_virtual_media_probe: RedfishVirtualMediaProbeReceipt?
   successful_read_surfaces: List<BmcAccessSurface>
   successful_write_surfaces: List<BmcAccessSurface>
+  raw_response: ContentHash
   observed_at: EpochMs
 }
 
@@ -107,10 +157,10 @@ type BmcAccessObservationStanding
   = BmcAccessObserved { observation: BmcAccessObservation }
   | BmcAccessUnobserved { endpoint: BmcEndpoint }
 
-fn optional_part_number_matches(profile: NonEmptyStr?, observed: NonEmptyStr?) -> Bool {
-  match profile {
-    Absent => true
-    Present { value: p } =>
+fn chassis_applicability_admits(applicability: ChassisApplicability, observed: NonEmptyStr?) -> Bool {
+  match applicability {
+    AllChassisVariants => true
+    ExactChassisPartNumber { part_number: p } =>
       match observed {
         Absent => false
         Present { value: o } => p == o
@@ -118,48 +168,64 @@ fn optional_part_number_matches(profile: NonEmptyStr?, observed: NonEmptyStr?) -
   }
 }
 
-// The profile key binds baseboard, chassis variant where the profile names
-// one, and exact firmware (family and version). Equal firmware alone is not a
-// binding.
+// The profile key binds baseboard, chassis applicability, and exact release
+// (family and raw vendor string). Equal firmware alone is not a binding.
 fn bmc_access_profile_key_matches(key: BmcAccessProfileKey, identity: BmcObservedIdentity) -> Bool {
   key.baseboard == identity.baseboard
-    && optional_part_number_matches(profile: key.chassis_part_number, observed: identity.chassis_part_number)
-    && bmc_firmware_version_eq(a: key.firmware, b: identity.firmware)
+    && chassis_applicability_admits(applicability: key.chassis, observed: identity.chassis_part_number)
+    && bmc_firmware_release_identity_eq(a: key.firmware, b: identity.firmware)
+}
+
+// The lookup's answer over the catalog: external facts only. Whether the
+// lookup ran, and which attempt's observation it was run for, are workflow
+// standings (gunbc.machine_intake_access), not arms here.
+type BmcAccessProfileLookup
+  = AccessProfileKnown { profile: BmcAccessProfile, provenance: BmcAccessProfileProvenance }
+  | AccessProfileUncatalogued { observed_identity: BmcObservedIdentity }
+  | AccessProfileAmbiguous { observed_identity: BmcObservedIdentity, count: Int }
+  | AccessProfileCatalogRowRefused { standing: BmcAccessProfileCatalogRowStanding }
+
+fn catalog_first_refused(catalog: List<BmcAccessProfileCatalogRow>) -> BmcAccessProfileCatalogRowStanding? {
+  fold(
+    catalog,
+    init: none,
+    f: (acc, row) => match acc {
+      Present { value: _ } => acc
+      Absent =>
+        match bmc_access_profile_catalog_row_standing(row: row) {
+          CatalogRowAdmitted { row: _ } => none
+          CatalogRowCapabilityFirmwareMismatch { key: k, row: r } =>
+            Present { value: CatalogRowCapabilityFirmwareMismatch { key: k, row: r } }
+        }
+    },
+  )
 }
 
 // The total lookup, refusing on both sides of uniqueness like
-// extdeps.bmc.capability bmc_firmware_capability_row_for. AccessProfileNotLookedUp
-// is the honest standing of a path that never ran the lookup at all
-// (gunbc.os_install_mechanism's frozen projection); it is distinct from an
-// endpoint whose identity WAS read and matched nothing.
-type BmcAccessProfileStanding
-  = AccessProfileKnown { profile: BmcAccessProfile, provenance: DeclarationRef }
-  | AccessProfileUncatalogued { observed_identity: BmcObservedIdentity }
-  | AccessProfileAmbiguous { observed_identity: BmcObservedIdentity, count: Int }
-  | AccessProfileIdentityMismatch { profile: BmcAccessProfileKey, observed: BmcObservedIdentity }
-  | AccessProfileNotLookedUp { endpoint: BmcEndpoint }
-
-type BmcAccessProfileCatalogRow {
-  profile: BmcAccessProfile
-  provenance: DeclarationRef
-}
-
+// extdeps.bmc.capability bmc_firmware_capability_row_for, and refusing the whole
+// catalog when any row's capability firmware disagrees with its key — a
+// mismatched row skipped silently would be a lookup over a catalog that lies.
 fn bmc_access_profile_for(
   identity: BmcObservedIdentity,
   catalog: List<BmcAccessProfileCatalogRow>,
-) -> BmcAccessProfileStanding {
-  let hits = catalog |> filter(row => bmc_access_profile_key_matches(key: row.profile.key, identity: identity))
-  let n = count(hits)
-  if n == 0 {
-    AccessProfileUncatalogued { observed_identity: identity }
-  } else if n == 1 {
-    fold(
-      hits,
-      init: AccessProfileUncatalogued { observed_identity: identity },
-      f: (_acc, row) => AccessProfileKnown { profile: row.profile, provenance: row.provenance },
-    )
-  } else {
-    AccessProfileAmbiguous { observed_identity: identity, count: n }
+) -> BmcAccessProfileLookup {
+  match catalog_first_refused(catalog: catalog) {
+    Present { value: refused } => AccessProfileCatalogRowRefused { standing: refused }
+    Absent => {
+      let hits = catalog |> filter(row => bmc_access_profile_key_matches(key: row.profile.key, identity: identity))
+      let n = count(hits)
+      if n == 0 {
+        AccessProfileUncatalogued { observed_identity: identity }
+      } else if n == 1 {
+        fold(
+          hits,
+          init: AccessProfileUncatalogued { observed_identity: identity },
+          f: (_acc, row) => AccessProfileKnown { profile: row.profile, provenance: row.provenance },
+        )
+      } else {
+        AccessProfileAmbiguous { observed_identity: identity, count: n }
+      }
+    }
   }
 }
 
@@ -168,7 +234,7 @@ fn bmc_surface_in(surfaces: List<BmcAccessSurface>, surface: BmcAccessSurface) -
 }
 
 // Every way the intersection can fail to admit a surface, named. A profile and
-// an observation for different firmware do not intersect at all: the
+// an observation for different releases do not intersect at all: the
 // observation is a reading of a release the profile does not describe.
 type BmcSurfaceEligibility
   = SurfaceEligible
@@ -190,4 +256,34 @@ fn bmc_surface_eligibility(
   } else {
     SurfaceEligible
   }
+}
+
+// The MegaRAC route's redirection fact, read off the profile's routes: Present
+// only when the profile names the OEM REST route at all.
+fn bmc_profile_megarac_image_redirection(profile: BmcAccessProfile) -> MegaRacImageRedirection? {
+  fold(
+    profile.routes,
+    init: none,
+    f: (acc, route) => match route {
+      MegaRacRestRoute { image_redirection: r } => Present { value: r }
+      RedfishRoute { system_locator: _, chassis_locator: _, manager_locator: _ } => acc
+      IpmiLanplusRoute => acc
+      OpenBmcShellRoute => acc
+      OpenBmcNbdWebsocketRoute { ws_path: _ } => acc
+    },
+  )
+}
+
+fn bmc_profile_nbd_websocket_path(profile: BmcAccessProfile) -> NonEmptyStr? {
+  fold(
+    profile.routes,
+    init: none,
+    f: (acc, route) => match route {
+      OpenBmcNbdWebsocketRoute { ws_path: p } => Present { value: p }
+      RedfishRoute { system_locator: _, chassis_locator: _, manager_locator: _ } => acc
+      IpmiLanplusRoute => acc
+      MegaRacRestRoute { image_redirection: _ } => acc
+      OpenBmcShellRoute => acc
+    },
+  )
 }

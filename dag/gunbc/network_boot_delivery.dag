@@ -1,0 +1,53 @@
+module gunbc.network_boot_delivery
+
+import std.types { EpochMs, List, String }
+import std.decl_ref { DeclarationRef }
+import std.content_hash { ContentHash }
+
+data network_boot_delivery_note: String = "THE NETWORK-BOOT ESTABLISHMENT VOCABULARY, in its own authority (machine-intake ruling 3, namespace ruling). Its four evidence axes have independent producers — client firmware mode, serving infrastructure, boot artifacts, boot control — and the standing they compose is consumed by gunbc.boot_artifact_delivery, which imports it and selects the PxeChainBoot constructor from it. Keeping it beside its sole constructor would not have violated ruling 2; it lives here so the solver is not the home of every candidate's evidence lifecycle."
+
+// PXE was previously reached by ABSENCE: the pre-repair install solver's else-arm answered
+// PxeHttpInstall whenever no virtual-media capability was found, so "this BMC exposes no virtual
+// media" silently became "therefore it network-boots". Those are different states, and a BMC
+// capability roster cannot establish the second — it is a claim about the host's UEFI network
+// stack, the serving infrastructure, and the boot artifacts, none of which the BMC reports.
+//
+// So a network-boot delivery is established only by naming every requirement it rests on. An
+// authored chain or serve plan is NOT such an establishment: gunbc.os_install
+// srv3_pxe_network_boot_chain and gunbc.bmc_netboot_serve srv4_bmc_netboot_serve_plan describe
+// what a network boot WOULD look like, and neither is an observation that the host performed
+// one. Citing them as evidence would be the same substitution one layer up.
+type NetworkBootRequirement
+  = NetworkBootBootSourceOverride
+  | NetworkBootClientBootMode
+  | NetworkBootServingInfrastructure
+  | NetworkBootBootArtifacts
+
+// One observation per requirement axis. A single DeclarationRef standing for all four was the
+// same substitution this carrier exists to forbid, one level in: it let an authored plan satisfy
+// axes nobody observed. Establishing the delivery now requires naming an observation for each
+// axis, so a false claim has to be told four times rather than once.
+type NetworkBootRequirementEvidence {
+  requirement: NetworkBootRequirement
+  observation: DeclarationRef
+  observed_at: EpochMs
+}
+
+type NetworkBootDeliveryEstablishment {
+  boot_source_override: NetworkBootRequirementEvidence
+  client_boot_mode: NetworkBootRequirementEvidence
+  serving_infrastructure: NetworkBootRequirementEvidence
+  boot_artifacts: NetworkBootRequirementEvidence
+  artifact_digest: ContentHash
+}
+
+type NetworkBootDeliveryStanding
+  = NetworkBootDeliveryEstablished { evidence: NetworkBootDeliveryEstablishment }
+  | NetworkBootDeliveryUnestablished { missing: List<NetworkBootRequirement> }
+
+data network_boot_requirements_all: List<NetworkBootRequirement> = [
+  NetworkBootBootSourceOverride,
+  NetworkBootClientBootMode,
+  NetworkBootServingInfrastructure,
+  NetworkBootBootArtifacts,
+]
