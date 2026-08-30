@@ -55,6 +55,8 @@ import gunbc.spark.serving_observation_transaction {
   spark_serving_provenance_host,
   spark_serving_provenance_observation_attempt,
   spark_serving_provenance_credential,
+  spark_serving_provenance_receipt_line,
+  spark_serving_transaction_receipt_line,
   SparkServingPlanObservation,
   SparkServingPostApplyObservation,
   SparkServingReportObservation,
@@ -385,5 +387,58 @@ test fn only_an_acquired_provenance_answers_with_an_observation_attempt() -> Boo
         Present { value: _ } => false
         Absent => spark_serving_provenance_host(p: hermetic) == subject_host
       }
+  }
+}
+
+// THE RECEIPT DISTINGUISHES THE THREE PROVENANCE ARMS, BECAUSE A RENDERER THAT FLATTENED THEM WOULD
+// REINTRODUCE THE FABRICATION AT THE PRESENTATION LAYER.
+//
+// The deleted defect printed plausible attempt and locus strings for an observation that never
+// happened. A receipt that rendered acquired, refused and hermetic in one shape would do the same
+// thing one layer out: the canary reads these lines to establish that every fact in a report belongs
+// to one acquisition, so the line has to be able to say when it does not.
+test fn the_receipt_line_says_which_provenance_arm_it_is() -> Bool {
+  let hermetic = spark_serving_provenance_receipt_line(
+    p: spark_serving_hermetic_provenance_of(
+      host: subject_host,
+      fixture_identity: "witness" as NonEmptyStr,
+    ),
+  )
+  string_contains(s: hermetic, pattern: "hermetic-fixture=")
+    && !string_contains(s: hermetic, pattern: "acquired")
+    && !string_contains(s: hermetic, pattern: "observation-attempt=")
+}
+
+// The transaction receipt reports coverage and the per-outcome shape, not a single total: 23
+// captures is equally true of a transaction whose every leg the transport refused.
+test fn the_transaction_receipt_reports_coverage_and_outcome_shape() -> Bool {
+  match txn_of(captures: complete_captures()) {
+    Absent => false
+    Present { value: t } => {
+      let line = spark_serving_transaction_receipt_line(txn: t)
+      string_contains(s: line, pattern: "missing=0")
+        && string_contains(s: line, pattern: "duplicated=0")
+        && string_contains(s: line, pattern: "executed=23")
+        && string_contains(s: line, pattern: "transport-refused=0")
+        && string_contains(s: line, pattern: "prerequisite-refused=0")
+        && string_contains(s: line, pattern: "credential-locus=witness-locus")
+    }
+  }
+}
+
+// And the outcome counts move with the outcomes, so the line is a reading rather than a constant.
+test fn a_transport_refused_leg_moves_the_receipt_counts() -> Bool {
+  let refused = hermetic_capture_fixture(
+    request: IsActiveRequest,
+    outcome: SparkServingProbeTransportRefused { cause: "no route" as NonEmptyStr },
+  )
+  match txn_of(captures: swap_is_active(with: refused)) {
+    Absent => false
+    Present { value: t } => {
+      let line = spark_serving_transaction_receipt_line(txn: t)
+      string_contains(s: line, pattern: "executed=22")
+        && string_contains(s: line, pattern: "transport-refused=1")
+        && string_contains(s: line, pattern: "missing=0")
+    }
   }
 }
