@@ -13,7 +13,8 @@ import std.coercion { dag_can_cast, is_dag_cast_domain_type }
 import v1.compiler.type_head_exposure {
   TypeHeadView, KernelScalarHead, ApplicationHead, ProductHead, CoproductHead, CallableHead,
   TypeHeadExposure, ExposedTypeHead, OpaqueTypeHead, StuckTypeHead, MalformedApplicationHead,
-  type_declaration_identity_key
+  type_declaration_identity_key,
+  type_head_exposure_is_kernel_scalar, type_head_exposure_is_product, type_head_exposure_is_coproduct
 }
 import v1.std.core {
   Node, InternTable,
@@ -2707,10 +2708,8 @@ fn collection_at_scalar_declared_type(declared: Node, produced: Node, scope: Inf
 }
 
 fn record_at_scalar_needs_identity(declared: Node, produced: Node, scope: InferScope) -> Bool {
-  let declared_shape = node_type_shape(n: declared, source_indices: scope.type_env.source_indices)
-  let produced_shape = node_type_shape(n: produced, source_indices: scope.type_env.source_indices)
-  starts_with(s: declared_shape, prefix: "Primitive(")
-    && starts_with(s: produced_shape, prefix: "Product(")
+  type_head_exposure_is_kernel_scalar(exposure: expected_type_head_exposure(formal: declared, scope: scope))
+    && type_head_exposure_is_product(exposure: expected_type_head_exposure(formal: produced, scope: scope))
 }
 
 // Product-vs-coproduct is settled from exact type-head census identities. A second bare-name
@@ -2718,16 +2717,8 @@ fn record_at_scalar_needs_identity(declared: Node, produced: Node, scope: InferS
 fn coproduct_at_record_declared_type(declared: Node, produced: Node, scope: InferScope) -> Bool {
   let declared_name = authored_name_at(source_indices: scope.type_env.source_indices, node: declared)
   let produced_name = authored_name_at(source_indices: scope.type_env.source_indices, node: produced)
-  let declared_head_is_product = match map_get(scope.type_env.symbol_index.type_head_exposures, type_reference_identity(n: declared, source_indices: scope.type_env.source_indices)) {
-    Present { value: ExposedTypeHead { view: ProductHead { type_identity: _ } } } => true
-    Absent => false
-    _ => false
-  }
-  let produced_identity = type_reference_identity(n: produced, source_indices: scope.type_env.source_indices)
-  let produced_head = match map_get(scope.type_env.symbol_index.type_head_exposures, produced_identity) {
-    Present { value: head } => head
-    Absent => StuckTypeHead { cause: "produced declaration identity absent from head census" }
-  }
+  let declared_head = expected_type_head_exposure(formal: declared, scope: scope)
+  let produced_head = expected_type_head_exposure(formal: produced, scope: scope)
   if application_type_names_compatible(
       formal_name: declared_name, lit_name: produced_name,
       type_env: scope.type_env, module_name: scope.module_name,
@@ -2736,11 +2727,8 @@ fn coproduct_at_record_declared_type(declared: Node, produced: Node, scope: Infe
         index: scope.type_env.symbol_index, left: declared_name, right: produced_name) {
     false
   } else {
-    declared_head_is_product
-      && match produced_head {
-        ExposedTypeHead { view: CoproductHead { type_identity: _ } } => true
-        _ => false
-      }
+    type_head_exposure_is_product(exposure: declared_head)
+      && type_head_exposure_is_coproduct(exposure: produced_head)
   }
 }
 
@@ -5197,7 +5185,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
               if node_is_keyed_collection(n: exp, source_indices: scope.type_env.source_indices) {
                 InferResult {
                   typed: make_named_expr_node(occurrence_identity: texpr.occurrence_identity,
-                    name: func_name, expr_data: ExprCall { call_semantics: Present { value: PlainCallSemantics { target: RuntimePrimitiveCall { primitive_name: "empty_map" } } }, descent_evidence: none },
+                    name: func_name, expr_data: ExprCall { call_semantics: Present { value: PlainCallSemantics { target: RuntimePrimitiveCall { primitive_name: "empty_map", projected_from: none } } }, descent_evidence: none },
                     children: typed_arg_nodes,
                     inferred: Present { value: Resolved { node: exp } },
                     span: span,
@@ -5211,7 +5199,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
                   Present { value: map_t } =>
                     InferResult {
                       typed: make_named_expr_node(occurrence_identity: texpr.occurrence_identity,
-                        name: func_name, expr_data: ExprCall { call_semantics: Present { value: PlainCallSemantics { target: RuntimePrimitiveCall { primitive_name: "empty_map" } } }, descent_evidence: none },
+                        name: func_name, expr_data: ExprCall { call_semantics: Present { value: PlainCallSemantics { target: RuntimePrimitiveCall { primitive_name: "empty_map", projected_from: none } } }, descent_evidence: none },
                         children: typed_arg_nodes,
                         inferred: Present { value: Resolved { node: map_t } },
                         span: span,
@@ -5222,7 +5210,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
                   Absent =>
                     InferResult {
                       typed: make_named_expr_node(occurrence_identity: texpr.occurrence_identity,
-                        name: func_name, expr_data: ExprCall { call_semantics: Present { value: PlainCallSemantics { target: RuntimePrimitiveCall { primitive_name: "empty_map" } } }, descent_evidence: none },
+                        name: func_name, expr_data: ExprCall { call_semantics: Present { value: PlainCallSemantics { target: RuntimePrimitiveCall { primitive_name: "empty_map", projected_from: none } } }, descent_evidence: none },
                         children: typed_arg_nodes,
                         inferred: Present { value: CompilerError { message: "empty_map(): Map kernel container profile missing (compiler misconfigured)", span: span } },
                         span: span,
@@ -5237,7 +5225,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
                 Present { value: map_t } =>
                   InferResult {
                     typed: make_named_expr_node(occurrence_identity: texpr.occurrence_identity,
-                      name: func_name, expr_data: ExprCall { call_semantics: Present { value: PlainCallSemantics { target: RuntimePrimitiveCall { primitive_name: "empty_map" } } }, descent_evidence: none },
+                      name: func_name, expr_data: ExprCall { call_semantics: Present { value: PlainCallSemantics { target: RuntimePrimitiveCall { primitive_name: "empty_map", projected_from: none } } }, descent_evidence: none },
                       children: typed_arg_nodes,
                       inferred: Present { value: Resolved { node: map_t } },
                       span: span,
@@ -5248,7 +5236,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
                 Absent =>
                   InferResult {
                     typed: make_named_expr_node(occurrence_identity: texpr.occurrence_identity,
-                      name: func_name, expr_data: ExprCall { call_semantics: Present { value: PlainCallSemantics { target: RuntimePrimitiveCall { primitive_name: "empty_map" } } }, descent_evidence: none },
+                      name: func_name, expr_data: ExprCall { call_semantics: Present { value: PlainCallSemantics { target: RuntimePrimitiveCall { primitive_name: "empty_map", projected_from: none } } }, descent_evidence: none },
                       children: typed_arg_nodes,
                       inferred: Present { value: CompilerError { message: "empty_map(): Map kernel container profile missing (compiler misconfigured)", span: span } },
                       span: span,
@@ -5330,7 +5318,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
           let tier2b = infer_tier2b_builtin_with_kernel_diags(func_name: func_name, typed_args: typed_args, scope: scope, span: span)
           let bt = tier2b.bt
           let call_semantics = if func_name == "lookup" {
-            Present { value: LookupCallSemantics { target: RuntimePrimitiveCall { primitive_name: func_name } } }
+            Present { value: LookupCallSemantics { target: RuntimePrimitiveCall { primitive_name: func_name, projected_from: none } } }
           } else {
             Present { value: PlainCallSemantics { target: resolved_plain_call_target(func_name: func_name, sig_lookup: call_sig_lookup) } }
           }

@@ -309,6 +309,20 @@ pub fn string_length(s: &str) -> i64 {
     }
 }
 
+/// The two symbol bridges. `Symbol` is declared to realize as `String` on this target
+/// (extdeps.languages.rust.types), so interning and its inverse are both the identity
+/// HERE and nowhere else: a target whose Symbol is a table index needs a real table, and
+/// its registry rows would say so. These exist because the .dag declarations are
+/// self-calls -- host seams -- and emitting a self-call produces a function that compiles
+/// and never returns (std.primitive_projection symbol_lexeme_seam_disposition_note).
+pub fn symbol_lexeme(sym: String) -> String {
+    sym
+}
+
+pub fn symbol_intern_lexeme(lexeme: String) -> String {
+    lexeme
+}
+
 /// See `char_at`: the ASCII fast path is bounded by `end`, not by the whole string.
 pub fn substring(s: &str, start: i64, end: i64) -> String {
     let start = start.max(0) as usize;

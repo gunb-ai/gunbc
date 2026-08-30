@@ -173,12 +173,15 @@ pub use crate::v1_compiler_infer_types::{
     template_return_is_receiver_self,
 };
 pub use crate::v1_compiler_resolve::{ModuleGraph, ResolvedImport, ResolvedModule};
-pub use crate::v1_compiler_type_head_exposure::type_declaration_identity_key;
 use crate::v1_compiler_type_head_exposure::TypeHeadExposure::{
     ExposedTypeHead, MalformedApplicationHead, OpaqueTypeHead, StuckTypeHead,
 };
 use crate::v1_compiler_type_head_exposure::TypeHeadView::{
     ApplicationHead, CallableHead, CoproductHead, KernelScalarHead, ProductHead,
+};
+pub use crate::v1_compiler_type_head_exposure::{
+    type_declaration_identity_key, type_head_exposure_is_coproduct,
+    type_head_exposure_is_kernel_scalar, type_head_exposure_is_product,
 };
 pub use crate::v1_compiler_type_head_exposure::{TypeHeadExposure, TypeHeadView};
 use crate::v1_rt;
@@ -3901,18 +3904,11 @@ pub fn record_at_scalar_needs_identity(
     produced: Rc<Node>,
     scope: Rc<InferScope>,
 ) -> bool {
-    {
-        let declared_shape = crate::v1_compiler_infer_types::node_type_shape(
-            declared.clone(),
-            scope.type_env.clone().source_indices.clone(),
-        );
-        let produced_shape = crate::v1_compiler_infer_types::node_type_shape(
-            produced.clone(),
-            scope.type_env.clone().source_indices.clone(),
-        );
-        (v1_rt::starts_with(declared_shape.clone(), "Primitive(".to_string())
-            && v1_rt::starts_with(produced_shape.clone(), "Product(".to_string()))
-    }
+    (crate::v1_compiler_type_head_exposure::type_head_exposure_is_kernel_scalar(
+        expected_type_head_exposure(declared.clone(), scope.clone()),
+    ) && crate::v1_compiler_type_head_exposure::type_head_exposure_is_product(
+        expected_type_head_exposure(produced.clone(), scope.clone()),
+    ))
 }
 
 pub fn coproduct_at_record_declared_type(
@@ -3929,55 +3925,8 @@ pub fn coproduct_at_record_declared_type(
             scope.type_env.clone().source_indices.clone(),
             produced.clone(),
         );
-        let declared_head_is_product = match v1_rt::map_get(
-            &scope
-                .type_env
-                .clone()
-                .symbol_index
-                .clone()
-                .type_head_exposures
-                .clone(),
-            type_reference_identity(
-                declared.clone(),
-                scope.type_env.clone().source_indices.clone(),
-            ),
-        )
-        .as_deref()
-        .cloned()
-        {
-            Some(TypeHeadExposure::ExposedTypeHead { ref view, .. })
-                if matches!(view.as_ref(), TypeHeadView::ProductHead { .. }) =>
-            {
-                let TypeHeadView::ProductHead {
-                    type_identity: _, ..
-                } = view.as_ref()
-                else {
-                    unreachable!()
-                };
-                true
-            }
-            None => false,
-            _ => false,
-        };
-        let produced_identity = type_reference_identity(
-            produced.clone(),
-            scope.type_env.clone().source_indices.clone(),
-        );
-        let produced_head = match v1_rt::map_get(
-            &scope
-                .type_env
-                .clone()
-                .symbol_index
-                .clone()
-                .type_head_exposures
-                .clone(),
-            produced_identity.clone(),
-        ) {
-            Some(head) => head.clone(),
-            None => Rc::new(TypeHeadExposure::StuckTypeHead {
-                cause: "produced declaration identity absent from head census".to_string(),
-            }),
-        };
+        let declared_head = expected_type_head_exposure(declared.clone(), scope.clone());
+        let produced_head = expected_type_head_exposure(produced.clone(), scope.clone());
         if (application_type_names_compatible(
             declared_name.clone(),
             produced_name.clone(),
@@ -3991,21 +3940,11 @@ pub fn coproduct_at_record_declared_type(
         )) {
             false
         } else {
-            (declared_head_is_product.clone()
-                && match (*produced_head.clone()).clone() {
-                    TypeHeadExposure::ExposedTypeHead { ref view, .. }
-                        if matches!(view.as_ref(), TypeHeadView::CoproductHead { .. }) =>
-                    {
-                        let TypeHeadView::CoproductHead {
-                            type_identity: _, ..
-                        } = view.as_ref()
-                        else {
-                            unreachable!()
-                        };
-                        true
-                    }
-                    _ => false,
-                })
+            (crate::v1_compiler_type_head_exposure::type_head_exposure_is_product(
+                declared_head.clone(),
+            ) && crate::v1_compiler_type_head_exposure::type_head_exposure_is_coproduct(
+                produced_head.clone(),
+            ))
         }
     }
 }
@@ -8623,6 +8562,7 @@ crate::v1_compiler_infer_types::resolve_type_variables_from_template(t.clone(), 
     call_semantics: Some(Rc::new(CallSemantics::PlainCallSemantics {
     target: Rc::new(CallTargetIdentity::RuntimePrimitiveCall {
     primitive_name: "empty_map".to_string(),
+    projected_from: None,
 }),
 })),
     descent_evidence: None,
@@ -8640,6 +8580,7 @@ match bare_m.clone() {
     call_semantics: Some(Rc::new(CallSemantics::PlainCallSemantics {
     target: Rc::new(CallTargetIdentity::RuntimePrimitiveCall {
     primitive_name: "empty_map".to_string(),
+    projected_from: None,
 }),
 })),
     descent_evidence: None,
@@ -8653,6 +8594,7 @@ match bare_m.clone() {
     call_semantics: Some(Rc::new(CallSemantics::PlainCallSemantics {
     target: Rc::new(CallTargetIdentity::RuntimePrimitiveCall {
     primitive_name: "empty_map".to_string(),
+    projected_from: None,
 }),
 })),
     descent_evidence: None,
@@ -8671,6 +8613,7 @@ match bare_m.clone() {
     call_semantics: Some(Rc::new(CallSemantics::PlainCallSemantics {
     target: Rc::new(CallTargetIdentity::RuntimePrimitiveCall {
     primitive_name: "empty_map".to_string(),
+    projected_from: None,
 }),
 })),
     descent_evidence: None,
@@ -8684,6 +8627,7 @@ match bare_m.clone() {
     call_semantics: Some(Rc::new(CallSemantics::PlainCallSemantics {
     target: Rc::new(CallTargetIdentity::RuntimePrimitiveCall {
     primitive_name: "empty_map".to_string(),
+    projected_from: None,
 }),
 })),
     descent_evidence: None,
@@ -8781,6 +8725,7 @@ let call_semantics = if (func_name.clone() == "lookup".to_string()) {
                                             Some(Rc::new(CallSemantics::LookupCallSemantics {
     target: Rc::new(CallTargetIdentity::RuntimePrimitiveCall {
     primitive_name: func_name.clone(),
+    projected_from: None,
 }),
 }))
                                         } else {

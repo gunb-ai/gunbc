@@ -1037,21 +1037,16 @@ test fn witness_fabric_cell_unreadable_population_is_not_an_empty_one() -> Bool 
 
 // EVERY WAY THIS FAMILY CAN FAIL IS TYPED AND COUNTED, AND "NO WORK" IS NEVER ONE OF THEM.
 //
-// Three states, three counts, and the middle one is the finding that produced this row's second
-// half (review 55284 follow-up). An unread host refuses once. A converged host owes nothing and
-// counts zero. An observed-empty host owes THREE resources and no realizer exists, so it counts
-// three REFUSED-REALIZATION lines rather than three ADD lines -- because an ADD line the apply shell
-// only comments out is work reported as due against a plan that will not do it, and the refusal
-// count was zero for exactly that case before this change. A family answering adds in every case
-// would provision over a host it could not see; one answering nothing would skip a host that needs
-// provisioning; one answering clean ADDs it cannot perform is the fabricated plausible output at the
-// actuation seam.
-// THE COUNTS HERE WERE 1 AND ARE NOW 3, AND THE OLD NUMBER WAS THE DEFECT WRITTEN DOWN AS THE
-// CONTRACT. An unread srv3 host blocks THREE addresses -- cell-root, attempt-root and
-// resource-boundary -- and the plan surface used to collapse them into one generic sentence and
-// report a refusal count of 1 no matter how many were blocked. This row passed throughout, because
-// it asserted the collapsed number. A row that pins a count can only be as good as the count it
-// pins, and a count that cannot vary with the population is not measuring the population.
+// Three states, three counts. An unread host refuses once. A converged host owes nothing and
+// counts zero. An observed-empty host owes THREE resources, and its count MOVED 3 -> 0 when the
+// realizer landed: those three used to be REFUSED-REALIZATION lines because an ADD the apply shell
+// only comments out is work reported as due against a plan that will not do it, and now they are
+// three REALIZE lines the apply shell executes, so they are planned work rather than refusals and
+// the terminal may reach FullyApplied. Genuinely unrealizable work still counts -- the drift row
+// below keeps a nonzero refusal beside these zeros, so a count that fails toward zero cannot pass
+// here unnoticed. A family answering adds in every case would provision over a host it could not
+// see; one answering nothing would skip a host that needs provisioning; one claiming refusals for
+// work it can perform would never report convergence.
 test fn witness_fabric_cell_refusal_is_rendered_and_counted_not_silent() -> Bool {
   let refused_lines = fleet_converge_fabric_cell_lines(
     host: "srv3" as NonEmptyStr,
@@ -1062,7 +1057,7 @@ test fn witness_fabric_cell_refusal_is_rendered_and_counted_not_silent() -> Bool
     observed_fabric_cells: fabric_cells_observed_empty(),
   )
   list_length(items: refused_lines) == 1
-    && list_length(items: empty_lines) == 2
+    && list_length(items: empty_lines) == 3
     && fleet_converge_fabric_cell_refusal_count(
         host: "srv3" as NonEmptyStr,
         observed_fabric_cells: fabric_cell_observation_unobserved(host: operator_host_srv3),
@@ -1074,7 +1069,7 @@ test fn witness_fabric_cell_refusal_is_rendered_and_counted_not_silent() -> Bool
     && fleet_converge_fabric_cell_refusal_count(
         host: "srv3" as NonEmptyStr,
         observed_fabric_cells: fabric_cells_observed_empty(),
-      ) == 3
+      ) == 0
 }
 
 // A CONVERGED CELL PRODUCES NO ACTION. Without this row the family could be answering "add
@@ -1292,6 +1287,16 @@ fn fabric_cell_readback_boundary_absent() -> FabricCellReadback {
   }
 }
 
+// THE BOUNDARY'S REALIZE LINE, BUILT FORWARD FROM THE SAME AUTHORITIES THE RENDERER READS, so the
+// row does not hardcode a spelling the slice-name authority already owns.
+fn fabric_boundary_realize_line() -> String {
+  join([
+    "REALIZE fabric-cell ensure-slice ",
+    fabric_cell_slice_name(slot: fabric_witness_slot()),
+    " directives=5",
+  ], "")
+}
+
 test fn witness_fabric_cell_drifted_address_plans_change_and_never_add() -> Bool {
   let lines = fleet_converge_fabric_cell_lines(
     host: "srv3" as NonEmptyStr,
@@ -1304,19 +1309,28 @@ test fn witness_fabric_cell_drifted_address_plans_change_and_never_add() -> Bool
       ) == 1
     && fabric_cell_line_occurrences(
         lines: lines,
-        target: "REFUSED-REALIZATION fabric-cell resource-boundary boundary directives unmodeled in extdeps.systemd.unit_file: MemorySwapMax (byte magnitude; inside gunbc.systemd_directive_value_grain scope); TasksMax (count or infinity; unscoped); CPUWeight (bounded weight; unscoped)",
+        target: fabric_boundary_realize_line(),
       ) == 0
+    && fleet_converge_fabric_cell_refusal_count(
+        host: "srv3" as NonEmptyStr,
+        observed_fabric_cells: admit_fabric_cell_probe(probe: fabric_probe_boundary_drifted()),
+      ) == 1
 }
 
+// THE FLIPPED HALF OF THE PAIR (DESIGN 4b(4)). This row used to assert that an absent boundary's
+// ADD refuses on the directive-vocabulary gap; that premise went stale when the slice directive
+// mints landed, and the realizer now answers an absent boundary with an executable ensure. The row
+// keeps its original discrimination -- an absent address is an ADD-shaped remedy and NEVER a change
+// -- and gains the positive control that the remedy is realized rather than refused.
 test fn witness_fabric_cell_absent_address_plans_add_and_never_change() -> Bool {
   let lines = fleet_converge_fabric_cell_lines(
     host: "srv3" as NonEmptyStr,
     observed_fabric_cells: admit_fabric_cell_probe(probe: fabric_probe_boundary_absent()),
   )
-  list_length(items: lines) == 2
+  list_length(items: lines) == 1
     && fabric_cell_line_occurrences(
         lines: lines,
-        target: "REFUSED-REALIZATION fabric-cell resource-boundary boundary directives unmodeled in extdeps.systemd.unit_file: MemorySwapMax (byte magnitude; inside gunbc.systemd_directive_value_grain scope); TasksMax (count or infinity; unscoped); CPUWeight (bounded weight; unscoped)",
+        target: fabric_boundary_realize_line(),
       ) == 1
     && fabric_cell_line_occurrences(
         lines: lines,
