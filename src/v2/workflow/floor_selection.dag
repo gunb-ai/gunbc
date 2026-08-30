@@ -1,0 +1,447 @@
+module v2.workflow.floor_selection
+
+import v2.std.algebra { Cons, Empty, any, filter, list_map }
+import v2.std.collection { List }
+import v2.std.logic { Bool }
+import v2.std.text { String }
+import v2.std.integer { Int, int_sub }
+
+// THE CHANGE-DENOMINATED REQUIRED FLOOR: which claims a required run owes, DERIVED FROM THE
+// CHANGE rather than from a constant roster.
+//
+// WHAT THIS REPLACES. `v2.workflow.required_floor` `required_gate_prefixes` is a constant an
+// operator signed under the 2026-08-29 CI bankruptcy, and its own header says so: "a selection
+// derives the population from the change; this roster is a constant". That constant is a
+// DECLARED RUNG DROP (`gunbc.rung_drop` `required_gate_bankruptcy`), whose restoration trigger
+// names the CAPABILITY of "a required run whose population is DERIVED from the change ...
+// executing on the required path with the whole corpus as its universe". This module is that
+// derivation's authority. It does not retire the drop by existing: the drop retires when the
+// derived population executes on the required path over the whole corpus, and this module is
+// one of the two halves that capability needs (the other is preparation over the selected
+// closure rather than over a prefix roster).
+//
+// THE DENOMINATOR IS THE CHANGE, NOT THE CORPUS, and that is the whole cost claim. A run that
+// re-executes ~2,900 claims regardless of the diff is denominated in the corpus, so its wall
+// clock grows with the repository and never with the edit; the drop above was declared because
+// that run reached 87 wall minutes against ~50 squash-merges a day.
+//
+// THE FAILURE ARM REFUSES, IT DOES NOT WIDEN (DESIGN section 5, the absorbing fallback). When
+// the change cannot be located -- an edited path that names no module, a diff that cannot be
+// observed, an edge index that cannot be read -- the answer is `SelectionUnlocatable` and the
+// run REFUSES. It does not fall back to `FullRoster`. "Run everything" and "the selection could
+// not answer" are different states, and collapsing them destroys the only signal that the
+// locator has a deficit, so the deficit never ranks for fixing. This is the same refusal
+// `gunbc.regen_affected_set` `EditedSetUnlocatable` makes over the same edge index, and it is
+// deliberately the same shape: one concept, one authority, two consumers.
+//
+// `FullRoster` IS A POLICY ARM, NOT A FALLBACK ARM, and the distinction is what keeps this
+// module out of the trap it just named. Nothing selects `FullRoster` because a derivation was
+// uncertain; it is selected by the RUN MODE, decided before the run reads anything -- a trunk
+// push, a scheduled run and a local run with no diff baseline all execute the whole roster as
+// the CONTROL against which a selected run's soundness is measured. A selected run is a
+// prediction; the control is what can falsify it.
+
+// WHICH RUN THIS IS. The mode is an input the caller holds before any observation, never a
+// conclusion drawn from one, which is what makes `FullRoster` a policy and not a degradation.
+type FloorRunMode =
+    PullRequestRun
+  | TrunkPush
+  | ScheduledControl
+  | LocalRunWithoutDiffBaseline
+
+// WHY A RUN EXECUTES THE WHOLE ROSTER. Carried as an arm rather than as a `String` so a reader
+// of a `FullRoster` receipt can never confuse "this is the control" with "the selection gave up"
+// -- there is no arm here for the second, because the second is `SelectionUnlocatable`.
+type FullRosterReason =
+    TrunkControl
+  | ScheduledControlCadence
+  | NoDiffBaseline
+
+// THE REFUSAL'S CAUSES, each naming what could not be located rather than a severity.
+type SelectionUnlocatableCause =
+    EditedPathsUnlocatable { paths: List<String> }
+  | DiffObservationFailed { detail: String }
+  | EdgeIndexUnreadable { detail: String }
+
+// ONE CLAIM'S SUBJECT CLOSURE -- the modules its execution touches. Derived from the same
+// `both_closure_edge_index` the regen affected set reads in reverse; a claim whose closure is
+// NOT derivable is not silently dropped and not silently kept: it is SELECTED, and the receipt
+// says which arm selected it.
+type ClaimSubjectClosure =
+    SubjectClosure { modules: List<String> }
+  | SubjectClosureNotDerivable { detail: String }
+
+// WHY ONE CLAIM IS OR IS NOT IN THE SELECTED POPULATION.
+//
+// THE SOUNDNESS ARGUMENT LIVES IN THIS COPRODUCT AND NOWHERE ELSE. The claim being made is:
+// a claim that lands on `NotSelected` is one whose verdict CANNOT depend on this diff. It holds
+// exactly because every way that implication can fail is one of the four selecting arms:
+//
+//   1. the claim's own declaration changed              -> SelectedAsChangedWitness
+//   2. a module in its subject closure changed          -> SelectedByAffectedSubject
+//   3. its subject closure is not derivable, so premise -> SelectedClosureNotDerivable
+//      (2) cannot be evaluated at all
+//   4. its evaluation reads state OUTSIDE its closure   -> SelectedReadsLiveTree
+//      (the live tree, host effects), so premise (2)
+//      does not bound what it can observe
+//
+// `NotSelected` therefore means all four are false: the declaration is unchanged, the closure is
+// derivable and disjoint from the affected set, and the evaluation is bounded by that closure.
+// A fifth way for the implication to fail must be authored as a fifth arm here, where every
+// consumer's match stops compiling, rather than absorbed into `NotSelected`.
+//
+// THE RESIDUAL IS DECLARED AND IS NOT CLAIMED CLOSED. Arm 4 rests on `v2.std.live_tree`
+// `live_tree_disposition`, whose own authority records that a row declaring `SubstrateInputsOnly`
+// while actually reading live state "is re-checked by nothing at all" -- the nightly falsifier
+// that used to catch a lying stamp died with the 2026-08-15 floor cut. So the selection is sound
+// GIVEN truthful dispositions, and the enforcement of that premise is a named gap, not a
+// property of this module. `floor_selection_residual` below carries it as data rather than as
+// prose a check cannot read, and the FullRoster control is what would surface a lying stamp as a
+// verdict divergence.
+type ClaimSelectionStanding =
+    SelectedAsChangedWitness
+  | SelectedByAffectedSubject { module_path: String }
+  | SelectedClosureNotDerivable { detail: String }
+  | SelectedReadsLiveTree
+  | NotSelected
+
+// THE DECLARED RESIDUAL OF ARM 4, at the grain the ladder asks for: what is assumed, what would
+// falsify it, and what would close it.
+type FloorSelectionResidual {
+  assumption: String
+  falsifier: String
+  closing_capability: String
+}
+
+data floor_selection_residual: FloorSelectionResidual = FloorSelectionResidual {
+  assumption: "every claim whose evaluation reads state outside its resolved import closure declares `data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree` in its entry file",
+  falsifier: "a FullRoster control run whose verdict for a claim differs from the immediately preceding selected run's inherited verdict, with that claim absent from the selected population -- `floor_selection_soundness` SelectionUnderSelected",
+  closing_capability: "call-reachability live-read classification (import-closure walk over a LiveReadCarrier registry plus fn-arrow DependencyView over lowered bodies), per docs/plans/live-read-witness-classification-design.md -- which makes a lying disposition row derivable rather than merely declared"
+}
+
+// ONE ROW OF THE SELECTION INPUT: the facts the run already holds about one rostered claim.
+type ClaimSelectionRow {
+  identity: String
+  module_path: String
+  closure: ClaimSubjectClosure
+  reads_live_tree: Bool
+}
+
+fn floor_selection_list_has(items: List<String>, item: String) -> Bool {
+  any(xs: items, predicate: fn(x) { x == item })
+}
+
+// THE FIRST AFFECTED MODULE IN A CLOSURE, so the standing can NAME the module that selected the
+// claim rather than asserting the intersection is non-empty. A receipt that says which module
+// pulled a claim in is one a reader can check; a boolean is one they must take on faith.
+type ClosureAffectedMatch =
+    ClosureAffectedNone
+  | ClosureAffectedBy { module_path: String }
+
+fn first_affected_module(closure_modules: List<String>, affected: List<String>) -> ClosureAffectedMatch {
+  match closure_modules {
+    Empty {} => ClosureAffectedNone {}
+    Cons { head: h, tail: t } =>
+      if floor_selection_list_has(items: affected, item: h) {
+        ClosureAffectedBy { module_path: h }
+      } else {
+        first_affected_module(closure_modules: t, affected: affected)
+      }
+  }
+}
+
+// THE PER-CLAIM FOLD. The arm order is the argument's order and is load-bearing: a changed
+// witness is selected for being changed even if its closure is also affected, because the
+// changed-witness sublane (`v2.workflow.floor_changed_witness`) judges those identities at a
+// different grain and its projection must not be told they arrived by a subject match.
+//
+// A claim's OWN module is part of its subject closure by construction; callers pass the closure
+// including it, so an edit to the witness module itself reaches arm 2 even when the edit touched
+// no `test fn` (a changed `data` row, a changed helper) and therefore produced no changed-witness
+// identity.
+fn claim_selection_standing(
+  row: ClaimSelectionRow,
+  changed_witnesses: List<String>,
+  affected_modules: List<String>,
+) -> ClaimSelectionStanding {
+  if floor_selection_list_has(items: changed_witnesses, item: row.identity) {
+    SelectedAsChangedWitness {}
+  } else {
+    if row.reads_live_tree {
+      SelectedReadsLiveTree {}
+    } else {
+      match row.closure {
+        SubjectClosureNotDerivable { detail: d } => SelectedClosureNotDerivable { detail: d }
+        SubjectClosure { modules: ms } =>
+          match first_affected_module(closure_modules: ms, affected: affected_modules) {
+            ClosureAffectedBy { module_path: m } => SelectedByAffectedSubject { module_path: m }
+            ClosureAffectedNone => NotSelected {}
+          }
+      }
+    }
+  }
+}
+
+// THE BLOCKING POLARITY OF ONE STANDING, in the sense the floor consumes: does this claim
+// EXECUTE. Four arms execute and one withholds; the five are spelled so a sixth must be
+// classified.
+fn claim_selection_standing_selects(standing: ClaimSelectionStanding) -> Bool {
+  match standing {
+    SelectedAsChangedWitness => true
+    SelectedByAffectedSubject { module_path: _ } => true
+    SelectedClosureNotDerivable { detail: _ } => true
+    SelectedReadsLiveTree => true
+    NotSelected => false
+  }
+}
+
+// WHAT THE SELECTION WAS DERIVED FROM. Carried on the `Selected` arm so a receipt naming a
+// population also names the two inputs that produced it -- a selected population without its
+// basis is a number nobody can re-derive.
+type FloorSelectionBasis {
+  changed_witnesses: List<String>
+  affected_modules: List<String>
+}
+
+type FloorSelection =
+    FullRoster { reason: FullRosterReason }
+  | Selected { claims: List<String>, basis: FloorSelectionBasis }
+  | SelectionUnlocatable { cause: SelectionUnlocatableCause }
+
+// WHETHER THE RUN PROCEEDS AT ALL. The refusal is the only arm that stops the line, and it stops
+// it BEFORE execution -- the factory model: the deficit stops the line, the stopped line is
+// analyzed, nothing proceeds on a widened population.
+fn floor_selection_refuses(selection: FloorSelection) -> Bool {
+  match selection {
+    FullRoster { reason: _ } => false
+    Selected { claims: _, basis: _ } => false
+    SelectionUnlocatable { cause: _ } => true
+  }
+}
+
+// THE MODE'S OWN ANSWER, decided before any observation. Only `PullRequestRun` derives.
+type FloorSelectionModeDecision =
+    ModeDerivesFromChange
+  | ModeExecutesFullRoster { reason: FullRosterReason }
+
+fn floor_selection_mode_decision(mode: FloorRunMode) -> FloorSelectionModeDecision {
+  match mode {
+    PullRequestRun => ModeDerivesFromChange {}
+    TrunkPush => ModeExecutesFullRoster { reason: TrunkControl {} }
+    ScheduledControl => ModeExecutesFullRoster { reason: ScheduledControlCadence {} }
+    LocalRunWithoutDiffBaseline => ModeExecutesFullRoster { reason: NoDiffBaseline {} }
+  }
+}
+
+// THE ONE FOLD OVER THE ROSTER. `unlocatable` is the caller's list of edited paths it could not
+// name as a module -- the same input `gunbc.regen_affected_set` takes, from the same locator --
+// and a non-empty list refuses BEFORE the roster is consulted, so an unlocatable change can
+// never be answered with a plausible-looking partial population.
+fn floor_selection_for_run(
+  mode: FloorRunMode,
+  rows: List<ClaimSelectionRow>,
+  changed_witnesses: List<String>,
+  affected_modules: List<String>,
+  unlocatable: List<String>,
+) -> FloorSelection {
+  match floor_selection_mode_decision(mode: mode) {
+    ModeExecutesFullRoster { reason: r } => FullRoster { reason: r }
+    ModeDerivesFromChange =>
+      match unlocatable {
+        Cons { head: _, tail: _ } =>
+          SelectionUnlocatable { cause: EditedPathsUnlocatable { paths: unlocatable } }
+        Empty {} =>
+          Selected {
+            claims: list_map(
+              xs: filter(
+                xs: rows,
+                predicate: fn(row) {
+                  claim_selection_standing_selects(
+                    standing: claim_selection_standing(
+                      row: row,
+                      changed_witnesses: changed_witnesses,
+                      affected_modules: affected_modules
+                    )
+                  )
+                }
+              ),
+              f: fn(row) { row.identity }
+            ),
+            basis: FloorSelectionBasis {
+              changed_witnesses: changed_witnesses,
+              affected_modules: affected_modules
+            }
+          }
+      }
+  }
+}
+
+// THE WITHHELD POPULATION, at identity grain and never as a fraction. DESIGN section 4b: a
+// fraction says how much is unobserved and never WHICH, so it is not a bounded population; the
+// receipt reports the count beside the basis, and this producer names the members for any
+// consumer that needs them.
+fn floor_selection_unselected_identities(
+  rows: List<ClaimSelectionRow>,
+  changed_witnesses: List<String>,
+  affected_modules: List<String>,
+) -> List<String> {
+  list_map(
+    xs: filter(
+      xs: rows,
+      predicate: fn(row) {
+        !claim_selection_standing_selects(
+          standing: claim_selection_standing(
+            row: row,
+            changed_witnesses: changed_witnesses,
+            affected_modules: affected_modules
+          )
+        )
+      }
+    ),
+    f: fn(row) { row.identity }
+  )
+}
+
+// ── SOUNDNESS: THE CONTROL FALSIFIES THE PREDICTION ──────────────────────────────────────────
+//
+// A selected run PREDICTS that the withheld claims' verdicts cannot have changed. The FullRoster
+// control EXECUTES them. Joining the two at identity grain turns the prediction into a checkable
+// claim: a claim whose verdict differs from the verdict the selected run inherited for it, and
+// which the selection withheld, is a PROVEN under-selection -- the selection missed a real
+// dependency, and that is the discriminating RED this mechanism owes.
+//
+// THE DIRECTION MATTERS AND ONLY ONE DIRECTION IS A DEFECT. Over-selection (a claim executed
+// whose verdict did not change) costs wall clock and is not unsound. Under-selection is silent
+// wrongness -- a regression merged behind a green context -- so it, and not the count, is what
+// this check answers.
+type ClaimVerdictDelta {
+  identity: String
+  verdict_changed: Bool
+}
+
+// THE JOIN'S SUBJECT MUST BE ONE TREE, AND THAT IS A PRECONDITION RATHER THAN A CAVEAT. A
+// selected run and a control run taken over DIFFERENT trees measure drift between the trees, not
+// under-selection by the selection -- every verdict that moved for an unrelated reason arrives as
+// a missing identity, and the check would red for a defect it cannot see and green for one it can.
+// So the two runs carry their tree identity and the join REFUSES when they differ. "Run the
+// control on main afterwards" is exactly the shape this arm forbids.
+type SoundnessSubject {
+  selected_tree: String
+  control_tree: String
+}
+
+type FloorSelectionSoundness =
+    SelectionSound { checked: Int }
+  | SelectionUnderSelected { missing: List<String> }
+  | SoundnessNotEstablished { detail: String }
+  | SoundnessSubjectDivergent { selected_tree: String, control_tree: String }
+
+// `SoundnessNotEstablished` IS NOT A PASS AND IS NOT A FAILURE. It is what a run that executed
+// the whole roster, or refused, can honestly say: there was no prediction to falsify. Reporting
+// it as sound would be the rung inflation DESIGN section 4b names -- citing a check that never
+// ran as coverage.
+fn floor_selection_soundness(
+  selection: FloorSelection,
+  subject: SoundnessSubject,
+  deltas: List<ClaimVerdictDelta>,
+) -> FloorSelectionSoundness {
+  if subject.selected_tree != subject.control_tree {
+    SoundnessSubjectDivergent {
+      selected_tree: subject.selected_tree,
+      control_tree: subject.control_tree
+    }
+  } else {
+  match selection {
+    FullRoster { reason: _ } =>
+      SoundnessNotEstablished { detail: "the control run has no selected population to falsify" }
+    SelectionUnlocatable { cause: _ } =>
+      SoundnessNotEstablished { detail: "the run refused before selecting, so no prediction was made" }
+    Selected { claims: cs, basis: _ } => {
+      let missing = list_map(
+        xs: filter(
+          xs: deltas,
+          predicate: fn(d) { d.verdict_changed && !floor_selection_list_has(items: cs, item: d.identity) }
+        ),
+        f: fn(d) { d.identity }
+      )
+      match missing {
+        Cons { head: _, tail: _ } => SelectionUnderSelected { missing: missing }
+        Empty {} => SelectionSound { checked: count(deltas) }
+      }
+    }
+  }
+  }
+}
+
+fn floor_selection_soundness_blocks(soundness: FloorSelectionSoundness) -> Bool {
+  match soundness {
+    SelectionSound { checked: _ } => false
+    SelectionUnderSelected { missing: _ } => true
+    SoundnessNotEstablished { detail: _ } => false
+    SoundnessSubjectDivergent { selected_tree: _, control_tree: _ } => true
+  }
+}
+
+// ── THE RECEIPT ──────────────────────────────────────────────────────────────────────────────
+//
+// ONE SUMMARY LINE, rendered from the arm's own fields. The instrument is named by the line
+// itself (`required-floor-selection:`), so a measurement of what selection bought is re-derived
+// by re-running the floor, never transcribed into prose that rots (DESIGN section 6).
+
+fn full_roster_reason_wire(reason: FullRosterReason) -> String {
+  match reason {
+    TrunkControl => "trunk-control"
+    ScheduledControlCadence => "scheduled-control"
+    NoDiffBaseline => "no-diff-baseline"
+  }
+}
+
+fn selection_unlocatable_cause_wire(cause: SelectionUnlocatableCause) -> String {
+  match cause {
+    EditedPathsUnlocatable { paths: p } => concat("edited-paths-unlocatable paths=", to_string(count(p)))
+    DiffObservationFailed { detail: d } => concat("diff-observation-failed detail=", d)
+    EdgeIndexUnreadable { detail: d } => concat("edge-index-unreadable detail=", d)
+  }
+}
+
+fn floor_selection_receipt_line(selection: FloorSelection, roster_size: Int) -> String {
+  match selection {
+    FullRoster { reason: r } =>
+      concat(
+        concat("required-floor-selection: FullRoster reason=", full_roster_reason_wire(reason: r)),
+        concat(" roster=", to_string(roster_size))
+      )
+    Selected { claims: cs, basis: b } =>
+      concat(
+        concat(
+          concat("required-floor-selection: Selected selected=", to_string(count(cs))),
+          concat(" unselected=", to_string(int_sub(a: roster_size, b: count(cs))))
+        ),
+        concat(
+          concat(" roster=", to_string(roster_size)),
+          concat(
+            concat(" basis_changed_witnesses=", to_string(count(b.changed_witnesses))),
+            concat(" basis_affected_modules=", to_string(count(b.affected_modules)))
+          )
+        )
+      )
+    SelectionUnlocatable { cause: c } =>
+      concat("required-floor-selection: SelectionUnlocatable ", selection_unlocatable_cause_wire(cause: c))
+  }
+}
+
+fn floor_selection_soundness_line(soundness: FloorSelectionSoundness) -> String {
+  match soundness {
+    SelectionSound { checked: n } =>
+      concat("required-floor-selection: SelectionSound checked=", to_string(n))
+    SelectionUnderSelected { missing: m } =>
+      concat("required-floor-selection: SelectionUnderSelected missing=", to_string(count(m)))
+    SoundnessNotEstablished { detail: d } =>
+      concat("required-floor-selection: SoundnessNotEstablished detail=", d)
+    SoundnessSubjectDivergent { selected_tree: s, control_tree: c } =>
+      concat(
+        concat("required-floor-selection: SoundnessSubjectDivergent selected_tree=", s),
+        concat(" control_tree=", c)
+      )
+  }
+}

@@ -1,0 +1,328 @@
+module v2.test.floor_selection
+
+import v2.workflow.floor_selection {
+  FloorRunMode, PullRequestRun, TrunkPush, ScheduledControl, LocalRunWithoutDiffBaseline,
+  FullRosterReason, TrunkControl, ScheduledControlCadence, NoDiffBaseline,
+  SelectionUnlocatableCause, EditedPathsUnlocatable, DiffObservationFailed, EdgeIndexUnreadable,
+  ClaimSubjectClosure, SubjectClosure, SubjectClosureNotDerivable,
+  ClaimSelectionStanding, SelectedAsChangedWitness, SelectedByAffectedSubject,
+  SelectedClosureNotDerivable, SelectedReadsLiveTree, NotSelected,
+  ClaimSelectionRow, FloorSelectionBasis,
+  FloorSelection, FullRoster, Selected, SelectionUnlocatable,
+  ClaimVerdictDelta, SoundnessSubject,
+  FloorSelectionSoundness, SelectionSound, SelectionUnderSelected, SoundnessNotEstablished,
+  SoundnessSubjectDivergent,
+  claim_selection_standing, claim_selection_standing_selects,
+  floor_selection_for_run, floor_selection_refuses, floor_selection_unselected_identities,
+  floor_selection_soundness, floor_selection_soundness_blocks,
+  floor_selection_receipt_line,
+}
+import v2.std.algebra { Cons, Empty, any, all }
+import v2.std.collection { List }
+import v2.std.logic { Bool }
+import v2.std.text { String }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+// Every fixture below is authored in this source; the module reaches nothing outside the
+// substrate inputs.
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE FIXTURE ROSTER. Four claims over a graph small enough to read:
+//   pure_a   -- closure {test.pure_a, std.a}, substrate inputs only
+//   pure_b   -- closure {test.pure_b, std.b}, substrate inputs only, disjoint from pure_a's
+//   live_c   -- closure {test.live_c, std.b}, but DECLARES it reads the live tree
+//   opaque_d -- closure not derivable
+// The affected set in each case is authored, because deriving it is
+// `gunbc.regen_affected_set`'s reverse closure and re-deriving it here would be a second
+// authority for one walk.
+data fixture_rows: List<ClaimSelectionRow> = [
+  ClaimSelectionRow {
+    identity: "test.pure_a.witness",
+    module_path: "test.pure_a",
+    closure: SubjectClosure { modules: ["test.pure_a", "std.a"] },
+    reads_live_tree: false
+  },
+  ClaimSelectionRow {
+    identity: "test.pure_b.witness",
+    module_path: "test.pure_b",
+    closure: SubjectClosure { modules: ["test.pure_b", "std.b"] },
+    reads_live_tree: false
+  },
+  ClaimSelectionRow {
+    identity: "test.live_c.witness",
+    module_path: "test.live_c",
+    closure: SubjectClosure { modules: ["test.live_c", "std.b"] },
+    reads_live_tree: true
+  },
+  ClaimSelectionRow {
+    identity: "test.opaque_d.witness",
+    module_path: "test.opaque_d",
+    closure: SubjectClosureNotDerivable { detail: "no edge index entry for test.opaque_d" },
+    reads_live_tree: false
+  }
+]
+
+fn same_members(a: List<String>, b: List<String>) -> Bool {
+  count(a) == count(b)
+    && all(xs: a, predicate: fn(x) { any(xs: b, predicate: fn(y) { y == x }) })
+}
+
+fn selected_claims(selection: FloorSelection) -> List<String> {
+  match selection {
+    FullRoster { reason: _ } => []
+    Selected { claims: cs, basis: _ } => cs
+    SelectionUnlocatable { cause: _ } => []
+  }
+}
+
+fn pr_selection(changed_witnesses: List<String>, affected_modules: List<String>) -> FloorSelection {
+  floor_selection_for_run(
+    mode: PullRequestRun {},
+    rows: fixture_rows,
+    changed_witnesses: changed_witnesses,
+    affected_modules: affected_modules,
+    unlocatable: []
+  )
+}
+
+fn standing_of(row: ClaimSelectionRow, changed: List<String>, affected: List<String>) -> ClaimSelectionStanding {
+  claim_selection_standing(row: row, changed_witnesses: changed, affected_modules: affected)
+}
+
+fn one_tree() -> SoundnessSubject {
+  SoundnessSubject { selected_tree: "abc123", control_tree: "abc123" }
+}
+
+// ── DELIVERABLE 3, FALSIFIER 3: a single-module edit selects a STRICT SUBSET, by identity ────
+//
+// std.a changed, so its reverse closure is {std.a, test.pure_a}. The expected members are named
+// one by one rather than counted: a count equality would pass on the wrong four.
+//
+// pure_a is in because std.a is in its closure. live_c is in DESPITE being disjoint from the
+// affected set, because it reads the live tree and its closure therefore does not bound what it
+// observes. opaque_d is in because its closure is not derivable, so the disjointness premise
+// cannot be evaluated for it at all. Only pure_b -- derivable, disjoint, substrate-bounded -- is
+// withheld, and that is the exact shape of the soundness argument.
+test fn a_single_module_edit_selects_a_strict_subset_by_identity() -> Bool {
+  same_members(
+    a: selected_claims(selection: pr_selection(changed_witnesses: [], affected_modules: ["std.a", "test.pure_a"])),
+    b: ["test.pure_a.witness", "test.live_c.witness", "test.opaque_d.witness"]
+  )
+}
+
+// The withheld side is reported at identity grain, never as a fraction (DESIGN section 4b: a
+// fraction says how much is unobserved and never which).
+test fn a_withheld_population_is_named_at_identity_grain() -> Bool {
+  same_members(
+    a: floor_selection_unselected_identities(
+      rows: fixture_rows,
+      changed_witnesses: [],
+      affected_modules: ["std.a", "test.pure_a"]
+    ),
+    b: ["test.pure_b.witness"]
+  )
+}
+
+// THE DISCRIMINATING RED FOR THE SUBSET CLAIM: a selection that returned everything would pass
+// the membership test above only by also containing pure_b. This asserts the complement, so a
+// selection that quietly widened to the roster fails here rather than passing both.
+test fn w_RED_a_disjoint_unchanged_pure_claim_is_not_selected() -> Bool {
+  !any(
+    xs: selected_claims(selection: pr_selection(changed_witnesses: [], affected_modules: ["std.a", "test.pure_a"])),
+    predicate: fn(id) { id == "test.pure_b.witness" }
+  )
+}
+
+// ── THE FOUR SELECTING ARMS, ONE TEST EACH ───────────────────────────────────────────────────
+
+test fn a_a_changed_witness_is_selected_as_changed() -> Bool {
+  match standing_of(
+    row: fixture_rows |> head_or_first(),
+    changed: ["test.pure_a.witness"],
+    affected: []
+  ) {
+    SelectedAsChangedWitness => true
+    SelectedByAffectedSubject { module_path: _ } => false
+    SelectedClosureNotDerivable { detail: _ } => false
+    SelectedReadsLiveTree => false
+    NotSelected => false
+  }
+}
+
+// ── DELIVERABLE 3, FALSIFIER 2: an unlocatable diff REFUSES and does not widen ───────────────
+//
+// This is the absorbing-fallback wall (DESIGN section 5). The assertion is not merely that the
+// arm is SelectionUnlocatable but that the run REFUSES and that the selected population is
+// EMPTY -- a refusal that still handed the floor a population would be the widen wearing a
+// refusal's name.
+test fn a_an_unlocatable_edited_path_refuses_and_selects_nothing() -> Bool {
+  let selection = floor_selection_for_run(
+    mode: PullRequestRun {},
+    rows: fixture_rows,
+    changed_witnesses: [],
+    affected_modules: [],
+    unlocatable: ["dag/departed/gone.dag"]
+  )
+  floor_selection_refuses(selection: selection) && count(selected_claims(selection: selection)) == 0
+}
+
+// THE DISCRIMINATING RED FOR THE REFUSAL: the same call with nothing unlocatable proceeds. Without
+// this control the test above passes for a function that refuses unconditionally.
+test fn w_RED_a_locatable_diff_does_not_refuse() -> Bool {
+  !floor_selection_refuses(selection: pr_selection(changed_witnesses: [], affected_modules: ["std.a"]))
+}
+
+// AND THE REFUSAL IS NOT FullRoster. Stated as its own arm assertion because the failure this
+// guards is precisely a future edit turning the refusal into "run everything to be safe", which
+// would keep the run green and delete the deficit signal.
+test fn a_the_refusal_arm_is_not_the_full_roster_arm() -> Bool {
+  match floor_selection_for_run(
+    mode: PullRequestRun {},
+    rows: fixture_rows,
+    changed_witnesses: [],
+    affected_modules: [],
+    unlocatable: ["dag/departed/gone.dag"]
+  ) {
+    SelectionUnlocatable { cause: _ } => true
+    FullRoster { reason: _ } => false
+    Selected { claims: _, basis: _ } => false
+  }
+}
+
+// ── DELIVERABLE 2: FullRoster is the CONTROL, selected by mode ───────────────────────────────
+
+test fn a_a_trunk_push_executes_the_full_roster_as_the_control() -> Bool {
+  match floor_selection_for_run(
+    mode: TrunkPush {},
+    rows: fixture_rows,
+    changed_witnesses: [],
+    affected_modules: ["std.a"],
+    unlocatable: []
+  ) {
+    FullRoster { reason: r } =>
+      match r {
+        TrunkControl => true
+        ScheduledControlCadence => false
+        NoDiffBaseline => false
+      }
+    Selected { claims: _, basis: _ } => false
+    SelectionUnlocatable { cause: _ } => false
+  }
+}
+
+// A LOCAL RUN WITH NO DIFF BASELINE IS A CONTROL, NOT A DEGRADATION, and the arm says which:
+// NoDiffBaseline is a mode fact known before any observation, never a conclusion drawn from a
+// failed one. A failed observation is DiffObservationFailed under SelectionUnlocatable.
+test fn a_a_local_run_without_a_baseline_is_the_control_not_a_degradation() -> Bool {
+  match floor_selection_for_run(
+    mode: LocalRunWithoutDiffBaseline {},
+    rows: fixture_rows,
+    changed_witnesses: [],
+    affected_modules: [],
+    unlocatable: []
+  ) {
+    FullRoster { reason: r } =>
+      match r {
+        NoDiffBaseline => true
+        TrunkControl => false
+        ScheduledControlCadence => false
+      }
+    Selected { claims: _, basis: _ } => false
+    SelectionUnlocatable { cause: _ } => false
+  }
+}
+
+// ── DELIVERABLE 3, FALSIFIER 1: THE SOUNDNESS RED -- selection UNDER-SELECTED ────────────────
+//
+// The planted edit: the affected set excludes pure_b, so the selected run withholds it -- and the
+// FullRoster control, on the SAME tree, reports pure_b's verdict as changed. That pair is a proof
+// that the selection missed a real dependency, and it is the discriminating RED this whole
+// mechanism owes. Nothing else in this module can go red for under-selection; the subset tests
+// above check membership, not soundness.
+test fn w_RED_a_changed_verdict_outside_the_selection_is_an_under_selection() -> Bool {
+  match floor_selection_soundness(
+    selection: pr_selection(changed_witnesses: [], affected_modules: ["std.a", "test.pure_a"]),
+    subject: one_tree(),
+    deltas: [
+      ClaimVerdictDelta { identity: "test.pure_a.witness", verdict_changed: true },
+      ClaimVerdictDelta { identity: "test.pure_b.witness", verdict_changed: true }
+    ]
+  ) {
+    SelectionUnderSelected { missing: m } => same_members(a: m, b: ["test.pure_b.witness"])
+    SelectionSound { checked: _ } => false
+    SoundnessNotEstablished { detail: _ } => false
+    SoundnessSubjectDivergent { selected_tree: _, control_tree: _ } => false
+  }
+}
+
+// THE POSITIVE CONTROL FOR THE SAME CHECK: every changed verdict inside the selection is sound.
+// Without it the RED above is satisfied by a check that reds on everything.
+test fn a_changed_verdicts_inside_the_selection_are_sound() -> Bool {
+  match floor_selection_soundness(
+    selection: pr_selection(changed_witnesses: [], affected_modules: ["std.a", "test.pure_a"]),
+    subject: one_tree(),
+    deltas: [
+      ClaimVerdictDelta { identity: "test.pure_a.witness", verdict_changed: true },
+      ClaimVerdictDelta { identity: "test.pure_b.witness", verdict_changed: false }
+    ]
+  ) {
+    SelectionSound { checked: n } => n == 2
+    SelectionUnderSelected { missing: _ } => false
+    SoundnessNotEstablished { detail: _ } => false
+    SoundnessSubjectDivergent { selected_tree: _, control_tree: _ } => false
+  }
+}
+
+// OVER-SELECTION IS NOT A DEFECT AND MUST NOT RED. A claim that was executed and whose verdict
+// did not change cost wall clock and hid nothing; a check that reds here would push the next
+// author toward a narrower selection, which is the direction that loses silently.
+test fn a_over_selection_is_not_a_soundness_defect() -> Bool {
+  !floor_selection_soundness_blocks(
+    soundness: floor_selection_soundness(
+      selection: pr_selection(changed_witnesses: [], affected_modules: ["std.a", "test.pure_a"]),
+      subject: one_tree(),
+      deltas: [ClaimVerdictDelta { identity: "test.live_c.witness", verdict_changed: false }]
+    )
+  )
+}
+
+// THE JOIN'S PRECONDITION: two trees, no answer. A control taken on a different tree measures
+// drift between the trees and would report an unrelated verdict move as an under-selection, so
+// the divergence stops the line instead of producing either verdict.
+test fn w_RED_a_control_on_a_different_tree_refuses_the_join() -> Bool {
+  let s = floor_selection_soundness(
+    selection: pr_selection(changed_witnesses: [], affected_modules: ["std.a", "test.pure_a"]),
+    subject: SoundnessSubject { selected_tree: "abc123", control_tree: "def456" },
+    deltas: [ClaimVerdictDelta { identity: "test.pure_b.witness", verdict_changed: true }]
+  )
+  floor_selection_soundness_blocks(soundness: s)
+    && match s {
+      SoundnessSubjectDivergent { selected_tree: _, control_tree: _ } => true
+      SelectionSound { checked: _ } => false
+      SelectionUnderSelected { missing: _ } => false
+      SoundnessNotEstablished { detail: _ } => false
+    }
+}
+
+// A CONTROL RUN REPORTS NOT-ESTABLISHED, NEVER SOUND. Citing a check that never ran as coverage
+// is the rung inflation DESIGN section 4b names.
+test fn a_a_full_roster_run_establishes_no_soundness() -> Bool {
+  match floor_selection_soundness(
+    selection: FullRoster { reason: TrunkControl {} },
+    subject: one_tree(),
+    deltas: [ClaimVerdictDelta { identity: "test.pure_b.witness", verdict_changed: true }]
+  ) {
+    SoundnessNotEstablished { detail: _ } => true
+    SelectionSound { checked: _ } => false
+    SelectionUnderSelected { missing: _ } => false
+    SoundnessSubjectDivergent { selected_tree: _, control_tree: _ } => false
+  }
+}
+
+// ── DELIVERABLE 4: THE RECEIPT NAMES THE BASIS AND THE UNSELECTED COUNT ──────────────────────
+test fn a_the_selected_receipt_names_its_basis_and_the_unselected_count() -> Bool {
+  floor_selection_receipt_line(
+    selection: pr_selection(changed_witnesses: [], affected_modules: ["std.a", "test.pure_a"]),
+    roster_size: 4
+  ) == "required-floor-selection: Selected selected=3 unselected=1 roster=4 basis_changed_witnesses=0 basis_affected_modules=2"
+}
