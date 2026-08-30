@@ -8,7 +8,7 @@ import std.content_hash {
   content_hash_validate_lower_hex_length,
 }
 import extdeps.container.oci.digest { oci_other_digest_algorithm, oci_other_digest_encoded }
-import std.syntax { Add, Eq, Ne, BinOp, LitStr, LiteralValue }
+import std.syntax { Add, Sub, Mul, Div, Mod, Eq, Ne, Lt, Gt, Le, Ge, And, Or, NullCoalesce, BinOp, LitStr, LiteralValue }
 import std.coercion { dag_can_cast, is_dag_cast_domain_type }
 import v1.compiler.type_head_exposure {
   TypeHeadView, KernelScalarHead, ApplicationHead, ProductHead, CoproductHead, CallableHead,
@@ -2209,7 +2209,7 @@ fn exposure_is_application(exposure: TypeHeadExposure) -> Bool {
   }
 }
 
-data equality_admission_wall_note: String = "WALL (DESIGN 5, XL-0E ruling 2026-08-30): equality on function-bearing values is an ACCEPTANCE defect, not an emitter formatting error. Before this wall, infer_binop_type_node answered Eq/Ne with bool_type for EVERY left type and the ExprBinOp arm emitted no diagnostic, so '==' was accepted on types whose equality semantics do not exist -- a record of interpreter functions, a runtime value carrying a closure environment. The interpretation path then answered from a host comparison the emission path cannot realize (rustc E0369: no PartialEq derives for fn-carrying types -- the refusal lived below the floor, in the wrong compiler, in the wrong phase). The admission is derived from the COMPLETE RESOLVED TYPE, never from a leaf spelling: an Arrow refuses; a kernel scalar admits; an algebra-carrier spelling admits or refuses by algebra_profile_equality_extensional -- the declared support-axis consequence in std.algebra, so finite-support carriers (List, Map, Set and their canonical names) lift the question into their type ARGUMENTS while open-support carriers (PartialFunction) refuse outright; a product walks every member and a coproduct walks every arm's members, under a visited set keyed on declaration identity so recursive structural data (Peano Nat: Zero | Succ { prev: Nat }) admits by the coinductive reading; a member that resolves nowhere refuses as EqualityMemberUnjudgeable rather than admitting silently. DELIBERATE BOUNDARIES, stated per rung honesty rather than implied covered: (1) a leaf whose head is OpaqueTypeHead at every authority -- a declared brand like v2.std.node.Symbol, or a generic type parameter -- carries no member this walk can judge and ADMITS at this rung; the admission is instantiation-blind, so a type parameter later bound to a function-bearing type is not caught at the generic declaration site. Next-rung trigger for both: instantiation-grain admission, i.e. judging '==' where type arguments are known, which requires the call-site substitution the checker does not thread to this seam today. (2) '== none' / '!= none' is a PRESENCE test on the optional structure, not member equality, and is exempt before any walk (398 live sites measured 2026-08-30). (3) Lt/Gt/Le/Ge ordering admission is the same defect one operator over and is NOT walled here -- ordering on a function-bearing type still accepts; that class is named rather than silently included. (4) Operands already carrying a compiler error are not judged: the resolution diagnostic owns the site. Cost shape (DESIGN 6): the walk runs only at Eq/Ne sites, kernel and opaque leaves return before any peel, and peel_nominal_alias_identity is reached only for structured or aliased operands (see where_refinement_peel_cost_note for why eager peels at this grain were withdrawn once already)."
+data equality_admission_wall_note: String = "WALL (DESIGN 5, XL-0E ruling 2026-08-30): equality on function-bearing values is an ACCEPTANCE defect, not an emitter formatting error. Before this wall, infer_binop_type_node answered Eq/Ne with bool_type for EVERY left type and the ExprBinOp arm emitted no diagnostic, so '==' was accepted on types whose equality semantics do not exist -- a record of interpreter functions, a runtime value carrying a closure environment. The interpretation path then answered from a host comparison the emission path cannot realize (rustc E0369: no PartialEq derives for fn-carrying types -- the refusal lived below the floor, in the wrong compiler, in the wrong phase). The admission is derived from the COMPLETE RESOLVED TYPE, never from a leaf spelling: an Arrow refuses; a kernel scalar admits; an algebra-carrier spelling admits or refuses by algebra_profile_equality_extensional -- the declared support-axis consequence in std.algebra, so finite-support carriers (List, Map, Set and their canonical names) lift the question into their type ARGUMENTS while open-support carriers (PartialFunction) refuse outright; a product walks every member and a coproduct walks every arm's members, under a visited set keyed on declaration identity so recursive structural data (Peano Nat: Zero | Succ { prev: Nat }) admits by the coinductive reading; a member that resolves nowhere refuses as EqualityMemberUnjudgeable rather than admitting silently. DELIBERATE BOUNDARIES, stated per rung honesty rather than implied covered: (1) a leaf whose head is OpaqueTypeHead at every authority -- a declared brand like v2.std.node.Symbol, or a generic type parameter -- carries no member this walk can judge and ADMITS at this rung; the admission is instantiation-blind, so a type parameter later bound to a function-bearing type is not caught at the generic declaration site. A StuckTypeHead operand (no declaration identity at all) is the same parameter case seen one authority earlier -- measured live at v2.std.collection map_insert's 'candidate == key' over bare K, a load-bearing generic comparison -- and admits under the same boundary rather than refusing on a namelessness that is a property of genericity, not of brokenness. Next-rung trigger for both: instantiation-grain admission, i.e. judging '==' where type arguments are known, which requires the call-site substitution the checker does not thread to this seam today. (2) '== none' / '!= none' is a PRESENCE test on the optional structure, not member equality, and is exempt before any walk (398 live sites measured 2026-08-30). (3) Lt/Gt/Le/Ge ordering admission is the same defect one operator over and is NOT walled here -- ordering on a function-bearing type still accepts; that class is named rather than silently included. (4) Operands already carrying a compiler error are not judged: the resolution diagnostic owns the site. Cost shape (DESIGN 6): the walk runs only at Eq/Ne sites, kernel and opaque leaves return before any peel, and peel_nominal_alias_identity is reached only for structured or aliased operands (see where_refinement_peel_cost_note for why eager peels at this grain were withdrawn once already)."
 
 type EqualityAdmissionRefusal {
   type_name: String
@@ -2247,15 +2247,15 @@ fn equality_operand_admission(n: Node, scope: InferScope, visited: Map<String, B
   } else {
     let peeled = normalize_access_type_node(n: n)
     if peeled.return_cardinality == CardOptional || (peeled.name == "Optional" && (peeled.children |> count) == 1) {
-      equality_operand_admission(n: extract_optional_inner_node(n: peeled), scope: scope, visited: visited, depth: depth + 1)
+      equality_operand_admission(n: extract_optional_inner_node(n: peeled), scope: scope, visited: visited, depth: depth)
     } else {
       let name = authored_name_at(source_indices: source_indices, node: peeled)
       let leaf = qualified_last_segment(name: name)
       let identity = type_reference_identity(n: peeled, source_indices: source_indices)
-      if map_contains_key(visited, identity) {
+      if identity != "::" && map_contains_key(visited, identity) {
         none
       } else {
-        let visited2 = map_insert(visited, identity, true)
+        let visited2 = if identity == "::" { visited } else { map_insert(visited, identity, true) }
         if (peeled.connective == Arrow) {
           equality_refused(carrier: name, member: "function value", member_judged: true)
         } else if (peeled.connective == Conj) {
@@ -2288,7 +2288,7 @@ fn equality_operand_admission(n: Node, scope: InferScope, visited: Map<String, B
   }
 }
 
-fn equality_exposure_refusal(exposure: TypeHeadExposure, name: String) -> EqualityAdmissionRefusal? {
+fn equality_exposure_refusal(exposure: TypeHeadExposure, name: String, at_operand_root: Bool) -> EqualityAdmissionRefusal? {
   match exposure {
     ExposedTypeHead { view: KernelScalarHead { type_identity: _ } } => none
     ExposedTypeHead { view: CallableHead { type_identity: _ } } => equality_refused(carrier: name, member: "function value", member_judged: true)
@@ -2296,7 +2296,7 @@ fn equality_exposure_refusal(exposure: TypeHeadExposure, name: String) -> Equali
     ExposedTypeHead { view: CoproductHead { type_identity: _ } } => equality_refused(carrier: name, member: "members not exposed at this reference", member_judged: false)
     ExposedTypeHead { view: ApplicationHead { constructor_identity: _, argument_identities: _ } } => equality_refused(carrier: name, member: "members not exposed at this reference", member_judged: false)
     OpaqueTypeHead { type_identity: _ } => none
-    StuckTypeHead { cause: c } => equality_refused(carrier: name, member: c, member_judged: false)
+    StuckTypeHead { cause: c } => if at_operand_root { none } else { equality_refused(carrier: name, member: c, member_judged: false) }
     MalformedApplicationHead { cause: c } => equality_refused(carrier: name, member: c, member_judged: false)
   }
 }
@@ -2309,9 +2309,49 @@ fn equality_leaf_admission(peeled: Node, name: String, ident_key: String, scope:
   let resolved = peel_nominal_alias_identity(n: peeled, env: scope.type_env, module_name: scope.module_name)
   let resolved_identity = type_reference_identity(n: resolved, source_indices: source_indices)
   if (resolved.connective != NoConnective) || resolved_identity != ident_key || (resolved.children |> count) != (peeled.children |> count) {
-    equality_operand_admission(n: resolved, scope: scope, visited: visited, depth: depth + 1)
+    if resolved_identity == ident_key {
+      equality_resolved_declaration_structure(rt: resolved, peeled: peeled, name: name, scope: scope, visited: visited, depth: depth)
+    } else {
+      equality_operand_admission(n: resolved, scope: scope, visited: visited, depth: depth + 1)
+    }
   } else {
-    equality_exposure_refusal(exposure: expected_type_head_exposure(formal: peeled, scope: scope), name: name)
+    match peeled.inferred {
+      Present { value: Resolved { node: rt } } => equality_resolved_declaration_admission(rt: rt, peeled: peeled, name: name, scope: scope, visited: visited, depth: depth)
+      _ => equality_unresolved_leaf_admission(peeled: peeled, name: name, scope: scope, visited: visited, depth: depth)
+    }
+  }
+}
+
+fn equality_unresolved_leaf_admission(peeled: Node, name: String, scope: InferScope, visited: Map<String, Bool>, depth: Int) -> EqualityAdmissionRefusal? {
+  match map_get(scope.type_env.symbol_index.global_bare, qualified_last_segment(name: name)) {
+    Present { value: GlobalBareUniqueBinding { module_path: _, binding: b } } =>
+      equality_resolved_declaration_admission(rt: b.resolved, peeled: peeled, name: name, scope: scope, visited: visited, depth: depth)
+    _ => equality_exposure_refusal(exposure: expected_type_head_exposure(formal: peeled, scope: scope), name: name, at_operand_root: depth == 0)
+  }
+}
+
+fn equality_resolved_declaration_admission(rt: Node, peeled: Node, name: String, scope: InferScope, visited: Map<String, Bool>, depth: Int) -> EqualityAdmissionRefusal? {
+  let rt_identity = node_declaration_identity(n: rt, source_indices: scope.type_env.source_indices)
+  if rt_identity != "::" && map_contains_key(visited, rt_identity) {
+    none
+  } else {
+    equality_resolved_declaration_structure(rt: rt, peeled: peeled, name: name, scope: scope, visited: if rt_identity == "::" { visited } else { map_insert(visited, rt_identity, true) }, depth: depth)
+  }
+}
+
+fn equality_resolved_declaration_structure(rt: Node, peeled: Node, name: String, scope: InferScope, visited: Map<String, Bool>, depth: Int) -> EqualityAdmissionRefusal? {
+  if (rt.connective == Arrow) {
+    equality_refused(carrier: name, member: "function value", member_judged: true)
+  } else if (rt.connective == Conj) {
+    equality_member_fields_refusal(owner_name: name, fields: rt.children, scope: scope, visited: visited, depth: depth + 1)
+  } else if (rt.connective == Disj) {
+    fold(rt.children, init: none, f: (acc, v) =>
+      match acc {
+        Present { value: _ } => acc
+        Absent => equality_member_fields_refusal(owner_name: concat(name, ".", authored_name_at(source_indices: scope.type_env.source_indices, node: v)), fields: v.children, scope: scope, visited: visited, depth: depth + 1)
+      })
+  } else {
+    equality_exposure_refusal(exposure: expected_type_head_exposure(formal: peeled, scope: scope), name: name, at_operand_root: depth == 0)
   }
 }
 
@@ -2332,7 +2372,18 @@ fn equality_admission_diags(op: BinOp, left_typed: Node, right_typed: Node, scop
   let judged_op = match op {
     Eq => true
     Ne => true
-    _ => false
+    Add => false
+    Sub => false
+    Mul => false
+    Div => false
+    Mod => false
+    Lt => false
+    Gt => false
+    Le => false
+    Ge => false
+    And => false
+    Or => false
+    NullCoalesce => false
   }
   if !judged_op {
     []
