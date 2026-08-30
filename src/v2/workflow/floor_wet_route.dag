@@ -6,6 +6,8 @@ import v2.std.integer { Int, int_gt }
 import v2.std.logic { Bool }
 import v2.std.optional { Optional, Absent, Present }
 import v2.std.text { String }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
+import std.types { NonEmptyStr }
 
 // THE WET EXECUTION ROUTE: identities the required floor DECLINES from hermetic execution
 // because their subject is a real host effect chain no honest mock can answer, routed instead
@@ -192,6 +194,21 @@ fn floor_wet_route_receipt_staleness_budget_secs() -> Int {
 fn floor_wet_route_publication_skew_secs() -> Int {
   3600
 }
+
+// FLAT-SCALAR TIME FIELDS, DECLARED AS A BOUNDED GAP RATHER THAN SILENTLY LEFT (review 57567
+// on gunbc#9725, BLOCKING on `wall_ms`, `executed_at_unix_secs`, `published_at_unix_secs`
+// and the fold's `evaluated_tree_commit_unix_secs` parameter). The finding is correct on the
+// merits, and this row is the same construction its sibling
+// `v2.workflow.required_floor.flat_scalar_millisecond_fields_dissolve_on` already carries for
+// the identical class: `std.measure` `Millisecond = Measure<Time, Milli, std.nat.Nat>` is
+// built on v1's host-backed `Nat`, while this module's `Int` is v2's inductive tower
+// (`v2.std.integer.Int = GroupCompletion<v2.std.nat.Nat>`), and no verified bridge between
+// the two numeric towers exists anywhere in this corpus. Authoring that bridge inside a
+// routing PR would be exactly the silent cross-representation seam the incident history
+// warns against, so the conversion is a typed obligation, not a prose promise.
+data flat_scalar_wet_receipt_time_fields_dissolve_on: DissolutionCondition = unbound_dissolution(
+  description: "dissolve-on: WetReceiptIdentityRow.wall_ms, WetReceiptEnvelope.executed_at_unix_secs/published_at_unix_secs and wet_lane_receipt_standing's evaluated_tree_commit_unix_secs parameter (with the cadence/grace/budget/skew rows they compare against) convert from bare Int to std.measure Time carriers once a verified conversion exists between v2's inductive numeric tower (v2.std.integer.Int) and the host-backed Nat std.measure is built on — the same trigger v2.workflow.required_floor.flat_scalar_millisecond_fields_dissolve_on names (review 57567 on gunbc#9725; precedent review 53860 on gunbc#8584)." as NonEmptyStr,
+)
 
 data floor_wet_route_receipt_json_rel_path: String = "dag/gunbc/witness/wet_lane/latest-attempt.json"
 
