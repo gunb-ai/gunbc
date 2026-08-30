@@ -508,21 +508,45 @@ fn launch_admission_of_facts(f: LaunchDecisionFacts) -> LaunchAdmission {
   }
 }
 
-fn launch_gate_instance(instance_id: NonEmptyStr, actuation: DashboardActuationPosture) -> LaunchGateVerdict {
+data launch_gate_outcome_note: String = "Each of the four gates the identity depends on has a TWO-arm outcome (passed-with-its-evidence | refused-with-its-refusal) from which its ledger verdict is projected. The identity binding consumes those outcomes in gate order, so it cannot say Bound beside a row that refused (review 5060505186 on #9696): the first refusing outcome is the withholding refusal, and it is the same value the row holds because both are projected from the one outcome."
+
+type LaunchInstanceOutcome
+  = LaunchInstanceActuating
+  | LaunchInstanceRefused { refusal: LaunchRefusal }
+
+fn launch_instance_outcome(instance_id: NonEmptyStr, actuation: DashboardActuationPosture) -> LaunchInstanceOutcome {
   match actuation {
-    DashboardActuating => GatePassed
+    DashboardActuating => LaunchInstanceActuating
     DashboardObserveOnly =>
-      GateRefused { refusal: LaunchInstanceActuationRefused {
+      LaunchInstanceRefused { refusal: LaunchInstanceActuationRefused {
         instance_id: instance_id as String,
         reason: "dashboard instance is observe-only; launch refused before observation, provider preflight, or worktree creation",
       } }
   }
 }
 
-fn launch_gate_transition(transition: ActuationAdmission) -> LaunchGateVerdict {
+fn launch_gate_instance(instance_id: NonEmptyStr, actuation: DashboardActuationPosture) -> LaunchGateVerdict {
+  match launch_instance_outcome(instance_id: instance_id, actuation: actuation) {
+    LaunchInstanceActuating => GatePassed
+    LaunchInstanceRefused { refusal } => GateRefused { refusal: refusal }
+  }
+}
+
+type LaunchTransitionOutcome
+  = LaunchTransitionClear
+  | LaunchTransitionRefused { refusal: LaunchRefusal }
+
+fn launch_transition_outcome(transition: ActuationAdmission) -> LaunchTransitionOutcome {
   match transition {
-    ActuationAdmitted => GatePassed
-    ActuationRefused { reason } => GateRefused { refusal: LaunchTransitionInhibited { reason: reason } }
+    ActuationAdmitted => LaunchTransitionClear
+    ActuationRefused { reason } => LaunchTransitionRefused { refusal: LaunchTransitionInhibited { reason: reason } }
+  }
+}
+
+fn launch_gate_transition(transition: ActuationAdmission) -> LaunchGateVerdict {
+  match launch_transition_outcome(transition: transition) {
+    LaunchTransitionClear => GatePassed
+    LaunchTransitionRefused { refusal } => GateRefused { refusal: refusal }
   }
 }
 
@@ -721,22 +745,32 @@ fn launch_identity_of_observed(
   cause: LaunchCause,
   mode: SpawnMode,
   instance_id: NonEmptyStr,
+  actuation: DashboardActuationPosture,
+  transition: ActuationAdmission,
   revision: FleetRevisionStanding,
   lookup: LaunchNodeLookup,
 ) -> LaunchIdentityStanding {
-  match launch_revision_outcome(revision: revision) {
-    LaunchRevisionRefused { refusal } => LaunchIdentityWithheld { refusal: refusal }
-    LaunchRevisionBound { oid } =>
-      match lookup {
-        LaunchNodeLookupRefused { refusal } => LaunchIdentityWithheld { refusal: refusal }
-        LaunchNodeFound { node, nodes: _, edges: _ } =>
-          LaunchIdentityBound { identity: LaunchIdentity {
-            node_id: node.node,
-            cause: cause,
-            mode: mode,
-            instance_id: instance_id,
-            revision: oid,
-          } }
+  match launch_instance_outcome(instance_id: instance_id, actuation: actuation) {
+    LaunchInstanceRefused { refusal } => LaunchIdentityWithheld { refusal: refusal }
+    LaunchInstanceActuating =>
+      match launch_transition_outcome(transition: transition) {
+        LaunchTransitionRefused { refusal } => LaunchIdentityWithheld { refusal: refusal }
+        LaunchTransitionClear =>
+          match launch_revision_outcome(revision: revision) {
+            LaunchRevisionRefused { refusal } => LaunchIdentityWithheld { refusal: refusal }
+            LaunchRevisionBound { oid } =>
+              match lookup {
+                LaunchNodeLookupRefused { refusal } => LaunchIdentityWithheld { refusal: refusal }
+                LaunchNodeFound { node, nodes: _, edges: _ } =>
+                  LaunchIdentityBound { identity: LaunchIdentity {
+                    node_id: node.node,
+                    cause: cause,
+                    mode: mode,
+                    instance_id: instance_id,
+                    revision: oid,
+                  } }
+              }
+          }
       }
   }
 }
@@ -793,7 +827,7 @@ fn launch_decision_facts(
       }
     LaunchHostObserved { instance_id, actuation, transition, revision, sessions, capacity, mode } => {
       let lookup = launch_lookup_node(graph: graph, node_id: node_id)
-      let identity = launch_identity_of_observed(cause: cause, mode: mode, instance_id: instance_id, revision: revision, lookup: lookup)
+      let identity = launch_identity_of_observed(cause: cause, mode: mode, instance_id: instance_id, actuation: actuation, transition: transition, revision: revision, lookup: lookup)
       match lookup {
         LaunchNodeLookupRefused { refusal } =>
           LaunchDecisionFacts {

@@ -869,3 +869,29 @@ test fn witness_withheld_identity_carries_the_withholding_gates_refusal() -> Boo
       LaunchIdentityWithheld { refusal: _ } => false
     })
 }
+
+// review 5060505186: identity binding consumes instance -> transition -> revision -> node IN ORDER.
+// Over a fully observed standing whose instance is observe-only (transition admitted, revision
+// converged, node found) or whose transition is inhibited, the identity is WITHHELD by exactly the
+// first refusing gate, and the standing's refusal is the same value that gate's ledger row holds.
+fn withheld_matches_row(identity: LaunchIdentityStanding, row: LaunchGateVerdict, label: String) -> Bool {
+  match identity {
+    LaunchIdentityWithheld { refusal } =>
+      launch_refusal_label(r: refusal) == label
+        && (match row { GateRefused { refusal: r } => launch_refusal_label(r: r) == label _ => false })
+    LaunchIdentityBound { identity: _ } => false
+  }
+}
+
+test fn witness_identity_withheld_by_instance_and_transition_gates_in_order() -> Bool {
+  let observe_only = launch_decision_facts(
+    cause: Operator, standing: launch_fixture_standing_observe_only(),
+    graph: graph(), merged: [], node_id: parent_id(), reserved: 0,
+  )
+  let inhibited = launch_decision_facts(
+    cause: Operator, standing: launch_fixture_standing_transition_inhibited(),
+    graph: graph(), merged: [], node_id: parent_id(), reserved: 0,
+  )
+  withheld_matches_row(identity: observe_only.identity, row: observe_only.ledger.instance, label: "disabled")
+    && withheld_matches_row(identity: inhibited.identity, row: inhibited.ledger.transition, label: "deployment_transition_inhibited")
+}
