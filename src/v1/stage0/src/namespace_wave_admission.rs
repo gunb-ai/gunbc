@@ -421,26 +421,13 @@ pub struct TransitionAdmission {
 /// `TargetChanged` firing on a deliberate declaration move is the wall working; these rows
 /// adjudicate exactly those two subjects and nothing else. They go STALE the moment #9698
 /// merges and MUST be removed then, exactly as the shrinks above were.
-pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
-    TransitionAdmission {
-        label: "required-ci lane vocabulary moved to its declared next-rung authority (#9698)",
-        subject: AdmissionSubject::Binding {
-            module: "gunbc.required_ci_host_verdict_census",
-            in_declaration: "required_ci_host_verdict_rows",
-            spelling: "BuildLane",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: "required-ci lane vocabulary moved to its declared next-rung authority (#9698)",
-        subject: AdmissionSubject::Binding {
-            module: "gunbc.required_ci_host_verdict_census",
-            in_declaration: "required_ci_host_verdict_rows",
-            spelling: "WitnessesLane",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-];
+/// SIXTH SHRINK, SAME RULE (2026-08-30). #9698 merged, so the merge base and head of every
+/// run from here both carry the lane move, no run can produce the two deltas those rows
+/// named, and both report stale -- refusing every PR. Removed by the trigger they were
+/// authored with, in the first PR cut from the main that carries the move. The roster is
+/// EMPTY again and empty is not permissive: a run carrying a real namespace delta still
+/// refuses it as UNADJUDICATED until its author adds a row here.
+pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[];
 
 /// The denominators a green must name (DESIGN §5). A run that cannot say what it covered is
 /// an instrument failure wearing coverage's clothes.
@@ -494,7 +481,15 @@ fn direct_membership(
             out.insert(claim.target.clone());
         }
     }
-    for (_, spelling) in &record.referenced {
+    // Both authored-reference channels, the same union `membership_bound_through` takes and
+    // for the same measured reason: a declared type is parked in `inferred`, which the walk
+    // behind `referenced` never visits, so a module whose only reach into another is a
+    // declared type contributed no edge here -- the closure and blast radius under-reported.
+    for (_, spelling) in record
+        .referenced
+        .iter()
+        .chain(record.authored_type_references.iter())
+    {
         if let Some((module, _leaf)) = module_prefix_of(index, spelling) {
             if module != record.module_path {
                 out.insert(module);
@@ -638,7 +633,14 @@ fn binding_rows(
     record: &ModuleDeclarationRecord,
 ) -> BTreeMap<(String, String), BTreeSet<String>> {
     let mut out: BTreeMap<(String, String), BTreeSet<String>> = BTreeMap::new();
-    for (in_declaration, spelling) in &record.referenced {
+    // Both authored-reference channels, as in `direct_membership` and
+    // `membership_bound_through`: a cut that repoints a DECLARED type -- visible only through
+    // the parser's stamped channel -- must produce a row on both sides of the wall.
+    for (in_declaration, spelling) in record
+        .referenced
+        .iter()
+        .chain(record.authored_type_references.iter())
+    {
         let leaf = qualified_last_segment(spelling.clone());
         let candidates = declaring_candidates(index, record, spelling);
         out.entry((in_declaration.clone(), leaf))
