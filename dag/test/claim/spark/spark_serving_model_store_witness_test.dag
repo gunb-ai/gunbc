@@ -49,7 +49,7 @@ import gunbc.spark.serving_observe { spark_serving_classify_model_store, spark_s
 import product.placement_supply { HostIdentity }
 import gunbc.spark.serving_observation_transaction {
   SparkServingObservationProvenance,
-  spark_serving_observation_provenance_of,
+  spark_serving_hermetic_provenance_of,
 }
 
 data subject_host: HostIdentity = "srv6" as HostIdentity
@@ -103,10 +103,9 @@ fn subject_release() -> SparkServingRelease? {
 //
 // This is the claim that was false while everything else was green.
 fn witness_provenance(host: HostIdentity) -> SparkServingObservationProvenance {
-  spark_serving_observation_provenance_of(
+  spark_serving_hermetic_provenance_of(
     host: host,
-    attempt: "witness-attempt" as NonEmptyStr,
-    locus: "witness-locus" as NonEmptyStr,
+    fixture_identity: "hermetic-witness-fixture" as NonEmptyStr,
   )
 }
 

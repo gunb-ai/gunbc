@@ -4,7 +4,7 @@ import std.types { String, Bool, List, NonEmptyStr, Int }
 import product.placement_supply { HostIdentity }
 import gunbc.spark.serving_observation_transaction {
   SparkServingObservationProvenance,
-  spark_serving_observation_provenance_of,
+  spark_serving_hermetic_provenance_of,
 }
 import gunbc.fleet_intent_network { operator_host_srv5, operator_host_srv6 }
 import gunbc.spark.cell_role {
@@ -177,10 +177,9 @@ fn w_retirement_effects(address: SparkServingResourceAddress) -> List<SparkServi
 // the ASSIGNMENT, where the same host appearing in both rosters is still writable. It is the
 // assignment, not the type, that this checks.
 fn witness_provenance(host: HostIdentity) -> SparkServingObservationProvenance {
-  spark_serving_observation_provenance_of(
+  spark_serving_hermetic_provenance_of(
     host: host,
-    attempt: "witness-attempt" as NonEmptyStr,
-    locus: "witness-locus" as NonEmptyStr,
+    fixture_identity: "hermetic-witness-fixture" as NonEmptyStr,
   )
 }
 

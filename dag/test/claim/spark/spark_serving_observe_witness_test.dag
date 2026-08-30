@@ -590,11 +590,10 @@ fn ho_from(readback: SparkServingReadback) -> SparkServingHostObservation {
       activity: UnitActivityUnobserved,
     },
     linger: LingerUnobservedState,
-    provenance: spark_serving_observation_provenance_of(
-      host: readback.host,
-      attempt: "fixture-attempt" as NonEmptyStr,
-      locus: "fixture-locus" as NonEmptyStr,
-    ),
+    provenance: spark_serving_hermetic_provenance_of(
+    host: readback.host,
+    fixture_identity: "hermetic-witness-fixture" as NonEmptyStr,
+  ),
   )
 }
 

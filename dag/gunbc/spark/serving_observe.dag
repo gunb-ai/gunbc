@@ -130,7 +130,8 @@ import gunbc.spark.serving_observation_transaction {
   spark_serving_observation_transaction_of,
   spark_serving_transaction_result,
   SparkServingObservationProvenance,
-  spark_serving_observation_provenance_of,
+  spark_serving_acquired_provenance_of,
+  spark_serving_refused_provenance_of,
   SparkServingObservationPhase,
   SparkServingPlanObservation,
   SparkServingPostApplyObservation,
@@ -640,11 +641,14 @@ fn spark_serving_host_observation(
 
 fn spark_serving_transaction_provenance(
   txn: SparkServingObservationTransaction,
+  fleet_attempt: NonEmptyStr,
+  phase: SparkServingObservationPhase,
 ) -> SparkServingObservationProvenance {
-  spark_serving_observation_provenance_of(
-    host: txn.host,
-    attempt: txn.attempt,
-    locus: txn.locus,
+  spark_serving_acquired_provenance_of(
+    txn: txn,
+    fleet_attempt: fleet_attempt,
+    phase: phase,
+    credential: txn.locus,
   )
 }
 
@@ -860,22 +864,59 @@ fn spark_serving_captured_leg(
 ) -> SparkServingProbeLegCapture {
   spark_serving_probe_leg_capture_of(
     request: request,
-    outcome: match request {
-      ModelBlobDigestsRequest { digests: hexes } =>
-        if length(hexes) == 0 {
-          SparkServingProbePrerequisiteRefused {
-            cause: join([
-              "the model manifest named no blob digests to verify, so there is no blob-digest",
-              " command to run: executing a bare digest over an empty list would report every",
-              " required blob verified by requiring none",
-            ], "") as NonEmptyStr,
-          }
-        } else {
-          spark_serving_run_probe_request(context: context, host: host, request: request)
-        }
-      _ => spark_serving_run_probe_request(context: context, host: host, request: request)
+    outcome: match spark_serving_request_prerequisite_refusal(request: request) {
+      Present { value: cause } => SparkServingProbePrerequisiteRefused { cause: cause }
+      Absent => spark_serving_run_probe_request(context: context, host: host, request: request)
     },
   )
+}
+
+// EVERY REQUEST ANSWERS THIS QUESTION, WHICH IS WHY THERE IS NO WILDCARD.
+//
+// The first cut wrote `_ => no prerequisite` beside the one arm that has one. That is non-fold
+// residue -- the repository's own roster check found it -- and it is the kind that costs something
+// real: a new request added tomorrow would silently inherit "nothing to check" from the wildcard,
+// which is exactly how the bare-digest defect got in. Spelled out, the closed sum makes the compiler
+// ask the question again every time the vocabulary grows.
+fn spark_serving_request_prerequisite_refusal(
+  request: SparkServingProbeRequest,
+) -> NonEmptyStr? {
+  match request {
+    ModelBlobDigestsRequest { digests: hexes } =>
+      if length(hexes) == 0 {
+        Present {
+          value: join([
+            "the model manifest named no blob digests to verify, so there is no blob-digest",
+            " command to run: executing a bare digest over an empty list would report every",
+            " required blob verified by requiring none",
+          ], "") as NonEmptyStr,
+        }
+      } else {
+        none
+      }
+    LoadStateRequest => none
+    IsActiveRequest => none
+    VersionRequest => none
+    TagsRequest => none
+    NvidiaDriverRequest => none
+    RuntimeReceiptRequest => none
+    ActiveEnterRequest => none
+    DefaultTargetEnterRequest => none
+    UptimeRequest => none
+    GrantsRequest => none
+    PasswdRequest => none
+    AuthorizedKeysRequest => none
+    LingerRequest => none
+    ModelManifestRequest => none
+    ModelBlobsListingRequest => none
+    ModelManifestDigestRequest => none
+    UserUnitReadRequest => none
+    UserUnitIsEnabledRequest => none
+    RuntimeRootRequest => none
+    RuntimeExecutableRequest => none
+    RuntimeExecutableBitRequest => none
+    RuntimeRootListingRequest => none
+  }
 }
 
 fn spark_serving_run_probe_request(
@@ -934,9 +975,18 @@ fn spark_serving_observe_host_via_locus(
     phase: SparkServingReportObservation,
   ) {
     SparkServingTransactionRefused { cause: why } =>
-      spark_serving_host_observation_from_refused_transaction(host: host, cause: why)
+      spark_serving_host_observation_from_refused_transaction(
+        host: host,
+        fleet_attempt: context.attempt as NonEmptyStr,
+        phase: SparkServingReportObservation,
+        cause: why,
+      )
     SparkServingTransactionAdmitted { txn: txn } =>
-      spark_serving_host_observation_from_transaction(txn: txn)
+      spark_serving_host_observation_from_transaction(
+        txn: txn,
+        fleet_attempt: context.attempt as NonEmptyStr,
+        phase: SparkServingReportObservation,
+      )
   }
 }
 
@@ -982,7 +1032,7 @@ fn spark_serving_observed_facts_via_locus(
         linger: spark_serving_observed_linger_from_probe(
           result: spark_serving_transaction_result(txn: txn, leg: ProbeLinger),
         ),
-        provenance: spark_serving_transaction_provenance(txn: txn),
+        provenance: spark_serving_transaction_provenance(txn: txn, fleet_attempt: fleet_attempt, phase: phase),
       }
   }
 }
@@ -994,6 +1044,8 @@ fn spark_serving_observed_facts_via_locus(
 // unobserved arms downstream. The readback carries the cause so the refusal is located.
 fn spark_serving_host_observation_from_refused_transaction(
   host: HostIdentity,
+  fleet_attempt: NonEmptyStr,
+  phase: SparkServingObservationPhase,
   cause: NonEmptyStr,
 ) -> SparkServingHostObservation {
   spark_serving_host_observation(
@@ -1012,16 +1064,19 @@ fn spark_serving_host_observation_from_refused_transaction(
       activity: UnitActivityUnobserved,
     },
     linger: LingerUnobservedState,
-    provenance: spark_serving_observation_provenance_of(
+    provenance: spark_serving_refused_provenance_of(
       host: host,
-      attempt: "unreached: no admitted transaction, so no observation attempt exists" as NonEmptyStr,
-      locus: "unreached: the transaction was refused before any leg was captured" as NonEmptyStr,
+      fleet_attempt: fleet_attempt,
+      phase: phase,
+      cause: cause,
     ),
   )
 }
 
 fn spark_serving_host_observation_from_transaction(
   txn: SparkServingObservationTransaction,
+  fleet_attempt: NonEmptyStr,
+  phase: SparkServingObservationPhase,
 ) -> SparkServingHostObservation {
   spark_serving_host_observation(
     readback: spark_serving_readback_from_probe_results(
@@ -1047,7 +1102,7 @@ fn spark_serving_host_observation_from_transaction(
     linger: spark_serving_observed_linger_from_probe(
       result: spark_serving_transaction_result(txn: txn, leg: ProbeLinger),
     ),
-    provenance: spark_serving_transaction_provenance(txn: txn),
+    provenance: spark_serving_transaction_provenance(txn: txn, fleet_attempt: fleet_attempt, phase: phase),
   )
 }
 

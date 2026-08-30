@@ -4,7 +4,7 @@ import std.types { Bool, List, NonEmptyStr, String, Int }
 import product.placement_supply { HostIdentity }
 import gunbc.spark.serving_observation_transaction {
   SparkServingObservationProvenance,
-  spark_serving_observation_provenance_of,
+  spark_serving_hermetic_provenance_of,
 }
 import gunbc.membership_reconcile {
   MembershipPlan,
@@ -258,10 +258,9 @@ fn full_plan_refuses(
 // The declared desired population is four members. This is the denominator every claim below divides
 // by, asserted rather than assumed.
 fn witness_provenance(host: HostIdentity) -> SparkServingObservationProvenance {
-  spark_serving_observation_provenance_of(
+  spark_serving_hermetic_provenance_of(
     host: host,
-    attempt: "witness-attempt" as NonEmptyStr,
-    locus: "witness-locus" as NonEmptyStr,
+    fixture_identity: "hermetic-witness-fixture" as NonEmptyStr,
   )
 }
 

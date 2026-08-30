@@ -212,59 +212,133 @@ type SparkServingObservationTransaction sole_constructor {
 // A transaction that pins one host, one attempt and one locus during acquisition, and then hands
 // back a value that has forgotten all three, has moved the problem rather than solved it: two
 // observations of one host from two attempts are again indistinguishable downstream, and "which
-// credential path produced this" is again unanswerable from the value. So the derived observation
-// carries the identity of the transaction it came from, and consumers that join facts across
-// attempts can be caught doing it.
-type SparkServingObservationProvenance sole_constructor {
-  host: HostIdentity
-  attempt: NonEmptyStr
-  locus: NonEmptyStr
-}
-
-// THE PHASE IS PART OF THE IDENTITY BECAUSE ONE SSH ATTEMPT CONTAINS SEVERAL OBSERVATIONS.
+// credential path produced this" is again unanswerable from the value.
 //
-// A fleet attempt identifies an invocation, not an observation: the converge slice observes a host
-// to plan, actuates, and observes it again to verify, all inside one attempt. Stamping all three
-// with the attempt alone makes the pre-apply and post-apply readings indistinguishable, which is the
-// join this carrier exists to prevent -- and the first cut was worse than that, because every
-// acquisition passed the same constant string.
-type SparkServingObservationPhase
-  = SparkServingPlanObservation
-  | SparkServingPostApplyObservation
-  | SparkServingReportObservation
+// IT IS A SUM BECAUSE THE REFUSED CASE IS NOT A WEAKER VERSION OF THE ACQUIRED ONE. The first cut
+// answered a refused transaction with a positive provenance record whose attempt and locus were the
+// prose strings "unreached: ..." -- a well-formed provenance minted at exactly the moment no
+// observation existed. Every consumer reading .attempt got a plausible answer, which is the
+// fabricated-plausible-output failure wearing the carrier's own vocabulary. Now a refusal inhabits
+// its own arm, planning accepts only the acquired one, and coverage can still hold a row for a host
+// whose transaction refused without that row pretending to be an observation.
+//
+// fleet_attempt and phase stay as typed fields beside the joined identity. The joined string is the
+// canonical identity for equality, but it must not be the only surviving representation of its
+// components: a consumer asking "which phase was this" should not have to parse prose back out.
+type SparkServingObservationProvenance
+  = SparkServingObservationAcquired {
+      host: HostIdentity
+      fleet_attempt: NonEmptyStr
+      phase: SparkServingObservationPhase
+      observation_attempt: NonEmptyStr
+      credential: NonEmptyStr
+    }
+  | SparkServingObservationTransactionRefused {
+      host: HostIdentity
+      fleet_attempt: NonEmptyStr
+      phase: SparkServingObservationPhase
+      cause: NonEmptyStr
+    }
+  | SparkServingObservationHermeticFixture {
+      host: HostIdentity
+      fixture_identity: NonEmptyStr
+    }
 
-fn spark_serving_observation_phase_key(phase: SparkServingObservationPhase) -> NonEmptyStr {
-  match phase {
-    SparkServingPlanObservation => "plan" as NonEmptyStr
-    SparkServingPostApplyObservation => "post-apply" as NonEmptyStr
-    SparkServingReportObservation => "report" as NonEmptyStr
+fn spark_serving_acquired_provenance_of(
+  txn: SparkServingObservationTransaction,
+  fleet_attempt: NonEmptyStr,
+  phase: SparkServingObservationPhase,
+  credential: NonEmptyStr,
+) -> SparkServingObservationProvenance
+  admit_callers: [
+    decl_ref(
+      module_path: "gunbc.spark.serving_observe",
+      decl_name: "spark_serving_transaction_provenance",
+    ),
+  ]
+{
+  SparkServingObservationAcquired {
+    host: txn.host,
+    fleet_attempt: fleet_attempt,
+    phase: phase,
+    observation_attempt: txn.attempt,
+    credential: credential,
   }
 }
 
-// The observation attempt is DERIVED -- fleet attempt, host, phase -- never supplied. A caller that
-// wants to claim a different attempt has to actually run under a different context, and a caller
-// that wants to claim a different phase has to be a different phase.
-fn spark_serving_observation_attempt_of(
-  fleet_attempt: NonEmptyStr,
+fn spark_serving_refused_provenance_of(
   host: HostIdentity,
+  fleet_attempt: NonEmptyStr,
   phase: SparkServingObservationPhase,
-) -> NonEmptyStr {
-  join([
-    fleet_attempt as String,
-    "/",
-    host as String,
-    "/",
-    spark_serving_observation_phase_key(phase: phase) as String,
-  ], "") as NonEmptyStr
+  cause: NonEmptyStr,
+) -> SparkServingObservationProvenance
+  admit_callers: [
+    decl_ref(
+      module_path: "gunbc.spark.serving_observe",
+      decl_name: "spark_serving_host_observation_from_refused_transaction",
+    ),
+  ]
+{
+  SparkServingObservationTransactionRefused {
+    host: host,
+    fleet_attempt: fleet_attempt,
+    phase: phase,
+    cause: cause,
+  }
 }
 
-fn spark_serving_observation_provenance_of(
+// The fixture arm is its own constructor precisely so a hermetic value cannot be mistaken for an
+// acquired one: it has no observation attempt and no credential, so nothing downstream that requires
+// those can accept it. Planning takes the acquired arm only.
+fn spark_serving_hermetic_provenance_of(
   host: HostIdentity,
-  attempt: NonEmptyStr,
-  locus: NonEmptyStr,
+  fixture_identity: NonEmptyStr,
 ) -> SparkServingObservationProvenance {
-  SparkServingObservationProvenance { host: host, attempt: attempt, locus: locus }
+  SparkServingObservationHermeticFixture { host: host, fixture_identity: fixture_identity }
 }
+
+fn spark_serving_provenance_host(p: SparkServingObservationProvenance) -> HostIdentity {
+  match p {
+    SparkServingObservationAcquired { host: h, fleet_attempt: _, phase: _, observation_attempt: _, credential: _ } => h
+    SparkServingObservationTransactionRefused { host: h, fleet_attempt: _, phase: _, cause: _ } => h
+    SparkServingObservationHermeticFixture { host: h, fixture_identity: _ } => h
+  }
+}
+
+// The identity a consumer joins on. A refused transaction and a fixture have no observation attempt,
+// which is the point: there is nothing to join them to.
+fn spark_serving_provenance_observation_attempt(
+  p: SparkServingObservationProvenance,
+) -> NonEmptyStr? {
+  match p {
+    SparkServingObservationAcquired { host: _, fleet_attempt: _, phase: _, observation_attempt: a, credential: _ } =>
+      Present { value: a }
+    SparkServingObservationTransactionRefused { host: _, fleet_attempt: _, phase: _, cause: _ } => none
+    SparkServingObservationHermeticFixture { host: _, fixture_identity: _ } => none
+  }
+}
+
+fn spark_serving_provenance_credential(p: SparkServingObservationProvenance) -> NonEmptyStr? {
+  match p {
+    SparkServingObservationAcquired { host: _, fleet_attempt: _, phase: _, observation_attempt: _, credential: c } =>
+      Present { value: c }
+    SparkServingObservationTransactionRefused { host: _, fleet_attempt: _, phase: _, cause: _ } => none
+    SparkServingObservationHermeticFixture { host: _, fixture_identity: _ } => none
+  }
+}
+
+fn spark_serving_provenance_phase(
+  p: SparkServingObservationProvenance,
+) -> SparkServingObservationPhase? {
+  match p {
+    SparkServingObservationAcquired { host: _, fleet_attempt: _, phase: ph, observation_attempt: _, credential: _ } =>
+      Present { value: ph }
+    SparkServingObservationTransactionRefused { host: _, fleet_attempt: _, phase: ph, cause: _ } =>
+      Present { value: ph }
+    SparkServingObservationHermeticFixture { host: _, fixture_identity: _ } => none
+  }
+}
+
 
 fn spark_serving_transaction_capture(
   txn: SparkServingObservationTransaction,
@@ -347,10 +421,30 @@ type SparkServingTransactionAdmission
   = SparkServingTransactionAdmitted { txn: SparkServingObservationTransaction }
   | SparkServingTransactionRefused { cause: NonEmptyStr }
 
+// THE MINTS ARE SEALED, BECAUSE sole_constructor STOPS A RECORD LITERAL AND NOTHING ELSE.
+//
+// The annotations above claimed the acquisition producer was the only thing that could mint a
+// capture or a transaction. That was FALSE while these factories were ordinary importable functions
+// taking arbitrary semantic inputs, and the proof was in this repository: the transaction witness
+// imported both and built whatever it liked. A wall that a caller can walk around by calling a
+// function is not a wall, and an annotation asserting otherwise is worse than none, because it will
+// be cited as coverage.
+//
+// Each list names the real producer plus, where a hermetic witness genuinely needs to build values
+// without an SSH transport, exactly one fixture by name. That is a deliberate exception rather than
+// an open door: a new production caller cannot appear without editing these lists.
 fn spark_serving_probe_leg_capture_of(
   request: SparkServingProbeRequest,
   outcome: SparkServingProbeOutcome,
-) -> SparkServingProbeLegCapture {
+) -> SparkServingProbeLegCapture
+  admit_callers: [
+    decl_ref(module_path: "gunbc.spark.serving_observe", decl_name: "spark_serving_captured_leg"),
+    decl_ref(
+      module_path: "test.claim.spark_serving_observation_transaction_witness_test",
+      decl_name: "hermetic_capture_fixture",
+    ),
+  ]
+{
   SparkServingProbeLegCapture { request: request, outcome: outcome }
 }
 
@@ -366,7 +460,18 @@ fn spark_serving_observation_transaction_of(
   attempt: NonEmptyStr,
   locus: NonEmptyStr,
   captures: List<SparkServingProbeLegCapture>,
-) -> SparkServingTransactionAdmission {
+) -> SparkServingTransactionAdmission
+  admit_callers: [
+    decl_ref(
+      module_path: "gunbc.spark.serving_observe",
+      decl_name: "spark_serving_acquire_observation_transaction",
+    ),
+    decl_ref(
+      module_path: "test.claim.spark_serving_observation_transaction_witness_test",
+      decl_name: "hermetic_transaction_fixture",
+    ),
+  ]
+{
   spark_serving_admit_transaction(
     txn: SparkServingObservationTransaction {
       host: host,

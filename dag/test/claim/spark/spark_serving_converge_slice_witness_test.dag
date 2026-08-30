@@ -75,7 +75,7 @@ import gunbc.spark.serving_observed_members {
 import product.placement_supply { HostIdentity }
 import gunbc.spark.serving_observation_transaction {
   SparkServingObservationProvenance,
-  spark_serving_observation_provenance_of,
+  spark_serving_hermetic_provenance_of,
 }
 import gunbc.spark.serving_converge_slice_wet {
   render_observed_linger,
@@ -114,10 +114,9 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 data witness_host_srv5: NonEmptyStr = "srv5" as NonEmptyStr
 
 fn witness_provenance(host: HostIdentity) -> SparkServingObservationProvenance {
-  spark_serving_observation_provenance_of(
+  spark_serving_hermetic_provenance_of(
     host: host,
-    attempt: "witness-attempt" as NonEmptyStr,
-    locus: "witness-locus" as NonEmptyStr,
+    fixture_identity: "hermetic-witness-fixture" as NonEmptyStr,
   )
 }
 
