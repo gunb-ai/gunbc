@@ -26,25 +26,17 @@ import extdeps.physics.bach_et_al_2013_double_slit {
   BothSlitsDoubleSlitDiffractionObserved,
 }
 
-// Observing-layer receipts for Bach et al. 2013. Buildup progression derives structural properties
-// from extdeps.physics.bach_et_al_2013_double_slit.bach_buildup_observations — sole population
-// authority, no parallel copy.
+data bach_observation_layer_note: String = "Observing-layer receipts for Bach et al. 2013. Buildup progression derives structural properties from extdeps.physics.bach_et_al_2013_double_slit.bach_buildup_observations — sole population authority, no parallel copy."
 
-// Distribution gate checks that observations match the cited canonical sequence (slit-one,
-// slit-two, both-open) via total bach_distribution_observation_rank — not completeness over the
-// BachDistributionObservation coproduct. A fourth variant left unobserved still passes; the literal
-// length 3 tracks the three known variants, not a derived coproduct arity.
+data bach_distribution_canonical_sequence_note: String = "Distribution gate checks that observations match the cited canonical sequence (slit-one, slit-two, both-open) via total bach_distribution_observation_rank — not completeness over the BachDistributionObservation coproduct. A fourth variant left unobserved still passes; the literal length 3 tracks the three known variants, not a derived coproduct arity."
 
-// Derived from cited Bach figures 1–2 (normalized distributions only): raw matched-exposure
-// per-band arrival triplet N_both = N_slit_one + N_slit_two is not evaluable from this source.
+data bach_raw_count_additivity_not_evaluable_note: String = "Derived from cited Bach figures 1–2 (normalized distributions only): raw matched-exposure per-band arrival triplet N_both = N_slit_one + N_slit_two is not evaluable from this source."
 
 data bach_which_path_evidence_requirement_unsatisfied_note: String = "Derived from cited Bach slit-mask control (not a which-path readout): which-path distinguishability evidence requirement is unsatisfied for this source."
 
-// Which-path distinguishability evidence is absent from cited Bach et al. 2013; obligation recorded
-// here per DESIGN section 3.
+data which_path_coverage_obligation_note: String = "Which-path distinguishability evidence is absent from cited Bach et al. 2013; obligation recorded here per DESIGN section 3."
 
-// Authored coverage gap (explicit gap rung, not a derived readiness verdict):
-// bach_raw_count_additivity_not_evaluable_note grounds why no raw triplet exists to evaluate.
+data bach_quantitative_path_additivity_gap_note: String = "Authored coverage gap (explicit gap rung, not a derived readiness verdict): bach_raw_count_additivity_not_evaluable_note grounds why no raw triplet exists to evaluate."
 
 // Authored coverage gap (explicit gap rung, not a derived readiness verdict): bach_which_path_evidence_requirement_unsatisfied_note grounds why which-path evidence is absent.
 type BachRawCountPathAdditivityGap

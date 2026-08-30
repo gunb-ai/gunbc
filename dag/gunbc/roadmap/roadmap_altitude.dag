@@ -2,22 +2,9 @@ module gunbc.roadmap_altitude
 
 import std.types { Int, String, Bool }
 
-// Page altitude from the attention law (composition slice 3): the workspace becomes the THIRD
-// renderer of the observation model's 'routine collapses, anomaly expands' — sections render as
-// bands with counts, anomaly rows auto-expand, routine folds — DERIVED from node status and band
-// key, never hand-curated. No per-section flag and no per-node curation input exists in any
-// signature here; the only inputs are the status and band vocabularies other authorities own, which
-// is what makes hand-curation unwritable rather than merely discouraged.
+data roadmap_altitude_note: String = "Page altitude from the attention law (composition slice 3): the workspace becomes the THIRD renderer of the observation model's 'routine collapses, anomaly expands' — sections render as bands with counts, anomaly rows auto-expand, routine folds — DERIVED from node status and band key, never hand-curated. No per-section flag and no per-node curation input exists in any signature here; the only inputs are the status and band vocabularies other authorities own, which is what makes hand-curation unwritable rather than merely discouraged."
 
-// DECLARED CONVERGENCE ROW (the honest local stand-in): std.observation — AttentionLevel
-// derived-never-chosen, PresentationDensity as the single authority with collapse/expand projected
-// from it — lives on #7216's unmerged branch (supersedes #7162; the brief's original number), not
-// on main, so this module carries the law as a LOCAL derivation in the same shape: attention
-// derived from state, density derived from attention, renderers consume density. Dissolve-on: #7216
-// merges — RowAttention re-grounds on std.observation.AttentionLevel, RowDensity on
-// PresentationDensity, and this module shrinks to the workspace's subject mapping (node status /
-// band key -> observation event class), the workspace then being one more renderer of the one
-// authority rather than the holder of a twin.
+data altitude_convergence_note: String = "DECLARED CONVERGENCE ROW (the honest local stand-in): std.observation — AttentionLevel derived-never-chosen, PresentationDensity as the single authority with collapse/expand projected from it — lives on #7216's unmerged branch (supersedes #7162; the brief's original number), not on main, so this module carries the law as a LOCAL derivation in the same shape: attention derived from state, density derived from attention, renderers consume density. Dissolve-on: #7216 merges — RowAttention re-grounds on std.observation.AttentionLevel, RowDensity on PresentationDensity, and this module shrinks to the workspace's subject mapping (node status / band key -> observation event class), the workspace then being one more renderer of the one authority rather than the holder of a twin."
 
 type RowAttention
   = RowRoutine
@@ -40,11 +27,7 @@ type RowDensity
   | RowHolds
   | RowExpands
 
-// Density is DERIVED from attention — one projection, mirroring the observation module's
-// density-single-authority lesson (its earlier shape carried two hand tables plus a witness that
-// they agreed; the witness was validation where construction was available). Routine collapses;
-// working holds its place without expanding; anomaly expands. There is no fourth arm and no
-// per-consumer override.
+data attention_density_note: String = "Density is DERIVED from attention — one projection, mirroring the observation module's density-single-authority lesson (its earlier shape carried two hand tables plus a witness that they agreed; the witness was validation where construction was available). Routine collapses; working holds its place without expanding; anomaly expands. There is no fourth arm and no per-consumer override."
 
 fn attention_density(a: RowAttention) -> RowDensity {
   match a {

@@ -115,14 +115,7 @@ test fn witness_first_match_wins_on_overlap() -> Bool {
   selected_dynamic_is(sel: serve_select_route(table: overlap, method: GET, path: "/a/b"), want_dispatch: false)
 }
 
-// The one-grammar-both-directions agreement witness (parent review note 2, 2026-07-20): the
-// BACKWARD reading (emit_path_template_regex_source) is re-ingested by a test-local interpreter of
-// exactly the restricted regex language that emitter produces (anchors ^ $, segments joined by
-// escaped slash, literal segments with JS metachar escapes, param segments as the nonempty [^/]+
-// class), and both directions run over one shared path corpus asserting IDENTICAL accept verdicts
-// per path. If either drifts (the emitter changes its segment grammar, or match_path_template
-// changes normalization) this witness reds — agreement proven by execution, not by two functions
-// reading the same-looking rows.
+data regex_parity_note: String = "The one-grammar-both-directions agreement witness (parent review note 2, 2026-07-20): the BACKWARD reading (emit_path_template_regex_source) is re-ingested by a test-local interpreter of exactly the restricted regex language that emitter produces (anchors ^ $, segments joined by escaped slash, literal segments with JS metachar escapes, param segments as the nonempty [^/]+ class), and both directions are executed over one shared path corpus asserting IDENTICAL accept verdicts per path. If either direction drifts (the emitter changes its segment grammar, or match_path_template changes normalization), this witness reds — the agreement is proven by execution, not by the two functions reading the same-looking rows."
 
 fn regex_unescape_literal(s: String) -> String {
   let s1 = join(split(s: s, delimiter: "\\."), ".")

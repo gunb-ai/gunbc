@@ -6,19 +6,7 @@ import gunbc.build_cache_ensure {
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-// THE ACCEPTANCE SET FOR UNIT GENERATION AND THE ENSURE ADMISSION. Two of these are grounded on a
-// live sudo capture of srv1 taken 2026-08-01, not invented fixtures: the rendered unit is asserted
-// against the environment the CI server running THAT DAY carried, and the two hosts' observed
-// states as of that capture are asserted to reach opposite admissions. The capture also confirmed
-// the model: BuildCacheInstance already declared intended_principal ghrunner for CI and briansrls
-// for the session instance, and the servers then ran as exactly those users.
-//
-// EVERY SENTENCE ABOVE IS PAST TENSE ON PURPOSE, A REPAIR RATHER THAN A STYLE CHOICE. Measured
-// 2026-08-25T18:43Z, no sccache process runs on any of the four hosts and each CI socket is present
-// with zero listeners, so a row asserting what `the running CI server carries` would have no
-// subject. The fixtures stay as captured: a dated specimen of a real host state is a stronger
-// acceptance set than invented ones, and re-capturing against today's empty hosts would delete the
-// discriminating input rather than refresh it.
+data ensure_acceptance_doc: String = "THE ACCEPTANCE SET FOR UNIT GENERATION AND THE ENSURE ADMISSION. Two of these are grounded on a live sudo capture of srv1 taken 2026-08-01 rather than on invented fixtures: the rendered unit is asserted against the environment the CI server running THAT DAY actually carried, and the two hosts' observed states as of that capture are asserted to reach opposite admissions. The capture also independently confirmed the model: BuildCacheInstance already declared intended_principal ghrunner for CI and briansrls for the session instance, and the servers running then ran as exactly those users.\n\nEVERY SENTENCE ABOVE IS PAST TENSE ON PURPOSE, AND THAT IS A REPAIR RATHER THAN A STYLE CHOICE. Measured 2026-08-25T18:43Z, no sccache process runs on any of the four hosts and the CI socket on each is present with zero listeners, so a row asserting what `the running CI server carries` would have no subject at all. The fixtures stay exactly as captured: they are a dated specimen of a real host state, which is what makes them a stronger acceptance set than invented ones, and re-capturing them against today's empty hosts would delete the discriminating input rather than refresh it."
 
 fn ci() -> BuildCacheInstance { ci_cache_instance(host: "srv1") }
 fn session() -> BuildCacheInstance { session_cache_instance(host: "srv1") }
@@ -37,17 +25,7 @@ fn srv1_stranded_owner() -> ProcessIdentity {
   }
 }
 
-// Asserted against the 2026-08-01 live capture, line for line. srv1's CI server carried
-// SCCACHE_DIR=/var/lib/ctrl/sccache-ci, SCCACHE_ERROR_LOG under the same directory,
-// SCCACHE_IDLE_TIMEOUT=0, SCCACHE_SERVER_UDS=/var/lib/ctrl/sccache-ci/server.sock and
-// SCCACHE_START_SERVER=1, and ran as ghrunner. The generated unit must reproduce that environment;
-// the REASON has changed though the requirement has not. It was: the cutover replaces a server
-// that is working -- wrongly parented, but working -- so changing the cache directory or socket
-// path would cold-start every consumer rather than re-parent the one they use. Measured
-// 2026-08-25T18:43Z there is no server left to re-parent on any host, so the paths now protect the
-// CACHE TREE and the endpoint every client is configured against, not a live process. The pinned
-// values are unchanged because the reason weakened rather than reversed: a unit that invents a new
-// directory strands whatever the old one holds either way.
+data captured_base_doc: String = "Asserted against the 2026-08-01 live capture, line for line. srv1's CI server carried SCCACHE_DIR=/var/lib/ctrl/sccache-ci, SCCACHE_ERROR_LOG under the same directory, SCCACHE_IDLE_TIMEOUT=0, SCCACHE_SERVER_UDS=/var/lib/ctrl/sccache-ci/server.sock and SCCACHE_START_SERVER=1, and ran as ghrunner. The generated unit must reproduce that environment, and the REASON given here has changed even though the requirement has not. It was: the cutover replaces a server that is currently working -- wrongly parented, but working -- so changing the cache directory or the socket path would cold-start every consumer rather than re-parenting the one they already use. Measured 2026-08-25T18:43Z there is no server left to re-parent on any host, so what the paths now protect is the CACHE TREE and the endpoint every client is already configured against, not a live process. The pinned values are unchanged because the reason weakened rather than reversed: a unit that invents a new directory strands whatever the old one holds either way."
 
 test fn witness_the_generated_unit_reproduces_the_captured_environment() -> Bool {
   let u = ci_unit()
@@ -61,17 +39,17 @@ test fn witness_the_generated_unit_reproduces_the_captured_environment() -> Bool
     && unit_declares_line(lines: u, needle: "Environment=SCCACHE_ERROR_LOG=/var/lib/ctrl/sccache-ci/sccache-server.log")
 }
 
-// THE Slice= LINE LEFT THIS WITNESS BECAUSE IT WAS NEVER PART OF THE CAPTURE. This witness is named
-// for what the 2026-08-01 srv1 capture contained, and that was an ENVIRONMENT: SCCACHE_DIR,
+// THE Slice= LINE LEFT THIS WITNESS BECAUSE IT WAS NEVER PART OF THE CAPTURE. This witness is named for
+// what the 2026-08-01 srv1 capture contained, and that capture was an ENVIRONMENT: SCCACHE_DIR,
 // SCCACHE_ERROR_LOG, SCCACHE_IDLE_TIMEOUT, SCCACHE_SERVER_UDS, SCCACHE_START_SERVER and a
-// SCCACHE_STARTUP_NOTIFY temp path whose presence is the tell that NO UNIT EXISTED on that host.
-// A Slice= assertion never reproduced a captured line -- it pinned our own declared intent inside
-// a fidelity witness, which is why it broke the moment that intent correctly became conditional
-// on the topology.
+// SCCACHE_STARTUP_NOTIFY temp path whose presence is the tell that NO UNIT EXISTED on that host at all.
+// A Slice= assertion was therefore never reproducing a captured line -- it was pinning our own declared
+// intent inside a fidelity witness, which is why it broke the moment that intent correctly became
+// conditional on the topology.
 //
-// It is moved, not deleted, to the both-arms form beside it, mirroring the capacity idiom this file
-// uses: an assertion checking only one arm cannot see a render that emits the line unconditionally,
-// the defect the placement carrier was introduced to make unwritable.
+// It is not deleted, it is moved to the both-arms form beside it, mirroring the capacity idiom this file
+// already uses: an assertion that only ever checks one arm cannot see a render that emits the line
+// unconditionally, which is exactly the defect the placement carrier was introduced to make unwritable.
 test fn witness_the_slice_line_follows_the_declared_placement_both_ways() -> Bool {
   let undeclared = render_build_cache_unit(
     instance: instance_with_pool(base: ci(), placement: CompilePoolInRunnerSlots),
@@ -99,13 +77,7 @@ fn instance_with_pool(base: BuildCacheInstance, placement: CompilePoolPlacement)
   }
 }
 
-// THE LOAD-BEARING PAIR. CI's intended_capacity is Absent because the 2026-08-01 live capture
-// showed srv1's CI server carried NO SCCACHE_CACHE_SIZE, so the 10 GiB it ran under was sccache's
-// built-in default, not a decision. Rendering a default would fabricate a decision nobody made AND
-// freeze it -- once in a generated unit it is indistinguishable from an intended value, and the
-// tracked gap closes silently. Both halves are asserted: Absent must omit the line, Present must
-// emit it, because an unconditional omission would pass the first while silently dropping the
-// session instance's real 50G cap.
+data absent_capacity_doc: String = "THE LOAD-BEARING PAIR. CI's intended_capacity is Absent and the 2026-08-01 live capture is why: srv1's CI server carried NO SCCACHE_CACHE_SIZE at all, so the 10 GiB it ran under was sccache's built-in default rather than a decision. Rendering a default here would fabricate a decision nobody made AND freeze it -- once written into a generated unit it is indistinguishable from an intended value, and the tracked gap closes silently. Both halves are asserted: Absent must omit the line, Present must emit it, because a render that omitted it unconditionally would pass the first assertion while silently dropping the session instance's real 50G cap."
 
 test fn witness_an_absent_capacity_omits_the_line_and_a_present_one_emits_it() -> Bool {
   let ci_lines = ci_unit()
@@ -122,12 +94,7 @@ test fn witness_two_instances_on_one_host_render_different_principals() -> Bool 
     && (unit_declares_line(lines: session_lines, needle: "User=ghrunner") == false)
 }
 
-// One host, two instances, two uids -- why intended_principal is a field rather than a host
-// constant. The captured srv1 runs its CI server as ghrunner and its session server as briansrls.
-// ctrl-sccache.service's own header records that the UDS is srwxr-xr-x, so only the owning uid
-// can connect() and a cross-uid client fails SILENTLY, falling back to a per-container server. A
-// render collapsing the principal to one per host would produce a unit that starts cleanly and
-// serves nobody.
+data differing_principals_doc: String = "One host, two instances, two uids -- the fact that makes intended_principal a field rather than a host constant. The captured srv1 runs its CI server as ghrunner and its session server as briansrls. This matters beyond tidiness: ctrl-sccache.service's own header records that the UDS is srwxr-xr-x, so only the owning uid can connect() and a cross-uid client fails SILENTLY, falling back to a per-container server. A render that collapsed the principal to one per host would produce a unit that starts cleanly and serves nobody."
 
 test fn witness_the_slice_is_sized_from_the_supplied_authority() -> Bool {
   let s = render_compile_pool_slice(
@@ -144,11 +111,7 @@ test fn witness_the_runner_dropin_orders_after_the_cache_unit() -> Bool {
     && unit_declares_line(lines: d, needle: "After=gunbc-build-cache-ci.service")
 }
 
-// The ensure admission over the states the fleet was actually in on 2026-08-01. srv1: a live
-// server in RETIRED slot srv1-10 holding the endpoint -- refuses, because evicting a live wrong
-// owner strands the in-flight compiles that are its children and is a different operation from
-// ensuring a unit exists. srv4: a stale socket with no listener -- admitted, unlink required first.
-// Neither is a constructed example.
+data ensure_admission_doc: String = "The ensure admission over the four states the fleet was actually in on 2026-08-01. srv1: a live server in RETIRED slot srv1-10 holding the endpoint -- refuses, because evicting a live wrong owner strands the in-flight compiles that are its children and is a different operation from ensuring a unit exists. srv4: a stale socket with no listener -- admitted, with the unlink required first. Neither is a constructed example."
 
 fn ensure_for(placement: BuildCacheServerPlacement, path: EndpointPathState) -> EnsureBuildCacheAdmission {
   admit_ensure_build_cache_instance(
@@ -185,11 +148,7 @@ test fn witness_a_clear_path_is_admitted_without_an_unlink() -> Bool {
   ensure_yields_unit(admission: a) && (ensure_requires_unlink_first(admission: a) == false)
 }
 
-// The reconcile property. If the intended unit already owns the endpoint there is no hunk;
-// re-rendering plus restarting would tear down a healthy cache and re-cold every compile on the
-// host to reach the state it was already in -- the most expensive possible no-op, on every
-// convergence pass. Asserted as BOTH converged AND not-yields-unit, because an arm reporting
-// converged while still emitting a unit would read as idempotent and behave destructively.
+data idempotence_doc: String = "The reconcile property. If the intended unit already owns the endpoint there is no hunk, and re-rendering plus restarting would tear down a healthy cache and re-cold every compile on the host to reach the state it was already in -- the most expensive possible no-op, firing on every convergence pass. Asserted as BOTH converged AND not-yields-unit, because an arm that reported converged while still emitting a unit would read as idempotent and behave destructively."
 
 test fn witness_an_already_managed_endpoint_is_converged_and_emits_nothing() -> Bool {
   let a = ensure_for(
@@ -199,23 +158,7 @@ test fn witness_an_already_managed_endpoint_is_converged_and_emits_nothing() -> 
   build_cache_ensure_is_converged(admission: a) && (ensure_yields_unit(admission: a) == false)
 }
 
-// THE DISCRIMINATING PAIR FOR THE CONTRACT DECISION.
-// witness_an_already_managed_endpoint_is_converged_and_emits_nothing above and
-// witness_our_unit_holding_a_dead_socket_is_not_converged below differ in exactly ONE input -- the
-// path state under an identical ServerManagedUnitOwned placement -- and must land on opposite arms.
-// That is the whole decision: ownership answers WHO holds the endpoint, the path answers WHETHER IT
-// IS SERVED, and a converged verdict needs both. Under the preceding placement-first short-circuit
-// the second witness went green on the CONVERGED arm: a host with a wedged server and an
-// unreachable cache reported as needing nothing. The specimen is real:
-// gunbc.build_cache_endpoint_observe socket_owner_path_state produces exactly this state -- a
-// socket held open by a live fd-holder with no listen entry at the path -- and
-// test.claim.build_cache_endpoint_observe held_without_listening_fixture_note recorded that its
-// own fixture had to name a FOREIGN owner to reach the path-conflict arm at all, because the
-// ownership of our own unit swallowed it.
-//
-// Three assertions rather than one, because an arm that refused while still emitting a unit, or
-// named no unit in its reason, would satisfy a bare not-converged check while being useless to the
-// operator who must act on it.
+data converged_means_serving_doc: String = "THE DISCRIMINATING PAIR FOR THE CONTRACT DECISION. witness_an_already_managed_endpoint_is_converged_and_emits_nothing above and witness_our_unit_holding_a_dead_socket_is_not_converged below differ in exactly ONE input -- the path state under an identical ServerManagedUnitOwned placement -- and must land on opposite arms. That is the whole content of the decision: ownership answers WHO holds the endpoint, the path answers WHETHER IT IS SERVED, and a converged verdict needs both. Under the placement-first short-circuit that preceded this, the second witness went green on the CONVERGED arm, which is a host with a wedged server and an unreachable cache reported as needing nothing done. The specimen is not hypothetical: gunbc.build_cache_endpoint_observe socket_owner_path_state produces exactly this state -- a socket held open by a live fd-holder with no listen entry at the path -- and test.claim.build_cache_endpoint_observe held_without_listening_fixture_note recorded that its own fixture had to name a FOREIGN owner to reach the path-conflict arm at all, because the ownership of our own unit swallowed it.\n\nThe pair is stated as three assertions rather than one because an arm that refused while still emitting a unit, or that named no unit in its reason, would satisfy a bare not-converged check while being useless to the operator who has to act on it."
 
 test fn witness_our_unit_holding_a_dead_socket_is_not_converged() -> Bool {
   let a = ensure_for(
@@ -232,11 +175,7 @@ test fn witness_our_unit_holding_a_dead_socket_is_not_converged() -> Bool {
     )
 }
 
-// The second half of the same wall, the one that fails toward the wrong answer if left out. A
-// path that could not be READ is not a path being served; answering converged from ownership
-// alone would report a host converged on evidence never obtained -- the fabricated plausible
-// output DESIGN section 5 forbids, not merely a weaker check. Its sibling above differs in one
-// field: a path state that WAS read and says not-listening.
+data unreadable_path_under_our_own_placement_doc: String = "The second half of the same wall, and the one that fails toward the wrong answer if it is left out. A path that could not be READ is not a path that is being served; answering converged from ownership alone here would report a host converged on evidence never obtained, which is the fabricated plausible output DESIGN section 5 forbids rather than merely a weaker check. Its sibling above differs in one field: a path state that WAS read and says not-listening."
 
 test fn witness_an_unreadable_path_under_our_own_unit_is_not_converged() -> Bool {
   let a = ensure_for(
@@ -256,15 +195,7 @@ test fn witness_a_managed_unit_that_is_not_ours_is_not_converged() -> Bool {
   build_cache_ensure_is_converged(admission: a) == false
 }
 
-// ctrl-sccache.service was a real specimen: it existed on srv1 and srv2 at the 2026-08-01
-// capture, managing the SESSION instance. IT NO LONGER EXISTS ANYWHERE -- measured
-// 2026-08-25T18:43Z, is-enabled returns not-found on all four hosts and no unit file matches --
-// and the fixture is kept because a red control needs only to be the shape a wrong acceptance
-// would admit, not a currently installed subject. gunbc.build_cache_instance
-// build_cache_desired_instances_note carries what that disappearance costs elsewhere: the session
-// rows' 50G capacity was set from this unit. A convergence check accepting any managed unit as
-// satisfying the CI instance would report srv1 converged on a unit serving a different cache
-// directory, uid and socket.
+data wrong_managed_unit_doc: String = "ctrl-sccache.service was a real specimen and not a hypothetical: it existed on srv1 and srv2 at the 2026-08-01 capture, managing the SESSION instance. IT NO LONGER EXISTS ANYWHERE -- measured 2026-08-25T18:43Z, is-enabled returns not-found on all four hosts and no unit file matches -- and the fixture is kept because a red control does not need its subject to be currently installed, only to be the shape a wrong acceptance would admit. gunbc.build_cache_instance build_cache_desired_instances_note carries what that disappearance costs elsewhere: the session rows' 50G capacity was set from this unit. A convergence check that accepted any managed unit as satisfying the CI instance would report srv1 converged on the strength of a unit serving a different cache directory, a different uid and a different socket."
 
 test fn witness_unknown_placement_refuses_before_reading_the_path() -> Bool {
   let a = ensure_for(
@@ -274,11 +205,7 @@ test fn witness_unknown_placement_refuses_before_reading_the_path() -> Bool {
   (ensure_yields_unit(admission: a) == false) && (build_cache_ensure_is_converged(admission: a) == false)
 }
 
-// The discriminating case for the ordering. The path here is ABSENT -- the one state otherwise
-// admitted immediately -- so this witness fails if placement is consulted after the path rather
-// than before. Unknown means the observer could not classify the owner, and proceeding would write
-// and start a unit on a host whose current state we failed to read: an absorbing fallback whose
-// widen is a host mutation rather than a rerun.
+data unknown_before_path_doc: String = "The discriminating case for the ordering. The path here is ABSENT -- the one state that would otherwise be admitted immediately -- so this witness fails if placement is consulted after the path rather than before. Unknown means the observer could not classify the owner, and proceeding would mean writing and starting a unit on a host whose current state we failed to read: an absorbing fallback whose widen is a host mutation rather than a rerun."
 
 test fn witness_a_path_conflict_is_never_admitted() -> Bool {
   let a = ensure_for(
@@ -298,13 +225,7 @@ test fn witness_a_stale_read_cannot_license_the_ensure() -> Bool {
   ensure_yields_unit(admission: a) == false
 }
 
-// The render must produce a unit systemd can supervise, and the failure mode is silent:
-// --start-server daemonizes and returns 0, so under Type=simple the unit is marked dead the instant
-// it starts while sccache survives only through its own per-invocation auto-start. Proven live on
-// srv3 2026-07-25. An earlier draft of this render emitted exactly that form and would have
-// generated a no-op unit; gunbc.host_build_cache_provision_script's existing construction check,
-// which refuses a body containing --start-server, caught it. This witness pins the corrected form
-// here too, so the render cannot regress independently of that check.
+data foreground_supervision_doc: String = "The render must produce a unit systemd can actually supervise, and the failure mode is silent: --start-server daemonizes and returns 0, so under Type=simple the unit is marked dead the instant it starts while sccache survives only through its own per-invocation auto-start. Proven live on srv3 2026-07-25. An earlier draft of this render emitted exactly that form and would have generated a no-op unit; it was caught by gunbc.host_build_cache_provision_script's existing construction check, which refuses a body containing --start-server. This witness pins the corrected form here too, so the render cannot regress independently of that check."
 
 test fn witness_the_rendered_unit_is_foreground_supervised() -> Bool {
   let u = ci_unit()

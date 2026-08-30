@@ -17,9 +17,7 @@ import extdeps.languages.json.parse {
 import extdeps.ollama.api { OllamaModelRef, ollama_model_ref_wire }
 import gunbc.spark.serving_desired { spark_serving_desired_model_ref }
 
-// Grammar-owned readback decoders for ollama /api/version and /api/tags. parse_json plus
-// json_object_unique_member are the single authority — never string_contains and never substitute
-// the desired version or a placeholder digest.
+data spark_serving_readback_parse_note: String = "Grammar-owned readback decoders for ollama /api/version and /api/tags. parse_json plus json_object_unique_member are the single authority — never string_contains and never substitute the desired version or a placeholder digest."
 
 type SparkServingReadbackField
   = SparkServingReadbackAbsent

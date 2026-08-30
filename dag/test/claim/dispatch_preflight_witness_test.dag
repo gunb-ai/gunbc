@@ -39,13 +39,7 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-// The preflight's DECISION layer is pure and is witnessed here; the observation layer is the shared
-// capability observer and the shared fleet-revision observer, each already covered where it lives,
-// so nothing is re-observed. The discriminating reds are the two ways this carrier could lie in the
-// dangerous direction: a report carrying a refused axis rendering as PreflightAdmitted, and a
-// drifted-revision refusal that names only one side of the comparison — the belt's own receipt
-// names both, and a preflight that dropped either would tell an operator a tree had drifted without
-// saying to what.
+data dispatch_preflight_witness_note: String = "The preflight's DECISION layer is pure and is witnessed here; the observation layer is the shared capability observer and the shared fleet-revision observer, each already covered where it lives, so nothing is re-observed. The discriminating reds are the two ways this carrier could lie in the dangerous direction: a report carrying a refused axis rendering as PreflightAdmitted, and a drifted-revision refusal that names only one side of the comparison — the belt's own receipt names both, and a preflight that dropped either would tell an operator a tree had drifted without saying to what."
 
 data desired_hex: String = "7c079cd39c6c58ef201d6949189384019f1576d0"
 data local_hex: String = "517fdac4ddf92d0dd636c1f66fdb95b508525067"

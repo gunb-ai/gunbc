@@ -33,16 +33,7 @@ import product.compute_board.intent {
   requirement_capability,
 }
 
-// THE EARNED-ELEMENT FOLD: given a contract and a set of selected components, which required
-// capabilities are unsatisfied, and which components are unearned. THE ASYMMETRY IS THE POINT AND
-// IT IS EASY TO GET WRONG: an unsatisfied capability is a hole in the design, and an unearned
-// component is a part nobody can justify — they are not two readings of one number, and a board
-// that satisfies every capability can still carry parts that discharge nothing. A COMPONENT MAY
-// DISCHARGE MORE THAN ONE OBLIGATION, and may also be earned by another component's imposed
-// constraint rather than by a contract capability directly: a decoupling network is required by the
-// device it serves, not by 'serve web workloads'. That second route is modelled as
-// ImposedByComponent so the derivation stays a real chain back to the contract, rather than
-// becoming an escape hatch that launders any part as necessary.
+data composition_note: String = "THE EARNED-ELEMENT FOLD: given a contract and a set of selected components, which required capabilities are unsatisfied, and which components are unearned. THE ASYMMETRY IS THE POINT AND IT IS EASY TO GET WRONG: an unsatisfied capability is a hole in the design, and an unearned component is a part nobody can justify — they are not two readings of one number, and a board that satisfies every capability can still carry parts that discharge nothing. A COMPONENT MAY DISCHARGE MORE THAN ONE OBLIGATION, and may also be earned by another component's imposed constraint rather than by a contract capability directly: a decoupling network is required by the device it serves, not by 'serve web workloads'. That second route is modelled as ImposedByComponent so the derivation stays a real chain back to the contract, rather than becoming an escape hatch that launders any part as necessary."
 
 // Why a component is in the design. There are exactly two legitimate answers and no third:
 // the contract asked for the capability, or a component we already selected requires it. A

@@ -17,11 +17,7 @@ import tools.multi_module_compile_fixture {
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-// Paired control for v1 coproduct match exhaustiveness via compile_dag_diagnostic_census. An
-// exhaustive Trio match must observe zero NonExhaustiveMatch rows; a match omitting Blue must
-// refuse with exactly one counted NonExhaustiveMatch diagnostic — not merely 'refuses', which would
-// pass today when the checker lists the full declared roster. Precision of the missing variant list
-// is pinned in infer_semantics_witness (check_match_exhaustiveness missing.len == 1).
+data match_exhaustiveness_coproduct_witness_note: String = "Paired control for v1 coproduct match exhaustiveness via compile_dag_diagnostic_census. An exhaustive Trio match must observe zero NonExhaustiveMatch rows; a match omitting Blue must refuse with exactly one counted NonExhaustiveMatch diagnostic — not merely 'refuses', which would pass today when the checker lists the full declared roster. Precision of the missing variant list is pinned in infer_semantics_witness (check_match_exhaustiveness missing.len == 1)."
 
 data exhaustive_coproduct_source: String = "module exhaust_exhaustive\ntype Trio = Red | Green | Blue\nfn f(c: Trio) -> Bool {\n  match c {\n    Red => true\n    Green => false\n    Blue => true\n  }\n}\n"
 

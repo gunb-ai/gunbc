@@ -12,10 +12,7 @@ import extdeps.ollama.binary_release {
 }
 import extdeps.archive.format { ArchiveCompressionCodec, Gzip, Zstd }
 
-// Release-bundled Ollama runtime closure identity at ollama_required_release
-// (extdeps.ollama.binary_release). Produces the RuntimeArtifactIdentity.closure_digest consumed by
-// gunbc.spark.serving_release. Materialization binds through gunbc.package_delivery per #8225 —
-// this module derives identity only; it does not install.
+data ollama_runtime_bundle_note: String = "Release-bundled Ollama runtime closure identity at ollama_required_release (extdeps.ollama.binary_release). Produces the RuntimeArtifactIdentity.closure_digest consumed by gunbc.spark.serving_release. Materialization binds through gunbc.package_delivery per #8225 — this module derives identity only; it does not install."
 
 // THE CODEC, NOT THE DISTRIBUTION SUFFIX. The suffix is a filename convention -- `.tgz` and
 // `.tar.gz` are one codec spelled two ways and unpack identically -- so hashing it would split one
@@ -67,10 +64,7 @@ fn ollama_runtime_materialization_identity_for_required_release() -> Fnv1a64Stru
   ollama_runtime_materialization_identity(rel: ollama_required_release)
 }
 
-// Maps observed /api/version plus the cited release-asset digest (from install-provenance receipt
-// readback, never desired-state re-derivation) to exactly one catalog row. Version wire alone is
-// ambiguous across generic-cuda and jetpack builds at v0.32.9 — never collapse to
-// ollama_required_release without the asset digest.
+data ollama_runtime_observation_identity_note: String = "Maps observed /api/version plus the cited release-asset digest (from install-provenance receipt readback, never desired-state re-derivation) to exactly one catalog row. Version wire alone is ambiguous across generic-cuda and jetpack builds at v0.32.9 — never collapse to ollama_required_release without the asset digest."
 
 fn ollama_runtime_materialization_identity_for_observed_release(
   version: String,

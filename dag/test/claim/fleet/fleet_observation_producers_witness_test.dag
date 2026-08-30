@@ -41,24 +41,25 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 
 // EVERY FRONTIER BELOW IS A SET OF NAMED HOSTS, NOT A TALLY. The four fleet counts these replaced
-// were deleted from production entirely: they had no production consumer, and a function whose only
-// consumer is evidence is the no-final-consumer tell. The evidence stays, rebuilt here at identity
-// grain -- DESIGN 4b(4) dissolves the lower-rung machinery a climb obsoletes and keeps the evidence
-// that the rung is real; the two were separable because a witness can fold the enrolled population
-// itself.
+// were deleted from production entirely: they had no production consumer at all, and a function
+// whose only consumer is evidence is the no-final-consumer tell. The evidence itself stays, rebuilt
+// here at identity grain -- DESIGN 4b(4) dissolves the lower-rung machinery a climb obsoletes and
+// keeps the evidence that the rung is real, and here the two were separable because a witness can
+// fold the enrolled population itself.
 //
 // WHAT IDENTITY GRAIN BUYS OVER THE COUNTS. DESIGN section 5 requires completeness to be an identity
-// join, not a count equality. A count says six hosts are unobserved but never WHICH, so a producer
-// arriving moves a number and the diff cannot say what acquired one. The sharper reason: a count
-// and its own prose cannot contradict each other detectably -- a count has no members, so nothing
-// can check a sentence about it against it; the sibling witness in test.claim.host_swap_backing
-// carries the specimen, where a note saying "all four enrolled hosts" sat beside a fold over six
-// until someone read both.
+// join rather than a count equality. A count says six hosts are unobserved but never WHICH, so a
+// producer arriving moves a number and the diff cannot say what acquired one. Named sets make that
+// readable. The sharper reason is that a count and its own prose cannot contradict each other
+// detectably -- a count has no members, so no review, execution or lens can check a sentence about
+// it against it; the sibling witness in test.claim.host_swap_backing carries the specimen, where a
+// note saying "all four enrolled hosts" sat beside a fold over six for as long as it took someone to
+// read both.
 //
-// NOT A CLAIM THAT ANY HOST HERE IS FICTIONAL (an earlier revision said so and was wrong): all six
-// enrolled hosts are real machines. srv5 and srv6 are the two DGX Spark units, live on the operator
-// LAN with ARP-confirmed MACs and measured SSH host keys; counting them as unobserved is correct
-// because nobody has measured their disk, swap or endpoint yet.
+// NOT A CLAIM THAT ANY HOST HERE IS FICTIONAL, stated because an earlier revision of this block said
+// so and was wrong: all six enrolled hosts are real machines. srv5 and srv6 are the two DGX Spark
+// units, live on the operator LAN with ARP-confirmed MACs and measured SSH host keys; counting them
+// as unobserved is correct, because nobody has measured their disk, swap or endpoint yet.
 //
 // THE UNIVERSE IS THE ENROLLED POPULATION and never a roster typed into this file: a list pinned to
 // nothing is the same defect as a count pinned to a population, with more typing.

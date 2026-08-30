@@ -10,12 +10,7 @@ import extdeps.ollama.binary_release { ollama_required_release, ollama_binary_re
 import extdeps.ollama.model_store { ollama_manifest_rel_path, ollama_model_store_layout, ollama_default_registry, ollama_default_namespace, ollama_blob_file_name }
 import gunbc.spark.serving_desired { spark_serving_desired_model_ref }
 
-// Owned-runtime layout for UserUnitRealization + InstallOwnedRuntimeClosure on Spark hosts.
-// Executor home is gunbc.spark.serving_runtime_receipt; unit basename is
-// gunbc.spark.serving_unit_identity spark_serving_unit_name. Unit desired state is
-// SparkServingUserUnitSpec (typed fields, not systemd INI syntax); gunbc.spark.serving_membership
-// spark_serving_user_unit_file_write_intent carries path+spec for generic remote file delivery
-// (#8298 consumer on integration branch).
+data spark_serving_install_paths_note: String = "Owned-runtime layout for UserUnitRealization + InstallOwnedRuntimeClosure on Spark hosts. Executor home is gunbc.spark.serving_runtime_receipt; unit basename is gunbc.spark.serving_unit_identity spark_serving_unit_name. Unit desired state is SparkServingUserUnitSpec (typed fields, not systemd INI syntax); gunbc.spark.serving_membership spark_serving_user_unit_file_write_intent carries path+spec for generic remote file delivery (#8298 consumer on integration branch)."
 
 // THE ROOT IS CONTENT-ADDRESSED BY THE MATERIALIZATION IDENTITY.
 //

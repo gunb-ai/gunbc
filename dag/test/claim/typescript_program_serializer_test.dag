@@ -1,5 +1,6 @@
 module test.claim.typescript_program_serializer
 
+
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn minimal_add_program() -> TsProgram {
@@ -93,14 +94,7 @@ test fn typescript_program_serialize_create_server_fragment_holds() -> Bool {
     && string_contains(s: src, pattern: "require('http')")
 }
 
-// The printer's grouping proven by SERIALIZED TEXT, not by reading the table, because the defect
-// these witnesses close was invisible in the model and visible only in the output. Each assertion
-// is a whole-string equality, which is the strongest available discrimination here: a printer that
-// stopped grouping reds the three grouping witnesses, and a printer that grouped indiscriminately
-// reds the three bare witnesses, so neither direction of regression can pass. The two grouping
-// shapes are the exact shapes found live in gunbc.roadmap_component on 2026-07-30 — a conditional
-// and a disjunction as the right operand of a concatenation — rather than invented ones, so the RED
-// is the real defect rather than a strawman.
+data operator_precedence_witness_note: String = "The printer's grouping proven by SERIALIZED TEXT, not by reading the table, because the defect these witnesses close was invisible in the model and visible only in the output. Each assertion is a whole-string equality, which is the strongest available discrimination here: a printer that stopped grouping reds the three grouping witnesses, and a printer that grouped indiscriminately reds the three bare witnesses, so neither direction of regression can pass. The two grouping shapes are the exact shapes found live in gunbc.roadmap_component on 2026-07-30 — a conditional and a disjunction as the right operand of a concatenation — rather than invented ones, so the RED is the real defect rather than a strawman."
 
 fn precedence_const_program(value: TsExpr) -> TsProgram {
   TsProgram {
@@ -175,13 +169,7 @@ test fn typescript_precedence_leaves_tighter_child_bare() -> Bool {
   serialize_typescript_program(p: precedence_const_program(value: e)) == "const x = a === b && c === d;"
 }
 
-// An operator the table does not know claims the tightest binding as a parent, so any COMPOUND
-// operand under it is grouped — `b + c` here — while an atom is left bare, because an identifier
-// has nothing to re-associate and parenthesizing it would be noise with no property behind it. The
-// first version of this witness asserted `(a) ?? (b + c)` and was simply wrong about the printer;
-// it is recorded because the correction is the interesting part. Over-parenthesizing is the safe
-// direction for an unknown operator, but 'safe direction' is not a licence to group things that
-// cannot be misgrouped.
+data unrecognized_operator_note: String = "An operator the table does not know claims the tightest binding as a parent, so any COMPOUND operand under it is grouped — `b + c` here — while an atom is left bare, because an identifier has nothing to re-associate and parenthesizing it would be noise with no property behind it. The first version of this witness asserted `(a) ?? (b + c)` and was simply wrong about the printer; it is recorded because the correction is the interesting part. Over-parenthesizing is the safe direction for an unknown operator, but 'safe direction' is not a licence to group things that cannot be misgrouped."
 
 test fn typescript_precedence_groups_unrecognized_operator_operands() -> Bool {
   let e = ts_binop(
@@ -199,13 +187,7 @@ test fn typescript_precedence_groups_unrecognized_operator_as_child() -> Bool {
   serialize_typescript_program(p: precedence_const_program(value: e)) == "const x = 'a' + (b ?? c);"
 }
 
-// The receiver arm of the precedence family, added on a live silent defect (2026-08-01): ts_member
-// over a `||` binop serialized as `a || [].forEach(cb)` — valid JavaScript that never runs the
-// callback when `a` is truthy, discovered as an empty obligation ledger with zero console errors.
-// The discriminating pair: an operator receiver GROUPS (member, index, and call each asserted); an
-// atom receiver (call result, plain member chain) stays bare, so the fix cannot hide behind blanket
-// parentheses. The RED is the exact live shape: the ungrouped spelling must not be what the printer
-// emits.
+data receiver_grouping_witness_note: String = "The receiver arm of the precedence family, added on a live silent defect (2026-08-01): ts_member over a `||` binop serialized as `a || [].forEach(cb)` — valid JavaScript that never runs the callback when `a` is truthy, discovered as an empty obligation ledger with zero console errors. The discriminating pair: an operator receiver GROUPS (member, index, and call each asserted); an atom receiver (call result, plain member chain) stays bare, so the fix cannot hide behind blanket parentheses. The RED is the exact live shape: the ungrouped spelling must not be what the printer emits."
 
 test fn typescript_receiver_binop_groups_under_member() -> Bool {
   let e = ts_call(

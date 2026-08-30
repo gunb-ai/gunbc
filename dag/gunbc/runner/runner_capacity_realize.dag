@@ -28,20 +28,9 @@ import gunbc.host_disk_observation { host_disk_observation }
 import gunbc.fleet_intent_network { operator_host_srv3, operator_host_srv4 }
 import product.placement_supply { HostIdentity }
 
-// PR C seam: wires gunbc.apply mode=apply to runner_capacity_plan + per-host disk preflight +
-// ADD-only dispatch. Does NOT provision runners — all nine runner_lifecycle_realize_* arms return
-// NotConverged (honest scaffold; dissolve-on runner_lifecycle_realize_wet_transport_dissolve_on:
-// LocalShell in-band transport + enumerated sudo grants + HostEffectTransport). Runner-capacity
-// apply executes RunnerSlotAdd only; Change/Remove/IncarnationReplace refuse per host (repair is
-// #7940). Per-host outcomes are independent: srv4 disk/refusal does not discard srv3's receipt. No
-// ctrl in this closure. Disk unobservable REFUSES per host (never width-5 fallback). Live width
-// authority is unit/process state, not directory count (runner_capacity_width_authority_note).
+data runner_capacity_realize_authority_note: String = "PR C seam: wires gunbc.apply mode=apply to runner_capacity_plan + per-host disk preflight + ADD-only dispatch. Does NOT provision runners — all nine runner_lifecycle_realize_* arms return NotConverged (honest scaffold; dissolve-on runner_lifecycle_realize_wet_transport_dissolve_on: LocalShell in-band transport + enumerated sudo grants + HostEffectTransport). Runner-capacity apply executes RunnerSlotAdd only; Change/Remove/IncarnationReplace refuse per host (repair is #7940). Per-host outcomes are independent: srv4 disk/refusal does not discard srv3's receipt. No ctrl in this closure. Disk unobservable REFUSES per host (never width-5 fallback). Live width authority is unit/process state, not directory count (runner_capacity_width_authority_note)."
 
-// DECISION 4 inventory (historical ctrl citations OUTSIDE this closure, later lane):
-// runner_host_deploy runner_host_prereq_note, extdeps.jobserver, extdeps.cache.sccache,
-// gunbc.build_cache_instance, gunbc.host_converge, gunbc.ci_runner_placement,
-// gunbc.fleet_host_budget, gunbc.host_build_cache_provision_script,
-// gunbc.plans.fleet_subsumption_manual_gaps. None imported by runner_capacity_plan/realize.
+data runner_capacity_ctrl_inventory_note: String = "DECISION 4 inventory (historical ctrl citations OUTSIDE this closure, later lane): runner_host_deploy runner_host_prereq_note, extdeps.jobserver, extdeps.cache.sccache, gunbc.build_cache_instance, gunbc.host_converge, gunbc.ci_runner_placement, gunbc.fleet_host_budget, gunbc.host_build_cache_provision_script, gunbc.plans.fleet_subsumption_manual_gaps. None imported by runner_capacity_plan/realize."
 
 type RunnerCapacityHostApplyOutcome
   = HostApplySucceeded { add_actions_executed: Int }

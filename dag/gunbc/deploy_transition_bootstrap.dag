@@ -16,32 +16,35 @@ import gunbc.live_deploy.operations {
 
 // THE FIRST TRANSITION IS NOT PROTECTED BY ANY MARKER, AND THAT IS NOT A GAP IN THE MARKER.
 //
-// `gunbc.deploy_transition` inhibits release-consuming actuators by writing a durable record the
-// actuator READS. That works for every release that knows the record exists. It cannot work for the
-// FIRST activation: the belt timer and HTTP dispatcher alive during it run the OLD binary, installed
-// before the mechanism existed, and no file inhibits a program that never looks for it. The new
-// release is not installed until partway through the very transition needing protection.
+// `gunbc.deploy_transition` inhibits release-consuming actuators by writing a durable record that
+// the actuator READS. That works for every actuator running a release which knows the record
+// exists. It cannot work for the FIRST activation, because the belt timer and the HTTP dispatcher
+// live during it are running the OLD binary -- the one installed before the mechanism was written
+// -- and no file can inhibit a program that never looks for it. The new release is not installed
+// until partway through the very transition that needs protecting.
 //
-// So there are two regimes, and the transition between them is itself a modeled step.
+// So there are two regimes and the transition between them is itself a modeled step.
 //
-// BOOTSTRAP: the old release's actuators are stopped from OUTSIDE the process by masking their
+// BOOTSTRAP: the old release's actuators are stopped from OUTSIDE the process, by masking their
 // systemd units. That requires nothing of the old binary and survives the death of the deploying
-// process -- the property an in-process gate cannot have here.
+// process, which is the property an in-process gate cannot have here.
 //
-// THIS PARAGRAPH USED TO ALSO CLAIM IT SURVIVES A REBOOT; THAT CLAIM IS WITHDRAWN AS UNMEASURED. A
-// persistent mask writes its /dev/null symlink at /etc/systemd/system/<unit>, the SAME PATH these
-// units occupy as real installed files, so systemd may refuse it there and the working mechanism
-// becomes `mask --runtime` in /run/systemd/system, which a reboot discards. Which one srv1 gives has
-// not been measured, so the durable-across-reboot half is not asserted -- it is OBSERVED per unit
-// and carried on `MaskPersistence`, and `mask_survives_reboot` answers from that observation.
-// Unobserved answers false: a durability nobody looked at is not a durability. Bootstrap is stronger
-// than the steady-state mechanism and correspondingly more expensive: the dashboard is down for the
-// window, which the single-deployment ruling already accepts as the cost of restart-in-place.
+// THIS PARAGRAPH USED TO ALSO CLAIM IT SURVIVES A REBOOT, AND THAT CLAIM IS WITHDRAWN AS UNMEASURED.
+// A persistent mask writes its /dev/null symlink at /etc/systemd/system/<unit>, which is the SAME
+// PATH these units occupy as real installed files, so systemd may refuse it there and the working
+// mechanism becomes `mask --runtime` in /run/systemd/system, which a reboot discards. Which one
+// srv1 actually gives has not been measured, so the durable-across-reboot half is not asserted --
+// it is OBSERVED per unit and carried on `MaskPersistence`, and `mask_survives_reboot` answers from
+// that observation rather than from this sentence. Unobserved answers false, because a durability
+// nobody looked at is not a durability. It is
+// stronger than the steady-state mechanism and correspondingly more expensive: the dashboard is
+// down for the window, which the single-deployment ruling already accepts as the cost of a
+// restart-in-place deployment.
 //
 // STEADY STATE: the installed release consults the durable marker itself, so its units may run
 // while a transition is in force -- every actuation path inside them refuses on its own. The units
-// are re-enabled then even though the inhibition is still set, because it is now enforced one level
-// in.
+// are re-enabled at that point even though the inhibition is still set, because the inhibition is
+// now enforced one level in.
 //
 // THE SWITCH IS A WALL, NOT A STEP. Re-enabling the units is admitted only when the INSTALLED
 // release is observed to be marker-aware. Re-enabling over an unaware release would restore exactly
@@ -62,10 +65,10 @@ type QuiescenceRegimeDecision
   | QuiescenceRegimeUndecidable { cause: String }
 
 // AN UNOBSERVED AWARENESS REFUSES RATHER THAN CHOOSING THE STRONGER REGIME. Defaulting to bootstrap
-// is safe in outcome and wrong in kind: it answers a question it could not compute with the most
-// protective value, zeroing the observation deficit by construction and making an unobservable
-// release indistinguishable from an old one. A transition that cannot tell which release is running
-// has no business starting.
+// would be safe in outcome and wrong in kind: it answers a question it could not compute with the
+// most protective value, which zeroes the frequency of the observation deficit by construction and
+// makes an unobservable release indistinguishable from an old one. A transition that cannot tell
+// which release is running has no business starting.
 fn quiescence_regime(awareness: ReleaseMarkerAwareness) -> QuiescenceRegimeDecision {
   match awareness {
     MarkerAware { release_identity: _ } =>
@@ -82,11 +85,11 @@ fn quiescence_regime(awareness: ReleaseMarkerAwareness) -> QuiescenceRegimeDecis
   }
 }
 
-// THE QUIESCED SET IS EVERY UNIT THAT CAN ACTUATE A RELEASE, so both belt units are in it, not only
-// the timer. Disabling the timer alone leaves the one-shot service startable by anything reaching
-// systemd, and the HTTP dispatcher lives in the serve unit -- the deploy convergence design record
-// already notes that stopping only the timer leaves the click path admitting against a
-// half-published release, which is this defect one layer out.
+// THE QUIESCED SET IS EVERY UNIT THAT CAN ACTUATE A RELEASE, and both of the belt's units are in it
+// rather than only the timer. Disabling the timer alone leaves the one-shot service startable by
+// anything that reaches systemd, and the HTTP dispatcher lives in the serve unit -- the deploy
+// convergence design record already records that stopping only the timer leaves the click path
+// admitting against a half-published release, which is this defect one layer out.
 fn bootstrap_quiesced_units(names: DeploymentNames) -> List<NonEmptyStr> {
   [
     deployment_belt_timer_unit_name(names: names),
@@ -96,30 +99,32 @@ fn bootstrap_quiesced_units(names: DeploymentNames) -> List<NonEmptyStr> {
 }
 
 // `mask --now` AND NOT `disable --now`, AND THIS ROW IS A CORRECTION RATHER THAN A PREFERENCE. It
-// previously read `disable --now`, arguing that disabling removes the enablement symlinks and is
-// therefore durable where `stop` is not. That argument against `stop` still holds. The rest was
-// FALSE FOR ONE OF THE THREE UNITS THIS QUIESCES -- worse than a weak choice, because the row
-// asserted a guarantee the operation does not deliver.
+// previously read `disable --now`, on the argument that disabling removes the enablement symlinks
+// and is therefore durable where `stop` is not. The durability argument against `stop` still holds
+// and is why this is not `stop`. The rest of it was FALSE FOR ONE OF THE THREE UNITS THIS QUIESCES,
+// which is worse than a weak choice because the row asserted a guarantee the operation does not
+// deliver.
 //
 // MEASURED, not reasoned: `gunbc.live_deploy.emit` renders the belt SERVICE with
-// `install: NotInstallable` -- a STATIC unit, activated by the belt timer rather than an [Install]
-// section. A static unit has no enablement symlinks, so `systemctl disable` does nothing; only the
-// `--now` half took effect, which is exactly the non-durable `stop` rejected above. The belt
-// service's declared durability was supplied by the timer being disabled separately, not by this
-// function.
+// `install: NotInstallable` -- it is a STATIC unit, activated by the belt timer rather than by an
+// [Install] section. A static unit has no enablement symlinks, so `systemctl disable` has nothing
+// to remove and does nothing; only the `--now` half took effect, and that half is exactly the
+// non-durable `stop` the row above rejects. So for the belt service the declared durability was
+// supplied by the timer being disabled separately, and not by anything this function did.
 //
-// `mask` is correct for both kinds and stronger on the axis that matters: it links the unit to
-// /dev/null, so activation is refused whatever requests it -- timer, dependency, or a hand at a
-// terminal. `disable` never prevented a manual `systemctl start`, and a bootstrap quiescence whose
-// purpose is that NOTHING actuates during the first transition cannot leave that route open.
+// `mask` is correct for both kinds and is stronger on the axis that actually matters here: it links
+// the unit to /dev/null, so activation is refused whatever requests it -- the timer, a dependency,
+// or a hand at a terminal. `disable` never prevented a manual `systemctl start`, and a bootstrap
+// quiescence whose whole purpose is that NOTHING actuates during the first transition cannot leave
+// that route open.
 //
 // AND MASK IS STATE-PRESERVING, WHICH IS WHY THE RESTORE BELOW GOT SIMPLER RATHER THAN LONGER.
-// `disable` DESTROYS enablement state, so a restore must re-decide it -- the previous restore
-// re-enabled all three unconditionally, which would have ENABLED a unit an operator had
-// deliberately disabled before the transition, and would have failed on the static one, since
-// `enable` has no install section either. `mask` layers over existing state and `unmask` removes
-// the layer, leaving prior enablement as found. The restore asserts nothing about what was enabled;
-// it only stops overriding.
+// `disable` DESTROYS enablement state, so a restore has to re-decide what that state was -- and the
+// previous restore re-enabled all three unconditionally, which would have ENABLED a unit an
+// operator had deliberately disabled before the transition began, and would additionally have
+// failed on the static one, since `enable` has no install section to act on either. `mask` layers
+// over the existing state and `unmask` removes the layer, leaving prior enablement exactly as
+// found. The restore therefore asserts nothing about what was enabled; it only stops overriding.
 fn bootstrap_quiesce_commands(names: DeploymentNames, privileged: Bool) -> List<String> {
   map(
     bootstrap_quiesced_units(names: names),
@@ -128,16 +133,16 @@ fn bootstrap_quiesce_commands(names: DeploymentNames, privileged: Bool) -> List<
 }
 
 // NO `start` HERE, AND ITS ABSENCE IS THE SAME STATE-PRESERVING ARGUMENT. The previous restore
-// started all three units after enabling them, asserting all three were RUNNING before quiescence.
-// The belt timer starts the belt service on its own cadence and the serve unit starts from its
-// enablement at boot, so starting them by hand would duplicate that and paper over a unit that was
-// legitimately down. Unmasking returns the host to the state the transition found; it does not
-// decide what that state should be.
+// started all three units after enabling them, which asserts that all three were RUNNING before the
+// quiescence. The belt timer starts the belt service on its own cadence and the serve unit is
+// started by its enablement at boot, so starting them by hand here would both duplicate that and
+// paper over the case where one of them was legitimately down. Unmasking returns the host to the
+// state the transition found; it does not decide what that state should be.
 // QUIESCENCE IS TWO INDEPENDENTLY OBSERVED FACTS, AND ONE COMMAND EXIT PROVES NEITHER.
-// (Operator ruling relayed 2026-08-28.) `stop` establishes CURRENTLY INACTIVE; `mask` is intended
+// (Operator ruling relayed 2026-08-28.) `stop` establishes CURRENTLY INACTIVE. `mask` is intended
 // to establish NOT STARTABLE. They are different propositions about different times -- "nothing is
 // running now" and "nothing can start while I am gone" -- and the transition needs BOTH. This is
-// the lease/inhibition split this lane already accepted, applied one layer out to the units.
+// the same lease/inhibition split this lane already accepted, applied one layer out to the units.
 //
 // AND THE ADMISSION LAW IS PHRASED ON THE OBSERVED REFUSAL, NEVER ON THE MECHANISM. It does not say
 // "a mask symlink was written": these units are installed as local /etc/systemd/system files, and
@@ -147,30 +152,31 @@ fn bootstrap_quiesce_commands(names: DeploymentNames, privileged: Bool) -> List<
 // stronger fact.
 //
 // WHY A SUCCESSFUL EXIT CODE IS NOT THE RECEIPT. `systemctl mask` returning 0 says the request was
-// accepted, not that activation is refused -- it cannot distinguish a real mask from a unit merely
-// stopped and disabled, which is exactly the state this module shipped before the mask correction
-// and reads as quiesced while remaining startable. So the activation standing is minted ONLY from
-// the outcome of a PLANTED DIRECT START, with the arms assigned against intuition: a start that
-// FAILED is the admitting evidence, and a start that SUCCEEDED refuses the transition. No arm lets
-// the mask's own exit code reach this standing.
+// accepted, not that activation is refused -- it cannot distinguish a real mask from a unit that is
+// merely stopped and disabled, which is exactly the state this module shipped before the mask
+// correction and exactly the state that reads as quiesced while remaining startable. So the
+// activation standing is minted ONLY from the outcome of a PLANTED DIRECT START, and the arms are
+// assigned against intuition: a start that FAILED is the admitting evidence, and a start that
+// SUCCEEDED refuses the transition. There is no arm in which an exit code from the mask itself
+// reaches this standing.
 //
 // THE PLANTED START IS DESTRUCTIVE IF IT SUCCEEDS, AND THAT IS PART OF THE MEASUREMENT RATHER THAN
 // A HAZARD TO SUPPRESS. If the probe starts the belt service, an actuator has just run against a
-// mid-transition tree -- the failure this lane exists to prevent, now OBSERVED instead of assumed.
-// `ActivationObservedAdmitted` therefore refuses loudly and names the unit; the caller re-quiesces
-// and does not proceed. Suppressing the probe would leave the same state unobserved, which is how
-// it got here.
+// tree mid-transition -- which is the failure this whole lane exists to prevent, now OBSERVED
+// instead of assumed. `ActivationObservedAdmitted` therefore refuses loudly and names the unit; the
+// caller re-quiesces and does not proceed. Suppressing the probe to avoid the risk would leave the
+// same state unobserved, which is how it got here.
 // WHEN THE PROBE SUCCEEDS, SOMETHING IS NOW RUNNING, AND RECORDING THAT IS NOT THE SAME AS ENDING
 // IT. (Operator question, 2026-08-28.) The refusing arm was correct and incomplete: in exactly the
-// case the probe exists to catch -- the mask did not take -- a belt tick has started against a
+// case the probe exists to catch -- the mask did not take -- a belt tick has been started against a
 // mid-transition tree, and a fold that only RECORDED the observation would leave it running. The
-// refusal would be right and the side effect would still be the failure this lane prevents.
+// refusal would be right and the side effect would still be the failure this lane exists to prevent.
 //
-// SO CONTAINMENT IS A FIELD OF THE ADMITTED ARM RATHER THAN A STEP SOMEONE REMEMBERS. No spelling
-// of "the planted start succeeded" omits what happened when we stopped it -- the difference between
-// a construction and a convention. The stop's own outcome is OBSERVED, not assumed: a stop that
-// failed is strictly worse than one that succeeded -- an actuator is running right now -- so it
-// keeps its own arm and its own remedy.
+// SO CONTAINMENT IS A FIELD OF THE ADMITTED ARM RATHER THAN A STEP SOMEONE REMEMBERS. There is no
+// spelling of "the planted start succeeded" that does not also carry what happened when we stopped
+// it, which is the difference between a construction and a convention. And the stop's own outcome
+// is OBSERVED rather than assumed: a stop that failed is strictly worse than one that succeeded --
+// an actuator is running right now -- so it keeps its own arm and its own remedy.
 type ProbeContainment
   = ProbeContained { detail: String }
   | ProbeUncontained { detail: String }
@@ -188,16 +194,17 @@ fn quiescence_probe_stop_command(unit: NonEmptyStr, privileged: Bool) -> String 
   systemctl_stop_command(unit: unit, privileged: privileged)
 }
 
-// WHICH MASK MECHANISM TOOK IS AN OBSERVED FACT, NOT AN ASSUMED ONE; this carrier exists because
+// WHICH MASK MECHANISM TOOK IS AN OBSERVED FACT, NOT AN ASSUMED ONE, and this carrier exists because
 // this module made a reboot-durability claim it had not measured. A PERSISTENT mask writes its
-// /dev/null symlink at /etc/systemd/system/<unit> -- the path these units occupy as real installed
-// files -- so systemd may refuse it there, and the working mechanism becomes `mask --runtime`,
-// which lands in /run/systemd/system and DOES NOT SURVIVE A REBOOT.
+// /dev/null symlink at /etc/systemd/system/<unit> -- the same path these units occupy as real
+// installed files -- so systemd may refuse it there, and the working mechanism becomes
+// `mask --runtime`, which lands in /run/systemd/system and DOES NOT SURVIVE A REBOOT.
 //
 // Both mechanisms satisfy "cannot start while I am gone"; only the persistent one satisfies
-// "survives a reboot". The module previously conflated them by asserting the stronger. Carrying the
-// observation means the record cannot claim a durability it did not see, and a caller needing the
-// reboot-spanning property reads which it got instead of trusting a sentence written in August.
+// "survives a reboot". Those are different propositions and the module previously conflated them by
+// asserting the stronger. Carrying the observation means the record cannot claim a durability it did
+// not see, and a caller that needs the reboot-spanning property can read which it got instead of
+// trusting a sentence written in August.
 type MaskPersistence
   = MaskPersistentObserved { unit: NonEmptyStr, path: String }
   | MaskRuntimeOnlyObserved { unit: NonEmptyStr, path: String }
@@ -302,11 +309,11 @@ fn observe_unit_quiescence(
 // while I am gone" and "the inhibition survives a reboot" are different propositions, and only the
 // first is what quiescence means -- a transition that does not span a reboot is correctly admitted
 // over a runtime mask. So the fact travels on the record for a caller whose window DOES span one,
-// and `unit_quiescence_admission` stays silent about it rather than refusing a fine state.
+// and `unit_quiescence_admission` stays silent about it rather than refusing a state that is fine.
 //
 // THIS FIELD IS WHY THE TYPE EXISTS AT ALL. It was introduced carrying the withdrawn reboot claim
 // and then not wired to anything -- `MaskPersistence` had one Bool reader and no carrier, so the
-// commit adding it asserted the mechanism was "observed per unit" while nothing observed it.
+// commit that added it asserted the mechanism was "observed per unit" while nothing observed it.
 // Caught in review of the predicate, one level past what the review found.
 fn quiescence_survives_reboot(q: ExternalQuiescence) -> Bool {
   mask_survives_reboot(p: q.persistence)
@@ -418,29 +425,30 @@ fn adopt_steady_state(installed: ReleaseMarkerAwareness) -> SteadyStateAdoption 
   }
 }
 
-// THE ORDER IS THE SAFETY PROPERTY, so it is a modeled successor relation rather than the order a
-// caller happens to write the calls in. Every adjacent pair below is one of the requirements this
-// lane holds; a skipped or reordered step is a refusal naming both steps, never a run that quietly
-// omitted one.
+// THE ORDER IS THE SAFETY PROPERTY, so it is a modeled successor relation rather than the order in
+// which a caller happens to write the calls. Every adjacent pair below is one of the requirements
+// this lane exists to hold, and a skipped or reordered step is a refusal naming both steps rather
+// than a run that quietly omitted one.
 //
-// THE SEQUENCE IS PRINCIPAL -> LEASE -> OPERANDS -> MUTATION (operator ruling, 2026-08-28), and
-// the first arrow is the one an earlier revision got wrong: it began at `StepLeaseHeld`, which
-// reads as harmless and is not. ACQUISITION IS ITSELF A PRIVILEGED WRITE. A unit that acquires
-// before establishing its principal creates the lease -- mode 0600, owned by whoever happened to be
-// executing -- precisely the unreadable-marker state this lane exists to remove, manufactured by
-// the guard itself. The guard cannot produce the hazard it detects, so the principal is admitted
-// first and everything else is downstream.
+// THE SEQUENCE IS PRINCIPAL -> LEASE -> OPERANDS -> MUTATION (operator ruling, 2026-08-28), and the
+// first arrow is the one an earlier revision of this vocabulary got wrong: it began at
+// `StepLeaseHeld`, which reads as harmless and is not. ACQUISITION IS ITSELF A PRIVILEGED WRITE. A
+// unit that acquires before establishing which principal it runs as creates the lease -- mode 0600,
+// owned by whoever happened to be executing -- and that is precisely the unreadable-marker state
+// this lane spent its existence removing, manufactured by the guard itself. The guard cannot be the
+// thing that produces the hazard it exists to detect, so the principal is admitted first and
+// everything else is downstream of it.
 //
-// The four phases map onto the seven steps as: PRINCIPAL is `StepPrincipalAdmitted`; LEASE is
-// `StepLeaseHeld`; OPERANDS are `StepExternallyQuiesced` and `StepInhibitionPersisted`, the two
+// The four-phase reading maps onto the seven steps as: PRINCIPAL is `StepPrincipalAdmitted`; LEASE
+// is `StepLeaseHeld`; OPERANDS are `StepExternallyQuiesced` and `StepInhibitionPersisted`, the two
 // preconditions that must stand before anything is written; MUTATION is `StepReleaseInstalled` and
-// the three steps that give the host back. One vocabulary at two grains, not two.
+// the three steps that give the host back. They are one vocabulary at two grains, not two.
 //
-// The rest encodes two invariants. Nothing mutates before the principal is known, the lease is
-// held and the old actuators are quiesced. Nothing is released -- units, then marker, then lease --
-// until the layer beneath it is in place: units restore only over an aware release, the marker
-// clears only after the units are governed in-process, and the lease releases last so a second
-// transition cannot begin while any of it is outstanding.
+// Read the rest as the two invariants it encodes. Nothing mutates before the principal is known, the
+// lease is held and the old actuators are quiesced. Nothing is released -- units, then marker, then
+// lease -- until the layer beneath it is in place: units restore only over an aware release, the
+// marker clears only after the units are governed in-process, and the lease releases last so a
+// second transition cannot begin while any of it is outstanding.
 type TransitionStep
   = StepPrincipalAdmitted
   | StepLeaseHeld
@@ -464,20 +472,21 @@ fn transition_step_label(step: TransitionStep) -> String {
   }
 }
 
-// WHERE A CRASH LEAVES THE HOST, per step, and the property holding at every one: no state below
-// leaves an unguarded actuator over a tree that may be half-converged.
+// WHERE A CRASH LEAVES THE HOST, per step, and the property that holds at every one of them: no
+// state below leaves an unguarded actuator over a tree that may be half-converged.
 //
-// After principal-admitted: nothing written at all -- no lease, no marker -- so the host is exactly
-// as it was; that is why this step is first. After lease-held: nothing mutated; the lease file is
-// residue, resolved by the clearance path in gunbc.deploy_transition on evidence. After
-// externally-quiesced: the units are disabled and stay quiesced across the window, so the dashboard
-// is down -- an outage, the SAFE side of this mechanism, restored by re-running the deployment or by
-// operator abandonment plus a deliberate enable, both of which leave a record. Through
-// inhibition-persisted and release-installed both mechanisms are in force at once -- the only
-// overlap in the sequence, deliberate: the marker takes over from external quiescence rather than
-// replacing it in one uncovered instant. After steady-state-adopted the units run again and refuse
-// in-process, because the switch was admitted only over a marker-consulting release. After
-// inhibition-cleared only the lease is outstanding, the cheapest residue in the sequence.
+// After principal-admitted: nothing has been written at all -- no lease, no marker -- so a crash here
+// leaves the host exactly as it was. That is the whole reason this step is first.
+// After lease-held: nothing mutated; the lease file is residue, resolved by the clearance path in
+// gunbc.deploy_transition on evidence. After externally-quiesced: the units are disabled and stay
+// quiesced across the window, so the dashboard is down -- an outage, and the SAFE side of this
+// mechanism, restored by re-running the deployment or by an operator abandonment plus a deliberate
+// enable, both of which leave a record. Through inhibition-persisted and release-installed both
+// mechanisms are in force at once, which is the only overlap in the sequence and is deliberate: the
+// marker takes over from external quiescence rather than replacing it in one uncovered instant.
+// After steady-state-adopted the units run again and refuse in-process, because the switch was
+// admitted only over a release that consults the marker. After inhibition-cleared only the lease is
+// outstanding, which is the cheapest residue in the sequence.
 fn transition_step_successor(step: TransitionStep) -> TransitionStep? {
   match step {
     StepPrincipalAdmitted => Present { value: StepLeaseHeld }

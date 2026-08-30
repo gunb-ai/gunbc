@@ -19,11 +19,7 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-// The two PRs of the 2026-07-16 main-red, as symbolic identities (real receipts cited in
-// gunbc.merge_lifecycle.merge_lifecycle_incident_note: #6663 green run 29459154549, first union red
-// run 29461044828, root fix #6701). pr_a is #6663 (the P0 field wall), pr_b is #6686 (the std.types
-// import edge). Zero file overlap, both green in isolation, union red — the judge-x-evidence squash
-// race.
+data incident_fixture_note: String = "The two PRs of the 2026-07-16 main-red, as symbolic identities (real receipts cited in gunbc.merge_lifecycle.merge_lifecycle_incident_note: #6663 green run 29459154549, first union red run 29461044828, root fix #6701). pr_a is #6663 (the P0 field wall), pr_b is #6686 (the std.types import edge). Zero file overlap, both green in isolation, union red — the judge-x-evidence squash race."
 
 data pr_a: PrIdentity = PrIdentity {
   number: 6663,
@@ -95,16 +91,9 @@ test fn healed_head_lands_after_exact_head_revalidation() -> Bool {
     && end_state.main_tip == squash_result_tree(pr: pr_a_healed, base: initial_lifecycle_state().main_tip)
 }
 
-// The pair above differs only by the revalidation event. A receipt selected by PR number alone
-// fails healed_head_cannot_reuse_old_head_evidence: the healed tree lands on the old head's green.
-// Requiring the exact head refuses that trace, while RunPrCi(pr_a_healed) lands the paired trace —
-// the repair does not reject every healed head.
+data heal_exact_head_discrimination_note: String = "The pair above differs only by the revalidation event. A receipt selected by PR number alone makes healed_head_cannot_reuse_old_head_evidence fail: the healed tree lands on the old head's green. Requiring the exact head refuses that trace, while RunPrCi(pr_a_healed) makes the paired trace land — proving the repair does not reject every healed head."
 
-// Alphabet = both incident PRs' RunPrCi and MergePr, a same-number/different-head healed MergePr,
-// plus RosterBump (criteria drift). MergePr(pr_b) is enabled only by pr_b's own receipts and
-// MergePr(pr_a_healed) only by evidence for that exact head, so the enumeration covers fresh
-// merges, stale merges, re-runs, double-merges, roster drift, and an auto-heal head transition in
-// every order of length 4 — 6^4 = 1296 sequences, all enumerated, none sampled.
+data interleaving_alphabet_note: String = "Alphabet = both incident PRs' RunPrCi and MergePr, a same-number/different-head healed MergePr, plus RosterBump (criteria drift). MergePr(pr_b) is enabled only by pr_b's own receipts, and MergePr(pr_a_healed) only by evidence for that exact head, so the enumeration exercises fresh merges, stale merges, re-runs, double-merges, roster drift, and an auto-heal head transition in every order of length 4 — 6^4 = 1296 sequences, all enumerated, none sampled."
 
 fn interleaving_alphabet() -> List<LifecycleEvent> {
   [
@@ -133,15 +122,8 @@ test fn per_pr_gate_only_admits_unverified_tips_in_window_4() -> Bool {
   count_unverified_admitting_sequences(policy: PerPrGateOnly, seqs: window_4_sequences()) > 0
 }
 
-// The three counts quantify gunbc.plans.branch_merge_admission_model section 4 over EVERY length-4
-// lifecycle, not authored scenarios: PerPrGateOnly (the live policy — GitHub strict flag false, no
-// queue) admits unverified tips; RequireUpToDateBase (GitHub's strict boolean, tree axis only)
-// still admits a tree verified under a superseded gate roster; KeyedReceipt admits zero across the
-// window, including the same-PR healed-head transition — green-stays-green as a
-// bounded-exhaustive theorem. The positive PerPrGateOnly count proves the enumerator can see
-// violations; the paired heal witnesses locate the exact-head discrimination rather than relying
-// on the aggregate zero.
-
 test fn require_up_to_date_base_misses_the_roster_axis_in_window_4() -> Bool {
   count_unverified_admitting_sequences(policy: RequireUpToDateBase, seqs: window_4_sequences()) > 0
 }
+
+data policy_discrimination_note: String = "The three counts quantify gunbc.plans.branch_merge_admission_model section 4 over EVERY length-4 lifecycle instead of authored scenarios: PerPrGateOnly (the live policy — GitHub strict flag false, no queue) admits unverified tips; RequireUpToDateBase (GitHub's strict boolean, tree axis only) still admits landing a tree verified under a superseded gate roster; KeyedReceipt admits zero across the whole window, including the same-PR healed-head transition — green-stays-green as a bounded-exhaustive theorem, not a scenario. The positive PerPrGateOnly count proves the enumerator can see violations, while the paired heal witnesses locate the exact-head discrimination rather than relying only on the aggregate zero."

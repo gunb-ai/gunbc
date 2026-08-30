@@ -9,22 +9,7 @@ import extdeps.languages.css.values {
   css_font_stack_wire,
 }
 
-// Layer 2 token axes (design-register-library.md, the sibling axes to material/theme): spacing,
-// type, font stack, plus the dimension tokens (radius, border width, measure, fixed element
-// extents) the roadmap surface consumes. THE single authority for every length/font literal the
-// register emits — the whole point is that a page rule references a token (var(--space-8)), never a
-// raw pixel, so the untokened-length census (gunbc.design.theme_transition.untokened_length_decls)
-// has exactly one place to exclude by scope (this :root block, the analog of the theme var block
-// the unthemed-color census excludes). D3 grounding: a token's value is a TYPED CssLength
-// (magnitude x unit, extdeps.languages.css.values, cited CSS Values and Units) or a typed
-// CssFontStack (a list of families) — the fused "4px"/'Noto Sans, ...' strings are decompressed
-// (DESIGN section 2), and the value-encoded token NAME is DERIVED from the magnitude by the
-// length_token constructor (space-4 from px 4), so name and value can no longer diverge — the fork
-// is UNWRITABLE by construction, not caught by a witness (DESIGN section 5). A semantic re-tuning
-// of the step values (a rhythm, not a per-value alias) is a named follow-on; today the axis's job
-// is DRY (each value lives once) + census-ability + no magnitude-vs-name fork, all served now.
-// Spacing/type/font are the three axes the brief names; dimension_scale is their companion so 'no
-// raw px' is total, not partial.
+data design_scale_note: String = "Layer 2 token axes (design-register-library.md, the sibling axes to material/theme): spacing, type, font stack, plus the dimension tokens (radius, border width, measure, fixed element extents) the roadmap surface consumes. THE single authority for every length/font literal the register emits — the whole point is that a page rule references a token (var(--space-8)), never a raw pixel, so the untokened-length census (gunbc.design.theme_transition.untokened_length_decls) has exactly one place to exclude by scope (this :root block, the analog of the theme var block the unthemed-color census excludes). D3 grounding: a token's value is a TYPED CssLength (magnitude x unit, extdeps.languages.css.values, cited CSS Values and Units) or a typed CssFontStack (a list of families) — the fused \"4px\"/'Noto Sans, ...' strings are decompressed (DESIGN section 2), and the value-encoded token NAME is DERIVED from the magnitude by the length_token constructor (space-4 from px 4), so name and value can no longer diverge — the fork is UNWRITABLE by construction, not caught by a witness (DESIGN section 5). A semantic re-tuning of the step values (a rhythm, not a per-value alias) is a named follow-on; today the axis's job is DRY (each value lives once) + census-ability + no magnitude-vs-name fork, all served now. Spacing/type/font are the three axes the brief names; dimension_scale is their companion so 'no raw px' is total, not partial."
 
 type ScaleValue
   = LengthValue { length: CssLength }
@@ -42,10 +27,7 @@ type ScaleToken {
   value: ScaleValue
 }
 
-// length_token DERIVES the token name from the magnitude (space-4 from px 4), so the number lives
-// exactly once and a name/value divergence is unwritable (D3). named_length_token is for the
-// semantic-named dimension tokens whose name does NOT encode the magnitude (measure, h-mark) — no
-// fork to close there. font_token carries a typed CssFontStack.
+data scale_token_derive_note: String = "length_token DERIVES the token name from the magnitude (space-4 from px 4), so the number lives exactly once and a name/value divergence is unwritable (D3). named_length_token is for the semantic-named dimension tokens whose name does NOT encode the magnitude (measure, h-mark) — no fork to close there. font_token carries a typed CssFontStack."
 
 fn length_token(prefix: String, px: Int) -> ScaleToken {
   ScaleToken { name: join([prefix, "-", to_string(px)], ""), value: LengthValue { length: css_px(n: px) } }
@@ -126,35 +108,16 @@ data border_1: ScaleToken = length_token(prefix: "border", px: 1)
 data border_2: ScaleToken = length_token(prefix: "border", px: 2)
 data measure_page: ScaleToken = named_length_token(name: "measure", px: 960)
 
-// The tactile target height (remodel W1c, operator archetype 2026-07-24: the GitHub merge button —
-// a control you press with confidence needs the hand-scale target, ~40px class, not a text-line
-// strip). This token plus radius-999 (the oblong/pill radius) are the first two rows of the
-// control-geometry axis; the axis stays token-grain until a SECOND instrument lands (the archetype
-// library's own second-consumer discipline), at which point the rows lift into a typed
-// ControlGeometry carrier.
+data height_control_note: String = "The tactile target height (remodel W1c, operator archetype 2026-07-24: the GitHub merge button — a control you press with confidence needs the hand-scale target, ~40px class, not a text-line strip). This token plus radius-999 (the oblong/pill radius) are the first two rows of the control-geometry axis; the axis stays token-grain until a SECOND instrument lands (the archetype library's own second-consumer discipline), at which point the rows lift into a typed ControlGeometry carrier."
 
 data height_control: ScaleToken = named_length_token(name: "h-control", px: 40)
 
-// The roadmap row's density token (composition slice 2, the signed actuator ruling 2026-07-24:
-// chip-scale in rows, sixty pills must be quiet at arm's length — the instrument feel is carried by
-// press physics, never by area). The ROW owns this height and the in-row actuator DERIVES its
-// extent from it (derived-not-set, witnessed): there is no separate chip-height token to drift
-// against the row that contains it. h-control stays the FULL-SIZE instrument's height, consumed by
-// the sandbox gallery specimen where design work lives. 24px SIGNED at the operator's pass
-// (2026-07-25, chosen against 22 and 28 on the live page) — the former PROVISIONAL mark discharges.
+data height_row_note: String = "The roadmap row's density token (composition slice 2, the signed actuator ruling 2026-07-24: chip-scale in rows, sixty pills must be quiet at arm's length — the instrument feel is carried by press physics, never by area). The ROW owns this height and the in-row actuator DERIVES its extent from it (derived-not-set, witnessed): there is no separate chip-height token to drift against the row that contains it. h-control stays the FULL-SIZE instrument's height, consumed by the sandbox gallery specimen where design work lives. 24px SIGNED at the operator's pass (2026-07-25, chosen against 22 and 28 on the live page) — the former PROVISIONAL mark discharges."
 
 data height_row: ScaleToken = named_length_token(name: "h-row", px: 24)
 data width_status: ScaleToken = named_length_token(name: "w-status", px: 52)
 
-// A control's TRAVEL is a dimension, so it belongs on the dimension axis with every other length
-// rather than as a literal inside a transform value — otherwise the first raw pixel in the register
-// arrives through the one property nobody thought to look at, and the untokened-length census
-// (which keys on 'px' appearing in a value) would flag it exactly as it flags a stray padding. Two
-// tokens rather than one signed magnitude used twice: travel-lift is NEGATIVE because rising is
-// negative Y in the coordinate system CSS actually has, and hiding that sign inside a calc() at
-// each use site would put arithmetic in the value string where a token belongs. 1 px is
-// deliberately the whole vocabulary — a chip-sized control has a chip-sized throw, and the register
-// earns nothing from a travel-2 with no consumer.
+data travel_token_note: String = "A control's TRAVEL is a dimension, so it belongs on the dimension axis with every other length rather than as a literal inside a transform value — otherwise the first raw pixel in the register arrives through the one property nobody thought to look at, and the untokened-length census (which keys on 'px' appearing in a value) would flag it exactly as it flags a stray padding. Two tokens rather than one signed magnitude used twice: travel-lift is NEGATIVE because rising is negative Y in the coordinate system CSS actually has, and hiding that sign inside a calc() at each use site would put arithmetic in the value string where a token belongs. 1 px is deliberately the whole vocabulary — a chip-sized control has a chip-sized throw, and the register earns nothing from a travel-2 with no consumer."
 
 data travel_lift: ScaleToken = named_length_token(name: "travel-lift", px: -1)
 data travel_press: ScaleToken = named_length_token(name: "travel-press", px: 1)
@@ -173,11 +136,7 @@ fn scale_var_decls() -> List<CssDecl> {
   map(all_scale_tokens(), t => scale_decl(t: t))
 }
 
-// The token :root block. Emitted alongside theme_root_css so a page's stylesheet carries both
-// authorities in :root and every rule references them by var. This block is the ONE home of raw
-// px/font literals; the untokened-length census excludes it by scope (it runs over the page's
-// BuildRule rows, never this block) exactly as the unthemed-color census excludes the theme var
-// block.
+data scale_root_css_note: String = "The token :root block. Emitted alongside theme_root_css so a page's stylesheet carries both authorities in :root and every rule references them by var. This block is the ONE home of raw px/font literals; the untokened-length census excludes it by scope (it runs over the page's BuildRule rows, never this block) exactly as the unthemed-color census excludes the theme var block."
 
 fn scale_root_css() -> String {
   css_block(selector: ":root", decls: scale_var_decls())

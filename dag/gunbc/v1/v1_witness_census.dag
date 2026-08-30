@@ -34,33 +34,7 @@ import v2.workflow.required_floor {
 // records long/-relocated witnesses that measured 192ms total against a 5000ms budget. So "floor
 // declined" is a fact the join carries and the disposition may not read as evidence.
 
-// THE THREE ARMS THE RULING NAMES, each carrying what makes it checkable rather than the assertion
-// that it holds, and there is no fourth. An undecided claim at cutover time is a lost subject
-// wearing a plan; the population type below is where not-yet-measured is spelled, at the grain of
-// the whole roster rather than per row.
-//
-// Retired carries the deleted subject and the evidence the deletion was measured, not merely
-// performed. Deleting the OLD RUNNER does not retire a claim -- the claim's subject is what it
-// asserts about, and the runner was only where it executed. This is the arm that removes evidence,
-// so it is the arm that must be hardest to file.
-//
-// ReplacedByStronger carries the replacement identity, the COVERING RELATION stated explicitly, and
-// an EXECUTED red proving the replacement detects the class the old claim detected. 'Stronger' is
-// the word a cutover is most tempted to use for 'different', and an unstated strengthening is how a
-// required subject leaves the tree wearing an upgrade. The red control is the entire content of the
-// arm: DESIGN section 4b says to ask whether a check's RED is authorable before writing the check,
-// and a replacement that cannot go red on the old class is a decoration cited as coverage.
-//
-// StillRequired carries the surviving subject and the native identity it enters the roster under --
-// regardless of floor cost policy, per the ruling. This is the arm XL-1 joins into the native
-// implementation roster, so its target identity is a DeclarationRef and not a description.
-//
-// EACH ARM PROJECTS ONTO gunbc.replacement_cut EvidenceDisposition -- Retired to RetireEvidence,
-// ReplacedByStronger to ReplaceEvidence, StillRequired to ReenrollAgainstY -- so the exact cut's
-// evidence rows are DERIVED from this census rather than authored beside it. The arms here are
-// strictly richer than the authority's (an executed red, a covering relation, a typed target)
-// because the authority's rows are what an admission reads and these are what a reviewer must be
-// able to audit; the projection is lossy in the direction that is safe.
+data v1_claim_disposition_note: String = "THE THREE ARMS THE RULING NAMES, each carrying what makes it checkable rather than the assertion that it holds, and there is no fourth. An undecided claim at cutover time is a lost subject wearing a plan; the population type below is where not-yet-measured is spelled, at the grain of the whole roster rather than per row.\n\nRetired carries the deleted subject and the evidence the deletion was measured, not merely performed. Deleting the OLD RUNNER does not retire a claim -- the claim's subject is what it asserts about, and the runner was only where it executed. This is the arm that removes evidence, so it is the arm that must be hardest to file.\n\nReplacedByStronger carries the replacement identity, the COVERING RELATION stated explicitly, and an EXECUTED red proving the replacement detects the class the old claim detected. 'Stronger' is the word a cutover is most tempted to use for 'different', and an unstated strengthening is how a required subject leaves the tree wearing an upgrade. The red control is the entire content of the arm: DESIGN section 4b says to ask whether a check's RED is authorable before writing the check, and a replacement that cannot go red on the old class is a decoration cited as coverage.\n\nStillRequired carries the surviving subject and the native identity it enters the roster under -- regardless of floor cost policy, per the ruling. This is the arm XL-1 joins into the native implementation roster, so its target identity is a DeclarationRef and not a description.\n\nEACH ARM PROJECTS ONTO gunbc.replacement_cut EvidenceDisposition -- Retired to RetireEvidence, ReplacedByStronger to ReplaceEvidence, StillRequired to ReenrollAgainstY -- so the exact cut's evidence rows are DERIVED from this census rather than authored beside it. The arms here are strictly richer than the authority's (an executed red, a covering relation, a typed target) because the authority's rows are what an admission reads and these are what a reviewer must be able to audit; the projection is lossy in the direction that is safe."
 
 type ClaimCutoverDisposition
   = Retired { deleted_subject: DeclarationRef, evidence: String }
@@ -127,19 +101,7 @@ fn floor_standing_is_fixture_member(s: RequiredFloorDisposition) -> Bool {
   }
 }
 
-// THE PRE-CUTOVER ROSTER IS SUPPLIED, NEVER AUTHORED HERE, and that is the difference between this
-// carrier and a list of claims somebody remembered. The roster's authority is the required floor's
-// own discovery -- the identities the floor run executes or declines, joined by XL-1 with each
-// one's RequiredFloorDisposition -- and this module joins against it. A census that wrote down its
-// own denominator would be satisfiable by shortening the denominator, which is precisely the loss
-// it exists to refuse.
-//
-// THE ROSTER IS UNMEASURED IN THIS CARRIER TODAY, filed as Unmeasured rather than as an empty
-// Complete. Reading it requires a full-tree floor run, which XL-5 is not released to perform; the
-// fixtures beside this module drive every assertion over CONTROLLED populations, which is what
-// makes the assertions executable now instead of aspirational. Unmeasured and Complete both carry
-// zero rows and answer the conservation gate OPPOSITELY -- the distinction a bare List cannot make
-// and a note beside it cannot enforce.
+data v1_claim_population_note: String = "THE PRE-CUTOVER ROSTER IS SUPPLIED, NEVER AUTHORED HERE, and that is the difference between this carrier and a list of claims somebody remembered. The roster's authority is the required floor's own discovery -- the identities the floor run executes or declines, joined by XL-1 with each one's RequiredFloorDisposition -- and this module joins against it. A census that wrote down its own denominator would be satisfiable by shortening the denominator, which is precisely the loss it exists to refuse.\n\nTHE ROSTER IS UNMEASURED IN THIS CARRIER TODAY, filed as Unmeasured rather than as an empty Complete. Reading it requires a full-tree floor run, which XL-5 is not released to perform; the fixtures beside this module drive every assertion over CONTROLLED populations, which is what makes the assertions executable now instead of aspirational. Unmeasured and Complete both carry zero rows and answer the conservation gate OPPOSITELY -- the distinction a bare List cannot make and a note beside it cannot enforce."
 
 type ClaimPopulation
   = ClaimRosterComplete { rows: List<V1ClaimCutoverRow>, roster_producer: String }
@@ -275,25 +237,6 @@ fn v1_claim_evidence_rows(rows: List<V1ClaimCutoverRow>) -> List<EvidenceDisposi
   rows |> map(r => claim_cutover_evidence_disposition(identity: r.pre_cutover_identity, d: r.disposition))
 }
 
-// RUNG. The CLASS -- 'the cutover drops a claim subject and greens' -- sits at MITIGATABLE on the
-// live tree, because the live roster is unmeasured and no gate consumes this carrier yet. Saying
-// that first matters: a conservation wall beside an unmeasured roster is exactly the artifact a
-// reader mistakes for conservation.
-//
-// WHAT IS CONSTRUCTED: the three-arm disposition has no undecided variant, so a claim cannot be
-// carried through the cutover without an answer; a replacement has no constructor without an
-// executed red and a covering relation; a retirement has none without a named deleted subject and
-// its evidence; a surviving claim has none without a typed native identity; floor standing is the
-// floor's own type, so a standing the floor cannot assign cannot be written here; and the gate
-// cannot be satisfied by an unmeasured roster, because completeness is a field it reads rather than
-// an assumption it makes.
-//
-// WHAT IS VALIDATED RATHER THAN CONSTRUCTED, and is therefore weaker: distinctness of native
-// targets, distinctness of red controls, and the absence of fixture-member rows are folds over a
-// List, so all three bad states are writable and are caught by an executing witness rather than
-// being unwritable. A Set-keyed carrier would construct the first; nothing available constructs the
-// second, since 'different enough to discriminate' is not decidable from the reference alone --
-// which is why that arm is a distinctness check and is described as one rather than as proof the
-// control discriminates.
+data v1_claim_census_rung_note: String = "RUNG. The CLASS -- 'the cutover drops a claim subject and greens' -- sits at MITIGATABLE on the live tree, because the live roster is unmeasured and no gate consumes this carrier yet. Saying that first matters: a conservation wall beside an unmeasured roster is exactly the artifact a reader mistakes for conservation.\n\nWHAT IS CONSTRUCTED: the three-arm disposition has no undecided variant, so a claim cannot be carried through the cutover without an answer; a replacement has no constructor without an executed red and a covering relation; a retirement has none without a named deleted subject and its evidence; a surviving claim has none without a typed native identity; floor standing is the floor's own type, so a standing the floor cannot assign cannot be written here; and the gate cannot be satisfied by an unmeasured roster, because completeness is a field it reads rather than an assumption it makes.\n\nWHAT IS VALIDATED RATHER THAN CONSTRUCTED, and is therefore weaker: distinctness of native targets, distinctness of red controls, and the absence of fixture-member rows are folds over a List, so all three bad states are writable and are caught by an executing witness rather than being unwritable. A Set-keyed carrier would construct the first; nothing available constructs the second, since 'different enough to discriminate' is not decidable from the reference alone -- which is why that arm is a distinctness check and is described as one rather than as proof the control discriminates."
 
 data v1_claim_census_next_rung_trigger: DissolutionCondition = unbound_dissolution(description: "dissolve-on: the required gate consumes v1_claim_conservation_holds against the roster the floor run itself emits, so a claim identity that stops being executed refuses the merge rather than shortening a summary line. The capability named is a required gate whose denominator is produced by the run being gated -- NOT the landing of a roster file, and NOT this carrier being imported by a test: a roster committed beside the run is the second representation whose drift this census exists to refuse, and an importing test that supplies its own roster proves only that the join function works.")

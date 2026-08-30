@@ -15,9 +15,7 @@ import std.types { String, NonEmptyStr, Bool, List, Int }
 // for exactly one attempt and no sandbox survives into the next. That split is what makes "fresh
 // spawn with caching" coherent rather than contradictory: fresh WRITABLE state per attempt, reused
 // IMMUTABLE material underneath, and the cache is never edited in place by tenant code.
-// Per-attempt teardown and the readback that returns a cell to supply. Process exit is an input,
-// never the verdict. Distinct from persistent host hygiene, which runs on its own cadence and
-// answers a different question.
+data fabric_sanitation_note: String = "Per-attempt teardown and the readback that returns a cell to supply. Process exit is an input, never the verdict. Distinct from persistent host hygiene, which runs on its own cadence and answers a different question."
 
 // THIS IS NOT THE PERSISTENT-HYGIENE LOOP, AND THE TWO MUST NOT MERGE.
 //
@@ -27,9 +25,7 @@ import std.types { String, NonEmptyStr, Bool, List, Int }
 // word cleanup and nothing else: one is a cadence over a host, the other a barrier between two
 // tenants. Folding them would make a slow disk-space job into a correctness dependency for every
 // job start, and would let a hygiene backlog read as a sanitation failure.
-// Per-attempt sanitation gates cell reuse and runs once per attempt; persistent host hygiene
-// (gunbc.host_disk_reclaim) runs on a cadence and does not gate anything. Both feed cell readiness,
-// from different directions.
+data sanitation_is_not_host_hygiene_note: String = "Per-attempt sanitation gates cell reuse and runs once per attempt; persistent host hygiene (gunbc.host_disk_reclaim) runs on a cadence and does not gate anything. Both feed cell readiness, from different directions."
 
 type CellId = NonEmptyStr where brand("CellId")
 

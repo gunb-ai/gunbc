@@ -174,12 +174,7 @@ fn systemctl_disable_now_argv_for_deploy(unit: NonEmptyStr, privileged: Bool) ->
   }
 }
 
-// Runtime retirement is idempotent only for the explicit systemd LoadState=not-found observation.
-// The decision is a bash grammar tree at this foreign-executor realization edge: a fail-fast
-// assignment captures LoadState, then a modeled If disables every state other than not-found. A
-// show/read failure therefore stops before the conditional, and a disable/stop failure remains
-// loud. This replaces the former `2>/dev/null || true` without smuggling command substitution or
-// control flow through a String leaf.
+data systemctl_disable_now_if_present_note: String = "Runtime retirement is idempotent only for the explicit systemd LoadState=not-found observation. The decision is a bash grammar tree at this foreign-executor realization edge: a fail-fast assignment captures LoadState, then a modeled If disables every state other than not-found. A show/read failure therefore stops before the conditional, and a disable/stop failure remains loud. This replaces the former `2>/dev/null || true` without smuggling command substitution or control flow through a String leaf."
 
 fn systemctl_load_state_assignment_intent(unit: NonEmptyStr) -> Node {
   bash_build_assign(
@@ -293,27 +288,7 @@ fn emit_pipeline_or_poison(p: Pipeline, refused: String) -> String {
 
 data emit_systemd_unit_serve_note: String = "The belt-B unit: ExecStart is `gunbc serve` (the seed binary answering every request through the ONE .dag entry gunbc.roadmap_serve.roadmap_serve_handle — no emitted JS, no subprocess dispatch). User=briansrls, NOT root: claude auth exists only under briansrls on srv1 (parent lane verification 2026-07-20), so a root-run belt would spawn unauthed dead sessions; port 8080 is non-privileged so briansrls binds it. WorkingDirectory = the repo root — the source roots and entry are relative to it, and the belt's spawn workdir projects the same gunbc.host_layout fact."
 
-// WHERE THE LAUNCH REVISION COMES FROM IS ITSELF A MODELED FACT, AND THERE ARE EXACTLY TWO ARMS
-// BECAUSE ONLY TWO ARE HONEST. RevisionBoundAtEmission is the production apply: the launcher
-// observed one candidate, the unit installed at the host bakes exactly that value, and readiness
-// compares against the same single subject. RevisionNotInstalled is the retract fold, and it exists
-// so a retract cannot name a revision even accidentally — the arm that would render ExecStart under
-// it REFUSES with a poison marker, the same unreachable-arm discipline
-// emit_deploy_teardown_dependency_refusal uses.\n\nA THIRD ARM WAS TRIED AND DELETED, AND THE
-// REASON IS WORTH KEEPING. RevisionBoundAtInvocation rendered a bash parameter expansion into the
-// unit so a committed script could defer its revision to invocation. It could never have worked:
-// the unit body reaches the host as a single-quoted printf argument (it was a quoted-delimiter
-// heredoc when this was found, and the property that mattered survived the change), so bash
-// performs no expansion inside it and the literal dollar-brace text lands in the unit file; systemd
-// does not run ExecStart through bash, implements no :? operator, and this unit sets no such
-// Environment. The chain script-invocation to unit to launch argument did not exist at any link.
-// Proven by execution, not by reading — which is the point: it typechecked, it read plausibly, and
-// it was inert.\n\nWhat it was protecting turned out not to need protecting. It existed to keep a
-// committed script as the byte oracle over this ExecStart line, on the belief that deleting the
-// artifact would lose that coverage. A fixture sha is forbidden in a committed PRODUCTION artifact,
-// not in a witness — so the oracle lives in the test corpus against RevisionBoundAtEmission with a
-// fixture, and the artifact was simply dead (no execution consumer, and a HostReconciler consumer
-// row that named a reader which does not exist).
+data release_revision_binding_note: String = "WHERE THE LAUNCH REVISION COMES FROM IS ITSELF A MODELED FACT, AND THERE ARE EXACTLY TWO ARMS BECAUSE ONLY TWO ARE HONEST. RevisionBoundAtEmission is the production apply: the launcher observed one candidate, the unit installed at the host bakes exactly that value, and readiness compares against the same single subject. RevisionNotInstalled is the retract fold, and it exists so a retract cannot name a revision even accidentally — the arm that would render ExecStart under it REFUSES with a poison marker, the same unreachable-arm discipline emit_deploy_teardown_dependency_refusal uses.\\n\\nA THIRD ARM WAS TRIED AND DELETED, AND THE REASON IS WORTH KEEPING. RevisionBoundAtInvocation rendered a bash parameter expansion into the unit so a committed script could defer its revision to invocation. It could never have worked: the unit body reaches the host as a single-quoted printf argument (it was a quoted-delimiter heredoc when this was found, and the property that mattered survived the change), so bash performs no expansion inside it and the literal dollar-brace text lands in the unit file; systemd does not run ExecStart through bash, implements no :? operator, and this unit sets no such Environment. The chain script-invocation to unit to launch argument did not exist at any link. Proven by execution, not by reading — which is the point: it typechecked, it read plausibly, and it was inert.\\n\\nWhat it was protecting turned out not to need protecting. It existed to keep a committed script as the byte oracle over this ExecStart line, on the belief that deleting the artifact would lose that coverage. A fixture sha is forbidden in a committed PRODUCTION artifact, not in a witness — so the oracle lives in the test corpus against RevisionBoundAtEmission with a fixture, and the artifact was simply dead (no execution consumer, and a HostReconciler consumer row that named a reader which does not exist)."
 
 type ReleaseRevisionBinding
   = RevisionBoundAtEmission { revision: CommitSha }
@@ -668,17 +643,7 @@ fn apply_belt_timer_unit_write_step(spec: DeploymentSpec) -> PipelineStep {
   ))
 }
 
-// apply/retract are the two degenerate POLES of the ONE grain-agnostic membership_reconcile
-// (gunbc.membership_reconcile) — no bespoke fold. apply = reconcile(desired = all deploy members,
-// observed = none) => every member Added => Upsert. retract = reconcile(desired = none, observed =
-// the owned artifacts) => every member Removed => Teardown (all Owned, so no refusal). The
-// DeploymentStep (key_of/key_eq/value_eq/ownership_of) bundle is this consumer's Realization of the
-// spine — not a copy of it. ownership_of projects through deployment_step_ownership onto the single
-// gunbc.ownership authority, so it is ALWAYS Present (a deploy member's ownership is known by
-// construction); the OwnershipUnknown/MemberNotOwned refusal arms are the safety backstop for a
-// future non-degenerate observed provider, exercised only by the synthetic spine witness. key_of
-// returns stable member IDENTITY (artifact path / dependency package); value_eq never fires in the
-// degenerate poles (no Modified — one side is always empty).
+data live_deploy_reconcile_binding_note: String = "apply/retract are the two degenerate POLES of the ONE grain-agnostic membership_reconcile (gunbc.membership_reconcile) — no bespoke fold. apply = reconcile(desired = all deploy members, observed = none) => every member Added => Upsert. retract = reconcile(desired = none, observed = the owned artifacts) => every member Removed => Teardown (all Owned, so no refusal). The DeploymentStep (key_of/key_eq/value_eq/ownership_of) bundle is this consumer's Realization of the spine — not a copy of it. ownership_of projects through deployment_step_ownership onto the single gunbc.ownership authority, so it is ALWAYS Present (a deploy member's ownership is known by construction); the OwnershipUnknown/MemberNotOwned refusal arms are the safety backstop for a future non-degenerate observed provider, exercised only by the synthetic spine witness. key_of returns stable member IDENTITY (artifact path / dependency package); value_eq never fires in the degenerate poles (no Modified — one side is always empty)."
 
 type DeploymentStepMemberAt = NonEmptyStr
 
@@ -723,12 +688,7 @@ fn deployment_retract_plan(spec: DeploymentSpec) -> MembershipPlan<DeploymentSte
   )
 }
 
-// The staged filename reads from spec.service.unit_name for the same reason the install does: these
-// two steps write and then install THE SAME FILE, and while both were the literal
-// gunbc-roadmap.service that agreement was a coincidence of two independent constants rather than a
-// fact. Parameterizing only the install side would have left the writer staging one name and the
-// installer copying another — a deploy that fails on a missing file, which is at least loud, or
-// worse installs a stale unit left in the stage directory from a previous run.
+data staged_unit_filename_note: String = "The staged filename reads from spec.service.unit_name for the same reason the install does: these two steps write and then install THE SAME FILE, and while both were the literal gunbc-roadmap.service that agreement was a coincidence of two independent constants rather than a fact. Parameterizing only the install side would have left the writer staging one name and the installer copying another — a deploy that fails on a missing file, which is at least loud, or worse installs a stale unit left in the stage directory from a previous run."
 
 fn apply_systemd_unit_write_step(spec: DeploymentSpec, revision: ReleaseRevisionBinding) -> PipelineStep {
   deploy_raw(command: deploy_stage_write_command(
@@ -770,18 +730,7 @@ fn apply_tree_sync_unit_write_step(spec: DeploymentSpec, tree_path: String) -> P
   ))
 }
 
-// gunbc-tree-sync.service (#7011 realization) failed its control process on every srv1 deploy since
-// landing (receipt 29928424523 and its predecessor 29926422286), and the bare 'sudo -n systemctl
-// restart' stderr — 'Job for gunbc-tree-sync.service failed because the control process exited with
-// error code' — never carries WHY: the actual ExecStart failure (the rsync exit) lives only in the
-// unit's own journal, unreachable from this refusal (DESIGN 5 — a stopped, typed, but unlocated
-// line, the same gap #7038 closed for gunbc-roadmap.service's async ServiceNotReady). This restart
-// is SYNCHRONOUS, ahead of that poll-based unit_diagnosis capture entirely (GunbcSourceTree upsert
-// runs before the SystemdUnit member), so it needs its own capture rather than waiting on one that
-// never runs. Reuses the single unit-status-tail authority (live_deploy_unit_status_tail_command,
-// gunbc.live_deploy.intent) the roadmap-unit capture already owns — no second diagnosis format. On
-// failure the tail is appended to stderr and the step still fails (exit 1): a diagnosis, never an
-// escape hatch (DESIGN 5 forbids proceeding as if the refusal had not fired).
+data tree_sync_restart_diagnosis_note: String = "gunbc-tree-sync.service (#7011 realization) failed its control process on every srv1 deploy since landing (receipt 29928424523 and its predecessor 29926422286), and the bare 'sudo -n systemctl restart' stderr — 'Job for gunbc-tree-sync.service failed because the control process exited with error code' — never carries WHY: the actual ExecStart failure (the rsync exit) lives only in the unit's own journal, unreachable from this refusal (DESIGN 5 — a stopped, typed, but unlocated line, the same gap #7038 closed for gunbc-roadmap.service's async ServiceNotReady). This restart is SYNCHRONOUS, ahead of that poll-based unit_diagnosis capture entirely (GunbcSourceTree upsert runs before the SystemdUnit member), so it needs its own capture rather than waiting on one that never runs. Reuses the single unit-status-tail authority (live_deploy_unit_status_tail_command, gunbc.live_deploy.intent) the roadmap-unit capture already owns — no second diagnosis format. On failure the tail is appended to stderr and the step still fails (exit 1): a diagnosis, never an escape hatch (DESIGN 5 forbids proceeding as if the refusal had not fired)."
 
 fn tree_sync_restart_step_with_diagnosis(spec: DeploymentSpec) -> PipelineStep {
   deploy_raw(command: join([
@@ -792,18 +741,7 @@ fn tree_sync_restart_step_with_diagnosis(spec: DeploymentSpec) -> PipelineStep {
   ], ""))
 }
 
-// THE IDEMPOTENCE GUARD IS DELETED, AND ITS REMOVAL IS THE POINT. The apply used to wrap the serve
-// command in `if ! tailscale serve status | grep -q ':<port>'`, which is a pseudo-observation twice
-// over: it greps unstructured status text for a port number that appears nowhere in the
-// configuration key, and a mapping for a DIFFERENT deployment on the same port would satisfy it —
-// so the guard skipped precisely when another deployment held the endpoint, which is the collision
-// it looked like it was preventing.\n\nThere is nothing to guard. Configuring an endpoint to a
-// backend it already has is a no-op at the upstream, because the endpoint IS the key; issuing it
-// twice cannot produce a second mapping. So the correct number of observations here is zero, and
-// the replacement for a wrong observation is not a better observation but no observation at
-// all.\n\nThe argv is built by extdeps.tailscale.serve rather than concatenated here, so the apply
-// and the teardown cannot disagree about the flags — which is the property the upstream `off` form
-// actually requires.
+data tailscale_apply_is_unconditional_note: String = "THE IDEMPOTENCE GUARD IS DELETED, AND ITS REMOVAL IS THE POINT. The apply used to wrap the serve command in `if ! tailscale serve status | grep -q ':<port>'`, which is a pseudo-observation twice over: it greps unstructured status text for a port number that appears nowhere in the configuration key, and a mapping for a DIFFERENT deployment on the same port would satisfy it — so the guard skipped precisely when another deployment held the endpoint, which is the collision it looked like it was preventing.\\n\\nThere is nothing to guard. Configuring an endpoint to a backend it already has is a no-op at the upstream, because the endpoint IS the key; issuing it twice cannot produce a second mapping. So the correct number of observations here is zero, and the replacement for a wrong observation is not a better observation but no observation at all.\\n\\nThe argv is built by extdeps.tailscale.serve rather than concatenated here, so the apply and the teardown cannot disagree about the flags — which is the property the upstream `off` form actually requires."
 
 fn tailscale_serve_apply_step(spec: DeploymentSpec) -> PipelineStep {
   deploy_raw(command: shell_privileged_command_text_of_argv(
@@ -854,17 +792,7 @@ fn install_d_owned_command(spec: DeploymentSpec, path: String) -> String {
   install_d_owned_for_user(user: spec.service.service_user, path: path)
 }
 
-// THE DISPATCH THAT ADMITS A SECOND KIND OF ENSURED RESOURCE, written so the package arm is
-// untouched. A package still lowers to exactly the ensure step it always did, at both privilege
-// settings, so no existing emitted byte moves -- the widening adds a kind, it does not redefine
-// what ensuring a package means.\n\nA directory lowers to the same owned install -d the artifact
-// steps use, through the same single authority, with the owner taken from the ensured subject
-// rather than from a deployment spec. That is what lets a host-level resource be stated without an
-// instance: an ensured host directory is a fact about the host, and threading a spec through it
-// would have made it look like a per-instance fact again -- the exact confusion that put this root
-// in the owned roster to begin with.\n\nprivileged is consumed only by the package arm because it
-// describes how apt is invoked; install -d is privileged in both contexts and takes the same form
-// either way.
+data ensure_dependency_steps_note: String = "THE DISPATCH THAT ADMITS A SECOND KIND OF ENSURED RESOURCE, written so the package arm is untouched. A package still lowers to exactly the ensure step it always did, at both privilege settings, so no existing emitted byte moves -- the widening adds a kind, it does not redefine what ensuring a package means.\\n\\nA directory lowers to the same owned install -d the artifact steps use, through the same single authority, with the owner taken from the ensured subject rather than from a deployment spec. That is what lets a host-level resource be stated without an instance: an ensured host directory is a fact about the host, and threading a spec through it would have made it look like a per-instance fact again -- the exact confusion that put this root in the owned roster to begin with.\\n\\nprivileged is consumed only by the package arm because it describes how apt is invoked; install -d is privileged in both contexts and takes the same form either way."
 
 fn ensure_dependency_steps(dep: DeploymentDependencyStep, privileged: Bool) -> List<PipelineStep> {
   match dep.subject {
@@ -875,14 +803,7 @@ fn ensure_dependency_steps(dep: DeploymentDependencyStep, privileged: Bool) -> L
   }
 }
 
-// `-g` is spelled with the OWNER'S USER NAME, not a modeled group name, and that is inherited from
-// install_d_owned_command rather than introduced here: PosixUser carries a gid but no group name,
-// and srv1's per-user groups happen to share their user's name so the emitted argv is
-// byte-identical either way. It is written down because the coincidence is load-bearing and silent
-// — a host whose service account sat in a differently-named primary group would emit a `-g` that
-// does not resolve, and the failure would look like a permissions bug rather than a modeling gap.
-// dissolve-on = PosixUser (or a PosixGroup beside it) carries the group name, at which point this
-// projects it instead of reusing the user's.
+data install_d_managed_group_residue_note: String = "`-g` is spelled with the OWNER'S USER NAME, not a modeled group name, and that is inherited from install_d_owned_command rather than introduced here: PosixUser carries a gid but no group name, and srv1's per-user groups happen to share their user's name so the emitted argv is byte-identical either way. It is written down because the coincidence is load-bearing and silent — a host whose service account sat in a differently-named primary group would emit a `-g` that does not resolve, and the failure would look like a permissions bug rather than a modeling gap. dissolve-on = PosixUser (or a PosixGroup beside it) carries the group name, at which point this projects it instead of reusing the user's."
 
 fn install_d_managed_command(dir: ManagedDirectory) -> String {
   install_directory_owned_command(
@@ -1035,24 +956,7 @@ fn emit_artifact_upsert(art: DeploymentArtifactStep, spec: DeploymentSpec, revis
   }
 }
 
-// REALIZATION FOR THE BUILD SERVICE'S ARTIFACT STORE, which is an ENSURED host directory rather
-// than an owned artifact, and the difference is the whole safety content. Ensured means converged
-// on every apply and never torn down; owned means removed by retract. Produced artifacts are
-// precisely what a deploy must never delete, so the owned category was wrong -- and it was not
-// wrong in the abstract: with the root on every per-instance spec, a lab twin's retract would have
-// removed the production store, which is what the twin disjointness claims caught.\n\nTHE DEPLOY
-// ENSURES THE DIRECTORY; THE SERVICE MAKES IT A REPOSITORY. That split is forced rather than
-// chosen. The deploy principal's sudo roster grants exactly six commands -- apt-get, install,
-// visudo, systemctl, tailscale, rm -- and git is not among them, so a `sudo -n -u <service> git
-// init --bare` step would be refused by sudoers and would red every deploy of this host. An earlier
-// revision emitted precisely that line. `install -d` is granted and idempotent, so the deploy
-// converges ownership and existence; `git init --bare` is idempotent by upstream contract and runs
-// as the account that owns the directory, so no privilege boundary is crossed and no grant needs
-// widening.\n\nTHERE IS NO TEARDOWN ARM, and its absence is the point rather than an omission. An
-// ensured resource reaches EffectRemove only through the R5 wall breach poison, so a retract cannot
-// remove this store even by mistake -- the property the previous `rm -d` arm tried to approximate
-// by refusing on a non-empty directory is now structural, and the awkward consequence that arm
-// carried (a full retract could never complete once the store existed) simply does not arise.
+data devboot_root_realization_note: String = "REALIZATION FOR THE BUILD SERVICE'S ARTIFACT STORE, which is an ENSURED host directory rather than an owned artifact, and the difference is the whole safety content. Ensured means converged on every apply and never torn down; owned means removed by retract. Produced artifacts are precisely what a deploy must never delete, so the owned category was wrong -- and it was not wrong in the abstract: with the root on every per-instance spec, a lab twin's retract would have removed the production store, which is what the twin disjointness claims caught.\\n\\nTHE DEPLOY ENSURES THE DIRECTORY; THE SERVICE MAKES IT A REPOSITORY. That split is forced rather than chosen. The deploy principal's sudo roster grants exactly six commands -- apt-get, install, visudo, systemctl, tailscale, rm -- and git is not among them, so a `sudo -n -u <service> git init --bare` step would be refused by sudoers and would red every deploy of this host. An earlier revision emitted precisely that line. `install -d` is granted and idempotent, so the deploy converges ownership and existence; `git init --bare` is idempotent by upstream contract and runs as the account that owns the directory, so no privilege boundary is crossed and no grant needs widening.\\n\\nTHERE IS NO TEARDOWN ARM, and its absence is the point rather than an omission. An ensured resource reaches EffectRemove only through the R5 wall breach poison, so a retract cannot remove this store even by mistake -- the property the previous `rm -d` arm tried to approximate by refusing on a non-empty directory is now structural, and the awkward consequence that arm carried (a full retract could never complete once the store existed) simply does not arise."
 
 data belt_receipt_dir_bootstrap_note: String = "THE BELT MEMBER CARRIES THE install -d FOR THE DIRECTORY ITS TICK WRITES INTO, which is the orchestration-is-derived-from-the-member rule emit_deploy_member_effect_note already states (a ServerScript carries the install -d it writes into). The belt tick publishes its receipt to instance_receipts_dir(instance_root) and the workflow UI reads that receipt to answer whether a tick ran; with no directory owned by the service principal the write is EACCES, which is what every instance was in fact doing — belt-last-tick.json was absent from BOTH srv1 roots when read on 2026-08-19, so this receipt has never been written anywhere, not merely on the new slot.\n\nTHIS ALSO RESTORES A BOOTSTRAP THAT WENT DEAD RATHER THAN ADDING A NEW ONE. fleet_converge_receipt_atomic_publish_note FORMERLY named the deploy install-d on fleet_converge_receipt_dir as riding FleetConvergeTimerUnit apply (that clause is itself now corrected in gunbc.host_layout, so this sentence describes the prior revision rather than the current text), and that member is a retired refusal poison (the cadence moved to on-demand plan/apply, sleek-heron-218), so nothing has bootstrapped a receipts directory on any fresh instance root since. Green has no receipts directory at all; production's exists only because it predates the retirement. Riding the belt member is correct rather than convenient: the belt is the consumer that needs the directory on every instance it is installed on, so the bootstrap travels with a member that is unconditionally present wherever a receipt gets written.\n\nTHERE IS DELIBERATELY NO TEARDOWN ARM. Receipts are produced artifacts, and devboot_root_realization_note draws exactly this line — a deploy must never delete what it produced — so the directory is bootstrapped and never removed, and a retract that also destroyed the converge receipts sharing the directory would be the failure that note exists to prevent. install -d is idempotent, so converging an existing correctly-owned directory (production's) emits the same command and changes nothing.\n\nRESIDUE, NAMED: the belt writes its receipt in place rather than through the same-directory staging + rename that gunbc.fleet_converge_cli uses. In-place write is correct here because the directory is service-user-owned and the file is not a stale root-owned artifact, but it is NOT crash-safe — a tick interrupted mid-write leaves a truncated receipt, which renders as BeltPassOutcomeUnreadable rather than as a wrong verdict. Adopting the atomic publish is the strictly better construction and is not done here; it is stated so the weaker one is a decision on the record rather than an oversight."
 data teardown_worktree_rmdir_note: String = "DispatchWorktreeRoot teardown is rm -d (empty-directory removal via the granted rm — the unprivileged principal has no rmdir grant and no write on the root-owned parent), NEVER rm -rf: a non-empty worktree root means live agent worktrees exist, so the retract FAILS LOUDLY there instead of silently destroying sessions (DESIGN 5 — the refusal is the empty-dir precondition itself, identical to the former rmdir). GunbcSourceTree teardown runs AFTER the worktree rm -d succeeds, so the repo the worktrees are registered in is never deleted from under them."
@@ -1126,22 +1030,7 @@ fn emit_artifact_teardown(art: DeploymentArtifactStep, spec: DeploymentSpec) -> 
   }
 }
 
-// The per-member realization HANDLER: share the DIFF (membership_reconcile), dispatch the APPLY
-// (this). One handler for both fold directions — EffectAdd dispatches on member kind to the
-// artifact/dependency install fragments; EffectRemove to the removal fragments. Orchestration is
-// DERIVED from the effect kind, not an always-on envelope: a SystemdUnit upsert carries its own
-// daemon-reload/enable/restart (once, part of the unit's realization); ServerScript carries the
-// /opt/gunbc install -d it writes into. MemberEffect is a bidirectional sum, so each POLE has one
-// structurally-unreachable direction (apply never Remove, retract never Add) — those ARE reached
-// across the two poles combined. TWO arms are unreachable across BOTH poles. EffectRemove of a
-// Dependency: a dependency is Ensured, so a Removed dependency is MemberRemovalRefused, never an
-// EffectRemove. And EffectReplace in either direction: both poles are DEGENERATE (apply observes
-// nothing, retract desires nothing), so neither can produce a Modified hunk at all — a replace here
-// would mean a pole stopped being degenerate, which is a real observed-provider arriving and needs
-// its staged-replacement intermediates declared (gunbc.change_realization) before it may emit
-// anything. That arm REFUSES loudly (emit_deploy_teardown_dependency_refusal — a typed/located
-// poison step), it does NOT fabricate a no-op (DESIGN §5: an unreachable arm refuses, never a
-// silent pass).
+data emit_deploy_member_effect_note: String = "The per-member realization HANDLER: share the DIFF (membership_reconcile), dispatch the APPLY (this). One handler for both fold directions — EffectAdd dispatches on member kind to the artifact/dependency install fragments; EffectRemove to the removal fragments. Orchestration is DERIVED from the effect kind, not an always-on envelope: a SystemdUnit upsert carries its own daemon-reload/enable/restart (once, part of the unit's realization); ServerScript carries the /opt/gunbc install -d it writes into. MemberEffect is a bidirectional sum, so each POLE has one structurally-unreachable direction (apply never Remove, retract never Add) — those ARE reached across the two poles combined. TWO arms are unreachable across BOTH poles. EffectRemove of a Dependency: a dependency is Ensured, so a Removed dependency is MemberRemovalRefused, never an EffectRemove. And EffectReplace in either direction: both poles are DEGENERATE (apply observes nothing, retract desires nothing), so neither can produce a Modified hunk at all — a replace here would mean a pole stopped being degenerate, which is a real observed-provider arriving and needs its staged-replacement intermediates declared (gunbc.change_realization) before it may emit anything. That arm REFUSES loudly (emit_deploy_teardown_dependency_refusal — a typed/located poison step), it does NOT fabricate a no-op (DESIGN §5: an unreachable arm refuses, never a silent pass)."
 
 data live_deploy_replace_unreachable_poison: String = "__GUNBC_DEPLOY_UNREACHABLE__ EffectReplace reached the deploy emit dispatch. Both deploy poles are degenerate — apply observes the empty set, retract desires the empty set — so no Modified hunk can arise and no replace can be emitted. Reaching this arm means a NON-degenerate observed provider landed without its realization being modeled: a replace on a host resource is an in-place update only if the address survived, and a STAGED replacement with declared intermediates otherwise (gunbc.change_realization). Emitting an unconditional overwrite here would be the srv4 failure exactly — a transition that believed it had nothing to retire. This marker is not valid deploy shell, so the golden drift gate reds. member="
 
@@ -1205,20 +1094,7 @@ fn apply_intent_from_effects(
   }
 }
 
-// THE PARTITION THAT PROTECTED SIBLING TEARDOWNS IS DELETED BECAUSE ITS SUBJECT IS GONE. review
-// 45016 found that a refusal arm ending in `false` aborted the whole fail-fast retract at the FIRST
-// teardown, so the unit, worktree root, serve binary, tree-sync files and repo tree were never
-// removed — every retract, production and twin, tore down nothing. The repair sorted refusing
-// teardowns after acting ones, which was correct for the model as it then stood.\n\nThat model was
-// wrong one layer up. The only refusing owned artifact was TailscaleServeMapping, and it refused on
-// an uncited claim that the CLI has no scoped removal. With the endpoint modeled, its teardown
-// ACTS, and no owned artifact refuses — so the partition sorts a list by a predicate that is now
-// constant, which is a node whose validation cannot fail.\n\nThe class it guarded is closed
-// differently and more strongly: a retract for a host whose client cannot do scoped removal is not
-// EMITTED at all (retract_capability_refusal), so a stop-the-line arm cannot appear among the
-// teardowns in the first place, and there is no ordering left to get right. Keeping the partition
-// would preserve the shape of a fix for a defect that no longer has a way to occur, which is
-// exactly the dead-scaffold class.
+data ordering_partition_deleted_note: String = "THE PARTITION THAT PROTECTED SIBLING TEARDOWNS IS DELETED BECAUSE ITS SUBJECT IS GONE. review 45016 found that a refusal arm ending in `false` aborted the whole fail-fast retract at the FIRST teardown, so the unit, worktree root, serve binary, tree-sync files and repo tree were never removed — every retract, production and twin, tore down nothing. The repair sorted refusing teardowns after acting ones, which was correct for the model as it then stood.\\n\\nThat model was wrong one layer up. The only refusing owned artifact was TailscaleServeMapping, and it refused on an uncited claim that the CLI has no scoped removal. With the endpoint modeled, its teardown ACTS, and no owned artifact refuses — so the partition sorts a list by a predicate that is now constant, which is a node whose validation cannot fail.\\n\\nThe class it guarded is closed differently and more strongly: a retract for a host whose client cannot do scoped removal is not EMITTED at all (retract_capability_refusal), so a stop-the-line arm cannot appear among the teardowns in the first place, and there is no ordering left to get right. Keeping the partition would preserve the shape of a fix for a defect that no longer has a way to occur, which is exactly the dead-scaffold class."
 
 fn retract_unsupported_client_poison(observed: String) -> String {
   concat(
@@ -1348,25 +1224,7 @@ fn deployment_ensure_dependency_script(dep: DeploymentDependencyStep) -> String 
   emit_pipeline_or_poison(p: deployment_ensure_dependency_intent(dep: dep), refused: live_deploy_ensure_dep_emit_refused_poison)
 }
 
-// THE ORACLE THIS PR'S OWN DIAGNOSIS ARGUES FOR AND DOES NOT YET BUILD, written down rather than
-// left implicit (review, 2026-07-30). The refusal-arm defect established that a byte-equality
-// golden gate and target-language VALIDITY are different oracle families, and only the first exists
-// over these two artifacts. What landed in response was a string-shape claim about one call site —
-// the escape form present, the raw apostrophe absent — which closes that site and says nothing
-// about the next hand-quoted one.\n\nSo the class is open and this row names its closure rather
-// than implying the point fix covered it. The repo already has the machinery: a bounded bash
-// grammar and serialize_bash, read forward, ingest the emitted script and refuse on a parse failure
-// — the same one-grammar-both-directions move DESIGN 4 describes, with a bash -n gate over the two
-// committed artifacts as the cheaper interim if the grammar's coverage of this dialect proves
-// short.\n\nThe point fix it described is now gone with its subject: the arm that needed quoting
-// was the tailscale teardown refusal, and that refusal was itself built on a false claim about the
-// CLI, so the emitter no longer quotes anything by hand. That REMOVES a call site; it does not
-// close the class, and the bound is now worse rather than better — with no hand-quoted site left in
-// this module, nothing here would red if the next one were introduced.\n\nDISSOLVES ON: both
-// generated deploy scripts parsed by an executing consumer on every emit, with a discriminating RED
-// that introduces a hand-concatenated quote at any call site and goes red on the parse rather than
-// on a string shape. The shared authority itself stays independently witnessed at
-// shell_quote_escapes_an_embedded_apostrophe, which does not depend on this module having a caller.
+data emitted_shell_parseability_oracle_note: String = "THE ORACLE THIS PR'S OWN DIAGNOSIS ARGUES FOR AND DOES NOT YET BUILD, written down rather than left implicit (review, 2026-07-30). The refusal-arm defect established that a byte-equality golden gate and target-language VALIDITY are different oracle families, and only the first exists over these two artifacts. What landed in response was a string-shape claim about one call site — the escape form present, the raw apostrophe absent — which closes that site and says nothing about the next hand-quoted one.\\n\\nSo the class is open and this row names its closure rather than implying the point fix covered it. The repo already has the machinery: a bounded bash grammar and serialize_bash, read forward, ingest the emitted script and refuse on a parse failure — the same one-grammar-both-directions move DESIGN 4 describes, with a bash -n gate over the two committed artifacts as the cheaper interim if the grammar's coverage of this dialect proves short.\\n\\nThe point fix it described is now gone with its subject: the arm that needed quoting was the tailscale teardown refusal, and that refusal was itself built on a false claim about the CLI, so the emitter no longer quotes anything by hand. That REMOVES a call site; it does not close the class, and the bound is now worse rather than better — with no hand-quoted site left in this module, nothing here would red if the next one were introduced.\\n\\nDISSOLVES ON: both generated deploy scripts parsed by an executing consumer on every emit, with a discriminating RED that introduces a hand-concatenated quote at any call site and goes red on the parse rather than on a string shape. The shared authority itself stays independently witnessed at shell_quote_escapes_an_embedded_apostrophe, which does not depend on this module having a caller."
 
 data live_deploy_emit_shell_dissolution_trigger: Disposition = Scaffold {
   dissolves_to: RealizationDispatch,
@@ -1395,43 +1253,6 @@ data live_deploy_remote_mutation_service_op_realization_dissolution_trigger: Dis
   }
 }
 
-// The apply/retract scripts are now ONE orchestration-intent Pipeline each, built from the two
-// degenerate POLES of the grain-agnostic gunbc.membership_reconcile (apply = reconcile
-// desired=all-members/observed=none => all Upsert; retract = reconcile
-// desired=none/observed=owned-artifacts => all Teardown) — apply_intent_from_effects /
-// retract_intent_from_effects fold the resulting MemberEffects into the Pipeline via the per-kind
-// emit_deploy_member_effect handler (share the diff, dispatch the apply), framing
-// (preamble/receipt) wrapping OUTSIDE the reconcile. A refusal (a non-owned/unknown member) refuses
-// the WHOLE fold before emit (EffectsOrRefusal sum — un-emittable by type; never reached by the
-// degenerate poles). The Pipeline is emitted through the signed
-// v2.compiler.emit_orchestration.orch_emit_pipeline path over the bash_orchestration_emit medium —
-// NOT assembled by workflow-code string concat. The smuggled-program class (control flow /
-// sequencing joins built by concat in this module — the former ensure_apt_package function-def, the
-// deployment_ensure_dependency_script nested if/then concat, the tailscale if/fi) is dissolved:
-// dependency-ensure is inline If-Not-ExitZero(dpkg -s) then Do(sudo -n apt-get install) intent
-// (DESIGN §2 CUT: desugar inline, no minted verb), and the emission JOIN lives in
-// extdeps/languages/bash_orchestration_emit, not here (no-smuggled-programs wall: a string literal
-// is an ATOM, joins live in extdeps/languages rows). An emission refusal returns a poison marker
-// (live_deploy_*_emit_refused_poison) so the marker reaches a consumer instead of a hand-spelled
-// fallback (DESIGN §5: refuse, never widen). THE COMMITTED GOLDEN ARTIFACTS ARE DELETED: nothing
-// executed .github/live-deploy-srv1-apply.sh or -retract.sh, and their registry rows named a
-// HostReconciler consumer that does not exist — the real deploy runs live_deploy_apply_srv1_wet
-// through gunbc run. A committed artifact nobody reads is not coverage. The byte oracle those
-// goldens provided now lives where a fixture revision is legitimate, in test.claim.live_deploy.emit
-// against RevisionBoundAtEmission, and it is strictly stronger there: the goldens compared whole
-// files and located nothing, while the witnesses pin the exact ExecStart line with three REDs (flag
-// absent, wrong candidate's value, flag duplicated). RESIDUE (named, not this slice): Run.command
-// is still a String leaf (v2.std.orchestration.Run), so the heredoc file bodies (server.js, systemd
-// unit) and per-command argv interpolation ride inside command: strings as the anemic-leaf residue
-// — they dissolve when Do-effect gains a typed file-write leaf (heredoc file bodies as typed
-// orchestration intent, live_deploy_intent_dependency_graph_emit_dissolution_trigger binds
-// orch_emit_pipeline). Transport-aware remote-mutation service-op realization (live_deploy runs
-// shell, not yet a transport-realized service op) is OUT OF SCOPE —
-// live_deploy_remote_mutation_service_op_realization_dissolution_trigger. Healthz readiness and
-// digest read-back run on the DAG reconcile spine after mutation (live_deploy.readiness transport
-// curl poll, then live_deploy.apply digest read-back); the apply script ships mutation only (no
-// in-script curl read-back).
-
 data live_deploy_intent_dependency_graph_emit_dissolution_trigger: Disposition = Scaffold {
   dissolves_to: RealizationDispatch,
   bind: DeclarationRef {
@@ -1440,3 +1261,5 @@ data live_deploy_intent_dependency_graph_emit_dissolution_trigger: Disposition =
     field: WholeDeclaration,
   }
 }
+
+data live_deploy_golden_freeze_note: String = "The apply/retract scripts are now ONE orchestration-intent Pipeline each, built from the two degenerate POLES of the grain-agnostic gunbc.membership_reconcile (apply = reconcile desired=all-members/observed=none => all Upsert; retract = reconcile desired=none/observed=owned-artifacts => all Teardown) — apply_intent_from_effects / retract_intent_from_effects fold the resulting MemberEffects into the Pipeline via the per-kind emit_deploy_member_effect handler (share the diff, dispatch the apply), framing (preamble/receipt) wrapping OUTSIDE the reconcile. A refusal (a non-owned/unknown member) refuses the WHOLE fold before emit (EffectsOrRefusal sum — un-emittable by type; never reached by the degenerate poles). The Pipeline is emitted through the signed v2.compiler.emit_orchestration.orch_emit_pipeline path over the bash_orchestration_emit medium — NOT assembled by workflow-code string concat. The smuggled-program class (control flow / sequencing joins built by concat in this module — the former ensure_apt_package function-def, the deployment_ensure_dependency_script nested if/then concat, the tailscale if/fi) is dissolved: dependency-ensure is inline If-Not-ExitZero(dpkg -s) then Do(sudo -n apt-get install) intent (DESIGN §2 CUT: desugar inline, no minted verb), and the emission JOIN lives in extdeps/languages/bash_orchestration_emit, not here (no-smuggled-programs wall: a string literal is an ATOM, joins live in extdeps/languages rows). An emission refusal returns a poison marker (live_deploy_*_emit_refused_poison) so the marker reaches a consumer instead of a hand-spelled fallback (DESIGN §5: refuse, never widen). THE COMMITTED GOLDEN ARTIFACTS ARE DELETED: nothing executed .github/live-deploy-srv1-apply.sh or -retract.sh, and their registry rows named a HostReconciler consumer that does not exist — the real deploy runs live_deploy_apply_srv1_wet through gunbc run. A committed artifact nobody reads is not coverage. The byte oracle those goldens provided now lives where a fixture revision is legitimate, in test.claim.live_deploy.emit against RevisionBoundAtEmission, and it is strictly stronger there: the goldens compared whole files and located nothing, while the witnesses pin the exact ExecStart line with three REDs (flag absent, wrong candidate's value, flag duplicated). RESIDUE (named, not this slice): Run.command is still a String leaf (v2.std.orchestration.Run), so the heredoc file bodies (server.js, systemd unit) and per-command argv interpolation ride inside command: strings as the anemic-leaf residue — they dissolve when Do-effect gains a typed file-write leaf (heredoc file bodies as typed orchestration intent, live_deploy_intent_dependency_graph_emit_dissolution_trigger binds orch_emit_pipeline). Transport-aware remote-mutation service-op realization (live_deploy runs shell, not yet a transport-realized service op) is OUT OF SCOPE — live_deploy_remote_mutation_service_op_realization_dissolution_trigger. Healthz readiness and digest read-back run on the DAG reconcile spine after mutation (live_deploy.readiness transport curl poll, then live_deploy.apply digest read-back); the apply script ships mutation only (no in-script curl read-back)."

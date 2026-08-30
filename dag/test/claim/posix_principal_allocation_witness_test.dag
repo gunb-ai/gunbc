@@ -8,11 +8,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // were never evaluated, and the probe spellings they carried would have FAILED the module's own
 // invariant had anything called it. A test population that cannot reach the code under test is not
 // weak evidence; it is no evidence, and it reads exactly like success.
-// Every control here names an arm the legacy witnesses cannot reach: the two new semantic
-// principals, the allocation standing, and the grounding outcome. The central claim under test is
-// that one fleet principal may wear different host-local labels and different numeric identities on
-// two hosts while remaining one principal with one policy -- and that nothing can present an
-// unallocated or unobserved account as grounded.
+data posix_principal_allocation_control_note: String = "Every control here names an arm the legacy witnesses cannot reach: the two new semantic principals, the allocation standing, and the grounding outcome. The central claim under test is that one fleet principal may wear different host-local labels and different numeric identities on two hosts while remaining one principal with one policy -- and that nothing can present an unallocated or unobserved account as grounded."
 
 data spark5: HostIdentity = "srv5" as HostIdentity
 data spark6: HostIdentity = "srv6" as HostIdentity
@@ -58,6 +54,7 @@ fn grounded_name(o: GroundedPosixPrincipalOutcome) -> NonEmptyStr? {
     PrincipalDrifted { allocation: _, first: _, more: _ } => none
   }
 }
+
 
 fn outcome_is_drift(o: GroundedPosixPrincipalOutcome) -> Bool {
   match o {

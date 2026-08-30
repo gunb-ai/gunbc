@@ -39,13 +39,7 @@ data web_binding_scope_note: String = "THIS MODULE IS ONE BINDING, NOT THE FRONT
 
 The subject-identity carrier went with it: ObservedIdentity was a second spelling of ResolvedRef, one file apart, which is the §3 fork at its smallest scale. It is deleted in favour of the single authority, and the reduced-User-Agent arm survives there as RefReducedByPolicy."
 
-// THE AXIS THE DISCREDITED PROBE NEVER READ, AND THE ONE MOST LIKELY TO HAVE EXPLAINED ITS RESULT.
-// Sensor features are policy-controlled, and an embedded document is not granted them merely
-// because the user allowed the top-level site: a parent must delegate the feature explicitly, and a
-// browser's per-site 'motion sensors: allow' setting does not override a parent document's
-// Permissions Policy. So a zero-event reading taken inside an embed is uninterpretable until the
-// context is known, which is why this axis is recorded before any conclusion is drawn and why the
-// decisive probe must be served top-level.
+data browsing_context_note: String = "THE AXIS THE DISCREDITED PROBE NEVER READ, AND THE ONE MOST LIKELY TO HAVE EXPLAINED ITS RESULT. Sensor features are policy-controlled, and an embedded document is not granted them merely because the user allowed the top-level site: a parent must delegate the feature explicitly, and a browser's per-site 'motion sensors: allow' setting does not override a parent document's Permissions Policy. So a zero-event reading taken inside an embed is uninterpretable until the context is known, which is why this axis is recorded before any conclusion is drawn and why the decisive probe must be served top-level."
 
 type BrowsingContextPosition
   = TopLevelContext
@@ -72,20 +66,14 @@ type InterfaceExposure
   | InterfaceNotExposed
   | InterfaceExposureUnobserved
 
-// Permissions Policy admission is read per feature, because the devicemotion dispatch precondition
-// names TWO of them and either one can be the reason for silence. PolicyAdmissionUnobserved is the
-// state the discredited probe was actually in and is never a synonym for allowed.
+data policy_admission_note: String = "Permissions Policy admission is read per feature, because the devicemotion dispatch precondition names TWO of them and either one can be the reason for silence. PolicyAdmissionUnobserved is the state the discredited probe was actually in and is never a synonym for allowed."
 
 type PolicyAdmission
   = PolicyAllowsFeature
   | PolicyBlocksFeature
   | PolicyAdmissionUnobserved
 
-// The absence of the spec's requestPermission() method is a fact about the ENGINE, not about
-// whether permission is required. An engine may apply its own per-site sensor permission without
-// ever prompting and without implementing the standard's asking route, so PermissionMethodAbsent
-// records that the standard route was unavailable and leaves the actual permission state to be
-// observed some other way — it does not mean granted.
+data permission_observation_note: String = "The absence of the spec's requestPermission() method is a fact about the ENGINE, not about whether permission is required. An engine may apply its own per-site sensor permission without ever prompting and without implementing the standard's asking route, so PermissionMethodAbsent records that the standard route was unavailable and leaves the actual permission state to be observed some other way — it does not mean granted."
 
 data permission_axes_are_two_note: String = "METHOD EXPOSURE AND PERMISSION STATE ARE DIFFERENT AXES, AND FUSING THEM MADE AN OBSERVATION CALL ITSELF DECISIVE WHILE THE PERMISSION STAYED UNKNOWN (review finding, 2026-08-06). An earlier revision had one carrier whose PermissionMethodAbsent arm counted as a fully read axis — while this module's own note correctly said that method absence establishes nothing about the state, because an engine may apply its own per-site permission without ever implementing the standard's asking route. So the count said observed and the prose said unknown, and the count won.
 
@@ -115,14 +103,7 @@ fn permission_observation_key(p: PermissionObservation) -> String {
   }
 }
 
-// THE OUTCOME AXIS, AND EVERY ARM CARRIES WHAT MAKES IT CHECKABLE. A duration accompanies every
-// silence, because zero events in an unrecorded window is not a bounded claim and cannot be
-// compared against a later run. A count accompanies every arrival. Hollow and value-bearing events
-// are separate arms because the WebIDL declares the acceleration fields nullable at both the struct
-// and the axis grain, so an event that arrived carrying nothing is a genuinely different
-// observation from one that carried a reading — and from no event at all. StreamUnobserved is the
-// state of a path that was never exercised, which is where the three Generic Sensor interfaces sat
-// in the discredited probe: enumerated, never started.
+data stream_state_note: String = "THE OUTCOME AXIS, AND EVERY ARM CARRIES WHAT MAKES IT CHECKABLE. A duration accompanies every silence, because zero events in an unrecorded window is not a bounded claim and cannot be compared against a later run. A count accompanies every arrival. Hollow and value-bearing events are separate arms because the WebIDL declares the acceleration fields nullable at both the struct and the axis grain, so an event that arrived carrying nothing is a genuinely different observation from one that carried a reading — and from no event at all. StreamUnobserved is the state of a path that was never exercised, which is where the three Generic Sensor interfaces sat in the discredited probe: enumerated, never started."
 
 type MotionStreamState
   = StreamInterfaceNotExposed
@@ -167,13 +148,7 @@ data observation_window_note: String = "An observation with no window is not a m
 
 IT IS ALSO THE ONLY HOME (review finding, 2026-08-07). Three silence arms above used to carry a window_ms each, beside the observation's own observation_window_ms — one duration, two independently writable authorities, and no rule saying which a reader should believe when they disagreed. A record whose stream reported four seconds of quiet inside an observation that watched for zero was constructible and typechecked. The arms now carry only what is theirs, and the duration is read from here."
 
-// GENERIC-SENSOR WAS TOO COARSE TO SAY WHAT WAS TESTED (review finding, 2026-08-06). An earlier
-// revision split the web into DeviceMotionEventApi and GenericSensorApi, and the second arm cannot
-// say which constructor was tried, whether gravity was included in what it would have returned, or
-// which specification's policy facts applied — three interfaces with three different meanings
-// collapsed into one word. The provider is now the exact interface, each grounded in the
-// specification that defines it: DeviceMotionEvent from Device Orientation and Motion, and the
-// three concrete sensors from the Accelerometer extension.
+data exact_provider_note: String = "GENERIC-SENSOR WAS TOO COARSE TO SAY WHAT WAS TESTED (review finding, 2026-08-06). An earlier revision split the web into DeviceMotionEventApi and GenericSensorApi, and the second arm cannot say which constructor was tried, whether gravity was included in what it would have returned, or which specification's policy facts applied — three interfaces with three different meanings collapsed into one word. The provider is now the exact interface, each grounded in the specification that defines it: DeviceMotionEvent from Device Orientation and Motion, and the three concrete sensors from the Accelerometer extension."
 
 type WebMotionProvider
   = DeviceMotionEventProvider
@@ -190,11 +165,7 @@ fn web_provider_key(p: WebMotionProvider) -> String {
   }
 }
 
-// Gravity handling per provider, projected from the two cited specifications rather than restated:
-// the Accelerometer extension says which of its three interfaces removes gravity, and
-// DeviceMotionEvent supplies both an acceleration field and an accelerationIncludingGravity field,
-// so its handling depends on which field a consumer reads and is honestly reported as
-// consumer-selected rather than fixed.
+data provider_gravity_note: String = "Gravity handling per provider, projected from the two cited specifications rather than restated: the Accelerometer extension says which of its three interfaces removes gravity, and DeviceMotionEvent supplies both an acceleration field and an accelerationIncludingGravity field, so its handling depends on which field a consumer reads and is honestly reported as consumer-selected rather than fixed."
 
 fn provider_removes_gravity(p: WebMotionProvider) -> Bool {
   match p {
@@ -221,13 +192,7 @@ type WebMotionObservation {
   observation_window_ms: Milliseconds
 }
 
-// REACHABILITY IS DERIVED, AND ITS DEFAULT IS UNRESOLVED RATHER THAN UNREACHABLE. Only an observed
-// reading makes motion reachable. Only an EXACT observed obstacle makes it unreachable, and the
-// obstacle is carried so the remedy is named — a blocked policy is fixed by delegating a feature, a
-// denied permission by asking, an unexposed interface by a different engine, a refused connection
-// by a different machine or backend. Everything else is unresolved: not a soft no, but the absence
-// of a verdict. The distinction is the whole point of the carrier, because the failure that
-// produced it was exactly a probe reporting unresolved as absent.
+data reachability_note: String = "REACHABILITY IS DERIVED, AND ITS DEFAULT IS UNRESOLVED RATHER THAN UNREACHABLE. Only an observed reading makes motion reachable. Only an EXACT observed obstacle makes it unreachable, and the obstacle is carried so the remedy is named — a blocked policy is fixed by delegating a feature, a denied permission by asking, an unexposed interface by a different engine, a refused connection by a different machine or backend. Everything else is unresolved: not a soft no, but the absence of a verdict. The distinction is the whole point of the carrier, because the failure that produced it was exactly a probe reporting unresolved as absent."
 
 type MotionReachability
   = MotionReachable { peak_milli_m_per_s2: Int }
@@ -304,9 +269,7 @@ fn project_sensor_availability(o: WebMotionObservation) -> SensorAvailability {
   }
 }
 
-// How many axes a run left unread, so an observation's own completeness is a number the receipt can
-// show rather than a judgement a reader has to make. A decisive run reads all of them; the
-// discredited probe left five unread and still reached a conclusion.
+data unobserved_axis_census_note: String = "How many axes a run left unread, so an observation's own completeness is a number the receipt can show rather than a judgement a reader has to make. A decisive run reads all of them; the discredited probe left five unread and still reached a conclusion."
 
 fn browsing_context_unread(c: BrowsingContextPosition) -> Int {
   match c {
@@ -436,12 +399,7 @@ data web_stream_projects_outward_note: String = "THE SEAM THAT MAKES THE WEB ONE
 
 The projection is deliberately NOT total in the optimistic direction: the web has no arm that reaches TapDiscriminatorQualified, because qualification is a fitness judgement made from samples rather than a state a browser reports. A web binding therefore cannot reach CapabilitySupported by projection alone — it gets there only once a discriminator actually runs over its samples and qualifies, which is exactly the readability-is-not-fitness rule stated as an unreachable arm rather than as a promise."
 
-// Sample rate is DERIVED from the interval the observation actually carries, and stays unobserved
-// when it does not. A reading whose sample interval is known gives a frequency by division; a
-// reading with no interval gives FrequencyUnobserved, never zero. The noise floor and the observed
-// axis count have no web source at all on this route today — the event carries neither — so both
-// stay unobserved and a qualification needing them refuses on those dimensions rather than reading
-// a fabricated zero as a pass.
+data frequency_is_derived_not_invented_note: String = "Sample rate is DERIVED from the interval the observation actually carries, and stays unobserved when it does not. A reading whose sample interval is known gives a frequency by division; a reading with no interval gives FrequencyUnobserved, never zero. The noise floor and the observed axis count have no web source at all on this route today — the event carries neither — so both stay unobserved and a qualification needing them refuses on those dimensions rather than reading a fabricated zero as a pass."
 
 fn frequency_from_interval(sample_interval_ms: Milliseconds) -> FrequencyObservation {
   if sample_interval_ms > 0 {
@@ -451,13 +409,7 @@ fn frequency_from_interval(sample_interval_ms: Milliseconds) -> FrequencyObserva
   }
 }
 
-// A WEB PROBE DOES NOT MEASURE DETECTION LATENCY, AND ZERO WAS THE WORST AVAILABLE ANSWER (review
-// finding, 2026-08-06). Counting events over a window says nothing about how long after a physical
-// knock the first sample carrying it arrived — that needs a known stimulus time, which no passive
-// listener has. Writing zero did not merely omit the fact: zero is the BEST possible latency, so an
-// unmeasured dimension was reported as a perfect score, and the requirement's latency budget passed
-// on it every time. It joins the four dimensions already carrying an observed-or-not coproduct for
-// exactly this reason.
+data latency_is_not_zero_note: String = "A WEB PROBE DOES NOT MEASURE DETECTION LATENCY, AND ZERO WAS THE WORST AVAILABLE ANSWER (review finding, 2026-08-06). Counting events over a window says nothing about how long after a physical knock the first sample carrying it arrived — that needs a known stimulus time, which no passive listener has. Writing zero did not merely omit the fact: zero is the BEST possible latency, so an unmeasured dimension was reported as a perfect score, and the requirement's latency budget passed on it every time. It joins the four dimensions already carrying an observed-or-not coproduct for exactly this reason."
 
 fn web_sample_receipt(count: Int, peak_milli: Int, sample_interval_ms: Milliseconds) -> SampleReceipt {
   SampleReceipt {
@@ -499,14 +451,7 @@ fn project_binding_stream(o: WebMotionObservation) -> BindingStreamState {
   }
 }
 
-// THE TWO WEB SILENCES STAY DISTINGUISHABLE DOWNSTREAM, AND AN EARLIER REVISION MERGED THEM WHILE
-// CALLING IT A LOSS RATHER THAN A FABRICATION (review finding, 2026-08-06). No events at all and an
-// activated sensor that never read are different facts: the first says the dispatch path never ran,
-// the second says it ran and produced nothing, and only the second involves a sensor object that
-// reached the activated lifecycle state. Projecting the first into an arm named ActivatedNoSamples
-// asserted an activation that never happened — and a witness pinned it, which made the invention
-// load-bearing. The neutral arm now carries the lifecycle, so the merge is a real widening of the
-// remedy rather than a claim about what occurred.
+data silence_carries_its_lifecycle_note: String = "THE TWO WEB SILENCES STAY DISTINGUISHABLE DOWNSTREAM, AND AN EARLIER REVISION MERGED THEM WHILE CALLING IT A LOSS RATHER THAN A FABRICATION (review finding, 2026-08-06). No events at all and an activated sensor that never read are different facts: the first says the dispatch path never ran, the second says it ran and produced nothing, and only the second involves a sensor object that reached the activated lifecycle state. Projecting the first into an arm named ActivatedNoSamples asserted an activation that never happened — and a witness pinned it, which made the invention load-bearing. The neutral arm now carries the lifecycle, so the merge is a real widening of the remedy rather than a claim about what occurred."
 
 data coherence_admission_note: String = "AN OBSERVATION CAN BE COMPLETE AND STILL BE IMPOSSIBLE, AND THE EARLIER DERIVATION READ ONLY THE STREAM (review finding, 2026-08-06). Nothing stopped a record from carrying an insecure context, a blocked policy, a denied permission AND arriving readings at once — and derive_reachability, which matches on the stream arm alone, would have called that reachable. Every one of those combinations is refused by the cited contracts: the interfaces are [SecureContext], readings are unavailable to a document the policy does not admit, and devicemotion dispatches only when both named permissions are granted. So a contradiction is a located refusal rather than a verdict, and completeness alone no longer makes an observation decisive.
 
@@ -622,10 +567,7 @@ fn admit_web_observation(o: WebMotionObservation) -> WebMotionObservationAdmissi
   }
 }
 
-// Decisive now means three things together: every axis was read, the window was positive, and the
-// axes do not contradict each other. Exact host identity is deliberately NOT one of them — an
-// observation from a partially identified host is still a real, useful observation — and the
-// durable support claim is gated separately, in gunbc.capability_binding, where it belongs.
+data decisiveness_note: String = "Decisive now means three things together: every axis was read, the window was positive, and the axes do not contradict each other. Exact host identity is deliberately NOT one of them — an observation from a partially identified host is still a real, useful observation — and the durable support claim is gated separately, in gunbc.capability_binding, where it belongs."
 
 fn observation_is_coherent(o: WebMotionObservation) -> Bool {
   observation_contradictions(o: o).length() == 0

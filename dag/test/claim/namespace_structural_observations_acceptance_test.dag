@@ -43,11 +43,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // set is EXACTLY the one capability whose rule was broken. A control that only asserted "the
 // contract is false" would pass just as well if the bridge returned nothing at all, and that is
 // the failure the production-refused arms of the observation carrier exist to make visible.
-// Closing validation for namespace-structural-observations. One ordinary compiled subject produces
-// all four in-file visibility observations through the production bridge; four single-edit mutants
-// of that same subject each break exactly one rule and refuse exactly that capability; one mutant
-// changes only the declared module and refuses on subject provenance with every capability still
-// established.
+data namespace_structural_observations_acceptance_note: String = "Closing validation for namespace-structural-observations. One ordinary compiled subject produces all four in-file visibility observations through the production bridge; four single-edit mutants of that same subject each break exactly one rule and refuse exactly that capability; one mutant changes only the declared module and refuses on subject provenance with every capability still established."
 
 fn nso_subject_with_source(source: String) -> StructuralObservationSubject {
   let subject = namespace_structural_observations_subject()

@@ -2,17 +2,7 @@ module test.claim.transport_script_wall_compile_red
 
 import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
-// §5.E wall REDs (operator acceptance 2026-07-24): the two documented transport-script fake
-// patterns, reconstructed AS WRITTEN, must FAIL TO COMPILE — not merely fail review. Each fake is
-// compiled as an inline virtual source through compile_dag_rust_emit_check, which returns false on
-// any hard diagnostic; the tests assert refusal (!compile). The construction wall —
-// ShellOnHost.script retyped to the RetainedShellScript RECORD, and the free minter
-// extdeps.shell.exec.transport_script_from_body DELETED — makes both fakes non-compiling. The
-// host_language_transport_script lens never caught these (a computed concat is
-// ComputedApplication, deliberately green); only construction closes the class. If either wall is
-// loosened (record widened back to String, or the free minter reintroduced), the corresponding fake
-// compiles clean, compile_dag_rust_emit_check flips to true, and the RED goes red — the wall's
-// regression alarm.
+data transport_script_wall_compile_red_note: String = "§5.E wall REDs (operator acceptance 2026-07-24): the two documented transport-script fake patterns, reconstructed AS WRITTEN, must FAIL TO COMPILE — not merely fail review. Each fake is compiled as an inline virtual source through compile_dag_rust_emit_check, which returns false on any hard diagnostic; the tests assert refusal (!compile). The construction wall — ShellOnHost.script retyped to the RetainedShellScript RECORD, and the free minter extdeps.shell.exec.transport_script_from_body DELETED — is what makes both fakes non-compiling. The host_language_transport_script lens never caught these (a computed concat is ComputedApplication, deliberately green); only construction closes the class. If either wall is ever loosened (record widened back to String, or the free minter reintroduced), the corresponding fake starts compiling clean, compile_dag_rust_emit_check flips to true, and the RED goes red — the wall's regression alarm."
 
 data firsttouch_1_restoration_note: String = "FIRSTTOUCH-1 (dashboard adhoc-c5b4375f-4cb, 2026-08-19) -- a finding and a disposition correction, NOT a restoration; corrected 2026-08-19 after this note's first version wrongly read a green floor run as evidence the witness now executes cheaply. This module was quarantined out of test.claim.long. and back in, twice, on two different readings of one artifact. First quarantined by #8457's blanket over-budget sweep. RESTORE WAVE A un-quarantined it, then 021d17e6a7 dropped it straight back after observing it cost 1394ms pre-quarantine (docs/plans/measurements/floor-slow-rows-2026-08-17.tsv, CI run ci) but 48963ms in the restore run with nothing about the witness changed -- 35.1x, and the commit named the mechanism without yet fixing it: compile_dag_rust_emit_check_uncached calls build_module_path_index_from_witness_roots (src/v1/stage0/src/cli_run.rs), a THREAD-LOCAL memo keyed on the default source roots -- exactly the module_path_index shared fill of the #8455 ledger (docs/plans/floor-shared-fill-ledger.md). #8470 (7e4871be86, already on this branch's main ancestry) DID fix that exact call site, warming build_module_path_index_from_witness_roots during floor preparation and naming this witness's own two RED rows in its measurement table -- but fixing a cost and being ADMITTED to pay it are two different facts, and this note's first version conflated them.
 
@@ -36,10 +26,7 @@ THE SCALE NOTE'S POINT IS ACCEPTED AND ACTED ON: 778 identities in the larger po
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
-// Positive control: a clean shell service source compiles and emits src/wallctl.rs containing the
-// argv-shaped Command invocation, so compile_dag_rust_emit_check returns true. Proves the harness
-// discriminates — the two false results below are genuine refusals, not a harness that always
-// returns false.
+// Positive control: a clean shell service source compiles and emits src/wallctl.rs containing the argv-shaped Command invocation, so compile_dag_rust_emit_check returns true. Proves the harness is discriminating — the two false results below are genuine refusals of the fakes, not a harness that always returns false.
 fn w_control_clean_shell_service() -> Bool {
   compile_dag_rust_emit_check(
     "module wallctl\n\nservice shell.Run {\n  operation Exec {\n    input { script: String }\n    output { result: String }\n    transport shell { argv: [\"sh\", \"-lc\", \"\{script\}\"] }\n    mock_response {\n      0 => \"done\" \"result\"\n    }\n  }\n}\n",
@@ -49,12 +36,7 @@ fn w_control_clean_shell_service() -> Bool {
   )
 }
 
-// RED A — the #7064 / vivid-wolf 'build the argv properly, then join it back into a string and feed
-// the realization edge' class. The fake hands a computed String (argv join + " 2>/dev/null ||
-// true") to retained_shell_script_to_transport, whose parameter is the RetainedShellScript RECORD.
-// A String cannot fill a record position, so infer refuses (hard diagnostic) and the source does
-// not compile. The only sanctioned route is to author a counted RetainedShellScript row
-// (retained_srvn / retained_transport), which forces a reason + dissolve-on.
+data red_a_note: String = "RED A — the #7064 / vivid-wolf 'build the argv properly, then join it back into a string and feed the realization edge' class. The fake hands a computed String (argv join + \" 2>/dev/null || true\") to retained_shell_script_to_transport, whose parameter is the RetainedShellScript RECORD. A String cannot fill a record position, so infer refuses (hard diagnostic) and the source does not compile. The only sanctioned route is to author a counted RetainedShellScript row (retained_srvn / retained_transport), which forces a reason + dissolve-on."
 
 fn w_red_a_string_join_into_retained_record() -> Bool {
   compile_dag_rust_emit_check(
@@ -65,10 +47,7 @@ fn w_red_a_string_join_into_retained_record() -> Bool {
   )
 }
 
-// RED B — #7064's exact textual pattern: transport_script_from_body(argv_join(...) + " 2>/dev/null
-// || true"). The free minter is deleted from extdeps.shell.exec, so the import resolves nothing and
-// the call is unresolved (hard diagnostic) — the source does not compile. Reintroducing the free
-// minter would make this fake compile again and red this control.
+data red_b_note: String = "RED B — #7064's exact textual pattern: transport_script_from_body(argv_join(...) + \" 2>/dev/null || true\"). The free minter is deleted from extdeps.shell.exec, so the import resolves nothing and the call is unresolved (hard diagnostic) — the source does not compile. Reintroducing the free minter would make this fake compile again and red this control."
 
 fn w_red_b_deleted_free_minter() -> Bool {
   compile_dag_rust_emit_check(

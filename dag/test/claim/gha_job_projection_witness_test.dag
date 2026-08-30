@@ -16,22 +16,7 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-// THE CONSTRUCTION-LEVEL WALL AGAINST FUTURE INERT Job FIELDS, and the reason it is one synthetic
-// all-fields job rather than a per-field assertion against ci.yml. job_yaml silently dropped four
-// of the Job type's emittable fields (see job_field_projection_completeness_note); a per-field
-// check against the real workflows could not have caught any of them, because every Job in the
-// corpus sets those fields to none — so the real artifacts are indistinguishable from an emitter
-// that ignores the fields entirely. The only discriminating subject is a job that POPULATES every
-// optional field, which is why one is constructed here. Two directions are asserted and both are
-// load-bearing: all_fields_job proves each populated fact reaches the emitted yaml (a new dropped
-// field reds), and minimal_job proves an absent field emits NO key (a projection that started
-// emitting an empty `outputs: {}` or a bare `name:` also reds). Without the second direction the
-// first is satisfiable by unconditionally emitting every key. This is validation, not construction
-// — DESIGN §5's preference is a model from which the projection is derived so a dropped field is
-// unwritable, and that is not reachable while job_yaml is a hand-written fold over named fields;
-// until it is, this witness is the residue mechanism and it is enrolled rather than inert. A field
-// ADDED to Job without being added here and to job_yaml is the gap this cannot close: it fails open
-// on additions, which is why the note on the emitter side carries the field roster explicitly.
+data gha_job_projection_witness_note: String = "THE CONSTRUCTION-LEVEL WALL AGAINST FUTURE INERT Job FIELDS, and the reason it is one synthetic all-fields job rather than a per-field assertion against ci.yml. job_yaml silently dropped four of the Job type's emittable fields (see job_field_projection_completeness_note); a per-field check against the real workflows could not have caught any of them, because every Job in the corpus sets those fields to none — so the real artifacts are indistinguishable from an emitter that ignores the fields entirely. The only discriminating subject is a job that POPULATES every optional field, which is why one is constructed here. Two directions are asserted and both are load-bearing: all_fields_job proves each populated fact reaches the emitted yaml (a new dropped field reds), and minimal_job proves an absent field emits NO key (a projection that started emitting an empty `outputs: {}` or a bare `name:` also reds). Without the second direction the first is satisfiable by unconditionally emitting every key. This is validation, not construction — DESIGN §5's preference is a model from which the projection is derived so a dropped field is unwritable, and that is not reachable while job_yaml is a hand-written fold over named fields; until it is, this witness is the residue mechanism and it is enrolled rather than inert. A field ADDED to Job without being added here and to job_yaml is the gap this cannot close: it fails open on additions, which is why the note on the emitter side carries the field roster explicitly."
 
 fn probe_step() -> Step {
   RunStep {
@@ -121,15 +106,7 @@ test fn every_populated_job_field_reaches_the_emitted_yaml() -> Bool {
     && string_contains(s: y, pattern: "continue-on-error: true")
 }
 
-// Asserted as ADJACENCY rather than as per-key absence, because a bare !contains("name:") is
-// unsound here: the probe STEP carries `name: probe`, so a key-name absence check over the whole
-// document conflates job-level keys with step-level ones and reds on a correct emitter (observed —
-// this witness failed that way first). Adjacency is also the stronger claim: runs-on is the first
-// key when name is absent and steps is the first key after the optional block, so requiring them
-// CONTIGUOUS proves that none of name/needs/timeout-minutes/if/permissions/concurrency/outputs
-// emitted anything at all — one assertion covering the whole optional block, and it breaks if any
-// single one starts emitting an empty key. The trailing keys (env, continue-on-error) sit after
-// steps and are checked separately at top-level indent.
+data absent_field_adjacency_note: String = "Asserted as ADJACENCY rather than as per-key absence, because a bare !contains(\"name:\") is unsound here: the probe STEP carries `name: probe`, so a key-name absence check over the whole document conflates job-level keys with step-level ones and reds on a correct emitter (observed — this witness failed that way first). Adjacency is also the stronger claim: runs-on is the first key when name is absent and steps is the first key after the optional block, so requiring them CONTIGUOUS proves that none of name/needs/timeout-minutes/if/permissions/concurrency/outputs emitted anything at all — one assertion covering the whole optional block, and it breaks if any single one starts emitting an empty key. The trailing keys (env, continue-on-error) sit after steps and are checked separately at top-level indent."
 
 test fn absent_job_fields_emit_no_key() -> Bool {
   let y = minimal_yaml()

@@ -28,27 +28,9 @@ data fleet_runner_connectivity_authority_disposition: Disposition = Terminal {
   reason: "Single authority for GITHUB REGISTRATION CONNECTIVITY versus LOCAL RUNNER INCARNATIONS. It joins one org-level registration roster (remote ground truth from the GitHub Actions runners API) to per-slot stable identities (host, index) and their local systemd incarnations. It does NOT repair wedged runners — that is PR B. It refuses to fold connected width into desired width, and it refuses to treat a roster read failure as 'everything detached' (empty-observation narrow)."
 }
 
-// THE ROSTER IS ONE CENTRAL ORG READ, not a per-host poll: slot health is derived by joining the
-// org-level registration roster to stable (host, index) identities. The gunbai-ci GitHub App
-// carries organization_self_hosted_runners read permission for this producer. Local journal mining
-// and per-host gh api calls are not the authority for whether GitHub will schedule work onto a
-// registration.
-//
-// THIS ROW SAYS NOTHING ABOUT COMPLETENESS, AND THAT IS DELIBERATE. It replaces
-// organization_roster_is_one_org_read_note, which asserted that the API 'returns every self-hosted
-// registration for the organization in one response'. That was false and is now decided by
-// OrganizationRunnerRosterEvidence rather than claimed here; a corrected sentence beside a carrier
-// that decides the same question would be a second authority for it (DESIGN section 3). The three
-// facts above are the surviving contents of that row, enumerated rather than swept away with it --
-// a prose row deleted for one reason takes everything in it unless its contents are named first.
+data organization_roster_read_locus_note: String = "THE ROSTER IS ONE CENTRAL ORG READ, not a per-host poll: slot health is derived by joining the org-level registration roster to stable (host, index) identities. The gunbai-ci GitHub App carries organization_self_hosted_runners read permission for this producer. Local journal mining and per-host gh api calls are not the authority for whether GitHub will schedule work onto a registration.\n\nTHIS ROW SAYS NOTHING ABOUT COMPLETENESS, AND THAT IS DELIBERATE. It replaces organization_roster_is_one_org_read_note, which asserted that the API 'returns every self-hosted registration for the organization in one response'. That was false and is now decided by OrganizationRunnerRosterEvidence rather than claimed here; a corrected sentence beside a carrier that decides the same question would be a second authority for it (DESIGN section 3). The three facts above are the surviving contents of that row, enumerated rather than swept away with it -- a prose row is deleted for one reason and takes everything in it unless its contents are named first."
 
-// THE ACHIEVED AXES HERE ARE ORTHOGONAL TO gunbc.runner_slot_allocation's desired-side widths
-// (#7930 candidate/actuatable/observed). registered_width counts GitHub org roster rows;
-// connected_width counts status == online; schedulable_width counts online AND NOT busy;
-// executing_width counts online AND busy. desired_width is INTENT from gunbc_runner_slots_per_host
-// and does NOT reconcile down when connected collapses during an outage. materialized_width and
-// unit_active_width are LOCAL incarnation facts pinned from the incident corpus until the local
-// producer grounds them.
+data achieved_widths_are_orthogonal_to_desired_width_note: String = "THE ACHIEVED AXES HERE ARE ORTHOGONAL TO gunbc.runner_slot_allocation's desired-side widths (#7930 candidate/actuatable/observed). registered_width counts GitHub org roster rows; connected_width counts status == online; schedulable_width counts online AND NOT busy; executing_width counts online AND busy. desired_width is INTENT from gunbc_runner_slots_per_host and does NOT reconcile down when connected collapses during an outage. materialized_width and unit_active_width are LOCAL incarnation facts pinned from the incident corpus until the local producer grounds them."
 
 type OrganizationRunnerRosterEvidence
   = RosterObserved { observed_on: NonEmptyStr, registrations: List<GitHubSelfHostedRunnerRegistration> }
@@ -63,9 +45,10 @@ type OrganizationRunnerRosterEvidence
 // COMPLETENESS IS DERIVED AT THE BOUNDARY, NEVER ASSERTED BY A CALLER. The org runners API is
 // PAGINATED -- measured 2026-08-27 at total_count 522 against a 100-row page -- so a read that
 // succeeds is not thereby a read that saw everything. A caller cannot hand this constructor a
-// prefix and have it enter as RosterObserved: the only way to that variant is for the observed
-// length to equal the authority's own total, so "I saw all of it" is a computed fact about the
-// response, not a claim about the request (DESIGN section 5, construction over validation).
+// prefix and have it enter as RosterObserved: the only way to reach that variant is for the
+// observed length to equal the authority's own total, so "I saw all of it" is a computed fact
+// about the response rather than a claim about the request (DESIGN section 5, construction over
+// validation).
 fn organization_runner_roster_from_page(
   observed_on: NonEmptyStr,
   registrations: List<GitHubSelfHostedRunnerRegistration>,
@@ -98,32 +81,33 @@ type RegistrationSlotDecoding
   | RegistrationNamesNoCommittedSlot { registration_name: NonEmptyStr }
 
 // THE DECODER DOES NOT PARSE. Splitting "srv3-06" back into a host and an index would be a SECOND
-// naming authority read in the opposite direction from the first, and the two could disagree
-// undetected. The committed population is finite and enumerable, so decoding is a total decision
-// over it: which committed identity's own name equals this registration's name. That is the
-// forward naming authority read backward (DESIGN section 4, one grammar in both directions), not
-// an inverse re-implemented beside it, and a name matching nothing is not a parse failure -- it is
-// the answer RegistrationNamesNoCommittedSlot, a fact about the fleet rather than about text.
+// naming authority read in the opposite direction from the first, and the two could disagree without
+// anything detecting it. The committed population is finite and already enumerable, so decoding is a
+// total decision over it: which committed identity's own name equals this registration's name. That is
+// the forward naming authority read backward (DESIGN section 4, one grammar in both directions) rather
+// than an inverse re-implemented beside it, and a name matching nothing is not a parse failure -- it is
+// the answer RegistrationNamesNoCommittedSlot, which is a fact about the fleet rather than about text.
 //
 // THE FORK IS DISSOLVED, AND IT WAS FIVE SITES RATHER THAN THE THREE AN EARLIER REVISION OF THIS
 // NOTE CLAIMED. One rule -- pad a slot index to two digits -- had four independent implementations
 // (runner_lifecycle, runner_host_deploy, runner_incarnation, and host_registration_name_for_slot
 // just below, which reached it through a shared bucketed helper). Three derived the pad
 // arithmetically; runner_incarnation's slot_suffix ENUMERATED indices 1 through 8 with an else arm
-// returning the literal "00". Measured before the fix: srv3-09 from the derived sites, srv3-00
-// from the enumerator -- a COLLISION rather than a wrong name, since every index above 8 produced
-// the same string and two slots would contend for one GitHub registration.
+// returning the literal "00". Measured before the fix: srv3-09 from the derived sites, srv3-00 from
+// the enumerator -- a COLLISION rather than a wrong name, since every index above 8 produced the
+// same string and two slots would contend for one GitHub registration.
 //
-// All now route through gunbc.build_cache_instance runner_slot_index_suffix, the identity's own
-// module and therefore the rule's layer. Derived, total over Nat, no fall-through to reach. My
-// census of this fork said three sites twice -- to a reviewer and in a PR body -- and it was five;
-// the two I missed reached the rule INDIRECTLY, the same shape as every other undercount in this
-// lane: I grepped for the thing I was looking for rather than enumerating the declarations.
+// All of them now route through gunbc.build_cache_instance runner_slot_index_suffix, which is the
+// identity's own module and therefore the rule's layer. Derived, total over Nat, no fall-through to
+// reach. My census of this fork said three sites twice -- to a reviewer and in a PR body -- and it
+// was five; the two I missed were the ones that reached the rule INDIRECTLY, which is the same
+// shape as every other undercount in this lane: I grepped for the thing I was looking for rather
+// than enumerating the declarations.
 //
 // ONE INDEPENDENT IMPLEMENTATION SURVIVES DELIBERATELY, in host_converge_slice1_witness_test, which
-// builds its own expected name inline. Not a missed site: a witness that computes its expectation
-// by calling the production function proves only that the function equals itself. Its pad is an
-// independent oracle and consolidating it would convert a check into a tautology.
+// builds its own expected name inline. That is not a missed site: a witness that computes its
+// expectation by calling the production function proves only that the function equals itself. Its
+// pad is an independent oracle and consolidating it would convert a check into a tautology.
 fn fleet_committed_slot_identities() -> List<RunnerSlotIdentity> {
   fold(
     fleet_hosts(),
@@ -163,17 +147,17 @@ type RunnerSlotConnectivityVerdict
       decoded: RegistrationSlotDecoding
     }
 
-// THIS ARM CARRIES THE REGISTRATION'S OWN IDENTITY AND NOT A SLOT, AND THAT IS THE WHOLE POINT.
-// The other four arms each carry a RunnerSlotIdentity from a LOCAL incarnation, being produced by
-// mapping over local_runner_slot_incarnations. A registration GitHub holds that we never
-// provisioned locally has no incarnation to map from, so it was not mis-reported by those four --
-// it was unsayable, and no check could close it because there was nothing to read. Giving this
-// arm a slot field would rebuild that blindness inside the fix, forcing an unexpected registration
-// to be described in terms of a local slot that by construction does not exist. It carries
-// `decoded` instead, so a consumer can tell the two cases apart -- a registration whose name
-// resolves to a COMMITTED slot identity is the disjointness violation this model exists for (an
-// actions-runner sitting on a fabric-purpose slot), while one resolving to nothing is a foreign
-// runner in the org. Different facts; a single Bool would have merged them.
+// THIS ARM CARRIES THE REGISTRATION'S OWN IDENTITY AND NOT A SLOT, AND THAT IS THE WHOLE POINT OF IT.
+// The other four arms each carry a RunnerSlotIdentity taken from a LOCAL incarnation, because they are
+// produced by mapping over local_runner_slot_incarnations. A registration GitHub holds that we never
+// provisioned locally has no incarnation to be mapped from, so it was not mis-reported by those four --
+// it was unsayable, and no check could close it because there was nothing for a check to read.
+// Giving this arm a slot field would have rebuilt that same blindness inside the fix: it would have
+// forced an unexpected registration to be described in terms of a local slot that by construction does
+// not exist. It carries `decoded` instead, so a consumer can tell the two cases apart -- a registration
+// whose name resolves to a COMMITTED slot identity is the disjointness violation this model exists for
+// (an actions-runner sitting on a fabric-purpose slot), while one that resolves to nothing is a
+// foreign runner in the org. Those are different facts and a single Bool would have merged them.
 
 type FleetRunnerCapacityWidthSnapshot {
   desired_width: Int
@@ -182,18 +166,7 @@ type FleetRunnerCapacityWidthSnapshot {
   achieved: FleetAchievedRunnerWidths
 }
 
-// PINNED ACCEPTANCE CORPUS from the live GitHub org runners API during the 2026-08-06
-// broker-session incident (15 of 16 registrations offline; 1 functional runner). srv1 registered
-// 01-05 with only 01 online+busy; srv2 registered 01,02,05 all offline with 03,04 absent; srv3
-// registered 01,02,04,05 all offline with 03 absent; srv4 registered 01,02,04,05 all offline with
-// 03 absent. desired_width stays 22 while connected is 1 — derived at
-// incident_fleet_desired_width_at_outage (srv4 still carried the five-slot disk row-pin on
-// 2026-08-06. The live total is DERIVED by fleet_desired_width_total rather than pinned here, so it
-// tracks gunbc_runner_slots_per_host: it read 24 while srv3/srv4 committed 7, and reads 22 since
-// the 2026-08-17 16GiB ruling moved both managed hosts to 6. The incident figure of 22 is a
-// DIFFERENT QUANTITY that happens to share the number — it is what the roster desired on 2026-08-06
-// (5+5+7+5, srv4 row-pinned), and it comes from the pinned per-host rows in
-// incident_pinned_widths_note, never from the live allocation.)
+data incident_2026_08_06_roster_note: String = "PINNED ACCEPTANCE CORPUS from the live GitHub org runners API during the 2026-08-06 broker-session incident (15 of 16 registrations offline; 1 functional runner). srv1 registered 01-05 with only 01 online+busy; srv2 registered 01,02,05 all offline with 03,04 absent; srv3 registered 01,02,04,05 all offline with 03 absent; srv4 registered 01,02,04,05 all offline with 03 absent. desired_width stays 22 while connected is 1 — derived at incident_fleet_desired_width_at_outage (srv4 still carried the five-slot disk row-pin on 2026-08-06. The live total is DERIVED by fleet_desired_width_total rather than pinned here, so it tracks gunbc_runner_slots_per_host: it read 24 while srv3/srv4 committed 7, and reads 22 since the 2026-08-17 16GiB ruling moved both managed hosts to 6. The incident figure of 22 is a DIFFERENT QUANTITY that happens to share the number — it is what the roster desired on 2026-08-06 (5+5+7+5, srv4 row-pinned), and it comes from the pinned per-host rows in incident_pinned_widths_note, never from the live allocation.)"
 
 data incident_srv4_committed_width_at_outage: Int = 5
 
@@ -290,10 +263,7 @@ fn find_registration_by_name(
   )
 }
 
-// ACTIVATED WIDTH vs INSTALL-TREE COUNT (operator correction 2026-08-07): counts ACTIVATED units,
-// not install trees. srv1: 50 trees / 5 active; srv3: 8 materialized trees (includes 08) / 5 active
-// — committed width 7 is memory ceiling, not materialization cap. Dormant trees are
-// SlotMaterializedNotActive; stale .runner does not block ADD.
+data incident_local_materialized_width_note: String = "ACTIVATED WIDTH vs INSTALL-TREE COUNT (operator correction 2026-08-07): counts ACTIVATED units, not install trees. srv1: 50 trees / 5 active; srv3: 8 materialized trees (includes 08) / 5 active — committed width 7 is memory ceiling, not materialization cap. Dormant trees are SlotMaterializedNotActive; stale .runner does not block ADD."
 
 fn materialized_width_for_host(host: HostIdentity) -> Int {
   if (host as String) == (operator_host_srv1 as String) {
@@ -312,6 +282,7 @@ fn materialized_width_for_host(host: HostIdentity) -> Int {
 fn unit_active_width_for_host(host: HostIdentity) -> Int {
   materialized_width_for_host(host: host)
 }
+
 
 fn host_registration_name_for_slot(host: HostIdentity, slot_index: Nat) -> NonEmptyStr {
   join([host as String, "-", runner_slot_index_suffix(index: slot_index)], "") as NonEmptyStr
@@ -365,12 +336,12 @@ fn count_host_online_at_width(
 }
 
 // THE CONVERGED-SEVEN FIXTURE CLUSTER IS DELETED HERE -- six declarations, all dead. It described
-// a fleet that stopped existing with the 2026-08-17 16GiB ruling, and once registrations are
-// decoded against the committed population rather than counted, srv3-07 resolves to no committed
-// slot, so the planner refused it. Its last consumer was retargeted onto the roster below, the
+// a fleet that stopped existing with the 2026-08-17 16GiB ruling, and once registrations are decoded
+// against the committed population rather than counted, srv3-07 resolves to no committed slot at all,
+// so the planner refused it. Its last consumer was retargeted onto the roster below, which is the
 // same concept authored once: both managed hosts registered 01-05 and online, converged at the
-// materialized width. Keeping the seven-wide rows beside it would be a second name for a fleet
-// state, and a test fixture is not exempt from that.
+// materialized width. Keeping the seven-wide rows beside it would have been a second name for a
+// fleet state, and a test fixture is not exempt from that.
 data width_five_online_srv3_registrations: List<GitHubSelfHostedRunnerRegistration> = [
   incident_registration(id: 301, name: "srv3-01" as NonEmptyStr, status: GitHubRunnerOnline, busy: false),
   incident_registration(id: 302, name: "srv3-02" as NonEmptyStr, status: GitHubRunnerOnline, busy: false),
@@ -450,11 +421,11 @@ fn registration_verdict_or(
 }
 
 // THE REFUSAL IS PER-QUESTION, NOT PER-ROSTER. A truncated read still answers exactly about every
-// slot INSIDE the prefix, so refusing the whole roster would be a widen (DESIGN section 5: a
-// failure arm must refuse, never widen) and would stop reconciliation on hosts this read covered
-// perfectly well. Only the ABSENT arm changes: a slot missing from a prefix was never observed to
-// be missing, and rendering it Orphaned is the empty-observation narrow -- could-not-see reported
-// as the verdict "it is gone", whose remedy is a restart at connectivity_replace_action.
+// slot INSIDE the prefix, so refusing the whole roster would be a widen (DESIGN section 5: a failure
+// arm must refuse, never widen) and would stop reconciliation on hosts this read covered perfectly
+// well. What changes is only the ABSENT arm: a slot missing from a prefix was never observed to be
+// missing, and rendering it Orphaned is the empty-observation narrow -- could-not-see reported as
+// the verdict "it is gone", whose remedy is a restart at connectivity_replace_action.
 fn runner_slot_connectivity_verdict_for_incarnation(
   incarnation: LocalRunnerSlotIncarnation,
   roster: OrganizationRunnerRosterEvidence,
@@ -544,19 +515,7 @@ fn fleet_hosts() -> List<HostIdentity> {
   [operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4]
 }
 
-// THE 2026-08-06 CORPUS IS PINNED ON EVERY HOST, NOT JUST srv4, AND THAT IS THE WHOLE POINT. This
-// fold previously pinned srv4 alone and read gunbc_runner_slots_per_host live for srv1-srv3, so a
-// historical incident total silently tracked present-day allocation. The 2026-08-17 16GiB ruling
-// moved srv3 from 7 to 6 and the outage total would have become 21 while
-// incident_2026_08_06_roster_note and its witness both say 22 — a pinned corpus contradicting
-// itself because it was only half pinned.
-//
-// DESIGN section 5's test-oracle discipline is the authority: a historical measurement compared
-// against a literal is legitimate only when the measurement is independently fixed, and half of
-// this one was live. The widths below are what the fleet committed ON 2026-08-06 (srv1 5, srv2 5,
-// srv3 7, srv4 5 with its then-live disk row-pin), summing to the 22 the roster note records.
-// Frozen by date, never to be updated to follow an allocation ruling: a future ruling changes what
-// the fleet desires TODAY, not what it desired during that outage.
+data incident_pinned_widths_note: String = "THE 2026-08-06 CORPUS IS PINNED ON EVERY HOST, NOT JUST srv4, AND THAT IS THE WHOLE POINT OF IT. This fold previously pinned srv4 alone and read gunbc_runner_slots_per_host live for srv1-srv3, so a historical incident total silently tracked present-day allocation. The 2026-08-17 16GiB ruling moved srv3 from 7 to 6 and the outage total would have become 21 while incident_2026_08_06_roster_note and its witness both say 22 — a pinned corpus contradicting itself because it was only half pinned.\n\nDESIGN section 5's test-oracle discipline is the authority: a historical measurement compared against a literal is legitimate only when the measurement is independently fixed, and half of this one was live. The widths below are what the fleet committed ON 2026-08-06 (srv1 5, srv2 5, srv3 7, srv4 5 with its then-live disk row-pin), summing to the 22 the roster note records. They are frozen by date and must never be updated to follow an allocation ruling; a future ruling changes what the fleet desires TODAY, not what it desired during that outage."
 
 data incident_srv1_committed_width_at_outage: Int = 5
 

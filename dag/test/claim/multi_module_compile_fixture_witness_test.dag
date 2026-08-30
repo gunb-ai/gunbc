@@ -29,30 +29,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // asks about -- the question that field owns is affected-set selection eligibility, which is a
 // property of which SOURCES a witness's verdict depends on.
 
-// WHAT THESE SEVEN CONTROLS PROVE, and what they do not. They prove the instrument compiles a
-// caller-authored MANIFEST in genuine isolation from the corpus, keeps harness-refused separate
-// from subject-refused, reports a module count derived from the RESOLVE stage rather than from the
-// input list, and stamps both digests on every arm that measured something. They prove NOTHING
-// about any wall a consumer then builds on it: a wall's own regression control is its own probe
-// pair, not this file. CONTROL 6 IS THE LOAD-BEARING ONE AND IS WRITTEN FIRST DELIBERATELY --
-// without it every other control can pass vacuously, because an instrument that silently answers
-// 'compiled clean, zero diagnostics' whenever it fails to run satisfies control 1 by construction
-// and control 2 only by accident. Its executable face is that a manifest the instrument cannot form
-// at all lands in FixtureInstrumentRefused, which is a different variant from every arm carrying a
-// diagnostic list, so a caller matching for a clean compile cannot receive one. CONTROLS 4 AND 5
-// ARE ONE QUESTION FROM TWO SIDES and neither alone decides it: 4 shows a corpus module NOT
-// supplied is unreachable (an entry importing std.types refuses UnresolvedImport, so no default
-// root was loaded), and 5 shows a corpus SPELLING that IS supplied binds the fixture's own
-// declaration (a fixture module spelled std.logic exports a symbol the real std.logic does not
-// have, and the entry importing it compiles clean). Together they establish that the pool is
-// exactly the manifest -- neither wider nor narrower. THE OPEN QUESTION UPSTREAM COULD NOT ANSWER,
-// recorded because it was asked as a real design question rather than rhetorically: whether a
-// fixture can be corpus-isolated at all under whole-corpus floor preparation, where the required
-// floor folds every witness through ONE prepared subject so that a witness and the corpus share a
-// name pool unconditionally. It can. That preparation governs how the WITNESS is compiled and is
-// consulted by unrelated censuses; the nested compile this instrument performs never reads it.
-// Controls 4 and 5 measure that rather than assuming it, and they run on the floor -- which is what
-// makes the answer evidence instead of an argument.
+data multi_module_compile_fixture_witness_note: String = "WHAT THESE SEVEN CONTROLS PROVE, and what they do not. They prove the instrument compiles a caller-authored MANIFEST in genuine isolation from the corpus, keeps harness-refused separate from subject-refused, reports a module count derived from the RESOLVE stage rather than from the input list, and stamps both digests on every arm that measured something. They prove NOTHING about any wall a consumer then builds on it: a wall's own regression control is its own probe pair, not this file. CONTROL 6 IS THE LOAD-BEARING ONE AND IS WRITTEN FIRST DELIBERATELY -- without it every other control can pass vacuously, because an instrument that silently answers 'compiled clean, zero diagnostics' whenever it fails to run satisfies control 1 by construction and control 2 only by accident. Its executable face is that a manifest the instrument cannot form at all lands in FixtureInstrumentRefused, which is a different variant from every arm carrying a diagnostic list, so a caller matching for a clean compile cannot receive one. CONTROLS 4 AND 5 ARE ONE QUESTION FROM TWO SIDES and neither alone decides it: 4 shows a corpus module NOT supplied is unreachable (an entry importing std.types refuses UnresolvedImport, so no default root was loaded), and 5 shows a corpus SPELLING that IS supplied binds the fixture's own declaration (a fixture module spelled std.logic exports a symbol the real std.logic does not have, and the entry importing it compiles clean). Together they establish that the pool is exactly the manifest -- neither wider nor narrower. THE OPEN QUESTION UPSTREAM COULD NOT ANSWER, recorded because it was asked as a real design question rather than rhetorically: whether a fixture can be corpus-isolated at all under whole-corpus floor preparation, where the required floor folds every witness through ONE prepared subject so that a witness and the corpus share a name pool unconditionally. It can. That preparation governs how the WITNESS is compiled and is consulted by unrelated censuses; the nested compile this instrument performs never reads it. Controls 4 and 5 measure that rather than assuming it, and they run on the floor -- which is what makes the answer evidence instead of an argument."
 
 // ---------------------------------------------------------------------------
 // The authored manifests. Every byte here is fixture-owned: nothing is borrowed from a corpus

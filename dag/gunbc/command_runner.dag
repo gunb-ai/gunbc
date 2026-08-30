@@ -73,12 +73,7 @@ data ssh_exit_255_conflation_dissolution: DissolutionCondition = unbound_dissolu
 // mechanically preventable. Stated here rather than left to be inferred from a passing receipt,
 // because a green test that nothing runs is exactly the inert evidence DESIGN calls a lie.
 
-// Renders RemoteExecCommandRefusalCause (gunbc.remote_shell_command) into a diagnostic String --
-// the only refusal this generic runner can hit today is RemoteExecInterpretationUnknown, since
-// every SshExec constructed in-tree names a determined interpretation
-// (openssh_login_shell_interpretation / openbmc_dropbear_interpretation); the cause stays a match
-// over the full type rather than a partial one so a newly added cause fails to compile here instead
-// of falling through silently (DESIGN 4b: no untracked stall).
+data command_over_transport_refusal_reason_note: String = "Renders RemoteExecCommandRefusalCause (gunbc.remote_shell_command) into a diagnostic String -- the only refusal this generic runner can hit today is RemoteExecInterpretationUnknown, since every SshExec constructed in-tree names a determined interpretation (openssh_login_shell_interpretation / openbmc_dropbear_interpretation); the cause stays a match over the full type rather than a partial one so a newly added cause fails to compile here instead of falling through silently (DESIGN 4b: no untracked stall)."
 
 fn command_over_transport_refusal_reason(cause: RemoteExecCommandRefusalCause) -> String {
   match cause {

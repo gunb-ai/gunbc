@@ -25,13 +25,7 @@ import gunbc.floor_component_receipt {
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-// Executing consumer for gunbc.floor_component_receipt. THE PAIR IS THE PROOF: the receipt built
-// from run 30509024051's real component states must report the affected-set cold control VERIFIED
-// (it concluded Done over 5217 witnesses) while still naming the silent-pick gate as the failed
-// component — and the same projection must report NOT verified when that control itself is red,
-// absent, or ambiguous. Either direction alone is satisfiable by a broken projection:
-// always-verified reproduces the alert defect this module exists to kill, always-unverified
-// reproduces the hardcoded 'cold control is dark' story it replaces.
+data fcr_witness_note: String = "Executing consumer for gunbc.floor_component_receipt. THE PAIR IS THE PROOF: the receipt built from run 30509024051's real component states must report the affected-set cold control VERIFIED (it concluded Done over 5217 witnesses) while still naming the silent-pick gate as the failed component — and the same projection must report NOT verified when that control itself is red, absent, or ambiguous. Either direction alone is satisfiable by a broken projection: always-verified reproduces the alert defect this module exists to kill, always-unverified reproduces the hardcoded 'cold control is dark' story it replaces."
 
 data fcr_run_id: NonEmptyStr = "30509024051" as NonEmptyStr
 
@@ -241,10 +235,7 @@ test fn fcr_not_reached_mode_is_skipped_not_failed() -> Bool {
   fcr_mode_outcome_is(mode: "not_reached" as NonEmptyStr, expected_outcome: "skipped")
 }
 
-// run_incomplete rows are pending (ComponentNotConcluded), not skipped. Skipped claims the walk
-// produced a verdict of none; pending claims no verdict exists yet because the receipt was written
-// mid-run. not_reached remains skipped: the plan concluded and deliberately skipped the tail. The
-// modes must stay distinct so a SIGKILL checkpoint is not misread as a stop-policy skip.
+data fcr_run_incomplete_note: String = "run_incomplete rows are pending (ComponentNotConcluded), not skipped. Skipped claims the walk produced a verdict of none; pending claims no verdict exists yet because the receipt was written mid-run. not_reached remains skipped: the plan concluded and deliberately skipped the tail. The modes must stay distinct so a SIGKILL checkpoint is not misread as a stop-policy skip."
 
 test fn fcr_run_incomplete_mode_is_pending_not_skipped() -> Bool {
   fcr_not_concluded_outcome_is(mode: "run_incomplete" as NonEmptyStr, expected_outcome: "pending")
@@ -281,18 +272,7 @@ test fn fcr_red_control_unmodelled_failure_mode_refuses_never_widens() -> Bool {
     && (match budget { Absent => false  Present { value: _ } => true })
 }
 
-// The row-grain failure-mode edge, and the collapse it exists to undo.
-// floor_component_outcome_of_failure_mode maps Infra and WitnessRed onto the SAME
-// ObservationOutcome (Failed), which is right for the observation record and wrong for anyone
-// deciding what to do next: a dead runner and a genuinely false claim are different faults with
-// different owners. Before the edge, a consumer holding the Failed arm could only tell them apart
-// by reading the diagnostic prose — the string classification the seed boundary already refuses.
-// The pair below asserts BOTH halves of the property, because either alone is satisfiable by a
-// broken projection: the outcomes must still agree (both Failed — the edge did not fork the
-// observation record) AND the modes must differ (Infra vs WitnessRed — the edge actually recovers
-// the distinction). A projection that renamed the outcomes apart would pass a modes-differ check
-// while breaking the record; one that dropped the mode would pass an outcomes-agree check while
-// restoring the blindness.
+data fcr_failure_mode_edge_note: String = "The row-grain failure-mode edge, and the collapse it exists to undo. floor_component_outcome_of_failure_mode maps Infra and WitnessRed onto the SAME ObservationOutcome (Failed), which is right for the observation record and wrong for anyone deciding what to do next: a dead runner and a genuinely false claim are different faults with different owners. Before the edge, a consumer holding the Failed arm could only tell them apart by reading the diagnostic prose — the string classification the seed boundary already refuses. The pair below asserts BOTH halves of the property, because either alone is satisfiable by a broken projection: the outcomes must still agree (both Failed — the edge did not fork the observation record) AND the modes must differ (Infra vs WitnessRed — the edge actually recovers the distinction). A projection that renamed the outcomes apart would pass a modes-differ check while breaking the record; one that dropped the mode would pass an outcomes-agree check while restoring the blindness."
 
 fn fcr_mode_of(mode: NonEmptyStr) -> String {
   let rows = fcr_rows_of(opts: [fcr_mode_row(mode: mode)])
@@ -323,13 +303,7 @@ test fn fcr_failure_mode_edge_agrees_with_the_outcome_mapping() -> Bool {
     && fcr_mode_of(mode: "not_reached" as NonEmptyStr) == "not_reached"
 }
 
-// A known-red witness that starts PASSING and a witness that regresses are opposite events with
-// opposite remedies — delete the now-stale admission row, versus fix the code. This asserts the
-// receipt keeps them apart in BOTH directions: StaleKnownRed carries its own mode AND its own
-// outcome, so it can neither be read as an ordinary WitnessRed in the alert's class signature nor
-// be mistaken for a component that is fine. The Done clause is the load-bearing half: an
-// expected-red row that silently went green must not be admitted as success, or the roster
-// accumulates rows nobody revisits.
+data fcr_stale_known_red_note: String = "A known-red witness that starts PASSING and a witness that regresses are opposite events with opposite remedies — delete the now-stale admission row, versus fix the code. This asserts the receipt keeps them apart in BOTH directions: StaleKnownRed carries its own mode AND its own outcome, so it can neither be read as an ordinary WitnessRed in the alert's class signature nor be mistaken for a component that is fine. The Done clause is the load-bearing half: an expected-red row that silently went green must not be admitted as success, or the roster accumulates rows nobody revisits."
 
 test fn fcr_stale_known_red_is_a_refusal_distinct_from_witness_red_and_from_done() -> Bool {
   let stale_rows = fcr_rows_of(opts: [fcr_mode_row(mode: "StaleKnownRed" as NonEmptyStr)])
@@ -344,14 +318,7 @@ test fn fcr_stale_known_red_is_a_refusal_distinct_from_witness_red_and_from_done
     && !(stale_doc == red_doc)
 }
 
-// The THIRD arm on this axis, and it must be distinguishable from BOTH of the others because all
-// three demand different actions. StaleKnownRed says an executed row passed — DELETE the admission.
-// ExpectedRedEvidenceAbsent says a rostered row produced no observation — make it RUN.
-// ExpectedRedPreVerdictUnverified says the row stopped as declared, before any verdict, and nothing
-// yet proves it stopped for the DECLARED REASON — the remedy is neither delete nor rerun but
-// carrying the typed phase and cause across the execution boundary. It renders as refused, never
-// done: a declaration classifies a stop, it does not verify one, and rendering it green was the
-// defect this arm replaces.
+data fcr_pre_verdict_unverified_note: String = "The THIRD arm on this axis, and it must be distinguishable from BOTH of the others because all three demand different actions. StaleKnownRed says an executed row passed — DELETE the admission. ExpectedRedEvidenceAbsent says a rostered row produced no observation — make it RUN. ExpectedRedPreVerdictUnverified says the row stopped as declared, before any verdict, and nothing yet proves it stopped for the DECLARED REASON — the remedy is neither delete nor rerun but carrying the typed phase and cause across the execution boundary. It renders as refused, never done: a declaration classifies a stop, it does not verify one, and rendering it green was the defect this arm replaces."
 
 test fn fcr_pre_verdict_unverified_is_a_refusal_distinct_from_both_siblings() -> Bool {
   let unverified_rows = fcr_rows_of(opts: [fcr_mode_row(mode: "ExpectedRedPreVerdictUnverified" as NonEmptyStr)])
@@ -368,12 +335,7 @@ test fn fcr_pre_verdict_unverified_is_a_refusal_distinct_from_both_siblings() ->
     && !(unverified_doc == stale_doc)
 }
 
-// The COVERAGE half of the same axis, and the discrimination is that it is neither of its
-// neighbours: not done (a batch whose admitted red control produced no observation is not a batch
-// that is fine), and not StaleKnownRed (nobody observed the witness passing — nobody observed it at
-// all), so the two refusals must render differently or the alert cannot tell delete-the-row from
-// make-the-row-run. Absence establishing neither agreement nor failure is exactly why it needs its
-// own mode rather than being folded into either verdict arm.
+data fcr_expected_red_evidence_absent_note: String = "The COVERAGE half of the same axis, and the discrimination is that it is neither of its neighbours: not done (a batch whose admitted red control produced no observation is not a batch that is fine), and not StaleKnownRed (nobody observed the witness passing — nobody observed it at all), so the two refusals must render differently or the alert cannot tell delete-the-row from make-the-row-run. Absence establishing neither agreement nor failure is exactly why it needs its own mode rather than being folded into either verdict arm."
 
 test fn fcr_expected_red_evidence_absent_is_a_refusal_distinct_from_stale_and_from_done() -> Bool {
   let absent_rows = fcr_rows_of(opts: [fcr_mode_row(mode: "ExpectedRedEvidenceAbsent" as NonEmptyStr)])
@@ -397,16 +359,7 @@ test fn fcr_red_control_tag_built_row_records_no_mode_rather_than_guessing() -> 
     && !string_contains(s: doc, pattern: "\"failure_mode\": \"none\"")
 }
 
-// THE WRITER'S OUTPUT DECODES THROUGH THE STRICT READER, and this witness exists because that once
-// stopped being true. The writer emitted a selection_degradation member only when a selection
-// snapshot existed, while the reader REQUIRED it, so the no-selection path produced a document the
-// reader refused (review 49594). Both members are now deleted with affected-set selection itself —
-// the writer no longer emits them and the reader no longer requires them — so the specific break is
-// gone. The round trip is still witnessed, because what made that defect possible is structural
-// rather than incidental: the writer and the reader are two hand-maintained member lists, and
-// nothing but this execution joins them. Dissolve-on: the document type derives both projections,
-// at which point a writer that omits a required member is unrepresentable and this witness becomes
-// redundant with the type.
+data receipt_round_trip_note: String = "THE WRITER'S OUTPUT DECODES THROUGH THE STRICT READER, and this witness exists because that once stopped being true. The writer emitted a selection_degradation member only when a selection snapshot existed, while the reader REQUIRED it, so the no-selection path produced a document the reader refused (review 49594). Both members are now deleted with affected-set selection itself — the writer no longer emits them and the reader no longer requires them — so the specific break is gone. The round trip is still witnessed, because what made that defect possible is structural rather than incidental: the writer and the reader are two hand-maintained member lists, and nothing but this execution joins them. Dissolve-on: the document type derives both projections, at which point a writer that omits a required member is unrepresentable and this witness becomes redundant with the type."
 
 test fn fcr_receipt_decodes_through_the_strict_reader() -> Bool {
   let doc = floor_component_receipt_document(
@@ -421,9 +374,7 @@ test fn fcr_receipt_decodes_through_the_strict_reader() -> Bool {
   }
 }
 
-// Pre-PR receipts under artifact retention omit run_terminal entirely. receipt_run_terminal_at maps
-// absent to null so the alert decoder does not refuse them (review 51856); same transitional
-// pattern as component_outcome_wire_legacy_pending_tag_note.
+data fcr_run_terminal_legacy_absent_note: String = "Pre-PR receipts under artifact retention omit run_terminal entirely. receipt_run_terminal_at maps absent to null so the alert decoder does not refuse them (review 51856); same transitional pattern as component_outcome_wire_legacy_pending_tag_note."
 
 data fcr_legacy_receipt_without_run_terminal: String = "{\"schema\":\"floor-component-receipt/v1\",\"workflow_name\":\"affected-set-falsifier\",\"run_id\":\"30509024051\",\"head_sha\":\"0123456789abcdef0123456789abcdef01234567\",\"component_count\":0,\"unsuccessful_components\":[],\"components\":[]}"
 
@@ -439,14 +390,7 @@ test fn fcr_legacy_receipt_without_run_terminal_member_decodes() -> Bool {
   }
 }
 
-// The incomplete checkpoint envelope is what claim_executor writes on SIGKILL/step-cap death:
-// run_terminal.disposition=incomplete and pending tail rows (outcome=pending,
-// failure_mode=run_incomplete). The concluded-path round trip was already witnessed; this arm
-// exercises the path this PR exists to fix. SUBJECT IDENTITY IS NOT ON THIS RECEIPT (operator
-// ruling 2026-08-13, #8239 → #8163): in-flight witness identity is a temporary
-// GUNBC_FLOOR_PHASE_JOURNAL projection until measurements and subjects emit on the #8163
-// RecordedObservation ledger; see floor_component_resource_checkpoint_note and
-// floor_component_phase_journal_scaffold_note.
+data fcr_incomplete_checkpoint_round_trip_note: String = "The incomplete checkpoint envelope is what claim_executor writes on SIGKILL/step-cap death: run_terminal.disposition=incomplete and pending tail rows (outcome=pending, failure_mode=run_incomplete). The concluded-path round trip was already witnessed; this arm exercises the path this PR exists to fix. SUBJECT IDENTITY IS NOT ON THIS RECEIPT (operator ruling 2026-08-13, #8239 → #8163): in-flight witness identity is a temporary GUNBC_FLOOR_PHASE_JOURNAL projection until measurements and subjects emit on the #8163 RecordedObservation ledger; see floor_component_resource_checkpoint_note and floor_component_phase_journal_scaffold_note."
 
 test fn fcr_incomplete_checkpoint_receipt_decodes_through_the_strict_reader() -> Bool {
   let rows = fcr_rows_of(opts: [

@@ -29,15 +29,7 @@ type EnsurePlan<P>
   = EnsurePlanAvailable { plan: P }
   | EnsurePlanUnavailable { reason: String }
 
-// Ensure is a convergence modality, never a roster of packages or tools. A caller supplies a typed
-// desired requirement, an observation, its own satisfaction predicate, an authority policy, and an
-// optional typed convergence plan. ensure_decide projects those facts onto the existing
-// std.upsert_decision authority: satisfied -> Noop; known absent/drift + authorized plan -> Apply;
-// observe-only, no-plan, and inaccessible -> Refuse. Effects remain capability-specific adapters.
-// ensure_readback then projects the independent post-apply observation through
-// std.realization_reconcile, so an Apply receipt cannot claim convergence without grounded
-// readback. Fine grain means one requirement/observation/receipt per semantic capability; it does
-// not mean one ensure function per executable.
+data ensure_algebra_note: String = "Ensure is a convergence modality, never a roster of packages or tools. A caller supplies a typed desired requirement, an observation, its own satisfaction predicate, an authority policy, and an optional typed convergence plan. ensure_decide projects those facts onto the existing std.upsert_decision authority: satisfied -> Noop; known absent/drift + authorized plan -> Apply; observe-only, no-plan, and inaccessible -> Refuse. Effects remain capability-specific adapters. ensure_readback then projects the independent post-apply observation through std.realization_reconcile, so an Apply receipt cannot claim convergence without grounded readback. Fine grain means one requirement/observation/receipt per semantic capability; it does not mean one ensure function per executable."
 
 fn ensure_decide<P, E>(
   policy: EnsurePolicy,

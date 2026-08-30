@@ -1,12 +1,6 @@
 module test.claim.emitter_optional_present_branded_scalar_witness_test
 
-// Emitter regression control for Present { value: text as NonEmptyStr } inside a NonEmptyStr?
-// return: the erased payload type is String, so optional detection must use the variant surface
-// name (Present) and fn_returns_optional, not the erased tn; otherwise the emitter falls through to
-// Optional::String { value: ... } in the body (return types may still mention Optional::String).
-// Incidental coverage via extdeps.container.oci.digest seed membership is Class B accidental
-// coverage (#6985); this witness is the declared durable control. dissolve-on: never — permanent
-// regression alarm for the emitter arm.
+data emitter_optional_present_branded_scalar_witness_note: String = "Emitter regression control for Present { value: text as NonEmptyStr } inside a NonEmptyStr? return: the erased payload type is String, so optional detection must use the variant surface name (Present) and fn_returns_optional, not the erased tn. Without that, the emitter falls through to Optional::String { value: ... } in the body (return types may still mention Optional::String). Incidental coverage via extdeps.container.oci.digest seed membership is Class B accidental coverage (#6985); this witness is the declared durable control. dissolve-on: never — permanent regression alarm for the emitter arm."
 
 fn w_present_branded_scalar_cast_emits_some() -> Bool {
   compile_dag_rust_emit_check(

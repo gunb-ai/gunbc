@@ -66,18 +66,7 @@ import product.compute_board.article {
   BoardPowerInterfaceArticle,
 }
 
-// SPICE AS A PROJECTION OF A LANGUAGE-NEUTRAL ANALOG INTENT. Every piece of SPICE spelling for this
-// article lives in this module and nowhere upstream: element letter, node names, reference node
-// '0', and the magnitude SUFFIXES. The last is the correction that mattered — an earlier revision
-// carried value_lexeme: '10k' in the model, a SPICE spelling of a resistance, so the supposed
-// authority held target syntax. The magnitude is now a typed measure and 'k' is derived here from
-// the variant's declared scale. THE PRIOR SHAPE WAS WORSE THAN A STRAY STRING: the board article
-// held a BoardSlice imported FROM this module, so the article depended on one of its own targets
-// and 'the article feeds every interface' held only because that interface had already decided
-// what the article looked like. WHAT THIS MODULE REFUSES BEFORE EMITTING A BYTE: an element with no
-// model binding, an element whose vendor model this profile cannot render, and a TERMINAL ON NO
-// NET — a floating terminal and a grounded one are different circuits, and defaulting the first to
-// the second emits a deck that simulates cleanly and describes a different board.
+data spice_projection_note: String = "SPICE AS A PROJECTION OF A LANGUAGE-NEUTRAL ANALOG INTENT. Every piece of SPICE spelling for this article lives in this module and nowhere upstream: the element letter, the node names, the reference node '0', and the magnitude SUFFIXES. That last one is the correction that mattered — an earlier revision carried value_lexeme: '10k' in the model, which is a SPICE spelling of a resistance, so the supposed authority was holding target syntax. The magnitude is now a typed measure and 'k' is derived here from the variant's declared scale. THE PRIOR SHAPE WAS WORSE THAN A STRAY STRING: the board article held a BoardSlice imported FROM this module, so the article depended on one of its own targets and 'the article feeds every interface' was true only because that interface had already decided what the article looked like. WHAT THIS MODULE REFUSES BEFORE EMITTING A BYTE: an element with no model binding at all, an element whose vendor model this profile cannot render, and a TERMINAL ON NO NET. That last refusal is not pedantry — a floating terminal and a grounded one are different circuits, and defaulting the first to the second emits a deck that simulates cleanly and describes a different board."
 
 type SpiceProjectionRefusal
   = ElectricalModelUnavailable { part: NonEmptyStr }
@@ -89,9 +78,10 @@ type SpiceProjectionRefusal
   | IdentityNotSpellableInTarget { component: NonEmptyStr }
   | NetNotSpellableInTarget { net: NonEmptyStr }
 
-// The receipt carries the article identity, so an emission is traceable to the root that produced
-// it. Otherwise two unrelated articles with equal extracted fields produce indistinguishable output
-// and 'one article feeds both projections' is a witness convention, not a property of the types.
+// The receipt carries the article identity, so an emission is traceable to the root that
+// produced it. Without this, two unrelated articles with equal extracted fields produce
+// indistinguishable output and 'one article feeds both projections' is a convention in a
+// witness rather than a property of the types.
 type SpiceEmissionReceipt {
   source_article: BoardArticleIdentity
   source: String
@@ -101,15 +91,16 @@ type SpiceProjection
   = SpiceSliceProjected { receipt: SpiceEmissionReceipt }
   | SpiceSliceRefused { cause: SpiceProjectionRefusal }
 
-// The element letter and the magnitude suffix come from ONE match, because kind and value are one
-// constructor upstream. The earlier pair of matches over two independent fields could disagree — a
-// PassiveResistor carrying nanofarads emitted "R... 100n", a deck that simulates and describes a
-// part nobody specified.
-// THE DECK IS BUILT AS A NETLIST AND SERIALIZED BY THE FORMAT MODULE. Every byte of SPICE spelling
-// this module used to author — element letter, reference node "0", the space between fields, the
-// newline between lines, the "k"/"n" suffixes — was a second SPICE authority in the product layer,
-// the fork the Verilog side removed when its printer was deleted. What remains is the only genuine
-// projection fact: which target scale each modelled quantity is spelled at.
+// The element letter and the magnitude suffix now come from ONE match, because the kind and the
+// value are one constructor upstream. The earlier pair of matches over two independent fields
+// could disagree — a PassiveResistor carrying nanofarads emitted "R... 100n", a deck that
+// simulates and describes a part nobody specified.
+// THE DECK IS BUILT AS A NETLIST AND SERIALIZED BY THE FORMAT MODULE. Every byte of SPICE
+// spelling this module used to author — the element letter, the reference node "0", the space
+// between fields, the newline between lines and the "k"/"n" suffixes — was a second SPICE
+// authority sitting in the product layer, exactly the fork the Verilog side removed when its
+// printer was deleted. What remains here is the only thing that is genuinely a projection fact:
+// which target scale each modelled quantity is spelled at.
 fn component_node(
   intent: AnalogCircuitIntent,
   reference: NetIdentity,
@@ -170,9 +161,10 @@ fn binding_for(bindings: List<ComponentModelBinding>, c: ElectricalComponentInst
 }
 
 // HOW MANY bindings claim this component. binding_for answers with the FIRST match, so two rows
-// disagreeing about one component's model resolved silently by list order — an ideal-lumped row and
-// a vendor-subcircuit row for the same part emit or refuse depending on which was authored first,
-// a verdict decided by editing accident. Ambiguity is not a model standing; it is refused.
+// disagreeing about one component's model resolved silently by list order — an ideal-lumped row
+// and a vendor-subcircuit row for the same part emit or refuse depending on which was authored
+// first, which is a verdict decided by an editing accident. Ambiguity is not a model standing
+// and is refused rather than resolved.
 fn binding_count(bindings: List<ComponentModelBinding>, c: ElectricalComponentInstance) -> Nat {
   fold(bindings, init: 0, f: fn(acc, b) {
     if component_identity_eq(a: b.component, b: component_identity(c: c)) { acc + 1 } else { acc }
@@ -190,12 +182,13 @@ fn standing_refusal(c: ElectricalComponentInstance, s: ElectricalModelStanding) 
   }
 }
 
-// A terminal sits in exactly one of three states with DIFFERENT remedies: on no net (floating), on
-// one net (netted), or on several (shorted between them). The earlier check was a Bool over "did
-// net_of_terminal answer", collapsing the third into the second — a terminal shorting two nets
-// emitted a deck naming whichever net was authored first, simulating cleanly while describing a
-// board that is not the one modelled: the exact failure this module's note claims to prevent for
-// the floating case, left open for the shorted one.
+// A terminal sits in exactly one of three states and they have DIFFERENT remedies: on no net
+// (floating), on one net (netted), or on several (shorted between them). The earlier check was a
+// Bool over "did net_of_terminal answer", which collapsed the third into the second — so a
+// terminal shorting two nets emitted a deck naming whichever net was authored first, and the
+// deck simulated cleanly while describing a board that is not the one modelled. That is the
+// exact failure this module's note claims to prevent for the floating case, left open for the
+// shorted one.
 fn terminal_netting_refusal(
   intent: AnalogCircuitIntent,
   c: ElectricalComponentInstance,
@@ -252,10 +245,10 @@ fn first_refusal(
   })
 }
 
-// A NAME THIS FORMAT CANNOT SPELL IS REFUSED, not repaired. The format module admits an identifier
-// or answers Absent, and an Absent name renders as the empty string inside the deck — so the
-// refusal happens here, before a line is built, or a component silently loses its name and the
-// deck describes a different circuit.
+// A NAME THIS FORMAT CANNOT SPELL IS REFUSED, not repaired. The format module admits an
+// identifier or answers Absent, and an Absent name renders as the empty string inside the deck —
+// so the refusal has to happen here, before a line is built, or a component silently loses its
+// name and the deck describes a different circuit.
 fn spelling_refusal(c: ElectricalComponentInstance) -> SpiceProjectionRefusal? {
   if spice_identifier_is_admissible(spelling: component_local_label(c: component_identity(c: c)) as String) {
     none
@@ -278,10 +271,11 @@ fn net_spelling_refusal(intent: AnalogCircuitIntent, reference: NetIdentity) -> 
   })
 }
 
-// THE RUNNABLE DECK IS A SECOND PROJECTION OF THE SAME NETLIST, not a second netlist. An analysis
-// directive adds a question for the simulator — an operating point, here — a fact about a RUN, not
-// the board, which is why the receipt's deck does not carry one. Both come from spice_netlist, so a
-// run cannot exercise a circuit the receipt does not describe.
+// THE RUNNABLE DECK IS A SECOND PROJECTION OF THE SAME NETLIST, not a second netlist. What an
+// analysis directive adds is a question to ask the simulator — an operating point, here — and
+// that is a fact about a RUN rather than about the board, which is why the receipt's deck does
+// not carry one. Both come from spice_netlist, so a run cannot exercise a circuit the receipt
+// does not describe.
 fn first_refusal_or_net_spelling(
   intent: AnalogCircuitIntent,
   bindings: List<ComponentModelBinding>,
@@ -311,10 +305,11 @@ fn project_analog_to_spice(
   }
 }
 
-// THE PRODUCTION ENTRY POINT, taking the whole article rather than its parts. Every caller of
-// project_analog_to_spice supplies identity and circuit SEPARATELY, so one article's identity paired
-// with another's circuit was constructible and the receipt would name a board it does not describe.
-// Taking the article closes that by construction: one value, both facts read out of it here.
+// THE PRODUCTION ENTRY POINT, and the reason it takes the whole article rather than its parts.
+// Every caller of project_analog_to_spice supplies the identity and the circuit SEPARATELY, so
+// one article's identity paired with another article's circuit was perfectly constructible and
+// the resulting receipt would name a board it does not describe. Taking the article closes that
+// by construction: there is one value, and both facts are read out of it here.
 fn project_article_to_spice(admitted: AdmittedBoardPowerInterfaceArticle) -> SpiceProjection {
   let article = admitted_article(a: admitted)
   project_analog_to_spice(
@@ -325,12 +320,13 @@ fn project_article_to_spice(admitted: AdmittedBoardPowerInterfaceArticle) -> Spi
   )
 }
 
-// IT RETURNS THE SAME COPRODUCT, THROUGH THE SAME GATE. An earlier revision returned a bare String
-// and built the netlist directly, so an article admission accepts and this module REFUSES could
-// still hand a runnable deck to a simulator — the fail-open the netting refusals close, reopened on
-// the second path: component_node maps a terminal on no net to Ground, so the bypassing deck would
-// have simulated cleanly and described a different board. One refusal gate, both projections behind
-// it; a String return made the bypass possible because a String has nowhere to put a refusal.
+// IT RETURNS THE SAME COPRODUCT, THROUGH THE SAME GATE, and an earlier revision did not — it
+// returned a bare String and built the netlist directly, so an article that admission accepts and
+// this module REFUSES could still hand a runnable deck to a simulator. That is the exact fail-open
+// the netting refusals exist to close, reopened on the second path: component_node maps a terminal
+// on no net to Ground, so the bypassing deck would have simulated cleanly and described a
+// different board. There is one refusal gate and both projections are behind it; a String return
+// is what made the bypass possible, because a String has nowhere to put a refusal.
 fn project_article_to_ngspice_run(admitted: AdmittedBoardPowerInterfaceArticle) -> SpiceProjection {
   let article = admitted_article(a: admitted)
   let intent = article.analog

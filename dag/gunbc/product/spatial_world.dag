@@ -18,35 +18,37 @@ import std.spatial_frame { SpatialFrameRegistry }
 
 // SPATIAL-4A: WORLD STATE, AND VARIANTS AS DELTAS.
 //
-// A world is the join of two facts in different layers that must not be fused: WHICH room this is
-// (an allocated RoomIdentity, product.placement_supply's authority since SPATIAL-0) and WHAT SHAPE
-// it has (an EnclosedSpace, std's, carrying no identity by design). This module is the join and
-// owns neither side, so geometry is imported rather than re-declared and identity is never derived
-// from shape — two rooms can be geometrically identical and remain different rooms, and one room
-// keeps its identity across every change to its walls.
+// A world is the join of two facts that live in different layers and must not be fused: WHICH room
+// this is (an allocated RoomIdentity, product.placement_supply's authority since SPATIAL-0) and
+// WHAT SHAPE it has (an EnclosedSpace, std's, which carries no identity at all by deliberate
+// design). This module is the join and owns neither side. That is why geometry is imported rather
+// than re-declared here and why a room's identity is never derived from its shape - two rooms can
+// be geometrically identical and remain different rooms, and one room keeps its identity across
+// every change to its walls.
 //
-// A VARIANT IS A DELTA, NEVER A COPY, enforced by the type: WorldVariant holds a base and a
-// KeyedPatch, and no constructor takes a full room list and calls it a variant.
-// Copy-the-world-and-edit makes every question about what CHANGED a diff someone must remember to
-// compute, and lets two variants of one base drift as independent artifacts. Here the change IS the
-// representation.
+// A VARIANT IS A DELTA, NEVER A COPY, and the type is what enforces it: WorldVariant holds a base
+// and a KeyedPatch, and there is no constructor anywhere that takes a full room list and calls the
+// result a variant. The alternative - copy the world, edit the copy - makes every question about
+// what CHANGED a diff someone has to remember to compute, and makes two variants of one base
+// silently independent artifacts that drift. Here the change IS the representation.
 //
-// THE DELTA ALGEBRA IS IMPORTED, NOT INVENTED. std.change owns keyed patches with exactly the three
-// arms needed, and its added/removed/modified split is the one DESIGN's fleet-reconcile spine
-// argues for: modified carries `from` as well as `to`, the fact a safe application needs and an
-// `upsert` collapse discards. This module supplies key and value types and the meaning of applying
-// a hunk; no diff vocabulary.
+// THE DELTA ALGEBRA IS IMPORTED, NOT INVENTED. std.change already owns keyed patches with exactly
+// the three arms this needs, and its added/removed/modified split is the one DESIGN's
+// fleet-reconcile spine argues for: modified carries `from` as well as `to`, which is precisely the
+// fact a safe application needs and which an `upsert` collapse discards. This module supplies the
+// key and value types and the meaning of applying a hunk; it adds no diff vocabulary.
 //
-// WHAT THIS BAND DOES NOT CLAIM. No openings and no connectivity — whether you can walk between
-// spaces is a topology question belonging beside the geometry, arriving with its own witnesses. No
-// ordering on variants, no merge of two deltas over one base, no history: a variant names one base
-// and one patch. Delta composition needs a conflict verdict over the same key, which std.change
-// models (KeyedLeafVerdict) and no consumer here has asked for.
+// WHAT THIS BAND DOES NOT CLAIM. There are no openings and no connectivity here - whether you can
+// walk from one space to another is a topology question that belongs beside the geometry, not in
+// the identity join, and it arrives with its own witnesses. There is no ordering on variants, no
+// merge of two deltas over one base, and no history: a variant names one base and one patch. Delta
+// composition needs a conflict verdict over the same key, which std.change models
+// (KeyedLeafVerdict) and which no consumer here has asked for yet.
 
 // The world's refusals EMBED the geometry band's rather than restating them, so a caller learns
-// which layer refused without this module re-spelling an OrthogonalRefusal it did not produce. Its
-// own two arms are identity facts, which the geometry layer cannot judge because it has no
-// identities.
+// which layer refused without this module having to re-spell an OrthogonalRefusal it did not
+// produce. The two arms of its own are identity facts, which the geometry layer cannot have an
+// opinion about because it has no identities.
 type WorldRefusal
   = WorldGeometryRefused { cause: OrthogonalRefusal }
   | DuplicateRoomIdentity { identity: RoomIdentity }
@@ -63,11 +65,11 @@ type PlacedSpace {
   space: EnclosedSpace
 }
 
-// The complex is NOT stored beside the rooms. Admission is proven at the mint; keeping the admitted
-// SpaceComplex as a field would be a second representation of the room list — an edit to one could
-// leave the other describing a world that no longer exists, the disagreement this band makes
-// unrepresentable. It is re-derived on request; recomputation is the cheaper mistake than a stale
-// field.
+// The complex is NOT stored beside the rooms. Admission is proven at the mint, and keeping the
+// admitted SpaceComplex as a field would be a second representation of the same room list - an
+// edit to one could leave the other describing a world that no longer exists, which is the exact
+// disagreement this band exists to make unrepresentable. It is re-derived when a caller asks for
+// it; that is a recomputation, and it is the cheaper mistake than a stale field.
 type World sole_constructor {
   rooms: List<PlacedSpace>
 }
@@ -112,9 +114,9 @@ fn room_spaces(rooms: List<PlacedSpace>) -> List<EnclosedSpace> {
   reverse(fold(rooms, init: [], f: (acc, r) => concat([r.space], acc)))
 }
 
-// The mint runs BOTH walls: identities are unique, and the geometry is admissible as a complex —
-// where interpenetration and frame agreement are decided, by the authority that owns them. No world
-// can exist in which two rooms share an identity or occupy the same volume.
+// The mint runs BOTH walls: identities are unique, and the geometry is admissible as a complex -
+// which is where interpenetration and frame agreement are decided, by the authority that owns them.
+// A world therefore cannot exist in which two rooms share an identity or occupy the same volume.
 fn world(rooms: List<PlacedSpace>) -> WorldConstruction<World> {
   match first_duplicate_identity(rooms: rooms) {
     Present { value: d } => WorldRefused { cause: DuplicateRoomIdentity { identity: d } }
@@ -145,9 +147,10 @@ fn world_total_volume(registry: SpatialFrameRegistry, w: World) -> WorldConstruc
 }
 
 // A VARIANT NAMES A BASE AND A CHANGE. Construction is total because a patch is always a
-// well-formed intent; whether it is APPLICABLE to this base and whether the result is a legal world
-// are separate questions answered at realization — which lets a caller hold and compare
-// unrealizable variants rather than being unable to express one.
+// well-formed description of an intent; whether that intent is APPLICABLE to this base, and
+// whether the result is a legal world, are two separate questions answered at realization. Keeping
+// them separate is what lets a caller hold and compare unrealizable variants rather than being
+// unable to express one.
 type WorldVariant sole_constructor {
   base: World
   delta: KeyedPatch<RoomIdentity, EnclosedSpace>
@@ -170,11 +173,11 @@ fn without_identity(rooms: List<PlacedSpace>, identity: RoomIdentity) -> List<Pl
     if room_identity_eq(a: r.identity, b: identity) { acc } else { concat([r], acc) }))
 }
 
-// A MODIFICATION REPLACES IN PLACE. Remove-and-append would perform a REORDER the patch does not
-// describe: world_rooms exposes the list, so [kitchen, hall] became [hall, kitchen] when only
-// kitchen changed, and any consumer folding the world — projection, serialization, receipt — would
-// see a change with no hunk behind it, precisely violating the thesis that the change IS the
-// representation.
+// A MODIFICATION REPLACES IN PLACE. Removing the room and appending its replacement would perform a
+// REORDER the patch does not describe: world_rooms exposes the list, so [kitchen, hall] became
+// [hall, kitchen] when only kitchen changed, and any consumer that folds the world - a projection, a
+// serialization, a receipt - would see a change with no hunk behind it. The band's thesis is that
+// the change IS the representation, and an unrepresented reorder is precisely the violation of it.
 fn replace_identity(rooms: List<PlacedSpace>, identity: RoomIdentity, space: EnclosedSpace) -> List<PlacedSpace> {
   reverse(fold(rooms, init: [], f: (acc, r) =>
     if room_identity_eq(a: r.identity, b: identity) {
@@ -185,10 +188,11 @@ fn replace_identity(rooms: List<PlacedSpace>, identity: RoomIdentity, space: Enc
 }
 
 // EVERY ARM REFUSES RATHER THAN ABSORBING. Removing a room that is not there is not a no-op, adding
-// one that exists is not a replace, and modifying one whose current shape is not the patch's `from`
-// is not an overwrite. Each absorption would let a delta built against a different base apply
-// cleanly and produce a world nobody described — the fabricated plausible output DESIGN section 5
-// forbids, and the stale-parent case its compare-and-swap discipline exists for.
+// one that already exists is not a replace, and modifying one whose current shape is not the `from`
+// the patch was computed against is not an overwrite. Each of those absorptions would let a delta
+// built against a different base apply cleanly and produce a world nobody described - the
+// fabricated plausible output DESIGN section 5 forbids, and the stale-parent case its
+// compare-and-swap discipline exists for.
 fn apply_hunk(acc: ApplyAcc, hunk: KeyedDiffHunk<RoomIdentity, EnclosedSpace>) -> ApplyAcc {
   match acc.refusal {
     Present { value: r } => ApplyAcc { rooms: acc.rooms, refusal: Present { value: r } }
@@ -223,10 +227,10 @@ fn apply_hunk(acc: ApplyAcc, hunk: KeyedDiffHunk<RoomIdentity, EnclosedSpace>) -
   }
 }
 
-// Realization runs the world mint again on the result, so the geometry wall holds for a variant as
-// for a hand-built world: a delta sliding one room into another produces a refusal, not overlapping
-// rooms. That is why the wall lives at the mint rather than in a checking pass someone must
-// remember to run.
+// Realization runs the world mint again on the result, so the geometry wall holds for a variant
+// exactly as it does for a hand-built world: a delta that slides one room into another produces a
+// refusal, not a world with overlapping rooms. That is the whole reason the wall lives at the mint
+// rather than in a checking pass someone must remember to run after editing.
 fn realize_variant(v: WorldVariant) -> WorldConstruction<World> {
   let applied = fold(v.delta.hunks, init: ApplyAcc { rooms: v.base.rooms, refusal: none }, f: (acc, h) =>
     apply_hunk(acc: acc, hunk: h))

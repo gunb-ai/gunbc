@@ -40,19 +40,21 @@ import gunbc.fabric_control_plane {
   bind_fabric_cell_candidate,
 }
 
-// The live receipt for the EFFECTFUL half of the broker, which the hermetic witness cannot
-// reach. An entry point rather than a shell script, for the reason DESIGN gives: if a
-// measurement is worth re-deriving it is worth an entry point.
+// The live receipt for the EFFECTFUL half of the broker, which the hermetic
+// witness cannot reach. An entry point rather than a shell script, for the
+// reason DESIGN gives: if a measurement is worth re-deriving it is worth an
+// entry point.
 //
 //   gunbc run --source-root dag --source-root src/v2 \
 //     --entry dag/gunbc/instruments/fabric_control_plane_live_probe.dag \
 //     --function cp_live_reservation_is_exclusive --arg root=<an EMPTY directory>
 //
 // THE SECOND FUNCTION'S ASSERTION IS NOT ITS RETURN VALUE. Run
-// cp_live_nothing_admissible_touches_no_store against a FRESH empty root and then list that
-// directory: it must still be empty. A broker that reserved a cell when selection admitted
-// nothing would fabricate a decision the market refused to make, and would still return a
-// plausible-looking outcome -- only the absence of a file catches it.
+// cp_live_nothing_admissible_touches_no_store against a FRESH empty root and
+// then list that directory: it must still be empty. A broker that reserved a
+// cell when selection admitted nothing would be fabricating a decision the
+// market refused to make, and it would still return a plausible-looking
+// outcome -- the only thing that catches it is that no file appeared.
 
 fn cp_probe_offer_id(key: OfferKey) -> FabricIdentity<NonEmptyStr, OfferKey> {
   FabricIdentity { principal: "gunbc", key: key }
@@ -66,21 +68,24 @@ fn cp_probe_slot() -> RunnerSlotIdentity {
   RunnerSlotIdentity { host: "srv3", slot_index: 6 }
 }
 
-// NOTHING OFFERED AND EVERYTHING REJECTED ARE DIFFERENT STATES WITH DIFFERENT REMEDIES, so
-// NoCellAdmissible splits into 50 and 51 rather than one code. `considered` is empty only when
-// the roster was empty -- a binding that refused -- and populated when real offers failed a
-// screen. The first is a broken fixture, the second is the market answering. Read as a single
-// code, a probe offer declaring 1 thread against the floor's required 8 looked exactly like a
-// correct market refusal, and the fixture defect was invisible.
+// NOTHING OFFERED AND EVERYTHING REJECTED ARE DIFFERENT STATES WITH DIFFERENT
+// REMEDIES, so NoCellAdmissible splits into 50 and 51 rather than one code.
+// `considered` is empty only when the roster was empty -- a binding that
+// refused -- and populated when real offers failed a screen. The first is a
+// broken fixture, the second is the market answering. Read once as a single
+// code, a probe offer declaring 1 thread against the floor's required 8 looked
+// exactly like a correct market refusal, and the fixture defect was invisible.
 //
-// A THIRD STATE JOINS THAT SPLIT for the same reason. 52 is "the roster was not empty and
-// admission removed every member across the capacity-class line" -- read as 50 it would look
-// like nothing was offered, sending a reader to find capacity that was there and correctly
-// refused. It is checked FIRST because a refused roster can leave the market with nothing to
-// consider, so 50 and 52 are both true of that state and only 52 says which happened.
+// A THIRD STATE JOINS THAT SPLIT for the same reason it exists. 52 is "the
+// roster was not empty and admission removed every member across the
+// capacity-class line" -- read as 50 it would look like nothing was offered,
+// which sends a reader to find capacity when the capacity was there and was
+// correctly refused. It is checked FIRST because a refused roster can leave the
+// market with nothing to consider, so 50 and 52 are both true of that state and
+// only 52 says which happened.
 //
-// A commit returns 100 + its generation so it can never be confused with a refusal code; the
-// four refusals stay distinct because their remedies differ.
+// A commit returns 100 + its generation so it can never be confused with a
+// refusal code; the four refusals stay distinct because their remedies differ.
 fn cp_probe_code(r: CellReservation) -> Int {
   match r {
     CellReserved { offer: _, slot_key: _, generation: g, account: _ } => 100 + g
@@ -169,12 +174,13 @@ fn cp_live_nothing_admissible_touches_no_store(root: NonEmptyStr) -> Int {
   )
 }
 
-// THE END-TO-END ROW, AND IT IS THE ONE THE HERMETIC ROWS STRUCTURALLY CANNOT REACH. The mint row
-// proves a mismatched pair refuses; the exclusive row proves the store arbitrates. Neither proves
-// the BROKER carries the market's choice into the store -- that join is exactly what stayed green
-// through the defect this arrow repairs. So this row runs the whole path with a real roster and
-// then reads the FILESYSTEM: the slot that appears must be the cell whose offer won, spelled by
-// its canonical name and nothing else.
+// THE END-TO-END ROW, AND IT IS THE ONE THE HERMETIC ROWS STRUCTURALLY CANNOT
+// REACH. The mint row proves a mismatched pair refuses; the exclusive row proves
+// the store arbitrates. Neither proves the BROKER carries the market's choice
+// into the store -- that is the join, and the join is exactly what stayed green
+// through the defect this arrow repairs. So this row runs the whole path with a
+// real roster and then reads the FILESYSTEM: the slot that appears must be the
+// cell whose offer won, spelled by its canonical name and nothing else.
 fn cp_probe_offer_for(executor: NonEmptyStr) -> SupplierOffer<NonEmptyStr> {
   SupplierOffer {
     id: cp_probe_offer_id(key: "offer-1"),
@@ -245,14 +251,15 @@ fn cp_live_broker_reserves_the_cell_the_market_chose(root: NonEmptyStr) -> Int {
 }
 
 // THE RELEASE COMMIT IS THE ONE ARM NO HERMETIC ROW CAN REACH. Every refusal in
-// release_reserved_cell is decided from the slot observation, a value, so the witness file covers
-// all of them. The successful free-write is a host effect, refused under the floor's hermetic
-// envelope, so a live run is its only possible evidence -- the same split the reserve path
-// carries, and the reason this file exists.
+// release_reserved_cell is decided from the slot observation, which is a value,
+// so the witness file covers all of them. The successful free-write is a host
+// effect, refused under the floor's hermetic envelope, so a live run is its
+// only possible evidence -- the same split the reserve path carries, and the
+// reason this file exists.
 //
-// The codes are disjoint from cp_probe_code's so a release outcome cannot be confused with a
-// reservation one, and each refusal keeps its own number because their remedies differ exactly
-// as the reservation's do.
+// The codes are disjoint from cp_probe_code's so a reader cannot confuse a
+// release outcome with a reservation one, and each refusal keeps its own number
+// because their remedies differ exactly as the reservation's do.
 fn cp_probe_release_code(r: CellHoldEnd) -> Int {
   match r {
     CellHoldEnded { slot_key: _, generation: g, account: _ } => 200 + g

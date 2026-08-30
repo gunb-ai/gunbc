@@ -75,30 +75,7 @@ test fn witness_srv1_slice_cap_infinity_drifts_against_pool_budget() -> Bool {
   }
 }
 
-// THIS WITNESS HAS FLIPPED TWICE AND BOTH FLIPS ARE FACTS RATHER THAN BROKEN TESTS. The srv2
-// fixture is a real 2026-07-03 readback of system-actions-runner.slice MemoryMax = 85899345920
-// (80GiB), and it has never been edited.
-//
-// FLIP ONE (2026-08-05): the per-host ruling derived srv2's cap as 5 x 14GiB = 75161927680 (70GiB),
-// so the untouched observation legitimately disagreed with the declaration and the correct verdict
-// became Drifted.
-//
-// FLIP TWO (2026-08-17): the 16GiB ruling derives srv2's cap as 5 x 16GiB = 85899345920, which is
-// the fixture value EXACTLY. srv2's live slice and the declaration agree again, so the correct
-// verdict is Converged once more.
-//
-// WHAT MADE THE SECOND FLIP LEGITIMATE, because it is not the dissolve-on the prior revision of
-// this note predicted. That note expected convergence to return via a post-apply readback replacing
-// the fixture. It did not: the fixture is untouched and NOTHING was applied to srv2. The
-// DECLARATION moved back to meet a slice that had been carved at 80GiB since before either ruling —
-// which is also why srv2 never needed converging on this axis and never got it.
-//
-// THE DISCIPLINE HELD IN BOTH DIRECTIONS: at no point was the fixture edited to keep a test green,
-// and at no point was the declaration reconciled toward the readback (gunbc.runner_slot_allocation
-// forbids that in terms). The declaration moved on a floor-peak measurement; agreeing with srv2's
-// slice is a consequence, not a motive. Dissolve-on: a fresh readback of srv2's slice replaces the
-// 2026-07-03 row, at which point this witness asserts against an observation contemporary with the
-// declaration rather than one fourteen months older.
+data srv2_slice_cap_drift_note: String = "THIS WITNESS HAS FLIPPED TWICE AND BOTH FLIPS ARE FACTS RATHER THAN BROKEN TESTS. The srv2 fixture is a real 2026-07-03 readback of system-actions-runner.slice MemoryMax = 85899345920 (80GiB), and it has never been edited.\n\nFLIP ONE (2026-08-05): the per-host ruling derived srv2's cap as 5 x 14GiB = 75161927680 (70GiB), so the untouched observation legitimately disagreed with the declaration and the correct verdict became Drifted.\n\nFLIP TWO (2026-08-17): the 16GiB ruling derives srv2's cap as 5 x 16GiB = 85899345920, which is the fixture value EXACTLY. srv2's live slice and the declaration agree again, so the correct verdict is Converged once more.\n\nWHAT MADE THE SECOND FLIP LEGITIMATE, because it is not the dissolve-on the prior revision of this note predicted. That note expected convergence to return via a post-apply readback replacing the fixture. It did not: the fixture is untouched and NOTHING was applied to srv2. The DECLARATION moved back to meet a slice that had been carved at 80GiB since before either ruling — which is also why srv2 never needed converging on this axis and never got it.\n\nTHE DISCIPLINE HELD IN BOTH DIRECTIONS: at no point was the fixture edited to keep a test green, and at no point was the declaration reconciled toward the readback (gunbc.runner_slot_allocation forbids that in terms). The declaration moved on a floor-peak measurement; agreeing with srv2's slice is a consequence, not a motive. Dissolve-on: a fresh readback of srv2's slice replaces the 2026-07-03 row, at which point this witness asserts against an observation contemporary with the declaration rather than one fourteen months older."
 
 test fn witness_srv2_slice_cap_converges_after_the_16_gib_ruling() -> Bool {
   let read = runner_slice_cap_live_read_typed(row: gunbc_srv2_runner_slice_cap_fixture_row)
@@ -138,15 +115,7 @@ test fn witness_srv1_01_per_slot_infinity_drifts() -> Bool {
   }
 }
 
-// The 2026-07-03 srv1 snapshot (10 active runner units) CONVERGED against the pre-carve
-// declaration; the 2026-07-11 slot re-carve (16GiB memory.max slots, gunbc.ci_floor_measurement
-// live row) shrank declared_runner_count to floor(pool/16GiB) = 5, so the same observation now
-// DRIFTS - and that drift is the real fact: the hosts still run the pre-carve width, the same
-// oversubscription the falsifier exit-137 receipts located. The parse-typing claim above
-// deliberately pins the literal (a parse fixture must not depend on a live-derived count - that
-// fusion is why this witness went latent-red when the re-carve landed). Dissolve-on: a
-// post-re-carve width readback replaces the fixture row and this witness flips back to asserting
-// convergence.
+data srv1_width_drift_note: String = "The 2026-07-03 srv1 snapshot (10 active runner units) CONVERGED against the pre-carve declaration; the 2026-07-11 slot re-carve (16GiB memory.max slots, gunbc.ci_floor_measurement live row) shrank declared_runner_count to floor(pool/16GiB) = 5, so the same observation now DRIFTS - and that drift is the real fact: the hosts still run the pre-carve width, the same oversubscription the falsifier exit-137 receipts located. The parse-typing claim above deliberately pins the literal (a parse fixture must not depend on a live-derived count - that fusion is why this witness went latent-red when the re-carve landed). Dissolve-on: a post-re-carve width readback replaces the fixture row and this witness flips back to asserting convergence."
 
 test fn witness_srv1_width_drifts_from_declared_count_after_recarve() -> Bool {
   match runner_width_live_read_typed(row: gunbc_srv1_runner_width_fixture_row) {

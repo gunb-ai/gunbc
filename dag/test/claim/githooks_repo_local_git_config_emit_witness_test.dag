@@ -46,13 +46,7 @@ test fn witness_converge_shell_uses_reconcile_install_command() -> Bool {
     && string_contains(s: shell, pattern: hooks_cmd)
 }
 
-// THE DISCRIMINATING HALF. The witness above compares the emitted block against the renderer it is
-// built from, so it moves with any renderer and cannot tell a quoted line from an unquoted one — a
-// change detector, not a check (DESIGN section 5). This one asserts the property the value needs:
-// the driver key is followed by its value as ONE shell word. Under the unquoted join this emitter
-// used until the driver value became multi-word, the text after the key is a bare
-// `bash .githooks/generated-artifact-merge %O %A %B %P`, so this claim goes red exactly on the
-// defect it exists to catch.
+data converge_shell_quoting_witness_note: String = "THE DISCRIMINATING HALF. The witness above compares the emitted block against the same renderer it is built from, so it moves with any renderer and cannot by itself tell a quoted line from an unquoted one — a change detector, not a check (DESIGN section 5). This one asserts the property the value actually needs: the driver key is followed by its value as ONE shell word. Under the unquoted join this emitter used until the driver value became multi-word, the text after the key is a bare `bash .githooks/generated-artifact-merge %O %A %B %P`, so this claim goes red exactly on the defect it exists to catch."
 
 test fn witness_converge_shell_quotes_multiword_binding_value_as_one_word() -> Bool {
   let shell = emit_repo_local_git_config_converge_shell()

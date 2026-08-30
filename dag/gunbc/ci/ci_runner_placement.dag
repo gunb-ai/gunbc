@@ -236,50 +236,9 @@ fn conservation_host_deployment(offer: ComputeOffer, nproc: HardwareThreadCount)
   }
 }
 
-// WHICH HOSTS OWE A SESSIONS RESERVATION comes from gunbc.session_residency, the authority for
-// where interactive session containers actually live. It does NOT come from the build-cache roster,
-// and the correction is recorded because the proxy came within one cleanup of causing the bug this
-// charge exists to prevent.
-//
-// The original derivation asked whether gunbc.build_cache_instance listed an
-// InteractiveSessionCompiles instance for the host. That correlated with session residency and
-// nothing more. When ctrl-sccache.service was deleted from srv1 and srv2 on 2026-08-06 as provably
-// dead — 29MB in 45 days, zero connections, zero writes in a week, because containers cache to
-// their own in-container path — the obvious follow-up of dropping those roster rows would have
-// stopped charging both hosts their 20GiB reservation, and the conservation wall would then have
-// admitted 7 slots each and overcommitted them by ~17GiB while returning true.
-//
-// Sessions consume host RAM whether or not a shared build cache exists for them; srv1 and srv2 were
-// each running 19 session containers at the moment their session cache was found dead. The charge
-// follows residency.
-//
-// THE RESERVATION SIZE IS NOW A PER-HOST QUESTION WITH A PER-HOST ANSWER, and the paragraph this
-// replaces described the fleet-wide row that answered it before. That row --
-// gunbc_ci_session_reservation_mode, a Regime-2 aggregate of exactly 21474836480 bytes, a round
-// power of two with no derivation from the thirteen measured per-session samples beside it -- is
-// DELETED. gunbc.session_reservation_policy answers per host from observed evidence, and the
-// sentence is rewritten rather than annotated because a note describing a deleted authority in the
-// present tense is premise contamination whichever direction it points.
+data host_session_slice_source_note: String = "WHICH HOSTS OWE A SESSIONS RESERVATION comes from gunbc.session_residency, the authority for where interactive session containers actually live. It does NOT come from the build-cache roster, and the correction is recorded because the proxy came within one cleanup of causing the bug this charge exists to prevent.\n\nThe original derivation asked whether gunbc.build_cache_instance listed an InteractiveSessionCompiles instance for the host. That correlated with session residency and nothing more. When ctrl-sccache.service was deleted from srv1 and srv2 on 2026-08-06 as provably dead — 29MB in 45 days, zero connections, zero writes in a week, because containers cache to their own in-container path — the obvious follow-up of dropping those roster rows would have stopped charging both hosts their 20GiB reservation, and the conservation wall would then have admitted 7 slots each and overcommitted them by ~17GiB while returning true.\n\nSessions consume host RAM whether or not a shared build cache exists for them; srv1 and srv2 were each running 19 session containers at the moment their session cache was found dead. The charge follows residency.\n\nTHE RESERVATION SIZE IS NOW A PER-HOST QUESTION WITH A PER-HOST ANSWER, and the paragraph this replaces described the fleet-wide row that answered it before. That row -- gunbc_ci_session_reservation_mode, a Regime-2 aggregate of exactly 21474836480 bytes, a round power of two with no derivation from the thirteen measured per-session samples beside it -- is DELETED. gunbc.session_reservation_policy answers per host from observed evidence, and the sentence is rewritten rather than annotated because a note describing a deleted authority in the present tense is premise contamination whichever direction it points."
 
-// AN UNSIZED SESSION SLICE ON A SESSION HOST REFUSES, because the alternative is the bug this
-// change exists to remove, re-entering through a different door. The first draft of this function
-// returned byte_size(0) whenever the reservation mode could not produce a number —
-// SessionAggregateUnmeasured, SessionOperatingPointUnset, SessionReservationModeUnset — which reads
-// as 'sessions cost nothing' and is exactly the unconditional zero that let srv1 and srv2 score as
-// though 20GiB of reservation were free. Fixing the WHERE (a host carries sessions) while leaving
-// the HOW MUCH silently zero would have moved the defect rather than closed it.
-//
-// The distinction the arms preserve: a host with NO session instance genuinely owes nothing, and
-// SessionSliceNotApplicable says so. A host that DOES carry one and cannot size it is unknown, not
-// free, and SessionSliceUnsized refuses the whole plan with a located reason. Those are different
-// states and one of them is safe.
-//
-// THE REFUSAL IS NO LONGER DORMANT, and that is the change the host-keyed policy made rather than a
-// defect it introduced. The fleet-wide row resolved for every host by construction, so
-// SessionSliceUnsized was unreachable; srv2's reservation is now UNESTABLISHED on measured evidence
-// -- its session denominator is incomplete -- so this arm fires on a real host today. A
-// conservation plan that includes srv2 refuses, which is the correct reading of not knowing the
-// largest non-runner claim on this machine, and is exactly what the arm was written for.
+data host_session_slice_refuses_rather_than_charging_zero_note: String = "AN UNSIZED SESSION SLICE ON A SESSION HOST REFUSES, because the alternative is the bug this change exists to remove, re-entering through a different door. The first draft of this function returned byte_size(0) whenever the reservation mode could not produce a number — SessionAggregateUnmeasured, SessionOperatingPointUnset, SessionReservationModeUnset — which reads as 'sessions cost nothing' and is exactly the unconditional zero that let srv1 and srv2 score as though 20GiB of reservation were free. Fixing the WHERE (a host carries sessions) while leaving the HOW MUCH silently zero would have moved the defect rather than closed it.\n\nThe distinction the arms preserve: a host with NO session instance genuinely owes nothing, and SessionSliceNotApplicable says so. A host that DOES carry one and cannot size it is unknown, not free, and SessionSliceUnsized refuses the whole plan with a located reason. Those are different states and one of them is safe.\n\nTHE REFUSAL IS NO LONGER DORMANT, and that is the change the host-keyed policy made rather than a defect it introduced. The fleet-wide row resolved for every host by construction, so SessionSliceUnsized was unreachable; srv2's reservation is now UNESTABLISHED on measured evidence -- its session denominator is incomplete -- so this arm fires on a real host today. A conservation plan that includes srv2 refuses, which is the correct reading of not knowing the largest non-runner claim on this machine, and is exactly what the arm was written for."
 
 type HostSessionSliceResolution
   = SessionSliceCharged { bytes: ByteSize }
@@ -319,52 +278,7 @@ fn host_session_slice_resolution(host: HostIdentity) -> HostSessionSliceResoluti
   }
 }
 
-// CONSERVATION IS CHECKED AGAINST OS-USABLE RAM, NOT THE DIMM TOTAL. compute_host_ram_bytes_total
-// sums the populated modules -- nominal capacity -- while the OS sees less after firmware and
-// kernel reservations, and gunbc.ci_fleet fleet_host_memory_nominal_vs_usable_note exists
-// specifically to say these are two facts that must not be conflated. The margin decides admissions
-// rather than being academic: at the 128 GiB nominal / 125 GiB usable population this fleet carried
-// until 2026-08-22, an eighth 14 GiB slot summed to 125.6 GiB, which PASSED against nominal and
-// FAILED against usable -- so checking the nominal figure would admit a width the machine cannot
-// carry, by spending memory that does not exist.
-//
-// THE UNIFORM-POPULATION PREMISE HAS NOW ACTUALLY FALSIFIED, AND THIS PARAGRAPH IS THE THIRD
-// REVISION OF THAT CLAIM -- which is itself the finding. The premise was: every host on the same
-// board at the same population, so one figure stands in for all four. It was declared falsified
-// once on an in-flight report of a DIMM replacement, then RESTORED when that replacement was
-// reported failed (operator, 2026-08-12), with a note saying that marking a true statement
-// historical is the same defect as leaving a false one live. Both of those were correct at the
-// time. Both are now superseded by measurement: srv3 and srv4 were each read at 512 GiB over BMC
-// Redfish on 2026-08-22 (8 x Samsung M393A8G40D40-CRB, one per channel), srv1 was upgraded to the
-// same population on operator report, and srv2's identical attempt failed memory training and was
-// reverted to 8 x 16 GiB Hynix. The fleet is HETEROGENEOUS as of that date and the premise is dead
-// for the first time in this note's history.
-//
-// WHAT THAT DOES NOT LICENSE, because it is the move this note has always existed to forbid: the
-// 512 GiB figure is NOMINAL DIMM CAPACITY read from a management controller. It is NOT OS-usable
-// RAM and must not be written into gunbc_ci_host_usable_ram_for. The gap was closed on two hosts
-// the only way it can be: srv3 and srv4 now carry MEASURED usable RAM from /proc/meminfo reads
-// taken over SSH on 2026-08-22, about 502.25 GiB each -- roughly 10 GiB BELOW their nominal 512,
-// which is exactly the firmware-and-kernel reservation this note exists to preserve. THAT GAP IS
-// NOW CLOSED ON ALL FOUR HOSTS AND THIS PARAGRAPH'S PREVIOUS REVISION WAS STALE RATHER THAN
-// WRONG-AT-THE-TIME. It read that srv1 and srv2 had taken no such read and that their rows remained
-// conservative lower bounds; both took ordinary /proc/meminfo reads over SSH on 2026-08-23, so
-// gunbc.ci_floor_measurement now carries HostUsableRamMeasured for every host and
-// gunbc_ci_conservative_lower_bound_retired_note records the borrowed bound's deletion. The
-// correction matters beyond tidiness: a reader sizing srv1 against the retired 125 GiB figure would
-// under-admit a host with about four times that much, and a reader who believed the bound was still
-// live would look for a measurement obligation that no longer exists. srv2's read is the sharper
-// receipt -- it landed about 96 MiB ABOVE the bound it replaced, so that bound was not merely loose
-// but on the wrong side, and a lower bound that is too high is not conservative at all. Neither
-// read promotes a Redfish nominal number, which stays inadmissible here for the reason
-// fleet_host_memory_nominal_vs_usable_note gives.
-//
-// WHAT THE PER-HOST GRAIN RESTS ON is therefore still not this trigger, and the heterogeneity does
-// not retroactively justify the grain. It is that this wall folded over per-host offers and then
-// read RAM from a synthetic machine outside that fold, and that an unclassified host borrowed
-// rather than refused -- see gunbc.ci_floor_measurement gunbc_ci_host_usable_ram_kind_note. A
-// per-host fact belonged at per-host grain when the hosts were identical; it merely became visible
-// when they stopped being.
+data host_usable_ram_note: String = "CONSERVATION IS CHECKED AGAINST OS-USABLE RAM, NOT THE DIMM TOTAL. compute_host_ram_bytes_total sums the populated modules -- nominal capacity -- while the OS sees less after firmware and kernel reservations, and gunbc.ci_fleet fleet_host_memory_nominal_vs_usable_note exists specifically to say these are two facts that must not be conflated. The margin decides admissions rather than being academic: at the 128 GiB nominal / 125 GiB usable population this fleet carried until 2026-08-22, an eighth 14 GiB slot summed to 125.6 GiB, which PASSED against nominal and FAILED against usable -- so checking the nominal figure would admit a width the machine cannot carry, by spending memory that does not exist.\n\nTHE UNIFORM-POPULATION PREMISE HAS NOW ACTUALLY FALSIFIED, AND THIS PARAGRAPH IS THE THIRD REVISION OF THAT CLAIM -- which is itself the finding. The premise was: every host on the same board at the same population, so one figure stands in for all four. It was declared falsified once on an in-flight report of a DIMM replacement, then RESTORED when that replacement was reported failed (operator, 2026-08-12), with a note saying that marking a true statement historical is the same defect as leaving a false one live. Both of those were correct at the time. Both are now superseded by measurement: srv3 and srv4 were each read at 512 GiB over BMC Redfish on 2026-08-22 (8 x Samsung M393A8G40D40-CRB, one per channel), srv1 was upgraded to the same population on operator report, and srv2's identical attempt failed memory training and was reverted to 8 x 16 GiB Hynix. The fleet is HETEROGENEOUS as of that date and the premise is dead for the first time in this note's history.\n\nWHAT THAT DOES NOT LICENSE, because it is the move this note has always existed to forbid: the 512 GiB figure is NOMINAL DIMM CAPACITY read from a management controller. It is NOT OS-usable RAM and must not be written into gunbc_ci_host_usable_ram_for. The gap was closed on two hosts the only way it can be: srv3 and srv4 now carry MEASURED usable RAM from /proc/meminfo reads taken over SSH on 2026-08-22, about 502.25 GiB each -- roughly 10 GiB BELOW their nominal 512, which is exactly the firmware-and-kernel reservation this note exists to preserve. THAT GAP IS NOW CLOSED ON ALL FOUR HOSTS AND THIS PARAGRAPH'S PREVIOUS REVISION WAS STALE RATHER THAN WRONG-AT-THE-TIME. It read that srv1 and srv2 had taken no such read and that their rows remained conservative lower bounds; both took ordinary /proc/meminfo reads over SSH on 2026-08-23, so gunbc.ci_floor_measurement now carries HostUsableRamMeasured for every host and gunbc_ci_conservative_lower_bound_retired_note records the borrowed bound's deletion. The correction matters beyond tidiness: a reader sizing srv1 against the retired 125 GiB figure would under-admit a host with about four times that much, and a reader who believed the bound was still live would look for a measurement obligation that no longer exists. srv2's read is the sharper receipt -- it landed about 96 MiB ABOVE the bound it replaced, so that bound was not merely loose but on the wrong side, and a lower bound that is too high is not conservative at all. Neither read promotes a Redfish nominal number, which stays inadmissible here for the reason fleet_host_memory_nominal_vs_usable_note gives.\n\nWHAT THE PER-HOST GRAIN RESTS ON is therefore still not this trigger, and the heterogeneity does not retroactively justify the grain. It is that this wall folded over per-host offers and then read RAM from a synthetic machine outside that fold, and that an unclassified host borrowed rather than refused -- see gunbc.ci_floor_measurement gunbc_ci_host_usable_ram_kind_note. A per-host fact belonged at per-host grain when the hosts were identical; it merely became visible when they stopped being."
 
 // The grain here is per host, and the reason is not that the hosts differ. This wall folds over
 // per-host offers and charges each host its own overhead and session slice, then read RAM from a
@@ -378,6 +292,7 @@ fn host_session_slice_resolution(host: HostIdentity) -> HostSessionSliceResoluti
 type HostUsableRamResolution
   = HostUsableRamResolved { bytes: ByteSize }
   | HostUsableRamUnresolved { reason: String }
+
 
 fn host_usable_ram_or_refusal(host: HostIdentity, r: HostUsableRam) -> HostUsableRamResolution {
   match r {
@@ -648,6 +563,7 @@ data gunbc_ci_count_field_measure_followup: Disposition = Scaffold {
     field: WholeDeclaration
   }
 }
+
 
 type OperatingPointRow {
   per_session_cap: ByteSize

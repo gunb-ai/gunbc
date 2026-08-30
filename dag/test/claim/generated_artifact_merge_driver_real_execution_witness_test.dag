@@ -32,13 +32,7 @@ data witness_base_content: String = "base\n"
 data witness_ours_content: String = "ours\n"
 data witness_theirs_content: String = "theirs\n"
 
-// The driver script sits at the repository root here, not under .githooks/, because
-// Filesystem.Write carries no directory-creation fact and a witness that quietly depended on one
-// would be proving something about the harness. The location is a parameter of the modeled config
-// value (generated_artifact_merge_driver_config_value_at), so the committed binding and this
-// witness still shape their value through one authority; only the path differs. Git runs a
-// low-level merge driver from the top of the worktree, so the relative spelling is what the
-// committed binding also relies on.
+data witness_driver_script_home_note: String = "The driver script sits at the repository root here, not under .githooks/, because Filesystem.Write carries no directory-creation fact and a witness that quietly depended on one would be proving something about the harness. The location is a parameter of the modeled config value (generated_artifact_merge_driver_config_value_at), so the committed binding and this witness still shape their value through one authority; only the path differs. Git runs a low-level merge driver from the top of the worktree, so the relative spelling is what the committed binding also relies on."
 
 fn witness_repo_file(repo: FilePath, name: String) -> String {
   concat(concat(repo as String, "/"), name)

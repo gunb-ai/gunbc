@@ -45,28 +45,7 @@ import gunbc.typed_remote_file_write {
   converge_typed_remote_file,
 }
 
-// Apply reads ONLY the frozen FleetConvergePlanArtifact.spark_serving_typed_actions rows minted at
-// plan time — it MUST NOT re-run membership_reconcile, re-derive install_effects, or re-realize
-// operations from live authorities. Realization happens at PLAN time and its RemoteOperation values
-// are frozen into the row, so the bundle hash covers the exact bytes a file write will deliver;
-// apply executes those operations verbatim. Realization emits an ORDERED SEQUENCE of
-// gunbc.remote_operation RemoteOperation values (never one fused argv); actuation runs them in
-// order, halting at the first failure. Dispatch is per operation kind: RemoteArgv routes through
-// host_effect_realize run_typed_argv_transport (FleetSsh/SshShell typed argv binding — never
-// effect_actuation shell strings), while RemoteFileBytes routes through typed_remote_file_write
-// converge_typed_remote_file (stage, mode, atomic rename, read-back) and REFUSES on any
-// non-FleetSsh transport, because that convergence needs the SshTarget and sealed
-// FleetSshExecutionContext and SshShell carries neither. The two executions answer in different
-// types and KEEP them: RemoteOperationExecution carries TypedArgvExecOutcome on the argv arm and
-// TypedRemoteFileConvergence on the file arm, because an argv exit code and a four-step
-// read-back-verified convergence are not the same evidence and one success word reported them at
-// one rung. Neither arm means the resource converged -- exit zero says the invoked program reported
-// completion, and resource convergence is established only by the resource's own observer and the
-// empty replan. Progression between steps uses remote_execution_permits_continuation, named for
-// progression rather than convergence. Each step carries a PlannedRemoteStep identity assigned
-// where it is built, and the sequence records RemoteStepStanding per step -- completed, failed, or
-// unattempted -- so a halt names which step stopped and which tail was never reached, instead of
-// collapsing to one reason string.
+data spark_serving_converge_apply_authority_note: String = "Apply reads ONLY the frozen FleetConvergePlanArtifact.spark_serving_typed_actions rows minted at plan time — it MUST NOT re-run membership_reconcile, re-derive install_effects, or re-realize operations from live authorities. Realization happens at PLAN time and its RemoteOperation values are frozen into the row, so the bundle hash covers the exact bytes a file write will deliver; apply executes those operations verbatim. Realization emits an ORDERED SEQUENCE of gunbc.remote_operation RemoteOperation values (never one fused argv); actuation runs them in order, halting at the first failure. Dispatch is per operation kind: RemoteArgv routes through host_effect_realize run_typed_argv_transport (FleetSsh/SshShell typed argv binding — never effect_actuation shell strings), while RemoteFileBytes routes through typed_remote_file_write converge_typed_remote_file (stage, mode, atomic rename, read-back) and REFUSES on any non-FleetSsh transport, because that convergence needs the SshTarget and sealed FleetSshExecutionContext and SshShell carries neither. The two executions answer in different types and KEEP them: RemoteOperationExecution carries TypedArgvExecOutcome on the argv arm and TypedRemoteFileConvergence on the file arm, because an argv exit code and a four-step read-back-verified convergence are not the same evidence and one success word reported them at one rung. Neither arm means the resource converged -- exit zero says the invoked program reported completion, and resource convergence is established only by the resource's own observer and the empty replan. Progression between steps uses remote_execution_permits_continuation, named for progression rather than convergence. Each step carries a PlannedRemoteStep identity assigned where it is built, and the sequence records RemoteStepStanding per step -- completed, failed, or unattempted -- so a halt names which step stopped and which tail was never reached, instead of collapsing to one reason string."
 
 type SparkServingFrozenApplyResult =
     SparkServingFrozenApplied { remote_steps: List<PlannedRemoteStep>, effect_count: Int }

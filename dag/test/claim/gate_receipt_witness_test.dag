@@ -12,26 +12,9 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-// SubstrateInputsOnly, and that is the honest declaration rather than a convenience: every subject
-// here is a hand-constructed GateReceipt, and the projections under test are pure folds over it.
-// Nothing calls the host builtins that PRODUCE a receipt. WHAT THESE PROVE: that the three arms
-// reach three DIFFERENT places, in both the exit projection and the detail projection. WHAT THEY DO
-// NOT PROVE: that the host maps its own states onto the right arms -- that half is asserted by the
-// cargo tests beside the globals in cli_run.rs
-// (floor_compile_clean_gate_separates_not_applicable_from_clean and
-// generated_artifact_drift_gate_separates_unrecorded_from_clean), because only there can a receipt
-// fixture be installed into the process global the builtin reads. The two halves are complementary
-// and neither is the other's substitute: a host that mapped every state to GateNotRun would pass
-// every witness in this file.
+data gate_receipt_witness_scope_note: String = "SubstrateInputsOnly, and that is the honest declaration rather than a convenience: every subject here is a hand-constructed GateReceipt, and the projections under test are pure folds over it. Nothing calls the host builtins that PRODUCE a receipt. WHAT THESE PROVE: that the three arms reach three DIFFERENT places, in both the exit projection and the detail projection. WHAT THEY DO NOT PROVE: that the host maps its own states onto the right arms -- that half is asserted by the cargo tests beside the globals in cli_run.rs (floor_compile_clean_gate_separates_not_applicable_from_clean and generated_artifact_drift_gate_separates_unrecorded_from_clean), because only there can a receipt fixture be installed into the process global the builtin reads. The two halves are complementary and neither is the other's substitute: a host that mapped every state to GateNotRun would pass every witness in this file."
 
-// THE ASSERTIONS ARE WRITTEN AS DISCRIMINATIONS, not as arm-by-arm value checks, because an
-// arm-by-arm check greens on a projection that collapses two arms as long as each row is read
-// separately. The predecessor of this carrier answered Bool, where NotApplicable and Clean were
-// BOTH true and NotRun and Failed were BOTH false; the pairs asserted below are exactly those two
-// collapses, so each one goes red against the shape this retype replaced. That is the
-// discriminating RED this evidence is enrolled for, and it stays enrolled after the climb rather
-// than retiring with it (DESIGN 4b meta-obligation 4: a climb dissolves the redundant production
-// machinery, never the evidence that the higher rung is still real).
+data gate_receipt_discrimination_note: String = "THE ASSERTIONS ARE WRITTEN AS DISCRIMINATIONS, not as arm-by-arm value checks, because an arm-by-arm check greens on a projection that collapses two arms as long as each row is read separately. The predecessor of this carrier answered Bool, where NotApplicable and Clean were BOTH true and NotRun and Failed were BOTH false; the pairs asserted below are exactly those two collapses, so each one goes red against the shape this retype replaced. That is the discriminating RED this evidence is enrolled for, and it stays enrolled after the climb rather than retiring with it (DESIGN 4b meta-obligation 4: a climb dissolves the redundant production machinery, never the evidence that the higher rung is still real)."
 
 data clean_receipt: GateReceipt = GateObserved { outcome: GateClean }
 data failed_receipt: GateReceipt = GateObserved {

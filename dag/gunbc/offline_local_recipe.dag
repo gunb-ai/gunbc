@@ -26,13 +26,7 @@ import std.witness_admission { OfflineLocalRecipe, witness_consumer_cadence_eq }
 // consumer can read, join and refuse over. It is NOT a claim that the recipe ran: no
 // row here asserts a verdict, and offline_recipe_consumer_defects below carries the
 // separate, dated, declared population of recipes MEASURED not to produce one.
-// Typed authority for the documented OfflineLocalRecipe consumers named in gunbc.ci_layer_roots
-// witness_admission_offline_note -- five of the six policies it enumerates, the sixth deliberately
-// absent for the reason identity_captured_navigation_recipe_absence_note states. Replaces the prose
-// recipe sentence in each paired note as the authority for the invocation; the notes keep their
-// rationale and cite this carrier for the command. The rows carry no measurement -- a recipe row is
-// a declaration, not a receipt -- and the measured non-executing population is the separate
-// declared roster offline_recipe_consumer_defects.
+data offline_local_recipe_authority_note: String = "Typed authority for the documented OfflineLocalRecipe consumers named in gunbc.ci_layer_roots witness_admission_offline_note -- five of the six policies it enumerates, the sixth deliberately absent for the reason identity_captured_navigation_recipe_absence_note states. Replaces the prose recipe sentence in each paired note as the authority for the invocation; the notes keep their rationale and cite this carrier for the command. The rows carry no measurement -- a recipe row is a declaration, not a receipt -- and the measured non-executing population is the separate declared roster offline_recipe_consumer_defects."
 
 // A recipe names either ONE entry file, or a directory HOME whose residents each take
 // the same invocation shape. long_lane_exclusion_note is the second kind: test/claim/long/
@@ -278,14 +272,7 @@ fn every_recipe_names_a_declared_policy() -> Bool {
 // minting a corrected row here would recreate, as typed data, prose that has already been
 // ruled NOT coverage. A recipe row is the statement that a local consumer exists; for that
 // policy the ruling is that none should.
-// identity_captured_navigation_roster_gate_exclusion_note was the sixth policy in
-// gunbc.ci_layer_roots witness_admission_offline_note before gunbc#9206 and deliberately owns NO
-// row here: its exclusion row and recipe prose are deleted by gunbc#9206 under an operator ruling
-// for that lane, which is the DELETE arm of the same dissolution this carrier actions for the other
-// five. Measured on 7fbbb84202 by execution: the documented entry path does not exist and
-// claim_batch refuses; at the relocated path the witness executes and answers false. Neither fact
-// is repaired here, because repairing a recipe ruled not-coverage would restore the thing the
-// ruling removes.
+data identity_captured_navigation_recipe_absence_note: String = "identity_captured_navigation_roster_gate_exclusion_note was the sixth policy in gunbc.ci_layer_roots witness_admission_offline_note before gunbc#9206 and deliberately owns NO row here: its exclusion row and recipe prose are deleted by gunbc#9206 under an operator ruling for that lane, which is the DELETE arm of the same dissolution this carrier actions for the other five. Measured on 7fbbb84202 by execution: the documented entry path does not exist and claim_batch refuses; at the relocated path the witness executes and answers false. Neither fact is repaired here, because repairing a recipe ruled not-coverage would restore the thing the ruling removes."
 
 // THE FIRST ARM OF THE DECLARED DISSOLUTION HAS NO TARGET, AND SAYING SO IS PART OF
 // ACTIONING IT. "Graduates to a scheduled CI consumer" was written when scheduled cadences
@@ -413,6 +400,7 @@ fn every_defect_row_has_a_recipe() -> Bool {
     recipes: offline_local_recipes
   )
 }
+
 
 // THE ARGV IS DERIVED FROM THE ROW, WHICH IS THE WHOLE POINT OF THE ROW. A recipe carried
 // as prose has to be re-typed by hand at every use and re-edited by hand at every move;

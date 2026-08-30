@@ -28,14 +28,7 @@ fn ci_runner_target_spec(target: CiRunnerTarget) -> RunnerSpec {
   }
 }
 
-// Two serialization classes, per the actions grammar (extdeps.languages.yaml.gha_workflow
-// runner_yaml): GitHub-HOSTED labels are the scalar runs-on form and only the HostedRunner variant
-// serializes that way, so the hosted target projects HostedRunner with the row's RunnerLabel (a
-// labels-list here would emit the label-matching form GitHub reserves for the self-hosted class -
-// the 2026-07-11 cursor catch). Ubicloud tokens are NOT GitHub hosted vocabulary: ubicloud routes
-// queued jobs by label match exactly like the self-hosted class, so its rows stay a provider-cited
-// token in the SelfHosted list form (proven live: the 2026-07-11 receipts ran on runs-on:
-// [ubicloud-standard-16-arm]).
+data ci_runner_target_spec_form_note: String = "Two serialization classes, per the actions grammar (extdeps.languages.yaml.gha_workflow runner_yaml): GitHub-HOSTED labels are the scalar runs-on form and only the HostedRunner variant serializes that way, so the hosted target projects HostedRunner with the row's RunnerLabel (a labels-list here would emit the label-matching form GitHub reserves for the self-hosted class - the 2026-07-11 cursor catch). Ubicloud tokens are NOT GitHub hosted vocabulary: ubicloud routes queued jobs by label match exactly like the self-hosted class, so its rows stay a provider-cited token in the SelfHosted list form (proven live: the 2026-07-11 receipts ran on runs-on: [ubicloud-standard-16-arm])."
 
 fn ci_runner_target_memory_regime(target: CiRunnerTarget) -> RunnerMemoryRegime {
   match target {
@@ -52,15 +45,7 @@ fn ci_runner_target_ram_speed_budget(target: CiRunnerTarget) -> ByteSize {
   }
 }
 
-// Operator routing 2026-07-12: back to FleetSelfHosted - the ubicloud window (routed 2026-07-11
-// while the fleet was slot-contended) was for local debugging only, and the return happens THROUGH
-// this selection row as designed (the #6489 iteration window's override forked the runner authority
-// and needed a paired revert; this row IS the sanctioned switch point). The projections carry the
-// whole flip: runs-on returns to the fleet-offer labels, the memory regime returns to SlotCarved
-// (memory.max carves and the floor's swap-throttle class exist again on this shape), and the
-// RAM-speed budget returns to the fleet slot ceiling for CARGO_BUILD_JOBS and floor width. The
-// ubicloud catalog row and its derivations stay live and witnessed for any future cloud window:
-// that selection is one row here + regen; nothing else moves.
+data selected_ci_runner_target_note: String = "Operator routing 2026-07-12: back to FleetSelfHosted - the ubicloud window (routed 2026-07-11 while the fleet was slot-contended) was intended for local debugging only, and the return happens THROUGH this selection row exactly as its design promised (the #6489 iteration window's override forked the runner authority and needed a paired revert; this row IS the sanctioned switch point). The projections carry the whole flip: runs-on returns to the fleet-offer labels, the memory regime returns to SlotCarved (memory.max carves and the floor's swap-throttle class exist again on this shape), and the RAM-speed budget returns to the fleet slot ceiling for CARGO_BUILD_JOBS and floor width. The ubicloud catalog row and its derivations stay live and witnessed for any future cloud window: that selection is one row here + regen; nothing else moves."
 
 fn selected_ci_runner_target() -> CiRunnerTarget {
   FleetSelfHosted

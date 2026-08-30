@@ -16,21 +16,9 @@ import std.measure {
 }
 import std.nat { Nat, nat_max }
 
-// Both reads here are DERIVED at read time from cited rows (DESIGN section 2): the bottom-up floor
-// prices a declared per-user resource envelope against a cited infrastructure price row, and the
-// top-down glean divides a filed cost-of-revenue fact by a filed registered-user floor. Nothing
-// about serving cost is stored as a fact of its own.
+data free_tier_serving_derive_not_store_note: String = "Both reads here are DERIVED at read time from cited rows (DESIGN section 2): the bottom-up floor prices a declared per-user resource envelope against a cited infrastructure price row, and the top-down glean divides a filed cost-of-revenue fact by a filed registered-user floor. Nothing about serving cost is stored as a fact of its own."
 
-// The bottom-up result is deliberately a FLOOR: box rent for storage capacity (times replica
-// count), with egress admitted against a DECLARED per-box monthly allowance. It excludes operations
-// labor, offsite backup, support, and abuse handling. The egress allowance is an assumption, not a
-// row fact, because the cited Hetzner rows do not yet carry a traffic-allowance field; dissolve-on:
-// citing Hetzner traffic terms into extdeps.pricing.hetzner_dedicated, at which point the allowance
-// argument collapses onto the row. Compute is not a constraint at free-SCM envelopes (git-shaped
-// operations are millisecond-scale against 12-32 hardware threads per box); once a CI product is
-// bundled, metered compute becomes the dominant axis -- the cited receipt is GitLab's own free-tier
-// fence (400 compute minutes per month, and a pricing-page FAQ attributing card-verification to
-// cryptomining abuse of free minutes).
+data free_tier_floor_semantics_note: String = "The bottom-up result is deliberately a FLOOR: box rent for storage capacity (times replica count), with egress admitted against a DECLARED per-box monthly allowance. It excludes operations labor, offsite backup, support, and abuse handling. The egress allowance is an assumption rather than a row fact because the cited Hetzner rows do not yet carry a traffic-allowance field; dissolve-on: citing Hetzner traffic terms into extdeps.pricing.hetzner_dedicated, at which point the allowance argument collapses onto the row. Compute is not a constraint at free-SCM envelopes (git-shaped operations are millisecond-scale against 12-32 hardware threads per box); the moment a CI product is bundled, metered compute becomes the dominant axis -- the cited receipt is GitLab's own free-tier fence (400 compute minutes per month, and a pricing-page FAQ attributing card-verification to cryptomining abuse of free minutes)."
 
 type FreeTierUserEnvelope {
   storage_bytes_per_user: ByteSize
@@ -105,11 +93,7 @@ fn derive_free_tier_serving_floor(
   }
 }
 
-// Top-down glean: annual cost of revenue divided by the filed registered-user FLOOR ('more than N
-// million registered users', Item 1) is an UPPER BOUND on average serving cost per registered user
-// -- actual users >= floor, so cost/floor >= cost/actual -- and the average itself is inflated by
-// enterprise SaaS compute and support personnel inside cost of revenue. The marginal free git user
-// sits far below it.
+// Top-down glean: annual cost of revenue divided by the filed registered-user FLOOR ('more than N million registered users', Item 1) is an UPPER BOUND on average serving cost per registered user -- actual users >= floor, so cost/floor >= cost/actual -- and the average itself is inflated by enterprise SaaS compute and support personnel inside cost of revenue. The marginal free git user sits far below it.
 fn average_serving_cost_per_registered_user_year_micros_upper_bound(
   annual_cost_of_revenue: FiledMonetaryFact,
   registered_users: RegisteredUserCountRow

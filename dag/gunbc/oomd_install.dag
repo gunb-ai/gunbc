@@ -109,16 +109,17 @@ type SliceMembershipSignal {
 }
 
 // ONE PARENTED CONTAINER USED TO LAUNDER EVERY UNPARENTED ONE. membership_grounding_check asked
-// sessions_in_slice > 0, so one managed session beside fifty flat docker-*.scope sessions under
-// system.slice reported OomdEnforced -- and the fifty are exactly what oomd cannot evict. The
-// predicate was total over the signal and blind to the deciding distinction: DESIGN's total at the
-// level examined.
+// sessions_in_slice > 0 and passed, so a host running one managed session beside fifty flat
+// docker-*.scope sessions under system.slice reported OomdEnforced -- and the fifty are exactly the
+// ones oomd cannot evict. The predicate was total over the signal and blind to the distinction that
+// decides the outcome, which is the failure mode DESIGN names as total at the level examined.
 //
-// THE FOUR STANDINGS ARE NOT COLLAPSIBLE TO A BOOL; Mixed and AllLegacy stay apart because their
-// remedies differ: Mixed is a PARTIAL placement or convergence defect on an otherwise working host,
-// AllLegacy a completely hollow managed slice. NoSessionsObserved is neither -- nothing runs, so
-// nothing is wrong and nothing is proven. Only AllSessionsManaged grounds the backstop, because
-// only then is every running session inside the cgroup oomd evicts within.
+// THE FOUR STANDINGS ARE NOT COLLAPSIBLE TO A BOOL, and Mixed and AllLegacy stay apart because
+// their remedies differ: Mixed is a PARTIAL placement or convergence defect on a host that is
+// otherwise working, AllLegacy is a managed slice that is completely hollow. NoSessionsObserved is
+// neither -- nothing is running, so nothing is wrong and nothing is proven either. Only
+// AllSessionsManaged grounds the backstop, because only then is every running session inside the
+// cgroup oomd evicts within.
 type SessionMembershipStanding
   = AllSessionsManaged { managed_count: Nat }
   | MixedSessionMembership { managed_count: Nat, legacy_count: Nat }

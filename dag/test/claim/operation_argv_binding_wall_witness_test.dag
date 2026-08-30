@@ -13,15 +13,7 @@ import v2.std.operation_argv {
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
-// What EARNS the genericity. A binder that reads the declaration could become a wider channel than
-// the fixed list it replaces, so two classes are walled, both proven here by execution against real
-// corpus declarations. (1) UNDECLARED NAMES ARE REFUSED, not injected: the seed's previous
-// materializer inserted package, bin, args, unit and property into the binding environment of EVERY
-// operation unconditionally -- a live hole, since any operation whose argv referenced one of those
-// names took the caller's value whether or not it declared the input. (2) THE EXECUTABLE POSITION
-// IS NOT BINDABLE (see the corpus witness and dag/test/fixture/argv_executable_position_probe.dag).
-// Each refusal is typed and located with no arm that proceeds -- nothing is sanitized, escaped, or
-// dropped (DESIGN 5).
+data operation_argv_binding_wall_note: String = "What EARNS the genericity. A binder that reads the declaration could have become a wider channel than the fixed list it replaces, so two classes are walled, both proven here by execution against real corpus declarations. (1) UNDECLARED NAMES ARE REFUSED, not injected: the seed's previous materializer inserted package, bin, args, unit and property into the binding environment of EVERY operation unconditionally -- a live hole, not a hypothetical one, since any operation whose argv referenced one of those names took the caller's value whether or not it declared the input. (2) THE EXECUTABLE POSITION IS NOT BINDABLE (see the corpus witness and dag/test/fixture/argv_executable_position_probe.dag). Each refusal is typed and located and has no arm that proceeds -- nothing is sanitized, escaped, or dropped (DESIGN 5)."
 
 data systemctl_path: String = "dag/extdeps/systemd/systemctl.dag"
 data systemctl_service: String = "systemd.Systemctl"

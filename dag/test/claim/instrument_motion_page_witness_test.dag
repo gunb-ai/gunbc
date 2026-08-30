@@ -72,13 +72,7 @@ test fn witness_motion_page_renders_through_its_route() -> Bool {
     && string_contains(s: html, pattern: instrument_motion_asset_path)
 }
 
-// EVERY WIRE ASSERTION CHECKS THE WIRE IS NON-EMPTY BEFORE CHECKING THE PAGE CARRIES IT (review
-// finding, 2026-08-07). string_contains(anything, "") is true, so a control written as
-// contains(html, wire) passes on a page that ships nothing the moment the wire collapses to the
-// empty string. That is not a hypothetical: the helper this file used to call answered a refused
-// sequence with an empty list, and these three claims would all have gone green over an empty
-// attribute. Each claim now reaches the wire only through a settled sequence, and asserts the wire
-// is non-empty in the same breath.
+data nonempty_wire_note: String = "EVERY WIRE ASSERTION CHECKS THE WIRE IS NON-EMPTY BEFORE CHECKING THE PAGE CARRIES IT (review finding, 2026-08-07). string_contains(anything, \"\") is true, so a control written as contains(html, wire) passes on a page that ships nothing the moment the wire collapses to the empty string. That is not a hypothetical: the helper this file used to call answered a refused sequence with an empty list, and these three claims would all have gone green over an empty attribute. Each claim now reaches the wire only through a settled sequence, and asserts the wire is non-empty in the same breath."
 
 fn page_ships_full_wire(t: SyntheticTapStrength) -> Bool {
   match sequence_for(t: t, m: MotionFull) {
@@ -147,9 +141,7 @@ test fn witness_the_shipped_sequence_moves_decays_and_settles() -> Bool {
   }
 }
 
-// The first NON-ZERO displacement in the sequence, because a knock pushes the plate away from the
-// hand. Reading the first non-zero rather than the second frame keeps the claim about the physics
-// rather than about how many frames precede the first visible pixel.
+data first_movement_note: String = "The first NON-ZERO displacement in the sequence, because a knock pushes the plate away from the hand. Reading the first non-zero rather than the second frame keeps the claim about the physics rather than about how many frames precede the first visible pixel."
 
 fn frames_first_movement_is_downward(fs: List<BobFrame>) -> Bool {
   fold(fs, init: 0, f: (acc, x) => if acc == 0 { x.displacement_px } else { acc }) < 0
@@ -179,10 +171,7 @@ test fn witness_the_shipped_probes_count_any_axis_as_a_value() -> Bool {
     && string_contains(s: js, pattern: " carrying values, over ")
 }
 
-// The renderer used to set translateY(0) after consuming the frames, which supplied the ending a
-// non-settling model had failed to reach. That line is gone, and this asserts its absence directly
-// rather than trusting the diff: the client contains no translateY built from a literal zero, and
-// the sequence it replays ends at zero because the model proved it does.
+data client_manufactures_no_zero_note: String = "The renderer used to set translateY(0) after consuming the frames, which supplied the ending a non-settling model had failed to reach. That line is gone, and this asserts its absence directly rather than trusting the diff: the client contains no translateY built from a literal zero, and the sequence it replays ends at zero because the model proved it does."
 
 test fn witness_client_computes_no_physics_and_manufactures_no_ending() -> Bool {
   let js = motion_asset_body()
@@ -200,16 +189,8 @@ test fn witness_receipt_starts_unanswered() -> Bool {
     && !string_contains(s: html, pattern: "supported")
 }
 
-// THE NOTE CLASS IS A WIRE VALUE, NOT A SYMBOL. A repo-wide rename of the fn homonym note matched
-// inside the string literal too, because in "instrument-note" the token sits between a hyphen and a
-// quote and neither is a word character. The declaration kept compiling, both pages kept rendering,
-// and the motion page's notes silently stopped matching the stylesheet rule that styles them — a
-// class name is resolved by the browser against CSS text, so nothing in this repository could
-// refuse it. There is now ONE helper: motion imported the sandbox's instrument_note rather than
-// carrying a second copy, so the two cannot drift apart at all. This pins the remaining fact the
-// type system still cannot see — that the emitted class equals the selector the stylesheet defines.
-// The controls are the two exact corrupted spellings: either one reappearing reds this, which the
-// rename that caused it would not have.
+
+data shared_note_class_note: String = "THE NOTE CLASS IS A WIRE VALUE, NOT A SYMBOL. A repo-wide rename of the fn homonym note matched inside the string literal too, because in \"instrument-note\" the token sits between a hyphen and a quote and neither is a word character. The declaration kept compiling, both pages kept rendering, and the motion page's notes silently stopped matching the stylesheet rule that styles them — a class name is resolved by the browser against CSS text, so nothing in this repository could refuse it. There is now ONE helper: motion imported the sandbox's instrument_note rather than carrying a second copy, so the two cannot drift apart at all. This pins the remaining fact the type system still cannot see — that the emitted class equals the selector the stylesheet defines. The controls are the two exact corrupted spellings: either one reappearing reds this, which the rename that caused it would not have."
 
 test fn witness_note_class_wire_matches_stylesheet_selector() -> Bool {
   let css = instrument_css()

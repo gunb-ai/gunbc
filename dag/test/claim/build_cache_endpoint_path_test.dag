@@ -2,12 +2,7 @@ module test.claim.build_cache_endpoint_path
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-// THE UNLINK ADMISSION'S ACCEPTANCE SET. The subject is srv4, observed 2026-08-01: a stale
-// server.sock with no listener behind it, every new server failing with 'Address in use (os error
-// 98)', the host uncached since roughly 2026-07-26. Exactly one of the five path states licenses
-// removing that file, and the controls below assert the other four refuse — but the load-bearing
-// ones are the two that assert a DIFFERENCE from ExecStartPre=rm -f, because a wall that refuses
-// where the naive fix would also have been harmless has not been shown to be worth anything.
+data endpoint_path_wall_doc: String = "THE UNLINK ADMISSION'S ACCEPTANCE SET. The subject is srv4, observed 2026-08-01: a stale server.sock with no listener behind it, every new server failing with 'Address in use (os error 98)', the host uncached since roughly 2026-07-26. Exactly one of the five path states licenses removing that file, and the controls below assert the other four refuse — but the load-bearing ones are the two that assert a DIFFERENCE from ExecStartPre=rm -f, because a wall that refuses where the naive fix would also have been harmless has not been shown to be worth anything."
 
 fn srv4_instance() -> BuildCacheInstance {
   ci_cache_instance(host: "srv4")
@@ -85,11 +80,7 @@ test fn witness_a_stale_read_cannot_license_an_unlink() -> Bool {
   (stale_read == false) && (unknown_currency == false)
 }
 
-// ObservationStale and ObservationCurrencyUnknown must BOTH refuse, and they are asserted together
-// rather than separately because the tempting shape is to grade them — to treat 'I do not know if
-// this read is current' as weaker evidence than 'I know it is old' and let it through. It is the
-// same evidence. An arm that admitted Unknown would be the absorbing fallback, and it would fire
-// exactly when /proc is least readable, which is when a bind race is most likely.
+data currency_arms_are_not_graded_doc: String = "ObservationStale and ObservationCurrencyUnknown must BOTH refuse, and they are asserted together rather than separately because the tempting shape is to grade them — to treat 'I do not know if this read is current' as weaker evidence than 'I know it is old' and let it through. It is the same evidence. An arm that admitted Unknown would be the absorbing fallback, and it would fire exactly when /proc is least readable, which is when a bind race is most likely."
 
 test fn witness_a_tcp_endpoint_has_no_stale_socket_state() -> Bool {
   let tcp = BuildCacheInstance {
@@ -111,11 +102,7 @@ test fn witness_a_tcp_endpoint_has_no_stale_socket_state() -> Bool {
   ) == false
 }
 
-// The RED control asserted as a whole rather than per-state. unconditional_unlink_sketch is
-// ExecStartPre=rm -f written as a predicate; it answers true in all five path states. This witness
-// asserts that it disagrees with the admission in at least the two destructive states, so if
-// someone later 'simplifies' the admission into an unconditional yes, this reds. Asserting the
-// sketch alone would not: a control that only describes the bad behaviour never fails.
+data red_control_doc: String = "The RED control asserted as a whole rather than per-state. unconditional_unlink_sketch is ExecStartPre=rm -f written as a predicate; it answers true in all five path states. This witness asserts that it disagrees with the admission in at least the two destructive states, so if someone later 'simplifies' the admission into an unconditional yes, this reds. Asserting the sketch alone would not: a control that only describes the bad behaviour never fails."
 
 test fn witness_the_unconditional_sketch_differs_where_it_is_destructive() -> Bool {
   let states = [

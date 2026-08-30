@@ -50,12 +50,7 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-// The exemplar's walls, executed. Checkpoints 1, 2 and 7a are things a person verifies by clicking,
-// so what a witness can honestly hold is the layer underneath them: that the vocabulary is real,
-// that it is CONSUMED, that the mechanics are the ones the analog law requires, and that each claim
-// has an input which makes it fail. Every witness in this file is reachable from the single test fn
-// below — the orphaned-enrollment defect this repo just paid for once is not worth paying for
-// twice.
+data roadmap_tactile_witness_note: String = "The exemplar's walls, executed. Checkpoints 1, 2 and 7a are things a person verifies by clicking, so what a witness can honestly hold is the layer underneath them: that the vocabulary is real, that it is CONSUMED, that the mechanics are the ones the analog law requires, and that each claim has an input which makes it fail. Every witness in this file is reachable from the single test fn below — the orphaned-enrollment defect this repo just paid for once is not worth paying for twice."
 
 fn css() -> String {
   roadmap_css()
@@ -339,12 +334,7 @@ test fn witness_sound_toggle_scan_discriminates() -> Bool {
     })
 }
 
-// Amended at A1 (presentation recon, 2026-08-01): the markup ships the control's NAME ('sound') so
-// the button has visible content and an accessible name before the client program runs — the former
-// empty-button pin enshrined blankness as the wire contract, which was the defect, not the honesty.
-// The claim that MATTERS is unchanged and still asserted: the markup never ships a STATE label
-// (sound_toggle_label_on), because the state lives in this browser's storage and only the client
-// program may paint it.
+data sound_toggle_name_vs_state_note: String = "Amended at A1 (presentation recon, 2026-08-01): the markup ships the control's NAME ('sound') so the button has visible content and an accessible name before the client program runs — the former empty-button pin enshrined blankness as the wire contract, which was the defect, not the honesty. The claim that MATTERS is unchanged and still asserted: the markup never ships a STATE label (sound_toggle_label_on), because the state lives in this browser's storage and only the client program may paint it."
 
 test fn witness_sound_toggle_label_is_painted_by_the_program_not_the_markup() -> Bool {
   match try_serialize_html_source(node: roadmap_page_for_authority()) {

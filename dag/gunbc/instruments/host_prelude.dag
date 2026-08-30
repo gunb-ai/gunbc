@@ -52,16 +52,7 @@ type WitnessBinReadiness
   = WitnessBinReady { path: String }
   | WitnessBinRefused { bin_name: String, path: String, reason: WitnessBinRefusalReason }
 
-// The three probes below are annotated OutcomeIsData (operator ruling 2026-07-25). A non-zero exit
-// from `test -f`/`-x`/`-s` here means SUBJECT ABSENT — an answer, not a fault — and it is ambient
-// in BOTH of this helper's contexts: the production readiness path (witness_bin_run_if_ready,
-// below) responds by building, and the build-artifact red controls respond by asserting the refusal
-// arm. Because the arm is correct for every caller, it is annotatable HERE, once, with no
-// expectation threaded through this production signature and no ambient frame left open.
-// ADMISSIBILITY (the §5 guard in gunbc.output_policy outcome_is_data_note): this fn returns
-// WitnessBinReadiness — a typed verdict whose arms ARE the adjudication — never unit, so the exit
-// provably feeds a typed consumer. What stays anomalous is dispatch failure: if the probe itself
-// cannot run, that is not an exit code and does not travel this arm.
+data witness_bin_readiness_outcome_is_data_note: String = "The three probes below are annotated OutcomeIsData (operator ruling 2026-07-25). A non-zero exit from `test -f`/`-x`/`-s` here means SUBJECT ABSENT — an answer, not a fault — and it is ambient in BOTH of this helper's contexts: the production readiness path (witness_bin_run_if_ready, below) responds by building, and the build-artifact red controls respond by asserting the refusal arm. Because the arm is correct for every caller, it is annotatable HERE, once, with no expectation threaded through this production signature and no ambient frame left open. ADMISSIBILITY (the §5 guard in gunbc.output_policy outcome_is_data_note): this fn returns WitnessBinReadiness — a typed verdict whose arms ARE the adjudication — never unit, so the exit provably feeds a typed consumer. What stays anomalous is dispatch failure: if the probe itself cannot run, that is not an exit code and does not travel this arm."
 
 fn witness_bin_artifact_readiness(bin_name: String, path: String) -> WitnessBinReadiness {
   let is_file = shell.Test.IsFile(path: path, expect: OutcomeIsData)
@@ -89,23 +80,7 @@ fn witness_bin_readiness_is_ready(readiness: WitnessBinReadiness) -> Bool {
   }
 }
 
-// Enrollment wall first (gunbc.ci_release_bins.release_bin_is_enrolled): an unenrolled bin_name
-// refuses as WitnessBinNotEnrolled and never reaches cargo.Build — that is the construction close
-// of the mid-floor cold-monolith absorption the release-bins pack exists to bound (roster
-// dissolve_on for the former ci_floor_required_artifact_names hand list). The presence probe below
-// is OutcomeIsData for the same reason as witness_bin_artifact_readiness: a non-zero `test -x`
-// means NOT BUILT YET, which is the question this fn asks, and the production arm answers it by
-// building while the red control answers it by asserting refusal. The cargo.Build.BuildInheritEnv
-// call further down is DELIBERATELY NOT annotated, and the distinction is worth stating because
-// both effects sit in the same typed fn. The §5 guard's LETTER admits both — this fn returns
-// WitnessBinReadiness and the build's exit is folded into WitnessBinRefused. Its SPIRIT does not: a
-// failing `cargo build` in the production path is a genuine fault an engineer wants shouted, not an
-// observation about the subject's state. Silencing it would trade a fake anomaly (which the guard
-// exists to remove) for a hidden real one (which is what the whole arc is about). So it stays loud
-// pending an operator call; the residual ❌ that proves discrimination for
-// no_fake_anomalies_witness_test is carried by typed_witness_bin_run_loud_failure_red_control_holds
-// (unannotated WitnessBin.Run of /bin/false — cheap), not by the unenrolled WitnessBin path which
-// now refuses before cargo.
+data witness_bin_ensure_built_probe_note: String = "Enrollment wall first (gunbc.ci_release_bins.release_bin_is_enrolled): an unenrolled bin_name refuses as WitnessBinNotEnrolled and never reaches cargo.Build — that is the construction close of the mid-floor cold-monolith absorption the release-bins pack exists to bound (roster dissolve_on for the former ci_floor_required_artifact_names hand list). The presence probe below is OutcomeIsData for the same reason as witness_bin_artifact_readiness: a non-zero `test -x` means NOT BUILT YET, which is the question this fn asks, and the production arm answers it by building while the red control answers it by asserting refusal. The cargo.Build.BuildInheritEnv call further down is DELIBERATELY NOT annotated, and the distinction is worth stating because both effects sit in the same typed fn. The §5 guard's LETTER admits both — this fn returns WitnessBinReadiness and the build's exit is folded into WitnessBinRefused. Its SPIRIT does not: a failing `cargo build` in the production path is a genuine fault an engineer wants shouted, not an observation about the subject's state. Silencing it would trade a fake anomaly (which the guard exists to remove) for a hidden real one (which is what the whole arc is about). So it stays loud pending an operator call; the residual ❌ that proves discrimination for no_fake_anomalies_witness_test is carried by typed_witness_bin_run_loud_failure_red_control_holds (unannotated WitnessBin.Run of /bin/false — cheap), not by the unenrolled WitnessBin path which now refuses before cargo."
 
 fn witness_bin_ensure_built_typed(root: String, bin: WitnessBin) -> WitnessBinReadiness {
   let path = witness_bin_release_path(root: root, bin_name: bin.bin_name)
@@ -138,12 +113,7 @@ fn witness_bin_ready(root: String, bin: WitnessBin) -> Bool {
   witness_bin_readiness_is_ready(readiness: witness_bin_ensure_built_typed(root: root, bin: bin))
 }
 
-// witness_bin_ready_seed is the fold IDENTITY for 'nothing has refused yet', not a claim that a
-// binary at the empty path is ready. witness_bin_readiness_then only ever replaces it — the seed
-// cannot escape a non-empty fold, and an empty prereq list falls straight through to the invoke
-// bin's own check. The fold carries the FIRST refusal and stops probing after it: once a
-// prerequisite has refused, checking the rest would build binaries for a run that cannot happen,
-// and the first refusal is the one that located the fault.
+data witness_bin_readiness_seed_note: String = "witness_bin_ready_seed is the fold IDENTITY for 'nothing has refused yet', not a claim that a binary at the empty path is ready. witness_bin_readiness_then only ever replaces it — the seed cannot escape a non-empty fold, and an empty prereq list falls straight through to the invoke bin's own check. The fold carries the FIRST refusal and stops probing after it: once a prerequisite has refused, checking the rest would build binaries for a run that cannot happen, and the first refusal is the one that located the fault."
 
 fn witness_bin_ready_seed() -> WitnessBinReadiness {
   WitnessBinReady { path: "" }
@@ -201,22 +171,7 @@ fn gunbc_claims_readiness() -> WitnessBinReadiness {
   )
 }
 
-// One child process per CALL, not per claim (2026-07-23, the floor redundant-work ledger's
-// cold-child class — #7106 levers 2/3, corrected mechanism in the attribution doc section 9): the
-// per-claim fold spawned one cold `gunbc run --claim-run` process per row, serial, each re-deriving
-// the module index and closure resolve from scratch — the batch walls were the SUM of those
-// children (~26/run, ~23 of 48 floor minutes), invisible to resolves_total by process boundary. The
-// realization is now ONE `claim_batch` child per call carrying every row (claim_batch's own
-// pre-existing pooled grammar: repeated --entry groups with --function rows, one shared
-// MultiEntryIndex per process — srv1 counterfactual receipts: single cold child 47.2s; 12 claims
-// pooled 93.4s vs 480s serial). The vehicle is deliberately a SEPARATE process, never in-executor
-// evaluation: the executor is the 16GiB-pinned process of the 2026-07-23 crawl, and adding claim
-// closures to its retention trades the time disease for the memory one; the child dies and frees.
-// Verdict semantics preserved by claim_batch's own loop: every row runs (no short-circuit), each
-// failure is NAMED per-function (PASS f / FAIL f lines), exit nonzero iff any failed — the same
-// conjunction the per-process fold computed, with strictly more reporting. Residue — one pool build
-// per call — dissolves on the cross-process content-keyed typed-module store
-// (docs/plans/compile-wall-endgame.md W3).
+data run_gunbc_claims_pooled_note: String = "One child process per CALL, not per claim (2026-07-23, the floor redundant-work ledger's cold-child class — #7106 levers 2/3, corrected mechanism in the attribution doc section 9): the per-claim fold spawned one cold `gunbc run --claim-run` process per row, serial, each re-deriving the module index and closure resolve from scratch — the batch walls were the SUM of those children (~26/run, ~23 of 48 floor minutes), invisible to resolves_total by process boundary. The realization is now ONE `claim_batch` child per call carrying every row (claim_batch's own pre-existing pooled grammar: repeated --entry groups with --function rows, one shared MultiEntryIndex per process — srv1 counterfactual receipts: single cold child 47.2s; 12 claims pooled 93.4s vs 480s serial). The vehicle is deliberately a SEPARATE process, never in-executor evaluation: the executor is the 16GiB-pinned process of the 2026-07-23 crawl, and adding claim closures to its retention trades the time disease for the memory one; the child dies and frees. Verdict semantics preserved by claim_batch's own loop: every row runs (no short-circuit), each failure is NAMED per-function (PASS f / FAIL f lines), exit nonzero iff any failed — the same conjunction the per-process fold computed, with strictly more reporting. Residue — one pool build per call — dissolves on the cross-process content-keyed typed-module store (docs/plans/compile-wall-endgame.md W3)."
 
 fn claim_batch_claim_args(acc: List<String>, last_entry: String, c: ClaimRun) -> List<String> {
   if c.entry == last_entry {

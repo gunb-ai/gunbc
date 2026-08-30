@@ -19,21 +19,21 @@ import gunbc.repository { gunbc_repository }
 
 // WHY A DEPLOYED TREE NEEDS A REMOTE AT ALL, since it never fetches.
 //
-// `gunbc.fleet_desired_observe` reads refs/fleet/desired with `git ls-remote origin`, a network
-// call THROUGH A CONFIGURED REMOTE. The belt makes that observation every tick, so a deployed tree
-// with no remote cannot answer it and the belt refuses -- spawn and reap withheld, every roadmap
-// node rendering a fault. Measured on srv1 2026-08-18: `/opt/gunbc-green/gunbc` carried no
-// `.git/config` at all, while `/opt/gunbc/gunbc` carried a working one because it predates the
-// sync whitelist and was cloned by hand.
+// `gunbc.fleet_desired_observe` reads refs/fleet/desired with `git ls-remote origin`, which is a
+// network call THROUGH A CONFIGURED REMOTE. The belt performs that observation on every tick, so a
+// deployed tree with no remote cannot answer it and the belt refuses -- spawn and reap withheld,
+// every roadmap node rendering a fault. Measured on srv1 2026-08-18: `/opt/gunbc-green/gunbc`
+// carried no `.git/config` at all, while `/opt/gunbc/gunbc` carried a working one because it
+// predates the sync whitelist and was cloned by hand.
 //
-// THE REMOTE IS ABSENT BY DESIGN, NOT BY ACCIDENT, which is why it is written rather than synced.
-// `live_deploy.emit` `tree_sync_git_whitelist_note` excludes `.git/config` from the tree sync
-// because a blanket sync was once found carrying a live Actions extraheader token into the service
-// tree. That exclusion is correct and untouched here. The whitelist's reasoning enumerated the
-// belt's SPAWN path -- `git worktree add` resolves origin/main from refs/remotes/origin/*, which do
-// sync and need no configured remote -- and the observation path was never checked against it. So
-// the deploy produced a tree structurally incapable of an observation the belt makes every sixty
-// seconds.
+// THE REMOTE IS ABSENT BY DESIGN, NOT BY ACCIDENT, and that is why it is written rather than
+// synced. `live_deploy.emit` `tree_sync_git_whitelist_note` excludes `.git/config` from the tree
+// sync because a blanket sync was once found carrying a live Actions extraheader token into the
+// service tree. That exclusion is correct and untouched here. What the whitelist's reasoning
+// enumerated was the belt's SPAWN path -- `git worktree add` resolves origin/main from
+// refs/remotes/origin/*, which do sync and need no configured remote -- and the observation path
+// was never checked against it. So the deploy produced a tree structurally incapable of an
+// observation the belt makes every sixty seconds.
 //
 // Writing one derived key cannot reintroduce the leak the whitelist closed: the value is projected
 // from `gunbc_repository` through `github_https_clone_url`, a public HTTPS URL that is a function
@@ -66,10 +66,10 @@ fn observe_deployed_tree_remote(at: GitRemoteUrlAt) -> GitRemoteUrlObservation {
 }
 
 // A ZERO EXIT FROM THE SETTER IS NOT CONVERGENCE. `git config` answering 0 says the command was
-// accepted, not that the repository now holds the value -- and this module exists because a
-// plausible-looking success masked a tree that could not answer. So `Converged` is reachable only
-// through an INDEPENDENT read-back whose observed URL equals the desired one exactly. Every other
-// path is a distinct, located refusal rather than a shrug.
+// accepted, not that the repository now holds the value -- and the whole reason this module exists
+// is that a plausible-looking success masked a tree that could not answer. So `Converged` is
+// reachable only through an INDEPENDENT read-back whose observed URL equals the desired one
+// exactly. Every other path is a distinct, located refusal rather than a shrug.
 type DeployedTreeRemoteOutcome
   = RemoteAlreadyConverged { member: GitRemoteUrlMember }
   | RemoteConverged { member: GitRemoteUrlMember, previous: GitRemoteUrlObservation }
@@ -123,7 +123,7 @@ fn deployed_tree_remote_write(
 
 // NO WRITE HAPPENS AGAINST STATE THAT WAS NOT OBSERVED. An unusable repository and a refused read
 // return without touching anything: rendering either as "the remote is simply absent" would be the
-// empty-observation narrow -- a read that could not answer, reported as the answer -- and would
+// empty-observation narrow -- a read that could not answer, reported as the answer -- and it would
 // license a config write into a path the planner never established was a repository.
 fn ensure_deployed_tree_remote(repository_path: FilePath) -> DeployedTreeRemoteOutcome {
   let desired = deployed_tree_remote_desired(repository_path: repository_path)
@@ -186,18 +186,18 @@ fn deployed_tree_remote_exit(outcome: DeployedTreeRemoteOutcome) -> ProcessExit 
 }
 
 // THE UNIT'S ENTRY. The repository path is supplied by the caller rather than derived from an
-// instance roster, because the executor is a unit belonging to ONE instance whose ExecStart
-// already names the tree it converges -- deriving it here would re-answer a question the unit is
-// the authority for, and get it wrong on a host running two slots.
+// instance roster, because the executor is a unit belonging to ONE instance and its ExecStart
+// already names the tree it converges -- deriving it here would mean this module re-answering a
+// question the unit is the authority for, and getting it wrong on a host running two slots.
 //
 // CORRECTED 2026-08-19: this said the executor is "the tree-sync unit". It is not, and the
-// difference is why a separate member exists. Tree-sync is started inside the GunbcSourceTree
-// step, FIRST in deployment_owned_steps while ServeBinary is second, so on a fresh instance the
-// gunbc binary this entry needs does not exist yet and the leg would red the first deploy of every
-// new slot. The executor is the dedicated DeployedTreeRemoteUnit (live_deploy.spec
-// deployment_tree_remote_unit_name), ordered third so the binary is a precondition the membership
-// itself establishes. The argument above survives -- the caller still knows its own tree -- but
-// the sentence named the wrong caller.
+// difference is the whole reason a separate member exists. Tree-sync is started inside the
+// GunbcSourceTree step, which is FIRST in deployment_owned_steps while ServeBinary is second, so
+// on a fresh instance the gunbc binary this entry needs does not exist yet and the leg would red
+// the first deploy of every new slot. The executor is the dedicated DeployedTreeRemoteUnit
+// (live_deploy.spec deployment_tree_remote_unit_name), ordered third so the binary is a
+// precondition the membership itself establishes. The argument above survives the correction --
+// the caller still knows its own tree -- but the sentence named the wrong caller.
 func ensure_deployed_tree_remote_wet(repository_path: String) -> ProcessExit {
   deployed_tree_remote_exit(
     outcome: ensure_deployed_tree_remote(repository_path: repository_path as FilePath),

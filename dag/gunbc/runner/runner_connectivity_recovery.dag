@@ -52,12 +52,7 @@ import gunbc.runner_broker_progress_watchdog {
 
 data runner_connectivity_recovery_scope_disposition: Disposition = SingleAuthority
 
-// PORTS the incident ctrl watchdog into gunbc (operator ruling 2026-08-06). Replace eligibility is
-// the CONJUNCTION: remote registration offline/absent AND broker progress silent beyond the derived
-// ten-minute bound AND no Runner.Worker alive AND registration grace elapsed. Offline-alone and
-// quiet-locally-alone are both unsafe single-signal policies; only the conjunction is safe. Re-read
-// immediately before mutation; fanout is canary-first with per-host cooldown. systemctl restart
-// exit 0 is NOT success.
+data runner_connectivity_watchdog_note: String = "PORTS the incident ctrl watchdog into gunbc (operator ruling 2026-08-06). Replace eligibility is the CONJUNCTION: remote registration offline/absent AND broker progress silent beyond the derived ten-minute bound AND no Runner.Worker alive AND registration grace elapsed. Offline-alone and quiet-locally-alone are both unsafe single-signal policies; only the conjunction is safe. Re-read immediately before mutation; fanout is canary-first with per-host cooldown. systemctl restart exit 0 is NOT success."
 
 type RunnerLocalIncarnation {
   slot: RunnerSlotIdentity
@@ -166,11 +161,7 @@ data runner_connectivity_control_plane_degraded_fraction_threshold: Int = 75
 
 data runner_connectivity_max_replacements_per_host_per_tick: Int = 2
 
-// LIMIT FANOUT (operator ruling 2026-08-06): every host independently restarting several slots on
-// the same two-minute timer boundary would amplify the next incident. Per-host replacement cap is
-// enforced in plan_fleet_connectivity_repair; schedule jitter is a realization concern on the
-// watchdog timer — offsets derive from slot_key hash modulo the tick interval, not a modeled random
-// draw.
+data runner_connectivity_replacement_jitter_basis_note: String = "LIMIT FANOUT (operator ruling 2026-08-06): every host independently restarting several slots on the same two-minute timer boundary would amplify the next incident. Per-host replacement cap is enforced in plan_fleet_connectivity_repair; schedule jitter is a realization concern on the watchdog timer — offsets derive from slot_key hash modulo the tick interval, not a modeled random draw."
 
 data runner_connectivity_rebind_healthy_note: Disposition = Scaffold {
   dissolves_to: SingleAuthority,
@@ -181,10 +172,7 @@ data runner_connectivity_rebind_healthy_note: Disposition = Scaffold {
   }
 }
 
-// HONEST SCAFFOLD: Timestamp is String today and this module compares equality only until PR A
-// lands a parsed observation clock. Freshness and cooldown therefore use same-moment equality as
-// the zero-age case in witnesses and refuse when act_at differs from confirmed_at without a
-// parseable ordering — the wall is real, the parser is deferred to the observation carrier.
+data timestamp_comparison_scaffold_note: String = "HONEST SCAFFOLD: Timestamp is String today and this module compares equality only until PR A lands a parsed observation clock. Freshness and cooldown therefore use same-moment equality as the zero-age case in witnesses and refuse when act_at differs from confirmed_at without a parseable ordering — the wall is real, the parser is deferred to the observation carrier."
 
 // THIS WAS THE FORK THAT PROVED THE FORK WAS LIVE. It re-derived the two-digit slot suffix by hand
 // -- a rule gunbc.build_cache_instance had ALREADY consolidated after three implementations

@@ -96,20 +96,22 @@ fn well_formed_maintenance_disposition_paths() -> List<String> {
   )
 }
 
-// The generated population and the classified universe are functions of the OBSERVED tracked
-// list, threaded from the receipt's own subject, not a stored roster. Before, `generated_paths`
-// was the same 100+ hand rows on every observation -- a fact about a maintained list, reported
-// under the name of a fact about the tree just observed.
+// Both the generated population and the classified universe are now functions of the OBSERVED
+// tracked list rather than of a stored roster, so they are threaded from the receipt's own
+// subject. Before this, `generated_paths` was the same 100+ hand rows on every observation --
+// the receipt reported a fact about a list someone maintained, under the name of a fact about
+// the tree it had just observed.
 // THE EMIT POPULATION IS AN OBSERVED FACT THIS RECEIPT REQUIRES, so an unobserved one refuses
-// through the SAME arm as a failed git read or manifest parse. Not a state-space conflation:
-// `LifecycleTotalityObservationRefused` is already this module's single answer for "the
-// observation did not produce the facts this receipt needs" -- read, parse and git refusals all
-// land there (see the fold below). An unreadable emitted population is the same class; a private
-// variant would fork one question across three consumer modules for no gain in what any can do.
+// through the SAME arm as a failed git read or a failed manifest parse. That is not a state-space
+// conflation slipped in: `LifecycleTotalityObservationRefused` is already this module's single
+// answer for "the observation did not produce the facts this receipt needs" -- read refusals,
+// parse refusals and git refusals all land there (see the fold below). An emitted-population that
+// could not be read is the same class, and giving it a private variant would fork one question
+// across three consumer modules for no gain in what any of them can do about it.
 //
-// It must NOT proceed on an empty population, which would report every tracked stage0 path as
-// unclassified under the name of a measurement. Hence the guard before the derivation, not a
-// default inside it.
+// What it must NOT do is proceed on an empty population, which would report every tracked stage0
+// path as unclassified under the name of a measurement. Hence the guard before the derivation
+// rather than a default inside it.
 fn emit_population_declared(evidence: EmitPopulationEvidence) -> Bool {
   match evidence {
     EmitPopulationConfirmed { emitted_stage0_repo_paths: _ } => true
@@ -306,11 +308,11 @@ fn lifecycle_decision_complete(receipt: LifecycleTotalityReceipt) -> Bool {
   }
 }
 
-// The fixture cannot derive its tracked list from the classified population: the generated half
-// is a FUNCTION of the tracked list, so that would be circular -- the observation would contain
-// only what it named and never exercise the filter. It is built the other way, from the authored
-// dispositions plus the scaffold's synthetic generated fixture paths, which the derivation then
-// re-finds as generated.
+// The fixture cannot derive its tracked list from the classified population any more: the
+// generated half is now a FUNCTION of the tracked list, so that would be circular -- the
+// observation would contain only what it already named and could never exercise the filter.
+// It is built the other way round, from the authored dispositions plus the scaffold's
+// synthetic generated fixture paths, which the derivation then re-finds as generated.
 fn lifecycle_totality_witness_classified_paths() -> List<String> {
   list_concat_unique(
     acc: witness_generated_stage0_fixture_paths,

@@ -109,10 +109,7 @@ fn bmc_netboot_nocloud_user_data(plan: BmcNetbootServePlan) -> String {
   autoinstall_user_data(payload: plan.autoinstall)
 }
 
-// The BMC fleet this module targets ships OpenBMC/Dropbear (gunbc.remote_shell_command
-// openbmc_dropbear_interpretation_note), so the interpretation is a determined fact of THIS
-// deployment, not Unknown -- named explicitly on SshExec rather than left for
-// command_over_transport to guess (DESIGN 5).
+data bmc_transport_interpretation_note: String = "The BMC fleet this module targets ships OpenBMC/Dropbear (gunbc.remote_shell_command openbmc_dropbear_interpretation_note), so the interpretation is a determined fact of THIS deployment, not Unknown -- named explicitly on SshExec rather than left for command_over_transport to guess (DESIGN 5)."
 
 fn bmc_transport(plan: BmcNetbootServePlan) -> CommandTransport {
   SshExec {
@@ -151,6 +148,7 @@ fn bmc_netboot_serve_command_text(plan: BmcNetbootServePlan) -> BmcNetbootServeC
 fn bmc_ssh_target(plan: BmcNetbootServePlan) -> NonEmptyStr {
   join(["root@", plan.bmc_host as String], "") as NonEmptyStr
 }
+
 
 data bmc_netboot_provision_scaffold: Disposition = Scaffold {
   dissolves_to: RealizationDispatch,
@@ -211,6 +209,7 @@ func bmc_netboot_stage_inline(plan: BmcNetbootServePlan, remote_path: NonEmptySt
   }
   return bmc_netboot_put_path(plan: plan, local: local, remote_path: remote_path)
 }
+
 
 data bmc_path_resolved_mkdir_applet: NonEmptyStr = "mkdir"
 

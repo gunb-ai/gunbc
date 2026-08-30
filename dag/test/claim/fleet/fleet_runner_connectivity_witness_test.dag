@@ -44,9 +44,7 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-// These rows pin the 2026-08-06 broker-session incident exactly. Fifteen registrations are offline,
-// one is online and busy, and local systemd units stayed active throughout — the wedge shape PR B's
-// repair loop must not misread as detached on a roster API blip.
+data acceptance_corpus_note: String = "These rows pin the 2026-08-06 broker-session incident exactly. Fifteen registrations are offline, one is online and busy, and local systemd units stayed active throughout — the wedge shape PR B's repair loop must not misread as detached on a roster API blip."
 
 test fn srv1_01_is_healthy_while_busy() -> Bool {
   match runner_slot_connectivity_verdict(
@@ -81,9 +79,7 @@ test fn active_without_registration_is_orphaned() -> Bool {
     }
 }
 
-// THE FAIL-CLOSED ROW PR B'S SAFETY DEPENDS ON: a roster read failure must render UNKNOWN on every
-// active slot, never detached. Zero-width achieved fields must stay unobserved rather than
-// fabricated as zero registrations.
+data roster_unavailable_is_unknown_not_detached_note: String = "THE FAIL-CLOSED ROW PR B'S SAFETY DEPENDS ON: a roster read failure must render UNKNOWN on every active slot, never detached. Zero-width achieved fields must stay unobserved rather than fabricated as zero registrations."
 
 test fn roster_unavailable_yields_unknown_on_every_active_slot() -> Bool {
   let roster = RosterReadUnavailable { reason: "GitHub org runners API returned 503" }
@@ -175,6 +171,7 @@ fn count_matching(
     f: (n, v) => if matched(v) { n + 1 } else { n }
   )
 }
+
 
 // ---------------------------------------------------------------------------
 // TRUNCATED ROSTER: the discriminating pair for the paginated-read repair.

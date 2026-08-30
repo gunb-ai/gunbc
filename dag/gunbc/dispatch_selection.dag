@@ -80,12 +80,7 @@ import gunbc.provider_account {
   admitted_single_session_binding,
 }
 
-// Slice A selection kernel (operator execution-profile directive 2026-08-01, addendum 2026-08-01).
-// This carrier names the three-valued coproduct ExecutionProfile; the operator also names the same
-// semantics ExecutionPreference — see dispatch_execution_preference_alias_note. Provider offers are
-// a per-provider coproduct; volume and intricacy from NodeSizing never flow into model or effort
-// selection. Every dispatch records requested_selection beside resolved_execution bound fields in
-// DispatchExecutionReceipt so what was REQUESTED is never displayed as proof of what RAN.
+data dispatch_selection_note: String = "Slice A selection kernel (operator execution-profile directive 2026-08-01, addendum 2026-08-01). This carrier names the three-valued coproduct ExecutionProfile; the operator also names the same semantics ExecutionPreference — see dispatch_execution_preference_alias_note. Provider offers are a per-provider coproduct; volume and intricacy from NodeSizing never flow into model or effort selection. Every dispatch records requested_selection beside resolved_execution bound fields in DispatchExecutionReceipt so what was REQUESTED is never displayed as proof of what RAN."
 
 data dispatch_execution_preference_alias_note: String = "Naming authority: ExecutionProfile. Operator synonym: ExecutionPreference. Both denote the same closed coproduct Automatic | Deep | ExactOverride with identical semantics."
 
@@ -93,9 +88,7 @@ data dispatch_deep_selection_heuristic_note: String = "Deep selection heuristic 
 
 data dispatch_execution_receipt_bar_note: String = "Receipt bar: the system must never display what was REQUESTED as though it proved what RAN. DispatchExecutionReceipt binds provider_instance, credential_binding, model_identity, provider_control, provider_version, temporal_bounds, usage_observations, and attempt_identity under resolved_execution, separate from requested_selection."
 
-// Operator priority (2026-08-01): this lane ranks Very High alongside the landing cockpit;
-// Claude/Cursor integration (slices B/C) is explicitly more valuable than placement science. No
-// randomized experiments, no universal scores.
+data dispatch_lane_priority_note: String = "Operator priority (2026-08-01): this lane ranks Very High alongside the landing cockpit; Claude/Cursor integration (slices B/C) is explicitly more valuable than placement science. No randomized experiments, no universal scores."
 
 type ExecutionProfile
   = ProfileAutomatic
@@ -255,15 +248,7 @@ type DispatchSelectionResult
       reason: NonEmptyStr
     }
 
-// SUPERSEDED AS EVIDENCE (operator ruling 2026-08-13): the literal below is NOT a process
-// fingerprint receipt — two branches agreeing on a hand-authored string is agreement, not
-// observation. Authoritative standing lives in gunbc.codex_provider_runtime_receipt
-// CodexProviderRuntimeReceipt.process_fingerprint, derived from the bundled runtime converge
-// installs; #8224 must consume that receipt, not this constant. Until wet tmux observation on the
-// bundled binary lands, process_fingerprint is CodexProcessFingerprintUnobserved and dispatch must
-// refuse rather than substitute this literal. Historical context (srv1 npm-shim, 2026-07-27):
-// authenticated /usr/bin/codex (0.133.0) reported pane_current_command node during exec — that
-// observation applied to the npm launcher, not the bundled-native 0.146.0 tree this PR converges.
+data dispatch_codex_process_fingerprint_note: String = "SUPERSEDED AS EVIDENCE (operator ruling 2026-08-13): the literal below is NOT a process fingerprint receipt — two branches agreeing on a hand-authored string is agreement, not observation. Authoritative standing lives in gunbc.codex_provider_runtime_receipt CodexProviderRuntimeReceipt.process_fingerprint, derived from the bundled runtime converge installs; #8224 must consume that receipt, not this constant. Until wet tmux observation on the bundled binary lands, process_fingerprint is CodexProcessFingerprintUnobserved and dispatch must refuse rather than substitute this literal. Historical context (srv1 npm-shim, 2026-07-27): authenticated /usr/bin/codex (0.133.0) reported pane_current_command node during exec — that observation applied to the npm launcher, not the bundled-native 0.146.0 tree this PR converges."
 
 data dispatch_codex_process_fingerprint: NonEmptyStr = "node" as NonEmptyStr
 data dispatch_codex_process_fingerprint_unobserved_selection_refusal: NonEmptyStr = "Codex dispatch selection refused: bundled-native process fingerprint unobserved; derive from CodexProviderRuntimeReceipt after wet tmux observation — never from dispatch_codex_process_fingerprint literal" as NonEmptyStr
@@ -273,18 +258,9 @@ data dispatch_cursor_process_fingerprint: NonEmptyStr = "cursor-agent" as NonEmp
 data dispatch_codex_default_model: NonEmptyStr = "account-default" as NonEmptyStr
 data dispatch_claude_default_model: NonEmptyStr = "account-default" as NonEmptyStr
 
-// LimitDispatchDrawAutomatic fail-closes on any observed ProviderNativeLimitBucket exhaustion
-// because model-to-limitId join is unobserved (extdeps.llm.codex_app_server
-// codex_model_to_limit_bucket_gap_note). ProfileExactOverride SelectCodex may carry
-// operator_asserted_native_limit_bucket — a human-asserted native_key attribution recorded on the
-// request, NOT a cited join and NOT inferred from model or limitName. DISSOLVES ON: cited
-// model-to-bucket join lands; automatic draw becomes decidable without operator assertion.
+data dispatch_limit_draw_note: String = "LimitDispatchDrawAutomatic fail-closes on any observed ProviderNativeLimitBucket exhaustion because model-to-limitId join is unobserved (extdeps.llm.codex_app_server codex_model_to_limit_bucket_gap_note). ProfileExactOverride SelectCodex may carry operator_asserted_native_limit_bucket — a human-asserted native_key attribution recorded on the request, NOT a cited join and NOT inferred from model or limitName. DISSOLVES ON: cited model-to-bucket join lands; automatic draw becomes decidable without operator assertion."
 
-// Operator assertion path (deep-raven-684, 2026-08-06): ProfileExactOverride plus Present
-// operator_asserted_native_limit_bucket names which native limit bucket the operator asserts this
-// dispatch draws on. The system records the assertion; it does not observe or infer a
-// model-to-bucket join. Absent assertion on override, or any non-override SelectCodex, uses
-// LimitDispatchDrawAutomatic.
+data codex_operator_asserted_native_limit_bucket_note: String = "Operator assertion path (deep-raven-684, 2026-08-06): ProfileExactOverride plus Present operator_asserted_native_limit_bucket names which native limit bucket the operator asserts this dispatch draws on. The system records the assertion; it does not observe or infer a model-to-bucket join. Absent assertion on override, or any non-override SelectCodex, uses LimitDispatchDrawAutomatic."
 
 fn codex_limit_dispatch_draw_for_selection(
   profile: ExecutionProfile,
@@ -379,12 +355,7 @@ fn automatic_refusal_reason_for_inventory(
 data dispatch_claude_default_workflow_mode: NonEmptyStr = "default" as NonEmptyStr
 data dispatch_claude_default_credential_root: FilePath = "~/.claude" as FilePath
 
-// PRODUCTION WIRING DEFERRED (operator ruling msg_3b291a6a / msg_0ec68b71): OfferClaude is omitted
-// from provider_inventory_for_instance until the WorkerTurn PR. resolve_provider_offer still
-// delegates OfferClaude to resolve_claude_offer when a fixture or future inventory row includes it
-// — production deferral is inventory omission, not a blanket resolver refusal. Fixture controls
-// (fixture_inventory_codex_then_claude, resolve_dispatch_selection) prove a future eligible Claude
-// standing is selectable.
+data claude_offer_inventory_wiring_note: String = "PRODUCTION WIRING DEFERRED (operator ruling msg_3b291a6a / msg_0ec68b71): OfferClaude is omitted from provider_inventory_for_instance until the WorkerTurn PR. resolve_provider_offer still delegates OfferClaude to resolve_claude_offer when a fixture or future inventory row includes it — production deferral is inventory omission, not a blanket resolver refusal. Fixture controls (fixture_inventory_codex_then_claude, resolve_dispatch_selection) prove a future eligible Claude standing is selectable."
 
 data dispatch_selection_temporal_unobserved_reason: NonEmptyStr = "selection time; temporal bounds assigned at spawn observation" as NonEmptyStr
 data dispatch_selection_usage_unobserved_reason: NonEmptyStr = "selection time; usage observations assigned during provider runtime" as NonEmptyStr
@@ -392,24 +363,13 @@ data dispatch_selection_attempt_unassigned_reason: NonEmptyStr = "selection time
 
 data claude_offer_not_wired_reason: NonEmptyStr = "Claude offer is not wired on this host inventory" as NonEmptyStr
 
-// CARRIER-SHAPE (eager-raven-845 live receipt, 2026-08-06): ClaudeStateRootRef { root: FilePath }
-// denotes the credential profile tree on disk, not the authority to act. A faithful file-tree copy
-// reproduces subscription metadata (claude_max, stripe_subscription) while tokenSource remains
-// none. Slice C credential binding must derive authentication from token state; assuming
-// file-residence silently mis-denotes. See gunbc.provider_standing
-// claude_profile_present_token_absent_live_fixture_note.
+data claude_state_root_denotes_profile_not_authority_note: String = "CARRIER-SHAPE (eager-raven-845 live receipt, 2026-08-06): ClaudeStateRootRef { root: FilePath } denotes the credential profile tree on disk, not the authority to act. A faithful file-tree copy reproduces subscription metadata (claude_max, stripe_subscription) while tokenSource remains none. Slice C credential binding must derive authentication from token state; assuming file-residence silently mis-denotes. See gunbc.provider_standing claude_profile_present_token_absent_live_fixture_note."
 
 data dispatch_selection_standing_ineligible_reason: NonEmptyStr = "no provider offer is selection-eligible for the requested profile" as NonEmptyStr
 
 data dispatch_selection_shape_mismatch_reason: NonEmptyStr = "no provider offer matches the requested selection shape" as NonEmptyStr
 
-// Production Codex inventory rows carry declared provider_standing_inventory_unobserved standing
-// and CodexProcessFingerprintUnobserved at selection time; wet probe-derived standing via
-// provider_standing_from_live_codex_probes is reserved for dashboard readiness, not hermetic
-// inventory build. Entitlement and account-limit axes stay honestly unobserved at this bridge;
-// selection refuses when those axes block eligibility. RecordedFact standing observations
-// (nimble-owl-833) supersede probe-derived bundles. Spawn-shape witnesses use fixture_inventory_*
-// builders.
+data dispatch_production_standing_unobserved_refusal_note: String = "Production Codex inventory rows carry declared provider_standing_inventory_unobserved standing and CodexProcessFingerprintUnobserved at selection time; wet probe-derived standing via provider_standing_from_live_codex_probes is reserved for dashboard readiness, not hermetic inventory build. Entitlement and account-limit axes stay honestly unobserved at this bridge; selection refuses when those axes block eligibility. RecordedFact standing observations (nimble-owl-833) supersede probe-derived bundles. Spawn-shape witnesses use fixture_inventory_* builders."
 
 fn dispatch_temporal_unobserved() -> DispatchTemporalBounds {
   DispatchTemporalUnobserved { reason: dispatch_selection_temporal_unobserved_reason }

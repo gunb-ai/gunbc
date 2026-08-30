@@ -26,11 +26,7 @@ import gunbc.occurrence_identity_acceptance_closure {
 }
 import std.dissolution { unbound_dissolution }
 
-// The expected owner and required receipt are PARAMETERS, not shared constants. Four receipts are
-// green by local execution but retain consumer debt until parser_transport_witness_entries exists
-// on main and executes them per PR. The census pins all six debts to their distinct acceptance
-// nodes and exact required_receipt text, preventing a row from staying counted while silently
-// weakening what execution must make RED.
+data occurrence_identity_consumer_red_debt_witness_note: String = "The expected owner and required receipt are PARAMETERS, not shared constants. Four receipts are green by local execution but retain consumer debt until parser_transport_witness_entries exists on main and executes them per PR. The census pins all six debts to their distinct acceptance nodes and exact required_receipt text, preventing a row from staying counted while silently weakening what execution must make RED."
 
 fn occurrence_identity_consumer_red_debt_has(
   id: String,
@@ -97,13 +93,7 @@ test fn occurrence_identity_receipt_enrollment_debt_is_counted_holds() -> Bool {
   ]
 }
 
-// Synthetic controls for the validation/workflow closing fold, not production behavior receipts and
-// not grounds for deleting debt. The positive control constructs Passed rows only to test the fold;
-// it does not assert that any production consumer executed. The deferral control proves
-// covered-with-deferral is not completion; the open control removes one law's coverage; and the
-// refusal controls independently plant unknown, duplicate, stale, non-green, and
-// receipt-plus-deferral rows. Production integration must replace these fixtures with observations
-// decoded from the live scoped execution receipt.
+data occurrence_identity_closing_check_witness_note: String = "Synthetic controls for the validation/workflow closing fold, not production behavior receipts and not grounds for deleting debt. The positive control constructs Passed rows only to test the fold; it does not assert that any production consumer executed. The deferral control proves covered-with-deferral is not completion; the open control removes one law's coverage; and the refusal controls independently plant unknown, duplicate, stale, non-green, and receipt-plus-deferral rows. Production integration must replace these fixtures with observations decoded from the live scoped execution receipt."
 
 fn occurrence_identity_closing_receipt(
   law: OccurrenceIdentityAcceptanceLaw

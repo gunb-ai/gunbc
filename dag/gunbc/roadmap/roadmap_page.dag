@@ -77,18 +77,7 @@ import gunbc.v1_deletion_plan { V1FinishLineSpec, v1_exit_finish_lines, v1_finis
 
 fn roadmap_page_max_depth() -> Int { 12 }
 
-// The finish-line block is REFERENCE prose, not operational attention (A1 of the presentation
-// recon, operator-signed 2026-08-01): the daily workspace's declared archetype is Operational
-// (gunbc.design.archetype dashboard_archetype), so / leads with the frontier and carries only the
-// one-line program strip (program_progress_markup_of, the ProgramProgressView consumer); the four
-// claims render on /roadmap, where the strategic argument lives. The 2026-07-28 stylesheet-debt
-// scaffold that shipped this section unstyled dissolved in the same pass: the gate/brick rules are
-// deleted, .finish-line-* rules exist on the tokened grain, and roadmap_css_lift_parity_digest was
-// re-pinned by execution (see the A1 re-pin note in
-// test.claim.design_register_lift_parity_witness). The count line under the heading is the LOCAL
-// denominator — accepted finish lines over the four — never the global roadmap population, which
-// belonged to a different question (review: the section visually implied a denominator of four
-// while reporting an unrelated global one).
+data finish_line_placement_note: String = "The finish-line block is REFERENCE prose, not operational attention (A1 of the presentation recon, operator-signed 2026-08-01): the daily workspace's declared archetype is Operational (gunbc.design.archetype dashboard_archetype), so / leads with the frontier and carries only the one-line program strip (program_progress_markup_of, the ProgramProgressView consumer); the four claims render on /roadmap, where the strategic argument lives. The 2026-07-28 stylesheet-debt scaffold that shipped this section unstyled dissolved in the same pass: the gate/brick rules are deleted, .finish-line-* rules exist on the tokened grain, and roadmap_css_lift_parity_digest was re-pinned by execution (see the A1 re-pin note in test.claim.design_register_lift_parity_witness). The count line under the heading is the LOCAL denominator — accepted finish lines over the four — never the global roadmap population, which belonged to a different question (review: the section visually implied a denominator of four while reporting an unrelated global one)."
 
 fn finish_line_state_class(accepted: Bool) -> String {
   if accepted { "accepted" } else { "active" }
@@ -144,19 +133,8 @@ fn dashboard_instance_banner() -> Fragment {
   ])
 }
 
-// The mute lives in the HEADER, pushed to the far edge by margin-left auto, because it is a
-// property of the whole surface rather than of any row — a per-row mute would be a second control
-// on every line, which is exactly what the exemplar's scope forbids. The former empty-label
-// rendering was corrected at A1 (presentation recon, 2026-08-01): honest-before-JS does not require
-// blankness — a blank button has no visible content and no accessible name, which is a defect, not
-// honesty. The TWO TOGGLES SHIP DIFFERENT AMOUNTS OF STATE, and the asymmetry is the honesty
-// boundary, not an inconsistency (A1 reconciliation, operator feedback 2026-08-01): the theme
-// control ships 'theme · auto' because at parse time the document carries no data-theme and
-// prefers-color-scheme governs — which is the DEFINITION of auto, true for every visitor until the
-// client program applies a stored choice; the sound control ships only its NAME because its state
-// has no parse-time truth — the preference lives in this browser's storage (unreadable at serve),
-// and for a no-JS visitor no sound ever plays, so any shipped state word would be a fabricated
-// claim for someone. The client program repaints both from storage on load, exactly as before.
+
+data sound_toggle_placement_note: String = "The mute lives in the HEADER, pushed to the far edge by margin-left auto, because it is a property of the whole surface rather than of any row — a per-row mute would be a second control on every line, which is exactly what the exemplar's scope forbids. The former empty-label rendering was corrected at A1 (presentation recon, 2026-08-01): honest-before-JS does not require blankness — a blank button has no visible content and no accessible name, which is a defect, not honesty. The TWO TOGGLES SHIP DIFFERENT AMOUNTS OF STATE, and the asymmetry is the honesty boundary, not an inconsistency (A1 reconciliation, operator feedback 2026-08-01): the theme control ships 'theme · auto' because at parse time the document carries no data-theme and prefers-color-scheme governs — which is the DEFINITION of auto, true for every visitor until the client program applies a stored choice; the sound control ships only its NAME because its state has no parse-time truth — the preference lives in this browser's storage (unreadable at serve), and for a no-JS visitor no sound ever plays, so any shipped state word would be a fabricated claim for someone. The client program repaints both from storage on load, exactly as before."
 
 fn sound_toggle_control() -> Fragment {
   el_attrs("button", [
@@ -172,14 +150,7 @@ fn theme_toggle_control() -> Fragment {
   ], [ txt(join([theme_toggle_label_prefix, theme_toggle_auto_value], "")) ])
 }
 
-// A1 header decision (presentation recon, operator-signed 2026-08-01): the header carries a TEXT
-// wordmark, not the site mark. The mark that stood here was gunbc.site.mark candidate A
-// ('Confluence') — an explicitly unselected brand experiment (DESIGN's site thread still owes
-// candidates B–D) whose aria-label said 'gunb.ai mark' on a gunbc operational tool: a public-site
-// brand artifact leaking into a tool surface. The minimal correct move is the wordmark; a drawn
-// mark returns if and when an actual brand-selection task runs (the sandbox auditioner is the
-// venue, the swatch-graduation precedent). The h1 carries the PAGE name alone — the product name
-// lives in the wordmark, so the two never restate each other.
+data roadmap_wordmark_note: String = "A1 header decision (presentation recon, operator-signed 2026-08-01): the header carries a TEXT wordmark, not the site mark. The mark that stood here was gunbc.site.mark candidate A ('Confluence') — an explicitly unselected brand experiment (DESIGN's site thread still owes candidates B–D) whose aria-label said 'gunb.ai mark' on a gunbc operational tool: a public-site brand artifact leaking into a tool surface. The minimal correct move is the wordmark; a drawn mark returns if and when an actual brand-selection task runs (the sandbox auditioner is the venue, the swatch-graduation precedent). The h1 carries the PAGE name alone — the product name lives in the wordmark, so the two never restate each other."
 
 data header_composition_frame_note: String = "HEADER AND CONTENT SHARE ONE COMPOSITION FRAME (A2 hierarchy closeout, operator gap ruling 2026-08-02: the wide-screen fold showed two alignment systems — the header hugging the left viewport edge while the content column centered at the page measure, leaving a dead gutter that read as accident). The header element keeps its full-width surface and border — it is a chassis edge — but its CONTENT now lives in .header-inner, the same measure_page/auto-margin frame the .roadmap and .daily-workspace columns use, so the wordmark, page name, and controls sit flush over the content column at every width. One frame, stated once: the inner wrapper consumes the identical tokens, so a measure change moves header and content together."
 
@@ -194,26 +165,13 @@ fn roadmap_header(page: String) -> Fragment {
   ])
 }
 
-// The status vocabulary the page renders (chip text, node-<key> classes, altitude-band counts) is
-// work_lifecycle_key over the seam's WorkLifecycle — the node_status_symbol decision moved to
-// gunbc.roadmap_presentation as its single authority (operator blocker 1, 2026-08-01: the old
-// renderer independently re-decided open/review/done/superseded beside the seam). The key set is
-// unchanged, so the altitude machinery and the styling grain consume the same four words.
+data page_status_vocab_note: String = "The status vocabulary the page renders (chip text, node-<key> classes, altitude-band counts) is work_lifecycle_key over the seam's WorkLifecycle — the node_status_symbol decision moved to gunbc.roadmap_presentation as its single authority (operator blocker 1, 2026-08-01: the old renderer independently re-decided open/review/done/superseded beside the seam). The key set is unchanged, so the altitude machinery and the styling grain consume the same four words."
 
 fn node_lifecycle_key(rn: RoadmapNode, merged: List<Int>) -> String {
   work_lifecycle_key(l: work_lifecycle(rn: rn, merged: merged))
 }
 
-// The lead is the row's at-a-glance face: the seam's row_headline (the ticket's typed headline; for
-// legacy lines the named lead residue inside gunbc.roadmap_presentation). A row whose LEAD is
-// itself paragraph-length defeats the disclosure — the brief stays collapsed but the summary line
-// does not, so the reader pays the full text anyway. The bound is authoring residue, not a
-// structural class: no construction forbids a long sentence, so this is the §5-sanctioned lens over
-// the genuinely unstructurable part, and it is typed/located/counted (node id + measured length)
-// rather than a bare Bool, so a red says WHICH row and by how much. 300 chars is the operator's
-// declared bound (roadmap-workspace-ux-plan.md P1b); an offender is re-cut by moving its summary
-// delimiter earlier or splitting its content, while the body remains available behind the
-// disclosure.
+data roadmap_lead_budget_note: String = "The lead is the row's at-a-glance face: the seam's row_headline (the ticket's typed headline; for legacy lines the named lead residue inside gunbc.roadmap_presentation). A row whose LEAD is itself paragraph-length defeats the disclosure — the brief stays collapsed but the summary line does not, so the reader pays the full text anyway. The bound is authoring residue, not a structural class: no construction forbids a long sentence, so this is the §5-sanctioned lens over the genuinely unstructurable part, and it is typed/located/counted (node id + measured length) rather than a bare Bool, so a red says WHICH row and by how much. 300 chars is the operator's declared bound (roadmap-workspace-ux-plan.md P1b); an offender is re-cut by moving its summary delimiter earlier or splitting its content, while the body remains available behind the disclosure."
 
 fn roadmap_lead_budget_chars() -> Int { 300 }
 
@@ -237,11 +195,7 @@ fn roadmap_authority_lead_budget_violations() -> List<LeadBudgetViolation> {
   lead_budget_violations(nodes: declared_roadmap_nodes())
 }
 
-// The brief bound (operator's ticket model: a brief is ~100 words or less, read daily). Same shape
-// as the lead budget: authoring residue no construction can forbid, so a typed located counted
-// census — a red carries the node id and the measured count, never a bare Bool. Words, not
-// characters, because the operator priced it in reading, and a word is the unit reading is priced
-// in.
+data ticket_brief_budget_note: String = "The brief bound (operator's ticket model: a brief is ~100 words or less, read daily). Same shape as the lead budget: authoring residue no construction can forbid, so a typed located counted census — a red carries the node id and the measured count, never a bare Bool. Words, not characters, because the operator priced it in reading, and a word is the unit reading is priced in."
 
 data ticket_brief_word_budget: Int = 100
 
@@ -268,24 +222,7 @@ fn ticket_brief_violations(nodes: List<RoadmapNode>) -> List<BriefBudgetViolatio
   })
 }
 
-// THE BUDGET GOVERNS AUTHORED TICKET PROSE, SO IT WALKS THE AUTHORED NODES RATHER THAN THE
-// PROJECTION. It previously walked doc_all_nodes(roadmap_authority()), which includes the DERIVED
-// closing-contract task nodes whose boundary is generated as a fixed prefix plus the target node's
-// red_control. That made the budget a second, indirect and undeclared constraint on red_control
-// length: accepting any node could push a DIFFERENT node over budget, because acceptance makes the
-// next node startable-and-unbound and therefore derives a closing-contract row for it.
-//
-// That is exactly what happened when v1-interpreter-primitive-roster was accepted:
-// v1-interpreter-primitive-dispatch-authority became the frontier, its derived row's brief came to
-// the prefix plus a six-clause red_control, and the budget refused -- with the only available
-// remedies being to trim a carefully authored acceptance bar to satisfy a PAGE constraint, or to
-// leave every PR touching roadmap_authority.dag red. Neither is the budget's purpose.
-//
-// A derived brief is a projection of a field that is already governed where it is authored.
-// Budgeting the projection prices the source field twice, through a channel nobody declared. So the
-// subject is declared_roadmap_nodes(): every authored ticket, accepted or active, and nothing
-// generated. The planted-fixture RED control is unaffected -- it passes an authored node directly
-// to ticket_brief_violations, which still refuses at the same threshold.
+data ticket_brief_budget_subject_note: String = "THE BUDGET GOVERNS AUTHORED TICKET PROSE, SO IT WALKS THE AUTHORED NODES RATHER THAN THE PROJECTION. It previously walked doc_all_nodes(roadmap_authority()), which includes the DERIVED closing-contract task nodes whose boundary is generated as a fixed prefix plus the target node's red_control. That made the budget a second, indirect and undeclared constraint on red_control length: accepting any node could push a DIFFERENT node over budget, because acceptance makes the next node startable-and-unbound and therefore derives a closing-contract row for it.\n\nThat is exactly what happened when v1-interpreter-primitive-roster was accepted: v1-interpreter-primitive-dispatch-authority became the frontier, its derived row's brief came to the prefix plus a six-clause red_control, and the budget refused -- with the only available remedies being to trim a carefully authored acceptance bar to satisfy a PAGE constraint, or to leave every PR touching roadmap_authority.dag red. Neither is the budget's purpose.\n\nA derived brief is a projection of a field that is already governed where it is authored. Budgeting the projection prices the source field twice, through a channel nobody declared. So the subject is declared_roadmap_nodes(): every authored ticket, accepted or active, and nothing generated. The planted-fixture RED control is unaffected -- it passes an authored node directly to ticket_brief_violations, which still refuses at the same threshold."
 
 fn roadmap_ticket_brief_violations() -> List<BriefBudgetViolation> {
   ticket_brief_violations(nodes: declared_roadmap_nodes())
@@ -331,16 +268,7 @@ fn disclosure_body_nodes(d: DisclosureView) -> List<Fragment> {
   }
 }
 
-// Supporting facts live in the disclosure, not the head row (A1 of the presentation recon,
-// operator-signed 2026-08-01): the head line had grown to ~7 simultaneous inline facts — owner,
-// sizing codes, carrier links, dependencies — wrapping arbitrarily under the title, which is the
-// half-console-half-product voice fork the recon named. The head carries the row's PRIMARY facts
-// only plus the actuator; owner/sizing/carriers are supporting facts behind the same disclosure
-// that already held the body. A row with supporting facts but no body still discloses (summary
-// label 'facts'), so no fact is dropped — only demoted. AT A2 this renderer reads the DECIDED view
-// alone: supporting facts arrive as WorkRowView.supporting_facts rows (label/value/href), the body
-// as WorkRowView.disclosure — the RoadmapNode/TicketFields reads that used to live here moved
-// behind the seam.
+data item_facts_disclosure_note: String = "Supporting facts live in the disclosure, not the head row (A1 of the presentation recon, operator-signed 2026-08-01): the head line had grown to ~7 simultaneous inline facts — owner, sizing codes, carrier links, dependencies — wrapping arbitrarily under the title, which is the half-console-half-product voice fork the recon named. The head carries the row's PRIMARY facts only plus the actuator; owner/sizing/carriers are supporting facts behind the same disclosure that already held the body. A row with supporting facts but no body still discloses (summary label 'facts'), so no fact is dropped — only demoted. AT A2 this renderer reads the DECIDED view alone: supporting facts arrive as WorkRowView.supporting_facts rows (label/value/href), the body as WorkRowView.disclosure — the RoadmapNode/TicketFields reads that used to live here moved behind the seam."
 
 fn supporting_fact_node(f: SupportingFact) -> Fragment {
   if f.href == "" {
@@ -382,14 +310,10 @@ fn view_detail_block(view: WorkRowView) -> List<Fragment> {
   }
 }
 
-// The per-surface link projection (remodel W2, census row 7): a Pointer's path is a REPO path —
-// correct in GitHub's renderer, dead on the served page by construction (no /docs route). The
-// served surface projects repo paths through the GitHub blob base so every carrier link answers;
-// when repo paths gain a served route (the storage-blind lane, W3 neighborhood), this base swaps
-// for that route in ONE place. The prose-inline [label](docs/...) links inside legacy AuthoredLine
-// blobs remain relative — a named residue that dies with the blobs themselves (W2-bulk).
+data github_blob_base_note: String = "The per-surface link projection (remodel W2, census row 7): a Pointer's path is a REPO path — correct in GitHub's renderer, dead on the served page by construction (no /docs route). The served surface projects repo paths through the GitHub blob base so every carrier link answers; when repo paths gain a served route (the storage-blind lane, W3 neighborhood), this base swaps for that route in ONE place. The prose-inline [label](docs/...) links inside legacy AuthoredLine blobs remain relative — a named residue that dies with the blobs themselves (W2-bulk)."
 
 data github_blob_base: String = "https://github.com/gunb-ai/gunbc/blob/main/"
+
 
 fn children_of(nodes: List<RoadmapNode>, edges: List<RoadmapEdge>, parent: RoadmapNodeId) -> List<RoadmapNode> {
   nodes |> filter(n => match roadmap_primary_parent(edges: edges, node: n.node) {
@@ -398,21 +322,8 @@ fn children_of(nodes: List<RoadmapNode>, edges: List<RoadmapEdge>, parent: Roadm
   })
 }
 
-// The launch button (operator 2026-07-20: manual click-to-dispatch). Rendered on every open or
-// review row as the PROJECTION of gunbc.roadmap_launch_admission for cause Operator (RLM-1): an
-// admitted row renders the operable button; a refused row renders the same button disabled,
-// carrying data-launch = the refusal's wire label and title = its reason -- the words POST
-// /dispatch would answer, because both read one decision. Done and superseded rows hide it. The
-// manual out-of-order dispatch the page used to preserve for blocked and unsized rows is gone with
-// the AvailableAsOverride arm: spawn_frontier.ready no longer governs one surface while the route
-// governs another. The button carries data-node = the node id. Its client behavior is a MODELED
-// TsProgram (gunbc.roadmap_component.dispatch_client_program), emitted as an EXTERNAL served asset
-// (roadmap_dispatch_asset_path, served by belt B) and referenced by <script src> -- NOT a
-// hand-concatenated JS string inlined into the HTML (the former was the dispatch-button incident's
-// root class, §5, and the inline placement was a hack: an inline <script> text node escapes '>'
-// under std.markup, corrupting an arrow's `=>`; external emission is escape-clean). It reads belt
-// B's `status` contract with the ok-set DERIVED from belt_dispatch_ok_status_labels; the retired
-// belt-A `ok`/`node` shape is gone and cannot return (the page witness holds a RED on `j.ok`).
+
+data dispatch_button_note: String = "The launch button (operator 2026-07-20: manual click-to-dispatch). Rendered on every open or review row as the PROJECTION of gunbc.roadmap_launch_admission for cause Operator (RLM-1): an admitted row renders the operable button; a refused row renders the same button disabled, carrying data-launch = the refusal's wire label and title = its reason -- the words POST /dispatch would answer, because both read one decision. Done and superseded rows hide it. The manual out-of-order dispatch the page used to preserve for blocked and unsized rows is gone with the AvailableAsOverride arm: spawn_frontier.ready no longer governs one surface while the route governs another. The button carries data-node = the node id. Its client behavior is a MODELED TsProgram (gunbc.roadmap_component.dispatch_client_program), emitted as an EXTERNAL served asset (roadmap_dispatch_asset_path, served by belt B) and referenced by <script src> -- NOT a hand-concatenated JS string inlined into the HTML (the former was the dispatch-button incident's root class, §5, and the inline placement was a hack: an inline <script> text node escapes '>' under std.markup, corrupting an arrow's `=>`; external emission is escape-clean). It reads belt B's `status` contract with the ok-set DERIVED from belt_dispatch_ok_status_labels; the retired belt-A `ok`/`node` shape is gone and cannot return (the page witness holds a RED on `j.ok`)."
 
 fn superseded_badge_of(view: WorkRowView) -> List<Fragment> {
   if view.superseded_by == "" {
@@ -433,17 +344,7 @@ fn view_dispatch_actions(view: WorkRowView) -> List<WorkAction> {
   })
 }
 
-// THE BUTTON CARRIES ITS DECIDED AXES (A2 hierarchy closeout, operator gap ruling 2026-08-02:
-// 'action prominence derives from selection and priority, not mere availability'). The seam already
-// decided priority and availability per action (action_axes_note); this renderer used to flatten
-// both into one identical class, which is exactly how fourteen equally loud pills reached the
-// desktop fold while LANDED rows kept the ready-row treatment. The class now carries the decided
-// priority (action-primary / action-secondary) and data-availability carries the admission fact, so
-// the stylesheet can rest every in-row control quiet and the client program can raise ONLY the
-// selected row's primary action to the invite band (the action-focal class — selection is client
-// state, prominence is its projection; named for the grant, not for liveness). Status classes keep
-// winning in the cascade: emphasis never overrides truth. No-JS visitors see every control quiet
-// but present, labeled, and operable — honest-before-JS forbids blankness, not calm.
+data dispatch_button_axes_note: String = "THE BUTTON CARRIES ITS DECIDED AXES (A2 hierarchy closeout, operator gap ruling 2026-08-02: 'action prominence derives from selection and priority, not mere availability'). The seam already decided priority and availability per action (action_axes_note); this renderer used to flatten both into one identical class, which is exactly how fourteen equally loud pills reached the desktop fold while LANDED rows kept the ready-row treatment. The class now carries the decided priority (action-primary / action-secondary) and data-availability carries the admission fact, so the stylesheet can rest every in-row control quiet and the client program can raise ONLY the selected row's primary action to the invite band (the action-focal class — selection is client state, prominence is its projection; named for the grant, not for liveness). Status classes keep winning in the cascade: emphasis never overrides truth. No-JS visitors see every control quiet but present, labeled, and operable — honest-before-JS forbids blankness, not calm."
 
 fn dispatch_button_attributes(view: WorkRowView, a: WorkAction) -> List<Attribute> {
   let base = [
@@ -492,15 +393,7 @@ fn dispatch_client_script() -> Fragment {
   }
 }
 
-// The served-page script wall (P1): every script the page carries must be MODELED, not a
-// hand-authored string. The page emits its dispatch behavior as an external <script src> pointing
-// at roadmap_dispatch_asset_path (whose body IS serialize_typescript_program of a modeled
-// TsProgram, served by belt B). So the census walks the page tree and refuses two shapes
-// fail-closed: an inline <script> with a non-empty text node (a hand JS string, the dispatch-button
-// incident's class) and a <script src> pointing anywhere but a known modeled asset. Green over the
-// real page; the RED controls (a resurrected inline string script; a rogue src) each locate their
-// violation. Mirror of the unthemed-color / untokened-length censuses: a pure reader over the same
-// Fragment tree, no new substrate.
+data page_script_census_note: String = "The served-page script wall (P1): every script the page carries must be MODELED, not a hand-authored string. The page emits its dispatch behavior as an external <script src> pointing at roadmap_dispatch_asset_path (whose body IS serialize_typescript_program of a modeled TsProgram, served by belt B). So the census walks the page tree and refuses two shapes fail-closed: an inline <script> with a non-empty text node (a hand JS string, the dispatch-button incident's class) and a <script src> pointing anywhere but a known modeled asset. Green over the real page; the RED controls (a resurrected inline string script; a rogue src) each locate their violation. Mirror of the unthemed-color / untokened-length censuses: a pure reader over the same Fragment tree, no new substrate."
 
 type PageScriptViolation {
   kind: String
@@ -551,23 +444,9 @@ fn dependency_line_nodes(view: WorkRowView) -> List<Fragment> {
   }
 }
 
-// The view-only row renderer (operator blocker 1, 2026-08-01): render_work_row and its helpers
-// receive WorkRowView ALONE — no RoadmapNode, no RoadmapItem, no merged list, no frontier edges, no
-// signoff or sizing constructors. Every fact they paint (status chip text, headline, superseded
-// pointer, dependency line, dispatch action, supporting facts, disclosure body, activity region)
-// arrives already decided by gunbc.roadmap_presentation; what remains here is serialization:
-// markdown-inline expansion, class assembly, element nesting. The tree structure (children, depth
-// fuel) stays outside the row renderer because parent/child is a graph fact about the PAGE, not a
-// presentation fact about one row.
+data render_work_row_note: String = "The view-only row renderer (operator blocker 1, 2026-08-01): render_work_row and its helpers receive WorkRowView ALONE — no RoadmapNode, no RoadmapItem, no merged list, no frontier edges, no signoff or sizing constructors. Every fact they paint (status chip text, headline, superseded pointer, dependency line, dispatch action, supporting facts, disclosure body, activity region) arrives already decided by gunbc.roadmap_presentation; what remains here is serialization: markdown-inline expansion, class assembly, element nesting. The tree structure (children, depth fuel) stays outside the row renderer because parent/child is a graph fact about the PAGE, not a presentation fact about one row."
 
-// The SERVER realization of the activity region — the same semantic DOM the emitted client paints
-// from the decided /workflow.json view (node-activity container with arm/attention data, one
-// summary line via activity_summary_line, the obligation ledger and evidence rows behind the
-// activity disclosure, the located reason on the refused arm; anomalous or refused opens the
-// disclosure — the attention rule's server half). Two realizations, ONE deciding module; the parity
-// witness holds their semantic regions and labels equal (operator blocker 7). A NoActiveWork view
-// renders NOTHING, which is why a served page whose rows carry no observed attempt still ships zero
-// workflow furniture.
+data server_activity_realization_note: String = "The SERVER realization of the activity region — the same semantic DOM the emitted client paints from the decided /workflow.json view (node-activity container with arm/attention data, one summary line via activity_summary_line, the obligation ledger and evidence rows behind the activity disclosure, the located reason on the refused arm; anomalous or refused opens the disclosure — the attention rule's server half). Two realizations, ONE deciding module; the parity witness holds their semantic regions and labels equal (operator blocker 7). A NoActiveWork view renders NOTHING, which is why a served page whose rows carry no observed attempt still ships zero workflow furniture."
 
 fn activity_obligation_node(s: WorkflowSegment) -> Fragment {
   let state = workflow_segment_state_key(state: s.state)
@@ -766,15 +645,7 @@ fn section_markup(s: RoadmapSection, merged: List<Int>, launch: LaunchRowContext
     body: body)
 }
 
-// The workspace is rendered from ONE DailyWorkspaceView (operator blocker 6): active work bands
-// ABOVE the ready queue and never folds itself away (a flat section — the attention rule says work
-// in flight owns the operator's attention, so it gets no altitude fold to hide behind); the
-// scheduling bands keep the frontier vocabulary and the altitude machinery. The workspace
-// observation banner narrates a channel-level refusal ONCE, and rows the impact covers render
-// without their per-row unobservable line (workspace_covers_row_activity — the row's typed state is
-// unchanged, only the duplicate narration is suppressed). The program strip is the
-// ProgramProgressView consumer: its ready-obligation count is the causal link between the program
-// claim and the queue below it.
+data daily_workspace_composition_note: String = "The workspace is rendered from ONE DailyWorkspaceView (operator blocker 6): active work bands ABOVE the ready queue and never folds itself away (a flat section — the attention rule says work in flight owns the operator's attention, so it gets no altitude fold to hide behind); the scheduling bands keep the frontier vocabulary and the altitude machinery. The workspace observation banner narrates a channel-level refusal ONCE, and rows the impact covers render without their per-row unobservable line (workspace_covers_row_activity — the row's typed state is unchanged, only the duplicate narration is suppressed). The program strip is the ProgramProgressView consumer: its ready-obligation count is the causal link between the program claim and the queue below it."
 
 fn workspace_row_li(view: WorkRowView, observation: ObservationImpactView) -> Fragment {
   let body = if workspace_covers_row_activity(observation: observation, a: view.activity) {
@@ -1089,12 +960,7 @@ fn roadmap_page_launch(doc: RoadmapDocument, merged: List<Int>, launch: LaunchHo
   roadmap_page_impl(doc: doc, merged: merged, main_prefix: [], launch: launch)
 }
 
-// roadmap_page_for_doc exists so a claim about how a TICKET ROW renders can be written without a
-// claim about which lanes are currently shown. witness_ticket_rows_render_structured asserts the
-// row markup — disclosure mark, brief class, displaced-cost label, carrier href — and it happened
-// to pick a node from a lane the focus later hid, so it went red having found nothing wrong with
-// the rendering at all. Passing an unfocused document keeps that claim measuring markup.
-// roadmap_page_for_authority keeps the declared focus, because the served page IS the focused view.
+data roadmap_page_focus_parameter_note: String = "roadmap_page_for_doc exists so a claim about how a TICKET ROW renders can be written without a claim about which lanes are currently shown. witness_ticket_rows_render_structured asserts the row markup — disclosure mark, brief class, displaced-cost label, carrier href — and it happened to pick a node from a lane the focus later hid, so it went red having found nothing wrong with the rendering at all. Passing an unfocused document keeps that claim measuring markup. roadmap_page_for_authority keeps the declared focus, because the served page IS the focused view."
 
 fn roadmap_page_for_doc(doc: RoadmapDocument) -> Fragment {
   roadmap_page_impl(
@@ -1117,12 +983,7 @@ fn roadmap_authority_refusal_markup(detail: String) -> Fragment {
   ])
 }
 
-// Which renders can offer a launch (RLM-1). The SERVED pages receive the host standing the serve
-// handler observed through gunbc.roadmap_belt_actuate belt_launch_host_standing, so their rows
-// project the same admission the route answers. Every other entry -- the static site, the
-// surface-observation probe, a page rendered for a document fixture -- passes
-// launch_host_unobserved_static_render, and every row refuses at the instance gate: there is no
-// actuating instance behind those bytes, so a Launch there would be a claim the page cannot honor.
+data page_launch_standing_note: String = "Which renders can offer a launch (RLM-1). The SERVED pages receive the host standing the serve handler observed through gunbc.roadmap_belt_actuate belt_launch_host_standing, so their rows project the same admission the route answers. Every other entry -- the static site, the surface-observation probe, a page rendered for a document fixture -- passes launch_host_unobserved_static_render, and every row refuses at the instance gate: there is no actuating instance behind those bytes, so a Launch there would be a claim the page cannot honor."
 
 fn roadmap_page_for_authority() -> Fragment {
   roadmap_page_for_projection(proj: roadmap_authority_projection())

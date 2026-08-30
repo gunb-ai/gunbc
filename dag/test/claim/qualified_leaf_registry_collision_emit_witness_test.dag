@@ -1,12 +1,6 @@
 module test.claim.qualified_leaf_registry_collision_emit_witness_test
 
-// Discriminating regression control for the post-#7685 leaf-keyed qualified lookup collision class.
-// Same-kind homonyms (homonym_value data/data) prove crate-path disambiguation; cross-kind homonyms
-// (result data vs fn) prove the exact qualified registry row decides BOTH declaration kind (foo vs
-// foo()) AND declaring module — the defect that broke was a kind decision keyed on the wrong
-// module's ItemInfo. Each cross-kind scenario runs with both import orders so qualification wins
-// over last-write registry order. dissolve-on: never — permanent regression alarm for
-// qualified-path disambiguation at emit time.
+data qualified_leaf_registry_collision_emit_witness_note: String = "Discriminating regression control for the post-#7685 leaf-keyed qualified lookup collision class. Same-kind homonyms (homonym_value data/data) prove crate-path disambiguation; cross-kind homonyms (result data vs fn) prove the exact qualified registry row decides BOTH declaration kind (foo vs foo()) AND declaring module — the defect that broke was a kind decision keyed on the wrong module's ItemInfo. Each cross-kind scenario runs with both import orders so qualification wins over last-write registry order. dissolve-on: never — permanent regression alarm for qualified-path disambiguation at emit time."
 
 fn w_cross_module_same_leaf_binds_qualifier_module() -> Bool {
   compile_dag_rust_emit_check(

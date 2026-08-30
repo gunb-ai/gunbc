@@ -14,9 +14,9 @@ import extdeps.systemd.unit_file {
 }
 
 // THE THREE RESOURCE DIRECTIVES ARE WHY THE EXTDEPS COPRODUCT WAS EXTENDED, SO THEY ARE WITNESSED
-// TOGETHER. Before the extension a rendered unit could carry none of them and the failure was
-// invisible: the unit still parsed and ran, and simply contended with live CI for CPU and disk.
-// This asserts the rendered text, the only surface systemd reads.
+// TOGETHER. Before the extension a rendered unit could carry none of them, and the failure was
+// invisible in the output: the unit still parsed, still ran, and simply contended with live CI for
+// CPU and disk. This asserts the rendered text, which is the only surface systemd reads.
 test fn the_service_renders_its_resource_discipline() -> Bool {
   let text = reclaim_service_unit_text()
   string_contains(s: text, pattern: "Nice=15")
@@ -43,10 +43,10 @@ test fn the_derived_timeout_reaches_the_rendered_unit() -> Bool {
 //
 // The incumbent unit sources /etc/default/ctrl-runner-reclaim, whose variables include one that
 // disables the repack outright and one that moves the fragmentation gate. Those gates are data
-// rows in gunbc.host_disk_reclaim; a unit letting a file override them has two authorities for
-// one policy and no observation revealing which one a host obeys. Re-adding the directive is a
-// one-line edit that looks like a fidelity improvement, which is why it needs a standing witness
-// rather than only the annotation explaining it.
+// rows in gunbc.host_disk_reclaim; a unit that lets a file override them has two authorities for
+// one policy and no observation that would reveal which one a host obeys. Re-adding the directive
+// is a one-line edit that looks like a fidelity improvement, which is exactly why it needs a
+// standing witness rather than only the annotation explaining it.
 test fn the_service_carries_no_environment_override_hatch() -> Bool {
   let text = reclaim_service_unit_text()
   !string_contains(s: text, pattern: "EnvironmentFile")

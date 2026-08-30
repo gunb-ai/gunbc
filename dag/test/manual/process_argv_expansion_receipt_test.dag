@@ -27,30 +27,31 @@ import extdeps.tools.jq { jq_argv_expansion_probe }
 //   4 ProcessArgvExpansion     -> splices          (the claim itself)
 //
 // Cases 2 and 3 are why a branch reorder is not the repair: both are FreeMonoid at runtime, and
-// both readings succeed, so no ordering recovers the erased intent.
+// the two readings both succeed, so no ordering recovers the erased intent.
 //
-// ONLY CASE 4 IS COMMITTED, DELIBERATELY, so the gap does not read as an omission. Cases 1-3 were
-// executed live against a real jq while the defect was isolated -- their receipts, with exact
-// commands and exit codes, are in the design note (open question 9-ter). They are not enrolled
-// because each ASSERTS THE OLD BEHAVIOR: case 2 pins the concatenating read as expected, and an
-// enrolled test asserting a defect is how that defect acquires immortality (DESIGN section 4b --
-// evidence whose only subject is behavior the model rejects is retired with a receipt, not left
-// standing). What survives enrolled is the carrier's claim: case 4 is red unless jq receives
-// exactly two words.
+// ONLY CASE 4 IS COMMITTED, DELIBERATELY, and this note is here so the gap does not read as an
+// omission. Cases 1-3 were executed live against a real jq while the defect was being isolated --
+// their receipts are quoted in the design note (open question 9-ter) with the exact commands and
+// exit codes. They are not enrolled here because each ASSERTS THE OLD BEHAVIOR: case 2 in
+// particular pins the concatenating read as the expected outcome, and an enrolled test asserting a
+// defect is how that defect acquires immortality (DESIGN section 4b -- evidence whose only subject
+// is behavior the model rejects is retired with a receipt, not left standing). What survives
+// enrolled is the claim the carrier makes: case 4 is red unless jq receives exactly two words.
 //
 // WET: this executes a real jq process, so it is EXCLUDED from hermetic discovery and ENROLLED in
-// gunbc.ci_layer_roots bin_witness_wet_entries. Both rows are required and answer different
+// gunbc.ci_layer_roots bin_witness_wet_entries. Both rows are required and they answer different
 // questions: the exclusion keeps it off a batch it cannot pass (jq.Process.RunWithStdin carries no
-// mock_response, and the envelope refuses rather than skipping); the enrollment gives it an
-// executing consumer. Exclusion alone would be deletion-with-the-file-retained -- DESIGN's
+// mock_response, and the envelope refuses rather than skipping), while the enrollment is what gives
+// it an executing consumer. Exclusion alone would be deletion-with-the-file-retained -- DESIGN's
 // witness-cost ruling, whose specimen is exactly that.
 //
 // Its home under test/manual/ decides NOTHING: the file was swept into unshrunk discovery by path
-// regardless -- the same ruling's point that a directory cannot answer an admission question. The
-// rows are the admission; the path is only where it lives.
+// regardless, which is the same ruling's point that a directory cannot answer an admission
+// question. The rows are the admission; the path is only where it lives.
 //
-// AND A MOCK IS NOT THE REPAIR. Mocking RunWithStdin would pass without any process running, while
-// the entire content is that a REAL jq exits 0 only on two argv words -- a green that cannot fail.
+// AND A MOCK IS NOT THE REPAIR. Mocking RunWithStdin would make this pass without any process
+// running, while its entire content is that a REAL jq exits 0 only on two argv words -- a green
+// that cannot fail.
 
 fn probe_lex() -> ModeledLexRules {
   ModeledLexRules {

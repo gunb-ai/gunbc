@@ -48,8 +48,8 @@ test fn a_shared_kernel_offer_satisfies_a_shared_kernel_requirement() -> Bool {
 // -- runs in the host's process namespace, and shares /home/ghrunner with every other slot on the
 // machine, which has already produced two independent mid-run file deletions under running jobs.
 // So all four tenant guarantees are missing, and the witness asserts the COUNT so that providing
-// one turns it red: the trigger to revisit the profile, rather than a green surviving partial
-// progress.
+// one of them turns it red: the correct trigger to revisit the profile, rather than a green that
+// survives partial progress.
 //
 // THE FLOOR IS DELIBERATELY NOT THE SUBJECT HERE. Our own work requires none of these and runs
 // green today; measuring the fleet against the floor's requirement would report a gap that does
@@ -78,9 +78,9 @@ test fn todays_slots_still_satisfy_our_own_floor() -> Bool {
 
 // EVERY GUARANTEE HAS ITS OWN WIRE WORD.
 //
-// The discriminating half: a label function collapsing two members would still render a plausible
-// refusal, surfacing only as an operator provisioning the wrong thing. Asserted as distinctness
-// across the whole closed set rather than by spot-checking one.
+// The discriminating half: a label function that collapsed two members would still render a
+// plausible refusal, and the collapse would only surface as an operator provisioning the wrong
+// thing. Asserted as distinctness across the whole closed set rather than by spot-checking one.
 test fn the_seven_guarantees_do_not_share_a_wire_word() -> Bool {
   let all = [
     FreshWritableRoot, PrivateProcessNamespace, PrivateNetworkNamespace,
@@ -94,9 +94,10 @@ test fn the_seven_guarantees_do_not_share_a_wire_word() -> Bool {
 
 // AN EMPTY REQUIREMENT IS SATISFIED BY AN EMPTY OFFER, WHICH IS NOT VACUOUS BUT LOAD-BEARING.
 //
-// The empty missing-list means SATISFIED and never "could not ask". The fold filters the REQUIRED
-// set, so an empty result can only mean every required guarantee was found -- if it could also
-// mean the question failed, every unsatisfiable offer in the fleet would read as fungible.
+// It states that the empty missing-list means SATISFIED and never "could not ask". The fold
+// derives its answer by filtering the REQUIRED set, so an empty result can only mean every
+// required guarantee was found -- if it could also mean the question failed, every unsatisfiable
+// offer in the fleet would read as fungible.
 test fn requiring_nothing_is_satisfied_rather_than_unanswerable() -> Bool {
   isolation_profile_satisfies(
     required: IsolationProfile { guarantees: [] },

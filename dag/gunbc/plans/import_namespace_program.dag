@@ -8,9 +8,9 @@ import gunbc.plans.md_helpers { h2, h3, p, li, ul, quote, cell, row }
 
 // WHY THIS ROSTER IS SHORT. The bindings at the foot of this module are the only claims here
 // joined to a symbol the ingestion-time citation wall resolves. Everything else in this plan is
-// PROSE, marked as prose in the text rather than dressed as a citation -- the owning session's own
-// instruction, and the right one: a long half-bound roster asserts that a machine is checking
-// claims it is not checking.
+// PROSE, and is marked as prose in the text rather than dressed as a citation. That is the
+// owning session's own instruction, and it is the right one: a long half-bound roster asserts
+// that a machine is checking claims it is not checking.
 
 fn status_block() -> MarkdownBlock {
   quote(blocks: [
@@ -140,12 +140,13 @@ fn section_9() -> List<MarkdownBlock> {
   ]
 }
 
-// Only two claims in this plan are bound to a symbol, both vouched for by the owning session and
-// verified to resolve before this module was authored. The measurement receipts, the step ownership
-// and the port-locus item rest on no symbol and are marked as prose above rather than given a
-// citation they cannot support.
-// WHAT THE INTERLOCK ROWS BELOW ARE: the cross-program precedence ruling (operator, 2026-08-26),
-// carried once in its own carrier and cited by both plans rather than restated in either.
+// Only two claims in this plan are bound to a symbol. Both were vouched for by the owning
+// session and both were verified to resolve before this module was authored. The measurement
+// receipts, the step ownership and the port-locus item rest on no symbol and are marked as
+// prose in the text above rather than given a citation they cannot support.
+// WHAT THE INTERLOCK ROWS BELOW ARE: the cross-program precedence ruling (operator,
+// 2026-08-26), carried once in its own carrier and cited by both plans rather than
+// restated in either.
 data import_namespace_program_bindings: List<DeclarationRef> = [
   decl_ref(module_path: "gunbc.namespace_cut_landing_order", decl_name: "current_landing_order"),
   decl_ref(module_path: "gunbc.compiler_frontend_program_interlock", decl_name: "milestone_prerequisites"),

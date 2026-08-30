@@ -173,35 +173,19 @@ data dispatch_tmux_process_fingerprint_observation_dissolution_trigger: Disposit
 
 data dispatch_repo: String = "gunbc"
 
-// PROJECTION of gunbc.host_layout.srv1_dispatch_worktree_root — the single path authority shared
-// with the live_deploy membership that provisions the directory (DESIGN §3; its former private copy
-// deleted, belt-B lane 2026-07-20).
+data dispatch_worktree_root_note: String = "PROJECTION of gunbc.host_layout.srv1_dispatch_worktree_root — the single path authority shared with the live_deploy membership that provisions the directory (DESIGN §3; its former private copy deleted, belt-B lane 2026-07-20)."
 
 data dispatch_worktree_root: String = srv1_dispatch_worktree_root as String
 data dispatch_git_remote_ref: String = gunbc_merge_target_ref as String
 data dispatch_tmux_session_prefix: String = "gunbc-dispatch-"
-// NAMED FINDING (U4 live drive, macOS, 2026-07-25): pane_current_command is the kernel process name
-// (p_comm) — symlinks resolve and exec -a cannot fake it, which is exactly the anti-spoof property
-// R5 wants — BUT a REAL running claude CLI on this macOS reported its VERSION STRING (2.1.220) as
-// p_comm, not claude (node process.title). So the Converged green path may not fire on real workers
-// until the fingerprint a real srv1 spawned session reports is READ, not guessed. The refuse arms
-// are unaffected (they are the safety half and were proven live four ways). DECIDE-BY-RECEIPT: run
-// tmux list-panes on srv1 beside a live dispatch session; if it reports claude this row stands; if
-// it reports a version-or-node name, this row becomes the observed value (or an accepted set) — a
-// data edit, never a code change.
+data dispatch_claude_fingerprint_finding_note: String = "NAMED FINDING (U4 live drive, macOS, 2026-07-25): pane_current_command is the kernel process name (p_comm) — symlinks resolve and exec -a cannot fake it, which is exactly the anti-spoof property R5 wants — BUT a REAL running claude CLI on this macOS reported its VERSION STRING (2.1.220) as p_comm, not claude (node process.title). So the Converged green path may not fire on real workers until the fingerprint a real srv1 spawned session reports is READ, not guessed. The refuse arms are unaffected (they are the safety half and were proven live four ways). DECIDE-BY-RECEIPT: run tmux list-panes on srv1 beside a live dispatch session; if it reports claude this row stands; if it reports a version-or-node name, this row becomes the observed value (or an accepted set) — a data edit, never a code change."
 
 type DispatchCliProvider
   = ClaudeCodeProvider
   | CodexDispatchProvider
   | CursorDispatchProvider
 
-// Provider choice is resolved by gunbc.dispatch_selection from a per-instance inventory, not a
-// host-wide constant. dispatch_actuator_selection projects the srv1-live Automatic selection for
-// the callers that carry no instance; instance-aware dispatch uses dispatch_selection_for_instance.
-// Production Codex inventory standing is declared-unobserved at selection time; wet probe-derived
-// standing is reserved for dashboard readiness
-// (dispatch_production_standing_unobserved_refusal_note). Each DispatchCliProvider variant owns
-// argv, preflight, and expected pane fingerprint together at this call site.
+data dispatch_provider_selection_note: String = "Provider choice is resolved by gunbc.dispatch_selection from a per-instance inventory, not a host-wide constant. dispatch_actuator_selection projects the srv1-live Automatic selection for the callers that carry no instance; instance-aware dispatch uses dispatch_selection_for_instance. Production Codex inventory standing is declared-unobserved at selection time; wet probe-derived standing is reserved for dashboard readiness (dispatch_production_standing_unobserved_refusal_note). Each DispatchCliProvider variant owns argv, preflight, and expected pane fingerprint together at this call site."
 
 fn provider_kind_to_dispatch_cli(kind: ProviderKind) -> DispatchCliProvider {
   match kind {
@@ -227,10 +211,7 @@ type DispatchActuatorSelection
     }
   | DispatchActuatorSelectionRefused { reason: NonEmptyStr }
 
-// The actuator's sole projection of gunbc.dispatch_selection for legacy call sites. Refusal
-// propagates typed — no Codex substitute, no ReasoningMedium default, no actuator-local process
-// fingerprint (DESIGN §5; review 47676). Process fingerprints are consumed from the selection
-// kernel via resolved_process_fingerprint, never re-declared here (DESIGN §3).
+data dispatch_actuator_selection_note: String = "The actuator's sole projection of gunbc.dispatch_selection for legacy call sites. Refusal propagates typed — no Codex substitute, no ReasoningMedium default, no actuator-local process fingerprint (DESIGN §5; review 47676). Process fingerprints are consumed from the selection kernel via resolved_process_fingerprint, never re-declared here (DESIGN §3)."
 
 fn dispatch_actuator_selection(node_sizing: NodeSizing) -> DispatchActuatorSelection {
   match dispatch_selection_for_instance(
@@ -282,13 +263,7 @@ data dispatch_codex_exec_spec: CodexExecSpec = CodexExecSpec {
   json_events: true,
   persist_session: true,
 }
-// Codex dispatch is unattended but not unrestricted: workspace-write permits implementation inside
-// the attempt worktree; approval never returns blocked operations to the agent instead of hanging
-// on an invisible prompt; --json exposes the provider event stream in the pane; persisted sessions
-// preserve the provider transcript after the process exits. Attempt capture retains the complete
-// JSONL stream, while workflow observation consumes a separately validated bounded projection.
-// Spawned and session-present remain actuator/process observations only — never a claim that the
-// provider completed successfully.
+data dispatch_codex_exec_spec_note: String = "Codex dispatch is unattended but not unrestricted: workspace-write permits implementation inside the attempt worktree; approval never returns blocked operations to the agent instead of hanging on an invisible prompt; --json exposes the provider event stream in the pane; persisted sessions preserve the provider transcript after the process exits. Attempt capture retains the complete JSONL stream, while workflow observation consumes a separately validated bounded projection. Spawned and session-present remain actuator/process observations only — never a claim that the provider completed successfully."
 
 fn dispatch_provider_label(provider: DispatchCliProvider) -> String {
   match provider {
@@ -305,14 +280,7 @@ type HostExecArgv {
 
 data dispatch_unrealized_capability_marker: String = "gunbc-unrealized-capability:"
 
-// An environment with no realization for a capability used to resolve to the empty program string.
-// Empty is non-executable, so the host did fail — but it failed as an unattributable exec error
-// with nothing naming WHICH capability was unrealized, which is a degradation that cannot be
-// counted (DESIGN 5). The marker keeps the arm non-executable and makes it self-describing at the
-// point of failure. It is not a widening: no marker value can run. The real close is a typed
-// refusal on the resolver, which requires the argv shapers above it to carry a refusal arm — that
-// rides with the DashboardExecResult typed-refusal migration named in
-// dashboard_exec_result_carrier_note, and dissolves this row with it.
+data dispatch_capability_program_absence_note: String = "An environment with no realization for a capability used to resolve to the empty program string. Empty is non-executable, so the host did fail — but it failed as an unattributable exec error with nothing naming WHICH capability was unrealized, which is a degradation that cannot be counted (DESIGN 5). The marker keeps the arm non-executable and makes it self-describing at the point of failure. It is not a widening: no marker value can run. The real close is a typed refusal on the resolver, which requires the argv shapers above it to carry a refusal arm — that rides with the DashboardExecResult typed-refusal migration named in dashboard_exec_result_carrier_note, and dissolves this row with it."
 
 fn dispatch_capability_program(
   environment: DispatchHostEnvironment,
@@ -344,15 +312,10 @@ type DispatchBriefFields {
   expected_artifact: String
 }
 
-// DispatchBriefFields contains only fields consumed by fill_dispatch_brief. Sizing remains typed on
-// RoadmapNode and is projected only where rendered.
+data dispatch_brief_fields_invariant_note: String = "DispatchBriefFields contains only fields consumed by fill_dispatch_brief. Sizing remains typed on RoadmapNode and is projected only where rendered."
 
-// The template's workflow slots are REAL fields when the node is a TicketLine (remodel W2: the
-// template was always the spec of the schema — its slot names became TicketFields), and honest
-// stubs only on the legacy prose frontier: a legacy row's brief still repeats the title where a
-// fact should be, which is exactly the burn-down pressure W2-bulk answers. A ticket node's brief
-// carries its own displaced cost, current state, first slice, RED, scope, and hand-back conditions;
-// paths come from the node's carriers.
+
+data dispatch_brief_slot_note: String = "The template's workflow slots are REAL fields when the node is a TicketLine (remodel W2: the template was always the spec of the schema — its slot names became TicketFields), and honest stubs only on the legacy prose frontier: a legacy row's brief still repeats the title where a fact should be, which is exactly the burn-down pressure W2-bulk answers. A ticket node's brief carries its own displaced cost, current state, first slice, RED, scope, and hand-back conditions; paths come from the node's carriers."
 
 type TmuxSessionScope {
   session_name: NonEmptyStr
@@ -402,13 +365,7 @@ type DispatchLiveSession {
   worker: WorkerObservation
 }
 
-// The configured provider instance is known from the actuator plan, not guessed from one process
-// command. dispatch_provider_instance_for is total over the same closed DispatchCliProvider choice
-// that owns argv and expected process fingerprint: Claude consumes claude_cli_program; Codex
-// consumes codex_cli_program. The tmux observation does not read hostname, version, state/auth
-// directory, credential storage, or service identity, so each stays explicitly Unobserved; filling
-// any from deployment prose would fabricate live evidence. A later provider-instance probe replaces
-// those arms independently.
+data dispatch_provider_instance_note: String = "The configured provider instance is known from the actuator plan, not guessed from one process command. dispatch_provider_instance_for is total over the same closed DispatchCliProvider choice that owns argv and expected process fingerprint: Claude consumes claude_cli_program; Codex consumes codex_cli_program. The tmux observation does not read hostname, version, state/auth directory, credential storage, or service identity, so each stays explicitly Unobserved; filling any from deployment prose would fabricate live evidence. A later provider-instance probe replaces those arms independently."
 
 fn dispatch_provider_executable(provider: DispatchCliProvider) -> NonEmptyStr {
   match provider {
@@ -496,16 +453,7 @@ fn dispatch_tmux_session_name(node_id: RoadmapNodeId) -> String {
   concat(dispatch_tmux_session_prefix, node_id)
 }
 
-// Dispatch is ATTEMPT-grain (U1, the redispatch fix, 2026-07-25; the operator's accidental spawn
-// was the live receipt): branch and worktree carry an attempt key derived from (node_id x the
-// spawn's clock observation) through std.content_hash; the Claude provider also derives its
-// required session-id from that stamp, while Codex mints its own persisted thread identity and does
-// not yet join it back to the attempt. A stopped attempt's debris therefore never collides with the
-// next spawn, and NOTHING is deleted to make way. The tmux session name deliberately STAYS
-// node-grain: it is what observe/reconcile key on, so already-live detection, kill, and tick
-// idempotency are untouched. Same-instant duplicate spawns for one node collide on the attempt key
-// and refuse at the git step, typed. A clock refusal refuses the spawn (step attempt-clock), never
-// an unknown-stamped attempt.
+data dispatch_attempt_note: String = "Dispatch is ATTEMPT-grain (U1, the redispatch fix, 2026-07-25; the operator's accidental spawn was the live receipt): branch and worktree carry an attempt key derived from (node_id x the spawn's clock observation) through std.content_hash; the Claude provider also derives its required session-id from that stamp, while Codex mints its own persisted thread identity and does not yet join it back to the attempt. A stopped attempt's debris therefore never collides with the next spawn, and NOTHING is deleted to make way. The tmux session name deliberately STAYS node-grain: it is what observe/reconcile key on, so already-live detection, kill, and tick idempotency are untouched. Same-instant duplicate spawns for one node collide on the attempt key and refuse at the git step, typed. A clock refusal refuses the spawn (step attempt-clock), never an unknown-stamped attempt."
 
 fn dispatch_attempt_key(node_id: RoadmapNodeId, probed_at: String) -> String {
   content_hash_atom(value: join([node_id as String, "\n", probed_at], "") as NonEmptyStr).digest as String
@@ -529,10 +477,7 @@ fn dispatch_worktree_path_for_instance(
   ], "")
 }
 
-// Verification validates the committed head in a DETACHED checkout, never the mutable
-// implementation worktree the agent may still be editing. The path is head-addressed beside the
-// attempt worktree so multiple heads per attempt each retain their own immutable tree without
-// colliding on the branch checkout.
+data dispatch_verification_checkout_path_note: String = "Verification validates the committed head in a DETACHED checkout, never the mutable implementation worktree the agent may still be editing. The path is head-addressed beside the attempt worktree so multiple heads per attempt each retain their own immutable tree without colliding on the branch checkout."
 
 fn dispatch_verification_checkout_path_for_instance(
   instance: HostDashboardInstance,
@@ -625,11 +570,7 @@ fn dispatch_attempt_launch_path_for_instance(
   ], "")
 }
 
-// The attempt's verification evidence sits beside its admission receipt and its event stream, in
-// the same attempt-state directory and keyed by the same attempt key. That placement is what lets a
-// Publication step find the evidence for the revision it is about to publish without being told
-// where to look: the attempt identity already addresses everything else the attempt produced, and a
-// verification record filed anywhere else would need a second index.
+data attempt_verification_receipt_path_note: String = "The attempt's verification evidence sits beside its admission receipt and its event stream, in the same attempt-state directory and keyed by the same attempt key. That placement is what lets a Publication step find the evidence for the revision it is about to publish without being told where to look: the attempt identity already addresses everything else the attempt produced, and a verification record filed anywhere else would need a second index."
 
 fn dispatch_attempt_verification_path_for_instance(
   instance: HostDashboardInstance,
@@ -661,14 +602,7 @@ fn dispatch_attempt_spawn_failure_path_for_instance(
   ], "")
 }
 
-// The oracle pin is TWO one-fact files beside the attempt's other evidence, not one record needing
-// a grammar. That follows the directory's existing shape — attempt-key, spawn-failure.txt and
-// provider-events.jsonl are each one fact in one file — and it is what lets the verification side
-// read a value back without a JSON parser, which this seam does not have. Only these two facts
-// cross the disk seam because they are the only two that cannot be re-derived at verification time:
-// what the oracle's content WAS before the agent started, and which revision that content came
-// from. The subject, the selection, and the declared command are all re-derived from the node's own
-// execution contract, so persisting them would be a second home for a fact that already has one.
+data dispatch_attempt_oracle_pin_layout_note: String = "The oracle pin is TWO one-fact files beside the attempt's other evidence, not one record needing a grammar. That follows the directory's existing shape — attempt-key, spawn-failure.txt and provider-events.jsonl are each one fact in one file — and it is what lets the verification side read a value back without a JSON parser, which this seam does not have. Only these two facts cross the disk seam because they are the only two that cannot be re-derived at verification time: what the oracle's content WAS before the agent started, and which revision that content came from. The subject, the selection, and the declared command are all re-derived from the node's own execution contract, so persisting them would be a second home for a fact that already has one."
 
 fn dispatch_attempt_oracle_identity_path_for_instance(
   instance: HostDashboardInstance,
@@ -754,20 +688,7 @@ fn dispatch_current_attempt_oracle_revision_path_for_instance(
   ], "")
 }
 
-// THE HEAD IS IN THE PATH, BECAUSE ONE ATTEMPT PUBLISHES MORE THAN ONCE. The ratified Review loop
-// is head A -> findings -> worker correction -> head B, all inside a single implementation attempt.
-// A single attempt-level receipt file has only bad answers to that: overwrite and lose A's real
-// receipt, leave it and misreport B forever, or invent an update convention nobody else follows.
-//
-// Addressing by head makes the rounds independent rather than competing. Writing B's receipt cannot
-// destroy A's, a reader asking about A gets A, and idempotence has an honest key - re-running for a
-// head that already has a receipt is a no-op, while a new head is a new round by construction
-// rather than by remembering to bump something.
-//
-// This is also what lets the subject check stay a check rather than becoming the only defence. Even
-// with per-head addressing a receipt can be copied or retained, so publication_evidence_for still
-// compares all six subject fields; the path narrows what can be found and the comparison decides
-// what counts.
+data publication_receipt_is_head_addressed_note: String = "THE HEAD IS IN THE PATH, BECAUSE ONE ATTEMPT PUBLISHES MORE THAN ONCE. The ratified Review loop is head A -> findings -> worker correction -> head B, all inside a single implementation attempt. A single attempt-level receipt file has only bad answers to that: overwrite and lose A's real receipt, leave it and misreport B forever, or invent an update convention nobody else follows.\n\nAddressing by head makes the rounds independent rather than competing. Writing B's receipt cannot destroy A's, a reader asking about A gets A, and idempotence has an honest key - re-running for a head that already has a receipt is a no-op, while a new head is a new round by construction rather than by remembering to bump something.\n\nThis is also what lets the subject check stay a check rather than becoming the only defence. Even with per-head addressing a receipt can be copied or retained, so publication_evidence_for still compares all six subject fields; the path narrows what can be found and the comparison decides what counts."
 
 data publication_receipt_directory_is_named_once_note: String = "The directory is its own function because a reader has to establish that a receipt is ABSENT, and the only honest way to do that is to list the directory it would be in and not find it there. Filesystem.Read reports the same failure for a file that does not exist and one that cannot be read (review 46148), so absence inferred from a failed read is a guess; absence established by a successful listing is a fact. That makes the directory a load-bearing address rather than a path fragment, so it is named here once and the receipt path is built from it."
 
@@ -806,24 +727,9 @@ fn dispatch_attempt_publication_receipt_path_for_instance(
   ], "")
 }
 
-// EVERY OTHER RECEIPT ON THIS ROW HAS A `current` SPELLING AND THIS ONE DELIBERATELY DOES NOT. The
-// alias exists so a reader that knows only a node can find the live attempt's evidence without
-// first reading the attempt key. Publication cannot be reached that way: its address contains the
-// head, and a reader that does not know the head has no path to build regardless of which attempt
-// directory it starts from.\n\nSo the alias would buy nothing and cost the thing this lane is for.
-// A reader holding a head already had to establish it, and establishing a head means reading the
-// attempt - at which point the attempt-keyed path is available and the alias is a second spelling
-// of it. Keeping it would have made the symlink an alternative route to a file whose identity is a
-// head, which is how a receipt for one attempt gets read as evidence for another.
+data publication_receipt_has_no_current_alias_note: String = "EVERY OTHER RECEIPT ON THIS ROW HAS A `current` SPELLING AND THIS ONE DELIBERATELY DOES NOT. The alias exists so a reader that knows only a node can find the live attempt's evidence without first reading the attempt key. Publication cannot be reached that way: its address contains the head, and a reader that does not know the head has no path to build regardless of which attempt directory it starts from.\\n\\nSo the alias would buy nothing and cost the thing this lane is for. A reader holding a head already had to establish it, and establishing a head means reading the attempt - at which point the attempt-keyed path is available and the alias is a second spelling of it. Keeping it would have made the symlink an alternative route to a file whose identity is a head, which is how a receipt for one attempt gets read as evidence for another."
 
-// VERIFICATION AND PUBLICATION SHARE THE HEAD × WINDOW GRAIN. One implementation attempt may be
-// verified at head A under window W1 and again at the same head under window W2 after the target
-// branch advances. Attempt-level files would either overwrite A or let A's verdict stand for B. The
-// verification directory therefore mirrors publication at the finer grain:
-// attempt/<attempt>/verification/<head>.<window_identity>.json for immutable receipts, plus a
-// mutable current-selection pointer at verification/<head>.current-selection.json that names which
-// window identity is selected for dashboard observation. DISSOLVE-ON: the legacy attempt-level
-// validation-receipt.json path deletes once its last belt consumer is gone.
+data verification_receipt_is_head_addressed_note: String = "VERIFICATION AND PUBLICATION SHARE THE HEAD × WINDOW GRAIN. One implementation attempt may be verified at head A under window W1 and again at the same head under window W2 after the target branch advances. Attempt-level files would either overwrite A or let A's verdict stand for B. The verification directory therefore mirrors publication at the finer grain: attempt/<attempt>/verification/<head>.<window_identity>.json for immutable receipts, plus a mutable current-selection pointer at verification/<head>.current-selection.json that names which window identity is selected for dashboard observation. DISSOLVE-ON: the legacy attempt-level validation-receipt.json path deletes once its last belt consumer is gone."
 
 fn dispatch_attempt_verification_dir_for_instance(
   instance: HostDashboardInstance,
@@ -1014,24 +920,11 @@ fn dispatch_branch_name(node_id: RoadmapNodeId, attempt_key: String) -> String {
   join(["dispatch/", node_id as String, "-a", attempt_key], "")
 }
 
-// Lease and tmux classification witnesses pin an explicit process fingerprint via
-// dispatch_tmux_session_scope_for_process_fingerprint and
-// classify_dispatch_request_for_process_fingerprint — they prove ownership classification and
-// ready-frontier gating, not production selection standing. Production paths use
-// dispatch_actuator_selection and refuse while standing axes block eligibility.
+data dispatch_actuator_lease_witness_fixture_note: String = "Lease and tmux classification witnesses pin an explicit process fingerprint via dispatch_tmux_session_scope_for_process_fingerprint and classify_dispatch_request_for_process_fingerprint — they prove ownership classification and ready-frontier gating, not production selection standing. Production paths use dispatch_actuator_selection and refuse while standing axes block eligibility."
 
-// Production admission onto the live-session list routes through dispatch_tmux_session_scope, which
-// projects dispatch_actuator_selection. Standing refusal yields Absent and the tmux row is omitted
-// — ordinary non-running presentation, never a Codex substitute or partial row. Wire projection for
-// already-admitted sessions uses dispatch_tmux_session_scope_for_live_session: Codex routes through
-// dispatch_actuator_selection and refuses when process fingerprint is unobserved; Claude/Cursor
-// still pin their observed fixture fingerprints.
+data dispatch_live_session_admission_note: String = "Production admission onto the live-session list routes through dispatch_tmux_session_scope, which projects dispatch_actuator_selection. Standing refusal yields Absent and the tmux row is omitted — ordinary non-running presentation, never a Codex substitute or partial row. Wire projection for already-admitted sessions uses dispatch_tmux_session_scope_for_live_session: Codex routes through dispatch_actuator_selection and refuses when process fingerprint is unobserved; Claude/Cursor still pin their observed fixture fingerprints."
 
-// One planted refusal specimen for production standing-blocked projection: tmux row
-// gunbc-dispatch-panel-a while production dispatch_actuator_selection refuses. Actuator admission
-// (dispatch_live_sessions_from_entries), classify_dispatch_request, and sessions wire
-// (belt_sessions_json_value over Observed live) must all derive no eligible provider — omit the
-// row, never Null-deref or Codex substitute.
+data dispatch_projection_standing_refusal_specimen_note: String = "One planted refusal specimen for production standing-blocked projection: tmux row gunbc-dispatch-panel-a while production dispatch_actuator_selection refuses. Actuator admission (dispatch_live_sessions_from_entries), classify_dispatch_request, and sessions wire (belt_sessions_json_value over Observed live) must all derive no eligible provider — omit the row, never Null-deref or Codex substitute."
 
 fn fixture_projection_standing_refusal_tmux_entry() -> TmuxLsEntry {
   TmuxLsEntry {
@@ -1426,17 +1319,7 @@ fn tmux_spawn_argv(session_name: String, worktree_path: String, claude_argv: Lis
   )
 }
 
-// tmux pipe-pane is the one foreign-executor seam in attempt capture: upstream requires a
-// shell-command payload. TmuxPipeCommand bounds that residue. The earlier session-environment
-// design was rejected by live execution because pipe processes did not inherit tmux set-environment
-// values and created no file. Staging order is state directory -> idle exact-shell pane ->
-// default-shell -> remain-on-exit -> quoted pipe -> typed provider respawn, so the first provider
-// byte and a fast nonzero exit are both observable. The payload itself is no longer constructed
-// here: gunbc.dispatch_pipe_pane_emit builds it as a bash AST and renders it through the signed
-// serializer (review 44063), which is why this module now imports an EMISSION rather than joining a
-// command: a serializer refusal has no command to hand back, so
-// dispatch_spawn_commands_for_instance refuses the whole plan instead of staging one (review
-// 44113).
+data dispatch_event_pipe_seam_note: String = "tmux pipe-pane is the one foreign-executor seam in attempt capture: upstream requires a shell-command payload. TmuxPipeCommand bounds that residue. The earlier session-environment design was rejected by live execution because pipe processes did not inherit tmux set-environment values and created no file. Staging order is state directory -> idle exact-shell pane -> default-shell -> remain-on-exit -> quoted pipe -> typed provider respawn, so the first provider byte and a fast nonzero exit are both observable. The payload itself is no longer constructed here: gunbc.dispatch_pipe_pane_emit builds it as a bash AST and renders it through the signed serializer (review 44063), which is why this module now imports an EMISSION rather than joining a command: a serializer refusal has no command to hand back, so dispatch_spawn_commands_for_instance refuses the whole plan instead of staging one (review 44113)."
 
 // THE PUBLICATION DIRECTORY IS PREPARED WITH THE ATTEMPT DIRECTORY, IN ONE install -d, and the
 // reason it is here rather than on the write path is that the write path cannot create it. The
@@ -1653,13 +1536,7 @@ fn tmux_kill_session_argv_for_instance(
   )
 }
 
-// review 44113. Building the spawn plan can FAIL, so the builder returns a sum rather than a record
-// it might have to fake. The one failure today is the tmux pipe-pane payload: it is emitted through
-// the bash backend, and a serializer refusal has no honest command to put in tmux_event_pipe.
-// Answering with a placeholder would make an un-emittable intent indistinguishable from a
-// serialized one at the dispatch site (DESIGN 5). The refusal names the step that could not be
-// built, and the belt maps it onto the SpawnFailed carrier it already has, so a plan that cannot be
-// built never becomes a plan that gets run.
+data dispatch_spawn_plan_note: String = "review 44113. Building the spawn plan can FAIL, so the builder returns a sum rather than a record it might have to fake. The one failure today is the tmux pipe-pane payload: it is emitted through the bash backend, and a serializer refusal has no honest command to put in tmux_event_pipe. Answering with a placeholder would make an un-emittable intent indistinguishable from a serialized one at the dispatch site (DESIGN 5). The refusal names the step that could not be built, and the belt maps it onto the SpawnFailed carrier it already has, so a plan that cannot be built never becomes a plan that gets run."
 
 type DispatchSpawnPlan
   = DispatchSpawnReady { commands: DispatchSpawnCommands }
@@ -2181,17 +2058,7 @@ fn dispatch_live_sessions_from_entries(
   )
 }
 
-// U3 (result surfacing): the attempt branches ARE the results ledger — every spawn mints
-// dispatch/<node>-a<key> (U1), so listing refs/heads/dispatch/ observes every attempt ever made,
-// including pre-attempt-grain LEGACY branches (attempt_key empty — the operator's accidental
-// ts-authority-converge spawn is one), which are real attempts and render as such, never filtered
-// as noise. Parse discriminates by the LAST -a segment being exactly 16 chars (the content-hash key
-// width); a node id that itself ends in -a<16 chars> would misparse — accepted and named, not
-// papered over: node ids are roadmap-authored and none has that shape. Empty-node branches are
-// rejected before constructing DispatchAttemptRef, whose node and branch are non-empty by
-// construction; malformed debris cannot invalidate the whole attempts projection. v0 renders branch
-// NAMES (copyable, true), never tree links that would be dead until a push — a dead link is a
-// fabricated result; the PR half lands when push/PR state is observed, not guessed.
+data dispatch_attempt_refs_note: String = "U3 (result surfacing): the attempt branches ARE the results ledger — every spawn mints dispatch/<node>-a<key> (U1), so listing refs/heads/dispatch/ observes every attempt ever made, including pre-attempt-grain LEGACY branches (attempt_key empty — the operator's accidental ts-authority-converge spawn is one), which are real attempts and render as such, never filtered as noise. Parse discriminates by the LAST -a segment being exactly 16 chars (the content-hash key width); a node id that itself ends in -a<16 chars> would misparse — accepted and named, not papered over: node ids are roadmap-authored and none has that shape. Empty-node branches are rejected before constructing DispatchAttemptRef, whose node and branch are non-empty by construction; malformed debris cannot invalidate the whole attempts projection. v0 renders branch NAMES (copyable, true), never tree links that would be dead until a push — a dead link is a fabricated result; the PR half lands when push/PR state is observed, not guessed."
 
 type DispatchAttemptRef {
   node_id: NonEmptyStr
@@ -2281,27 +2148,9 @@ fn git_for_each_ref_dispatch_argv_for_instance(
   )
 }
 
-// R5 owned-only teardown, session grain: a live dispatch session is teardown-eligible (OUR process)
-// ONLY when its lease verdict is Converged (running with our expected process fingerprint) or
-// Drifted (our fingerprint, stale lease — reap-able stale-ours, matching
-// decision_for_dispatch_lease_verdict's DrainStale). Conflict (foreign process), Inaccessible,
-// UnknownRefused, Absent are NOT owned. Name-only tmux-ls observation yields
-// UnknownRefused/Inaccessible only, so teardown FAIL-CLOSED-REFUSES until the observation carries a
-// process fingerprint — correct R5 (no ownership proof, no reap). This owned-ness judgment lives
-// HERE (the actuator owns lease/ownership classification, §3) as a Bool; gunbc.roadmap_belt lifts
-// the Bool into gunbc.ownership.Ownership for the reconcile teardown gate, so the belt never
-// imports ObservationVerdict.
+data dispatch_session_ownership_note: String = "R5 owned-only teardown, session grain: a live dispatch session is teardown-eligible (OUR process) ONLY when its lease verdict is Converged (running with our expected process fingerprint) or Drifted (our fingerprint, stale lease — reap-able stale-ours, matching decision_for_dispatch_lease_verdict's DrainStale). Conflict (foreign process), Inaccessible, UnknownRefused, Absent are NOT owned. Name-only tmux-ls observation yields UnknownRefused/Inaccessible only, so teardown FAIL-CLOSED-REFUSES until the observation carries a process fingerprint — correct R5 (no ownership proof, no reap). This owned-ness judgment lives HERE (the actuator owns lease/ownership classification, §3) as a Bool; gunbc.roadmap_belt lifts the Bool into gunbc.ownership.Ownership for the reconcile teardown gate, so the belt never imports ObservationVerdict."
 
-// U4 (stop from the UI): the pane read is the scaffold's declared dissolution — tmux list-panes -a
-// with the cited format variables yields (session_name, pane_current_command) per pane, and
-// pane_current_command IS the process-fingerprint evidence the lease classification was built to
-// consume. The observation upgrade is total over its inputs: a session whose pane row is found
-// observes as SessionObserved (fingerprint in hand — Converged only for the process fingerprint
-// dispatch_actuator_selection resolved, Conflict for anything else wearing the name, e.g. a
-// hand-made sleep); a session visible in ls but absent from the pane read stays SessionNameObserved
-// (honest partial — UnknownRefused downstream, still no reap). The stop gate is the R5 table as a
-// typed decision: owned stops; everything else refuses with the verdict's own reason, and refusing
-// to kill what we cannot prove ours is the point, not a limitation.
+data tmux_pane_fingerprint_note: String = "U4 (stop from the UI): the pane read is the scaffold's declared dissolution — tmux list-panes -a with the cited format variables yields (session_name, pane_current_command) per pane, and pane_current_command IS the process-fingerprint evidence the lease classification was built to consume. The observation upgrade is total over its inputs: a session whose pane row is found observes as SessionObserved (fingerprint in hand — Converged only for the process fingerprint dispatch_actuator_selection resolved, Conflict for anything else wearing the name, e.g. a hand-made sleep); a session visible in ls but absent from the pane read stays SessionNameObserved (honest partial — UnknownRefused downstream, still no reap). The stop gate is the R5 table as a typed decision: owned stops; everything else refuses with the verdict's own reason, and refusing to kill what we cannot prove ours is the point, not a limitation."
 
 type TmuxPaneEntry {
   session_name: String
@@ -2390,13 +2239,7 @@ fn dispatch_session_cleanup_detail(
   }
 }
 
-// Session presence, pane/process lifecycle, and cleanup authority are independent facts. A running
-// process is stop-eligible only when its observed command matches the provider fingerprint. A dead
-// remain-on-exit pane is clear-eligible from the exact dead/status observation because no live
-// process can be killed; its last command is historical evidence and is never re-used as a running
-// ownership fingerprint. A present session with an absent/refused pane observation remains
-// cleanup-refused. The wire therefore says stop, clear, or unavailable mechanically from
-// DispatchSessionCleanup instead of presenting every tmux container as a live agent.
+data dispatch_process_cleanup_separation_note: String = "Session presence, pane/process lifecycle, and cleanup authority are independent facts. A running process is stop-eligible only when its observed command matches the provider fingerprint. A dead remain-on-exit pane is clear-eligible from the exact dead/status observation because no live process can be killed; its last command is historical evidence and is never re-used as a running ownership fingerprint. A present session with an absent/refused pane observation remains cleanup-refused. The wire therefore says stop, clear, or unavailable mechanically from DispatchSessionCleanup instead of presenting every tmux container as a live agent."
 
 fn worker_process_from_attempt_pane(
   pane: TmuxAttemptPaneEntry,

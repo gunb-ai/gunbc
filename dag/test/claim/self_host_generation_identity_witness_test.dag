@@ -136,11 +136,12 @@ test fn generation_identity_agrees_with_itself() -> Bool {
   generation_identity_agrees(left: gi_baseline(), right: gi_baseline())
 }
 
-// THE KEYSTONE DISCRIMINATING RED, stated as a conjunction rather than six separate greens so a
-// silently-dropped arm cannot pass unnoticed. For each of the six axes, perturbing it alone must
-// (a) break overall agreement, (b) report exactly ONE mismatched axis, and (c) name THAT axis.
-// Clause (c) is what a single opaque compiler_identity scalar cannot satisfy — it fails (b) and
-// (c) together with an undifferentiated mismatch.
+// THE KEYSTONE DISCRIMINATING RED, stated as a conjunction rather than as six
+// separate greens so a silently-dropped arm cannot pass unnoticed. For every one of
+// the six axes: perturbing that axis alone must (a) break overall agreement, (b)
+// report exactly ONE mismatched axis, and (c) report THAT axis by name. Clause (c)
+// is what a single opaque compiler_identity scalar cannot satisfy — it would fail
+// (b) and (c) together by reporting an undifferentiated mismatch.
 test fn each_axis_perturbation_names_exactly_its_own_axis() -> Bool {
   for_all(
     xs: generation_axes,
@@ -204,11 +205,12 @@ fn gi_unbuilt() -> GenerationIdentity {
   }
 }
 
-// THE EMPTY-OBSERVATION NARROW CONTROL. Two generations never built do NOT agree on the artifact
-// axis: neither side carries an observed artifact, so `true` would render "we could not observe
-// either artifact" as "the artifacts agree" — ⊥-as-ignorance reported as ⊥-as-answer. The arm most
-// likely to be quietly relaxed later, so asserted in both directions: unbuilt-vs-unbuilt and
-// unbuilt-vs-built.
+// THE EMPTY-OBSERVATION NARROW CONTROL. Two generations that were never built do
+// NOT agree on the artifact axis. Neither side carries an observed artifact, so
+// answering `true` would render "we could not observe either artifact" as "the
+// artifacts agree" — ⊥-as-ignorance reported as ⊥-as-answer. This is the arm most
+// likely to be quietly relaxed later, which is why it is asserted in both
+// directions: unbuilt-vs-unbuilt and unbuilt-vs-built.
 test fn two_unmaterialized_artifacts_do_not_agree() -> Bool {
   !generation_axis_agrees(
     left: gi_unbuilt(),
@@ -367,10 +369,11 @@ fn gi_ordered(roster: SourceClosureRoster) -> Bool {
   }
 }
 
-// FORGERY CONTROL. Text that is not a valid SHA-512 digest cannot become a materialized artifact.
-// Before ObservedArtifactDigest was sole_constructor over a validated digest, the axis was typed as
-// the structural Hash symbol_identity_digest mints from ANY symbol, so an artifact identity could be
-// authored with no build, file or observation behind it.
+// FORGERY CONTROL. Text that is not a valid SHA-512 digest cannot become a
+// materialized artifact. Before ObservedArtifactDigest was sole_constructor over a
+// validated digest, the axis was typed as the structural Hash that
+// symbol_identity_digest mints from ANY symbol, so an artifact identity could be
+// authored with no build, no file and no observation behind it.
 test fn unobserved_text_cannot_become_a_materialized_artifact() -> Bool {
   match gi_artifact(hex: "not-a-digest") {
     ArtifactMaterialized { digest: _ } => false

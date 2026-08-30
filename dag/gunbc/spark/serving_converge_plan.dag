@@ -105,13 +105,7 @@ import gunbc.fleet_converge_plan {
   fleet_converge_spark_serving_typed_actions_wire,
   fleet_converge_spark_serving_row_effects,
 }
-// Seam 2 vertical slice — Spark serving membership frozen into FleetConvergePlanArtifact typed
-// rows. First member kind: Ensured linger (SparkServingLingerAddress → EnableLingerForOwnAccount).
-// Plan observes linger state, runs membership_reconcile once, serializes MemberAction +
-// install_effects into typed_action_rows on the artifact; apply MUST read those frozen rows (never
-// re-derive). Spark actuation is typed argv via spark_serving_converge_realize + typed_argv_exec —
-// NOT merged into apply_shell. Change arm (disable-linger) is NOT claimed proven — sudoers grants
-// enable-linger only.
+data spark_serving_converge_plan_authority_note: String = "Seam 2 vertical slice — Spark serving membership frozen into FleetConvergePlanArtifact typed rows. First member kind: Ensured linger (SparkServingLingerAddress → EnableLingerForOwnAccount). Plan observes linger state, runs membership_reconcile once, serializes MemberAction + install_effects into typed_action_rows on the artifact; apply MUST read those frozen rows (never re-derive). Spark actuation is typed argv via spark_serving_converge_realize + typed_argv_exec — NOT merged into apply_shell. Change arm (disable-linger) is NOT claimed proven — sudoers grants enable-linger only."
 
 fn spark_serving_desired_linger_member(host: HostIdentity) -> SparkServingMember {
   spark_serving_member(
@@ -611,11 +605,25 @@ fn spark_serving_linger_slice_noop_when_converged(linger_enabled: Bool) -> Bool 
   )
 }
 
+// THE ROW CARRIES PLANNED EFFECTS, AND THIS ASKED THE INSTALL-ONLY QUESTION OF THEM.
+//
+// spark_serving_install_effects_include takes List<ServingInstallEffect> and a bare needle. Since the
+// retirement vocabulary landed, fleet_converge_spark_serving_row_effects answers in the WRAPPER,
+// List<SparkServingPlannedEffect>, so every comparison was a wrapped value against a bare constructor
+// and no row could ever match. This function returned `none` for every input, including rows that
+// plainly carry EnableLingerForOwnAccount -- a silent always-absent, not a refusal.
+//
+// It survived because its discriminating claim lives in a module that could not resolve under the
+// 7.9 GiB CI envelope, so the red was never observed. It is repaired by matching the wrapper it is
+// actually given rather than by widening the install-only predicate, because the two questions are
+// genuinely different: "does this row install linger" must answer false for a RETIREMENT row that
+// mentions linger, and a predicate over the unwrapped union would answer true.
 fn spark_serving_frozen_linger_effect(row: FleetConvergeSparkServingTypedAction) -> ServingInstallEffect? {
-  if spark_serving_install_effects_include(
-    effects: fleet_converge_spark_serving_row_effects(row: row),
-    needle: EnableLingerForOwnAccount,
-  ) {
+  if any(fleet_converge_spark_serving_row_effects(row: row), e =>
+    match e {
+      PlannedInstallEffect { install: i } => i == EnableLingerForOwnAccount
+      PlannedRetirementEffect { retirement: _ } => false
+    }) {
     Present { value: EnableLingerForOwnAccount }
   } else {
     none

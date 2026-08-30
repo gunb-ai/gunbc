@@ -9,7 +9,7 @@ import gunbc.prose_row_frontier {
   ProseRowRef,
   ProseRowDiffObservation, ProseRowsObserved, ProseRowDiffUnreadable,
   prose_row_diff_observation, prose_rows_introduced,
-  prose_rows_render,
+  prose_rows_refused, prose_rows_out_of_scope, prose_rows_render,
 }
 
 // THIS GATE DOES NOT CURRENTLY RUN, and every present-tense enforcement sentence below describes
@@ -59,10 +59,17 @@ fn prose_row_gate_observation() -> ProseRowDiffObservation {
   }
 }
 
-fn prose_row_refusal_reason(refused: List<ProseRowRef>) -> String {
+fn prose_row_refusal_reason(refused: List<ProseRowRef>, residue: List<ProseRowRef>) -> String {
+  let residue_count = residue |> count
   concat(
-    "prose row introduction gate: THIS CHANGE introduces prose-only data NAME_note: String declaration(s). Move the irreducible rationale into a leading // block above the declaration it explains, and put any date, review id, PR number, SHA, status, count or dissolution condition in a typed carrier (DESIGN section 4c). Refused: ",
-    prose_rows_render(rows: refused)
+    "prose row introduction gate: THIS CHANGE introduces prose-only data NAME_note: String declaration(s) under a path whose prose has already been migrated to authored // annotations (gunbc.prose_row_frontier prose_row_migration_scope). Move the irreducible rationale into a leading // block above the declaration it explains, and put any date, review id, PR number, SHA, status, count or dissolution condition in a typed carrier (DESIGN section 4c). Refused: ",
+    concat(
+      prose_rows_render(rows: refused),
+      concat(
+        " | counted out-of-scope residue, reported and NOT enforced, rows: ",
+        concat(to_string(residue_count), concat(" — ", prose_rows_render(rows: residue)))
+      )
+    )
   )
 }
 
@@ -77,9 +84,15 @@ fn prose_row_introduction_verdict(observation: ProseRowDiffObservation) -> Proce
       reason: concat("prose row introduction gate: ", concat(reason, " — refusing, never skipping (DESIGN section 5)"))
     )
     ProseRowsObserved { added: added, removed: removed } => {
-      let refused = prose_rows_introduced(added: added, removed: removed)
+      let introduced = prose_rows_introduced(added: added, removed: removed)
+      let refused = prose_rows_refused(introduced: introduced)
       if (refused |> count) > 0 {
-        exit_failure(reason: prose_row_refusal_reason(refused: refused))
+        exit_failure(
+          reason: prose_row_refusal_reason(
+            refused: refused,
+            residue: prose_rows_out_of_scope(introduced: introduced)
+          )
+        )
       } else {
         ExitSuccess
       }
@@ -111,22 +124,41 @@ fn prose_row_receipt_content(observation: ProseRowDiffObservation) -> String {
   match observation {
     ProseRowDiffUnreadable { reason: reason } =>
       concat("disposition\tpath\tdecl_name\nunreadable\t\t", reason)
-    ProseRowsObserved { added: added, removed: removed } =>
+    ProseRowsObserved { added: added, removed: removed } => {
+      let introduced = prose_rows_introduced(added: added, removed: removed)
       concat(
         "disposition\tpath\tdecl_name\n",
-        join(
-          prose_rows_introduced(added: added, removed: removed)
-            |> map(row => prose_row_receipt_row(row: row, disposition: "refused")),
-          "\n"
+        concat(
+          join(
+            prose_rows_refused(introduced: introduced)
+              |> map(row => prose_row_receipt_row(row: row, disposition: "refused_in_scope")),
+            "\n"
+          ),
+          concat(
+            "\n",
+            join(
+              prose_rows_out_of_scope(introduced: introduced)
+                |> map(row => prose_row_receipt_row(row: row, disposition: "counted_out_of_scope")),
+              "\n"
+            )
+          )
         )
       )
+    }
   }
 }
 
-// A FAILED RECEIPT WRITE REFUSES. Filesystem.Write returns `success`; an earlier revision ignored it,
-// so in a worktree with no `target/` the write silently did nothing and the gate still reported a
-// verdict. Creating the directory was rejected: it turns a missing scratch dir into a silent success.
-// In CI `target/` always exists because the release build precedes the floor.
+// A FAILED RECEIPT WRITE REFUSES, and finding out why cost a probe run. Filesystem.Write returns
+// `success`, and an earlier revision of this body ignored it: in a worktree with no `target/` directory
+// the write silently did nothing and the gate went on to report its verdict, so the counted residue —
+// the ONLY observability this bounded scope has — could vanish with nothing counting the loss. That is
+// the deficit-with-zero-frequency shape DESIGN 5 forbids, authored into the very mechanism added to
+// prevent it.
+//
+// So the write is checked and its failure is a typed, located refusal naming the path and the host's
+// own error. The alternative considered and rejected was creating the directory: that turns a missing
+// scratch dir into a silent success and puts this gate back where it started, guessing about state it
+// did not observe. In CI `target/` always exists because the release build precedes the floor.
 func run_prose_row_introduction_gate_body() -> ProcessExit {
   let observation = prose_row_gate_observation()
   let written = Filesystem.Write(
@@ -142,7 +174,7 @@ func run_prose_row_introduction_gate_body() -> ProcessExit {
         concat(
           prose_row_receipt_path,
           concat(
-            " — a run that cannot record its receipt refuses rather than reporting a clean tree (DESIGN section 5). Host error: ",
+            " — the out-of-scope prose population is the only observability this path-scoped wall has, so a run that cannot record it refuses rather than reporting a clean tree (DESIGN section 5). Host error: ",
             written.error
           )
         )
@@ -153,7 +185,7 @@ func run_prose_row_introduction_gate_body() -> ProcessExit {
 
 // The loudness half, mirroring tools.extdeps_scope_placement_gate: the floor witness collapses this
 // gate's ProcessExit to Bool, so without a companion a refusal reads as `returned Bool(false)` and
-// names no offending row. This projects the SAME verdict rather than deciding
+// names neither the offending row nor the residue. This projects the SAME verdict rather than deciding
 // again, so there is never a second refusal authority to disagree with the first.
 fn prose_row_failure_reason(exit: ProcessExit) -> String {
   match exit {

@@ -98,15 +98,7 @@ fn context(rows: List<ObservedToolIdentity>) -> ResolvedBuildContext {
   }
 }
 
-// The executing consumer for the first tool-readiness slice. Matching and mismatching pins both
-// pass through tool_pin_reconcile, the CliTool instantiation of the one gunbc.membership_reconcile
-// spine. A mismatch is one Modified -> upsert plan and ToolMembershipNotConverged gates readiness,
-// so the plan cannot become decorative evidence or a spawn/path effect. Trust remains a separate
-// conjunct: the tracked-channel witness has zero reconcile hunks but still refuses through
-// admit_pin_integrity. Removing an Ensured system tool exercises R5 and refuses. The unrelated-tool
-// test is the discriminating aggregate-grain control: changing cargo changes the derived toolchain
-// aggregate, but rustfmt readiness stays admitted because the decision reads only
-// observed_tool_identity(rustfmt).
+data tool_readiness_reconcile_family_note: String = "The executing consumer for the first tool-readiness slice. Matching and mismatching pins both pass through tool_pin_reconcile, the CliTool instantiation of the one gunbc.membership_reconcile spine. A mismatch is one Modified -> upsert plan and ToolMembershipNotConverged gates readiness, so the plan cannot become decorative evidence or a spawn/path effect. Trust remains a separate conjunct: the tracked-channel witness has zero reconcile hunks but still refuses through admit_pin_integrity. Removing an Ensured system tool exercises R5 and refuses. The unrelated-tool test is the discriminating aggregate-grain control: changing cargo changes the derived toolchain aggregate, but rustfmt readiness stays admitted because the decision reads only observed_tool_identity(rustfmt)."
 
 test fn matching_pinned_tool_is_admitted_with_zero_hunks() -> Bool {
   match tool_readiness(
@@ -222,9 +214,7 @@ test fn ensured_system_tool_teardown_refuses_through_shared_spine() -> Bool {
   membership_refusal_count(plan: plan) == 1
 }
 
-// Missing and Duplicate are not collapsed into Option, match failure, or a widened resolver retry.
-// Each upstream observed_tool_identity arm maps to its own located readiness refusal and the
-// refusal list makes the occurrence count explicit.
+data tool_observation_refusal_family_note: String = "Missing and Duplicate are not collapsed into Option, match failure, or a widened resolver retry. Each upstream observed_tool_identity arm maps to its own located readiness refusal and the refusal list makes the occurrence count explicit."
 
 test fn missing_observed_tool_identity_refuses_located_and_counted() -> Bool {
   let readiness = tool_readiness(
@@ -273,11 +263,7 @@ test fn duplicate_observed_tool_identity_refuses_located_and_counted() -> Bool {
   }
 }
 
-// The current rustfmt handler is retained through one declared per-tool frontier row because its
-// PATH shell can establish presence but hermetic provisioning has not yet made an expected
-// executable identity stable across hosts. This is closed, counted migration state, not a fallback:
-// an unlisted unpinned tool refuses, duplicate declarations refuse, and providing a pin selects the
-// pinned path even when a frontier row exists (the mismatch witness above).
+data tool_frontier_family_note: String = "The current rustfmt handler is retained through one declared per-tool frontier row because its PATH shell can establish presence but hermetic provisioning has not yet made an expected executable identity stable across hosts. This is closed, counted migration state, not a fallback: an unlisted unpinned tool refuses, duplicate declarations refuse, and providing a pin selects the pinned path even when a frontier row exists (the mismatch witness above)."
 
 test fn declared_unpinned_rustfmt_frontier_is_explicit() -> Bool {
   match tool_readiness(

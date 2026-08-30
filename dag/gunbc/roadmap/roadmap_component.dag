@@ -69,17 +69,7 @@ import extdeps.web_audio {
   web_audio_gain_epsilon_micros, micros_decimal_wire,
 }
 
-// The DispatchButton — the first instantiation of the component concept (gunbc.design.component),
-// and the second consumer that unlocks the archetype library's component axis. It lives HERE, one
-// layer above the register, because it binds the belt wire vocabulary: its terminal states are
-// DERIVED from belt_dispatch_all_status_labels (the grounded label set), never a hand enum, so the
-// state totality is a projection of the served contract — the exact thing the dispatch-button
-// incident needed (the button's states cannot drift from what belt B answers). Role/material
-// binding follows the ok/refusal split of the wire authority: an ok terminal (spawned/already_live)
-// reads through the figure role (the lit/accent material, the same the progress bar uses); a
-// refusal terminal reads through the boundary role (clay — the warning material, never
-// brass-as-text). idle reads text, requested reads text-dim (the in-flight hush). P3 renders these
-// rows as chips + reserved widths; P4 galleries them; here they are just the modeled rows.
+data roadmap_component_note: String = "The DispatchButton — the first instantiation of the component concept (gunbc.design.component), and the second consumer that unlocks the archetype library's component axis. It lives HERE, one layer above the register, because it binds the belt wire vocabulary: its terminal states are DERIVED from belt_dispatch_all_status_labels (the grounded label set), never a hand enum, so the state totality is a projection of the served contract — the exact thing the dispatch-button incident needed (the button's states cannot drift from what belt B answers). Role/material binding follows the ok/refusal split of the wire authority: an ok terminal (spawned/already_live) reads through the figure role (the lit/accent material, the same the progress bar uses); a refusal terminal reads through the boundary role (clay — the warning material, never brass-as-text). idle reads text, requested reads text-dim (the in-flight hush). P3 renders these rows as chips + reserved widths; P4 galleries them; here they are just the modeled rows."
 
 fn dispatch_terminal_role(ok: Bool) -> ThemeRole {
   if ok { FigureRole } else { BoundaryRole }
@@ -131,10 +121,7 @@ fn dispatch_button_terminal_count() -> Int {
   count(component_terminal_states(c: dispatch_button_component()))
 }
 
-// The dispatch button's reserved width is a PROJECTION of the caption authority, not a hand pixel
-// (P3, re-pointed by remodel W1d): min-width is the longest CAPTION the button can wear (band
-// phrases + dispatch-receipt and observed-session morphs) plus a fixed gutter. A caption or
-// ok-label change moves the reservation by derivation; there is no pixel to re-tune.
+data dispatch_reserved_width_note: String = "The dispatch button's reserved width is a PROJECTION of the caption authority, not a hand pixel (P3, re-pointed by remodel W1d): min-width is the longest CAPTION the button can wear (band phrases + dispatch-receipt and observed-session morphs) plus a fixed gutter. A caption or ok-label change moves the reservation by derivation; there is no pixel to re-tune."
 
 data dispatch_button_ch_gutter: Int = 2
 
@@ -183,13 +170,7 @@ data dashboard_instance_route_path: String = "/instance.json"
 data dashboard_instance_class: String = "dashboard-instance"
 data dashboard_instance_label_class: String = "dashboard-instance-label"
 
-// The page body remains pure and digestable; the running serve entrypoint names its actual
-// HostDashboardInstance through /instance.json. The client projects that observation into the
-// instance banner. Observe-only is also projected onto every real dispatch control before
-// interaction: the control reads `dispatch · disabled`, carries the located posture reason, and is
-// physically disabled, while the server independently returns typed HTTP 403 if a stale or scripted
-// client still POSTs. The /sandbox program deliberately omits this projection so its harmless
-// wire-state gallery remains pressable.
+data dashboard_instance_client_note: String = "The page body remains pure and digestable; the running serve entrypoint names its actual HostDashboardInstance through /instance.json. The client projects that observation into the instance banner. Observe-only is also projected onto every real dispatch control before interaction: the control reads `dispatch · disabled`, carries the located posture reason, and is physically disabled, while the server independently returns typed HTTP 403 if a stale or scripted client still POSTs. The /sandbox program deliberately omits this projection so its harmless wire-state gallery remains pressable."
 
 fn dashboard_instance_fetch_statements() -> List<TsStmt> {
   [
@@ -341,28 +322,11 @@ data activity_evidence_row_class: String = "activity-evidence-row"
 data activity_located_reason_class: String = "activity-located-reason"
 data session_facts_class: String = "session-facts"
 
-// The client realization of the archetype's UnderHead ActivityRegion (A2 —
-// roadmap_row_archetype_note records the falsifier that forced it; the lamp strip, seven
-// pre-rendered stage chips, and 'waiting' text it replaces are deleted, not hidden). The container
-// exists ONLY while the decided /workflow.json activity view says an attempt exists — the attention
-// rule's 'no attempt, no furniture' is realized as DOM absence, not display:none. All content is
-// painted VERBATIM from the decided view (gunbc.roadmap_presentation, single projection authority):
-// activity.summary/outcome/reason are final strings, data-arm and data-attention are the decided
-// keys the stylesheet materializes, the obligation ledger renders the wire's canonical segment
-// rows, and evidence rows are label/value pairs. The client holds NO composition policy — a summary
-// sentence assembled in TypeScript is the two-authorities defect this region dissolved. The detail
-// disclosure auto-opens ONCE per anomaly transition (data-auto-opened guard), honoring both the
-// attention rule's auto-expand and reason_surface_producers_note's ruling that a poll tick must
-// never fight the operator's hands. Session-observation facts (/sessions.json, the independent
-// presence source) render into the row disclosure's session-facts line, never into the actuator
-// cell and never onto the dispatch button — the button is an action, not a status report.
+data node_activity_region_note: String = "The client realization of the archetype's UnderHead ActivityRegion (A2 — roadmap_row_archetype_note records the falsifier that forced it; the lamp strip, seven pre-rendered stage chips, and 'waiting' text it replaces are deleted, not hidden). The container exists ONLY while the decided /workflow.json activity view says an attempt exists — the attention rule's 'no attempt, no furniture' is realized as DOM absence, not display:none. All content is painted VERBATIM from the decided view (gunbc.roadmap_presentation, single projection authority): activity.summary/outcome/reason are final strings, data-arm and data-attention are the decided keys the stylesheet materializes, the obligation ledger renders the wire's canonical segment rows, and evidence rows are label/value pairs. The client holds NO composition policy — a summary sentence assembled in TypeScript is the two-authorities defect this region dissolved. The detail disclosure auto-opens ONCE per anomaly transition (data-auto-opened guard), honoring both the attention rule's auto-expand and reason_surface_producers_note's ruling that a poll tick must never fight the operator's hands. Session-observation facts (/sessions.json, the independent presence source) render into the row disclosure's session-facts line, never into the actuator cell and never onto the dispatch button — the button is an action, not a status report."
 
 data workflow_progress_note: String = "The seven-obligation attempt pipeline is presentation over /workflow.json evidence, not a stored stage machine. Environment and Worktree are constructive receipts; Agent comes from provider events reconciled with the shared worker-process evidence; Verify, Publish, Review, and Audit remain pending until their own producers exist. The server decides the presentation (the 'activity' member on each wire attempt, derived by gunbc.roadmap_presentation from roadmap_attempt_workflow_segment_kinds and the reconcile report); the client paints it into the UnderHead activity region without policy. A provider turn completing cannot move downstream obligations. Workflow observation is single-flight: the next timer is armed only in the settled promise's finally arm, so a slow/refused route cannot accumulate overlapping requests against the interpreted single-threaded server."
 
-// The session route observes tmux container presence independently from pane/process lifecycle. Its
-// decided sentence says `present`, never `live` or `executing` (the wording now lives in
-// gunbc.roadmap_presentation.session_facts_view, which composes it from the shared worker-process
-// evidence).
+data dispatch_caption_live_word_note: String = "The session route observes tmux container presence independently from pane/process lifecycle. Its decided sentence says `present`, never `live` or `executing` (the wording now lives in gunbc.roadmap_presentation.session_facts_view, which composes it from the shared worker-process evidence)."
 
 data dispatch_class_requested: String = "dispatch-requested"
 data dispatch_class_ok: String = "dispatch-ok"
@@ -420,11 +384,7 @@ data roadmap_row_archetype: List<RoadmapRowRegion> = [
   RoadmapRowRegion { region: ActuatorRegion, placement: HeadTrack { track: AutoTrack } },
 ]
 
-// Two gutters, two jobs (operator-signed 2026-07-25, the third PROVISIONAL flip): the first cut ran
-// ONE space-4 token as both the grid's column rhythm and the mid cell's badge-flow rhythm, and the
-// operator's tune split them — column gaps (chip | title | actuator) breathe at space-8 while the
-// badge flow inside the title cell keeps space-4. They are separate density decisions that happened
-// to share a number for one commit; a later retune of either moves alone.
+data roadmap_row_gutter_split_note: String = "Two gutters, two jobs (operator-signed 2026-07-25, the third PROVISIONAL flip): the first cut ran ONE space-4 token as both the grid's column rhythm and the mid cell's badge-flow rhythm, and the operator's tune split them — column gaps (chip | title | actuator) breathe at space-8 while the badge flow inside the title cell keeps space-4. They are separate density decisions that happened to share a number for one commit; a later retune of either moves alone."
 
 data roadmap_row_height: ScaleToken = height_row
 data roadmap_row_gutter: ScaleToken = space_4
@@ -440,14 +400,7 @@ fn roadmap_row_grid_template() -> String {
     " ")
 }
 
-// Explicit head-cell placement, derived from the SAME archetype the grid template folds (A3
-// routine-state collapse): once the status chip renders only when its lifecycle discriminates, the
-// head can have fewer children than tracks, and implicit grid auto-placement would slide the title
-// into the chip's auto track. Each head cell therefore carries an explicit grid-column derived from
-// its region's HeadTrack position in roadmap_row_archetype — one authority for both the template
-// and the placement, so an archetype reorder moves both together and a hand-drifted column is
-// unwritable. A region not placed in a head track derives 0, which the archetype witness refuses (a
-// 0 column never reaches emission while the witness is enrolled).
+data row_head_column_note: String = "Explicit head-cell placement, derived from the SAME archetype the grid template folds (A3 routine-state collapse): once the status chip renders only when its lifecycle discriminates, the head can have fewer children than tracks, and implicit grid auto-placement would slide the title into the chip's auto track. Each head cell therefore carries an explicit grid-column derived from its region's HeadTrack position in roadmap_row_archetype — one authority for both the template and the placement, so an archetype reorder moves both together and a hand-drifted column is unwritable. A region not placed in a head track derives 0, which the archetype witness refuses (a 0 column never reaches emission while the witness is enrolled)."
 
 type RowHeadColumnScan {
   col: Int
@@ -472,41 +425,20 @@ fn roadmap_row_head_column(region_key: String) -> Int {
   scan.found
 }
 
-// The title track's cell: the wrapper that carries the title plus the flowing meta regions (badges,
-// carrier links). It exists because the archetype's grid has exactly the head tracks as columns and
-// a node's badge count varies — meta declared InTitleFlow realizes as flex flow inside this cell,
-// never as a column that would ragged the grid.
+data node_mid_class_note: String = "The title track's cell: the wrapper that carries the title plus the flowing meta regions (badges, carrier links). It exists because the archetype's grid has exactly the head tracks as columns and a node's badge count varies — meta declared InTitleFlow realizes as flex flow inside this cell, never as a column that would ragged the grid."
 
 data node_mid_class: String = "node-mid"
 
-// The operator-facing captions (remodel W1d, operator ruling 2026-07-24; lifecycle correction
-// 2026-07-27): ok keeps the exact belt status under the dispatch-receipt prefix, while fail and
-// loud collapse to one operator phrase each with the wire label and located fields in the
-// title/detail channel. A separate sessions observation may replace the receipt with `session ·
-// present`; neither caption claims provider execution. BandInProgress renders the requested
-// caption. These rows are the caption authority for the client program, gallery, and reserved
-// width.
+data dispatch_caption_note: String = "The operator-facing captions (remodel W1d, operator ruling 2026-07-24; lifecycle correction 2026-07-27): ok keeps the exact belt status under the dispatch-receipt prefix, while fail and loud collapse to one operator phrase each with the wire label and located fields in the title/detail channel. A separate sessions observation may replace the receipt with `session · present`; neither caption claims provider execution. BandInProgress renders the requested caption. These rows are the caption authority for the client program, gallery, and reserved width."
 
 data dispatch_caption_idle: String = "dispatch"
 data dispatch_caption_requested: String = "dispatching..."
 data dispatch_caption_fail: String = "not dispatchable"
 data dispatch_caption_loud: String = "belt fault"
 
-// The day/night control (operator 2026-07-24, remodel W1g): a property of the whole surface like
-// the mute, cycling auto -> day -> night. auto removes data-theme so the prefers-color-scheme
-// projection governs; a named choice pins data-theme to the Theme's OWN name (derived from
-// day_theme/night_theme, never a re-typed string), which the theme_root_css selector grammar
-// already answers. Persisted in this browser's storage for the same reason the mute is: the
-// preference belongs to these eyes.
+data theme_toggle_note: String = "The day/night control (operator 2026-07-24, remodel W1g): a property of the whole surface like the mute, cycling auto -> day -> night. auto removes data-theme so the prefers-color-scheme projection governs; a named choice pins data-theme to the Theme's OWN name (derived from day_theme/night_theme, never a re-typed string), which the theme_root_css selector grammar already answers. Persisted in this browser's storage for the same reason the mute is: the preference belongs to these eyes."
 
-// The brief disclosure enters the register (remodel W1e, operator 2026-07-24: the UA triangle read
-// as debug chrome — a ticket affordance, not a tree-widget default). The MARK is a real span inside
-// the summary, never a UA marker or a pseudo-element: the client program mirrors the details
-// element's open state onto the mark as a state class (the browser owns [open]; the state class
-// belongs to the client program — the same split the dispatch button's OnStateClass note
-// establishes), so the register's existing trigger + detent machinery drives the turn with no new
-// trigger vocabulary and no descendant selector. The open detent is the first consumer of the
-// detent model's rotation axis (turn_deg).
+data disclosure_component_note: String = "The brief disclosure enters the register (remodel W1e, operator 2026-07-24: the UA triangle read as debug chrome — a ticket affordance, not a tree-widget default). The MARK is a real span inside the summary, never a UA marker or a pseudo-element: the client program mirrors the details element's open state onto the mark as a state class (the browser owns [open]; the state class belongs to the client program — the same split the dispatch button's OnStateClass note establishes), so the register's existing trigger + detent machinery drives the turn with no new trigger vocabulary and no descendant selector. The open detent is the first consumer of the detent model's rotation axis (turn_deg)."
 
 data disclosure_mark_class: String = "disclosure-mark"
 data disclosure_open_class: String = "disclosure-open"
@@ -680,11 +612,7 @@ fn sound_preamble_statements() -> List<TsStmt> {
   ]
 }
 
-// The toggle paints itself from the same predicate the tick reads, then repaints after each flip,
-// so the label is a projection of the stored state rather than a second copy of it — a toggle whose
-// label and behaviour can disagree is worse than no toggle. paint() runs once at bind time because
-// the stored preference outlives the page: on load the label must already say what this browser
-// will actually do.
+data sound_toggle_program_note: String = "The toggle paints itself from the same predicate the tick reads, then repaints after each flip, so the label is a projection of the stored state rather than a second copy of it — a toggle whose label and behaviour can disagree is worse than no toggle. paint() runs once at bind time because the stored preference outlives the page: on load the label must already say what this browser will actually do."
 
 fn sound_toggle_bind_statements() -> List<TsStmt> {
   [
@@ -730,12 +658,7 @@ fn sound_toggle_bind_statements() -> List<TsStmt> {
   ]
 }
 
-// The single authority for a state's CSS modifier class, consumed by the client script (which flips
-// classes on the live button), the stylesheet (which paints each class through the state's role
-// material), and the P4 gallery (which renders each state statically) — three consumers, one class
-// vocabulary, so the live button and the gallery cannot disagree. idle is the base (no modifier);
-// the terminals collapse to their ok/refusal MATERIAL group (figure vs boundary), the per-label
-// distinction living in the text, not the color.
+data dispatch_state_class_note: String = "The single authority for a state's CSS modifier class, consumed by the client script (which flips classes on the live button), the stylesheet (which paints each class through the state's role material), and the P4 gallery (which renders each state statically) — three consumers, one class vocabulary, so the live button and the gallery cannot disagree. idle is the base (no modifier); the terminals collapse to their ok/refusal MATERIAL group (figure vs boundary), the per-label distinction living in the text, not the color."
 
 fn dispatch_state_class(state: ComponentState) -> String {
   match state.kind {
@@ -752,16 +675,7 @@ fn dispatch_state_class(state: ComponentState) -> String {
   }
 }
 
-// The dispatch button's client behavior, modeled in native .dag as ONE TsProgram
-// (extdeps.languages.typescript.program) — never a hand-concatenated JS string (the dispatch-button
-// incident's root class, §5). It is EMITTED as an external served asset
-// (gunbc.roadmap_dispatch_asset_path, served by belt B) and referenced by <script src>, the same
-// shape gunbc.site.moodboard uses for reframe_watcher_js — NOT inlined into the HTML (an inline
-// <script> text node escapes '>' under std.markup EscapeHtml, corrupting an arrow's `=>`; external
-// emission has no such hazard, so arrows are free). The ok-predicate is a ts_binop `||` chain
-// DERIVED from belt_dispatch_ok_status_labels (the wire authority), so a label crossing the
-// ok/refusal line moves the predicate by derivation — the retired belt-A ok/node read is gone and
-// cannot return (the page witness holds a RED on j.ok).
+data dispatch_client_program_note: String = "The dispatch button's client behavior, modeled in native .dag as ONE TsProgram (extdeps.languages.typescript.program) — never a hand-concatenated JS string (the dispatch-button incident's root class, §5). It is EMITTED as an external served asset (gunbc.roadmap_dispatch_asset_path, served by belt B) and referenced by <script src>, the same shape gunbc.site.moodboard uses for reframe_watcher_js — NOT inlined into the HTML (an inline <script> text node escapes '>' under std.markup EscapeHtml, corrupting an arrow's `=>`; external emission has no such hazard, so arrows are free). The ok-predicate is a ts_binop `||` chain DERIVED from belt_dispatch_ok_status_labels (the wire authority), so a label crossing the ok/refusal line moves the predicate by derivation — the retired belt-A ok/node read is gone and cannot return (the page witness holds a RED on j.ok)."
 
 data roadmap_dispatch_asset_path: String = "/assets/roadmap-dispatch.js"
 
@@ -816,29 +730,9 @@ fn dispatch_fetch_url_expr() -> TsExpr {
   )
 }
 
-// The presented-state choreography (remodel W1d, operator ruling 2026-07-24: transitions are sugar
-// over the data layer). The DATA layer applies the wire answer the moment it arrives —
-// b.dataset.status lands immediately, nothing about the operation waits. The PRESENTATION holds the
-// requested phase for at least the read dwell (dispatch_requested_read_dwell_ms — a reading
-// duration with its own authority row, never a borrowed transition clock) and then applies the
-// terminal render: setTimeout(apply, max(0, t0 + dwell - now)), so a 1 ms echo appears as a
-// deliberate act and a 30 s belt answer appears the moment it lands. Presentation never fabricates
-// a state that did not occur — apply renders exactly the answer stored on the data layer, later,
-// never a different one. The terminal caption is the BAND's phrase (dispatch_caption_note); the
-// wire label and located fields live in the title channel; the loud band additionally marks
-// dispatch_class_loud so the stylesheet and any detail affordance can key on it.
+data dispatch_choreography_note: String = "The presented-state choreography (remodel W1d, operator ruling 2026-07-24: transitions are sugar over the data layer). The DATA layer applies the wire answer the moment it arrives — b.dataset.status lands immediately, nothing about the operation waits. The PRESENTATION holds the requested phase for at least the read dwell (dispatch_requested_read_dwell_ms — a reading duration with its own authority row, never a borrowed transition clock) and then applies the terminal render: setTimeout(apply, max(0, t0 + dwell - now)), so a 1 ms echo appears as a deliberate act and a 30 s belt answer appears the moment it lands. Presentation never fabricates a state that did not occur — apply renders exactly the answer stored on the data layer, later, never a different one. The terminal caption is the BAND's phrase (dispatch_caption_note); the wire label and located fields live in the title channel; the loud band additionally marks dispatch_class_loud so the stylesheet and any detail affordance can key on it."
 
-// The requested phase's minimum presentation is a READING duration, not a transition clock
-// (operator ruling 2026-07-24: 160 ms — the first cut borrowed reveal_deliberate — was too short to
-// actually read 'dispatching...'; a dwell exists so the caption is USEFUL, so it is priced in
-// reading time). It is deliberately its own authority row rather than a retune of a shared
-// TimingToken: the hover reveal and this hold are different concepts that happened to share a
-// number for one commit, and retuning the shared token would have made every hover a half-second.
-// Operator-tuned twice: 500 ms first (readable), then 300 ms (2026-07-24 — readable AND quick). The
-// deeper direction is filed as the motion-modeling follow-up: a single long hold is the wrong shape
-// — the requested phase wants MOVING PARTS (the Discord-mute reference: the state lands fast, the
-// motion continues to hold attention), i.e. phase-structured choreography rows, not one dwell
-// scalar. This row survives until that session replaces it.
+data dispatch_requested_read_dwell_note: String = "The requested phase's minimum presentation is a READING duration, not a transition clock (operator ruling 2026-07-24: 160 ms — the first cut borrowed reveal_deliberate — was too short to actually read 'dispatching...'; a dwell exists so the caption is USEFUL, so it is priced in reading time). It is deliberately its own authority row rather than a retune of a shared TimingToken: the hover reveal and this hold are different concepts that happened to share a number for one commit, and retuning the shared token would have made every hover a half-second. Operator-tuned twice: 500 ms first (readable), then 300 ms (2026-07-24 — readable AND quick). The deeper direction is filed as the motion-modeling follow-up: a single long hold is the wrong shape — the requested phase wants MOVING PARTS (the Discord-mute reference: the state lands fast, the motion continues to hold attention), i.e. phase-structured choreography rows, not one dwell scalar. This row survives until that session replaces it."
 
 data dispatch_requested_read_dwell_ms: Milliseconds = 300
 
@@ -848,28 +742,7 @@ data js_poll_workflow_fn: String = "gunbcPollWorkflow"
 data js_row_disclosure_fn: String = "gunbcRowDisclosure"
 data js_reason_surface_fn: String = "gunbcReasonSurface"
 
-// THE REASON SURFACE IS ONE MECHANISM WITH SEVERAL PRODUCERS, and it became one on an incident
-// (2026-07-30). Composition slice 4 established the rule — anomaly evidence is a SURFACE, not a
-// tooltip — and realized it once, inline, for the dispatch answer. Since then the row grew two more
-// refusal producers: the seven-obligation workflow strip, whose failed and refused segments carry a
-// located detail from /workflow.json, and the click's own catch arm. NEITHER reached a surface. The
-// workflow segment's detail went to stage.title and the catch arm's went to b.title, which is
-// exactly the title-only world anomaly_evidence_witness_test plants as its RED — the corpus stated
-// the rule, enforced it against one subject, and then wrote two more subjects that fail it.\n\nThat
-// is why this is a helper rather than a second copy: the defect was not that the workflow strip
-// forgot to render a reason, it was that 'render a located reason where the operator can read it'
-// had one realization welded to one caller, so the second and third callers could not reuse it and
-// did the cheap thing instead. Adding a parallel insertion for the strip would have made three
-// spellings of one concept and guaranteed a fourth.\n\nEach producer owns its own line, keyed by
-// data-reason-source, because a row can be simultaneously refused at dispatch and refused at Verify
-// and those are different facts with different remedies — one shared element would let whichever
-// wrote last silently erase the other. Passing empty text REMOVES that producer's line, so a
-// resolved refusal stops claiming the row is unwell; it does not touch any other
-// producer's.\n\nWhat this deliberately does NOT do is auto-expand the row when a workflow segment
-// refuses. The dispatch band expands because a click is a discrete operator act with an answer owed
-// to it; the workflow strip re-renders on a two-second poll, and opening a disclosure on a timer
-// would fight the operator's own hands every tick. The chip already carries `Verify · refused` in
-// its own text; the disclosure carries why.
+data reason_surface_producers_note: String = "THE REASON SURFACE IS ONE MECHANISM WITH SEVERAL PRODUCERS, and it became one on an incident (2026-07-30). Composition slice 4 established the rule — anomaly evidence is a SURFACE, not a tooltip — and realized it once, inline, for the dispatch answer. Since then the row grew two more refusal producers: the seven-obligation workflow strip, whose failed and refused segments carry a located detail from /workflow.json, and the click's own catch arm. NEITHER reached a surface. The workflow segment's detail went to stage.title and the catch arm's went to b.title, which is exactly the title-only world anomaly_evidence_witness_test plants as its RED — the corpus stated the rule, enforced it against one subject, and then wrote two more subjects that fail it.\\n\\nThat is why this is a helper rather than a second copy: the defect was not that the workflow strip forgot to render a reason, it was that 'render a located reason where the operator can read it' had one realization welded to one caller, so the second and third callers could not reuse it and did the cheap thing instead. Adding a parallel insertion for the strip would have made three spellings of one concept and guaranteed a fourth.\\n\\nEach producer owns its own line, keyed by data-reason-source, because a row can be simultaneously refused at dispatch and refused at Verify and those are different facts with different remedies — one shared element would let whichever wrote last silently erase the other. Passing empty text REMOVES that producer's line, so a resolved refusal stops claiming the row is unwell; it does not touch any other producer's.\\n\\nWhat this deliberately does NOT do is auto-expand the row when a workflow segment refuses. The dispatch band expands because a click is a discrete operator act with an answer owed to it; the workflow strip re-renders on a two-second poll, and opening a disclosure on a timer would fight the operator's own hands every tick. The chip already carries `Verify · refused` in its own text; the disclosure carries why."
 
 fn row_disclosure_helper_stmt() -> TsStmt {
   ts_const(name: js_row_disclosure_fn, value: ts_arrow(params: ["el"], body: ts_block(stmts: [
@@ -957,32 +830,11 @@ data reason_source_dispatch: String = "dispatch"
 data reason_source_workflow_prefix: String = "workflow:"
 data reason_source_cleanup: String = "cleanup"
 
-// The sources naming each producer's own line. They are row-scoped: every one of them is a verdict
-// about THIS work item, so the row's disclosure is where it belongs. Two refusal surfaces
-// deliberately do NOT use this mechanism and it is worth saying why, so a later reader does not
-// 'finish the job' by moving them here. The sessions, attempts, and workflow OBSERVATION refusals
-// are page-scoped — the route itself is unreachable, which is a fact about the dashboard rather
-// than about any one row — and they already render as a persistent .observe-refused banner above
-// main, which is the same rule realized at the page grain. The instance label is the one genuine
-// remainder: it renders `instance · observation refused` with the thrown cause in its title alone,
-// and it is page-scoped, so closing it means routing it into the banner family rather than into
-// this one.
+data reason_source_roster_note: String = "The sources naming each producer's own line. They are row-scoped: every one of them is a verdict about THIS work item, so the row's disclosure is where it belongs. Two refusal surfaces deliberately do NOT use this mechanism and it is worth saying why, so a later reader does not 'finish the job' by moving them here. The sessions, attempts, and workflow OBSERVATION refusals are page-scoped — the route itself is unreachable, which is a fact about the dashboard rather than about any one row — and they already render as a persistent .observe-refused banner above main, which is the same rule realized at the page grain. The instance label is the one genuine remainder: it renders `instance · observation refused` with the thrown cause in its title alone, and it is page-scoped, so closing it means routing it into the banner family rather than into this one."
 
 data reason_absent_phrase: String = "no located reason on the wire"
 
-// THE CATCH ARM USED TO NAME A CAUSE IT HAD NOT OBSERVED. It set the title to the literal `network
-// error`, but this arm catches every rejection of the fetch chain — a genuine transport failure AND
-// a response whose body would not parse, which is what an HTTP 500 from the dispatch route looks
-// like from here (r.json() rejects on the error page). The live specimen (2026-07-30): the served
-// graph called an unregistered primitive, the route answered 500, and the button read `belt fault`
-// with a tooltip claiming the network had failed. Nothing had failed on the network; the operator
-// was handed a fabricated diagnosis of a real defect, which is a §5 wrong answer rather than a
-// missing one.\n\nThe phrase below is true of BOTH producers — a transport failure means no answer
-// arrived, an unparseable body means the answer cannot be read, and neither is claimed to be the
-// other — and the thrown value is appended rather than discarded, so the actual cause (a TypeError
-// from fetch, a SyntaxError naming the offending token) reaches the operator instead of being
-// replaced by a guess. The status code itself is still lost, because the chain reads r.json()
-// without keeping r; recovering it means restructuring the chain and is not bundled here.
+data dispatch_unreadable_answer_note: String = "THE CATCH ARM USED TO NAME A CAUSE IT HAD NOT OBSERVED. It set the title to the literal `network error`, but this arm catches every rejection of the fetch chain — a genuine transport failure AND a response whose body would not parse, which is what an HTTP 500 from the dispatch route looks like from here (r.json() rejects on the error page). The live specimen (2026-07-30): the served graph called an unregistered primitive, the route answered 500, and the button read `belt fault` with a tooltip claiming the network had failed. Nothing had failed on the network; the operator was handed a fabricated diagnosis of a real defect, which is a §5 wrong answer rather than a missing one.\\n\\nThe phrase below is true of BOTH producers — a transport failure means no answer arrived, an unparseable body means the answer cannot be read, and neither is claimed to be the other — and the thrown value is appended rather than discarded, so the actual cause (a TypeError from fetch, a SyntaxError naming the offending token) reaches the operator instead of being replaced by a guess. The status code itself is still lost, because the chain reads r.json() without keeping r; recovering it means restructuring the chain and is not bundled here."
 
 data dispatch_unreadable_answer_phrase: String = "no readable answer from the dispatch route"
 
@@ -1017,12 +869,7 @@ fn dispatch_band_chain_expr() -> TsExpr {
     ))
 }
 
-// The client grain of the attention law (composition slice 3): which terminal bands auto-expand the
-// row's disclosure is DERIVED — the distinct band keys of the wire-band rows filtered through
-// gunbc.roadmap_altitude.band_expands (anomaly expands; routine and working never do) — so the
-// emitted predicate `(band === "fail") || (band === "loud")` moves when either authority moves and
-// no band name is hand-chosen at the emit site. The fold seeds `false`, which serializes as a
-// visible leading arm rather than a fabricated default.
+data dispatch_expand_chain_note: String = "The client grain of the attention law (composition slice 3): which terminal bands auto-expand the row's disclosure is DERIVED — the distinct band keys of the wire-band rows filtered through gunbc.roadmap_altitude.band_expands (anomaly expands; routine and working never do) — so the emitted predicate `(band === \"fail\") || (band === \"loud\")` moves when either authority moves and no band name is hand-chosen at the emit site. The fold seeds `false`, which serializes as a visible leading arm rather than a fabricated default."
 
 fn key_present(keys: List<String>, key: String) -> Bool {
   fold(keys, init: false, f: (acc, k) => acc || k == key)
@@ -1275,13 +1122,7 @@ fn dispatch_bind_statements(selector: String, url_expr: TsExpr) -> List<TsStmt> 
   ]
 }
 
-// The auditioner control (remodel W1f): cycles the active swatch set island-pastel -> okabe-ito ->
-// solarized -> island-pastel, persisted like the mute because a palette audition is a property of
-// these eyes. island is the ABSENT attribute (the emitted default); a named set pins
-// data-swatch-set, which the audition blocks in roadmap_style answer. Rendered only on /sandbox
-// (the design surface owns auditioning) but applied by the shared client program on load, so a
-// choice made in the sandbox follows the operator to the live roadmap — auditioning against real
-// content, not specimens.
+data swatch_toggle_note: String = "The auditioner control (remodel W1f): cycles the active swatch set island-pastel -> okabe-ito -> solarized -> island-pastel, persisted like the mute because a palette audition is a property of these eyes. island is the ABSENT attribute (the emitted default); a named set pins data-swatch-set, which the audition blocks in roadmap_style answer. Rendered only on /sandbox (the design surface owns auditioning) but applied by the shared client program on load, so a choice made in the sandbox follows the operator to the live roadmap — auditioning against real content, not specimens."
 
 data swatch_storage_key: String = "gunbc.swatch-set"
 data swatch_toggle_class: String = "swatch-toggle"
@@ -1523,13 +1364,7 @@ fn workflow_row_selector_expr(node_id: TsExpr) -> TsExpr {
     right: ts_lit_str(value: "\"]"))
 }
 
-// U2 plus workflow lamps v0, corrected for lifecycle truth: one named observer per endpoint runs at
-// load, immediately after an accepted dispatch, and on the modeled poll cadence while the page is
-// open. Each observation recomputes its own axis; neither endpoint can suppress the other.
-// /sessions.json proves tmux/process presence only, so it renders `session · present` plus the
-// provider/readiness evidence carried by the wire, never `live` as agent execution. Refusal
-// resolves every Live lamp to Refused and inserts a source-specific loud banner — unknowable never
-// rounds to Off.
+data sessions_panel_note: String = "U2 plus workflow lamps v0, corrected for lifecycle truth: one named observer per endpoint runs at load, immediately after an accepted dispatch, and on the modeled poll cadence while the page is open. Each observation recomputes its own axis; neither endpoint can suppress the other. /sessions.json proves tmux/process presence only, so it renders `session · present` plus the provider/readiness evidence carried by the wire, never `live` as agent execution. Refusal resolves every Live lamp to Refused and inserts a source-specific loud banner — unknowable never rounds to Off."
 
 data js_sessions_observe_fn: String = "gunbcObserveSessions"
 data js_attempts_observe_fn: String = "gunbcObserveAttempts"
@@ -1539,14 +1374,7 @@ data js_sessions_observe_pending: String = "gunbcSessionsObservationPending"
 data js_attempts_observe_pending: String = "gunbcAttemptsObservationPending"
 data js_observation_poll_tick: String = "gunbcObservationPollTick"
 data observation_poll_interval: Millisecond = millisecond(count: 3000)
-// The page has no typed terminal-attempt observation yet, so it cannot honestly decide that an
-// attempt is terminal and stop polling. It therefore re-observes both independent sources for the
-// page lifetime at one explicit cadence; a recursive one-shot timeout schedules the next
-// observation without introducing the dashboard's forbidden animation/interval loop, and page
-// unload cancels the browser timer. Each source permits one request in flight and coalesces
-// overlapping timer or post-dispatch observations into one pending rerun, so an older response
-// cannot repaint over a newer one. This dissolves into terminal-bounded polling when
-// AttemptEvidence.terminal_outcome gains a live producer.
+data observation_poll_note: String = "The page has no typed terminal-attempt observation yet, so it cannot honestly decide that an attempt is terminal and stop polling. It therefore re-observes both independent sources for the page lifetime at one explicit cadence; a recursive one-shot timeout schedules the next observation without introducing the dashboard's forbidden animation/interval loop, and page unload cancels the browser timer. Each source permits one request in flight and coalesces overlapping timer or post-dispatch observations into one pending rerun, so an older response cannot repaint over a newer one. This dissolves into terminal-bounded polling when AttemptEvidence.terminal_outcome gains a live producer."
 
 fn observation_complete_stmts(
   observer: String,
@@ -1919,10 +1747,7 @@ fn remove_all_selector_stmt(selector: String, item_name: String) -> TsStmt {
         args: [])))]))
 }
 
-// Each session observation clears the prior projection before repainting: presence datasets flip
-// back and every session-facts disclosure line is removed, so a torn-down session cannot leave a
-// stale 'present' claim. The dispatch button itself is untouched — it is an action and never
-// carried the presence claim after A2 (node_activity_region_note).
+data sessions_reset_note: String = "Each session observation clears the prior projection before repainting: presence datasets flip back and every session-facts disclosure line is removed, so a torn-down session cannot leave a stale 'present' claim. The dispatch button itself is untouched — it is an action and never carried the presence claim after A2 (node_activity_region_note)."
 
 fn sessions_reset_presence_stmt() -> TsStmt {
   ts_expr_stmt(expr: ts_call(
@@ -1958,18 +1783,7 @@ fn sessions_reset_presence_stmt() -> TsStmt {
     ]))]))
 }
 
-// ONE FAILURE NARRATED ONCE, ACROSS CHANNELS (A2 hierarchy closeout, operator gap ruling
-// 2026-08-02). Three observation channels — sessions, attempts, workflow — used to each prepend
-// their own full-width refusal banner through this painter, so one dead observation root stacked
-// three near-identical amber voices above the fold (the local-serve screenshots are the specimen).
-// The painter now upserts each channel's located row INSIDE one shared impact region: the
-// server-rendered section.workspace-observation when the page shipped one (the serve-time impact
-// statement keeps its own summary — the client never overwrites a server-decided claim), else a
-// client-minted twin. The region's disclosure holds the per-channel raw rows, the summary states
-// the user-relevant impact with the refused-channel count, and gunbcObserveImpactSync retracts rows
-// as channels recover — a client-minted region with zero refused rows removes itself, so recovery
-// leaves no husk. Frequency stays observable: every channel row remains in the DOM, typed by its
-// source class, one interaction deep — deduplicated narration, never deduplicated evidence.
+data observe_impact_region_note: String = "ONE FAILURE NARRATED ONCE, ACROSS CHANNELS (A2 hierarchy closeout, operator gap ruling 2026-08-02). Three observation channels — sessions, attempts, workflow — used to each prepend their own full-width refusal banner through this painter, so one dead observation root stacked three near-identical amber voices above the fold (the local-serve screenshots are the specimen). The painter now upserts each channel's located row INSIDE one shared impact region: the server-rendered section.workspace-observation when the page shipped one (the serve-time impact statement keeps its own summary — the client never overwrites a server-decided claim), else a client-minted twin. The region's disclosure holds the per-channel raw rows, the summary states the user-relevant impact with the refused-channel count, and gunbcObserveImpactSync retracts rows as channels recover — a client-minted region with zero refused rows removes itself, so recovery leaves no husk. Frequency stays observable: every channel row remains in the DOM, typed by its source class, one interaction deep — deduplicated narration, never deduplicated evidence."
 
 fn observe_impact_preamble_statements() -> List<TsStmt> {
   [
@@ -2189,12 +2003,7 @@ fn sessions_fetch_effect_statements() -> List<TsStmt> {
   ]
 }
 
-// U3 (result surfacing v0): each attempt branch renders into its node's disclosure as a mono line —
-// the branch NAME, copyable and true (a tree link would be dead until a push; a dead link is a
-// fabricated result — the PR half lands when push/PR state is observed, not guessed). Each
-// observation clears the prior rendered projection before rebuilding it, so the immediate
-// post-dispatch read cannot duplicate old branches. Refusal upserts its own source-labeled loud
-// banner; recovery clears it.
+data attempts_row_note: String = "U3 (result surfacing v0): each attempt branch renders into its node's disclosure as a mono line — the branch NAME, copyable and true (a tree link would be dead until a push; a dead link is a fabricated result — the PR half lands when push/PR state is observed, not guessed). Each observation clears the prior rendered projection before rebuilding it, so the immediate post-dispatch read cannot duplicate old branches. Refusal upserts its own source-labeled loud banner; recovery clears it."
 
 fn attempts_mark_stmts() -> List<TsStmt> {
   [
@@ -2336,11 +2145,7 @@ fn observation_fetch_statements() -> List<TsStmt> {
   ]
 }
 
-// Every branch below selects WHERE a decided string lands, never WHAT it says: arm/attention keys
-// route material and expansion, summary/outcome/reason strings land verbatim, the ledger renders
-// the wire's canonical segment rows in wire order, and counts are never recomputed client-side. The
-// stale sweep realizes attempt disappearance as DOM removal (attention rule: absence earns no area)
-// while keep-and-update preserves the operator's open disclosure between polls.
+data workflow_paint_no_policy_note: String = "Every branch below selects WHERE a decided string lands, never WHAT it says: arm/attention keys route material and expansion, summary/outcome/reason strings land verbatim, the ledger renders the wire's canonical segment rows in wire order, and counts are never recomputed client-side. The stale sweep realizes attempt disappearance as DOM removal (attention rule: absence earns no area) while keep-and-update preserves the operator's open disclosure between polls."
 
 fn workflow_activity_in_row_expr(row_name: String) -> TsExpr {
   ts_binop(
@@ -2894,11 +2699,7 @@ fn workflow_schedule_refresh_stmt() -> TsStmt {
   ))
 }
 
-// gunbcPollWorkflow waits for gunbcRefreshWorkflow's returned fetch promise to settle and schedules
-// the next read in finally. The former fire-then-setTimeout shape overlapped every two seconds
-// whenever /workflow.json exceeded its cadence; one real oversized Codex event made the interpreted
-// handler slow enough to fill the socket backlog. Settlement-driven polling preserves cadence after
-// completion and admits at most one workflow observation per browser.
+data workflow_poll_single_flight_note: String = "gunbcPollWorkflow waits for gunbcRefreshWorkflow's returned fetch promise to settle and schedules the next read in finally. The former fire-then-setTimeout shape overlapped every two seconds whenever /workflow.json exceeded its cadence; one real oversized Codex event made the interpreted handler slow enough to fill the socket backlog. Settlement-driven polling preserves cadence after completion and admits at most one workflow observation per browser."
 
 fn workflow_fetch_statements() -> List<TsStmt> {
   [
@@ -2936,27 +2737,7 @@ fn workflow_fetch_statements() -> List<TsStmt> {
   ]
 }
 
-// SELECTION IS CLIENT STATE; PROMINENCE IS ITS PROJECTION (A2 hierarchy closeout, operator gap
-// ruling 2026-08-02: only the selected subject normally exposes the primary operation prominently).
-// Selecting a row — by clicking its non-interactive surface, by keyboard focus reaching it
-// (focus-visible only, so pointer clicks on inner controls never move selection through the focus
-// channel), or by Enter/Space on the focused row — selects exactly one row at a time; re-selecting
-// the selected row, or pressing Escape, clears; activating any control, link, or disclosure TOGGLE
-// acts WITHOUT changing selection, keeping selection and activation distinct operations (the
-// exclusion names summary — the disclosure's interactive part — NOT details: every row lives inside
-// the section fold's details element, so excluding details ancestors made pointer selection
-// unreachable corpus-wide, a defect this note's first revision shipped and the S0 interaction
-// capture exposed by execution). Every input path funnels through ONE gunbcSelectRow, so keyboard
-// and pointer cannot drift apart. Selection grants action-focal to the row's own primary action
-// only (the class named for what it means — selection-granted focal prominence, never liveness; see
-// action_prominence_rules_note) — the first .node-head under the row li is its own head in document
-// order, so a nested child row's control can never inherit the parent's grant — and the clear pass
-// strips every node-selected and action-focal in one sweep, so two focal controls cannot coexist.
-// No selection state is persisted: prominence is a session-local reading aid, not a fact about the
-// work. DECLARED FOLLOW-UP (S0 handback, operator recalibration 2026-08-02): in the instrument
-// composition, secondary override controls LEAVE the resting row entirely — they move into the
-// contextual inspector/disclosure and the resting row keeps at most a small affordance; this
-// production page keeps them in-row until that composition lands.
+data row_selection_note: String = "SELECTION IS CLIENT STATE; PROMINENCE IS ITS PROJECTION (A2 hierarchy closeout, operator gap ruling 2026-08-02: only the selected subject normally exposes the primary operation prominently). Selecting a row — by clicking its non-interactive surface, by keyboard focus reaching it (focus-visible only, so pointer clicks on inner controls never move selection through the focus channel), or by Enter/Space on the focused row — selects exactly one row at a time; re-selecting the selected row, or pressing Escape, clears; activating any control, link, or disclosure TOGGLE acts WITHOUT changing selection, keeping selection and activation distinct operations (the exclusion names summary — the disclosure's interactive part — NOT details: every row lives inside the section fold's details element, so excluding details ancestors made pointer selection unreachable corpus-wide, a defect this note's first revision shipped and the S0 interaction capture exposed by execution). Every input path funnels through ONE gunbcSelectRow, so keyboard and pointer cannot drift apart. Selection grants action-focal to the row's own primary action only (the class named for what it means — selection-granted focal prominence, never liveness; see action_prominence_rules_note) — the first .node-head under the row li is its own head in document order, so a nested child row's control can never inherit the parent's grant — and the clear pass strips every node-selected and action-focal in one sweep, so two focal controls cannot coexist. No selection state is persisted: prominence is a session-local reading aid, not a fact about the work. DECLARED FOLLOW-UP (S0 handback, operator recalibration 2026-08-02): in the instrument composition, secondary override controls LEAVE the resting row entirely — they move into the contextual inspector/disclosure and the resting row keeps at most a small affordance; this production page keeps them in-row until that composition lands."
 
 data row_selected_class: String = "node-selected"
 data action_focal_class: String = "action-focal"
@@ -3173,11 +2954,7 @@ fn dispatch_client_js_source() -> String {
 
 data sandbox_live_class: String = "sandbox-live-btn"
 
-// The /sandbox live instance reuses the EXACT dispatch render (dispatch_client_program_for) — one
-// behavior, two bindings (§2): same click/response handler, only the fetch URL differs. It POSTs to
-// /sandbox/echo?status=<data-status> instead of the real dispatch route, so every wire arm is
-// pressable and renders identically to the real button, without spawning a session. If the render
-// forked, the sandbox would be a lie; sharing the program makes it a faithful mirror.
+data sandbox_client_program_note: String = "The /sandbox live instance reuses the EXACT dispatch render (dispatch_client_program_for) — one behavior, two bindings (§2): same click/response handler, only the fetch URL differs. It POSTs to /sandbox/echo?status=<data-status> instead of the real dispatch route, so every wire arm is pressable and renders identically to the real button, without spawning a session. If the render forked, the sandbox would be a lie; sharing the program makes it a faithful mirror."
 
 fn sandbox_echo_url_expr() -> TsExpr {
   ts_binop(
@@ -3209,13 +2986,7 @@ fn sandbox_client_js_source() -> String {
 
 data instrument_tuner_asset_path: String = "/assets/instrument-tuner.js"
 
-// THE OPERABLE HALF OF THE V1-DELETION INSTRUMENT (declared follow-on to
-// gunbc.roadmap_instrument_sandbox exemplar_note). Modeled as a TsProgram via
-// serialize_typescript_program — persistent camera in localStorage, selection parity with
-// row_selection_bind_statements, thresholded wheel integrator (one detent per admitted threshold)
-// and seek-depth buttons that decompose distant targets into adjacent steps, detent click only when
-// depth actually changes, MVP user depths (program/outcome/front) on controls. Never writes a
-// program fact.
+data instrument_tuner_client_note: String = "THE OPERABLE HALF OF THE V1-DELETION INSTRUMENT (declared follow-on to gunbc.roadmap_instrument_sandbox exemplar_note). Modeled as a TsProgram via serialize_typescript_program — persistent camera in localStorage, selection parity with row_selection_bind_statements, thresholded wheel integrator (one detent per admitted threshold) and seek-depth buttons that decompose distant targets into adjacent steps, detent click only when depth actually changes, MVP user depths (program/outcome/front) on controls. Never writes a program fact."
 
 data instrument_subject_class: String = "instrument-subject"
 data instrument_subject_selected_class: String = "instrument-subject-selected"
@@ -4013,11 +3784,7 @@ data instrument_tuner_page_path: String = "/sandbox/instrument/tuner"
 data instrument_motion_page_path: String = "/sandbox/instrument/motion"
 data repo_atlas_page_path: String = "/sandbox/repo-atlas"
 
-// ONE ROSTER, RENDERED IN THE SHARED HEADER, so a new instrument page is discoverable by adding a
-// row rather than by remembering which pages to edit. It also removes the path literals: the route
-// table and the links now read the same declaration, so a page cannot link somewhere the router
-// does not serve. That is the difference between a nav that is DERIVED from the routes' own path
-// authority and one that agrees with it by coincidence until someone renames a route.
+data instrument_lab_nav_note: String = "ONE ROSTER, RENDERED IN THE SHARED HEADER, so a new instrument page is discoverable by adding a row rather than by remembering which pages to edit. It also removes the path literals: the route table and the links now read the same declaration, so a page cannot link somewhere the router does not serve. That is the difference between a nav that is DERIVED from the routes' own path authority and one that agrees with it by coincidence until someone renames a route."
 
 type InstrumentLabLink {
   path: String
@@ -4051,19 +3818,9 @@ data motion_probe_run_id: String = "motion-probe-run"
 
 data motion_probe_window_ms: Int = 2000
 
-// THE CLIENT DOES NOT RESET THE PLATE WHEN THE LIST RUNS OUT, and removing that line is half the
-// repair for a real defect. It used to set translateY(0) after consuming the frames, which meant a
-// sequence that never settled still LOOKED settled — the renderer supplied the ending the model had
-// failed to reach, and the failure had no way to become visible. The sequence now ends at zero
-// because gunbc.design.instrument_bob proved it does, and a sequence that cannot reach rest is
-// refused before it is ever shipped, so there is nothing left for a fallback to paper over.
+data client_manufactures_no_final_zero_note: String = "THE CLIENT DOES NOT RESET THE PLATE WHEN THE LIST RUNS OUT, and removing that line is half the repair for a real defect. It used to set translateY(0) after consuming the frames, which meant a sequence that never settled still LOOKED settled — the renderer supplied the ending the model had failed to reach, and the failure had no way to become visible. The sequence now ends at zero because gunbc.design.instrument_bob proved it does, and a sequence that cannot reach rest is refused before it is ever shipped, so there is nothing left for a fallback to paper over."
 
-// REDUCED MOTION IS A SECOND DECIDED SEQUENCE, NOT A SUPPRESSED FIRST ONE. The page ships both
-// wires and the client selects by matchMedia, so under a reduced-motion preference the model still
-// answers 'what does the plate do' — it answers with the at-rest frame gunbc.design.instrument_bob
-// returns for MotionReduced. The receipt, the straddle and the magnitudes are untouched.
-// Suppressing playback in the client instead would put a second motion policy in the renderer,
-// disagreeing silently with the one the witness asserts.
+data motion_reduced_sequence_is_emitted_not_suppressed_note: String = "REDUCED MOTION IS A SECOND DECIDED SEQUENCE, NOT A SUPPRESSED FIRST ONE. The page ships both wires and the client selects by matchMedia, so under a reduced-motion preference the model still answers 'what does the plate do' — it answers with the at-rest frame gunbc.design.instrument_bob returns for MotionReduced. The receipt, the straddle and the magnitudes are untouched. Suppressing playback in the client instead would put a second motion policy in the renderer, disagreeing silently with the one the witness asserts."
 
 data js_motion_plate_var: String = "gunbcMotionPlate"
 data js_motion_receipt_var: String = "gunbcMotionReceipt"
@@ -4327,11 +4084,7 @@ fn motion_tap_bind_statement() -> TsStmt {
   ))
 }
 
-// The DeviceMotion route, reported as three separable facts because they fail separately: whether
-// the interface exists at all, whether the permission gate answered, and what the stream actually
-// delivered over a measured window. A silent stream reports zero events over its window — it does
-// NOT report an absent sensor, because a window that produced nothing and an interface that does
-// not exist are different observations and only one of them was made.
+data motion_devicemotion_probe_note: String = "The DeviceMotion route, reported as three separable facts because they fail separately: whether the interface exists at all, whether the permission gate answered, and what the stream actually delivered over a measured window. A silent stream reports zero events over its window — it does NOT report an absent sensor, because a window that produced nothing and an interface that does not exist are different observations and only one of them was made."
 
 fn motion_devicemotion_listen_statements() -> List<TsStmt> {
   [
@@ -4453,11 +4206,7 @@ fn motion_devicemotion_probe_statement() -> TsStmt {
   )
 }
 
-// The Generic Sensor route, kept because it is the only one whose failures are NAMED. Construction
-// itself can raise, so it is wrapped: a SecurityError from an insecure context or a blocking
-// permissions policy becomes a located line rather than a fault that leaves the previous line
-// standing. The refusal flag exists so an error observed during the window is not overwritten by
-// the window's own summary — the first thing that actually happened is what the receipt keeps.
+data motion_sensor_probe_note: String = "The Generic Sensor route, kept because it is the only one whose failures are NAMED. Construction itself can raise, so it is wrapped: a SecurityError from an insecure context or a blocking permissions policy becomes a located line rather than a fault that leaves the previous line standing. The refusal flag exists so an error observed during the window is not overwritten by the window's own summary — the first thing that actually happened is what the receipt keeps."
 
 fn motion_sensor_probe_statement() -> TsStmt {
   ts_const(

@@ -16,37 +16,43 @@ import product.fabric.demand {
 }
 import product.fabric.execution { ExecutionGrant, ReservationRef, LeaseIdentity }
 
-// This module is the second half of a command's core effect: it joins the demand-population
-// transition, which product.fabric.demand owns, to the execution state that transition bears on. It
-// is a peer rather than more functions on demand.dag for one structural reason — execution.dag
-// imports demand.dag, so the join cannot sit in demand.dag without inverting a live edge, and
-// acyclicity is the import graph's only law. Nothing new is modeled: the in-flight execution is
-// read as ExecutionGrant, which already carries the attempt, the work and both reservation sets, so
-// no projection of a grant is minted beside it.
+// This module is the second half of a command's core effect: it joins the
+// demand-population transition, which product.fabric.demand owns, to the
+// execution state that transition bears on. It exists as a peer rather than as
+// more functions on demand.dag for one structural reason - execution.dag
+// imports demand.dag, so the join cannot sit in demand.dag without inverting a
+// live edge, and acyclicity is the import graph's only law. Nothing new is
+// modeled here: the in-flight execution is read as ExecutionGrant, which
+// already carries the attempt, the work and both reservation sets, so no
+// projection of a grant is minted beside the grant.
 
-// The fabric does not release anything here. A directive NAMES what must be released and why;
-// product.fabric.budget owns the money ledger and its release is a transition on an account.
-// Deciding and actuating in one function would put a second authority for the released quantity in
-// the caller's hands — exactly what release_money refuses by deriving the amount from the entry.
-// Both reservation sets travel together because the claim is capacity AND budget: releasing money
-// while holding capacity leaks a machine still billing under work nothing requires.
+// The fabric does not release anything here. A directive NAMES what must be
+// released and why; product.fabric.budget owns the money ledger and its release
+// is a transition on an account. Deciding and actuating in one function would
+// put a second authority for the released quantity in the caller's hands, which
+// is exactly what release_money refuses by deriving the amount from the entry.
+// Both reservation sets travel together because the prose claim is capacity AND
+// budget: releasing money while holding capacity leaks a machine that is still
+// billing under a work nothing requires.
+// The lease travels with the directive because release is fenced: release_money
+// refuses a generation that is not the one the hold was taken under, and a
+// caller that had to re-derive the generation would be a second account of it,
+// free to disagree with the grant that authorized the hold. The whole lease
+// identity is carried rather than the generation alone, for the reason
+// execution.dag already gives about receipt admission - a small integer that
+// every lease starts at names nothing on its own.
 //
-// The lease travels with the directive because release is fenced: release_money refuses a
-// generation other than the one the hold was taken under, and a caller re-deriving the generation
-// would be a second account of it, free to disagree with the grant that authorized the hold. The
-// whole lease identity is carried rather than the generation alone, for the reason execution.dag
-// gives about receipt admission — a small integer every lease starts at names nothing on its own.
-//
-// authorized_by is the withdrawal's own evidence. A release that cannot name the observation that
-// caused it is a capacity and budget movement with no provenance, and the command already carried
-// the answer.
-//
-// vouched_by carries the attestation's verification_authority forward. Naming who vouched on the
-// ATTESTATION and dropping it at the effect defeats the field one layer down: the release is the
-// artifact a later reader finds, so an authority stopping short of it is unattributable where
-// attribution is needed. authorized_by and vouched_by are two facts — the observation that meant
-// withdraw, and the authority that vouched for the command carrying it — and collapsing them loses
-// whichever question was not asked first.
+// authorized_by is the withdrawal's own evidence. A release that could not name
+// the observation that caused it is a capacity and budget movement with no
+// provenance, and the command was already carrying the answer.
+// vouched_by carries the attestation's verification_authority forward. Naming
+// who vouched on the ATTESTATION and then dropping it at the effect defeats the
+// field's whole purpose one layer down: the release is the artifact a later
+// reader actually finds, so an authority that stops short of it is unattributable
+// exactly where attribution is needed. authorized_by and vouched_by are two
+// facts, not one - the observation that meant withdraw, and the authority that
+// vouched for the command carrying it - and collapsing them would lose whichever
+// question was not asked first.
 type ReleaseDirective<P> {
   attempt: FabricIdentity<P, ExecutionAttemptKey>
   lease: LeaseIdentity
@@ -57,24 +63,30 @@ type ReleaseDirective<P> {
   vouched_by: DeclarationRef
 }
 
-// Both execution-bearing arms carry a LIST, and the plural is load-bearing, not defensive. More
-// than one grant per Work is real: new_attempt_required admits a fresh attempt while one is
-// running, so a Work under re-execution holds two grants and two sets of reservations. An arm
-// naming a single attempt made the caller's correct move unrepresentable — it would release the
-// first grant's capacity and budget and silently strand every other under a Work nothing requires,
-// the leak this model exists to close, arriving through the shape of the answer.
+// Both execution-bearing arms carry a LIST, and the plural is load-bearing
+// rather than defensive. More than one grant per Work is not a hypothetical:
+// new_attempt_required explicitly admits a fresh attempt while one is already
+// running, so a Work under re-execution holds two grants and two sets of
+// reservations at once. An arm naming a single attempt made the caller's
+// correct move unrepresentable - it would release the first grant's capacity
+// and budget and silently strand every other one under a Work that nothing
+// requires any more, which is the leak this model exists to close, arriving
+// through the shape of the answer rather than through the decision.
 //
-// The empty case keeps its own arm rather than an empty list, because nothing running and an empty
-// release plan are different facts: the first is a Work that lost its last demand before any grant
-// issued; the second an actuator handed nothing with no way to tell an answer from an omission.
+// The empty case keeps its own arm rather than becoming an empty list, because
+// nothing running and a release plan that happens to be empty are different
+// facts: the first is a Work that lost its last demand before any grant issued,
+// and the second would be an actuator being handed nothing to do with no way to
+// tell whether that was the answer or an omission.
 
-// The arms are the answers a binding is not allowed to reach on its own. Every combination
-// differing in what the caller must DO is its own arm, none a wildcard over the others: continuing
-// an attempt and having none to continue are the same population outcome with opposite execution
-// consequences, and releasing a work with nothing running is a real state — not a degraded release
-// — because a work can lose its last demand before any grant issued. Collapsing it into the
-// stopping arm would hand the caller a release directive naming an attempt and reservations that do
-// not exist.
+// The arms are the answers a binding is not allowed to reach on its own. Every
+// combination that differs in what the caller must DO is its own arm, and none
+// of them is a wildcard over the others: continuing an attempt and having no
+// attempt to continue are the same population outcome with opposite execution
+// consequences, and releasing a work with nothing running is a real state - not
+// a degraded release - because a work can lose its last demand before any grant
+// ever issued. Collapsing that into the stopping arm would hand the caller a
+// release directive naming an attempt and reservations that do not exist.
 type DemandCommandEffect<P>
   = CommandRefused { refusal: DemandRefusal<P> }
   | DemandAdmitted { population: DemandPopulation<P>, directive: SatisfactionDirective }
@@ -114,9 +126,9 @@ fn execution_presence<P>(
   }
 }
 
-// The reason is fixed by this module rather than supplied: a caller-chosen release reason is a
-// second account of why the release happened, free to disagree with the transition that produced
-// it.
+// The reason is fixed by this module rather than supplied. A caller-chosen
+// release reason is a second account of why the release happened, free to
+// disagree with the transition that produced it.
 fn release_directive_for<P>(
   g: ExecutionGrant<P>,
   authorized_by: ObservationReceiptRef,
@@ -133,10 +145,11 @@ fn release_directive_for<P>(
   }
 }
 
-// A withdrawal or a supersede that emptied the work's demand population is the only path that may
-// stop an attempt, and only after the population transition was admitted. Deciding the execution
-// consequence first and authorizing afterwards is how an unauthorized withdrawal comes to have
-// already cancelled something.
+// A withdrawal or a supersede that emptied the work's demand population is the
+// only path that may stop an attempt, and it may do so only after the
+// population transition was admitted. Ordering matters: deciding the execution
+// consequence first and authorizing afterwards is how an unauthorized
+// withdrawal comes to have already cancelled something.
 fn withdrawal_effect<P>(
   population: DemandPopulation<P>,
   grants: List<ExecutionGrant<P>>,

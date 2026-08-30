@@ -25,10 +25,7 @@ import gunbc.spark.serving_terminal_health {
   ProbeAnswered,
 }
 
-// SPARK-PAIR-0 P0. The gate between a host that no longer serves and a host the training fabric may
-// offer. SparkTrainingReadyProof is sole_constructor and has exactly one producer, so a training
-// offer, a capacity measurement or a trainer launch cannot be written against a Spark whose serving
-// retirement was never terminally observed.
+data spark_training_ready_authority_note: String = "SPARK-PAIR-0 P0. The gate between a host that no longer serves and a host the training fabric may offer. SparkTrainingReadyProof is sole_constructor and has exactly one producer, so a training offer, a capacity measurement or a trainer launch cannot be written against a Spark whose serving retirement was never terminally observed."
 
 // RETIREMENT IS NOT PROVED BY A PROBE THAT FAILED TO RUN.
 //

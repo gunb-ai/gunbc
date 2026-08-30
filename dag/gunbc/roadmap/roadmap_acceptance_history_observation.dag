@@ -33,22 +33,11 @@ import v2.std.collection { List }
 
 data roadmap_acceptance_history_repository_path: String = "."
 
-// The repository this observation inspects. Declared rather than ambient, for the reason
-// git.Inspect.MergeBase now requires it: an ambient repository makes a right answer and a wrong one
-// indistinguishable, because two checkouts can hold refs that look identical.
+data roadmap_acceptance_history_repository_path_note: String = "The repository this observation inspects. Declared rather than ambient, for the reason git.Inspect.MergeBase now requires it: an ambient repository makes a right answer and a wrong one indistinguishable, because two checkouts can hold refs that look identical."
 
 data roadmap_acceptance_history_authority_repo_path: String = "dag/gunbc/roadmap/roadmap_authority.dag"
 
-// DISSOLVED: merge-base prior_history parses
-// dag/gunbc/roadmap/roadmap_acceptance_event_history.jsonl via
-// gunbc.roadmap_acceptance_history_carrier when the carrier exists at merge-base; when absent
-// (carrier introduction on main) the typed bootstrap projects inline authority history via
-// gunbc.roadmap_acceptance_history_projection. A changed carrier without a valid merge-base
-// observation refuses AcceptanceHistoryIntegrityRefusedPriorHistoryObservation — never
-// prior_history = []. git_show_path_absent_at_ref substring-matches both git stderr shapes for path
-// absent at ref (tree miss: does not exist in; worktree-present-but-not-in-commit: exists on disk,
-// but not in) until extdeps.git carries a typed path-absent-at-ref disposition. Remaining
-// dissolve-on: delete both seed bridges when a modeled revision-addressed carrier ingest lands.
+data roadmap_acceptance_history_prior_history_next_rung_trigger: String = "DISSOLVED: merge-base prior_history parses dag/gunbc/roadmap/roadmap_acceptance_event_history.jsonl via gunbc.roadmap_acceptance_history_carrier when the carrier exists at merge-base; when absent (carrier introduction on main) the typed bootstrap projects inline authority history via gunbc.roadmap_acceptance_history_projection. A changed carrier without a valid merge-base observation refuses AcceptanceHistoryIntegrityRefusedPriorHistoryObservation — never prior_history = []. git_show_path_absent_at_ref substring-matches both git stderr shapes for path absent at ref (tree miss: does not exist in; worktree-present-but-not-in-commit: exists on disk, but not in) until extdeps.git carries a typed path-absent-at-ref disposition. Remaining dissolve-on: delete both seed bridges when a modeled revision-addressed carrier ingest lands."
 
 type RoadmapAcceptanceHistoryPriorObservation
   = PriorHistoryObserved { prior: List<RoadmapAcceptanceEvent> }
@@ -181,11 +170,7 @@ fn observe_roadmap_acceptance_history_prior(
   }
 }
 
-// A function, not top-level data, so importing this module cannot reach git.Inspect.HeadCommit by
-// import alone (gunbc.stage0_rust_host_observation host_observation_invocation_note). When HEAD and
-// merge-base carrier identities match, prior_history is parsed from git.Core.Show(HEAD carrier) —
-// not the working-tree load — so uncommitted local carrier edits refuse against the committed prior
-// rather than self-matching.
+// A function, not top-level data, so importing this module cannot reach git.Inspect.HeadCommit by import alone (gunbc.stage0_rust_host_observation host_observation_invocation_note). When HEAD and merge-base carrier identities match, prior_history is parsed from git.Core.Show(HEAD carrier) — not the working-tree load — so uncommitted local carrier edits refuse against the committed prior rather than self-matching.
 fn current_roadmap_acceptance_history_prior_observation(
   current_history: List<RoadmapAcceptanceEvent>,
 ) -> RoadmapAcceptanceHistoryPriorObservation {
@@ -228,13 +213,7 @@ fn acceptance_history_integrity_holds_from_prior_observation_with_prior(
   }
 }
 
-// SCAFFOLD (carrier-introduction window only): merge-base authority overlay still imports the
-// sealed-prefix observation entry points deleted on HEAD. Bootstrap projection compiles that
-// overlay against HEAD's transitive closure solely to evaluate roadmap_acceptance_event_history();
-// these compat rows satisfy the import surface and ignore sealed_event_count/sealed_chain_digest —
-// prefix law is enforced by acceptance_history_integrity_verdict on observed prior, not the retired
-// seal columns. Dissolve-on: modeled revision-addressed carrier ingest deletes the projection seed
-// and these compat rows together.
+data roadmap_acceptance_history_observation_bootstrap_compat_note: String = "SCAFFOLD (carrier-introduction window only): merge-base authority overlay still imports the sealed-prefix observation entry points deleted on HEAD. Bootstrap projection compiles that overlay against HEAD's transitive closure solely to evaluate roadmap_acceptance_event_history(); these compat rows satisfy the import surface and ignore sealed_event_count/sealed_chain_digest — prefix law is enforced by acceptance_history_integrity_verdict on observed prior, not the retired seal columns. Dissolve-on: modeled revision-addressed carrier ingest deletes the projection seed and these compat rows together."
 
 fn acceptance_history_integrity_holds_from_prior_observation(
   observation: RoadmapAcceptanceHistoryPriorObservation,

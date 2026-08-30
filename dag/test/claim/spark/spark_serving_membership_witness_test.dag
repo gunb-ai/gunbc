@@ -132,9 +132,7 @@ fn plan_has_refused_address(
   )
 }
 
-// Already-correct host converging to ZERO effects is the claim most likely to be quietly false —
-// reinstall-every-time is indistinguishable from correct from the outside. Asserts plan AND
-// membership_effects both empty.
+data w_noop_note: String = "Already-correct host converging to ZERO effects is the claim most likely to be quietly false — reinstall-every-time is indistinguishable from correct from the outside. Asserts plan AND membership_effects both empty."
 
 test fn w_spark_serving_desired_release_admits_for_admission_backed_witnesses() -> Bool {
   match spark_serving_desired_release_admission() {

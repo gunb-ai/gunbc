@@ -4,31 +4,32 @@ import gunbc.roadmap_model { RoadmapNodeId }
 import gunbc.seed_growth { SeedGrowthJustification }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 
-// FORWARD-FREEZE RECEIPT for the hand Rust added by the claim-unwind terminal repair. Authored
-// because gunbc.seed_growth_admission seed_growth_forward_freeze_policy_note makes unenumerated
-// hand growth in src/v1 a stop-line, and this change adds two hand items to v1_compiler.cli_run.
-// That row also records, measured, that zero of the four PRs adding hand src/v1 Rust in the 48
-// hours to 2026-08-24 were caught by an unassisted reviewer -- so a row authored only when a
-// review asks for it is a row the roster cannot rely on.
+// FORWARD-FREEZE RECEIPT for the hand Rust added by the claim-unwind terminal repair.
+// Authored because gunbc.seed_growth_admission seed_growth_forward_freeze_policy_note makes
+// unenumerated hand growth in src/v1 a stop-line, and this change adds two hand items to
+// v1_compiler.cli_run. That row also records, measured, that zero of the four PRs adding hand
+// src/v1 Rust in the 48 hours to 2026-08-24 were caught by an unassisted reviewer -- so a row
+// authored only when a review asks for it is a row the roster cannot rely on.
 //
-// WHAT THE CHANGE IS. ClaimOutcome carries a typed arm for every non-verdict a claim can reach --
-// runtime error, not-Bool, budget interruption, unresolved host tool, route gap -- and had none
-// for an UNWIND. Measured on this branch's baseline: a panic raised in witness evaluation outside
-// compile_dag_diagnostic_census's catch_unwind ABORTED the process with exit 101, and the identity
-// produced no PASS/FAIL line at all. The terminal ledger, the expected-red roster join and the
-// disposition TSV are all written after the fold, so none of the three existed; every remaining
-// planned claim went unmeasured and the artifact that would have said so was never written.
+// WHAT THE CHANGE IS. ClaimOutcome carries a typed arm for every non-verdict a claim can reach
+// -- runtime error, not-Bool, budget interruption, unresolved host tool, route gap -- and had
+// none for an UNWIND. Measured on this branch's baseline: a panic raised in witness evaluation
+// outside compile_dag_diagnostic_census's catch_unwind ABORTED the process with exit 101, and
+// the identity produced no PASS/FAIL line at all. The terminal ledger, the expected-red roster
+// join and the disposition TSV are all written after the fold, so none of the three existed;
+// every remaining planned claim went unmeasured and the artifact that would have said so was
+// never written.
 //
-// WHY IT IS RUST AND NOT .dag, the question this receipt exists to answer honestly. The
-// VOCABULARY is not modeled here: ClaimAttemptTerminal, ClaimDisposition and their wire tags are
-// v2.workflow.floor_terminal_ledger and floor_terminal_ledger_wire, and the seed's arms are a
-// MIRROR of that coproduct -- the relation floor_terminal_ledger.dag's own header declares for
-// this file, under a production per-row comparator requiring the two mappings to agree. What
-// cannot move is CATCHING THE UNWIND: std::panic::catch_unwind is a property of the host that runs
-// the evaluator, and the substrate has no representation of a Rust stack unwinding through an
-// interpreter frame. Modeling it would require the .dag side to name the seed's own unwind
-// mechanism, a layer inversion and not a migration -- the boundary
-// gunbc.witness_runtime_cause_seed_growth records one seam over.
+// WHY IT IS RUST AND NOT .dag, which is the question this receipt exists to answer honestly.
+// The VOCABULARY is not modeled here: ClaimAttemptTerminal, ClaimDisposition and their wire
+// tags are v2.workflow.floor_terminal_ledger and floor_terminal_ledger_wire, and the seed's
+// arms are a MIRROR of that coproduct -- the same relation floor_terminal_ledger.dag's own
+// header already declares for this file, under a production per-row comparator that requires
+// the two mappings to agree. What cannot move is CATCHING THE UNWIND: std::panic::catch_unwind
+// is a property of the host that runs the evaluator, and the substrate has no representation of
+// a Rust stack unwinding through an interpreter frame. Modeling it would require the .dag side
+// to name the seed's own unwind mechanism, which is a layer inversion and not a migration --
+// the same boundary gunbc.witness_runtime_cause_seed_growth records one seam over.
 //
 // WHAT IS NOT NETTED. Several existing items were MODIFIED rather than added and are
 // ExistingSeedItemModified per gunbc.seed_growth_admission SeedGrowthChangeDisposition, so they
@@ -40,11 +41,11 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 // HAND-ITEM DELTA: +2 citable declarations, both in v1_compiler.cli_run.
 // HAND-LOC DELTA: +394 / -19 in src/v1/stage0/src/cli_run.rs, +19 / -0 in
 // src/v1/stage0/src/bin/claim_batch.rs, +2 / -1 in src/v1/stage0/src/bin/claim_executor.rs,
-// measured by `git diff --numstat` against the merge base. The two bin files add no declarations
-// -- one arm each on an existing report match, plus one counter on the floor's summary line. The
-// cli_run figure is majority COMMENT: the two new items are 41 lines of code between them; the
-// rest is the fold's stop-the-line argument, the not-attempted publication, and the reverse-join
-// suspension the halt makes necessary.
+// measured by `git diff --numstat` against the merge base. The two bin files add no
+// declarations -- their deltas are one arm each on an existing report match, plus one counter
+// added to the floor's summary line. The cli_run figure is majority COMMENT: the two new items
+// are 41 lines of code between them, and the rest is the fold's stop-the-line argument, the
+// not-attempted publication, and the reverse-join suspension the halt makes necessary.
 data claim_unwind_seed_growth_justification: SeedGrowthJustification = SeedGrowthJustification {
   hand_authored_declarations: [
     DeclarationRef { module_path: "v1_compiler.cli_run", decl_name: "run_claim_evaluation", field: WholeDeclaration },

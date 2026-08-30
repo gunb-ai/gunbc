@@ -101,14 +101,7 @@ fn terminal_control_scan() -> TerminalControlScan {
   }
 }
 
-// The roster fold previously asserted that EVERY one of the 65 C0/C1 members refuses, and that
-// assertion is what encoded the defect: LF and TAB are roster members, so a multi-line diagnostic
-// was refused and the srv1 ServiceNotReady refusal rendered as a complaint about cursor-control
-// bytes instead of itself. The fold now skips exactly the two content-admissible members and still
-// requires refusal for the other 63, so the wall against smuggled overwrite/erase payloads is
-// unchanged in strength — only its extent is corrected. The admissions are asserted POSITIVELY
-// below rather than merely un-asserted, and the discriminating RED is line-feed-on-an-open-line: a
-// regression to blanket-allow greens the admissions but reds that control.
+data content_admissible_scan_note: String = "The roster fold previously asserted that EVERY one of the 65 C0/C1 members refuses, and that assertion is what encoded the defect: LF and TAB are roster members, so a multi-line diagnostic was refused and the srv1 ServiceNotReady refusal rendered as a complaint about cursor-control bytes instead of itself. The fold now skips exactly the two content-admissible members and still requires refusal for the other 63, so the wall against smuggled overwrite/erase payloads is unchanged in strength — only its extent is corrected. The admissions are asserted POSITIVELY below rather than merely un-asserted, and the discriminating RED is line-feed-on-an-open-line: a regression to blanket-allow greens the admissions but reds that control."
 
 fn admissible_control_is_projected(rendered: String) -> Bool {
   match project_terminal_write(

@@ -100,24 +100,7 @@ import extdeps.filesystem.filesystem_io {
 }
 import gunbc.git_diff_change_window { git_diff_window_absent_identity }
 
-// ONE VERIFICATION QUESTION HAS ONE SUBJECT. A verdict is about one durable roadmap node identity
-// under one criteria revision, in one attempt and branch, at one committed head, against one exact
-// change-window identity. None of those six fields is Optional: a receipt that cannot name any one
-// of them cannot state which question it answered and therefore cannot be constructed as
-// VerificationReceipt. The node's durable identity is RoadmapNodeIdentity rather than its editable
-// slug; criteria_digest is the Fnv1a64Structural value derived by gunbc.roadmap_model
-// node_criteria_digest; head_sha is std.types CommitSha rather than an anonymous revision string;
-// change_window_identity is the Fnv1a64Structural content hash over target, target_generation,
-// base, head, and relation from gunbc.git_diff_change_window (git_diff_window_absent_identity when
-// the contract does not consume an affected-set window).
-//
-// THE HEAD IS OBSERVED, NOT INFERRED FROM THE BRANCH. A branch is a moving publication handle and
-// remains in the subject because it locates the attempt's line of work. The committed head is the
-// verification identity: head A and head B in the same attempt are different subjects, so findings
-// against A can coexist with a later green receipt for B without either overwriting or
-// impersonating the other. When the target branch advances but head stays fixed,
-// change_window_identity moves with target_generation and base, so an old receipt for (B1, H)
-// cannot answer (B2, H).
+data verification_subject_note: String = "ONE VERIFICATION QUESTION HAS ONE SUBJECT. A verdict is about one durable roadmap node identity under one criteria revision, in one attempt and branch, at one committed head, against one exact change-window identity. None of those six fields is Optional: a receipt that cannot name any one of them cannot state which question it answered and therefore cannot be constructed as VerificationReceipt. The node's durable identity is RoadmapNodeIdentity rather than its editable slug; criteria_digest is the Fnv1a64Structural value derived by gunbc.roadmap_model node_criteria_digest; head_sha is std.types CommitSha rather than an anonymous revision string; change_window_identity is the Fnv1a64Structural content hash over target, target_generation, base, head, and relation from gunbc.git_diff_change_window (git_diff_window_absent_identity when the contract does not consume an affected-set window).\n\nTHE HEAD IS OBSERVED, NOT INFERRED FROM THE BRANCH. A branch is a moving publication handle and remains in the subject because it locates the attempt's line of work. The committed head is the verification identity: head A and head B in the same attempt are different subjects, so findings against A can coexist with a later green receipt for B without either overwriting or impersonating the other. When the target branch advances but head stays fixed, change_window_identity moves with target_generation and base, so an old receipt for (B1, H) cannot answer (B2, H)."
 
 type VerificationSubject {
   node_identity: RoadmapNodeIdentity
@@ -128,10 +111,7 @@ type VerificationSubject {
   change_window_identity: Fnv1a64Structural
 }
 
-// Recut A mutable pointer: after the belt derives the exact six-field verification question it
-// publishes which head and change_window_identity are current. The dashboard reads this before
-// addressing any immutable receipt. It is not verification evidence and may be replaced whenever
-// the belt selects a new window for the same head.
+data current_verification_selection_note: String = "Recut A mutable pointer: after the belt derives the exact six-field verification question it publishes which head and change_window_identity are current. The dashboard reads this before addressing any immutable receipt. It is not verification evidence and may be replaced whenever the belt selects a new window for the same head."
 
 data current_verification_selection_schema: NonEmptyStr = "roadmap-verification-current-selection/v1"
 
@@ -694,18 +674,7 @@ type ValidationExecution {
   stderr: String
 }
 
-// THE RECEIPT KEEPS THE QUESTION, THE PINNED ORACLE, EVERY EXECUTION, AND THE EXISTING TYPED
-// VERDICT. It does not store a rendered detail string as authority. Commands and process evidence
-// live only in ValidationExecution's fields; presentation may render them but no consumer parses
-// that rendering back. oracle_identity reuses std.content_hash ContentHash because the pin boundary
-// is subject-generic, while the criteria digest stays on its actual structural family rather than
-// widening to the union.
-//
-// ValidationVerdict remains owned by gunbc.roadmap_validation_oracle. Its current
-// command/detail-bearing arms are the compatibility surface the live attempt-level belt producer
-// still constructs; they are not a second execution authority here. When the belt wiring migrates,
-// it constructs executions from the declared operation, realized argv and process result and
-// projects the verdict through the same ValidationVerdict authority.
+data verification_receipt_note: String = "THE RECEIPT KEEPS THE QUESTION, THE PINNED ORACLE, EVERY EXECUTION, AND THE EXISTING TYPED VERDICT. It does not store a rendered detail string as authority. Commands and process evidence live only in ValidationExecution's fields; presentation may render them but no consumer parses that rendering back. oracle_identity reuses std.content_hash ContentHash because the pin boundary is subject-generic, while the criteria digest stays on its actual structural family rather than widening to the union.\n\nValidationVerdict remains owned by gunbc.roadmap_validation_oracle. Its current command/detail-bearing arms are the compatibility surface the live attempt-level belt producer still constructs; they are not a second execution authority here. When the belt wiring migrates, it constructs executions from the declared operation, realized argv and process result and projects the verdict through the same ValidationVerdict authority."
 
 type VerificationReceipt {
   subject: VerificationSubject
@@ -714,11 +683,7 @@ type VerificationReceipt {
   verdict: ValidationVerdict
 }
 
-// A READABLE RECEIPT ABOUT ANOTHER SUBJECT IS NOT EVIDENCE. The comparison is total over all six
-// required fields and returns the first differing field with both values, mirroring
-// gunbc.roadmap_publish publication_receipt_subject_match. In particular, an old head's passed
-// receipt cannot move the lamp for a new head merely because node, criteria, attempt and branch
-// still agree; nor can an old window identity answer after the target branch advances.
+data verification_subject_match_note: String = "A READABLE RECEIPT ABOUT ANOTHER SUBJECT IS NOT EVIDENCE. The comparison is total over all six required fields and returns the first differing field with both values, mirroring gunbc.roadmap_publish publication_receipt_subject_match. In particular, an old head's passed receipt cannot move the lamp for a new head merely because node, criteria, attempt and branch still agree; nor can an old window identity answer after the target branch advances."
 
 type VerificationSubjectMatch
   = VerificationSubjectMatches
@@ -779,38 +744,11 @@ fn verification_subject_match(
   }
 }
 
-// DECLARED LEGACY STATE — DISSOLVE-ON: belt verification writes and reads
-// gunbc.roadmap_verification_receipt VerificationReceipt at
-// dispatch_attempt_verification_receipt_path_for_instance. Before exact-head receipts,
-// gunbc.roadmap_validation_oracle validation_receipt_decode recovered only an attempt-level verdict
-// key from validation-receipt.json. That document carries no node identity, criteria digest,
-// attempt key, branch or head, so it cannot be upgraded or guessed into a VerificationSubject. Such
-// files decode as LegacyAttemptValidationReceipt, classify as
-// VerificationEvidenceLegacyAttemptLevel, and refuse to move Verify; RetryVerification is the
-// machine-owned clear path once command handling lands. Pre-receipt attempts without modeled
-// admission are a separate axis: gunbc.roadmap_workflow_command LegacyAttemptDisposition and
-// legacy_attempt_supersedable_label, cleared only through StartNewAttempt{supersedes}. The srv1
-// evidence-unreadable loop becomes this typed disposition rather than an endlessly retried parse
-// failure.
+data legacy_attempt_validation_receipt_note: String = "DECLARED LEGACY STATE — DISSOLVE-ON: belt verification writes and reads gunbc.roadmap_verification_receipt VerificationReceipt at dispatch_attempt_verification_receipt_path_for_instance. Before exact-head receipts, gunbc.roadmap_validation_oracle validation_receipt_decode recovered only an attempt-level verdict key from validation-receipt.json. That document carries no node identity, criteria digest, attempt key, branch or head, so it cannot be upgraded or guessed into a VerificationSubject. Such files decode as LegacyAttemptValidationReceipt, classify as VerificationEvidenceLegacyAttemptLevel, and refuse to move Verify; RetryVerification is the machine-owned clear path once command handling lands. Pre-receipt attempts without modeled admission are a separate axis: gunbc.roadmap_workflow_command LegacyAttemptDisposition and legacy_attempt_supersedable_label, cleared only through StartNewAttempt\{supersedes\}. The srv1 evidence-unreadable loop becomes this typed disposition rather than an endlessly retried parse failure."
 
 data legacy_validation_receipt_detail: String = "legacy attempt-level validation receipt cannot establish exact-head verification evidence; RetryVerification is the machine-owned clear path"
 
-// P2 HANDOFF TO THE BELT WIRING LANE. gunbc.roadmap_belt_actuate belt_verify_attempt_for_instance
-// derives the exact VerificationSubject, publishes verification/<head>.current-selection.json,
-// addresses the immutable receipt at verification/<head>.<window_identity>.json through
-// exact_verification_address_for, and persists roadmap-verification-receipt/v2 documents.
-// belt_workflow_progress_for_attempt_ref observes the current selection exactly once per poll and
-// passes that same observation to belt_verification_subject_from_selection and
-// belt_verification_receipt_source — never a second read and never substituting SelectionAbsent
-// when the selection was unreadable. belt_verification_decision separates
-// BeltVerificationEvidenceUnreadable from BeltVerificationRefuse; belt_verify maps the former to
-// VerifyEvidenceUnreadable and the latter to VerifyRefused, which belt_verify_pass_outcome_from
-// projects as BeltPassRefused rather than BeltPassFailed. gunbc.roadmap_workflow_progress
-// verification_segment treats SelectionAbsent as pending and SelectionUnreadable or
-// SelectionMalformed as refused before subject or receipt adjudication. validation_receipt_json and
-// validation_receipt_decode remain the legacy attempt-level codec until that migration dissolves.
-// P3 (#7715) lands WorkflowCommand.RetryVerification as the eventual commanded seam for exact-head
-// re-run; attempt dispatch and clear remain for the command-driver slice.
+data belt_exact_head_wiring_seam_note: String = "P2 HANDOFF TO THE BELT WIRING LANE. gunbc.roadmap_belt_actuate belt_verify_attempt_for_instance derives the exact VerificationSubject, publishes verification/<head>.current-selection.json, addresses the immutable receipt at verification/<head>.<window_identity>.json through exact_verification_address_for, and persists roadmap-verification-receipt/v2 documents. belt_workflow_progress_for_attempt_ref observes the current selection exactly once per poll and passes that same observation to belt_verification_subject_from_selection and belt_verification_receipt_source — never a second read and never substituting SelectionAbsent when the selection was unreadable. belt_verification_decision separates BeltVerificationEvidenceUnreadable from BeltVerificationRefuse; belt_verify maps the former to VerifyEvidenceUnreadable and the latter to VerifyRefused, which belt_verify_pass_outcome_from projects as BeltPassRefused rather than BeltPassFailed. gunbc.roadmap_workflow_progress verification_segment treats SelectionAbsent as pending and SelectionUnreadable or SelectionMalformed as refused before subject or receipt adjudication. validation_receipt_json and validation_receipt_decode remain the legacy attempt-level codec until that migration dissolves. P3 (#7715) lands WorkflowCommand.RetryVerification as the eventual commanded seam for exact-head re-run; attempt dispatch and clear remain for the command-driver slice."
 
 type VerificationReceiptSource
   = ExactHeadVerificationReceipt { receipt: VerificationReceipt }

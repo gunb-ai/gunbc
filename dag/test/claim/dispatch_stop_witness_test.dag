@@ -37,16 +37,7 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-// Cleanup receipts separate a present tmux container from its provider process.
-// dispatch_codex_process_fingerprint remains the 2026-07-27 npm-shim live receipt (node) until
-// bundled-native tmux observation updates it. The shared lifecycle path proves three independent
-// conclusions: an owned running node process may be stopped, a retained dead pane may be cleared
-// regardless of its historical env command, and a foreign running process refuses. The wire
-// distinguishes process_stopped from session_cleared and carries ok explicitly; the client renders
-// process evidence beside a stop/clear/unavailable cleanup control. scope() uses
-// dispatch_codex_process_fingerprint directly — stop-contract witnesses prove tmux ownership
-// classification, not production selection standing; production dispatch_actuator_selection refuses
-// until observation wires inventory standing.
+data dispatch_stop_witness_note: String = "Cleanup receipts separate a present tmux container from its provider process. dispatch_codex_process_fingerprint remains the 2026-07-27 npm-shim live receipt (node) until bundled-native tmux observation updates it. The shared lifecycle path proves three independent conclusions: an owned running node process may be stopped, a retained dead pane may be cleared regardless of its historical env command, and a foreign running process refuses. The wire distinguishes process_stopped from session_cleared and carries ok explicitly; the client renders process evidence beside a stop/clear/unavailable cleanup control. scope() uses dispatch_codex_process_fingerprint directly — stop-contract witnesses prove tmux ownership classification, not production selection standing; production dispatch_actuator_selection refuses until observation wires inventory standing."
 
 fn scope() -> TmuxSessionScope {
   TmuxSessionScope {
@@ -189,12 +180,7 @@ test fn stop_client_carries_the_chip() -> Bool {
     && !string_contains(s: js, pattern: "sess.process_detail")
 }
 
-// A2 flip (operator blockers 4/5): the chip's action identity and availability come from the wire's
-// DECIDED session action (sact.label onto dataset.cleanupAction, disabled when sact.availability is
-// not 'available') — the client never reads raw admission fields. The four former positives
-// (sess.cleanup_action/cleanup_allowed/process_state/process_detail) are now discriminating
-// NEGATIVES: any reappearing in the emitted source is the client re-deriving cleanup or process
-// presentation from raw facts, a second authority beside session_facts_view.
+data stop_chip_decided_facts_note: String = "A2 flip (operator blockers 4/5): the chip's action identity and availability come from the wire's DECIDED session action (sact.label onto dataset.cleanupAction, disabled when sact.availability is not 'available') — the client never reads the raw admission fields. The four former positives (sess.cleanup_action/cleanup_allowed/process_state/process_detail) are now discriminating NEGATIVES: any reappearing in the emitted source is the client re-deriving cleanup or process presentation from raw facts, a second authority beside session_facts_view."
 
 test fn stop_chip_is_styled() -> Bool {
   return string_contains(s: roadmap_css(), pattern: ".cleanup-chip { font-size: var(--text-10);")

@@ -52,38 +52,11 @@ import gunbc.roadmap_authority {
   RoadmapAcceptanceReceiptsProjectionRefused,
 }
 
-// A forecast projects what may happen; a CycleTimeObservation records what did happen. They are
-// separate nominal record types with no conversion in either direction. ScheduleForecast exposes
-// ForecastInstant and ForecastLowerBoundInterval; its epoch value is sealed inside ForecastInstant
-// and never appears as a bare Timestamp/EpochMs observation, RoadmapAcceptanceReceipt, Signoff, or
-// done/accepted stage. schedule_forecast derives only ScheduleForecastResult, and its refusal arm
-// is exhaustive. Therefore a date can neither accept a roadmap node nor inhabit the observation
-// input used to calibrate later forecasts. Estimates project; only evidence promotes.
+data forecast_is_projection_not_observation_note: String = "A forecast projects what may happen; a CycleTimeObservation records what did happen. They are separate nominal record types with no conversion in either direction. ScheduleForecast exposes ForecastInstant and ForecastLowerBoundInterval; its epoch value is sealed inside ForecastInstant and never appears as a bare Timestamp/EpochMs observation, RoadmapAcceptanceReceipt, Signoff, or done/accepted stage. schedule_forecast derives only ScheduleForecastResult, and its refusal arm is exhaustive. Therefore a date can neither accept a roadmap node nor inhabit the observation input used to calibrate later forecasts. Estimates project; only evidence promotes."
 
-// This is a roadmap instantiation of the cited GAO critical-path and three-point-estimate methods
-// plus the cited RCPSP work-volume lower bound, not a new scheduling vocabulary. Dependencies
-// determine the path of longest median duration. Historical minimum/median/maximum remain an
-// interval throughout; the small sample is never collapsed to a point. PR open-to-merge is one
-// undecomposed observation: ReviewCycleCount and OperatorMergeLatencyAssumption remain named and
-// visible, but ScenarioAdjustment is AdjustmentUnavailable until per-review duration and operator
-// merge latency are separately observed. Neither is multiplied into or added onto the baseline.
-// BeltCapacity is session-grain: under EndToEndBeltSlotOccupancyAssumption, each forecast node
-// continuously occupies one belt slot across its modeled baseline interval, so capacity enters
-// through ceil(total slot-time / cap). The output is explicitly conditional lower-bound projection,
-// never a resource-leveled expected date. dissolve-on: separately grained review/merge
-// observations, observed dispatch-to-release slot occupancy, and a grounded RCPSP resource-leveling
-// slice replace the unavailable adjustment, declared occupancy assumption, and lower-bound-only
-// projection; until then no consumer may read these bounds as observed labor or promised landing
-// dates.
+data schedule_method_note: String = "This is a roadmap instantiation of the cited GAO critical-path and three-point-estimate methods plus the cited RCPSP work-volume lower bound, not a new scheduling vocabulary. Dependencies determine the path of longest median duration. Historical minimum/median/maximum remain an interval throughout; the small sample is never collapsed to a point. PR open-to-merge is one undecomposed observation: ReviewCycleCount and OperatorMergeLatencyAssumption remain named and visible, but ScenarioAdjustment is AdjustmentUnavailable until per-review duration and operator merge latency are separately observed. Neither is multiplied into or added onto the baseline. BeltCapacity is session-grain: under EndToEndBeltSlotOccupancyAssumption, each forecast node continuously occupies one belt slot across its modeled baseline interval, so capacity enters through ceil(total slot-time / cap). The output is explicitly conditional lower-bound projection, never a resource-leveled expected date. dissolve-on: separately grained review/merge observations, observed dispatch-to-release slot occupancy, and a grounded RCPSP resource-leveling slice replace the unavailable adjustment, declared occupancy assumption, and lower-bound-only projection; until then no consumer may read these bounds as observed labor or promised landing dates."
 
-// FOLLOW-ON DERIVED READ, not slice 1 and never an authored field on RoadmapNode or NodeSizing:
-// remaining-cost-to-complete-from-here is a node's own calibrated work plus the unfinished
-// dependency closure, bucketed relative to the historical plus active task population by a
-// separately grounded order-of-magnitude or quantile policy. It must project from this module's
-// TotalWork and dependency-closure facts, so the label recalibrates as history accumulates and
-// shrinks as prerequisites gain acceptance evidence. dissolve-on: a consumer needs relative
-// portfolio sizing and grounds one population-bucketing policy; then one fold derives the label
-// without creating a second sizing authority.
+data remaining_cost_relative_sizing_follow_on_note: String = "FOLLOW-ON DERIVED READ, not slice 1 and never an authored field on RoadmapNode or NodeSizing: remaining-cost-to-complete-from-here is a node's own calibrated work plus the unfinished dependency closure, bucketed relative to the historical plus active task population by a separately grounded order-of-magnitude or quantile policy. It must project from this module's TotalWork and dependency-closure facts, so the label recalibrates as history accumulates and shrinks as prerequisites gain acceptance evidence. dissolve-on: a consumer needs relative portfolio sizing and grounds one population-bucketing policy; then one fold derives the label without creating a second sizing authority."
 
 data critical_path_method_used: CriticalPathMethod = critical_path_method
 data three_point_estimate_method_used: ThreePointEstimateMethod = three_point_estimate_method
@@ -111,13 +84,7 @@ type AcceptedNodePullLink {
   pull_number: Int
 }
 
-// The business join between a durable roadmap acceptance and its implementation/acceptance pull
-// request. Pull wire shape and its normalized timing observations stay under the single
-// extdeps.github.pulls authority; acceptance stays in gunbc.roadmap_authority. This list says only
-// which PR delivered an accepted node. A PR open-to-merge interval is admitted as a calibration
-// sample only when exactly one accepted node links to that PR; a shared delivery is reported once
-// as BundledPullDelivery and excluded because the source does not allocate its elapsed time among
-// node sizing cells.
+data accepted_node_pull_link_note: String = "The business join between a durable roadmap acceptance and its implementation/acceptance pull request. Pull wire shape and its normalized timing observations stay under the single extdeps.github.pulls authority; acceptance stays in gunbc.roadmap_authority. This list says only which PR delivered an accepted node. A PR open-to-merge interval is admitted as a calibration sample only when exactly one accepted node links to that PR; a shared delivery is reported once as BundledPullDelivery and excluded because the source does not allocate its elapsed time among node sizing cells."
 
 fn accepted_node_pull_links() -> List<AcceptedNodePullLink> {
   [
@@ -149,11 +116,7 @@ type CycleTimeProvenance
   = AcceptedRoadmapNodePullHistory
   | DashboardWorkItemDispatchPullHistory
 
-// AcceptedRoadmapNodePullHistory measures PR open -> merge for nodes whose roadmap acceptance
-// receipt is valid. DashboardWorkItemDispatchPullHistory is reserved as a distinct future
-// provenance arm because dispatch -> merge measures a different interval; this slice constructs no
-// value in that arm and calibration admits only accepted-roadmap observations. The two populations
-// therefore cannot blend silently.
+data cycle_time_provenance_note: String = "AcceptedRoadmapNodePullHistory measures PR open -> merge for nodes whose roadmap acceptance receipt is valid. DashboardWorkItemDispatchPullHistory is reserved as a distinct future provenance arm because dispatch -> merge measures a different interval; this slice constructs no value in that arm and calibration admits only accepted-roadmap observations. The two populations therefore cannot blend silently."
 
 type CycleTimeObservation {
   node: RoadmapNodeId

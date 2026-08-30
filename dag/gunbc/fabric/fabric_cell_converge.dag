@@ -42,13 +42,7 @@ data fabric_cell_converge_authority_disposition: Disposition = SingleAuthority
 // spelling of what parts a cell has, and would have had to be kept in step with this one by hand.
 // It is gone: the addresses are the parts, each with its own observation and its own remedy, and
 // ownership is a member field rather than a step.
-// Substrate-provisioned establishes that the cell root, its attempt-state root and its resource
-// boundary exist as declared. It does NOT mean an executor is ready, and this module publishes no
-// SupplierOffer, exposes no member to an allocator, and starts no process. There is no fabric agent
-// in this tree; when an executable entry and its configuration exist, its unit and registration
-// become establishable facts and enter as their own addresses. Offerability is a separate join over
-// host capacity standing, cell readiness and admitted capacity class, and it lives with supply
-// publication.
+data fabric_cell_substrate_is_not_offerable_note: String = "Substrate-provisioned establishes that the cell root, its attempt-state root and its resource boundary exist as declared. It does NOT mean an executor is ready, and this module publishes no SupplierOffer, exposes no member to an allocator, and starts no process. There is no fabric agent in this tree; when an executable entry and its configuration exist, its unit and registration become establishable facts and enter as their own addresses. Offerability is a separate join over host capacity standing, cell readiness and admitted capacity class, and it lives with supply publication."
 
 // THE CELL'S IDENTITY IS THE SLOT'S IDENTITY. gunbc.build_cache_instance runner_slot_instance_name
 // is already the single authority for how a slot identity is spelled ("srv3-06"), and a fabric cell
@@ -968,6 +962,7 @@ fn fabric_cell_unexpected_insert_ordered(
     ),
   )
 }
+
 
 fn fabric_cell_slot_is_expected(
   expected_slots: List<RunnerSlotIdentity>,

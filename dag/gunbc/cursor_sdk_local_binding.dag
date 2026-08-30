@@ -26,9 +26,7 @@ import gunbc.dispatch_selection {
   CursorLocalLoginRef,
 }
 
-// Slice-E bridge only — no live wiring. Maps dispatch CursorCredentialRef to SDK-local credential
-// materialization. API key flows INTO the SDK call via SecretRef, never argv. CursorLocalLoginRef
-// refuses because interactive login is not the SDK automation path.
+data cursor_sdk_local_binding_note: String = "Slice-E bridge only — no live wiring. Maps dispatch CursorCredentialRef to SDK-local credential materialization. API key flows INTO the SDK call via SecretRef, never argv. CursorLocalLoginRef refuses because interactive login is not the SDK automation path."
 
 type CursorSdkLocalCredentialAdmission
   = CursorSdkLocalCredentialAdmitted {

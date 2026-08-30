@@ -18,12 +18,7 @@ import extdeps.llm.cursor_sdk_errors {
   cursor_sdk_error_code_label,
 }
 
-// Modeled SDK auth probe: classifies a terminal RunResult reconcile into authentication standing
-// inputs only. authentication_error is the sole credential-rejection code; rate_limit_error and
-// other terminal codes are auth-axis-neutral (credentials may still be valid — limits/turn axes own
-// those failures). No live SDK call in this slice — witnesses supply fixture JSON. Never mints
-// ProviderAuthenticated literals; AuthenticationAuthenticated is derived only from
-// CursorSdkAuthProbeAuthenticated or auth-neutral terminal errors.
+data cursor_sdk_auth_probe_note: String = "Modeled SDK auth probe: classifies a terminal RunResult reconcile into authentication standing inputs only. authentication_error is the sole credential-rejection code; rate_limit_error and other terminal codes are auth-axis-neutral (credentials may still be valid — limits/turn axes own those failures). No live SDK call in this slice — witnesses supply fixture JSON. Never mints ProviderAuthenticated literals; AuthenticationAuthenticated is derived only from CursorSdkAuthProbeAuthenticated or auth-neutral terminal errors."
 
 type CursorSdkAuthProbeResult
   = CursorSdkAuthProbeAuthenticated

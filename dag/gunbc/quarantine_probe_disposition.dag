@@ -48,14 +48,7 @@ import v2.std.text { String }
 // an unstated premise -- that a discovered identity is either planned or long-declined -- and
 // the floor's own receipt line names three arms. Deleting the row on that reading would have
 // discarded a live red control.
-// The total disposition join over gunbc.explicit_witness_admission rows whose cadence is
-// QuarantineProbeExpectRed. It answers WHICH DECLARED MECHANISM HOLDS THIS PROBE'S RED OBLIGATION,
-// and refuses both of the ways that question can fail to have one answer: no mechanism holds it
-// (the probe is not gated anywhere, so a green run says nothing about it) and more than one does
-// (two authorities for one fact). Every fact it reads is supplied by the caller -- the rosters, the
-// home prefixes and the path exclusions are all parameters -- so this module owns the DERIVATION
-// and none of the populations, and a caller that can only supply three of the four axes says so by
-// what it passes rather than by the fold quietly assuming the fourth.
+data quarantine_probe_disposition_authority_note: String = "The total disposition join over gunbc.explicit_witness_admission rows whose cadence is QuarantineProbeExpectRed. It answers WHICH DECLARED MECHANISM HOLDS THIS PROBE'S RED OBLIGATION, and refuses both of the ways that question can fail to have one answer: no mechanism holds it (the probe is not gated anywhere, so a green run says nothing about it) and more than one does (two authorities for one fact). Every fact it reads is supplied by the caller -- the rosters, the home prefixes and the path exclusions are all parameters -- so this module owns the DERIVATION and none of the populations, and a caller that can only supply three of the four axes says so by what it passes rather than by the fold quietly assuming the fourth."
 
 // THE FOUR DECLARED HOLDERS, and the fold is total over them by construction.
 //

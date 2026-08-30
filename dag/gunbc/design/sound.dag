@@ -20,11 +20,7 @@ data sound_occasion_axis_note: String = "The occasion AXIS is deliberately not a
 
 A substrate note, recorded because it shaped the decision rather than being routed around: a single-variant coproduct is not expressible here — `type T = OnlyVariant` parses as an alias to a type named OnlyVariant, so the constructor never exists. That is a real property of the grammar and it happens to point the same way the consumption rule does."
 
-// SoundOccasion becomes a closed sum — MechanismEngage | MechanismSettle | MechanismBlocked — in
-// the PR that lands checkpoint 7b (the accept settle tone and the refusal thud). At that point
-// sound_specs becomes a total occasion→spec assignment with a coverage census mirroring interaction
-// coverage_gaps, and every_declared_sound_admissible folds over the occasions instead of over a
-// hand list.
+data sound_growth_trigger: String = "SoundOccasion becomes a closed sum — MechanismEngage | MechanismSettle | MechanismBlocked — in the PR that lands checkpoint 7b (the accept settle tone and the refusal thud). At that point sound_specs becomes a total occasion→spec assignment with a coverage census mirroring interaction coverage_gaps, and every_declared_sound_admissible folds over the occasions instead of over a hand list."
 
 type SoundSpec {
   frequency: Hertz

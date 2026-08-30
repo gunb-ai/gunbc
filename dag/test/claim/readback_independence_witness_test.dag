@@ -2,10 +2,7 @@ module test.claim.readback_independence
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-// The conjunct is the incident itself, replayed through the criterion. On srv3 2026-07-25 `sccache
-// --show-stats` returned a full stats table — a Converged read — over a host whose modeled unit had
-// been dead for six hours. The criterion must turn that exact input into UnknownRefused, and it
-// must do so because of what the PROBE can do, not because of anything about the value it returned.
+data witness_cited_incident_note: String = "The conjunct is the incident itself, replayed through the criterion. On srv3 2026-07-25 `sccache --show-stats` returned a full stats table — a Converged read — over a host whose modeled unit had been dead for six hours. The criterion must turn that exact input into UnknownRefused, and it must do so because of what the PROBE can do, not because of anything about the value it returned."
 
 test fn witness_self_establishing_probe_cannot_report_converged() -> Bool {
   observation_verdict_eq(
@@ -17,12 +14,7 @@ test fn witness_self_establishing_probe_cannot_report_converged() -> Bool {
   )
 }
 
-// The asymmetry, and it is the conjunct that stops the criterion from being a blunt discard. A
-// self-establishing probe that reports a NEGATIVE is still telling the truth: it had every
-// opportunity to bring the subject into existence and still could not report it, so Absent stays
-// Absent, Drifted stays Drifted, Inaccessible stays Inaccessible. Only the positive is rewritten. A
-// fold that returned UnknownRefused for every verdict from a non-independent probe would pass the
-// conjunct above and destroy real evidence here.
+data witness_negatives_survive_note: String = "The asymmetry, and it is the conjunct that stops the criterion from being a blunt discard. A self-establishing probe that reports a NEGATIVE is still telling the truth: it had every opportunity to bring the subject into existence and still could not report it, so Absent stays Absent, Drifted stays Drifted, Inaccessible stays Inaccessible. Only the positive is rewritten. A fold that returned UnknownRefused for every verdict from a non-independent probe would pass the conjunct above and destroy real evidence here."
 
 test fn witness_negative_results_from_a_tainted_probe_survive() -> Bool {
   observation_verdict_eq(
@@ -93,12 +85,7 @@ test fn witness_red_control_trusting_probe_rejected_by_gate() -> Bool {
     && readback_evidence_gate_accepts(p: systemd_is_active_probe, verdict: std.upsert_decision.Converged)
 }
 
-// The criterion has a live consumer, or it is an inert lens — a thing DESIGN §6 calls a lie in its
-// own right. gunbc.host_swap_backing routes every host verdict through it. The routing is a no-op
-// today because /proc/swaps is inert, so the conjunct proves it by SUBSTITUTION: the same swap
-// verdict carried by the sccache probe instead would be refused. That is what makes the
-// classification load-bearing rather than decorative — swapping the transport for an ensure-shaped
-// one changes the answer.
+data witness_live_consumer_note: String = "The criterion has a live consumer, or it is an inert lens — a thing DESIGN §6 calls a lie in its own right. gunbc.host_swap_backing routes every host verdict through it. The routing is a no-op today because /proc/swaps is inert, so the conjunct proves it by SUBSTITUTION: the same swap verdict carried by the sccache probe instead would be refused. That is what makes the classification load-bearing rather than decorative — swapping the transport for an ensure-shaped one changes the answer."
 
 test fn witness_swap_axis_consumes_the_criterion() -> Bool {
   let inert_route = readback_evidence_verdict(
@@ -117,32 +104,15 @@ test fn witness_swap_axis_consumes_the_criterion() -> Bool {
     )
 }
 
-// The roster length is pinned on purpose: adding a probe must be a VISIBLE edit to this witness
-// rather than something that slides in with a green run, because the roster's whole value is being
-// an honest inventory of what this lane has actually reasoned about. It moved 4 → 5 when
-// ip_link_carrier_read_probe was added for the network axis (reading a link's carrier cannot bring
-// the link up, so it classifies Inert). The load-bearing conjunct is the other one — exactly one
-// probe in the roster is non-independent, still sccache_show_stats, the cited instance the module
-// exists for — and it is the conjunct that would red if a newly added probe were quietly classified
-// to make a consumer green.
+data witness_roster_ratchet_note: String = "The roster length is pinned on purpose: adding a probe must be a VISIBLE edit to this witness rather than something that slides in with a green run, because the roster's whole value is being an honest inventory of what this lane has actually reasoned about. It moved 4 → 5 when ip_link_carrier_read_probe was added for the network axis (reading a link's carrier cannot bring the link up, so it classifies Inert). The load-bearing conjunct is the other one — exactly one probe in the roster is non-independent, still sccache_show_stats, the cited instance the module exists for — and it is the conjunct that would red if a newly added probe were quietly classified to make a consumer green."
 
 test fn witness_roster_names_the_cited_incident() -> Bool {
   readback_non_independent_probe_count() == 1
     && readback_probe_roster.length() == 5
 }
 
-// THE CONTROL FOR THE FOURTH ARM (operator review, post-merge). sccache --show-stats was classified
-// ProbeMayEstablish on a diagnosis that was later measured false: the claim was that any sccache
-// invocation auto-starts a server, so the read created the subject it reported. Private-endpoint
-// controls took the listener count 0 to 0 across --show-stats while a real compile took it 0 to 1.
-// The first correction rewrote the mechanism prose but LEFT THE ARM, bridging the gap with the
-// phrase 'still may-establish in the sense that matters here' — which is the state-space conflation
-// this module exists to forbid, committed inside the module itself. Subject-creation and
-// answer-without-subject are different facts about a transport and they carry different remedies:
-// the first is a probe to REPLACE, the second is a probe to GROUND behind an independent existence
-// check. The two witnesses below pin both halves — that the new arm still corrects a positive
-// verdict (so the safety property did not regress with the reclassification), and that the arms
-// remain DISTINGUISHABLE (so a future edit cannot quietly collapse them back).
+
+data answers_without_subject_control_doc: String = "THE CONTROL FOR THE FOURTH ARM (operator review, post-merge). sccache --show-stats was classified ProbeMayEstablish on a diagnosis that was later measured false: the claim was that any sccache invocation auto-starts a server, so the read created the subject it reported. Private-endpoint controls took the listener count 0 to 0 across --show-stats while a real compile took it 0 to 1. The first correction rewrote the mechanism prose but LEFT THE ARM, bridging the gap with the phrase 'still may-establish in the sense that matters here' — which is the state-space conflation this module exists to forbid, committed inside the module itself. Subject-creation and answer-without-subject are different facts about a transport and they carry different remedies: the first is a probe to REPLACE, the second is a probe to GROUND behind an independent existence check. The two witnesses below pin both halves — that the new arm still corrects a positive verdict (so the safety property did not regress with the reclassification), and that the arms remain DISTINGUISHABLE (so a future edit cannot quietly collapse them back)."
 
 test fn witness_answers_without_subject_still_corrects_a_positive() -> Bool {
   let probe = ReadBackProbe {

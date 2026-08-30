@@ -1,27 +1,30 @@
 module test.claim.emitter_sole_constructor_seal_witness_test
 
-// Permanent regression control for the sole_constructor emission seal. THE DEFECT, now repaired:
-// `sole_constructor` is parsed onto a type declaration and consumed by inference to refuse a
-// cross-module record literal, but the RUST EMITTER read the fact zero times, so the model's seal
-// did not survive lowering. DESIGN section 4b carries the executed receipt for the specimen --
-// `extdeps.uri` `UriValidatedScalar` emitted byte-identical to the plain record beside it, public
-// field and derived Deserialize, and both a direct struct literal and serde_json admitted values
-// its mint refuses, two of which reached output as invalid percent-encoding. That was the single
-// BELOW-FLOOR item in that paragraph; this file is the control that keeps it closed.
+// Permanent regression control for the sole_constructor emission seal. THE DEFECT, now
+// repaired: `sole_constructor` is parsed onto a type declaration and consumed by inference
+// to refuse a cross-module record literal, but the RUST EMITTER read the fact zero times,
+// so the model's seal did not survive lowering. DESIGN section 4b carries the executed
+// receipt for the specimen -- `extdeps.uri` `UriValidatedScalar` emitted byte-identical to
+// the plain record beside it, public field and derived Deserialize, and both a direct
+// struct literal and serde_json admitted values its mint refuses, two of which reached
+// output as invalid percent-encoding. That was the single BELOW-FLOOR item in that
+// paragraph, and this file is the control that keeps it closed.
 //
-// WHAT THE SEAL IS AND IS NOT. It confines CONSTRUCTION, not ACCESS: the model lets any module
-// read a sole_constructor value, so the emitted shape is a private field PLUS a public accessor; a
-// shape that also confined reading would refuse programs the model accepts. Serialize is retained
-// for the same reason -- writing a value out is a read. Deserialize is not, because a derived
-// Deserialize is a second, unsealed mint beside the declared one.
+// WHAT THE SEAL IS AND IS NOT. It confines CONSTRUCTION, not ACCESS: the model lets any
+// module read a sole_constructor value, so the emitted shape is a private field PLUS a
+// public accessor, and a shape that also confined reading would refuse programs the model
+// accepts. Serialize is retained for the same reason -- writing a value out is a read.
+// Deserialize is not, because a derived Deserialize is a second, unsealed mint standing
+// beside the declared one.
 //
-// THE NEGATIVE CONTROLS ARE THE LOAD-BEARING HALF. A plain record in the same fixture must keep
-// its public field and its Deserialize, or this witness would pass equally over an emitter that
-// sealed everything -- a different realization, not a faithful one. The two rustc receipts behind
-// the repair (E0451 on a cross-module literal, E0277 on serde_json::from_str) are compile-time
-// facts about the emitted crate that this byte-level instrument cannot execute; they are recorded
-// in the PR that landed this file. What this witness holds is the emitted SHAPE those receipts
-// depend on -- the part an emitter regression would silently move.
+// THE NEGATIVE CONTROLS ARE THE LOAD-BEARING HALF. A plain record in the same fixture must
+// keep its public field and its Deserialize, or this witness would pass equally over an
+// emitter that sealed everything -- which is a different realization, not a faithful one.
+// The two rustc receipts behind the repair (E0451 on a cross-module literal, E0277 on
+// serde_json::from_str) are compile-time facts about the emitted crate that this
+// byte-level instrument cannot itself execute; they are recorded in the PR that landed
+// this file. What this witness holds is the emitted SHAPE those receipts depend on, which
+// is the part an emitter regression would silently move.
 //
 // dissolve-on: never -- permanent regression alarm for the emitter arm.
 

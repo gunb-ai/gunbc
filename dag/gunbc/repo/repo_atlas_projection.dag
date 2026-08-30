@@ -128,18 +128,9 @@ type AtlasCellAccumulator {
   occupants: Map<Int, List<ModuleIdentity>>
 }
 
-// THE ORDER LIST CONSES AND REVERSES ONCE rather than appending. Appending with concat(acc, [item])
-// copies the whole accumulator per module, which is O(n^2) over a 3400-module population — the
-// exact idiom dedup_import_resolution_facts_cost_note records as having cost that lane an OOM and
-// then 900 seconds. DESIGN 6 bare-minimum-cost: a proven cost-shape defect is always fixed
-// regardless of the realized n, and list_reverse of a cons-accumulated fold is exactly the
-// append-accumulated order, so the projection is unchanged by construction.
+data repo_atlas_cell_order_cost_note: String = "THE ORDER LIST CONSES AND REVERSES ONCE rather than appending. Appending with concat(acc, [item]) copies the whole accumulator per module, which is O(n^2) over a 3400-module population — the exact idiom dedup_import_resolution_facts_cost_note records as having cost that lane an OOM and then 900 seconds. DESIGN 6 bare-minimum-cost: a proven cost-shape defect is always fixed regardless of the realized n, and list_reverse of a cons-accumulated fold is exactly the append-accumulated order, so the projection is unchanged by construction."
 
-// The accumulator carries an ORDERED index list beside the occupancy map, and cells project by
-// walking that list with a map probe per entry. Reading the map's own key order instead would
-// expose host traversal order — the exact nondeterminism v2.std.determinism refuses at map_keys /
-// map_values — and the atlas would render in an order the model does not control. This is the
-// pattern that thread prescribes: meaningful order in a list, the map for membership only.
+data repo_atlas_cell_order_note: String = "The accumulator carries an ORDERED index list beside the occupancy map, and cells project by walking that list with a map probe per entry. Reading the map's own key order instead would expose host traversal order — the exact nondeterminism v2.std.determinism refuses at map_keys / map_values — and the atlas would render in an order the model does not control. This is the pattern that thread prescribes: meaningful order in a list, the map for membership only."
 
 fn atlas_accumulate_cell(acc: AtlasCellAccumulator, identity: ModuleIdentity) -> AtlasCellAccumulator {
   let index = atlas_cell_index(identity: identity)
@@ -174,12 +165,7 @@ fn atlas_cells_of_modules(identities: List<ModuleIdentity>) -> List<RepoAtlasCel
   })
 }
 
-// TWO ROWS NAMING ONE MODULE ARE ONE SUBJECT OBSERVED TWICE, not two subjects. The staged
-// many-to-many path/module relation means a single module can legitimately be declared at more than
-// one path, so the fact list may carry it repeatedly; letting that through would raise the cell's
-// occupant count and paint the dot denser, reporting a storage detail as semantic density. Identity
-// is the atlas's unit, so the projection deduplicates on it here — before cells exist — and a
-// genuine collision between DISTINCT identities still yields two occupants.
+data repo_atlas_duplicate_fact_note: String = "TWO ROWS NAMING ONE MODULE ARE ONE SUBJECT OBSERVED TWICE, not two subjects. The staged many-to-many path/module relation means a single module can legitimately be declared at more than one path, so the fact list may carry it repeatedly; letting that through would raise the cell's occupant count and paint the dot denser, reporting a storage detail as semantic density. Identity is the atlas's unit, so the projection deduplicates on it here — before cells exist — and a genuine collision between DISTINCT identities still yields two occupants."
 
 type AtlasIdentityDedup {
   order: List<ModuleIdentity>
@@ -270,13 +256,7 @@ Dropping the bad entry and drawing the rest is the absorbing fallback DESIGN 5 f
 
 DiffPairingBrokenStatus is enumerated here deliberately. The ruling's status list named eight arms and GitDiffChangeStatus carries NINE; matching the prose rather than the coproduct would have left one arm falling through whatever the default was."
 
-// ALL NINE ARMS ARE ENUMERATED AND NO WILDCARD REMAINS in any of the three status folds. A wildcard
-// here is not a shorthand — it is a standing decision about statuses that do not exist yet: a tenth
-// upstream GitDiffChangeStatus arm would have compiled clean and silently become an ordinary,
-// non-departed, non-refusing change, which is the fail-open direction on the one wall this carrier
-// exists to hold. With the wildcards gone a new upstream arm fails to typecheck until the atlas
-// makes a conscious decision about it, so the refusal is the substrate's rather than this module's
-// diligence.
+data repo_atlas_status_totality_note: String = "ALL NINE ARMS ARE ENUMERATED AND NO WILDCARD REMAINS in any of the three status folds. A wildcard here is not a shorthand — it is a standing decision about statuses that do not exist yet: a tenth upstream GitDiffChangeStatus arm would have compiled clean and silently become an ordinary, non-departed, non-refusing change, which is the fail-open direction on the one wall this carrier exists to hold. With the wildcards gone a new upstream arm fails to typecheck until the atlas makes a conscious decision about it, so the refusal is the substrate's rather than this module's diligence."
 
 fn atlas_status_refusal(entry: GitDiffStatusEntry) -> AtlasOverlayRefusalCause? {
   match entry.status {
@@ -301,11 +281,7 @@ fn atlas_first_refusal(entries: List<GitDiffStatusEntry>) -> AtlasOverlayRefusal
     })
 }
 
-// A DELETED path has departed. A RENAMED entry has TWO paths and they are projected differently:
-// entry.path is the new location and resolves against the head like any modification, while
-// old_path names a location that no longer exists, so it lands as departed. A COPIED entry's
-// old_path still exists at head and is not departed — the copy source was not removed — so only the
-// new path is projected and the source needs no readout.
+data repo_atlas_departed_status_note: String = "A DELETED path has departed. A RENAMED entry has TWO paths and they are projected differently: entry.path is the new location and resolves against the head like any modification, while old_path names a location that no longer exists, so it lands as departed. A COPIED entry's old_path still exists at head and is not departed — the copy source was not removed — so only the new path is projected and the source needs no readout."
 
 fn atlas_status_is_departure(status: GitDiffChangeStatus) -> Bool {
   match status {
@@ -344,11 +320,7 @@ type AtlasProjectionAccumulator {
   unprojected_rev: List<UnprojectedChange>
 }
 
-// A path may resolve to zero, one, or SEVERAL modules and this never selects the first.
-// impact_seeds_for_path returns a list precisely because the staged many-to-many path/module
-// relation makes one storage location a conservative question, and picking one seed would silently
-// answer a question the pool cannot answer. All resolved modules are marked; zero resolved modules
-// is a real answer and lands as PathDeclaresNoModule rather than vanishing.
+data repo_atlas_multi_seed_note: String = "A path may resolve to zero, one, or SEVERAL modules and this never selects the first. impact_seeds_for_path returns a list precisely because the staged many-to-many path/module relation makes one storage location a conservative question, and picking one seed would silently answer a question the pool cannot answer. All resolved modules are marked; zero resolved modules is a real answer and lands as PathDeclaresNoModule rather than vanishing."
 
 fn atlas_project_entry(
   acc: AtlasProjectionAccumulator,
@@ -467,10 +439,7 @@ fn atlas_impact_is_exact(overlay: AtlasImpactOverlay) -> Bool {
   }
 }
 
-// The subject is the revision the atlas depicts. AtlasSubjectUnobserved is a real arm rather than
-// an empty string because a static artifact generated outside a revision comparison genuinely has
-// no subject to name, and a page that printed an empty or invented revision would be asserting
-// provenance it does not hold. The renderer prints the arm it is given.
+data repo_atlas_subject_arms_note: String = "The subject is the revision the atlas depicts. AtlasSubjectUnobserved is a real arm rather than an empty string because a static artifact generated outside a revision comparison genuinely has no subject to name, and a page that printed an empty or invented revision would be asserting provenance it does not hold. The renderer prints the arm it is given."
 
 type AtlasSubject
   = AtlasSubjectRevision { revision: GitObjectId }

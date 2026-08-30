@@ -10,39 +10,9 @@ import gunbc.roadmap_status { line_ticket }
 import gunbc.v1_deletion_plan { V1FinishLine, V1FinishLineSpec, v1_exit_finish_lines, v1_finish_line_key }
 import std.graph { reverse_adjacency, dfs_collect_component, SccComponentAcc }
 
-// THE PROGRAM-NAVIGATION PROJECTION AUTHORITY, V0 (operator requirements 2026-08-02): the derived
-// model that answers, for one program, what are we doing / where are we exactly / how much remains
-// / why is it taking this long — before any renderer exists. Every fact here is DERIVED: topology
-// from the roadmap authority's RoadmapEdge rows, acceptance from RoadmapAcceptanceReceipt rows only
-// (a merged pull request accepts nothing — gunbc.roadmap_model receipt_matches_node is the single
-// matching wall; duplicate live receipts refuse as DuplicateAcceptanceReceipt before derivation),
-// startability from parents x acceptance, in-flight from caller-supplied observations, and the
-// proposed plane from a carrier that does not exist yet and is therefore typed absent rather than
-// scraped from planning prose. The module is PURE and parameterized — it imports no live authority
-// data — so every derivation is provable on planted fixtures and the six red controls from the
-// requirements execute against synthetic graphs instead of pinning tree-copied measurements (the
-// DESIGN section 5 oracle rule). The one heuristic-shaped choice, tie-breaking the primary
-// constraint, is declared: ties resolve to declaration order, which is the authority's own authored
-// order, never a hidden score. What this V0 deliberately does not model, each with its trigger:
-// decision-held work (needs a typed operator-decision marker on the node; today a decision node is
-// only prose), evidence-refusal constraints (needs the verification-receipt join —
-// gunbc.roadmap_verification_receipt is test-only until the belt wiring seam lands), and
-// proposed-graph overlays (needs a typed proposal carrier; see proposed_plane_note). The camera
-// layers — depth, mode, tuning — are the V1 interaction seam and are deliberately absent here: this
-// module is the world those cameras look at, per the presentation seam design's law that the graph
-// is the world and the UI is a camera.
+data roadmap_program_view_doc: String = "THE PROGRAM-NAVIGATION PROJECTION AUTHORITY, V0 (operator requirements 2026-08-02): the derived model that answers, for one program, what are we doing / where are we exactly / how much remains / why is it taking this long — before any renderer exists. Every fact here is DERIVED: topology from the roadmap authority's RoadmapEdge rows, acceptance from RoadmapAcceptanceReceipt rows only (a merged pull request accepts nothing — gunbc.roadmap_model receipt_matches_node is the single matching wall; duplicate live receipts refuse as DuplicateAcceptanceReceipt before derivation), startability from parents x acceptance, in-flight from caller-supplied observations, and the proposed plane from a carrier that does not exist yet and is therefore typed absent rather than scraped from planning prose. The module is PURE and parameterized — it imports no live authority data — so every derivation is provable on planted fixtures and the six red controls from the requirements execute against synthetic graphs instead of pinning tree-copied measurements (the DESIGN section 5 oracle rule). The one heuristic-shaped choice, tie-breaking the primary constraint, is declared: ties resolve to declaration order, which is the authority's own authored order, never a hidden score. What this V0 deliberately does not model, each with its trigger: decision-held work (needs a typed operator-decision marker on the node; today a decision node is only prose), evidence-refusal constraints (needs the verification-receipt join — gunbc.roadmap_verification_receipt is test-only until the belt wiring seam lands), and proposed-graph overlays (needs a typed proposal carrier; see proposed_plane_note). The camera layers — depth, mode, tuning — are the V1 interaction seam and are deliberately absent here: this module is the world those cameras look at, per the presentation seam design's law that the graph is the world and the UI is a camera."
 
-// Placement (carrier reconciliation, 2026-08-02): this module SITS BESIDE
-// gunbc.roadmap_presentation rather than inside it because the two project different subjects —
-// roadmap_presentation decides how one workspace row renders (lifecycle, activity, disclosure),
-// this module decides what one PROGRAM looks like across its whole dependency graph. It consumes
-// the same upstream authorities (roadmap_model receipts, roadmap_status tickets, roadmap_focus's
-// graph fold, v1_deletion_plan finish lines) and mints nothing those modules already own:
-// ObligationState deliberately does NOT replace WorkLifecycle or WorkScheduling — lifecycle
-// narrates one row's review journey (PRs merged, awaiting acceptance), ObligationState narrates a
-// node's position in the program's dependency algebra (accepted / held / contract-missing /
-// workable), and the in-flight overlay mirrors the lifecycle-x-activity split roadmap_presentation
-// already established rather than fusing state planes into one enum.
+data program_view_seam_placement_note: String = "Placement (carrier reconciliation, 2026-08-02): this module SITS BESIDE gunbc.roadmap_presentation rather than inside it because the two project different subjects — roadmap_presentation decides how one workspace row renders (lifecycle, activity, disclosure), this module decides what one PROGRAM looks like across its whole dependency graph. It consumes the same upstream authorities (roadmap_model receipts, roadmap_status tickets, roadmap_focus's graph fold, v1_deletion_plan finish lines) and mints nothing those modules already own: ObligationState deliberately does NOT replace WorkLifecycle or WorkScheduling — lifecycle narrates one row's review journey (PRs merged, awaiting acceptance), ObligationState narrates a node's position in the program's dependency algebra (accepted / held / contract-missing / workable), and the in-flight overlay mirrors the lifecycle-x-activity split roadmap_presentation already established rather than fusing state planes into one enum."
 
 type V1ConvergenceFront
   = NamespacePDeriveFront
@@ -68,19 +38,7 @@ type ConvergenceFrontSpec {
   gates: List<RoadmapNodeId>
 }
 
-// AUTHORED LIKE FINISH LINES, DERIVED LIKE EVERYTHING ELSE (the gunbc.v1_deletion_plan pattern): a
-// front row states only its identity, its meaning, and the GATE nodes whose acceptance closes it —
-// the operator's own planning decomposition of the v1-deletion program (requirements, 2026-08-02).
-// Membership is never authored: a front's population is the ancestor closure of its gates, walked
-// over the authority's own edges, so adding or removing a prerequisite in the roadmap moves the
-// front automatically and a hand-maintained member list cannot drift (the requirements' forbidden
-// 'hand-maintained lane membership'). Contribution is never authored either: a front contributes to
-// a finish line exactly when one of its gates is an ancestor of that line's node, so the
-// front-to-outcome map is a fact of the graph. Fronts are PROJECTIONS, not a partition — the
-// materialization-cutover front's ancestor closure legitimately overlaps the honest-frontier
-// front's, because the cutover gate genuinely depends on the frontier — and a misspelled gate id
-// refuses the whole projection with a located cause rather than deriving a silently smaller front
-// (program_view_refusal_note).
+data v1_convergence_front_rows_note: String = "AUTHORED LIKE FINISH LINES, DERIVED LIKE EVERYTHING ELSE (the gunbc.v1_deletion_plan pattern): a front row states only its identity, its meaning, and the GATE nodes whose acceptance closes it — the operator's own planning decomposition of the v1-deletion program (requirements, 2026-08-02). Membership is never authored: a front's population is the ancestor closure of its gates, walked over the authority's own edges, so adding or removing a prerequisite in the roadmap moves the front automatically and a hand-maintained member list cannot drift (the requirements' forbidden 'hand-maintained lane membership'). Contribution is never authored either: a front contributes to a finish line exactly when one of its gates is an ancestor of that line's node, so the front-to-outcome map is a fact of the graph. Fronts are PROJECTIONS, not a partition — the materialization-cutover front's ancestor closure legitimately overlaps the honest-frontier front's, because the cutover gate genuinely depends on the frontier — and a misspelled gate id refuses the whole projection with a located cause rather than deriving a silently smaller front (program_view_refusal_note)."
 
 fn v1_convergence_fronts() -> List<ConvergenceFrontSpec> {
   [
@@ -127,16 +85,7 @@ type ObligationState
   | ObligationContractHeld
   | ObligationStartable
 
-// One node's position in the program's dependency algebra, decided in a fixed order: an acceptance
-// receipt wins outright; otherwise unmet prerequisites hold it; otherwise a missing closing
-// validation holds it (the same single authority the closing-contract task projection reads —
-// gunbc.roadmap_execution_contract contract_has_closing_validation — so this module and the daily
-// frontier can never disagree about boundness); otherwise it is workable now. In-flight is
-// deliberately NOT an arm: work observed on a node is an overlay fact orthogonal to its dependency
-// position — an attempt can run on a held node — and fusing them would be the state-space
-// conflation DESIGN section 5 names. The requirements' partial-work controls land here by
-// construction: nothing in this coproduct reads pull requests, so a merged PR, a partial wave, or a
-// contract-only slice cannot reach ObligationAccepted — only a matching receipt can.
+data obligation_state_note: String = "One node's position in the program's dependency algebra, decided in a fixed order: an acceptance receipt wins outright; otherwise unmet prerequisites hold it; otherwise a missing closing validation holds it (the same single authority the closing-contract task projection reads — gunbc.roadmap_execution_contract contract_has_closing_validation — so this module and the daily frontier can never disagree about boundness); otherwise it is workable now. In-flight is deliberately NOT an arm: work observed on a node is an overlay fact orthogonal to its dependency position — an attempt can run on a held node — and fusing them would be the state-space conflation DESIGN section 5 names. The requirements' partial-work controls land here by construction: nothing in this coproduct reads pull requests, so a merged PR, a partial wave, or a contract-only slice cannot reach ObligationAccepted — only a matching receipt can."
 
 type NodeStanding {
   node: RoadmapNodeId
@@ -315,18 +264,7 @@ type RemainingShape {
   unsized: Int
 }
 
-// HOW MUCH REMAINS, WITHOUT A PERCENTAGE. The program contains incomparable work — a sequential
-// compiler spine, broad classification frontiers, contract authoring — so one completion fraction
-// would fabricate commensurability, and the presentation seam design already prohibits a
-// progress_percent field outright. The shape instead carries exact populations over the subject's
-// ancestor closure: sequential_depth is the longest chain of unaccepted obligations ending at the
-// subject (a topological measure, never a calendar claim — duration lives in
-// gunbc.roadmap_forecast, which owns calibrated time and refuses without samples); open_fronts
-// counts contributing fronts not yet closed; the remaining counts partition the closure's
-// unaccepted population by ObligationState with in-flight and unsized as overlay counts. Deferred
-// fields, named so the gap is countable: decision_held waits on a typed operator-decision marker,
-// and evidence_held (verification refused or stale) waits on the verification-receipt join reaching
-// production. Both land as new fields on this record, never as reinterpretations of existing ones.
+data remaining_shape_note: String = "HOW MUCH REMAINS, WITHOUT A PERCENTAGE. The program contains incomparable work — a sequential compiler spine, broad classification frontiers, contract authoring — so one completion fraction would fabricate commensurability, and the presentation seam design already prohibits a progress_percent field outright. The shape instead carries exact populations over the subject's ancestor closure: sequential_depth is the longest chain of unaccepted obligations ending at the subject (a topological measure, never a calendar claim — duration lives in gunbc.roadmap_forecast, which owns calibrated time and refuses without samples); open_fronts counts contributing fronts not yet closed; the remaining counts partition the closure's unaccepted population by ObligationState with in-flight and unsized as overlay counts. Deferred fields, named so the gap is countable: decision_held waits on a typed operator-decision marker, and evidence_held (verification refused or stale) waits on the verification-receipt join reaching production. Both land as new fields on this record, never as reinterpretations of existing ones."
 
 fn program_shape_counts(
   standings: List<NodeStanding>,
@@ -369,17 +307,7 @@ fn program_shape_counts(
   }
 }
 
-// The longest unaccepted chain, computed as a bounded relaxation over the dependency DAG: each
-// node's depth is its own weight (one if unaccepted, zero if accepted) plus the maximum parent
-// depth, iterated to a fixpoint with the node count as the termination bound — a DAG's longest
-// chain cannot exceed its node population, so the bound is structural, not a tuning knob.
-// Relaxation is chosen over naive recursion deliberately: memoless recursion over a diamond-shaped
-// DAG re-walks shared ancestors exponentially (the cost-shape class the bare-minimum-cost rule
-// forbids at any n), while relaxation is O(passes x nodes x edges) with an early exit on the first
-// unchanged pass. Accepted nodes carry weight zero but stay in the walk, so a chain that passes
-// through accepted work counts only its unaccepted links — accepting a mid-chain node shortens the
-// measured depth by exactly one, which is the requirements' collapse red control, executed on
-// fixtures.
+data program_sequential_depth_note: String = "The longest unaccepted chain, computed as a bounded relaxation over the dependency DAG: each node's depth is its own weight (one if unaccepted, zero if accepted) plus the maximum parent depth, iterated to a fixpoint with the node count as the termination bound — a DAG's longest chain cannot exceed its node population, so the bound is structural, not a tuning knob. Relaxation is chosen over naive recursion deliberately: memoless recursion over a diamond-shaped DAG re-walks shared ancestors exponentially (the cost-shape class the bare-minimum-cost rule forbids at any n), while relaxation is O(passes x nodes x edges) with an early exit on the first unchanged pass. Accepted nodes carry weight zero but stay in the walk, so a chain that passes through accepted work counts only its unaccepted links — accepting a mid-chain node shortens the measured depth by exactly one, which is the requirements' collapse red control, executed on fixtures."
 
 fn program_int_max(a: Int, b: Int) -> Int {
   if a > b { a } else { b }
@@ -514,11 +442,7 @@ fn program_line_scope_ids(
       program_ancestors_or_self(reverse_adj: reverse_adj, id: l.node as String))))
 }
 
-// Top-level V1DeletionProgramView.remaining counts only the finish-line ancestor closure
-// (program_line_scope_ids), matching pre-index behavior: front-gate ancestor nodes outside that
-// closure may appear in scoped standings for front/line views but do not inflate the program-level
-// remaining shape. Union scope (lines plus fronts) bounds standings, depth, and headline derivation
-// only.
+data program_top_level_remaining_scope_note: String = "Top-level V1DeletionProgramView.remaining counts only the finish-line ancestor closure (program_line_scope_ids), matching pre-index behavior: front-gate ancestor nodes outside that closure may appear in scoped standings for front/line views but do not inflate the program-level remaining shape. Union scope (lines plus fronts) bounds standings, depth, and headline derivation only."
 
 fn program_union_scope_ids(
   reverse_adj: Map<String, List<String>>,
@@ -546,18 +470,7 @@ type ConstraintKind
   = ImplementationConstraint
   | ContractConstraint
 
-// WHAT SORT OF DIFFICULTY THE PRIMARY CONSTRAINT IS. Only the kinds this module can DERIVE exist as
-// arms — an enum arm nothing can produce is specification without execution.
-// ImplementationConstraint: the node is workable and its closing contract exists; what remains is
-// doing the work (whether an attempt is currently observed rides on the in_flight overlay).
-// ContractConstraint: the node is workable but nothing can check its completion — authoring the
-// closing validation is the unblocking act, the same fact the daily workspace's closing-contract
-// family surfaces. Dependency-held is deliberately NOT a primary-constraint kind: the primary
-// constraint is found by walking to the workable frontier, so a held node's cause is always some
-// frontier node upstream, and reporting the held node instead of its cause would be the old
-// explanation the requirements' why-mode exists to kill. Deferred kinds with named triggers:
-// DecisionConstraint (typed operator-decision marker), EvidenceConstraint (verification-refusal
-// join), CapabilityGap and PopulationFrontier (typed carriers on the guarantee-claims lane).
+data constraint_kind_note: String = "WHAT SORT OF DIFFICULTY THE PRIMARY CONSTRAINT IS. Only the kinds this module can DERIVE exist as arms — an enum arm nothing can produce is specification without execution. ImplementationConstraint: the node is workable and its closing contract exists; what remains is doing the work (whether an attempt is currently observed rides on the in_flight overlay). ContractConstraint: the node is workable but nothing can check its completion — authoring the closing validation is the unblocking act, the same fact the daily workspace's closing-contract family surfaces. Dependency-held is deliberately NOT a primary-constraint kind: the primary constraint is found by walking to the workable frontier, so a held node's cause is always some frontier node upstream, and reporting the held node instead of its cause would be the old explanation the requirements' why-mode exists to kill. Deferred kinds with named triggers: DecisionConstraint (typed operator-decision marker), EvidenceConstraint (verification-refusal join), CapabilityGap and PopulationFrontier (typed carriers on the guarantee-claims lane)."
 
 type ConstraintView {
   subject: RoadmapNodeId
@@ -567,18 +480,7 @@ type ConstraintView {
   depth: Int
 }
 
-// The nearest unresolved constraint, derived: among the subject's unaccepted ancestor closure, the
-// candidates are the WORKABLE frontier — nodes every prerequisite of which is accepted
-// (ObligationStartable or ObligationContractHeld, in-flight or not) — and the primary is the
-// candidate with the greatest sequential depth, because the deepest workable node heads the longest
-// unresolved chain and is therefore the current best candidate for the binding path. That claim is
-// deliberately modest: it names the best CURRENT candidate from topology alone, never a critical
-// path in the scheduling sense — duration evidence lives in the forecast module and this view does
-// not pretend to it. Ties resolve to the first candidate in declaration order, which is the
-// authority's authored order: deterministic, inspectable, and free of hidden scoring. An accepted
-// subject has no constraint, and a subject whose entire closure is accepted or
-// held-with-no-workable-frontier yields none honestly — in a DAG the second case implies the first,
-// since every nonempty unaccepted closure has a minimal element.
+data program_primary_constraint_note: String = "The nearest unresolved constraint, derived: among the subject's unaccepted ancestor closure, the candidates are the WORKABLE frontier — nodes every prerequisite of which is accepted (ObligationStartable or ObligationContractHeld, in-flight or not) — and the primary is the candidate with the greatest sequential depth, because the deepest workable node heads the longest unresolved chain and is therefore the current best candidate for the binding path. That claim is deliberately modest: it names the best CURRENT candidate from topology alone, never a critical path in the scheduling sense — duration evidence lives in the forecast module and this view does not pretend to it. Ties resolve to the first candidate in declaration order, which is the authority's authored order: deterministic, inspectable, and free of hidden scoring. An accepted subject has no constraint, and a subject whose entire closure is accepted or held-with-no-workable-frontier yields none honestly — in a DAG the second case implies the first, since every nonempty unaccepted closure has a minimal element."
 
 fn program_constraint_take(acc: ConstraintView?, depth: Int) -> Bool {
   match acc {
@@ -643,16 +545,7 @@ fn program_primary_constraint(
 type ProposedPlane
   = | ProposedCarrierAbsent
 
-// THE PROPOSED PLANE HAS NO CARRIER, AND SAYS SO IN ITS TYPE. Proposed work — graph additions or
-// changes not yet admitted to the roadmap authority — has no typed home today: it lives in planning
-// documents and conversations, and scraping those would author topology in the viewer, the exact
-// drift the requirements' red controls forbid. So the plane is a single-arm type carrying nothing:
-// a proposed node cannot appear in any plane of this view because no constructor exists that could
-// hold one — the requirements' ghost-plane red control discharged by construction rather than by a
-// witness watching a writable state. DISSOLVES ON a typed proposal carrier landing (the operator's
-// source-intent lane owns the nearest candidate shape), at which point this type gains a
-// ProposedRows arm whose rows render as the requirements' outlined-ghost grammar and are
-// structurally excluded from the accepted and in-flight planes by carrying their own type.
+data proposed_plane_note: String = "THE PROPOSED PLANE HAS NO CARRIER, AND SAYS SO IN ITS TYPE. Proposed work — graph additions or changes not yet admitted to the roadmap authority — has no typed home today: it lives in planning documents and conversations, and scraping those would author topology in the viewer, the exact drift the requirements' red controls forbid. So the plane is a single-arm type carrying nothing: a proposed node cannot appear in any plane of this view because no constructor exists that could hold one — the requirements' ghost-plane red control discharged by construction rather than by a witness watching a writable state. DISSOLVES ON a typed proposal carrier landing (the operator's source-intent lane owns the nearest candidate shape), at which point this type gains a ProposedRows arm whose rows render as the requirements' outlined-ghost grammar and are structurally excluded from the accepted and in-flight planes by carrying their own type."
 
 type FrontView {
   front: V1ConvergenceFront
@@ -723,15 +616,7 @@ type V1ProgramViewResult
   = ProgramViewDerived { view: V1DeletionProgramView }
   | ProgramViewRefused { causes: List<ProgramViewRefusalCause> }
 
-// IDENTITY RESOLUTION IS A WALL, NOT A FILTER. A finish-line node or front gate that names no
-// declared node is a modeling defect — the requirements' misspelled-R1 red control — and the
-// projection REFUSES with every located cause rather than deriving around the hole: a silently
-// smaller front would zero the defect's frequency and misreport every count downstream, the
-// absorbing-fallback shape DESIGN section 5 forbids. Duplicate live receipts for one node and
-// duplicate declared node ids are the same class: DuplicateAcceptanceReceipt and
-// DuplicateProgramNodeId refuse the whole projection rather than silently picking one row or
-// last-wins merging into a map. The causes list carries all failures, not the first, so one repair
-// round sees the whole population.
+data program_view_refusal_note: String = "IDENTITY RESOLUTION IS A WALL, NOT A FILTER. A finish-line node or front gate that names no declared node is a modeling defect — the requirements' misspelled-R1 red control — and the projection REFUSES with every located cause rather than deriving around the hole: a silently smaller front would zero the defect's frequency and misreport every count downstream, the absorbing-fallback shape DESIGN section 5 forbids. Duplicate live receipts for one node and duplicate declared node ids are the same class: DuplicateAcceptanceReceipt and DuplicateProgramNodeId refuse the whole projection rather than silently picking one row or last-wins merging into a map. The causes list carries all failures, not the first, so one repair round sees the whole population."
 
 fn program_view(
   lines: List<V1FinishLineSpec>,
@@ -862,12 +747,7 @@ fn program_front_view(
   }
 }
 
-// A front contributes to a finish line exactly when one of its GATES is an ancestor of the line's
-// node (or the node itself): the gate is the front's output, so contribution means the front's
-// product flows into the outcome, not merely that the two share deep ancestors — a member-overlap
-// rule would connect every front to every downstream outcome and discriminate nothing. Derived over
-// the authority's edges, so the contribution sets shift exactly when someone edits the authored
-// graph, which is when a human should be looking.
+data front_contribution_note: String = "A front contributes to a finish line exactly when one of its GATES is an ancestor of the line's node (or the node itself): the gate is the front's output, so contribution means the front's product flows into the outcome, not merely that the two share deep ancestors — a member-overlap rule would connect every front to every downstream outcome and discriminate nothing. Derived over the authority's edges, so the contribution sets shift exactly when someone edits the authored graph, which is when a human should be looking."
 
 fn program_finish_line_view(
   l: V1FinishLineSpec,

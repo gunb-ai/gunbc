@@ -6,79 +6,22 @@ import std.nat { Nat }
 import std.disposition { Disposition, Terminal, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 
-// P3 of the progress-and-observation lane: the census wall. Every place the floor emits a progress
-// line today is either a PROJECTION of the observation event stream (migrated, P1/P2) or a COUNTED
-// FRONTIER ROW carrying a reason and a dissolve-on — the same discipline the site subsumption lane
-// uses for unthemed colours. This module is the census authority: the classification is a closed
-// sum, so a site cannot be half-classified, and the roster below names the structured-tag emit
-// families that exist in the seed today. The executable hygiene witness is bidirectional: it reds
-// when a rostered marker vanishes AND when a known live tag family is missing from the roster, so
-// growth after the snapshot cannot silently understate.
+data observation_emit_census_note: String = "P3 of the progress-and-observation lane: the census wall. Every place the floor emits a progress line today is either a PROJECTION of the observation event stream (migrated, P1/P2) or a COUNTED FRONTIER ROW carrying a reason and a dissolve-on — the same discipline the site subsumption lane uses for unthemed colours. This module is the census authority: the classification is a closed sum, so a site cannot be half-classified, and the roster below names the structured-tag emit families that exist in the seed today. The executable hygiene witness is bidirectional: it reds when a rostered marker vanishes AND when a known live tag family is missing from the roster, so growth after the snapshot cannot silently understate."
 
-// Sequencing, per the operator ruling and live-log review (run 30142403230): tagged migrations
-// landed (gantt, governor, typecheck-attribution, measurement, shell with named-intent subjects;
-// Ambient ShellTrace Suppressed at Normal). Post-census growth tags ([floor-drain], [receipt],
-// [file], and #7205's [resolve-split]/[assembly-split]) are CountedFrontierSite rows so the roster
-// cannot silently understate. [gate-warm-cost] and [witness-row-cost-drift] were rows here until
-// 2026-08-11, and #7284's [witness-row-cost-migration-disclosure] until 2026-08-22, each leaving
-// when its raw emit was deleted outright rather than migrated. [floor-memory] LEFT THE ROSTER ON
-// 2026-08-26 AND IT IS NOT ONE OF THESE DEPARTURES, WHICH IS THE FINDING. The marker and its
-// render_heartbeat_line_mirror are gone from the seed (measured: no occurrence of either anywhere
-// under src/, only one doc comment naming the mirror), and read no further that looks exactly like
-// the three retirements above -- an emit deleted at the root, a row simply absent. It is the
-// opposite. The floor still emits a periodic progress line and a per-claim RSS growth line; they
-// are now [floor-heartbeat] and [floor-claim-memory], raw formatted eprintlns in cli_run.rs with no
-// projection behind them. So a MIGRATED row's projection was DELETED and raw emits took over its
-// job under new names -- a reversal, not a retirement. Both successors are on the roster above as
-// CountedFrontierSite, which moves the frontier count UP by two. THE NEAR-MISS IS WHY THIS IS
-// WRITTEN AT LENGTH: the row was first deleted as a completed retirement on the evidence that its
-// marker was gone, and marker-absence is exactly as consistent with a reversal as with a
-// retirement. The census cannot tell them apart by looking at the row that vanished; only by asking
-// what now does the job. That question is not asked by any check here, and it is a second face of
-// the same missing discovery the completeness note names -- an unrostered successor is invisible
-// for precisely the reason an unrostered new family is. THIS NOTE PREVIOUSLY GROUNDED
-// [witness-row-cost] ON `claim_executor discovery_claim_result`, AND THAT FUNCTION DOES NOT EXIST
-// -- not renamed, not moved: no declaration by that name is anywhere in the seed, and the surviving
-// [witness-row-cost] refusals are the witness_cost_* helpers in cli_run.rs. The citation was
-// fabricated at the moment it was written, in the same 2026-08-22 change that restored the row on a
-// correct premise, and it was copied from here into
-// test.claim.observation_raw_print_retirement_acceptance_test, so one invented symbol became two
-// files' evidence. The family is still live and still on the roster; only the symbol naming its
-// occurrence was false.
+data observation_emit_census_sequencing_note: String = "Sequencing, per the operator ruling and live-log review (run 30142403230): tagged migrations landed (gantt, governor, typecheck-attribution, measurement, shell with named-intent subjects; Ambient ShellTrace Suppressed at Normal). Post-census growth tags ([floor-drain], [receipt], [file], and #7205's [resolve-split]/[assembly-split]) are CountedFrontierSite rows so the roster cannot silently understate. [gate-warm-cost] and [witness-row-cost-drift] were rows here until 2026-08-11, and #7284's [witness-row-cost-migration-disclosure] until 2026-08-22, each leaving when its raw emit was deleted outright rather than migrated. [floor-memory] LEFT THE ROSTER ON 2026-08-26 AND IT IS NOT ONE OF THESE DEPARTURES, WHICH IS THE FINDING. The marker and its render_heartbeat_line_mirror are gone from the seed (measured: no occurrence of either anywhere under src/, only one doc comment naming the mirror), and read no further that looks exactly like the three retirements above -- an emit deleted at the root, a row simply absent. It is the opposite. The floor still emits a periodic progress line and a per-claim RSS growth line; they are now [floor-heartbeat] and [floor-claim-memory], raw formatted eprintlns in cli_run.rs with no projection behind them. So a MIGRATED row's projection was DELETED and raw emits took over its job under new names -- a reversal, not a retirement. Both successors are on the roster above as CountedFrontierSite, which moves the frontier count UP by two. THE NEAR-MISS IS WHY THIS IS WRITTEN AT LENGTH: the row was first deleted as a completed retirement on the evidence that its marker was gone, and marker-absence is exactly as consistent with a reversal as with a retirement. The census cannot tell them apart by looking at the row that vanished; only by asking what now does the job. That question is not asked by any check here, and it is a second face of the same missing discovery the completeness note names -- an unrostered successor is invisible for precisely the reason an unrostered new family is. THIS NOTE PREVIOUSLY GROUNDED [witness-row-cost] ON `claim_executor discovery_claim_result`, AND THAT FUNCTION DOES NOT EXIST -- not renamed, not moved: no declaration by that name is anywhere in the seed, and the surviving [witness-row-cost] refusals are the witness_cost_* helpers in cli_run.rs. The citation was fabricated at the moment it was written, in the same 2026-08-22 change that restored the row on a correct premise, and it was copied from here into test.claim.observation_raw_print_retirement_acceptance_test, so one invented symbol became two files' evidence. The family is still live and still on the roster; only the symbol naming its occurrence was false."
 
 type EmitSiteDisposition
   = MigratedToObservation { via: NonEmptyStr }
   | CountedFrontierSite { reason: NonEmptyStr, dissolution: DissolutionCondition }
 
-// A closed sum, so a site is exactly one of two things and never silently neither.
-// MigratedToObservation names the projection that replaced the raw emit — the evidence the site now
-// speaks the event vocabulary. CountedFrontierSite carries a reason it has not migrated yet and the
-// trigger that will dissolve it, so the debt is countable and prioritizable rather than an
-// open-ended intention. There is no third arm, which is the point: an emit site the census has not
-// looked at cannot be represented here, so the roster's completeness is what the witness checks
-// against the seed.
+data emit_site_disposition_note: String = "A closed sum, so a site is exactly one of two things and never silently neither. MigratedToObservation names the projection that replaced the raw emit — the evidence the site now speaks the event vocabulary. CountedFrontierSite carries a reason it has not migrated yet and the trigger that will dissolve it, so the debt is countable and prioritizable rather than an open-ended intention. There is no third arm, which is the point: an emit site the census has not looked at cannot be represented here, so the roster's completeness is what the witness checks against the seed."
 
 type CensusedEmitSite {
   marker: NonEmptyStr
   disposition: EmitSiteDisposition
 }
 
-// A ROW NAMES A TAG FAMILY, NOT A FILE, AND THE FIELD THAT NAMED A FILE IS DELETED (2026-08-26).
-// CensusedEmitSite carried source_file: NonEmptyStr, whose sole consumer anywhere in the corpus was
-// the witness's census_marker_present, which read that one file and grepped it. That is a
-// positional citation in the sense §3 rules against -- a second naming scheme for something the
-// seed already contains -- and it rots in the one way this census cannot tolerate: it goes false
-// when the emit MOVES, which is not a census fact at all. It did. #9228 deleted claim_executor's
-// unreachable plan/walk surface (21,366 -> 11,508 lines) and the file-pinned rows went red five at
-// once -- floor-memory, receipt, resolve-split, assembly-split, witness-row-cost -- of which
-// exactly ONE was a real census event (floor-memory's emit left the seed, and its row is deleted
-// accordingly) and four were the pin rotting while the tag family sat untouched in a sibling seed
-// file. A check whose red says `the code moved` where the census asks `does this still emit` is
-// measuring the wrong quantity, and four false reds beside one true one is worse than no check,
-// because the true one is indistinguishable in the noise. What replaces it is seed_emit_sources
-// below: presence is searched across the SEED, so a marker that moves between seed files stays
-// green and a marker that leaves the seed reds. The denominator became the thing the census is
-// actually about.
+data censused_emit_site_has_no_source_file_note: String = "A ROW NAMES A TAG FAMILY, NOT A FILE, AND THE FIELD THAT NAMED A FILE IS DELETED (2026-08-26). CensusedEmitSite carried source_file: NonEmptyStr, whose sole consumer anywhere in the corpus was the witness's census_marker_present, which read that one file and grepped it. That is a positional citation in the sense §3 rules against -- a second naming scheme for something the seed already contains -- and it rots in the one way this census cannot tolerate: it goes false when the emit MOVES, which is not a census fact at all. It did. #9228 deleted claim_executor's unreachable plan/walk surface (21,366 -> 11,508 lines) and the file-pinned rows went red five at once -- floor-memory, receipt, resolve-split, assembly-split, witness-row-cost -- of which exactly ONE was a real census event (floor-memory's emit left the seed, and its row is deleted accordingly) and four were the pin rotting while the tag family sat untouched in a sibling seed file. A check whose red says `the code moved` where the census asks `does this still emit` is measuring the wrong quantity, and four false reds beside one true one is worse than no check, because the true one is indistinguishable in the noise. What replaces it is seed_emit_sources below: presence is searched across the SEED, so a marker that moves between seed files stays green and a marker that leaves the seed reds. The denominator became the thing the census is actually about."
 
 data seed_emit_sources: List<String> = [
   "src/v1/stage0/src/bin/claim_executor.rs",
@@ -89,19 +32,7 @@ data seed_emit_sources: List<String> = [
   "src/v1/stage0/src/memory_governor.rs"
 ]
 
-// THE CENSUS'S DENOMINATOR: the seed files a tagged progress emit can live in. Presence of a
-// rostered marker is asked of this SET, never of one named file, which is what makes a row survive
-// #9228-shaped code movement and red only when the tag family actually leaves the seed. THIS LIST
-// IS ITSELF HAND-MAINTAINED AND THAT IS THE RESIDUE, stated rather than hidden: a seed file dropped
-// from it narrows the search silently, which is the empty-observation narrow this repository names
-// as strictly worse than a widen. It is mitigated, not closed -- the witness asserts every listed
-// source reads non-empty, so a path that stops existing reds instead of quietly contributing
-// nothing, and the list is one authority for the whole census rather than a pin per row, so it
-// cannot rot thirteen different ways. What would close it is the source-derived denominator both
-// this module's witness and the retirement acceptance already name as their residue: the seed's
-// tagged emits DISCOVERED at occurrence grain from syntax, joined against this roster, reporting
-// live-but-unrostered and rostered-but-absent simultaneously. That discovery is unbuilt, and until
-// it lands this list is the honest approximation of it.
+data seed_emit_sources_note: String = "THE CENSUS'S DENOMINATOR: the seed files a tagged progress emit can live in. Presence of a rostered marker is asked of this SET, never of one named file, which is what makes a row survive #9228-shaped code movement and red only when the tag family actually leaves the seed. THIS LIST IS ITSELF HAND-MAINTAINED AND THAT IS THE RESIDUE, stated rather than hidden: a seed file dropped from it narrows the search silently, which is the empty-observation narrow this repository names as strictly worse than a widen. It is mitigated, not closed -- the witness asserts every listed source reads non-empty, so a path that stops existing reds instead of quietly contributing nothing, and the list is one authority for the whole census rather than a pin per row, so it cannot rot thirteen different ways. What would close it is the source-derived denominator both this module's witness and the retirement acceptance already name as their residue: the seed's tagged emits DISCOVERED at occurrence grain from syntax, joined against this roster, reporting live-but-unrostered and rostered-but-absent simultaneously. That discovery is unbuilt, and until it lands this list is the honest approximation of it."
 
 data floor_heartbeat_site: CensusedEmitSite = CensusedEmitSite {
   marker: "[floor-heartbeat]" as NonEmptyStr,
@@ -169,6 +100,7 @@ data floor_drain_site: CensusedEmitSite = CensusedEmitSite {
   }
 }
 
+
 data receipt_site: CensusedEmitSite = CensusedEmitSite {
   marker: "[receipt]" as NonEmptyStr,
   disposition: CountedFrontierSite {
@@ -226,32 +158,7 @@ data observation_emit_roster: List<CensusedEmitSite> = [
   witness_row_cost_site
 ]
 
-// THE ROSTER UNDERSTATES, MEASURED, AND THE BIDIRECTIONAL CLAIM ABOVE IS THEREFORE FALSE AS STATED
-// (2026-08-26). Counting distinct bracket-tag string literals across the six sources in
-// seed_emit_sources gives 57 tag spellings; this roster carries 14 rows, 13 of them bracket tags
-// (the fourteenth is a mirror function name). Subtracting leaves 44 spellings live in the seed and
-// absent from this roster -- among them [ancestry], [interp-stats], [floor-phase], [floor-cgroup],
-// [floor-terminal], [affected-set], [realize-advisory] and [expected-red-roster-join]. THAT 45 IS
-// AN UPPER BOUND AND IS NOT THE FRONTIER DEBT, and saying so precisely is the point: a bracket
-// literal is not the same thing as a tagged progress emit, several of these are certainly not emit
-// tags at all, and nothing here distinguishes a live emit from a literal in a comparison, a parser,
-// or a doc example. The instrument that produced the figure is a spelling grep over six files,
-// which is exactly the instrument this module's witness note already rules insufficient -- so the
-// number is quoted as the shape of the gap, never as its size. WHY IT IS RECORDED RATHER THAN
-// REPAIRED BY ADDING 45 ROWS: every one of those rows would be hand-authored from a spelling, with
-// a disposition and a dissolution trigger invented by whoever wrote it, which is the failure this
-// file has now recorded four times and the thing its own witness note calls `a hand-maintained
-// approximation of a discovery it cannot perform`. Enlarging the approximation does not close the
-// gap; it multiplies the surface that rots. NEXT-RUNG TRIGGER, AND IT IS A SUBSTRATE CAPABILITY
-// RATHER THAN EFFORT: the discovery this needs -- occurrence-grain extraction of tagged emits from
-// seed source -- is not expressible in .dag today. The interpreter registers exactly two string
-// builtins, string_contains and string_length (measured over the seed's builtin registrations), so
-// a fold can ask `does this text contain that` and can ask nothing about WHERE, HOW MANY, or WHAT
-// ELSE OF THIS SHAPE. Membership is decidable; enumeration is not reachable. This class therefore
-// sits at MITIGATABLE with a named trigger rather than at an untracked stall: the trigger is a
-// modeled scan surface over source text -- occurrence positions, or a split, or an ingestion of the
-// seed as a Node tree the way v1_compiler.declaration_index now ingests .dag modules -- after which
-// the roster is JOINED against discovered occurrences and this note is deleted rather than amended.
+data observation_emit_roster_understatement_finding: String = "THE ROSTER UNDERSTATES, MEASURED, AND THE BIDIRECTIONAL CLAIM ABOVE IS THEREFORE FALSE AS STATED (2026-08-26). Counting distinct bracket-tag string literals across the six sources in seed_emit_sources gives 57 tag spellings; this roster carries 14 rows, 13 of them bracket tags (the fourteenth is a mirror function name). Subtracting leaves 44 spellings live in the seed and absent from this roster -- among them [ancestry], [interp-stats], [floor-phase], [floor-cgroup], [floor-terminal], [affected-set], [realize-advisory] and [expected-red-roster-join]. THAT 45 IS AN UPPER BOUND AND IS NOT THE FRONTIER DEBT, and saying so precisely is the point: a bracket literal is not the same thing as a tagged progress emit, several of these are certainly not emit tags at all, and nothing here distinguishes a live emit from a literal in a comparison, a parser, or a doc example. The instrument that produced the figure is a spelling grep over six files, which is exactly the instrument this module's witness note already rules insufficient -- so the number is quoted as the shape of the gap, never as its size. WHY IT IS RECORDED RATHER THAN REPAIRED BY ADDING 45 ROWS: every one of those rows would be hand-authored from a spelling, with a disposition and a dissolution trigger invented by whoever wrote it, which is the failure this file has now recorded four times and the thing its own witness note calls `a hand-maintained approximation of a discovery it cannot perform`. Enlarging the approximation does not close the gap; it multiplies the surface that rots. NEXT-RUNG TRIGGER, AND IT IS A SUBSTRATE CAPABILITY RATHER THAN EFFORT: the discovery this needs -- occurrence-grain extraction of tagged emits from seed source -- is not expressible in .dag today. The interpreter registers exactly two string builtins, string_contains and string_length (measured over the seed's builtin registrations), so a fold can ask `does this text contain that` and can ask nothing about WHERE, HOW MANY, or WHAT ELSE OF THIS SHAPE. Membership is decidable; enumeration is not reachable. This class therefore sits at MITIGATABLE with a named trigger rather than at an untracked stall: the trigger is a modeled scan surface over source text -- occurrence positions, or a split, or an ingestion of the seed as a Node tree the way v1_compiler.declaration_index now ingests .dag modules -- after which the roster is JOINED against discovered occurrences and this note is deleted rather than amended."
 
 data observation_emit_roster_completeness_disposition: Disposition = Scaffold {
   dissolves_to: SingleAuthority,
@@ -262,59 +169,7 @@ data observation_emit_roster_completeness_disposition: Disposition = Scaffold {
   }
 }
 
-// Roster is bidirectional: every rostered marker must still exist in the seed, AND every known live
-// tag family born after the initial snapshot must appear on the roster (operator finding 3, run
-// 30142403230). The frontier families are floor-drain, receipt, file, resolve-split, assembly-split
-// and witness-row-cost. THE COUNT IS DELIBERATELY NOT WRITTEN HERE: observation_emit_frontier_count
-// folds the roster, so it is the only authority for how many there are, and a number recited beside
-// an enumeration is a second account of a population this module already computes. TWO CORRECTIONS
-// LANDED HERE ON 2026-08-22, in opposite directions, and both are recorded because each was nearly
-// made worse by the other. The recital that stood here said 8 and named
-// witness-row-cost-migration-disclosure among the live families; that one is genuinely gone, its
-// emit deleted at the root with the batch-fed materialization. But this note ALSO named
-// selection-degradation, which has no emit in the seed and has never been on this roster -- so the
-// enumeration overstated by a family that never existed while the count beside it was computed from
-// rows that did, and the two errors partially cancelled. AND witness-row-cost was removed from this
-// roster in that same change on the premise that its marker was gone; it is not. A live eprintln
-// survives on a path with production callers, so removing the row broke the bidirectional rule this
-// very sentence states -- a live tag family absent from the roster. (THE SYMBOL THAT SENTENCE
-// ORIGINALLY NAMED, `claim_executor discovery_claim_result`, RESOLVES TO NOTHING and was fabricated
-// when written; the emits are the witness_cost_* helpers in cli_run.rs, corrected 2026-08-26 on the
-// row itself. The row's premise was right and its citation was invented, which is why the
-// correction is a citation repair and not a reclassification.) The row is restored above with a
-// rewritten reason. What makes this worth recording rather than quietly fixing: the removal was
-// reviewed, the review agreed the marker was gone, and NOTHING WOULD HAVE CAUGHT IT, because the
-// hand-maintained bidirectional conjunction that covers this tag was deleted in the same diff.
-// Correcting the prose to match the roster would have cemented the defect instead of exposing it --
-// the census's own hygiene depends on a check that a prose-consistency pass can silently remove.
-// THE MIGRATED FAMILIES ARE NOT ENUMERATED HERE ANY LONGER, and the deletion of that enumeration is
-// this note's own rule finally applied to itself: the sentence that stood here named floor-memory
-// first, and on 2026-08-26 floor-memory's emit left the seed with #9228, so the recital went false
-// in exactly the way the paragraphs above and below predict a hand-maintained enumeration will.
-// observation_emit_roster names the migrated rows; restating them here was the second naming
-// scheme, and it is the one that rotted. NEITHER A COUNT NOR THIS ENUMERATION SHOULD BE MAINTAINED
-// HERE AT ALL, and the enumeration above survives only as the corrected record of what went wrong:
-// observation_emit_roster names the migrated rows, so restating them in prose is a second naming
-// scheme for something the roster already names, and it is the naming scheme that rots. No derived
-// migrated_count is minted beside observation_emit_frontier_count either, deliberately -- the
-// frontier count has a real target (the zero-target acceptance drives it to nothing) while a
-// migrated count has nothing driving it, so it would be an artifact with no consumer, and the only
-// assertions available over it are `measure() == measure()` or a literal copied from the current
-// tree. THIS RECITAL SAID `Eight` AND NAMED witness-budget-warn, which has no row in this roster
-// and never had one, while omitting nothing -- so the stated count exceeded the population by
-// exactly the fabricated member. That is the SAME two-directional failure this note already records
-// on the frontier side, arriving on the migrated side and surviving the pass that fixed the other:
-// a count and an enumeration maintained by hand beside each other, where a wrong member and a wrong
-// total can agree. RETIRED BY DELETION 2026-08-11, and the distinction matters: gate-warm-cost,
-// witness-row-cost-drift and compile-clean-cost-drift left this roster because their raw emits were
-// DELETED from the seed, not because they migrated to the observation vocabulary. There is no
-// roster arm for that, and there should not be one — the census rosters emit sites that exist, so a
-// site with no emit is simply absent. What replaced them is the floor-receipts artifact plus each
-// receipt's [receipt] summary line, and [receipt] is itself still a counted frontier family on this
-// roster, so the debt those three represented did not vanish, it CONSOLIDATED into a row that is
-// still counted. Reading 10 -> 8 as two families' worth of progress would overstate it; the honest
-// reading is that three raw TSV mirrors stopped existing and one already-counted summary family
-// absorbed their role. The unmarked eprintln sites remain the per-print completeness scaffold.
+data observation_emit_roster_completeness_note: String = "Roster is bidirectional: every rostered marker must still exist in the seed, AND every known live tag family born after the initial snapshot must appear on the roster (operator finding 3, run 30142403230). The frontier families are floor-drain, receipt, file, resolve-split, assembly-split and witness-row-cost. THE COUNT IS DELIBERATELY NOT WRITTEN HERE: observation_emit_frontier_count folds the roster, so it is the only authority for how many there are, and a number recited beside an enumeration is a second account of a population this module already computes. TWO CORRECTIONS LANDED HERE ON 2026-08-22, in opposite directions, and both are recorded because each was nearly made worse by the other. The recital that stood here said 8 and named witness-row-cost-migration-disclosure among the live families; that one is genuinely gone, its emit deleted at the root with the batch-fed materialization. But this note ALSO named selection-degradation, which has no emit in the seed and has never been on this roster -- so the enumeration overstated by a family that never existed while the count beside it was computed from rows that did, and the two errors partially cancelled. AND witness-row-cost was removed from this roster in that same change on the premise that its marker was gone; it is not. A live eprintln survives on a path with production callers, so removing the row broke the bidirectional rule this very sentence states -- a live tag family absent from the roster. (THE SYMBOL THAT SENTENCE ORIGINALLY NAMED, `claim_executor discovery_claim_result`, RESOLVES TO NOTHING and was fabricated when written; the emits are the witness_cost_* helpers in cli_run.rs, corrected 2026-08-26 on the row itself. The row's premise was right and its citation was invented, which is why the correction is a citation repair and not a reclassification.) The row is restored above with a rewritten reason. What makes this worth recording rather than quietly fixing: the removal was reviewed, the review agreed the marker was gone, and NOTHING WOULD HAVE CAUGHT IT, because the hand-maintained bidirectional conjunction that covers this tag was deleted in the same diff. Correcting the prose to match the roster would have cemented the defect instead of exposing it -- the census's own hygiene depends on a check that a prose-consistency pass can silently remove. THE MIGRATED FAMILIES ARE NOT ENUMERATED HERE ANY LONGER, and the deletion of that enumeration is this note's own rule finally applied to itself: the sentence that stood here named floor-memory first, and on 2026-08-26 floor-memory's emit left the seed with #9228, so the recital went false in exactly the way the paragraphs above and below predict a hand-maintained enumeration will. observation_emit_roster names the migrated rows; restating them here was the second naming scheme, and it is the one that rotted. NEITHER A COUNT NOR THIS ENUMERATION SHOULD BE MAINTAINED HERE AT ALL, and the enumeration above survives only as the corrected record of what went wrong: observation_emit_roster names the migrated rows, so restating them in prose is a second naming scheme for something the roster already names, and it is the naming scheme that rots. No derived migrated_count is minted beside observation_emit_frontier_count either, deliberately -- the frontier count has a real target (the zero-target acceptance drives it to nothing) while a migrated count has nothing driving it, so it would be an artifact with no consumer, and the only assertions available over it are `measure() == measure()` or a literal copied from the current tree. THIS RECITAL SAID `Eight` AND NAMED witness-budget-warn, which has no row in this roster and never had one, while omitting nothing -- so the stated count exceeded the population by exactly the fabricated member. That is the SAME two-directional failure this note already records on the frontier side, arriving on the migrated side and surviving the pass that fixed the other: a count and an enumeration maintained by hand beside each other, where a wrong member and a wrong total can agree. RETIRED BY DELETION 2026-08-11, and the distinction matters: gate-warm-cost, witness-row-cost-drift and compile-clean-cost-drift left this roster because their raw emits were DELETED from the seed, not because they migrated to the observation vocabulary. There is no roster arm for that, and there should not be one — the census rosters emit sites that exist, so a site with no emit is simply absent. What replaced them is the floor-receipts artifact plus each receipt's [receipt] summary line, and [receipt] is itself still a counted frontier family on this roster, so the debt those three represented did not vanish, it CONSOLIDATED into a row that is still counted. Reading 10 -> 8 as two families' worth of progress would overstate it; the honest reading is that three raw TSV mirrors stopped existing and one already-counted summary family absorbed their role. The unmarked eprintln sites remain the per-print completeness scaffold."
 
 fn emit_site_is_frontier(site: CensusedEmitSite) -> Bool {
   match site.disposition {

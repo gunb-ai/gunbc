@@ -38,17 +38,17 @@ import gunbc.live_deploy.spec { DeploymentSpec, deployment_plan_listen_port }
 //
 // gunbc.live_deploy.revision has stated this policy since it was written -- four cases, three
 // dispositions, refuse on unverifiable -- and until this module landed its ONLY caller was its own
-// witness test: specification-without-execution (DESIGN section 5) in the shape
+// witness test. That is specification-without-execution (DESIGN section 5) in the shape
 // gunbc.fleet_desired_admission's header already names for the ref-advance half: "the modeled wall
-// stood beside an actuator that walked around it". The actuator here is gunbc.live_deploy.apply
-// live_deploy_admitted_wet_with_access, which observed a candidate and applied it unconditionally,
-// so an older deploy arriving second rsynced its older tree, converged, and greened -- exactly the
-// silent regression srv1-deploy-serialization-and-false-greens (deleted) section 6 predicted
-// serialization alone would produce.
+// stood beside an actuator that walked around it". The actuator here is
+// gunbc.live_deploy.apply live_deploy_admitted_wet_with_access, which observed a candidate and
+// applied it unconditionally, so an older deploy arriving second rsynced its older tree, converged,
+// and greened -- exactly the silent regression srv1-deploy-serialization-and-false-greens (deleted)
+// section 6 predicted serialization alone would produce.
 //
 // THIS MODULE IS THE CONSUMER, NOT A SECOND POLICY. The four-case relation and its verdict come
 // from gunbc.live_deploy.revision classify_deploy_revision; the ancestry reading comes from
-// gunbc.fleet_desired_observe observe_fleet_revision_relation, already the sole production
+// gunbc.fleet_desired_observe observe_fleet_revision_relation, which is already the sole production
 // constructor of a merge-base-derived relation. Nothing here re-derives either. What is new is the
 // PREDECESSOR question those authorities take as given: which revision is the target actually at.
 // THE PREDECESSOR IS THE RUNNING PROCESS, AND THAT IS AN OPERATOR RULING RATHER THAN A PREFERENCE.
@@ -58,20 +58,20 @@ import gunbc.live_deploy.spec { DeploymentSpec, deployment_plan_listen_port }
 // "grounding deployment ordering on either re-admits the backward move the ordering exists to
 // forbid". The process is the only party that can answer which release is being served.
 //
-// NoRunningRelease IS A POSITIVE STATE AND NOT A DEGRADED READ, which keeps this wall from being
-// one an operator cannot get out of. A unit that is not active is not serving anything, so there
-// is no release to move backward from and an advance onto an idle target is unconditionally
-// forward. That is a FACT the host reported, not an absence of one: reached only when `systemctl
-// is-active` ANSWERED, carrying the state word it answered with. The arm that would have been
-// dangerous -- reading a failed healthz probe as "nothing is running" -- is deliberately not
-// available: a refused probe cannot distinguish a down service from a broken credential, and
-// admitting on it would be the empty-observation narrow DESIGN section 5 names, at the one seam
-// where the consequence is an unordered production deploy.
+// NoRunningRelease IS A POSITIVE STATE AND NOT A DEGRADED READ, and the distinction is what keeps
+// this wall from being one an operator cannot get out of. A unit that is not active is not serving
+// anything, so there is no release to move backward from and an advance onto an idle target is
+// unconditionally forward. That is a FACT the host reported, not an absence of one: it is reached
+// only when `systemctl is-active` ANSWERED, and it carries the state word it answered with. The
+// arm that would have been dangerous -- reading a failed healthz probe as "nothing is running" --
+// is deliberately not available: a refused probe cannot distinguish a down service from a broken
+// credential, and admitting on it would be the empty-observation narrow DESIGN section 5 names,
+// at the one seam where the consequence is an unordered production deploy.
 //
 // So the discriminator is systemd rather than the health endpoint. An INACTIVE unit is the absent
-// predecessor; an ACTIVE unit whose identity is unreadable is a routed process demonstrably
-// serving something this system cannot name, which gunbc.running_release_identity's own cause
-// note maps to a refusal "never to an advance and never to a synthetic predecessor".
+// predecessor; an ACTIVE unit whose identity is unreadable is a routed process demonstrably serving
+// something this system cannot name, which gunbc.running_release_identity's own cause note maps to
+// a refusal "never to an advance and never to a synthetic predecessor".
 type DeployTargetPredecessor
   = NoRunningRelease { unit_state: NonEmptyStr }
   | RunningRelease { revision: CommitSha }
@@ -106,13 +106,13 @@ fn deploy_target_predecessor_from_healthz(read: HealthzEffectiveRead) -> DeployT
   }
 }
 
-// THE UNIT READ DECIDES WHETHER A HEALTH PROBE IS EVEN ASKED FOR, by returning a step rather than
-// taking the probe's result as an argument. An argument would be evaluated whichever arm the match
-// then selected, so the idle unit would be probed anyway and the refused probe of an idle unit
-// would become indistinguishable from the refused probe of a live one -- the exact distinction
-// this fold preserves, defeated by the shape of the signature rather than the logic inside it.
-// Returning ProbeRunningProcess keeps the fold PURE and hands the one remaining observation back
-// to the wet composition that owns effects.
+// THE UNIT READ DECIDES WHETHER A HEALTH PROBE IS EVEN ASKED FOR, and it says so by returning a
+// step rather than by taking the probe's result as an argument. An argument would be evaluated
+// whichever arm the match then selected, so the idle unit would be probed anyway and the refused
+// probe of an idle unit would become indistinguishable from the refused probe of a live one -- the
+// exact distinction this fold exists to preserve, defeated by the shape of the signature rather
+// than by the logic inside it. Returning ProbeRunningProcess keeps the fold PURE and hands the one
+// remaining observation back to the wet composition that owns effects.
 type UnitPredecessorStep
   = PredecessorSettled { predecessor: DeployTargetPredecessor }
   | ProbeRunningProcess
@@ -140,8 +140,8 @@ fn deploy_target_step_from_unit_state(capture: UnitIsActiveCapture) -> UnitPrede
 
 // THE DECISION'S INPUT CARRIES THE RELATION ALREADY OBSERVED, rather than an optional revision the
 // decision would then have to probe. Only one arm has two revisions to relate, so only one arm can
-// carry a relation; a coproduct says that where an Optional beside a predecessor would admit the
-// meaningless pairs -- a relation with no predecessor, a predecessor with none.
+// carry a relation, and a coproduct says that where an Optional beside a predecessor would have
+// admitted the meaningless pairs -- a relation with no predecessor, a predecessor with none.
 type DeployTargetInput
   = TargetIdle { unit_state: NonEmptyStr }
   | TargetRelated { running: CommitSha, relation: DeployRevisionRelation }
@@ -155,20 +155,20 @@ type DeployTargetDecision
   | DeployTargetRefused { cause: String }
 
 // SameRevision MAPS TO PROCEED HERE, AND THIS CONSUMER DIVERGES FROM
-// deploy_revision_terminal_success ON EXACTLY THAT ARM. The divergence is deliberate, the only
-// one, and stated here rather than left for a reader to find by diffing the two.
+// deploy_revision_terminal_success ON EXACTLY THAT ARM. The divergence is deliberate, it is the
+// only one, and it is stated here rather than left for a reader to find by diffing the two.
 //
 // That predicate answers for a consumer whose predecessor is the DEPLOYED TREE, where "the host
-// already carries this exact tree" does mean there is nothing to do. This consumer's predecessor
-// is the RUNNING PROCESS, a different question: a process announcing revision R proves only what
-// its launch argument said, and the tree beneath it can be drifted, half-synced, or hand-edited
-// while the announcement stays R. Skipping the deploy on that basis would convert an operator's
-// repair -- re-running the deploy at the same revision to reconcile a damaged host -- into a
-// silent success that changed nothing, the fabricated-plausible-output failure DESIGN section 5
-// forbids, arrived at from the direction that looks like thrift.
+// already carries this exact tree" really does mean there is nothing to do. This consumer's
+// predecessor is the RUNNING PROCESS, and the two are not the same question: a process announcing
+// revision R proves only what its launch argument said, and the tree beneath it can be drifted,
+// half-synced, or hand-edited while the announcement stays R. Skipping the deploy on that basis
+// would convert an operator's repair -- re-running the deploy at the same revision to reconcile a
+// damaged host -- into a silent success that changed nothing, which is the fabricated-plausible-
+// output failure DESIGN section 5 forbids, arrived at from the direction that looks like thrift.
 //
-// It also costs nothing to admit. The harm this wall prevents is the BACKWARD move, and an
-// identical revision is not one; apply is a reconcile whose members are idempotent, so
+// It also costs nothing to admit. The harm this wall exists to prevent is the BACKWARD move, and
+// an identical revision is not one; apply is a reconcile whose members are idempotent, so
 // re-converging the same revision is the ordinary no-change case rather than a second deploy. The
 // wall therefore refuses backward, unrelated and unverifiable, and admits same-or-forward.
 fn decide_deploy_target(input: DeployTargetInput, candidate: CommitSha) -> DeployTargetDecision {
@@ -249,12 +249,12 @@ fn deploy_target_decision_line(decision: DeployTargetDecision) -> String {
   }
 }
 
-// THE RELATION IS READ IN THE DEPLOYING CHECKOUT, the only party holding both revisions as
-// objects: it was fetched with full depth for the candidate, and the running release is a commit
-// on the branch it deployed from. A missing object makes `git merge-base` exit 128, which
+// THE RELATION IS READ IN THE DEPLOYING CHECKOUT, which is the only party holding both revisions as
+// objects: it was fetched with full depth for the candidate, and the running release is a commit on
+// the branch it deployed from. A missing object makes `git merge-base` exit 128, which
 // gunbc.fleet_main_revision merge_base_relation folds to RelationUnverifiable and this module
-// refuses on -- fail-closed, since "I could not determine whether this is newer" is not "this is
-// newer".
+// refuses on -- the fail-closed direction, since "I could not determine whether this is newer" is
+// not "this is newer".
 fn deploy_target_input_from_predecessor(
   predecessor: DeployTargetPredecessor,
   candidate: CommitSha,
@@ -293,10 +293,10 @@ fn deploy_target_input_from_predecessor(
   }
 }
 
-// THE WET COMPOSITION, AND IT RUNS BEFORE ANY MUTATION. Every observation is read-only: one
-// `systemctl is-active`, and at most one health probe. gunbc.live_deploy.apply calls it after the
-// candidate is observed and before the preflight mutation gate, the cheapest place a backward
-// deploy can be stopped -- nothing has been touched, so there is no half-applied state.
+// THE WET COMPOSITION, AND IT RUNS BEFORE ANY MUTATION. Every observation it makes is read-only:
+// one `systemctl is-active`, and at most one health probe. gunbc.live_deploy.apply calls it after
+// the candidate is observed and before the preflight mutation gate, which is the cheapest place a
+// backward deploy can be stopped -- nothing has been touched, so there is no half-applied state.
 fn observe_deploy_target(
   spec: DeploymentSpec,
   transport: HostEffectTransport,

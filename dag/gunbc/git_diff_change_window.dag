@@ -39,11 +39,7 @@ import std.content_hash {
   content_hash_combine_structural,
   content_hash_eq_structural,
 }
-// Git realization of an exact affected-set comparison window. Producers observe merge-base(head,
-// target_generation) in a Git worktree and persist a head- and window-identity-addressed receipt;
-// consumers (gunbc.diff_baseline, floor_diff_observe) read the path named by
-// GUNBC_DIFF_WINDOW_PATH. This module is Git-specific — other SCM realizations carry their own
-// native receipts beneath a future compatibility envelope.
+data git_diff_change_window_note: String = "Git realization of an exact affected-set comparison window. Producers observe merge-base(head, target_generation) in a Git worktree and persist a head- and window-identity-addressed receipt; consumers (gunbc.diff_baseline, floor_diff_observe) read the path named by GUNBC_DIFF_WINDOW_PATH. This module is Git-specific — other SCM realizations carry their own native receipts beneath a future compatibility envelope."
 
 data gunbc_diff_window_path_env: NonEmptyStr = "GUNBC_DIFF_WINDOW_PATH"
 

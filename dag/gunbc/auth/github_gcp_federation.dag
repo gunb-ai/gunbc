@@ -18,12 +18,7 @@ import extdeps.cloud.gcp.gcp {
 // BMC symbol for a non-BMC fact or copy the literal. The second option is what makes a fork, and
 // the Spark lane was about to take it.
 
-// One federation, many consuming domains. A domain that federates supplies only what is genuinely
-// its own -- its service account, its secret population, its role set -- and reads the pool,
-// provider, issuer, attribute mapping, project and principal-set construction from here. The prior
-// arrangement forced a second domain to choose between importing a bmc_ symbol for a
-// repository-level fact and copying the literal; copying is how the second authority gets minted,
-// and the copy is invisible afterwards because both sides read correct.
+data federation_authority_note: String = "One federation, many consuming domains. A domain that federates supplies only what is genuinely its own -- its service account, its secret population, its role set -- and reads the pool, provider, issuer, attribute mapping, project and principal-set construction from here. The prior arrangement forced a second domain to choose between importing a bmc_ symbol for a repository-level fact and copying the literal; copying is how the second authority gets minted, and the copy is invisible afterwards because both sides read correct."
 
 // ── The GCP project the fleet's secrets live in ───────────────────────────────────────────
 data fleet_secrets_project_id: GcpProjectId = "gunbai-secrets"

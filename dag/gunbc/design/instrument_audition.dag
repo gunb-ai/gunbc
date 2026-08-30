@@ -25,17 +25,7 @@ import gunbc.roadmap_program_view {
   program_front_key,
 }
 
-// THE AUDITION IS A COMPARISON, NOT A DEMO. Its purpose is to let one focal control be seen at
-// three energies on the SAME real subject, so the choice between restrained, expressive and hero is
-// made by looking rather than by argument — which is the only way the selective-spectacle amendment
-// can be calibrated without re-litigating it in prose every time. Two properties make it an
-// audition rather than a mock-up: the subject is a real v1-deletion finish line carrying V0's own
-// name, claim and roadmap node, so what the control says is true; and every intensity is admitted
-// through the register's OWN gates (emission_for, attraction_envelope, displacement_admission)
-// rather than through audition-local bounds, so a variant that looks good but breaks the register
-// cannot be rendered at all. The hero variant deliberately sits at the envelope's admissible
-// maximum: an audition whose loudest option is comfortably inside the bound tells you nothing about
-// where the bound is.
+data audition_note: String = "THE AUDITION IS A COMPARISON, NOT A DEMO. Its purpose is to let one focal control be seen at three energies on the SAME real subject, so the choice between restrained, expressive and hero is made by looking rather than by argument — which is the only way the selective-spectacle amendment can be calibrated without re-litigating it in prose every time. Two properties make it an audition rather than a mock-up: the subject is a real v1-deletion finish line carrying V0's own name, claim and roadmap node, so what the control says is true; and every intensity is admitted through the register's OWN gates (emission_for, attraction_envelope, displacement_admission) rather than through audition-local bounds, so a variant that looks good but breaks the register cannot be rendered at all. The hero variant deliberately sits at the envelope's admissible maximum: an audition whose loudest option is comfortably inside the bound tells you nothing about where the bound is."
 
 type AuditionIntensity
   = AuditionRestrained
@@ -50,10 +40,7 @@ fn audition_intensity_key(i: AuditionIntensity) -> String {
   }
 }
 
-// The restrained variant carries no emission at all, and that is what makes the comparison honest:
-// it is the register as it stood BEFORE the amendment, so the audition's baseline is the real
-// previous state rather than a slightly-dimmer version of the new one. If restrained wins, the
-// amendment costs nothing to withdraw.
+data restrained_has_no_emission_note: String = "The restrained variant carries no emission at all, and that is what makes the comparison honest: it is the register as it stood BEFORE the amendment, so the audition's baseline is the real previous state rather than a slightly-dimmer version of the new one. If restrained wins, the amendment costs nothing to withdraw."
 
 type AuditionEmission
   = AuditionNoEmission
@@ -107,11 +94,7 @@ fn audition_instrument(i: AuditionIntensity) -> InstrumentPreference {
   }
 }
 
-// The non-emission discriminator emission_for demands is not a placeholder string here: it names
-// the channel that actually carries selection in the emitted control — the selected state class
-// plus the subject's own name text — so a no-emission or reduced-motion rendering keeps both.
-// Deriving it from the subject key rather than writing a literal is what stops the three
-// intensities from silently sharing one hardcoded discriminator that belongs to none of them.
+data discriminator_note: String = "The non-emission discriminator emission_for demands is not a placeholder string here: it names the channel that actually carries selection in the emitted control — the selected state class plus the subject's own name text — so a no-emission or reduced-motion rendering keeps both. Deriving it from the subject key rather than writing a literal is what stops the three intensities from silently sharing one hardcoded discriminator that belongs to none of them."
 
 fn focal_discriminator(subject_key: String) -> String {
   concat("selected-state-class+name-text:", subject_key)
@@ -121,12 +104,7 @@ data hero_travel_is_derived_note: String = "Hero used to request the register's 
 
 COMPOSING THE ENVELOPE CHANGED THE AUDITION, WHICH IS THE POINT. Expressive used to borrow the register's canonical focal_attraction — activation 150, travel 12 — and under one envelope that no longer fits: 12 of the register's 14 declared pixels are already spent by the canonical field, so an enclosure carrying any character at all cannot also grant it. Rather than shrink the canonical field or inflate the envelope, the three variants now differ by exactly one channel each: restrained has neither emission nor attraction, expressive adds emission, hero adds the attraction the enclosure left affordable. That ordering is more useful for an audition than three variants differing on everything at once, and it surfaces the real constraint instead of hiding it — the register's own focal field is expensive enough that instrument character and canonical attraction are alternatives, not companions. If that trade is wrong, the number to revisit is attraction_travel_max_px, in the register, deliberately."
 
-// One admission per intensity, and every arm of it is the register's existing gate rather than a
-// local re-check. A restrained variant is admitted with no emission grant to inspect; the other two
-// must pass emission_for AT THE FOCAL ROLE, which is the point where an audition that tried to glow
-// a Supporting subject would refuse. Instrument displacement is admitted separately because it is a
-// property of the enclosure and not of the control, and both must hold for the variant to be
-// renderable.
+data audition_admission_note: String = "One admission per intensity, and every arm of it is the register's existing gate rather than a local re-check. A restrained variant is admitted with no emission grant to inspect; the other two must pass emission_for AT THE FOCAL ROLE, which is the point where an audition that tried to glow a Supporting subject would refuse. Instrument displacement is admitted separately because it is a property of the enclosure and not of the control, and both must hold for the variant to be renderable."
 
 type AuditionAdmission
   = AuditionAdmitted {
@@ -153,12 +131,7 @@ fn attraction_admissible(a: AuditionAttraction) -> Bool {
   }
 }
 
-// A restrained variant does not request emission, so it does not pass a zero-alpha spec through
-// emission_for to obtain a grant it does not want. That shortcut was written first and is worth
-// naming: fabricating an admissible-looking spec purely to satisfy a gate produces a REAL grant for
-// emission nobody asked for, and the receipt then reports a granted emission on the one variant
-// whose entire point is having none. NoEmissionRequested is a distinct outcome from a granted one,
-// so the gate is skipped rather than gamed.
+data no_emission_skips_the_gate_note: String = "A restrained variant does not request emission, so it does not pass a zero-alpha spec through emission_for to obtain a grant it does not want. That shortcut was written first and is worth naming: fabricating an admissible-looking spec purely to satisfy a gate produces a REAL grant for emission nobody asked for, and the receipt then reports a granted emission on the one variant whose entire point is having none. NoEmissionRequested is a distinct outcome from a granted one, so the gate is skipped rather than gamed."
 
 type AuditionEmissionOutcome
   = NoEmissionRequested
@@ -229,34 +202,9 @@ fn admit_audition(i: AuditionIntensity, role: SalienceRole, subject_key: String)
 
 data audition_intensities: List<AuditionIntensity> = [AuditionRestrained, AuditionExpressive, AuditionHero]
 
-// THE CAMERA READS THE WORLD V0 ALREADY DERIVED, and the previous revision of this module did not —
-// which is the defect worth recording rather than quietly fixing. It answered Status and Remaining
-// out of gunbc.v1_deletion_plan's authored rows, and answered Why with a typed ReadingUnavailable
-// carrying the cause 'no rationale carrier exists for a v1 finish line'. That cause was FALSE when
-// it was written. gunbc.roadmap_program_view was already on this branch's base and its own header
-// says the camera layers are deliberately absent because THAT module is the world the cameras look
-// at; ConstraintView exists precisely to answer why-is-this-taking-so-long without inventing
-// rationale prose. So the refusal was not the honest fail-closed arm its note claimed — it was the
-// empty-observation narrow, rendering could-not-find as the verdict does-not-exist, in the module
-// whose own notes warn against exactly that. It reached review green because nothing about a
-// refusal looks wrong: no witness can tell a correct refusal from a lazy one without going and
-// looking for the carrier, which is what nobody did. The lesson is cheap to state and was expensive
-// here: before declaring a carrier absent, search for it.
+data reading_note: String = "THE CAMERA READS THE WORLD V0 ALREADY DERIVED, and the previous revision of this module did not — which is the defect worth recording rather than quietly fixing. It answered Status and Remaining out of gunbc.v1_deletion_plan's authored rows, and answered Why with a typed ReadingUnavailable carrying the cause 'no rationale carrier exists for a v1 finish line'. That cause was FALSE when it was written. gunbc.roadmap_program_view was already on this branch's base and its own header says the camera layers are deliberately absent because THAT module is the world the cameras look at; ConstraintView exists precisely to answer why-is-this-taking-so-long without inventing rationale prose. So the refusal was not the honest fail-closed arm its note claimed — it was the empty-observation narrow, rendering could-not-find as the verdict does-not-exist, in the module whose own notes warn against exactly that. It reached review green because nothing about a refusal looks wrong: no witness can tell a correct refusal from a lazy one without going and looking for the carrier, which is what nobody did. The lesson is cheap to state and was expensive here: before declaring a carrier absent, search for it."
 
-// DEPTH SELECTS THE SUBJECT GRAIN, MODE SELECTS THE QUESTION, and the two are genuinely independent
-// because V0 derives a RemainingShape and a ConstraintView at more than one grain. Program reads
-// the whole program's shape — from view.remaining, at EVERY focus, which is a correction rather
-// than a restatement: this sentence was written while read_camera_at routed a focused program
-// detent into the line reader, so the claim held only with nothing selected and the page
-// mislabelled outcome-grain rows as program ones (review 48719, fixed by making the program grain
-// unrepresentable in SubjectDepth rather than by adding an arm — see subject_depth_note). Outcome
-// reads one FinishLineView; Front reads one contributing FrontView; Node reads the primary
-// constraint's own subject. Evidence is deliberately NOT answered from these carriers: acceptance
-// here comes from RoadmapAcceptanceReceipt rows, but the verification-receipt join that would let a
-// camera show WHY a receipt was granted is test-only until the belt wiring lands, and
-// gunbc.roadmap_program_view says so itself. That is a real absence with a named trigger, so
-// Evidence refuses — and it is the one place in this module where a refusal is the correct answer
-// rather than a search nobody performed.
+data reading_grain_note: String = "DEPTH SELECTS THE SUBJECT GRAIN, MODE SELECTS THE QUESTION, and the two are genuinely independent because V0 derives a RemainingShape and a ConstraintView at more than one grain. Program reads the whole program's shape — from view.remaining, at EVERY focus, which is a correction rather than a restatement: this sentence was written while read_camera_at routed a focused program detent into the line reader, so the claim held only with nothing selected and the page mislabelled outcome-grain rows as program ones (review 48719, fixed by making the program grain unrepresentable in SubjectDepth rather than by adding an arm — see subject_depth_note). Outcome reads one FinishLineView; Front reads one contributing FrontView; Node reads the primary constraint's own subject. Evidence is deliberately NOT answered from these carriers: acceptance here comes from RoadmapAcceptanceReceipt rows, but the verification-receipt join that would let a camera show WHY a receipt was granted is test-only until the belt wiring lands, and gunbc.roadmap_program_view says so itself. That is a real absence with a named trigger, so Evidence refuses — and it is the one place in this module where a refusal is the correct answer rather than a search nobody performed."
 
 type ProgramReading
   = ReadingNoSubject
@@ -297,19 +245,7 @@ fn read_constraint(subject_key: String, c: ConstraintView?, accepted: Bool) -> P
   }
 }
 
-// THE GRAIN THE LINE READER IS ALLOWED TO ANSWER AT, as a type rather than as a promise (review
-// 48719, 2026-08-05). The bug it closes: read_line_view used to match ProgramDepth, so it carried a
-// DepthProgram arm — and that arm was byte-identical to its DepthOutcome arm. read_camera_at then
-// routed BOTH depths into it whenever a subject was focused, so the program detent silently
-// produced outcome-grain readings while the page kept labelling the row program / …, and
-// reading_grain_note's claim that Program reads the whole program's shape was true only when
-// nothing was selected. That is the note-vs-code split this module has now produced three times, so
-// the fix is not another corrected arm: the whole-program grain has no representation here at all.
-// SubjectDepth enumerates exactly the grains that ARE a property of one finish line, DepthProgram
-// cannot be projected into it, and read_line_view therefore cannot be handed the program grain by
-// any caller. A DepthFront arm went with it, dead for a different reason — read_camera_at answers
-// fronts through first_front_view, so the line reader's front arm had been unreachable since that
-// fold landed.
+data subject_depth_note: String = "THE GRAIN THE LINE READER IS ALLOWED TO ANSWER AT, as a type rather than as a promise (review 48719, 2026-08-05). The bug it closes: read_line_view used to match ProgramDepth, so it carried a DepthProgram arm — and that arm was byte-identical to its DepthOutcome arm. read_camera_at then routed BOTH depths into it whenever a subject was focused, so the program detent silently produced outcome-grain readings while the page kept labelling the row program / …, and reading_grain_note's claim that Program reads the whole program's shape was true only when nothing was selected. That is the note-vs-code split this module has now produced three times, so the fix is not another corrected arm: the whole-program grain has no representation here at all. SubjectDepth enumerates exactly the grains that ARE a property of one finish line, DepthProgram cannot be projected into it, and read_line_view therefore cannot be handed the program grain by any caller. A DepthFront arm went with it, dead for a different reason — read_camera_at answers fronts through first_front_view, so the line reader's front arm had been unreachable since that fold landed."
 
 type SubjectDepth
   = SubjectOutcome

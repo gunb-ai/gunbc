@@ -1,5 +1,6 @@
 module test.claim.fleet_intent_network
 
+
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 test fn fleet_intent_network_container_to_bmc_allowed() -> Bool {
@@ -19,14 +20,7 @@ test fn fleet_intent_network_srv1_addresses_holds() -> Bool {
     && srv1_bmc_endpoint.address == "192.168.1.183"
 }
 
-// The count row above is a tripwire, not a fact about srv3 — it reds on ANY topology edit and says
-// nothing about WHICH endpoint appeared. This row is the discriminating half for the 2026-07-24
-// srv3 host addition, mirroring fleet_intent_network_srv1_addresses_holds: srv3 must be modeled
-// with BOTH of its interfaces distinguished by role (its BMC at .192 was modeled since the srv3
-// onboarding lane; its host OS at .221 was not, so a model that named srv3 could still not name the
-// machine). Asserting both addresses AND the role split is what makes a regression that collapses
-// host onto BMC — the exact confusion this row was added to end — go red rather than merely
-// shifting a count.
+data fleet_intent_network_srv3_host_witness_note: String = "The count row above is a tripwire, not a fact about srv3 — it reds on ANY topology edit and says nothing about WHICH endpoint appeared. This row is the discriminating half for the 2026-07-24 srv3 host addition, mirroring fleet_intent_network_srv1_addresses_holds: srv3 must be modeled with BOTH of its interfaces distinguished by role (its BMC at .192 was modeled since the srv3 onboarding lane; its host OS at .221 was not, so a model that named srv3 could still not name the machine). Asserting both addresses AND the role split is what makes a regression that collapses host onto BMC — the exact confusion this row was added to end — go red rather than merely shifting a count."
 
 test fn fleet_intent_network_srv3_addresses_holds() -> Bool {
   srv3_host_lan_endpoint.address == "192.168.1.221"
@@ -35,13 +29,7 @@ test fn fleet_intent_network_srv3_addresses_holds() -> Bool {
     && srv3_bmc_endpoint.role == BmcOutOfBand
 }
 
-// SPARK-LANE-A. srv5/srv6 are named here as HostIdentity slots for the two ordered DGX Spark units,
-// and naming is deliberately NOT enrollment. The count tripwire above cannot see that distinction —
-// it would stay green if a fabricated srv5 endpoint replaced another — so this row asserts the
-// separation directly at the enrollment authority: both identities exist, and NO endpoint in the
-// topology is bound to either. It reds the moment someone authors an address for a machine that has
-// not arrived, which is the exact fabrication the procurement lane's router-binding wall refuses on
-// the other side.
+data fleet_intent_network_srv5_srv6_reserved_not_enrolled_note: String = "SPARK-LANE-A. srv5/srv6 are named here as HostIdentity slots for the two ordered DGX Spark units, and naming is deliberately NOT enrollment. The count tripwire above cannot see that distinction — it would stay green if a fabricated srv5 endpoint replaced another — so this row asserts the separation directly at the enrollment authority: both identities exist, and NO endpoint in the topology is bound to either. It reds the moment someone authors an address for a machine that has not arrived, which is the exact fabrication the procurement lane's router-binding wall refuses on the other side."
 
 test fn fleet_intent_network_srv5_srv6_named_but_not_enrolled() -> Bool {
   operator_host_srv5 == "srv5"

@@ -17,9 +17,7 @@ import std.types { String, NonEmptyStr, Bool, List }
 // a sandbox. A container provides no exclusivity whatsoever: two brokers can each start one on the
 // same cell. Treating the sandbox as the exclusion wall is how a fabric double-books hardware
 // while every individual run looks correctly isolated.
-// Core isolation vocabulary: what work requires and an offer provides. The delivering mechanism
-// (container, nspawn, microVM) is a realization handler and is deliberately unnamed here.
-// Allocation exclusivity is a separate guarantee owned by the grant store, not by isolation.
+data fabric_isolation_note: String = "Core isolation vocabulary: what work requires and an offer provides. The delivering mechanism (container, nspawn, microVM) is a realization handler and is deliberately unnamed here. Allocation exclusivity is a separate guarantee owned by the grant store, not by isolation."
 
 // THE GUARANTEES, AS A CLOSED SET OF NAMED AXES RATHER THAN A BAG OF BOOLEANS.
 //

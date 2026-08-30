@@ -31,12 +31,7 @@ import std.primitive_identity {
 }
 import std.types { Bool, Int, List, NonEmptyStr, String }
 
-// Executing evidence that a primitive's arity and parameter types are GROUNDED -- read back through
-// one authority -- rather than transcribed beside it. There is deliberately no witness asserting
-// that the semantic contract AGREES with the algebra template: under projection there is one set of
-// bytes, so disagreement has no spelling and such a check would be permanently green by
-// construction, which DESIGN 4b names as worse than absent because it gets cited as coverage. The
-// claims below are the ones whose RED an author can actually produce.
+data primitive_signature_grounding_witness_note: String = "Executing evidence that a primitive's arity and parameter types are GROUNDED -- read back through one authority -- rather than transcribed beside it. There is deliberately no witness asserting that the semantic contract AGREES with the algebra template: under projection there is one set of bytes, so disagreement has no spelling and such a check would be permanently green by construction, which DESIGN 4b names as worse than absent because it gets cited as coverage. The claims below are the ones whose RED an author can actually produce."
 
 // ---------------------------------------------------------------------------
 // (a) TOTALITY. Every derived contract resolves to exactly one signature.

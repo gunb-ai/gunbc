@@ -21,51 +21,13 @@ import gunbc.compile_diagnostic_census { CompileDiagnosticCensusRow }
 // IT IS AN INSTRUMENT AND NOT A GATE. Its outcome reports what the compile decided; nothing here
 // judges acceptance, and no workflow invokes it. Callers judge.
 
-// CORPUS ISOLATION IS BY CONSTRUCTION, NOT BY A FLAG, and that is the property the whole instrument
-// rests on. The supplied manifest IS the source vector handed to the pipeline: there is no code
-// path in the host realization that consults a module index, so a fixture module may reuse a corpus
-// module's SPELLING and bind its own declaration. THE OPEN QUESTION THIS ANSWERS, recorded because
-// upstream did not know the answer and asked for it either way: under whole-corpus floor
-// preparation the required floor folds every witness through ONE prepared subject, so a name
-// collision between a witness and the corpus is unconditional there. That preparation is a fact
-// about how WITNESSES are compiled, not about this nested compile - the prepared authority is
-// consulted by unrelated censuses and never by compile_to_resolved - so a fixture compiled through
-// this instrument is isolated even when the caller itself was prepared whole-corpus. Control 5 of
-// the witness measures exactly that rather than assuming it.
+data multi_module_compile_fixture_isolation_note: String = "CORPUS ISOLATION IS BY CONSTRUCTION, NOT BY A FLAG, and that is the property the whole instrument rests on. The supplied manifest IS the source vector handed to the pipeline: there is no code path in the host realization that consults a module index, so a fixture module may reuse a corpus module's SPELLING and bind its own declaration. THE OPEN QUESTION THIS ANSWERS, recorded because upstream did not know the answer and asked for it either way: under whole-corpus floor preparation the required floor folds every witness through ONE prepared subject, so a name collision between a witness and the corpus is unconditional there. That preparation is a fact about how WITNESSES are compiled, not about this nested compile - the prepared authority is consulted by unrelated censuses and never by compile_to_resolved - so a fixture compiled through this instrument is isolated even when the caller itself was prepared whole-corpus. Control 5 of the witness measures exactly that rather than assuming it."
 
-// PHASE-GRAINED STANDING IS THE POINT OF THE COPRODUCT. FixtureInstrumentRefused is the HARNESS's
-// fault - a ragged manifest, a duplicate path, an entry naming no supplied module, a panic.
-// FixtureCompileRefused is the SUBJECT's fault and carries the compiler's own judgment.
-// FixtureCompileCompleted is the subject passing. Collapsing the first two hands a broken harness
-// the compiler's message, which is the not-applicable-versus-malformed conflation DESIGN records as
-// a recurring failure mode, applied to the instrument itself: one reason symbol over 'the input is
-// wrong' and 'this instrument had nothing to say about it', which have opposite owners and opposite
-// repairs. EXECUTION PROVENANCE IS STRUCTURAL AND NOT A FIELD ANYONE MUST REMEMBER TO READ:
-// FixtureCompileCompleted is constructed at exactly one place in the host, after the emit returned
-// and after the blocking population was counted, so an unreached or killed compile HAS NO SPELLING
-// in which it renders as zero diagnostics. That is the positive-artifact rule moved into the type
-// rather than asserted about it.
+data multi_module_compile_fixture_phase_standing_note: String = "PHASE-GRAINED STANDING IS THE POINT OF THE COPRODUCT. FixtureInstrumentRefused is the HARNESS's fault - a ragged manifest, a duplicate path, an entry naming no supplied module, a panic. FixtureCompileRefused is the SUBJECT's fault and carries the compiler's own judgment. FixtureCompileCompleted is the subject passing. Collapsing the first two hands a broken harness the compiler's message, which is the not-applicable-versus-malformed conflation DESIGN records as a recurring failure mode, applied to the instrument itself: one reason symbol over 'the input is wrong' and 'this instrument had nothing to say about it', which have opposite owners and opposite repairs. EXECUTION PROVENANCE IS STRUCTURAL AND NOT A FIELD ANYONE MUST REMEMBER TO READ: FixtureCompileCompleted is constructed at exactly one place in the host, after the emit returned and after the blocking population was counted, so an unreached or killed compile HAS NO SPELLING in which it renders as zero diagnostics. That is the positive-artifact rule moved into the type rather than asserted about it."
 
-// THE TWO DIGESTS TRAVEL WITH THE RESULT so a receipt quoting this instrument names the subject it
-// measured and the compiler that measured it. source_digest is a structural fnv1a64 over the entry
-// spelling and every (path, content) pair in the order supplied - a reordering is a different
-// subject and a whitespace edit is a different subject. compiler_digest is resolved_graph_cache
-// transform_content_digest, the content hash of the running compiler binary, which is already the
-// single authority every identity key in the seed consumes for compiler identity rather than a
-// second executable read. Both are absent from the FixtureInstrumentRefused arm on purpose: that
-// arm reports that no subject was formed, and stamping a digest on it would name a measurement that
-// did not happen.
+data multi_module_compile_fixture_digest_note: String = "THE TWO DIGESTS TRAVEL WITH THE RESULT so a receipt quoting this instrument names the subject it measured and the compiler that measured it. source_digest is a structural fnv1a64 over the entry spelling and every (path, content) pair in the order supplied - a reordering is a different subject and a whitespace edit is a different subject. compiler_digest is resolved_graph_cache transform_content_digest, the content hash of the running compiler binary, which is already the single authority every identity key in the seed consumes for compiler identity rather than a second executable read. Both are absent from the FixtureInstrumentRefused arm on purpose: that arm reports that no subject was formed, and stamping a digest on it would name a measurement that did not happen."
 
-// SCOPE, stated so a receipt cannot claim coverage it does not have (DESIGN 4b: a class's rung is
-// the MINIMUM across its in-scope paths). This is the v1 pipeline to the RUST render target over an
-// authored multi-module subject. It observes NOTHING about the interpreter's disposition of the
-// same program, nothing about other emission targets, and nothing about corpus-grain prevalence.
-// Unlike the single-module census it does NOT arm with_type_ref_hit_ne_bind_measure: the census
-// arms that bracket to sharpen masked type refs against a corpus pool this instrument does not
-// have, so arming it here would be a knob with no subject. WHAT module_count MEANS: the number of
-// modules the RESOLVE stage produced, read from the resolved graph - not the length of the supplied
-// list. A control comparing it against the manifest is therefore a join between two different
-// producers rather than measure() == measure().
+data multi_module_compile_fixture_scope_note: String = "SCOPE, stated so a receipt cannot claim coverage it does not have (DESIGN 4b: a class's rung is the MINIMUM across its in-scope paths). This is the v1 pipeline to the RUST render target over an authored multi-module subject. It observes NOTHING about the interpreter's disposition of the same program, nothing about other emission targets, and nothing about corpus-grain prevalence. Unlike the single-module census it does NOT arm with_type_ref_hit_ne_bind_measure: the census arms that bracket to sharpen masked type refs against a corpus pool this instrument does not have, so arming it here would be a knob with no subject. WHAT module_count MEANS: the number of modules the RESOLVE stage produced, read from the resolved graph - not the length of the supplied list. A control comparing it against the manifest is therefore a join between two different producers rather than measure() == measure()."
 
 type FixtureSource {
   path: NonEmptyStr

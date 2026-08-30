@@ -26,11 +26,7 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-// Filesystem write/read round-trip is not witnessed here: Filesystem.Write/Read have no
-// mock_response in hermetic discovery (dag/extdeps/filesystem/filesystem_io.dag). Byte preservation
-// at the substrate seam is witnessed via stdin_payload equality and
-// typed_remote_file_write_over_fleet_ssh hermetic SSH mock routing below; wet remote byte landing
-// belongs on fleet converge apply.
+data witness_hermetic_execution_split_note: String = "Filesystem write/read round-trip is not witnessed here: Filesystem.Write/Read have no mock_response in hermetic discovery (dag/extdeps/filesystem/filesystem_io.dag). Byte preservation at the substrate seam is witnessed via stdin_payload equality and typed_remote_file_write_over_fleet_ssh hermetic SSH mock routing below; wet remote byte landing belongs on fleet converge apply."
 
 data witness_tmp_scope: FileTreeScope = FileTreeScope {
   root_path: "/tmp" as NonEmptyStr,

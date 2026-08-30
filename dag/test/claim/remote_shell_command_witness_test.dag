@@ -12,16 +12,7 @@ import gunbc.remote_shell_command {
   Unknown,
 }
 
-// Hermetic proof that emit_remote_shell matches the cited IEEE 1003.1-2017 section 2.2.2
-// single-quote encoding exactly on fixtures, per gunbc.remote_shell_command
-// remote_shell_command_single_quote_encoding_law_note -- an exact-string structural check against
-// each fixture's known-correct encoding, not a round trip through a hand-rolled parser (that design
-// was replaced: it was a self-consistent oracle over this module's own two halves). Fixtures cover
-// a word containing a single quote (exercises the quote-backslash-quote-quote escape), a word
-// containing a space, and a word containing shell metacharacters (both trivial under single-quote
-// wrapping -- the point of the restricted encoding is that these stop being distinct hazards). No
-// live SSH target is touched here -- see remote_exec_command_live_confirmation for the declared,
-// unexecuted remote-side receipt.
+data remote_shell_command_witness_note: String = "Hermetic proof that emit_remote_shell matches the cited IEEE 1003.1-2017 section 2.2.2 single-quote encoding exactly on fixtures, per gunbc.remote_shell_command remote_shell_command_single_quote_encoding_law_note -- an exact-string structural check against each fixture's known-correct encoding, not a round trip through a hand-rolled parser (that design was replaced: it was a self-consistent oracle over this module's own two halves). Fixtures cover a word containing a single quote (exercises the quote-backslash-quote-quote escape), a word containing a space, and a word containing shell metacharacters (both trivial under single-quote wrapping -- the point of the restricted encoding is that these stop being distinct hazards). No live SSH target is touched here -- see remote_exec_command_live_confirmation for the declared, unexecuted remote-side receipt."
 
 fn emitted(argv: List<NonEmptyStr>) -> String {
   match simple_command(argv: argv) {

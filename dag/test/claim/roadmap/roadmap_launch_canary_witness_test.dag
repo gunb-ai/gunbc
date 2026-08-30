@@ -45,19 +45,7 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-// RLM-0 (docs/plans/roadmap-launch-mvp-plan.md): the two-node canary in a SYNTHETIC roadmap graph,
-// decided by the same predicates the live page and belt consume -- gunbc.roadmap_spawner
-// spawn_frontier / next_spawnable / node_unmet_parent_ids and gunbc.roadmap_presentation
-// work_scheduling -- never a readiness re-implemented here. Nothing in this file touches
-// gunbc.roadmap_authority; the canary joins the live authority at RLM-3. Every falsifier is
-// enrolled as a permanent regression control, not a one-off: (a) deleting the edge changes the
-// child's decision, so the edge is shown load-bearing; (b) the blocker is the exact parent identity
-// and a different identity is refused; (c) the oracle predicate is red on the pending sentinel, red
-// on a wrong or missing nonce, green only on the exact expected value; (d) the admission finding,
-// recorded rather than patched because admission is RLM-1's gate: gunbc.roadmap_spawner's Ready
-// frontier admits a node whose execution contract is ExecutionContractUnspecified, and only
-// gunbc.roadmap_dispatch_environment refuses it later -- two answers to one question, which RLM-1's
-// single LaunchAdmission (ExecutionContractMissing) is scoped to collapse.
+data roadmap_launch_canary_witness_note: String = "RLM-0 (docs/plans/roadmap-launch-mvp-plan.md): the two-node canary in a SYNTHETIC roadmap graph, decided by the same predicates the live page and belt consume -- gunbc.roadmap_spawner spawn_frontier / next_spawnable / node_unmet_parent_ids and gunbc.roadmap_presentation work_scheduling -- never a readiness re-implemented here. Nothing in this file touches gunbc.roadmap_authority; the canary joins the live authority at RLM-3. Every falsifier is enrolled as a permanent regression control, not a one-off: (a) deleting the edge changes the child's decision, so the edge is shown load-bearing; (b) the blocker is the exact parent identity and a different identity is refused; (c) the oracle predicate is red on the pending sentinel, red on a wrong or missing nonce, green only on the exact expected value; (d) the admission finding, recorded rather than patched because admission is RLM-1's gate: gunbc.roadmap_spawner's Ready frontier admits a node whose execution contract is ExecutionContractUnspecified, and only gunbc.roadmap_dispatch_environment refuses it later -- two answers to one question, which RLM-1's single LaunchAdmission (ExecutionContractMissing) is scoped to collapse."
 
 fn canary_node(
   identity: RoadmapNodeIdentity,

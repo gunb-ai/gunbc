@@ -4,10 +4,7 @@ import std.types { String, Bool, List, NonEmptyStr }
 import product.placement_supply { HostIdentity, host_identity_eq }
 import gunbc.fleet_intent_network { operator_host_srv5, operator_host_srv6 }
 
-// SPARK-PAIR-0 P0. The single authority for what each DGX Spark unit is FOR. Desired serving hosts
-// and, later, the training offer roster are both projections of this one assignment — neither
-// authors a host list of its own. Role is a sum rather than a pair of predicates, so a cell holding
-// both roles has no constructor to be written with.
+data spark_cell_role_authority_note: String = "SPARK-PAIR-0 P0. The single authority for what each DGX Spark unit is FOR. Desired serving hosts and, later, the training offer roster are both projections of this one assignment — neither authors a host list of its own. Role is a sum rather than a pair of predicates, so a cell holding both roles has no constructor to be written with."
 
 // A CELL HAS ONE ROLE, AND THAT IS A CONSTRUCTION FACT RATHER THAN A CHECKED ONE.
 //

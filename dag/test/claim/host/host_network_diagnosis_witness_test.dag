@@ -2,12 +2,7 @@ module test.claim.host_network_diagnosis
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-// THE conjunct, and it is the srv4 outage of 2026-07-25 replayed on the readings taken live from
-// the host. cloud-init disabled by the Ubuntu live installer, netplan present and correct,
-// interface administratively up with no carrier. The fold must blame the PHYSICAL layer and name
-// the interface and MAC an engineer needs in order to look at the right cable — and it must NOT
-// blame configuration, which is the answer that was actually given at the time and that sent the
-// diagnosis down a false path.
+data witness_srv4_hinge_note: String = "THE conjunct, and it is the srv4 outage of 2026-07-25 replayed on the readings taken live from the host. cloud-init disabled by the Ubuntu live installer, netplan present and correct, interface administratively up with no carrier. The fold must blame the PHYSICAL layer and name the interface and MAC an engineer needs in order to look at the right cable — and it must NOT blame configuration, which is the answer that was actually given at the time and that sent the diagnosis down a false path."
 
 fn witness_srv4_diagnoses_physical_not_config() -> Bool {
   let d = diagnose_host_network(
@@ -114,16 +109,7 @@ fn witness_persistence_bar_discriminates() -> Bool {
     && !diagnosis_is_reboot_stable(config: Present { value: srv4_netplan_config }, observed: srv4_lan_interface)
 }
 
-// The axis conjunct: the fold is reachable as a per-host status cell, and the cell REFUSES rather
-// than guessing while no producer exists. Every enrolled host answers UnknownRefused, and the
-// frontier is asserted as the SET of those hosts rather than as a tally — a deficit that is named,
-// and therefore rankable and diffable, instead of one whose frequency is zero by construction. The
-// set is joined against the enrolled host list rather than a literal, so enrolling a host moves it
-// without editing this witness, and a producer landing removes a NAMED host instead of decrementing
-// a number. The last two conjuncts are the non-vacuity: the verdict projection is not constant — a
-// healthy observation reaches Converged and a dead link reaches Drifted through the same projection
-// the cell uses — so the all-UnknownRefused tally above is the producer's absence and not a fold
-// that answers UnknownRefused to everything.
+data witness_axis_cell_note: String = "The axis conjunct: the fold is reachable as a per-host status cell, and the cell REFUSES rather than guessing while no producer exists. Every enrolled host answers UnknownRefused, and the frontier is asserted as the SET of those hosts rather than as a tally — a deficit that is named, and therefore rankable and diffable, instead of one whose frequency is zero by construction. The set is joined against the enrolled host list rather than a literal, so enrolling a host moves it without editing this witness, and a producer landing removes a NAMED host instead of decrementing a number. The last two conjuncts are the non-vacuity: the verdict projection is not constant — a healthy observation reaches Converged and a dead link reaches Drifted through the same projection the cell uses — so the all-UnknownRefused tally above is the producer's absence and not a fold that answers UnknownRefused to everything."
 
 // The frontier is asserted as a SET OF NAMED HOSTS rather than a count (DESIGN section 5:
 // completeness is an identity join, not a count equality). The count this replaces could say six

@@ -153,61 +153,11 @@ fn is_condensed(channel: OutputChannel, verbosity: Verbosity) -> Bool {
   }
 }
 
-// channel_decision above answers how loud a CHANNEL is. It cannot answer whether a given effect's
-// captured streams are worth surfacing, because that needs a fact it was never given: what the
-// caller EXPECTED. Before this row 'failure' was hand-coded downstream as exit != 0 — an untyped
-// proxy that silently assumes every effect expects success (the empty set). Naming the expectation
-// makes the rule one line: DIVERGENCE SURFACES, AGREEMENT COUNTS, where failure means observed
-// differs from declared-expected at the grain that declared it. That closes two leaks in one
-// dispatch. The noisy one: a red-control child failing exactly as declared is AGREEMENT, so its
-// stderr is counted, not replayed — and a subject stderr carrying '::error::' stops minting
-// annotations in the parent run. The silent one, which nobody has hit yet and which is the real
-// payoff: a red control that SUCCEEDS (the wall failing to fire) is divergence, and today logs
-// nothing at all — the single most diagnosis-worthy event in the system is currently the quietest.
-// There is deliberately no ExpectAny arm: an effect whose expectation is unknown would make every
-// observation agree, restoring the empty set (DESIGN 5 — a failure arm must refuse, never widen).
+data effect_expectation_note: String = "channel_decision above answers how loud a CHANNEL is. It cannot answer whether a given effect's captured streams are worth surfacing, because that needs a fact it was never given: what the caller EXPECTED. Before this row 'failure' was hand-coded downstream as exit != 0 — an untyped proxy that silently assumes every effect expects success (the empty set). Naming the expectation makes the rule one line: DIVERGENCE SURFACES, AGREEMENT COUNTS, where failure means observed differs from declared-expected at the grain that declared it. That closes two leaks in one dispatch. The noisy one: a red-control child failing exactly as declared is AGREEMENT, so its stderr is counted, not replayed — and a subject stderr carrying '::error::' stops minting annotations in the parent run. The silent one, which nobody has hit yet and which is the real payoff: a red control that SUCCEEDS (the wall failing to fire) is divergence, and today logs nothing at all — the single most diagnosis-worthy event in the system is currently the quietest. There is deliberately no ExpectAny arm: an effect whose expectation is unknown would make every observation agree, restoring the empty set (DESIGN 5 — a failure arm must refuse, never widen)."
 
-// OutcomeIsData is the third arm (operator ruling 2026-07-25), and it exists because
-// ExpectSuccess|ExpectFailure mis-models a whole class of site: a PROBE whose exit code is an
-// ANSWER, not a verdict. `test -x` returning 1 means 'subject absent' — ambient in BOTH contexts,
-// because production's ensure-bins responds by building and a witness's discriminating arm responds
-// by asserting. The effect layer's anomaly glyph there is a second, cruder judgment of an event
-// whose real adjudicator is typed logic downstream, so the honest disposition is: render ambient
-// regardless of exit; only DISPATCH failure (the probe itself could not run) is anomalous. That
-// distinction — subject-absent versus probe-broken — is the DaemonUnsupervised lesson applied to
-// exit codes. Loudness does not disappear under this arm, it MOVES to the layer holding the
-// context, which is this model's whole thesis. It is annotatable on a shared helper's own call
-// node, once, correct for every caller — which is why it dissolves the apparent trilemma between
-// threading a test concern through production signatures and an ambient frame that can be left
-// open. ADMISSIBILITY GUARD (§5, what stops this becoming a silence-anything sticker):
-// OutcomeIsData is admissible ONLY where the exit provably feeds a typed consumer — the annotated
-// helper returns a typed observation or verdict, never unit. Both clusters it was ruled for qualify
-// today: witness_bin_artifact_readiness returns its WitnessBinReadiness arms, and
-// belt_actuate_spawn_member's exit feeds the belt's per-variant status mapping. The guard is
-// checkable, so it belongs in the wiring test and eventually a lens; until that lands it is a
-// REVIEW obligation, not a mechanical one, and this note is where the criterion is written down.
+data outcome_is_data_note: String = "OutcomeIsData is the third arm (operator ruling 2026-07-25), and it exists because ExpectSuccess|ExpectFailure mis-models a whole class of site: a PROBE whose exit code is an ANSWER, not a verdict. `test -x` returning 1 means 'subject absent' — ambient in BOTH contexts, because production's ensure-bins responds by building and a witness's discriminating arm responds by asserting. The effect layer's anomaly glyph there is a second, cruder judgment of an event whose real adjudicator is typed logic downstream, so the honest disposition is: render ambient regardless of exit; only DISPATCH failure (the probe itself could not run) is anomalous. That distinction — subject-absent versus probe-broken — is the DaemonUnsupervised lesson applied to exit codes. Loudness does not disappear under this arm, it MOVES to the layer holding the context, which is this model's whole thesis. It is annotatable on a shared helper's own call node, once, correct for every caller — which is why it dissolves the apparent trilemma between threading a test concern through production signatures and an ambient frame that can be left open. ADMISSIBILITY GUARD (§5, what stops this becoming a silence-anything sticker): OutcomeIsData is admissible ONLY where the exit provably feeds a typed consumer — the annotated helper returns a typed observation or verdict, never unit. Both clusters it was ruled for qualify today: witness_bin_artifact_readiness returns its WitnessBinReadiness arms, and belt_actuate_spawn_member's exit feeds the belt's per-variant status mapping. The guard is checkable, so it belongs in the wiring test and eventually a lens; until that lands it is a REVIEW obligation, not a mechanical one, and this note is where the criterion is written down."
 
-// WHETHER a site declared, kept type-distinct from WHAT it declared (operator ruling 2026-07-25:
-// 'we should never have an undeclared expectation; get rid of the fallback'). Until 2026-07-26 the
-// dispatch boundary closed the gap itself — `declared_expectation.unwrap_or(ExpectSuccess)` — which
-// is textbook absorbing fallback (§5): the missing declaration was answered with a plausible one
-// INSIDE the callee, so it left no trace, the frequency of undeclared sites was zero by
-// construction, and the deficit could never rank for fixing. The boundary now takes
-// `ExpectationDeclaration = Declared(ExpectedOutcome) | UntracedDefault`, so absence is a value the
-// caller must construct rather than a default the callee manufactures. UntracedDefault resolves to
-// the SAME ExpectSuccess: deliberately not a behaviour change, and deliberately NOT a floor-time
-// refusal (operator guardrail — the wall is construction at the boundary, not a refusal sweep
-// redding sites nobody has traced). What changed is that it is typed, located, and COUNTED,
-// surfaced as the [expectation-frontier] receipt. THE MEASURED FRONTIER at landing is real, not
-// notional: the census finds 340 service-op call sites in dag/ + src/v2 against 16 carrying
-// `expect:`, and one ordinary witness run reported 67 undeclared Filesystem.Read dispatches.
-// RE-ARMING IS EVIDENCE-GATED, never bulk: a site moves to Declared when someone establishes what
-// it actually expects, because a speculative ExpectFailure would silence a real fault — which is
-// why 324 mechanical annotations were NOT landed with this change. 🟡 dissolve-on: the counted
-// frontier reaches zero corpus-wide, at which point the UntracedDefault arm deletes and an
-// undeclared site becomes a hard typed refusal — absence unwritable rather than merely counted.
-// Executing consumer: dag/test/claim/expectation_frontier_witness_test.dag (present-and-absent
-// pair, both live).
+data expectation_declaration_frontier_note: String = "WHETHER a site declared, kept type-distinct from WHAT it declared (operator ruling 2026-07-25: 'we should never have an undeclared expectation; get rid of the fallback'). Until 2026-07-26 the dispatch boundary closed the gap itself — `declared_expectation.unwrap_or(ExpectSuccess)` — which is textbook absorbing fallback (§5): the missing declaration was answered with a plausible one INSIDE the callee, so it left no trace, the frequency of undeclared sites was zero by construction, and the deficit could never rank for fixing. The boundary now takes `ExpectationDeclaration = Declared(ExpectedOutcome) | UntracedDefault`, so absence is a value the caller must construct rather than a default the callee manufactures. UntracedDefault resolves to the SAME ExpectSuccess: deliberately not a behaviour change, and deliberately NOT a floor-time refusal (operator guardrail — the wall is construction at the boundary, not a refusal sweep redding sites nobody has traced). What changed is that it is typed, located, and COUNTED, surfaced as the [expectation-frontier] receipt. THE MEASURED FRONTIER at landing is real, not notional: the census finds 340 service-op call sites in dag/ + src/v2 against 16 carrying `expect:`, and one ordinary witness run reported 67 undeclared Filesystem.Read dispatches. RE-ARMING IS EVIDENCE-GATED, never bulk: a site moves to Declared when someone establishes what it actually expects, because a speculative ExpectFailure would silence a real fault — which is why 324 mechanical annotations were NOT landed with this change. 🟡 dissolve-on: the counted frontier reaches zero corpus-wide, at which point the UntracedDefault arm deletes and an undeclared site becomes a hard typed refusal — absence unwritable rather than merely counted. Executing consumer: dag/test/claim/expectation_frontier_witness_test.dag (present-and-absent pair, both live)."
 
 type ExpectedOutcome = ExpectSuccess | ExpectFailure | OutcomeIsData
 
@@ -249,11 +199,7 @@ fn divergence_disposition(diverges: Bool) -> StreamDisposition {
   }
 }
 
-// Observation dissolve (operator live-log 2026-07-25): Ambient ShellTrace silence at Normal must
-// not force StreamSuppressed — Anomaly Failed still surfaces via divergence alone. Quiet no longer
-// swallows divergence either (DESIGN §5: a failing effect is never silent). Verbose still surfaces
-// every stream (Full). The channel grades Ambient scaffolding; the stream policy grades subject
-// content; they compose rather than conflate.
+data effect_stream_dispatch_note: String = "Observation dissolve (operator live-log 2026-07-25): Ambient ShellTrace silence at Normal must not force StreamSuppressed — Anomaly Failed still surfaces via divergence alone. Quiet no longer swallows divergence either (DESIGN §5: a failing effect is never silent). Verbose still surfaces every stream (Full). The channel grades Ambient scaffolding; the stream policy grades subject content; they compose rather than conflate."
 
 fn effect_stream_disposition(
   channel: OutputChannel,
@@ -277,12 +223,7 @@ fn surface_effect_stream(disposition: StreamDisposition, text: String) -> String
   }
 }
 
-// The four corners of effect_stream_disposition at a fixed channel and verbosity, bundled the way
-// channel_policy bundles the five channels — the seed transports evaluated verdicts across the
-// seed/.dag boundary and holds no rule. The ObservedFailure exit literal below is representative,
-// not fabricated: effect_stream_disposition provably does not read the exit payload, and the
-// witness effect_stream_disposition_is_exit_invariant pins that, so the four corners are the whole
-// function and the projection is total.
+data effect_stream_policy_projection_note: String = "The four corners of effect_stream_disposition at a fixed channel and verbosity, bundled the way channel_policy bundles the five channels — the seed transports evaluated verdicts across the seed/.dag boundary and holds no rule. The ObservedFailure exit literal below is representative, not fabricated: effect_stream_disposition provably does not read the exit payload, and the witness effect_stream_disposition_is_exit_invariant pins that, so the four corners are the whole function and the projection is total."
 
 type EffectStreamPolicy {
   expect_success_observed_success: StreamDisposition
@@ -328,12 +269,7 @@ fn resolve_shell_trace_stream_policy(verbose: Bool, quiet: Bool) -> EffectStream
   shell_trace_stream_policy(verbosity: resolve_verbosity(env: VerbosityEnv { verbose: verbose, quiet: quiet }))
 }
 
-// DISSOLVED (operator live-log 2026-07-25, run 30142403230): shell host-effects now emit as
-// ObservationEvents with named-intent subjects (service.op); Ambient Begin/Done are
-// ShellTrace-gated (Suppressed at Normal — silent scaffolding); Anomaly Failed surfaces from
-// divergence disposition alone (channel Suppressed no longer forces StreamSuppressed). Derived
-// attention + ci_line_placement supersede the dual-class conflation. Keep this note as the dissolve
-// receipt; delete when a later census no longer needs the history.
+data shell_trace_observation_convergence_note: String = "DISSOLVED (operator live-log 2026-07-25, run 30142403230): shell host-effects now emit as ObservationEvents with named-intent subjects (service.op); Ambient Begin/Done are ShellTrace-gated (Suppressed at Normal — silent scaffolding); Anomaly Failed surfaces from divergence disposition alone (channel Suppressed no longer forces StreamSuppressed). Derived attention + ci_line_placement supersede the dual-class conflation. Keep this note as the dissolve receipt; delete when a later census no longer needs the history."
 
 // HOMED BESIDE routine_rollup_folds, NOT BESIDE THE RENDERER, and the reason is a measured one: the
 // seed resolves both verdicts by name in one entry context, and gunbc.observation_ci_render is not

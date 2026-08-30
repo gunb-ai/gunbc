@@ -17,14 +17,7 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-// Hermetic half of audit §4.1 parser-drop evidence: fixture positive control, RED parsed-surface
-// control, RED forgery controls over claude_sdk_parser_drop_receipt_standing on inline JSON
-// (dropped-array shortcut refuted, absent sdk_parsed_event_types unevidenced, unreadable bytes
-// distinguished from both). The wet half that read the committed receipt is RETIRED, not relocated:
-// the receipt and the instruments that produced it were deleted with
-// docs/probes/claude_paired_entitlement_probe/, so these controls are now the whole of this
-// evidence -- see the annotation on claude_sdk_parser_drop_witness_fixture_note in
-// extdeps.llm.claude_agent_sdk_stream for what that costs.
+data claude_sdk_parser_drop_witness_note: String = "Hermetic half of audit §4.1 parser-drop evidence: fixture positive control, RED parsed-surface control, RED forgery controls over claude_sdk_parser_drop_receipt_standing on inline JSON (dropped-array shortcut refuted, absent sdk_parsed_event_types unevidenced, unreadable bytes distinguished from both). The wet half that read the committed receipt is RETIRED, not relocated: the receipt and the instruments that produced it were deleted with docs/probes/claude_paired_entitlement_probe/, so these controls are now the whole of this evidence -- see the annotation on claude_sdk_parser_drop_witness_fixture_note in extdeps.llm.claude_agent_sdk_stream for what that costs."
 
 test fn witness_control_response_parser_drop_fixture_holds() -> Bool {
   claude_sdk_control_response_parser_drop_holds(

@@ -12,17 +12,9 @@ import gunbc.package_delivery {
   codex_runtime_manifest_path,
 }
 
-// Release-bundled Codex runtime at codex_required_package_version (gunbc.package_delivery). Built
-// via materialize_codex_runtime_bundle (exact wrapper+platform lock-nodes → admit HTTPS registry
-// archives → isolated npm cache → offline ci → installed-tree+toolchain+canonical protocol-schema
-// receipt → content-addressed release with current symlink read-back). ONE exact runtime produces
-// ALL protocol facts cited in extdeps.llm.codex_app_server — never /usr/bin/codex npm shim, never
-// ambient PATH. Prefer the platform-native Codex binary for app-server --stdio; Node is not the
-// runtime entry.
+data codex_runtime_bundle_note: String = "Release-bundled Codex runtime at codex_required_package_version (gunbc.package_delivery). Built via materialize_codex_runtime_bundle (exact wrapper+platform lock-nodes → admit HTTPS registry archives → isolated npm cache → offline ci → installed-tree+toolchain+canonical protocol-schema receipt → content-addressed release with current symlink read-back). ONE exact runtime produces ALL protocol facts cited in extdeps.llm.codex_app_server — never /usr/bin/codex npm shim, never ambient PATH. Prefer the platform-native Codex binary for app-server --stdio; Node is not the runtime entry."
 
-// Measured 2026-08-05 on linux/arm64: vendor/.../bin/codex app-server --stdio accepts NDJSON
-// initialize and returns a JSON-RPC result. Prefer that native executable over the JS wrapper+Node
-// path.
+data codex_native_app_server_probe_note: String = "Measured 2026-08-05 on linux/arm64: vendor/.../bin/codex app-server --stdio accepts NDJSON initialize and returns a JSON-RPC result. Prefer that native executable over the JS wrapper+Node path."
 
 fn codex_bundle_executable_path(bundle: CodexRuntimeBundle) -> FilePath {
   concat(bundle.root as String, concat("/", bundle.native_executable_rel as String)) as FilePath

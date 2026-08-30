@@ -13,13 +13,7 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-// Composition slice 2's receipts: the RoadmapRow archetype's grid asserted over the SERVED surfaces
-// (the emitted stylesheet and the rendered page), the actuator's scale proven derived-not-set, and
-// the density consumption pinned — the expected blocks are assembled from the archetype's own
-// derivation fns and asserted verbatim against the emission, the same full-block pattern the page
-// witness set. Declared bound: contains-grain cannot count occurrences, so a ROGUE duplicate block
-// for the same selector is outside this file's reach — the register and tactile suites scan the
-// wider sheet.
+data roadmap_row_witness_note: String = "Composition slice 2's receipts: the RoadmapRow archetype's grid asserted over the SERVED surfaces (the emitted stylesheet and the rendered page), the actuator's scale proven derived-not-set, and the density consumption pinned — the expected blocks are assembled from the archetype's own derivation fns and asserted verbatim against the emission, the same full-block pattern the page witness set. Declared bound: contains-grain cannot count occurrences, so a ROGUE duplicate block for the same selector is outside this file's reach — the register and tactile suites scan the wider sheet."
 
 fn expected_node_head_block() -> String {
   join([
@@ -38,12 +32,7 @@ fn expected_node_mid_block() -> String {
   ], "")
 }
 
-// A3 routine-state collapse receipts: once the status chip renders only when discriminating, head
-// children can be fewer than tracks, so each cell carries an explicit grid-column DERIVED from the
-// archetype's HeadTrack order (roadmap_row_head_column — the same authority the template folds).
-// The expected blocks embed the derivation, so a hand-drifted column or an archetype edit the
-// stylesheet misses reds; the column witness pins the three derived positions and refuses the 0 an
-// off-head region would derive.
+data head_column_derivation_note: String = "A3 routine-state collapse receipts: once the status chip renders only when discriminating, head children can be fewer than tracks, so each cell carries an explicit grid-column DERIVED from the archetype's HeadTrack order (roadmap_row_head_column — the same authority the template folds). The expected blocks embed the derivation, so a hand-drifted column or an archetype edit the stylesheet misses reds; the column witness pins the three derived positions and refuses the 0 an off-head region would derive."
 
 fn expected_status_column_block() -> String {
   join([
@@ -78,11 +67,7 @@ fn expected_row_actuator_block() -> String {
   ], "")
 }
 
-// The template the stylesheet carries must be the one DERIVED from the archetype's placements — the
-// expected block embeds roadmap_row_grid_template(), so an archetype edit the stylesheet misses, or
-// a hand template the archetype never declared, reds. The head-track count remains 3: chip auto,
-// title 1fr, ActuatorRegion auto. Workflow lamps v0 realizes that last region as one
-// workflow-controls wrapper rather than adding strip/button/Stop as grid siblings.
+data grid_structure_note: String = "The template the stylesheet carries must be the one DERIVED from the archetype's placements — the expected block embeds roadmap_row_grid_template(), so an archetype edit the stylesheet misses, or a hand template the archetype never declared, reds. The head-track count remains 3: chip auto, title 1fr, ActuatorRegion auto. Workflow lamps v0 realizes that last region as one workflow-controls wrapper rather than adding strip/button/Stop as grid siblings."
 
 fn head_track_count() -> Int {
   count(roadmap_row_archetype |> filter(r => match r.placement {
@@ -132,9 +117,7 @@ test fn roadmap_row_actuator_red_on_hand_scale() -> Bool {
   return !actuator_block_derived(block: hand_scaled)
 }
 
-// The density cells of this slice's own emission, pinned tokened: the three expected blocks carry
-// only var() lengths (the reservation's ch value is a typed derivation, not a bare pixel). The
-// module-wide untokened-length census walls the class; this locates the row's own blocks.
+data density_census_note: String = "The density cells of this slice's own emission, pinned tokened: the three expected blocks carry only var() lengths (the reservation's ch value is a typed derivation, not a bare pixel). The module-wide untokened-length census walls the class; this locates the row's own blocks."
 
 test fn roadmap_row_density_all_tokened() -> Bool {
   return !string_contains(s: expected_node_head_block(), pattern: "px")

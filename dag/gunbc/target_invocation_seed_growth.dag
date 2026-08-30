@@ -5,72 +5,7 @@ import std.types { String }
 import gunbc.roadmap_model { RoadmapNodeId }
 import gunbc.seed_growth { SeedGrowthJustification }
 
-// Seed-growth obligation for the `gunbc test <label>` target dispatch seam. Homed here, beside the
-// obligation it declares, rather than inside gunbc.seed_growth_admission, which owns the ROSTER and
-// the join.
-//
-// WHAT THE CHANGE IS. `gunbc` gained a verb that takes a POSITIONAL absolute label, resolves it
-// against a target-binding registry, invokes the bound producer, and renders that producer's own
-// standing vocabulary. The model is three .dag modules -- gunbc.target_invocation (the generic
-// route and the shared termination vocabulary), gunbc.instrument_targets (the live BuildTarget and
-// TargetBinding rows, the differential's classifier and its native rendering) and the operand axis
-// added to gunbc.cli_dispatch_surface. This file is the HOST REALIZATION of that route.
-//
-// WHY RUST IS NEEDED AND WHY THE MIRROR IS HAND-AUTHORED, which are two different questions with
-// two different answers. The producer itself is host Rust and has been since it was written:
-// v1_compiler.cli_run heads_reading_differential walks the source corpus off the filesystem and
-// parses every module twice, which is a host effect the required floor's hermetic envelope refuses
-// by construction -- a .dag witness whose subject is that walk is counted executed while its
-// assertion never runs. So the leaf is Rust for the same reason ingestion is. The MIRROR is
-// hand-authored for a different and more mundane reason: none of the three .dag modules above is in
-// the v1 seed's emitted closure. src/gunbc_cli_dispatch_surface.rs is the only gunbc.* mirror the
-// emitter produces, because the emitter imports that one module to render its own subcommand
-// surface. Nothing imports gunbc.target_invocation, so nothing emits it.
-//
-// WHAT WAS REJECTED, so the choice is visible rather than implied. Routing the verb through the
-// interpreter -- resolve the .dag entry, build a context, evaluate gunbc.instrument_targets
-// invoke_target -- would have needed no hand mirror at all, and it is exactly what
-// src/v1/stage0/src/main.rs's converge arm argues against in prose: it makes the interpreter
-// LOAD-BEARING FOR A NEW capability at the moment two lanes are deleting it, converting removable
-// debt into an architectural dependency. Growing the emitter's closure to reach extdeps.bazel.label
-// was the other alternative and is a larger v1-seed change than the verb it would serve.
-//
-// RUNG, STATED HONESTLY. MITIGATABLE. The host route and the modeled route can drift, and nothing
-// in the tree detects it: no witness compares the Rust label admission against extdeps.bazel.label
-// parse_label, and no gate compares the Rust registry against gunbc.instrument_targets
-// instrument_bindings. That is the same rung and the same reason v1_compiler.required_regen_host
-// sits at mitigatable while v2.workflow.required_regen holds the ordering by construction. What is
-// NOT claimed is that the mirror is checked; what IS claimed is that it is enumerated.
-//
-// WHAT THE HOST MIRROR DELIBERATELY DOES NOT CARRY. The model's TargetHasNoProducer refusal has no
-// arm here, because the host registry is a list of PAIRS -- a registered target with no producer
-// has no representation in this realization, so an arm nothing can construct would be a decoration
-// that reads as coverage (DESIGN section 4b). If the host ever takes its two populations
-// separately, the arm returns with the state that makes it reachable.
-//
-// ADMITTED AGAINST THE v1 FREEZE BY PURPOSE, on the test gunbc.v1_maintenance_standing
-// v1_seed_standing states: does the change serve the v2 self-host program. It does, and by the same
-// route gunbc.parse_refusal_location_seed_growth and gunbc.floor_non_verdict_enrollment were
-// admitted -- it makes the INSTRUMENTS that measure that program invocable by name. Classified
-// against all five refused classes: NewLanguageBehavior -- no, the compile pipeline is
-// byte-untouched. NewCompatibilityObligation -- no, and the direction is the opposite: the
-// claim_executor --heads-reading-differential mode is DELETED in this same change rather than left
-// standing beside the verb. Two routes to one producer is the fork DESIGN section 3 forbids, and
-// the interval in which both work is exactly when a caller learns the old one and keeps it, so the
-// cutover is atomic. The one capability that mode carried and the modeled observation does not --
-// the two parse-wall figures -- is preserved as an explicitly unmodeled host line rather than
-// dropped, because a replacement that silently loses a capability is not a replacement; its next
-// rung is a cost carrier on the observation. NewEscapeHatchOrAdmissionRow -- no; there is no flag,
-// env var or mode that skips a refusal, and the verb's own failure arms all refuse.
-// SeedFeatureCompletion -- no; the seed compiler gains no capability. PublicSurfaceGrowth -- this
-// is the nearest, and it is checked rather than asserted: target_invocation_host.rs is wired by
-// #[path] mod inside cli_run.rs, exactly as declaration_index.rs and required_regen_host.rs are, so
-// it contributes no pub mod line to the emitted lib.rs. What grows is main.rs's subcommand enum by
-// one variant, and main.rs is already a DECLARED DIVERGENCE in
-// v2.compiler.self_host.stage0_crate_layout -- the emitter does not produce gunbc's whole CLI, and
-// gunbc.cli_dispatch_surface gunbc_cli_emitter_gap is the instrument that reports the surface it
-// omits. The `test` verb is authored there as AbsentFromEmitMainRs, so the gap instrument counts it
-// rather than this file claiming it away.
+data target_invocation_seed_growth_note: String = "Seed-growth obligation for the `gunbc test <label>` target dispatch seam. Homed here, beside the obligation it declares, rather than inside gunbc.seed_growth_admission, which owns the ROSTER and the join.\n\nWHAT THE CHANGE IS. `gunbc` gained a verb that takes a POSITIONAL absolute label, resolves it against a target-binding registry, invokes the bound producer, and renders that producer's own standing vocabulary. The model is three .dag modules -- gunbc.target_invocation (the generic route and the shared termination vocabulary), gunbc.instrument_targets (the live BuildTarget and TargetBinding rows, the differential's classifier and its native rendering) and the operand axis added to gunbc.cli_dispatch_surface. This file is the HOST REALIZATION of that route.\n\nWHY RUST IS NEEDED AND WHY THE MIRROR IS HAND-AUTHORED, which are two different questions with two different answers. The producer itself is host Rust and has been since it was written: v1_compiler.cli_run heads_reading_differential walks the source corpus off the filesystem and parses every module twice, which is a host effect the required floor's hermetic envelope refuses by construction -- a .dag witness whose subject is that walk is counted executed while its assertion never runs. So the leaf is Rust for the same reason ingestion is. The MIRROR is hand-authored for a different and more mundane reason: none of the three .dag modules above is in the v1 seed's emitted closure. src/gunbc_cli_dispatch_surface.rs is the only gunbc.* mirror the emitter produces, because the emitter imports that one module to render its own subcommand surface. Nothing imports gunbc.target_invocation, so nothing emits it.\n\nWHAT WAS REJECTED, so the choice is visible rather than implied. Routing the verb through the interpreter -- resolve the .dag entry, build a context, evaluate gunbc.instrument_targets invoke_target -- would have needed no hand mirror at all, and it is exactly what src/v1/stage0/src/main.rs's converge arm argues against in prose: it makes the interpreter LOAD-BEARING FOR A NEW capability at the moment two lanes are deleting it, converting removable debt into an architectural dependency. Growing the emitter's closure to reach extdeps.bazel.label was the other alternative and is a larger v1-seed change than the verb it would serve.\n\nRUNG, STATED HONESTLY. MITIGATABLE. The host route and the modeled route can drift, and nothing in the tree detects it: no witness compares the Rust label admission against extdeps.bazel.label parse_label, and no gate compares the Rust registry against gunbc.instrument_targets instrument_bindings. That is the same rung and the same reason v1_compiler.required_regen_host sits at mitigatable while v2.workflow.required_regen holds the ordering by construction. What is NOT claimed is that the mirror is checked; what IS claimed is that it is enumerated.\n\nWHAT THE HOST MIRROR DELIBERATELY DOES NOT CARRY. The model's TargetHasNoProducer refusal has no arm here, because the host registry is a list of PAIRS -- a registered target with no producer has no representation in this realization, so an arm nothing can construct would be a decoration that reads as coverage (DESIGN section 4b). If the host ever takes its two populations separately, the arm returns with the state that makes it reachable.\n\nADMITTED AGAINST THE v1 FREEZE BY PURPOSE, on the test gunbc.v1_maintenance_standing v1_seed_standing states: does the change serve the v2 self-host program. It does, and by the same route gunbc.parse_refusal_location_seed_growth and gunbc.floor_non_verdict_enrollment were admitted -- it makes the INSTRUMENTS that measure that program invocable by name. Classified against all five refused classes: NewLanguageBehavior -- no, the compile pipeline is byte-untouched. NewCompatibilityObligation -- no, and the direction is the opposite: the claim_executor --heads-reading-differential mode is DELETED in this same change rather than left standing beside the verb. Two routes to one producer is the fork DESIGN section 3 forbids, and the interval in which both work is exactly when a caller learns the old one and keeps it, so the cutover is atomic. The one capability that mode carried and the modeled observation does not -- the two parse-wall figures -- is preserved as an explicitly unmodeled host line rather than dropped, because a replacement that silently loses a capability is not a replacement; its next rung is a cost carrier on the observation. NewEscapeHatchOrAdmissionRow -- no; there is no flag, env var or mode that skips a refusal, and the verb's own failure arms all refuse. SeedFeatureCompletion -- no; the seed compiler gains no capability. PublicSurfaceGrowth -- this is the nearest, and it is checked rather than asserted: target_invocation_host.rs is wired by #[path] mod inside cli_run.rs, exactly as declaration_index.rs and required_regen_host.rs are, so it contributes no pub mod line to the emitted lib.rs. What grows is main.rs's subcommand enum by one variant, and main.rs is already a DECLARED DIVERGENCE in v2.compiler.self_host.stage0_crate_layout -- the emitter does not produce gunbc's whole CLI, and gunbc.cli_dispatch_surface gunbc_cli_emitter_gap is the instrument that reports the surface it omits. The `test` verb is authored there as AbsentFromEmitMainRs, so the gap instrument counts it rather than this file claiming it away."
 
 data target_invocation_seed_growth_justification: SeedGrowthJustification = SeedGrowthJustification {
   hand_authored_declarations: [

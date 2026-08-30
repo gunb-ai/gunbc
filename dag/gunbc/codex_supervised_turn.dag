@@ -81,58 +81,19 @@ import extdeps.languages.json.parse {
   JsonMemberNotAnObject,
 }
 
-// SUPERVISED-RUNNER REALIZATION (continuity receipt 2026-08-13). In-flight turns do NOT survive
-// client death — tool calls execute in the local app-server process, so one supervised process must
-// fence each WorkerTurn attempt. std.temporal_effect HeldLease is the execution lease — an issued
-// LeaseEpoch (lease_key, resource_fingerprint, owner_fingerprint, generation) plus the observed
-// reading of it; do not mint a parallel session carrier. Update the observation through
-// held_lease_with_observed, never by respelling the epoch fields.
-//
-// THREE LAYERS STAY SEPARATE (reviewer ruling):
-//   durable goal — WorkerTurn reaching a terminal disposition with an observed head
-//   execution lease — HeldLease over the supervised app-server process, fenced by generation
-//   controller — belt tick reconciling desired vs observed thread state
-//
-// THE TRAP: an abandoned turn leaves thread status idle with partial work on disk. Thread idle
-// alone NEVER authorizes turn/start; turn identity plus a runner-written terminal receipt is
-// required. CodexRunnerTurnTerminalReceipt is written ONLY by the supervised runner when the
-// process ends — nothing else writes one on crash.
-//
-// Exactly-once: client_command_id is carried on the terminal receipt so a lost turn/start reply
-// does not collapse into absent.
+data codex_supervised_turn_authority_note: String = "SUPERVISED-RUNNER REALIZATION (continuity receipt 2026-08-13). In-flight turns do NOT survive client death — tool calls execute in the local app-server process, so one supervised process must fence each WorkerTurn attempt. std.temporal_effect HeldLease is the execution lease — an issued LeaseEpoch (lease_key, resource_fingerprint, owner_fingerprint, generation) plus the observed reading of it; do not mint a parallel session carrier. Update the observation through held_lease_with_observed, never by respelling the epoch fields.\n\nTHREE LAYERS STAY SEPARATE (reviewer ruling):\n  durable goal — WorkerTurn reaching a terminal disposition with an observed head\n  execution lease — HeldLease over the supervised app-server process, fenced by generation\n  controller — belt tick reconciling desired vs observed thread state\n\nTHE TRAP: an abandoned turn leaves thread status idle with partial work on disk. Thread idle alone NEVER authorizes turn/start; turn identity plus a runner-written terminal receipt is required. CodexRunnerTurnTerminalReceipt is written ONLY by the supervised runner when the process ends — nothing else writes one on crash.\n\nExactly-once: client_command_id is carried on the terminal receipt so a lost turn/start reply does not collapse into absent."
 
-// PROCESS SUPERVISION (srv1 receipt 2026-08-13). The lease fences the bundled native executable
-// from CodexRuntimeBundle projection — NEVER /usr/bin/codex, which is a Node shim that spawns the
-// platform binary. Killing the shim orphans the agent and produces a false 'work continued'
-// reading. thread/start and turn/start share one held-open app-server stdin session realized
-// through host_effect_apply CodexSupervisedWorkerTurn (gunbc.codex_supervised_turn_run). In-flight
-// turns do NOT survive process death; thread/resume is the recovery path on a surviving thread.
+data codex_supervised_process_supervision_note: String = "PROCESS SUPERVISION (srv1 receipt 2026-08-13). The lease fences the bundled native executable from CodexRuntimeBundle projection — NEVER /usr/bin/codex, which is a Node shim that spawns the platform binary. Killing the shim orphans the agent and produces a false 'work continued' reading. thread/start and turn/start share one held-open app-server stdin session realized through host_effect_apply CodexSupervisedWorkerTurn (gunbc.codex_supervised_turn_run). In-flight turns do NOT survive process death; thread/resume is the recovery path on a surviving thread."
 
-// OPERATOR RULING #8166 (2026-08-13). Disconnect branch settled by srv1 execution, not argument:
-// killing the real app-server binary mid-turn stopped work at 2 of 8 files; the thread survived and
-// thread/resume is the recovery path. Detached reconciliation is refuted; supervised HeldLease over
-// the app-server process is the selected realization. Stay draft until a bounded wet turn returns
-// CodexRunnerTurnTerminalReceipt — the admission fold alone is not mergeable. Wet access is a
-// bounded srv1 execution grant, not a standing child credential.
+data codex_supervised_lease_selection_receipt_note: String = "OPERATOR RULING #8166 (2026-08-13). Disconnect branch settled by srv1 execution, not argument: killing the real app-server binary mid-turn stopped work at 2 of 8 files; the thread survived and thread/resume is the recovery path. Detached reconciliation is refuted; supervised HeldLease over the app-server process is the selected realization. Stay draft until a bounded wet turn returns CodexRunnerTurnTerminalReceipt — the admission fold alone is not mergeable. Wet access is a bounded srv1 execution grant, not a standing child credential."
 
-// BOUNDED WET HANDOFF — BISECT FIRST (srv1 OOM receipt 2026-08-14). Bisect entrypoints in
-// dag/test/claim/codex_supervised_turn_wet_witness_test.dag are plain fn (NOT enrolled witnesses —
-// admission gate refuses enrolled-with-zero-consumers). Operator runs under MemoryMax caps on srv1
-// only. Step 1: wet_committed_admitted_source_lock_admits (2G). Step 2b:
-// wet_select_codex_exact_target_closure_only (2G). Step 2:
-// wet_materialize_codex_runtime_bundle_only (8G). Full chain after materialize_codex_runtime_bundle
-// fixed; then enroll via gunbc.explicit_witness_admission.
+data codex_supervised_turn_wet_handoff_note: String = "BOUNDED WET HANDOFF — BISECT FIRST (srv1 OOM receipt 2026-08-14). Bisect entrypoints in dag/test/claim/codex_supervised_turn_wet_witness_test.dag are plain fn (NOT enrolled witnesses — admission gate refuses enrolled-with-zero-consumers). Operator runs under MemoryMax caps on srv1 only. Step 1: wet_committed_admitted_source_lock_admits (2G). Step 2b: wet_select_codex_exact_target_closure_only (2G). Step 2: wet_materialize_codex_runtime_bundle_only (8G). Full chain after materialize_codex_runtime_bundle fixed; then enroll via gunbc.explicit_witness_admission."
 
 data codex_supervised_client_command_id_file_name: String = "/codex_supervised_client_command_id"
 
 data codex_supervised_turn_generation_file_name: String = "/codex_supervised_turn_generation"
 
-// OPERATOR VERDICT #8166 (2026-08-16): RejectAndFinishNow on concat-built bash coprocess scaffold.
-// codex_supervised_turn_script DELETED. Supervised turn executes only through host_effect_apply
-// CodexSupervisedWorkerTurn + extdeps.llm.codex_app_server_stdio_session typed transport. PR stays
-// draft until (1) hand-built JSON/sed shell path is gone — satisfied by deletion — and (2) wet
-// CodexRunnerTurnTerminalReceipt executes through the modeled route. Wet srv1 grant held until
-// session driver lands.
+data codex_supervised_operator_verdict_note: String = "OPERATOR VERDICT #8166 (2026-08-16): RejectAndFinishNow on concat-built bash coprocess scaffold. codex_supervised_turn_script DELETED. Supervised turn executes only through host_effect_apply CodexSupervisedWorkerTurn + extdeps.llm.codex_app_server_stdio_session typed transport. PR stays draft until (1) hand-built JSON/sed shell path is gone — satisfied by deletion — and (2) wet CodexRunnerTurnTerminalReceipt executes through the modeled route. Wet srv1 grant held until session driver lands."
 
 data codex_supervised_thread_id_slot: NonEmptyStr = "GUNBC_SUPERVISED_THREAD_ID_SLOT" as NonEmptyStr
 type CodexThreadActivity

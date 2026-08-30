@@ -16,10 +16,7 @@ import gunbc.package_delivery {
   spark_serving_ollama_runtime_materialization_receipt_write_path,
 }
 
-// Filesystem write/read round-trip for the receipt is not witnessed here: shell.Mktemp.Dir and
-// Filesystem.Write/Read have no mock_response in hermetic discovery (dag/extdeps/shell/shell.dag).
-// JSON serialize/parse and writer/reader path identity are witnessed hermetically below; wet
-// filesystem integration belongs in a follow-on real-execution witness if needed.
+data witness_real_execution_split_note: String = "Filesystem write/read round-trip for the receipt is not witnessed here: shell.Mktemp.Dir and Filesystem.Write/Read have no mock_response in hermetic discovery (dag/extdeps/shell/shell.dag). JSON serialize/parse and writer/reader path identity are witnessed hermetically below; wet filesystem integration belongs in a follow-on real-execution witness if needed."
 
 data witness_required_release_asset_digest_hex: String = "79617139521db251c716d6229505d7530171ff4d68e476d0c22dabc15726a237"
 

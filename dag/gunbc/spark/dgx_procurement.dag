@@ -70,18 +70,7 @@ data spark_3bd5_reservation: Cr1000aDhcpLeaseRow = Cr1000aDhcpLeaseRow {
 }
 
 // The ethernet MACs the rows above used to carry, kept because they are what the vendor labels are derived from and because the next reader will otherwise re-derive the label/MAC correspondence and conclude the rows are mistyped: spark-a3ee's RJ-45 is 4C:BB:47:E8:A3:EE and spark-3bd5's is 4C:BB:47:E8:3B:D5. THE LABEL NOW NAMES A DIFFERENT INTERFACE THAN THE ROW BINDS, and that is the strongest available statement of the point the paragraph above makes in the abstract: `spark-a3ee` is the tail of an ethernet MAC that no longer appears anywhere in this module's bound facts. A label was never identity; now it is not even a MAC the fleet uses. Both ports read NO-CARRIER as of 2026-08-27 and are expected to stay that way.
-// 🟡 dissolve-on: spark-a3ee RJ-45 4C:BB:47:E8:A3:EE (was 192.168.1.222); spark-3bd5 RJ-45
-// 4C:BB:47:E8:3B:D5 (was 192.168.1.223). Both unplugged 2026-08-27, both carrier=0, neither address
-// held by anything afterwards. Retained as the provenance of the vendor labels, NOT as a second
-// address authority -- no consumer reads this row, and a consumer that wanted an ethernet address
-// would be asking for a port that is deliberately dark. THIS IS A PROSE SCAFFOLD STANDING WHERE A
-// MODELED FACT BELONGS, and it is marked rather than quietly kept: a host having two interfaces
-// with two MACs on two media is exactly the per-host interface roster that does not exist yet
-// (host_network_diagnosis.InterfaceObservation is a shape with no live producer, and MacAddress is
-// still the anemic NonEmptyStr brand in extdeps.dhcp.v4 whose dissolution to
-// extdeps/network/mac.dag is unwritten). DISSOLVES WHEN the interface roster lands and these two
-// MACs become ordinary retired-attachment rows keyed by (host, interface) rather than a sentence --
-// Phase 0/1 of docs/plans/host-network-attachment-converge-design.md.
+data dgx_spark_ethernet_macs_note: String = "🟡 dissolve-on: spark-a3ee RJ-45 4C:BB:47:E8:A3:EE (was 192.168.1.222); spark-3bd5 RJ-45 4C:BB:47:E8:3B:D5 (was 192.168.1.223). Both unplugged 2026-08-27, both carrier=0, neither address held by anything afterwards. Retained as the provenance of the vendor labels, NOT as a second address authority -- no consumer reads this row, and a consumer that wanted an ethernet address would be asking for a port that is deliberately dark. THIS IS A PROSE SCAFFOLD STANDING WHERE A MODELED FACT BELONGS, and it is marked rather than quietly kept: a host having two interfaces with two MACs on two media is exactly the per-host interface roster that does not exist yet (host_network_diagnosis.InterfaceObservation is a shape with no live producer, and MacAddress is still the anemic NonEmptyStr brand in extdeps.dhcp.v4 whose dissolution to extdeps/network/mac.dag is unwritten). DISSOLVES WHEN the interface roster lands and these two MACs become ordinary retired-attachment rows keyed by (host, interface) rather than a sentence -- Phase 0/1 of docs/plans/host-network-attachment-converge-design.md."
 
 data observed_dgx_spark_router_reservations: List<Cr1000aDhcpLeaseRow> = [
   spark_a3ee_reservation,

@@ -209,10 +209,7 @@ data lambda_typing_gate_second_cause_row: DeclarationRef = decl_ref(module_path:
 // site came out red. It came out red -- and rustc's caret is on `acc`, never on `row`. The field
 // access is incidental. Had that observation been made after seeing the red instead of before, "the
 // only closure doing field access" would have read as an explanation and shipped as one.
-// Both specimens above share one shape: a signal that is TRUE and LOCAL and points at the wrong
-// place. rustc's caret is at the closure because that is where inference ran out, not where the
-// information was lost. A pre-registered hunch is the cheap defence, and it works by being
-// falsifiable before the data arrives rather than by being correct.
+data lambda_typing_gate_detection_is_not_causation_note: String = "Both specimens above share one shape: a signal that is TRUE and LOCAL and points at the wrong place. rustc's caret is at the closure because that is where inference ran out, not where the information was lost. A pre-registered hunch is the cheap defence, and it works by being falsifiable before the data arrives rather than by being correct."
 
 // A WARNING ABOUT COUNTING E0282 ON THESE CRATES, because the next reader will try. The emitted
 // closure for v2.compiler.parse carries SEVEN E0282 diagnostics and only ONE of them is this row's.

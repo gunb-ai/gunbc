@@ -35,12 +35,7 @@ import gunbc.spark.serving_realization {
   MaterializeModelArtifact,
 }
 
-// Per-member-type realization bundle for Spark serving: maps membership_reconcile actions/effects
-// onto the EXISTING gunbc.spark.serving_realization ServingInstallEffect vocabulary
-// (UserUnitRealization scope only — never live_deploy SystemdUnit/system-scoped handlers).
-// MemberEffect<M> classifies change; this module supplies how to realize each action for
-// SparkServingMember addresses. Admission boundaries and API readiness observations stay outside
-// this bundle.
+data spark_serving_member_realization_authority_note: String = "Per-member-type realization bundle for Spark serving: maps membership_reconcile actions/effects onto the EXISTING gunbc.spark.serving_realization ServingInstallEffect vocabulary (UserUnitRealization scope only — never live_deploy SystemdUnit/system-scoped handlers). MemberEffect<M> classifies change; this module supplies how to realize each action for SparkServingMember addresses. Admission boundaries and API readiness observations stay outside this bundle."
 
 // THE CONTENT ADDRESS NO LONGER ENABLES. Splitting enablement into its own resource changed the
 // decomposition but left the old bundled remedy underneath it: content mapped to write-reload-ENABLE

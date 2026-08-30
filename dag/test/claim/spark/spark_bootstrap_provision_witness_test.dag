@@ -52,11 +52,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // constrained no longer exists and a control retained past its subject is a green assertion about
 // nothing. What replaces them constrains the population and the classification of legacy state.
 
-// These controls cover the credential population, the pending state of every external allocation,
-// and the refusal of the two legacy containers as authorities. They do not cover actuation, which
-// this module no longer performs. The prior least-privilege controls were deleted with the binding
-// set they described rather than kept: they would have continued passing while constraining code
-// that had been removed.
+data spark_witness_scope_note: String = "These controls cover the credential population, the pending state of every external allocation, and the refusal of the two legacy containers as authorities. They do not cover actuation, which this module no longer performs. The prior least-privilege controls were deleted with the binding set they described rather than kept: they would have continued passing while constraining code that had been removed."
 
 fn spark_population_has(host: HostIdentity, kind: SparkCredentialKind) -> Bool {
   fold(spark_credential_population(), init: false, f: (acc, o) =>

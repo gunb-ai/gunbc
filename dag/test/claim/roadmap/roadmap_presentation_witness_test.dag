@@ -61,12 +61,7 @@ import gunbc.roadmap_presentation {
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-// Every witness here runs against CONSTRUCTED fixtures, never the live roadmap population — a live
-// count or row is a moving target that turns a semantic claim into a snapshot transcription (the A1
-// lesson, and the standing fixtures-not-live-counts rule). The specimen fixture is the operator's
-// falsifier row (docs/plans/roadmap-presentation-seam-design.md section 1): seven obligations with
-// Environment/Workspace/Agent complete, four pending, worker process exited, session container
-// present.
+data presentation_witness_fixture_note: String = "Every witness here runs against CONSTRUCTED fixtures, never the live roadmap population — a live count or a live row is a moving target that turns a semantic claim into a snapshot transcription (the A1 lesson, and the standing fixtures-not-live-counts rule). The specimen fixture is the operator's falsifier row (docs/plans/roadmap-presentation-seam-design.md section 1): seven obligations with Environment/Workspace/Agent complete, four pending, worker process exited, session container present."
 
 fn fx_specimen_segments() -> List<WorkflowSegment> {
   [
@@ -89,13 +84,7 @@ fn fx_specimen_activity() -> ActivityView {
   )
 }
 
-// The operator's worked example verbatim: 'session container present' beside 'process exited' must
-// not ship as an uninterpreted evidence pair. The routine specimen summary must (a) state the
-// consequence sentence, (b) name the NEXT obligation rather than implying a percentage, and (c)
-// carry the ledger's remaining count — the raw container/process facts appear only as labeled
-// evidence rows. The RED control: a summary that merely relabels the evidence ('process exited') or
-// asserts a scalar ('43%') has no arm that could produce it — the discriminating assertions below
-// fail if the consequence, the next obligation, or the derived count is dropped.
+data specimen_consequence_note: String = "The operator's worked example verbatim: 'session container present' beside 'process exited' must not ship as an uninterpreted evidence pair. The routine specimen summary must (a) state the consequence sentence, (b) name the NEXT obligation rather than implying a percentage, and (c) carry the ledger's remaining count — while the raw container/process facts appear only as labeled evidence rows. The RED control: a summary that merely relabels the evidence ('process exited') or asserts a scalar ('43%') has no arm that could produce it — the discriminating assertions below fail if the consequence, the next obligation, or the derived count is dropped."
 
 test fn witness_specimen_summary_states_consequence_and_next_obligation() -> Bool {
   match fx_specimen_activity() {
@@ -149,12 +138,7 @@ test fn witness_agent_running_reads_as_working_not_completed() -> Bool {
   }
 }
 
-// A refusal is a first-class presentation state with its LOCATED reason, never a styling variant of
-// progress (DESIGN 5: typed, located; the attention rule auto-expands it). The discriminating
-// fixture puts the refusal mid-ledger; the view must surface the refusing obligation's own detail
-// string, and a failed segment must rank as anomalous ActiveWork — distinct states with distinct
-// remedies, and a refused ledger outranks a failed one because the refusal names an evidence gap
-// the failure count cannot explain.
+// A refusal is a first-class presentation state with its LOCATED reason, never a styling variant of progress (DESIGN 5: typed, located; the attention rule auto-expands it). The discriminating fixture puts the refusal mid-ledger; the view must surface the refusing obligation's own detail string, and a failed segment must rank as anomalous ActiveWork — the two are distinct states with distinct remedies, and a refused ledger outranks a failed one because the refusal names an evidence gap the failure count cannot explain.
 test fn witness_refused_segment_projects_located_reason() -> Bool {
   let segments = [
     WorkflowSegment { kind: EnvironmentWorkflowSegment, state: WorkflowSegmentComplete, detail: "" },
@@ -198,11 +182,7 @@ test fn witness_failed_segment_is_anomalous_active_work() -> Bool {
   }
 }
 
-// The ticket headline is ONE typed field read end-to-end. The discriminating input is a headline
-// that CONTAINS the legacy separators (an em-dash clause and a sentence break): under the deleted
-// recompose-and-reparse round trip ('**headline** — brief' then split at punctuation) it would come
-// back truncated at its own dash. The legacy residue is asserted separately on an AuthoredLine,
-// where the lead heuristic is the declared residue of this projection.
+// The ticket headline is ONE typed field read end-to-end. The discriminating input is a headline that CONTAINS the legacy separators (an em-dash clause and a sentence break): under the deleted recompose-and-reparse round trip ('**headline** — brief' then split at punctuation) this headline would come back truncated at its own dash. The legacy residue is asserted separately on an AuthoredLine, where the lead heuristic is the declared residue of this projection.
 test fn witness_ticket_headline_survives_own_punctuation() -> Bool {
   let t = gunbc.roadmap_authority.fields(
     headline: "Close the wall — phase 2. Cleanly",
@@ -230,14 +210,7 @@ test fn witness_summary_is_absent_until_typed_source_exists() -> Bool {
   }
 }
 
-// The exact-constructor discrimination (operator constraint 3): 'active' is never a disjunction of
-// narrower facts. NoActiveAttempt projects to NoActiveWork with zero furniture; an unreadable
-// evidence situation projects to ActivityUnobservable PRESERVING its located reason — distinct from
-// both refusal and absence; a fully-complete ledger projects to CompletedWork (the receipt-backed
-// outcome), never to a routine ActiveWork whose summary happens to say complete. The RED controls
-// are the cross-arm assertions: if unobservable collapsed into absence the reason would be dropped
-// and the second witness fails; if terminal collapsed into active the third witness's CompletedWork
-// arm never matches.
+data exact_constructor_note: String = "The exact-constructor discrimination (operator constraint 3): 'active' is never a disjunction of narrower facts. NoActiveAttempt projects to NoActiveWork with zero furniture; an unreadable evidence situation projects to ActivityUnobservable PRESERVING its located reason — distinct from both refusal and absence; and a fully-complete ledger projects to CompletedWork (the receipt-backed outcome), never to a routine ActiveWork whose summary happens to say complete. The RED controls are the cross-arm assertions: if unobservable collapsed into absence, the reason would be dropped and the second witness fails; if terminal collapsed into active, the third witness's CompletedWork arm never matches."
 
 test fn witness_no_attempt_projects_zero_furniture() -> Bool {
   match activity_view_of(facts: NoActiveAttempt) {
@@ -294,10 +267,9 @@ fn fx_blocked() -> LaunchAdmission {
   LaunchRefused { refusal: LaunchDependenciesBlocked { blockers: ["a2-parent-1"] } }
 }
 
-// RLM-1: the dispatch action is the launch admission's projection. An admitted row's dispatch is
-// Available AND Primary; a refused row's dispatch is Unavailable and Secondary, carrying the
-// refusal's wire label and reason -- there is no override arm left to render a blocked row as
-// operable.
+// RLM-1: the dispatch action is the launch admission's projection. An admitted row's dispatch is Available AND
+// Primary; a refused row's dispatch is Unavailable and Secondary, carrying the refusal's wire label and reason
+// -- there is no override arm left to render a blocked row as operable.
 test fn witness_admitted_dispatch_is_primary_refused_is_unavailable() -> Bool {
   let ready_view = action_view(lifecycle: OpenLifecycle, admission: fx_admitted(node_id: "a2-row"))
   let blocked_view = action_view(lifecycle: OpenLifecycle, admission: fx_blocked())
@@ -326,15 +298,7 @@ test fn witness_done_and_superseded_rows_offer_no_dispatch() -> Bool {
     && count(dispatch_action(lifecycle: SupersededLifecycle, admission: fx_admitted(node_id: "a2-row"))) == 0
 }
 
-// The session action derives from the OBSERVED cleanup admission and nothing else (operator blocker
-// 4, 2026-08-01). The prior constructor minted an ActionAvailable ClearSessionAction whenever the
-// activity arm looked active/refused/completed — availability inferred from presentation state, the
-// fabrication the two-axis note forbids in the other direction. The discriminating trio: an allowed
-// observed cleanup is Available and Diagnostic; an observed-but-disallowed cleanup is
-// ActionUnavailable (this arm's first real consumer) while KEEPING its label and detail so the
-// refusal is legible; no observed cleanup action is NoSessionAction, not an empty-labeled button.
-// The RED: the deleted arm — action_view over any activity yields no ClearSessionAction — is
-// asserted directly, so reintroducing the fabrication reds.
+data cleanup_from_admission_note: String = "The session action derives from the OBSERVED cleanup admission and from nothing else (operator blocker 4, 2026-08-01). The prior constructor minted an ActionAvailable ClearSessionAction whenever the activity arm looked active/refused/completed — availability inferred from presentation state, exactly the fabrication the two-axis note forbids in the other direction. The discriminating trio: an allowed observed cleanup is Available and Diagnostic; an observed-but-disallowed cleanup is ActionUnavailable (this arm's first real consumer) while KEEPING its label and detail so the refusal is legible; no observed cleanup action is NoSessionAction, not an empty-labeled button. The RED: the deleted arm — action_view over any activity yields no ClearSessionAction — is asserted directly, so reintroducing the fabrication reds."
 
 test fn witness_session_action_derives_from_observed_admission() -> Bool {
   let allowed = session_action_view(cleanup_action: "clear", cleanup_allowed: true, cleanup_detail: "only retained tmux session metadata will be removed")
@@ -376,10 +340,7 @@ test fn witness_action_view_never_fabricates_cleanup() -> Bool {
     && action_view_has_no_clear(v: action_view(lifecycle: ReviewLifecycle, admission: fx_blocked()))
 }
 
-// The decided session line and title detail (operator blocker 5): the client formerly concatenated
-// 'session · present — ' + process_state and its own provider-facts title in TypeScript — a second
-// prose authority. Both strings are now decided here and the witness pins them, including the
-// empty-process-detail arm (no dangling separator).
+data session_facts_decided_note: String = "The decided session line and title detail (operator blocker 5): the client formerly concatenated 'session · present — ' + process_state and its own provider-facts title in TypeScript — a second prose authority. Both strings are now decided here and the witness pins them, including the empty-process-detail arm (no dangling separator)."
 
 test fn witness_session_facts_line_and_detail_are_decided() -> Bool {
   let v = session_facts_view(
@@ -408,10 +369,7 @@ test fn witness_session_facts_line_and_detail_are_decided() -> Bool {
     && bare.detail == "provider codex (configured codex, readiness ready) — gunbc-belt-a2-row"
 }
 
-// Lifecycle discriminates on the node's own facts, distinct from frontier scheduling: an Unsigned
-// node with unmerged evidence is open; merged evidence without signoff is review — implementation
-// artifacts never accept (roadmap_acceptance_boundary_note); an accepting signoff is done; a
-// superseded line outranks everything and carries its forwarding pointer.
+data lifecycle_axis_note: String = "Lifecycle discriminates on the node's own facts, distinct from frontier scheduling: an Unsigned node with unmerged evidence is open; merged evidence without signoff is review — implementation artifacts never accept (roadmap_acceptance_boundary_note); an accepting signoff is done; a superseded line outranks everything and carries its forwarding pointer."
 
 test fn witness_lifecycle_axes_discriminate() -> Bool {
   let open_node = gunbc.roadmap_authority.authored(identity: "rnfx_A2PRES0000000000000003", id: "a2-open", done: false, content: "open work")
@@ -428,11 +386,7 @@ test fn witness_lifecycle_axes_discriminate() -> Bool {
     && work_lifecycle_key(l: work_lifecycle(rn: superseded_node, merged: [])) == "superseded"
 }
 
-// Owner, sizing, and carriers are supporting facts for the disclosure region — present when
-// declared, absent (not empty-labeled) when not. The integration witness drives work_row_view
-// end-to-end on a fixture node and asserts the composed row: typed headline, honest Absent summary,
-// the typed scheduling position with its complete blocker set, and the actions/facts composed from
-// the same fixture.
+data supporting_facts_demotion_note: String = "Owner, sizing, and carriers are supporting facts for the disclosure region — present when declared, absent (not empty-labeled) when not. The integration witness drives work_row_view end-to-end on a fixture node and asserts the composed row: typed headline, honest Absent summary, the typed scheduling position with its complete blocker set, and the actions/facts composed from the same fixture."
 
 fn fx_row_nodes() -> List<RoadmapNode> {
   [
@@ -492,12 +446,7 @@ test fn witness_work_row_view_composes_from_fixture() -> Bool {
     && match row.activity { NoActiveWork => true ActiveWork { summary: _, obligations: _, remaining_obligation_count: _, current_activity: _, attention: _, evidence: _ } => false ActiveWorkRefused { summary: _, located_reason: _, evidence: _ } => false LegacySupersedableAttempt { summary: _, located_reason: _, attempt_key: _, evidence: _ } => false CompletedWork { outcome: _, evidence: _ } => false ActivityUnobservable { reason: _ } => false }
 }
 
-// The scheduling axis discriminates by the SAME predicates spawn_frontier filters (operator blocker
-// 2: ready was a caller-assertable Bool; now the position is projected, not asserted). The fixtures
-// cover the five arms: a sized dependency-met node is Ready; a sized node under an open parent is
-// Upcoming CARRYING that blocker; an unsized node is Unplanned (never conflated with Upcoming — it
-// has no blockers to fabricate); a superseded line is Superseded whatever else holds; and the
-// dependency line renders only for an Upcoming row with more than one blocker.
+// The scheduling axis discriminates by the SAME predicates spawn_frontier filters (operator blocker 2: ready was a caller-assertable Bool; now the position is projected, not asserted). The fixtures cover the five arms: a sized dependency-met node is Ready; a sized node under an open parent is Upcoming CARRYING that blocker; an unsized node is Unplanned (never conflated with Upcoming — it has no blockers to fabricate); a superseded line is Superseded whatever else holds; and the dependency line renders only for an Upcoming row with more than one blocker.
 test fn witness_scheduling_projects_typed_positions() -> Bool {
   let nodes = fx_row_nodes()
   let edges = fx_row_edges()
@@ -521,10 +470,7 @@ test fn witness_dependency_line_only_for_multi_blocker_upcoming() -> Bool {
     && (match ready { Absent => true Present { value: _ } => false })
 }
 
-// The workspace grouping (operator blocker 6): a row with active or refused work belongs to the
-// operator's attention band above every idle Ready row; CompletedWork stays in its scheduling
-// bucket because a finished receipt is not work in flight; unobservable rows do not join the active
-// band — unknowable never rounds to active any more than to absent.
+data active_before_ready_note: String = "The workspace grouping (operator blocker 6): a row with active or refused work belongs to the operator's attention band above every idle Ready row; CompletedWork stays in its scheduling bucket because a finished receipt is not work in flight; unobservable rows do not join the active band — unknowable never rounds to active any more than to absent."
 
 fn band_entry_row_count(entries: List<WorkBandEntry>) -> Int {
   fold(entries, init: 0, f: (acc, e) => match e {
@@ -551,15 +497,7 @@ test fn witness_daily_workspace_surfaces_active_above_ready() -> Bool {
     && !band_entry_has_active(entries: ws.upcoming)
 }
 
-// The family-once receipts, all against constructed facts. Stated-once: two listed members plus one
-// UNLISTED lookalike (its headline literally starts with the family claim prose) produce ONE
-// BandFamily carrying the claim, member rows whose headlines are the typed SUBJECTS verbatim, and
-// the lookalike as an ungrouped BandRow with its fused headline untouched — membership is the typed
-// fact list, never a prefix scan, in both directions (a subject CONTAINING claim prose is not
-// stripped; a headline MATCHING claim prose is not captured). Attention-outranks-taxonomy: a member
-// with active work leaves for the Active band as an individual row while the group keeps only its
-// remaining member. Missing decl: a member fact naming an undeclared family renders as its own
-// ungrouped row (no fabricated header).
+// The family-once receipts, all against constructed facts. Stated-once: two listed members plus one UNLISTED lookalike (its headline literally starts with the family claim prose) produce ONE BandFamily carrying the claim, member rows whose headlines are the typed SUBJECTS verbatim, and the lookalike as an ungrouped BandRow with its fused headline untouched — proving membership is the typed fact list, never a prefix scan, in both directions (a subject CONTAINING claim prose is not stripped; a headline MATCHING claim prose is not captured). Attention-outranks-taxonomy: a member with active work leaves for the Active band as an individual row while the group keeps only its remaining member. Missing decl: a member fact naming an undeclared family renders as its own ungrouped row (no fabricated header).
 fn fx_family_member_row(node_id: String, headline: String, activity: ActivityView) -> WorkRowView {
   let base = fx_row(activity: activity)
   WorkRowView {
@@ -653,9 +591,7 @@ test fn witness_undeclared_family_member_stays_ungrouped_row() -> Bool {
     })
 }
 
-// Routine-state collapse both directions: the open default derives chip-hidden (the band and the
-// node class still carry the state), and every departing lifecycle derives chip-shown. A future
-// lifecycle arm added without a chip decision fails compile at the match, not silently.
+data lifecycle_chip_witness_note: String = "Routine-state collapse both directions: the open default derives chip-hidden (the band and the node class still carry the state), and every departing lifecycle derives chip-shown. A future lifecycle arm added without a chip decision fails compile at the match, not silently."
 
 test fn witness_lifecycle_chip_only_when_discriminating() -> Bool {
   !lifecycle_chip_renders(l: OpenLifecycle)
@@ -664,12 +600,7 @@ test fn witness_lifecycle_chip_only_when_discriminating() -> Bool {
     && lifecycle_chip_renders(l: SupersededLifecycle)
 }
 
-// The one-failure-once discrimination: a workspace-level refusal produces ONE banner (the impact
-// view carries the located reason) and covers each row's unobservable narration — only the
-// unobservable arm, and only while the workspace impact is present. The REDs: an active row is
-// never covered (a live attempt's narration must survive a broken observation channel claim), and
-// with a nominal workspace observation a row-specific unobservable reason narrates on its own row
-// (coverage false).
+// The one-failure-once discrimination: a workspace-level refusal produces ONE banner (the impact view carries the located reason) and covers each row's unobservable narration — but only the unobservable arm, and only while the workspace impact is present. The REDs: an active row is never covered (a live attempt's narration must survive a broken observation channel claim), and with a nominal workspace observation a row-specific unobservable reason narrates on its own row (coverage false).
 test fn witness_workspace_impact_narrates_once() -> Bool {
   let impact = observation_impact_view(workflow_refused: Present { value: "GET /workflow.json refused: connection refused" })
   let nominal = observation_impact_view(workflow_refused: none)

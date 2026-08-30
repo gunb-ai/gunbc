@@ -94,14 +94,7 @@ test fn a_failed_ref_advertisement_refuses_rather_than_reading_empty() -> Bool {
   }
 }
 
-// THE RENDERER IS CLAIMED SEPARATELY FROM THE CAUSE, and the split is the point of typing the cause
-// at all. The claims above assert the FIELDS - which failure, which remote, which exit code, which
-// stderr - so they hold whatever sentence is produced from them. This claim asserts that the
-// sentence is derived from those fields and names the OPERATION rather than the argv spelling,
-// which is the property the transport-anemia plan asks for.\n\nThe previous cut could only assert
-// substrings of a flattened String, so it could not distinguish a renderer that lost a field from
-// one that never had it. Splitting the two means a rendering regression and a modeling regression
-// now fail different claims.
+data renderer_is_a_projection_note: String = "THE RENDERER IS CLAIMED SEPARATELY FROM THE CAUSE, and the split is the point of typing the cause at all. The claims above assert the FIELDS - which failure, which remote, which exit code, which stderr - so they hold whatever sentence is produced from them. This claim asserts that the sentence is derived from those fields and names the OPERATION rather than the argv spelling, which is the property the transport-anemia plan asks for.\\n\\nThe previous cut could only assert substrings of a flattened String, so it could not distinguish a renderer that lost a field from one that never had it. Splitting the two means a rendering regression and a modeling regression now fail different claims."
 
 test fn the_renderer_names_the_operation_and_not_the_argv_spelling() -> Bool {
   let rendered = render_remote_branch_read_failure(
@@ -178,12 +171,7 @@ test fn the_empty_projection_filter_returns_only_the_degenerate_ref() -> Bool {
     && count(advertised_refs_projecting_empty_branch(refs: [])) == 0
 }
 
-// The observation is only worth building if it composes with the judgment it was built for, so this
-// claim runs an advertisement all the way to a PublicationOutcome. It is the first place the two
-// halves meet: extdeps.git reads the ref advertisement, gunbc.roadmap_publish_observe turns it into
-// observations, gunbc.roadmap_publish adjudicates. Before this slice roadmap_publish had no
-// producer at all - adjudicate_publication was called only from its own witness - so the
-// adjudicator was a judgment nothing could ask.
+data end_to_end_note: String = "The observation is only worth building if it composes with the judgment it was built for, so this claim runs an advertisement all the way to a PublicationOutcome. It is the first place the two halves meet: extdeps.git reads the ref advertisement, gunbc.roadmap_publish_observe turns it into observations, gunbc.roadmap_publish adjudicates. Before this slice roadmap_publish had no producer at all - adjudicate_publication was called only from its own witness - so the adjudicator was a judgment nothing could ask."
 
 fn branches_of(o: RemoteBranchObservation) -> List<RemoteBranch> {
   match o {
@@ -227,12 +215,7 @@ test fn an_advertisement_at_another_head_adjudicates_as_diverged() -> Bool {
 
 data divergence_is_the_point_note: String = "The two claims above are the same advertisement differing only in which commit the branch points at, and they must not produce the same answer. A name-shaped publication check reports both as published, which is precisely the defect the exact-head rewrite exists to remove: the ordinary state after a worker pushes a revision while a review is in flight is a branch whose name still matches and whose head no longer does."
 
-// THESE ARE CONSTRUCTED, NOT OBSERVED, which is the property the observer/adjudicator split in
-// gunbc.roadmap_publish_observe exists to buy. worktree_repository_binding_of takes the four facts
-// a `git remote get-url` produces and decides; observe_worktree_repository_binding only feeds it.
-// So every arm - including the two failure arms - is reachable here with no git, no worktree and no
-// network, and a witness that needed a real misconfigured checkout to exercise the mismatch arm
-// would never have been written.
+data worktree_binding_witness_note: String = "THESE ARE CONSTRUCTED, NOT OBSERVED, which is the property the observer/adjudicator split in gunbc.roadmap_publish_observe exists to buy. worktree_repository_binding_of takes the four facts a `git remote get-url` produces and decides; observe_worktree_repository_binding only feeds it. So every arm - including the two failure arms - is reachable here with no git, no worktree and no network, and a witness that needed a real misconfigured checkout to exercise the mismatch arm would never have been written."
 
 test fn worktree_bound_to_the_subject_repository_is_recognized() -> Bool {
   match worktree_repository_binding_of(

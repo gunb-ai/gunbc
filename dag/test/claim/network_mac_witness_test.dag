@@ -12,17 +12,18 @@ import extdeps.network.mac {
 }
 
 // THE ROUND TRIP AND THE TWO FLAG BITS. The round trip is the standard grounding witness for a
-// parsed carrier, asserted in both directions. The flag bits get more rows than their size
-// suggests because they are why this module exists rather than a validated brand: a consumer
-// keying a host interface needs to know whether the address is BURNED IN or chosen by software,
-// and the U/L bit is the only thing that says so.
+// parsed carrier and it is asserted in both directions. The flag bits get more rows than their
+// size suggests because they are the reason this module exists rather than a validated brand: a
+// consumer keying a host interface needs to know whether the address it holds is BURNED IN or was
+// chosen by software, and the U/L bit is the only thing that says so.
 //
-// THE INVERTED SENSE IS THE TRAP. U/L SET means LOCALLY administered -- opposite to how the name
-// sounds -- so a control fixes each direction against a concrete address rather than trusting the
-// predicate. srv3's real burned-in address is the universally-administered specimen, anchoring the
-// rows to a fleet fact rather than an invented one.
+// THE INVERTED SENSE IS THE TRAP. U/L SET means LOCALLY administered -- the bit reads opposite to
+// how the name sounds -- so a control fixes each direction against a concrete address rather than
+// trusting the predicate to be self-evidently right. srv3's real burned-in address is used as the
+// universally-administered specimen so the rows are anchored to a fact from the fleet rather than
+// to an invented one.
 //
-// WHAT IS DELIBERATELY REFUSED: hyphen and dotted spellings. They are common in vendor output;
+// WHAT IS DELIBERATELY REFUSED: hyphen and dotted spellings. They are common in vendor output and
 // accepting them would make the round trip untrue and erase which spelling a source produced, so
 // each is asserted to refuse with a NAMED cause rather than merely to fail.
 

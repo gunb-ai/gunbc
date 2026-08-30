@@ -33,10 +33,7 @@ import extdeps.llm.cursor_sdk_errors {
   cursor_sdk_error_code_is_enumerated_non_authentication_failure,
 }
 
-// Produces a six-axis ProviderStandingBundle for Cursor SDK local from modeled auth probe + typed
-// capability gaps. Account headroom is LimitCapabilityGapUnobservable — never
-// LimitObservedAvailable. AuthenticationAuthenticated is derived from probe only, never authored.
-// Coordinates arm names with gunbc.provider_standing (valiant-stag-845 / PR 7926).
+data cursor_sdk_provider_standing_note: String = "Produces a six-axis ProviderStandingBundle for Cursor SDK local from modeled auth probe + typed capability gaps. Account headroom is LimitCapabilityGapUnobservable — never LimitObservedAvailable. AuthenticationAuthenticated is derived from probe only, never authored. Coordinates arm names with gunbc.provider_standing (valiant-stag-845 / PR 7926)."
 
 data cursor_sdk_entitlement_unobserved_reason: NonEmptyStr = "entitlement surface not observed for Cursor SDK local in this slice" as NonEmptyStr
 

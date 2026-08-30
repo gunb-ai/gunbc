@@ -49,13 +49,7 @@ import std.occurrence_binding_candidates {
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
-// N3-B0 acceptance witness: one exposure authority (DeclarationExposureGrounding, all three
-// variants pairwise-discriminated across module-root and single-ancestor containment shapes) plus
-// the collision-free cross-file assembly substrate (assemble_cross_file_binding_closure) in
-// std.occurrence_binding_candidates. Structural controls at the bottom prove the two former
-// duplicate helpers (gunbc.type_reference_binding_context's local exposure walk,
-// v1.gunbc.occurrence_binding_parser_walk's local exposure walk + StructuralBindingWalk copy) are
-// deleted from their old homes and the single authority is present where claimed.
+data cfba_witness_note: String = "N3-B0 acceptance witness: one exposure authority (DeclarationExposureGrounding, all three variants pairwise-discriminated across module-root and single-ancestor containment shapes) plus the collision-free cross-file assembly substrate (assemble_cross_file_binding_closure) in std.occurrence_binding_candidates. Structural controls at the bottom prove the two former duplicate helpers (gunbc.type_reference_binding_context's local exposure walk, v1.gunbc.occurrence_binding_parser_walk's local exposure walk + StructuralBindingWalk copy) are deleted from their old homes and the single authority is present where claimed."
 
 fn cfba_path(dotted: String) -> NonEmptyStr {
   dotted as NonEmptyStr

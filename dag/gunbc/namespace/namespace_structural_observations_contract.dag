@@ -38,9 +38,7 @@ import std.types { Bool, Int, List, String }
 // parsed source by the producer, never echoed from the caller's request -- and all four must name
 // the same one. Four admissions from four hand-built sources satisfy the capabilities and fail
 // this check, which is exactly the difference the row is about.
-// Closing condition for roadmap node namespace-structural-observations. Four capabilities,
-// established only through assess_reference_binding_observation over production observations, every
-// one of them carrying the module path declared by the single compiled subject.
+data namespace_structural_observations_contract_note: String = "Closing condition for roadmap node namespace-structural-observations. Four capabilities, established only through assess_reference_binding_observation over production observations, every one of them carrying the module path declared by the single compiled subject."
 
 type OrdinaryCompileStructuralAdmission {
   compiled_module: StructuralObservationSubjectModule

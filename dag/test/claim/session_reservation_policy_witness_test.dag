@@ -3,14 +3,15 @@ module test.claim.session_reservation_policy_witness_test
 // THESE TWELVE WERE AUTHORED AS PLAIN `fn` AND THEREFORE NEVER EXECUTED IN CI.
 //
 // The floor discovers witnesses by scanning source lines for the `test fn ` / `test data ` prefix
-// (v1_compiler cli_run scan_test_decl_lines); a plain `fn name() -> Bool` in a *_witness_test.dag
-// file is invisible to it. So this file passed by hand under claim_batch and was never folded by the
-// required floor -- reads as coverage, carries none, and is cited as coverage. Measured at the
-// promotion: 990 corpus witness files use `test fn` and 9 did not, this among them.
+// (v1_compiler cli_run scan_test_decl_lines); a plain `fn name() -> Bool` in a file named
+// *_witness_test.dag is invisible to it. So this file passed by hand under claim_batch and was
+// never once folded by the required floor -- a file that reads as coverage and carries none, which
+// is worse than an absent file because it is cited as coverage. Measured at the promotion: 990
+// corpus witness files use `test fn` and 9 did not, this being one of them.
 //
-// Promoted 2026-08-27 with the session-container cut; assertions unchanged, only discoverability.
-// The eight remaining plain-fn files are a pre-existing population, not repaired here, named in
-// the cut's PR body rather than silently swept in.
+// Promoted 2026-08-27 with the session-container cut. The assertions are unchanged; only their
+// discoverability is. The eight remaining plain-fn files are a pre-existing population, not
+// repaired here, and are named in the cut's PR body rather than silently swept in.
 
 import std.types { Bool, String, Int }
 import std.measure { byte_size, byte_size_count }
@@ -49,9 +50,9 @@ data fleet: List<HostIdentity> = [
 ]
 
 // THE SIZING TABLE HOLDS ROWS ONLY FOR HOSTS SOMEONE HAS TRIED TO SIZE. srv3 and srv4 are absent by
-// construction rather than enumerated as not-applicable — the point of removing that arm: a sizing
-// authority has no standing to answer the residency question, and an earlier cut answered it anyway
-// on the strength of an ABSENT aggregate reading.
+// construction rather than enumerated as not-applicable, which is the whole point of removing that
+// arm: a sizing authority has no standing to answer the residency question, and an earlier cut
+// answered it anyway on the strength of an ABSENT aggregate reading.
 test fn the_sizing_table_answers_only_how_much() -> Bool {
   let srv1_allows = match session_reservation_sizing_for(host: operator_host_srv1) {
     ReservationAllowance { bytes: b, evidence_floor: _, operator_reason: _ } =>
@@ -79,9 +80,9 @@ test fn the_sizing_table_answers_only_how_much() -> Bool {
 
 // AN ALLOWANCE AUTHORED FOR A SESSION-FREE HOST MUST REFUSE, and this direction was previously
 // UNINSPECTED: the old shape read the sizing table only inside the residency-true branch, so a row
-// contradicting residency was silently ignored. This is the discriminating RED for that hole -- it
-// drives an allowance through the absent-residency join and requires a disagreement the old code
-// could not have produced.
+// contradicting residency was silently ignored rather than surfaced. This is the discriminating RED
+// for that hole -- it drives an allowance through the absent-residency join and requires a
+// disagreement, which the old code could not have produced at all.
 test fn an_allowance_on_a_session_free_host_refuses() -> Bool {
   let planted = ReservationAllowance {
     bytes: byte_size(55834574848),
@@ -130,10 +131,10 @@ test fn the_two_absences_are_distinguishable() -> Bool {
   srv1_bytes && srv2_unestablished && srv3_not_applicable
 }
 
-// THE INTEGRATION CONTROL, WHOSE ABSENCE LET THE AUTHORITY FORK THROUGH. Six green witnesses over
-// the policy TABLE said nothing about whether any production projection consumed it, so placement
-// could answer 52 GiB while the budget tree charged a flat 20 GiB with every test green. This
-// asserts the projections AGREE, host by host, over the whole fleet.
+// THE INTEGRATION CONTROL, AND IT IS THE ONE WHOSE ABSENCE LET THE AUTHORITY FORK THROUGH. Six
+// green witnesses over the policy TABLE said nothing about whether any production projection
+// consumed it, so placement could answer 52 GiB while the budget tree charged a flat 20 GiB and
+// every test stayed green. This asserts the projections AGREE, host by host, over the whole fleet.
 fn resolution_agrees_with_bytes(host: HostIdentity) -> Bool {
   match host_session_slice_resolution(host: host) {
     SessionSliceCharged { bytes: a } =>
@@ -229,10 +230,10 @@ test fn session_reservation_policy_holds() -> Bool {
     && the_evidence_names_its_execution()
 }
 
-// THE TWO EMPTY ANSWERS ARE NOW DISTINGUISHABLE, AND THIS ARM PROVES IT. Asserting only that srv2
-// and srv3 both yield no knobs passes against the collapsed form this replaces -- both returned the
-// same empty list. The standing separates them: srv3 owes nothing, srv2's reservation could not be
-// grounded, and those have opposite remedies.
+// THE TWO EMPTY ANSWERS ARE NOW DISTINGUISHABLE, AND THIS IS THE ARM THAT PROVES IT. Asserting only
+// that srv2 and srv3 both yield no knobs passes against the collapsed form this replaces -- both
+// returned the same empty list. The standing separates them: srv3 owes nothing, srv2's reservation
+// could not be grounded, and those have opposite remedies.
 test fn the_two_empty_knob_answers_are_distinguishable() -> Bool {
   match session_knob_standing_for(host: operator_host_srv3) {
     SessionKnobsNotOwed { cause: _ } => true
@@ -254,8 +255,8 @@ test fn the_two_empty_knob_answers_are_distinguishable() -> Bool {
 // AN ALLOWANCE BELOW ITS OWN EVIDENCE FLOOR CANNOT LEAVE THE SIZING FUNCTION AS AN ALLOWANCE. The
 // coverage predicate was consumed by a fixture against srv1 only; admit_sizing puts it on the
 // production path, so a row authored below its floor degrades to ReservationUnestablished instead of
-// being charged. This drives the wall with a constructed violation, since the live rows all pass --
-// otherwise the arm would be green by never being reached.
+// being charged. This drives the wall with a constructed violation rather than the live rows, which
+// all pass -- otherwise the arm would be green by never being reached.
 test fn an_allowance_below_its_evidence_floor_is_refused_not_charged() -> Bool {
   match admit_sizing(s: ReservationAllowance {
     bytes: byte_size(1073741824),

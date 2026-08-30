@@ -128,10 +128,7 @@ import gunbc.membership_reconcile {
   MemberRosterDuplicateKeyRefused,
 }
 
-// SPARK-PAIR-0 P0. The discriminating evidence for role separation and real serving retirement.
-// Every claim here is written so that reverting the role assignment, or restoring the empty removal
-// remedy, turns it red — an assertion that passes under both the old and the new model would be
-// measuring nothing.
+data spark_cell_role_retirement_witness_note: String = "SPARK-PAIR-0 P0. The discriminating evidence for role separation and real serving retirement. Every claim here is written so that reverting the role assignment, or restoring the empty removal remedy, turns it red — an assertion that passes under both the old and the new model would be measuring nothing."
 
 fn w_serving_addresses() -> List<SparkServingResourceAddress> {
   [

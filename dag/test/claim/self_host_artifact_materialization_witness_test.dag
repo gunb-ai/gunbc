@@ -2,13 +2,7 @@ module test.claim.self_host_artifact_materialization_witness
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-// These claims execute the two PURE folds that carry every decision in
-// gunbc.self_host_artifact_materialization, which is why the decisions are witnessed on every PR
-// instead of behind a wet cadence. The discriminating claims are not the happy path: they are that
-// a build failure never reads as a path refusal, that no failure arm produces ArtifactMaterialized,
-// and that the executable carried out of the fold is the one the cargo stream NAMED. That last one
-// is the whole lane in a single assertion — a convention-derived path would satisfy every other
-// claim here while pointing at a different file than the one digested.
+data artifact_materialization_witness_note: String = "These claims execute the two PURE folds that carry every decision in gunbc.self_host_artifact_materialization, which is why the decisions are witnessed on every PR instead of behind a wet cadence. The discriminating claims are not the happy path: they are that a build failure never reads as a path refusal, that no failure arm produces ArtifactMaterialized, and that the executable carried out of the fold is the one the cargo stream NAMED. That last one is the whole lane in a single assertion — a convention-derived path would satisfy every other claim here while pointing at a different file than the one digested."
 
 data valid_hex: String = "cf03d459f24df996cd9f067bb9ef1eb98b4110a3566bc0db54d6949e5371e7861511488e25a86c5177a6940af6e97e7a337e987ce464b55408fe325df9993be9"
 
@@ -16,15 +10,7 @@ data artifact_stream: String = "\{\"reason\":\"compiler-artifact\",\"target\":\{
 
 data ambiguous_stream: String = "\{\"reason\":\"compiler-artifact\",\"target\":\{\"name\":\"gunbc\",\"kind\":[\"bin\"]\},\"executable\":\"/w/target/release/gunbc\"\}\n\{\"reason\":\"compiler-artifact\",\"target\":\{\"name\":\"gunbc\",\"kind\":[\"bin\"]\},\"executable\":\"/w/target/release/other\"\}"
 
-// valid_hex is the REAL sha512 of the ASCII string gunbc-artifact-materialization-fixture,
-// reproducible with printf | sha512sum, rather than hand-typed hex. The first draft here WAS
-// hand-typed and was 130 characters instead of 128; the refinement rejected it, good_observation
-// became a refusal, and the three positive claims went red — which is the wall doing its job and is
-// why this note exists. Built through the validating mint rather than by labelling text a digest:
-// sha512_hex_digest applies the length and lowercase-hex refinement, so if this fixture hex is ever
-// wrong the observation becomes a REFUSAL and the positive claims below go red, rather than a bad
-// digest silently flowing into the carrier. That is the same construction wall the artifact axis
-// relies on, exercised by the witness that depends on it.
+data observed_digest_note: String = "valid_hex is the REAL sha512 of the ASCII string gunbc-artifact-materialization-fixture, reproducible with printf | sha512sum, rather than hand-typed hex. The first draft here WAS hand-typed and was 130 characters instead of 128; the refinement rejected it, good_observation became a refusal, and the three positive claims went red — which is the wall doing its job and is why this note exists. Built through the validating mint rather than by labelling text a digest: sha512_hex_digest applies the length and lowercase-hex refinement, so if this fixture hex is ever wrong the observation becomes a REFUSAL and the positive claims below go red, rather than a bad digest silently flowing into the carrier. That is the same construction wall the artifact axis relies on, exercised by the witness that depends on it."
 
 fn good_observation() -> Sha512FileObservation {
   match std.content_hash.sha512_hex_digest(hex: valid_hex) {

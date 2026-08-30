@@ -20,15 +20,7 @@ import gunbc.guarantee_measurement {
   probe_set_digest,
 }
 
-// SYNTHETIC ROWS ONLY, by the Stage 0 charter: these witnesses prove the protocol - construction,
-// exactly-one resolution, the refusing joins, digest determinism, and the verdict/ignorance
-// separation - against rows invented here. No probe executes, no real class population exists yet,
-// and nothing below says anything about the compiler. When ladder-probe-corpus lands real rows, its
-// receipts execute through THIS vocabulary and these synthetic witnesses stay as the protocol's
-// regression controls. The unwritability half of the node's red_control (a receipt missing an
-// identity component) is construction-by-required-fields: it cannot be witnessed from inside a
-// compiling program, and its corpus-wide enforcement measurement belongs to the record-construction
-// census class, stated in the module's receipt_identity_note rather than faked here.
+data guarantee_measurement_witness_scope_note: String = "SYNTHETIC ROWS ONLY, by the Stage 0 charter: these witnesses prove the protocol - construction, exactly-one resolution, the refusing joins, digest determinism, and the verdict/ignorance separation - against rows invented here. No probe executes, no real class population exists yet, and nothing below says anything about the compiler. When ladder-probe-corpus lands real rows, its receipts execute through THIS vocabulary and these synthetic witnesses stay as the protocol's regression controls. The unwritability half of the node's red_control (a receipt missing an identity component) is construction-by-required-fields: it cannot be witnessed from inside a compiling program, and its corpus-wide enforcement measurement belongs to the record-construction census class, stated in the module's receipt_identity_note rather than faked here."
 
 fn synth_path(id: String) -> GuaranteePath {
   GuaranteePath {

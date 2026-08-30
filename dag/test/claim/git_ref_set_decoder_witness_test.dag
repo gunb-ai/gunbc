@@ -13,14 +13,7 @@ import extdeps.git.enumeration {
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-// Pure decoder controls over authored wire text. These run in the ordinary floor because the
-// subject is the DECODE, which is a total function of bytes the test supplies -- no repository, no
-// subprocess, no host. What they deliberately do NOT establish is that git.Core.ForEachRefIn EMITS
-// these bytes for any given repository state; that is a transport claim, it cannot execute inside
-// the hermetic fold (a shell operation is refused at shell.Test.IsExecutable before the subprocess
-// is reached, and mocking the result would fabricate the very observation the claim is about), and
-// it is owned by a separate wet record/replay matrix. Reporting these controls as coverage for the
-// transport would be exactly the rung inflation DESIGN section 4b forbids.
+data git_ref_set_decoder_construction_justification: String = "Pure decoder controls over authored wire text. These run in the ordinary floor because the subject is the DECODE, which is a total function of bytes the test supplies -- no repository, no subprocess, no host. What they deliberately do NOT establish is that git.Core.ForEachRefIn EMITS these bytes for any given repository state; that is a transport claim, it cannot execute inside the hermetic fold (a shell operation is refused at shell.Test.IsExecutable before the subprocess is reached, and mocking the result would fabricate the very observation the claim is about), and it is owned by a separate wet record/replay matrix. Reporting these controls as coverage for the transport would be exactly the rung inflation DESIGN section 4b forbids."
 
 data a_oid: String = "1111111111111111111111111111111111111111"
 data b_oid: String = "2222222222222222222222222222222222222222"

@@ -17,15 +17,7 @@ import extdeps.git.worktree_enumeration {
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-// Pure decoder controls over authored wire text, run in the ordinary floor because the subject is
-// the DECODE -- a total function of bytes the test supplies, with no repository, no subprocess and
-// no host. The authored strings are TRANSCRIBED FROM REAL `git worktree list --porcelain -z` OUTPUT
-// observed on a constructed repository (a primary on a branch, a linked worktree on a branch, a
-// detached worktree, a locked worktree, and a bare clone), so the framing under test is git's and
-// not an invention. What these deliberately do NOT establish is that git.Core.WorktreeListIn EMITS
-// these bytes for any given repository state: that is a transport claim, it cannot execute inside
-// the hermetic fold, and it is owned by the separate wet record/replay matrix. Reporting these as
-// coverage for the transport would be the rung inflation DESIGN section 4b forbids.
+data git_worktree_set_decoder_construction_justification: String = "Pure decoder controls over authored wire text, run in the ordinary floor because the subject is the DECODE -- a total function of bytes the test supplies, with no repository, no subprocess and no host. The authored strings are TRANSCRIBED FROM REAL `git worktree list --porcelain -z` OUTPUT observed on a constructed repository (a primary on a branch, a linked worktree on a branch, a detached worktree, a locked worktree, and a bare clone), so the framing under test is git's and not an invention. What these deliberately do NOT establish is that git.Core.WorktreeListIn EMITS these bytes for any given repository state: that is a transport claim, it cannot execute inside the hermetic fold, and it is owned by the separate wet record/replay matrix. Reporting these as coverage for the transport would be the rung inflation DESIGN section 4b forbids."
 
 data oid_a: String = "b0940967fc5128891bb289985b3e2a0714a88773"
 data oid_b: String = "1111111111111111111111111111111111111111"

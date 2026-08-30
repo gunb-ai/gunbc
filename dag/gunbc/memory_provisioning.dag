@@ -58,32 +58,36 @@ import extdeps.ampere.mt_collins_product_brief.platform {
 
 
 // ===========================================================================
-// TWO CONCEPTS, NOT ONE. This module once carried a single RunnerServiceProfile
-// that was both a reading of the CI runner market and a declaration of what
-// gunbc sells. Fusing the two produced a real miscitation: the arm-memory
-// profile declared entitlement = DedicatedPhysicalCore on a basis of three
-// providers whose entitlement the census records as UNSTATED. A provider's size
-// table can inform our bytes; it cannot establish what backs one of OUR vCPUs,
-// because the provider never said what backs one of THEIRS.
+// TWO CONCEPTS, NOT ONE. This module previously carried a single
+// RunnerServiceProfile that was simultaneously a reading of the CI runner
+// market and a declaration of what gunbc sells. Those are different claims
+// with different authorities, and fusing them produced a real miscitation:
+// the arm-memory profile declared entitlement = DedicatedPhysicalCore on a
+// basis of three providers whose entitlement the census itself records as
+// UNSTATED. A provider's size table can inform what our bytes should be; it
+// cannot establish what one of OUR vCPUs is backed by, because the provider
+// never said what one of THEIRS is.
 //
-//   MarketShapeBenchmark   — a receipt of what a provider ADVERTISED.
+//   MarketShapeBenchmark   — a receipt about what a provider ADVERTISED.
 //                            Entitlement may be unstated; the ratio is read
 //                            from the census, never re-authored here.
-//   RunnerProductProfile   — gunbc's own SKU: OUR entitlement, OUR guaranteed
-//                            bytes, with the benchmarks it was decided against
-//                            as evidence whose POLARITY is derived, not asserted.
+//   RunnerProductProfile   — gunbc's own SKU declaration. OUR entitlement,
+//                            OUR guaranteed bytes, with the benchmarks it
+//                            was decided against carried as evidence whose
+//                            POLARITY is derived rather than asserted.
 //
-// Standing rule: observations this repository produces are receipts in the
-// observing layer, not facts authored inside the upstream module.
+// This follows the standing rule that observations produced by this
+// repository are receipts in the observing layer rather than facts authored
+// inside the upstream module.
 // ===========================================================================
 
 // ONE PROVIDER'S ADVERTISED SHAPE, on one architecture. The ratio field is
 // deliberately absent: it is DERIVED from the surveyed rows on demand, so a
-// benchmark cannot record a figure the census refuses to produce. This is the
-// structural half of the evidence-polarity repair below: the old carrier let a
-// profile cite GitHub as supporting four GB per vCPU while the census could
-// derive no per-vCPU figure for GitHub at all (its five-vCPU/fourteen-GB arm64
-// size makes the ratio non-integral), because the citation was a bare
+// benchmark cannot record a figure the census refuses to produce. That is the
+// structural half of the evidence-polarity repair below — the old carrier let
+// a profile cite GitHub as supporting four GB per vCPU while the census could
+// not derive any per-vCPU figure for GitHub at all — its five-vCPU/fourteen-GB
+// arm64 size makes the ratio non-integral — because the citation was a bare
 // DeclarationRef with nothing to disagree with.
 type MarketShapeBenchmark {
   provider_label: NonEmptyStr
@@ -104,22 +108,25 @@ fn benchmark_reading(benchmark: MarketShapeBenchmark) -> MemoryPerVcpuReading {
 
 // ---------------------------------------------------------------------------
 // EVIDENCE POLARITY, DERIVED. A citation that CONTRADICTS a figure is honest
-// context and belongs in the record; it must never read as support. The old
-// CitedBasis was one flat list, so CircleCI — the explicit counterexample to
-// four GB per vCPU — sat in the x64 profile's basis indistinguishable from the
-// providers that agree, and the profile looked better sourced for carrying it.
+// context and belongs in the record; what it must never do is read as support
+// for that figure. The old CitedBasis was one flat list, so CircleCI — the
+// explicit counterexample to four GB per vCPU — sat in the x64 profile's basis
+// indistinguishable from the providers that agree, and the profile looked
+// better sourced for carrying it.
 //
-// Polarity is not an authored field: it is COMPUTED by comparing the declared
-// figure against the census reading, so a benchmark cannot be filed on the
-// wrong side — mislabelling would require the census to change its answer.
-// Construction over validation: a wrongly-polarised citation has no way in.
+// The polarity is not a field an author fills in. It is COMPUTED by comparing
+// the declared figure against the census reading, so a benchmark cannot be
+// filed on the wrong side: mislabelling would require the census to change its
+// answer. That is the construction-over-validation move — a wrongly-polarised
+// citation has no way into the record rather than being caught by a check.
 //
-// The comparison is numeral-and-unit-word, deliberately NOT bytes. The census
-// ratio is basis-less by construction (a quotient of two figures quoted in one
-// unit is a figure in that unit, and no surveyed page says which "GB" it means)
-// while our profile DECLARES its basis. Resolving the market's numeral to bytes
-// would assert the basis the census exists to withhold; comparing numerals
-// under a matching unit word asks exactly what the market can answer.
+// The comparison is numeral-and-unit-word, deliberately NOT a byte comparison.
+// The census ratio is basis-less by construction (a quotient of two figures
+// quoted in one unit is a figure in that same unit, and no surveyed page says
+// which "GB" it means), while our own profile DECLARES its basis. Resolving
+// the market's numeral to bytes in order to compare would assert the basis the
+// census exists to withhold; comparing the numerals under a matching unit word
+// asks exactly the question the market can answer.
 // ---------------------------------------------------------------------------
 type EvidenceStanding
   = SupportsDeclaredRatio { advertised_per_entitlement: QuotedByteMagnitude, sizes_agreeing: Nat }
@@ -175,10 +182,10 @@ fn standing_supports(standing: EvidenceStanding) -> Bool {
   }
 }
 
-// The evidence a profile stands on, as a derived verdict rather than an
-// authored list. A profile with NO supporting benchmark is unsupported and says
-// so; carrying only contradicting citations as a basis is the state this
-// replaces.
+// The evidence a profile actually stands on, as a derived verdict rather than
+// an authored list. A profile whose consulted benchmarks contain NO supporting
+// one is unsupported and says so; carrying only contradicting citations while
+// presenting them as a basis is the state this replaces.
 type ProfileEvidenceVerdict
   = EvidenceSupported { supporting_count: Nat, contrasting_count: Nat }
   | EvidenceUnsupported { consulted_count: Nat, contrasting_count: Nat }
@@ -222,13 +229,14 @@ fn evidence_verdict(
 
 // ---------------------------------------------------------------------------
 // GUNBC'S OWN SKU. advertised_entitlement is OUR statement about OUR hardware,
-// so no benchmark is consulted for it: we own the machine and no provider's
-// silence bears on it. The evidence below speaks ONLY to the byte figure, said
-// here so a reader cannot mistake a well-evidenced ratio for an evidenced
-// entitlement — the conflation this split ends.
+// which is why no benchmark is consulted for it: we own the machine, so the
+// fact is ours to declare and no provider's silence bears on it. The evidence
+// below speaks ONLY to the byte figure, and the module says so here so that a
+// later reader cannot mistake a well-evidenced ratio for an evidenced
+// entitlement — the exact conflation this split exists to end.
 //
-// consulted_benchmarks is the population the ratio was decided against,
-// including the ones that disagree. Polarity is derived, so listing a
+// consulted_benchmarks is the population the ratio decision was made against,
+// including the ones that disagree. Their polarity is derived, so listing a
 // counterexample strengthens the record instead of inflating the basis count.
 // ---------------------------------------------------------------------------
 type RunnerProductProfile {
@@ -261,19 +269,20 @@ fn entitlement_bytes(profile: RunnerProductProfile) -> EntitlementBytes {
   }
 }
 
-// HOW MANY ENTITLEMENTS ONE PROCESSOR OFFERS, on the profile's own axis: a
-// dedicated-core profile is bounded by physical cores, an SMT profile by
-// threads. An unstated entitlement cannot be counted — the honest answer, not
-// a silent fallback to cores, which would let such a profile claim the more
-// conservative number and read as safe.
+// HOW MANY ENTITLEMENTS ONE PROCESSOR OFFERS, on the profile's own axis. A
+// dedicated-core profile is bounded by physical cores; an SMT profile by
+// threads. An unstated entitlement cannot be counted at all — that is the
+// honest answer, not a silent fallback to cores, because falling back would
+// make an unstated-entitlement profile silently claim the more conservative
+// number and read as safe.
 //
-// NEXT-RUNG NOTE: for a PRODUCT profile the unstated arm is arguably unwritable
-// — we know what our own vCPU is — and a DeclaredEntitlement type without that
-// variant would climb this refusal to structural impossibility. Not taken here
-// because CpuEntitlement is the shared axis the census rows are read on, and
-// forking it for the product side is the nicknaming this lane removes. Trigger:
-// a product-side entitlement authority the benchmark side projects into, rather
-// than a second enum beside it.
+// NEXT-RUNG NOTE: for a PRODUCT profile the unstated arm is arguably
+// unwritable — we know what our own vCPU is — and a DeclaredEntitlement type
+// without that variant would climb this refusal to structural impossibility.
+// It is not taken here because CpuEntitlement is the shared axis the census
+// rows are read on, and forking it for the product side is the nicknaming this
+// lane is otherwise removing. Trigger: a product-side entitlement authority
+// that the benchmark side projects into, rather than a second enum beside it.
 type CpuEntitlementSupply
   = EntitlementsAvailable { count: Nat }
   | EntitlementKindUnstated
@@ -288,16 +297,16 @@ fn cpu_entitlement_supply(cpu: CpuModelCatalogRow, entitlement: CpuEntitlement) 
 }
 
 // ---------------------------------------------------------------------------
-// OBSERVED CAPACITY IS NOT ADMISSION. The old fold answered one question —
-// "can this machine satisfy the SKU" — and returned only populations already
-// meeting the target, so its bound axis had no memory-bound arm. That left the
-// OTHER question unaskable: an existing host with 128 GiB installed could not
-// be told how many units it currently provides, because a machine below target
-// produced no answer.
+// OBSERVED CAPACITY IS NOT ADMISSION. The old fold answered exactly one
+// question — "can this machine satisfy the SKU" — and could only return
+// populations that already met the target, which is why its bound axis had no
+// memory-bound arm. That made the OTHER question unaskable: an existing host
+// with 128 GiB installed cannot be told how many units it currently provides,
+// because a machine that does not meet the target simply produced no answer.
 //
 // The live fleet is exactly that partial state, so this is load-bearing for
-// accumulation, not a completeness nicety: without it an existing host cannot
-// participate until fully provisioned.
+// accumulation rather than a completeness nicety: without it an existing host
+// cannot participate at all until it is fully provisioned.
 //
 // Two separate readings, deliberately:
 //   ObservedCapacity  — what a machine PROVIDES. Total, always answerable,
@@ -370,12 +379,13 @@ fn observed_capacity_for(
 }
 
 // ---------------------------------------------------------------------------
-// WHY A PROFILE READING CAN REFUSE. Architecture is the arm this lane adds, and
-// it was a live fail-open: profile and processor row each carried an
-// architecture and nothing compared them, so the x64 profile applied to an
-// Altra row derived an SMT target from an arm processor's thread count and
-// returned a clean population — a fabricated answer to a buying question, worse
-// than a refusal because downstream it is indistinguishable from a grounded one.
+// WHY A PROFILE READING CAN REFUSE. Architecture is the arm this lane adds and
+// it was a live fail-open: the profile carried an architecture, the processor
+// row carried an architecture, and nothing compared them, so the x64 profile
+// applied to an Altra row derived an SMT target from an arm processor's thread
+// count and returned a clean population. That is a fabricated answer to a
+// buying question, which is worse than a refusal because it is indistinguishable
+// downstream from a grounded one.
 // ---------------------------------------------------------------------------
 type ProfileCapacityRefusalCause
   = ProfileBasisUndeclared
@@ -457,21 +467,21 @@ fn observe_installed_capacity(
 // ---------------------------------------------------------------------------
 // BOARD SUPPORT AND SELLING POLICY ARE DIFFERENT FACTS. The old fold made a
 // non-full-channel population unexpressible, which read as "the platform does
-// not support it". The ALTRAD8UD documentation says otherwise: its documented
-// populations are one, two, four and eight modules, and the four-module shape
-// A1+B1+E1+F1 is explicitly NOT one per channel. A shape the vendor documents
-// and we decline to sell is DECLINED, not invalid; collapsing the two hides
-// which authority objected.
+// not support it". The ALTRAD8UD documentation says otherwise: its own
+// documented populations are one, two, four and eight modules, and the
+// four-module shape A1+B1+E1+F1 is explicitly NOT one per channel. A shape the
+// vendor documents and we decline to sell is DECLINED, not invalid, and
+// collapsing the two hides which authority actually objected.
 //
 //   ChannelCoverage           — derived platform fact: does this shape light
 //                               every channel, or leave some dark?
 //   ChannelPopulationPolicy   — gunbc's supplied selling rule.
 //
-// Full-channel shapes are derived from the platform authority's closed topology
-// coproduct times the board's channel count, so every board has them.
-// Non-full-channel shapes exist only where the BOARD documents them; a board
-// with no cited population table refuses under the permissive policy rather
-// than having shapes invented for it.
+// Full-channel shapes are derived from the platform authority's closed
+// topology coproduct times the board's channel count, so they are available
+// for every board. Non-full-channel shapes exist only where the BOARD
+// documents them, and a board with no cited population table refuses under the
+// permissive policy rather than having shapes invented for it.
 // ---------------------------------------------------------------------------
 type ChannelCoverage
   = FullChannel { topology: DimmsPerChannelTopology }
@@ -479,13 +489,14 @@ type ChannelCoverage
 
 type ChannelPopulationPolicy = FullChannelRequiredForSellableRunner | AnyBoardDocumentedPopulation
 
-// THE BOARD'S SLOT GEOMETRY, as the facts that decide a population: channels
-// the memory controller drives, deepest linear topology the platform admits,
-// DRAM generation the platform speaks, and the populations the board's own
-// documentation states. The topology axis is imported from the Altra platform
-// authority rather than re-coined as a slot integer, because that specification
-// states the admitted topologies as a closed set — a population outside them is
-// unsupported, not a smaller supported one.
+// THE BOARD'S SLOT GEOMETRY, as the facts that decide a population: how many
+// channels the memory controller drives, the deepest linear topology the
+// platform admits, the DRAM generation the platform speaks, and whichever
+// populations the board's own documentation states. The topology axis is
+// imported from the Altra platform authority rather than re-coined as a slot
+// integer, because that specification states the admitted topologies as a
+// closed set — a population outside them is unsupported, not a smaller
+// supported one.
 type MemoryChannelGeometry {
   board_label: NonEmptyStr
   channels: Nat
@@ -526,16 +537,17 @@ fn full_channel_shapes(g: MemoryChannelGeometry) -> List<PopulationShape> {
   map(admitted_topologies(g: g), t => full_channel_shape(g: g, topology: t))
 }
 
-// The coverage a documented module count produces. A count equal to a
-// full-channel count IS full channel and is reported as such, so the two shape
-// sources agree rather than double-counting the eight-module row.
+// The coverage a documented module count produces. A count that happens to
+// equal a full-channel count IS full channel and is reported as such, so the
+// two shape sources agree rather than double-counting the eight-module row.
 //
-// The search runs over the topologies the BOARD admits, not the whole
-// coproduct: matching every topology would let a sixteen-module population on
-// a one-DIMM-per-channel board report FullChannel{TwoDimmsPerChannel}, a
-// coverage claim citing a topology that board's platform does not admit. No
-// current row can reach that state, which is why it is closed by construction
-// rather than left for the first board that can.
+// The search runs over the topologies the BOARD admits, not over the whole
+// coproduct. Matching against every topology unconditionally would let a
+// sixteen-module population on a one-DIMM-per-channel board report
+// FullChannel{TwoDimmsPerChannel} — a coverage claim citing a topology that
+// board's platform does not admit. No current row can reach that state, which
+// is exactly why it is worth closing by construction rather than leaving for
+// the first board that can.
 type CoverageSearch = CoverageFound { topology: DimmsPerChannelTopology } | CoverageNotFound
 
 fn coverage_search_step(acc: CoverageSearch, g: MemoryChannelGeometry, dimm_count: Nat, topology: DimmsPerChannelTopology) -> CoverageSearch {
@@ -583,10 +595,11 @@ fn coverage_is_full_channel(coverage: ChannelCoverage) -> Bool {
   }
 }
 
-// The shapes a POLICY admits, and why the permissive arm can refuse: it reads
-// the board's documentation, and a board whose population table this
-// repository has not cited has none. Inventing shapes from the slot count would
-// be the fabricated platform-capability claim the split exists to prevent.
+// The shapes a POLICY admits, and the reason the permissive arm can refuse: it
+// reads the board's documentation, and a board whose population table this
+// repository has not cited has none to read. Inventing shapes from the slot
+// count would be exactly the fabricated platform-capability claim the split
+// exists to prevent.
 type ShapeSelection
   = ShapesSelected { admitted: List<PopulationShape>, declined_by_policy: List<PopulationShape> }
   | ShapeSelectionRefused { cause: PopulationRefusalCause }
@@ -611,7 +624,7 @@ fn select_shapes(g: MemoryChannelGeometry, policy: ChannelPopulationPolicy) -> S
 //
 // margin_bytes NAMES THE OVERSHOOT. Slot geometry and per-DIMM capacities are
 // both coarse, so a population that meets a target almost always exceeds it;
-// reporting only "met" would let a purchase silently round up to the next SKU.
+// reporting only "met" would let a purchase round silently up to the next SKU.
 type PopulationOption {
   module: DramModuleCatalogRow
   dimm_count: Nat
@@ -623,13 +636,13 @@ type PopulationOption {
 // WHY A DERIVATION CAN REFUSE, and why each cause carries its numbers: a
 // refusal a buyer cannot act on is typed but not located.
 //
-// ModuleGenerationUnsupportedByPlatform is this lane's second fail-open repair.
-// Offered modules were folded into populations with no join against the
-// platform, so a DDR5 row on the DDR4 Altra platform produced a clean
-// admissible population with correct capacity arithmetic and a false electrical
-// premise. The refusal names both generations rather than dropping the module:
-// silently skipping an incompatible row would narrow the answer while reporting
-// success.
+// ModuleGenerationUnsupportedByPlatform is this lane's second fail-open
+// repair. Offered modules were folded into populations with no join against
+// the platform at all, so a DDR5 row on the DDR4 Altra platform produced a
+// clean admissible population whose capacity arithmetic was correct and whose
+// electrical premise was false. The refusal names both generations rather than
+// dropping the module, because silently skipping an incompatible row would
+// narrow the answer while reporting success.
 type PopulationRefusalCause
   = TargetUnreachableInSlotGeometry {
       required_bytes: ByteSize
@@ -738,13 +751,13 @@ fn best_reachable_bytes(
 
 // THE DERIVATION. (board geometry x selling policy x sourced requirement x
 // offered modules) -> the populations that meet the requirement, each with its
-// named overshoot and channel coverage; or one typed refusal saying why none
-// does.
+// named overshoot and its channel coverage; or one typed refusal that says why
+// none does.
 //
 // The module list is offered by the caller rather than read from a global
 // catalog because what is BUYABLE is an inventory fact, not a specification
-// fact — the sibling inventory ledger owns that population; this fold stays a
-// pure derivation over whatever is offered.
+// fact — the sibling inventory ledger owns that population, and this fold
+// stays a pure derivation over whatever is offered.
 fn derive_populations(
   geometry: MemoryChannelGeometry,
   policy: ChannelPopulationPolicy,
@@ -790,10 +803,10 @@ fn derive_populations(
 }
 
 // A mixed-capacity population is refused rather than derived. It is a separate
-// entry point because the fold above cannot express one: every option it
-// builds carries a single module row. This names the refusal for a caller
-// holding two capacities that would otherwise infer the rule from the fold's
-// shape.
+// entry point instead of an arm inside the fold above because the fold has no
+// way to express one: every option it builds carries a single module row. This
+// names the refusal for a caller that holds two capacities and would otherwise
+// have to infer the rule from the fold's shape.
 fn admit_mixed_capacity_population(geometry: MemoryChannelGeometry) -> PopulationDerivation {
   PopulationDerivationRefused {
     board_label: geometry.board_label,
@@ -849,10 +862,10 @@ fn capacity_for_option(
 // profile x offered modules) -> per-profile admissible populations with their
 // servable capacity.
 //
-// Each population is admitted against the profile's per-entitlement figure
-// times the entitlements this processor supplies, so a dedicated-core profile
-// and an SMT profile on the SAME processor produce different targets — the
-// point of carrying the axis.
+// The target every population is admitted against is the profile's own
+// per-entitlement figure times the entitlements this processor supplies, so a
+// dedicated-core profile and an SMT profile on the SAME processor produce
+// different targets, which is the whole point of carrying the axis.
 fn derive_profile_capacity(
   geometry: MemoryChannelGeometry,
   policy: ChannelPopulationPolicy,
@@ -891,9 +904,10 @@ fn derive_profile_capacity(
 }
 
 // The per-profile fan-out: one derivation per declared profile, so a candidate
-// board carries arm-value, arm-memory and x64 readings side by side rather than
-// one blended number. With the architecture join, the x64 reading against an
-// arm board is now a refusal rather than a number, which is the point.
+// board carries an arm-value reading, an arm-memory reading and an x64 reading
+// side by side rather than one blended number. With the architecture join in
+// place the x64 reading against an arm board is now a refusal rather than a
+// number, which is the point.
 fn derive_all_profile_capacities(
   geometry: MemoryChannelGeometry,
   policy: ChannelPopulationPolicy,
@@ -918,9 +932,9 @@ fn derivation_option_count(d: PopulationDerivation) -> Nat {
 // ===========================================================================
 // ROWS: the benchmarks surveyed, the SKUs declared, and the boards answered.
 //
-// Receipts in the observing layer, not facts authored inside the upstream
-// modules: each DERIVES its fields from a cited row and carries that row's
-// authority, so the derivation is joinable back to its source.
+// These are receipts in the observing layer, not facts authored inside the
+// upstream modules: each one DERIVES its fields from a cited row and carries
+// that row's authority, so the derivation is joinable back to its source.
 // ===========================================================================
 
 data ubicloud_shapes_ref: DeclarationRef = decl_ref(
@@ -954,9 +968,10 @@ data circleci_shapes_ref: DeclarationRef = decl_ref(
 )
 
 // THE SURVEYED BENCHMARKS. advertised_entitlement records what each provider
-// SAYS backs one of its vCPUs — for five of six, nothing. Ubicloud alone states
-// a dedicated Altra core; Blacksmith's "bare metal" is a claim about the host,
-// not one advertised vCPU, and is not promoted to an entitlement.
+// SAYS backs one of its vCPUs — and for five of six that is nothing at all.
+// Ubicloud alone states a dedicated Altra core; Blacksmith's "bare metal" is a
+// claim about the host rather than about one advertised vCPU and is not
+// promoted to an entitlement.
 data ubicloud_arm_benchmark: MarketShapeBenchmark = MarketShapeBenchmark {
   provider_label: "Ubicloud",
   provider: ubicloud_provider_identity,
@@ -1022,11 +1037,11 @@ data warpbuild_x64_benchmark: MarketShapeBenchmark = MarketShapeBenchmark {
 }
 
 // The explicit COUNTEREXAMPLE, carried on purpose. CircleCI's x86 Docker
-// classes are two GB per vCPU, disagreeing with the four-GB figure the SKU
+// classes are two GB per vCPU, so it disagrees with the four-GB figure the SKU
 // below declares. It is consulted rather than omitted because a basis built
-// only from agreeing providers looks better sourced while hiding the spread —
-// and because its polarity is DERIVED, listing it cannot inflate the support
-// count.
+// only from the providers that agree looks better sourced while being less
+// honest about the spread — and because its polarity is DERIVED, listing it
+// cannot inflate the support count.
 data circleci_x64_benchmark: MarketShapeBenchmark = MarketShapeBenchmark {
   provider_label: "CircleCI",
   provider: circleci_provider_identity,
@@ -1051,13 +1066,13 @@ fn surveyed_market_benchmarks() -> List<MarketShapeBenchmark> {
 
 // THE VALUE SKU: three GB per DEDICATED physical core. The entitlement is OUR
 // declaration about OUR hardware; the byte figure is what two surveyed arm64
-// surfaces publish, among them Ubicloud — the one provider stating a dedicated
-// Altra core — so the ratio was read against machines of the family this
-// purchase is about.
+// surfaces publish, and Ubicloud — the one provider that states a dedicated
+// Altra core — is among them, so the ratio was read against machines of the
+// same family this purchase is about.
 //
 // The basis is declared decimal because that is how the cited surfaces quote
-// it; declaring it through the constructor makes the byte target inspectable
-// rather than assumed.
+// it; declaring it through the constructor is what makes the resulting byte
+// target inspectable rather than assumed.
 data arm_value_profile: RunnerProductProfile = RunnerProductProfile {
   label: "arm-value",
   architecture: Aarch64,
@@ -1066,16 +1081,16 @@ data arm_value_profile: RunnerProductProfile = RunnerProductProfile {
   consulted_benchmarks: [ubicloud_arm_benchmark, blacksmith_arm_benchmark, github_arm_benchmark],
 }
 
-// THE MEMORY SKU: four GB per entitlement. A separate SKU rather than a
-// correction to the one above: both figures are real, the market offers both,
-// and which one gunbc sells is a policy choice, not a fact resolved by
-// averaging.
+// THE MEMORY SKU: four GB per entitlement. Carried as a separate SKU rather
+// than as a correction to the one above, because both figures are real: the
+// market offers both, and which one gunbc sells is a policy choice rather than
+// a fact to be resolved by averaging.
 //
-// Its consulted set includes GitHub, whose arm64 sizes the census cannot reduce
-// to any per-vCPU figure (the five-vCPU/fourteen-GB size makes the ratio
-// non-integral). Under the old flat basis that read as support for four GB;
-// here it derives as BenchmarkUnreadable and the SKU stands on Depot and
-// WarpBuild, which was true all along.
+// Its consulted set includes GitHub, whose arm64 sizes the census cannot
+// reduce to any per-vCPU figure (the five-vCPU/fourteen-GB size makes the
+// ratio non-integral). Under the old flat basis that citation read as support
+// for four GB; here it derives as BenchmarkUnreadable and the SKU stands on
+// Depot and WarpBuild, which is what was actually true all along.
 data arm_memory_profile: RunnerProductProfile = RunnerProductProfile {
   label: "arm-memory",
   architecture: Aarch64,
@@ -1105,12 +1120,12 @@ fn declared_product_profiles() -> List<RunnerProductProfile> {
 }
 
 // ---------------------------------------------------------------------------
-// THE BOARDS. Each geometry DERIVES its channel count from the board's cited
-// mechanical row (total slots over DIMMs per channel) rather than authoring a
-// channel integer beside it, so a board row and its geometry cannot disagree.
-// The DRAM generation comes from the Altra platform authority, not each board's
-// page: it is a platform fact and one of the three boards states it only as a
-// data rate.
+// THE BOARDS. Each geometry DERIVES its channel count from the board's own
+// cited mechanical row (total slots over DIMMs per channel) rather than
+// authoring a channel integer beside it, so a board row and its geometry
+// cannot disagree. The DRAM generation comes from the Altra platform authority
+// rather than from each board's page, because it is a platform fact and one of
+// the three boards states it only as a data rate.
 // ---------------------------------------------------------------------------
 
 fn derived_channel_count(dimm_slots_total: Nat, dimms_per_channel: Nat) -> Nat {
@@ -1118,11 +1133,11 @@ fn derived_channel_count(dimm_slots_total: Nat, dimms_per_channel: Nat) -> Nat {
 }
 
 // The ASRock ALTRAD8UD-1L2T. Eight slots at one DIMM per channel, so the
-// one-per-channel population IS the full population. Its documented
-// populations are the specimen that makes the policy split necessary: the
-// board documents a FOUR-module shape (A1+B1+E1+F1) that is not one per
-// channel, so under the sellable-runner policy it is declined rather than
-// invalid.
+// one-per-channel population IS the full population for this board. Its
+// documented populations are carried because they are the specimen that makes
+// the policy split necessary: the board documents a FOUR-module shape
+// (A1+B1+E1+F1) that is not one per channel, so under the sellable-runner
+// policy it is declined rather than invalid.
 data asrock_altrad8ud_1l2t_geometry: MemoryChannelGeometry = MemoryChannelGeometry {
   board_label: "ASRock Rack ALTRAD8UD-1L2T",
   channels: derived_channel_count(
@@ -1137,9 +1152,9 @@ data asrock_altrad8ud_1l2t_geometry: MemoryChannelGeometry = MemoryChannelGeomet
 
 // The Supermicro R12SPD-A: sixteen slots at two DIMMs per channel on ONE
 // socket, the memory-richest single-socket geometry in this census. Its vendor
-// surface states slot count and depth but no supported-population table, so
-// documented_populations is empty and the permissive policy REFUSES for this
-// board rather than inventing shapes from the slot count.
+// surface states slot count and depth but publishes no supported-population
+// table, so documented_populations is empty and the permissive policy REFUSES
+// for this board rather than having shapes invented from the slot count.
 data supermicro_r12spd_a_geometry: MemoryChannelGeometry = MemoryChannelGeometry {
   board_label: "Supermicro R12SPD-A",
   channels: derived_channel_count(
@@ -1153,13 +1168,13 @@ data supermicro_r12spd_a_geometry: MemoryChannelGeometry = MemoryChannelGeometry
 }
 
 // The Mt. Collins platform, PER SOCKET. The machine is dual-socket with
-// thirty-two DIMM connectors; this row describes ONE socket's sixteen because
-// the derivation's other input is a single CpuModelCatalogRow, and a geometry
-// carrying both sockets' slots against one processor's entitlements would state
-// a memory target for hardware the CPU row does not describe. A two-socket
-// machine is two of these rows and two processors, which this module does not
-// currently fold — a smaller claim than the machine, named rather than silently
-// averaged.
+// thirty-two DIMM connectors, and this row deliberately describes ONE socket's
+// sixteen: the derivation's other input is a single CpuModelCatalogRow, so a
+// geometry carrying both sockets' slots against one processor's entitlements
+// would state a memory target for hardware the CPU row does not describe. A
+// two-socket machine is two of these rows and two processors, and this module
+// does not currently fold that pair — a smaller claim than the machine, and
+// named rather than silently averaged.
 data mt_collins_per_socket_geometry: MemoryChannelGeometry = MemoryChannelGeometry {
   board_label: "Ampere Mt. Collins (per socket)",
   channels: derived_channel_count(
@@ -1177,11 +1192,12 @@ fn answered_candidate_geometries() -> List<MemoryChannelGeometry> {
 }
 
 // THE CANDIDATE SET THIS MODULE CAN ANSWER FOR, and what it still cannot. The
-// three boards above carry cited geometry. Still absent: the Ampere Q80-30's
-// own catalog row on the processor side of some candidate builds, and the
-// second ASRock row. Neither is minted here: a geometry invented to make a
-// derivation runnable is a fabricated input to a buying decision, worse than an
-// absent one because downstream it is indistinguishable from a cited one.
+// three boards above now carry cited geometry. What remains absent is the
+// Ampere Q80-30's own catalog row on the processor side of some candidate
+// builds, and the second ASRock row; none of them is minted here, because a
+// geometry invented to make a derivation runnable is a fabricated input to a
+// buying decision, which is worse than an absent one because it is
+// indistinguishable from a cited one downstream.
 fn answered_candidate_board_count() -> Nat {
   count(answered_candidate_geometries())
 }

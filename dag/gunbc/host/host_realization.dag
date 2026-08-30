@@ -27,11 +27,7 @@ fn container_kind_key(c: ApplicationContainerKind) -> String {
   }
 }
 
-// WHAT THIS HOST IS DOING IN THE TOPOLOGY, which is orthogonal to where its process lives. A phone
-// can be the instrument itself or a deliberate physical controller for an instrument running
-// elsewhere, and in both cases it is a native mobile process or a browser document. Keeping the
-// role separate is what lets a companion input binding be modelled without inventing a container
-// kind for it.
+data host_role_note: String = "WHAT THIS HOST IS DOING IN THE TOPOLOGY, which is orthogonal to where its process lives. A phone can be the instrument itself or a deliberate physical controller for an instrument running elsewhere, and in both cases it is a native mobile process or a browser document. Keeping the role separate is what lets a companion input binding be modelled without inventing a container kind for it."
 
 type HostRole
   = PrimaryInstrument
@@ -44,13 +40,7 @@ fn host_role_key(r: HostRole) -> String {
   }
 }
 
-// A PROCESS-LIFETIME BOOLEAN DERIVED FROM CONTAINER TYPE WAS WRONG TWICE OVER (review finding,
-// 2026-08-06), and it is deleted rather than corrected. It claimed a native mobile application owns
-// its process lifetime, which no mobile application does — the operating system suspends and kills
-// it on its own policy. And it answered the wrong question: what the product actually needs is
-// CONTINUITY of the instrument and its state, which is a capability with several independent parts,
-// not a property assigned to a container by type. A native shell makes some of those parts easier
-// to realize; it does not make them different requirements.
+data process_lifetime_boolean_removed_note: String = "A PROCESS-LIFETIME BOOLEAN DERIVED FROM CONTAINER TYPE WAS WRONG TWICE OVER (review finding, 2026-08-06), and it is deleted rather than corrected. It claimed a native mobile application owns its process lifetime, which no mobile application does — the operating system suspends and kills it on its own policy. And it answered the wrong question: what the product actually needs is CONTINUITY of the instrument and its state, which is a capability with several independent parts, not a property assigned to a container by type. A native shell makes some of those parts easier to realize; it does not make them different requirements."
 
 data continuity_polarity_note: String = "THE FOURTH FIELD WAS NAMED FOR THE FAILURE AND REQUIRED TO BE TRUE (review finding, 2026-08-06). The accepted law is that internal navigation PRESERVES the instrument and does not replay a cold start — three fields named the preservation and the fourth named the thing to avoid, and completeness then demanded all four be true, so the law read as 'preserve everything, and also throw it away'. A witness pinned false as incomplete, which made the inversion load-bearing rather than a slip someone would notice.
 
@@ -70,12 +60,7 @@ fn continuity_is_complete(c: InstrumentContinuity) -> Bool {
     && c.avoid_cold_start_replay
 }
 
-// HOW A DECIDED PROJECTION BECOMES PIXELS AND ACCESSIBILITY STRUCTURE, and the product model must
-// not know which one was chosen. This is a structural axis rather than a product one — there is no
-// vendor here to enumerate — and it is orthogonal to the container above it: a native desktop
-// process may render DOM inside a web view, and a browser document may render a WebGPU scene.
-// Keeping the two apart is what leaves the route open from today's generated DOM instrument to a
-// native or engine realization of the SAME projection, without touching roadmap semantics.
+data renderer_kind_note: String = "HOW A DECIDED PROJECTION BECOMES PIXELS AND ACCESSIBILITY STRUCTURE, and the product model must not know which one was chosen. This is a structural axis rather than a product one — there is no vendor here to enumerate — and it is orthogonal to the container above it: a native desktop process may render DOM inside a web view, and a browser document may render a WebGPU scene. Keeping the two apart is what leaves the route open from today's generated DOM instrument to a native or engine realization of the SAME projection, without touching roadmap semantics."
 
 type RendererKind
   = DomCssRenderer
@@ -96,14 +81,7 @@ data product_is_not_engine_note: String = "A BROWSER PRODUCT IS NOT ITS ENGINE, 
 
 The two are separate fields. The product is what a person installed and what a receipt panel names; the runtime engine is what actually implements the contract and is frequently what a platform limitation belongs to. They resolve independently: a Chrome observation can name Chrome exactly while its Chromium revision stays unresolved, which is the common case under a reduced User-Agent."
 
-// Every identity here is a symbolic reference to the authority that owns it, never a name string,
-// so a host is a join over real modules rather than over spellings (DESIGN §3 cite-the-symbol). The
-// unresolved arm is a NAMED variant carrying its own cause rather than a bare optional, because
-// there are several distinct reasons an identity goes unresolved and collapsing them into one
-// absent value is the state-space conflation DESIGN's failure-mode list names first: a reduced
-// User-Agent that reports a frozen literal, a probe that never asked, and a platform that publishes
-// no such identity are three different situations with three different remedies, and only the first
-// is fixed by reading UA Client Hints.
+data host_realization_identity_note: String = "Every identity here is a symbolic reference to the authority that owns it, never a name string, so a host is a join over real modules rather than over spellings (DESIGN §3 cite-the-symbol). The unresolved arm is a NAMED variant carrying its own cause rather than a bare optional, because there are several distinct reasons an identity goes unresolved and collapsing them into one absent value is the state-space conflation DESIGN's failure-mode list names first: a reduced User-Agent that reports a frozen literal, a probe that never asked, and a platform that publishes no such identity are three different situations with three different remedies, and only the first is fixed by reading UA Client Hints."
 
 type ResolvedRef
   = RefResolved { declaration: DeclarationRef }
@@ -142,13 +120,10 @@ type HostRealization {
   renderer: RendererKind
 }
 
-// A host whose revision, device and build are all resolved can carry a claim about THAT machine. A
-// host missing any of them can still carry an observation — the observation is real — but a support
-// statement derived from it is scoped to whatever was actually resolved, which in practice is
-// usually the container kind and nothing more.
-
 fn host_identity_is_exact(h: HostRealization) -> Bool {
   ref_is_resolved(r: h.platform_revision) &&
     ref_is_resolved(r: h.device_identity) &&
     ref_is_resolved(r: h.container_product_build)
 }
+
+data host_identity_exactness_note: String = "A host whose revision, device and build are all resolved can carry a claim about THAT machine. A host missing any of them can still carry an observation — the observation is real — but a support statement derived from it is scoped to whatever was actually resolved, which in practice is usually the container kind and nothing more."

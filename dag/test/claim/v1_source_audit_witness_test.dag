@@ -276,15 +276,15 @@ test fn compile_gate_keeps_infer_errors_blocking_in_stage0() -> Bool {
     && src_has(compile_stage0_path, "stage0_self_compile_refusal_message")
 }
 
-// REPOINTED AT THE SUCCESSOR, NOT RETIRED. The subject moved: 3b431f34a9e (#8406) deleted the
-// `regen_stage0` binary and `claim_executor --required-regen` took over its write and verify
-// halves, so from that commit until this one the witness read a path that no longer existed. The
-// assertion still has a home, and the negative conjunct still has an authored RED: at 268919db21e^
-// the deleted binary carried `let hard_errors: Vec<String>`, its own forked hard-diagnostic
-// classification, and #6293 removed it in favour of the shared authority. The successor is
-// stronger than the original subject: `run_required_regen` (write) and
-// `run_required_regen_fixed_point` (verify) share not just the authority but the single
-// `compile_stage0` call that consults it.
+// REPOINTED AT THE SUCCESSOR, NOT RETIRED. The subject moved rather than being removed: 3b431f34a9e
+// (#8406) deleted the `regen_stage0` binary and `claim_executor --required-regen` took over both its
+// write and its verify halves, so from that commit until this one the witness read a path that no
+// longer existed. What it asserts still has a home, and the negative conjunct still has an authored
+// RED behind it -- at 268919db21e^ the deleted binary carried `let hard_errors: Vec<String>`, its own
+// forked hard-diagnostic classification, and #6293 is the commit that removed it in favour of the
+// shared authority. The successor is stronger than the subject this witness was written against:
+// `run_required_regen` (write) and `run_required_regen_fixed_point` (verify) do not merely share the
+// authority, they share the single `compile_stage0` call that consults it.
 test fn required_regen_write_and_verify_share_compile_refusal() -> Bool {
   src_has(required_regen_host_path, "stage0_self_compile_refusal_message")
     && src_lacks(required_regen_host_path, "hard_errors: Vec")

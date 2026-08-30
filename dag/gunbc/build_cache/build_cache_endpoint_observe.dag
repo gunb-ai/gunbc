@@ -65,42 +65,13 @@ import product.placement_supply { HostIdentity }
 
 data build_cache_endpoint_observe_scope_disposition: Disposition = SingleAuthority
 
-// THIS MODULE IS THE PRODUCER TWO PROVEN-BUT-UNWIRED AUTHORITIES WERE WAITING ON.
-// gunbc.build_cache_ensure admit_ensure_build_cache_instance takes a BuildCacheServerPlacement, an
-// EndpointPathState and an ObservationCurrency; gunbc.build_cache_endpoint_observation could
-// produce none of them and said so in its own body, returning ProcTableUnreadable with the detail
-// 'shell transport available but /proc endpoint-owner walk has no host_effect producer yet'. So the
-// admission was reachable only from tests, and gunbc.host_effect_realize
-// realize_provision_build_cache rendered and restarted the unit unconditionally instead. That is
-// the rung problem the shell-to-dag census C-note names: the refusal a live CI-capacity incident
-// was fixed by is computed by a function no production caller called.
-//
-// WHAT IS HERE AND WHAT IS NOT. Everything below is a PURE DECODE of read text into the modeled
-// states -- no transport, no effect, no host. The reads themselves are performed by
-// gunbc.host_effect_realize, which is where a transport already exists, and are handed back as
-// BuildCacheEndpointReads. Splitting it that way is not tidiness: it makes every arm of the decode
-// reachable from a fixture, so the discriminating REDs run against specimen text rather than
-// against a host, and it keeps this module free of the effect graph it would otherwise have to
-// import.
-//
-// EVERY READ IS NON-MUTATING, AND THAT IS A CORRECTNESS PROPERTY RATHER THAN A COURTESY. The one
-// probe that would be easiest to reach for -- sccache --show-stats -- is refused as evidence
-// anywhere in this lane, because extdeps.cache.sccache sccache_stats_query_does_not_spawn_note
-// records by measurement that it prints a full table whether or not any server exists. It therefore
-// cannot establish absence, which is precisely the question the path axis asks. A real compile
-// WOULD establish it and is a mutation. Neither is admissible.
+data observe_is_the_missing_producer_note: String = "THIS MODULE IS THE PRODUCER TWO PROVEN-BUT-UNWIRED AUTHORITIES WERE WAITING ON. gunbc.build_cache_ensure admit_ensure_build_cache_instance takes a BuildCacheServerPlacement, an EndpointPathState and an ObservationCurrency; gunbc.build_cache_endpoint_observation could produce none of them and said so in its own body, returning ProcTableUnreadable with the detail 'shell transport available but /proc endpoint-owner walk has no host_effect producer yet'. So the admission was reachable only from tests, and gunbc.host_effect_realize realize_provision_build_cache rendered and restarted the unit unconditionally instead. That is the rung problem the shell-to-dag census C-note names: the refusal a live CI-capacity incident was fixed by is computed by a function no production caller called.\n\nWHAT IS HERE AND WHAT IS NOT. Everything below is a PURE DECODE of read text into the modeled states -- no transport, no effect, no host. The reads themselves are performed by gunbc.host_effect_realize, which is where a transport already exists, and are handed back as BuildCacheEndpointReads. Splitting it that way is not tidiness: it makes every arm of the decode reachable from a fixture, so the discriminating REDs run against specimen text rather than against a host, and it keeps this module free of the effect graph it would otherwise have to import.\n\nEVERY READ IS NON-MUTATING, AND THAT IS A CORRECTNESS PROPERTY RATHER THAN A COURTESY. The one probe that would be easiest to reach for -- sccache --show-stats -- is refused as evidence anywhere in this lane, because extdeps.cache.sccache sccache_stats_query_does_not_spawn_note records by measurement that it prints a full table whether or not any server exists. It therefore cannot establish absence, which is precisely the question the path axis asks. A real compile WOULD establish it and is a mutation. Neither is admissible."
 
 type HostRead
   = HostReadText { text: String }
   | HostReadFailed { detail: NonEmptyStr }
 
-// A FAILED READ IS NOT AN EMPTY READ, and conflating them is the empty-observation narrow DESIGN
-// names beside the absorbing fallback. find printing nothing means no process holds the socket;
-// find not running, or being denied, also prints nothing on stdout. If both arrive as the same
-// String the decoder answers 'nothing is listening' to a question it never got an answer to, and
-// the caller then unlinks a socket or starts a unit on that basis. So the runner classifies exit
-// status into these two arms before any text reaches a decoder, and every decode of HostReadFailed
-// lands on an Unavailable/Undecided arm rather than on an absence.
+data host_read_carries_failure_not_emptiness_note: String = "A FAILED READ IS NOT AN EMPTY READ, and conflating them is the empty-observation narrow DESIGN names beside the absorbing fallback. find printing nothing means no process holds the socket; find not running, or being denied, also prints nothing on stdout. If both arrive as the same String the decoder answers 'nothing is listening' to a question it never got an answer to, and the caller then unlinks a socket or starts a unit on that basis. So the runner classifies exit status into these two arms before any text reaches a decoder, and every decode of HostReadFailed lands on an Unavailable/Undecided arm rather than on an absence."
 
 type EndpointListenerRead
   = ListenerOwnerPid { pid: Nat }
@@ -115,13 +86,7 @@ type EndpointPathKind
   | PathKindNoFilesystemPath
   | PathKindUnreadable { detail: NonEmptyStr }
 
-// A TCP ENDPOINT HAS NO PATH, AND THAT IS ITS OWN ARM RATHER THAN PathKindAbsent. Absent means we
-// looked at a path and found nothing there, which licenses a bind; no-path means the question does
-// not apply to this instance's endpoint shape at all. Collapsing them would make the two
-// indistinguishable to a reader deciding whether an unlink could ever be relevant -- and
-// gunbc.build_cache_endpoint_path already refuses a stale-socket unlink over a TCP endpoint
-// positively for the same reason, so answering the path axis with a fabricated 'absent' here would
-// put the contradiction one layer earlier where nothing refuses it.
+data path_kind_no_filesystem_path_note: String = "A TCP ENDPOINT HAS NO PATH, AND THAT IS ITS OWN ARM RATHER THAN PathKindAbsent. Absent means we looked at a path and found nothing there, which licenses a bind; no-path means the question does not apply to this instance's endpoint shape at all. Collapsing them would make the two indistinguishable to a reader deciding whether an unlink could ever be relevant -- and gunbc.build_cache_endpoint_path already refuses a stale-socket unlink over a TCP endpoint positively for the same reason, so answering the path axis with a fabricated 'absent' here would put the contradiction one layer earlier where nothing refuses it."
 
 type BuildCacheEndpointReads {
   boot_id: HostRead
@@ -143,27 +108,7 @@ type BuildCacheEndpointSurvey {
 
 // --- argv construction ------------------------------------------------------
 
-// THIS IS THE CHAIN THE STEP-1 PLACEMENT RECEIPT EXECUTED BY HAND, and it is here rather than a
-// tool that answers the same question in one call because the receipt and
-// gunbc.build_cache_instance endpoint_ownership_note both specify it and both explicitly exclude
-// ss, pgrep, head -1 and lsof. An earlier revision of this module DID use ss, on the stated ground
-// that resolving a socket inode to its holder needs a glob over /proc and therefore a shell this
-// lane may not emit. THAT GROUND WAS FALSE and was refuted by execution 2026-08-21, twice
-// independently: find takes the whole walk as one argv with no shell (extdeps.shell shell.Find
-// SocketInodeHolders), so the receipt's chain was reachable the whole time and the substitution
-// bought nothing. The measurement that produced the error is worth as much as the one that
-// corrected it -- the first probe used the bracketed pattern socket:[N], find read the brackets as
-// a glob character class, it matched nothing, and 'found nothing' was accepted as confirmation that
-// the walk could not be done. A zero with no nonzero beside it in the same run is not a
-// measurement. It is recorded rather than quietly corrected because the false claim had already
-// been written into three carrier notes and a PR body as a capability boundary, and a fabricated
-// boundary is worse than a missing feature -- it tells the next person not to try.
-//
-// WHAT THE CORRECTION BUYS, concretely: the fd-holder step IS clause (3) of
-// gunbc.build_cache_endpoint_path's stale-socket observer contract -- no open descriptor anywhere
-// in /proc still resolves to the socket's inode. Under ss that clause was unreadable, so
-// EndpointStaleSocket could never be produced and srv4's stranded socket refused forever. It is
-// readable now, so the arm is produced and the admitted unlink is reachable.
+data listener_chain_is_the_receipt_chain_note: String = "THIS IS THE CHAIN THE STEP-1 PLACEMENT RECEIPT EXECUTED BY HAND, and it is here rather than a tool that answers the same question in one call because the receipt and gunbc.build_cache_instance endpoint_ownership_note both specify it and both explicitly exclude ss, pgrep, head -1 and lsof. An earlier revision of this module DID use ss, on the stated ground that resolving a socket inode to its holder needs a glob over /proc and therefore a shell this lane may not emit. THAT GROUND WAS FALSE and was refuted by execution 2026-08-21, twice independently: find takes the whole walk as one argv with no shell (extdeps.shell shell.Find SocketInodeHolders), so the receipt's chain was reachable the whole time and the substitution bought nothing. The measurement that produced the error is worth as much as the one that corrected it -- the first probe used the bracketed pattern socket:[N], find read the brackets as a glob character class, it matched nothing, and 'found nothing' was accepted as confirmation that the walk could not be done. A zero with no nonzero beside it in the same run is not a measurement. It is recorded rather than quietly corrected because the false claim had already been written into three carrier notes and a PR body as a capability boundary, and a fabricated boundary is worse than a missing feature -- it tells the next person not to try.\n\nWHAT THE CORRECTION BUYS, concretely: the fd-holder step IS clause (3) of gunbc.build_cache_endpoint_path's stale-socket observer contract -- no open descriptor anywhere in /proc still resolves to the socket's inode. Under ss that clause was unreadable, so EndpointStaleSocket could never be produced and srv4's stranded socket refused forever. It is readable now, so the arm is produced and the admitted unlink is reachable."
 
 // THE READS ARE COMMANDS, NOT WORD LISTS. Each of these was a bare argv literal whose first element
 // happened to be a tool name; they now derive from the cited coreutils authorities, and the two
@@ -245,20 +190,7 @@ fn nat_from_digits(digits: String, whence: String) -> EndpointListenerRead {
   }
 }
 
-// /proc/net/unix IS COLUMN-STRUCTURED AND proc(5) FIXES THE COLUMNS, so this decode reads fields by
-// their documented position rather than by scanning for a token: Num RefCount Protocol Flags Type
-// St Inode Path, eight fields, with St the connection state and 01 meaning LISTEN. Reading a
-// documented, versioned wire format positionally is not the positional citation DESIGN section 3
-// warns about -- that rule is about naming something the containment tree already names by where it
-// sits, and a kernel-fixed column has no name to use instead. The PATH is matched exactly, never by
-// prefix: /var/lib/ctrl/sccache-ci/server.sock and /var/lib/ctrl/sccache/server.sock are two
-// different instances on the same host (gunbc.build_cache_instance ci_cache_instance and
-// session_cache_instance), so a prefix match would classify one instance's server as the other's.
-//
-// A LINE WITH FEWER THAN EIGHT FIELDS IS UNNAMED, NOT UNMATCHED. An abstract-namespace or unnamed
-// socket has no path column at all, which is ordinary and must not be read as a malformed table --
-// it simply is not our endpoint. What IS refused is a read that failed, because then the table was
-// never seen.
+data proc_net_unix_columns_note: String = "/proc/net/unix IS COLUMN-STRUCTURED AND proc(5) FIXES THE COLUMNS, so this decode reads fields by their documented position rather than by scanning for a token: Num RefCount Protocol Flags Type St Inode Path, eight fields, with St the connection state and 01 meaning LISTEN. Reading a documented, versioned wire format positionally is not the positional citation DESIGN section 3 warns about -- that rule is about naming something the containment tree already names by where it sits, and a kernel-fixed column has no name to use instead. The PATH is matched exactly, never by prefix: /var/lib/ctrl/sccache-ci/server.sock and /var/lib/ctrl/sccache/server.sock are two different instances on the same host (gunbc.build_cache_instance ci_cache_instance and session_cache_instance), so a prefix match would classify one instance's server as the other's.\n\nA LINE WITH FEWER THAN EIGHT FIELDS IS UNNAMED, NOT UNMATCHED. An abstract-namespace or unnamed socket has no path column at all, which is ordinary and must not be read as a malformed table -- it simply is not our endpoint. What IS refused is a read that failed, because then the table was never seen."
 
 data proc_net_unix_listen_state: String = "01"
 data proc_net_unix_path_field_index: Int = 7
@@ -332,16 +264,7 @@ fn listen_inode_at_path(read: HostRead, path: NonEmptyStr) -> EndpointInodeLooku
   }
 }
 
-// THE FD-HOLDER READ ANSWERS TWO QUESTIONS AT ONCE, AND THAT IS WHY IT IS ONE READ. Asked of a
-// LISTENING socket's inode it names the endpoint owner -- the pid whose cgroup bounds every
-// cache-miss compile on the host, which is the whole placement axis. Asked of a socket that has NO
-// listen entry it answers clause (3) of the stale-socket contract: whether any process still holds
-// the socket open without listening on it. An empty result is therefore load-bearing evidence in
-// one direction and a refusal in the other, which is exactly why the read's FAILURE must be
-// distinguishable from its EMPTINESS -- see host_read_carries_failure_not_emptiness_note. find
-// exits 0 with empty stdout when nothing matches, and the runner classifies a nonzero exit as
-// HostReadFailed, so the two states arrive here as different values rather than as one empty
-// string.
+data fd_holder_is_clause_three_note: String = "THE FD-HOLDER READ ANSWERS TWO QUESTIONS AT ONCE, AND THAT IS WHY IT IS ONE READ. Asked of a LISTENING socket's inode it names the endpoint owner -- the pid whose cgroup bounds every cache-miss compile on the host, which is the whole placement axis. Asked of a socket that has NO listen entry it answers clause (3) of the stale-socket contract: whether any process still holds the socket open without listening on it. An empty result is therefore load-bearing evidence in one direction and a refusal in the other, which is exactly why the read's FAILURE must be distinguishable from its EMPTINESS -- see host_read_carries_failure_not_emptiness_note. find exits 0 with empty stdout when nothing matches, and the runner classifies a nonzero exit as HostReadFailed, so the two states arrive here as different values rather than as one empty string."
 
 fn fd_holder_of_find_output(read: HostRead) -> EndpointListenerRead {
   match read {
@@ -367,10 +290,7 @@ fn fd_holder_of_find_output(read: HostRead) -> EndpointListenerRead {
   }
 }
 
-// find prints the matching link's PATH -- /proc/<pid>/fd/<n> -- so the pid is the second segment,
-// read by splitting on / rather than by a character offset. Splitting is total: a line that does
-// not have the shape yields no digits and refuses, rather than producing a pid from whatever
-// happened to be there.
+data pid_is_the_second_segment_note: String = "find prints the matching link's PATH -- /proc/<pid>/fd/<n> -- so the pid is the second segment, read by splitting on / rather than by a character offset. Splitting is total: a line that does not have the shape yields no digits and refuses, rather than producing a pid from whatever happened to be there."
 
 fn pid_of_proc_fd_path(fd_path: String) -> EndpointListenerRead {
   match fd_path.split("/").skip(2).first() {
@@ -383,13 +303,7 @@ fn pid_of_proc_fd_path(fd_path: String) -> EndpointListenerRead {
   }
 }
 
-// `stat -c %F` PRINTS THE OBJECT TYPE AS A WORD -- `socket`, `regular file`, `directory`, `symbolic
-// link` -- so the path axis is decided by reading it rather than by a chain of test -e/-S calls.
-// One argv, one round trip, and the non-socket answer arrives NAMED: EndpointPathConflict quotes
-// the word, so an operator sees that the endpoint path is a directory rather than merely that it is
-// not a socket. A nonzero exit is absence, which is the one place in this module where a failed
-// command is a positive reading rather than an unavailability -- and it is safe exactly because
-// stat's failure to stat a path it was asked for by name means no object is there.
+data stat_format_is_the_type_word_note: String = "`stat -c %F` PRINTS THE OBJECT TYPE AS A WORD -- `socket`, `regular file`, `directory`, `symbolic link` -- so the path axis is decided by reading it rather than by a chain of test -e/-S calls. One argv, one round trip, and the non-socket answer arrives NAMED: EndpointPathConflict quotes the word, so an operator sees that the endpoint path is a directory rather than merely that it is not a socket. A nonzero exit is absence, which is the one place in this module where a failed command is a positive reading rather than an unavailability -- and it is safe exactly because stat's failure to stat a path it was asked for by name means no object is there."
 
 data stat_socket_type_word: String = "socket"
 
@@ -434,13 +348,7 @@ fn currency_of_boot_id_read(read: HostRead) -> ObservationCurrency {
   }
 }
 
-// CURRENCY IS THE BOOT ID, READ FROM THE HOST, AND THERE IS NO ObservationStale ARM PRODUCED HERE.
-// This observer performs one read pass, so every fact it returns is as current as that pass;
-// staleness is a property of a CACHED observation replayed later, and nothing in this producer
-// caches. The arm exists on the type for the consumer that will replay one, and producing it here
-// would be inventing an age this pass cannot have. What this producer CAN fail at is knowing the
-// boot id at all, and that is ObservationCurrencyUnknown -- which the unlink admission refuses
-// exactly as it refuses Stale, so an unreadable boot id costs a refusal rather than a race.
+data currency_is_read_first_and_never_derived_note: String = "CURRENCY IS THE BOOT ID, READ FROM THE HOST, AND THERE IS NO ObservationStale ARM PRODUCED HERE. This observer performs one read pass, so every fact it returns is as current as that pass; staleness is a property of a CACHED observation replayed later, and nothing in this producer caches. The arm exists on the type for the consumer that will replay one, and producing it here would be inventing an age this pass cannot have. What this producer CAN fail at is knowing the boot id at all, and that is ObservationCurrencyUnknown -- which the unlink admission refuses exactly as it refuses Stale, so an unreadable boot id costs a refusal rather than a race."
 
 // --- cgroup classification --------------------------------------------------
 
@@ -467,14 +375,7 @@ fn unit_name_of_cgroup_path(cgroup_path: NonEmptyStr) -> String {
   if leaf.ends_with(systemd_unit_suffix) { leaf } else { "" }
 }
 
-// THE LIFECYCLE IS A QUESTION ABOUT TODAY'S FLEET, ASKED AT CLASSIFICATION TIME.
-// gunbc.build_cache_instance runner_slot_lifecycle_note fixes the rule -- a slot is retired exactly
-// when it does not appear in the fleet's desired slots now, not when someone remembers it being
-// decommissioned -- so the index parsed out of the cgroup is compared against
-// gunbc_runner_slots_per_host for the host the instance names. That comparison is why the coproduct
-// can carry a slot and a lifecycle together and never half-filled: finding the slot and deciding
-// its lifecycle are the same act (review 46217). A cgroup whose unit looks like a runner slot but
-// whose index does not parse is OwnerContextUndecided, never a fabricated index.
+data runner_slot_index_is_decided_against_current_intent_note: String = "THE LIFECYCLE IS A QUESTION ABOUT TODAY'S FLEET, ASKED AT CLASSIFICATION TIME. gunbc.build_cache_instance runner_slot_lifecycle_note fixes the rule -- a slot is retired exactly when it does not appear in the fleet's desired slots now, not when someone remembers it being decommissioned -- so the index parsed out of the cgroup is compared against gunbc_runner_slots_per_host for the host the instance names. That comparison is why the coproduct can carry a slot and a lifecycle together and never half-filled: finding the slot and deciding its lifecycle are the same act (review 46217). A cgroup whose unit looks like a runner slot but whose index does not parse is OwnerContextUndecided, never a fabricated index."
 
 fn runner_slot_index_text(unit_name: String) -> String {
   match read_runner_unit_name(observed: unit_name as NonEmptyStr) {
@@ -591,13 +492,7 @@ fn owner_context_of_cgroup_read(
 
 // --- process identity -------------------------------------------------------
 
-// THE PROCESS START TIME IS FIELD 22 OF /proc/PID/stat, READ FROM AFTER THE LAST `)`. Field 2 is
-// the executable name in parentheses and it may itself contain spaces and parentheses, so splitting
-// the whole line on spaces is wrong for exactly the processes whose names are adversarial. proc(5)
-// fixes the shape: everything after the FINAL `)` is fields 3 onward, separated by single spaces,
-// so starttime is the 20th token of that tail. A tail too short to hold 20 tokens is a refusal, not
-// a zero -- a fabricated start time would make two observations of DIFFERENT processes compare
-// equal, which is the one thing ProcessIdentity exists to prevent.
+data proc_stat_starttime_note: String = "THE PROCESS START TIME IS FIELD 22 OF /proc/PID/stat, READ FROM AFTER THE LAST `)`. Field 2 is the executable name in parentheses and it may itself contain spaces and parentheses, so splitting the whole line on spaces is wrong for exactly the processes whose names are adversarial. proc(5) fixes the shape: everything after the FINAL `)` is fields 3 onward, separated by single spaces, so starttime is the 20th token of that tail. A tail too short to hold 20 tokens is a refusal, not a zero -- a fabricated start time would make two observations of DIFFERENT processes compare equal, which is the one thing ProcessIdentity exists to prevent."
 
 fn text_after_last(s: String, marker: String) -> String {
   match s.split(marker).last() {
@@ -703,27 +598,7 @@ fn endpoint_owner_observation(
   }
 }
 
-// THE PATH AXIS AND THE OWNER AXIS ARE DERIVED FROM ONE PAIR OF READS, AND THAT IS A JOIN RATHER
-// THAN A SECOND OPINION. gunbc.build_cache_endpoint_path's authority note fixes why the axes are
-// separate: EndpointStaleSocket and EndpointPathAbsent both project to EndpointAbsent on the
-// ownership axis, so ownership cannot carry the distinction actuation needs. What they must never
-// do is disagree about whether a listener exists, which is what would happen if each ran its own
-// probe. So /proc/net/unix is read once and the fd-holder walk is run once, and both axes are
-// derived from those -- the owner axis asks who, the path axis asks what is at the path.
-//
-// ALL FOUR CLAUSES OF THE EndpointStaleSocket OBSERVER CONTRACT ARE READ. Clause (1), stat reports
-// a socket. Clause (2), no LISTEN entry for the exact path in /proc/net/unix. Clause (3), no
-// /proc/*/fd link resolves to the socket's inode -- the fd-holder walk returning empty, which is
-// why its empty result had to be distinguishable from its failure. Clause (4), one boot id across
-// the pass; an unreadable boot id degrades the survey to ObservationCurrencyUnknown, which the
-// unlink admission refuses. So this producer DOES return EndpointStaleSocket, and srv4's stranded
-// socket becomes an admitted unlink rather than a permanent refusal.
-//
-// An earlier revision of this note declared clause (3) unreadable and called that a bounded
-// residue. It was not bounded and it was not a residue -- it was a false capability claim, refuted
-// by executing the find walk (listener_chain_is_the_receipt_chain_note carries the measurement).
-// The correction is recorded here rather than the sentence quietly deleted, because that claim
-// shipped in a PR body and two other carriers as a reason not to try.
+data path_and_owner_are_joined_not_duplicated_note: String = "THE PATH AXIS AND THE OWNER AXIS ARE DERIVED FROM ONE PAIR OF READS, AND THAT IS A JOIN RATHER THAN A SECOND OPINION. gunbc.build_cache_endpoint_path's authority note fixes why the axes are separate: EndpointStaleSocket and EndpointPathAbsent both project to EndpointAbsent on the ownership axis, so ownership cannot carry the distinction actuation needs. What they must never do is disagree about whether a listener exists, which is what would happen if each ran its own probe. So /proc/net/unix is read once and the fd-holder walk is run once, and both axes are derived from those -- the owner axis asks who, the path axis asks what is at the path.\n\nALL FOUR CLAUSES OF THE EndpointStaleSocket OBSERVER CONTRACT ARE READ. Clause (1), stat reports a socket. Clause (2), no LISTEN entry for the exact path in /proc/net/unix. Clause (3), no /proc/*/fd link resolves to the socket's inode -- the fd-holder walk returning empty, which is why its empty result had to be distinguishable from its failure. Clause (4), one boot id across the pass; an unreadable boot id degrades the survey to ObservationCurrencyUnknown, which the unlink admission refuses. So this producer DOES return EndpointStaleSocket, and srv4's stranded socket becomes an admitted unlink rather than a permanent refusal.\n\nAn earlier revision of this note declared clause (3) unreadable and called that a bounded residue. It was not bounded and it was not a residue -- it was a false capability claim, refuted by executing the find walk (listener_chain_is_the_receipt_chain_note carries the measurement). The correction is recorded here rather than the sentence quietly deleted, because that claim shipped in a PR body and two other carriers as a reason not to try."
 
 data socket_held_open_without_listening_detail: NonEmptyStr = "the endpoint path holds a socket with no LISTEN entry, but a process still holds an open descriptor on its inode -- so it is NOT stale. This is exactly the state clause (3) of the stale-socket contract exists to catch: unlinking here severs a live process's socket and leaves it running and unreachable. Refusing, with the holder observable in the same walk"
 
@@ -753,22 +628,7 @@ fn stale_or_held(reads: BuildCacheEndpointReads) -> EndpointPathState {
   }
 }
 
-// AN OBSERVED HOLDER IS NOT A LISTENER, AND THIS ARM IS WHERE THAT WAS CONFLATED. The owner
-// observation is built from the fd-holder walk -- some process has an open descriptor on the
-// socket's inode -- while LISTENING is a separate read, the St==01 row for this exact path in
-// /proc/net/unix. An earlier revision of endpoint_path_state answered EndpointListening from the
-// owner observation alone, so a socket held open by a process that is NOT accepting connections was
-// reported as a healthy listening endpoint. Both states refuse, so nothing was destroyed by it, but
-// they refuse for DIFFERENT reasons and only one of them is true: EnsureEndpointOccupied says 'a
-// live server is serving here, leave it alone', which is the wrong sentence to put in front of an
-// operator whose cache is unreachable precisely because nothing is serving.
-//
-// It is the state-space conflation DESIGN names, on the two reads that must stay separate for the
-// whole stale-socket contract to mean anything -- clause (2) is 'no LISTEN entry' and clause (3) is
-// 'no fd holder', and a decoder that lets either one answer for the other has collapsed a
-// four-clause contract into a two-clause one. It was found by a witness whose fixture pairs a
-// no-listen /proc/net/unix text with a non-empty holder walk, which is exactly the combination
-// neither clause alone can distinguish.
+data holder_is_not_listener_note: String = "AN OBSERVED HOLDER IS NOT A LISTENER, AND THIS ARM IS WHERE THAT WAS CONFLATED. The owner observation is built from the fd-holder walk -- some process has an open descriptor on the socket's inode -- while LISTENING is a separate read, the St==01 row for this exact path in /proc/net/unix. An earlier revision of endpoint_path_state answered EndpointListening from the owner observation alone, so a socket held open by a process that is NOT accepting connections was reported as a healthy listening endpoint. Both states refuse, so nothing was destroyed by it, but they refuse for DIFFERENT reasons and only one of them is true: EnsureEndpointOccupied says 'a live server is serving here, leave it alone', which is the wrong sentence to put in front of an operator whose cache is unreachable precisely because nothing is serving.\n\nIt is the state-space conflation DESIGN names, on the two reads that must stay separate for the whole stale-socket contract to mean anything -- clause (2) is 'no LISTEN entry' and clause (3) is 'no fd holder', and a decoder that lets either one answer for the other has collapsed a four-clause contract into a two-clause one. It was found by a witness whose fixture pairs a no-listen /proc/net/unix text with a non-empty holder walk, which is exactly the combination neither clause alone can distinguish."
 
 fn socket_owner_path_state(reads: BuildCacheEndpointReads, owner: ProcessIdentity) -> EndpointPathState {
   match reads.listen_inode {
@@ -866,14 +726,6 @@ fn survey_build_cache_endpoint(
   }
 }
 
-// A HOST THAT COULD NOT BE REACHED PRODUCES A FULL READS RECORD OF FAILURES RATHER THAN AN EARLY
-// RETURN. The temptation is to answer unreachability with one ServerPlacementUnknown at the top of
-// the producer, which is the right verdict and the wrong construction: it puts a second path
-// through the decode that no fixture exercises and that no future arm addition is forced to
-// consider. Feeding the ordinary decode a record whose every field is HostReadFailed reaches the
-// same verdict THROUGH the arms that a live refusal would take, so the unreachable case and the
-// denied-read case are one code path and stay one forever.
-
 fn unreachable_host_reads(detail: NonEmptyStr) -> BuildCacheEndpointReads {
   BuildCacheEndpointReads {
     boot_id: HostReadFailed { detail: detail },
@@ -886,3 +738,5 @@ fn unreachable_host_reads(detail: NonEmptyStr) -> BuildCacheEndpointReads {
     owner_executable: HostReadFailed { detail: detail },
   }
 }
+
+data unreachable_is_a_read_state_not_a_short_circuit_note: String = "A HOST THAT COULD NOT BE REACHED PRODUCES A FULL READS RECORD OF FAILURES RATHER THAN AN EARLY RETURN. The temptation is to answer unreachability with one ServerPlacementUnknown at the top of the producer, which is the right verdict and the wrong construction: it puts a second path through the decode that no fixture exercises and that no future arm addition is forced to consider. Feeding the ordinary decode a record whose every field is HostReadFailed reaches the same verdict THROUGH the arms that a live refusal would take, so the unreachable case and the denied-read case are one code path and stay one forever."

@@ -1,15 +1,6 @@
 module test.claim.frontend_literal_and_compile_witness_test
 
-// Migrated from src/v1/tests/claim/ordinary_frontend_observation_test.dag (dead witness tree
-// triage, dashboard node adhoc-9b80ec49-d63). That file mixed two unrelated subjects under one v1
-// import: two pure interpreter-literal-semantics tests that never actually called any v1 symbol
-// (moved here unchanged, needing no v1 import and no special source roots), and two black-box
-// compile-and-observe tests built on v1.compiler.frontend_observation's observe_ordinary_frontend,
-// which required a v1-scoped root to execute and never actually ran (its only historical consumer,
-// v1_claim_scoped_witness_batch, was deleted 2026-08-15). Those two convert directly to
-// compile_dag_rust_emit_check: a tiny valid subject must compile clean, a syntactically broken one
-// must not — the same 'runs, and reports a broken subject rather than fabricating success' claim,
-// proven through the production compile path instead of the v1-internal receipt shape.
+data frontend_literal_and_compile_migration_note: String = "Migrated from src/v1/tests/claim/ordinary_frontend_observation_test.dag (dead witness tree triage, dashboard node adhoc-9b80ec49-d63). That file mixed two unrelated subjects under one v1 import: two pure interpreter-literal-semantics tests that never actually called any v1 symbol (moved here unchanged, needing no v1 import and no special source roots), and two black-box compile-and-observe tests built on v1.compiler.frontend_observation's observe_ordinary_frontend, which required a v1-scoped root to execute and never actually ran (its only historical consumer, v1_claim_scoped_witness_batch, was deleted 2026-08-15). Those two convert directly to compile_dag_rust_emit_check: a tiny valid subject must compile clean, a syntactically broken one must not — the same 'runs, and reports a broken subject rather than fabricating success' claim, proven through the production compile path instead of the v1-internal receipt shape."
 
 // The map-literal representation, on a CONTROLLED fixture: this module
 // authors both the input and the expected key population, so the assertion

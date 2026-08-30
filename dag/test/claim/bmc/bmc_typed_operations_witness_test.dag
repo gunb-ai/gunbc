@@ -86,10 +86,11 @@ test fn failed_threshold_transport_cannot_become_threshold_unstated() -> Bool {
 }
 
 // These two took `success: Bool` and an untyped `value`/`stderr` triple until the sensor path moved
-// onto the jq invocation layer. They state the SAME two requirements against the typed jq outcome:
-// a refusal must not decay into absence, and an empty successful projection must not decay into a
-// refusal. Only the carrier changed, so they are re-enrolled rather than retired (DESIGN section 3
-// -- evidence for a surviving claim survives the representation that used to hold it).
+// onto the jq invocation layer. They now state the SAME two requirements against the typed jq
+// outcome: a refusal must not decay into absence, and an empty successful projection must not decay
+// into a refusal. The requirement is unchanged; only what carries it is, which is why these are
+// re-enrolled rather than retired (DESIGN section 3 -- evidence for a surviving claim survives the
+// representation that used to hold it).
 test fn failed_sensor_projection_cannot_become_absent() -> Bool {
   match openbmc_sensor_integer_projection_result(
     outcome: JqExecutionRefused { exit_code: 2, stderr: "malformed OpenBMC JSON" },

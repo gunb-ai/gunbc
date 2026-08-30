@@ -18,26 +18,7 @@ import gunbc.interpreter_replacement_cut {
   interpreter_cut_why_not_higher,
 }
 
-// RECAST 2026-08-28 WITH THE ROW IT WITNESSES. This suite previously asserted that the interpreter
-// ReplacementCut refuses with exactly the two open-decision cause classes. That claim no longer has
-// a subject: the carrier re-grounded its boundary relation onto declaration-grain consumer x
-// consumed-authority, the interpreter value was authored at module-or-binary grain over a
-// ten-of-125 sample, and it is therefore now a LegacyReplacementSurvey plus a registered
-// remeasurement obligation rather than an exact plan.
-//
-// THE OLD ASSERTION IS NOT PRESERVED, AND THAT IS DELIBERATE RATHER THAN A LOSS. Its subject was
-// the admission verdict of a plan that no longer exists in the exact carrier, so re-enrolling it
-// would require reconstructing the coarse plan purely to keep asserting something about it -- the
-// shape DESIGN §4b(4) forbids, where evidence is retained beside the machinery it was supposed to
-// dissolve with. What survives is the pair below: the survey's measured content stays
-// identity-bound so the historical record cannot drift, and the registration cannot be read as an
-// admitted exact plan.
-//
-// WHY THE SECOND ONE IS THE LOAD-BEARING ONE: the whole risk of keeping a coarse survey in the tree
-// is that some later consumer treats it as an exact census. RegisteredCutRemeasureRequired has no
-// arm that yields a ReplacementCut, so that misreading is unwritable rather than merely discouraged
-// -- but a control is enrolled anyway, because the arm could be widened by a later edit and the
-// cost of that edit is exactly this class of laundering.
+data interpreter_replacement_cut_witness_note: String = "RECAST 2026-08-28 WITH THE ROW IT WITNESSES. This suite previously asserted that the interpreter ReplacementCut refuses with exactly the two open-decision cause classes. That claim no longer has a subject: the carrier re-grounded its boundary relation onto declaration-grain consumer x consumed-authority, the interpreter value was authored at module-or-binary grain over a ten-of-125 sample, and it is therefore now a LegacyReplacementSurvey plus a registered remeasurement obligation rather than an exact plan.\n\nTHE OLD ASSERTION IS NOT PRESERVED, AND THAT IS DELIBERATE RATHER THAN A LOSS. Its subject was the admission verdict of a plan that no longer exists in the exact carrier, so re-enrolling it would require reconstructing the coarse plan purely to keep asserting something about it -- the shape DESIGN §4b(4) forbids, where evidence is retained beside the machinery it was supposed to dissolve with. What survives is the pair below: the survey's measured content stays identity-bound so the historical record cannot drift, and the registration cannot be read as an admitted exact plan.\n\nWHY THE SECOND ONE IS THE LOAD-BEARING ONE: the whole risk of keeping a coarse survey in the tree is that some later consumer treats it as an exact census. RegisteredCutRemeasureRequired has no arm that yields a ReplacementCut, so that misreading is unwritable rather than merely discouraged -- but a control is enrolled anyway, because the arm could be widened by a later edit and the cost of that edit is exactly this class of laundering."
 
 // ---------------------------------------------------------------------------
 // 1. The historical survey stays identity-bound.

@@ -21,23 +21,7 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-// THE CONSUMER THE LANE SHIPPED WITHOUT (review, 2026-07-30). codex_device_prompt_parse,
-// TmuxCaptureFidelity, the capture shaper and both fixtures landed with zero callers — production
-// or witness — so a parser written against real bytes was never once run against them. That is the
-// specification-without-execution trap DESIGN 5 names: it typechecked, it read plausibly, and
-// nothing established that it extracts anything.\n\nThe two fixtures are a DISCRIMINATING PAIR
-// rather than two samples, which is why this claim can be stated at all. Both are the same codex
-// prompt captured two ways on 2026-07-30: the direct rendering wraps the URL and the one-time code
-// in SGR sequences, and the tmux capture-pane rendering carries none, because tmux's renderer
-// consumed them before storing the grid. They therefore carry DIFFERENT one-time codes, being
-// separate login attempts, and the claim pins each to its own fixture so a witness that silently
-// read the wrong file cannot pass.\n\nThe escape-carrying case is the reason the brand exists, and
-// it is asserted as a real defect rather than described: parsed directly, the code comes out with
-// escape bytes still inside it. An operator pastes that, OpenAI rejects it, and nothing indicates
-// the dashboard mangled the code rather than the code being wrong. The construction wall is that
-// those bytes cannot reach the parser at all — tmux_captured_pane_rendering refuses to brand a
-// CaptureWithEscapes capture — so this file proves both that the plain path works and that the
-// unsafe path is closed.
+data device_prompt_witness_note: String = "THE CONSUMER THE LANE SHIPPED WITHOUT (review, 2026-07-30). codex_device_prompt_parse, TmuxCaptureFidelity, the capture shaper and both fixtures landed with zero callers — production or witness — so a parser written against real bytes was never once run against them. That is the specification-without-execution trap DESIGN 5 names: it typechecked, it read plausibly, and nothing established that it extracts anything.\\n\\nThe two fixtures are a DISCRIMINATING PAIR rather than two samples, which is why this claim can be stated at all. Both are the same codex prompt captured two ways on 2026-07-30: the direct rendering wraps the URL and the one-time code in SGR sequences, and the tmux capture-pane rendering carries none, because tmux's renderer consumed them before storing the grid. They therefore carry DIFFERENT one-time codes, being separate login attempts, and the claim pins each to its own fixture so a witness that silently read the wrong file cannot pass.\\n\\nThe escape-carrying case is the reason the brand exists, and it is asserted as a real defect rather than described: parsed directly, the code comes out with escape bytes still inside it. An operator pastes that, OpenAI rejects it, and nothing indicates the dashboard mangled the code rather than the code being wrong. The construction wall is that those bytes cannot reach the parser at all — tmux_captured_pane_rendering refuses to brand a CaptureWithEscapes capture — so this file proves both that the plain path works and that the unsafe path is closed."
 
 data device_prompt_plain_fixture: String = "dag/test/fixture/codex_device_login/device_auth_prompt_tmux_2026-07-30.txt"
 data device_prompt_escaped_fixture: String = "dag/test/fixture/codex_device_login/device_auth_prompt_2026-07-30.txt"
@@ -64,12 +48,7 @@ test fn tmux_captured_prompt_parses_to_a_pasteable_code() -> Bool {
   }
 }
 
-// THE WALL, stated as the thing that is unwritable rather than as a check that fires. There is no
-// way to hand an escape-carrying capture to codex_device_prompt_parse, because the only producer of
-// RenderedTerminalText refuses the fidelity that retains escapes — so this claim asserts the
-// refusal arm is reached, which is the whole of the guarantee.\n\nIt is a distinct claim from the
-// plain-path one because they fail differently. A regression that branded every capture regardless
-// of fidelity would leave the plain path green and only this one red.
+data escape_carrying_capture_cannot_reach_the_parser_note: String = "THE WALL, stated as the thing that is unwritable rather than as a check that fires. There is no way to hand an escape-carrying capture to codex_device_prompt_parse, because the only producer of RenderedTerminalText refuses the fidelity that retains escapes — so this claim asserts the refusal arm is reached, which is the whole of the guarantee.\\n\\nIt is a distinct claim from the plain-path one because they fail differently. A regression that branded every capture regardless of fidelity would leave the plain path green and only this one red."
 
 test fn escape_retaining_capture_refuses_to_render() -> Bool {
   let read = Filesystem.Read(path: device_prompt_escaped_fixture)
@@ -83,15 +62,7 @@ test fn escape_retaining_capture_refuses_to_render() -> Bool {
   }
 }
 
-// THE RED CONTROL, and it is a measurement rather than a hypothetical. It reads the escape-carrying
-// fixture and asserts that its raw text does NOT contain the bare code — because in that rendering
-// the code is split by SGR sequences, so a parser reading the stream directly extracts something an
-// operator cannot paste.\n\nWithout this conjunct the pair above proves only that one file parses
-// and another is refused, which a witness would also show if the escapes were harmless and the
-// brand pointless. Asserting the damage is what makes the wall load-bearing rather than ceremonial.
-// It also pins that the two fixtures are genuinely different renderings and not a duplicated file:
-// the plain fixture carries its code bare, the escaped one does not carry the plain fixture's code
-// at all.
+data escaped_bytes_are_a_real_defect_note: String = "THE RED CONTROL, and it is a measurement rather than a hypothetical. It reads the escape-carrying fixture and asserts that its raw text does NOT contain the bare code — because in that rendering the code is split by SGR sequences, so a parser reading the stream directly extracts something an operator cannot paste.\\n\\nWithout this conjunct the pair above proves only that one file parses and another is refused, which a witness would also show if the escapes were harmless and the brand pointless. Asserting the damage is what makes the wall load-bearing rather than ceremonial. It also pins that the two fixtures are genuinely different renderings and not a duplicated file: the plain fixture carries its code bare, the escaped one does not carry the plain fixture's code at all."
 
 test fn escape_carrying_rendering_would_yield_an_unpasteable_code() -> Bool {
   let escaped = Filesystem.Read(path: device_prompt_escaped_fixture)

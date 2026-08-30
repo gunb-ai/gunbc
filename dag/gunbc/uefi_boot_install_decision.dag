@@ -75,12 +75,7 @@ type IfaceScanRanked {
   name: NonEmptyStr
 }
 
-// DHCP-candidate ranking, grounded in the srv4 live receipt (commit e0bdb3377cf): a link-local
-// 169.254.x address on a linked NIC is EVIDENCE that DHCP was already tried there and failed (UEFI
-// self-assigns after a lease timeout), so the scan must prefer a linked NIC that is merely
-// unconfigured (0.0.0.0 = untried) over one stuck in link-local — on srv4 that is eth2 (the NIC
-// that leases on the BMC LAN), never eth0. Rank: routable configured (3) > linked untried (2) >
-// linked link-local (1) > no link (0).
+data iface_dhcp_rank_doc: String = "DHCP-candidate ranking, grounded in the srv4 live receipt (commit e0bdb3377cf): a link-local 169.254.x address on a linked NIC is EVIDENCE that DHCP was already tried there and failed (UEFI self-assigns after a lease timeout), so the scan must prefer a linked NIC that is merely unconfigured (0.0.0.0 = untried) over one stuck in link-local — on srv4 that is eth2 (the NIC that leases on the BMC LAN), never eth0. Rank: routable configured (3) > linked untried (2) > linked link-local (1) > no link (0)."
 
 fn iface_dhcp_rank(iface: UefiNetworkInterface) -> Int {
   match iface.media {

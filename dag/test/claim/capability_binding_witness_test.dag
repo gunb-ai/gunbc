@@ -61,11 +61,7 @@ import gunbc.capability_binding {
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-// The four-layer separation and the derived per-capability verdict, each law beside the control
-// that reds it. The claims are mostly about what the model REFUSES to say: that an operating system
-// supports something, that a readable sensor is a fit one, that a caller may declare a tap
-// qualified, that a degradation needs no resolvable alternative, and that a synthetic source may
-// stand in for hardware without saying so.
+data capability_binding_witness_note: String = "The four-layer separation and the derived per-capability verdict, each law beside the control that reds it. The claims are mostly about what the model REFUSES to say: that an operating system supports something, that a readable sensor is a fit one, that a caller may declare a tap qualified, that a degradation needs no resolvable alternative, and that a synthetic source may stand in for hardware without saying so."
 
 fn a_host(container: ApplicationContainerKind, renderer: RendererKind) -> HostRealization {
   HostRealization {
@@ -98,10 +94,7 @@ fn a_host(container: ApplicationContainerKind, renderer: RendererKind) -> HostRe
   }
 }
 
-// Container and renderer are independent axes, so every pairing is constructible and none is a
-// variant of website. A native desktop process rendering DOM is the first native architecture worth
-// building; a browser document rendering a WebGPU scene is a realization of the same projection.
-// Fusing the axes would make both unspellable and the product would have silently become a website.
+data orthogonality_note: String = "Container and renderer are independent axes, so every pairing is constructible and none is a variant of website. A native desktop process rendering DOM is the first native architecture worth building; a browser document rendering a WebGPU scene is a realization of the same projection. Fusing the axes would make both unspellable and the product would have silently become a website."
 
 fn witness_container_and_renderer_are_independent_axes() -> Bool {
   let native_dom = a_host(container: NativeDesktopProcess, renderer: DomCssRenderer)
@@ -115,9 +108,7 @@ fn witness_container_and_renderer_are_independent_axes() -> Bool {
     && renderer_kind_key(r: mobile_native.renderer) == "native-widget"
 }
 
-// A companion phone still runs its process somewhere. Role and container are orthogonal, so the
-// same container kind carries both roles and a companion input host is expressible without
-// inventing a container for it.
+data role_is_not_container_note: String = "A companion phone still runs its process somewhere. Role and container are orthogonal, so the same container kind carries both roles and a companion input host is expressible without inventing a container for it."
 
 fn witness_host_role_is_orthogonal_to_container() -> Bool {
   let primary = a_host(container: NativeMobileProcess, renderer: NativeWidgetRenderer)
@@ -127,9 +118,7 @@ fn witness_host_role_is_orthogonal_to_container() -> Bool {
     && container_kind_key(c: BrowserDocument) != container_kind_key(c: EmbeddedWebView)
 }
 
-// Continuity is a capability with independent parts, not a property assigned to a container by
-// type. A shell may make some parts easier to realize; it does not make them different
-// requirements, and a partial continuity is visibly partial.
+data continuity_note: String = "Continuity is a capability with independent parts, not a property assigned to a container by type. A shell may make some parts easier to realize; it does not make them different requirements, and a partial continuity is visibly partial."
 
 fn witness_continuity_is_a_capability_not_a_container_property() -> Bool {
   continuity_is_complete(c: InstrumentContinuity {
@@ -146,10 +135,7 @@ fn witness_continuity_is_a_capability_not_a_container_property() -> Bool {
     })
 }
 
-// The Chrome receipt names Chrome as its product and Chromium as its separately resolved engine.
-// The repository already ruled that a Chromium build is not a Google Chrome identity, and an
-// earlier revision of this fixture reopened exactly that conflation by pointing the container at
-// the Chromium project while carrying Chrome's version string.
+data product_engine_note: String = "The Chrome receipt names Chrome as its product and Chromium as its separately resolved engine. The repository already ruled that a Chromium build is not a Google Chrome identity, and an earlier revision of this fixture reopened exactly that conflation by pointing the container at the Chromium project while carrying Chrome's version string."
 
 fn witness_the_browser_product_is_not_its_engine() -> Bool {
   let h = a_host(container: BrowserDocument, renderer: DomCssRenderer)
@@ -238,11 +224,7 @@ fn signed_verdict_of(s: BindingStreamState) -> String {
   capability_verdict_key(v: derive_capability_verdict(o: a_signed_observation(s: s)))
 }
 
-// THE CENTRAL RED OF THIS FILE, AND IT EXISTS BECAUSE THE EARLIER MODEL FAILED IT. A caller used to
-// be able to author a coproduct arm named qualified and receive a supported verdict, while the
-// function that checked the requirement was never called by the verdict and checked only two of
-// five dimensions. These claims plant a receipt that FAILS on each dimension in turn and assert
-// that none of them qualifies — so a supported verdict is now reachable only through a total check.
+data qualification_is_minted_witness_note: String = "THE CENTRAL RED OF THIS FILE, AND IT EXISTS BECAUSE THE EARLIER MODEL FAILED IT. A caller used to be able to author a coproduct arm named qualified and receive a supported verdict, while the function that checked the requirement was never called by the verdict and checked only two of five dimensions. These claims plant a receipt that FAILS on each dimension in turn and assert that none of them qualifies — so a supported verdict is now reachable only through a total check."
 
 fn qualifies(r: SampleReceipt) -> Bool {
   match qualify_tap(r: bob_impulse_requirement_candidate, s: r) {
@@ -278,9 +260,7 @@ fn witness_red_latency_above_the_budget_cannot_qualify() -> Bool {
     && causes_contain(cs: rejection_causes(r: slow), c: LatencyAboveBudget)
 }
 
-// The three dimensions the earlier helper ignored entirely — axes, sample rate and gravity handling
-// — each reject on their own, which is what makes the check total rather than a pair of comparisons
-// wearing a requirement's name.
+data all_five_dimensions_note: String = "The three dimensions the earlier helper ignored entirely — axes, sample rate and gravity handling — each reject on their own, which is what makes the check total rather than a pair of comparisons wearing a requirement's name."
 
 fn witness_red_too_few_axes_cannot_qualify() -> Bool {
   let flat = SampleReceipt {
@@ -324,10 +304,7 @@ fn witness_red_gravity_left_in_cannot_qualify() -> Bool {
   !qualifies(r: heavy) && causes_contain(cs: rejection_causes(r: heavy), c: GravityNotHandledAsRequired)
 }
 
-// A dimension nobody measured REFUSES rather than passing, which is the whole reason unobserved is
-// distinct from zero. The web route supplies no noise floor and no axis count today, so a web
-// sample receipt cannot qualify a tap on its own — exactly the honest result, and the reason the
-// qualification must run over samples rather than being projected from a stream arm.
+data unobserved_dimension_note: String = "A dimension nobody measured REFUSES rather than passing, which is the whole reason unobserved is distinct from zero. The web route supplies no noise floor and no axis count today, so a web sample receipt cannot qualify a tap on its own — exactly the honest result, and the reason the qualification must run over samples rather than being projected from a stream arm."
 
 fn witness_red_an_unobserved_dimension_refuses_rather_than_passing() -> Bool {
   let partial = SampleReceipt {
@@ -344,8 +321,7 @@ fn witness_red_an_unobserved_dimension_refuses_rather_than_passing() -> Bool {
     && causes_contain(cs: rejection_causes(r: partial), c: RequirementDimensionUnobserved)
 }
 
-// A threshold with no negative control is sensitivity, not discrimination: nobody has checked that
-// typing stays below it. An unrun control therefore rejects, and a failed one rejects too.
+data negative_control_witness_note: String = "A threshold with no negative control is sensitivity, not discrimination: nobody has checked that typing stays below it. An unrun control therefore rejects, and a failed one rejects too."
 
 fn witness_red_a_missing_negative_control_refuses() -> Bool {
   let unrun = SampleReceipt {
@@ -373,10 +349,7 @@ fn witness_red_a_missing_negative_control_refuses() -> Bool {
     && !qualifies(r: failed)
 }
 
-// A signed twin of the candidate requirement, identical in every threshold, differing only in
-// standing. It exists so the two verdicts can be compared on ONE variable: the same receipt against
-// the same numbers reaches supported when the thresholds are signed and
-// qualified-against-provisional when they are not.
+data signed_requirement_note: String = "A signed twin of the candidate requirement, identical in every threshold, differing only in standing. It exists so the two verdicts can be compared on ONE variable: the same receipt against the same numbers reaches supported when the thresholds are signed and qualified-against-provisional when they are not."
 
 data a_signed_requirement: PhysicalImpulseRequirement = PhysicalImpulseRequirement {
   axis_count: 3,
@@ -393,10 +366,7 @@ data a_signed_requirement: PhysicalImpulseRequirement = PhysicalImpulseRequireme
   },
 }
 
-// The seam claim, and it is now a claim about DERIVATION rather than about routing: the stream
-// hands the verdict a raw requirement and a raw receipt, the verdict qualifies them itself, and
-// there is no qualified value anyone could have authored instead. A rejected measurement degrades
-// with its typed causes carried through rather than flattened to a sentence.
+data supported_needs_a_receipt_note: String = "The seam claim, and it is now a claim about DERIVATION rather than about routing: the stream hands the verdict a raw requirement and a raw receipt, the verdict qualifies them itself, and there is no qualified value anyone could have authored instead. A rejected measurement degrades with its typed causes carried through rather than flattened to a sentence."
 
 fn witness_only_a_derived_qualification_reaches_supported() -> Bool {
   signed_verdict_of(s: TapOutcome { receipt: a_receipt(peak: 3100, latency: 40) }) == "supported"
@@ -425,12 +395,7 @@ fn witness_a_rejected_tap_carries_its_typed_causes() -> Bool {
   }
 }
 
-// The two blocking bypasses this file previously could not see, planted as the RED they need. A
-// negative control whose observed idle peak sits ABOVE the discriminating floor must reject — under
-// the old shape it passed because it was named Passed. And the live candidate requirement, whose
-// own standing says its numbers are unproven, must NOT reach supported no matter how good the
-// measurement is: the same receipt that reaches supported against signed thresholds lands on the
-// provisional arm against unsigned ones, and its key is not the one the durable-claim gate reads.
+data provisional_cannot_authorize_note: String = "The two blocking bypasses this file previously could not see, planted as the RED they need. A negative control whose observed idle peak sits ABOVE the discriminating floor must reject — under the old shape it passed because it was named Passed. And the live candidate requirement, whose own standing says its numbers are unproven, must NOT reach supported no matter how good the measurement is: the same receipt that reaches supported against signed thresholds lands on the provisional arm against unsigned ones, and its key is not the one the durable-claim gate reads."
 
 fn witness_red_a_negative_control_above_the_floor_rejects() -> Bool {
   let noisy = SampleReceipt {
@@ -511,8 +476,7 @@ fn witness_red_an_unexercised_binding_is_not_a_failure() -> Bool {
          verdict_of(s: NoSamplesObserved { lifecycle: LifecycleActivationUnobserved })
 }
 
-// The two silences stay distinguishable in the neutral layer: an activated sensor that never read
-// is a different key from a stream whose activation was never observed.
+data lifecycle_carried_note: String = "The two silences stay distinguishable in the neutral layer: an activated sensor that never read is a different key from a stream whose activation was never observed."
 
 fn witness_silence_carries_its_lifecycle() -> Bool {
   binding_stream_key(s: NoSamplesObserved { lifecycle: LifecycleActivated }) !=
@@ -520,8 +484,7 @@ fn witness_silence_carries_its_lifecycle() -> Bool {
     && sample_lifecycle_key(l: LifecycleActivated) == "activated"
 }
 
-// The degradation's alternative is a REFERENCE to the declared synthetic binding, so that an
-// alternative exists is a resolvable fact rather than a sentence asserting one.
+data alternative_is_resolvable_note: String = "The degradation's alternative is a REFERENCE to the declared synthetic binding, so that an alternative exists is a resolvable fact rather than a sentence asserting one."
 
 fn degraded_alternative_module(s: BindingStreamState) -> String {
   match derive_capability_verdict(o: an_observation(s: s)) {
@@ -564,8 +527,7 @@ fn witness_red_a_reduced_host_cannot_carry_a_durable_support_claim() -> Bool {
     && fold(rows, init: false, f: (acc, r) => acc || capability_verdict_key(v: r.verdict) == "supported")
 }
 
-// The thresholds are audition candidates and say so in the type. They become a signed requirement
-// only after the three auditions run, so a reader cannot mistake reasoning for measurement.
+data provisional_note: String = "The thresholds are audition candidates and say so in the type. They become a signed requirement only after the three auditions run, so a reader cannot mistake reasoning for measurement."
 
 fn witness_the_bob_requirement_is_still_provisional() -> Bool {
   !requirement_is_signed(s: bob_impulse_requirement_candidate.standing)
@@ -627,12 +589,7 @@ fn witness_no_coverage_state_is_a_support_claim() -> Bool {
     && witness_the_coverage_roster_claims_nothing_it_has_not_earned()
 }
 
-// THREE ROSTER PREDICATES EXISTED AND NOTHING RAN THEM. coverage_targets_asserting_support and
-// deferred_targets_all_name_a_trigger were written to hold the roster honest and had zero executing
-// consumers, which is the specification-without-execution trap in its plainest form: the rule was
-// authored, the corpus was never measured against it, and a row that broke it would have landed
-// green. They execute here, over the live roster rather than over a fixture, together with the
-// receipt rule that is the actual repair for the misnamed field.
+data roster_predicates_had_no_consumer_note: String = "THREE ROSTER PREDICATES EXISTED AND NOTHING RAN THEM. coverage_targets_asserting_support and deferred_targets_all_name_a_trigger were written to hold the roster honest and had zero executing consumers, which is the specification-without-execution trap in its plainest form: the rule was authored, the corpus was never measured against it, and a row that broke it would have landed green. They execute here, over the live roster rather than over a fixture, together with the receipt rule that is the actual repair for the misnamed field."
 
 fn witness_the_coverage_roster_claims_nothing_it_has_not_earned() -> Bool {
   coverage_targets_asserting_support() == 0

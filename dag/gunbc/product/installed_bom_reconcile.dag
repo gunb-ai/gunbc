@@ -5,27 +5,27 @@ import product.placement_supply { HostIdentity }
 import extdeps.memory.types { DramModuleCatalogRow, MemoryPopulationRow }
 import extdeps.cpu.types { CpuModelCatalogRow }
 
-// WHAT A HOST IS BELIEVED TO CONTAIN IS NOT WHAT IT CONTAINS, and this module keeps the two apart.
-// An EXPECTATION is a claim someone makes about an installed bill of materials before anybody
-// reads it off the hardware; an OBSERVATION is a receipt from an instrument that looked.
-// Collapsing them is how a purchase record becomes a fleet fact, the substitution
+// WHAT A HOST IS BELIEVED TO CONTAIN IS NOT WHAT IT CONTAINS, and this module exists to keep the
+// two apart. An EXPECTATION is a claim someone makes about an installed bill of materials before
+// anybody reads it off the hardware; an OBSERVATION is a receipt from an instrument that looked.
+// Collapsing them is how a purchase record becomes a fleet fact, which is exactly the substitution
 // product.cooling_qualification warns about at the thermal boundary and this module refuses at the
 // identity boundary.
 //
 // The verdict is therefore THREE-VALUED and never two. Confirmed and Refused both require an
-// observation; the third state is that nobody looked, a coverage obligation rather than a pass. An
-// unobserved host reporting Confirmed would make the observation program's own deficit invisible
-// - the absorbing fallback in its purest form, since the frequency of a mismatch we never look for
-// is zero by construction.
+// observation; the third state is that nobody looked, and it is a coverage obligation rather than
+// a pass. An unobserved host that reported Confirmed would make the observation program's own
+// deficit invisible - the absorbing fallback in its purest form, since the frequency of a
+// mismatch we never look for is zero by construction.
 //
 // A MISMATCH IS THE POINT. The reconciliation refuses loudly, at slot grain where the instrument
 // reports slots, naming the expected part, the observed part, and where it sat. A reconciliation
-// answering "close enough" for a differing part number would report the expectation back to its
-// author.
+// that answered "close enough" for a differing part number would be reporting the expectation
+// back to its author.
 //
-// NO PRICE, NO PURCHASE PROVENANCE. Nothing here carries money, order identity, or where a part
-// was bought. Those are private facts; the public model carries what the hardware is, not what it
-// cost.
+// NO PRICE, NO PURCHASE PROVENANCE. Nothing in this module carries money, order identity, or
+// where a part was bought. Those are private facts; the public model carries what the hardware
+// is, not what it cost.
 
 type DimmSlotLocator = NonEmptyStr where brand("DimmSlotLocator")
 
@@ -44,11 +44,11 @@ type ObservedDimmSlot {
 }
 
 // TWO INSTRUMENTS, TWO GRAINS, ONE RECONCILIATION. The BMC Redfish read this fleet already
-// performed reports a population - module times stick count - with no slot locator that survives
-// into the model; dmidecode reports one record per populated slot with the firmware-assigned
-// locator. Different observations of one subject, not two subjects, so they are arms of one
-// coproduct feeding one fold. Forking the verdict per instrument would make the slot-grain answer
-// and the population-grain answer two authorities for one question.
+// performed reports a population - module times stick count - and carries no slot locator that
+// survives into the model; dmidecode reports one record per populated slot with the locator the
+// firmware assigns. These are different observations of one subject, not two subjects, so they
+// are arms of one coproduct feeding one fold. Forking the verdict per instrument would make the
+// slot-grain answer and the population-grain answer two authorities for one question.
 type HostDimmObservation
   = DimmSlotsObserved { host: HostIdentity, slots: List<ObservedDimmSlot> }
   | DimmPopulationObserved { host: HostIdentity, rows: List<MemoryPopulationRow> }
@@ -62,10 +62,11 @@ type HostDimmExpectation {
 
 // A CONTRADICTION IS A REPORT, NOT A BOOLEAN, AND NOT A FIRST REFUSAL EITHER. Older observation
 // receipts of this fleet disagree with the current expectation, so the reconciliation's product
-// must settle them: every slot whose observed part differs is named, with where it sat, what was
-// expected there, and what was found. A fold stopping at the first difference would answer "at
-// least one" - enough to fail a gate and useless for reconciling two disagreeing receipts, because
-// the second difference only appears after somebody fixes the first.
+// has to be the thing that settles them: every slot whose observed part differs is named, with
+// where it sat, what was expected there, and what was actually found. A fold that stopped at the
+// first difference would answer "at least one" - which is enough to fail a gate and useless for
+// reconciling two disagreeing receipts, because the second difference only appears after somebody
+// fixes the first.
 type DimmDiscrepancyLocation
   = AtSlot { locator: DimmSlotLocator }
   | AtPopulationGrain
@@ -83,14 +84,14 @@ type DimmCountReconcile
 
 // Refused carries BOTH axes because they are independent findings: a population can hold the right
 // count of the wrong part, the right part in the wrong count, or both, and each combination sends
-// the reader somewhere different. One cause would force the fold to pick which half of a two-part
-// contradiction to report.
+// the reader somewhere different. Collapsing them into one cause would force the fold to pick
+// which half of a two-part contradiction to report.
 //
 // Refused is reachable only from the fold below, and only when the discrepancy list is nonempty or
-// the count differs. That is an invariant of the producer, not the carrier: the record is writable
-// by hand with an empty list and a matching count, a refusal asserting nothing. It sits at
-// mechanically preventable, held by dimm_refusal_is_grounded and its witness, and climbs when the
-// substrate can seal a constructor to one fold.
+// the count differs. That is an invariant of the producer rather than of the carrier: the record
+// is writable by hand with an empty list and a matching count, which would be a refusal asserting
+// nothing. It sits at mechanically preventable, held by dimm_refusal_is_grounded and its witness,
+// and it climbs when the substrate can seal a constructor to one fold.
 type DimmReconcileVerdict
   = DimmPopulationConfirmed { host: HostIdentity, stick_count: Int }
   | DimmPopulationRefused {
@@ -330,8 +331,9 @@ fn dimm_discrepancy_report(verdicts: List<DimmReconcileVerdict>) -> List<DimmSlo
 
 // THE PROCESSOR HALF. A processor model is one string the firmware reports, so the observation
 // carries that string rather than a catalog row: turning the reported model into a catalog row is
-// a decode, and performing it before comparison would let the decoder decide the outcome. The
-// expectation carries the cited row, and its model_number is what the comparison reads.
+// a decode, and performing it before comparison would let the decoder decide the comparison's
+// outcome. The expectation carries the cited row, and its model_number is what the comparison
+// reads.
 type HostProcessorObservation
   = ProcessorModelObserved { host: HostIdentity, model_number: NonEmptyStr }
   | ProcessorObservationAbsent { host: HostIdentity, cause: NonEmptyStr }

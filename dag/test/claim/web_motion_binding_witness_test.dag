@@ -77,9 +77,7 @@ import gunbc.design.instrument_physical {
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-// The web realization's own axes, the exact providers, and the projection outward — each law beside
-// the control that reds it. The central claim stays negative: an observation that did not look
-// cannot conclude. Its specimen is the 2026-08-05 capability probe, reconstructed field by field.
+data web_motion_binding_witness_note: String = "The web realization's own axes, the exact providers, and the projection outward — each law beside the control that reds it. The central claim stays negative: an observation that did not look cannot conclude. Its specimen is the 2026-08-05 capability probe, reconstructed field by field."
 
 fn probe_subject() -> HostRealization {
   HostRealization {
@@ -112,10 +110,7 @@ fn probe_subject() -> HostRealization {
   }
 }
 
-// THE 2026-08-05 PROBE, RECONSTRUCTED FIELD BY FIELD. It ran inside an embedding context it never
-// inspected, over a secure context it did read, with DeviceMotionEvent exposed, the standard
-// permission method absent, the permission STATE never established, both feature policies unread,
-// zero events, and no recorded window.
+data discredited_probe_note: String = "THE 2026-08-05 PROBE, RECONSTRUCTED FIELD BY FIELD. It ran inside an embedding context it never inspected, over a secure context it did read, with DeviceMotionEvent exposed, the standard permission method absent, the permission STATE never established, both feature policies unread, zero events, and no recorded window."
 
 fn discredited_probe_observation() -> WebMotionObservation {
   WebMotionObservation {
@@ -143,12 +138,7 @@ fn witness_the_discredited_probe_resolves_nothing() -> Bool {
   }
 }
 
-// SIX UNREAD AXES, NOT FIVE — and the sixth is the one the earlier model hid. Splitting
-// permission-method exposure from permission STATE moved this count, because the probe observed
-// that the standard asking route was absent and never established whether readings were actually
-// permitted. The old carrier counted that as a fully read axis, so the count said decisive while
-// the prose said unknown. The count now agrees with the prose: browsing context, visibility, focus,
-// both feature policies, and the permission state.
+data six_not_five_note: String = "SIX UNREAD AXES, NOT FIVE — and the sixth is the one the earlier model hid. Splitting permission-method exposure from permission STATE moved this count, because the probe observed that the standard asking route was absent and never established whether readings were actually permitted. The old carrier counted that as a fully read axis, so the count said decisive while the prose said unknown. The count now agrees with the prose: browsing context, visibility, focus, both feature policies, and the permission state."
 
 fn witness_the_probe_left_six_axes_unread_and_no_window() -> Bool {
   let o = discredited_probe_observation()
@@ -187,11 +177,7 @@ fn reachability_of(s: MotionStreamState) -> String {
   motion_reachability_key(r: derive_reachability(o: observation_with_stream(s: s)))
 }
 
-// A REFUSED CONNECTION DESCRIBES ONE ATTEMPT, NOT A MACHINE — and an earlier revision derived
-// unreachable from it while this file's own note said the opposite. The note had the stronger
-// reading and the code now matches it: NotReadableError leaves hardware reachability unresolved. A
-// binding-attempt verdict may still say that THIS attempt was refused, which is a different
-// question at a different grain.
+data refused_connection_note: String = "A REFUSED CONNECTION DESCRIBES ONE ATTEMPT, NOT A MACHINE — and an earlier revision derived unreachable from it while this file's own note said the opposite. The note had the stronger reading and the code now matches it: NotReadableError leaves hardware reachability unresolved. A binding-attempt verdict may still say that THIS attempt was refused, which is a different question at a different grain."
 
 fn witness_only_named_obstacles_are_unreachable() -> Bool {
   reachability_of(s: StreamInterfaceNotExposed) == "unreachable"
@@ -274,9 +260,7 @@ fn witness_red_activation_without_a_reading_is_not_success() -> Bool {
     && sensor_lifecycle_key(s: SensorActivated) == "activated"
 }
 
-// The provider is the exact interface, not a family. GenericSensorApi could not say which
-// constructor was tried nor whether gravity would have been included; the three concrete sensors
-// differ on precisely that, and only one of them suits a knock detector.
+data exact_provider_witness_note: String = "The provider is the exact interface, not a family. GenericSensorApi could not say which constructor was tried nor whether gravity would have been included; the three concrete sensors differ on precisely that, and only one of them suits a knock detector."
 
 fn witness_the_provider_is_an_exact_interface() -> Bool {
   web_provider_key(p: DeviceMotionEventProvider) == "DeviceMotionEvent"
@@ -288,20 +272,14 @@ fn witness_the_provider_is_an_exact_interface() -> Bool {
     && accelerometer_interface_name(i: LinearAccelerationSensor) == "LinearAccelerationSensor"
 }
 
-// The Accelerometer extension itself says it is maintained for existing deployments and points new
-// projects at Device Orientation and Motion for cross-engine support. That is why both routes are
-// probed rather than either: DeviceMotion for breadth, LinearAccelerationSensor because a Generic
-// Sensor lifecycle names its failure where a silent event stream names nothing.
+data upstream_route_note: String = "The Accelerometer extension itself says it is maintained for existing deployments and points new projects at Device Orientation and Motion for cross-engine support. That is why both routes are probed rather than either: DeviceMotion for breadth, LinearAccelerationSensor because a Generic Sensor lifecycle names its failure where a silent event stream names nothing."
 
 fn witness_the_upstream_names_device_motion_the_cross_engine_route() -> Bool {
   maintained_for_existing_deployments
     && upstream_recommends_device_orientation_for_new_projects
 }
 
-// THE THREE FABRICATIONS THIS CONTROL CLOSES. No events must not become an activation; an
-// unmeasured frequency must not become zero hertz; an unmeasured noise floor must not become a
-// perfect signal. The neutral silence arm now carries a lifecycle that says activation was never
-// observed, and the sample receipt carries unobserved on every axis the web route does not supply.
+data projection_honesty_note: String = "THE THREE FABRICATIONS THIS CONTROL CLOSES. No events must not become an activation; an unmeasured frequency must not become zero hertz; an unmeasured noise floor must not become a perfect signal. The neutral silence arm now carries a lifecycle that says activation was never observed, and the sample receipt carries unobserved on every axis the web route does not supply."
 
 fn witness_the_web_stream_projects_without_inventing_facts() -> Bool {
   binding_stream_key(s: project_binding_stream(o: discredited_probe_observation())) ==
@@ -326,10 +304,7 @@ fn witness_red_an_unmeasured_frequency_is_not_zero_hertz() -> Bool {
        }
 }
 
-// The RED that keeps readability from becoming fitness across the seam: no web stream arm projects
-// to a qualified tap. A browser reports events and samples; whether a knock was distinguishable is
-// a judgement made over those samples against a declared requirement, and the web receipt leaves
-// the noise floor and axis count unobserved, so it could not qualify even if it tried.
+data web_cannot_self_qualify_note: String = "The RED that keeps readability from becoming fitness across the seam: no web stream arm projects to a qualified tap. A browser reports events and samples; whether a knock was distinguishable is a judgement made over those samples against a declared requirement, and the web receipt leaves the noise floor and axis count unobserved, so it could not qualify even if it tried."
 
 fn witness_red_no_web_arm_can_project_to_a_qualified_tap() -> Bool {
   binding_stream_key(s: project_binding_stream(o: observation_with_stream(
@@ -337,10 +312,7 @@ fn witness_red_no_web_arm_can_project_to_a_qualified_tap() -> Bool {
     "tap-qualified"
 }
 
-// An observation can be complete and still be impossible, and the earlier derivation read only the
-// stream. Readings under an insecure context, a blocked policy, or a denied permission are each
-// refused by the cited contracts, so they are located contradictions rather than verdicts — named
-// separately because their remedies differ.
+data contradiction_note: String = "An observation can be complete and still be impossible, and the earlier derivation read only the stream. Readings under an insecure context, a blocked policy, or a denied permission are each refused by the cited contracts, so they are located contradictions rather than verdicts — named separately because their remedies differ."
 
 fn contradicted_observation(c: ObservationContradiction) -> WebMotionObservation {
   let base = observation_with_stream(s: StreamReadingsObserved { count: 10, peak_milli_m_per_s2: 3000, sample_interval_ms: 16 })
@@ -395,23 +367,13 @@ fn is_contradicted(o: WebMotionObservation) -> Bool {
   }
 }
 
-// THE CLAIM THAT WAS MISSING. The old control proved admit_web_observation NOTICES a contradiction;
-// nothing proved a contradicted observation could not reach a verdict, and both consumers matched
-// the stream arm alone. So this asserts the consumers directly: a contradicted record derives
-// unresolved rather than reachable, and projects to unobserved rather than to samples — the two
-// routes a caller who never called admission would have taken.
+data admission_on_path_note: String = "THE CLAIM THAT WAS MISSING. The old control proved admit_web_observation NOTICES a contradiction; nothing proved a contradicted observation could not reach a verdict, and both consumers matched the stream arm alone. So this asserts the consumers directly: a contradicted record derives unresolved rather than reachable, and projects to unobserved rather than to samples — the two routes a caller who never called admission would have taken."
 
 fn reachability_of_observation(o: WebMotionObservation) -> String {
   motion_reachability_key(r: derive_reachability(o: o))
 }
 
-// THE SAME BLOCKED POLICY IS A CONTRADICTION FOR ONE PROVIDER AND SILENCE FOR ANOTHER, which is
-// what makes the per-provider derivation a real distinction rather than a widened check.
-// devicemotion dispatches only when both named permissions are granted, so readings under a blocked
-// gyroscope policy are impossible there; a LinearAccelerationSensor is admitted by its own feature
-// and a gyroscope policy says nothing about it. The fixture for the gyroscope contradiction
-// therefore switches the provider, and this control asserts BOTH directions — otherwise the check
-// would pass by being applied everywhere.
+data gyroscope_is_per_provider_note: String = "THE SAME BLOCKED POLICY IS A CONTRADICTION FOR ONE PROVIDER AND SILENCE FOR ANOTHER, which is what makes the per-provider derivation a real distinction rather than a widened check. devicemotion dispatches only when both named permissions are granted, so readings under a blocked gyroscope policy are impossible there; a LinearAccelerationSensor is admitted by its own feature and a gyroscope policy says nothing about it. The fixture for the gyroscope contradiction therefore switches the provider, and this control asserts BOTH directions — otherwise the check would pass by being applied everywhere."
 
 fn readings_with_blocked_gyroscope(p: WebMotionProvider) -> WebMotionObservation {
   let base = observation_with_stream(s: StreamReadingsObserved { count: 10, peak_milli_m_per_s2: 3000, sample_interval_ms: 16 })

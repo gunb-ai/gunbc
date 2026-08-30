@@ -20,13 +20,7 @@ import extdeps.languages.css.values { css_px, CssLength, Rem }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-// S1 selective-spectacle receipts (operator recalibration 2026-08-02), each a decided law with its
-// RED control: the budget table grants energy to focus only; a second ordinary focal subject in one
-// region is a typed refusal while Critical coexists; emission refuses for the wrong role, outside
-// the envelope, and without a non-emission discriminator (so reduced-motion/no-emission renderings
-// keep every distinction by construction); attraction is bounded and borrows the register's one
-// spring rather than minting a second; and the principles carrier holds the revised thesis with the
-// three new laws carried by real salience declarations.
+data salience_witness_note: String = "S1 selective-spectacle receipts (operator recalibration 2026-08-02), each a decided law with its RED control: the budget table grants energy to focus only; a second ordinary focal subject in one region is a typed refusal while Critical coexists; emission refuses for the wrong role, outside the envelope, and without a non-emission discriminator (so reduced-motion/no-emission renderings keep every distinction by construction); attraction is bounded and borrows the register's one spring rather than minting a second; and the principles carrier holds the revised thesis with the three new laws carried by real salience declarations."
 
 fn fx_emission_ok() -> EmissionSpec {
   EmissionSpec {
@@ -151,14 +145,7 @@ test fn witness_red_viewport_scale_attraction_is_outside_the_envelope() -> Bool 
   !attraction_envelope(f: evasive)
 }
 
-// THE DISCRIMINATING PART IS THE NUMBER, NOT THE SIZE. Both controls below satisfy EVERY numeric
-// constraint in their envelope and differ from an accepted specimen ONLY in unit, so they cannot
-// pass by being small nor fail by being large — the sole reason either refuses is that a rem
-// magnitude is not comparable to a px bound. A corona of 40rem satisfies 40 <= 48 and 40 > 4 while
-// denoting roughly 640px; an attraction field of 12rem travel inside a 150rem radius satisfies all
-// four numeric bounds; before the unit check both were admitted. The emission arm additionally pins
-// WHICH refusal fires: EmissionUnitNotComparable carrying both offending unit tokens, never
-// EmissionOutsideEnvelope, whose corona_radius_px field would report a rem magnitude under a px name.
+// THE DISCRIMINATING PART IS THE NUMBER, NOT THE SIZE. Both controls below are authored to satisfy EVERY numeric constraint in their envelope and differ from an accepted specimen ONLY in unit, so they cannot pass by being small and cannot fail by being large — the sole reason either refuses is that a rem magnitude is not comparable to a px bound. A corona of 40rem satisfies 40 <= 48 and 40 > 4 while denoting roughly 640px, and an attraction field of 12rem travel inside a 150rem radius satisfies every one of the four numeric bounds; before the unit check both were admitted. The emission arm additionally pins WHICH refusal fires: EmissionUnitNotComparable carrying both offending unit tokens, never EmissionOutsideEnvelope, whose corona_radius_px field would report a rem magnitude under a px name.
 test fn witness_red_rem_emission_is_not_comparable_to_a_px_bound() -> Bool {
   let rem_spec = EmissionSpec {
     core_radius: CssLength { n: 4, unit: Rem },

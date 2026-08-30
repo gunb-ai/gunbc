@@ -144,12 +144,7 @@ type DetentTravel
   = NoTravel
   | Travel { token: ScaleToken }
 
-// A detent carries POSITION and how it is reached, and deliberately NOT a duration — the word means
-// a resting notch, not a movement. The weight of an edge lives on the BehaviorRow that causes it
-// (element × verb × response × timing), so each fact has exactly one home: the table says where the
-// control sits, the row says how heavily it gets there. Putting an entry timing here as well would
-// have been the same fact in two places, and the usual outcome of that is a table and a row
-// disagreeing while both look authoritative.
+data detent_carries_position_only_note: String = "A detent carries POSITION and how it is reached, and deliberately NOT a duration — the word means a resting notch, not a movement. The weight of an edge lives on the BehaviorRow that causes it (element × verb × response × timing), so each fact has exactly one home: the table says where the control sits, the row says how heavily it gets there. Putting an entry timing here as well would have been the same fact in two places, and the usual outcome of that is a table and a row disagreeing while both look authoritative."
 
 type Detent {
   state: String
@@ -159,15 +154,9 @@ type Detent {
   turn_deg: Int
 }
 
-// turn_deg is the ROTATION axis of a position (remodel W1e, 2026-07-24: the disclosure mark turns
-// 90 degrees at its open detent). Zero emits nothing — the wire appends ' rotate(Ndeg)' only when
-// the detent actually turns — so every pre-existing detent's emission is byte-identical and the
-// site digests hold; a detent that turns is the only one that says so.
+data detent_turn_axis_note: String = "turn_deg is the ROTATION axis of a position (remodel W1e, 2026-07-24: the disclosure mark turns 90 degrees at its open detent). Zero emits nothing — the wire appends ' rotate(Ndeg)' only when the detent actually turns — so every pre-existing detent's emission is byte-identical and the site digests hold; a detent that turns is the only one that says so."
 
-// The three positions every control shares, so a second control cannot quietly invent its own
-// throw. Rest at unity, hover risen by the lift token at unity scale, pressed travelling down and
-// compressing. A surface adds only the positions that are ITS OWN — a latched in-flight state, a
-// terminal — by extending this list rather than restating it.
+data house_pointer_detents_note: String = "The three positions every control shares, so a second control cannot quietly invent its own throw. Rest at unity, hover risen by the lift token at unity scale, pressed travelling down and compressing. A surface adds only the positions that are ITS OWN — a latched in-flight state, a terminal — by extending this list rather than restating it."
 
 fn house_pointer_detents(rest_state: String, hover_state: String, pressed_state: String) -> List<Detent> {
   [
@@ -194,14 +183,7 @@ type DetentEdge {
   to_state: String
 }
 
-// Two faults, kept apart, because the first cut of this check collapsed them and fell open. It read
-// each endpoint's transform through a lookup that returned an empty string for an undeclared state,
-// then compared the two strings — so an edge naming TWO states that do not exist compared
-// equal-to-equal and was reported as a coinciding-position defect, while an edge naming ONE
-// nonexistent state compared '' against a real transform and was reported as FINE. A typo in an
-// edge row would have gone green. So an undeclared endpoint is now its own fault carrying the name
-// that failed to resolve, and coincidence is only ever reported between two positions that actually
-// exist.
+data detent_edge_fault_note: String = "Two faults, kept apart, because the first cut of this check collapsed them and fell open. It read each endpoint's transform through a lookup that returned an empty string for an undeclared state, then compared the two strings — so an edge naming TWO states that do not exist compared equal-to-equal and was reported as a coinciding-position defect, while an edge naming ONE nonexistent state compared '' against a real transform and was reported as FINE. A typo in an edge row would have gone green. So an undeclared endpoint is now its own fault carrying the name that failed to resolve, and coincidence is only ever reported between two positions that actually exist."
 
 type DetentEdgeFault
   = EndpointUndeclared { state: String }

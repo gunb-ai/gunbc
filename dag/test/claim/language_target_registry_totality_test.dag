@@ -48,19 +48,7 @@ import gunbc.language_target_registry {
   registry_integrity_holds,
 }
 
-// Controls for the registry ACCOUNTING ratchet and the separate INTEGRITY wall — the
-// no-invisible-remainder property, not a completion claim. The ratchet's whole content is that
-// every declared surface is either joined to a registered subject or reported as an exact
-// unidentified row, as an EXACT equality; the wall's is that malformed join input is exactly zero.
-// They are asserted separately because summing them is precisely what made the predecessor
-// undiscriminating: it compared total violations to census rows with a <=, which held for any
-// census and would have held against an empty violation list. WHAT NO ASSERTION HERE ESTABLISHES,
-// restated from the registry's own maximum-conclusion row because a witness is exactly where that
-// gets forgotten: the DECLARED population is not proven complete against the repository, and a
-// declared row is not proven to name a real surface — three census rows were found on 2026-08-04 to
-// be file paths transcribed as module paths. All six authorities are hand-declared, so a
-// target-bearing surface nobody wrote a row for is invisible here. These are ratchet controls; none
-// of them is completion evidence for any target.
+data registry_totality_witness_note: String = "Controls for the registry ACCOUNTING ratchet and the separate INTEGRITY wall — the no-invisible-remainder property, not a completion claim. The ratchet's whole content is that every declared surface is either joined to a registered subject or reported as an exact unidentified row, as an EXACT equality; the wall's is that malformed join input is exactly zero. They are asserted separately because summing them is precisely what made the predecessor undiscriminating: it compared total violations to census rows with a <=, which held for any census and would have held against an empty violation list. WHAT NO ASSERTION HERE ESTABLISHES, restated from the registry's own maximum-conclusion row because a witness is exactly where that gets forgotten: the DECLARED population is not proven complete against the repository, and a declared row is not proven to name a real surface — three census rows were found on 2026-08-04 to be file paths transcribed as module paths. All six authorities are hand-declared, so a target-bearing surface nobody wrote a row for is invisible here. These are ratchet controls; none of them is completion evidence for any target."
 
 test fn registry_census_is_nonempty_and_accounting_is_exact() -> Bool {
   registry_accounting_total() && surface_census_row_count() > 0
@@ -70,11 +58,7 @@ test fn registry_integrity_wall_holds_with_zero_malformed_rows() -> Bool {
   registry_integrity_holds() && registry_integrity_violation_count() == 0
 }
 
-// The exact equality restated on the live registry: identified plus unidentified equals the census,
-// with both parts strictly positive. Strict positivity on BOTH sides is what stops either arm from
-// being vacuously satisfied — an all-unidentified census would make the join look total while
-// joining nothing, and an all-identified one would hide the remainder the ratchet exists to
-// display.
+data accounting_partition_note: String = "The exact equality restated on the live registry: identified plus unidentified equals the census, with both parts strictly positive. Strict positivity on BOTH sides is what stops either arm from being vacuously satisfied — an all-unidentified census would make the join look total while joining nothing, and an all-identified one would hide the remainder the ratchet exists to display."
 
 test fn identified_and_unidentified_partition_the_census_exactly() -> Bool {
   identified_surface_count() + unidentified_surface_count() == surface_census_row_count()
@@ -95,17 +79,7 @@ test fn bash_vocabulary_surface_joins_the_bash_subject() -> Bool {
   }
 }
 
-// THIS TEST'S PREMISE INVERTED WHEN THE SUBJECTS LANDED, AND BOTH ARMS ARE KEPT LIVE. It previously
-// asserted that extdeps.languages.typescript.program is visibly UNIDENTIFIED, which was true and
-// worth pinning while Bash was the only registered subject — the TypeScript target vocabulary was
-// confined by a lens around a module prefix with no upstream authority behind it. TypeScript is now
-// a registered, cited subject, so that surface resolves, and asserting it is still unidentified
-// would be asserting the registry had not done its job. The assertion is therefore re-aimed at the
-// join it now makes. The unidentified arm is NOT retired with it — DESIGN section 4b's dissolution
-// rule keeps the discriminating control enrolled when a class climbs — so machine_code takes over
-// that duty in the test below, and it is a better control than the old one because its unidentified
-// status is PERMANENT until the surface is decomposed, rather than pending someone authoring a
-// citation.
+data vocabulary_surface_premise_inversion_note: String = "THIS TEST'S PREMISE INVERTED WHEN THE SUBJECTS LANDED, AND BOTH ARMS ARE KEPT LIVE. It previously asserted that extdeps.languages.typescript.program is visibly UNIDENTIFIED, which was true and worth pinning while Bash was the only registered subject — the TypeScript target vocabulary was confined by a lens around a module prefix with no upstream authority behind it. TypeScript is now a registered, cited subject, so that surface resolves, and asserting it is still unidentified would be asserting the registry had not done its job. The assertion is therefore re-aimed at the join it now makes. The unidentified arm is NOT retired with it — DESIGN section 4b's dissolution rule keeps the discriminating control enrolled when a class climbs — so machine_code takes over that duty in the test below, and it is a better control than the old one because its unidentified status is PERMANENT until the surface is decomposed, rather than pending someone authoring a citation."
 
 test fn typescript_vocabulary_surface_resolves_to_the_typescript_subject() -> Bool {
   match resolve_target_for_surface(
@@ -156,25 +130,10 @@ type GroundingArmsSeen {
   project: Bool
 }
 
-// This asserts what the test's NAME claims — that both grounding arms are inhabited — and is true
-// at 3 targets or 300. It previously asserted registered_target_count() == 3, a literal copied from
-// the tree standing in for the property, which DESIGN section 5 names directly: automating that
-// literal collapses it to measure() == measure(), so the manual update was the test's entire
-// content, and it would have gone red the moment the registry grew rather than when the property
-// broke. Caught by fierce-heron-301 on the stacked PR and by cursor review 48132 here.
+data both_arms_oracle_note: String = "This asserts what the test's NAME claims — that both grounding arms are inhabited — and is true at 3 targets or 300. It previously asserted registered_target_count() == 3, a literal copied from the tree standing in for the property, which DESIGN section 5 names directly: automating that literal collapses it to measure() == measure(), so the manual update was the test's entire content, and it would have gone red the moment the registry grew rather than when the property broke. Caught by fierce-heron-301 on the stacked PR and by cursor review 48132 here."
 
-// Requirement D's controls, and the property they pin is DIRECTION rather than content: a
-// projection FROM a registered subject is total, while a lookup INTO the registry by a legacy key
-// REFUSES when nothing claims it. That asymmetry is what demotes LanguageId from an identity to an
-// attribute. THIS NOTE PREVIOUSLY SAID 'rust, go, python and typescript all resolve nowhere,
-// because none of them has a canonical subject yet' — true when written, false as of the D0
-// registrations, and it contradicted the rewritten assertions a few lines below in this same file
-// (caught by review 48113). All four now resolve, because all four are registered subjects carrying
-// a legacy id. The refusal arm is NOT weakened by that: it is now exercised by two live cases
-// instead of a vacuous one — an id no projection claims at all, and the sharper case of 'bash',
-// which refuses even though GNU Bash is a fully registered, cited subject, because std.languages
-// has no bash row. A key that cannot name a registered subject is definitionally not that subject's
-// identity, and that is now demonstrated on the corpus rather than asserted from an empty table.
+data projection_direction_note: String = "Requirement D's controls, and the property they pin is DIRECTION rather than content: a projection FROM a registered subject is total, while a lookup INTO the registry by a legacy key REFUSES when nothing claims it. That asymmetry is what demotes LanguageId from an identity to an attribute. THIS NOTE PREVIOUSLY SAID 'rust, go, python and typescript all resolve nowhere, because none of them has a canonical subject yet' — true when written, false as of the D0 registrations, and it contradicted the rewritten assertions a few lines below in this same file (caught by review 48113). All four now resolve, because all four are registered subjects carrying a legacy id. The refusal arm is NOT weakened by that: it is now exercised by two live cases instead of a vacuous one — an id no projection claims at all, and the sharper case of 'bash', which refuses even though GNU Bash is a fully registered, cited subject, because std.languages has no bash row. A key that cannot name a registered subject is definitionally not that subject's identity, and that is now demonstrated on the corpus rather than asserted from an empty table."
+
 
 test fn projection_from_registered_subject_is_total() -> Bool {
   match bash_display_name() {
@@ -202,16 +161,7 @@ test fn every_projection_hangs_off_a_registered_subject() -> Bool {
   every_projection_subject_is_registered()
 }
 
-// THE SHARPEST AVAILABLE STATEMENT OF 'A LanguageId IS NOT AN IDENTITY', and it only became
-// provable on a real row when the subjects landed. This test used to look up 'rust' and assert it
-// REFUSED — true only because no projection claimed any legacy id yet, so it was really asserting
-// the projection table was empty. Now rust IS claimed, and asserting refusal would assert the
-// projection table is still broken. The two assertions below state the actual direction law from
-// language_target_projection_law instead, and the second is the load-bearing one: GNU Bash is a
-// fully registered, cited subject, and looking up 'bash' STILL REFUSES — because std.languages
-// carries rust, go, python and typescript rows and no bash row, so the target this repository emits
-// most has no legacy id at all. A key that cannot name a registered subject is definitionally not
-// that subject's identity. That is a live corpus fact doing the work a fixture used to fake.
+data legacy_id_direction_note: String = "THE SHARPEST AVAILABLE STATEMENT OF 'A LanguageId IS NOT AN IDENTITY', and it only became provable on a real row when the subjects landed. This test used to look up 'rust' and assert it REFUSED — true only because no projection claimed any legacy id yet, so it was really asserting the projection table was empty. Now rust IS claimed, and asserting refusal would assert the projection table is still broken. The two assertions below state the actual direction law from language_target_projection_law instead, and the second is the load-bearing one: GNU Bash is a fully registered, cited subject, and looking up 'bash' STILL REFUSES — because std.languages carries rust, go, python and typescript rows and no bash row, so the target this repository emits most has no legacy id at all. A key that cannot name a registered subject is definitionally not that subject's identity. That is a live corpus fact doing the work a fixture used to fake."
 
 test fn claimed_legacy_language_id_projects_to_its_subject() -> Bool {
   match lookup_language_id(language_id: "rust") {

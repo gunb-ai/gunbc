@@ -5,30 +5,7 @@ import std.types { String }
 import gunbc.roadmap_model { RoadmapNodeId }
 import gunbc.seed_growth { SeedGrowthJustification }
 
-// Seed-growth obligation for the discriminating evidence behind the
-// qualified-callee-in-pipe-position repair. Homed beside the obligation it declares rather than
-// inside gunbc.seed_growth_admission, which owns the ROSTER and the join and would otherwise
-// accumulate every lane's rows in the module that adjudicates them.
-//
-// WHAT THE CHANGE WAS, since the growth is defensible only relative to it: v1.compiler.parse
-// parse_pipe_rhs consumed exactly one identifier after the pipe arrow, so a qualified callee in
-// pipe position had its ROOT SEGMENT lowered as a method on the receiver — remaining segments
-// folding on top as field access — while the same callee in ordinary call position resolved
-// correctly. One authored denotation, two answers, decided by syntactic position. The repair
-// consumes the whole dotted path and hands the leading segments to the qualifier spine that
-// v1.compiler.infer's qualified_direct_call arm already reads, so both positions reach ONE
-// resolution path.
-//
-// WHY THE TEST FILE IS ENUMERATED: seed_growth_forward_freeze_policy_note names 'hand-written
-// src/v1 Rust' with exactly two exclusions — deleting existing Rust, and netting deletions against
-// additions — and neither exempts tests. gunbc.stage0_rust_source_lifecycle_scaffold declares
-// rust_source_prefix_stage0_test as 'src/v1/stage0/tests/' and lists it among the discovery prefix
-// hints, so the stage0 test tree is a DECLARED Rust source class. Precedent in shape:
-// gunbc.parse_refusal_location_seed_growth, authored one lane earlier for the same reason.
-//
-// NO NEW UNCITABLE ITEM: all seven additions are free functions, each nameable as a DeclarationRef
-// with WholeDeclaration. No struct, no impl block, so none of the impl-method class
-// gunbc.seed_growth_admission reports separately in seed_growth_uncitable_item_keys.
+data qualified_pipe_callee_seed_growth_note: String = "Seed-growth obligation for the discriminating evidence behind the qualified-callee-in-pipe-position repair. It is homed here, beside the obligation it declares, rather than inside gunbc.seed_growth_admission, which owns the ROSTER and the join and would otherwise accumulate every lane's rows in the module that adjudicates them.\n\nWHAT THE CHANGE ITSELF WAS, because the growth is only defensible relative to it: v1.compiler.parse parse_pipe_rhs consumed exactly one identifier after the pipe arrow, so a qualified callee in pipe position had its ROOT SEGMENT lowered as a method on the receiver -- the remaining segments folding on top as field access -- while the same callee in ordinary call position resolved correctly. One authored denotation, two answers, decided by syntactic position. The repair consumes the whole dotted path and hands the leading segments to the qualifier spine that v1.compiler.infer's qualified_direct_call arm already reads, so both positions reach ONE resolution path rather than two.\n\nWHY THE TEST FILE IS ENUMERATED AT ALL: seed_growth_forward_freeze_policy_note names 'hand-written src/v1 Rust' with exactly two exclusions -- deleting existing Rust, and netting deletions against additions -- and neither exempts tests. gunbc.stage0_rust_source_lifecycle_scaffold declares rust_source_prefix_stage0_test as 'src/v1/stage0/tests/' and lists it among the discovery prefix hints, so the stage0 test tree is a DECLARED Rust source class rather than an unclassified one. The precedent this row follows in shape is gunbc.parse_refusal_location_seed_growth, authored one lane earlier for the same reason.\n\nNO NEW UNCITABLE ITEM: all seven additions are free functions, so each is nameable as a DeclarationRef with WholeDeclaration. No struct, no impl block, and therefore none of the impl-method class gunbc.seed_growth_admission reports separately in seed_growth_uncitable_item_keys."
 
 data qualified_pipe_callee_seed_growth_justification: SeedGrowthJustification = SeedGrowthJustification {
   hand_authored_declarations: [

@@ -1,5 +1,6 @@
 module gunbc.stage0_rust_source_lifecycle_scaffold
 
+
 import std.dissolution { DissolutionCondition, unbound_dissolution, dissolution_description }
 import gunbc.stage0_cargo_manifest {
   stage0_cargo_bin_paths_observation_ref
@@ -32,10 +33,7 @@ import v2.workflow.rust_crate_partition { stage0_partition_crate_rows }
 
 data stage0_rust_source_lifecycle_scaffold_note: String = "SCAFFOLD — NOT the live ZeroHandMaintainedRust instrument. gunbc.stage0_rust_host_observation supplies the exact tracked-Rust subject plus Cargo target ROLE facts. This module keeps role and maintenance disposition independent: CargoBin never classifies a path as Generated, DeleteWith, RetainedKernel, or HandScaffold. A Cargo target with no maintenance disposition refuses as CargoTargetMissingLifecycleDisposition. Product reachability and LOC/capability ratchets remain explicit v1-honest-frontier follow-on work; this observation prerequisite does not claim those finish lines."
 
-// Observation prerequisite only: RustManifestObserved establishes the revision-addressed subject
-// and Cargo roles. v1-honest-frontier must separately derive maintenance disposition, product
-// reachability, generation authority, retirement trigger, hand LOC, and typed hand obligations
-// before V1FinishLine ZeroHandMaintainedRust can consume it.
+data zero_hand_maintained_rust_finish_line_attachment_note: String = "Observation prerequisite only: RustManifestObserved establishes the revision-addressed subject and Cargo roles. v1-honest-frontier must separately derive maintenance disposition, product reachability, generation authority, retirement trigger, hand LOC, and typed hand obligations before V1FinishLine ZeroHandMaintainedRust can consume it."
 
 type RustSourceManifestStateVerdict
   = ManifestStateScaffoldOk
@@ -348,6 +346,7 @@ fn stage0_src_repo_path(filename: String) -> String {
   concat(stage0_src_repo_prefix, filename)
 }
 
+
 //
 // `claimed` is hoisted rather than inlined into the predicate: non_generated_classified_repo_paths()
 // folds three rosters through list_concat_unique, which is quadratic in its own length, and
@@ -391,47 +390,11 @@ fn derived_hand_maintained_stage0_repo_paths() -> List<String> {
   )
 }
 
-// v2_compiler_compile.rs, v2_compiler_program_assembly.rs and v2_compiler_source_authority.rs
-// carried a residue_frontier_module_gap row each, whose own dissolution condition read:
-// 'dissolve-on: the module basename appears on hand_maintained_stage0_filenames() ... and this
-// residue row deletes.' The #8428 regen-survivability backfill
-// (pre_existing_hand_retained_registration_backfill_note,
-// v2.compiler.self_host.stage0_crate_layout) registered all three as
-// SeedRetainedIntrinsicRegistration rows, so the trigger fired and the three residue rows are
-// deleted here rather than left stale — the dissolution condition is evidence consumed, not a
-// permission grant kept beside a state it no longer describes.
+data residue_frontier_module_gap_dissolved_note: String = "v2_compiler_compile.rs, v2_compiler_program_assembly.rs and v2_compiler_source_authority.rs carried a residue_frontier_module_gap row each, whose own dissolution condition read: 'dissolve-on: the module basename appears on hand_maintained_stage0_filenames() ... and this residue row deletes.' The #8428 regen-survivability backfill (pre_existing_hand_retained_registration_backfill_note, v2.compiler.self_host.stage0_crate_layout) registered all three as SeedRetainedIntrinsicRegistration rows, so the trigger fired and the three residue rows are deleted here rather than left stale — the dissolution condition is evidence consumed, not a permission grant kept beside a state it no longer describes."
 
-// cssl_seed_linked_closure_assembly.rs is BOTH a residue row here (not yet regen-emitted) AND,
-// since the #8428 backfill, a hand_maintained_stage0_filenames() member (excluded from
-// required_regen_host's compile_stage0() population comparison, since it is a CSSL-harness-compiled
-// oracle never part of the stage0 crate's own mod tree). THIS NOTE FORMERLY TURNED ON A DISTINCTION
-// THAT NO LONGER EXISTS: it argued the dual classification was genuine because the dissolution
-// trigger named generated_stage0_files membership rather than hand_maintained_stage0_filenames()
-// membership -- two rosters, two memberships. With the generated population derived as the
-// complement of the crate-layout claim, those are one membership read two ways, and the trigger is
-// restated accordingly. The dual classification itself survives and is still genuine
-// (residue-pending-emission AND emit-comparison-excluded); what dies is the two-roster argument for
-// it. classified_residue_disjoint_holds is scoped to exclude this single known, named path rather
-// than silently widening to tolerate any future collision.
+data residue_cssl_hand_maintained_overlap_note: String = "cssl_seed_linked_closure_assembly.rs is BOTH a residue row here (not yet regen-emitted) AND, since the #8428 backfill, a hand_maintained_stage0_filenames() member (excluded from required_regen_host's compile_stage0() population comparison, since it is a CSSL-harness-compiled oracle never part of the stage0 crate's own mod tree). THIS NOTE FORMERLY TURNED ON A DISTINCTION THAT NO LONGER EXISTS: it argued the dual classification was genuine because the dissolution trigger named generated_stage0_files membership rather than hand_maintained_stage0_filenames() membership -- two rosters, two memberships. With the generated population derived as the complement of the crate-layout claim, those are one membership read two ways, and the trigger is restated accordingly. The dual classification itself survives and is still genuine (residue-pending-emission AND emit-comparison-excluded); what dies is the two-roster argument for it. classified_residue_disjoint_holds is scoped to exclude this single known, named path rather than silently widening to tolerate any future collision."
 
-// derived_hand_maintained_stage0_repo_paths() answers ONE question: which paths must be
-// pub-mod-declared for the crate to link (layout membership, per
-// hand_maintained_stage0_filenames_authority_ref). It does not answer who maintains a path's
-// contents. A layout member's maintenance disposition is DERIVED, never hand-enumerated:
-// gunbc.generated_artifact's generated_artifact_registry is the closed, single authority over every
-// drift-gated artifact this repo produces, and artifact_path is its per-variant path projection —
-// the same projection generated_artifact_emit.dag's artifact_generate dispatch already reads. Any
-// stage0-src path that is a member of that registry (generated_artifact_stage0_src_repo_paths, an
-// identity join by artifact_path, not a filename literal) is EmitFrom the registry's real
-// generation authority, never HandScaffold and never silently excluded by a hand-picked path.
-// v1_interpreter_dispatch_generated.rs (V1InterpreterDispatchGeneratedRsArtifact) is the
-// discriminating case that exposed the conflation; bootstrap_stage0_crate_layout_generated.rs
-// (Stage0CrateLayoutGeneratedRsArtifact) is the second instance the same join surfaces — both
-// derive from the identical registry membership check, no per-file code.
-// derived_hand_maintained_disposition_repo_paths() is the corrected maintenance-disposition
-// population: layout membership minus the generated-artifact-registry overlap. This is the single
-// authority consumed by count_hand_maintained_in_tracked/count_hand_maintained_in_prior_tracked and
-// by gunbc.stage0_rust_honest_frontier_integration's exact_hand_maintained_* joins.
+data generated_artifact_disposition_derivation_note: String = "derived_hand_maintained_stage0_repo_paths() answers ONE question: which paths must be pub-mod-declared for the crate to link (layout membership, per hand_maintained_stage0_filenames_authority_ref). It does not answer who maintains a path's contents. A layout member's maintenance disposition is DERIVED, never hand-enumerated: gunbc.generated_artifact's generated_artifact_registry is the closed, single authority over every drift-gated artifact this repo produces, and artifact_path is its per-variant path projection — the same projection generated_artifact_emit.dag's artifact_generate dispatch already reads. Any stage0-src path that is a member of that registry (generated_artifact_stage0_src_repo_paths, an identity join by artifact_path, not a filename literal) is EmitFrom the registry's real generation authority, never HandScaffold and never silently excluded by a hand-picked path. v1_interpreter_dispatch_generated.rs (V1InterpreterDispatchGeneratedRsArtifact) is the discriminating case that exposed the conflation; bootstrap_stage0_crate_layout_generated.rs (Stage0CrateLayoutGeneratedRsArtifact) is the second instance the same join surfaces — both derive from the identical registry membership check, no per-file code. derived_hand_maintained_disposition_repo_paths() is the corrected maintenance-disposition population: layout membership minus the generated-artifact-registry overlap. This is the single authority consumed by count_hand_maintained_in_tracked/count_hand_maintained_in_prior_tracked and by gunbc.stage0_rust_honest_frontier_integration's exact_hand_maintained_* joins."
 
 data v1_interpreter_dispatch_generated_repo_path: String = stage0_src_repo_path(
   filename: "v1_interpreter_dispatch_generated.rs"

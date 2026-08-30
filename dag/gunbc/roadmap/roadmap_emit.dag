@@ -66,12 +66,7 @@ fn desc_inlines(description: String) -> List<MarkdownInline> {
   if description == "" { [] } else { [TextInline { text: concat(" ", description) }] }
 }
 
-// A reader of ROADMAP.md kept asking what a row actually accomplishes, and the answer was already
-// on the row — displaced_cost, the pain that goes away — but the markdown projection never rendered
-// it, so only the scope sentence showed. Rendering it here is a projection fix, not a new field:
-// the authority still states the reason exactly once. An empty reason renders nothing rather than a
-// dangling label, so a row that has not stated its why is visibly missing it instead of quietly
-// padded.
+data why_clause_note: String = "A reader of ROADMAP.md kept asking what a row actually accomplishes, and the answer was already on the row — displaced_cost, the pain that goes away — but the markdown projection never rendered it, so only the scope sentence showed. Rendering it here is a projection fix, not a new field: the authority still states the reason exactly once. An empty reason renders nothing rather than a dangling label, so a row that has not stated its why is visibly missing it instead of quietly padded."
 
 fn why_clause(t: TicketFields) -> String {
   if t.displaced_cost == "" { "" } else { concat(" Why: ", t.displaced_cost) }

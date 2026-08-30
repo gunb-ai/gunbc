@@ -173,13 +173,6 @@ test fn duplicate_required_gate_refuses() -> Bool {
   })
 }
 
-// The green has exactly two required gates, each executed once and successful on the exact head and
-// roster. Each RED varies one axis: no observation, running, stopped with a named unexecuted gate,
-// stale identities, old head, old roster, empty universe, missing execution, duplicate execution,
-// or failed execution. The stopped witness inspects the refusal payload rather than merely
-// asserting false, so the unexecuted population and remedy-bearing cause cannot be dropped while
-// the test stays green.
-
 test fn required_gate_failure_refuses() -> Bool {
   !admits(coverage: CheckCoverageComplete {
     head: required_head,
@@ -187,3 +180,5 @@ test fn required_gate_failure_refuses() -> Bool {
     conclusions: [passed(gate: gate_a), failed(gate: gate_b)]
   })
 }
+
+data coverage_discrimination_note: String = "The green has exactly two required gates, each executed once and successful on the exact head and roster. Each RED varies one axis: no observation, running, stopped with a named unexecuted gate, stale identities, old head, old roster, empty universe, missing execution, duplicate execution, or failed execution. The stopped witness inspects the refusal payload rather than merely asserting false, so the unexecuted population and remedy-bearing cause cannot be dropped while the test stays green."

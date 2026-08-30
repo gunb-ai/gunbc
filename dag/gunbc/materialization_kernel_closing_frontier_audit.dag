@@ -21,9 +21,7 @@ type FrontierClause {
   verdict: ClauseVerdict
 }
 
-// The one exhaustive match on ClauseVerdict in this module; every other Bool-producing projection
-// on a FrontierClause routes through this (review 47530, DESIGN §3 — an undeclared sum re-matched
-// by a family of free predicates duplicates the same exhaustiveness fact at each call site).
+data clause_delivered_note: String = "The one exhaustive match on ClauseVerdict in this module; every other Bool-producing projection on a FrontierClause routes through this (review 47530, DESIGN §3 — an undeclared sum re-matched by a family of free predicates duplicates the same exhaustiveness fact at each call site)."
 
 fn clause_delivered(c: FrontierClause) -> Bool {
   match c.verdict {
@@ -33,21 +31,7 @@ fn clause_delivered(c: FrontierClause) -> Bool {
   }
 }
 
-// DELETED (review 47530 round 2, still-bat-561): this module previously carried
-// clause_has_any_evidence, a Bool-returning fn that always returned true because every
-// ClauseVerdict variant requires a NonEmptyStr reason/evidence field by construction — the bad
-// state (a clause with no evidence) has no constructor, so the check could not fail. A function
-// named has_any_evidence that returns true unconditionally reads as a performed check to any caller
-// who does not open it, which is worse than no function at all (DESIGN §4b(4) — a climb deletes the
-// redundant lower-rung PRODUCTION machinery the construction obsoletes; §5 — a check standing where
-// construction already makes the state unwritable is validation, not verification).
-// materialization_kernel_every_clause_has_evidence, its sole caller, was deleted with it for the
-// same reason, and the witness that asserted it
-// (materialization_kernel_every_clause_carries_evidence) was deleted rather than kept
-// green-by-tautology. This note is the surviving, durable part: every FrontierClause carries
-// evidence because ClauseVerdict's three variants each require a NonEmptyStr field (reason, or
-// reason+evidence, or witness_module+witness_fn+evidence) — read the type in this file if you need
-// to confirm that property holds; there is nothing left to call.
+data clause_has_any_evidence_note: String = "DELETED (review 47530 round 2, still-bat-561): this module previously carried clause_has_any_evidence, a Bool-returning fn that always returned true because every ClauseVerdict variant requires a NonEmptyStr reason/evidence field by construction — the bad state (a clause with no evidence) has no constructor, so the check could not fail. A function named has_any_evidence that returns true unconditionally reads as a performed check to any caller who does not open it, which is worse than no function at all (DESIGN §4b(4) — a climb deletes the redundant lower-rung PRODUCTION machinery the construction obsoletes; §5 — a check standing where construction already makes the state unwritable is validation, not verification). materialization_kernel_every_clause_has_evidence, its sole caller, was deleted with it for the same reason, and the witness that asserted it (materialization_kernel_every_clause_carries_evidence) was deleted rather than kept green-by-tautology. This note is the surviving, durable part: every FrontierClause carries evidence because ClauseVerdict's three variants each require a NonEmptyStr field (reason, or reason+evidence, or witness_module+witness_fn+evidence) — read the type in this file if you need to confirm that property holds; there is nothing left to call."
 
 fn closing_frontier_clauses() -> List<FrontierClause> {
   [
@@ -115,12 +99,7 @@ fn materialization_kernel_clause_count(clauses: List<FrontierClause>) -> Int {
   count(clauses)
 }
 
-// RENAMED from materialization_kernel_closing_contract_holds (still-bat-561 operator ruling,
-// 2026-08-02): this is a derived AUDIT SUMMARY over closing_frontier_clauses — true only if every
-// audited clause independently reached Delivered — not a roadmap execution contract and not itself
-// bound to the v1-materialization-kernel roadmap node's acceptance. See
-// materialization_kernel_closing_frontier_audit_note above for why the prior framing (an authored
-// AND-fold presented as 'the contract') was retired.
+data materialization_kernel_all_clauses_delivered_note: String = "RENAMED from materialization_kernel_closing_contract_holds (still-bat-561 operator ruling, 2026-08-02): this is a derived AUDIT SUMMARY over closing_frontier_clauses — true only if every audited clause independently reached Delivered — not a roadmap execution contract and not itself bound to the v1-materialization-kernel roadmap node's acceptance. See materialization_kernel_closing_frontier_audit_note above for why the prior framing (an authored AND-fold presented as 'the contract') was retired."
 
 fn materialization_kernel_all_clauses_delivered(clauses: List<FrontierClause>) -> Bool {
   clauses |> fold(init: true, f: (acc, c) => acc && clause_delivered(c: c))

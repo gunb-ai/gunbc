@@ -45,11 +45,11 @@ data sha_b: String = "b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2"
 
 data github_evidence: String = "workflow_run event, run 17000000001"
 
-// ONE BUILDER, AND EVERY WITNESS BREAKS EXACTLY ONE FACT, so a red row names the fact it broke, not
-// the shape of a hand-copied record. The workflow path defaults through the real artifact
-// authority, not a literal: a hardcoded fixture would keep passing after a rename while production
-// refused every genuine run -- SILENTLY, since a too-strict wall just stops the fleet advancing
-// with nothing red anywhere.
+// ONE BUILDER, AND EVERY WITNESS BREAKS EXACTLY ONE FACT, so a red row names the fact it broke
+// rather than the shape of a hand-copied record. The workflow path defaults through the real
+// artifact authority rather than a literal: a fixture hardcoding it would keep passing after a
+// rename while production refused every genuine run -- and that failure is SILENT, because a
+// too-strict wall simply stops the fleet advancing with nothing red anywhere.
 fn ev(
   activity: String,
   workflow_path: String,
@@ -119,9 +119,10 @@ fn branch_admits(e: WorkflowRunEvent) -> Bool {
 
 fn oid(hex: String) -> GitObjectId? { git_object_id_from_untagged_hex(hex: hex) }
 
-// POSITIVE CONTROL, load-bearing: almost every other row asserts a REFUSAL, which unconditionally
-// refusing producers would satisfy. This row fails when a wall is TOO STRICT -- the failure mode a
-// wall-shaped change actually has, and the one invisible in production.
+// POSITIVE CONTROL, load-bearing rather than ceremonial. Almost every other row asserts a REFUSAL,
+// and a pair of producers that refused unconditionally would satisfy all of them. This is the row
+// that fails when a wall is TOO STRICT -- the failure mode a wall-shaped change actually has, and
+// the one that is invisible in production.
 test fn an_eligible_trunk_push_satisfies_both_propositions_and_the_join_accepts() -> Bool {
   match accept_required_ci_workflow_run(event: trunk_push(head_sha: sha_a), evidence: github_evidence) {
     RequiredCiAdmitted { succeeded: ci } =>
@@ -143,13 +144,14 @@ test fn an_eligible_trunk_push_satisfies_both_propositions_and_the_join_accepts(
 
 // THE ASYMMETRY, AND IT IS THE WHOLE REASON THE TWO PROPOSITIONS ARE SEPARATE CARRIERS.
 //
-// A PR's merge-subject run genuinely ran and passed the Required CI contract on that tree; refusing
-// it as a CI failure would lie about a real result, so this producer correctly ADMITS it. What the
-// run cannot prove is that the revision entered the default branch, and there it is refused.
+// A PR's merge-subject run genuinely ran the Required CI contract and genuinely passed on that
+// tree. Refusing it as a CI failure would be a lie about a real result -- so this producer ADMITS
+// it, and that admission is correct. What the run cannot prove is that the revision entered the
+// default branch, and that is exactly where it is refused.
 //
-// Folded into one predicate, either fact could stand in for the pair and the fleet would follow a
-// revision main never had. This row is that argument executed: the SAME event, admitted by one
-// producer and refused by the other.
+// Had the two been folded into one predicate, either fact could stand in for the pair, and the
+// fleet would follow a revision main never had. This row is the executable form of that argument:
+// the SAME event, admitted by one producer and refused by the other.
 test fn a_pull_request_run_proves_required_ci_but_not_the_default_branch() -> Bool {
   ci_admits(e: pull_request_run(head_sha: sha_a))
     && match observe_default_branch_revision(
@@ -161,9 +163,9 @@ test fn a_pull_request_run_proves_required_ci_but_not_the_default_branch() -> Bo
     }
 }
 
-// A push to a topic branch is the other half of the asymmetry: the event IS a push, so the
-// event-kind arm passes and the BRANCH arm must refuse. Without this row a producer checking only
-// the originating event would pass every branch row above.
+// A push to a topic branch is the other half of the same asymmetry: the event IS a push, so the
+// event-kind arm passes and the BRANCH arm must be the one that refuses. Without this row a
+// producer checking only the originating event would pass every branch row above.
 test fn a_push_to_a_topic_branch_is_refused_by_the_branch_fact() -> Bool {
   match observe_default_branch_revision(
     event: ev(
@@ -185,10 +187,10 @@ test fn a_push_to_a_topic_branch_is_refused_by_the_branch_fact() -> Bool {
 }
 
 // THE MISMATCH ARM. Required CI proving revision A and the default branch carrying revision B is
-// no contradiction -- both facts can be true about different revisions, and arrive together
-// whenever a push lands while a run is in flight. What is false is the CONJUNCTION anyone would
-// infer from holding both; the refusal carries BOTH revisions because "which two" is the entire
-// content of the finding.
+// not a contradiction in the data -- both facts can be perfectly true, about different revisions,
+// and they arrive together whenever a push lands while a run is in flight. What is false is the
+// CONJUNCTION anyone would infer from holding both, and the refusal carries BOTH revisions because
+// "which two" is the entire content of the finding.
 test fn required_ci_for_one_revision_and_a_branch_at_another_refuses_naming_both() -> Bool {
   match accept_required_ci_workflow_run(event: trunk_push(head_sha: sha_a), evidence: github_evidence) {
     RequiredCiAdmitted { succeeded: ci } =>
@@ -219,7 +221,7 @@ test fn required_ci_for_one_revision_and_a_branch_at_another_refuses_naming_both
 
 // THE REVISION IS DECODED BEFORE ANY POSITIVE CARRIER EXISTS. GitHub says head_sha is a SHA;
 // nothing on the wire establishes it. Both producers refuse an undecodable value rather than
-// building a carrier around it, so no consumer is handed a revision that is not one.
+// constructing a carrier around it, so no consumer can be handed a revision that is not one.
 test fn an_undecodable_head_sha_refuses_on_both_producers() -> Bool {
   match accept_required_ci_workflow_run(
     event: trunk_push(head_sha: "not-a-sha"),
@@ -238,8 +240,8 @@ test fn an_undecodable_head_sha_refuses_on_both_producers() -> Bool {
 }
 
 // Each CI identity fact refuses with ITS OWN cause. Asserting only "refused" would let every arm
-// collapse into one and still pass, making refusals undebuggable since the remedies differ: wrong
-// producer, wrong repo, an untrusted fork's head, not finished.
+// collapse into one and still pass -- and the collapse is what makes a refusal undebuggable, since
+// the remedies differ: wrong producer, wrong repo, an untrusted fork's head, not finished.
 test fn each_required_ci_identity_fact_refuses_with_its_own_cause() -> Bool {
   match accept_required_ci_workflow_run(
     event: ev(
@@ -311,9 +313,9 @@ test fn each_required_ci_identity_fact_refuses_with_its_own_cause() -> Bool {
 }
 
 // A run that did not conclude Success is refused and the OBSERVED conclusion is carried. Cancelled
-// is exercised beside Failure deliberately: it produces no failure to investigate, so it is the
-// state most likely read as "nothing happened" -- and exactly the state that must not be mistaken
-// for a floor that ran.
+// is exercised beside Failure deliberately: a cancelled run produces no failure to investigate, so
+// it is the state most likely to be read as "nothing happened" -- and it is exactly the state that
+// must not be mistaken for a floor that ran.
 test fn only_a_successful_conclusion_admits_and_the_others_are_named() -> Bool {
   match accept_required_ci_workflow_run(
     event: ev(
@@ -357,10 +359,10 @@ test fn only_a_successful_conclusion_admits_and_the_others_are_named() -> Bool {
     }
 }
 
-// IDENTITY BEFORE OUTCOME, as a claim under test, not an accident of how the ifs nest. A FAILED run
-// of the WRONG workflow must refuse as the wrong workflow: reporting "the floor was not green"
-// about a run that was never the floor sends a reader to investigate a failure that does not
-// exist, ending in confusion rather than a fix.
+// IDENTITY BEFORE OUTCOME, as a claim under test rather than an accident of how the ifs nest. A
+// FAILED run of the WRONG workflow must refuse as the wrong workflow: reporting "the floor was not
+// green" about a run that was never the floor sends a reader to investigate a failure that does
+// not exist, and that investigation terminates in confusion rather than in a fix.
 test fn a_failed_run_of_the_wrong_workflow_refuses_as_the_wrong_workflow() -> Bool {
   match accept_required_ci_workflow_run(
     event: ev(
@@ -381,9 +383,9 @@ test fn a_failed_run_of_the_wrong_workflow_refuses_as_the_wrong_workflow() -> Bo
 }
 
 // The contract identity is DERIVED from the artifact authority that emits the workflow, never
-// re-typed: if this row and the emitter disagree, the fixture lies, not the wall. It carries no
-// phase roster: the fleet asks whether the exact contract succeeded for the exact revision, and
-// adding a phase to the floor must not break fleet admission.
+// re-typed. If this row and the emitter disagree, the fixture is lying rather than the wall. It
+// carries no phase roster: the fleet asks whether the exact contract succeeded for the exact
+// revision, and adding a phase to the floor must not be a breaking change to fleet admission.
 test fn the_contract_identity_is_the_emitted_workflow_not_a_phase_roster() -> Bool {
   required_ci_contract().workflow_path == artifact_path(a: WitnessFloorYamlArtifact)
     && required_ci_contract().workflow_path == ".github/workflows/witnesses.yml"

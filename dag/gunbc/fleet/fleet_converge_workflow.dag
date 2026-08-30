@@ -67,14 +67,7 @@ import extdeps.languages.yaml.emit { serialize_yaml }
 import extdeps.languages.yaml.gha_workflow { project_workflow_to_yaml }
 import std.types { NonEmptyStr, List, String, Int }
 
-// Emitted on-demand fleet converge workflow (operator directive 2026-08-13, sleek-heron-218).
-// workflow_dispatch with host=srv1|srv2|srv3|srv4 (executor runner pin) and
-// mode=plan|apply|spark_linger: plan observes the RUNNER host; apply downloads a prior plan
-// artifact; spark_linger runs executor-on-runner → target-on-spark (srv5|srv6) typed argv over
-// FleetSsh via run_typed_argv_transport. Replaces the retired 15-minute ctrl-fleet-converge.timer
-// cadence on every enrolled CI host (timer install route is TimerRetired fleet-wide). Standalone
-// dispatch carries its own build job (release-bins pack/upload) so the converge job never downloads
-// an artifact the current run did not produce.
+data fleet_converge_workflow_note: String = "Emitted on-demand fleet converge workflow (operator directive 2026-08-13, sleek-heron-218). workflow_dispatch with host=srv1|srv2|srv3|srv4 (executor runner pin) and mode=plan|apply|spark_linger: plan observes the RUNNER host; apply downloads a prior plan artifact; spark_linger runs executor-on-runner → target-on-spark (srv5|srv6) typed argv over FleetSsh via run_typed_argv_transport. Replaces the retired 15-minute ctrl-fleet-converge.timer cadence on every enrolled CI host (timer install route is TimerRetired fleet-wide). Standalone dispatch carries its own build job (release-bins pack/upload) so the converge job never downloads an artifact the current run did not produce."
 
 data fleet_converge_enrolled_host_options: List<String> = ["srv1", "srv2", "srv3", "srv4"]
 
@@ -140,6 +133,7 @@ data fleet_converge_apply_step_if: String = "github.event.inputs.mode == 'apply'
 data fleet_converge_spark_linger_step_if: String = "github.event.inputs.mode == 'spark_linger'"
 
 data fleet_converge_spark_observe_step_if: String = "github.event.inputs.mode == 'spark_observe'"
+
 
 data fleet_converge_spark_reboot_step_if: String = "github.event.inputs.mode == 'spark_reboot'"
 
@@ -387,6 +381,7 @@ fn fleet_converge_spark_grants_step() -> Step {
   }
 }
 
+
 fn fleet_converge_spark_observe_step() -> Step {
   RunStep {
     name: Present { value: "Spark serving observation (read-only: unit state, runtime version, model tags, driver)" },
@@ -401,9 +396,7 @@ fn fleet_converge_spark_observe_step() -> Step {
   }
 }
 
-// Plain fetch-depth-0 checkout only — this workflow has no workflow_dispatch expected_healed_sha
-// input (unlike ci.yml heal revalidation). ci_artifact_consumer_prelude_steps paste-through would
-// reference an undeclared input and emit a dormant preflight guard.
+data fleet_converge_consumer_prelude_note: String = "Plain fetch-depth-0 checkout only — this workflow has no workflow_dispatch expected_healed_sha input (unlike ci.yml heal revalidation). ci_artifact_consumer_prelude_steps paste-through would reference an undeclared input and emit a dormant preflight guard."
 
 fn fleet_converge_consumer_prelude_steps() -> List<Step> {
   [ci_checkout_step()]

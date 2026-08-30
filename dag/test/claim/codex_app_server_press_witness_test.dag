@@ -89,6 +89,7 @@ data fixture_live_exhausted_multibucket_path: String = "dag/test/fixture/provide
 
 data fixture_digest_hex: String = "c86dec3d635d6bfd980084080eaf4caeb8e8093210eebc5833921ab2b1b754172e8422d39207a0fc9cea989ab557df11138309e630b10d75d094e8eb762b4547"
 
+
 fn fixture_digest() -> Sha512Digest? {
   sha512_hex_digest(hex: fixture_digest_hex)
 }
@@ -480,13 +481,7 @@ test fn quota_refusal_caption_is_quota_exhausted_not_accepted() -> Bool {
   }
 }
 
-// Discriminating controls for the limitId absorbing-fallback repair (review 50532). The fabrication
-// these pin is NOT cosmetic: buckets are read downstream BY limit_id, so a malformed id emitted
-// under the synthesized default would put a sibling bucket's numbers on the codex bucket. The
-// sibling-only control is the one that fails loudest against the old code — it carries a REAL id
-// (codex_bengalfox), so a reader that defaults on anything other than absence reports it as codex.
-// The absence control is the positive: the legacy mirror legitimately has no limitId and must still
-// yield codex, so this pair proves the split rather than a blanket refusal.
+data rate_limit_id_witness_note: String = "Discriminating controls for the limitId absorbing-fallback repair (review 50532). The fabrication these pin is NOT cosmetic: buckets are read downstream BY limit_id, so a malformed id emitted under the synthesized default would put a sibling bucket's numbers on the codex bucket. The sibling-only control is the one that fails loudest against the old code — it carries a REAL id (codex_bengalfox), so a reader that defaults on anything other than absence reports it as codex. The absence control is the positive: the legacy mirror legitimately has no limitId and must still yield codex, so this pair proves the split rather than a blanket refusal."
 
 fn rate_limit_bucket_ids_for_stdout(line: String) -> List<String> {
   let evidence = parse_account_trip_stdout_for_tests(

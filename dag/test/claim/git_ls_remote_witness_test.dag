@@ -61,12 +61,7 @@ test fn an_empty_advertisement_is_zero_rows_not_a_refusal() -> Bool {
   scanned_count(scan: scan_advertised_refs(lines: [])) == 0
 }
 
-// The discriminating claim. A scan that DROPPED the unreadable line would still answer
-// AdvertisedRefsRead with the two good rows, and every count-based assertion above would stay green
-// while the answer silently became a partial advertisement. That is the absorbing fallback: the
-// consumer cannot distinguish a complete listing from a truncated one, so a branch that IS
-// published reads as absent. The refusal carries the offending line and its index so the deficit is
-// located rather than merely counted.
+data refuse_not_skip_note: String = "The discriminating claim. A scan that DROPPED the unreadable line would still answer AdvertisedRefsRead with the two good rows, and every count-based assertion above would stay green while the answer silently became a partial advertisement. That is the absorbing fallback: the consumer cannot distinguish a complete listing from a truncated one, so a branch that IS published reads as absent. The refusal carries the offending line and its index so the deficit is located rather than merely counted."
 
 test fn an_unreadable_line_refuses_rather_than_being_skipped() -> Bool {
   let scan = scan_advertised_refs(lines: [

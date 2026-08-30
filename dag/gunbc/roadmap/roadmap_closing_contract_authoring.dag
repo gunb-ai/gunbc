@@ -31,31 +31,7 @@ import gunbc.roadmap_validation_oracle {
   validation_oracle_first_incomplete,
 }
 
-// THE COMPLETION PREDICATE FOR EVERY CLOSING-CONTRACT TASK, PARAMETERIZED BY ITS TARGET.
-// gunbc.roadmap_authority closing_contract_task_naming_correction_note named this construction as
-// the fix for the gap where a derived closing-contract task carried ExecutionContractUnspecified
-// and dispatch therefore refused the row whose only job is to supply a contract.\n\nWHAT IT
-// DECIDES, each arm with its own remedy: the target is a declared node (else the task names
-// nothing); the target's contract is not unspecified and not empty (the two states
-// gunbc.roadmap_execution_contract contract_closure already separates, kept separate here because
-// one asks for a contract and the other asks for a validation inside the one you wrote); the
-// contract does not close itself with another ClosingContractAuthoringValidation (a
-// closing-contract task whose target is closed by another closing-contract task closes nothing, and
-// the recursion is reachable because the derivation mints one for every unbound startable node);
-// and every validation the contract names RESOLVES -- its oracle entry is readable and declares
-// exactly the function named, through gunbc.roadmap_validation_oracle's existing observation rather
-// than a second resolver.\n\nWHAT IT DOES NOT DECIDE, stated because a green here must not be read
-// as more than it is. The note's wish list also asked that a PLANTED FAILURE show the authored
-// validation can reject. That is not decidable by inspecting the model: it requires mutating the
-// target's subject and running the validation against the mutation, which is an experiment rather
-// than a predicate, and no arm below pretends to it. It remains the handback duty the derived
-// ticket's own red_control states, carried by review. NEXT-RUNG TRIGGER: a modeled mutation harness
-// that can plant a failure in a named subject and observe the declared validation reject it, at
-// which point that clause becomes an arm here and this paragraph retires. The wish list's remaining
-// clause -- that the contract name the same target identity -- is not checked because it is
-// STRUCTURALLY UNWRITABLE otherwise: a contract is a field ON the target node, so there is no
-// representation in which it names a different one, and a check for it would be the
-// permanently-green decoration DESIGN section 4b forbids.
+data closing_contract_authoring_predicate_note: String = "THE COMPLETION PREDICATE FOR EVERY CLOSING-CONTRACT TASK, PARAMETERIZED BY ITS TARGET. gunbc.roadmap_authority closing_contract_task_naming_correction_note named this construction as the fix for the gap where a derived closing-contract task carried ExecutionContractUnspecified and dispatch therefore refused the row whose only job is to supply a contract.\\n\\nWHAT IT DECIDES, each arm with its own remedy: the target is a declared node (else the task names nothing); the target's contract is not unspecified and not empty (the two states gunbc.roadmap_execution_contract contract_closure already separates, kept separate here because one asks for a contract and the other asks for a validation inside the one you wrote); the contract does not close itself with another ClosingContractAuthoringValidation (a closing-contract task whose target is closed by another closing-contract task closes nothing, and the recursion is reachable because the derivation mints one for every unbound startable node); and every validation the contract names RESOLVES -- its oracle entry is readable and declares exactly the function named, through gunbc.roadmap_validation_oracle's existing observation rather than a second resolver.\\n\\nWHAT IT DOES NOT DECIDE, stated because a green here must not be read as more than it is. The note's wish list also asked that a PLANTED FAILURE show the authored validation can reject. That is not decidable by inspecting the model: it requires mutating the target's subject and running the validation against the mutation, which is an experiment rather than a predicate, and no arm below pretends to it. It remains the handback duty the derived ticket's own red_control states, carried by review. NEXT-RUNG TRIGGER: a modeled mutation harness that can plant a failure in a named subject and observe the declared validation reject it, at which point that clause becomes an arm here and this paragraph retires. The wish list's remaining clause -- that the contract name the same target identity -- is not checked because it is STRUCTURALLY UNWRITABLE otherwise: a contract is a field ON the target node, so there is no representation in which it names a different one, and a check for it would be the permanently-green decoration DESIGN section 4b forbids."
 
 type ClosingContractAuthoringVerdict
   = ClosingContractAuthored { target: RoadmapNodeId }

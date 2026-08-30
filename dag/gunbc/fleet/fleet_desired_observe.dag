@@ -63,10 +63,8 @@ fn observe_fleet_desired_revision(repo: FilePath) -> FleetDesiredRevision {
 
 data fleet_desired_observe_repository_path: String = "."
 
-// The repository whose ancestry this observer inspects. It is `.` in production because the
-// admission workflow runs in the checkout, and it is a DECLARED `.` rather than an ambient one so
-// that a witness can point the same observation at a fixture repository without relocating the
-// process.
+data fleet_desired_observe_repository_path_note: String = "The repository whose ancestry this observer inspects. It is `.` in production because the admission workflow runs in the checkout, and it is a DECLARED `.` rather than an ambient one so that a witness can point the same observation at a fixture repository without relocating the process."
+
 
 // THE EFFECTFUL HALF OF THE ANCESTRY OBSERVATION, AND THE SOLE PRODUCTION CONSTRUCTOR OF A
 // MERGE-BASE-DERIVED RELATION.

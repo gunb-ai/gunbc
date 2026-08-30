@@ -92,11 +92,12 @@ test fn one_spawn_is_single() -> Bool {
   }
 }
 
-// PRODUCER-ABSENT AND NEVER-OBSERVED MUST NOT BE THE SAME VALUE -- the distinction this carrier is
-// most likely to lose later: the first wired producer that cannot observe its subject will be
-// tempted to report the empty fold, rendering its own absence as "we checked and found no pair".
+// PRODUCER-ABSENT AND NEVER-OBSERVED MUST NOT BE THE SAME VALUE. This is the distinction the
+// carrier is most likely to lose later: the first wired producer that cannot observe its subject
+// will be tempted to report the empty fold, and that renders its own absence as "we checked and
+// found no pair". Asserting they are distinct constructions keeps the eventual producer honest.
 // The fold cannot RETURN ProducerAbsent -- it speaks only about the list it was handed -- so this
-// arm is authored directly, exactly how a real observation transaction would raise it.
+// arm is authored directly, which is exactly how a real observation transaction would raise it.
 test fn producer_absent_is_not_never_observed() -> Bool {
   let absent = ToolchainCoherenceNotEvaluated {
     cause: SpawnObservationProducerAbsent { cause: "nothing observes spawns" }
@@ -125,9 +126,10 @@ test fn producer_absent_is_not_never_observed() -> Bool {
 }
 
 // THE FINDING MUST CARRY ENOUGH GRAIN TO PICK THE REMEDY. Two spawns diverging at ONE resolved
-// path means the binary was replaced under us; at DIFFERENT paths, we ran two different binaries.
-// Opposite repairs, so a finding reporting only "differed" is a verdict the consumer cannot act on.
-// Both directions are asserted so the evidence does the work rather than the arm's name.
+// path means the binary was replaced under us; two spawns diverging at DIFFERENT paths means we
+// ran two different binaries. Those have opposite repairs, so a finding that reported only
+// "differed" would hand the consumer a verdict it cannot act on. Both directions are asserted so
+// the evidence does the work rather than the arm's name.
 test fn divergence_carries_the_paths_that_pick_the_remedy() -> Bool {
   let one_path = toolchain_coherence_of(spawns: [
     spawn_at(pass: "p1", bytes: "A", exe: "/usr/local/bin/rustfmt"),

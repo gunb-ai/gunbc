@@ -35,11 +35,11 @@ test fn a_fully_proven_teardown_returns_the_cell() -> Bool {
 
 // AN OMITTED OBSERVATION DOES NOT PASS, WHICH IS THE LOAD-BEARING WITNESS IN THIS FILE.
 //
-// A readback confirming five facts and not mentioning the sixth is the empty-observation narrow in
-// its most dangerous form: "nothing was reported wrong" concluded from a report that never covered
-// the subject. A fold walking the OBSERVED list instead of the REQUIRED list passes this readback
-// and returns a cell with the previous tenant's writable layer still on it — and passes every other
-// witness here.
+// A readback confirming five facts and simply not mentioning the sixth is the empty-observation
+// narrow in its most dangerous form: the reader concludes "nothing was reported wrong" from a
+// report that never covered the subject. A fold that walked the OBSERVED list instead of the
+// REQUIRED list passes this readback and returns a cell with the previous tenant's writable layer
+// still on it. That fold passes every other witness here.
 test fn five_confirmations_and_a_silence_do_not_return_the_cell() -> Bool {
   let five = filter(all_confirmed(), o => match o {
     FactConfirmed { fact: f } => f != WritableLayersDeleted
@@ -59,9 +59,10 @@ test fn five_confirmations_and_a_silence_do_not_return_the_cell() -> Bool {
 // UNOBSERVABLE IS NOT CONFIRMED, AND IT IS ALSO NOT REFUTED.
 //
 // The discriminating pair: a fact the readback could not reach must refuse reuse exactly as a
-// refuted one does, while remaining distinguishable from it — the operator remedies differ
-// (teardown failed, versus we could not tell). Collapsing Unobservable into Confirmed lets residue
-// through; collapsing it into Refuted is safe but reports a failure that did not happen.
+// refuted one does, while remaining distinguishable from it — the two have different operator
+// remedies (teardown failed, versus we could not tell). A model collapsing Unobservable into
+// Confirmed lets residue through; one collapsing it into Refuted is safe but reports a failure that
+// did not happen.
 test fn an_unobservable_fact_refuses_reuse_without_claiming_teardown_failed() -> Bool {
   let with_unobservable = concat(
     filter(all_confirmed(), o => match o {
@@ -100,8 +101,8 @@ test fn a_refused_teardown_names_the_fact_and_its_detail() -> Bool {
 // A LOST HOST AGENT QUARANTINES THE CELL RATHER THAN RETURNING IT.
 //
 // No readback at all is the tempting place to answer "nothing to clean". It is the same narrow one
-// level out — no observation becoming no problem — and the case where the cell is MOST likely
-// dirty, since the agent vanished mid-attempt. Every required fact comes back unobserved.
+// level out — no observation becoming no problem — and it is the case where the cell is MOST likely
+// to be dirty, since the agent vanished mid-attempt. Every required fact comes back unobserved.
 test fn a_lost_host_agent_quarantines_with_every_fact_unproven() -> Bool {
   let readiness = readiness_without_readback(cell: a_cell(), sandbox: a_sandbox())
   let unproven = unproven_facts(readback: readback_of(obs: []))

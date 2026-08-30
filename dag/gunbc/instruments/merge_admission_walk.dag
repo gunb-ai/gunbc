@@ -32,47 +32,17 @@ import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import tools.merge_admission_capture { capture_walk_attempt_id }
 
-// The live merge-admission path is a typed pre-walk capture subprocess followed by
-// stamp_tested_floor and refresh_current_target_and_gate as two singleton success stages in ONE
-// shared stage entry. Capture consumes only walk-attempt/tested-subject identity in a claim_batch
-// child whose address space dies before the ordinary floor; importing the downstream classifier and
-// commit-roster closure before discovery made the authored Negligible profile false, and an
-// in-process capture still retained one worker arena after thread join. The WalkPlan carries two
-// ordering laws instead of shell: stamp is reachable only after the whole ordinary floor and its
-// finalization passed, and stage 2 is unreachable until stage 1 passed. The two non-heavy claims
-// route through population_unit_lane to the MAIN THREAD (corrected per review 47528 — an earlier
-// draft said spawned lanes; claim_executor population_unit_lane and its tests are the placement
-// authority); each stage may still resolve the entry independently, and the disk-visible stage-1
-// receipt is the intentional barrier, not an in-memory memo promise. The stage-2 claim stays
-// composite because fetch MUST precede classification; two sibling claims would have no ordering
-// guarantee.
+data merge_admission_walk_note: String = "The live merge-admission path is a typed pre-walk capture subprocess followed by stamp_tested_floor and refresh_current_target_and_gate as two singleton success stages in ONE shared stage entry. Capture consumes only walk-attempt/tested-subject identity in a claim_batch child whose address space dies before the ordinary floor; importing the downstream classifier and commit-roster closure before discovery made the authored Negligible profile false, and an in-process capture still retained one worker arena after thread join. The WalkPlan carries two ordering laws instead of shell: stamp is reachable only after the whole ordinary floor and its finalization passed, and stage 2 is unreachable until stage 1 passed. The two non-heavy claims route through population_unit_lane to the MAIN THREAD (corrected per review 47528 — an earlier draft said spawned lanes; claim_executor population_unit_lane and its tests are the placement authority); each stage may still resolve the entry independently, and the disk-visible stage-1 receipt is the intentional barrier, not an in-memory memo promise. The stage-2 claim stays composite because fetch MUST precede classification; two sibling claims would have no ordering guarantee."
 
-// The tested base is captured from the CHECKOUT'S ancestry, never from the moving target ref. On
-// pull_request and merge_group, GitHub checks out the synthetic merge result: HEAD is the exact
-// tree the floor tests and HEAD^1 is the target-side parent whose tree that result was built on. On
-// push and workflow_dispatch, HEAD itself is the tested target tree. The captured subject persists
-// that object id before substantive floor work. Stamp reads this file and does not re-read HEAD or
-// the target; stage 2 alone fetches the CURRENT target, then compares it with the captured tree. A
-// target advance during the floor therefore produces StaleBase instead of a receipt claiming the
-// new target was tested.
+data merge_admission_checkout_ancestry_note: String = "The tested base is captured from the CHECKOUT'S ancestry, never from the moving target ref. On pull_request and merge_group, GitHub checks out the synthetic merge result: HEAD is the exact tree the floor tests and HEAD^1 is the target-side parent whose tree that result was built on. On push and workflow_dispatch, HEAD itself is the tested target tree. The captured subject persists that object id before substantive floor work. Stamp reads this file and does not re-read HEAD or the target; stage 2 alone fetches the CURRENT target, then compares it with the captured tree. A target advance during the floor therefore produces StaleBase instead of a receipt claiming the new target was tested."
 
 data merge_admission_pr_number_deferred_note: String = "MergeAdmissionReceiptV2.pr_number is optional and is not an admission key: attempt, head, base tree, roster, and conclusion are the complete classifier inputs. The retired cold stamp process parsed GITHUB_EVENT_PATH through retained jq shell solely to populate this display field. The warm path deliberately writes Absent rather than carry that shell transport into the runtime-present claim. dissolve-on: a typed GitHub event payload projection supplies the optional number; admission behavior is unchanged because no verdict arm reads it."
 
-// CURRENT-MAIN BEFORE RECEIPT (not the stale pre-unification estimate): GitHub Actions run
-// 30671526012, job 91291716818, head ddbc5fd6aa, 2026-07-31. The cold stamp process occupied 94.26s
-// from the floor group's final receipt at 23:28:39.602Z through ExitSuccess at 23:30:13.861Z. The
-// separate gate step occupied 102.87s from its step start at 23:30:16.977Z through ExitSuccess at
-// 23:31:59.849Z. Combined merge-admission cold-process wall was therefore 197.13s per PR on that
-// current-main receipt. The after number must come from this PR's own on-success receipt; no
-// projected saving is asserted here.
+data merge_admission_current_main_cold_baseline_note: String = "CURRENT-MAIN BEFORE RECEIPT (not the stale pre-unification estimate): GitHub Actions run 30671526012, job 91291716818, head ddbc5fd6aa, 2026-07-31. The cold stamp process occupied 94.26s from the floor group's final receipt at 23:28:39.602Z through ExitSuccess at 23:30:13.861Z. The separate gate step occupied 102.87s from its step start at 23:30:16.977Z through ExitSuccess at 23:31:59.849Z. Combined merge-admission cold-process wall was therefore 197.13s per PR on that current-main receipt. The after number must come from this PR's own on-success receipt; no projected saving is asserted here."
 
 data merge_admission_fetch_stall_deadline_seconds: Seconds = 240
 
-// Stage 2 reserves five minutes for the whole postcondition population and gives FetchNoTags a
-// stricter typed 240-second no-progress deadline. The git transport binds that value to
-// http.lowSpeedTime with a one-byte-per-second floor, so a stalled remote read returns through
-// FetchNoTags's located failure result while time remains to write the stage receipt; the 60-minute
-// workflow wrapper is not the fetch watchdog.
+data merge_admission_fetch_deadline_note: String = "Stage 2 reserves five minutes for the whole postcondition population and gives FetchNoTags a stricter typed 240-second no-progress deadline. The git transport binds that value to http.lowSpeedTime with a one-byte-per-second floor, so a stalled remote read returns through FetchNoTags's located failure result while time remains to write the stage receipt; the 60-minute workflow wrapper is not the fetch watchdog."
 
 fn read_tested_subject(root: String, attempt_id: WalkAttemptId) -> TestedSubject? {
   let read = Filesystem.Read(
@@ -175,35 +145,16 @@ fn merge_target_refresh_refusal_label(cause: MergeTargetRefreshRefusal) -> Strin
 
 data merge_admission_refresh_refusal_wire_relpath: String = "target/merge-admission-refresh-refusal.txt"
 
-// PAIRED LITERAL (review 47596): claim_executor.rs MERGE_ADMISSION_REFRESH_REFUSAL_WIRE reads this
-// exact relpath at the stage-failure line — the seed cannot import a .dag datum, so a rename here
-// lands with the paired seed edit or the stage failure degrades to detail-without-wire, never a
-// silent success. Same pairing class as floor-population-budget-refusal.txt, under
-// walk_plan_run_stage_claim_executor_seed_deferral.
+data merge_admission_refresh_refusal_wire_seed_pairing: String = "PAIRED LITERAL (review 47596): claim_executor.rs MERGE_ADMISSION_REFRESH_REFUSAL_WIRE reads this exact relpath at the stage-failure line — the seed cannot import a .dag datum, so a rename here lands with the paired seed edit or the stage failure degrades to detail-without-wire, never a silent success. Same pairing class as floor-population-budget-refusal.txt, under walk_plan_run_stage_claim_executor_seed_deferral."
 
-// TYPED CAUSE FOR THE STAGE-2 CLAIM BOUNDARY (review 47542 finding 3, made blocking by CI run
-// 30764945450: refresh_current_target_and_gate returned bare Bool false on srv4-04 with all seven
-// failure causes conflated, and the red was undiagnosable from the log). Same pattern as
-// merge_admission_capture_refusal_wire_note: the claim channel is a Bool, so the core returns the
-// typed sum and the Bool projection durably writes the labeled cause to
-// target/merge-admission-refresh-refusal.txt before returning false; claim_executor's stage-failure
-// line reads the wire. The fetch and target-tree arms carry the operation's own stderr/cause so a
-// runner-side git failure names itself.
+data merge_admission_refresh_refusal_wire_note: String = "TYPED CAUSE FOR THE STAGE-2 CLAIM BOUNDARY (review 47542 finding 3, made blocking by CI run 30764945450: refresh_current_target_and_gate returned bare Bool false on srv4-04 with all seven failure causes conflated, and the red was undiagnosable from the log). Same pattern as merge_admission_capture_refusal_wire_note: the claim channel is a Bool, so the core returns the typed sum and the Bool projection durably writes the labeled cause to target/merge-admission-refresh-refusal.txt before returning false; claim_executor's stage-failure line reads the wire. The fetch and target-tree arms carry the operation's own stderr/cause so a runner-side git failure names itself."
 
 func refresh_wire_path() -> FilePath {
   let root = git.Inspect.Toplevel().path as String
   concat(concat(root, "/"), merge_admission_refresh_refusal_wire_relpath) as FilePath
 }
 
-// DECLARED SCAFFOLD (review 47596 finding 3): the final else arm of merge_target_refresh returns
-// MergeTargetRefreshed WITHOUT consuming the classifier verdict whenever
-// merge_freshness_verdict_is_consumed_to_block() is false — the shadow-phase ratchet the operator's
-// fleet-gating policy requires before a mechanism may red unrelated PRs. While the ratchet is off,
-// the verdict is still computed and the RefreshVerdictDenied arm stays type-live, but stage 2
-// cannot deny on staleness; this is a visible, bounded widening, not a silent fail-open.
-// Dissolution trigger: the merge_freshness_verdict_is_consumed_to_block flip in
-// gunbc.ci_failure_class — the same commit that turns the flag on deletes this else arm (verdict
-// match becomes unconditional) and this row with it.
+data merge_admission_refresh_ratchet_off_widening_note: String = "DECLARED SCAFFOLD (review 47596 finding 3): the final else arm of merge_target_refresh returns MergeTargetRefreshed WITHOUT consuming the classifier verdict whenever merge_freshness_verdict_is_consumed_to_block() is false — the shadow-phase ratchet the operator's fleet-gating policy requires before a mechanism may red unrelated PRs. While the ratchet is off, the verdict is still computed and the RefreshVerdictDenied arm stays type-live, but stage 2 cannot deny on staleness; this is a visible, bounded widening, not a silent fail-open. Dissolution trigger: the merge_freshness_verdict_is_consumed_to_block flip in gunbc.ci_failure_class — the same commit that turns the flag on deletes this else arm (verdict match becomes unconditional) and this row with it."
 
 data merge_admission_refresh_ratchet_off_widening_disposition: Disposition = Scaffold {
   dissolves_to: SingleAuthority,

@@ -53,41 +53,9 @@ import extdeps.languages.json.emit {
   json_kv,
 }
 
-// THE SEGMENT THAT WAS DECLARED AND NEVER GROUNDED. roadmap_attempt_workflow_stage_note states it
-// plainly: Environment, Workspace and Agent are grounded execution facts while Verification,
-// Publication, Review and Goal Audit 'remain desired obligations until independent producers ground
-// them'. This is Verification's producer.\n\nWhy it matters more than the ordering suggests:
-// without it a dispatch ends at 'agent turn completed' and a human goes and checks by hand, which
-// is the loop the belt exists to close. The page renders a desired obligation identically to a
-// grounded one, so an unimplemented stage reads as a stalled one — the operator sees a row stuck on
-// Agent and cannot tell whether the work is incomplete or the mechanism is.\n\nTHE CASE THAT PROVED
-// IT, 2026-07-30. The first srv2 dispatch spent a full provider turn to report that its node was
-// 'already implemented in ancestor commit f67a0c644ea; no new edits were needed'. That conclusion
-// is exactly what this node's declared validation decides, deterministically, in one command, with
-// no provider involved. An agent was spent discovering something a claim run establishes.
+data verification_producer_note: String = "THE SEGMENT THAT WAS DECLARED AND NEVER GROUNDED. roadmap_attempt_workflow_stage_note states it plainly: Environment, Workspace and Agent are grounded execution facts while Verification, Publication, Review and Goal Audit 'remain desired obligations until independent producers ground them'. This is Verification's producer.\\n\\nWhy it matters more than the ordering suggests: without it a dispatch ends at 'agent turn completed' and a human goes and checks by hand, which is the loop the belt exists to close. The page renders a desired obligation identically to a grounded one, so an unimplemented stage reads as a stalled one — the operator sees a row stuck on Agent and cannot tell whether the work is incomplete or the mechanism is.\\n\\nTHE CASE THAT PROVED IT, 2026-07-30. The first srv2 dispatch spent a full provider turn to report that its node was 'already implemented in ancestor commit f67a0c644ea; no new edits were needed'. That conclusion is exactly what this node's declared validation decides, deterministically, in one command, with no provider involved. An agent was spent discovering something a claim run establishes."
 
-// THE FIRST CUT WAS A USEFUL VERIFIER LIBRARY WEARING THE PRODUCER'S NAME, and it was wrong about
-// both the HOST and the SUBJECT.\n\nWRONG HOST. verify_node called belt_exec, which is
-// gunbc.WitnessBin.Run — a local process — and never consulted instance.provision_transport.
-// srv1_lab's transport is DashboardSshProvision on srv1, so selecting that instance changed the
-// repo paths and the executable resolution the command was built from and did NOT change which
-// machine ran it. Verifying an srv1 instance executed on srv2, against srv1's paths, from srv2's
-// filesystem. The failure mode is not a refusal: the paths do not exist on srv2, so the validation
-// fails, and it fails in a way that reads exactly like the work being incomplete.\n\nWRONG SUBJECT.
-// It verified instance.repo_root — the base clone the instance provisions from — which is the one
-// tree an agent's attempt is guaranteed NOT to have touched. An attempt lives in its own worktree
-// on its own branch at its own revision; running the node's validation against the base answers a
-// question about the starting point and reports it as though it were about the work. There was no
-// attempt identity anywhere in the module, no revision, no receipt, and nothing that could
-// transition into Publication.\n\nSO THERE ARE TWO OPERATIONS, because there were always two
-// questions. verify_base_before_dispatch asks whether the obligation ALREADY holds — a pre-dispatch
-// check against the base tree, which is exactly the tree it should read, and whose answer decides
-// whether spending a provider is warranted. verify_attempt asks whether the agent's work holds,
-// which is a question about a worktree at a revision, and which is the one that produces evidence.
-// The first cut collapsed them and got the second one's host and subject from the first one's
-// assumptions.\n\nOnly the second persists a receipt. A pre-dispatch check is a decision input and
-// produces no evidence about work that has not happened yet; manufacturing a receipt for it would
-// put a verification record in the attempt state directory before the attempt existed.
+data verification_two_operations_note: String = "THE FIRST CUT WAS A USEFUL VERIFIER LIBRARY WEARING THE PRODUCER'S NAME, and it was wrong about both the HOST and the SUBJECT.\\n\\nWRONG HOST. verify_node called belt_exec, which is gunbc.WitnessBin.Run — a local process — and never consulted instance.provision_transport. srv1_lab's transport is DashboardSshProvision on srv1, so selecting that instance changed the repo paths and the executable resolution the command was built from and did NOT change which machine ran it. Verifying an srv1 instance executed on srv2, against srv1's paths, from srv2's filesystem. The failure mode is not a refusal: the paths do not exist on srv2, so the validation fails, and it fails in a way that reads exactly like the work being incomplete.\\n\\nWRONG SUBJECT. It verified instance.repo_root — the base clone the instance provisions from — which is the one tree an agent's attempt is guaranteed NOT to have touched. An attempt lives in its own worktree on its own branch at its own revision; running the node's validation against the base answers a question about the starting point and reports it as though it were about the work. There was no attempt identity anywhere in the module, no revision, no receipt, and nothing that could transition into Publication.\\n\\nSO THERE ARE TWO OPERATIONS, because there were always two questions. verify_base_before_dispatch asks whether the obligation ALREADY holds — a pre-dispatch check against the base tree, which is exactly the tree it should read, and whose answer decides whether spending a provider is warranted. verify_attempt asks whether the agent's work holds, which is a question about a worktree at a revision, and which is the one that produces evidence. The first cut collapsed them and got the second one's host and subject from the first one's assumptions.\\n\\nOnly the second persists a receipt. A pre-dispatch check is a decision input and produces no evidence about work that has not happened yet; manufacturing a receipt for it would put a verification record in the attempt state directory before the attempt existed."
 
 type VerificationOutcome
   = VerificationUnbound {
@@ -111,38 +79,9 @@ type VerificationOutcome
       node_id: String,
     }
 
-// FIVE ARMS BECAUSE FIVE REMEDIES. Unbound means the node names no validation — nothing failed,
-// there is simply nothing to run, and the fix is to author a contract; this is the state most of
-// the board is in and collapsing it into a failure would report fifty imaginary regressions. Failed
-// means the validation ran and answered no: the work is genuinely incomplete. Refused means it
-// could not run at all — a missing binary, an unrealized capability, a transport that did not
-// deliver the command — which is an environment problem and never evidence about the work. Passed
-// carries the count so a contract that silently lost its validations cannot report success from an
-// empty list. NotFound is a caller error, distinct from every state of a real node.\n\nThe pair
-// that must never merge is Failed and Refused. A refusal reported as a failure sends someone to
-// debug code that was never executed, and it is the exact shape of the fabricated verdicts this
-// repository keeps finding. It is also precisely what the wrong-host defect produced: a validation
-// running on the wrong machine against paths that do not exist there fails, and reads as incomplete
-// work.\n\nAn empty validations list is Unbound rather than Passed for the same reason: zero checks
-// passing is not a green result. That decision no longer lives here — it is
-// gunbc.roadmap_execution_contract's contract_closure, because two other modules were deciding it
-// too and one of them disagreed.
+data verification_outcome_arms_note: String = "FIVE ARMS BECAUSE FIVE REMEDIES. Unbound means the node names no validation — nothing failed, there is simply nothing to run, and the fix is to author a contract; this is the state most of the board is in and collapsing it into a failure would report fifty imaginary regressions. Failed means the validation ran and answered no: the work is genuinely incomplete. Refused means it could not run at all — a missing binary, an unrealized capability, a transport that did not deliver the command — which is an environment problem and never evidence about the work. Passed carries the count so a contract that silently lost its validations cannot report success from an empty list. NotFound is a caller error, distinct from every state of a real node.\\n\\nThe pair that must never merge is Failed and Refused. A refusal reported as a failure sends someone to debug code that was never executed, and it is the exact shape of the fabricated verdicts this repository keeps finding. It is also precisely what the wrong-host defect produced: a validation running on the wrong machine against paths that do not exist there fails, and reads as incomplete work.\\n\\nAn empty validations list is Unbound rather than Passed for the same reason: zero checks passing is not a green result. That decision no longer lives here — it is gunbc.roadmap_execution_contract's contract_closure, because two other modules were deciding it too and one of them disagreed."
 
-// VERIFICATION RUNS WHERE THE INSTANCE LIVES, which is the defect this function exists to close.
-// The routing is the same one gunbc.roadmap_dashboard_instance_apply already performs for every
-// provisioning step — match the transport, run locally or over SSH — and the verifier simply was
-// not doing it.\n\nThe workdir is threaded rather than assumed. A local run gets it from env -C
-// through WitnessBin.Run's own workdir parameter; an SSH run has no workdir channel, so the argv is
-// prefixed with env -C explicitly. Both forms are the same intent and neither invents a default:
-// the caller says which tree, because the whole point of the split above is that the tree differs
-// between the two operations.\n\nTHE EXIT CODE IS PRESERVED, unlike DashboardExecResult which
-// reduces execution to a success Bool and carries a declared scaffold marker saying so. A receipt
-// whose exit field could only say pass or fail would lose the distinction between a validation that
-// answered no and a runner that could not start, which is the same Failed-versus-Refused collapse
-// the arms above exist to prevent. This module keeps its own result carrier for that reason rather
-// than widening the scaffolded one, and the host that actually ran the process is part of it —
-// derived from the TRANSPORT rather than from host_identity, because host_identity is what the old
-// code would have reported while executing somewhere else.
+data verification_transport_note: String = "VERIFICATION RUNS WHERE THE INSTANCE LIVES, which is the defect this function exists to close. The routing is the same one gunbc.roadmap_dashboard_instance_apply already performs for every provisioning step — match the transport, run locally or over SSH — and the verifier simply was not doing it.\\n\\nThe workdir is threaded rather than assumed. A local run gets it from env -C through WitnessBin.Run's own workdir parameter; an SSH run has no workdir channel, so the argv is prefixed with env -C explicitly. Both forms are the same intent and neither invents a default: the caller says which tree, because the whole point of the split above is that the tree differs between the two operations.\\n\\nTHE EXIT CODE IS PRESERVED, unlike DashboardExecResult which reduces execution to a success Bool and carries a declared scaffold marker saying so. A receipt whose exit field could only say pass or fail would lose the distinction between a validation that answered no and a runner that could not start, which is the same Failed-versus-Refused collapse the arms above exist to prevent. This module keeps its own result carrier for that reason rather than widening the scaffolded one, and the host that actually ran the process is part of it — derived from the TRANSPORT rather than from host_identity, because host_identity is what the old code would have reported while executing somewhere else."
 
 type VerificationExec
   = VerificationExecRan {
@@ -328,14 +267,7 @@ fn verify_base_node_id(
   }
 }
 
-// DECLARED LEGACY STATE — DISSOLVE-ON: gunbc.roadmap_verification_receipt VerificationReceipt is
-// wired into verify_attempt and the persistence function below deletes. This was the first attempt
-// receipt and proved the wrong-host/wrong-worktree class, but its one command_wire and evidence
-// string summarize a contract to one validation, its revision is an anonymous NonEmptyStr, and it
-// carries no durable node identity, criteria digest or branch. It therefore cannot answer the
-// exact-head question and must never be consumed as the current verification receipt. Exit remains
-// a coproduct because a process that never ran has no exit code; zero is the wrong answer in the
-// dangerous direction.
+data legacy_single_validation_verification_receipt_note: String = "DECLARED LEGACY STATE — DISSOLVE-ON: gunbc.roadmap_verification_receipt VerificationReceipt is wired into verify_attempt and the persistence function below deletes. This was the first attempt receipt and proved the wrong-host/wrong-worktree class, but its one command_wire and evidence string summarize a contract to one validation, its revision is an anonymous NonEmptyStr, and it carries no durable node identity, criteria digest or branch. It therefore cannot answer the exact-head question and must never be consumed as the current verification receipt. Exit remains a coproduct because a process that never ran has no exit code; zero is the wrong answer in the dangerous direction."
 
 type VerificationExit
   = ExitObserved { code: Int }
@@ -383,19 +315,7 @@ fn legacy_single_validation_verification_receipt_json(
   ]))
 }
 
-// THE OPERATION THE FIRST CUT DID NOT HAVE. It takes the attempt's identity, its worktree and its
-// revision as arguments rather than deriving them from the instance, because they are facts about
-// the WORK and not about the deployment — the same instance verifies many attempts, each in its own
-// tree at its own revision.\n\nIt runs through the instance transport, so an srv1 attempt is
-// verified on srv1. It runs in the attempt's worktree, so what it reads is what the agent produced.
-// And it returns a receipt alongside the outcome, so the answer carries the four facts that make it
-// checkable rather than merely reportable.\n\nThe single-validation shape is deliberate at this
-// stage. A contract with several validations needs a receipt per validation to stay honest — one
-// receipt naming one command cannot describe three runs — and folding several into one record is
-// the summarization that loses the located detail. So this verifies the contract's FIRST closing
-// validation and names it; the multi-validation receipt set is the next slice, and stating that
-// here is cheaper than shipping a receipt whose command field describes one of the three things
-// that ran.
+data attempt_verification_note: String = "THE OPERATION THE FIRST CUT DID NOT HAVE. It takes the attempt's identity, its worktree and its revision as arguments rather than deriving them from the instance, because they are facts about the WORK and not about the deployment — the same instance verifies many attempts, each in its own tree at its own revision.\\n\\nIt runs through the instance transport, so an srv1 attempt is verified on srv1. It runs in the attempt's worktree, so what it reads is what the agent produced. And it returns a receipt alongside the outcome, so the answer carries the four facts that make it checkable rather than merely reportable.\\n\\nThe single-validation shape is deliberate at this stage. A contract with several validations needs a receipt per validation to stay honest — one receipt naming one command cannot describe three runs — and folding several into one record is the summarization that loses the located detail. So this verifies the contract's FIRST closing validation and names it; the multi-validation receipt set is the next slice, and stating that here is cheaper than shipping a receipt whose command field describes one of the three things that ran."
 
 type AttemptVerification
   = AttemptVerified {
@@ -522,23 +442,7 @@ fn verify_attempt(
   }
 }
 
-// PERSISTING THE RECEIPT IS A HOST EFFECT AND IT OBEYS THE SAME TRANSPORT THE VERIFICATION DID. The
-// attempt state directory lives on the instance's machine, so writing the receipt with a local
-// Filesystem.Write is correct exactly when the instance is locally provisioned and wrong in the
-// same way the old verifier was wrong when it is not — it would put an srv1 attempt's evidence on
-// srv2's disk, under a path that describes srv1, and report success.\n\nSo the remote arm REFUSES
-// rather than writing locally, and the refusal is typed and carries the transport it could not use.
-// This is a real gap and it is named as one: gunbc.WitnessBin.Run and the SSH argv path both move a
-// COMMAND, and neither moves file CONTENT, so a remote receipt needs a content-carrying transport
-// that does not exist here yet. The argv allowlist in gunbc.typed_argv_exec deliberately excludes
-// the braces and quotes a JSON document is made of, which is why smuggling the write through an
-// echo argv is not available and should not be.\n\nDISSOLVES ON a transport-routed write — the same
-// seam gunbc.roadmap_dashboard_instance_apply's dashboard_copy_to_target_atomically already crosses
-// for staged files via scp. Until then a remote attempt's verification returns its outcome and its
-// receipt as VALUES, which are complete and checkable, and refuses only the persistence step. Note
-// that gunbc.roadmap_belt_actuate's attempt-state initialization writes through the same local
-// Filesystem.Write with the same latent assumption; this row does not fix that, and does not hide
-// it either.
+data receipt_persistence_note: String = "PERSISTING THE RECEIPT IS A HOST EFFECT AND IT OBEYS THE SAME TRANSPORT THE VERIFICATION DID. The attempt state directory lives on the instance's machine, so writing the receipt with a local Filesystem.Write is correct exactly when the instance is locally provisioned and wrong in the same way the old verifier was wrong when it is not — it would put an srv1 attempt's evidence on srv2's disk, under a path that describes srv1, and report success.\\n\\nSo the remote arm REFUSES rather than writing locally, and the refusal is typed and carries the transport it could not use. This is a real gap and it is named as one: gunbc.WitnessBin.Run and the SSH argv path both move a COMMAND, and neither moves file CONTENT, so a remote receipt needs a content-carrying transport that does not exist here yet. The argv allowlist in gunbc.typed_argv_exec deliberately excludes the braces and quotes a JSON document is made of, which is why smuggling the write through an echo argv is not available and should not be.\\n\\nDISSOLVES ON a transport-routed write — the same seam gunbc.roadmap_dashboard_instance_apply's dashboard_copy_to_target_atomically already crosses for staged files via scp. Until then a remote attempt's verification returns its outcome and its receipt as VALUES, which are complete and checkable, and refuses only the persistence step. Note that gunbc.roadmap_belt_actuate's attempt-state initialization writes through the same local Filesystem.Write with the same latent assumption; this row does not fix that, and does not hide it either."
 
 type VerificationReceiptPersistence
   = ReceiptPersisted { path: String }
@@ -579,17 +483,7 @@ fn persist_verification_receipt(
   }
 }
 
-// WHAT THE BELT SHOULD DO NEXT, derived from the outcome rather than decided at the call site. A
-// pass means the obligation holds and the right next action is ACCEPTANCE — not another agent, and
-// not silence. A failure is the only state where spending a provider is justified, because there is
-// now a specific thing to fix. Unbound needs a contract authored before any of this applies, which
-// is work of a different kind and belongs to the acceptance tasks the frontier already
-// derives.\n\nA refusal dispatches NOTHING. The environment could not run the check, so nothing is
-// known about the work, and sending an agent at that point asks it to fix code on the strength of a
-// broken toolchain — the failure mode where a provider dutifully edits something in response to
-// evidence that never existed. The wrong-host defect made this arm load-bearing rather than
-// theoretical: a transport that cannot reach srv1 now lands here instead of arriving as a failure
-// that looks like incomplete work.
+data verification_dispatch_disposition_note: String = "WHAT THE BELT SHOULD DO NEXT, derived from the outcome rather than decided at the call site. A pass means the obligation holds and the right next action is ACCEPTANCE — not another agent, and not silence. A failure is the only state where spending a provider is justified, because there is now a specific thing to fix. Unbound needs a contract authored before any of this applies, which is work of a different kind and belongs to the acceptance tasks the frontier already derives.\\n\\nA refusal dispatches NOTHING. The environment could not run the check, so nothing is known about the work, and sending an agent at that point asks it to fix code on the strength of a broken toolchain — the failure mode where a provider dutifully edits something in response to evidence that never existed. The wrong-host defect made this arm load-bearing rather than theoretical: a transport that cannot reach srv1 now lands here instead of arriving as a failure that looks like incomplete work."
 
 type VerifiedDispatchDisposition
   = ReadyForAcceptance { node_id: String, validations_run: Int }

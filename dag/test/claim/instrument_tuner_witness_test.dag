@@ -25,11 +25,7 @@ import extdeps.languages.html_fragment { serialize_fragment }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-// The operable follow-on to the static study: a modeled TsProgram client, a served asset,
-// pre-rendered reading rows keyed by camera_wire, and witnesses that join camera population to
-// v1_exit_finish_lines rather than pinning a census literal. Model-layer detent integrator and
-// seek-depth claims live in instrument_camera_witness; this file pins the client seam and HTML
-// pre-render shape.
+data instrument_tuner_witness_note: String = "The operable follow-on to the static study: a modeled TsProgram client, a served asset, pre-rendered reading rows keyed by camera_wire, and witnesses that join camera population to v1_exit_finish_lines rather than pinning a census literal. Model-layer detent integrator and seek-depth claims live in instrument_camera_witness; this file pins the client seam and HTML pre-render shape."
 
 fn fixture_view() -> V1DeletionProgramView {
   V1DeletionProgramView {

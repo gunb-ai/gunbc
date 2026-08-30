@@ -500,12 +500,7 @@ test fn witness_tmux_attempt_panes_malformed_row_refuses() -> Bool {
   }
 }
 
-// review 44063. The claim is no longer 'the caller remembered to quote' — quoting is the lit-word
-// production's job now, so the exact emitted spelling is the oracle: every word single-quoted, and
-// an embedded quote closed/escaped/reopened as '\''. The metacharacter fixture stays because it is
-// what a spelling regression would smuggle: a $(...) inside the events path must be inert text in
-// the payload, never a command substitution. The poison RED holds the serializer-refusal arm dead
-// in corpus.
+data event_pipe_emission_witness_note: String = "review 44063. The claim is no longer 'the caller remembered to quote' — quoting is the lit-word production's job now, so the exact emitted spelling is the oracle: every word single-quoted, and an embedded quote closed/escaped/reopened as '\\''. The metacharacter fixture stays because it is what a spelling regression would smuggle: a $(...) inside the events path must be inert text in the payload, never a command substitution. The poison RED holds the serializer-refusal arm dead in corpus."
 
 fn emitted_pipe_body_matches(body: String) -> Bool {
   body == "'exec' '/usr/bin/tee' '-a' '--' '/tmp/a'\\'';$(touch nope)'"

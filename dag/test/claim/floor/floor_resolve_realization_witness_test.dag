@@ -29,11 +29,7 @@ import v2.std.collection { List }
 import v2.std.logic { Bool }
 import std.measure { nanosecond }
 
-// Eight required controls for 0B resolve realization (operator ruling 2026-08-04). ADMIT: anchor
-// cold + native cold; anchor cold + native warm. REFUSE: native absent; unknown third obligation;
-// duplicate identity; warm without provider receipt; cold without resolve receipt; unattributed
-// physical resolve. Authority: gunbc.ci_materialization; claim_executor observes; ci_floor_plan
-// transports only.
+data floor_resolve_realization_witness_note: String = "Eight required controls for 0B resolve realization (operator ruling 2026-08-04). ADMIT: anchor cold + native cold; anchor cold + native warm. REFUSE: native absent; unknown third obligation; duplicate identity; warm without provider receipt; cold without resolve receipt; unattributed physical resolve. Authority: gunbc.ci_materialization; claim_executor observes; ci_floor_plan transports only."
 
 fn cold_main_realizations() -> List<ResolveRealization> {
   [

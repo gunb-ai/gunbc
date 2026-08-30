@@ -11,11 +11,7 @@ import extdeps.git.object_store {
 }
 import gunbc.repo_identity { gunbc_merge_target_ref }
 
-// WalkAttemptId, TestedSubject, and their path/wire identity live here because capture and
-// admission classification both consume them. This is a MOVE from gunbc.merge_admission and
-// gunbc.merge_admission_produce, not a second representation: the domain modules import this
-// carrier home. Keeping the checkout capture out of the classifier's commit-roster closure makes
-// its declared Negligible profile measurable at the realization boundary.
+data merge_admission_subject_defusion_note: String = "WalkAttemptId, TestedSubject, and their path/wire identity live here because capture and admission classification both consume them. This is a MOVE from gunbc.merge_admission and gunbc.merge_admission_produce, not a second representation: the domain modules import this carrier home. Keeping the checkout capture out of the classifier's commit-roster closure makes its declared Negligible profile measurable at the realization boundary."
 
 // The attempt identity is a PATH SEGMENT, because it is concatenated into one: merge_admission_attempt_dir builds <root>/.gunbc/merge-admission/<attempt_id>/. As a bare string it was neither path-safe nor wire-safe. Both producers — GitHub-derived composition and explicit GUNBC_WALK_ATTEMPT_ID — go through walk_attempt_id, the only constructor, and refuse rather than sanitizing.
 type WalkAttemptId = PathSegment where brand("WalkAttemptId")
@@ -60,18 +56,7 @@ type TestedSubject {
   base_commit_sha: CommitSha
 }
 
-// THE SUBJECT THE FLOOR TESTED, captured by a typed claim subprocess before the ordinary floor —
-// before any substantive floor work — and bound into the receipt by the stamp. The child address
-// space dies before batch 1, structurally reclaiming its evaluator arena while preserving the exact
-// wire bytes. The stamp must NOT re-read HEAD or re-observe the merge target at stamp time: main
-// can advance during a floor that runs for tens of minutes, and a receipt binding post-floor
-// observations would claim the floor tested a tree it never saw. The gate then fetches the CURRENT
-// target and classifies tested_base_commit_sha against it — two base facts with different jobs,
-// never one observation doing both (the deleted single pre-floor fetch was exactly that fusion, and
-// the freshness hole it left is what the old separate gate step's own fresh fetch existed to
-// catch). The classified operand is the base COMMIT, not its tree: the merge base is fixed by
-// ancestry, which a tree does not carry, so a base that returns to the same tree at a different
-// commit changes the merge result while a tree comparison passes.
+data tested_subject_note: String = "THE SUBJECT THE FLOOR TESTED, captured by a typed claim subprocess before the ordinary floor — before any substantive floor work — and bound into the receipt by the stamp. The child address space dies before batch 1, structurally reclaiming its evaluator arena while preserving the exact wire bytes. The stamp must NOT re-read HEAD or re-observe the merge target at stamp time: main can advance during a floor that runs for tens of minutes, and a receipt binding post-floor observations would claim the floor tested a tree it never saw. The gate then fetches the CURRENT target and classifies tested_base_commit_sha against it — two base facts with different jobs, never one observation doing both (the deleted single pre-floor fetch was exactly that fusion, and the freshness hole it left is what the old separate gate step's own fresh fetch existed to catch). The classified operand is the base COMMIT, not its tree: the merge base is fixed by ancestry, which a tree does not carry, so a base that returns to the same tree at a different commit changes the merge result while a tree comparison passes."
 
 data merge_admission_merge_base_ref: String = gunbc_merge_target_ref as String
 // SCHEMA BUMPED v1 -> v2 WITH THE ADDED FIELD, per the rule gunbc.merge_admission_produce
@@ -81,23 +66,9 @@ data merge_admission_merge_base_ref: String = gunbc_merge_target_ref as String
 // sixth.
 data merge_admission_tested_subject_schema: String = "gunbc.merge_admission_tested_subject.v2"
 
-// Pure composition of the walk-attempt identity from its parts; the ENV OBSERVATION lives with the
-// wet entry, this fn only joins and refuses. Every part must be nonempty — an empty run id, attempt
-// number, or job name yields Absent, and the caller REFUSES the run rather than substituting a
-// constant: a silent local would make every non-GitHub run one attempt, so the wrong-attempt
-// refusal could never fire off CI, which is exactly the unreachable-arm shape §5 forbids.
-// Non-GitHub execution supplies GUNBC_WALK_ATTEMPT_ID explicitly and it passes through
-// compose_explicit_walk_attempt_id under the same nonempty law.
+data compose_walk_attempt_id_note: String = "Pure composition of the walk-attempt identity from its parts; the ENV OBSERVATION lives with the wet entry, this fn only joins and refuses. Every part must be nonempty — an empty run id, attempt number, or job name yields Absent, and the caller REFUSES the run rather than substituting a constant: a silent local would make every non-GitHub run one attempt, so the wrong-attempt refusal could never fire off CI, which is exactly the unreachable-arm shape §5 forbids. Non-GitHub execution supplies GUNBC_WALK_ATTEMPT_ID explicitly and it passes through compose_explicit_walk_attempt_id under the same nonempty law."
 
-// A Git object id on the wire carries its FORMAT, because the type does: <format>:<hex>. An
-// anonymous hex string would be exactly the defect DESIGN's ContentHash-family residue records — a
-// value whose family the reader has to guess — and a repository mid SHA-1/SHA-256 transition is
-// precisely when guessing wrong is possible. This fn owns ONLY the <format>:<hex> spelling; whether
-// the hex is a well-formed object id of that family is extdeps.git.object_store's question,
-// answered by git_sha1_object_id / git_sha256_object_id, which check exact length and canonical
-// lowercase hex. An earlier cut cast the suffix straight into the brand, so sha1:x, sha1:not-hex
-// and a 64-digit value labelled sha1 all parsed (review 2026-07-30) — family without length and
-// syntax is not identification.
+data git_object_id_wire_note: String = "A Git object id on the wire carries its FORMAT, because the type does: <format>:<hex>. An anonymous hex string would be exactly the defect DESIGN's ContentHash-family residue records — a value whose family the reader has to guess — and a repository mid SHA-1/SHA-256 transition is precisely when guessing wrong is possible. This fn owns ONLY the <format>:<hex> spelling; whether the hex is a well-formed object id of that family is extdeps.git.object_store's question, answered by git_sha1_object_id / git_sha256_object_id, which check exact length and canonical lowercase hex. An earlier cut cast the suffix straight into the brand, so sha1:x, sha1:not-hex and a 64-digit value labelled sha1 all parsed (review 2026-07-30) — family without length and syntax is not identification."
 
 fn merge_admission_attempt_dir(root: String, attempt_id: WalkAttemptId) -> String {
   concat(concat(root, "/.gunbc/merge-admission/"), attempt_id as String)

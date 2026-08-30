@@ -52,15 +52,7 @@ type ModeledValidationCommand {
   args: List<String>
 }
 
-// A work item names semantic validation operations, never an opaque prompt fragment. Task
-// capabilities derive from those closed variants; the provider prompt and the post-provider
-// verifier are projections of the same operations. The dispatch platform separately contributes its
-// fixed workspace/session/capture capabilities at admission, so those mechanics do not leak into
-// every work-item contract. HostDashboardInstance resolves every joined semantic capability to an
-// exact executable plus identity probe and Ensure policy. ExecutionContractUnspecified is an
-// explicit migration state and dispatch refusal, never a repository-wide guessed default. In
-// particular, a DAG task does not acquire Cargo merely because the repository is implemented in
-// Rust.
+data work_item_execution_contract_note: String = "A work item names semantic validation operations, never an opaque prompt fragment. Task capabilities derive from those closed variants; the provider prompt and the post-provider verifier are projections of the same operations. The dispatch platform separately contributes its fixed workspace/session/capture capabilities at admission, so those mechanics do not leak into every work-item contract. HostDashboardInstance resolves every joined semantic capability to an exact executable plus identity probe and Ensure policy. ExecutionContractUnspecified is an explicit migration state and dispatch refusal, never a repository-wide guessed default. In particular, a DAG task does not acquire Cargo merely because the repository is implemented in Rust."
 
 fn execution_capability_label(capability: ExecutionCapability) -> String {
   match capability {
@@ -145,24 +137,7 @@ fn execution_contract_required_capabilities(
   }
 }
 
-// ONE BINDING LAW, BECAUSE THERE WERE THREE AND THEY DISAGREED. Whether a contract closes anything
-// was decided independently in three places and two answers were given. gunbc.roadmap_authority's
-// node_lacks_closing_validation treated ANY ExecutionContract as bound, so a contract declaring an
-// empty validation list counted as closed; gunbc.roadmap_verify treated the empty list as unbound;
-// gunbc.roadmap_dispatch_environment refused it with its own reason. Empty lists are constructible
-// — nothing stops ExecutionContract with no validations from being written — so the disagreement is
-// reachable rather than theoretical.\n\nThe consequence lands on the acceptance frontier. A node
-// bound to an empty contract disappears from nodes_needing_acceptance, because the projection reads
-// it as bound; the verifier then reports it Unbound, and dispatch refuses to admit an environment
-// for it. The node is simultaneously finished, unverifiable and undispatchable, and no single
-// reading of the model says so.\n\nThis is the one decision, and it returns a THREE-valued closure
-// rather than a Bool because the two unclosed states have different remedies — author a contract,
-// versus fix the contract you authored — and dispatch_environment's located diagnostics depend on
-// telling them apart. contract_has_closing_validation is the Bool projection for the callers that
-// genuinely only need the predicate. No consumer re-derives either from the coproduct's
-// shape.\n\nNo behaviour changes on today's corpus: all four bound nodes route through
-// gunbc_claim_execution_contract, which always emits exactly one validation. The de-fork is what
-// keeps that true when the fifth binding is written by hand.
+data contract_closure_note: String = "ONE BINDING LAW, BECAUSE THERE WERE THREE AND THEY DISAGREED. Whether a contract closes anything was decided independently in three places and two answers were given. gunbc.roadmap_authority's node_lacks_closing_validation treated ANY ExecutionContract as bound, so a contract declaring an empty validation list counted as closed; gunbc.roadmap_verify treated the empty list as unbound; gunbc.roadmap_dispatch_environment refused it with its own reason. Empty lists are constructible — nothing stops ExecutionContract with no validations from being written — so the disagreement is reachable rather than theoretical.\\n\\nThe consequence lands on the acceptance frontier. A node bound to an empty contract disappears from nodes_needing_acceptance, because the projection reads it as bound; the verifier then reports it Unbound, and dispatch refuses to admit an environment for it. The node is simultaneously finished, unverifiable and undispatchable, and no single reading of the model says so.\\n\\nThis is the one decision, and it returns a THREE-valued closure rather than a Bool because the two unclosed states have different remedies — author a contract, versus fix the contract you authored — and dispatch_environment's located diagnostics depend on telling them apart. contract_has_closing_validation is the Bool projection for the callers that genuinely only need the predicate. No consumer re-derives either from the coproduct's shape.\\n\\nNo behaviour changes on today's corpus: all four bound nodes route through gunbc_claim_execution_contract, which always emits exactly one validation. The de-fork is what keeps that true when the fifth binding is written by hand."
 
 type ContractClosure
   = ContractDeclaresNoValidation
@@ -239,22 +214,7 @@ fn gunbc_claim_execution_contract(
   }
 }
 
-// ONE PARAMETERIZED KIND, NOT ONE META-WITNESS PER TARGET. gunbc.roadmap_authority
-// closing_contract_task_naming_correction_note recorded the gap this closes: a derived
-// closing-contract task was itself built with ExecutionContractUnspecified, so dispatch refused the
-// very row whose job is to supply a contract, and the belt could not run the frontier it computes.
-// The validation is parameterized by the TARGET node id and its oracle is a single fixed entry
-// point, so adding a target costs no new declaration anywhere -- which is what the note asked for
-// instead of ten bespoke meta-witnesses.
-//
-// The target travels as `--arg target=<id>` rather than being baked into a per-target function
-// name, because a function name per target is exactly the hand-maintained roster the derivation
-// exists to avoid: the frontier changes whenever a node is accepted or bound, and a roster of entry
-// points would have to be edited in step with it.
-//
-// WHAT THE PREDICATE DECIDES AND WHAT IT DOES NOT is stated at
-// gunbc.roadmap_closing_contract_authoring closing_contract_authoring_predicate_note. It is not the
-// whole of the note's wish list, and the boundary is declared there rather than implied by a green.
+data closing_contract_authoring_note: String = "ONE PARAMETERIZED KIND, NOT ONE META-WITNESS PER TARGET. gunbc.roadmap_authority closing_contract_task_naming_correction_note recorded the gap this closes: a derived closing-contract task was itself built with ExecutionContractUnspecified, so dispatch refused the very row whose job is to supply a contract, and the belt could not run the frontier it computes. The validation is parameterized by the TARGET node id and its oracle is a single fixed entry point, so adding a target costs no new declaration anywhere -- which is what the note asked for instead of ten bespoke meta-witnesses.\n\nThe target travels as `--arg target=<id>` rather than being baked into a per-target function name, because a function name per target is exactly the hand-maintained roster the derivation exists to avoid: the frontier changes whenever a node is accepted or bound, and a roster of entry points would have to be edited in step with it.\n\nWHAT THE PREDICATE DECIDES AND WHAT IT DOES NOT is stated at gunbc.roadmap_closing_contract_authoring closing_contract_authoring_predicate_note. It is not the whole of the note's wish list, and the boundary is declared there rather than implied by a green."
 
 data closing_contract_authoring_entry: FilePath = "dag/gunbc/roadmap/roadmap_closing_contract_authoring.dag" as FilePath
 

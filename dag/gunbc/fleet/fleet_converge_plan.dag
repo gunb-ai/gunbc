@@ -184,16 +184,7 @@ import gunbc.remote_operation {
 
 type TimerRetirementMemberAt = NonEmptyStr
 
-// On-demand fleet converge PLAN authority (operator directive 2026-08-13, sleek-heron-218):
-// membership_reconcile computes the typed hunks — MemberAdded, MemberChanged, MemberRemoved,
-// MemberRemovalRefused — that a human reviews BEFORE apply. Plan and apply are the same spine at
-// different poles; this module owns serialization, the content-addressed artifact, subject
-// identity, std.temporal_effect LeaseEpoch generation protection, and the observed baseline
-// fingerprint apply must CAS against. A plan names its subject (host + member-set fingerprint) and
-// mints a generation-scoped lease so two applies against the same observed baseline cannot both
-// act. Timer retirement: desired has NO fleet-converge timers; observed lists legacy units still on
-// the host. MemberRemovalRefused arms are rendered in plan output and never filtered — they are
-// precisely what a reviewer needs to see before approving.
+data fleet_converge_plan_authority_note: String = "On-demand fleet converge PLAN authority (operator directive 2026-08-13, sleek-heron-218): membership_reconcile computes the typed hunks — MemberAdded, MemberChanged, MemberRemoved, MemberRemovalRefused — that a human reviews BEFORE apply. Plan and apply are the same spine at different poles; this module owns serialization, the content-addressed artifact, subject identity, std.temporal_effect LeaseEpoch generation protection, and the observed baseline fingerprint apply must CAS against. A plan names its subject (host + member-set fingerprint) and mints a generation-scoped lease so two applies against the same observed baseline cannot both act. Timer retirement: desired has NO fleet-converge timers; observed lists legacy units still on the host. MemberRemovalRefused arms are rendered in plan output and never filtered — they are precisely what a reviewer needs to see before approving."
 
 // SCOPE IS A PROPERTY OF THE REQUEST, NOT A FLAG BESIDE IT. A fleet converge answers for a set of
 // resource families, and the fabric-execution-cells cut needs to answer for exactly one of them.
@@ -611,22 +602,7 @@ fn membership_plan_lines_cap(plan: MembershipPlan<CapMember, CapMemberAt>) -> Li
   map(plan.actions, a => cap_action_line(action: a))
 }
 
-// THE SLOT ROSTER IS RECONCILED HERE RATHER THAN STOOD UP BY A SEPARATE SCRIPT, which is the whole
-// point of the consolidation (operator directive 2026-08-22: this all belongs in fleet
-// convergence). Timers and caps already flowed through membership_reconcile and slot standup did
-// not, so the fleet had two ways to change a host: a reviewed plan artifact with a lease, a
-// member-set fingerprint and a CAS against the observed baseline, and a hand-run provisioning path
-// with none of those. A width change landing through the second one is unreviewed by construction.
-//
-// DESIRED COMES FROM THE DEPLOY ROW AND THE DEPLOY ROW DERIVES ITS WIDTH, so the roster this plan
-// proposes is the width the admission axes committed -- not a number authored beside them. An
-// unmodeled host emits a REFUSED line and no actions; it does not fall through to zero desired
-// members, because zero desired against a populated host reconciles to REMOVE EVERY SLOT, which is
-// the absorbing failure arm pointed the destructive direction.
-//
-// OBSERVATION REFUSAL IS UPSTREAM. gunbc.runner_slot_provision RunnerSlotsUnobserved is resolved by
-// the caller before it reaches this module; a List<RunnerSlotMember> arriving here has already been
-// established to be a genuine reading of the host rather than an unread one rendered as empty.
+data slot_family_is_the_third_member_family_note: String = "THE SLOT ROSTER IS RECONCILED HERE RATHER THAN STOOD UP BY A SEPARATE SCRIPT, which is the whole point of the consolidation (operator directive 2026-08-22: this all belongs in fleet convergence). Timers and caps already flowed through membership_reconcile and slot standup did not, so the fleet had two ways to change a host: a reviewed plan artifact with a lease, a member-set fingerprint and a CAS against the observed baseline, and a hand-run provisioning path with none of those. A width change landing through the second one is unreviewed by construction.\n\nDESIRED COMES FROM THE DEPLOY ROW AND THE DEPLOY ROW DERIVES ITS WIDTH, so the roster this plan proposes is the width the admission axes committed -- not a number authored beside them. An unmodeled host emits a REFUSED line and no actions; it does not fall through to zero desired members, because zero desired against a populated host reconciles to REMOVE EVERY SLOT, which is the absorbing failure arm pointed the destructive direction.\n\nOBSERVATION REFUSAL IS UPSTREAM. gunbc.runner_slot_provision RunnerSlotsUnobserved is resolved by the caller before it reaches this module; a List<RunnerSlotMember> arriving here has already been established to be a genuine reading of the host rather than an unread one rendered as empty."
 
 fn slot_action_line(action: MemberAction<RunnerSlotMember, RunnerSlotMemberAt>) -> String {
   match action {

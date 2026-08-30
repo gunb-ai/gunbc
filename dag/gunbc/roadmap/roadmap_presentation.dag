@@ -49,38 +49,11 @@ import gunbc.worker_lifecycle {
   worker_process_evidence_label,
 }
 
-// THE PRESENTATION SEAM (A2, operator-directed 2026-08-01;
-// docs/plans/roadmap-presentation-seam-design.md). One projection layer between the
-// roadmap/workflow authorities and every renderer: the renderer receives an ALREADY-DECIDED
-// presentation — no punctuation splitting, title reconstruction, policy on string content,
-// availability-implies-emphasis, or evidence smuggled into an actuator region. Governing law: a
-// stronger interface makes fewer claims, each at the right altitude, and shows the evidence or
-// consequence that makes it matter; truthful atoms do not compose into a truthful presentation,
-// so hierarchy, causality and relevance are modeled HERE, not improvised per renderer. Regions:
-// Primary (what this work is), Activity (what is happening to it), Action (what the user can
-// do), Evidence (why the activity claim is believed), Disclosure (complete detail).
-// ActivityRegion is NOT a kind of ActuatorRegion — the A1-era fusion of process evidence into
-// the actuator cell is the falsifier specimen this module dissolves. DELIBERATE ABSENCE: no
-// progress_percent field, and none may be added — the seven obligations are independently
-// evidenced facts, not percentage increments; a scalar appears only if the graph establishes one
-// (making the false scalar UNWRITABLE is the §5 construction form of the rule).
+data roadmap_presentation_note: String = "THE PRESENTATION SEAM (A2, operator-directed 2026-08-01; docs/plans/roadmap-presentation-seam-design.md). One projection layer between the roadmap/workflow authorities and every renderer: the renderer receives an ALREADY-DECIDED presentation — no punctuation splitting, no title reconstruction, no policy on string content, no availability-implies-emphasis, no evidence smuggled into an actuator region. The governing law: a stronger interface makes fewer claims, makes each claim at the right altitude, and shows the evidence or consequence that makes the claim matter — and truthful atoms do not automatically compose into a truthful presentation, so hierarchy, causality, and relevance are modeled HERE rather than improvised per renderer. Regions: Primary (what this work is), Activity (what is happening to it), Action (what the user can do), Evidence (why the activity claim is believed), Disclosure (complete detail). ActivityRegion is NOT a kind of ActuatorRegion — the A1-era fusion of process evidence into the actuator cell is the falsifier specimen this module dissolves. DELIBERATE ABSENCE: there is no progress_percent field and none may be added — the seven obligations are independently evidenced facts, not percentage increments, and a scalar appears only if the graph ever establishes one (making the false scalar UNWRITABLE is the §5 construction form of the rule)."
 
-// ONE projection authority across server and client (operator constraint 1, 2026-08-01). The
-// dangerous shape is two: the server folding facts to HTML here while client TypeScript
-// separately decides which segment is the summary, which evidence is routine, when an anomaly
-// expands, or whether an action is prominent. Rule: every presentation DECISION lives in this
-// module's pure fns; the dynamic endpoint serializes the DECIDED view fields (summary text,
-// attention key, remaining count, evidence rows, action availability x priority) and the client
-// PAINTS them without policy. Discharged by a parity witness — server-rendered activity state and
-// the client-updated realization of the same facts yield the same semantic regions and labels —
-// landing with the client-realization slice, not as prose.
+data single_projection_authority_note: String = "ONE projection authority across server and client (operator constraint 1, 2026-08-01). The dangerous shape is two presentation authorities: the server folding facts to HTML here while the client TypeScript separately hand-decides which segment becomes the summary, which evidence is routine, when an anomaly expands, or whether an action is prominent. The rule: every presentation DECISION lives in this module's pure fns; the dynamic endpoint serializes the DECIDED view fields (summary text, attention key, remaining count, evidence rows, action availability x priority), and the client program PAINTS them without policy. The obligation is discharged by a parity witness — a server-rendered activity state and the client-updated realization of the same constructed facts produce the same semantic regions and labels — which lands with the client-realization slice, not as prose."
 
-// The attention axis drives expand/collapse (routine collapses, active work is legible, anomaly
-// expands): Routine renders the one-line summary with the ledger behind disclosure; Anomalous
-// auto-expands the located evidence — the row-level twin of gunbc.roadmap_altitude's section law.
-// A NeedsUser arm was REMOVED (operator review 2026-08-01, minimality): no producer in the corpus
-// yields a waiting-on-human fact yet, and an unconstructible attention state is future
-// vocabulary — the arm returns WITH its producer.
+data activity_attention_note: String = "The attention axis drives the renderer's expand/collapse per the attention rule (routine collapses, active work is legible, anomaly expands): Routine renders the one-line summary with the ledger behind disclosure; Anomalous auto-expands the located evidence. This is the row-level twin of gunbc.roadmap_altitude's section law. A NeedsUser arm existed in the first cut and was REMOVED (operator review 2026-08-01, minimality): no producer in the corpus yields a waiting-on-human decision fact yet, and an attention state nothing can construct is future vocabulary — the arm returns WITH its producer."
 
 type ActivityAttention
   = ActivityRoutine
@@ -91,25 +64,7 @@ type ActivityEvidenceRow {
   value: String
 }
 
-// ActivityView is the decided answer to 'what is happening to this work', derived ONLY from
-// evidence the workflow authorities already establish: a PROJECTION of WorkflowAttemptProgress
-// (itself a pure fail-closed projection over WorkflowAttemptEvidence, per
-// workflow_progress_projection_note), never a second progress authority. remaining_obligation_count
-// projects from the reconcile report's fold result; obligation identity and order come from the
-// canonical segment roster (roadmap_attempt_workflow_segment_kinds via the progress segments); the
-// summary projects from the reconciled Agent segment state, which IS the provider-execution
-// projection — nothing is recomputed here. NoActiveWork is the ROUTINE state and renders NOTHING:
-// no hollow lamps, no seven pending chips; absence earns no row area. ActiveWork carries one
-// consequence-first summary sentence ('Agent turn completed · Verification next', never a raw
-// evidence pair the reader must join), the obligation ledger for disclosure, the derived remaining
-// count, and the evidence rows grounding the summary (session container / worker process — stated
-// as evidence, never as actions). ActiveWorkRefused carries the located reason: a refusal is a
-// first-class state, not a styling variant of progress. CompletedWork is the terminal projection —
-// the receipt-backed outcome, not the machinery. ActivityUnobservable is 'the evidence could not
-// be read', distinct from refusal and absence — collapsing it into either is the state-space
-// conflation §5 names. NAMING: the field is current_activity, not latest_observation — the event
-// authority establishes no temporal order across observation channels, so 'latest' would claim an
-// ordering nobody derived.
+data activity_view_note: String = "ActivityView is the decided answer to 'what is happening to this work', derived ONLY from evidence the workflow authorities already establish — it is a PROJECTION of WorkflowAttemptProgress (itself a pure fail-closed projection over WorkflowAttemptEvidence, per workflow_progress_projection_note), never a second progress authority: remaining_obligation_count projects from the reconcile report's fold result, obligation identity and order come from the canonical segment roster (roadmap_attempt_workflow_segment_kinds via the progress segments), and the summary projects from the reconciled Agent segment state — which IS the provider-execution projection, so no computation is repeated here. NoActiveWork is the ROUTINE state and renders NOTHING — no hollow lamps, no seven pending chips; absence earns no permanent row area. ActiveWork carries one summary sentence (consequence-first: 'Agent turn completed · Verification next', never a raw evidence pair the reader must join), the obligation ledger for disclosure, the derived remaining count, and the evidence rows that ground the summary (session container / worker process — stated as evidence, never as actions). ActiveWorkRefused carries the located reason: a refusal is a first-class presentation state, not a styling variant of progress. CompletedWork is the terminal projection — the receipt-backed outcome, not the machinery. ActivityUnobservable is 'the evidence could not be read', distinct from both refusal and absence — collapsing it into either arm would be the state-space conflation §5 names. NAMING: the field is current_activity, not latest_observation — the event authority does not establish temporal ordering across observation channels, so 'latest' would claim an ordering fact nobody derived."
 
 type ActivityView
   = NoActiveWork
@@ -140,34 +95,16 @@ type ActivityView
       reason: String
     }
 
-// The EXACT constructor over typed attempt facts (operator constraint 3, 2026-08-01): 'active'
-// never means a string heuristic or a disjunction of narrower facts that can disagree (session
-// present OR lamp on OR dispatch accepted OR process exists). The caller states which typed
-// evidence situation holds; the refused and terminal arms are DERIVED from the progress facts, not
-// caller-assertable — a fabricated refusal or completion is unwritable here.
+data work_attempt_facts_note: String = "The EXACT constructor over typed attempt facts (operator constraint 3, 2026-08-01): 'active' must never mean a string heuristic or a disjunction of narrower facts that can disagree (session present OR lamp on OR dispatch accepted OR process exists). The caller states which typed evidence situation holds; the refused and terminal view arms are then DERIVED from the progress facts rather than being caller-assertable — a fabricated refusal or completion is unwritable through this constructor."
 
 type WorkAttemptFacts
   = NoActiveAttempt
   | ActiveAttempt { progress: WorkflowAttemptProgress }
   | AttemptUnobservable { reason: String }
 
-// ActiveAttempt carries the progress projection ALONE (operator blocker 3, 2026-08-01): the first
-// cut also took process and current_activity as parameters, making disagreement writable — a
-// progress reconciled under WorkerProcessRunning beside an asserted WorkerProcessExited.
-// WorkflowAttemptProgress already carries process (the shared worker_lifecycle evidence) and
-// provider (whose provider_execution_activity IS the canonical current-activity projection), so
-// the seam reads both from one carrier and the fork is unwritable.
+data one_progress_authority_note: String = "ActiveAttempt carries the progress projection ALONE (operator blocker 3, 2026-08-01): the first cut also took process and current_activity as separate parameters, which made disagreement writable — a caller could pass a progress whose reconciliation was derived under WorkerProcessRunning while asserting WorkerProcessExited beside it. WorkflowAttemptProgress already carries process (the shared worker_lifecycle evidence) and provider (whose provider_execution_activity IS the canonical current-activity projection), so the seam reads both from the one carrier and the fork is unwritable."
 
-// Availability and priority are ORTHOGONAL axes (the A1 recon's 'ten equally loud pills' defect):
-// that an operation is legally available says nothing about how loudly it renders. Availability is
-// a fact about the admission contract — for dispatch it is the projection of
-// gunbc.roadmap_launch_admission, the same decision POST /dispatch and the belt tick consume
-// (RLM-1), so the page can never claim a launch the route would refuse; priority is a presentation
-// decision this seam owns. The renderer derives prominence from BOTH; availability never implies
-// visual primacy. AvailableAsOverride is GONE: the manual out-of-order dispatch it named (a
-// blocked, unsized, review or done row launchable by click) was a second launch authority beside
-// the belt's, removed by the plan; any break-glass path is a separate type, endpoint,
-// authorization and receipt, not an availability arm.
+data action_axes_note: String = "Availability and priority are ORTHOGONAL axes (the A1 recon's 'ten equally loud pills' defect): that an operation is legally available establishes nothing about how loudly it renders. Availability is a fact about the admission contract -- for the dispatch action it is the projection of gunbc.roadmap_launch_admission, the same decision POST /dispatch and the belt tick consume (RLM-1), so the page can never claim a launch the route would refuse; priority is a presentation decision this seam owns. The renderer derives prominence from BOTH, and availability must never imply visual primacy. AvailableAsOverride is GONE: the manual out-of-order dispatch it named (a blocked, unsized, review or done row launchable by click) was a second launch authority beside the belt's, and the plan removes it; any break-glass path is a separate type, endpoint, authorization and receipt, not an availability arm."
 
 type ActionAvailability
   = ActionUnavailable
@@ -182,11 +119,7 @@ type WorkActionKind
   = DispatchAction
   | ClearSessionAction
 
-// An available dispatch action carries the LaunchIdentity the admission produced for this render
-// (node, cause=operator, mode, instance, revision), so the page projects the same decision record
-// the route and timer bind to their attempts. Rendered as evidence (data-launch-* attributes), NOT
-// authorization: the button posts only the node id and the route re-observes the host and
-// re-admits. Absent on every unavailable action.
+data work_action_launch_note: String = "An available dispatch action carries the LaunchIdentity the admission produced for this render (node, cause=operator, mode, instance, revision), so the page projects the same decision record the route and the timer bind to their attempts. The identity is rendered as evidence (data-launch-* attributes) and is NOT authorization: the button posts only the node id, and the route re-observes the host and re-admits. Absent on every unavailable action."
 
 type WorkAction {
   kind: WorkActionKind
@@ -202,27 +135,9 @@ type ActionView {
   secondary_actions: List<WorkAction>
 }
 
-// In roadmap context, workflow means the work item's lifecycle; compiler and CI execution workflow
-// stays under v2.workflow. The ruling names seven independent facts, each owned by its existing
-// typed authority: Ready by gunbc.roadmap_spawner.node_is_spawnable; Live by
-// gunbc.roadmap_dispatch_actuator.DispatchLiveSession keyed through the node-grain tmux session
-// name; Attempted by dispatch_attempt_refs keyed through the attempt branch; Proposed and Landed by
-// extdeps.github.pulls.PullRequest observations once the missing typed binding exists; Done by
-// RoadmapNode.signoff; Superseded by SupersededLine.by. This note records the join ruling only —
-// not an executable roster, not a re-declaration, never to be enumerated as workflow status data.
-// The facts have no total order and several may hold at once (Live and Landed, Attempted and
-// Superseded, Landed but not Done); a UI may order or group them for presentation only. Proposed
-// and Landed stay blocked until one typed attempt-keyed carrier joins RoadmapNodeId, attempt key,
-// branch, and PullRequest identity. (Re-homed from the deleted gunbc.client_observation_state
-// module, whose four-state lamp vocabulary dissolved into ActivityView at A2; the class it guarded,
-// unknowable-never-rounds-to-absent, is now carried by the ActivityUnobservable/NoActiveWork
-// distinction and its executing witnesses.)
+data work_item_workflow_fact_note: String = "In roadmap context, workflow means the work item's lifecycle. Compiler and CI execution workflow remains namespaced under v2.workflow and is not this vocabulary. The ruling names seven independent facts, each still owned by its existing typed authority: Ready by gunbc.roadmap_spawner.node_is_spawnable; Live by gunbc.roadmap_dispatch_actuator.DispatchLiveSession keyed through the node-grain tmux session name; Attempted by dispatch_attempt_refs keyed through the attempt branch; Proposed and Landed by extdeps.github.pulls.PullRequest observations once the missing typed binding exists; Done by RoadmapNode.signoff; Superseded by SupersededLine.by. This note records the join ruling only. It is not an executable roster, does not re-declare those domain facts, and must not be enumerated as workflow status data. The facts have no total order and several may be true at once: a node can be Live and Landed, Attempted and Superseded, or Landed but not Done. A UI may order or group observations for presentation only. Proposed and Landed remain blocked until one typed attempt-keyed carrier joins RoadmapNodeId, attempt key, branch, and PullRequest identity. (Re-homed from the deleted gunbc.client_observation_state module, whose four-state lamp vocabulary dissolved into ActivityView at A2 — the class it guarded, unknowable-never-rounds-to-absent, is now carried by the ActivityUnobservable/NoActiveWork distinction and its executing witnesses.)"
 
-// Lifecycle and scheduling are DISTINCT axes the page previously fused into one status string:
-// lifecycle is the node's own state (open/review/done/superseded; the node_status_symbol decision
-// moved here as its single authority), scheduling is the frontier position (ready/upcoming/done/
-// superseded buckets from spawn_frontier). A row can be lifecycle-open and scheduling-upcoming;
-// collapsing them loses exactly the fact explaining why an open row is not dispatchable-now.
+data work_lifecycle_note: String = "Lifecycle and scheduling are DISTINCT axes that the page previously fused into one status string: lifecycle is the node's own state (open/review/done/superseded, the node_status_symbol decision moved to this seam as its single authority), scheduling is the frontier position (ready/upcoming/done/superseded buckets from spawn_frontier). A row can be lifecycle-open and scheduling-upcoming; collapsing them loses exactly the fact that explains why an open row is not dispatchable-now."
 
 type WorkLifecycle
   = OpenLifecycle
@@ -251,12 +166,7 @@ fn work_lifecycle_key(l: WorkLifecycle) -> String {
   }
 }
 
-// Routine-state collapse (the A1 carried-forward miss; the altitude law's interface form — routine
-// collapses, anomaly expands). OpenLifecycle is nearly every row's default, so an 'open' chip on
-// each discriminates nothing and is permanent chrome; the DECIDED rule: the lifecycle chip renders
-// only when the lifecycle departs the default (review/done/superseded). The state stays
-// machine-readable: the row's node-<key> class and the altitude band counts consume
-// work_lifecycle_key regardless, so collapsing the chip erases pixels, never the typed fact.
+// Routine-state collapse (the A1 carried-forward miss; the altitude law's interface form — routine collapses, anomaly expands). OpenLifecycle is the default state of nearly every row, so an 'open' chip on each one discriminates nothing and is permanent chrome; the DECIDED rule is that the lifecycle chip renders only when the lifecycle departs the default (review/done/superseded). The state stays machine-readable either way: the row's node-<key> class and the altitude band counts consume work_lifecycle_key regardless of chip visibility, so collapsing the chip erases pixels, never the typed fact.
 fn lifecycle_chip_renders(l: WorkLifecycle) -> Bool {
   match l {
     OpenLifecycle => false
@@ -266,15 +176,7 @@ fn lifecycle_chip_renders(l: WorkLifecycle) -> Bool {
   }
 }
 
-// The scheduling axis as a TYPED position, not a Bool (operator blocker 2, 2026-08-01: ready: Bool
-// was anemic and caller-assertable — true could be passed for an upcoming node, and the view had no
-// typed distinction among frontier positions). The arms project from the SAME predicates
-// spawn_frontier filters — node_is_spawnable / node_is_upcoming / node_is_frontier_done /
-// superseded — so scheduling equals frontier-bucket membership by construction (witnessed against
-// spawn_frontier on the live authority, not asserted). SchedulingUpcoming carries its blockers, the
-// unmet parents — why an open row is not dispatchable-now. SchedulingUnplanned is the honest arm
-// for a node outside every bucket (unsized, or not yet admitted to the frontier); collapsing it
-// into Upcoming would fabricate a blocked-on claim with no blockers.
+data work_scheduling_note: String = "The scheduling axis as a TYPED position, not a Bool (operator blocker 2, 2026-08-01: ready: Bool was anemic and caller-assertable — a caller could pass true for an upcoming node and the view had no typed distinction among the frontier positions). The arms are projected from the SAME predicates spawn_frontier filters — node_is_spawnable / node_is_upcoming / node_is_frontier_done / superseded — so scheduling equals frontier-bucket membership by construction (witnessed against spawn_frontier on the live authority, not asserted). SchedulingUpcoming carries its blockers: the unmet parents, the fact that explains why an open row is not dispatchable-now. SchedulingUnplanned is the honest arm for a node outside every bucket (unsized, or otherwise not yet admitted to the frontier) — collapsing it into Upcoming would fabricate a blocked-on claim with no blockers."
 
 type WorkScheduling
   = SchedulingReady
@@ -320,12 +222,7 @@ fn work_scheduling_key(s: WorkScheduling) -> String {
   }
 }
 
-// The quiet dependency line under the title, DECIDED here: it renders only for an Upcoming row with
-// more than one blocker — a single parent is already told by the tree nesting, and a ready/done
-// row's dependencies are met, so repeating them is noise re-dismissed on every row. (The A1
-// renderer showed 'requires all' for any node with 2+ parents whatever its position; the seam
-// narrows it to rows where the line answers 'why is this not dispatchable-now', the fact it exists
-// to carry.)
+// The quiet dependency line under the title, DECIDED here: it renders only for an Upcoming row with more than one blocker — a single parent is already told by the tree nesting, and a ready/done row's dependencies are met, so repeating them would be noise a reader must re-dismiss on every row. (The A1 renderer showed 'requires all' for any node with 2+ parents whatever its position; the seam narrows it to the rows where the line answers 'why is this not dispatchable-now', which is the fact the line exists to carry.)
 fn scheduling_dependency_line(s: WorkScheduling) -> String? {
   match s {
     SchedulingUpcoming { blockers } =>
@@ -347,24 +244,9 @@ type SupportingFact {
   href: String
 }
 
-// WorkRowView is the decided row. headline comes from the ticket's own typed field — NEVER from
-// recomposing '**headline** — brief' and re-splitting at punctuation (the round trip this seam
-// deletes; legacy non-ticket lines keep the lead heuristic as a named residue INSIDE this
-// projection only). summary is the row's one purpose-specific supporting claim (why-now /
-// what-it-unlocks), Absent until an honest typed source exists — fabricating it by truncating the
-// brief is prohibited (the explicit A1 re-scope). scheduling is the typed frontier position (its
-// Upcoming arm CARRIES the blockers, so the quiet dependency line reads off the value the action
-// derivation consumed — the first cut's separate blocked_on field was a dual representation and is
-// gone). supporting_facts are demoted metadata (owner, sizing, carriers) rendered only under
-// disclosure; disclosure is the decided full-detail region, serialized by the renderer without
-// touching RoadmapItem.
+data work_row_view_note: String = "WorkRowView is the decided row. headline comes from the ticket's own typed field — NEVER from recomposing '**headline** — brief' and re-splitting it at punctuation (the round trip this seam deletes; legacy non-ticket lines keep the lead heuristic as a named residue INSIDE this projection and nowhere else). summary is the row's one purpose-specific supporting claim (why-now / what-it-unlocks); it is Absent until an honest typed source for that claim exists — fabricating it by truncating the brief is prohibited (the explicit A1 re-scope). scheduling is the typed frontier position (its Upcoming arm CARRIES the blockers, so the quiet dependency line under the title reads off the same value the action derivation consumed — a separate blocked_on field beside it was the first cut's dual representation and is gone). supporting_facts are the demoted metadata (owner, sizing, carriers) rendered only under disclosure; disclosure is the decided full-detail region — the renderer serializes it without touching RoadmapItem."
 
-// The disclosure region, decided: a ticket row projects its typed fields as labeled rows (the A1
-// renderer's label vocabulary, now decided here so the renderer never reads TicketFields); a legacy
-// line whose content is longer than its displayed lead projects the full content as the body; a
-// row with neither has NoDisclosure and renders no details element beyond its supporting facts.
-// Markdown-inline serialization of these strings is the renderer's job — serialization, not
-// decision.
+// The disclosure region, decided: a ticket row projects its typed fields as labeled rows (the same label vocabulary the A1 renderer used, now decided here so the renderer never reads TicketFields); a legacy line whose content is longer than its displayed lead projects the full content as the body; a row with neither has NoDisclosure and renders no details element beyond its supporting facts. Markdown-inline serialization of these strings is the renderer's job — serialization, not decision.
 type DisclosureField {
   label: String
   value: String
@@ -437,10 +319,7 @@ fn row_supporting_facts(rn: RoadmapNode) -> List<SupportingFact> {
   concat(owner_fact(owner: rn.owner), concat(sizing_fact(s: rn.sizing), carrier_facts(carriers: rn.carriers)))
 }
 
-// The typed headline path: a TicketLine's headline IS ticket.headline — one field read, no markdown
-// fusion, no delimiter recovery. Legacy variants (Derivable/Authored/Plain/Superseded) carry one
-// content string and keep the lead-at-first-separator cut as this projection's named residue; when
-// they gain typed headline fields the residue deletes here and nowhere else.
+// The typed headline path: a TicketLine's headline IS ticket.headline — one field read, no markdown fusion, no delimiter recovery. Legacy variants (Derivable/Authored/Plain/Superseded) carry one content string and keep the historical lead-at-first-separator cut as the named residue of this projection; when those variants gain typed headline fields the residue deletes here and nowhere else.
 fn lead_before(full: String, delimiter: String) -> String? {
   let parts = split(s: full, delimiter: delimiter)
   if count(parts) > 1 {
@@ -516,16 +395,7 @@ fn row_disclosure(line: RoadmapItem) -> DisclosureView {
   }
 }
 
-// The action derivation, both axes decided here. Dispatch availability is the LAUNCH ADMISSION'S
-// verdict for cause Operator and nothing else (RLM-1): LaunchAdmitted renders ActionAvailable +
-// PrimaryAction; LaunchRefused renders ActionUnavailable + SecondaryAction carrying the refusal's
-// wire label and reason, so the row explains itself in the route's own words. Done and superseded
-// lifecycles render no dispatch action (the remedy is acceptance history, not a launch). NO LONGER
-// DERIVED: availability from the scheduling position — SchedulingReady used to be Available and
-// every other open row AvailableAsOverride, re-deriving eligibility from the frontier in the page's
-// words while the route derived it differently. NO LONGER FABRICATED (operator blocker 4,
-// 2026-08-01): a ClearSessionAction; cleanup admission is an OBSERVED fact the sessions channel
-// owns (session_action_view), and this fn derives dispatch alone.
+data action_derivation_note: String = "The action derivation, both axes decided here. Availability of the dispatch action is the LAUNCH ADMISSION'S verdict for cause Operator and nothing else (RLM-1): LaunchAdmitted renders ActionAvailable + PrimaryAction; LaunchRefused renders ActionUnavailable + SecondaryAction carrying the refusal's wire label and reason, so the row explains itself with the same words the route would answer. Done and superseded lifecycles render no dispatch action at all (the row's remedy is acceptance history, not a launch), as before. WHAT THIS FN NO LONGER DERIVES: any availability from the scheduling position -- SchedulingReady used to be Available and every other open row AvailableAsOverride, which re-derived eligibility from the frontier in the page's own words while the route derived it differently. WHAT THIS FN NO LONGER FABRICATES (operator blocker 4, 2026-08-01): a ClearSessionAction; cleanup admission is an OBSERVED fact the sessions channel owns (session_action_view), and this fn derives dispatch alone."
 
 type LaunchRowContext {
   standing: LaunchHostStanding
@@ -591,12 +461,7 @@ fn action_view(lifecycle: WorkLifecycle, admission: LaunchAdmission) -> ActionVi
   ActionView { primary_action: primary, secondary_actions: secondary }
 }
 
-// The summary sentence is consequence-first and derived from the reconcile facts, never hand-held
-// per state: a refused/failed segment names itself with its located detail; an active Agent reads
-// as working; a complete Agent with pending downstream obligations names the NEXT obligation and
-// the remaining count (the ledger's fold result, not a recount). The session-present/process-exited
-// pair projects as its consequence — 'the retained session is no longer running' — with the raw
-// container/process facts demoted to evidence rows; the reader never joins tmux semantics manually.
+data activity_summary_note: String = "The summary sentence is consequence-first and derived from the reconcile facts, never hand-held per state: a refused/failed segment names itself with its located detail; an active Agent reads as working; a complete Agent with pending downstream obligations names the NEXT obligation and the remaining count (the ledger's fold result, not a recount). The session-present/process-exited pair projects as its consequence — 'the retained session is no longer running' — with the raw container/process facts demoted to evidence rows: the reader must never be required to join tmux semantics manually."
 
 fn first_non_complete(segments: List<WorkflowSegment>) -> WorkflowSegment? {
   fold(segments, init: none, f: (acc, s) => match acc {
@@ -654,12 +519,7 @@ fn agent_segment_state(segments: List<WorkflowSegment>) -> WorkflowSegmentState 
     if segment_kind_is_agent(kind: s.kind) { s.state } else { acc })
 }
 
-// The operator's worked example: 'session container present' beside 'process exited' must never
-// ship as an uninterpreted pair — the projection states the consequence and demotes the raw facts
-// to evidence rows. The reconciliation contract (workflow_progress_projection_note) already makes
-// Agent-complete imply a compatible process exit, but the seam derives the sentence from the
-// process evidence rather than assuming the invariant, so contract drift reads as an odd sentence
-// instead of a silent lie.
+data completion_consequence_note: String = "The operator's worked example: 'session container present' beside 'process exited' must never ship as an uninterpreted evidence pair — the projection states the consequence and demotes the raw facts to evidence rows. The reconciliation contract (workflow_progress_projection_note) already makes Agent-complete imply a compatible process exit, but the seam derives the sentence from the process evidence rather than assuming the invariant, so a contract drift reads as an odd sentence instead of a silent lie."
 
 fn agent_completion_claim(process: WorkerProcessEvidence) -> String {
   match process {
@@ -672,11 +532,7 @@ fn agent_completion_claim(process: WorkerProcessEvidence) -> String {
   }
 }
 
-// Both evidence rows derive from the ONE process-evidence authority rather than a separate session
-// Bool that could disagree with it: per belt_sessions_observation_separation_note, a running or
-// exited pane implies a present session container, an unobserved pane probe maps a PRESENT session
-// to process-unobserved, and Absent means no container was observed. A second session_present
-// parameter would be the two-facts-one-truth fork §3 forbids.
+data evidence_rows_one_authority_note: String = "Both evidence rows derive from the ONE process-evidence authority rather than a separate session Bool that could disagree with it: per belt_sessions_observation_separation_note, a running or exited pane implies a present session container, an unobserved pane probe maps a PRESENT session to process-unobserved, and Absent means no container was observed. A second session_present parameter would be the two-facts-one-truth fork §3 forbids."
 
 fn session_container_value(process: WorkerProcessEvidence) -> String {
   match process {
@@ -842,22 +698,14 @@ fn activity_arm_key(a: ActivityView) -> String {
   }
 }
 
-// The composition constants BOTH realizations consume (the parity obligation's construction half):
-// the server renderer joins obligation label/state/detail and evidence label/value with exactly
-// these separators, and the emitted client embeds the same values as its string literals — one
-// authority, so the realizations cannot drift on composition without the parity witness
-// reddening. The disclosure summary word is here for the same reason: 'activity' must be the same
-// word whether the details element was server-rendered or client-created.
+data activity_composition_constants_note: String = "The composition constants BOTH realizations consume (the parity obligation's construction half): the server renderer joins obligation label/state/detail and evidence label/value with exactly these separators, and the emitted client program embeds the same data values as its string literals — one authority, so the two realizations cannot drift apart on composition without the parity witness reddening. The disclosure summary word is here for the same reason: 'activity' must be the same word whether the details element was server-rendered or client-created."
 
 data activity_state_sep: String = " · "
 data activity_detail_sep: String = " — "
 data activity_evidence_kv_sep: String = ": "
 data activity_disclosure_label: String = "activity"
 
-// The one visible line per arm, decided ONCE for both realizations: the server renderer and the
-// emitted client compose the identical selection (active/refused → summary, completed → outcome,
-// unobservable → the prefixed reason) — the parity witness holds them equal, so a drift in either
-// realization reds rather than shipping two sentences for one state.
+data activity_summary_line_note: String = "The one visible line per arm, decided ONCE for both realizations: the server renderer and the emitted client compose the identical selection (active/refused → summary, completed → outcome, unobservable → the prefixed reason) — the parity witness holds them equal, so a drift in either realization reds rather than shipping two sentences for one state."
 
 fn activity_summary_line(a: ActivityView) -> String {
   match a {
@@ -877,13 +725,7 @@ fn activity_evidence_row_json_value(row: ActivityEvidenceRow) -> JsonValue {
   ])
 }
 
-// The wire realization of the DECIDED view — what makes the single projection authority real:
-// /workflow.json carries these fields and the client paints them verbatim (arm selects the
-// container's presence and material; summary/outcome/reason are final strings; attention is the
-// expansion key; evidence rows are label/value pairs). The obligation ledger is NOT duplicated
-// here — the attempt payload already carries the canonical segments and the client renders the
-// ledger from those rows; a second segments copy under activity would be the dual representation
-// §3 forbids.
+// The wire realization of the DECIDED view — what makes the single projection authority real rather than aspirational: /workflow.json carries these fields and the client program paints them verbatim (arm selects the container's presence and material, summary/outcome/reason are final strings, attention is the expansion key, evidence rows are label/value pairs). The obligation ledger is NOT duplicated here — the attempt payload already carries the canonical segments and the client renders the ledger from those rows; a second segments copy under activity would be the dual representation §3 forbids.
 fn activity_view_json_value(view: ActivityView) -> JsonValue {
   match view {
     NoActiveWork => json_object(members: [
@@ -949,17 +791,7 @@ fn work_action_kind_key(k: WorkActionKind) -> String {
   }
 }
 
-// The decided session-facts presentation (operator blocker 5, 2026-08-01). The prior client
-// composed its own visible sentence — 'session · present — ' + process_state — and its own
-// cleanup-button presentation from raw /sessions.json fields: a SECOND presentation authority
-// beside this module for the same evidence. single_projection_authority_note applies to every
-// channel: the sessions observer may update FACTS, it does not author display prose. This view
-// decides the final visible line (presence is proven by wire inclusion, per
-// belt_sessions_json_note), the title-channel detail, and the session action — whose availability
-// comes from the OBSERVED cleanup admission (cleanup_allowed / cleanup_action / cleanup_detail),
-// never inferred from activity state (blocker 4: an active attempt does not prove cleanup is
-// allowed; ActionUnavailable is this arm's real consumer). The wire carries these decided fields
-// under 'facts' and the client paints them verbatim.
+data session_facts_view_note: String = "The decided session-facts presentation (operator blocker 5, 2026-08-01). The prior client composed its own visible sentence — 'session · present — ' + process_state — and its own cleanup-button presentation from the raw /sessions.json fields, which stood a SECOND presentation authority beside this module for the same evidence. The rule from single_projection_authority_note applies to every channel: the sessions observer may update FACTS, it does not author display prose. This view decides the final visible line (presence is proven by wire inclusion, per belt_sessions_json_note), the title-channel detail, and the session action — whose availability comes from the OBSERVED cleanup admission (cleanup_allowed / cleanup_action / cleanup_detail), never inferred from activity state (blocker 4: an active attempt does not prove cleanup is currently allowed; ActionUnavailable is this arm's real consumer). The wire carries these decided fields under 'facts' and the client paints them verbatim."
 
 type SessionActionView
   = NoSessionAction
@@ -1042,11 +874,7 @@ fn session_facts_json_value(v: SessionFactsView) -> JsonValue {
   ])
 }
 
-// The local-denominator program claim plus its causal link to the work below (the A1 recon's item
-// 5: without the relation the page is an inventory; with it, it begins to feel causal).
-// ready_obligation_count counts the ready rows the focused program's lanes contribute — v0 states
-// the relation for v1 exit as the focused program; a multi-program workspace generalizes the field
-// to per-program rows.
+// The local-denominator program claim plus its causal link to the work below (the A1 recon's item 5: without the relation the page is an inventory; with it the page begins to feel causal). ready_obligation_count is the count of ready rows the focused program's lanes contribute — v0 states the relation for v1 exit as the focused program; a multi-program workspace generalizes the field to per-program rows.
 type ProgramProgressView {
   name: String
   completed: Int
@@ -1054,22 +882,9 @@ type ProgramProgressView {
   ready_obligation_count: Int
 }
 
-// The composed workspace (operator blocker 6, 2026-08-01): active work surfaces ABOVE the ready
-// queue — a row whose activity is ActiveWork or ActiveWorkRefused outranks any idle Ready row,
-// whatever its frontier bucket. Remaining rows group by typed scheduling position. CompletedWork
-// does NOT join the active band: all obligations complete is a receipt to read, not work in
-// flight, so it stays in its scheduling bucket. program is the causal header claim
-// (ProgramProgressView's consumer — the A1 compact strip re-grounds on this field).
+data daily_workspace_view_note: String = "The composed workspace (operator blocker 6, 2026-08-01): active work surfaces ABOVE the ready queue — a row whose activity is ActiveWork or ActiveWorkRefused belongs to the operator's attention before any idle Ready row, whatever its frontier bucket says. The remaining rows group by their typed scheduling position. CompletedWork does NOT join the active band: all obligations complete is a receipt to read, not work in flight, so it stays in its scheduling bucket. program is the causal header claim (ProgramProgressView's consumer — the A1 compact strip re-grounds on this field)."
 
-// ONE failure narrated ONCE (operator blocker 6: the observation-refusal altitude split). When the
-// workflow observation channel itself refuses, EVERY row's activity is unknowable from one cause —
-// narrating it per row repeats one fact N times, per channel-banner AND per row N+1 times. Decided
-// rule: the workspace carries one WorkspaceObservationImpact banner with the located reason, and a
-// row whose activity is ActivityUnobservable is COVERED by it (workspace_covers_row_activity), so
-// the renderer suppresses the per-row line — the row's typed state stays unobservable (never
-// rounded to NoActiveWork; the row still carries the honest arm, so the fabrication is
-// unwritable), only its NARRATION is deduplicated. A row-specific unobservable reason under a
-// nominal workspace observation still narrates on its own row.
+data observation_impact_note: String = "ONE failure narrated ONCE (operator blocker 6: the observation-refusal altitude split). When the workflow observation channel itself refuses, EVERY row's activity is unknowable from the same single cause — narrating that per row would repeat one fact N times, and narrating it per channel-banner AND per row repeats it N+1 times. The decided rule: the workspace carries one WorkspaceObservationImpact banner with the located reason, and a row whose activity is ActivityUnobservable is COVERED by it (workspace_covers_row_activity), so the renderer suppresses the per-row line — the row's typed state stays unobservable (never rounded to NoActiveWork; the fabrication is unwritable because the row still carries the honest arm), only its NARRATION is deduplicated. A row-specific unobservable reason with a nominal workspace observation still narrates on its own row."
 
 type ObservationImpactView
   = ObservationsNominal
@@ -1103,19 +918,7 @@ fn workspace_covers_row_activity(observation: ObservationImpactView, a: Activity
   }
 }
 
-// Family-once grouping (the A1 carried-forward miss, staged behind the A2 core seam per the design
-// note's witness item 9). A work family is a set of rows generated from ONE authority fn whose
-// shared claim would otherwise repeat per row — the specimen is the closing-contract task
-// generator, whose 'Write the closing check for: X' headline repeated the family claim N times on
-// the daily page. Decided rule: the family claim is stated ONCE as the group header; each member
-// row carries only its DISCRIMINATING SUBJECT — a typed field supplied by the generator that minted
-// the member (the gated node's own ticket headline), NEVER recovered by parsing or prefix-stripping
-// the fused headline (exactly the heuristic class this seam exists to kill; the no-parsing witness
-// plants a subject containing the claim prose and an unlisted lookalike row to prove both
-// directions). Membership is typed facts (WorkFamilyMemberFact rows derived from the generator's
-// own pairs), so an unlisted row whose headline HAPPENS to start with the claim stays ungrouped. An
-// active member leaves its group for the Active band — attention outranks taxonomy — and the group
-// renders only its band's members at the position of its first member, preserving row order.
+data work_family_note: String = "Family-once grouping (the A1 carried-forward miss, staged behind the A2 core seam per the design note's witness item 9). A work family is a set of rows generated from ONE authority fn whose shared claim would otherwise repeat per row — the specimen is the closing-contract task generator, whose 'Write the closing check for: X' headline repeated the family claim N times on the daily page. The decided rule: the family claim is stated ONCE as the group header, and each member row carries only its DISCRIMINATING SUBJECT — a typed field supplied by the same generator that minted the member (the gated node's own ticket headline), NEVER recovered by parsing or prefix-stripping the fused headline (that recovery is exactly the heuristic class this seam exists to kill; the no-parsing witness plants a subject containing the claim prose and an unlisted lookalike row to prove both directions). Membership is typed facts (WorkFamilyMemberFact rows derived from the generator's own pairs), so an unlisted row whose headline HAPPENS to start with the claim stays ungrouped. An active member leaves its group for the Active band — attention outranks taxonomy — and the group renders only its band's members at the position of its first member, preserving row order."
 
 type WorkFamilyDecl {
   id: String

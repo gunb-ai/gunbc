@@ -63,12 +63,7 @@ fn healthz_surface_members(
   ]
 }
 
-// THE SURFACE MEMBERS ARE FACTORED OUT SO THE SERVED DOCUMENT AND THE BUNDLE'S OWN healthz_body
-// CANNOT DRIFT. The served /healthz body is these members PLUS the running process's release
-// identity (gunbc.running_release_identity); the bundle's retained healthz_body is these members
-// alone. One member list, two documents differing by exactly the launch-identity members — never
-// two spellings of the surface, which is the dual-representation DESIGN section 3 forbids and which
-// would let the deploy's freshness comparison go green against a document the route does not serve.
+data healthz_surface_members_note: String = "THE SURFACE MEMBERS ARE FACTORED OUT SO THE SERVED DOCUMENT AND THE BUNDLE'S OWN healthz_body CANNOT DRIFT. The served /healthz body is these members PLUS the running process's release identity (gunbc.running_release_identity); the bundle's retained healthz_body is these members alone. One member list, two documents differing by exactly the launch-identity members — never two spellings of the surface, which is the dual-representation DESIGN section 3 forbids and which would let the deploy's freshness comparison go green against a document the route does not serve."
 
 fn healthz_body_from_surface_artifacts(
   roadmap: RoadmapSiteSurfaceArtifact,
@@ -85,17 +80,6 @@ fn healthz_body_from_surface_artifacts(
     dispatch_js: dispatch_js,
   )))
 }
-
-// THE SERVED DOCUMENT HAS EXACTLY ONE PRODUCER, AND THIS IS IT. The healthz handler renders it for
-// the live bundle, the readiness healthy fixture renders it for a supplied bundle, and nothing else
-// spells the document. That matters more here than in an ordinary factoring, because the readiness
-// comparison decides whether a deploy converged: a second spelling of the served body would let the
-// comparison agree with a document the route does not serve, which is the state-space the whole
-// readiness contract exists to exclude.\n\nThe surface members come first and the identity members
-// last, so the surface half of this document is a PREFIX of it in member order — but nothing
-// downstream may depend on that, because the comparison projects members by KEY rather than by
-// position (roadmap_site_healthz_surface_is_current). Order here is only the emitter's, not a
-// contract.
 
 fn healthz_body_with_release_identity(
   roadmap: RoadmapSiteSurfaceArtifact,
@@ -120,3 +104,5 @@ fn healthz_body_with_release_identity(
     ),
   )))
 }
+
+data healthz_body_with_release_identity_note: String = "THE SERVED DOCUMENT HAS EXACTLY ONE PRODUCER, AND THIS IS IT. The healthz handler renders it for the live bundle, the readiness healthy fixture renders it for a supplied bundle, and nothing else spells the document. That matters more here than in an ordinary factoring, because the readiness comparison decides whether a deploy converged: a second spelling of the served body would let the comparison agree with a document the route does not serve, which is the state-space the whole readiness contract exists to exclude.\\n\\nThe surface members come first and the identity members last, so the surface half of this document is a PREFIX of it in member order — but nothing downstream may depend on that, because the comparison projects members by KEY rather than by position (roadmap_site_healthz_surface_is_current). Order here is only the emitter's, not a contract."

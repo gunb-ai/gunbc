@@ -1,14 +1,9 @@
 module test.claim.json_parse_witness
 
+
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-// parse_json is the forward reading of RFC 8259 and serialize_json is the backward one, so the
-// claims below are stated as round-trips over one JsonValue rather than against golden bytes
-// (DESIGN 4). The escape claims are the discriminating ones: three plain round-trips pass without
-// the escape decoding being right at all, which is exactly how a plausible-but-wrong unescaper
-// survives. The \u claims fail against an unescaper that passes \u through, which is what this
-// parser did before it carried json_hex4_at - a receipt detail field carrying a control character
-// would have silently gained four literal hex characters and lost the character itself.
+data json_parse_witness_note: String = "parse_json is the forward reading of RFC 8259 and serialize_json is the backward one, so the claims below are stated as round-trips over one JsonValue rather than against golden bytes (DESIGN 4). The escape claims are the discriminating ones: three plain round-trips pass without the escape decoding being right at all, which is exactly how a plausible-but-wrong unescaper survives. The \\u claims fail against an unescaper that passes \\u through, which is what this parser did before it carried json_hex4_at - a receipt detail field carrying a control character would have silently gained four literal hex characters and lost the character itself."
 
 fn parsed_string_of(text: String) -> String {
   match parse_json_document(s: text) {
@@ -123,15 +118,7 @@ fn parses(text: String) -> Bool {
   }
 }
 
-// These exist because the recovered parser accepted a trailing comma and the
-// roadmap_provider_events witness caught it, not this file. The accumulator checked for the closing
-// bracket at the top of each round, so after consuming a separator it reached the empty-container
-// case again and closed the container. Nothing in a round-trip claim can see this: serialize_json
-// never EMITS a trailing comma, so emitter-to-parser round-trips stay green over exactly the
-// documents that cannot expose it. The defect is only reachable from foreign text, which is what
-// json_text_parseable guards - the Codex JSONL reader refuses a malformed provider line with it,
-// and a truncated-then-closed event would have read as well-formed. The last claim names the
-// fixture that failed.
+data trailing_comma_regression_note: String = "These exist because the recovered parser accepted a trailing comma and the roadmap_provider_events witness caught it, not this file. The accumulator checked for the closing bracket at the top of each round, so after consuming a separator it reached the empty-container case again and closed the container. Nothing in a round-trip claim can see this: serialize_json never EMITS a trailing comma, so emitter-to-parser round-trips stay green over exactly the documents that cannot expose it. The defect is only reachable from foreign text, which is what json_text_parseable guards - the Codex JSONL reader refuses a malformed provider line with it, and a truncated-then-closed event would have read as well-formed. The last claim names the fixture that failed."
 
 test fn a_trailing_comma_is_refused_in_objects_and_arrays() -> Bool {
   parses(text: "\{\"a\": 1}")
@@ -159,14 +146,7 @@ test fn the_provider_event_line_that_caught_the_trailing_comma_is_refused() -> B
     && parses(text: "\{\"type\":\"turn.completed\"}")
 }
 
-// review 45642 RED. RFC 8259 section 7 closes the escape set, and the scanner used to consume the
-// backslash and whatever followed without deciding whether it named an escape - so the unescaper's
-// unknown arm dropped the backslash and `p\assed` became `passed`. The first claim is the
-// reviewer's exact case and it is the one that matters, because the fabricated string is not merely
-// wrong: it equals a verdict the receipt reader accepts, so a malformed document produced a pass.
-// The rest pin the boundary in both directions - every escape the RFC lists still decodes, and
-// every shape it does not list refuses - because a fix that simply refused more would also have
-// broken the emitter's own output.
+data unknown_escape_note: String = "review 45642 RED. RFC 8259 section 7 closes the escape set, and the scanner used to consume the backslash and whatever followed without deciding whether it named an escape - so the unescaper's unknown arm dropped the backslash and `p\\assed` became `passed`. The first claim is the reviewer's exact case and it is the one that matters, because the fabricated string is not merely wrong: it equals a verdict the receipt reader accepts, so a malformed document produced a pass. The rest pin the boundary in both directions - every escape the RFC lists still decodes, and every shape it does not list refuses - because a fix that simply refused more would also have broken the emitter's own output."
 
 test fn an_unknown_escape_refuses_rather_than_dropping_the_backslash() -> Bool {
   !parses(text: "\"p\\assed\"")

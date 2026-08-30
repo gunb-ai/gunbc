@@ -33,12 +33,7 @@ import gunbc.build_cache_instance {
 
 data compile_pool_ensure_scope_disposition: Disposition = SingleAuthority
 
-// THE COMPILE-POOL SLICE IS A RECONCILE TARGET, NOT AN INSTALL-ON-EVERY-PASS MUTATION. A slice
-// whose memory.max and memory.high already match the derived pool size is EnsureAlreadyConverged —
-// writing the unit again would churn systemd and risk a brief cgroup reset while cache-miss
-// compilers are the slice's children. The admission therefore compares OBSERVED limits against the
-// sizing authority before emitting lines, exactly as build_cache_ensure consults placement before
-// rendering a cache unit.
+data ensure_is_idempotent_note: String = "THE COMPILE-POOL SLICE IS A RECONCILE TARGET, NOT AN INSTALL-ON-EVERY-PASS MUTATION. A slice whose memory.max and memory.high already match the derived pool size is EnsureAlreadyConverged — writing the unit again would churn systemd and risk a brief cgroup reset while cache-miss compilers are the slice's children. The admission therefore compares OBSERVED limits against the sizing authority before emitting lines, exactly as build_cache_ensure consults placement before rendering a cache unit."
 
 type CompilePoolEnsureRefusal
   = EnsurePoolTopologyUndeclared { detail: NonEmptyStr }
@@ -52,12 +47,7 @@ type EnsureCompilePoolAdmission
   | EnsureCompilePoolAdmitted { slice_unit: NonEmptyStr, sized_bytes: ByteSize, slice_unit_file: SystemdUnitFile }
   | EnsureCompilePoolRefused { reason: CompilePoolEnsureRefusal }
 
-// A SERVER WHOSE PLACEMENT CANNOT BE ESTABLISHED IS NOT A CONVERGED SERVER, and ensuring a compile
-// pool beside it would be deciding to parent every cache-miss compiler under a slice whose sibling
-// cache endpoint may still be runner-owned or unread. ServerPlacementUnknown therefore refuses
-// BEFORE slice observation is consulted — the same ordering build_cache_ensure uses for
-// placement-unknown before path state, and for the same reason: unknown is not a positive reading
-// that permits host mutation.
+data cache_placement_unknown_refuses_note: String = "A SERVER WHOSE PLACEMENT CANNOT BE ESTABLISHED IS NOT A CONVERGED SERVER, and ensuring a compile pool beside it would be deciding to parent every cache-miss compiler under a slice whose sibling cache endpoint may still be runner-owned or unread. ServerPlacementUnknown therefore refuses BEFORE slice observation is consulted — the same ordering build_cache_ensure uses for placement-unknown before path state, and for the same reason: unknown is not a positive reading that permits host mutation."
 
 type EnsureCompilePoolAdmissionFold<R> {
   already_converged: fn(NonEmptyStr, ByteSize) -> R

@@ -18,9 +18,7 @@ import std.source_annotation {
   source_annotation_graph_rows
 }
 
-// OFFLINE LOCAL RECIPE: target/debug/claim_batch --source-root dag --entry
-// dag/test/claim/source_annotation_attachment_witness_test.dag --functions
-// w_leading_block_attaches_to_the_following_subject,w_consecutive_leading_captures_merge_into_one_block,w_distinct_subjects_produce_distinct_rows,w_body_grain_capture_refuses_rather_than_attaching_to_the_next_subject,w_body_grain_capture_would_otherwise_have_attached,w_trailing_capture_refuses_and_lands_no_row,w_capture_after_the_last_subject_refuses_unattached,w_attachment_refers_to_supplied_identities_and_mints_none,w_no_captures_yields_an_empty_graph_and_no_refusals
+data source_annotation_attachment_offline_recipe: String = "OFFLINE LOCAL RECIPE: target/debug/claim_batch --source-root dag --entry dag/test/claim/source_annotation_attachment_witness_test.dag --functions w_leading_block_attaches_to_the_following_subject,w_consecutive_leading_captures_merge_into_one_block,w_distinct_subjects_produce_distinct_rows,w_body_grain_capture_refuses_rather_than_attaching_to_the_next_subject,w_body_grain_capture_would_otherwise_have_attached,w_trailing_capture_refuses_and_lands_no_row,w_capture_after_the_last_subject_refuses_unattached,w_attachment_refers_to_supplied_identities_and_mints_none,w_no_captures_yields_an_empty_graph_and_no_refusals"
 
 data source_annotation_attachment_note: String = "Exercises attach_annotations directly on a synthetic roster, so the attachment RULE is proven independently of either tokenizer. That separation is the point: a test that reached the fold only through the v1 lexer would pass on a fold that was wrong in a way the .dag grammar happens never to produce, and the same fold is what the v2 realization will call.
 

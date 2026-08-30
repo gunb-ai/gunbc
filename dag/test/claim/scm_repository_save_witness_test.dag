@@ -2,12 +2,12 @@ module test.claim.scm_repository_save_witness
 
 // THE SAVE BOUNDARY'S ORDER PROPERTY, PROVED WITHOUT PERFORMING A WRITE.
 //
-// What matters about `save_repository` is not that it can write a file but that an unrepresentable
-// repository is refused BEFORE any bytes exist -- a write that succeeds and is later found corrupt
-// reports the fault to whoever LOADS it rather than to whoever caused it.
+// The claim that matters about `save_repository` is not that it can write a file. It is that an
+// unrepresentable repository is refused BEFORE any bytes exist -- because a write that succeeds and
+// is later found corrupt reports the fault to whoever LOADS it rather than to whoever caused it.
 //
-// HOW THAT IS ESTABLISHED WITHOUT A HOST WRITE, which is why this file can execute at all: on the
-// refusal path `Filesystem.Write` is never reached, so the operation is pure. Asking
+// HOW THAT IS ESTABLISHED HERE WITHOUT A HOST WRITE, which is the reason this file can execute at
+// all: on the refusal path `Filesystem.Write` is never reached, so the operation is pure. Asking
 // `load_repository` about the same path afterwards is a READ, and a read of a path under the
 // checkout root is an INPUT under the interpreter's hermetic carve-out. So the pair -- refuse, then
 // observe the path is still unreadable -- establishes that nothing was written, using only the
@@ -17,19 +17,21 @@ module test.claim.scm_repository_save_witness
 // failed write is reported. Both need a real host write, and the frame that would run them is not
 // established. What IS established, by execution: under `gunbc run` a write DOES occur -- the
 // mutation receipt below produced an actual file. Whether the required floor's hermetic frame
-// admits the same write is a DIFFERENT question, not measured; a write has no input carve-out the
-// way a read of a checkout path does. Asserting either answer without measuring the floor would be
-// the rung claim DESIGN forbids. Authoring the two write arms as claims before that is settled
-// would risk two permanently-unexecuted claims in a file whose other claims run -- the decoration
-// DESIGN calls worse than absent, because the file would be cited as covering a boundary it half
-// covers. Closing the gap needs a measured route, not another claim here.
+// admits the same write is a DIFFERENT question and was not measured; a write has no input
+// carve-out the way a read of a checkout path does. Asserting either answer here without measuring
+// the floor would be the rung claim DESIGN forbids, so neither is asserted. Authoring the two write
+// arms as claims before that is settled would risk two permanently-unexecuted claims in a file
+// whose other claims run -- the decoration DESIGN calls worse than absent, because the file would
+// be cited as covering a boundary it only half covers. Closing the gap needs a measured route, not
+// another claim in this file.
 //
-// THE MUTATION RECEIPT, stronger than a passing pair. Replacing the checked encoder with an
-// unchecked one -- removing the adjudication from ahead of the write -- reds BOTH claims, and the
-// second STAYS red after the source is restored. Not flaky: the mutated save really wrote
-// `this_file_is_never_written.json`, so the file exists and the claim correctly keeps reporting it.
-// The order property is observed against a real filesystem, not asserted. In CI each run is a fresh
-// checkout, so the sticky red is self-healing there and load-bearing here.
+// THE MUTATION RECEIPT, and it is stronger than a passing pair. Replacing the checked encoder with
+// an unchecked one -- i.e. removing the adjudication from ahead of the write -- reds BOTH claims,
+// and the second one STAYS red after the source is restored. That is not a flaky control: the
+// mutated save really did write `this_file_is_never_written.json`, so the file now exists and the
+// claim correctly keeps reporting that it does. The order property is observed against a real
+// filesystem, not asserted about one. In CI each run is a fresh checkout, so the sticky red is
+// self-healing there and load-bearing here.
 
 import std.types { Bool, Int, String }
 import std.minted_identity { MintedId, MintedIdAllocator }

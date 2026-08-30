@@ -12,19 +12,20 @@ import gunbc.command_runner { run_shell_command_capture, process_outcome_receipt
 import extdeps.shell.exec { ProcessOutcome, ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused }
 import gunbc.fleet_ssh_access { fleet_automation_ssh_key }
 
-// Observe-first for the probe-identity decision (parent msg_156e62bd): READ-ONLY observation of
-// (a) whether the fleet automation PUBLIC key is present in the runner-reachable authorized_keys
-// on the host this job runs on (srv1 — the only host locally observable before first auth; srv2-4
-// are recorded pending-first-auth, never assumed either way), and (b) what GCP credential path
-// the runner holds today (the A2 seam precondition for in-run private-key materialization).
-// SECRET HYGIENE: only PUBLIC key material and presence verdicts are read or written — no private
-// key bytes, payload digests, or secret payloads of any kind touch this module.
+// Observe-first for the probe-identity decision (parent msg_156e62bd): READ-ONLY
+// observation of (a) whether the fleet automation PUBLIC key is present in the
+// runner-reachable authorized_keys on the host this job runs on (srv1 — the only host
+// locally observable before first auth; srv2-4 are recorded pending-first-auth, never
+// assumed either way), and (b) what GCP credential path the runner actually holds today
+// (the A2 seam precondition for in-run private-key materialization). SECRET HYGIENE:
+// only PUBLIC key material and presence verdicts are read or written — no private key
+// bytes, no payload digests, no secret payloads of any kind touch this module.
 data fleet_probe_identity_receipt_path: String = "target/fleet-probe-identity-observe-receipt.txt"
 
-// IT TAKES THE COMMAND, NOT ITS WORDS. As a List<String> parameter this was a laundering seam -- a
-// caller handed it a hand-spelled vector and it built the record on their behalf, so the words
-// never passed a builder. The label stays separate: what a receipt line is CALLED is a fact about
-// the receipt, not the process.
+// IT TAKES THE COMMAND, NOT ITS WORDS. As a List<String> parameter this was a laundering seam --
+// a caller handed it a hand-spelled vector and it constructed the record on their behalf, so the
+// words never passed a builder. The label stays a separate parameter: what a receipt line is CALLED
+// is a fact about the receipt, not about the process.
 fn observe_capture_line(label: String, command: ArgvCommand) -> String {
   match run_shell_command_capture(command: command, transport: LocalExec) {
     ProcessOutputPresent { text: t } =>

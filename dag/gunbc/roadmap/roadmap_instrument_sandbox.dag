@@ -76,30 +76,9 @@ import gunbc.v1_deletion_plan {
   V1FinishLine, V1FinishLineSpec, CompilerFixedPoint, v1_exit_finish_lines, v1_finish_line_key,
 }
 
-// THE FIRST V1-DELETION INSTRUMENT, at /sandbox/instrument. Everything on this page is DERIVED from
-// the same authorities the model layer is witnessed against — the four finish lines come from
-// gunbc.v1_deletion_plan, the roles come from the projection rather than from hand-placed classes,
-// the audition verdicts come from the register's own emission and displacement gates, and the
-// impulse matrix is admit_impulse run over every source and every sensor state. Nothing here is a
-// mock, so a page that renders a wrong role is a projection defect and not a styling one. WHAT IS
-// DELIBERATELY ABSENT, named rather than faked: the IDLE half of the physical character — resting
-// jitter, vertical shift, buoyant drift — is modelled, budgeted and witnessed but NOT animated
-// here, because ambient motion has no constructor in this register by design (gunbc.design.material
-// still_until_touched_amendment_note: MotionTrigger carries no ambient variant and no keyframes
-// constructor exists). Emitting raw animation text past that wall would be the unmarked-workaround
-// class the design authority names as a line-stop signal, so the idle channels are shown as their
-// measured budget and the CAUSED half — the impulse glitch on press — is real, built through the
-// ordinary ResponseRule machinery. DISSOLVE-ON: an enclosure-scoped ambient-motion constructor
-// lands with its own admission law, and the idle channels animate through it.
+data instrument_sandbox_note: String = "THE FIRST V1-DELETION INSTRUMENT, at /sandbox/instrument. Everything on this page is DERIVED from the same authorities the model layer is witnessed against — the four finish lines come from gunbc.v1_deletion_plan, the roles come from the projection rather than from hand-placed classes, the audition verdicts come from the register's own emission and displacement gates, and the impulse matrix is admit_impulse run over every source and every sensor state. Nothing here is a mock, so a page that renders a wrong role is a projection defect and not a styling one. WHAT IS DELIBERATELY ABSENT, named rather than faked: the IDLE half of the physical character — resting jitter, vertical shift, buoyant drift — is modelled, budgeted and witnessed but NOT animated here, because ambient motion has no constructor in this register by design (gunbc.design.material still_until_touched_amendment_note: MotionTrigger carries no ambient variant and no keyframes constructor exists). Emitting raw animation text past that wall would be the unmarked-workaround class the design authority names as a line-stop signal, so the idle channels are shown as their measured budget and the CAUSED half — the impulse glitch on press — is real, built through the ordinary ResponseRule machinery. DISSOLVE-ON: an enclosure-scoped ambient-motion constructor lands with its own admission law, and the idle channels animate through it."
 
-// THE ROLE THE AUDITION IS ADMITTED AT COMES FROM THE PROJECTION, NOT FROM THIS FILE. The first cut
-// passed SalienceFocal as a literal at the one place the visual actually gets made, which meant the
-// derived-salience work stopped one call short of the seam it existed to reach: the model derived
-// roles, and then the first visual consumer authored one anyway. Role now comes from
-// project_finish_line_salience over the same exemplar camera the readings use, so changing which
-// subject is selected changes what the card is admitted at, and a subject that is NOT selected is
-// admitted at Supporting and gets no emission — which is the whole law, finally applied where it
-// can be seen.
+data derived_role_note: String = "THE ROLE THE AUDITION IS ADMITTED AT COMES FROM THE PROJECTION, NOT FROM THIS FILE. The first cut passed SalienceFocal as a literal at the one place the visual actually gets made, which meant the derived-salience work stopped one call short of the seam it existed to reach: the model derived roles, and then the first visual consumer authored one anyway. Role now comes from project_finish_line_salience over the same exemplar camera the readings use, so changing which subject is selected changes what the card is admitted at, and a subject that is NOT selected is admitted at Supporting and gets no emission — which is the whole law, finally applied where it can be seen."
 
 fn audition_subject_key() -> String {
   focus_subject_key(f: exemplar_camera().focus)
@@ -127,23 +106,9 @@ fn audition_emission_var(i: AuditionIntensity) -> String {
   concat("instrument-emission-", audition_intensity_key(i: i))
 }
 
-// THE STYLESHEET IS GENERATED FROM THE ADMISSION, NOT FROM THE REQUEST (review finding, 2026-08-05,
-// and it was a real hole rather than a tidiness point). The first cut derived each card's
-// box-shadow straight from audition_emission and printed the admission verdict as PROSE UNDERNEATH
-// the already-painted glow. So a refused emission still painted: the gate decided what the page
-// SAID about the effect, not whether the effect existed. That is the register's admission machinery
-// reduced to a caption — the same coverage-by-illusion shape as an inert lens, one layer further
-// out, and it would have failed silently the first time a budget change turned a grant into a
-// refusal. Emission is now projected from AuditionAdmitted alone: a refused variant emits the
-// literal value none and has no glow to inspect. The discriminating control is a witness that
-// renders the specimen at a non-focal role and finds no emission anywhere in the emitted CSS.
+data admitted_only_note: String = "THE STYLESHEET IS GENERATED FROM THE ADMISSION, NOT FROM THE REQUEST (review finding, 2026-08-05, and it was a real hole rather than a tidiness point). The first cut derived each card's box-shadow straight from audition_emission and printed the admission verdict as PROSE UNDERNEATH the already-painted glow. So a refused emission still painted: the gate decided what the page SAID about the effect, not whether the effect existed. That is the register's admission machinery reduced to a caption — the same coverage-by-illusion shape as an inert lens, one layer further out, and it would have failed silently the first time a budget change turned a grant into a refusal. Emission is now projected from AuditionAdmitted alone: a refused variant emits the literal value none and has no glow to inspect. The discriminating control is a witness that renders the specimen at a non-focal role and finds no emission anywhere in the emitted CSS."
 
-// An EmissionSpec becomes a two-layer box-shadow: a crisp core near the object and one soft
-// low-alpha corona, which is exactly the shape the emission envelope admits and no more. The colour
-// is the theme's FOCUS material at the spec's own alphas, so the emission is the same hue the
-// register already uses to say 'this one', and it is emitted per theme through the shared
-// theme-selector grammar rather than pinned to one projection — the day/night toggle retunes the
-// glow for free.
+data emission_projection_note: String = "An EmissionSpec becomes a two-layer box-shadow: a crisp core near the object and one soft low-alpha corona, which is exactly the shape the emission envelope admits and no more. The colour is the theme's FOCUS material at the spec's own alphas, so the emission is the same hue the register already uses to say 'this one', and it is emitted per theme through the shared theme-selector grammar rather than pinned to one projection — the day/night toggle retunes the glow for free."
 
 fn emission_shadow_value(m: Material, spec: EmissionSpec) -> String {
   join([
@@ -201,13 +166,7 @@ fn audition_card_rule(i: AuditionIntensity) -> BuildRule {
   }
 }
 
-// THE CAUSED HALF, BUILT THROUGH THE ORDINARY MACHINERY. Pressing the instrument frame displaces it
-// by the preference's own impulse amplitude and it settles on the glitch duration's timing — a
-// ResponseRule with the OnActive trigger, the same construction every other control in this
-// register uses, so the physical character is not a special case that bypasses the wall. The
-// displacement is negative on the Y axis and read straight off the preference: an author who
-// disables the impulse channel gets a rule that displaces by zero rather than a rule that has to be
-// removed.
+data impulse_press_note: String = "THE CAUSED HALF, BUILT THROUGH THE ORDINARY MACHINERY. Pressing the instrument frame displaces it by the preference's own impulse amplitude and it settles on the glitch duration's timing — a ResponseRule with the OnActive trigger, the same construction every other control in this register uses, so the physical character is not a special case that bypasses the wall. The displacement is negative on the Y axis and read straight off the preference: an author who disables the impulse channel gets a rule that displaces by zero rather than a rule that has to be removed."
 
 fn impulse_translate_value(p: InstrumentPreference) -> String {
   join(["translateY(-", to_string(amplitude_px(a: p.impulse_glitch)), "px)"], "")
@@ -276,10 +235,7 @@ fn instrument_css() -> String {
   join([roadmap_css(), instrument_emission_root_css(), serialize_rules(rules: instrument_rules())], "\n")
 }
 
-// The stylesheet at an arbitrary role, exposed so a witness can render the study as if the specimen
-// were NOT selected and prove no emission appears. Without this seam the refused-emission control
-// could only be written by editing the page, which is the kind of test that passes because the
-// author remembered to keep it in sync.
+data css_at_role_note: String = "The stylesheet at an arbitrary role, exposed so a witness can render the study as if the specimen were NOT selected and prove no emission appears. Without this seam the refused-emission control could only be written by editing the page, which is the kind of test that passes because the author remembered to keep it in sync."
 
 fn instrument_css_at_role(role: SalienceRole) -> String {
   join([instrument_emission_root_css_for(role: role), serialize_rules(rules: instrument_rules())], "\n")
@@ -297,38 +253,15 @@ fn instrument_note(s: String) -> Fragment {
   el_class("p", instrument_note_class, [ txt(s) ])
 }
 
-// THIS PAGE IS A STATIC STUDY, and calling it that is the correction rather than a hedge. It
-// renders ONE camera state, server-side, with no client program: no pointer selection, no keyboard
-// parity, no wheel detent, no persistence. What it is for is showing what each depth and mode
-// PRODUCE from the real derived world, so the projections can be read and judged before an operable
-// instrument is built on them. The operable tuner — persistent camera, selection parity, one-detent
-// movement, working controls — is the declared follow-on, and describing this page as that
-// instrument would be the rung inflation DESIGN section 4b names.
+data exemplar_note: String = "THIS PAGE IS A STATIC STUDY, and calling it that is the correction rather than a hedge. It renders ONE camera state, server-side, with no client program: no pointer selection, no keyboard parity, no wheel detent, no persistence. What it is for is showing what each depth and mode PRODUCE from the real derived world, so the projections can be read and judged before an operable instrument is built on them. The operable tuner — persistent camera, selection parity, one-detent movement, working controls — is the declared follow-on, and describing this page as that instrument would be the rung inflation DESIGN section 4b names."
 
-// THE WORLD IS THE ONE V0 DERIVES, read live from the roadmap authority — declared nodes, declared
-// edges, and acceptance receipts, which is the same call the program-view witness makes. The
-// previous revision passed an empty accepted list and read gunbc.v1_deletion_plan's authored rows
-// directly, so every finish line rendered as not-accepted regardless of the real receipts and the
-// remaining/why modes had nothing to project. A refusal from the projection renders AS a refusal
-// here: if a finish-line node or front gate resolves to nothing, the page says so with the located
-// causes rather than drawing a smaller program.
+data live_view_note: String = "THE WORLD IS THE ONE V0 DERIVES, read live from the roadmap authority — declared nodes, declared edges, and acceptance receipts, which is the same call the program-view witness makes. The previous revision passed an empty accepted list and read gunbc.v1_deletion_plan's authored rows directly, so every finish line rendered as not-accepted regardless of the real receipts and the remaining/why modes had nothing to project. A refusal from the projection renders AS a refusal here: if a finish-line node or front gate resolves to nothing, the page says so with the located causes rather than drawing a smaller program."
 
 fn exemplar_camera() -> ProgramCamera {
   camera_select(c: camera_initial, f: focus_finish_line(l: CompilerFixedPoint))
 }
 
-// TWO INDEPENDENT WAYS THE LIVE WORLD CAN FAIL TO ARRIVE, flattened to located text exactly once.
-// gunbc.roadmap_authority's roadmap_acceptance_receipts is a PROJECTION (#7791 receipt-continuity
-// work), not a list — it can refuse before the program view is ever attempted — and
-// gunbc.roadmap_program_view can then refuse on its own causes. Forwarding the first as the second
-// was not available and would have been the fabrication this page exists to avoid: a
-// receipts-projection refusal is not a ProgramViewRefusalCause, and inventing one would put a cause
-// in front of the reader that the model never produced. So this carrier keeps both sources and
-// renders either as its own located line. The page's contract is unchanged — refuse loudly with the
-// causes named, never draw a smaller program. Found by execution rather than by typecheck: passing
-// the projection straight into v1_program_view compiled clean and failed at runtime with 'fold
-// expects a list, got Variant', so the List-versus-coproduct swap at a call site is a class the
-// substrate does not currently wall.
+data live_view_two_refusal_sources_note: String = "TWO INDEPENDENT WAYS THE LIVE WORLD CAN FAIL TO ARRIVE, flattened to located text exactly once. gunbc.roadmap_authority's roadmap_acceptance_receipts is a PROJECTION (#7791 receipt-continuity work), not a list — it can refuse before the program view is ever attempted — and gunbc.roadmap_program_view can then refuse on its own causes. Forwarding the first as the second was not available and would have been the fabrication this page exists to avoid: a receipts-projection refusal is not a ProgramViewRefusalCause, and inventing one would put a cause in front of the reader that the model never produced. So this carrier keeps both sources and renders either as its own located line. The page's contract is unchanged — refuse loudly with the causes named, never draw a smaller program. Found by execution rather than by typecheck: passing the projection straight into v1_program_view compiled clean and failed at runtime with 'fold expects a list, got Variant', so the List-versus-coproduct swap at a call site is a class the substrate does not currently wall."
 
 type LiveProgramView
   = LiveViewDerived { view: V1DeletionProgramView }
@@ -383,10 +316,7 @@ fn camera_section() -> Fragment {
     [ el("h3", [ txt("readings") ]), reading_rows() ]))
 }
 
-// A refusal renders AS a refusal. The Why mode has no rationale carrier to read, so it produces a
-// typed ReadingUnavailable and the page prints the cause — the alternative, printing the claim
-// under a Why heading, would be indistinguishable from an answer and is exactly the
-// fabricated-plausible-output arm this surface exists to make visible.
+data reading_render_note: String = "A refusal renders AS a refusal. The Why mode has no rationale carrier to read, so it produces a typed ReadingUnavailable and the page prints the cause — the alternative, printing the claim under a Why heading, would be indistinguishable from an answer and is exactly the fabricated-plausible-output arm this surface exists to make visible."
 
 fn remaining_text(r: RemainingShape) -> String {
   join([
@@ -453,13 +383,7 @@ fn depth_readings(view: V1DeletionProgramView, d: ProgramDepth) -> List<Fragment
   map(program_modes(), m => reading_at(view: view, d: d, m: m))
 }
 
-// TOTAL OVER V0's REFUSAL COPRODUCT, and the totality is load-bearing rather than tidy. The page's
-// whole contract when the projection refuses is that it draws the LOCATED causes instead of a
-// smaller program, so a cause this page could not name would be a cause the reader never sees — the
-// empty-observation narrow, one layer out. The duplicate arms arrived from PR #7822 and the
-// compiler refused this match until they were handled, which is the construction wall working
-// across a merge: nobody had to notice that V0 grew two refusal shapes, because an Accepted program
-// could not be built without them.
+data refusal_cause_arms_note: String = "TOTAL OVER V0's REFUSAL COPRODUCT, and the totality is load-bearing rather than tidy. The page's whole contract when the projection refuses is that it draws the LOCATED causes instead of a smaller program, so a cause this page could not name would be a cause the reader never sees — the empty-observation narrow, one layer out. The duplicate arms arrived from PR #7822 and the compiler refused this match until they were handled, which is the construction wall working across a merge: nobody had to notice that V0 grew two refusal shapes, because an Accepted program could not be built without them."
 
 fn refusal_cause_text(c: ProgramViewRefusalCause) -> String {
   match c {
@@ -613,13 +537,7 @@ fn physical_section() -> Fragment {
       map([SyntheticImpulse, HostAccelerometer, HostDeviceMotion], s => impulse_row(s: s)))))
 }
 
-// THE SHELL SAYS WHAT THE PAGE IS. It declares a language and a viewport because a document without
-// them is not a finished page on a phone or to a screen reader, and it does NOT reuse the roadmap
-// header: that header carries theme and sound toggles whose behaviour comes from a client program
-// this static study does not load, so rendering them would put two dead controls on the page — an
-// affordance that does nothing is the same lie as a caption under an unadmitted glow, just cheaper
-// to notice. The title names it a study rather than an instrument, for the reason exemplar_note
-// gives.
+data page_shell_note: String = "THE SHELL SAYS WHAT THE PAGE IS. It declares a language and a viewport because a document without them is not a finished page on a phone or to a screen reader, and it does NOT reuse the roadmap header: that header carries theme and sound toggles whose behaviour comes from a client program this static study does not load, so rendering them would put two dead controls on the page — an affordance that does nothing is the same lie as a caption under an unadmitted glow, just cheaper to notice. The title names it a study rather than an instrument, for the reason exemplar_note gives."
 
 fn instrument_study_header() -> Fragment {
   el("header", [

@@ -10,11 +10,7 @@ fn stats_fixture(total_bytes: Int) -> SwapStats {
   }
 }
 
-// The requirement must come from the DECLARED cap, not from a number typed into this witness, or
-// the module is asserting its own invention. So the assertion is a relationship: the derived
-// min_total equals gunbc_runner_slot_desired().memory_swap_max exactly, which means editing that
-// one declaration moves the requirement and this witness together, and a hand-written swap size
-// anywhere would break it.
+data witness_requirement_derivation_note: String = "The requirement must come from the DECLARED cap, not from a number typed into this witness, or the module is asserting its own invention. So the assertion is a relationship: the derived min_total equals gunbc_runner_slot_desired().memory_swap_max exactly, which means editing that one declaration moves the requirement and this witness together, and a hand-written swap size anywhere would break it."
 
 test fn witness_requirement_is_derived_from_the_declared_cap() -> Bool {
   match host_swap_backing_requirement() {

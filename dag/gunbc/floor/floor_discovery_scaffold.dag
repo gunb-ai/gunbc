@@ -27,14 +27,6 @@ data floor_discovery_equivalence_test_sidecar_misplaced: String = "misplaced_wir
 
 data floor_discovery_equivalence_test_scan_wire_contract: String = "scan_detects_coproduct_wire_contract_data"
 
-// discovery_scope_dirs semantics (intentional, review 41826): the producer walk
-// (floor_discovery_walk_dir over all source_roots) applies tree-wide hygiene — filename __ refusal,
-// test-marked-decl sidecar, wire-contract sidecar — before finalize. discover_floor_witness_roster
-// applies discovery_scope_dirs only as a post-walk row filter (cli_run.rs
-// apply_discovery_scope_dirs_filter), not as a pre-walk skip. Legacy build_floor_lens_hygiene_graph
-// short-circuited sidecar checks outside scope; the new shape refuses on any hygiene violation
-// anywhere under source_roots even when witness enrollment is scoped. Today ci_floor_plan
-// discovery_scope_dirs is always [] so production CI is unchanged; non-empty scope is for narrowed
-// roster projection only, not narrowed hygiene.
-
 data floor_discovery_equivalence_test_narrowed_corpus_control: String = "clean_dag_file_leaves_narrowed_discovery_ok"
+
+data floor_discovery_scope_semantics_note: String = "discovery_scope_dirs semantics (intentional, review 41826): the producer walk (floor_discovery_walk_dir over all source_roots) applies tree-wide hygiene — filename __ refusal, test-marked-decl sidecar, wire-contract sidecar — before finalize. discover_floor_witness_roster applies discovery_scope_dirs only as a post-walk row filter (cli_run.rs apply_discovery_scope_dirs_filter), not as a pre-walk skip. Legacy build_floor_lens_hygiene_graph short-circuited sidecar checks outside scope; the new shape refuses on any hygiene violation anywhere under source_roots even when witness enrollment is scoped. Today ci_floor_plan discovery_scope_dirs is always [] so production CI is unchanged; non-empty scope is for narrowed roster projection only, not narrowed hygiene."

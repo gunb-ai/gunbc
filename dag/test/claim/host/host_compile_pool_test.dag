@@ -2,11 +2,7 @@ module test.claim.host_compile_pool
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-// THE DERIVATION'S ACCEPTANCE SET. The load-bearing witness is the first one: against the fleet's
-// ACTUAL declared topology, the derivation refuses on every host, which is the correct answer today
-// and the one a hand-written all-true receipt would have silently contradicted. The rest assert
-// that each not-ready reason is reachable and distinct, because five reasons that cannot be told
-// apart are one reason with five names.
+data compile_pool_producer_doc: String = "THE DERIVATION'S ACCEPTANCE SET. The load-bearing witness is the first one: against the fleet's ACTUAL declared topology, the derivation refuses on every host, which is the correct answer today and the one a hand-written all-true receipt would have silently contradicted. The rest assert that each not-ready reason is reachable and distinct, because five reasons that cannot be told apart are one reason with five names."
 
 fn observed_slice(name: String) -> CompilePoolObservation {
   CompilePoolSliceObserved {
@@ -93,13 +89,7 @@ test fn witness_a_differently_named_slice_is_not_the_intended_pool() -> Bool {
   ) == false
 }
 
-// The two reasons whose collapse this asserts against. Both are not-ready and both would project to
-// the same pair of Bools if pool_declared did not distinguish them, so the receipt carries the
-// distinction: an undeclared topology yields pool_declared false, while a declared topology whose
-// host lacks the slice yields pool_declared TRUE with pool_observed false. Their remedies differ —
-// one is a fleet-wide topology change that must shrink runner_pool in the same motion, the other is
-// provisioning one host — so a reader that could not tell them apart would treat a fleet decision
-// as a per-host chore.
+data not_declared_versus_absent_doc: String = "The two reasons whose collapse this asserts against. Both are not-ready and both would project to the same pair of Bools if pool_declared did not distinguish them, so the receipt carries the distinction: an undeclared topology yields pool_declared false, while a declared topology whose host lacks the slice yields pool_declared TRUE with pool_observed false. Their remedies differ — one is a fleet-wide topology change that must shrink runner_pool in the same motion, the other is provisioning one host — so a reader that could not tell them apart would treat a fleet decision as a per-host chore."
 
 test fn witness_undeclared_and_unprovisioned_are_distinguishable_in_the_receipt() -> Bool {
   let undeclared = compile_pool_ready_receipt(
@@ -126,14 +116,7 @@ test fn witness_undeclared_and_unprovisioned_are_distinguishable_in_the_receipt(
     && (unprovisioned.pool_observed == false)
 }
 
-// The control review 46655 forced. The previous observed_slice fixture carried all-zero limits and
-// witness_a_declared_and_observed_slice_is_ready passed anyway, because the derivation discarded
-// the observed ceilings and reported the JOBSERVER-derived size as though it had been checked
-// against the host. So the acceptance set was certifying the hole rather than catching it. The
-// fixture now carries a ceiling that can hold the derived size, and this witness pins the case it
-// used to admit: a slice observed strictly below the required pool refuses. Both halves are needed
-// -- without the positive fixture the derivation could refuse everything and still pass, and
-// without this one it could admit everything.
+data undersized_slice_doc: String = "The control review 46655 forced. The previous observed_slice fixture carried all-zero limits and witness_a_declared_and_observed_slice_is_ready passed anyway, because the derivation discarded the observed ceilings and reported the JOBSERVER-derived size as though it had been checked against the host. So the acceptance set was certifying the hole rather than catching it. The fixture now carries a ceiling that can hold the derived size, and this witness pins the case it used to admit: a slice observed strictly below the required pool refuses. Both halves are needed -- without the positive fixture the derivation could refuse everything and still pass, and without this one it could admit everything."
 
 test fn witness_a_slice_below_the_derived_size_is_not_ready() -> Bool {
   readiness_for(

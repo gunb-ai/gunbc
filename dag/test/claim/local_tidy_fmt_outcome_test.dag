@@ -29,13 +29,7 @@ import gunbc.githooks_pre_push_fmt_transport_scaffold {
   githooks_pre_push_fmt_transport_test_discriminator,
 }
 
-// The defect under witness: a tool that COULD NOT RUN was reported as a negative finding about the
-// work, so a missing cargo printed 'rustfmt drift — run: cargo fmt --all' — a remedy that runs the
-// very binary whose absence produced the message. The discriminating controls are the ones that go
-// RED if the arms are collapsed back together: witness_unavailable_recipe_never_says_drift and
-// witness_unavailable_recipe_proposes_no_cargo_remedy fail the moment FmtToolUnavailable can reach
-// a drift recipe, and the emitted-hook witnesses fail if either hook stops branching on the exit
-// status.
+data local_tidy_fmt_outcome_test_note: String = "The defect under witness: a tool that COULD NOT RUN was reported as a negative finding about the work, so a missing cargo printed 'rustfmt drift — run: cargo fmt --all' — a remedy that runs the very binary whose absence produced the message. The discriminating controls are the ones that go RED if the arms are collapsed back together: witness_unavailable_recipe_never_says_drift and witness_unavailable_recipe_proposes_no_cargo_remedy fail the moment FmtToolUnavailable can reach a drift recipe, and the emitted-hook witnesses fail if either hook stops branching on the exit status."
 
 fn has(s: String, p: String) -> Bool {
   string_contains(s: s, pattern: p)

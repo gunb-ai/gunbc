@@ -541,14 +541,7 @@ fn witness_synthetic_instance() -> HostDashboardInstance {
   )
 }
 
-// THE LITERAL THAT WOULD HAVE SERVED THE WRONG BRANCH SILENTLY. Every isolated instance inherited
-// the constructor's hardcoded refs/heads/session/codex-provider-feedback-v0, so a new lab
-// provisioned itself from another lane's stale feedback branch while its instance id, posture and
-// page all read correctly — no refusal, just unintended content rendered plausibly. Unlike the host
-// facts, which produced identical values on both hosts and therefore no wrong output at all, this
-// one produces a page that looks right and is not.\n\nThe claim asserts the anchors are
-// per-instance and DIFFER, so collapsing them back to one shared literal fails whichever way it
-// collapses.
+data anchor_ref_witness_note: String = "THE LITERAL THAT WOULD HAVE SERVED THE WRONG BRANCH SILENTLY. Every isolated instance inherited the constructor's hardcoded refs/heads/session/codex-provider-feedback-v0, so a new lab provisioned itself from another lane's stale feedback branch while its instance id, posture and page all read correctly — no refusal, just unintended content rendered plausibly. Unlike the host facts, which produced identical values on both hosts and therefore no wrong output at all, this one produces a page that looks right and is not.\\n\\nThe claim asserts the anchors are per-instance and DIFFER, so collapsing them back to one shared literal fails whichever way it collapses."
 
 test fn source_anchor_is_per_instance_not_one_shared_literal() -> Bool {
   let synthetic = instance_anchor_ref(i: witness_synthetic_instance())
@@ -560,17 +553,7 @@ test fn source_anchor_is_per_instance_not_one_shared_literal() -> Bool {
     && !(srv2_lab == srv1_lab)
 }
 
-// serve_binary MOVED OFF THE LAYOUT AND THIS CLAIM CAUGHT IT, which is the whole reason it exists.
-// It used to assert the synthetic layout's /witness/bin/gunbc reached the instance; once binaries
-// became instance-derived it asserts /witness/root/bin/gunbc instead — derived from the instance
-// ROOT, not from the host row. The claim went red on the change rather than quietly continuing to
-// pass, so the behaviour shift was visible at the point it happened instead of at the point
-// something downstream broke.\n\nThe remaining conjuncts still prove the original property for the
-// two fields the layout genuinely still supplies — provider state root and controller repo — and
-// still assert non-equality with the srv1 rows, so re-pinning either to a host literal fails here.
-// GunbcHostLayout.gunbc_serve_binary now has exactly one consumer left, srv1-live's own
-// declaration, which is the dissolution trigger recorded on that row: it is a per-instance fact
-// wearing a per-host name.
+data layout_no_longer_supplies_the_binary_note: String = "serve_binary MOVED OFF THE LAYOUT AND THIS CLAIM CAUGHT IT, which is the whole reason it exists. It used to assert the synthetic layout's /witness/bin/gunbc reached the instance; once binaries became instance-derived it asserts /witness/root/bin/gunbc instead — derived from the instance ROOT, not from the host row. The claim went red on the change rather than quietly continuing to pass, so the behaviour shift was visible at the point it happened instead of at the point something downstream broke.\\n\\nThe remaining conjuncts still prove the original property for the two fields the layout genuinely still supplies — provider state root and controller repo — and still assert non-equality with the srv1 rows, so re-pinning either to a host literal fails here. GunbcHostLayout.gunbc_serve_binary now has exactly one consumer left, srv1-live's own declaration, which is the dissolution trigger recorded on that row: it is a per-instance fact wearing a per-host name."
 
 test fn isolated_instance_carries_the_layout_it_was_given() -> Bool {
   let i = witness_synthetic_instance()
@@ -847,20 +830,7 @@ test fn a_production_slot_keeping_its_own_dispatch_state_is_refused() -> Bool {
     && !dashboard_instances_dispatch_state_is_consistent(a: live, b: own_state)
 }
 
-// THIS PAIR USED TO CONSTRUCT THE INVALID STATE AND ASSERT THE LAW CAUGHT IT. It no longer can, and
-// that is the climb rather than a gap: an instance-owned scope carries only CHILD NAMES, so its
-// roots are derived beneath its own instance_root and there is no way to author a lab pointing at
-// the host-shared roots. The DESIGN §4b rule is that a climb deletes the lower-rung production
-// machinery but keeps the evidence enrolled, so these assert the DERIVATION that makes the old red
-// unwritable instead of pretending to still construct it — a witness whose invalid input became
-// unrepresentable must change what it asserts, not keep a name that no longer describes it.\n\nWHAT
-// REMAINS LAW-CAUGHT, stated so the residue is not mistaken for a wall: a host-shared scope still
-// carries two free FilePath values, so a production slot CAN be authored with roots that are not
-// the layout rows. That state is representable and dashboard_instances_dispatch_state_is_consistent
-// is what refuses it — rung two, not rung four — and
-// a_production_slot_keeping_its_own_dispatch_state_is_refused is its live discriminating red.
-// Closing it needs host-shared roots DERIVED from a total host-identity-to-layout lookup rather
-// than carried, which is a host_layout change; dissolve-on: feature:host-dispatch-roots-derived.
+data lab_shared_root_became_unrepresentable_note: String = "THIS PAIR USED TO CONSTRUCT THE INVALID STATE AND ASSERT THE LAW CAUGHT IT. It no longer can, and that is the climb rather than a gap: an instance-owned scope carries only CHILD NAMES, so its roots are derived beneath its own instance_root and there is no way to author a lab pointing at the host-shared roots. The DESIGN §4b rule is that a climb deletes the lower-rung production machinery but keeps the evidence enrolled, so these assert the DERIVATION that makes the old red unwritable instead of pretending to still construct it — a witness whose invalid input became unrepresentable must change what it asserts, not keep a name that no longer describes it.\\n\\nWHAT REMAINS LAW-CAUGHT, stated so the residue is not mistaken for a wall: a host-shared scope still carries two free FilePath values, so a production slot CAN be authored with roots that are not the layout rows. That state is representable and dashboard_instances_dispatch_state_is_consistent is what refuses it — rung two, not rung four — and a_production_slot_keeping_its_own_dispatch_state_is_refused is its live discriminating red. Closing it needs host-shared roots DERIVED from a total host-identity-to-layout lookup rather than carried, which is a host_layout change; dissolve-on: feature:host-dispatch-roots-derived."
 
 test fn an_instance_owned_scope_cannot_reach_the_shared_roots() -> Bool {
   let lab = srv1_lab_dashboard_instance()
@@ -899,11 +869,7 @@ test fn host_shared_slots_are_exempt_from_containment_but_labs_are_not() -> Bool
     )
 }
 
-// The finding-3 red: two host-shared instances on DIFFERENT hosts carry byte-identical layout
-// paths, and the first cut routed them into path-disjointness where identical strings refuse.
-// Same-host disagreement must still refuse, so this asserts both directions off one pair —
-// collapsing the different-host arm back into disjointness reds the first conjunct, and dropping
-// the same-host equality check reds the second.
+data different_host_shared_slots_are_valid_note: String = "The finding-3 red: two host-shared instances on DIFFERENT hosts carry byte-identical layout paths, and the first cut routed them into path-disjointness where identical strings refuse. Same-host disagreement must still refuse, so this asserts both directions off one pair — collapsing the different-host arm back into disjointness reds the first conjunct, and dropping the same-host equality check reds the second."
 
 test fn host_shared_slots_on_different_hosts_are_consistent() -> Bool {
   let live = srv1_live_dashboard_instance()

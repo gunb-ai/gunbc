@@ -155,10 +155,10 @@ test fn same_rack_unobserved_is_absent_not_false() -> Bool {
   }
 }
 
-// Three arms, discriminating: needed is Present(true), not-needed is Present(false), unobserved is
-// Absent. The RED this pins is the collapse review 50391 found — mapping BootstrapNeedUnobserved to
-// false made an unlooked-at target report "does not need bootstrap", so a witness asserting
-// Present{value:false} on the third arm must fail.
+// Three arms, discriminating: needed is Present(true), not-needed is Present(false), and
+// unobserved is Absent. The RED this pins is the collapse review 50391 found — mapping
+// BootstrapNeedUnobserved to false made an unlooked-at target report "does not need
+// bootstrap", so a witness asserting Present{value:false} on the third arm must fail.
 test fn bootstrap_need_discriminates_unobserved_from_not_needed() -> Bool {
   match wifi_target_needs_bootstrap(need: BootstrapNeeded) {
     Absent => false

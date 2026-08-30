@@ -9,10 +9,7 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-// Phase-A emission-identical witness (design-register-library.md sect 5): pins content digests of
-// site + roadmap CSS/HTML emissions after the gunbc.design.* lift. Pre-lift golden = post-lift
-// output (lift-not-fork); drift reds. site_register_keystone and roadmap_register_keystone remain
-// the behavioral receipts; this witness is the digest receipt.
+data lift_parity_note: String = "Phase-A emission-identical witness (design-register-library.md sect 5): pins content digests of site + roadmap CSS/HTML emissions after the gunbc.design.* lift. Pre-lift golden = post-lift output (lift-not-fork); drift reds. site_register_keystone and roadmap_register_keystone remain the behavioral receipts; this witness is the digest receipt."
 
 data transition_carrier_repin_note: String = "Re-pinned for the transition-carrier restructure (the tactile exemplar's PR-A). A transition used to be emitted INSIDE a response's base block; it is now accumulated per carrier selector and emitted once, because the shorthand cannot express one property at several weights and a naive union of property names silently drops the durations of all but the last. That moves bytes on every surface with response rules, including the site's — so the site digests are re-pinned, and the re-pin is justified BY EXECUTION rather than by assertion.
 
@@ -21,310 +18,62 @@ The proof, run 2026-07-24: old and new moodboard CSS were both emitted and compa
 Two digests deliberately did NOT move, which is itself evidence the change is scoped as described: accent_study_html declares no response rules, so it has no transition carriers and its bytes are untouched; moodboard_digest covers the thesis/theme rows rather than the stylesheet. A change that had leaked past the transition machinery would have moved those too."
 
 data moodboard_css_lift_parity_digest: String = "deaf2b36826760c2"
-// Re-pinned 2026-08-02 for the S1 selective-spectacle amendment (operator recalibration): the
-// moodboard HTML, thesis/themes, and accent-study HTML digests move intentionally because the
-// thesis string is revised (calm field; luminous focus; physical response; every response true) —
-// both pages render register_thesis — and the principles table gains the three salience rows
-// (selective-spectacle, emission-over-material, bounded-attraction, each carried by a
-// gunbc.design.salience declaration). moodboard_css deliberately did NOT move (re-derived
-// deaf2b36826760c2, equal to its pin) — the amendment is model-layer only, no stylesheet change,
-// which is itself the scope evidence. Behavioral receipts: test.claim.salience_witness (budget
-// table, focal budget refusal, emission refusals incl. sole-discriminator, attraction envelope).
-// All three digests derived by execution (moodboard_html_derived_digest / moodboard_digest /
-// accent_study_html_derived_digest run 2026-08-02), never chosen.
+data moodboard_repin_s1_selective_spectacle_note: String = "Re-pinned 2026-08-02 for the S1 selective-spectacle amendment (operator recalibration): the moodboard HTML, thesis/themes, and accent-study HTML digests move intentionally because the thesis string is revised (calm field; luminous focus; physical response; every response true) — both pages render register_thesis — and the principles table gains the three salience rows (selective-spectacle, emission-over-material, bounded-attraction, each carried by a gunbc.design.salience declaration). moodboard_css deliberately did NOT move (re-derived deaf2b36826760c2, equal to its pin) — the amendment is model-layer only, no stylesheet change, which is itself the scope evidence. Behavioral receipts: test.claim.salience_witness (budget table, focal budget refusal, emission refusals incl. sole-discriminator, attraction envelope). All three digests derived by execution (moodboard_html_derived_digest / moodboard_digest / accent_study_html_derived_digest run 2026-08-02), never chosen."
 
-// Re-pinned 2026-08-05 for the PhysicalEnclosure amendment (the first v1-deletion instrument): the
-// moodboard renders register_principles as a table, so the twelfth principle row and the restated
-// StillUntilTouched law move its HTML bytes. Derived by execution (moodboard_html_derived_digest,
-// run 2026-08-05), never chosen. FOUR PINS DELIBERATELY DID NOT MOVE, and CI is what established
-// that rather than an assertion here: of the five digest witnesses in this file, exactly one went
-// red on the amendment. moodboard_css did not move because the amendment is model-layer and adds no
-// stylesheet rule; moodboard_thesis_themes did not move because register_thesis is untouched — the
-// amendment adds a principle, it does not revise the thesis, which is the difference from the S1
-// re-pin above; accent_study_html did not move because it renders the thesis and not the principles
-// table; and roadmap_css did not move even though gunbc.roadmap_style band_root_css was rewritten
-// to call the new theme_scoped_blocks, which is the emission-identity proof for that consolidation
-// — the same three selector blocks, byte for byte, from one authority instead of two copies.
-// Behavioral receipt: test.claim.salience_witness (principle keys distinct, all carried,
-// physical-enclosure present) and test.claim.instrument_physical_witness (the composed displacement
-// budget the new principle names as its carrier).
+data moodboard_repin_physical_enclosure_note: String = "Re-pinned 2026-08-05 for the PhysicalEnclosure amendment (the first v1-deletion instrument): the moodboard renders register_principles as a table, so the twelfth principle row and the restated StillUntilTouched law move its HTML bytes. Derived by execution (moodboard_html_derived_digest, run 2026-08-05), never chosen. FOUR PINS DELIBERATELY DID NOT MOVE, and CI is what established that rather than an assertion here: of the five digest witnesses in this file, exactly one went red on the amendment. moodboard_css did not move because the amendment is model-layer and adds no stylesheet rule; moodboard_thesis_themes did not move because register_thesis is untouched — the amendment adds a principle, it does not revise the thesis, which is the difference from the S1 re-pin above; accent_study_html did not move because it renders the thesis and not the principles table; and roadmap_css did not move even though gunbc.roadmap_style band_root_css was rewritten to call the new theme_scoped_blocks, which is the emission-identity proof for that consolidation — the same three selector blocks, byte for byte, from one authority instead of two copies. Behavioral receipt: test.claim.salience_witness (principle keys distinct, all carried, physical-enclosure present) and test.claim.instrument_physical_witness (the composed displacement budget the new principle names as its carrier)."
 
 data moodboard_html_lift_parity_digest: String = "4041adc0584f8c45"
 data accent_study_html_lift_parity_digest: String = "013dfb213ad0128f"
-// Re-pinned across the UI-model migration and the #7104 (SupersededLine) merge. P2 (token
-// migration, px/font -> gunbc.design.scale var tokens) was proven visually-neutral by execution:
-// resolving every var(--scale-token) reproduced the pre-P2 CSS byte-for-byte. P3 (presentation
-// mapping) then INTENTIONALLY adds styling: the dispatch button's reserved min-width (derived from
-// the longest wire label, in ch) and the ok/refusal/requested chip material rules (each painting
-// the P0 state's role). D5 (typed CSS grain) is a pure re-grounding — property names and selector
-// subjects become typed, bytes unchanged. The #7104 merge folds in the .status-superseded /
-// .node-superseded / .superseded-by rules, RE-GROUNDED here onto the same typed+tokenized grain
-// (their raw 11px/6px/font-family literals routed through the scale tokens so the untokened-length
-// census stays green), which shifts the bytes off main's hardcoded emission — hence this digest
-// re-pin. The behavioral receipts (roadmap_register_keystone, dispatch_presentation_keystone) and
-// the untokened-length census remain the substance; this digest only pins bytes. Re-pinned again
-// for #7169 (roadmap workspace UX): roadmap_style gained centered .roadmap/.daily-workspace auto
-// side margins and related layout rules — bytes shift, behavioral receipts
-// (roadmap_register_keystone, dispatch_presentation_keystone) unchanged.
+data roadmap_css_digest_repin_note: String = "Re-pinned across the UI-model migration and the #7104 (SupersededLine) merge. P2 (token migration, px/font -> gunbc.design.scale var tokens) was proven visually-neutral by execution: resolving every var(--scale-token) reproduced the pre-P2 CSS byte-for-byte. P3 (presentation mapping) then INTENTIONALLY adds styling: the dispatch button's reserved min-width (derived from the longest wire label, in ch) and the ok/refusal/requested chip material rules (each painting the P0 state's role). D5 (typed CSS grain) is a pure re-grounding — property names and selector subjects become typed, bytes unchanged. The #7104 merge folds in the .status-superseded / .node-superseded / .superseded-by rules, RE-GROUNDED here onto the same typed+tokenized grain (their raw 11px/6px/font-family literals routed through the scale tokens so the untokened-length census stays green), which shifts the bytes off main's hardcoded emission — hence this digest re-pin. The behavioral receipts (roadmap_register_keystone, dispatch_presentation_keystone) and the untokened-length census remain the substance; this digest only pins bytes. Re-pinned again for #7169 (roadmap workspace UX): roadmap_style gained centered .roadmap/.daily-workspace auto side margins and related layout rules — bytes shift, behavioral receipts (roadmap_register_keystone, dispatch_presentation_keystone) unchanged."
 
-// The roadmap's own bytes move for a second, intentional reason beyond the carrier restructure: the
-// dashboard gained physical motion. Hover lift, press depression, the latched requested position,
-// the settle spring, the sound toggle's rules and the reduced-motion collapse over all of them are
-// new emission. The behavioural receipts are roadmap_tactile_keystone_holds (which walls the
-// mechanics with planted REDs) and roadmap_register_keystone_holds; this digest only pins bytes.
+data roadmap_css_repin_tactile_note: String = "The roadmap's own bytes move for a second, intentional reason beyond the carrier restructure: the dashboard gained physical motion. Hover lift, press depression, the latched requested position, the settle spring, the sound toggle's rules and the reduced-motion collapse over all of them are new emission. The behavioural receipts are roadmap_tactile_keystone_holds (which walls the mechanics with planted REDs) and roadmap_register_keystone_holds; this digest only pins bytes."
 
-// Re-pinned 2026-07-24 (remodel W1c/W1d/W1g): the roadmap bytes move intentionally — the band var
-// family (band_root_css: instrument fills under the same :root/[data-theme]/media grammar the theme
-// vars use), the dispatch state rules re-painted from role borders to band fill/ink vars, the
-// dispatch-loud rule, and the theme-toggle control's rule. Behavioral receipts:
-// roadmap_register_keystone (census + both-ways archetype demand, BoundaryRole demand dissolved
-// with its stylesheet consumer), dispatch_presentation_keystone (band-paint blocks +
-// caption-projection width), roadmap_tactile_keystone (mechanics unchanged). This digest only pins
-// bytes.
+data roadmap_css_repin_remodel_w1_note: String = "Re-pinned 2026-07-24 (remodel W1c/W1d/W1g): the roadmap bytes move intentionally — the band var family (band_root_css: instrument fills under the same :root/[data-theme]/media grammar the theme vars use), the dispatch state rules re-painted from role borders to band fill/ink vars, the dispatch-loud rule, and the theme-toggle control's rule. Behavioral receipts: roadmap_register_keystone (census + both-ways archetype demand, BoundaryRole demand dissolved with its stylesheet consumer), dispatch_presentation_keystone (band-paint blocks + caption-projection width), roadmap_tactile_keystone (mechanics unchanged). This digest only pins bytes."
 
-// Merge resolution 2026-07-25 (main into the remodel branch). Both parents re-pinned this row off
-// the same base value 947686b5dbaab2b0 for disjoint reasons: main via #7193 (namespace-flip
-// emission drift, reaching roadmap_css through std.markup rather than through any design/ or
-// roadmap_*/ file — none of those changed on main since the branch point), the branch via remodel
-// W1 (band var family, dispatch rules re-painted from role borders to band fill/ink). The merged
-// value is DERIVED, never chosen: roadmap_css() was emitted from the merged worktree and its
-// content_hash_atom read off. Three-point control, all run against the same binary: origin/main
-// emits d788728c4745ba48 (reproduces main's pin), the pre-merge branch tip d1d2fd954 emits
-// 50410951147178f6 (reproduces the branch's pin), the merged tree emits 50410951147178f6. The
-// merged value coinciding with the branch's is a real result, not a dropped merge: main's
-// std.markup drift reaches an emission region the branch's W1 rewrite replaces, so the branch's
-// bytes supersede it — and merge faithfulness is a separate receipt (of the 327 paths main touched
-// since the base, 324 are byte-identical to main in the merged tree and 3 are the co-edited files,
-// zero unexplained). Resolving this conflict by keeping either side's literal would have pinned
-// bytes no tree emits.
+data roadmap_css_repin_merge_note: String = "Merge resolution 2026-07-25 (main into the remodel branch). Both parents re-pinned this row off the same base value 947686b5dbaab2b0 for disjoint reasons: main via #7193 (namespace-flip emission drift, reaching roadmap_css through std.markup rather than through any design/ or roadmap_*/ file — none of those changed on main since the branch point), the branch via remodel W1 (band var family, dispatch rules re-painted from role borders to band fill/ink). The merged value is DERIVED, never chosen: roadmap_css() was emitted from the merged worktree and its content_hash_atom read off. Three-point control, all run against the same binary: origin/main emits d788728c4745ba48 (reproduces main's pin), the pre-merge branch tip d1d2fd954 emits 50410951147178f6 (reproduces the branch's pin), the merged tree emits 50410951147178f6. The merged value coinciding with the branch's is a real result, not a dropped merge: main's std.markup drift reaches an emission region the branch's W1 rewrite replaces, so the branch's bytes supersede it — and merge faithfulness is a separate receipt (of the 327 paths main touched since the base, 324 are byte-identical to main in the merged tree and 3 are the co-edited files, zero unexplained). Resolving this conflict by keeping either side's literal would have pinned bytes no tree emits."
 
-// Re-pinned for composition slice 2 (the RoadmapRow archetype): the roadmap bytes move
-// intentionally — the node-head flex rules become the archetype-derived grid (template from
-// roadmap_row_grid_template, density on h-row and the row gutter), the node-mid cell rule and the
-// chip-scale row actuator override are new emission, the margin-left:auto pusher rule deletes (the
-// grid's third track places the actuator), and scale_root_css gains --h-row. Slice 1's
-// re-derivation was proven byte-identical against the PREVIOUS pin (50410951147178f6, zero re-pin)
-// before this slice moved bytes, so the two changes are separately attested. Behavioral receipts:
-// the row archetype witness (grid-derived template + derived-not-set actuator + planted RED),
-// roadmap_register_keystone, dispatch_presentation_keystone, roadmap_tactile_keystone (press
-// physics unchanged at both scales). This digest only pins bytes; derived by execution from the
-// merged tree.
+data roadmap_css_repin_row_archetype_note: String = "Re-pinned for composition slice 2 (the RoadmapRow archetype): the roadmap bytes move intentionally — the node-head flex rules become the archetype-derived grid (template from roadmap_row_grid_template, density on h-row and the row gutter), the node-mid cell rule and the chip-scale row actuator override are new emission, the margin-left:auto pusher rule deletes (the grid's third track places the actuator), and scale_root_css gains --h-row. Slice 1's re-derivation was proven byte-identical against the PREVIOUS pin (50410951147178f6, zero re-pin) before this slice moved bytes, so the two changes are separately attested. Behavioral receipts: the row archetype witness (grid-derived template + derived-not-set actuator + planted RED), roadmap_register_keystone, dispatch_presentation_keystone, roadmap_tactile_keystone (press physics unchanged at both scales). This digest only pins bytes; derived by execution from the merged tree."
 
-// Re-pinned for composition slice 3 (page altitude): new emission for the section band — the fold
-// summary rules (marker suppressed, pointer), the band strip (surface fill, baseline flex, tokened
-// gap/padding/radius), the in-band h2 margin reset, and the counts chip (mono, dim, tabular).
-// Behavioral receipts: the altitude witness (derivation totality, fold/open by statuses, counts
-// wire, client expand chain with planted REDs), roadmap_page_keystone. Derived by execution; this
-// digest only pins bytes.
+data roadmap_css_repin_altitude_note: String = "Re-pinned for composition slice 3 (page altitude): new emission for the section band — the fold summary rules (marker suppressed, pointer), the band strip (surface fill, baseline flex, tokened gap/padding/radius), the in-band h2 margin reset, and the counts chip (mono, dim, tabular). Behavioral receipts: the altitude witness (derivation totality, fold/open by statuses, counts wire, client expand chain with planted REDs), roadmap_page_keystone. Derived by execution; this digest only pins bytes."
 
-// Re-pinned for composition slice 4 (anomaly evidence is a surface): one new rule —
-// .disclosure-reason, the loud reason's persistent line in the row's disclosure (loud's own hue as
-// the edge mark, tokened lengths, theme ink). Behavioral receipts: the anomaly-evidence witness
-// (surface predicate + title-only RED + styled block pinned verbatim). Derived by execution; this
-// digest only pins bytes.
+data roadmap_css_repin_anomaly_evidence_note: String = "Re-pinned for composition slice 4 (anomaly evidence is a surface): one new rule — .disclosure-reason, the loud reason's persistent line in the row's disclosure (loud's own hue as the edge mark, tokened lengths, theme ink). Behavioral receipts: the anomaly-evidence witness (surface predicate + title-only RED + styled block pinned verbatim). Derived by execution; this digest only pins bytes."
 
-// Re-pinned for the operator's pass flips (2026-07-25, signed at the pass on #7234's live page):
-// the row's column gutter splits from the badge-flow gutter — the node-head grid gap moves to
-// space-8 (roadmap_row_column_gutter) while node-mid's flow keeps space-4. One decl's value
-// changes; the row witness's expected head block moved with it (it reds on this change by design).
-// Derived by execution; this digest only pins bytes.
+data roadmap_css_repin_gutter_split_note: String = "Re-pinned for the operator's pass flips (2026-07-25, signed at the pass on #7234's live page): the row's column gutter splits from the badge-flow gutter — the node-head grid gap moves to space-8 (roadmap_row_column_gutter) while node-mid's flow keeps space-4. One decl's value changes; the row witness's expected head block moved with it (it reds on this change by design). Derived by execution; this digest only pins bytes."
 
-// Re-pinned for U2 (sessions panel v0): one new rule — .observe-refused, the client-inserted loud
-// banner for a refused session observation (loud's own hue as the edge mark, mono, tokened lengths
-// — the disclosure-reason family). Derived by execution on the merged tree; this digest only pins
-// bytes.
+data roadmap_css_repin_sessions_note: String = "Re-pinned for U2 (sessions panel v0): one new rule — .observe-refused, the client-inserted loud banner for a refused session observation (loud's own hue as the edge mark, mono, tokened lengths — the disclosure-reason family). Derived by execution on the merged tree; this digest only pins bytes."
 
-// Re-pinned for U3 (result surfacing v0): one new rule — .dispatch-attempts, the mono dim attempts
-// line in the row disclosure. Derived by execution; this digest only pins bytes.
+data roadmap_css_repin_attempts_note: String = "Re-pinned for U3 (result surfacing v0): one new rule — .dispatch-attempts, the mono dim attempts line in the row disclosure. Derived by execution; this digest only pins bytes."
 
-// Re-pinned 2026-07-28 for independent process and cleanup presentation: .process-chip renders
-// running/exited/absent/unobserved pane evidence beside the narrow session-present control;
-// .cleanup-chip renders the separately derived stop/clear/unavailable action, and its disabled arm
-// is explicit. Derived by execution; this digest only pins bytes.
+data roadmap_css_repin_stop_note: String = "Re-pinned 2026-07-28 for independent process and cleanup presentation: .process-chip renders running/exited/absent/unobserved pane evidence beside the narrow session-present control; .cleanup-chip renders the separately derived stop/clear/unavailable action, and its disabled arm is explicit. Derived by execution; this digest only pins bytes."
 
-// Re-pinned 2026-07-28 after correcting the workflow-lamp vocabulary: .workflow-controls remains
-// the row archetype's third grid occupant while .workflow-strip and .workflow-lamp render
-// independent Session and Attempt observations. Session means only container presence; process
-// lifecycle is a separate chip. Pending, observed-off, observed-on, and refused each have explicit
-// flat presentation; the compact-width realization moves the same wrapper across the second row so
-// the actuator cluster does not overflow. Behavioral receipts: workflow_lamps_witness_test
-// (including both symmetric refusal REDs and compact-layout receipt), sessions_panel_witness_test,
-// dispatch_stop_witness_test, and roadmap_row_witness_test. Derived by execution; this digest only
-// pins bytes.
+data roadmap_css_repin_workflow_lamps_note: String = "Re-pinned 2026-07-28 after correcting the workflow-lamp vocabulary: .workflow-controls remains the row archetype's third grid occupant while .workflow-strip and .workflow-lamp render independent Session and Attempt observations. Session means only container presence; process lifecycle is a separate chip. Pending, observed-off, observed-on, and refused each have explicit flat presentation; the compact-width realization moves the same wrapper across the second row so the actuator cluster does not overflow. Behavioral receipts: workflow_lamps_witness_test (including both symmetric refusal REDs and compact-layout receipt), sessions_panel_witness_test, dispatch_stop_witness_test, and roadmap_row_witness_test. Derived by execution; this digest only pins bytes."
 
-// Re-pinned 2026-07-27 for modeled dispatch progress: each dispatched row gains seven ordered,
-// evidence-projected obligations (environment, workspace, agent, verification, publication, review,
-// goal audit), with explicit pending, active, complete, failed, and refused presentations plus a
-// provider-activity line. The stages are not a second stored workflow state:
-// roadmap_workflow_progress derives observed facts from admission, attempt-state publication,
-// provider JSONL, retained process exit, and future independent
-// verification/publication/review/audit receipts, then reconciles them against the shared desired
-// roster through workflow_reconcile. Behavioral receipts: roadmap_workflow_progress_keystone_holds,
-// workflow_reconcile_keystone_holds, the workflow route witness, and the page client/markup
-// witnesses. Derived by execution; this digest only pins bytes.
+data roadmap_css_repin_workflow_progress_note: String = "Re-pinned 2026-07-27 for modeled dispatch progress: each dispatched row gains seven ordered, evidence-projected obligations (environment, workspace, agent, verification, publication, review, goal audit), with explicit pending, active, complete, failed, and refused presentations plus a provider-activity line. The stages are not a second stored workflow state: roadmap_workflow_progress derives observed facts from admission, attempt-state publication, provider JSONL, retained process exit, and future independent verification/publication/review/audit receipts, then reconciles them against the shared desired roster through workflow_reconcile. Behavioral receipts: roadmap_workflow_progress_keystone_holds, workflow_reconcile_keystone_holds, the workflow route witness, and the page client/markup witnesses. Derived by execution; this digest only pins bytes."
 
-// Re-pinned 2026-07-27 for dispatch lifecycle truth: the stylesheet changes only because the
-// dispatch button's already-modeled reserved width is re-derived from the new truthful caption set
-// (`dispatch · accepted` and `session · present`) instead of provider process-result words. The
-// observation polling itself is client behavior and adds no CSS rule. Behavioral receipts:
-// provider_lifecycle_witness_test, sessions_panel_witness_test, dispatch_presentation_keystone, and
-// roadmap_tactile_keystone. Derived by execution from this tree; this digest only pins bytes.
+data roadmap_css_repin_lifecycle_truth_note: String = "Re-pinned 2026-07-27 for dispatch lifecycle truth: the stylesheet changes only because the dispatch button's already-modeled reserved width is re-derived from the new truthful caption set (`dispatch · accepted` and `session · present`) instead of provider process-result words. The observation polling itself is client behavior and adds no CSS rule. Behavioral receipts: provider_lifecycle_witness_test, sessions_panel_witness_test, dispatch_presentation_keystone, and roadmap_tactile_keystone. Derived by execution from this tree; this digest only pins bytes."
 
-// Re-pinned 2026-08-01 for A1 of the presentation recon (damage removal, operator-signed): the
-// roadmap bytes move intentionally — the .mark rule is deleted with the header's unselected site
-// mark (replaced by the .wordmark rule), the thirteen retired gate/brick rules delete
-// (.three-gate-progress ×2, .gate-row/.gate-head/.gate-name/.gate-count/.gate-bar, .bar-fill,
-// ul.bricks, li.brick, .brick-state ×3 — discharging the 2026-07-28 finish-line stylesheet-debt
-// scaffold, whose dissolve-on was exactly this styling pass in a seed-building environment), the
-// .finish-line-* family lands on the tokened grain, the compact .program-progress-* family lands
-// for the daily workspace, .item-facts and .dependencies land for the A1 row reduction, the
-// page-stack rhythm rule replaces the per-section .roadmap-section / dashboard-instance bottom
-// margins, the unreachable '.node-superseded > .title' child combinator becomes the reachable
-// descendant selector, and scale_root_css loses the four tokens whose last consumers were the
-// deleted rules (h-mark, h-bar, radius-5, w-brick-state). Behavioral receipts: the A1 witnesses in
-// test.claim.long.roadmap_page_witness (header pins, daily-leads-operational,
-// supporting-facts-in-disclosure, finish-line variant fixtures), witness_header_carries_wordmark,
-// and the tactile/frontier header amendments. Derived by execution from this tree
-// (roadmap_css_derived_digest run 2026-08-01); this digest only pins bytes.
+data roadmap_css_repin_a1_presentation_note: String = "Re-pinned 2026-08-01 for A1 of the presentation recon (damage removal, operator-signed): the roadmap bytes move intentionally — the .mark rule is deleted with the header's unselected site mark (replaced by the .wordmark rule), the thirteen retired gate/brick rules delete (.three-gate-progress ×2, .gate-row/.gate-head/.gate-name/.gate-count/.gate-bar, .bar-fill, ul.bricks, li.brick, .brick-state ×3 — discharging the 2026-07-28 finish-line stylesheet-debt scaffold, whose dissolve-on was exactly this styling pass in a seed-building environment), the .finish-line-* family lands on the tokened grain, the compact .program-progress-* family lands for the daily workspace, .item-facts and .dependencies land for the A1 row reduction, the page-stack rhythm rule replaces the per-section .roadmap-section / dashboard-instance bottom margins, the unreachable '.node-superseded > .title' child combinator becomes the reachable descendant selector, and scale_root_css loses the four tokens whose last consumers were the deleted rules (h-mark, h-bar, radius-5, w-brick-state). Behavioral receipts: the A1 witnesses in test.claim.long.roadmap_page_witness (header pins, daily-leads-operational, supporting-facts-in-disclosure, finish-line variant fixtures), witness_header_carries_wordmark, and the tactile/frontier header amendments. Derived by execution from this tree (roadmap_css_derived_digest run 2026-08-01); this digest only pins bytes."
 
-// Re-pinned 2026-08-01 for the A2 presentation seam: the roadmap bytes move intentionally — the
-// workflow lamp/strip/stage-chip rule family is DELETED with its DOM (the mechanism dissolved into
-// the decided ActivityView), replaced by the under-head activity-region rules (.node-activity
-// container with the loud-border anomaly variant, .activity-summary, the
-// ledger/evidence/located-reason rows painting obligation state by text color from the same band
-// vocabulary the chips used) and the .session-facts disclosure line that re-homes the former
-// process-chip content; the dead .process-chip rule is deleted with it. Behavioral receipts:
-// roadmap_register_keystone (censuses — every new rule is role-routed or band-var, every length
-// tokened), the roadmap_presentation witnesses (the decided view the styles materialize), and the
-// A1-carried moodboard/accent digests below did not move (the change is roadmap-scoped). This
-// digest only pins bytes; derived by execution, never chosen.
+data roadmap_css_repin_a2_activity_note: String = "Re-pinned 2026-08-01 for the A2 presentation seam: the roadmap bytes move intentionally — the workflow lamp/strip/stage-chip rule family is DELETED with its DOM (the mechanism dissolved into the decided ActivityView), replaced by the under-head activity-region rules (.node-activity container with the loud-border anomaly variant, .activity-summary, the ledger/evidence/located-reason rows painting obligation state by text color from the same band vocabulary the chips used) and the .session-facts disclosure line that re-homes the former process-chip content; the dead .process-chip rule is deleted with it. Behavioral receipts: roadmap_register_keystone (censuses — every new rule is role-routed or band-var, every length tokened), the roadmap_presentation witnesses (the decided view the styles materialize), and the A1-carried moodboard/accent digests below did not move (the change is roadmap-scoped). This digest only pins bytes; derived by execution, never chosen."
 
-// Re-pinned 2026-08-01 for the A2 blocker rework (operator blocker 6, composed workspace): three
-// additions — .workspace-observation with its summary/reason spans (the ONE workspace-level banner
-// for a refused workflow observation channel, loud-border mono in the disclosure-reason family),
-// and the .frontier-active > h2 in-progress ink for the active band that now surfaces above the
-// ready queue. Behavioral receipts: witness_workspace_impact_narrates_once and
-// witness_daily_workspace_surfaces_active_above_ready in test.claim.roadmap_presentation_witness,
-// plus the daily-workspace markup witnesses. Moodboard/accent digests below stay unmoved
-// (roadmap-scoped change). This digest only pins bytes; derived by execution
-// (roadmap_css_derived_digest run 2026-08-01), never chosen.
+data roadmap_css_repin_a2_workspace_note: String = "Re-pinned 2026-08-01 for the A2 blocker rework (operator blocker 6, composed workspace): three additions — .workspace-observation with its summary/reason spans (the ONE workspace-level banner for a refused workflow observation channel, loud-border mono in the disclosure-reason family), and the .frontier-active > h2 in-progress ink for the active band that now surfaces above the ready queue. Behavioral receipts: witness_workspace_impact_narrates_once and witness_daily_workspace_surfaces_active_above_ready in test.claim.roadmap_presentation_witness, plus the daily-workspace markup witnesses. Moodboard/accent digests below stay unmoved (roadmap-scoped change). This digest only pins bytes; derived by execution (roadmap_css_derived_digest run 2026-08-01), never chosen."
 
-// Re-pinned 2026-08-01 for A3 (family-once grouping + routine-state collapse): the roadmap bytes
-// move intentionally — the family group rules land
-// (.family-group/.family-head/.family-claim/.family-count, tokened, role-routed), and each head
-// cell gains an explicit grid-column DERIVED from the archetype's HeadTrack order
-// (roadmap_row_head_column — needed because the open chip no longer renders, so implicit
-// auto-placement would slide the title into the chip track; the new .node-head > .status rule
-// carries the chip's derived column). Behavioral receipts: the family witnesses and
-// witness_lifecycle_chip_only_when_discriminating in test.claim.roadmap_presentation_witness,
-// roadmap_row_head_columns_derive_from_archetype in test.claim.roadmap_row_witness.
-// Moodboard/accent digests below stay unmoved. This digest only pins bytes; derived by execution
-// (roadmap_css_derived_digest run 2026-08-01), never chosen.
+data roadmap_css_repin_a3_family_collapse_note: String = "Re-pinned 2026-08-01 for A3 (family-once grouping + routine-state collapse): the roadmap bytes move intentionally — the family group rules land (.family-group/.family-head/.family-claim/.family-count, tokened, role-routed), and each head cell gains an explicit grid-column DERIVED from the archetype's HeadTrack order (roadmap_row_head_column — needed because the open chip no longer renders, so implicit auto-placement would slide the title into the chip track; the new .node-head > .status rule carries the chip's derived column). Behavioral receipts: the family witnesses and witness_lifecycle_chip_only_when_discriminating in test.claim.roadmap_presentation_witness, roadmap_row_head_columns_derive_from_archetype in test.claim.roadmap_row_witness. Moodboard/accent digests below stay unmoved. This digest only pins bytes; derived by execution (roadmap_css_derived_digest run 2026-08-01), never chosen."
 
-// Re-pinned 2026-08-02 for the A2 hierarchy closeout (operator gap ruling), and again the same day
-// for the S0 amendments (operator recalibration): the action-prominence pair
-// (.dispatch-btn.action-primary/.action-secondary resting quiet on surface/border/text-dim,
-// .dispatch-btn.action-focal — renamed from action-live, which nicknamed liveness — restoring the
-// family's rest band via its derived vars), emitted BEFORE the state-family paints so a status
-// class always outvotes prominence at equal specificity; the li.node:focus-visible outline
-// (keyboard selection parity — rows are focusable and keyboard focus is visible on the register's
-// focus token); and .header-inner, the header's content frame on the same measure_page/auto-margin
-// tokens as the content columns (header_composition_frame_note). Behavioral receipts: the axis pins
-// in test.claim.long.roadmap_page_witness (ready renders action-primary/available, review and
-// out-of-order render action-secondary/override). This digest only pins bytes; derived by execution
-// (roadmap_css_derived_digest run 2026-08-02), never chosen.
+data roadmap_css_repin_a2_hierarchy_note: String = "Re-pinned 2026-08-02 for the A2 hierarchy closeout (operator gap ruling), and again the same day for the S0 amendments (operator recalibration): the action-prominence pair (.dispatch-btn.action-primary/.action-secondary resting quiet on surface/border/text-dim, .dispatch-btn.action-focal — renamed from action-live, which nicknamed liveness — restoring the family's rest band via its derived vars), emitted BEFORE the state-family paints so a status class always outvotes prominence at equal specificity; the li.node:focus-visible outline (keyboard selection parity — rows are focusable and keyboard focus is visible on the register's focus token); and .header-inner, the header's content frame on the same measure_page/auto-margin tokens as the content columns (header_composition_frame_note). Behavioral receipts: the axis pins in test.claim.long.roadmap_page_witness (ready renders action-primary/available, review and out-of-order render action-secondary/override). This digest only pins bytes; derived by execution (roadmap_css_derived_digest run 2026-08-02), never chosen."
 
-// MERGE RESOLUTION, RE-DERIVED NOT RECONCILED (S1 x A2-hierarchy, 2026-08-03). Both branches edited
-// this row block and each moved a DIFFERENT digest: #7701 (A2 hierarchy closeout) moved roadmap_css
-// because it changed the stylesheet, and S1 moved moodboard_thesis_themes because it revised
-// register_thesis. Neither touched the other's surface, so the semantic union is the resolution and
-// no value is a compromise between two claims. The union was nonetheless not TRUSTED: both digests
-// were re-run by execution on the merged tree, because a digest pins emitted bytes and a merge is
-// the one moment when the bytes belong to a tree neither side ever built — picking a side by
-// reasoning about scope is exactly the copied-measurement-as-oracle failure this file's own repin
-// notes disclaim ('derived by execution, never chosen'). The re-run is the oracle; the reasoning
-// above only explains why the re-run was expected to agree.
+data lift_parity_merge_resolution_note: String = "MERGE RESOLUTION, RE-DERIVED NOT RECONCILED (S1 x A2-hierarchy, 2026-08-03). Both branches edited this row block and each moved a DIFFERENT digest: #7701 (A2 hierarchy closeout) moved roadmap_css because it changed the stylesheet, and S1 moved moodboard_thesis_themes because it revised register_thesis. Neither touched the other's surface, so the semantic union is the resolution and no value is a compromise between two claims. The union was nonetheless not TRUSTED: both digests were re-run by execution on the merged tree, because a digest pins emitted bytes and a merge is the one moment when the bytes belong to a tree neither side ever built — picking a side by reasoning about scope is exactly the copied-measurement-as-oracle failure this file's own repin notes disclaim ('derived by execution, never chosen'). The re-run is the oracle; the reasoning above only explains why the re-run was expected to agree."
 
-// Re-pinned again 2026-08-23 for review 55065: .hardware-axis was taking
-// hardware_subject_reserved_width — copied from the column beside it — so a column carrying the
-// axis words memory and processor was reserved to the width of the longest HOST LABEL (6ch). It now
-// takes hardware_axis_reserved_width, derived from a single hardware_axis_labels authority that the
-// rendered rows read too, and emits 11ch. Behavioral receipt:
-// each_column_reserves_its_own_population, which asserts the two reservations DIFFER and that the
-// subject population cannot hold the axis one — the discriminating fact, since a witness merely
-// re-deriving the axis width from the axis labels would be measure() == measure(). Derived by
-// execution (roadmap_css_derived_digest run 2026-08-23), never chosen.
+data roadmap_css_repin_fleet_hardware_axis_width_note: String = "Re-pinned again 2026-08-23 for review 55065: .hardware-axis was taking hardware_subject_reserved_width — copied from the column beside it — so a column carrying the axis words memory and processor was reserved to the width of the longest HOST LABEL (6ch). It now takes hardware_axis_reserved_width, derived from a single hardware_axis_labels authority that the rendered rows read too, and emits 11ch. Behavioral receipt: each_column_reserves_its_own_population, which asserts the two reservations DIFFER and that the subject population cannot hold the axis one — the discriminating fact, since a witness merely re-deriving the axis width from the axis labels would be measure() == measure(). Derived by execution (roadmap_css_derived_digest run 2026-08-23), never chosen."
 
-// Re-pinned 2026-08-23 for the daily-workspace fleet hardware standing panel (operator request:
-// live fleet info on the workspace): the roadmap bytes move intentionally — the
-// .fleet-hardware-standing family lands (panel surface, .hardware-heading, .hardware-summary,
-// .hardware-outstanding, .hardware-row, .hardware-subject, .hardware-axis, .hardware-cell and the
-// four standing variants .hardware-confirmed / .hardware-refused / .hardware-misfiled /
-// .hardware-unread, plus .hardware-detail), all role-routed and tokened. The two column
-// reservations are NOT pixels: .hardware-subject/.hardware-axis and .hardware-cell take min-width
-// from gunbc.fleet_hardware_standing_panel hardware_subject_reserved_width and
-// hardware_standing_reserved_width, which derive the longest label each column can wear plus a
-// gutter — emitted as 6ch and 11ch, the latter being the width of 'confirmed', the longest of the
-// four standing words. The refused and misfiled variants reuse the EXISTING var(--band-loud)
-// refused-state vocabulary rather than minting a role: an earlier revision of this change wrote
-// role_decl(r: SalienceRole), which compiled clean and then failed evaluation with NoSuchVariable —
-// SalienceRole is a type in gunbc.design.salience, not a theme role role_decl can take — and it was
-// caught only by serializing the whole page, not by any panel-level witness. Behavioral receipts:
-// test.claim.fleet_hardware_standing_panel_witness_test — every processor row is unread and none
-// confirmed, the memory axis is confirmed on every host as the positive control, the four verdict
-// shapes map to four distinct standings, the summary reports each axis separately and never one
-// fraction, and no outstanding line renders while nothing contradicts. Derived by execution from
-// this tree (roadmap_css_derived_digest run 2026-08-23); this digest only pins bytes, never chosen.
+data roadmap_css_repin_fleet_hardware_standing_note: String = "Re-pinned 2026-08-23 for the daily-workspace fleet hardware standing panel (operator request: live fleet info on the workspace): the roadmap bytes move intentionally — the .fleet-hardware-standing family lands (panel surface, .hardware-heading, .hardware-summary, .hardware-outstanding, .hardware-row, .hardware-subject, .hardware-axis, .hardware-cell and the four standing variants .hardware-confirmed / .hardware-refused / .hardware-misfiled / .hardware-unread, plus .hardware-detail), all role-routed and tokened. The two column reservations are NOT pixels: .hardware-subject/.hardware-axis and .hardware-cell take min-width from gunbc.fleet_hardware_standing_panel hardware_subject_reserved_width and hardware_standing_reserved_width, which derive the longest label each column can wear plus a gutter — emitted as 6ch and 11ch, the latter being the width of 'confirmed', the longest of the four standing words. The refused and misfiled variants reuse the EXISTING var(--band-loud) refused-state vocabulary rather than minting a role: an earlier revision of this change wrote role_decl(r: SalienceRole), which compiled clean and then failed evaluation with NoSuchVariable — SalienceRole is a type in gunbc.design.salience, not a theme role role_decl can take — and it was caught only by serializing the whole page, not by any panel-level witness. Behavioral receipts: test.claim.fleet_hardware_standing_panel_witness_test — every processor row is unread and none confirmed, the memory axis is confirmed on every host as the positive control, the four verdict shapes map to four distinct standings, the summary reports each axis separately and never one fraction, and no outstanding line renders while nothing contradicts. Derived by execution from this tree (roadmap_css_derived_digest run 2026-08-23); this digest only pins bytes, never chosen."
 
-// RE-DERIVED, NOT RECONCILED (consolidation of eight branches, 2026-08-23). The hardware-standing
-// panel and the capacity panel were authored on separate branches and each re-pinned this digest
-// against a stylesheet containing its own rules and not the other's. Neither prior value describes
-// the merged stylesheet, so taking either side would have pinned a digest no emission produces. The
-// value below was obtained by running roadmap_css_derived_digest against the merged tree - the same
-// function the witness compares - and is therefore a measurement of this stylesheet rather than a
-// transcription from either parent.
+data roadmap_css_consolidation_repin_note: String = "RE-DERIVED, NOT RECONCILED (consolidation of eight branches, 2026-08-23). The hardware-standing panel and the capacity panel were authored on separate branches and each re-pinned this digest against a stylesheet containing its own rules and not the other's. Neither prior value describes the merged stylesheet, so taking either side would have pinned a digest no emission produces. The value below was obtained by running roadmap_css_derived_digest against the merged tree - the same function the witness compares - and is therefore a measurement of this stylesheet rather than a transcription from either parent."
 
-// Re-pinned 2026-08-27 for the host-keyed session reservation: the roadmap bytes move
-// intentionally, and they move for a DERIVED reason rather than a stylesheet edit. No CSS rule was
-// added, removed or retyped. .capacity-metric takes its min-width from gunbc.fleet_capacity_panel
-// capacity_metric_reserved_width, which reserves the longest label that column can wear; the fleet
-// capacity panel's binding-axis label changed, so the reservation changed, so the emitted length
-// changed. That is the projection discipline working exactly as
-// roadmap_css_repin_fleet_capacity_panel_note describes it -- a longer binding-axis phrase moves
-// the reservation by derivation and there is no pixel to maintain -- and this re-pin is the receipt
-// that it did. WHY THE LABEL CHANGED: srv2's memory admission was computed by subtracting a session
-// reservation that is UNESTABLISHED on that host, so its AxisAdmits { memory, 5 } was never a
-// measured bound. With the axis honestly AxisUnmeasured, NO axis sits at srv2's committed width,
-// and host_width_binding_label -- which joined a constant 'bound by ' prefix onto the binding set
-// -- rendered 'bound by ' followed by nothing onto the operator's panel. It now names three states
-// whose remedies differ: an axis binds, the width is HELD (re-ground the denominator; no purchase
-// helps), or nothing binds and nothing is held. srv2 reads 'width held, no axis binds · memory+disk
-// unmeasured'. Behavioral receipts: test.claim.fleet_capacity_panel_witness_test
-// srv1_is_axis_bound_while_srv2_is_held and the_panel_renders_a_width_provenance_for_every_host,
-// whose final negative control is 'bound by' with two trailing spaces -- a string ONLY an empty
-// binding set can produce, so it reds on exactly this regression. Measured alongside: srv3 and srv4
-// are core-bound, so srv2 was the fleet's only memory-bound host and 'bound by memory' now appears
-// nowhere in the rendered page; the conjunct asserting it was unsatisfiable rather than stale,
-// which is why that witness was restated and not retuned. Derived by execution from this tree
-// (roadmap_css_derived_digest run 2026-08-27); this digest only pins bytes, never chosen.
+data roadmap_css_repin_capacity_held_width_note: String = "Re-pinned 2026-08-27 for the host-keyed session reservation: the roadmap bytes move intentionally, and they move for a DERIVED reason rather than a stylesheet edit. No CSS rule was added, removed or retyped. .capacity-metric takes its min-width from gunbc.fleet_capacity_panel capacity_metric_reserved_width, which reserves the longest label that column can wear; the fleet capacity panel's binding-axis label changed, so the reservation changed, so the emitted length changed. That is the projection discipline working exactly as roadmap_css_repin_fleet_capacity_panel_note describes it -- a longer binding-axis phrase moves the reservation by derivation and there is no pixel to maintain -- and this re-pin is the receipt that it did. WHY THE LABEL CHANGED: srv2's memory admission was computed by subtracting a session reservation that is UNESTABLISHED on that host, so its AxisAdmits { memory, 5 } was never a measured bound. With the axis honestly AxisUnmeasured, NO axis sits at srv2's committed width, and host_width_binding_label -- which joined a constant 'bound by ' prefix onto the binding set -- rendered 'bound by ' followed by nothing onto the operator's panel. It now names three states whose remedies differ: an axis binds, the width is HELD (re-ground the denominator; no purchase helps), or nothing binds and nothing is held. srv2 reads 'width held, no axis binds · memory+disk unmeasured'. Behavioral receipts: test.claim.fleet_capacity_panel_witness_test srv1_is_axis_bound_while_srv2_is_held and the_panel_renders_a_width_provenance_for_every_host, whose final negative control is 'bound by' with two trailing spaces -- a string ONLY an empty binding set can produce, so it reds on exactly this regression. Measured alongside: srv3 and srv4 are core-bound, so srv2 was the fleet's only memory-bound host and 'bound by memory' now appears nowhere in the rendered page; the conjunct asserting it was unsatisfiable rather than stale, which is why that witness was restated and not retuned. Derived by execution from this tree (roadmap_css_derived_digest run 2026-08-27); this digest only pins bytes, never chosen."
 
 data roadmap_css_lift_parity_digest: String = "62e20cacdf06f99f"
-// Re-pinned 2026-08-23 for the daily-workspace fleet capacity panel (operator request: live fleet
-// info on the workspace): the roadmap bytes move intentionally — the .fleet-capacity-panel family
-// lands (panel surface, .capacity-title, .capacity-summary, .capacity-row with its active/withdrawn
-// variants, .capacity-subject, .capacity-metric, .capacity-standing, .capacity-withdrawn-total,
-// .capacity-declared-note), all role-routed and tokened. The two column reservations are NOT
-// pixels: .capacity-subject and .capacity-metric take min-width from gunbc.fleet_capacity_panel
-// capacity_subject_reserved_width and capacity_metric_reserved_width, which derive the longest
-// label each column can wear plus a gutter — the same projection discipline roadmap_component
-// dispatch_reserved_width uses, so a new host or a longer binding-axis phrase moves the reservation
-// by derivation. An earlier revision of this change wrote raw 5rem/9rem, which would have been the
-// only untokened lengths in the stylesheet. Behavioral receipts:
-// test.claim.fleet_capacity_panel_witness_test — the panel reaches the serialized daily workspace,
-// its widths are labelled committed rather than observed, the slot total sums the allocation
-// authority as a relation, an unmeasured axis is not reported as binding, and the withdrawn line is
-// absent when nothing is withdrawn. Derived by execution from this tree (roadmap_css_derived_digest
-// run 2026-08-23); this digest only pins bytes, never chosen.
+data roadmap_css_repin_fleet_capacity_panel_note: String = "Re-pinned 2026-08-23 for the daily-workspace fleet capacity panel (operator request: live fleet info on the workspace): the roadmap bytes move intentionally — the .fleet-capacity-panel family lands (panel surface, .capacity-title, .capacity-summary, .capacity-row with its active/withdrawn variants, .capacity-subject, .capacity-metric, .capacity-standing, .capacity-withdrawn-total, .capacity-declared-note), all role-routed and tokened. The two column reservations are NOT pixels: .capacity-subject and .capacity-metric take min-width from gunbc.fleet_capacity_panel capacity_subject_reserved_width and capacity_metric_reserved_width, which derive the longest label each column can wear plus a gutter — the same projection discipline roadmap_component dispatch_reserved_width uses, so a new host or a longer binding-axis phrase moves the reservation by derivation. An earlier revision of this change wrote raw 5rem/9rem, which would have been the only untokened lengths in the stylesheet. Behavioral receipts: test.claim.fleet_capacity_panel_witness_test — the panel reaches the serialized daily workspace, its widths are labelled committed rather than observed, the slot total sums the allocation authority as a relation, an unmeasured axis is not reported as binding, and the withdrawn line is absent when nothing is withdrawn. Derived by execution from this tree (roadmap_css_derived_digest run 2026-08-23); this digest only pins bytes, never chosen."
 
 data moodboard_thesis_themes_lift_parity_digest: String = "98f0513aebb0dcb3"
 

@@ -2,48 +2,12 @@ module test.claim.lambda_receiver_type_witness_test
 
 import gunbc.compile_diagnostic_census { CompileDiagnosticCensus, CensusObserved, CensusNotRunnable, census_blocking_rows }
 
-// A LAMBDA PARAMETER MUST RECEIVE THE TYPE ITS DECLARED CALLABLE GIVES IT. When a record field is
-// declared fn(A) -> B and a lambda is supplied for it, the lambda's unannotated parameter is bound
-// to A. That binding already existed; what did not exist was A being RESOLVED. MECHANISM:
-// v1.compiler.infer_resolve resolve_node_bounded dispatches on connective, and a callable type node
-// is Arrow -- carrying its parameter types in params and its return type in inferred, with children
-// empty. Every arm of that dispatch passed params through verbatim, and Arrow fell into the
-// coproduct arm, which walks children, so the arm was a no-op and neither the parameter types nor
-// the return type were ever resolved. A parameter type that is a plain LEAF survived that anyway,
-// because a leaf grounds through its own name downstream; a type APPLICATION -- a head with
-// argument children and no resolved target -- did not, because resolve_scrutinee_type_node has an
-// arm for children-with-inferred and an arm for no-children and none for
-// children-present-inferred-absent. So the receiver reached lookup with no surface at all.
-// MEASURED, and the arm that separates cause from symptom: the SAME receiver type reached through
-// an ANNOTATED fn parameter compiled with 0 blocking while the callable-field spelling refused, so
-// the defect is the callable-parameter POSITION and not the lambda binding the diagnostic names.
-// THE FIX IS AN ARROW ARM in that same dispatch, at depth + 1 and inheriting masked, and the
-// rendered-use-site rule resolve_param already applied to a parameterized head -- keep the authored
-// head and args, attach the resolved target as inferred -- is extracted so both consume one
-// authority rather than two copies (DESIGN section 3). THE DISCRIMINATING RED IS THESE TWO ARMS
-// THEMSELVES, MEASURED, not a third arm asserting a refusal. Both were RED on the pre-fix binary --
-// the method probe's shape refused with 1 blocking, receiver type Node(..) -- and both are green on
-// the post-fix binary, with the whole-closure advisory total unchanged at 536 either way, so
-// nothing was widened to buy the green. They go red again if the propagation regresses, because
-// each asserts a SUCCESS that requires resolution to have happened rather than the absence of a
-// refusal from a wall; a weakened wall cannot make alg.unit produce a conforming type. TWO
-// ABSENT-MEMBER ARMS WERE DESIGNED AND BOTH REJECTED BY READING THE PRODUCER, which is recorded
-// because each would have been a decoration that a reviewer would have read as coverage. An absent
-// METHOD cannot assert MethodNotFound: the wall's decidability predicate is kernel_profile_lookup,
-// so a resolved USER product still answers MethodExistenceUndecided and the class is identical
-// before and after. An absent FIELD cannot assert FieldNotFound either: that variant is produced
-// only for record-literal unknown fields and pattern bindings, never for field ACCESS, which raises
-// an InternalError carrying `no field 'x' on type 'y'` -- and the type it names is the receiver's
-// AUTHORED name, which is the same string whether or not the receiver resolved. Both arms would
-// have been permanently green in the wrong direction, which is worse than absent because they would
-// have been cited as evidence the surface is established. CensusNotRunnable is a FAILURE with its
-// own cause, never the expected red: could-not-measure and measured-nothing are different states
-// and only one is evidence, which is why the helpers answer a negative sentinel there rather than a
-// zero. dissolve-on: never -- permanent regression control for callable-type resolution.
+data lambda_receiver_type_note: String = "A LAMBDA PARAMETER MUST RECEIVE THE TYPE ITS DECLARED CALLABLE GIVES IT. When a record field is declared fn(A) -> B and a lambda is supplied for it, the lambda's unannotated parameter is bound to A. That binding already existed; what did not exist was A being RESOLVED. MECHANISM: v1.compiler.infer_resolve resolve_node_bounded dispatches on connective, and a callable type node is Arrow -- carrying its parameter types in params and its return type in inferred, with children empty. Every arm of that dispatch passed params through verbatim, and Arrow fell into the coproduct arm, which walks children, so the arm was a no-op and neither the parameter types nor the return type were ever resolved. A parameter type that is a plain LEAF survived that anyway, because a leaf grounds through its own name downstream; a type APPLICATION -- a head with argument children and no resolved target -- did not, because resolve_scrutinee_type_node has an arm for children-with-inferred and an arm for no-children and none for children-present-inferred-absent. So the receiver reached lookup with no surface at all. MEASURED, and the arm that separates cause from symptom: the SAME receiver type reached through an ANNOTATED fn parameter compiled with 0 blocking while the callable-field spelling refused, so the defect is the callable-parameter POSITION and not the lambda binding the diagnostic names. THE FIX IS AN ARROW ARM in that same dispatch, at depth + 1 and inheriting masked, and the rendered-use-site rule resolve_param already applied to a parameterized head -- keep the authored head and args, attach the resolved target as inferred -- is extracted so both consume one authority rather than two copies (DESIGN section 3). THE DISCRIMINATING RED IS THESE TWO ARMS THEMSELVES, MEASURED, not a third arm asserting a refusal. Both were RED on the pre-fix binary -- the method probe's shape refused with 1 blocking, receiver type Node(..) -- and both are green on the post-fix binary, with the whole-closure advisory total unchanged at 536 either way, so nothing was widened to buy the green. They go red again if the propagation regresses, because each asserts a SUCCESS that requires resolution to have happened rather than the absence of a refusal from a wall; a weakened wall cannot make alg.unit produce a conforming type. TWO ABSENT-MEMBER ARMS WERE DESIGNED AND BOTH REJECTED BY READING THE PRODUCER, which is recorded because each would have been a decoration that a reviewer would have read as coverage. An absent METHOD cannot assert MethodNotFound: the wall's decidability predicate is kernel_profile_lookup, so a resolved USER product still answers MethodExistenceUndecided and the class is identical before and after. An absent FIELD cannot assert FieldNotFound either: that variant is produced only for record-literal unknown fields and pattern bindings, never for field ACCESS, which raises an InternalError carrying `no field 'x' on type 'y'` -- and the type it names is the receiver's AUTHORED name, which is the same string whether or not the receiver resolved. Both arms would have been permanently green in the wrong direction, which is worse than absent because they would have been cited as evidence the surface is established. CensusNotRunnable is a FAILURE with its own cause, never the expected red: could-not-measure and measured-nothing are different states and only one is evidence, which is why the helpers answer a negative sentinel there rather than a zero. dissolve-on: never -- permanent regression control for callable-type resolution."
 
 data lamrecv_method_probe_source: String = "module lamrecv_method_probe_mod\n\nimport test.fixture.lambda_receiver_provider \{ LamrecvPayload, LamrecvAlgebra, LamrecvHolder }\n\nfn lamrecv_method(x: LamrecvPayload, y: LamrecvPayload) -> LamrecvHolder<LamrecvPayload> \{\n  LamrecvHolder \{ run: fn(alg) \{ (alg.combine)(x, y) } }\n}\n"
 
 data lamrecv_field_probe_source: String = "module lamrecv_field_probe_mod\n\nimport test.fixture.lambda_receiver_provider \{ LamrecvPayload, LamrecvAlgebra, LamrecvHolder }\n\nfn lamrecv_field(x: LamrecvPayload) -> LamrecvHolder<LamrecvPayload> \{\n  LamrecvHolder \{ run: fn(alg) \{ alg.unit } }\n}\n"
+
 
 fn lamrecv_blocking_count(source: String) -> Int {
   match compile_dag_diagnostic_census(source) {
@@ -51,6 +15,7 @@ fn lamrecv_blocking_count(source: String) -> Int {
     CensusNotRunnable { cause: _ } => 0 - 1
   }
 }
+
 
 test fn method_call_on_a_lambda_parameter_receiver_resolves() -> Bool {
   lamrecv_blocking_count(source: lamrecv_method_probe_source) == 0

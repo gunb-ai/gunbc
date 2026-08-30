@@ -16,47 +16,9 @@ import v2.test.execution.native_selected_witness_bundle {
   native_selected_witness_bundle_cutover_evidence_holds,
 }
 
-// THE TWO STANDING ARMS ARE ASSERTED TOGETHER ON PURPOSE. Either arm alone would pass against a
-// fold that ignored its inputs and returned a constant; asserting both means no constant
-// implementation survives, which is what makes the pair discriminating rather than decorative. The
-// subject join is the second independent question -- a receipt naming a node identity nothing
-// declares is evidence about nobody -- and its RED plants a fabricated identity so the join is
-// proven capable of returning zero. That control is not hypothetical: drafting this receipt first
-// transcribed the node identity as rn_2I5K7M9O1Q3S5T8V0W2X4Y7Z9A1C, one character off the declared
-// rn_2I5K7M9O1Q3R6T8V0W2X4Y7Z9A1C, and the join is what catches that class.
+data native_witness_transition_witness_note: String = "THE TWO STANDING ARMS ARE ASSERTED TOGETHER ON PURPOSE. Either arm alone would pass against a fold that ignored its inputs and returned a constant; asserting both means no constant implementation survives, which is what makes the pair discriminating rather than decorative. The subject join is the second independent question -- a receipt naming a node identity nothing declares is evidence about nobody -- and its RED plants a fabricated identity so the join is proven capable of returning zero. That control is not hypothetical: drafting this receipt first transcribed the node identity as rn_2I5K7M9O1Q3S5T8V0W2X4Y7Z9A1C, one character off the declared rn_2I5K7M9O1Q3R6T8V0W2X4Y7Z9A1C, and the join is what catches that class."
 
-// THE RECEIPT'S OWN CITATION HAD TO BE PROVEN, OR THE FIX FOR DUAL REPRESENTATION REINTRODUCES THE
-// STALE-CITATION CLASS AT THE POINT EVERYTHING NOW CITES (operator gap finding on gunbc#7718,
-// 2026-08-03). executed_evidence is an AUTHORED DeclarationRef. #7718 witnessed the node identity
-// and both standing arms but never established that the cited declaration resolves at all -- and
-// this repository had just repaired seven typed DeclarationRef rows pointing at nothing. A receipt
-// whose whole purpose is to be the single citable home for execution evidence must not itself carry
-// an unverified citation.
-//
-// THE MECHANISM IS THE LANGUAGE'S OWN RESOLVER, NOT A SECOND CENSUS. This module IMPORTS
-// native_selected_witness_bundle_cutover_evidence_holds. An import is resolved by the namespace
-// authority, which refuses an unbound name and refuses a double-bound one, so 'resolves to EXACTLY
-// ONE declaration' is discharged by compilation rather than by a fold this file would have to
-// author -- construction over validation (DESIGN 5), and no fork of the G1 resolver. If the cited
-// declaration is renamed or deleted, this module stops compiling; the citation cannot rot silently.
-// The string equality below is what binds that compile-time fact to the AUTHORED field: if the
-// receipt's module_path or decl_name drifts away from the symbol actually imported, the equality
-// reds even though the import still resolves.
-//
-// EXECUTING, NOT MERELY PRESENT. Resolution alone would prove the name exists, not that it names an
-// executing witness -- the proxy-assertion failure where a present-in-source symbol is mistaken for
-// a CI-exercised one. Calling it closes that: the cited declaration is invoked and must hold. It is
-// cheap and hermetic to call (family_has_discriminating_red over
-// selected_logic_sample_cutover_evidence, a constructed fixture -- the expensive emit_family path
-// lives in a different declaration), so this does not smuggle real compute into a per-PR row.
-//
-// CONFIRMED OUT OF SCOPE FOR G1 rather than assumed: crisp-owl-732 answered at #7707 head that the
-// G1 denominator is only the static HandAuthoredDocBind primary_work/additional_works rows in
-// doc_graph_roots, so a decl_ref constructed inside a fn body is NOT censused and G1 landing green
-// would NOT have closed this. DISSOLVE-ON: G1 widening to every structural DeclarationRef carrier
-// via a Node-tree reader; at that point this pair is superseded as the general wall, and per the
-// DESIGN 4b dissolution rule the evidence stays enrolled as the regression control while the
-// bespoke machinery goes.
+data cited_evidence_resolution_note: String = "THE RECEIPT'S OWN CITATION HAD TO BE PROVEN, OR THE FIX FOR DUAL REPRESENTATION REINTRODUCES THE STALE-CITATION CLASS AT THE POINT EVERYTHING NOW CITES (operator gap finding on gunbc#7718, 2026-08-03). executed_evidence is an AUTHORED DeclarationRef. #7718 witnessed the node identity and both standing arms but never established that the cited declaration resolves at all -- and this repository had just repaired seven typed DeclarationRef rows pointing at nothing. A receipt whose whole purpose is to be the single citable home for execution evidence must not itself carry an unverified citation.\n\nTHE MECHANISM IS THE LANGUAGE'S OWN RESOLVER, NOT A SECOND CENSUS. This module IMPORTS native_selected_witness_bundle_cutover_evidence_holds. An import is resolved by the namespace authority, which refuses an unbound name and refuses a double-bound one, so 'resolves to EXACTLY ONE declaration' is discharged by compilation rather than by a fold this file would have to author -- construction over validation (DESIGN 5), and no fork of the G1 resolver. If the cited declaration is renamed or deleted, this module stops compiling; the citation cannot rot silently. The string equality below is what binds that compile-time fact to the AUTHORED field: if the receipt's module_path or decl_name drifts away from the symbol actually imported, the equality reds even though the import still resolves.\n\nEXECUTING, NOT MERELY PRESENT. Resolution alone would prove the name exists, not that it names an executing witness -- the proxy-assertion failure where a present-in-source symbol is mistaken for a CI-exercised one. Calling it closes that: the cited declaration is invoked and must hold. It is cheap and hermetic to call (family_has_discriminating_red over selected_logic_sample_cutover_evidence, a constructed fixture -- the expensive emit_family path lives in a different declaration), so this does not smuggle real compute into a per-PR row.\n\nCONFIRMED OUT OF SCOPE FOR G1 rather than assumed: crisp-owl-732 answered at #7707 head that the G1 denominator is only the static HandAuthoredDocBind primary_work/additional_works rows in doc_graph_roots, so a decl_ref constructed inside a fn body is NOT censused and G1 landing green would NOT have closed this. DISSOLVE-ON: G1 widening to every structural DeclarationRef carrier via a Node-tree reader; at that point this pair is superseded as the general wall, and per the DESIGN 4b dissolution rule the evidence stays enrolled as the regression control while the bespoke machinery goes."
 
 fn planted_receipt(
   identity: String,

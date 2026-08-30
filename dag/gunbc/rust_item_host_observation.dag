@@ -36,44 +36,41 @@ import v2.std.algebra { HeadAbsent, HeadFound, any, filter, fold_list, length, l
 
 // TWO POPULATIONS, TWO FUNCTIONS, AND THEY MAY NOT BE COLLAPSED.
 //
-// gunbc.seed_growth_admission's forward-freeze row states this as an enrolment condition:
-// seed_growth_join_declarations used ONE candidate set both to find unjustified additions and to
-// declare roster rows stale, so a changed-item population made every justification for an
-// untouched item look stale, while a live population no longer isolated what the change added.
-// The denominators differ -- "what did this change add" is over merge-base-to-HEAD, "which roster
-// rows still name something real" is over the current surface -- so this module answers them with
-// two observations that never substitute for one another.
+// gunbc.seed_growth_admission's own forward-freeze row states this as a condition on enrolment,
+// learned the hard way: seed_growth_join_declarations used ONE candidate set both to find
+// unjustified additions and to declare roster rows stale, so a changed-item population makes every
+// justification for an untouched item look stale, while a live population no longer isolates what
+// the change added. The two questions have different denominators -- "what did this change add"
+// is over merge-base-to-HEAD, "which roster rows still name something real" is over the current
+// surface -- so this module answers them with two observations that never substitute for one
+// another.
 //
 // THE FAIL-CLOSED RULE THIS MODULE EXISTS TO HOLD: a changed hand-written Rust region that cannot
-// be attributed to an item REFUSES; it never reports an empty delta. An unattributed change
-// rendered as "nothing changed" is DESIGN's empty-observation narrow -- worse than the widen
-// section 5 forbids, since a widen is merely expensive while a narrow is silently uncovered -- and
-// the one failure that would make the admission join read green while admitting what it exists to
-// refuse.
-// Supplies RustItemChangeObservation over merge-base-to-HEAD (added, modified and deleted hand
-// items plus generated-path changes) and LiveHandRustObservation over the current hand-Rust
-// surface. Item extraction is gunbc.rust_item_scan; generated-versus-hand classification derives
-// from gunbc.stage0_rust_source_lifecycle_scaffold's emitted population and
-// gunbc.generated_artifact, never hand-listed. Every arm that cannot attribute a changed hand-Rust
-// region is a typed, located refusal; none returns an empty delta.
+// be attributed to an item REFUSES. It does not report an empty delta. An unattributed change
+// rendered as "nothing changed" is the empty-observation narrow DESIGN's failure-mode list names --
+// strictly worse than the widen section 5 forbids, because a widen is merely expensive and a narrow
+// is silently uncovered, and it is the one failure mode that would make the admission join read
+// green while admitting exactly what it exists to refuse.
+data rust_item_host_observation_note: String = "Item-grain Rust observation for seed-growth admission. Supplies TWO populations from two functions: RustItemChangeObservation over merge-base-to-HEAD (added, modified and deleted hand items plus generated-path changes) and LiveHandRustObservation over the current hand-Rust surface. Item extraction is gunbc.rust_item_scan; generated-versus-hand classification is derived from gunbc.stage0_rust_source_lifecycle_scaffold's emitted population and gunbc.generated_artifact, never hand-listed. Every arm that cannot attribute a changed hand-Rust region is a typed, located refusal; none returns an empty delta."
 
 // THE NAMESPACE MAP IS A DECLARED TABLE BECAUSE THE CITATIONS IT MUST JOIN AGAINST ALREADY EXIST.
-// gunbc.seed_growth_admission's roster cites v1_compiler.cli_run, v1_compiler.tests.
-// declaration_index_integrity and v1_compiler_tests.anonymous_record_struct_resolution_test -- three
-// repository prefixes -- so the mapping is a fact about the authored corpus, written where it can be
-// read rather than inferred from path shape. A path matching no row REFUSES: a minted namespace
-// would produce a DeclarationRef that joins against nothing while looking like one that does.
+// The roster in gunbc.seed_growth_admission cites v1_compiler.cli_run, v1_compiler.tests.
+// declaration_index_integrity and v1_compiler_tests.anonymous_record_struct_resolution_test; those
+// three spellings are three different repository prefixes, so the mapping is a fact about the
+// authored corpus and is written down where it can be read, rather than inferred from a path shape.
+// A path matching no row REFUSES: minting a plausible namespace for an unmapped tree would produce
+// a DeclarationRef that joins against nothing while looking exactly like one that does.
 type RustSourceNamespaceRow {
   repo_prefix: String
   namespace_prefix: String
 }
 
-// THE HAND-RUST SOURCE PREFIXES LIVE HERE, BESIDE THE NAMESPACE TABLE THAT KEYS ON THEM. Authored
-// in gunbc.stage0_rust_source_lifecycle_scaffold as discovery hints; the tooling namespace row needs
-// the same prefix, importing it from the scaffold would close a cycle (scaffold ->
-// seed_growth_admission -> this module), and restating the literal is the second representation
-// DESIGN section 3 forbids. So the four constants live in the layer that owns "where hand Rust
-// lives and what namespace it carries", and the scaffold imports them from here.
+// THE HAND-RUST SOURCE PREFIXES LIVE HERE, BESIDE THE NAMESPACE TABLE THAT KEYS ON THEM. They were
+// authored in gunbc.stage0_rust_source_lifecycle_scaffold as discovery hints, and the namespace row
+// for the tooling tree needs the same prefix; importing it from the scaffold would close a real
+// cycle (scaffold -> seed_growth_admission -> this module), and restating the literal would be the
+// second representation DESIGN section 3 forbids. So the four constants moved to the layer that owns
+// "where hand Rust lives and what namespace it carries", and the scaffold imports them from here.
 data rust_source_prefix_test_harness: String = "src/v1/tests/"
 
 data rust_source_prefix_stage0_test: String = "src/v1/stage0/tests/"
@@ -83,19 +80,19 @@ data rust_source_prefix_stage0_example: String = "src/v1/stage0/examples/"
 data rust_source_prefix_tooling: String = "dag/gunbc/instruments/"
 
 // THE TOOLING ROW IS A CONSEQUENCE OF WHAT THE DIRECTORY IS, NOT A PATH EXCEPTION. The tree the
-// scaffold classifies as rust_source_prefix_tooling holds the self-host shim crates: hand Rust
-// standing in for primitive arms the emitted v2 closure does not yet realize, reaching v1_rt, and
-// assembled by tools.self_host_curated_seed_linked_harness into ONE Cargo package named
-// `v1_compiled` (cssl_v1_compiled_cargo_package_header). The namespace root is the crate name, by
-// the rule that gives src/v1/stage0/src/ the `v1_compiler` root -- the package the path compiles
-// into, spelled as Rust spells it. It is deliberately NOT `tools.`, the root the .dag instruments
-// beside these files declare: the citation gate (v1_compiler.declaration_index
+// scaffold classifies as rust_source_prefix_tooling holds the self-host shim crates: hand Rust that
+// stands in for primitive arms the emitted v2 closure does not yet realize, reaching v1_rt to do so,
+// and assembled by tools.self_host_curated_seed_linked_harness into ONE Cargo package whose name is
+// `v1_compiled` (cssl_v1_compiled_cargo_package_header). The namespace root is therefore the crate
+// name, by the same rule that gives src/v1/stage0/src/ the `v1_compiler` root -- the package the
+// path compiles into, spelled as Rust spells it. It is deliberately NOT `tools.`, the root the .dag
+// instruments beside these files declare: the citation gate (v1_compiler.declaration_index
 // citation_is_outside_index) treats a root some .dag module declares as inside the index and refuses
 // an absent module under it, so a Rust namespace sharing a .dag root would make every Rust item
-// citation under it refuse. `v1_compiler` and `v1_compiled` sit outside the .dag index for that
-// reason. Before this row the four shim crates reaching v1_rt were consumers
-// gunbc.v1_consumer_census could see and the exact cut vocabulary could not spell; removing it
-// returns them to that uncitable state, which test.claim.self_host_v1_consumer_census_witness_test
+// citation under it refuse. `v1_compiler` and `v1_compiled` sit outside the .dag index for exactly
+// that reason. Until this row existed the four shim crates that reach v1_rt were consumers
+// gunbc.v1_consumer_census could see and the exact cut vocabulary could not spell; removing this
+// row returns them to that uncitable state, which test.claim.self_host_v1_consumer_census_witness_test
 // executes as the falsifier.
 data rust_source_namespace_rows: List<RustSourceNamespaceRow> = [
   RustSourceNamespaceRow { repo_prefix: "src/v1/stage0/src/bin/", namespace_prefix: "v1_compiler.bin." },
@@ -129,10 +126,10 @@ fn rust_namespace_row_for_path(repo_path: String) -> List<RustSourceNamespaceRow
   rust_namespace_row_for_path_in(rows: rust_source_namespace_rows, repo_path: repo_path)
 }
 
-// THE TABLE IS A PARAMETER OF THE FOLD, AND THE LIVE TABLE IS ONE CALLER. Reading only the declared
-// rows would make "what does this path project to WITHOUT row R" -- the falsifier for any row --
-// unaskable without editing the authority. The `_in` forms take the rows; the bare forms pass the
-// live ones.
+// THE TABLE IS A PARAMETER OF THE FOLD, AND THE LIVE TABLE IS ONE CALLER. A projection that read
+// only the declared rows could be exercised against exactly one table, so "what does this path
+// project to WITHOUT row R" -- the falsifier for any row -- would be unaskable without editing the
+// authority. The `_in` forms take the rows; the bare forms pass the live ones.
 fn rust_namespace_row_for_path_in(rows: List<RustSourceNamespaceRow>, repo_path: String) -> List<RustSourceNamespaceRow> {
   fold_list(
     xs: rows,
@@ -184,13 +181,13 @@ fn rust_module_path_for_repo_path_in(rows: List<RustSourceNamespaceRow>, repo_pa
   )
 }
 
-// AN IMPL METHOD AND AN IMPL BLOCK ARE REAL ITEMS AND ARE NOT CITABLE, so they get their own arm
-// rather than being dropped or forced into a DeclarationRef they do not fit. std.decl_ref DeclField
-// offers WholeDeclaration or NamedField and a trait-impl method is neither -- the repository has
-// carried exactly one such item in prose since the Cargo-manifest bridge, and two earlier attempts
-// to spell it (an invented symbol, then a NamedField naming a nonexistent field) are recorded there
-// as the workaround class. The join reports this population separately, as
-// gunbc.seed_growth_admission already does for the prose-only item.
+// AN IMPL METHOD AND AN IMPL BLOCK ARE REAL ITEMS AND ARE NOT CITABLE, so they are projected into
+// their own arm rather than dropped or forced into a DeclarationRef they do not fit. std.decl_ref
+// DeclField offers WholeDeclaration or NamedField and a trait-impl method is neither -- the
+// repository has carried exactly one such item in prose since the Cargo-manifest bridge, and two
+// earlier attempts to spell it anyway (an invented symbol, then a NamedField naming a field that
+// does not exist) are recorded there as the workaround class. The join reports this population
+// separately, as gunbc.seed_growth_admission already does for the prose-only item.
 type ItemDeclarationRefProjection
   = ItemDeclarationRefProjected { ref: DeclarationRef }
   | ItemDeclarationRefUncitable { item_key: String, detail: String }
@@ -279,10 +276,10 @@ fn ranges_line_numbers(ranges: List<LineRange>) -> List<Int> {
   )
 }
 
-// THE HUNK HEADER IS GIT'S OWN FORMAT AND IS READ AS SUCH. `@@ -a,b +c,d @@`, an elided count
-// meaning one -- the unified-diff format the operation's argv pins with -U0, cited to the transport.
-// A header this reader cannot decode REFUSES rather than becoming an empty range set: an undecoded
-// hunk is precisely a changed region nobody attributed.
+// THE HUNK HEADER IS GIT'S OWN FORMAT AND IS READ AS SUCH. `@@ -a,b +c,d @@` with the count elided
+// meaning one -- that is the unified-diff format the operation's own argv pins with -U0, cited to
+// the transport rather than guessed at. A header this reader cannot decode does NOT become an empty
+// range set: it refuses, because an undecoded hunk is precisely a changed region nobody attributed.
 type HunkRangeParse
   = HunkRangeParsed { old_range: LineRange, new_range: LineRange }
   | HunkRangeRefused { header: String, detail: String }
@@ -360,9 +357,10 @@ fn parse_hunk_header(header: String) -> HunkRangeParse {
   }
 }
 
-// THE CURRENT FILE'S RANGES ACCUMULATE IN THE STATE AND ARE FLUSHED ONCE, not merged into the files
-// list per hunk: that form walked every collected file on every hunk, cost files times hunks -- the
-// copied-accumulator shape DESIGN section 6 says is always fixed regardless of realized n.
+// THE CURRENT FILE'S RANGES ACCUMULATE IN THE STATE AND ARE FLUSHED ONCE, rather than being merged
+// into the files list per hunk. The per-hunk form walked every file already collected on every
+// hunk, which is a fold whose cost is files times hunks -- the copied-accumulator shape DESIGN
+// section 6 says is always fixed regardless of the realized n, and here n is a real diff.
 type DiffRangeFoldState {
   files: List<RustFileChangedRanges>
   current_path: String
@@ -494,9 +492,9 @@ fn rust_changed_ranges(diff_text: String) -> RustDiffRangeObservation {
 }
 
 // THE CHANGE OBSERVATION'S PURE CORE TAKES ITS FILES ALREADY READ, so every arm below is reachable
-// from a fixture. The wet half is one function at the bottom of this module that only fetches: git
-// decides which paths changed and their bytes at each end; every decision about what that MEANS is
-// made here, where a witness can plant it.
+// from a fixture. The wet half is one function at the bottom of this module and does nothing but
+// fetch: git decides which paths changed and what their bytes are at each end, and every decision
+// about what that MEANS is made here, where a witness can plant it.
 type RustFileChangeInput {
   repo_path: String
   base_content: String
@@ -542,9 +540,10 @@ fn change_state_refuse(state: RustChangeFoldState, refusal: RustItemChangeObserv
   }
 }
 
-// MEMBERSHIP IS A SET LOOKUP AND NOT A LINEAR SCAN PER ITEM. Scan-per-item costs items squared, and
-// cli_run.rs alone carries thousands; DESIGN section 6 fixes a proven cost shape regardless of the
-// realized n, because n is not a time-stable fact.
+// MEMBERSHIP IS A SET LOOKUP AND NOT A LINEAR SCAN PER ITEM. The scan-per-item form is a fold whose
+// cost is items squared, and cli_run.rs alone carries items in the thousands; DESIGN section 6's
+// standing rule is that a proven cost shape is fixed regardless of the realized n, because n is not
+// a time-stable fact.
 fn item_key_set(items: List<RustItemIdentity>) -> Set<String> {
   fold_list(
     xs: items,
@@ -554,9 +553,10 @@ fn item_key_set(items: List<RustItemIdentity>) -> Set<String> {
 }
 
 // EVERY CHANGED LINE IS ATTRIBUTED, AND THE ATTRIBUTION IS CHECKED RATHER THAN ASSUMED. Attributing
-// to an item makes a modification visible; attributing to a file-level line keeps a `use` edit from
-// reading as a capability change. The third answer -- a line the scan cannot place -- is the refusal
-// this carrier exists to produce, asked for every changed line rather than inferred from file shape.
+// to an item is what makes a modification visible; attributing to a file-level line is what keeps a
+// `use` edit from being reported as a capability change. The third answer -- a line the scan cannot
+// place -- is the refusal this whole carrier exists to produce, and it is asked for every changed
+// line rather than inferred from the file's shape.
 fn change_lines_unattributed(
   items: List<RustItemIdentity>,
   macro_regions: List<RustMacroRegion>,
@@ -765,9 +765,10 @@ fn observe_rust_item_change(
 }
 
 // THE LIVE OBSERVATION IS A SECOND POPULATION AND NOT A PROJECTION OF THE FIRST. It answers "which
-// hand Rust items exist right now", which staleness needs and a change population cannot supply. A
-// file it cannot scan is REPORTED and counted with its refusal, never dropped: a live surface
-// silently missing the refusing files is a smaller population wearing the shape of a complete one.
+// hand Rust items exist right now", which is what a staleness question needs and what a change
+// population cannot supply. A file it cannot scan is REPORTED, counted, with its refusal -- never
+// dropped, because a live surface silently missing the files that refuse is a smaller population
+// wearing the shape of a complete one.
 type LiveHandRustObservation
   = LiveHandRustObserved {
       items: List<RustItemIdentity>,
@@ -866,19 +867,19 @@ fn projected_refused_keys(projections: List<ItemDeclarationRefProjection>) -> Li
   )
 }
 
-// THE WET HALF, A FUNCTION RATHER THAN A TOP-LEVEL data for the reason
-// gunbc.stage0_rust_host_observation records: top-level data is EVALUATED WHEN A MODULE IMPORTS IT,
-// so a dead import alone would perform Git I/O under the hermetic envelope and fail a whole
-// discovery batch. As a function the effect is reachable only by calling it, and every type and fold
-// above may be imported and exercised without it.
+// THE WET HALF, AND IT IS A FUNCTION RATHER THAN A TOP-LEVEL data FOR THE REASON
+// gunbc.stage0_rust_host_observation records at length: a top-level data declaration is EVALUATED
+// WHEN A MODULE IMPORTS IT, so a dead import alone would perform Git I/O under the hermetic
+// envelope and fail an entire discovery batch. As a function the effect is reachable only by
+// calling it, and every type and fold above may be imported and exercised without it.
 data rust_item_change_repository_path: String = "."
 
 // THE GENERATED POPULATION IS THE UNION OF TWO AUTHORITIES AND NEITHER MAY BE ASSUMED. The
 // generated-artifact registry owns the drift-gated artifacts; the emitted-population manifest owns
-// the stage0 mirrors the compiler writes. Consulting only the registry would classify every
-// regenerated mirror as hand-authored and report the whole emit as unjustified additions -- so an
-// UNOBSERVED emit population is a refusal here, not a smaller generated set, as
-// gunbc.stage0_rust_host_observation's own carrier requires of its consumers.
+// the stage0 mirrors the compiler writes. A change observation that consulted only the registry
+// would classify every regenerated mirror as hand-authored and report the whole emit as unjustified
+// additions -- so an UNOBSERVED emit population is a refusal here rather than a smaller generated
+// set, exactly as gunbc.stage0_rust_host_observation's own carrier requires of its consumers.
 type GeneratedPopulation
   = GeneratedPopulationObserved { repo_paths: List<String> }
   | GeneratedPopulationUnobserved { detail: String }
@@ -989,11 +990,12 @@ fn rust_paths_from_nul(raw: String) -> List<String> {
   )
 }
 
-// THE LIVE POPULATION IS SCOPED TO THE TREES THE NAMESPACE MAP CLAIMS -- a declared scope, not a
-// silent narrowing. A hand Rust file under an unclaimed tree has no DeclarationRef, so a STALENESS
-// population including it would answer a question no roster row can ask. The ADDITION population is
-// not narrowed: the change observation scans whatever the diff names, and an added item under an
-// unclaimed tree REFUSES at the join rather than being skipped here.
+// THE LIVE POPULATION IS SCOPED TO THE TREES THE NAMESPACE MAP CLAIMS, and that is a declared scope
+// rather than a silent narrowing. A hand Rust file under a tree no row claims has no DeclarationRef
+// at all, so including it in a STALENESS population would answer a question no roster row can ask;
+// including it in an ADDITION population is a different matter and is not narrowed -- the change
+// observation scans whatever the diff names, and an added item under an unclaimed tree REFUSES at
+// the join rather than being skipped here.
 fn live_hand_rust_candidate_paths(tracked_paths: List<String>) -> List<String> {
   filter(
     xs: tracked_paths,

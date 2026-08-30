@@ -28,16 +28,7 @@ import gunbc.roadmap_program_view {
   program_view,
 }
 
-// SMALL SYNTHETIC BUSINESS WITNESSES for gunbc.roadmap_program_view (operator verdict 2026-08-05):
-// every oracle is PLANTED on a hand-authored fixture graph — never copied from the live roadmap
-// tree (DESIGN section 5). Covers acceptance algebra (receipt moves primary constraint; accepted
-// mid-chain collapses depth), dependency hold (unmet parents block startability), duplicate receipt
-// and duplicate node identity refusal, in-flight overlay, merged-PR and contract non-acceptance,
-// misspelled finish-line/gate refusal, proposed-plane absence, and derived front/constraint facts
-// on the fixture. Live-corpus wiring — that the real roadmap authority projects and every finish
-// line and gate resolves — is ONE separately classified receipt in
-// test.claim.roadmap_program_view_live_corpus_receipt (falsifier substrate long lane), not counted
-// here.
+data roadmap_program_view_witness_note: String = "SMALL SYNTHETIC BUSINESS WITNESSES for gunbc.roadmap_program_view (operator verdict 2026-08-05): every oracle is PLANTED on a hand-authored fixture graph — never copied from the live roadmap tree (DESIGN section 5). Covers acceptance algebra (receipt moves primary constraint; accepted mid-chain collapses depth), dependency hold (unmet parents block startability), duplicate receipt and duplicate node identity refusal, in-flight overlay, merged-PR and contract non-acceptance, misspelled finish-line/gate refusal, proposed-plane absence, and derived front/constraint facts on the fixture. Live-corpus wiring — that the real roadmap authority projects and every finish line and gate resolves — is ONE separately classified receipt in test.claim.roadmap_program_view_live_corpus_receipt (falsifier substrate long lane), not counted here."
 
 fn fx_ticket(headline: String) -> TicketFields {
   TicketFields {

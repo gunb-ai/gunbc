@@ -37,8 +37,9 @@ import gunbc.file_access { FileTreeScope }
 import gunbc.spark.serving_unit_render { spark_serving_desired_user_unit_text }
 import gunbc.spark.serving_install_paths { spark_serving_user_unit_path, spark_serving_user_unit_dir }
 
-// Position-wise kind, so an ordering claim asserts WHERE each kind sits, not only how many exist. A
-// count-only claim is satisfied by any permutation, including the write before its own directory.
+// Position-wise kind, so an ordering claim asserts WHERE each kind sits rather than only how many
+// of each exist. A count-only claim is satisfied by any permutation, including the one that puts the
+// write before its own directory.
 fn kind_at(ops: List<RemoteOperation>, i: Int) -> String {
   match ops[i] {
     Absent => "<none>"
@@ -59,9 +60,9 @@ fn realize(effects: List<ServingInstallEffect>) -> SparkServingInstallRemoteComm
 
 // ── The defect this closes ──────────────────────────────────────────────────────────────────────
 
-// THE KEYSTONE. `WriteUserUnitFile` refused as long as the realizer could only produce argv, and
-// that refusal reported a MISSING TYPE, not missing work: a file write is bytes, bytes ride stdin,
-// so no argv-shaped verdict could express it. It now realizes.
+// THE KEYSTONE. `WriteUserUnitFile` refused for as long as the realizer could only produce argv, and
+// that refusal was reporting a MISSING TYPE rather than missing work: a file write is bytes, and
+// bytes ride stdin, so no argv-shaped verdict could ever express it. It now realizes.
 test fn write_user_unit_file_realizes_instead_of_refusing() -> Bool {
   match realize(effects: [WriteUserUnitFile]) {
     SparkServingInstallRemoteCommandsPresent { steps: sts } =>
@@ -72,9 +73,9 @@ test fn write_user_unit_file_realizes_instead_of_refusing() -> Bool {
 }
 
 // THE BARE-HOST KEYSTONE. `~/.config/systemd/user` does not exist on a machine that has never run a
-// user unit, and the file convergence opens a staging sibling with `dd` — it does not create
-// missing parents. So the mkdir must come FIRST; reversed, the write refuses on exactly the host
-// this effect exists to restore. Order is asserted by position, the only thing distinguishing a
+// user unit, and the file convergence opens a staging sibling with `dd` -- it does not create missing
+// parents. So the mkdir must come FIRST; reversed, the write refuses on exactly the host this effect
+// exists to restore. Order is asserted by position, which is the only thing that distinguishes a
 // correct sequence from one containing the same two operations.
 test fn the_unit_write_is_preceded_by_a_non_privileged_mkdir() -> Bool {
   match realize(effects: [WriteUserUnitFile]) {
@@ -93,8 +94,8 @@ test fn the_unit_write_is_preceded_by_a_non_privileged_mkdir() -> Bool {
 }
 
 // The mkdir targets the executor's OWN home, so sudo would be an unnecessary privilege escalation
-// for a write the account can already perform. Asserted, because a stray sudo would silently
-// require a sudoers grant that does not exist.
+// for a write the account can already perform. Asserted rather than assumed, because a stray sudo
+// here would silently require a sudoers grant that does not exist.
 test fn the_unit_directory_mkdir_is_not_privileged() -> Bool {
   match realize(effects: [WriteUserUnitFile]) {
     SparkServingInstallRemoteCommandsPresent { steps: sts } =>
@@ -111,7 +112,7 @@ test fn the_unit_directory_mkdir_is_not_privileged() -> Bool {
 }
 
 // It is a FILE WRITE, not an argv. A file write with an argv projection would mean bytes had been
-// routed onto a command line, exactly what the typed-write module exists to prevent.
+// routed onto a command line, which is exactly what the typed-write module exists to prevent.
 test fn the_unit_write_carries_no_argv_projection() -> Bool {
   match realize(effects: [WriteUserUnitFile]) {
     SparkServingInstallRemoteCommandsPresent { steps: sts } =>
@@ -121,8 +122,9 @@ test fn the_unit_write_carries_no_argv_projection() -> Bool {
   }
 }
 
-// The bytes are the renderer's and the path is the modeled unit path. Asserting exact content makes
-// this a claim about delivering the right unit rather than delivering something.
+// The bytes are the ones the renderer produces, and the path is the modeled unit path. Asserting the
+// exact content is what makes this a claim about delivering the right unit rather than delivering
+// something.
 test fn the_unit_write_carries_the_rendered_bytes_at_the_modeled_path() -> Bool {
   match realize(effects: [WriteUserUnitFile]) {
     SparkServingInstallRemoteCommandsPresent { steps: sts } =>
@@ -142,10 +144,10 @@ test fn the_unit_write_carries_the_rendered_bytes_at_the_modeled_path() -> Bool 
 
 // ── The two kinds coexist in one ordered sequence ───────────────────────────────────────────────
 
-// Ordering is load-bearing: the unit file must exist before the manager reloads it. A mixed
-// sequence must keep both kinds in order rather than partitioning them, and the counts must
-// disagree — one operation of each, but only one argv — proving the argv projection is a genuine
-// subset, not the whole population.
+// Ordering is load-bearing: the unit file must exist before the manager reloads it. A mixed sequence
+// must therefore keep both kinds in order rather than partitioning them, and the counts must
+// disagree — one operation of each, but only one argv — which is what proves the argv projection is
+// a genuine subset and not the whole population.
 test fn a_mixed_sequence_keeps_both_kinds_and_their_order() -> Bool {
   match realize(effects: [WriteUserUnitFile, EnableLingerForOwnAccount]) {
     SparkServingInstallRemoteCommandsPresent { steps: sts } =>
@@ -161,9 +163,9 @@ test fn a_mixed_sequence_keeps_both_kinds_and_their_order() -> Bool {
 
 // ── What still refuses, so the widening did not become an absorbing arm ─────────────────────────
 
-// Widening the representation must not turn unimplemented effects into successes.
-// `RunContainerAsOwnUser` has no realization, and a sequence containing it still refuses whole
-// rather than silently realizing the part it understands.
+// Widening the representation must not turn unimplemented effects into successes. `RunContainerAsOwnUser`
+// has no realization, and a sequence containing it still refuses whole rather than silently
+// realizing the part it understands.
 test fn an_unrealized_effect_still_refuses_the_whole_sequence() -> Bool {
   match realize(effects: [WriteUserUnitFile, RunContainerAsOwnUser]) {
     SparkServingInstallRemoteCommandsRefused { reason: _ } => true
@@ -185,13 +187,13 @@ test fn an_argv_effect_is_still_an_argv_operation() -> Bool {
 // ── The frozen operations are inside the hash, not merely inside the row ─────────────────────────
 
 // THE DEFECT THIS CLOSES, and it was mine. Freezing the operations into the typed row stopped apply
-// from re-deriving the unit bytes — but the row's wire serialized kind, member key and EFFECT NAMES
+// from re-deriving the unit bytes -- but the row's wire serialized kind, member key and EFFECT NAMES
 // only, and the bundle hash is computed over that wire. So the bytes were frozen and unverified: an
-// artifact whose unit content had been swapped wholesale still hashed identically and admitted. I
-// claimed the hash covered the bytes when it did not. It does now, and this says so.
+// artifact whose unit content had been swapped wholesale still hashed identically and still admitted.
+// I claimed the hash covered the bytes when it did not. It does now, and this is what says so.
 //
-// Two operations differing ONLY in content must produce different wires. Same path, mode, kind,
-// count — nothing but the bytes can be doing the work.
+// Two operations differing ONLY in content must produce different wires. Same path, same mode, same
+// kind, same count -- so nothing but the bytes can be doing the work.
 test fn two_writes_differing_only_in_content_have_different_wires() -> Bool {
   match typed_remote_file_write_seal(
     path: spark_serving_user_unit_path(),
@@ -215,9 +217,9 @@ test fn two_writes_differing_only_in_content_have_different_wires() -> Bool {
   }
 }
 
-// And the LABEL does not discriminate them — the whole reason the wire had to exist rather than
-// reusing the human rendering. Stated separately so a reader sees the label collapsing is
-// intentional, not a second bug.
+// And the LABEL does not discriminate them -- which is the whole reason the wire had to exist rather
+// than reusing the human rendering. This is asserted directly above; stated separately so a reader
+// sees that the label collapsing is intentional, not a second bug.
 test fn the_wire_discriminates_where_the_label_does_not() -> Bool {
   match realize(effects: [WriteUserUnitFile]) {
     SparkServingInstallRemoteCommandsRefused { reason: _ } => false

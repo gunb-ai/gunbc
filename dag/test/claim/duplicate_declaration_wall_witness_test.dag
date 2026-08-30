@@ -17,22 +17,24 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // WHY THE RED IS AUTHORABLE HERE AND NOWHERE ELSE (DESIGN 4b): no `Accepted` module may now carry
 // the state, so the refusal is unreachable from the corpus -- but a fixture hands the compiler
 // source text, and a compiler's regression probes are invalid programs by definition. Declining to
-// author it because the accepted tree cannot hold it would be specification-without-execution.
+// author it because the accepted tree cannot hold it would be the specification-without-execution
+// failure, not a saving.
 //
-// THE BOUND THIS ROW STATES, about the repository's evidence discipline rather than the compiler:
-// where two definitions of one name are semantically EQUIVALENT, no behavioural witness can
-// discriminate them whichever wins. Green-by-execution proves BEHAVIOUR and is structurally blind
-// to duplicate AUTHORSHIP. Hence a compile-seam refusal, not a runtime probe, and hence the live
-// specimens this wall's landing repaired had passed every witness over them.
+// THE BOUND THIS ROW EXISTS TO STATE, and it is about the repository's evidence discipline rather
+// than about the compiler: where two definitions of one name are semantically EQUIVALENT, no
+// behavioural witness can discriminate them whichever one wins. Green-by-execution proves
+// BEHAVIOUR and is structurally blind to duplicate AUTHORSHIP. That is why this row is a
+// compile-seam refusal and not a runtime probe, and it is why the live specimens this wall's
+// landing repaired had passed every witness over them.
 //
-// WHAT THIS SURFACE OBSERVES, so no receipt reads more coverage than it has:
+// WHAT THIS SURFACE OBSERVES, stated so no receipt reads more coverage than it has:
 // `compile_dag_rust_emit_check` answers false when the compile carries ANY hard diagnostic, so a
 // red row alone does not establish WHICH judgment refused. The discrimination is carried by the
-// PAIR: each red fixture and its green control differ by exactly the duplicated declaration, so a
-// red that survives its control's green is a red caused by the duplication. The path measured is
-// source -> `.dag` acceptance through the v1 pipeline to the Rust render target, single module.
-// NOT measured: the interpreter's disposition of the same source, and cross-module name
-// collisions, a different class (two keys, not one).
+// PAIR: each red fixture and its green control differ by exactly the duplicated declaration and
+// nothing else, so a red that survives its control's green is a red caused by the duplication.
+// The path measured is source -> `.dag` acceptance through the v1 pipeline to the Rust render
+// target, single module. NOT measured here: the interpreter's disposition of the same source, and
+// cross-module name collisions, which are a different class (two keys, not one).
 
 fn duplicate_fn_source() -> String {
   "module test.claim.duplicate_declaration_wall_duplicate_fn\nimport std.types { Int }\n\nfn which_one() -> Int { 1 }\n\nfn which_one() -> Int { 2 }\n"
@@ -77,7 +79,7 @@ test fn a_data_and_a_function_sharing_one_name_are_refused() -> Bool {
 
 // THE POSITIVE CONTROLS. Each is its red's fixture with the duplication removed and nothing else
 // changed, so a red above cannot pass by its fixture being broken some other way. Per DESIGN 4b(4)
-// they stay enrolled after the wall lands: they are the executing evidence that the rung is real,
+// these stay enrolled after the wall lands: they are the executing evidence that the rung is real,
 // and deleting them would recreate specification-without-execution one rung up.
 
 test fn one_function_declaration_compiles_clean() -> Bool {

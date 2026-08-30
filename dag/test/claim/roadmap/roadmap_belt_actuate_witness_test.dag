@@ -532,12 +532,12 @@ test fn witness_find_node_first_wins_on_duplicate() -> Bool {
 }
 
 // LIVENESS IS DERIVED FROM PROCESS EVIDENCE, NOT FROM A SESSION NAME. The prior pair of
-// witnesses asserted that a session row matching the node id IS live, over a helper whose worker
-// evidence is the placeholder whose own reason reads "tmux name presence does not observe pane
-// liveness or exit". They pinned the defect: a retained dead pane answered live, DispatchAlreadyLive
-// returned through the accepted band, and the operator got a positive acknowledgement with no
-// agent. RLM-1 re-homed the per-node verdict into the shared launch admission's no-live-attempt
-// gate (launch_gate_live); these witnesses follow it.
+// witnesses asserted that a session row matching the node id IS live, over a helper whose
+// worker evidence is the placeholder whose own reason reads "tmux name presence does not
+// observe pane liveness or exit". They therefore pinned the defect: a retained dead pane
+// answered live, DispatchAlreadyLive returned through the accepted band, and the operator
+// got a positive acknowledgement with no agent. RLM-1 re-homed the per-node verdict into the
+// shared launch admission's no-live-attempt gate (launch_gate_live); these witnesses follow it.
 fn live_gate(live: List<DispatchLiveSession>, node_id: String) -> LaunchGateVerdict {
   launch_gate_live(sessions: LaunchSessionsObserved { live: live }, node_id: node_id)
 }
@@ -740,15 +740,7 @@ test fn witness_label_band_cover_reds_on_missing_row() -> Bool {
     && !label_band_rows_cover(rows: truncated, labels: labels)
 }
 
-// D4: belt_dispatch_result_exemplars is a HAND roster (one exemplar per BeltDispatchResult arm),
-// enrolled DeclaredFrontier in gunbc.roster_registry. belt_dispatch_status_label's total match
-// walls a new VARIANT at compile time, but nothing ties the exemplar LIST to the variant set: a
-// missed exemplar silently narrows belt_dispatch_all_status_labels AND the component wire-total
-// reading it, while the live server emits the unmodeled label. This reconciles the exemplar-derived
-// label set against the independent wire-contract pin (the labels
-// witness_dispatch_status_labels_pin_wire_contract pins); the RED control proves a missing-variant
-// list reds. Dissolves when inhabitance enumeration or the serve-JSON total match replaces the
-// hand list.
+data d4_exemplar_reconcile_note: String = "D4: belt_dispatch_result_exemplars is a HAND roster (one exemplar per BeltDispatchResult arm), enrolled DeclaredFrontier in gunbc.roster_registry. belt_dispatch_status_label's total match walls a new VARIANT at compile time, but nothing ties the exemplar LIST to the variant set — a missed exemplar silently narrows belt_dispatch_all_status_labels AND the component wire-total that reads it, while the live server emits the unmodeled label. This reconciles the exemplar-derived label set against the independent wire-contract pin (the same labels witness_dispatch_status_labels_pin_wire_contract pins), and the RED control proves a missing-variant list reds. Dissolves when inhabitance enumeration or the serve-JSON total match replaces the hand list."
 
 fn d4_wire_contract_labels() -> List<String> {
   [
@@ -1000,15 +992,7 @@ test fn codex_provider_v0_preflight_keystone_holds() -> Bool {
     && witness_fresh_spawn_wire_names_selected_provider()
 }
 
-// This witness exists because its subject SHIPPED BROKEN while a whole-tree compile reported 0
-// blocking errors. belt_oracle_refs_for_contract called filter_map, a primitive std.primitives
-// declares a contract for and the seed implements nothing for, so the call type-checked and died
-// as `not yet implemented` the first time a real dispatch reached it — a 500, found on the lab.
-// The lane's other witnesses covered the pure oracle carrier and never drove THIS function: a
-// projection only the effectful path calls needs a witness even when pure, because purity makes it
-// cheap to witness, not covered. The assertions RUN the fold and read its output rather than
-// checking a type: a version calling any unregistered primitive fails here at execution, the only
-// place that defect class is observable.
+data oracle_refs_execution_note: String = "This witness exists because its subject SHIPPED BROKEN and a whole-tree compile with 0 blocking errors said otherwise. belt_oracle_refs_for_contract called filter_map, a primitive std.primitives declares a contract for and the seed implements nothing for, so the call type-checked and died as `not yet implemented` the first time a real dispatch reached it — a 500, found on the lab. The lane's other witnesses covered the pure oracle carrier thoroughly and never drove THIS function, which is the whole lesson: a projection that only the effectful path calls needs a witness even when it is itself pure, because purity is what makes it cheap to witness, not what makes it covered. The assertions deliberately RUN the fold and read its output rather than checking a type: a version calling any unregistered primitive fails here at execution, which is the only place that class of defect is observable."
 
 test fn oracle_refs_projection_runs_and_selects_pinnable_scopes() -> Bool {
   let claim_contract = gunbc_claim_execution_contract(
@@ -1033,11 +1017,7 @@ test fn oracle_refs_projection_runs_and_selects_pinnable_scopes() -> Bool {
     }
 }
 
-// review 45271, updated for exact-head wiring. The belt now observes the worktree head before
-// reading a receipt, so an instance with no attempt filesystem cannot reach the unreadable-receipt
-// arm through a failed legacy read alone. This witness drives the real fn against srv2 preview,
-// where neither node nor worktree exist, and asserts verification defers with an exact-head or
-// missing-node reason rather than actuating against an unobserved subject.
+data unreadable_receipt_refuses_note: String = "review 45271, updated for exact-head wiring. The belt now observes the worktree head before reading a receipt, so an instance with no attempt filesystem cannot reach the unreadable-receipt arm through a failed legacy read alone. This witness instead drives the real fn against srv2 preview where neither the node nor the worktree exist, and asserts verification defers with an exact-head or missing-node reason rather than actuating against an unobserved subject."
 
 data fixture_verification_head: CommitSha = "cafecafecafecafecafecafecafecafecafecafe" as CommitSha
 
@@ -1095,14 +1075,7 @@ fn completed_attempt_progress(node_id: String) -> WorkflowAttemptProgress {
   })
 }
 
-// The A2 single-projection-authority receipt at the wire: each attempt object on /workflow.json
-// carries the DECIDED activity view beside the progress members, so the client paints without
-// composing. The fixture is a completed agent turn with process exited and four pending obligations
-// — the falsifier's own shape. The assertions pin the decided fields (arm, the consequence-first
-// summary composed by gunbc.roadmap_presentation, the reconcile-derived remaining count, the
-// evidence rows) landing as JSON, plus the progress members surviving beside them. The decided
-// strings are the contract; a client rebuilding any of them from segments has nothing asserted
-// here to rebuild FROM.
+data attempt_wire_carries_decided_activity_note: String = "The A2 single-projection-authority receipt at the wire: each attempt object on /workflow.json carries the DECIDED activity view beside the progress members, so the client paints without composing. The fixture is a completed agent turn with process exited and four pending obligations — the falsifier's own shape — and the assertions pin the decided fields (arm, the consequence-first summary composed by gunbc.roadmap_presentation, the reconcile-derived remaining count, the evidence rows) landing as JSON, plus the progress members surviving beside them. A client that had to rebuild any of these from segments would have nothing to rebuild them FROM being asserted here — the decided strings are the contract."
 
 test fn attempt_wire_carries_decided_activity() -> Bool {
   let j = serialize_json(v: belt_workflow_attempt_presentation_json(
@@ -1119,6 +1092,7 @@ test fn attempt_wire_carries_decided_activity() -> Bool {
     && string_contains(s: j, pattern: "\"node_id\": \"belt-wire-activity-node\"")
     && string_contains(s: j, pattern: "\"segments\": [")
 }
+
 
 test fn verify_without_observable_subject_defers_instead_of_rerunning() -> Bool {
   match belt_verify_attempt_for_instance(
@@ -1223,17 +1197,19 @@ test fn unknown_spawn_workdir_refuses_instance_resolution() -> Bool {
   }
 }
 
-// NARROWED; the first attempt was wrong in a way worth recording. The claim used to assert that two
-// known spawn workdirs resolve to DIFFERENT instances, with the deleted green slot as the second.
-// Re-enrolled against srv1-lab it failed by execution: the lookup's population is the instances
-// this belt actuates, the lab was never in it, so the lab root resolves to
-// DashboardInstanceRootUnknown. The lookup knows exactly one workdir, so distinctness can no longer
-// be asked of it — a consequence of the single deployment, not a dropped guarantee.
+// NARROWED, and the first attempt at this was wrong in a way worth recording. The claim used to
+// assert that two known spawn workdirs resolve to DIFFERENT instances, with the deleted green slot
+// as the second one. Re-enrolling it against srv1-lab looked right and failed by execution: the
+// lookup's population is the instances this belt actuates, and the lab was never in it, so the lab
+// root resolves to DashboardInstanceRootUnknown. Distinctness is not something the lookup can be asked about
+// any more -- it knows exactly one workdir -- and that is a consequence of the single deployment
+// rather than a guarantee that was dropped.
 //
-// So this asserts the arm that still exists: the known workdir resolves, to the instance that owns
-// it. Retiring outright would have left only unknown_spawn_workdir_refuses_instance_resolution
-// enrolled, and a lookup refusing EVERY workdir would pass the file — the resolved arm needs its
-// own claim because the refusal arm cannot detect its absence.
+// So this asserts the arm that still exists: the known workdir resolves, and it resolves to the
+// instance that owns it. Retiring outright would have left only
+// unknown_spawn_workdir_refuses_instance_resolution enrolled, and a lookup that refused EVERY
+// workdir would then pass the file -- the resolved arm needs its own claim precisely because the
+// refusal arm cannot detect its absence.
 test fn the_known_spawn_workdir_resolves_to_its_own_instance() -> Bool {
   let live = srv1_live_dashboard_instance()
   match dashboard_instance_for_repo_root(repo_root: live.repo_root as String) {
@@ -1243,11 +1219,7 @@ test fn the_known_spawn_workdir_resolves_to_its_own_instance() -> Bool {
   }
 }
 
-// RED control (operator P1, 2026-08-02): a tmux-list refusal must NOT zero the verify pass. The
-// defect class was belt_tick returning empty verify_outcomes on ObserveRefused — an absorbing
-// fallback that made the whole tick look like verification never ran. The witness constructs the
-// post-fix shape synthetically: spawn_pass Refused while verify_pass is still Recorded when verify
-// outcomes exist.
+data belt_tick_decouple_witness_note: String = "RED control (operator P1, 2026-08-02): a tmux-list refusal must NOT zero the verify pass. The defect class was belt_tick returning empty verify_outcomes on ObserveRefused — an absorbing fallback that made the whole tick look like verification never ran. The witness constructs the post-fix shape synthetically: spawn_pass is Refused while verify_pass is still Recorded when verify outcomes exist."
 
 test fn observe_refused_spawn_does_not_zero_verify_pass() -> Bool {
   let result = BeltTickResult {
@@ -1305,11 +1277,7 @@ test fn observe_refused_with_empty_verify_is_deferred_not_recorded() -> Bool {
   }
 }
 
-// review 47210 spec-without-execution: decoupling was witnessed at the receipt layer but the
-// presentation join had no executing consumer. These rows execute
-// belt_verification_presentation_detail and the wire join against synthetic tick reads so the
-// headline strings ('Verification queued - next belt tick', 'Verification blocked · …',
-// observe-refusal vs verify-recorded at the UI layer) cannot drift without going red.
+data verification_presentation_witness_note: String = "review 47210 spec-without-execution: decoupling is witnessed at the receipt layer but the presentation join had no executing consumer. These rows execute belt_verification_presentation_detail and the wire join against synthetic tick reads so the headline strings ('Verification queued - next belt tick', 'Verification blocked · …', observe-refusal vs verify-recorded at the UI layer) cannot drift without going red."
 
 test fn verification_presentation_absent_receipt_is_queued() -> Bool {
   belt_verification_presentation_detail(
@@ -1436,20 +1404,9 @@ test fn belt_tick_receipt_io_failure_read_is_unreadable() -> Bool {
   }
 }
 
-// The attempt-grain claim (U1) is PURE — content hashes and string derivations, no host reach — so
-// it lives in dag/test/claim/dispatch_attempts_witness_test.dag, which discovery scans on every
-// affected PR. This file is BinWitnessWet-excluded because its witnesses execute real host
-// commands; a pure row parked here would be enrolled with zero executing consumers, which the
-// Phase 0(b) admission invariant refused (CI 30184138800). Deferral is a property of the EXECUTION
-// the row needs, never of the module it names.
+data attempt_grain_home_note: String = "The attempt-grain claim (U1) is PURE — content hashes and string derivations, no host reach — so it lives in dag/test/claim/dispatch_attempts_witness_test.dag, which discovery scans on every affected PR. This file is BinWitnessWet-excluded because its witnesses execute real host commands; a pure row parked here is enrolled with zero executing consumers, which is exactly what the Phase 0(b) admission invariant refused (CI 30184138800). Deferral is a property of the EXECUTION the row needs, never of the module it happens to name."
 
-// review 44039/44043 predicate dissolution. dashboard_instance_can_actuate was a Bool nickname for
-// a two-variant coproduct test, so both belt entrypoints now match DashboardActuationPosture
-// directly. Deleting the predicate would have deleted its only assertions, which never proved the
-// wiring anyway — they restated the posture field. This proves the behaviour: an observe-only
-// instance REFUSES at both entrypoints, before any observation, provider preflight, or worktree
-// creation. Only the refusing arm is exercised because it short-circuits; the actuating arm would
-// reach live tmux.
+data observe_only_posture_behavioral_note: String = "review 44039/44043 predicate dissolution. dashboard_instance_can_actuate was a Bool nickname for a two-variant coproduct test, so both belt entrypoints now match DashboardActuationPosture directly. Deleting the predicate would have deleted its only assertions with it, and those assertions never proved the wiring anyway — they restated the posture field. This proves the behaviour instead: an observe-only instance REFUSES at both entrypoints, before any observation, provider preflight, or worktree creation. Only the refusing arm is exercised because it short-circuits; the actuating arm would reach live tmux."
 
 test fn observe_only_instance_refuses_dispatch_and_stop() -> Bool {
   let preview = srv2_preview_dashboard_instance()
@@ -1478,15 +1435,7 @@ test fn observe_only_instance_refuses_dispatch_and_stop() -> Bool {
     }
 }
 
-// Every arm of belt_footprint_admission_decision is exercised on SYNTHETIC observations, as
-// belt_claude_preflight_decision and belt_observe_from_result already are: the decision is a pure
-// fn over facts, so its arms are witnessable without a host, and the live half
-// (belt_footprint_observe) only threads real probe results into it. The arms are not
-// interchangeable and the tests say why — absent, unwritable, and unsearchable name three different
-// remedies (converge the member, fix ownership drift, fix the mode), which is why they are not
-// collapsed into one `unusable` Bool. The short-circuit witness is the load-bearing one for
-// operator experience: with two bad roots the FIRST is reported, so the refusal names the member a
-// human should look at first rather than whichever sorted last.
+data footprint_admission_witness_note: String = "Every arm of belt_footprint_admission_decision is exercised on SYNTHETIC observations, the same discipline belt_claude_preflight_decision and belt_observe_from_result already follow: the decision is a pure fn over facts, so its arms are witnessable without a host, and the live half (belt_footprint_observe) only threads real probe results into it. The arms are not interchangeable and the tests say why — absent, unwritable, and unsearchable name three different remedies (converge the member, fix ownership drift, fix the mode), which is the whole point of not collapsing them into one `unusable` Bool. The short-circuit witness is the load-bearing one for operator experience: with two bad roots the FIRST is reported rather than the last, so the refusal names the member a human should look at first rather than whichever happened to sort last."
 
 fn footprint_obs(
   member: String,
@@ -1562,22 +1511,7 @@ test fn witness_footprint_roots_cover_both_belt_write_targets() -> Bool {
   has_worktrees && has_attempt_state
 }
 
-// THE PRODUCER'S DECISION, EXERCISED WITHOUT A NETWORK OR A FILESYSTEM.
-// belt_publish_attempt_for_instance performs three effects - read the existing receipt, observe the
-// two remote surfaces, write the judgment - and every branch is decided by belt_publish_gate and
-// belt_publish_write_outcome, both pure. That split makes these claims possible: an arm that fires
-// when a receipt on disk is about another attempt would otherwise be reachable only by arranging
-// that state on a real host.
-//
-// THE GATE'S JOB IS TO DECIDE WHETHER TO OBSERVE. Three of the five outcomes are settled by what is
-// already on disk, and none should cost a GitHub read or risk overwriting evidence. The claims pin
-// each: a receipt for this exact subject halts as already-recorded, an undecodable one halts rather
-// than being replaced, one about another subject halts rather than being corrected, and only
-// genuine absence proceeds.
-//
-// THE SUBJECT IS BUILT FROM AN OBSERVED HEAD OR NOT AT ALL. An attempt whose worktree head cannot
-// be read has no subject, so the producer defers with the reason rather than adjudicating against
-// a branch name - the lookup this lane replaced.
+data belt_publish_producer_witness_note: String = "THE PRODUCER'S DECISION, EXERCISED WITHOUT A NETWORK OR A FILESYSTEM. belt_publish_attempt_for_instance performs three effects - read the existing receipt, observe the two remote surfaces, write the judgment - and every branch it takes is decided by belt_publish_gate and belt_publish_write_outcome, both pure. That split is what makes these claims possible at all: an arm that fires when a receipt on disk turns out to be about another attempt would otherwise be reachable only by arranging that state on a real host.\\n\\nTHE GATE'S JOB IS TO DECIDE WHETHER TO OBSERVE. Three of the five outcomes are settled by what is already on disk, and none of them should cost a GitHub read or risk overwriting evidence. The claims below pin each: a receipt for this exact subject halts as already-recorded, an undecodable one halts rather than being replaced, one about another subject halts rather than being corrected, and only genuine absence proceeds.\\n\\nTHE SUBJECT IS BUILT FROM AN OBSERVED HEAD OR NOT AT ALL. An attempt whose worktree head cannot be read has no subject, so the producer defers with the reason rather than adjudicating against a branch name - which is the lookup this whole lane replaced."
 
 data belt_pub_head: CommitSha = "1111111111111111111111111111111111111111"
 data belt_pub_other_head: CommitSha = "2222222222222222222222222222222222222222"
@@ -1695,14 +1629,7 @@ test fn a_receipt_about_another_subject_is_not_overwritten() -> Bool {
   }
 }
 
-// THE DEFECT THIS REFUSES, from review 46148: an I/O failure reading an existing receipt reached
-// the gate as `readable=false`, which the evidence layer classified as EvidenceAbsent and the gate
-// turned into PublishProceed - so a transient read fault would have OVERWRITTEN a receipt the belt
-// could not read. Absent and unreadable have opposite correct actions, so they are now distinct
-// constructors and the conflation has no spelling.
-//
-// Only the pair discriminates: absent proceeds, unreadable halts. Either alone would pass under the
-// defect - the old code proceeded on both.
+data unreadable_is_not_absent_note: String = "THE DEFECT THIS REFUSES, from review 46148: an I/O failure reading an existing receipt used to arrive at the gate as `readable=false`, which the evidence layer classified as EvidenceAbsent and the gate turned into PublishProceed - so a transient read fault would have OVERWRITTEN a receipt the belt could not read. Absent and unreadable have opposite correct actions, so the two are now distinct constructors and there is no spelling for the conflation.\\n\\nThese two claims are the pair, and only the pair discriminates: absent proceeds, unreadable halts. Asserting either alone would pass under the defect - the old code proceeded on both."
 
 test fn an_unreadable_receipt_halts_rather_than_being_overwritten() -> Bool {
   match belt_publish_gate(
@@ -1765,11 +1692,7 @@ test fn an_undecodable_receipt_is_not_overwritten_either() -> Bool {
   }
 }
 
-// A JUDGMENT REACHED AND THEN LOST IS NOT A JUDGMENT RECORDED. Only the write makes the
-// adjudication durable, so a failed write must not report the outcome it computed - the next tick
-// finds nothing on disk, and a caller told the head was published would be reading a fact that
-// exists nowhere. The pair below asserts the same receipt produces different producer outcomes
-// purely on whether the write succeeded.
+data write_failure_is_not_a_judgment_note: String = "A JUDGMENT REACHED AND THEN LOST IS NOT A JUDGMENT RECORDED. The write is the only thing that makes the adjudication durable, so a failed write must not report the outcome it computed - the next tick will find nothing on disk, and a caller told the head was published would be reading a fact that exists nowhere. The pair below asserts the same receipt produces different producer outcomes purely on whether the write succeeded."
 
 test fn a_failed_write_reports_loss_rather_than_the_outcome_it_computed() -> Bool {
   let subject = belt_pub_subject(head: belt_pub_head, node_id: "belt-pub-node")
@@ -1858,11 +1781,7 @@ test fn an_unreadable_worktree_head_yields_no_publication_subject() -> Bool {
     }
 }
 
-// THE DISCRIMINATING CONTROL FOR THE HEAD READ, and why the exit code alone is not the test. git
-// rev-parse HEAD exits zero and prints nothing on a worktree whose branch carries no commit yet,
-// which a freshly created dispatch worktree is until the worker commits. A reader trusting the exit
-// code would cast an empty string into a CommitSha: a subject matching no commit and equal to every
-// other empty head, so a receipt written for it would be evidence for any attempt in that state.
+data zero_exit_empty_stdout_is_unobserved_note: String = "THE DISCRIMINATING CONTROL FOR THE HEAD READ, and the reason the exit code alone is not the test. git rev-parse HEAD exits zero and prints nothing on a worktree whose branch carries no commit yet, which a freshly created dispatch worktree is until the worker commits. A reader that trusted the exit code would cast an empty string into a CommitSha, producing a subject whose head matches no commit and compares equal to every other empty head - so a receipt written for it would be evidence for any attempt in the same state."
 
 test fn a_zero_exit_with_no_revision_is_unobserved_not_an_empty_head() -> Bool {
   match worktree_head_observation_of(outcome: ExecOk { stdout: "\n" }) {
@@ -1872,15 +1791,7 @@ test fn a_zero_exit_with_no_revision_is_unobserved_not_an_empty_head() -> Bool {
   }
 }
 
-// THE CLAIM THAT PINS THE IDEMPOTENCE KEY, and the defect it would have caught. The obvious key is
-// `a receipt exists for this head`; under it the belt's FIRST observation of a head - normally
-// before the worker has pushed - records branch-not-published and then halts on its own record
-// forever: `not published` for the rest of the attempt's life, the halt caused by the very receipt
-// that observed the absence.
-//
-// So the pair drives the gate with two receipts for the SAME subject, differing only in what the
-// remote showed: a bound one halts, an unpublished one proceeds. A gate keyed on existence rather
-// than settlement returns already-recorded for both, and this goes red.
+data unsettled_receipt_must_not_freeze_the_row_note: String = "THE CLAIM THAT PINS THE IDEMPOTENCE KEY, and the defect it would have caught. The obvious key is `a receipt exists for this head`, and under it the belt's FIRST observation of a head - which normally happens before the worker has pushed - records branch-not-published and then halts on its own record forever. The row would report `not published` for the rest of the attempt's life, and the halt would be caused by the very receipt that observed the absence.\\n\\nSo the pair below drives the gate with two receipts for the SAME subject, differing only in what the remote showed: a bound one halts, an unpublished one proceeds. A gate keyed on existence rather than on settlement returns already-recorded for both, and this goes red."
 
 fn belt_pub_unpublished_receipt(head: CommitSha, node_id: String) -> String {
   publication_receipt_json(
@@ -1919,17 +1830,20 @@ test fn an_unsettled_receipt_is_re_observed_rather_than_halting_the_row() -> Boo
 // ---------------------------------------------------------------------------
 // PRESS-0 step 1 — the deployed-revision gate, at the grain it is actually proven.
 //
-// SCOPE FIRST, because the honest rung is the point: these witness the PROJECTION of the two new
-// arms, not the live gate. `fleet_revision_standing` reads a real git tree, so whether the gate
-// FIRES on a drifted srv1 is a wet fact owed a wet receipt — not established here. What IS
-// established by execution: neither arm can reach the ok band, both carry a loud band, the drifted
-// receipt names BOTH revisions, and the unobserved receipt names its cause.
+// SCOPE, STATED FIRST because the honest rung is the point: these witness the
+// PROJECTION of the two new arms, not the live gate. `fleet_revision_standing`
+// reads a real git tree, so whether the gate FIRES on a drifted srv1 is a wet
+// fact and is owed a wet receipt — it is not established here and must not be
+// read as established. What IS established by execution: neither arm can reach
+// the ok band, both carry a loud band, the drifted receipt names BOTH revisions,
+// and the unobserved receipt names its cause.
 //
-// The `desired`/`local` assertion is the discriminating one. A refusal that dropped one side would
-// still refuse, label correctly and be loud — and be useless to the operator deciding whether to
-// catch the host up or roll it back. The membership-diff `from` ruling is exactly this: a receipt
-// must name what it observed, not merely that it disagreed. Projection-grain only; the live gate
-// is owed a wet srv1 receipt.
+// The `desired`/`local` assertion is the discriminating one. A refusal that
+// dropped one side would still refuse, still label correctly, still be loud —
+// and would be useless to the operator who has to decide whether to catch the
+// host up or roll it back. The membership-diff `from` ruling is exactly this:
+// a receipt must name what it observed, not merely that it disagreed.
+data revision_gate_witness_scope_note: String = "Projection-grain only; the live gate is owed a wet srv1 receipt."
 
 test fn witness_revision_refusals_are_never_ok() -> Bool {
   !belt_dispatch_result_ok(r: not_admitted(r: LaunchRevisionDrift { desired: "aaa", local: "bbb" }))
@@ -2033,12 +1947,14 @@ test fn witness_revision_admission_fold_drives_all_three_arms() -> Bool {
   }
 }
 
-// THE BELT-GRAIN CONTROL (review artifact 51237, P0 #2). The previous dead-pane witness proved a
-// helper Boolean and said nothing about the continuously running reconciler, which received the
-// whole session list and counted every present row as an occupied member. This asserts the
-// partition the tick feeds to belt_reconcile: a stale pane is NOT running, so it neither occupies
-// capacity nor reads as Unchanged; an unobserved pane is in neither bucket — a counted refusal,
-// because tearing it down could kill live work and spawning beside it could double-run the node.
+// THE BELT-GRAIN CONTROL (review artifact 51237, P0 #2). The previous
+// dead-pane witness proved a helper Boolean and said nothing about the
+// continuously running reconciler, which received the whole session list and
+// counted every present row as an occupied member. This asserts the partition
+// the tick actually feeds to belt_reconcile: a stale pane is NOT running, so it
+// neither occupies capacity nor reads as Unchanged, and an unobserved pane is
+// in neither bucket — it is a counted refusal, because tearing it down could
+// kill live work and spawning beside it could double-run the node.
 test fn witness_tick_partition_is_lifecycle_aware_not_presence_aware() -> Bool {
   let part = belt_tick_classify_sessions(live: [
     live_session_with_process(
@@ -2092,10 +2008,10 @@ test fn witness_tick_multiplicity_is_a_node_fact() -> Bool {
 // only durable record, so the cause was computed and erased every time. On srv1 that turned a
 // missing provider binary into weeks of a dashboard saying "belt fault" with no way to ask why —
 // and the obvious host probes answer about a different object than the preflight tests, so the
-// available evidence pointed away from the cause.
+// available evidence pointed away from the cause rather than at it.
 //
-// Each conjunct names one of the four facts, so a fold dropping any single field reds here rather
-// than passing on the other three.
+// Each conjunct names one of the four facts, so a fold that dropped any single field reds here
+// rather than passing on the other three.
 test fn a_failed_spawn_names_its_node_gate_and_detail_in_the_receipt() -> Bool {
   match belt_spawn_pass_outcome_from(
     host_refusal: none,
@@ -2181,13 +2097,7 @@ test fn an_observation_refusal_still_outranks_the_spawn_summary() -> Bool {
   }
 }
 
-// Controls for review 5059681676 on #9696. (1) A transition-halted tick writes a receipt whose FOUR
-// passes are Refused with the transition reason -- never Recorded for the verify/publish passes the
-// driver did not run; a non-transition host refusal (revision drift) withholds only the launch
-// passes and verification still records on its own evidence. (2) The route's decision path after
-// the staged observation refuses an unknown node and a contractless node WITHOUT listing tmux:
-// under the hermetic route a tmux effect is a route refusal, not a verdict, so the green verdict is
-// the effect-order receipt.
+data review_5059681676_controls_note: String = "Controls for review 5059681676 on #9696. (1) A transition-halted tick writes a receipt whose FOUR passes are Refused with the transition reason -- never Recorded for the verify/publish passes the driver did not run; a non-transition host refusal (revision drift) withholds only the launch passes and verification still records on its own evidence. (2) The route's decision path after the staged observation refuses an unknown node and a contractless node WITHOUT listing tmux: under the hermetic route a tmux effect is a route refusal rather than a verdict, so the green verdict is the effect-order receipt."
 
 fn pass_refused_with(o: BeltPassOutcome, pattern: String) -> Bool {
   match o {
@@ -2270,10 +2180,10 @@ fn staged_post_over_canary(graph: LaunchGraphStanding, standing: LaunchHostStand
   )
 }
 
-// The route's real decision path (belt_dispatch_node_staged_over, which belt_dispatch_node_staged
-// calls with the live projection) over the RLM-0 canary graph and a pending session set. Each
-// refuses at a model-only gate, so tmux is never listed: under claim_batch's hermetic route a tmux
-// effect would be a route refusal, not a verdict.
+// The route's real decision path (belt_dispatch_node_staged_over is what belt_dispatch_node_staged
+// calls with the live projection) over the RLM-0 canary graph and a pending session set. Each of
+// these refuses at a model-only gate, so tmux is never listed: under claim_batch's hermetic route a
+// tmux effect would be a route refusal, not a verdict.
 test fn staged_post_refuses_unknown_node_without_listing_tmux() -> Bool {
   match staged_post_over_canary(graph: launch_fixture_canary_graph(), standing: launch_fixture_standing_pending(mode: ManualReady), node_id: "no-such-node-anywhere") {
     SpawnNotAdmitted { node_id, refusal: LaunchNodeUnknown } => node_id == "no-such-node-anywhere"

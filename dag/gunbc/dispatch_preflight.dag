@@ -40,56 +40,11 @@ import extdeps.languages.json.emit {
 }
 import extdeps.shell
 
-// THE CAPABILITY ADMISSION ONLY RUNS INSIDE A SPAWN, AND WHILE THE BELT REFUSES THERE IS NO SPAWN.
-// gunbc.roadmap_dispatch_environment observes every declared CapabilityRealization and grounds it,
-// but its only production caller is the per-attempt spawn path in gunbc.roadmap_belt_actuate.
-// belt_tick_for_instance evaluates the fleet revision standing BEFORE it reaches any spawn, so a
-// host whose deployed tree has drifted from refs/fleet/desired refuses spawn and reap and never
-// once probes an executable. Measured on srv1 2026-08-28: the belt had been answering that refusal
-// on every tick since 2026-08-20 with the deployed tree 664 commits behind main, and the capability
-// roster had therefore not been exercised on the host for eight days. Whether git, tmux, the pipe
-// shell, tee and jq still resolve for the service principal was, over that whole window, unmeasured
-// rather than measured-good.
-//
-// This module is the read-only route that answers it independently of whether a spawn is
-// admissible. It observes and it does not actuate: capability_ensure_observe runs
-// shell.Test.IsExecutable and the realization's own declared identity_args (the --version probes),
-// and fleet_revision_standing runs git ls-remote and rev-parse in the deployed tree. No worktree is
-// created, no tmux session is started, no file is written, and there is no flag that opens a write
-// path — a preflight that can also change what it measures is a preflight whose green proves
-// nothing.
-//
-// THE SUBJECT IS THE DECLARED ROSTER, NOT A CONTRACT'S REQUIREMENTS. dispatch_environment_admit
-// probes the capabilities one WorkItemExecutionContract requires; a preflight has no work item, and
-// narrowing to some contract's subset would report a green over capabilities the next work item
-// needs. So the subject is environment.realizations itself — everything the instance declares it
-// can realize — which is a superset of any contract's requirement set and is derived from the
-// instance rather than chosen here.
-//
-// SIBLINGS CONTINUE. Every axis is evaluated and every refusal is carried, because the first
-// refusal is a prefix of the truth and a preflight that returns at the first one reports the
-// producer's patience rather than the host's state. The verdict counts them.
+data dispatch_preflight_note: String = "THE CAPABILITY ADMISSION ONLY RUNS INSIDE A SPAWN, AND WHILE THE BELT REFUSES THERE IS NO SPAWN. gunbc.roadmap_dispatch_environment observes every declared CapabilityRealization and grounds it, but its only production caller is the per-attempt spawn path in gunbc.roadmap_belt_actuate. belt_tick_for_instance evaluates the fleet revision standing BEFORE it reaches any spawn, so a host whose deployed tree has drifted from refs/fleet/desired refuses spawn and reap and never once probes an executable. Measured on srv1 2026-08-28: the belt had been answering that refusal on every tick since 2026-08-20 with the deployed tree 664 commits behind main, and the capability roster had therefore not been exercised on the host for eight days. Whether git, tmux, the pipe shell, tee and jq still resolve for the service principal was, over that whole window, unmeasured rather than measured-good.\n\nThis module is the read-only route that answers it independently of whether a spawn is admissible. It observes and it does not actuate: capability_ensure_observe runs shell.Test.IsExecutable and the realization's own declared identity_args (the --version probes), and fleet_revision_standing runs git ls-remote and rev-parse in the deployed tree. No worktree is created, no tmux session is started, no file is written, and there is no flag that opens a write path — a preflight that can also change what it measures is a preflight whose green proves nothing.\n\nTHE SUBJECT IS THE DECLARED ROSTER, NOT A CONTRACT'S REQUIREMENTS. dispatch_environment_admit probes the capabilities one WorkItemExecutionContract requires; a preflight has no work item, and narrowing to some contract's subset would report a green over capabilities the next work item needs. So the subject is environment.realizations itself — everything the instance declares it can realize — which is a superset of any contract's requirement set and is derived from the instance rather than chosen here.\n\nSIBLINGS CONTINUE. Every axis is evaluated and every refusal is carried, because the first refusal is a prefix of the truth and a preflight that returns at the first one reports the producer's patience rather than the host's state. The verdict counts them."
 
 data dispatch_preflight_schema: String = "roadmap-dispatch-preflight/v1"
 
-// PROVIDER AUTHENTICATION IS NOT AN AXIS HERE, AND NAMING IT AS A PERMANENTLY-UNOBSERVED ONE WOULD
-// BE WORSE THAN OMITTING IT. gunbc.roadmap_dispatch_environment's own header already draws this
-// line — cached OAuth and upstream quota are provider protocol facts, not executable identity — and
-// gunbc.provider_standing already models the shape the answer would take
-// (ProviderAuthenticationStanding), while gunbc.claude_setup_token_enrollment models the
-// classification (ClaudeCredentialStanding). What does not exist is an OBSERVER: nothing in the
-// corpus reads a credential store and derives either. An arm that could only ever answer Unobserved
-// is a decoration that reads as coverage (DESIGN 4b), so this module carries none.
-//
-// The gap is real and was measured rather than assumed. On srv1 2026-08-28 the service principal's
-// Claude credential file was present at 0600 with a refresh token, and its claudeAiOauth.expiresAt
-// was roughly ninety minutes in the past; whether the CLI would have refreshed on first use is
-// untested, because a refresh is a write and that pass was read-only. NEXT-RUNG TRIGGER: a modeled
-// read-then-decode observation over the credential store — extdeps.filesystem.filesystem_io Read
-// into extdeps.languages.json.parse, compared against Clock.Now — producing
-// ClaudeCredentialStanding from live bytes. When that lands it joins this report as a fourth axis
-// and this row dissolves. Until then the honest statement is that this preflight does not answer
-// it.
+data dispatch_preflight_provider_auth_gap_note: String = "PROVIDER AUTHENTICATION IS NOT AN AXIS HERE, AND NAMING IT AS A PERMANENTLY-UNOBSERVED ONE WOULD BE WORSE THAN OMITTING IT. gunbc.roadmap_dispatch_environment's own header already draws this line — cached OAuth and upstream quota are provider protocol facts, not executable identity — and gunbc.provider_standing already models the shape the answer would take (ProviderAuthenticationStanding), while gunbc.claude_setup_token_enrollment models the classification (ClaudeCredentialStanding). What does not exist is an OBSERVER: nothing in the corpus reads a credential store and derives either. An arm that could only ever answer Unobserved is a decoration that reads as coverage (DESIGN 4b), so this module carries none.\n\nThe gap is real and was measured rather than assumed. On srv1 2026-08-28 the service principal's Claude credential file was present at 0600 with a refresh token, and its claudeAiOauth.expiresAt was roughly ninety minutes in the past; whether the CLI would have refreshed on first use is untested, because a refresh is a write and that pass was read-only. NEXT-RUNG TRIGGER: a modeled read-then-decode observation over the credential store — extdeps.filesystem.filesystem_io Read into extdeps.languages.json.parse, compared against Clock.Now — producing ClaudeCredentialStanding from live bytes. When that lands it joins this report as a fourth axis and this row dissolves. Until then the honest statement is that this preflight does not answer it."
 
 // One axis of the preflight. The label names WHAT was examined and is the join key a
 // reader uses; grounded/refused is the verdict. A refusal carries its own reason so a
@@ -97,6 +52,7 @@ data dispatch_preflight_schema: String = "roadmap-dispatch-preflight/v1"
 type PreflightAxisVerdict
   = AxisGrounded { axis_label: String, evidence: String }
   | AxisRefused { axis_label: String, reason: String }
+
 
 fn axis_verdict_is_refused(verdict: PreflightAxisVerdict) -> Bool {
   match verdict {
@@ -182,19 +138,7 @@ fn revision_axis_verdict(standing: FleetRevisionStanding) -> PreflightAxisVerdic
   }
 }
 
-// THE REPORT HOLDS THE OBSERVATIONS AND DERIVES THE AXES, and the first cut did not (review 57110,
-// gunbc#9559). It stored capability_receipts AND the axes projected from them side by side, which
-// is the second representation DESIGN 3 forbids: the two could disagree, and nothing anywhere would
-// have said which one was right. This was not hypothetical and the proof was in this change's own
-// witnesses — they constructed a report with an EMPTY receipt list and populated capability axes,
-// so the inconsistent state was demonstrably authorable by the very tests that were supposed to
-// establish the carrier's honesty.
-//
-// The repair is construction rather than a consistency check (DESIGN 5): the report carries the
-// capability receipts and the fleet revision standing — two independent observations, neither
-// derived from the other — and preflight_axes projects them on demand for the verdict and for the
-// wire. A report whose axes disagree with its receipts now has no spelling, so there is nothing
-// left to validate.
+data dispatch_preflight_single_authority_note: String = "THE REPORT HOLDS THE OBSERVATIONS AND DERIVES THE AXES, and the first cut did not (review 57110, gunbc#9559). It stored capability_receipts AND the axes projected from them side by side, which is the second representation DESIGN 3 forbids: the two could disagree, and nothing anywhere would have said which one was right. This was not hypothetical and the proof was in this change's own witnesses — they constructed a report with an EMPTY receipt list and populated capability axes, so the inconsistent state was demonstrably authorable by the very tests that were supposed to establish the carrier's honesty.\n\nThe repair is construction rather than a consistency check (DESIGN 5): the report carries the capability receipts and the fleet revision standing — two independent observations, neither derived from the other — and preflight_axes projects them on demand for the verdict and for the wire. A report whose axes disagree with its receipts now has no spelling, so there is nothing left to validate."
 
 type DispatchPreflightReport {
   instance_id: String
@@ -252,6 +196,7 @@ fn dispatch_preflight_for_instance(
   )
 }
 
+
 fn dispatch_preflight_json_value(preflight: DispatchPreflight) -> JsonValue {
   match preflight {
     PreflightAdmitted { report } =>
@@ -297,20 +242,7 @@ fn dispatch_preflight_json_value(preflight: DispatchPreflight) -> JsonValue {
   }
 }
 
-// TWO SPELLINGS, ONE IMPLEMENTATION, for the same reason belt_run_once_in exists:
-// dispatch_preflight_json is the surface a reader invokes by hand to SEE the report whatever it
-// says, and dispatch_preflight_cli is the surface a caller invokes to have the line STOP on a
-// refusal. Both route through dispatch_preflight_for_instance, so the printed report and the exit
-// status cannot disagree. The refusal carries the whole report in its reason rather than a summary,
-// because a caller that has just been told the preflight failed needs the axes, not the count.
-//
-// ONLY THE BY-HAND SPELLING DEFAULTS TO PRODUCTION, and the asymmetry is deliberate rather than an
-// oversight in one of the two. dispatch_preflight_json takes no channel and names
-// srv1_live_dashboard_instance directly, exactly as belt_run_once does and for the same reason: it
-// is an inspection surface someone invokes against production, where the subject is what they came
-// for. dispatch_preflight_cli is the SCHEDULED spelling -- the one a unit or another host could
-// invoke -- so it reads the workdir channel and fail-closes on its absence rather than inheriting a
-// default that would silently make a lab caller a production reader.
+data dispatch_preflight_spelling_note: String = "TWO SPELLINGS, ONE IMPLEMENTATION, for the same reason belt_run_once_in exists: dispatch_preflight_json is the surface a reader invokes by hand to SEE the report whatever it says, and dispatch_preflight_cli is the surface a caller invokes to have the line STOP on a refusal. Both route through dispatch_preflight_for_instance, so the printed report and the exit status cannot disagree. The refusal carries the whole report in its reason rather than a summary, because a caller that has just been told the preflight failed needs the axes, not the count.\n\nONLY THE BY-HAND SPELLING DEFAULTS TO PRODUCTION, and the asymmetry is deliberate rather than an oversight in one of the two. dispatch_preflight_json takes no channel and names srv1_live_dashboard_instance directly, exactly as belt_run_once does and for the same reason: it is an inspection surface someone invokes against production, where the subject is what they came for. dispatch_preflight_cli is the SCHEDULED spelling -- the one a unit or another host could invoke -- so it reads the workdir channel and fail-closes on its absence rather than inheriting a default that would silently make a lab caller a production reader."
 
 fn dispatch_preflight_json_for_instance(instance: HostDashboardInstance) -> String {
   serialize_json(v: dispatch_preflight_json_value(
@@ -351,13 +283,7 @@ fn dispatch_preflight_cli_in(spawn_workdir: String) -> ProcessExit {
   }
 }
 
-// THE PREFLIGHT READS THE SAME CHANNEL THE TICK READS, AND FAIL-CLOSES THE SAME WAY, because a
-// preflight that defaults to production's tree answers about a host the caller did not ask about.
-// belt_spawn_workdir_is_a_parameter_note records why the belt refuses a missing or empty
-// GUNBC_BELT_SPAWN_WORKDIR rather than defaulting it; the identical argument applies with the
-// identical force here, and one direction weaker: a preflight that silently probed production would
-// report a green that a lab caller would read as being about their own instance. shell.Env.Get
-// returns Present-but-empty for an unset variable wet, so both fold into one refusal.
+data dispatch_preflight_workdir_channel_note: String = "THE PREFLIGHT READS THE SAME CHANNEL THE TICK READS, AND FAIL-CLOSES THE SAME WAY, because a preflight that defaults to production's tree answers about a host the caller did not ask about. belt_spawn_workdir_is_a_parameter_note records why the belt refuses a missing or empty GUNBC_BELT_SPAWN_WORKDIR rather than defaulting it; the identical argument applies with the identical force here, and one direction weaker: a preflight that silently probed production would report a green that a lab caller would read as being about their own instance. shell.Env.Get returns Present-but-empty for an unset variable wet, so both fold into one refusal."
 
 fn dispatch_preflight_cli() -> ProcessExit {
   match shell.Env.Get(name: belt_spawn_workdir_env_var).value {

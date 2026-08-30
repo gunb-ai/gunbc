@@ -17,20 +17,7 @@ import v2.std.algebra { HeadAbsent, HeadFound, filter, fold_list, list_append, l
 //
 // So this module carries the ORIGIN relation, and it is a second test beside the leaf test rather
 // than a replacement for it.
-// ORIGIN RELATION for hand-authored Rust growth, the second test beside
-// gunbc.seed_growth_admission's leaf test. THE LEAF TEST asks whether Rust owns a semantic
-// decision; THE ORIGIN TEST asks where the semantics came from, and a retro-described
-// implementation passes the leaf test perfectly. THE FIELD THIS REPLACES: CapabilityAlreadyModeled
-// was payload-free, so it could be satisfied by inspecting the final candidate -- which cannot
-// distinguish a model that existed before its realization from a model added beside the realization
-// that inspired it, and that distinction is the whole question. THERE IS DELIBERATELY NO ARM
-// MEANING 'the Rust behaves this way, therefore this is the intended model': that state is
-// unrepresentable here rather than checked (DESIGN section 5, construction over validation).
-// REJECTED AS EVIDENCE, each because it is satisfiable by a retro-described implementation: that
-// the .dag was committed first (sufficient but neither necessary nor conclusive, and erased by
-// squash merge); that the model carries refusal arms the realization does not implement
-// (establishes an implementation gap, not model independence); final-tree agreement; the full
-// candidate compiling; and a comment in the Rust naming the model.
+data capability_origin_note: String = "ORIGIN RELATION for hand-authored Rust growth, the second test beside gunbc.seed_growth_admission's leaf test. THE LEAF TEST asks whether Rust owns a semantic decision; THE ORIGIN TEST asks where the semantics came from, and a retro-described implementation passes the leaf test perfectly. THE FIELD THIS REPLACES: CapabilityAlreadyModeled was payload-free, so it could be satisfied by inspecting the final candidate -- which cannot distinguish a model that existed before its realization from a model added beside the realization that inspired it, and that distinction is the whole question. THERE IS DELIBERATELY NO ARM MEANING 'the Rust behaves this way, therefore this is the intended model': that state is unrepresentable here rather than checked (DESIGN section 5, construction over validation). REJECTED AS EVIDENCE, each because it is satisfiable by a retro-described implementation: that the .dag was committed first (sufficient but neither necessary nor conclusive, and erased by squash merge); that the model carries refusal arms the realization does not implement (establishes an implementation gap, not model independence); final-tree agreement; the full candidate compiling; and a comment in the Rust naming the model."
 
 // THE GROUND IS WHAT MAKES A MODEL INTRODUCED IN THIS CHANGE INDEPENDENT OF THE RUST BESIDE IT.
 //
@@ -256,32 +243,7 @@ fn seed_bridge_well_formed(bridge: AuthorizedTemporarySeedBridge) -> Bool {
     && bridge.current_boundary != ""
 }
 
-// RUNG, STATED AT THE GRAIN THAT IS HONEST RATHER THAN THE ONE THAT READS BEST. THE VOCABULARY IS
-// STRUCTURAL: no arm of CapabilityGround or ModeledCapabilityOrigin means 'the Rust behaves this
-// way, therefore this is the intended model', so that claim is unwritable here rather than refused
-// by a check; origin_test_verdict has no path from ProbeNotExecuted to an admitting verdict,
-// conformance_verdict has none from ConformanceProbeNotExecuted, and an added item whose bridge is
-// absent refuses rather than falling through -- so an unperformed test cannot render as a passed
-// one anywhere in this carrier. THREE TESTS, NOT ONE, AND THEY ESTABLISH DIFFERENT THINGS: the LEAF
-// test (gunbc.seed_growth_admission) proves Rust owns no semantic decision; the ORIGIN test proves
-// the semantics predate the Rust; the CONFORMANCE test proves the model CONSTRAINS the Rust rather
-// than merely agreeing with it. A retro-described implementation passes the first two and fails the
-// third, because its fixtures were derived from the behavior they check -- which is why
-// FixtureProvenance refuses GeneratedByRealization even when the mutation went red. THE TESTS
-// THEMSELVES ARE NOT EXECUTED BY ANYTHING IN THIS REPOSITORY YET, and calling this carrier a wall
-// would be exactly the inflation DESIGN section 4b(1) names as worse than sitting low.
-// ModelEpochProbeResult and ConformanceProbeResult are the shapes an executing host must supply; no
-// host supplies them, so every real call today lands on the not-executed arms and REFUSES, which is
-// the correct fail-closed reading and not a passing one. NEXT-RUNG TRIGGER, NAMING THE CAPABILITY
-// RATHER THAN AN ARTIFACT THAT WOULD CONTRIBUTE TO ONE: an executable route that (1) materializes
-// the E1 subject from a candidate against its ACTUAL proposed base -- base plus the .dag delta with
-// every added and modified hand-Rust item removed -- (2) resolves and compiles the cited capability
-// authority inside it and runs that authority's semantic controls, and (3) mutates the Rust
-// realization alone and observes the predicted conformance evidence go red while E1 stays green,
-// returning all of it from real builds rather than from an author's assertion. A route that
-// constructs the subject without building it does not retire this row; neither does one that builds
-// a single entry when the authority's controls span several; and neither does one that derives its
-// base from whatever ref the caller happened to have.
+data capability_origin_rung_note: String = "RUNG, STATED AT THE GRAIN THAT IS HONEST RATHER THAN THE ONE THAT READS BEST. THE VOCABULARY IS STRUCTURAL: no arm of CapabilityGround or ModeledCapabilityOrigin means 'the Rust behaves this way, therefore this is the intended model', so that claim is unwritable here rather than refused by a check; origin_test_verdict has no path from ProbeNotExecuted to an admitting verdict, conformance_verdict has none from ConformanceProbeNotExecuted, and an added item whose bridge is absent refuses rather than falling through -- so an unperformed test cannot render as a passed one anywhere in this carrier. THREE TESTS, NOT ONE, AND THEY ESTABLISH DIFFERENT THINGS: the LEAF test (gunbc.seed_growth_admission) proves Rust owns no semantic decision; the ORIGIN test proves the semantics predate the Rust; the CONFORMANCE test proves the model CONSTRAINS the Rust rather than merely agreeing with it. A retro-described implementation passes the first two and fails the third, because its fixtures were derived from the behavior they check -- which is why FixtureProvenance refuses GeneratedByRealization even when the mutation went red. THE TESTS THEMSELVES ARE NOT EXECUTED BY ANYTHING IN THIS REPOSITORY YET, and calling this carrier a wall would be exactly the inflation DESIGN section 4b(1) names as worse than sitting low. ModelEpochProbeResult and ConformanceProbeResult are the shapes an executing host must supply; no host supplies them, so every real call today lands on the not-executed arms and REFUSES, which is the correct fail-closed reading and not a passing one. NEXT-RUNG TRIGGER, NAMING THE CAPABILITY RATHER THAN AN ARTIFACT THAT WOULD CONTRIBUTE TO ONE: an executable route that (1) materializes the E1 subject from a candidate against its ACTUAL proposed base -- base plus the .dag delta with every added and modified hand-Rust item removed -- (2) resolves and compiles the cited capability authority inside it and runs that authority's semantic controls, and (3) mutates the Rust realization alone and observes the predicted conformance evidence go red while E1 stays green, returning all of it from real builds rather than from an author's assertion. A route that constructs the subject without building it does not retire this row; neither does one that builds a single entry when the authority's controls span several; and neither does one that derives its base from whatever ref the caller happened to have."
 
 // THE PROBE IS LOOKED UP, NEVER SUPPLIED AS A VERDICT, AND THE DIFFERENCE IS THE WHOLE WALL.
 //
@@ -385,6 +347,7 @@ fn origin_refusals(bridges: List<AuthorizedTemporarySeedBridge>, evidence: Admis
     }
   )
 }
+
 
 // THE THIRD TEST: DOES THE MODEL CONSTRAIN THE RUST, OR MERELY AGREE WITH IT?
 //

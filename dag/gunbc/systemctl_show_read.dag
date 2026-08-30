@@ -16,11 +16,7 @@ import gunbc.host_operation_exec {
   SystemctlShowLoadState,
 }
 
-// The read answers a two-armed capture, never a bare String?: an argv materialization that REFUSES
-// is a typed, located fact about the declaration, and collapsing it into the same `none` that means
-// empty stdout, a failed exec, or an unsupported transport is the state-space conflation DESIGN 5
-// names (review 42946). Every non-value arm carries WHY, mirroring gunbc.systemctl_status_read's
-// UnitStatusCapture.
+data systemctl_show_property_capture_note: String = "The read answers a two-armed capture, never a bare String?: an argv materialization that REFUSES is a typed, located fact about the declaration, and collapsing it into the same `none` that means empty stdout, a failed exec, or an unsupported transport is the state-space conflation DESIGN 5 names (review 42946). Every non-value arm carries WHY, mirroring gunbc.systemctl_status_read's UnitStatusCapture."
 
 type SystemdPropertyCapture =
     SystemdPropertyCaptured { value: String }

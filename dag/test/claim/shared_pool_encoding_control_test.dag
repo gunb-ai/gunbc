@@ -42,18 +42,9 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // The requirement, stated at the strength the evidence supports: GB10 derivation is blocked until
 // one canonical shared-pool construction exists AND the duplicate-pool encoding is either
 // unwritable or refused.
-// Blocking condition, not a design verdict. GB10 derivation stays blocked until a single canonical
-// shared-pool construction exists and the duplicated encoding is unwritable or refused. Which
-// construction achieves that is undecided by these controls, and naming one here would be a
-// terminal shape asserted from evidence that only shows the present one is ambiguous.
+data shared_pool_repair_requirement_note: String = "Blocking condition, not a design verdict. GB10 derivation stays blocked until a single canonical shared-pool construction exists and the duplicated encoding is unwritable or refused. Which construction achieves that is undecided by these controls, and naming one here would be a terminal shape asserted from evidence that only shows the present one is ambiguous."
 
-// Executed control, not an argument from reading. Three encodings of ONE physical machine -- a CPU
-// domain and a GPU domain sharing one 128 GiB pool -- are constructed and validated. Encodings A
-// and B differ only in which domain the pool is authored under, which is arbitrary when the pool is
-// system-owned. Encoding C is the shape an unwary author reaches for when SharedLevelEdge is not
-// used at all: the pool appears under BOTH domains. If C validates, the carrier permits counting
-// one physical pool twice, and nothing in the type forces the shared-pool encoding over the
-// duplicated one.
+data shared_pool_encoding_control_note: String = "Executed control, not an argument from reading. Three encodings of ONE physical machine -- a CPU domain and a GPU domain sharing one 128 GiB pool -- are constructed and validated. Encodings A and B differ only in which domain the pool is authored under, which is arbitrary when the pool is system-owned. Encoding C is the shape an unwary author reaches for when SharedLevelEdge is not used at all: the pool appears under BOTH domains. If C validates, the carrier permits counting one physical pool twice, and nothing in the type forces the shared-pool encoding over the duplicated one."
 
 data cpu_domain: DomainId = "cpu" as DomainId
 data gpu_domain: DomainId = "gpu" as DomainId
@@ -133,12 +124,12 @@ test fn witness_duplicated_pool_encoding_is_writable_and_double_counts() -> Bool
   shape_validates(s: dup) && summed_capacity_bytes(s: dup) == pool_bytes + pool_bytes
 }
 
-// Removed, not weakened: a control over machine_shape_device_level_capacity compared two one-level
-// specimens whose single level is necessarily the pool, so it asserted an identity rather than a
-// selection property. Recorded here because a silently deleted control is indistinguishable from
-// one that never existed, and because the property it seemed to cover -- that pool selection is
-// stable and cannot be satisfied by a cache or register level -- is a real obligation on the
-// repair.
+// CONTROL 3: the honest shared encodings sum to the pool ONCE. Paired with control 2 this shows the
+// carrier can express the correct answer and does not require it.
+test fn witness_shared_encodings_sum_the_pool_once() -> Bool {
+  summed_capacity_bytes(s: encoding_pool_under_cpu()) == pool_bytes
+    && summed_capacity_bytes(s: encoding_pool_under_gpu()) == pool_bytes
+}
 
 // WITHDRAWN CONTROL, recorded rather than silently dropped. An orientation-stability check over
 // machine_shape_device_level_capacity was authored here and removed: it looked reassuring and
@@ -153,9 +144,4 @@ test fn witness_duplicated_pool_encoding_is_writable_and_double_counts() -> Bool
 // cannot change the selected pool, and that cache and register levels cannot satisfy a
 // model-residency demand. None of those are provable against the present carrier, which is the
 // finding itself.
-// CONTROL 3: the honest shared encodings sum to the pool ONCE. Paired with control 2 this shows the
-// carrier can express the correct answer and does not require it.
-test fn witness_shared_encodings_sum_the_pool_once() -> Bool {
-  summed_capacity_bytes(s: encoding_pool_under_cpu()) == pool_bytes
-    && summed_capacity_bytes(s: encoding_pool_under_gpu()) == pool_bytes
-}
+data withdrawn_orientation_control_note: String = "Removed, not weakened: a control over machine_shape_device_level_capacity compared two one-level specimens whose single level is necessarily the pool, so it asserted an identity rather than a selection property. Recorded here because a silently deleted control is indistinguishable from one that never existed, and because the property it seemed to cover -- that pool selection is stable and cannot be satisfied by a cache or register level -- is a real obligation on the repair."

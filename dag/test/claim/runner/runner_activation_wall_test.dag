@@ -2,28 +2,23 @@ module test.claim.runner_activation_wall
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-// The acceptance controls for the activation wall. Each names a state the fleet was actually in on
-// 2026-08-01 and asserts it cannot yield an enable command: srv1's endpoint owned from a RETIRED
-// slot, srv2's and srv3's from ACTIVE ones, srv4's absent behind a stale socket, and every host's
-// placement unknown before it was read. A runner may be activated only against an exact desired
-// instance whose endpoint is held by the managed unit — not a responsive daemon, not a host that
-// merely enrolled.
+data runner_activation_wall_doc: String = "The acceptance controls for the activation wall. Each one names a state the fleet was actually in on 2026-08-01 and asserts that it cannot yield an enable command: srv1's endpoint owned from a RETIRED slot, srv2's and srv3's from ACTIVE ones, srv4's absent behind a stale socket, and every host's placement unknown before it was read. The point of the set is that a runner may be activated only against an exact desired instance whose endpoint is held by the managed unit — not against a responsive daemon, not against a host that merely enrolled."
 
 fn srv1_deploy_fixture() -> RunnerHostDeploy {
   srv4_runner_host_deploy
 }
 
-// A FIXTURE MUST CONSTRUCT THE WORLD IT CLAIMS TO TEST. These witnesses assert what the ACTIVATION
-// FOLD does for a fully ready host, so every input has to be a fixture -- and the instance was not:
-// it came from the production ci_cache_instance, whose intended_compile_pool is now the live
-// gunbc_compile_pool_placement row rather than a bare slice name. Once that row became the carrier,
-// "a ready host activates" silently became a claim about THIS FLEET'S TOPOLOGY, and since the row is
-// CompilePoolInRunnerSlots the fold correctly refused and the witness reds.
+// A FIXTURE MUST CONSTRUCT THE WORLD IT CLAIMS TO TEST. These witnesses assert what the ACTIVATION FOLD
+// does for a fully ready host, so every input has to be a fixture -- and the instance was not one: it
+// came from the production ci_cache_instance, whose intended_compile_pool is now the live
+// gunbc_compile_pool_placement row rather than a bare slice name. The moment that row became the
+// carrier, "a ready host activates" silently turned into a claim about THIS FLEET'S TOPOLOGY, and since
+// the row is CompilePoolInRunnerSlots the fold correctly refused and the witness reds.
 //
-// Declaring the pool on the fixture restores the intended subject without weakening the wall: the
-// refusal paths are asserted by the negative witnesses beside these, and the live-topology answer
-// has its own tripwire (test.claim.host_compile_pool live_topology_doc, and the fleet-wide refusal
-// witness below) rather than being asserted here by accident.
+// Declaring the pool on the fixture restores the intended subject. It does not weaken the wall: the
+// refusal paths are asserted by the negative witnesses beside these, and the live-topology answer has
+// its own tripwire (test.claim.host_compile_pool live_topology_doc, and the fleet-wide refusal witness
+// below) rather than being asserted here by accident.
 fn pool_declared_instance_fixture(host: HostIdentity) -> BuildCacheInstance {
   let base = ci_cache_instance(host: host)
   BuildCacheInstance {
@@ -45,11 +40,10 @@ fn ready_instance_fixture(host: HostIdentity) -> BuildCacheInstance {
 }
 
 // THE LIVE ANSWER, ASSERTED ON PURPOSE RATHER THAN INHERITED BY ACCIDENT. On this fleet
-// gunbc_compile_pool_placement is CompilePoolInRunnerSlots, so no instance declares a managed pool
-// and activation refuses for every host. That is the designed state -- gunbc.host_compile_pool's
-// producer note and gunbc.runner_activation's pool-readiness note both say so -- previously
-// invisible here because the fixture read the production row without anyone noticing it had become
-// the subject.
+// gunbc_compile_pool_placement is CompilePoolInRunnerSlots, so no instance declares a managed pool and
+// activation refuses for every host. That is the designed state -- gunbc.host_compile_pool's producer
+// note and gunbc.runner_activation's pool-readiness note both say so -- and it was previously invisible
+// here because the fixture read the production row without anyone noticing it had become the subject.
 test fn witness_live_topology_refuses_activation_fleet_wide() -> Bool {
   let d = srv1_deploy_fixture()
   let live = ci_cache_instance(host: d.host_label as HostIdentity)
@@ -74,10 +68,10 @@ fn fully_verified_ready(host: HostIdentity, unit: NonEmptyStr) -> BuildCacheInst
 }
 
 // TAKES THE INSTANCE RATHER THAN DERIVING IT, so a witness can choose whether its subject is the
-// fixture world or the live fleet. Without this split the two are indistinguishable at the call
-// site: the live-topology witness below was written against fully_verified_ready and silently
-// received the POOL-DECLARED fixture, so it asserted a refusal that could never happen and returned
-// false. Caught by running it -- an assertion whose subject is chosen by a helper two calls away
+// fixture world or the live fleet. Without this split the two are indistinguishable at the call site:
+// the live-topology witness below was written against fully_verified_ready and silently received the
+// POOL-DECLARED fixture, so it asserted a refusal that could never happen and returned false. Caught by
+// running it -- an assertion whose subject is chosen by a helper two calls away is exactly the kind that
 // reads correct and measures something else.
 fn fully_verified_ready_for(instance: BuildCacheInstance, unit: NonEmptyStr) -> BuildCacheInstanceReady {
   BuildCacheInstanceReady {
@@ -213,10 +207,7 @@ test fn witness_unready_compile_pool_refuses_even_with_a_managed_owner() -> Bool
   yields_command(outcome: declared_not_observed) == false
 }
 
-// The split's own control. Materializing a slot must remain possible on host enrollment alone —
-// the point of separating it — while activation must not. If this witness fails because the
-// installer command started demanding a readiness receipt, the split has collapsed the other way:
-// materialization cannot be performed first, and the ordering is unsatisfiable rather than enforced.
+data materialization_does_not_activate_doc: String = "The split's own control. Materializing a slot must remain possible on nothing more than host enrollment — that is the whole point of separating it — while activation must not. If this witness ever fails because the installer command started demanding a readiness receipt, the split has collapsed in the other direction and materialization has become impossible to perform first, which would make the ordering unsatisfiable rather than enforced."
 
 test fn witness_materializing_a_slot_does_not_activate_it() -> Bool {
   let d = srv1_deploy_fixture()
@@ -232,13 +223,7 @@ test fn witness_materializing_a_slot_does_not_activate_it() -> Bool {
   yields_command(outcome: install) && (yields_command(outcome: activate) == false)
 }
 
-// The controls review 46581 forced. The cache receipt was bound to the activation two ways -- host
-// and intended unit -- while the pool receipt beside it was gated on two Booleans alone, so a pool
-// observed on a DIFFERENT host, or a correctly-observed slice with some other name, admitted
-// activation. Both are asserted, not only the host case, because they fail for different reasons:
-// one receipt is about the wrong machine, the other about the wrong cgroup on the right machine,
-// and a wall catching only the first would still activate a runner whose compiles are charged
-// outside the intended pool.
+data pool_receipt_binding_doc: String = "The controls review 46581 forced. The cache receipt was bound to the activation two ways -- host and intended unit -- and the pool receipt beside it was gated on two Booleans alone, so a pool observed on a DIFFERENT host, or a correctly-observed slice with some other name, admitted activation. Both are asserted here rather than only the host case, because they fail for different reasons: one receipt is about the wrong machine, the other is about the wrong cgroup on the right machine, and a wall that caught only the first would still activate a runner whose compiles are charged outside the intended pool."
 
 test fn witness_a_pool_receipt_from_another_host_is_refused() -> Bool {
   let d = srv1_deploy_fixture()

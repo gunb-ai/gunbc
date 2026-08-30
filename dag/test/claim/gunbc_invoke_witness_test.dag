@@ -24,10 +24,7 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-// Hand-frozen pre-Phase-3a bytes from origin/main
-// gunbc_ci_deploy_invoke(gunbc_ci_deploy_srv1_stage) before gunbc.cli_invoke consolidation.
-// Independent of gunbc_run_shell so a helper drift cannot green both sides (PR #6467
-// ci_cargo_eagain_retry_core_golden pattern).
+data gunbc_invoke_deploy_srv1_pre_migration_golden_note: String = "Hand-frozen pre-Phase-3a bytes from origin/main gunbc_ci_deploy_invoke(gunbc_ci_deploy_srv1_stage) before gunbc.cli_invoke consolidation. Independent of gunbc_run_shell so a helper drift cannot green both sides (PR #6467 ci_cargo_eagain_retry_core_golden pattern)."
 
 data gunbc_ci_deploy_invoke_srv1_pre_migration_golden: String = concat(
   concat("ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)\n"),
@@ -51,24 +48,7 @@ data gunbc_ci_deploy_invoke_srv1_wrong_entry_golden: String = concat(
   )
 )
 
-// THE GOLDEN IS UNEDITED AND THE ASSERTION MOVED INSTEAD, which is the opposite of the tempting fix
-// and the reason this row exists. gunbc_ci_deploy_invoke_srv1_pre_migration_golden is a hand-frozen
-// byte string authored before the orchestration-emit binding, deliberately independent of the
-// helper so that a helper change cannot green both sides. After the binding it FAILED, and the
-// cheap move -- repaste the new output into the golden -- would have destroyed exactly the
-// independence that makes it worth having: a golden derived from the thing it checks asserts
-// nothing. So the golden keeps its original bytes and the assertion below states the measured
-// relationship instead. MEASURED, not assumed: concat(new output, newline) == the golden, exactly.
-// The migration is byte-preserving for this invocation apart from one trailing newline. WHERE THAT
-// NEWLINE WENT AND WHY IT IS NOT RESTORED: the deleted gunbc_run_shell appended a newline to every
-// invocation it built, so a caller that added a receipt cat after it got the newline as a SEPARATOR
-// and a caller that did not got it as a trailing byte -- one spelling doing two jobs.
-// v2.std.orchestration joins pipeline steps with newlines and emits none after the last, so
-// separation is now structural and the trailing byte simply has no author. Restoring it would mean
-// re-introducing a per-site concat to reproduce an artifact of the mechanism this change deletes,
-// which is DESIGN section 7's warts-for-byte-identity trap. The emitted workflows are unaffected
-// either way: the YAML block-scalar emitter normalizes the block body, and the measured
-// fleet-converge.yml diff carries no whitespace change at any bound step.
+data gunbc_invoke_deploy_golden_trailing_newline_note: String = "THE GOLDEN IS UNEDITED AND THE ASSERTION MOVED INSTEAD, which is the opposite of the tempting fix and the reason this row exists. gunbc_ci_deploy_invoke_srv1_pre_migration_golden is a hand-frozen byte string authored before the orchestration-emit binding, deliberately independent of the helper so that a helper change cannot green both sides. After the binding it FAILED, and the cheap move -- repaste the new output into the golden -- would have destroyed exactly the independence that makes it worth having: a golden derived from the thing it checks asserts nothing. So the golden keeps its original bytes and the assertion below states the measured relationship instead. MEASURED, not assumed: concat(new output, newline) == the golden, exactly. The migration is byte-preserving for this invocation apart from one trailing newline. WHERE THAT NEWLINE WENT AND WHY IT IS NOT RESTORED: the deleted gunbc_run_shell appended a newline to every invocation it built, so a caller that added a receipt cat after it got the newline as a SEPARATOR and a caller that did not got it as a trailing byte -- one spelling doing two jobs. v2.std.orchestration joins pipeline steps with newlines and emits none after the last, so separation is now structural and the trailing byte simply has no author. Restoring it would mean re-introducing a per-site concat to reproduce an artifact of the mechanism this change deletes, which is DESIGN section 7's warts-for-byte-identity trap. The emitted workflows are unaffected either way: the YAML block-scalar emitter normalizes the block body, and the measured fleet-converge.yml diff carries no whitespace change at any bound step."
 
 test fn gunbc_invoke_deploy_matches_pre_migration_golden_holds() -> Bool {
   concat(gunbc_ci_deploy_invoke(stage: gunbc_ci_deploy_srv1_stage), "\n") ==
@@ -99,15 +79,7 @@ test fn gunbc_invoke_verify_artifacts_shell_nonempty_holds() -> Bool {
     )
 }
 
-// THE EXECUTING EVIDENCE that v2.workflow.gunbc_invoke_step_emit's fail-closed word wall is real
-// rather than declared. The positive control is
-// gunbc_invoke_deploy_matches_pre_migration_golden_holds above -- a hand-frozen golden authored
-// before the migration, so the binding must reproduce bytes it did not author. The discriminating
-// RED is below: an entry carrying a shell metacharacter must NOT reach the emitted command, and the
-// refusal must be a marker that is not valid workflow shell so the committed workflow drift gate
-// goes red. These two stay enrolled after the wall lands; deleting them would recreate
-// specification-without-execution one rung up (DESIGN section 4b, dissolution-on-climb applies to
-// production handling only, never the evidence).
+data gunbc_invoke_word_wall_note: String = "THE EXECUTING EVIDENCE that v2.workflow.gunbc_invoke_step_emit's fail-closed word wall is real rather than declared. The positive control is gunbc_invoke_deploy_matches_pre_migration_golden_holds above -- a hand-frozen golden authored before the migration, so the binding must reproduce bytes it did not author. The discriminating RED is below: an entry carrying a shell metacharacter must NOT reach the emitted command, and the refusal must be a marker that is not valid workflow shell so the committed workflow drift gate goes red. These two stay enrolled after the wall lands; deleting them would recreate specification-without-execution one rung up (DESIGN section 4b, dissolution-on-climb applies to production handling only, never the evidence)."
 
 test fn gunbc_invoke_word_wall_refuses_metacharacter_entry_holds() -> Bool {
   let refused = gunbc_run_step_script(
