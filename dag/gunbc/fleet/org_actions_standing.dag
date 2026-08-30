@@ -1,0 +1,161 @@
+module gunbc.fleet.org_actions_standing
+
+import std.types { NonEmptyStr, String, Bool, Int, List }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
+import extdeps.github.org_actions { org_admin_scope_refusal_fragment }
+
+// ORG ACTIONS SETTINGS AS A CONVERGED SURFACE (operator direction 2026-08-30: "we need
+// to connect the org github settings via fleet converge - basically this is all
+// unmodeled right now"). The org's runner-group access policy decides which repositories
+// reach the fleet, and until now it lived only in the GitHub settings UI - actuated by
+// hand, observed by nobody. This module declares the DESIRED state, the OBSERVATIONS
+// typed by channel, and the derived standing; the convergence binding is a typed
+// dissolution row below, not prose.
+
+// ---------------------------------------------------------------------------------------------
+// Desired state - fleet policy.
+// ---------------------------------------------------------------------------------------------
+
+type RepoRunnerAccess {
+  repository: NonEmptyStr
+  must_reach_fleet: Bool
+  reason: NonEmptyStr
+}
+
+data access_gunbc: RepoRunnerAccess = RepoRunnerAccess {
+  repository: "gunb-ai/gunbc",
+  must_reach_fleet: true,
+  reason: "the public witness floor runs on [self-hosted, linux, arm64]",
+}
+
+data access_gunbc_private: RepoRunnerAccess = RepoRunnerAccess {
+  repository: "gunb-ai/gunbc-private",
+  must_reach_fleet: true,
+  reason: "the private witness roster moved to the fleet 2026-08-30 (hosted-minutes pool exhausted; the business dogfoods its own runners)",
+}
+
+data desired_repo_access: List<RepoRunnerAccess> = [access_gunbc, access_gunbc_private]
+
+// The public-fork trap stays closed as policy: whatever group serves these repositories
+// must NOT allow public repositories unless a hardened, isolated runner class exists for
+// them - the tenant-isolation program owns that question, not a settings toggle.
+data desired_allows_public_repositories: Bool = false
+
+// ---------------------------------------------------------------------------------------------
+// Observations - typed by HOW they were seen. A successful settings read carries the
+// JOINED admission data (groups x their repository lists, flattened to the admitted set,
+// plus the public-repositories flag) because that is exactly what per-repo standing
+// needs - a read that carried less could not answer without fabricating.
+// ---------------------------------------------------------------------------------------------
+
+// The read observation preserves the GROUP grain the upstream stores (review 57611: a
+// flattened admitted set plus one org-wide public flag loses WHICH group admits which
+// repository, so with multiple groups the public-fork answer could be fabricated from a
+// non-serving group's flag). One row per observed group, carrying its own public flag
+// and its own repository list - the joined group -> repository -> public-access
+// relationship, lossless.
+type ObservedGroupAccess {
+  group_name: NonEmptyStr
+  allows_public_repositories: Bool
+  repositories: List<NonEmptyStr>
+}
+
+type OrgSettingsObservation
+  = SettingsRead { groups: List<ObservedGroupAccess>, observed_on: NonEmptyStr }
+  | SettingsReadRefusedTokenScope { refusal_fragment: NonEmptyStr, observed_on: NonEmptyStr }
+
+// run_id carried as decimal digits verbatim per the standing ruling in
+// extdeps.github.workflow_run_event (identity join, never arithmetic - no decode).
+type BehavioralReceipt {
+  repository: NonEmptyStr
+  runner_name: NonEmptyStr
+  run_id: NonEmptyStr
+  observed_on: NonEmptyStr
+}
+
+data settings_observation_current: OrgSettingsObservation = SettingsReadRefusedTokenScope {
+  refusal_fragment: org_admin_scope_refusal_fragment,
+  observed_on: "2026-08-30",
+}
+
+// A fleet runner EXECUTED a gunbc-private job - behavior proves the access policy admits
+// the repository today, even while the settings surface is unreadable to this credential.
+data receipt_private_on_fleet: BehavioralReceipt = BehavioralReceipt {
+  repository: "gunb-ai/gunbc-private",
+  runner_name: "srv4-01-1788089189-1873877",
+  run_id: "33309109321",
+  observed_on: "2026-08-30",
+}
+
+data behavioral_receipts: List<BehavioralReceipt> = [receipt_private_on_fleet]
+
+// ---------------------------------------------------------------------------------------------
+// Standing - derived, honest about the observation channel. The SettingsRead arm CONSULTS
+// its payload: membership admits, absence REFUSES - never a green from the read's mere
+// success. The derivation is pure in its observation so the witness can exercise every
+// arm; the data rows below bind it to the current observation.
+// ---------------------------------------------------------------------------------------------
+
+type OrgAccessStanding
+  = HoldsBySettingsRead { observed_on: NonEmptyStr }
+  | DivergesBySettingsRead { observed_admitted: Bool, desired: Bool, observed_on: NonEmptyStr }
+  | HoldsByBehavior { run_id: NonEmptyStr, observed_on: NonEmptyStr }
+  | Unobserved
+
+fn observed_admits(groups: List<ObservedGroupAccess>, repository: NonEmptyStr) -> Bool {
+  fold(groups, init: false, f: fn(acc, g) {
+    acc || count(filter(g.repositories, x => x == repository)) >= 1
+  })
+}
+
+// The read arm compares OBSERVED membership against the DESIRED boolean (review 57611:
+// membership alone reported a must_reach_fleet:false row's forbidden state as holding).
+// Agreement in either direction holds - admitted-and-required, or absent-and-forbidden -
+// and any mismatch is a typed divergence carrying both sides.
+fn standing_from(obs: OrgSettingsObservation, r: RepoRunnerAccess) -> OrgAccessStanding {
+  match obs {
+    SettingsRead { groups, observed_on } =>
+      if observed_admits(groups: groups, repository: r.repository) == r.must_reach_fleet {
+        HoldsBySettingsRead { observed_on: observed_on }
+      } else {
+        DivergesBySettingsRead { observed_admitted: observed_admits(groups: groups, repository: r.repository), desired: r.must_reach_fleet, observed_on: observed_on }
+      },
+    SettingsReadRefusedTokenScope { refusal_fragment, observed_on } =>
+      fold(behavioral_receipts, init: Unobserved, f: fn(acc, b) {
+        if b.repository == r.repository { HoldsByBehavior { run_id: b.run_id, observed_on: b.observed_on } } else { acc }
+      }),
+  }
+}
+
+fn repo_access_standing(r: RepoRunnerAccess) -> OrgAccessStanding {
+  standing_from(obs: settings_observation_current, r: r)
+}
+
+// Public-fork exposure is PER REPOSITORY over the group join: the desired-false policy is
+// violated exactly when some group that ADMITS this repository allows public
+// repositories - a non-serving group's flag can neither convict nor acquit.
+type PublicForkPolicyStanding
+  = MatchesDesired { observed_on: NonEmptyStr }
+  | DivergesFromDesired { exposing_groups: List<NonEmptyStr>, observed_on: NonEmptyStr }
+  | UnobservableUntilSettingsRead
+
+fn public_exposure_standing(obs: OrgSettingsObservation, r: RepoRunnerAccess) -> PublicForkPolicyStanding {
+  match obs {
+    SettingsRead { groups, observed_on } =>
+      match filter(groups, g => g.allows_public_repositories && count(filter(g.repositories, x => x == r.repository)) >= 1) {
+        exposing =>
+          if count(exposing) == 0 || desired_allows_public_repositories {
+            MatchesDesired { observed_on: observed_on }
+          } else {
+            DivergesFromDesired { exposing_groups: map(exposing, g => g.group_name), observed_on: observed_on }
+          },
+      },
+    SettingsReadRefusedTokenScope { refusal_fragment, observed_on } => UnobservableUntilSettingsRead,
+  }
+}
+
+// The converge binding, as a typed dissolution row (not prose): HoldsByBehavior is weaker
+// than HoldsBySettingsRead - behavior proves admission today, not group shape - and the
+// diff is the deliverable while apply stays gated, because a settings surface converged
+// by silent overwrite would erase an operator's deliberate UI change.
+data org_converge_binding_trigger: DissolutionCondition = unbound_dissolution(description: "dissolve-on: fleet-converge converges this surface. CAPABILITY, both parts required: (1) an org-administration-scoped credential lands in the fleet secret set - the repo-scoped integration token observably receives the 403 cited by org_admin_scope_refusal_fragment; (2) a converge phase reads github.CliOrgRunnerGroups (groups joined to their repository lists), constructs a SettingsRead observation, diffs it against desired_repo_access and desired_allows_public_repositories, and REFUSES on divergence it is not authorized to apply. Until both hold, the standing here is honest about its channel and the UI remains the hand-actuated authority.")

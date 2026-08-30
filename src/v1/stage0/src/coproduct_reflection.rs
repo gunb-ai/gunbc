@@ -315,14 +315,88 @@ thread_local! {
     > = RefCell::new(None);
 }
 
+thread_local! {
+    /// THE `decl_facts` CENSUS AS A SHARED ARTIFACT, keyed by the canonical pool-root set and
+    /// alive exactly as long as the floor's prepared authority (registered and cleared beside
+    /// `FLOOR_DECL_PARSE_MEMO`). Every witness that names the same roots reads one walk.
+    ///
+    /// WHY. The walk re-parsed every non-test file under the roots on every call, and each
+    /// required-floor witness evaluates its module's `data` rows alone, so a file of four
+    /// witnesses over one pool paid the same parse four times — and the FIRST evaluation of any
+    /// of them paid it inside the 500ms CPU refusal. Measured on run 33311256002: the four
+    /// `bmc_onboarding_quarantine_witness_test` rows, 196–225ms cpu solo on the BuildBuddy
+    /// runner with the census at 138ms of that, were all BUDGET-REFUSED at 503–512ms on the CI
+    /// host. The walk is a function of the roots and the prepared tree, not of the witness, so
+    /// it is the floor's shared-build attribution defect at memo grain — the same class
+    /// `compile_dag_diagnostic_census` closes with its memo — and it is closed the same way:
+    /// the miss is bracketed as shared-artifact fill on both clocks, which `budgeted_cpu_nanos`
+    /// nets from the deadline and `run_claim_measured` reports, never drops. Same roots, same
+    /// `DeclFactRaw` population (the walk sorts its output, so the key may be canonicalized),
+    /// same marshaled rows; different ownership of the shared construction cost.
+    ///
+    /// Outside the floor there is no prepared authority to bound the memo's lifetime, so the
+    /// cell is `None` and every call walks — the existing behaviour, unchanged.
+    static FLOOR_DECL_FACTS_MEMO: RefCell<
+        Option<StdDeclParseMemoMap<Vec<String>, Rc<Vec<DeclFactRaw>>>>,
+    > = RefCell::new(None);
+}
+
 pub fn register_floor_decl_parse_memo() {
     FLOOR_DECL_PARSE_MEMO.with(|cell| {
+        *cell.borrow_mut() = Some(StdDeclParseMemoMap::new());
+    });
+    FLOOR_DECL_FACTS_MEMO.with(|cell| {
         *cell.borrow_mut() = Some(StdDeclParseMemoMap::new());
     });
 }
 
 pub fn clear_floor_decl_parse_memo() {
     FLOOR_DECL_PARSE_MEMO.with(|cell| *cell.borrow_mut() = None);
+    FLOOR_DECL_FACTS_MEMO.with(|cell| *cell.borrow_mut() = None);
+}
+
+/// The canonical pool-root MULTISET: order-free because the walk sorts its output by
+/// (rel_path, name, kind), but NOT duplicate-free, because the walk visits every supplied root
+/// and appends what it finds — `[r, r]` yields every declaration twice, so it is a different
+/// population from `[r]` and must be a different key. A dedup here made the memo's answer a
+/// function of call order (whichever spelling filled first served the other).
+fn decl_facts_memo_key(pool_roots: &[String]) -> Vec<String> {
+    let mut key = pool_roots.to_vec();
+    key.sort();
+    key
+}
+
+/// `decl_facts_for_roots` through the floor-lifetime memo: one walk per canonical root set per
+/// prepared authority, the miss recorded as shared-artifact fill. See `FLOOR_DECL_FACTS_MEMO`.
+pub fn decl_facts_for_roots_shared(pool_roots: &[String]) -> Rc<Vec<DeclFactRaw>> {
+    let registered = FLOOR_DECL_FACTS_MEMO.with(|cell| cell.borrow().is_some());
+    if !registered {
+        return Rc::new(decl_facts_for_roots(pool_roots));
+    }
+    let key = decl_facts_memo_key(pool_roots);
+    let hit = FLOOR_DECL_FACTS_MEMO.with(|cell| {
+        cell.borrow()
+            .as_ref()
+            .and_then(|memo| memo.get(&key).cloned())
+    });
+    if let Some(facts) = hit {
+        return facts;
+    }
+    // A MISS FILLS A SHARED ARTIFACT: measured on the same thread clock the claim loop enforces
+    // against, recorded on both clocks so it can never be counted on one and not the other.
+    let fill_started = crate::v1_interpreter::thread_cpu_nanos();
+    let fill_wall_started = std::time::Instant::now();
+    let facts = Rc::new(decl_facts_for_roots(pool_roots));
+    crate::cli_run::record_shared_artifact_fill_cpu(
+        crate::v1_interpreter::thread_cpu_nanos().saturating_sub(fill_started),
+    );
+    crate::cli_run::record_shared_artifact_fill_wall(fill_wall_started.elapsed().as_nanos());
+    FLOOR_DECL_FACTS_MEMO.with(|cell| {
+        if let Some(memo) = cell.borrow_mut().as_mut() {
+            memo.insert(key, Rc::clone(&facts));
+        }
+    });
+    facts
 }
 
 fn floor_decl_parse_memo_lookup(
@@ -1543,7 +1617,7 @@ pub fn eval_decl_facts(ctx: &InterpContext, pool_roots: &[String]) -> InterpResu
             },
         );
     }
-    let facts = decl_facts_for_roots(pool_roots);
+    let facts = decl_facts_for_roots_shared(pool_roots);
     eval_decl_facts_rows(ctx, &facts)
 }
 
@@ -1805,6 +1879,79 @@ fn outcome_rejected_value(ctx: &InterpContext, reason: &str) -> Value {
                 fields: Rc::new(vec![(ctx.sym("reason"), str_value(reason.to_string()))]),
             }]),
         )]),
+    }
+}
+
+#[cfg(test)]
+mod decl_facts_shared_memo_tests {
+    use super::*;
+
+    fn names(facts: &[DeclFactRaw]) -> Vec<(String, String, String)> {
+        facts
+            .iter()
+            .map(|f| {
+                (
+                    f.qualified_name.clone(),
+                    format!("{:?}", f.kind),
+                    f.rel_path.clone(),
+                )
+            })
+            .collect()
+    }
+
+    /// The memo is an ownership change, not a population change: with the floor memo registered,
+    /// two ORDERINGS of one root multiset share one walk, two MULTIPLICITIES do not alias, each
+    /// shared walk is identical — by declaration identity, kind and path — to its unmemoized
+    /// walk, and clearing the authority drops the artifact.
+    #[test]
+    fn shared_walk_is_the_unmemoized_walk_by_identity_and_is_walked_once() {
+        let roots = vec![
+            "dag/std".to_string(),
+            "dag/gunbc/machine_intake".to_string(),
+        ];
+        let reordered = vec![
+            "dag/gunbc/machine_intake".to_string(),
+            "dag/std".to_string(),
+        ];
+        let duplicated = vec!["dag/std".to_string(), "dag/std".to_string()];
+        let singleton = vec!["dag/std".to_string()];
+        let cold = decl_facts_for_roots(&roots);
+        let cold_duplicated = decl_facts_for_roots(&duplicated);
+        let cold_singleton = decl_facts_for_roots(&singleton);
+        assert!(
+            !cold.is_empty(),
+            "the roots must yield declarations or this decides nothing"
+        );
+        assert_ne!(
+            names(&cold_singleton),
+            names(&cold_duplicated),
+            "the walk visits every supplied root, so [r, r] is a different population from [r]"
+        );
+        clear_floor_decl_parse_memo();
+        let unregistered = decl_facts_for_roots_shared(&roots);
+        assert_eq!(names(&cold), names(&unregistered));
+        register_floor_decl_parse_memo();
+        let first = decl_facts_for_roots_shared(&roots);
+        let second = decl_facts_for_roots_shared(&reordered);
+        let shared_singleton = decl_facts_for_roots_shared(&singleton);
+        let shared_duplicated = decl_facts_for_roots_shared(&duplicated);
+        clear_floor_decl_parse_memo();
+        assert!(
+            Rc::ptr_eq(&first, &second),
+            "a reordering of the same root multiset must read the same walk"
+        );
+        assert_eq!(names(&cold), names(&first));
+        assert!(
+            !Rc::ptr_eq(&shared_singleton, &shared_duplicated),
+            "[r] and [r, r] must not alias"
+        );
+        assert_eq!(names(&cold_singleton), names(&shared_singleton));
+        assert_eq!(names(&cold_duplicated), names(&shared_duplicated));
+        let after_clear = decl_facts_for_roots_shared(&roots);
+        assert!(
+            !Rc::ptr_eq(&first, &after_clear),
+            "clearing the prepared authority must drop the memo"
+        );
     }
 }
 
