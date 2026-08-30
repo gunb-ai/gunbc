@@ -1,0 +1,223 @@
+module v2.test.floor_changed_witness
+
+import v2.workflow.floor_changed_witness {
+  ChangedWitnessExecutionStanding,
+  PlannedAndPassed, PlannedWithoutTerminalVerdict, Declined, MissingDisposition,
+  ChangedWitnessTerminalReading, TerminalOutcome, NotExecuted,
+  ChangedWitnessDispositionReading, DispositionRow, NoDispositionRow,
+  ChangedWitnessRow,
+  changed_witness_execution_standing,
+  changed_witness_standing_blocks,
+  changed_witness_blocking_identities,
+}
+import v2.workflow.required_floor {
+  RequiredFloorDisposition,
+  Planned, DeclinedLongModule, DeclinedOutsideRequiredGate, DeclinedOutsideGateClosure,
+  DeclinedCostDebt,
+}
+import v2.workflow.floor_terminal_ledger {
+  ClaimDisposition, Passed, Failed, KnownRedHeld, RouteGapBeforeVerdict,
+}
+import v2.std.algebra { Cons, Empty }
+import v2.std.collection { List }
+import v2.std.logic { Bool }
+import v2.std.text { String }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+// Every fixture below is authored in this source; the module reaches nothing outside the
+// substrate inputs.
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE FOLD'S EXECUTING CONSUMERS. `v2.workflow.floor_changed_witness` is the authority the
+// required floor's host projection realizes (`v1_compiler.cli_run`
+// `changed_witness_execution_standing`); these witnesses execute the .dag fold itself, one
+// discriminating arm each, so the model's rung is established by execution rather than by the
+// host citing it. This module's own identities are new under the `v2.test.` gate prefix, so
+// the PR that lands them is also the projection's first live positive control: each must
+// appear in its run's changed-witness lines as planned-and-passed.
+
+fn changed_standing_of(reading: ChangedWitnessDispositionReading) -> ChangedWitnessExecutionStanding {
+  changed_witness_execution_standing(reading: reading)
+}
+
+fn is_planned_and_passed(s: ChangedWitnessExecutionStanding) -> Bool {
+  match s {
+    PlannedAndPassed => true
+    PlannedWithoutTerminalVerdict => false
+    Declined { disposition: _ } => false
+    MissingDisposition => false
+  }
+}
+
+fn is_planned_without_terminal_verdict(s: ChangedWitnessExecutionStanding) -> Bool {
+  match s {
+    PlannedAndPassed => false
+    PlannedWithoutTerminalVerdict => true
+    Declined { disposition: _ } => false
+    MissingDisposition => false
+  }
+}
+
+fn is_declined(s: ChangedWitnessExecutionStanding) -> Bool {
+  match s {
+    PlannedAndPassed => false
+    PlannedWithoutTerminalVerdict => false
+    Declined { disposition: _ } => true
+    MissingDisposition => false
+  }
+}
+
+fn is_missing_disposition(s: ChangedWitnessExecutionStanding) -> Bool {
+  match s {
+    PlannedAndPassed => false
+    PlannedWithoutTerminalVerdict => false
+    Declined { disposition: _ } => false
+    MissingDisposition => true
+  }
+}
+
+// A planned identity whose terminal outcome is Passed is the ONE green standing.
+test fn planned_with_passed_verdict_stands_green() -> Bool {
+  is_planned_and_passed(
+    s: changed_standing_of(
+      reading: DispositionRow {
+        disposition: Planned {},
+        terminal: TerminalOutcome { outcome: Passed {} }
+      }
+    )
+  )
+}
+
+// A planned identity the receipt records as never executed is nonterminal — red.
+test fn planned_but_not_executed_is_nonterminal() -> Bool {
+  is_planned_without_terminal_verdict(
+    s: changed_standing_of(
+      reading: DispositionRow {
+        disposition: Planned {},
+        terminal: NotExecuted {}
+      }
+    )
+  )
+}
+
+// An enrolled expected-red failing exactly as enrolled reached the terminal verdict the run
+// holds green for it — the sanctioned add-a-discriminating-RED move is not vetoed here.
+test fn planned_with_known_red_held_verdict_stands_green() -> Bool {
+  is_planned_and_passed(
+    s: changed_standing_of(
+      reading: DispositionRow {
+        disposition: Planned {},
+        terminal: TerminalOutcome { outcome: KnownRedHeld {} }
+      }
+    )
+  )
+}
+
+// A planned identity with a non-Passed terminal outcome carries no passing verdict — red at
+// this grain too, whatever its own mechanism already did to the floor.
+test fn planned_with_failed_verdict_is_nonterminal() -> Bool {
+  is_planned_without_terminal_verdict(
+    s: changed_standing_of(
+      reading: DispositionRow {
+        disposition: Planned {},
+        terminal: TerminalOutcome { outcome: Failed {} }
+      }
+    )
+  )
+}
+
+test fn planned_with_route_gap_verdict_is_nonterminal() -> Bool {
+  is_planned_without_terminal_verdict(
+    s: changed_standing_of(
+      reading: DispositionRow {
+        disposition: Planned {},
+        terminal: TerminalOutcome { outcome: RouteGapBeforeVerdict {} }
+      }
+    )
+  )
+}
+
+// THE INCIDENT ARM: a changed identity declined because its module name is outside the gate
+// closure classifies Declined — the exact state PRs #9672/#9675 shipped green.
+test fn declined_outside_gate_closure_is_declined() -> Bool {
+  is_declined(
+    s: changed_standing_of(
+      reading: DispositionRow {
+        disposition: DeclinedOutsideGateClosure {},
+        terminal: NotExecuted {}
+      }
+    )
+  )
+}
+
+test fn declined_long_module_is_declined() -> Bool {
+  is_declined(
+    s: changed_standing_of(
+      reading: DispositionRow {
+        disposition: DeclinedLongModule { matched_prefix: "test.claim.long." },
+        terminal: NotExecuted {}
+      }
+    )
+  )
+}
+
+test fn declined_cost_debt_is_declined() -> Bool {
+  is_declined(
+    s: changed_standing_of(
+      reading: DispositionRow {
+        disposition: DeclinedCostDebt {},
+        terminal: NotExecuted {}
+      }
+    )
+  )
+}
+
+// A changed identity with no disposition row at all is a fact the receipt cannot speak for.
+test fn absent_row_is_missing_disposition() -> Bool {
+  is_missing_disposition(s: changed_standing_of(reading: NoDispositionRow {}))
+}
+
+// Blocking polarity: exactly one standing is green.
+test fn only_planned_and_passed_is_green() -> Bool {
+  !changed_witness_standing_blocks(standing: PlannedAndPassed {})
+    && changed_witness_standing_blocks(standing: PlannedWithoutTerminalVerdict {})
+    && changed_witness_standing_blocks(
+      standing: Declined { disposition: DeclinedOutsideRequiredGate {} }
+    )
+    && changed_witness_standing_blocks(standing: MissingDisposition {})
+}
+
+// The fold keeps blocking identities in input order and drops the green rows.
+test fn blocking_fold_keeps_reds_and_drops_greens() -> Bool {
+  let rows = [
+    ChangedWitnessRow {
+      identity: "a.declined",
+      standing: Declined { disposition: DeclinedOutsideGateClosure {} }
+    },
+    ChangedWitnessRow { identity: "b.green", standing: PlannedAndPassed {} },
+    ChangedWitnessRow { identity: "c.missing", standing: MissingDisposition {} }
+  ]
+  match changed_witness_blocking_identities(rows: rows) {
+    Cons { head: first, tail: rest } =>
+      first == "a.declined"
+        && match rest {
+          Cons { head: second, tail: last } =>
+            second == "c.missing"
+              && match last {
+                Empty {} => true
+                Cons { head: _, tail: _ } => false
+              }
+          Empty {} => false
+        }
+    Empty {} => false
+  }
+}
+
+// POSITIVE CONTROL: a diff with no changed witness identities projects nothing and blocks
+// nothing.
+test fn empty_changed_set_blocks_nothing() -> Bool {
+  match changed_witness_blocking_identities(rows: []) {
+    Empty {} => true
+    Cons { head: _, tail: _ } => false
+  }
+}

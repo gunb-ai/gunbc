@@ -59,7 +59,6 @@ import gunbc.fabric_cell_converge {
   fabric_cell_member_key,
   fabric_cell_resource_address_wire,
   fabric_cell_desired_members,
-  fabric_cell_base_dir,
 }
 import gunbc.fabric_cell_effect {
   FabricCellRealizationRefusal,
@@ -77,7 +76,6 @@ import gunbc.fabric_cell_effect {
   fabric_cell_realization,
 }
 import gunbc.runner_host_grants {
-  fabric_cell_directory_operation,
   fabric_cell_effect_operations,
 }
 import gunbc.executor_privileged_operation { executor_privileged_operation_shell_command }
@@ -176,7 +174,11 @@ import gunbc.spark.serving_membership {
   SparkServingMemberAt,
   spark_serving_member_key,
 }
-import gunbc.spark.serving_realization { ServingInstallEffect, EnableLingerForOwnAccount }
+import gunbc.spark.serving_realization {
+  ServingInstallEffect, EnableLingerForOwnAccount,
+  SparkServingPlannedEffect, PlannedInstallEffect, PlannedRetirementEffect,
+  spark_serving_retirement_effect_wire,
+}
 import gunbc.remote_operation {
   PlannedRemoteStep, RemoteOperation, remote_operation_label, remote_operations_wire }
 
@@ -782,13 +784,17 @@ fn fabric_cell_realization_lines(
 ) -> List<String> {
   match fabric_cell_realization(actions: actions) {
     CellPlanRealizable { effects: es } =>
-      map(es, e => fabric_cell_effect_plan_line(effect: e))
+      fabric_cell_effect_plan_lines(effects: es)
     CellPlanRefused { refusals: rs } =>
       concat(
         map(rs, r => concat("REFUSED-REALIZATION ", fabric_cell_realization_refusal_line(refusal: r))),
         ["REFUSED-REALIZATION fabric-cell plan refused as a whole; no address is applied, because a cell root without its resource boundary is an unbounded slice"],
       )
   }
+}
+
+fn fabric_cell_effect_plan_lines(effects: List<FabricCellEffect>) -> List<String> {
+  map(effects, e => fabric_cell_effect_plan_line(effect: e))
 }
 
 fn fabric_cell_substrate_owner_word(effect: FabricCellEffect) -> String {
@@ -1427,8 +1433,12 @@ fn observed_baseline_text(request: FleetConvergeRequest) -> String {
 // both directions -- executions in effect order, operations in realization order within each -- and
 // the flat sequence the actuator consumes is DERIVED by concatenation rather than stored beside the
 // executions, so the two cannot disagree.
+// THE EFFECT FIELD CARRIES EITHER DIRECTION, because a plan row is now produced by installs OR by
+// retirements and an execution must be able to say which one it realized. Widening the field to the
+// sum rather than adding a second execution type keeps one non-empty-in-steps invariant over one
+// population: a retirement step that ran is accounted exactly as an install step that ran.
 type PlannedEffectExecution {
-  effect: ServingInstallEffect
+  effect: SparkServingPlannedEffect
   first_step: PlannedRemoteStep
   further_steps: List<PlannedRemoteStep>
 }
@@ -1456,7 +1466,7 @@ fn fleet_converge_spark_serving_row_executions(
 // parallel-population defect: there is no second list to fall out of step with the first.
 fn fleet_converge_spark_serving_row_effects(
   row: FleetConvergeSparkServingTypedAction,
-) -> List<ServingInstallEffect> {
+) -> List<SparkServingPlannedEffect> {
   map(fleet_converge_spark_serving_row_executions(row: row), x => x.effect)
 }
 
@@ -1493,7 +1503,7 @@ type FleetConvergePlanArtifact {
 // asked for, and adding a variant makes this match non-exhaustive rather than defaulting.
 // Behaviour for the implemented slice is unchanged: EnableLingerForOwnAccount is still the only
 // effect the linger vertical realizes.
-fn fleet_converge_spark_serving_effect_wire(effect: ServingInstallEffect) -> String {
+fn fleet_converge_spark_serving_install_effect_wire(effect: ServingInstallEffect) -> String {
   match effect {
     EnableLingerForOwnAccount => "EnableLingerForOwnAccount"
     WriteSystemUnitFile => "WriteSystemUnitFile"
@@ -1508,6 +1518,21 @@ fn fleet_converge_spark_serving_effect_wire(effect: ServingInstallEffect) -> Str
     MaterializeModelArtifact => "MaterializeModelArtifact"
     GrantContainerRuntimeAccess => "GrantContainerRuntimeAccess"
     RunContainerAsOwnUser => "RunContainerAsOwnUser"
+  }
+}
+
+// THE TWO VOCABULARIES RENDER INTO ONE STRING AND STAY DISTINGUISHABLE IN IT.
+//
+// A retirement effect is prefixed rather than dropped into the same flat namespace of names. The
+// plan wire is read by humans comparing two converges, and `StartUserUnit` beside `StopUserUnit`
+// with nothing to separate them invites reading a retirement as an install that was spelled oddly.
+// The prefix is the sum's own arm, so the rendering cannot claim a kind the value does not have.
+fn fleet_converge_spark_serving_effect_wire(effect: SparkServingPlannedEffect) -> String {
+  match effect {
+    PlannedInstallEffect { install: e } =>
+      fleet_converge_spark_serving_install_effect_wire(effect: e)
+    PlannedRetirementEffect { retirement: e } =>
+      join(["retire:", spark_serving_retirement_effect_wire(effect: e)], "")
   }
 }
 
@@ -2163,19 +2188,21 @@ fn fabric_cell_apply_comment_lines(
   )
 }
 
-fn fabric_cell_effect_is_slice(effect: FabricCellEffect) -> Bool {
-  match effect {
-    FabricCellSliceEnsure { slice_unit: _, directives: _ } => true
-    FabricCellDirectoryEnsure { path: _, owner: _ } => false
-  }
-}
-
 fn fabric_cell_effect_shell_lines(effect: FabricCellEffect, job_user: NonEmptyStr) -> List<String> {
   map(
     fabric_cell_effect_operations(effect: effect, job_user: job_user),
     op => executor_privileged_operation_shell_command(op: op),
   )
 }
+
+fn fabric_cell_effect_apply_command_lines(
+  effects: List<FabricCellEffect>,
+  job_user: NonEmptyStr,
+) -> List<String> {
+  flat_map(effects, e => fabric_cell_effect_shell_lines(effect: e, job_user: job_user))
+}
+
+data fabric_cell_apply_effects_header: String = "# fabric-cell effects (gunbc.fabric_cell_effect) — boundary first, then root-owned substrate, then delegated attempt root"
 
 fn fabric_cell_apply_executable_lines(
   host: NonEmptyStr,
@@ -2184,25 +2211,9 @@ fn fabric_cell_apply_executable_lines(
   match runner_host_deploy_for(host: host as HostIdentity) {
     RunnerHostDeployUnmodeled { host: _ } => []
     RunnerHostDeployFound { deploy: d } => {
-      let slice_effects = fold(effects, init: [], f: (acc, e) =>
-        if fabric_cell_effect_is_slice(effect: e) { concat(acc, [e]) } else { acc })
-      let dir_effects = fold(effects, init: [], f: (acc, e) =>
-        if fabric_cell_effect_is_slice(effect: e) { acc } else { concat(acc, [e]) })
       concat(
-        ["# fabric-cell effects (gunbc.fabric_cell_effect) — boundary first, then root-owned substrate, then delegated attempt root"],
-        concat(
-          flat_map(slice_effects, e => fabric_cell_effect_shell_lines(effect: e, job_user: d.job_user)),
-          concat(
-            [executor_privileged_operation_shell_command(
-              op: fabric_cell_directory_operation(
-                path: fabric_cell_base_dir,
-                owner: CellSubstrateRootOwned,
-                job_user: d.job_user,
-              ),
-            )],
-            flat_map(dir_effects, e => fabric_cell_effect_shell_lines(effect: e, job_user: d.job_user)),
-          ),
-        ),
+        [fabric_cell_apply_effects_header],
+        fabric_cell_effect_apply_command_lines(effects: effects, job_user: d.job_user),
       )
     }
   }

@@ -1,0 +1,141 @@
+module gunbc.spark.cell_role
+
+import std.types { String, Bool, List, NonEmptyStr }
+import product.placement_supply { HostIdentity, host_identity_eq }
+import gunbc.fleet_intent_network { operator_host_srv5, operator_host_srv6 }
+
+data spark_cell_role_authority_note: String = "SPARK-PAIR-0 P0. The single authority for what each DGX Spark unit is FOR. Desired serving hosts and, later, the training offer roster are both projections of this one assignment — neither authors a host list of its own. Role is a sum rather than a pair of predicates, so a cell holding both roles has no constructor to be written with."
+
+// A CELL HAS ONE ROLE, AND THAT IS A CONSTRUCTION FACT RATHER THAN A CHECKED ONE.
+//
+// The shape this replaces is the one that was never written down at all: serving desired state named
+// both hosts, and the intent to make one of them a trainer lived in nobody's model. The obvious
+// repair -- a `serves: Bool` beside a `trains: Bool` -- is the state-space conflation the ledger
+// already names. Two booleans admit four states, of which two are wrong: a cell that both serves and
+// trains contends for one unified memory pool with no arbiter, and a cell that does neither is a
+// machine nothing accounts for. Both would then need a validator, and a validator is what §5 says to
+// prefer construction over.
+//
+// So the roles are a closed sum. There is no `SparkDualRoleCell`, and there is no absent arm: a host
+// that is not assigned here is not a Spark cell, which the assignment lookup answers as Absent rather
+// than as a third role.
+//
+// DYNAMIC ROLE SWITCHING IS DELIBERATELY NOT MODELLED. Nothing here represents a cell in transition,
+// and that is scope rather than omission: SPARK-PAIR-0 excludes serve/train switching, so the only
+// transition this project performs is the one-way retirement of serving from srv6, carried by the
+// retirement plan and its readiness proof rather than by a role value that means "mid-flight".
+type SparkCellRole
+  = SparkServingCell
+  | SparkTrainingCell
+
+type SparkCellRoleAssignment {
+  host: HostIdentity
+  role: SparkCellRole
+}
+
+// THE ASSIGNMENT IS AN OPERATOR DECISION, RECORDED WITH ITS BASIS.
+//
+// srv5 serves and srv6 trains. The two units are physically identical, so nothing measured decides
+// which is which -- the same situation as the router-slot allocation in gunbc.spark.dgx_procurement,
+// and recorded the same way for the same reason: an arbitrary choice written down as attributable is
+// honest, while the same choice presented as derived reads as a fact somebody established.
+//
+// The basis is that srv5 already carries the live serving occurrence. Assigning serving to the host
+// that already serves makes the serving half of this project a model upgrade on a converged host,
+// and confines the retirement -- the part with no existing vocabulary -- to one machine.
+data spark_cell_role_assignment_basis: NonEmptyStr = "OPERATOR DECISION (SPARK-PAIR-0, 2026-08-29): srv5 serves, srv6 trains. The units are identical, so the assignment is a tie-break rather than a measurement. Basis: srv5 already holds the live serving occurrence, so serving stays where it converged and the retirement -- the operation this corpus had no vocabulary for -- is confined to srv6." as NonEmptyStr
+
+data srv5_cell_role: SparkCellRoleAssignment = SparkCellRoleAssignment {
+  host: operator_host_srv5,
+  role: SparkServingCell,
+}
+
+data srv6_cell_role: SparkCellRoleAssignment = SparkCellRoleAssignment {
+  host: operator_host_srv6,
+  role: SparkTrainingCell,
+}
+
+data spark_cell_role_assignments: List<SparkCellRoleAssignment> = [
+  srv5_cell_role,
+  srv6_cell_role,
+]
+
+// THE ONE PLACE THE VARIANTS ARE ENUMERATED IS THE WIRE PROJECTION, AND EQUALITY READS IT.
+//
+// The shape this replaces was a hand-rolled 4-arm predicate matching the coproduct against itself.
+// It is a second enumeration of the same two variants beside this projection, so adding a role would
+// require both to be edited and only one of them would fail to compile if the other were forgotten.
+// Deriving equality from the canonical projection leaves ONE place that knows what the variants are.
+//
+// This is the idiom the corpus already uses for exactly this question --
+// gunbc.spark.serving_membership's address equality and serving_execution_schedule's fact equality
+// are both wire-equality over their own canonical projection -- so it is reuse rather than a local
+// convention invented here.
+fn spark_cell_role_wire(role: SparkCellRole) -> String {
+  match role {
+    SparkServingCell => "serving"
+    SparkTrainingCell => "training"
+  }
+}
+
+fn spark_cell_role_eq(a: SparkCellRole, b: SparkCellRole) -> Bool {
+  spark_cell_role_wire(role: a) == spark_cell_role_wire(role: b)
+}
+
+// ABSENT IS "NOT A SPARK CELL", WHICH IS NOT A ROLE -- AND TWO ROWS FOR ONE HOST IS NEITHER.
+//
+// Answering a role for an unassigned host would make every non-Spark machine in the fleet a candidate
+// for whichever arm the default picked. So the lookup is a sum, and it has three arms rather than an
+// optional's two.
+//
+// The third arm is the one worth explaining. Each ROW carries a sum-valued role, so no single row can
+// say a cell both serves and trains -- but the ROSTER is an ordinary list, and two rows naming one
+// host can. An earlier fold answered the last match and called it the role: last-row-wins, in a
+// lookup the training offer and the production planner both authorize against. That the current
+// roster has no duplicate is a fact about today's data, checked by a claim that is outside the
+// required gate; it is not a property of the lookup. Ambiguity is therefore an ANSWER here, carrying
+// the rows that conflict, and every authorization consumer must match it and refuse.
+type SparkCellRoleLookup
+  = SparkCellRoleAbsent
+  | SparkCellRoleUnique { role: SparkCellRole }
+  | SparkCellRoleAmbiguous { assignments: List<SparkCellRoleAssignment> }
+
+fn spark_cell_role_of(host: HostIdentity) -> SparkCellRoleLookup {
+  let matched = filter(spark_cell_role_assignments, a => host_identity_eq(a: a.host, b: host))
+  if length(matched) > 1 {
+    SparkCellRoleAmbiguous { assignments: matched }
+  } else {
+    fold(matched, init: SparkCellRoleAbsent, f: fn(acc, a) { SparkCellRoleUnique { role: a.role } })
+  }
+}
+
+fn spark_hosts_with_role(role: SparkCellRole) -> List<HostIdentity> {
+  flat_map(spark_cell_role_assignments, a =>
+    match spark_cell_role_of(host: a.host) {
+      SparkCellRoleUnique { role: r } =>
+        if spark_cell_role_eq(a: r, b: role) { [a.host] } else { [] }
+      SparkCellRoleAmbiguous { assignments: _ } => []
+      SparkCellRoleAbsent => []
+    })
+}
+
+fn spark_serving_cell_hosts() -> List<HostIdentity> {
+  spark_hosts_with_role(role: SparkServingCell)
+}
+
+// THE OFFER ROSTER, AND THERE IS NO PREDICATE BESIDE IT.
+//
+// A `spark_host_offerable_for_training(host) -> Bool` stood below this, matching the lookup sum into
+// true/false. It had exactly one caller: its own claim. The justification offered for keeping it was
+// that P3's supply module would consume it -- which is the authored-ahead-of-its-consumer shape
+// trimmed from the curl, pgrep and ss rows earlier in this same stack, and it is no better for being
+// a function rather than a constant.
+//
+// This roster is the canonical surface and answers the same question without a second vocabulary: a
+// host is offerable exactly when it appears here, and this list already excludes serving cells,
+// unassigned hosts, and hosts the roster cannot decide. When P3 needs the offer population it takes
+// the list; if it then needs membership of one host, that question gets its answer when a caller
+// actually exists to ask it.
+fn spark_training_cell_hosts() -> List<HostIdentity> {
+  spark_hosts_with_role(role: SparkTrainingCell)
+}

@@ -27,6 +27,7 @@ import gunbc.fabric_cell_converge {
   FabricCellRootAddress,
   FabricCellAttemptRootAddress,
   FabricCellResourceBoundaryAddress,
+  fabric_cell_base_dir,
   fabric_cell_root_path,
   fabric_cell_attempt_root_path,
   fabric_cell_slice_name,
@@ -68,6 +69,15 @@ type FabricCellEffect
 
 fn fabric_cell_directory_ensure(path: String, owner: FabricCellSubstrateOwner) -> FabricCellEffect {
   FabricCellDirectoryEnsure { path: path as NonEmptyStr, owner: owner }
+}
+
+// THE HOST-SCOPED BASE DIRECTORY IS AN EFFECT, NOT APPLY-SHELL PRELUDE. It used to be prepended
+// only by fleet_converge_plan's apply renderer, while the review plan mapped the typed effect list.
+// Apply therefore executed a privileged root-owned directory creation the operator-approved plan
+// never showed. Keeping the base directory in this list makes review and actuation two projections
+// of one value; neither renderer is allowed to mint it independently.
+fn fabric_cell_base_directory_effect() -> FabricCellEffect {
+  fabric_cell_directory_ensure(path: fabric_cell_base_dir, owner: CellSubstrateRootOwned)
 }
 
 // THE BOUNDARY IS REALIZED FROM TYPED DIRECTIVE WORDS, NOT FROM A REFUSAL AND NOT FROM A FILE.
@@ -226,7 +236,7 @@ fn fabric_cell_plan_refusals(
 fn fabric_cell_plan_effects(
   actions: List<MemberAction<FabricCellMember, String>>,
 ) -> List<FabricCellEffect> {
-  fold(
+  let address_effects = fold(
     actions,
     init: [],
     f: (acc, a) =>
@@ -235,6 +245,19 @@ fn fabric_cell_plan_effects(
         AddressRefused { refusal: _ } => acc
       }
   )
+  let boundary_effects = fold(address_effects, init: [], f: (acc, e) => match e {
+    FabricCellSliceEnsure { slice_unit: _, directives: _ } => concat(acc, [e])
+    FabricCellDirectoryEnsure { path: _, owner: _ } => acc
+  })
+  let directory_effects = fold(address_effects, init: [], f: (acc, e) => match e {
+    FabricCellSliceEnsure { slice_unit: _, directives: _ } => acc
+    FabricCellDirectoryEnsure { path: _, owner: _ } => concat(acc, [e])
+  })
+  if list_length(items: address_effects) == 0 {
+    []
+  } else {
+    concat(boundary_effects, concat([fabric_cell_base_directory_effect()], directory_effects))
+  }
 }
 
 // THE EFFECTS ARE STILL CONSTRUCTED ON THE REFUSED PATH AND THEN NOT RETURNED, WHICH IS
