@@ -53,6 +53,14 @@ fn fleet_runner_slot_budget() -> HostBudgetResolution {
 // EXTERNAL RECEIPT, the MemAvailable lower bound of the runner that SIGKILLed this instrument
 // twice. It is not a number from this tree, so it is an oracle in exactly the sense the demand
 // figure was not.
+//
+// THE SOURCE HALF MOVED AND THE BUDGET HALF DID NOT, which is why the expected label changed
+// here rather than being loosened. BudgetSourceMemAvailable is the arm that produced this very
+// number and it is deleted, so a runner in that state now resolves to HostBudgetUnreadable and
+// refuses one step earlier. What this arm still judges is the QUANTITY reaching the demand
+// comparison, and the source that carries it today is the operator's declaration -- so the
+// assertion says something sharper than it did: even 4.9 GiB DECLARED by an operator is refused,
+// and the refusal still names where the number came from rather than reporting a bare figure.
 test fn the_budget_that_was_sigkilled_refuses_and_names_its_source() -> Bool {
   match whole_corpus_compile_admission(budget: observed_doomed_budget()) {
     WholeCorpusCompileRefusedBudgetBelowMeasuredDemand {
@@ -61,7 +69,7 @@ test fn the_budget_that_was_sigkilled_refuses_and_names_its_source() -> Bool {
       source: s,
     } => byte_size_count(b: b) == 5269094400
       && byte_size_count(b: r) == byte_size_count(b: whole_corpus_compile_measured_peak_demand())
-      && (s as String) == "/proc/meminfo MemAvailable"
+      && (s as String) == "env GUNBC_MEMORY_BUDGET_BYTES"
     WholeCorpusCompileAdmitted { budget: _, required: _ } => false
     WholeCorpusCompileRefusedBudgetUnreadable { reason: _ } => false
   }
