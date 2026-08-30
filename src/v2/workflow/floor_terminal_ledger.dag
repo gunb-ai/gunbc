@@ -31,7 +31,7 @@ import v2.workflow.required_floor {
 // every row is terminal. Absence is not a value it can express.
 //
 // THE SEED CARRIES A HAND-WRITTEN MIRROR OF THIS SCHEMA. `cli_run.rs` is HAND_MAINTAINED, so its
-// `ClaimTerminalRow`, `ClaimDisposition` and `reconcile_terminal_ledger` are authored beside these
+// `ClaimTerminalRow`, `ClaimDisposition` and `reconcile_identity_population` are authored beside these
 // declarations rather than derived from them. Regen does not compare them, because that file is
 // not generated; the witnesses do not compare them, because each side is exercised alone.
 //

@@ -1,0 +1,396 @@
+module test.claim.emitted_call_target_realization_witness_test
+
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data emitted_call_target_realization_witness_note: String = "PERMANENT REGRESSION CONTROLS for the three emission defects that stood between the v2 compiler closure and a Rust crate rustc would accept (gunbc#9664 milestones 1 and 2). All three are one family -- emission ASSERTING a realization it had not established -- and each row here is the discriminating RED for one of them, paired with a boundary control that would go red if the repair had over-reached in the opposite direction.\n\nMEASURED POPULATIONS on the emitted closure at main 6447dd4, by `gunbc compile --entry src/v2/compiler/00_compile.dag --target rust` then `cargo check`: 260 coded errors, 254 of them E0425. Class C 102 (98 `v2` + 4 `std`), length 73, class B 65 (member 11, apply 11, is_empty 5, allocate_literal 4, step 3, init 3, and a tail of ones and twos).\n\nWHY THESE ARE NOT A SNAPSHOT. Each class's positive and negative assertion differ only in the fact the repair added, so no single edit satisfies both directions. The C rows would flip if decl_name reverted to the authored spelling; the length rows would flip if the registry membership gate were removed OR if the declaration fallback were extended to seams; the B rows would flip if runtime_bridge went back to a literal. The boundary controls (empty_map, a real bridge method) would flip if any of the three repairs had instead stopped emission reaching v1_rt at all.\n\nDISSOLVE-ON: never. Emission may change target SPELLING, but it may never again name a runtime symbol it has not established exists."
+
+// THE PROBE IMPORTS v2.std.collection AND THEN CALLS IT BY ITS QUALIFIED NAME, which looks
+// redundant and is not. compile_dag_rust_emit_check compiles through the witness harness's
+// restricted pool (2973 modules against the corpus's 4261), and a qualified spelling alone does not
+// put the target module in it -- so without the import this row FAILED while the repair was green,
+// which is how it was found. Measured both ways: the same probe emitted against the real corpus
+// produces `crate::v2_std_collection::map_get(m.clone(), "key".to_string())` exactly as asserted.
+// The import restores module presence; it does not answer the call, because decl_name is taken from
+// the authored spelling at the CALL SITE regardless of what is imported -- which is why the
+// negative assertion below still discriminates, and why falsifier 2 (restore the dotted spelling)
+// must red this row.
+//
+// CLASS C, THE DISCRIMINATING RED. A qualified call carried the whole dotted path as its
+// declaration name, so emission produced `crate::v2_std_collection::v2.std.collection.map_get(..)`
+// -- the module prefix correct and the identifier a dotted path Rust reads as field access on an
+// undefined value `v2`. map_get is the specimen because it is also DivergentProjection, so this
+// row proves the qualified path reaches the DECLARATION and not the bridge.
+test fn w_qualified_call_emits_only_the_declaration_last_segment() -> Bool {
+  compile_dag_rust_emit_check(
+    "module test.claim.qualified_call_probe\nimport std.types { Int, String, Map }\nimport std.occurrence_identity { OccurrenceId }\nimport v2.std.collection { map_get }\nimport v2.std.diagnostic { Outcome }\nimport v2.std.optional { Optional }\nfn probe(m: Map<String, Int>) -> Outcome<Optional<Int>> { v2.std.collection.map_get(m: m, key: \"key\") }\n",
+    "src/test_claim_qualified_call_probe.rs",
+    ["crate::v2_std_collection::map_get("],
+    ["::v2.std.collection", "v2.std.collection.map_get("]
+  )
+}
+
+// LENGTH, THE DISCRIMINATING RED. v2.std.algebra length is a ModeledProjection of the `length`
+// primitive and rt_function_registry has no `length` row, so emission took the identity arm of
+// rust_runtime_bridge_name and wrote `v1_rt::length` -- a symbol the seed does not define -- at
+// 73 sites. The declaration has a real fold body, so it is what a call must reach.
+test fn w_unbridged_modeled_primitive_emits_its_declaration() -> Bool {
+  compile_dag_rust_emit_check(
+    "module test.claim.length_projection_probe\nimport std.types { Int }\nimport std.occurrence_identity { OccurrenceId }\nimport v2.std.algebra { FreeMonoid, length }\nfn probe(xs: FreeMonoid<Int>) -> Int { length(xs: xs) }\n",
+    "src/test_claim_length_projection_probe.rs",
+    ["crate::v2_std_algebra::length("],
+    ["v1_rt::length("]
+  )
+}
+
+// THE BOUNDARY CONTROL FOR THE LENGTH REPAIR, AND THE ONE THAT PROVES THE GATE IS REGISTRY
+// MEMBERSHIP RATHER THAN "ROSTER ROW MEANS DECLARATION". empty_map has a roster row AND a
+// registry row, so it must still lower to the bridge. A repair that had simply routed every
+// ModeledProjection to its declaration would go red here -- and would also emit
+// v2.std.collection map_insert's `Map { lookup: fn .. }` body against an Rc<BTreeMap> carrier.
+test fn w_bridged_modeled_primitive_still_lowers_to_the_bridge() -> Bool {
+  compile_dag_rust_emit_check(
+    "module test.claim.bridged_empty_map_probe\nimport std.types { Int, String, Map }\nimport std.occurrence_identity { OccurrenceId }\nimport v2.std.collection { empty_map }\nfn probe() -> Map<String, Int> { empty_map() }\n",
+    "src/test_claim_bridged_empty_map_probe.rs",
+    ["v1_rt::rc_empty_map"],
+    ["crate::v2_std_collection::empty_map("]
+  )
+}
+
+// CLASS B, THE DISCRIMINATING RED. tier0 method resolution resolves an ordinary fn-typed RECORD
+// FIELD through lookup_field_in_product, so a field call arrived as AlgebraMethodSemantics and the
+// fallback at the end of that arm passed runtime_bridge: true unconditionally -- emitting
+// `v1_rt::step`, and leaving emit_rust_generic_method_call's own callable-field arm, guarded on
+// runtime_bridge == false, unreachable for the exact receiver it was written for.
+test fn w_callable_record_field_lowers_as_a_field_not_a_bridge() -> Bool {
+  compile_dag_rust_emit_check(
+    "module test.claim.callable_field_probe\nimport std.types { Int }\ntype Stepper { step: fn(Int) -> Int }\nfn probe(s: Stepper, n: Int) -> Int { s.step(n) }\n",
+    "src/test_claim_callable_field_probe.rs",
+    [".step)("],
+    ["v1_rt::step("]
+  )
+}
+
+// THE BOUNDARY CONTROL FOR THE B REPAIR. `trim` is in rt_function_registry and, unlike count /
+// join / first and the rest of rust_simple_method_specs, has NO method template -- so it is one of
+// the few names that actually REACHES the algebra fallback this repair changed. A repair that had
+// stopped that fallback reaching v1_rt at all, rather than asking whether this particular name is
+// realized, goes red here.
+//
+// count was the first choice for this row and is wrong, which is worth recording: it has a
+// simple-method template, so it is answered before the fallback and would have gone red while
+// testing nothing about the seam under repair -- a control passing through a codepath its
+// subject never executes.
+test fn w_registered_bridge_method_still_reaches_the_bridge() -> Bool {
+  compile_dag_rust_emit_check(
+    "module test.claim.bridge_method_probe\nimport std.types { String }\nfn probe(s: String) -> String { s |> trim }\n",
+    "src/test_claim_bridge_method_probe.rs",
+    ["v1_rt::trim("],
+    ["compile_error"]
+  )
+}
+
+// THE SYMBOL BRIDGES, AND THIS ONE'S RED IS NOT AN ERROR COUNT. symbol_lexeme and
+// symbol_intern_lexeme have self-call bodies -- host seams -- but carried no projection roster
+// row, so the resolver saw ordinary declarations and emission emitted the declaration. The result
+// COMPILES: `pub fn symbol_lexeme(sym: String) -> String { symbol_lexeme(sym) }` type-checks and
+// never returns. That is why these two are absent from the E0425 census this file's other rows
+// are measured against -- they were silent, not absent. A row asserting "no error" would have
+// been green throughout the defect; this asserts the call reaches the realization.
+test fn w_symbol_lexeme_reaches_its_host_realization_not_its_self_call() -> Bool {
+  compile_dag_rust_emit_check(
+    "module test.claim.symbol_lexeme_probe\nimport std.types { String }\nimport v2.std.node { Symbol }\nimport v2.std.compilers.lexing { symbol_lexeme }\nfn probe(sym: Symbol) -> String { symbol_lexeme(sym: sym) }\n",
+    "src/test_claim_symbol_lexeme_probe.rs",
+    ["v1_rt::symbol_lexeme("],
+    ["crate::v2_std_compilers_lexing::symbol_lexeme("]
+  )
+}
+
+// THE SELF-CALL SEAM WALL, AND THIS IS THE ROW THAT MAKES THE CLASS STRUCTURAL RATHER THAN
+// ROSTERED. Adding a self-calling declaration with no target realization used to emit it verbatim:
+// `pub fn f(x) { f(x) }` compiles, and returns to no caller. Nothing reported it -- not the module
+// index, not the compile-clean gate, not cargo check -- which is why the two symbol bridges were
+// invisible until someone read the emitted bytes. The refusal now fires on the STRUCTURE, so a new
+// seam cannot be added silently even if nobody remembers to roster it.
+//
+// The discriminating pair is the declaration itself: pre-wall the emitted module carries
+// `pub fn declared_seam_without_realization`, post-wall it carries the refusal instead.
+test fn w_unrealized_self_call_seam_refuses_instead_of_emitting_recursion() -> Bool {
+  compile_dag_rust_emit_check(
+    "module test.claim.unrealized_seam_probe\nimport std.types { String }\nfn declared_seam_without_realization(x: String) -> String { declared_seam_without_realization(x: x) }\nfn probe(x: String) -> String { declared_seam_without_realization(x: x) }\n",
+    "src/test_claim_unrealized_seam_probe.rs",
+    ["unrealized host seam", "panic!"],
+    ["declared_seam_without_realization(x)"]
+  )
+}
+
+// THE REFUSAL KEEPS THE SIGNATURE AND THE CRATE KEEPS COMPILING. This is the row that separates the
+// two refusal FORMS, and it is the whole point of the correction: compile_error! fails the entire
+// crate, which is wrong for a seam nobody calls, because rustc's denominator is the whole emitted
+// crate while the demand denominator is the entry-reachable closure. Five unreachable seams took
+// the crate down under the old form. The declaration must therefore still be emitted, with its
+// parameters and return type intact, so that dependent modules resolve and only an actual call
+// fails.
+test fn w_unrealized_seam_refusal_preserves_the_declaration_signature() -> Bool {
+  compile_dag_rust_emit_check(
+    "module test.claim.unrealized_seam_shape_probe\nimport std.types { String }\nfn seam_with_no_realization(x: String) -> String { seam_with_no_realization(x: x) }\n",
+    "src/test_claim_unrealized_seam_shape_probe.rs",
+    ["pub fn seam_with_no_realization", "-> String", "panic!"],
+    ["compile_error!"]
+  )
+}
+
+// ORDINARY RECURSION IS NOT A SEAM, and this is the control that keeps the wall from refusing most
+// of the compiler. The predicate is whole-body identity, not "contains a self-call": a match, an if
+// or a let between the head and the recursive call means the body is not the call.
+test fn w_ordinary_recursion_is_not_read_as_a_host_seam() -> Bool {
+  compile_dag_rust_emit_check(
+    "module test.claim.ordinary_recursion_probe\nimport std.types { Int }\nfn countdown(n: Int) -> Int { if n <= 0 { 0 } else { countdown(n: n - 1) } }\n",
+    "src/test_claim_ordinary_recursion_probe.rs",
+    ["pub fn countdown"],
+    ["has no realization for this target"]
+  )
+}
+
+// A SEAM'S DECLARATION NAME IS NOT THE PRIMITIVE IT REALIZES, and this row is the one that caught
+// it. v2.std.collection empty_map_primitive_delegate is a self-call body -- so the wall sees a seam
+// -- and it IS realized, because its roster row names the `empty_map` primitive whose bridge is
+// rc_empty_map. Keying the realization lookup on the DECLARATION name missed, because the registry
+// holds `empty_map`, and the wall refused a seam that had a perfectly good realization. Measured,
+// not predicted: it appeared as one of six refusals in the emitted closure.
+//
+// The discriminating direction is that this seam must NOT refuse while decl_facts, which genuinely
+// has no realization, must. A wall that reverted to decl-name keying flips this row red and leaves
+// the decl_facts row green, so the two cannot be satisfied by one edit.
+test fn w_rostered_seam_resolves_realization_through_its_primitive_not_its_decl_name() -> Bool {
+  compile_dag_rust_emit_check(
+    "module test.claim.delegate_seam_probe\nimport std.types { Int, String, Map }\nimport std.occurrence_identity { OccurrenceId }\nimport v2.std.collection { empty_map }\nfn probe() -> Map<String, Int> { empty_map() }\n",
+    "src/test_claim_delegate_seam_probe.rs",
+    ["v1_rt::rc_empty_map"],
+    ["has no realization for this target"]
+  )
+}
+
+// A REALIZED SEAM KEEPS ITS DECLARATION, and this row exists because removing it was a defect I
+// shipped. The wall first suppressed a realized seam's item, reasoning that every call to a
+// realized primitive routes to the bridge so nothing calls the declaration. Other modules still
+// IMPORT it, so 10 unresolved imports (E0432) appeared in the emitted closure -- created by the
+// suppression, not found by it. The same reasoning that made suppression look safe is what makes
+// it unnecessary: the seam's body is a self-call, resolution routes it through the roster to the
+// bridge, and ordinary emission writes the delegation by itself.
+test fn w_realized_seam_keeps_its_declaration_and_delegates_to_the_bridge() -> Bool {
+  compile_dag_rust_emit_check(
+    "module test.claim.realized_seam_probe\nimport std.types { String }\nimport v2.std.node { Symbol }\nimport v2.std.compilers.lexing { symbol_lexeme }\nfn probe(sym: Symbol) -> String { symbol_lexeme(sym: sym) }\n",
+    "src/test_claim_realized_seam_probe.rs",
+    ["v1_rt::symbol_lexeme("],
+    ["has no realization for this target"]
+  )
+}
+
+// is_empty HAD NO RUST REALIZATION AT ALL, and the class-B repair is what made that visible rather
+// than what caused it. Before it, `xs |> is_empty` emitted `v1_rt::is_empty(..)` -- a symbol the
+// seed does not define -- and appeared in the census as 5 x E0425. After it, the same 5 sites
+// became typed refusals: correct in KIND, and still 5 errors. A conversion is not a repair, so this
+// row exists to pin the actual realization.
+//
+// THE ROW IS A TARGET FACT, NOT EMITTER CODE. is_empty is an algebra template over FreeMonoid whose
+// Rust realization is Vec::is_empty, exactly as count's is Vec::len -- so it belongs in
+// rust_simple_method_specs beside count, and nothing in 05_emit_rust learns a new name. The
+// negative assertion is the refusal message, because that is precisely the state this row leaves.
+test fn w_is_empty_lowers_to_its_rust_realization_not_a_refusal() -> Bool {
+  compile_dag_rust_emit_check(
+    "module test.claim.is_empty_probe\nimport std.types { Int, Bool }\nimport std.occurrence_identity { OccurrenceId }\nimport v2.std.algebra { FreeMonoid, is_empty }\nfn probe(xs: FreeMonoid<Int>) -> Bool { xs |> is_empty }\n",
+    "src/test_claim_is_empty_probe.rs",
+    [".is_empty()"],
+    ["v1_rt::is_empty(", "neither a resolved callable receiver field"]
+  )
+}
+
+// THE NEGATIVE IDENTITY CONTROL FOR THE is_empty ROW, and it caught a live hole rather than
+// confirming a safe one. Adding is_empty to rust_simple_method_specs put a new spelling in front of
+// the two rust_method_templates lookups -- and those lookups are keyed on the bare name with no
+// receiver check, so a fn-typed record field named is_empty was captured by the target template and
+// emitted as `recv.is_empty()` instead of `(recv.is_empty)(..)`. That is class B surviving one
+// layer up: the class-B repair fixed the algebra FALLBACK and left the tables in front of it.
+//
+// The same hole existed for count, first, join, split, take, skip, last, chars and enumerate before
+// is_empty was ever added; this row is the one that made it executable.
+test fn w_callable_field_named_is_empty_is_not_captured_by_the_target_template() -> Bool {
+  compile_dag_rust_emit_check(
+    "module test.claim.is_empty_field_probe\nimport std.types { Bool, Int }\ntype Probe { is_empty: fn(Int) -> Bool }\nfn probe(p: Probe, n: Int) -> Bool { p.is_empty(n) }\n",
+    "src/test_claim_is_empty_field_probe.rs",
+    [".is_empty)("],
+    ["p.is_empty()"]
+  )
+}
+
+// THE SAME CONTROL FOR A SPELLING THAT WAS ALREADY IN THE TABLE. count has had a template since
+// before this change, so if the hole were specific to is_empty this row would be green on main and
+// green here. It is not: it is the pre-existing instance of the class, and it is enrolled so the
+// repair is measured against the whole table rather than the row that exposed it.
+test fn w_callable_field_named_count_is_not_captured_by_the_target_template() -> Bool {
+  compile_dag_rust_emit_check(
+    "module test.claim.count_field_probe\nimport std.types { Int }\ntype Counter { count: fn(Int) -> Int }\nfn probe(c: Counter, n: Int) -> Int { c.count(n) }\n",
+    "src/test_claim_count_field_probe.rs",
+    [".count)("],
+    ["c.count()"]
+  )
+}
+
+// THE ALGEBRA-PROFILE CONTROL FOR THE CALLABLE-FIELD TIER, and the direct regression control for
+// the 202-refusal class it caused. The tier asked rust_record_field_needs_fn_rc, whose candidate
+// list widens a receiver's name to its CONTAINER TEMPLATE ALGEBRA -- and an algebra declares its
+// operations as arrow-typed members, so a Map receiver read as having a callable field named
+// map_keys, and the tier emitted `(m.map_keys)(..)` for a call rustc then refused with E0609 no
+// field `map_keys` on Rc<im::HashMap<..>>. The receiver here is a genuine Map, so the tier must
+// decline it and the ordinary bridge lowering must survive. This is the discriminating red for
+// narrowing the predicate to the receiver's OWN declared record: restore the candidate sweep and
+// the must_not_contain clause fires.
+test fn w_map_receiver_operation_is_not_read_as_a_callable_field() -> Bool {
+  compile_dag_rust_emit_check(
+    "module test.claim.map_receiver_probe\nimport std.types { Int, String }\nfn probe(m: Map<String, Int>) -> List<String> { map_keys(m) }\n",
+    "src/test_claim_map_receiver_probe.rs",
+    ["map_keys"],
+    [".map_keys)("]
+  )
+}
+
+// ---------------------------------------------------------------------------------------------
+// THE TAIL CLASSES: the fifteen rustc refusals that remained on the 00_compile closure once the
+// three families above were closed, one discriminating row per emitter defect. Each row's
+// must_not_contain is the exact malformed spelling the emitter produced, so a revert of that one
+// repair reddens exactly that row.
+// ---------------------------------------------------------------------------------------------
+
+// WITNESS CARRIER, THE DISCRIMINATING RED. A Holds value bound through a NESTED record pattern can
+// reach emission with its produced identity erased; the turbofish then rendered the erasure itself:
+// `Witness::<compile_error!("UNRESOLVED_CompilerError")>::Holds`. The enclosing fn's declared return
+// is the carrier authority and must be what the arm falls back to.
+test fn w_witness_carrier_falls_back_to_the_fn_return_when_the_value_identity_is_erased() -> Bool {
+  compile_dag_rust_emit_check(
+    "module test.claim.witness_carrier_probe\nimport std.types { Int }\nimport std.algebra { Cons, Empty }\nimport v2.std.algebra { fold_list, list_snoc_item }\nimport v2.std.witness { Holds, Violates, Witness }\nimport v2.std.diagnostic { Diagnostic }\ntype Progress { edges: List<Int>, index: Int }\nfn step(p: Witness<Progress>, x: Int) -> Witness<Progress> { match p { Holds { value: Progress { edges: es, index: i } } => Holds { value: Progress { edges: list_snoc_item(xs: es, item: x), index: i + 1 } }  Violates { diagnostic: d } => Violates { diagnostic: d } } }\nfn probe(xs: List<Int>) -> Witness<List<Int>> { match fold_list(xs: xs, empty: Holds { value: Progress { edges: Empty, index: 0 } }, cons: fn(p, x) { step(p: p, x: x) }) { Holds { value: Progress { edges: result, index: _ } } => Holds { value: result }  Violates { diagnostic: d } => Violates { diagnostic: d } } }\n",
+    "src/test_claim_witness_carrier_probe.rs",
+    ["Witness::<"],
+    ["UNRESOLVED_CompilerError"]
+  )
+}
+
+// FOLD ACCUMULATOR, THE DISCRIMINATING RED. A fold whose init is empty_map() took the Map
+// declaration's own formals as its accumulator and wrote them into the turbofish:
+// `v1_rt::rc_empty_map::<K, V>()`. THE PROBE IMPORTS ONLY `Symbol` (the harness pool is the probe's
+// import closure, so an unimported `Symbol` refuses there while the whole corpus binds it): it mirrors
+// v2.lens.unit_modeling, which resolves Map, Symbol, empty_map and map_insert by namespace alone --
+// under an explicit `import std.types { Map }` the accumulator resolves to the kernel container and
+// the defect never fires (measured: that probe emitted `rc_empty_map::<String, String>` on the
+// defective compiler). The init must decline the formals exactly as the lambda beside it does.
+test fn w_fold_empty_map_init_renders_the_resolved_accumulator_not_the_declaration_formals() -> Bool {
+  compile_dag_rust_emit_check(
+    "module test.claim.fold_accumulator_probe\nimport v2.std.node { Symbol }\n\ntype Row {\n  field: Symbol\n  carrier: Symbol\n}\n\ndata rows: List<Row> = [\n  Row { field: ^a, carrier: ^b }\n]\n\nfn probe() -> Map<Symbol, Symbol> {\n  fold(rows, init: empty_map(), f: fn(acc, row) {\n    map_insert(m: acc, key: row.field, value: row.carrier)\n  })\n}\n",
+    "src/test_claim_fold_accumulator_probe.rs",
+    ["rc_empty_map::<"],
+    ["rc_empty_map::<K, V>"]
+  )
+}
+
+// LAMBDA PARAMETER ANNOTATION, THE DISCRIMINATING RED. A closure parameter whose inferred type
+// carries a formal no fn generic binds (`FreeMonoid<T>`) was annotated with it verbatim, a type the
+// closure cannot name. The annotation must decline exactly as the fold element annotation does.
+test fn w_lambda_param_annotation_declines_a_spurious_generic() -> Bool {
+  compile_dag_rust_emit_check(
+    "module test.claim.lambda_annotation_probe\nimport std.types { Bool }\nimport std.algebra { Cons, Empty }\nimport v2.std.node { Symbol }\nfn has(xs: List<Symbol>, s: Symbol) -> Bool { match xs { Empty => false  Cons { head: h, tail: t } => if h == s { true } else { has(xs: t, s: s) } } }\nfn probe(hits: List<Symbol>, accepted: List<Symbol>) -> Bool { match hits { Empty => false  Cons { head: first_hit, tail: rest_hits } => fold(Cons { head: first_hit, tail: rest_hits }, init: true, f: fn(acc, a) { acc && has(xs: accepted, s: a) }) } }\n",
+    "src/test_claim_lambda_annotation_probe.rs",
+    ["|acc: bool"],
+    ["FreeMonoid<T>>|"]
+  )
+}
+
+// ZERO-PARAMETER ALIAS, THE DISCRIMINATING RED. An alias over a parameterized type, referenced as
+// the return of an arrow type, rendered with the arguments of what it abbreviates:
+// `Gate = Rc<dyn Fn(..) -> Outc<Rc<Witness<..>>>>` (E0107, with the E0391 variance cycle rustc
+// reports beside it). The alias is zero-parameter and must render bare.
+test fn w_zero_param_alias_in_an_arrow_return_renders_without_its_rhs_arguments() -> Bool {
+  compile_dag_rust_emit_check(
+    "module test.claim.alias_arrow_probe\nimport std.types { Int }\nimport v2.std.witness { Witness }\nimport v2.std.diagnostic { Outcome }\nimport v2.std.node { Node }\ntype Outc = Outcome<Witness<Node>>\ntype Gate = fn(Int) -> Outc\ntype Lens { gate: Gate }\n",
+    "src/test_claim_alias_arrow_probe.rs",
+    ["-> Outc>"],
+    ["Outc<"]
+  )
+}
+
+// ARROW RETURN BINDING, THE DISCRIMINATING RED. An arrow type's return rendered through the
+// target-generic renderer, which never reads an applied-type binding, so `fn(Int) -> Outcome<Box2<String>>`
+// dropped the inner binding: `Rc<Outcome<Rc<Box2>>>` (E0107 missing generics). The Rust renderer
+// honours the binding and must be what an arrow's positions render through.
+test fn w_arrow_return_type_keeps_its_applied_binding() -> Bool {
+  compile_dag_rust_emit_check(
+    "module test.claim.arrow_binding_probe\nimport std.types { Int, String }\nimport v2.std.diagnostic { Outcome, Accepted }\ntype Box2<T> { v: T }\nfn probe() -> fn(Int) -> Outcome<Box2<String>> { fn(n) { Accepted { value: Box2 { v: \"x\" }, diagnostics: None } } }\n",
+    "src/test_claim_arrow_binding_probe.rs",
+    ["Box2<String>"],
+    ["Rc<Box2>>"]
+  )
+}
+
+// QUALIFIED TYPE REFERENCE, POSITIVE CONTROL ONLY. A field typed by a dotted, unimported provider
+// name renders as its bare leaf and must earn the leaf's use-line from the provider the author
+// named. The defect that opened this class (v2.std.determinism, E0425 x2 on the whole closure)
+// fires only when the pool also carries a coproduct with a VARIANT spelled `Determinism`
+// (v2.lens.registry LensIdV0): the bare-name disposition classified the type-position leaf as that
+// variant. This harness cannot carry that specimen at all -- its pool is the probe's DECLARED
+// import closure, so a provider referenced only by a dotted name is absent (hard diagnostic), and
+// std.determinism itself references std.perturbation the same way -- so this row uses std.decl_ref
+// with a sibling import to bring the provider into the pool, and is satisfied by the unfixed
+// emitter too. The class's discriminating red is
+// a_known_variant_spelling_in_a_type_position_takes_the_registry_arm in
+// src/v1/tests/claim/reference_derived_disposition_census_witness_test.dag (the disposition at
+// function grain, red by construction on the variant arm) together with the closure count of the
+// use-line in v2_std_determinism.rs. The expected line is spelled as two substrings because a
+// `{Name}` inside a .dag string literal is read as an interpolation of that name.
+test fn w_qualified_type_reference_earns_the_leaf_use_line() -> Bool {
+  compile_dag_rust_emit_check(
+    "module test.claim.qualified_type_ref_probe\nimport std.types { String }\nimport std.decl_ref { DeclField }\ntype Fact { signature: String, r: std.decl_ref.DeclarationRef }\nfn probe(f: Fact) -> std.decl_ref.DeclarationRef { f.r }\n",
+    "src/test_claim_qualified_type_ref_probe.rs",
+    ["use crate::std_decl_ref::{", "DeclarationRef};"],
+    ["std.decl_ref.DeclarationRef"]
+  )
+}
+
+// QUALIFIED VALUE HEAD, THE OTHER DIRECTION. `v2.std.nat.Succ { prev: .. }` is a variant record
+// literal; the value route imports it through its parent enum, and this route must synthesize
+// nothing for it (E0603 `variant import is private`, sixteen sites on the first regeneration).
+test fn w_qualified_variant_head_earns_no_type_use_line() -> Bool {
+  compile_dag_rust_emit_check(
+    "module test.claim.qualified_variant_head_probe\nimport v2.std.nat { Nat, Zero }\nfn probe() -> Nat { v2.std.nat.Succ { prev: Zero } }\n",
+    "src/test_claim_qualified_variant_head_probe.rs",
+    ["Succ"],
+    ["use crate::v2_std_nat::Succ;"]
+  )
+}
+
+// GENERIC ARROW RETURN. A fn-scope generic inside an arrow return position rendered by its erased
+// inference -- `Rc<Outcome<compile_error!("UNRESOLVED_CompilerError")>>` (v2.std.staging
+// then_outcome, three sites) -- while the same shape in a parameter position rendered `C`. Both
+// positions now ask the fn-signature renderer.
+test fn w_generic_arrow_return_renders_the_fn_scope_generic() -> Bool {
+  compile_dag_rust_emit_check(
+    "module test.claim.generic_arrow_probe\nimport v2.std.diagnostic { Outcome, Accepted, Rejected }\nfn then2<A, B, C>(f: fn(A) -> Outcome<B>, g: fn(B) -> Outcome<C>) -> fn(A) -> Outcome<C> {\n  fn(a) { match f(a) { Accepted { value: b, diagnostics: _ } => g(b)  Rejected { diagnostics: d } => Rejected { diagnostics: d } } }\n}\n",
+    "src/test_claim_generic_arrow_probe.rs",
+    ["-> Rc<dyn Fn(A) -> Rc<Outcome<C>>>"],
+    ["UNRESOLVED_"]
+  )
+}
+
+// SERVICE OP WITHOUT A REALIZATION, THE DISCRIMINATING RED. `Filesystem.Read(path:)` inside a fn
+// the signature authority judged service-free emitted `filesystem.read(path).await?` -- an unbound
+// name in a non-async fn, the only `.await?` in the whole closure. It is a host seam with no
+// realization in this target and must emit the generated refusal body naming the seam. The realized
+// arm has no positive control here because no source in the corpus spells a receiver the signature
+// authority accepts; that absence is recorded in rust_unrealized_service_op_refusal's note.
+test fn w_service_op_in_a_service_free_fn_refuses_instead_of_awaiting_an_unbound_binding() -> Bool {
+  compile_dag_rust_emit_check(
+    "module test.claim.service_op_probe\nimport std.types { String }\nimport extdeps.filesystem.filesystem_io { Filesystem }\nfn probe(path: String) -> String { let read = Filesystem.Read(path: path)\n read.content }\n",
+    "src/test_claim_service_op_probe.rs",
+    ["unrealized host seam: service op Filesystem.Read"],
+    [".await?"]
+  )
+}

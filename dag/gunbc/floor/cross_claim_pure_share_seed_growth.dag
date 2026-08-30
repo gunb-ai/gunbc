@@ -1,0 +1,54 @@
+module gunbc.cross_claim_pure_share_seed_growth
+
+import gunbc.roadmap_model { RoadmapNodeId }
+import gunbc.seed_growth { SeedGrowthJustification }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+
+// FORWARD-FREEZE RECEIPT for the cross-claim pure-producer share: the required floor serving one
+// evaluation of a roster-declared pure producer across claim frames instead of re-deriving it per
+// claim. The modeled authority is v2.workflow.floor_pure_producer_share — the warm and
+// claim-forced rosters, the portability contract, and the row-admission doctrine all live there;
+// the Rust below consumes that roster and decides nothing about membership.
+//
+// THE ITEM DELTA IS THE MECHANISM AND NOT A POLICY, which is why the enumerated items are all
+// evaluator plumbing: a cross-claim value store keyed on fn-node identity plus a content hash of
+// the full argument row, TOTAL typed reification at publication (ServeCacheValueNotPortable with
+// the exact path into the value), full portable-argument verification before any serve, an RAII
+// fill guard that keeps the shared-fill ledger's begin/record/abandon protocol and the per-claim
+// netting balanced on every exit path, and the preparation warm that bills nullary rows outside
+// the fold. The pre-existing hardcoded prepare_grammar arm is generalized INTO this tier rather
+// than duplicated beside it, which is the §3 move its own dissolve-on comment demanded.
+data cross_claim_pure_share_seed_growth_justification: SeedGrowthJustification = SeedGrowthJustification {
+  hand_authored_declarations: [
+    DeclarationRef { module_path: "v1_compiler.v1_interpreter", decl_name: "warm_cross_claim_pure_producer", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.v1_interpreter", decl_name: "install_cross_claim_pure_share_roster", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.v1_interpreter", decl_name: "install_cross_claim_share_observer", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.v1_interpreter", decl_name: "CrossClaimShareObserver", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.v1_interpreter", decl_name: "CrossClaimFillGuard", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.v1_interpreter", decl_name: "CrossClaimPureMemo", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.v1_interpreter", decl_name: "ServeCacheValueNotPortable", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.v1_interpreter", decl_name: "portable_value_from_ctx_at", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.v1_interpreter", decl_name: "portable_args_from_ctx", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.v1_interpreter", decl_name: "portable_value_eq", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.v1_interpreter", decl_name: "portable_value_size_bytes", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.v1_interpreter", decl_name: "cross_claim_portable_args_match", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.v1_interpreter", decl_name: "cross_claim_pure_admitted", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.v1_interpreter", decl_name: "cross_claim_args_hash", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.v1_interpreter", decl_name: "cross_claim_observe_hit", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.v1_interpreter", decl_name: "cross_claim_pure_memo_counts", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.v1_interpreter", decl_name: "cross_claim_take_last_unportable", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.v1_interpreter", decl_name: "cross_claim_byte_budget", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.v1_interpreter", decl_name: "CROSS_CLAIM_PURE_MEMO_ENTRY_CAP", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.v1_interpreter", decl_name: "CROSS_CLAIM_PURE_MEMO_BYTE_BUDGET", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.v1_interpreter", decl_name: "CROSS_CLAIM_PURE_MEMO", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.v1_interpreter", decl_name: "CROSS_CLAIM_PURE_ROSTER", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.v1_interpreter", decl_name: "CROSS_CLAIM_SHARE_OBSERVER", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.v1_interpreter", decl_name: "CROSS_CLAIM_FILL_CHILDREN", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.v1_interpreter", decl_name: "CROSS_CLAIM_LAST_UNPORTABLE", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run", decl_name: "install_pure_producer_share", field: WholeDeclaration }
+  ],
+  reason: "WHY RUST IS STILL NEEDED: the required floor executes in the seed, and the boundary this mechanism repairs is the seed's own frame lifecycle -- the floor builds a fresh evaluation frame per claim (deliberately, so one witness cannot contaminate the next), which is exactly why no .dag construct can carry a value across it: the substrate has no modeled claim-frame boundary yet, so the tier that survives it must stand where the frames are built. The eval-frame memo already lived in the interpreter for the same reason; this generalizes its hardcoded prepare_grammar cross-claim arm into the roster-driven tier that arm's own dissolve-on comment demanded, rather than growing a second name arm beside it.\n\nWHAT IS NOT GROWN: no membership policy (the roster is v2.workflow.floor_pure_producer_share and Rust decides nothing about it), no language behavior, no compatibility route, no escape hatch -- every failure arm refuses: a roster module absent from the prepared subject, a stale warm row, a warm that fails to evaluate, and a value that fails TOTAL reification each stop the line as a typed, located REQUIRED-FLOOR REFUSAL, and a store the tier declines (origin-bound value, hash-verified duplicate, counted cap overflow) degrades to recompute, never to a wrong value. Publication portability is a positive coproduct checked at store time with the first non-portable child named by path (the run-33269961629 class: a raw evaluator fn reference at .produced_decl_support.render), and serves verify the full portable argument row so a hash collision cannot alias.\n\nWHY IT IS ADMITTED AGAINST THE v1 FREEZE: gunbc.v1_maintenance_standing v1_seed_standing admits work serving the v2 self-host program, and the required floor is the instrument that program gates on. Main run 33258845841 refused at the operator's 500ms per-claim CPU ceiling on a five-string_contains witness because every emit claim was re-deriving the same pure target-model work per frame -- runner variance crossing a fixed re-derivation cost, a nondeterministic gate. The repair the floor's own carriers demand is stop recomputing, never raise the line; verified on run 33272541241: FloorClean, emit rows over 350ms CPU dropped to zero, fills receipted through the existing [floor-shared-fill] ledger under cache=cross_claim_pure_share.\n\nHAND-ITEM DELTA: the enumerated items above are the COMPLETE census of new module-scope declarations in the diff against origin/main (fns, types, consts, and thread-local statics across v1_interpreter and cli_run), derived item-by-item from the declaration diff, not from memory (review 57451 caught the earlier 8-item roster omitting portable_value_eq, portable_value_size_bytes and others). Deliberately excluded: CROSS_CLAIM_BYTE_BUDGET_TEST_OVERRIDE, which is cfg(test)-only and never compiled into the shipped seed — it is enrolled test scope, not seed growth. The remaining diff is arms and fields inside declarations that already existed on main (PortableValue arms, try/store_cross_claim_pure_memo bodies, clear_cross_claim_pure_memos, the shared-fill observer wiring, claim_batch's two trace lines), which gunbc.seed_growth_admission classifies ExistingSeedItemModified, plus enrolled test scope (the discriminating fill/serve pair, the reordered-interner field-resolution control, the publication-refusal REDs, the homonym and byte-budget REDs, and the closure-seed refusal trio). HAND-LOC DELTA AT THIS RECEIPT: roughly +1068/-82 across src/v1/stage0/src/v1_interpreter.rs, cli_run.rs, cli_run/required_floor_runner.rs, cli_run/shared_fill.rs and bin/claim_batch.rs against origin/main (claim_batch's two lines wire the previously uncalled recompute-trace printer, adding no declaration). The item observation producer named by gunbc.seed_growth_admission is not invoked by any required phase, so these diff-derived figures are review evidence rather than a mechanically joined admission, and this receipt says so rather than presenting them as measured by the join.",
+  owning_dissolution_lane: "v1-hand-queue-drain" as RoadmapNodeId,
+  trigger: "Delete the seed declarations when the generic cross-claim pure memo lands (gunbc.roadmap_authority five_minute_ci_gate_program_note -- v2.workflow.floor_pure_producer_share's own dissolve-on) AND the interpreter's memo tier migrates with the evaluator into the self-emitted substrate, so the claim-frame boundary and the tier that crosses it are both modeled facts and the hand plumbing disappears with the v1 floor bridge. NOT retired by the roster emptying: an empty roster still needs the tier that would serve it, and a trigger satisfied by the population draining would delete the mechanism while leaving the capability unowned.",
+  current_boundary: "v2.workflow.floor_pure_producer_share floor_cross_claim_pure_producers_warm / floor_cross_claim_pure_producers_claim_forced -> v1_compiler.cli_run install_pure_producer_share -> v1_compiler.v1_interpreter cross-claim tier (store, verify, serve, warm) -> [floor-shared-fill] cache=cross_claim_pure_share"
+}

@@ -191,6 +191,33 @@ pub fn primitive_concept_decl_facts_live() -> Rc<PrimitiveIdentity> {
     CACHED.with(|c: &Rc<PrimitiveIdentity>| c.clone())
 }
 
+pub fn primitive_symbol_lexeme() -> Rc<PrimitiveIdentity> {
+    thread_local! {
+        static CACHED: Rc<PrimitiveIdentity> = {
+            primitive_identity_slug("symbol_lexeme".to_string())
+        };
+    }
+    CACHED.with(|c: &Rc<PrimitiveIdentity>| c.clone())
+}
+
+pub fn primitive_symbol_intern_lexeme() -> Rc<PrimitiveIdentity> {
+    thread_local! {
+        static CACHED: Rc<PrimitiveIdentity> = {
+            primitive_identity_slug("symbol_intern_lexeme".to_string())
+        };
+    }
+    CACHED.with(|c: &Rc<PrimitiveIdentity>| c.clone())
+}
+
+pub fn symbol_lexeme_seam_disposition_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "THE TWO SYMBOL BRIDGES WERE HOST SEAMS THAT NOTHING SAID WERE HOST SEAMS, and the cost of that silence is why they are rostered here rather than left alone. v2.std.compilers.lexing symbol_lexeme and symbol_intern_lexeme have self-call bodies -- the HostRealizedSeam shape exactly, correct by construction because reaching one recurses to the evaluation-budget refusal -- and the interpreter has carried real arms for both since they were written (gunbc.v1_interpreter_primitive_surface v4_bridge.symbol_lexeme, v4_bridge.symbol_intern_lexeme). But with no roster row the RESOLVER saw an ordinary declaration, so Rust emission emitted the declaration, and `pub fn symbol_lexeme(sym: String) -> String { symbol_lexeme(sym) }` COMPILES. The emitted v2 compiler closure therefore carried two functions that type-check, pass every gate we own, and diverge from the interpreter by not terminating -- the DESIGN section 5 fabricated-plausible-output failure in its quietest form, since unlike the sibling seams (decl_facts and friends, which at least refuse loudly as unresolved v1_rt symbols) nothing anywhere reports this one.\n\nWHAT MAKES THE RUST REALIZATION HONEST RATHER THAN A SHIM: extdeps.languages.rust.types already declares Symbol's target type as String, so on that target the interning table is the identity and both bridges ARE identity functions. That is a realization of the declared row, not a second opinion about it; a target where Symbol is NOT String would need a different realization and the registry is where it would say so. The interpreter's arms and the Rust registry rows now answer for the same two primitives, which is the agreement that was missing.\n\nTHE RESIDUE IS NAMED, NOT CLOSED: a self-call body is a DECIDABLE structural marker of a host seam, so the compiler could refuse an unrealized one instead of emitting it. It does not yet, and until it does this roster is the only thing standing between a new v4_bridge declaration and another silently nonterminating emission. That check is this class's next-rung trigger.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
 pub fn primitive_projection_roster_note() -> String {
     thread_local! {
         static CACHED: String = {
@@ -249,6 +276,18 @@ pub fn primitive_projection_roster() -> Rc<Vec<Rc<PrimitiveProjection>>> {
             primitive_empty_map(),
             "v2.std.collection".to_string(),
             "empty_map_primitive_delegate".to_string(),
+            Rc::new(ProjectionFidelity::HostRealizedSeam),
+        ),
+        primitive_projection_row(
+            primitive_symbol_lexeme(),
+            "v2.std.compilers.lexing".to_string(),
+            "symbol_lexeme".to_string(),
+            Rc::new(ProjectionFidelity::HostRealizedSeam),
+        ),
+        primitive_projection_row(
+            primitive_symbol_intern_lexeme(),
+            "v2.std.compilers.lexing".to_string(),
+            "symbol_intern_lexeme".to_string(),
             Rc::new(ProjectionFidelity::HostRealizedSeam),
         ),
         primitive_projection_row(

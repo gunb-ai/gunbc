@@ -24,7 +24,7 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.posix.shell_command_language { posix_single_quote }
 import v2.std.algebra { fold_list }
 import extdeps.github.actions_runner { actions_runner_base_dir, actions_runner_cache_dir }
-import extdeps.systemd.systemctl { systemctl_enable_verb, systemctl_start_verb }
+import extdeps.systemd.systemctl { systemctl_enable_verb, systemctl_start_verb, systemctl_set_property_verb }
 import gunbc.fleet_posix_accounts {
   ci_runner_sudo_binary_path,
   SudoInstall,
@@ -46,6 +46,7 @@ type ExecutorPrivilegedOperation
   | SystemdDaemonReload
   | SystemdEnableUnit { unit: NonEmptyStr }
   | SystemdStartUnit { unit: NonEmptyStr }
+  | SystemdSetUnitProperty { unit: NonEmptyStr, assignment: NonEmptyStr }
 
 // THE ONE PROJECTION. Everything else in this module derives from this function, so there is
 // exactly one place where an operation becomes words.
@@ -81,8 +82,24 @@ fn executor_privileged_operation_argv(op: ExecutorPrivilegedOperation) -> List<N
       systemctl_start_verb,
       u
     ]
+    SystemdSetUnitProperty { unit: u, assignment: a } => [
+      ci_runner_sudo_binary_path(b: SudoSystemctl),
+      systemctl_set_property_verb,
+      u,
+      a
+    ]
   }
 }
+
+// WHY SystemdSetUnitProperty IS ADMISSIBLE WHERE A PRIVILEGED FILE-INSTALL WAS VETOED (parent
+// ruling, warm-seal-35, 2026-08-29). A privileged operation must not copy bytes an unprivileged
+// principal can author: a granted `install <staged> /etc/systemd/system/<unit>` has a constant argv
+// but the CONTENT is the payload, so a job-user-writable staged source is root escalation from any
+// CI job. Here the payload IS the argv: one `Property=value` word, derived from the modeled
+// directive authority and pinned exactly by the sudoers match, and systemd renders and owns the
+// persisted drop-in under its own authority. A grantee can apply exactly the pinned assignment to
+// exactly the pinned unit, and nothing else. The unit and assignment are parameters and every
+// granted pair is named in full, for the same reason the directory operations name their paths.
 
 // THE TWO SERVICE TRANSITIONS ARE TWO OPERATIONS, AND THE GRANT IS WHY THAT IS STRUCTURAL RATHER
 // THAN STYLISTIC. A single SystemdEnableNowUnit variant would render one sudoers line authorizing
