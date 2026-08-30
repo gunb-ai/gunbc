@@ -302,6 +302,8 @@ fn v1cc_boundary(consumer: DeclarationRef, authority: DeclarationRef, dispositio
   BoundaryConsumer { consumer: consumer, consumed_old_authority: authority, disposition: disposition }
 }
 
+data stage0_core_deletion_search_receipt: String = "SEARCH RECEIPT (2026-08-30): searched the workspace member declarations and every tracked Cargo.toml for a stage0_core member or path dependency; searched workflow, emission and tooling sources for stage0_core; and checked both the authored partition authority v2.workflow.rust_crate_partition and its gunbc.stage0_crate_partition_generated projection. No builder or owner names src/v1/stage0_core. The only hits outside the orphan directory were this retirement receipt and the lifecycle residue contradiction whose own dissolution condition selected crate deletion. Therefore the directory deletes; it is not enrolled or frozen."
+
 fn tsv_row(path_decl: String) -> V1ConsumerRow {
   {
     boundary: v1cc_boundary(
@@ -430,7 +432,7 @@ data v1_static_consumers: List<V1ConsumerRow> = [
   },
   {
     boundary: v1cc_boundary(
-      consumer: decl_ref(module_path: "gunbc.stage0_rust_source_lifecycle_scaffold", decl_name: "residue_stage0_core_lib_dissolution"),
+      consumer: decl_ref(module_path: "gunbc.v1_consumer_census", decl_name: "stage0_core_deletion_search_receipt"),
       authority: stage0_partition_rows,
       disposition: retired(reason: "an ALREADY-DECLARED open authority contradiction, not a discovery of this census: src/v1/stage0_core/src/lib.rs is tracked on disk, absent from the partition rows and absent from the workspace member list, and the residue row's dissolution reads 'stage0_partition_crate_rows enrolls src/v1/stage0_core OR the crate deletes'. XL-5 satisfies the second arm. Recorded so the transaction is known to DISCHARGE that row rather than orphan it"),
     ),
