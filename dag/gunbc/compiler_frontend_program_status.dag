@@ -27,7 +27,7 @@ import gunbc.compiler_frontend_program_interlock {
   milestone_label,
   milestone_prerequisites,
 }
-import gunbc.cli_dispatch_surface { gunbc_cli_emitter_gap }
+import gunbc.cli_dispatch_surface { gunbc_cli_shipped_dispatch_gap }
 import gunbc.emit_subject_clean_frontier { emit_ratchet_runner_cadence }
 import v2.compiler.self_host.stage0_crate_layout { emitter_produced_divergent_registrations }
 import v2.workflow.legacy_baseline_capture {
@@ -343,14 +343,14 @@ fn standing_class_label(c: MilestoneStandingClass) -> String {
 // DEFINITIONAL, quoting the interlock's own label: "no EmitterProducedDivergentRegistration
 // remains -- the emitter can produce every artifact the seed retains, the CLI entry point
 // included". The population is the union of two rosters because the surviving divergent row's own
-// restoration trigger names both halves: the row must be gone AND `gunbc_cli_emitter_gap` must
+// restoration trigger names both halves: the row must be gone AND `gunbc_cli_shipped_dispatch_gap` must
 // return empty. Reading only the registrations would return Clear the moment the row was deleted,
 // while the CLI surface it stands for was still unemitted.
 fn emitter_retained_artifact_outstanding() -> List<String> {
   concat(
     emitter_produced_divergent_registrations
       |> map(row => concat("stage0-divergent:", row.basename)),
-    gunbc_cli_emitter_gap() |> map(name => concat("cli-emitter-gap:", name))
+    gunbc_cli_shipped_dispatch_gap() |> map(name => concat("cli-shipped-dispatch-gap:", name))
   )
 }
 

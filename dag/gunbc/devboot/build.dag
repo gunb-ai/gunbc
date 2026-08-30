@@ -1285,6 +1285,42 @@ fn devboot_build_entry(
   }
 }
 
+// SUCCESSOR-OWNED PRODUCT COMMAND POLICY. The bootstrap seed passes only the public program and an
+// internal receipt channel. Repository subject, work root, artifact destination, and realization
+// configuration remain here, outside argv and outside the seed. The configured producer endpoint
+// is observable at one product-owned path; absence or unreadability refuses rather than selecting
+// a local producer, a different transport, or a different source subject.
+data gunbc_build_cli_realization_path: String = ".gunbc/devboot-producer"
+data gunbc_build_cli_work_root: String = ".gunbc/devboot-work"
+data gunbc_build_cli_artifact_path: String = "gunbc"
+
+fn gunbc_build_cli_entry(program: String, receipt_path: String) -> ProcessExit {
+  let configured = Filesystem.Read(path: gunbc_build_cli_realization_path)
+  if !configured.success {
+    let refusal = join([
+      "BUILD-REFUSED: build realization configuration at ",
+      gunbc_build_cli_realization_path,
+      " is missing or unreadable: ",
+      configured.error,
+    ], "")
+    let written = Filesystem.Write(path: receipt_path, content: refusal)
+    if !written.success {
+      receipt_write_refusal(receipt_path: receipt_path, detail: written.error)
+    } else {
+      exit_failure(reason: refusal)
+    }
+  } else {
+    devboot_build_entry(
+      program: program,
+      repo_root: ".",
+      work_root: gunbc_build_cli_work_root,
+      endpoint: trim(s: configured.content),
+      out_path: gunbc_build_cli_artifact_path,
+      receipt_path: receipt_path,
+    )
+  }
+}
+
 fn devboot_serve_entry(
   repo_root: String,
   work_root: String,
@@ -1357,6 +1393,3 @@ fn devboot_subject_probe(program: String, repo_root: String, work_root: String) 
       }
   }
 }
-
-
-

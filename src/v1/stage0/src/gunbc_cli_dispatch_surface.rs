@@ -2,12 +2,15 @@
 // Source module: gunbc.cli_dispatch_surface
 
 use self::CliArmRealization::*;
+use self::CliBootstrapExecutionClass::*;
 use self::CliOperandArity::*;
 use self::CliOperandValue::*;
 use self::CliOptionArity::*;
 use self::CliOptionValue::*;
 use self::CliSurfaceEmission::*;
 use self::CliVersionIdentity::*;
+use crate::std_decl_ref::DeclField::WholeDeclaration;
+pub use crate::std_decl_ref::{DeclField, DeclarationRef};
 pub use crate::std_dissolution::unbound_dissolution;
 pub use crate::std_dissolution::DissolutionCondition;
 use crate::std_dissolution::DissolutionCondition::*;
@@ -52,8 +55,8 @@ pub enum CliOptionValue {
 )]
 #[serde(tag = "_variant")]
 pub enum CliSurfaceEmission {
-    EmittedByEmitMainRs,
-    AbsentFromEmitMainRs,
+    CarriedByGeneratedDispatch,
+    AbsentFromShippedDispatch,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -74,10 +77,50 @@ impl CliVersionIdentity {
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum CliArmRealization {
-    CliDelegatesToHostFn { symbol: String },
+    CliDelegatesToHostFn {
+        symbol: String,
+    },
     CliRetainedHostKernel,
-    CliRefusesUnwired { successor: String },
+    CliRefusesUnwired {
+        successor: String,
+    },
     CliInvokesBoundTargetProducer,
+    CliInvokesBootstrapDagOperation {
+        binding: Rc<CliBootstrapDagOperationBinding>,
+    },
+    CliKnownOperationNoRealization {
+        operation: Rc<DeclarationRef>,
+    },
+}
+
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+)]
+#[serde(tag = "_variant")]
+pub enum CliBootstrapExecutionClass {
+    BootstrapSuccessorOperation,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct CliBootstrapOperandBinding {
+    pub parameter: String,
+    pub operand_field: String,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct CliBootstrapReceiptChannel {
+    pub parameter: String,
+    pub path: String,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct CliBootstrapDagOperationBinding {
+    pub operation: Rc<DeclarationRef>,
+    pub entry_path: String,
+    pub source_roots: Rc<Vec<String>>,
+    pub public_operands: Rc<Vec<Rc<CliBootstrapOperandBinding>>>,
+    pub receipt: Rc<CliBootstrapReceiptChannel>,
+    pub execution_class: CliBootstrapExecutionClass,
 }
 
 #[derive(
@@ -87,6 +130,7 @@ pub enum CliArmRealization {
 pub enum CliOperandValue {
     CliAbsoluteLabelOperand,
     CliScmReadVerbOperand,
+    CliProgramOperand,
 }
 
 #[derive(
@@ -169,6 +213,67 @@ pub fn gunbc_cli_build_identity_seed_dissolve_trigger() -> Rc<DissolutionConditi
     CACHED.with(|c: &Rc<DissolutionCondition>| c.clone())
 }
 
+pub fn gunbc_build_operation_ref() -> Rc<DeclarationRef> {
+    Rc::new(DeclarationRef {
+        module_path: "gunbc.devboot.build".to_string(),
+        decl_name: "gunbc_build_cli_entry".to_string(),
+        field: Rc::new(DeclField::WholeDeclaration),
+    })
+}
+
+pub fn gunbc_build_operation_binding() -> Rc<CliBootstrapDagOperationBinding> {
+    Rc::new(CliBootstrapDagOperationBinding {
+        operation: gunbc_build_operation_ref(),
+        entry_path: "dag/gunbc/devboot/build.dag".to_string(),
+        source_roots: Rc::new(vec!["dag".to_string(), "src/v2".to_string()]),
+        public_operands: Rc::new(vec![Rc::new(CliBootstrapOperandBinding {
+            parameter: "program".to_string(),
+            operand_field: "program".to_string(),
+        })]),
+        receipt: Rc::new(CliBootstrapReceiptChannel {
+            parameter: "receipt_path".to_string(),
+            path: ".gunbc-build-receipt".to_string(),
+        }),
+        execution_class: CliBootstrapExecutionClass::BootstrapSuccessorOperation {},
+    })
+}
+
+pub fn gunbc_build_emitted_seed_growth_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "PURPOSE admission for the emitted `gunbc build` route. It serves the v2 self-host program by making its existing exact self-build operation consumable through the product CLI. Classification against the five refused v1-seed classes: NewLanguageBehavior -- no, the language and compiler semantics are unchanged. NewCompatibilityObligation -- no, the searched production/documentation population contains no predecessor devboot `gunbc run --entry` route. NewEscapeHatchOrAdmissionRow -- no, every missing binding or execution fact refuses without fallback. SeedFeatureCompletion -- no compiler feature is completed. PublicSurfaceGrowth -- yes: one modeled Build row and its single operand become emitted. The successor operation cannot legally enter the frozen seed closure, and mirroring it would fork its semantics, so the narrowly classified BootstrapSuccessorOperation uses the retained in-process evaluator as enumerated, reducible bootstrap residue. OrdinaryTargetProducer remains ineligible. Rung climb: CliArmRealization was declared but inert; emit_main_rs now derives every emitted arm from it. The former independent compile/run arm selection is deleted, while the discriminating known-operation/no-realization RED remains enrolled.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn cli_realization_missing_refusal(realization: Rc<CliArmRealization>) -> Option<String> {
+    match (*realization.clone()).clone() {
+        CliArmRealization::CliKnownOperationNoRealization {
+            operation: operation,
+            ..
+        } => Some(
+            Rc::new(vec![
+                "known operation, no realization: ".to_string(),
+                operation.module_path.clone(),
+                ".".to_string(),
+                operation.decl_name.clone(),
+            ])
+            .join(&"".to_string()),
+        ),
+        CliArmRealization::CliDelegatesToHostFn { symbol: symbol, .. } => std::option::Option::None,
+        CliArmRealization::CliRetainedHostKernel => std::option::Option::None,
+        CliArmRealization::CliRefusesUnwired {
+            successor: successor,
+            ..
+        } => std::option::Option::None,
+        CliArmRealization::CliInvokesBoundTargetProducer => std::option::Option::None,
+        CliArmRealization::CliInvokesBootstrapDagOperation {
+            binding: binding, ..
+        } => std::option::Option::None,
+    }
+}
+
 pub fn gunbc_cli_subcommands() -> Rc<Vec<Rc<CliSubcommandRow>>> {
     Rc::new(vec![Rc::new(CliSubcommandRow {
     verb: "compile".to_string(),
@@ -183,7 +288,7 @@ pub fn gunbc_cli_subcommands() -> Rc<Vec<Rc<CliSubcommandRow>>> {
 }),
     arity: CliOptionArity::CliRepeated,
     doc: Rc::new(vec!["Source root directories (searched recursively for .dag files).".to_string(), "Module imports are resolved transitively from these roots.".to_string()]),
-    emission: CliSurfaceEmission::EmittedByEmitMainRs,
+    emission: CliSurfaceEmission::CarriedByGeneratedDispatch,
 }), Rc::new(CliOptionRow {
     field: "source_dir".to_string(),
     long: "source-dir".to_string(),
@@ -192,7 +297,7 @@ pub fn gunbc_cli_subcommands() -> Rc<Vec<Rc<CliSubcommandRow>>> {
 }),
     arity: CliOptionArity::CliAtMostOne,
     doc: Rc::new(vec!["Legacy: single source directory (all .dag files loaded, no import resolution)".to_string()]),
-    emission: CliSurfaceEmission::EmittedByEmitMainRs,
+    emission: CliSurfaceEmission::CarriedByGeneratedDispatch,
 }), Rc::new(CliOptionRow {
     field: "output_dir".to_string(),
     long: "output-dir".to_string(),
@@ -201,7 +306,7 @@ pub fn gunbc_cli_subcommands() -> Rc<Vec<Rc<CliSubcommandRow>>> {
 }),
     arity: CliOptionArity::CliRequired,
     doc: Rc::new(vec![]),
-    emission: CliSurfaceEmission::EmittedByEmitMainRs,
+    emission: CliSurfaceEmission::CarriedByGeneratedDispatch,
 }), Rc::new(CliOptionRow {
     field: "target".to_string(),
     long: "target".to_string(),
@@ -210,7 +315,7 @@ pub fn gunbc_cli_subcommands() -> Rc<Vec<Rc<CliSubcommandRow>>> {
 }),
     arity: CliOptionArity::CliRequired,
     doc: Rc::new(vec!["Target language: rust, python, go, dag, or + separated set such as rust+dag".to_string()]),
-    emission: CliSurfaceEmission::EmittedByEmitMainRs,
+    emission: CliSurfaceEmission::CarriedByGeneratedDispatch,
 }), Rc::new(CliOptionRow {
     field: "dependency_pool_index".to_string(),
     long: "dependency-pool-index".to_string(),
@@ -219,7 +324,7 @@ pub fn gunbc_cli_subcommands() -> Rc<Vec<Rc<CliSubcommandRow>>> {
 }),
     arity: CliOptionArity::CliRequired,
     doc: Rc::new(vec![]),
-    emission: CliSurfaceEmission::EmittedByEmitMainRs,
+    emission: CliSurfaceEmission::CarriedByGeneratedDispatch,
 }), Rc::new(CliOptionRow {
     field: "entry".to_string(),
     long: "entry".to_string(),
@@ -228,10 +333,10 @@ pub fn gunbc_cli_subcommands() -> Rc<Vec<Rc<CliSubcommandRow>>> {
 }),
     arity: CliOptionArity::CliAtMostOne,
     doc: Rc::new(vec!["Entry `.dag` file: compile only this module and its transitive imports".to_string(), "(not every `.dag` file under the first --source-root). Scopes the compile".to_string(), "to a subtree so a small closure can be emitted without a whole-tree pass.".to_string()]),
-    emission: CliSurfaceEmission::AbsentFromEmitMainRs,
+    emission: CliSurfaceEmission::CarriedByGeneratedDispatch,
 })]),
     realization: Rc::new(CliArmRealization::CliRetainedHostKernel),
-    emission: CliSurfaceEmission::EmittedByEmitMainRs,
+    emission: CliSurfaceEmission::CarriedByGeneratedDispatch,
 }), Rc::new(CliSubcommandRow {
     verb: "run".to_string(),
     variant: "Run".to_string(),
@@ -245,7 +350,7 @@ pub fn gunbc_cli_subcommands() -> Rc<Vec<Rc<CliSubcommandRow>>> {
 }),
     arity: CliOptionArity::CliRepeated,
     doc: Rc::new(vec!["Source root directories (searched recursively for .dag files)".to_string()]),
-    emission: CliSurfaceEmission::EmittedByEmitMainRs,
+    emission: CliSurfaceEmission::CarriedByGeneratedDispatch,
 }), Rc::new(CliOptionRow {
     field: "function".to_string(),
     long: "function".to_string(),
@@ -254,7 +359,7 @@ pub fn gunbc_cli_subcommands() -> Rc<Vec<Rc<CliSubcommandRow>>> {
 }),
     arity: CliOptionArity::CliRequired,
     doc: Rc::new(vec!["Entry function to execute (default: \"main\")".to_string()]),
-    emission: CliSurfaceEmission::EmittedByEmitMainRs,
+    emission: CliSurfaceEmission::CarriedByGeneratedDispatch,
 }), Rc::new(CliOptionRow {
     field: "entry".to_string(),
     long: "entry".to_string(),
@@ -263,14 +368,14 @@ pub fn gunbc_cli_subcommands() -> Rc<Vec<Rc<CliSubcommandRow>>> {
 }),
     arity: CliOptionArity::CliAtMostOne,
     doc: Rc::new(vec!["Entry `.dag` file: load only this module and its transitive imports".to_string(), "(not every file under --source-root). Required for scoped TestClaim runs.".to_string()]),
-    emission: CliSurfaceEmission::EmittedByEmitMainRs,
+    emission: CliSurfaceEmission::CarriedByGeneratedDispatch,
 }), Rc::new(CliOptionRow {
     field: "claim_run".to_string(),
     long: "claim-run".to_string(),
     value: Rc::new(CliOptionValue::CliToggleValue),
     arity: CliOptionArity::CliRequired,
     doc: Rc::new(vec!["TestClaim / witness run: Bool false -> exit 1; requires --entry".to_string()]),
-    emission: CliSurfaceEmission::EmittedByEmitMainRs,
+    emission: CliSurfaceEmission::CarriedByGeneratedDispatch,
 }), Rc::new(CliOptionRow {
     field: "args".to_string(),
     long: "arg".to_string(),
@@ -279,12 +384,29 @@ pub fn gunbc_cli_subcommands() -> Rc<Vec<Rc<CliSubcommandRow>>> {
 }),
     arity: CliOptionArity::CliRepeated,
     doc: Rc::new(vec!["Named argument for the entry function, repeatable: `--arg name=value`.".to_string(), "Values enter as String; a missing `=` refuses rather than guessing.".to_string()]),
-    emission: CliSurfaceEmission::EmittedByEmitMainRs,
+    emission: CliSurfaceEmission::CarriedByGeneratedDispatch,
 })]),
     realization: Rc::new(CliArmRealization::CliDelegatesToHostFn {
     symbol: "run_verb".to_string(),
 }),
-    emission: CliSurfaceEmission::EmittedByEmitMainRs,
+    emission: CliSurfaceEmission::CarriedByGeneratedDispatch,
+}), Rc::new(CliSubcommandRow {
+    verb: "build".to_string(),
+    variant: "Build".to_string(),
+    doc: Rc::new(vec!["Build one exact executable for a named program".to_string()]),
+    operands: Rc::new(vec![Rc::new(CliOperandRow {
+    field: "program".to_string(),
+    placeholder: "PROGRAM".to_string(),
+    value: CliOperandValue::CliProgramOperand {},
+    arity: CliOperandArity::CliExactlyOneOperand {},
+    doc: Rc::new(vec!["Program name from the offered program roster".to_string()]),
+    emission: CliSurfaceEmission::CarriedByGeneratedDispatch,
+})]),
+    options: Rc::new(vec![]),
+    realization: Rc::new(CliArmRealization::CliInvokesBootstrapDagOperation {
+    binding: gunbc_build_operation_binding(),
+}),
+    emission: CliSurfaceEmission::CarriedByGeneratedDispatch,
 }), Rc::new(CliSubcommandRow {
     verb: "converge".to_string(),
     variant: "Converge".to_string(),
@@ -298,12 +420,12 @@ pub fn gunbc_cli_subcommands() -> Rc<Vec<Rc<CliSubcommandRow>>> {
 }),
     arity: CliOptionArity::CliRequired,
     doc: Rc::new(vec!["Fleet host identity (e.g. \"srv1\") to converge".to_string()]),
-    emission: CliSurfaceEmission::AbsentFromEmitMainRs,
+    emission: CliSurfaceEmission::CarriedByGeneratedDispatch,
 })]),
     realization: Rc::new(CliArmRealization::CliRefusesUnwired {
     successor: "gunbc.fleet_converge_apply".to_string(),
 }),
-    emission: CliSurfaceEmission::AbsentFromEmitMainRs,
+    emission: CliSurfaceEmission::CarriedByGeneratedDispatch,
 }), Rc::new(CliSubcommandRow {
     verb: "scm".to_string(),
     variant: "Scm".to_string(),
@@ -314,7 +436,7 @@ pub fn gunbc_cli_subcommands() -> Rc<Vec<Rc<CliSubcommandRow>>> {
     value: CliOperandValue::CliScmReadVerbOperand {},
     arity: CliOperandArity::CliExactlyOneOperand {},
     doc: Rc::new(vec!["Which read to perform: `log` or `status`".to_string()]),
-    emission: CliSurfaceEmission::AbsentFromEmitMainRs,
+    emission: CliSurfaceEmission::AbsentFromShippedDispatch,
 })]),
     options: Rc::new(vec![Rc::new(CliOptionRow {
     field: "path".to_string(),
@@ -324,12 +446,12 @@ pub fn gunbc_cli_subcommands() -> Rc<Vec<Rc<CliSubcommandRow>>> {
 }),
     arity: CliOptionArity::CliRequired,
     doc: Rc::new(vec!["Path to the repository document to read".to_string()]),
-    emission: CliSurfaceEmission::AbsentFromEmitMainRs,
+    emission: CliSurfaceEmission::AbsentFromShippedDispatch,
 })]),
     realization: Rc::new(CliArmRealization::CliRefusesUnwired {
     successor: "unwired: gunbc.cli_wire CliWireResponse has no host renderer bound. MEASURED, not assumed -- `gunbc run --entry dag/gunbc/scm/read_command.dag --function scm_read_log --arg path=<p>` binds its argument and READS THE FILE, then the host refuses with `returned ScmReadResult, not ProcessExit`, so the answer is computed and discarded. There is therefore NO route a user can invoke today that yields this answer, and naming one would be a dead end dressed as a redirect.".to_string(),
 }),
-    emission: CliSurfaceEmission::AbsentFromEmitMainRs,
+    emission: CliSurfaceEmission::AbsentFromShippedDispatch,
 }), Rc::new(CliSubcommandRow {
     verb: "serve".to_string(),
     variant: "Serve".to_string(),
@@ -343,7 +465,7 @@ pub fn gunbc_cli_subcommands() -> Rc<Vec<Rc<CliSubcommandRow>>> {
 }),
     arity: CliOptionArity::CliRepeated,
     doc: Rc::new(vec!["Source root directories (searched recursively for .dag files)".to_string()]),
-    emission: CliSurfaceEmission::AbsentFromEmitMainRs,
+    emission: CliSurfaceEmission::CarriedByGeneratedDispatch,
 }), Rc::new(CliOptionRow {
     field: "entry".to_string(),
     long: "entry".to_string(),
@@ -352,7 +474,7 @@ pub fn gunbc_cli_subcommands() -> Rc<Vec<Rc<CliSubcommandRow>>> {
 }),
     arity: CliOptionArity::CliRequired,
     doc: Rc::new(vec!["Entry `.dag` file: load only this module and its transitive imports".to_string()]),
-    emission: CliSurfaceEmission::AbsentFromEmitMainRs,
+    emission: CliSurfaceEmission::CarriedByGeneratedDispatch,
 }), Rc::new(CliOptionRow {
     field: "function".to_string(),
     long: "function".to_string(),
@@ -361,7 +483,7 @@ pub fn gunbc_cli_subcommands() -> Rc<Vec<Rc<CliSubcommandRow>>> {
 }),
     arity: CliOptionArity::CliRequired,
     doc: Rc::new(vec!["Handler function: fn(method: String, path: String, body: String) -> ServeWireResponse".to_string()]),
-    emission: CliSurfaceEmission::AbsentFromEmitMainRs,
+    emission: CliSurfaceEmission::CarriedByGeneratedDispatch,
 }), Rc::new(CliOptionRow {
     field: "host".to_string(),
     long: "host".to_string(),
@@ -370,7 +492,7 @@ pub fn gunbc_cli_subcommands() -> Rc<Vec<Rc<CliSubcommandRow>>> {
 }),
     arity: CliOptionArity::CliRequired,
     doc: Rc::new(vec![]),
-    emission: CliSurfaceEmission::AbsentFromEmitMainRs,
+    emission: CliSurfaceEmission::CarriedByGeneratedDispatch,
 }), Rc::new(CliOptionRow {
     field: "port".to_string(),
     long: "port".to_string(),
@@ -379,7 +501,7 @@ pub fn gunbc_cli_subcommands() -> Rc<Vec<Rc<CliSubcommandRow>>> {
 }),
     arity: CliOptionArity::CliRequired,
     doc: Rc::new(vec![]),
-    emission: CliSurfaceEmission::AbsentFromEmitMainRs,
+    emission: CliSurfaceEmission::CarriedByGeneratedDispatch,
 }), Rc::new(CliOptionRow {
     field: "release_revision".to_string(),
     long: "release-revision".to_string(),
@@ -388,7 +510,7 @@ pub fn gunbc_cli_subcommands() -> Rc<Vec<Rc<CliSubcommandRow>>> {
 }),
     arity: CliOptionArity::CliRequired,
     doc: Rc::new(vec!["Release revision this process serves, bound ONCE at startup and".to_string(), "immutable for the process lifetime.".to_string()]),
-    emission: CliSurfaceEmission::AbsentFromEmitMainRs,
+    emission: CliSurfaceEmission::CarriedByGeneratedDispatch,
 }), Rc::new(CliOptionRow {
     field: "eval_budget_cpu_ms".to_string(),
     long: "eval-budget-cpu-ms".to_string(),
@@ -397,7 +519,7 @@ pub fn gunbc_cli_subcommands() -> Rc<Vec<Rc<CliSubcommandRow>>> {
 }),
     arity: CliOptionArity::CliAtMostOne,
     doc: Rc::new(vec!["Per-request THREAD-CPU evaluation budget in milliseconds.".to_string()]),
-    emission: CliSurfaceEmission::AbsentFromEmitMainRs,
+    emission: CliSurfaceEmission::CarriedByGeneratedDispatch,
 }), Rc::new(CliOptionRow {
     field: "eval_budget_wall_ms".to_string(),
     long: "eval-budget-wall-ms".to_string(),
@@ -406,12 +528,12 @@ pub fn gunbc_cli_subcommands() -> Rc<Vec<Rc<CliSubcommandRow>>> {
 }),
     arity: CliOptionArity::CliAtMostOne,
     doc: Rc::new(vec!["Per-request MONOTONIC-WALL evaluation budget in milliseconds.".to_string()]),
-    emission: CliSurfaceEmission::AbsentFromEmitMainRs,
+    emission: CliSurfaceEmission::CarriedByGeneratedDispatch,
 })]),
     realization: Rc::new(CliArmRealization::CliDelegatesToHostFn {
     symbol: "handle_serve".to_string(),
 }),
-    emission: CliSurfaceEmission::AbsentFromEmitMainRs,
+    emission: CliSurfaceEmission::CarriedByGeneratedDispatch,
 }), Rc::new(CliSubcommandRow {
     verb: "test".to_string(),
     variant: "Test".to_string(),
@@ -422,21 +544,21 @@ pub fn gunbc_cli_subcommands() -> Rc<Vec<Rc<CliSubcommandRow>>> {
     value: CliOperandValue::CliAbsoluteLabelOperand {},
     arity: CliOperandArity::CliExactlyOneOperand {},
     doc: Rc::new(vec!["Absolute label of exactly one target, e.g.".to_string(), "`//gunbc/instruments:heads-reading-differential`.".to_string()]),
-    emission: CliSurfaceEmission::AbsentFromEmitMainRs,
+    emission: CliSurfaceEmission::CarriedByGeneratedDispatch,
 })]),
     options: Rc::new(vec![]),
     realization: Rc::new(CliArmRealization::CliInvokesBoundTargetProducer),
-    emission: CliSurfaceEmission::AbsentFromEmitMainRs,
+    emission: CliSurfaceEmission::CarriedByGeneratedDispatch,
 })])
 }
 
-pub fn gunbc_cli_emitted_subcommands() -> Rc<Vec<Rc<CliSubcommandRow>>> {
+pub fn gunbc_cli_generated_dispatch_subcommands() -> Rc<Vec<Rc<CliSubcommandRow>>> {
     Rc::new({
         let mut __result = Vec::new();
         for sub in gunbc_cli_subcommands().iter().cloned() {
             if match sub.emission.clone() {
-                CliSurfaceEmission::EmittedByEmitMainRs => true,
-                CliSurfaceEmission::AbsentFromEmitMainRs => false,
+                CliSurfaceEmission::CarriedByGeneratedDispatch => true,
+                CliSurfaceEmission::AbsentFromShippedDispatch => false,
             } {
                 __result.push(sub);
             }
@@ -445,13 +567,15 @@ pub fn gunbc_cli_emitted_subcommands() -> Rc<Vec<Rc<CliSubcommandRow>>> {
     })
 }
 
-pub fn cli_subcommand_emitted_options(sub: Rc<CliSubcommandRow>) -> Rc<Vec<Rc<CliOptionRow>>> {
+pub fn cli_subcommand_generated_dispatch_options(
+    sub: Rc<CliSubcommandRow>,
+) -> Rc<Vec<Rc<CliOptionRow>>> {
     Rc::new({
         let mut __result = Vec::new();
         for opt in sub.options.clone().iter().cloned() {
             if match opt.emission.clone() {
-                CliSurfaceEmission::EmittedByEmitMainRs => true,
-                CliSurfaceEmission::AbsentFromEmitMainRs => false,
+                CliSurfaceEmission::CarriedByGeneratedDispatch => true,
+                CliSurfaceEmission::AbsentFromShippedDispatch => false,
             } {
                 __result.push(opt);
             }
@@ -460,45 +584,62 @@ pub fn cli_subcommand_emitted_options(sub: Rc<CliSubcommandRow>) -> Rc<Vec<Rc<Cl
     })
 }
 
-pub fn gunbc_cli_emitter_gap() -> Rc<Vec<String>> {
-    cli_emitter_gap_of(gunbc_cli_subcommands())
+pub fn cli_subcommand_generated_dispatch_operands(
+    sub: Rc<CliSubcommandRow>,
+) -> Rc<Vec<Rc<CliOperandRow>>> {
+    Rc::new({
+        let mut __result = Vec::new();
+        for operand in sub.operands.clone().iter().cloned() {
+            if match operand.emission.clone() {
+                CliSurfaceEmission::CarriedByGeneratedDispatch => true,
+                CliSurfaceEmission::AbsentFromShippedDispatch => false,
+            } {
+                __result.push(operand);
+            }
+        }
+        __result
+    })
 }
 
-pub fn cli_emitter_gap_of(subcommands: Rc<Vec<Rc<CliSubcommandRow>>>) -> Rc<Vec<String>> {
+pub fn gunbc_cli_shipped_dispatch_gap() -> Rc<Vec<String>> {
+    cli_shipped_dispatch_gap_of(gunbc_cli_subcommands())
+}
+
+pub fn cli_shipped_dispatch_gap_of(subcommands: Rc<Vec<Rc<CliSubcommandRow>>>) -> Rc<Vec<String>> {
     subcommands.iter().cloned().fold(
         Rc::new(vec![]),
         |acc: Rc<Vec<String>>, sub: Rc<CliSubcommandRow>| match sub.emission.clone() {
-            CliSurfaceEmission::AbsentFromEmitMainRs => {
+            CliSurfaceEmission::AbsentFromShippedDispatch => {
                 v1_rt::concat(acc.clone(), Rc::new(vec![sub.verb.clone()]))
             }
-            CliSurfaceEmission::EmittedByEmitMainRs => {
+            CliSurfaceEmission::CarriedByGeneratedDispatch => {
                 let with_operands = sub.operands.clone().iter().cloned().fold(
                     acc.clone(),
                     |inner: Rc<Vec<String>>, operand: Rc<CliOperandRow>| match operand
                         .emission
                         .clone()
                     {
-                        CliSurfaceEmission::AbsentFromEmitMainRs => v1_rt::concat(
+                        CliSurfaceEmission::AbsentFromShippedDispatch => v1_rt::concat(
                             inner.clone(),
                             Rc::new(vec![v1_rt::concat(
                                 sub.verb.clone(),
                                 v1_rt::concat(".".to_string(), operand.placeholder.clone()),
                             )]),
                         ),
-                        CliSurfaceEmission::EmittedByEmitMainRs => inner.clone(),
+                        CliSurfaceEmission::CarriedByGeneratedDispatch => inner.clone(),
                     },
                 );
                 sub.options.clone().iter().cloned().fold(
                     with_operands.clone(),
                     |inner: Rc<Vec<String>>, opt: Rc<CliOptionRow>| match opt.emission.clone() {
-                        CliSurfaceEmission::AbsentFromEmitMainRs => v1_rt::concat(
+                        CliSurfaceEmission::AbsentFromShippedDispatch => v1_rt::concat(
                             inner.clone(),
                             Rc::new(vec![v1_rt::concat(
                                 sub.verb.clone(),
                                 v1_rt::concat(".".to_string(), opt.long.clone()),
                             )]),
                         ),
-                        CliSurfaceEmission::EmittedByEmitMainRs => inner.clone(),
+                        CliSurfaceEmission::CarriedByGeneratedDispatch => inner.clone(),
                     },
                 )
             }
@@ -506,17 +647,17 @@ pub fn cli_emitter_gap_of(subcommands: Rc<Vec<Rc<CliSubcommandRow>>>) -> Rc<Vec<
     )
 }
 
-pub fn gunbc_cli_emitter_gap_rendered() -> String {
-    gunbc_cli_emitter_gap()
-        .iter()
-        .cloned()
-        .fold("".to_string(), |acc: String, name: String| {
+pub fn gunbc_cli_shipped_dispatch_gap_rendered() -> String {
+    gunbc_cli_shipped_dispatch_gap().iter().cloned().fold(
+        "".to_string(),
+        |acc: String, name: String| {
             if (acc.clone() == "".to_string()) {
                 name.clone()
             } else {
                 v1_rt::concat(acc.clone(), v1_rt::concat(", ".to_string(), name.clone()))
             }
-        })
+        },
+    )
 }
 
 pub fn gunbc_cli_qualified_option_names() -> Rc<Vec<String>> {
@@ -549,12 +690,16 @@ pub struct CliAtMostOne;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct CliRepeated;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub struct EmittedByEmitMainRs;
+pub struct CarriedByGeneratedDispatch;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub struct AbsentFromEmitMainRs;
+pub struct AbsentFromShippedDispatch;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct BootstrapSuccessorOperation;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct CliAbsoluteLabelOperand;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct CliScmReadVerbOperand;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct CliProgramOperand;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct CliExactlyOneOperand;

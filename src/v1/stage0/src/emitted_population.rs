@@ -29,6 +29,7 @@
 // src/extdeps_uri_path.rs
 // src/extdeps_version.rs
 // src/extdeps_version_semver.rs
+// src/gunbc_cli_dispatch_generated.rs
 // src/gunbc_cli_dispatch_surface.rs
 // src/gunbc_namespace_reference_derived_closure_admission.rs
 // src/gunbc_rust_decl_type_overlay.rs

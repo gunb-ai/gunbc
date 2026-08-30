@@ -17762,6 +17762,123 @@ pub enum ExitClass {
     NotProcessExit { type_name: String },
 }
 
+/// Generic, temporary launcher for a successor-authored bootstrap operation whose import closure
+/// cannot enter the frozen v1 seed. All operation-specific facts arrive from the modeled CLI row;
+/// this declaration knows only source/declaration identity, named String bindings, an internal
+/// receipt channel, and the BootstrapSuccessorOperation execution class enforced by the model.
+/// It reuses the retained resolver/evaluator in-process and never shells out to another gunbc.
+pub fn run_bootstrap_dag_operation(
+    source_roots: &[String],
+    entry_path: &str,
+    declaration_module: &str,
+    declaration_name: &str,
+    mut public_operands: Vec<(String, String)>,
+    receipt_parameter: &str,
+    receipt_path: &str,
+) -> ! {
+    if source_roots.is_empty() || entry_path.is_empty() || declaration_module.is_empty() {
+        eprintln!("REFUSED: known bootstrap operation has an incomplete modeled binding");
+        std::process::exit(2);
+    }
+    match std::fs::remove_file(receipt_path) {
+        Ok(()) => {}
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+        Err(error) => {
+            eprintln!("REFUSED: could not clear bootstrap receipt `{receipt_path}`: {error}");
+            std::process::exit(1);
+        }
+    }
+    let (graph, source_indices) = match resolve_entry_graph(source_roots, entry_path) {
+        Ok(resolved) => resolved,
+        Err(cause) => {
+            eprintln!("REFUSED: bootstrap operation resolve failed at `{entry_path}`: {cause}");
+            std::process::exit(1);
+        }
+    };
+    if graph
+        .diagnostics
+        .iter()
+        .any(|diagnostic| is_interpreter_blocking_diagnostic(diagnostic.diagnostic.clone()))
+    {
+        eprintln!("REFUSED: bootstrap operation `{entry_path}` has blocking diagnostics");
+        std::process::exit(1);
+    }
+    let declaration_present = graph.item_registry.values().any(|item| {
+        item.module_name == declaration_module
+            && item.name == declaration_name
+            && matches!(item.kind, ItemKind::FnItem | ItemKind::FuncItem)
+    });
+    if !declaration_present {
+        eprintln!(
+            "REFUSED: bound bootstrap declaration `{declaration_module}.{declaration_name}` \
+             is absent from `{entry_path}`"
+        );
+        std::process::exit(1);
+    }
+    public_operands.push((receipt_parameter.to_string(), receipt_path.to_string()));
+    let arguments = public_operands
+        .into_iter()
+        .map(|(name, value)| (Some(name), str_value(value)))
+        .collect::<Vec<_>>();
+    let ctx = make_eval_context(
+        graph.as_ref(),
+        source_indices,
+        v1_interpreter::ExecutionMode::Wet,
+    );
+    let terminal =
+        match v1_interpreter::run_in_context_with_args(&ctx, declaration_name, &arguments, true) {
+            Ok(value) => classify_exit(&value, &ctx),
+            Err(error) => {
+                eprintln!(
+                    "REFUSED: bootstrap operation `{declaration_module}.{declaration_name}` \
+                 evaluation failed: {error:?}"
+                );
+                std::process::exit(1);
+            }
+        };
+    let receipt = match std::fs::read_to_string(receipt_path) {
+        Ok(receipt) => receipt,
+        Err(error) => {
+            eprintln!("REFUSED: bootstrap operation receipt `{receipt_path}` unreadable: {error}");
+            std::process::exit(1);
+        }
+    };
+    print!("{receipt}");
+    if !receipt.ends_with('\n') {
+        println!();
+    }
+    let seed_identity = env!("GUNBC_BUILD_IDENTITY");
+    match terminal {
+        ExitClass::Success => {
+            eprintln!(
+                "BOOTSTRAP-RECEIPT seed={seed_identity} entry={entry_path} \
+                 declaration={declaration_module}.{declaration_name} \
+                 class=BootstrapSuccessorOperation terminal=ExitSuccess"
+            );
+            std::process::exit(0);
+        }
+        ExitClass::Failure { code, reason } => {
+            let status = if code == 0 { 1 } else { code };
+            eprintln!(
+                "BOOTSTRAP-RECEIPT seed={seed_identity} entry={entry_path} \
+                 declaration={declaration_module}.{declaration_name} \
+                 class=BootstrapSuccessorOperation terminal=ExitFailure({status}){}",
+                reason
+                    .map(|text| format!(" reason={text}"))
+                    .unwrap_or_default()
+            );
+            std::process::exit(status);
+        }
+        ExitClass::NotProcessExit { type_name } => {
+            eprintln!(
+                "REFUSED: bootstrap declaration `{declaration_module}.{declaration_name}` \
+                 returned `{type_name}`, not ProcessExit"
+            );
+            std::process::exit(2);
+        }
+    }
+}
+
 pub fn classify_exit(
     val: &v1_interpreter::Value,
     ctx: &v1_interpreter::InterpContext,

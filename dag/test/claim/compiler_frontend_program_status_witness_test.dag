@@ -68,7 +68,7 @@ import v2.workflow.legacy_baseline_capture {
   capture_blocked_reason,
 }
 import v2.compiler.self_host.stage0_crate_layout { emitter_produced_divergent_registrations }
-import gunbc.cli_dispatch_surface { gunbc_cli_emitter_gap }
+import gunbc.cli_dispatch_surface { gunbc_cli_shipped_dispatch_gap }
 import gunbc.compiler_frontend_program_status {
   MilestoneStanding,
   Clear,
@@ -268,7 +268,7 @@ fn emitter_expected_members() -> List<String> {
   concat(
     emitter_produced_divergent_registrations
       |> map(row => concat("stage0-divergent:", row.basename)),
-    gunbc_cli_emitter_gap() |> map(name => concat("cli-emitter-gap:", name)))
+    gunbc_cli_shipped_dispatch_gap() |> map(name => concat("cli-shipped-dispatch-gap:", name)))
 }
 
 // THE FOUR-ROW TRUTH TABLE, AUTHORED. Every row is authorable at fixture grain because the variant

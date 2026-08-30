@@ -63,6 +63,16 @@ import extdeps.cargo_version { render_cargo_package_header_prefix }
 import gunbc.stage0_crate_layout_generated { generated_pub_mod_block }
 import gunbc.rust_decl_type_overlay { rust_decl_type_container_overlay_is_admitted }
 import gunbc.cli_dispatch_surface {
+  CliArmRealization,
+  BootstrapSuccessorOperation,
+  CliBootstrapDagOperationBinding,
+  CliDelegatesToHostFn,
+  CliInvokesBootstrapDagOperation,
+  CliInvokesBoundTargetProducer,
+  CliKnownOperationNoRealization,
+  CliOperandRow,
+  CliRefusesUnwired,
+  CliRetainedHostKernel,
   CliAtMostOne,
   CliMillisecondValue,
   CliOptionRow,
@@ -73,8 +83,9 @@ import gunbc.cli_dispatch_surface {
   CliSubcommandRow,
   CliTextValue,
   CliToggleValue,
-  cli_subcommand_emitted_options,
-  gunbc_cli_emitted_subcommands
+  cli_subcommand_generated_dispatch_operands,
+  cli_subcommand_generated_dispatch_options,
+  gunbc_cli_generated_dispatch_subcommands
 }
 import std.measure { millisecond_count }
 import gunbc.stage0_emitted_population_manifest {
@@ -2960,6 +2971,7 @@ fn emit_rust(typed: ResolvedGraph) -> EmitResult {
   let crate_name = if has_pipeline { "v1_compiler" } else { "v1_compiled" }
   let cargo = emit_cargo_toml(crate_name: crate_name, has_services: has_services)
   let main_file = emit_main_rs(workflow_funcs: workflow_funcs, modules: typed.modules, has_services: has_services, crate_name: crate_name, svc_module_map: svc_module_map)
+  let cli_dispatch_file = if has_pipeline { [emit_gunbc_cli_dispatch_generated(crate_name: crate_name)] } else { [] }
   let rt_file = emit_v2_rt_module()
   let compiler_tests_file = if has_pipeline { [emit_compiler_tests_module()] } else { [] }
   let dry_run_file = if has_services {
@@ -2980,7 +2992,7 @@ fn emit_rust(typed: ResolvedGraph) -> EmitResult {
   } else {
     []
   }
-  let all_mod_files = concat(module_files, v2_std_text_stub, v2_std_integer_stub, [rt_file], dry_run_file)
+  let all_mod_files = concat(module_files, v2_std_text_stub, v2_std_integer_stub, [rt_file], dry_run_file, cli_dispatch_file)
   let lib_file = emit_lib_rs_from_files(all_module_files: all_mod_files, has_compiler_tests: has_pipeline)
   let emitted_files = concat([cargo, lib_file, main_file], all_mod_files, compiler_tests_file, test_files)
   let population_manifest = emit_emitted_population_manifest(files: emitted_files)
@@ -14252,6 +14264,106 @@ fn find_resource_module(resource_name: String, modules: List<TypedModule>) -> St
   result
 }
 
+fn cli_dispatch_field_type(sub: CliSubcommandRow, field: String) -> String {
+  match cli_subcommand_generated_dispatch_operands(sub: sub) |> filter(o => o.field == field) |> first {
+    Present { value: _ } => "String"
+    Absent => match cli_subcommand_generated_dispatch_options(sub: sub) |> filter(o => o.field == field) |> first {
+      Present { value: opt } => cli_option_rust_type(opt: opt)
+      Absent => "String"
+    }
+  }
+}
+
+fn emit_cli_dispatch_host_method(sub: CliSubcommandRow, method: String) -> String {
+  let fields = modeled_subcommand_bound_fields(sub: sub)
+  let params = fields |> map(field => concat(field, ": ", cli_dispatch_field_type(sub: sub, field: field))) |> join(separator: ", ")
+  concat("    fn ", method, "(&self", if params == "" { "" } else { concat(", ", params) }, ") -> !;\n")
+}
+
+fn cli_dispatch_host_method_name(sub: CliSubcommandRow) -> String? {
+  match sub.realization {
+    CliRetainedHostKernel => Present { value: "retained_host_kernel" }
+    CliDelegatesToHostFn { symbol } => Present { value: symbol }
+    CliInvokesBoundTargetProducer => Present { value: "invoke_bound_target_producer" }
+    CliRefusesUnwired { successor: _ } => none
+    CliKnownOperationNoRealization { operation: _ } => none
+    CliInvokesBootstrapDagOperation { binding: _ } => none
+  }
+}
+
+fn emit_generated_dispatch_match_arm(sub: CliSubcommandRow, crate_name: String, executor_name: String) -> String {
+  let fields = modeled_subcommand_bound_fields(sub: sub)
+  let binds = fields |> join(separator: ", ")
+  let call_args = fields |> join(separator: ", ")
+  match cli_dispatch_host_method_name(sub: sub) {
+    Present { value: method } => concat(
+      "        Commands::", sub.variant, if binds == "" { "" } else { concat(" { ", binds, " }") },
+      " => ", executor_name, ".", method, "(", call_args, "),")
+    Absent => match sub.realization {
+      CliRefusesUnwired { successor } => concat(
+        "        Commands::", sub.variant, " { .. } => { eprintln!(\"REFUSED: ", successor, " is not wired\"); std::process::exit(2); },")
+      CliKnownOperationNoRealization { operation } => concat(
+        "        Commands::", sub.variant, " { .. } => { eprintln!(\"REFUSED: known operation, no realization: ", operation.module_path, ".", operation.decl_name, "\"); std::process::exit(2); },")
+      CliInvokesBootstrapDagOperation { binding } => emit_bootstrap_dag_operation_match_arm(sub: sub, binding: binding, crate_name: crate_name)
+      CliRetainedHostKernel => ""
+      CliDelegatesToHostFn { symbol: _ } => ""
+      CliInvokesBoundTargetProducer => ""
+    }
+  }
+}
+
+fn dispatch_local_binding_names(rows: List<CliSubcommandRow>) -> List<String> {
+  // `command` and the modeled pattern bindings are the complete value-binding population in
+  // the generated function before the executor is used. This projection is shared with the
+  // pattern renderer; it does not guess from option spellings or from a parallel field roster.
+  concat(["command"], rows |> flat_map(sub => modeled_subcommand_bound_fields(sub: sub)))
+}
+
+fn cli_dispatch_executor_candidate(index: Int) -> String {
+  // Every member is a legal, non-keyword Rust value identifier by construction.
+  concat("__gunbc_dispatch_executor_", to_string(index))
+}
+
+data cli_dispatch_executor_name_construction_note: String = "One-consumer realization helper: only emit_gunbc_cli_dispatch_generated_for_rows consumes this spelling, and the spelling never enters CLI identity, build identity, receipts, cache keys, or product output. Dissolve this local helper into a general Rust value-identifier allocation authority when that authority exists and can consume the exact dispatch-local binding population; until then, keeping the construction here avoids minting an unconsumed framework."
+
+fn fresh_cli_dispatch_executor_name(blocked: List<String>) -> String? {
+  // A population of length N produces N+1 candidates in a fixed numeric order. Duplicates may
+  // over-allocate candidates but cannot change the first absent answer; row order is irrelevant.
+  let first_n = enumerate(blocked) |> map(pair => cli_dispatch_executor_candidate(index: pair.first))
+  let candidates = concat(first_n, [cli_dispatch_executor_candidate(index: count(blocked))])
+  candidates |> filter(name => !(blocked |> any(local => local == name))) |> first
+}
+
+fn emit_gunbc_cli_dispatch_generated_for_rows(crate_name: String, rows: List<CliSubcommandRow>) -> TextFile {
+  let executor_name = match fresh_cli_dispatch_executor_name(blocked: dispatch_local_binding_names(rows: rows)) {
+    Present { value: name } => name
+    Absent => "__gunbc_dispatch_executor_unreachable"
+  }
+  let variants = rows |> map(sub => emit_modeled_subcommand_variant(sub: sub, depth: 0)) |> join(separator: "\n")
+  let host_methods = rows |> flat_map(sub => match cli_dispatch_host_method_name(sub: sub) {
+    Present { value: method } => [emit_cli_dispatch_host_method(sub: sub, method: method)]
+    Absent => []
+  }) |> join(separator: "")
+  let arms = rows |> map(sub => emit_generated_dispatch_match_arm(sub: sub, crate_name: crate_name, executor_name: executor_name)) |> join(separator: "\n")
+  TextFile {
+    path: concat(rust_source_root(), "gunbc_cli_dispatch_generated", rust_source_ext()),
+    content: concat(
+      "// Generated by v1 compiler -- do not edit.\n",
+      "// Authority: gunbc.cli_dispatch_surface.\n\n",
+      "use clap::\{Parser, Subcommand};\n\n",
+      "#[derive(Parser)]\n#[command(name = \"gunbc\", about = \"A causal compiler: write .dag, get Rust/Python/Go.\", version = env!(\"GUNBC_BUILD_IDENTITY\"))]\n",
+      "pub struct Cli {\n    #[command(subcommand)]\n    pub command: Commands,\n    #[arg(long, global = true)]\n    pub dry_run: bool,\n}\n\n",
+      "#[derive(Subcommand)]\npub enum Commands {\n", variants, "\n}\n\n",
+      "pub trait CliDispatchHost {\n", host_methods, "}\n\n",
+      "pub fn dispatch<H: CliDispatchHost>(command: Commands, ", executor_name, ": &H) -> ! {\n    match command {\n",
+      arms, "\n    }\n}\n")
+  }
+}
+
+fn emit_gunbc_cli_dispatch_generated(crate_name: String) -> TextFile {
+  emit_gunbc_cli_dispatch_generated_for_rows(crate_name: crate_name, rows: gunbc_cli_generated_dispatch_subcommands())
+}
+
 fn emit_main_rs(workflow_funcs: List<WorkflowFunc>, modules: List<TypedModule>, has_services: Bool, crate_name: String, svc_module_map: Map<String, String>) -> TextFile {
   let has_pipeline = modules |> any(m => authored_name_at(source_indices: m.type_env.source_indices, node: m.module) == "v1.compiler.compile")
   let resource_type_names = workflow_funcs |> flat_map(wf => wf.uses |> map(u => authored_name_at(source_indices: wf.source_indices, node: resource_use_resource(n: u))))
@@ -14297,10 +14409,19 @@ fn emit_main_rs(workflow_funcs: List<WorkflowFunc>, modules: List<TypedModule>, 
   let binary_name = if has_pipeline { "gunbc" } else { crate_name }
   let cli_about = if has_pipeline { "A causal compiler: write .dag, get Rust/Python/Go." } else { "" }
   let cli_version_attr = if has_pipeline { ", version = env!(\"GUNBC_BUILD_IDENTITY\")" } else { "" }
-  let cli_struct = emit_cli_struct(workflow_funcs: workflow_funcs, binary_name: binary_name, about: cli_about, version_attr: cli_version_attr)
-  let subcommand_enum = emit_subcommand_enum(workflow_funcs: workflow_funcs, has_pipeline: has_pipeline)
+  let cli_struct = if has_pipeline { "" } else { emit_cli_struct(workflow_funcs: workflow_funcs, binary_name: binary_name, about: cli_about, version_attr: cli_version_attr) }
+  let subcommand_enum = if has_pipeline { "" } else { emit_subcommand_enum(workflow_funcs: workflow_funcs, has_pipeline: has_pipeline) }
   let pipeline_fns = if has_pipeline { emit_main_pipeline_fns(crate_name: crate_name) } else { "" }
-  let main_fn = emit_main_fn(workflow_funcs: workflow_funcs, has_services: has_services, has_pipeline: has_pipeline, crate_name: crate_name)
+  let main_fn = if has_pipeline {
+    concat(
+      "fn main() {\n",
+      "    let _cli = ", crate_name, "::gunbc_cli_dispatch_generated::Cli::parse();\n",
+      "    eprintln!(\"REFUSED: generated candidate has no retained CLI host boundary\");\n",
+      "    std::process::exit(2);\n",
+      "}\n")
+  } else {
+    emit_main_fn(workflow_funcs: workflow_funcs, has_services: has_services, has_pipeline: has_pipeline, crate_name: crate_name)
+  }
   let diagnostic_fns = if has_pipeline { emit_main_diagnostic_fns(crate_name: crate_name) } else { "" }
   let content = concat(
     header, crate_use, resource_use, svc_use, mod_uses, "\n",
@@ -14369,7 +14490,7 @@ fn emit_cli_struct(workflow_funcs: List<WorkflowFunc>, binary_name: String, abou
 fn emit_subcommand_enum(workflow_funcs: List<WorkflowFunc>, has_pipeline: Bool) -> String {
   let depth = 0
   let variants = workflow_funcs |> map(wf => emit_subcommand_variant(wf: wf, depth: depth + 1))
-  let modeled_rows = if has_pipeline { gunbc_cli_emitted_subcommands() } else { [] }
+  let modeled_rows = if has_pipeline { gunbc_cli_generated_dispatch_subcommands() } else { [] }
   let modeled = modeled_rows |> map(sub => emit_modeled_subcommand_variant(sub: sub, depth: depth))
   let all_variants = concat(variants, modeled)
   let variants_str = all_variants |> join(separator: "\n")
@@ -14388,19 +14509,26 @@ fn emit_modeled_subcommand_variant(sub: CliSubcommandRow, depth: Int) -> String 
   } else {
     concat(doc_lines |> join(separator: concat("\n", make_indent(level: depth + 1))), "\n")
   }
-  let emitted_options = cli_subcommand_emitted_options(sub: sub)
-  if emitted_options |> count == 0 {
+  let emitted_operands = cli_subcommand_generated_dispatch_operands(sub: sub)
+  let emitted_options = cli_subcommand_generated_dispatch_options(sub: sub)
+  if (emitted_operands |> count == 0) && (emitted_options |> count == 0) {
     concat(doc_str, make_indent(level: depth + 1), sub.variant, ",")
   } else {
-    let field_str = emitted_options
-      |> map(opt => emit_modeled_option_field(opt: opt, depth: depth + 2))
-      |> join(separator: "")
+    let operand_fields = emitted_operands |> map(operand => emit_modeled_operand_field(operand: operand, depth: depth + 2))
+    let option_fields = emitted_options |> map(opt => emit_modeled_option_field(opt: opt, depth: depth + 2))
+    let field_str = concat(operand_fields, option_fields) |> join(separator: "")
     concat(
       doc_str,
       make_indent(level: depth + 1), sub.variant, " {\n",
       field_str,
       make_indent(level: depth + 1), "},")
   }
+}
+
+fn emit_modeled_operand_field(operand: CliOperandRow, depth: Int) -> String {
+  let indent = make_indent(level: depth)
+  let doc_str = operand.doc |> map(d => concat(indent, "/// ", d, "\n")) |> join(separator: "")
+  concat(doc_str, indent, operand.field, ": String,\n")
 }
 
 // One declared option becomes three rendered things: its doc lines, its clap attribute, and its
@@ -14537,10 +14665,7 @@ fn emit_main_fn(workflow_funcs: List<WorkflowFunc>, has_services: Bool, has_pipe
     ""
   }
   let match_arms = workflow_funcs |> map(wf => emit_main_match_arm(wf: wf, has_services: has_services))
-  let compile_arm = if has_pipeline { emit_compile_match_arm(crate_name: crate_name) } else { "" }
-  let run_arm = if has_pipeline { emit_run_match_arm(crate_name: crate_name) } else { "" }
-  let all_arms = if has_pipeline { concat(match_arms, [compile_arm, run_arm]) } else { match_arms }
-  let arms_str = all_arms |> join(separator: "\n")
+  let arms_str = match_arms |> join(separator: "\n")
   let match_block = concat("match cli.command {\n", make_indent(level: depth + 2),arms_str, "\n    }")
   let result_handling = if has_services {
     match_block
@@ -14555,127 +14680,31 @@ fn emit_main_fn(workflow_funcs: List<WorkflowFunc>, has_services: Bool, has_pipe
   concat(async_attr, "{\n", make_indent(level: depth + 1),body_lines, "\n}")
 }
 
-fn emit_compile_match_arm(crate_name: String) -> String {
-  let pipeline_mod = module_to_filename(name: "v1.compiler.compile")
-  concat(
-    "Commands::Compile { source_roots, source_dir, output_dir, target, dependency_pool_index } => {\n",
-    "            let render_targets = parse_render_targets(&target);\n",
-    "            let pool_index = parse_dependency_pool_index(&dependency_pool_index);\n",
-    "\n",
-    "            let sources = if !source_roots.is_empty() {\n",
-    "                let index = build_module_index(&source_roots, pool_index);\n",
-    "                eprintln!(\"indexed {} modules from {} source roots\", index.len(), source_roots.len());\n",
-    "\n",
-    "                // Entry modules: all .dag files in the FIRST source root.\n",
-    "                // Additional roots are dependency pools resolved via imports.\n",
-    "                // This is intentional: --source-root src/v1 --source-root dag\n",
-    "                // means 'compile src/v1, using dag as a dependency pool.'\n",
-    "                let first_root = std::path::Path::new(&source_roots[0]);\n",
-    "                let mut entry_files = Vec::new();\n",
-    "                if first_root.is_dir() {\n",
-    "                    let mut dag_paths = Vec::new();\n",
-    "                    collect_dag_files(first_root, &mut dag_paths);\n",
-    "                    for path in dag_paths {\n",
-    "                        let content = std::fs::read_to_string(&path)\n",
-    "                            .unwrap_or_else(|e| panic!(\"failed to read {:?}: {}\", path, e));\n",
-    "                        entry_files.push((path.to_string_lossy().to_string(), content));\n",
-    "                    }\n",
-    "                }\n",
-    "                let skipped_moduleless = cli_run::moduleless_dag_entry_paths(&entry_files);\n",
-    "                cli_run::report_moduleless_dag_entry_skips(&skipped_moduleless);\n",
-    "\n",
-    "                let mut seen: HashMap<String, Rc<", pipeline_mod, "::SourceFile>> = HashMap::new();\n",
-    "                let mut entry_for_queue = Vec::new();\n",
-    "                for (path, content) in &entry_files {\n",
-    "                    if let Some(mod_path) = extract_module_path(content) {\n",
-    "                        let source = Rc::new(", pipeline_mod, "::SourceFile {\n",
-    "                            path: path.clone(),\n",
-    "                            content: content.clone(),\n",
-    "                        });\n",
-    "                        seen.insert(mod_path, source);\n",
-    "                        entry_for_queue.push((path.clone(), content.clone()));\n",
-    "                    }\n",
-    "                }\n",
-    "\n",
-    "                let mut resolved = resolve_transitively_with_seen(entry_for_queue, &index, seen);\n",
-    "                for (path, content) in entry_files {\n",
-    "                    if extract_module_path(&content).is_none() { continue; }\n",
-    "                    let already_there = resolved.iter().any(|s| s.path == path);\n",
-    "                    if !already_there {\n",
-    "                        resolved.push(Rc::new(", pipeline_mod, "::SourceFile { path, content }));\n",
-    "                    }\n",
-    "                }\n",
-    "                eprintln!(\"resolved {} sources (transitive import closure)\", resolved.len());\n",
-    "                resolved\n",
-    "\n",
-    "            } else if let Some(dir) = source_dir {\n",
-    "                // Legacy: flat directory scan (backward compatibility)\n",
-    "                let mut dag_paths = Vec::new();\n",
-    "                collect_dag_files(std::path::Path::new(&dir), &mut dag_paths);\n",
-    "                let mut sources = Vec::new();\n",
-    "                for path in &dag_paths {\n",
-    "                    let content = std::fs::read_to_string(path)\n",
-    "                        .unwrap_or_else(|e| panic!(\"failed to read {:?}: {}\", path, e));\n",
-    "                    let filename = path.file_name().unwrap().to_string_lossy().to_string();\n",
-    "                    sources.push(Rc::new(", pipeline_mod, "::SourceFile {\n",
-    "                        path: filename,\n",
-    "                        content,\n",
-    "                    }));\n",
-    "                }\n",
-    "                eprintln!(\"compiling {} .dag files from {} (target: {})\", sources.len(), dir, target);\n",
-    "                sources\n",
-    "\n",
-    "            } else {\n",
-    "                eprintln!(\"error: provide --source-root or --source-dir\");\n",
-    "                std::process::exit(1);\n",
-    "            };\n",
-    "\n",
-    "            if render_targets.len() == 1 {\n",
-    "                let result = ", pipeline_mod, "::compile_sources(Rc::new(sources), render_targets[0].1.clone());\n",
-    "                write_output_files(&output_dir, &result);\n",
-    "                eprintln!(\"compiled: {} files emitted, {} diagnostics\", result.files.len(), result.diagnostics.len());\n",
-    "                render_diagnostics(&result);\n",
-    "                if hard_errors(&result) {\n",
-    "                    std::process::exit(1);\n",
-    "                }\n",
-    "                if result.files.is_empty() {\n",
-    "                    eprintln!(\"error: no files emitted\");\n",
-    "                    std::process::exit(1);\n",
-    "                }\n",
-    "            } else {\n",
-    "                let resolved = ", pipeline_mod, "::compile_to_resolved(Rc::new(sources));\n",
-    "                let mut any_hard_errors = false;\n",
-    "                let mut any_empty = false;\n",
-    "                let mut total_files = 0usize;\n",
-    "                let mut total_diagnostics = 0usize;\n",
-    "                for (name, render_target) in render_targets {\n",
-    "                    let result = ", pipeline_mod, "::emit_resolved_for_target(resolved.clone(), render_target);\n",
-    "                    let target_output_dir = format!(\"{}/{}\", output_dir, name);\n",
-    "                    write_output_files(&target_output_dir, &result);\n",
-    "                    eprintln!(\"compiled[{}]: {} files emitted, {} diagnostics\", name, result.files.len(), result.diagnostics.len());\n",
-    "                    render_diagnostics(&result);\n",
-    "                    any_hard_errors |= hard_errors(&result);\n",
-    "                    any_empty |= result.files.is_empty();\n",
-    "                    total_files += result.files.len();\n",
-    "                    total_diagnostics += result.diagnostics.len();\n",
-    "                }\n",
-    "                eprintln!(\"compiled: {} files emitted, {} diagnostics\", total_files, total_diagnostics);\n",
-    "                if any_hard_errors {\n",
-    "                    std::process::exit(1);\n",
-    "                }\n",
-    "                if any_empty {\n",
-    "                    eprintln!(\"error: no files emitted for at least one target\");\n",
-    "                    std::process::exit(1);\n",
-    "                }\n",
-    "            }\n",
-    "        },")
+fn modeled_subcommand_bound_fields(sub: CliSubcommandRow) -> List<String> {
+  let operands = cli_subcommand_generated_dispatch_operands(sub: sub) |> map(operand => operand.field)
+  let options = cli_subcommand_generated_dispatch_options(sub: sub) |> map(option => option.field)
+  concat(operands, options)
 }
 
-fn emit_run_match_arm(crate_name: String) -> String {
-  concat(
-    "\n        Commands::Run { source_roots, function, entry, claim_run, args } => {\n",
-    "            cli_run::handle_run_with_options(source_roots, function, entry, cli.dry_run, claim_run, args);\n",
-    "        },")
+fn emit_bootstrap_dag_operation_match_arm(sub: CliSubcommandRow, binding: CliBootstrapDagOperationBinding, crate_name: String) -> String {
+  let fields = modeled_subcommand_bound_fields(sub: sub)
+  let binds = fields |> join(separator: ", ")
+  let roots = binding.source_roots |> map(root => concat("\"", root, "\".to_string()")) |> join(separator: ", ")
+  let public_args = binding.public_operands
+    |> map(arg => concat("(\"", arg.parameter, "\".to_string(), ", arg.operand_field, ")"))
+    |> join(separator: ", ")
+  match binding.execution_class {
+    BootstrapSuccessorOperation {} => concat(
+      "Commands::", sub.variant, " { ", binds, " } => crate::cli_run::run_bootstrap_dag_operation(\n",
+      "            &[", roots, "],\n",
+      "            \"", binding.entry_path, "\",\n",
+      "            \"", binding.operation.module_path, "\",\n",
+      "            \"", binding.operation.decl_name, "\",\n",
+      "            vec![", public_args, "],\n",
+      "            \"", binding.receipt.parameter, "\",\n",
+      "            \"", binding.receipt.path, "\",\n",
+      "        ),")
+  }
 }
 
 fn emit_main_pipeline_fns(crate_name: String) -> String {

@@ -2,11 +2,12 @@
 
 #![allow(unused_parens, clippy::all, clippy::disallowed_macros)]
 
-use clap::{Parser, Subcommand};
+use clap::Parser;
 
 use im::HashMap;
 use std::rc::Rc;
 use v1_compiler::cli_run;
+use v1_compiler::gunbc_cli_dispatch_generated::{self, Cli, CliDispatchHost};
 use v1_compiler::v1_compiler_compile;
 use v1_compiler::v1_compiler_compile::PipelineResult;
 use v1_compiler::v1_rt;
@@ -14,127 +15,8 @@ use v1_compiler::v1_std_core::{
     byte_to_line_col, diagnostic_to_message, diagnostic_to_span, source_line_at, NewlineIndex,
 };
 
-#[derive(Parser)]
-#[command(
-    name = "gunbc",
-    about = "A causal compiler: write .dag, get Rust/Python/Go.",
-    version = env!("GUNBC_BUILD_IDENTITY")
-)]
-struct Cli {
-    #[command(subcommand)]
-    command: Commands,
-    /// Run in dry-run mode (mock all service calls)
-    #[arg(long, global = true)]
+struct RetainedCliHost {
     dry_run: bool,
-}
-
-#[derive(Subcommand)]
-enum Commands {
-    /// Compile .dag source files to a target language
-    Compile {
-        /// Source root directories (searched recursively for .dag files).
-        /// Module imports are resolved transitively from these roots.
-        #[arg(long = "source-root")]
-        source_roots: Vec<String>,
-        /// Legacy: single source directory (all .dag files loaded, no import resolution)
-        #[arg(long = "source-dir")]
-        source_dir: Option<String>,
-        #[arg(long)]
-        output_dir: String,
-        /// Target language: rust, python, go, dag, or + separated set such as rust+dag
-        #[arg(long, default_value = "rust")]
-        target: String,
-        #[arg(long = "dependency-pool-index", default_value = "strict")]
-        dependency_pool_index: String,
-        /// Entry `.dag` file: compile only this module and its transitive imports
-        /// (not every `.dag` file under the first --source-root). Scopes the compile
-        /// to a subtree so a small closure can be emitted without a whole-tree pass.
-        #[arg(long)]
-        entry: Option<String>,
-    },
-
-    /// Run one target by its absolute label and report the standing its own producer
-    /// answers in. The label is exact: a target PATTERN refuses, and an unbound or
-    /// unknown target refuses rather than reporting a pass.
-    Test {
-        /// Absolute label of exactly one target, e.g.
-        /// `//gunbc/instruments:heads-reading-differential`.
-        #[arg(value_name = "LABEL")]
-        target: String,
-    },
-
-    /// Execute a .dag program directly (interpreter)
-    Run {
-        /// Source root directories (searched recursively for .dag files)
-        #[arg(long = "source-root")]
-        source_roots: Vec<String>,
-        /// Entry function to execute (default: "main")
-        #[arg(long, default_value = "main")]
-        function: String,
-        /// Entry `.dag` file: load only this module and its transitive imports
-        /// (not every file under --source-root). Required for scoped TestClaim runs.
-        #[arg(long)]
-        entry: Option<String>,
-        /// TestClaim / witness run: Bool false → exit 1; requires --entry
-        #[arg(long)]
-        claim_run: bool,
-        /// Named argument for the entry function, repeatable: `--arg name=value`.
-        /// Values enter as String; a missing `=` refuses rather than guessing.
-        #[arg(long = "arg")]
-        args: Vec<String>,
-    },
-
-    /// Apply a host's typed converge policy in-process
-    /// (`gunbc.fleet_converge_cli.converge_cli_run`) and print a
-    /// `converge-receipt` line on the byte-locked receipt grammar.
-    Converge {
-        /// Fleet host identity (e.g. "srv1") to converge
-        #[arg(long)]
-        host: String,
-    },
-
-    /// Long-running HTTP server: compile once, then answer each request by
-    /// calling ONE .dag entry `fn(method, path, body) -> ServeWireResponse`.
-    /// The seam is parse/write only — routing and handlers live in .dag.
-    Serve {
-        /// Source root directories (searched recursively for .dag files)
-        #[arg(long = "source-root")]
-        source_roots: Vec<String>,
-        /// Entry `.dag` file: load only this module and its transitive imports
-        #[arg(long)]
-        entry: String,
-        /// Handler function: fn(method: String, path: String, body: String) -> ServeWireResponse
-        #[arg(long)]
-        function: String,
-        #[arg(long, default_value = "127.0.0.1")]
-        host: String,
-        #[arg(long, default_value = "8080")]
-        port: u16,
-        /// Release revision this process serves, bound ONCE at startup and
-        /// immutable for the process lifetime. Required and validated before
-        /// the listener binds: `gunbc serve` compiles its graph once, so the
-        /// launch argument is the only fact that describes what this PROCESS
-        /// serves. Re-reading a file, an env var, or git HEAD per request
-        /// would report mutable disk state wearing a process-shaped
-        /// interface. Published through /healthz beside the served-surface
-        /// identity (gunbc.running_release_identity).
-        #[arg(long = "release-revision")]
-        release_revision: String,
-        /// Per-request THREAD-CPU evaluation budget in milliseconds. Omitted means this process
-        /// declares no CPU bound — today's behavior, stated rather than implied. Deliberately has
-        /// no default: no measurement of normal `roadmap_serve_handle` evaluation cost exists, and
-        /// the one adjacent figure available (~70s cold graph compile) gives no reason to believe
-        /// a sub-second ceiling is safe, so inventing a production value here would risk refusing
-        /// legitimate requests to close a hypothetical one.
-        #[arg(long = "eval-budget-cpu-ms")]
-        eval_budget_cpu_ms: Option<u64>,
-        /// Per-request MONOTONIC-WALL evaluation budget in milliseconds. Separate from the CPU
-        /// bound because they catch different failures: CPU catches a spin, wall catches a stall
-        /// that consumes almost no CPU while still holding the listener. Neither contains an
-        /// evaluation blocked inside a single native primitive — that needs worker isolation.
-        #[arg(long = "eval-budget-wall-ms")]
-        eval_budget_wall_ms: Option<u64>,
-    },
 }
 
 /// cargo's build-output dir (a `target` dir beside a `Cargo.toml`) is realization
@@ -393,462 +275,445 @@ fn write_output_files(
     Ok(())
 }
 
-fn main() {
-    let cli = Cli::parse();
-    let dry_run = cli.dry_run;
-    let _result = match cli.command {
-        Commands::Compile {
-            source_roots,
-            source_dir,
-            output_dir,
-            target,
-            dependency_pool_index,
-            entry,
-        } => {
-            // #6967/§13 silent-pick piggyback: drain resolution silent-pick
-            // telemetry over this same compile. This is NOT the join-filtered
-            // resolution-divergence census (deleted 2026-08-18 — see
-            // gunbc.ci_layer_roots resolution_divergence_silent_pick_gate_retirement_receipt).
-            // That path required a second whole-corpus resolve plus parent-plan
-            // capture this compile route never had. This is a deliberately narrower,
-            // cost-motivated proxy, asymmetric in both directions (review 41032):
-            //   - fn_parent_first_hit: red-on-any raw count here (bare reference
-            //     resolved by first-hit among multiple parents — containment-ambiguous).
-            //   - global_bare_lcp: skipped entirely here (whole-pool name overlap
-            //     alone — benign at compile-time scope, not genuine under §13
-            //     unique-on-chain).
-            // Join-filtered silent-pick divergence detection has no enrolled
-            // witness today; the retirement receipt carries the rung drop and
-            // rebuild constraints.
-            let render_targets = parse_render_targets(&target);
-            let pool_index = parse_dependency_pool_index(&dependency_pool_index);
+impl CliDispatchHost for RetainedCliHost {
+    fn retained_host_kernel(
+        &self,
+        source_roots: Vec<String>,
+        source_dir: Option<String>,
+        output_dir: String,
+        target: String,
+        dependency_pool_index: String,
+        entry: Option<String>,
+    ) -> ! {
+        // #6967/§13 silent-pick piggyback: drain resolution silent-pick
+        // telemetry over this same compile. This is NOT the join-filtered
+        // resolution-divergence census (deleted 2026-08-18 — see
+        // gunbc.ci_layer_roots resolution_divergence_silent_pick_gate_retirement_receipt).
+        // That path required a second whole-corpus resolve plus parent-plan
+        // capture this compile route never had. This is a deliberately narrower,
+        // cost-motivated proxy, asymmetric in both directions (review 41032):
+        //   - fn_parent_first_hit: red-on-any raw count here (bare reference
+        //     resolved by first-hit among multiple parents — containment-ambiguous).
+        //   - global_bare_lcp: skipped entirely here (whole-pool name overlap
+        //     alone — benign at compile-time scope, not genuine under §13
+        //     unique-on-chain).
+        // Join-filtered silent-pick divergence detection has no enrolled
+        // witness today; the retirement receipt carries the rung drop and
+        // rebuild constraints.
+        let render_targets = parse_render_targets(&target);
+        let pool_index = parse_dependency_pool_index(&dependency_pool_index);
 
-            // ── THE SCOPED SINGLE-TARGET COMPILE IS THE SHARED EMISSION TRANSACTION ──
-            //
-            // This is the invocation the cargo board's producer uses
-            // (`docs/probes/curated_cargo_probe_one.sh`), and it is now the SAME FUNCTION
-            // the required v2-emission phase calls -- `cli_run::compile_entry_emission`.
-            // Before this, the phase was a second caller reproducing the closure load, the
-            // census assembly, the refusal check and the silent-pick gate beside the ones
-            // below, with three parameters to keep equal by hand; a gate that drifts from
-            // the board's producer can green while the board refuses, which is two answers
-            // to one question (DESIGN §3). The handler keeps what is genuinely its own:
-            // writing the tree, rendering diagnostics, and choosing an exit code.
-            // ── BOTH CLI SUBJECTS REACH THE ONE TRANSACTION ──
-            //
-            // `--entry` compiles that file's reference-derived closure; without it, the first
-            // `--source-root` is the primary root and the rest stay a dependency pool. Until
-            // this routing landed the second case was a SECOND index/load/resolve/admit/
-            // compile/refuse pipeline open-coded here, beside the transaction rather than
-            // through it, so "the required phase is green" and "the CLI emitted" were two
-            // facts about two producers (DESIGN §3). The handler keeps what is genuinely its
-            // own: writing the tree, rendering diagnostics, and choosing an exit code.
-            //
-            // THE MULTI-TARGET CASE ROUTES HERE TOO, as of the transaction taking a target
-            // VECTOR. It did not, briefly, and that was a REGRESSION rather than a scope
-            // statement: `--source-root X --target rust+dag` fell past this gate into a branch
-            // whose only remaining subject is `--source-dir`, and exited with
-            // "provide --source-root or --source-dir" over an argv that provided one. The
-            // transaction now resolves once and emits per target, which is what the deleted
-            // loop did, so the fork is closed rather than documented.
-            let cli_subject = match (&entry, &source_roots.is_empty()) {
-                (Some(entry_path), _) => Some(cli_run::CompileSubject::Entry(entry_path.clone())),
-                (None, false) => Some(cli_run::CompileSubject::PrimaryRoot(
-                    source_roots[0].clone(),
-                )),
-                // `--source-dir` (no source roots at all) keeps the legacy flat scan below.
-                (None, true) => None,
-            };
-            if let Some(subject) = cli_subject {
-                let multi_target = render_targets.len() > 1;
-                let run = cli_run::compile_emission(&cli_run::CompileRequest {
-                    subject,
-                    source_roots: source_roots.clone(),
-                    primary_precedence: matches!(
-                        pool_index,
-                        DependencyPoolIndex::PrimaryPrecedence
-                    ),
-                    render_targets: render_targets.clone(),
-                });
-                match &run.disposition {
-                    cli_run::CompileDisposition::NotExecuted {
-                        earlier_phase,
-                        cause,
-                    } => {
-                        // The closure/census line is DELIBERATELY not printed here: the
-                        // transaction never ran, so `resolved 0 sources` would report a
-                        // resolve that did not happen as one that found nothing.
-                        eprintln!("gunbc compile: {earlier_phase}: {cause}");
-                        std::process::exit(1);
+        // ── THE SCOPED SINGLE-TARGET COMPILE IS THE SHARED EMISSION TRANSACTION ──
+        //
+        // This is the invocation the cargo board's producer uses
+        // (`docs/probes/curated_cargo_probe_one.sh`), and it is now the SAME FUNCTION
+        // the required v2-emission phase calls -- `cli_run::compile_entry_emission`.
+        // Before this, the phase was a second caller reproducing the closure load, the
+        // census assembly, the refusal check and the silent-pick gate beside the ones
+        // below, with three parameters to keep equal by hand; a gate that drifts from
+        // the board's producer can green while the board refuses, which is two answers
+        // to one question (DESIGN §3). The handler keeps what is genuinely its own:
+        // writing the tree, rendering diagnostics, and choosing an exit code.
+        // ── BOTH CLI SUBJECTS REACH THE ONE TRANSACTION ──
+        //
+        // `--entry` compiles that file's reference-derived closure; without it, the first
+        // `--source-root` is the primary root and the rest stay a dependency pool. Until
+        // this routing landed the second case was a SECOND index/load/resolve/admit/
+        // compile/refuse pipeline open-coded here, beside the transaction rather than
+        // through it, so "the required phase is green" and "the CLI emitted" were two
+        // facts about two producers (DESIGN §3). The handler keeps what is genuinely its
+        // own: writing the tree, rendering diagnostics, and choosing an exit code.
+        //
+        // THE MULTI-TARGET CASE ROUTES HERE TOO, as of the transaction taking a target
+        // VECTOR. It did not, briefly, and that was a REGRESSION rather than a scope
+        // statement: `--source-root X --target rust+dag` fell past this gate into a branch
+        // whose only remaining subject is `--source-dir`, and exited with
+        // "provide --source-root or --source-dir" over an argv that provided one. The
+        // transaction now resolves once and emits per target, which is what the deleted
+        // loop did, so the fork is closed rather than documented.
+        let cli_subject = match (&entry, &source_roots.is_empty()) {
+            (Some(entry_path), _) => Some(cli_run::CompileSubject::Entry(entry_path.clone())),
+            (None, false) => Some(cli_run::CompileSubject::PrimaryRoot(
+                source_roots[0].clone(),
+            )),
+            // `--source-dir` (no source roots at all) keeps the legacy flat scan below.
+            (None, true) => None,
+        };
+        if let Some(subject) = cli_subject {
+            let multi_target = render_targets.len() > 1;
+            let run = cli_run::compile_emission(&cli_run::CompileRequest {
+                subject,
+                source_roots: source_roots.clone(),
+                primary_precedence: matches!(pool_index, DependencyPoolIndex::PrimaryPrecedence),
+                render_targets: render_targets.clone(),
+            });
+            match &run.disposition {
+                cli_run::CompileDisposition::NotExecuted {
+                    earlier_phase,
+                    cause,
+                } => {
+                    // The closure/census line is DELIBERATELY not printed here: the
+                    // transaction never ran, so `resolved 0 sources` would report a
+                    // resolve that did not happen as one that found nothing.
+                    eprintln!("gunbc compile: {earlier_phase}: {cause}");
+                    std::process::exit(1);
+                }
+                cli_run::CompileDisposition::Refused { phase, cause } => {
+                    eprintln!(
+                        "resolved {} sources ({}), {} indexed modules in the name census only",
+                        run.closure_modules,
+                        run.subject.scope_receipt().render(),
+                        run.census_modules
+                    );
+                    // The tree is NOT written on a refusal: writing a partial tree the
+                    // compiler has disowned is a fabricated plausible output (DESIGN §5).
+                    eprintln!("gunbc compile: refused at {phase}: {cause}");
+                    for emission in &run.emissions {
+                        render_diagnostics(&emission.result);
                     }
-                    cli_run::CompileDisposition::Refused { phase, cause } => {
-                        eprintln!(
-                            "resolved {} sources ({}), {} indexed modules in the name census only",
-                            run.closure_modules,
-                            run.subject.scope_receipt().render(),
-                            run.census_modules
-                        );
-                        // The tree is NOT written on a refusal: writing a partial tree the
-                        // compiler has disowned is a fabricated plausible output (DESIGN §5).
-                        eprintln!("gunbc compile: refused at {phase}: {cause}");
-                        for emission in &run.emissions {
-                            render_diagnostics(&emission.result);
+                    std::process::exit(1);
+                }
+                cli_run::CompileDisposition::Completed { emitted_count } => {
+                    eprintln!(
+                        "resolved {} sources ({}), {} indexed modules in the name census only",
+                        run.closure_modules,
+                        run.subject.scope_receipt().render(),
+                        run.census_modules
+                    );
+                    // NOTHING IS MATERIALIZED UNTIL EVERY TARGET HAS COMPLETED. The
+                    // disposition above is over the whole emission set, so reaching here
+                    // means no target refused -- a per-target write inside the emit loop
+                    // would leave one target's tree on disk beside another target's
+                    // refusal, which is the partial fabricated output §5 forbids.
+                    //
+                    // A single target writes to `output_dir` itself; several write to
+                    // `output_dir/<name>`, which is the layout the deleted loop used and
+                    // which downstream consumers already read.
+                    let mut total_diagnostics = 0usize;
+                    for emission in &run.emissions {
+                        let target_dir = if multi_target {
+                            format!("{}/{}", output_dir, emission.target_name)
+                        } else {
+                            output_dir.clone()
+                        };
+                        if let Err(refusal) = write_output_files(&target_dir, &emission.result) {
+                            refusal.verdict().apply();
                         }
-                        std::process::exit(1);
-                    }
-                    cli_run::CompileDisposition::Completed { emitted_count } => {
-                        eprintln!(
-                            "resolved {} sources ({}), {} indexed modules in the name census only",
-                            run.closure_modules,
-                            run.subject.scope_receipt().render(),
-                            run.census_modules
-                        );
-                        // NOTHING IS MATERIALIZED UNTIL EVERY TARGET HAS COMPLETED. The
-                        // disposition above is over the whole emission set, so reaching here
-                        // means no target refused -- a per-target write inside the emit loop
-                        // would leave one target's tree on disk beside another target's
-                        // refusal, which is the partial fabricated output §5 forbids.
-                        //
-                        // A single target writes to `output_dir` itself; several write to
-                        // `output_dir/<name>`, which is the layout the deleted loop used and
-                        // which downstream consumers already read.
-                        let mut total_diagnostics = 0usize;
-                        for emission in &run.emissions {
-                            let target_dir = if multi_target {
-                                format!("{}/{}", output_dir, emission.target_name)
-                            } else {
-                                output_dir.clone()
-                            };
-                            if let Err(refusal) = write_output_files(&target_dir, &emission.result)
-                            {
-                                refusal.verdict().apply();
-                            }
-                            if multi_target {
-                                eprintln!(
-                                    "compiled[{}]: {} files emitted, {} diagnostics",
-                                    emission.target_name,
-                                    emission.result.files.len(),
-                                    emission.result.diagnostics.len()
-                                );
-                            }
-                            render_diagnostics(&emission.result);
-                            total_diagnostics += emission.result.diagnostics.len();
+                        if multi_target {
+                            eprintln!(
+                                "compiled[{}]: {} files emitted, {} diagnostics",
+                                emission.target_name,
+                                emission.result.files.len(),
+                                emission.result.diagnostics.len()
+                            );
                         }
-                        eprintln!(
-                            "compiled: {} files emitted, {} diagnostics",
-                            emitted_count, total_diagnostics
-                        );
-                        std::process::exit(0);
+                        render_diagnostics(&emission.result);
+                        total_diagnostics += emission.result.diagnostics.len();
                     }
+                    eprintln!(
+                        "compiled: {} files emitted, {} diagnostics",
+                        emitted_count, total_diagnostics
+                    );
+                    std::process::exit(0);
                 }
             }
+        }
 
-            v1_rt::resolution_silent_pick_enable();
+        v1_rt::resolution_silent_pick_enable();
 
-            // THE WHOLE-ROOT PIPELINE THAT STOOD HERE IS DELETED, NOT DISABLED. It was ~200
-            // lines re-implementing indexing, memory admission, entry-set discovery, the
-            // import walk, census fill and the refusal check that `cli_run::compile_emission`
-            // already owns. Every `--source-root` invocation now routes through the
-            // transaction above and never reaches this point, so leaving the code here would
-            // be a second authority kept warm for nothing (DESIGN §3, delete-first).
-            //
-            // WHAT REMAINS BELOW IS THE `--source-dir` FLAT SCAN AND NOTHING ELSE: a legacy
-            // subject with no source roots, no index and no dependency pool, which the
-            // transaction's two subjects do not describe. It is named rather than swept in,
-            // and it is the remaining fork in this handler.
-            //
-            // THE CENSUS BEHIND "ONE COMPILATION CONCEPT", AT CALL-SITE GRAIN RATHER THAN
-            // FILE GRAIN, because a file-grain claim is not checkable and this one was
-            // overstated once already. Direct calls to the compile kernel
-            // (`compile_sources_with_options` / `compile_to_resolved_with_options` /
-            // `emit_resolved_for_target`) outside `cli_run::compile_emission`, in non-test
-            // code:
-            //
-            //   - main.rs, this handler, the `--source-dir` arm (3 sites) -- the legacy flat
-            //     scan above. A FORK, declared. It survives because the transaction models a
-            //     source-root subject and this one has no root, no index and no pool; the
-            //     terminal form is a third subject or the flag's deletion, and nothing in the
-            //     repository passes `--source-dir` today.
-            //   - cli_run compile-clean oracle (2 sites) -- deliberately index-independent
-            //     and cache-independent, which is the whole point of it: it exists to
-            //     disagree with the via-index path. Routing it through the transaction would
-            //     destroy the property it measures.
-            //   - cli_run synthesized-resolved emit (1 site) -- emits a `ResolvedPipelineResult`
-            //     assembled in memory, so there is no source set for a transaction to take.
-            //   - required_regen_host `compile_stage0` (1 site) -- calls `compile_sources`
-            //     directly over `regen_input_sources`. A FORK, declared. Its subject is an
-            //     EXACT SOURCE SET read from the regen roster, not a root and not an entry, so
-            //     neither of the transaction's two subjects describes it; the terminal form is
-            //     a third subject (`ExactSourceSet`) carrying the roster as its authority.
-            //     Note it also passes a hardcoded refusal subject ("v2 self-compile"), which
-            //     the transaction derives from the subject it was given.
-            //
-            // THIS CENSUS WAS WRONG ONCE, IN THE DIRECTION THAT FLATTERS. Its first revision
-            // omitted `required_regen_host` -- the file appeared in the file-level count I ran
-            // and did not survive into the call-site list I wrote from it, so a fork was
-            // reported as absent by a census whose whole purpose is to enumerate forks. Caught
-            // in review. The lesson is the one the floor's own first-execution receipt records:
-            // a list you transcribe from a wider measurement is not the measurement.
-            //
-            // NOT a claim that nothing else compiles: the test files and the witness bins call
-            // the kernel directly too, and they are outside this census by scope, not because
-            // they were checked and cleared.
-            let compile_subject = match &source_dir {
-                Some(dir) => format!("compile of {dir}"),
-                None => "compile".to_string(),
-            };
-            let census_only_sources: Vec<Rc<v1_compiler_compile::SourceFile>> = Vec::new();
-            let sources = if let Some(dir) = source_dir {
-                // Legacy: flat directory scan (backward compatibility)
-                let mut dag_paths = Vec::new();
-                collect_dag_files(std::path::Path::new(&dir), &mut dag_paths);
-                let mut sources = Vec::new();
-                for path in &dag_paths {
-                    let content = std::fs::read_to_string(path)
-                        .unwrap_or_else(|e| panic!("failed to read {:?}: {}", path, e));
-                    let filename = path.file_name().unwrap().to_string_lossy().to_string();
-                    sources.push(Rc::new(v1_compiler_compile::SourceFile {
-                        path: filename,
-                        content,
-                    }));
-                }
-                eprintln!(
-                    "compiling {} .dag files from {} (target: {})",
-                    sources.len(),
-                    dir,
-                    target
-                );
-                sources
-            } else {
-                eprintln!("error: provide --source-root or --source-dir");
+        // THE WHOLE-ROOT PIPELINE THAT STOOD HERE IS DELETED, NOT DISABLED. It was ~200
+        // lines re-implementing indexing, memory admission, entry-set discovery, the
+        // import walk, census fill and the refusal check that `cli_run::compile_emission`
+        // already owns. Every `--source-root` invocation now routes through the
+        // transaction above and never reaches this point, so leaving the code here would
+        // be a second authority kept warm for nothing (DESIGN §3, delete-first).
+        //
+        // WHAT REMAINS BELOW IS THE `--source-dir` FLAT SCAN AND NOTHING ELSE: a legacy
+        // subject with no source roots, no index and no dependency pool, which the
+        // transaction's two subjects do not describe. It is named rather than swept in,
+        // and it is the remaining fork in this handler.
+        //
+        // THE CENSUS BEHIND "ONE COMPILATION CONCEPT", AT CALL-SITE GRAIN RATHER THAN
+        // FILE GRAIN, because a file-grain claim is not checkable and this one was
+        // overstated once already. Direct calls to the compile kernel
+        // (`compile_sources_with_options` / `compile_to_resolved_with_options` /
+        // `emit_resolved_for_target`) outside `cli_run::compile_emission`, in non-test
+        // code:
+        //
+        //   - main.rs, this handler, the `--source-dir` arm (3 sites) -- the legacy flat
+        //     scan above. A FORK, declared. It survives because the transaction models a
+        //     source-root subject and this one has no root, no index and no pool; the
+        //     terminal form is a third subject or the flag's deletion, and nothing in the
+        //     repository passes `--source-dir` today.
+        //   - cli_run compile-clean oracle (2 sites) -- deliberately index-independent
+        //     and cache-independent, which is the whole point of it: it exists to
+        //     disagree with the via-index path. Routing it through the transaction would
+        //     destroy the property it measures.
+        //   - cli_run synthesized-resolved emit (1 site) -- emits a `ResolvedPipelineResult`
+        //     assembled in memory, so there is no source set for a transaction to take.
+        //   - required_regen_host `compile_stage0` (1 site) -- calls `compile_sources`
+        //     directly over `regen_input_sources`. A FORK, declared. Its subject is an
+        //     EXACT SOURCE SET read from the regen roster, not a root and not an entry, so
+        //     neither of the transaction's two subjects describes it; the terminal form is
+        //     a third subject (`ExactSourceSet`) carrying the roster as its authority.
+        //     Note it also passes a hardcoded refusal subject ("v2 self-compile"), which
+        //     the transaction derives from the subject it was given.
+        //
+        // THIS CENSUS WAS WRONG ONCE, IN THE DIRECTION THAT FLATTERS. Its first revision
+        // omitted `required_regen_host` -- the file appeared in the file-level count I ran
+        // and did not survive into the call-site list I wrote from it, so a fork was
+        // reported as absent by a census whose whole purpose is to enumerate forks. Caught
+        // in review. The lesson is the one the floor's own first-execution receipt records:
+        // a list you transcribe from a wider measurement is not the measurement.
+        //
+        // NOT a claim that nothing else compiles: the test files and the witness bins call
+        // the kernel directly too, and they are outside this census by scope, not because
+        // they were checked and cleared.
+        let compile_subject = match &source_dir {
+            Some(dir) => format!("compile of {dir}"),
+            None => "compile".to_string(),
+        };
+        let census_only_sources: Vec<Rc<v1_compiler_compile::SourceFile>> = Vec::new();
+        let sources = if let Some(dir) = source_dir {
+            // Legacy: flat directory scan (backward compatibility)
+            let mut dag_paths = Vec::new();
+            collect_dag_files(std::path::Path::new(&dir), &mut dag_paths);
+            let mut sources = Vec::new();
+            for path in &dag_paths {
+                let content = std::fs::read_to_string(path)
+                    .unwrap_or_else(|e| panic!("failed to read {:?}: {}", path, e));
+                let filename = path.file_name().unwrap().to_string_lossy().to_string();
+                sources.push(Rc::new(v1_compiler_compile::SourceFile {
+                    path: filename,
+                    content,
+                }));
+            }
+            eprintln!(
+                "compiling {} .dag files from {} (target: {})",
+                sources.len(),
+                dir,
+                target
+            );
+            sources
+        } else {
+            eprintln!("error: provide --source-root or --source-dir");
+            std::process::exit(1);
+        };
+
+        let pipeline_options = Rc::new(v1_compiler_compile::CompilePipelineOptions {
+            analyze_complexity: false,
+            census_only_sources: Rc::new(census_only_sources.into()),
+        });
+        if render_targets.len() == 1 {
+            let result = v1_compiler_compile::compile_sources_with_options(
+                Rc::new(sources.into()),
+                render_targets[0].clone(),
+                pipeline_options.clone(),
+            );
+            if let Some(message) = v1_compiler_compile::stage0_self_compile_refusal_message(
+                compile_subject.clone(),
+                result.clone(),
+            ) {
+                eprintln!("{message}");
                 std::process::exit(1);
-            };
-
-            let pipeline_options = Rc::new(v1_compiler_compile::CompilePipelineOptions {
-                analyze_complexity: false,
-                census_only_sources: Rc::new(census_only_sources.into()),
-            });
-            if render_targets.len() == 1 {
-                let result = v1_compiler_compile::compile_sources_with_options(
-                    Rc::new(sources.into()),
-                    render_targets[0].clone(),
-                    pipeline_options.clone(),
-                );
+            }
+            if let Err(refusal) = write_output_files(&output_dir, &result) {
+                refusal.verdict().apply();
+            }
+            eprintln!(
+                "compiled: {} files emitted, {} diagnostics",
+                result.files.len(),
+                result.diagnostics.len()
+            );
+            render_diagnostics(&result);
+            if has_blocking_diagnostics(result.diagnostics.as_ref()) {
+                std::process::exit(1);
+            }
+        } else {
+            let resolved = v1_compiler_compile::compile_to_resolved_with_options(
+                Rc::new(sources.into()),
+                pipeline_options.clone(),
+            );
+            let mut total_files = 0usize;
+            let mut total_diagnostics = 0usize;
+            for render_target in render_targets {
+                let name = v1_compiler::cli_run::render_target_name(&render_target);
+                let result =
+                    v1_compiler_compile::emit_resolved_for_target(resolved.clone(), render_target);
                 if let Some(message) = v1_compiler_compile::stage0_self_compile_refusal_message(
-                    compile_subject.clone(),
+                    format!("{compile_subject} [{name}]"),
                     result.clone(),
                 ) {
                     eprintln!("{message}");
                     std::process::exit(1);
                 }
-                if let Err(refusal) = write_output_files(&output_dir, &result) {
+                let target_output_dir = format!("{}/{}", output_dir, name);
+                if let Err(refusal) = write_output_files(&target_output_dir, &result) {
                     refusal.verdict().apply();
                 }
                 eprintln!(
-                    "compiled: {} files emitted, {} diagnostics",
+                    "compiled[{}]: {} files emitted, {} diagnostics",
+                    name,
                     result.files.len(),
                     result.diagnostics.len()
                 );
                 render_diagnostics(&result);
+                total_files += result.files.len();
+                total_diagnostics += result.diagnostics.len();
                 if has_blocking_diagnostics(result.diagnostics.as_ref()) {
                     std::process::exit(1);
                 }
-            } else {
-                let resolved = v1_compiler_compile::compile_to_resolved_with_options(
-                    Rc::new(sources.into()),
-                    pipeline_options.clone(),
-                );
-                let mut total_files = 0usize;
-                let mut total_diagnostics = 0usize;
-                for render_target in render_targets {
-                    let name = v1_compiler::cli_run::render_target_name(&render_target);
-                    let result = v1_compiler_compile::emit_resolved_for_target(
-                        resolved.clone(),
-                        render_target,
-                    );
-                    if let Some(message) = v1_compiler_compile::stage0_self_compile_refusal_message(
-                        format!("{compile_subject} [{name}]"),
-                        result.clone(),
-                    ) {
-                        eprintln!("{message}");
-                        std::process::exit(1);
-                    }
-                    let target_output_dir = format!("{}/{}", output_dir, name);
-                    if let Err(refusal) = write_output_files(&target_output_dir, &result) {
-                        refusal.verdict().apply();
-                    }
-                    eprintln!(
-                        "compiled[{}]: {} files emitted, {} diagnostics",
-                        name,
-                        result.files.len(),
-                        result.diagnostics.len()
-                    );
-                    render_diagnostics(&result);
-                    total_files += result.files.len();
-                    total_diagnostics += result.diagnostics.len();
-                    if has_blocking_diagnostics(result.diagnostics.as_ref()) {
-                        std::process::exit(1);
-                    }
-                }
-                eprintln!(
-                    "compiled: {} files emitted, {} diagnostics",
-                    total_files, total_diagnostics
-                );
             }
+            eprintln!(
+                "compiled: {} files emitted, {} diagnostics",
+                total_files, total_diagnostics
+            );
+        }
 
-            let silent_pick = v1_rt::resolution_silent_pick_disable();
-            if !silent_pick.fn_parent_first_hits.is_empty() {
-                eprintln!(
+        let silent_pick = v1_rt::resolution_silent_pick_disable();
+        if !silent_pick.fn_parent_first_hits.is_empty() {
+            eprintln!(
                     "SILENT-PICK-GATE: {} fn_parent_first_hit silent pick(s) in this compile (raw-count proxy gate, not the join-filtered resolution_divergence_silent_pick_refusal authority — §13 fail-open — a bare reference resolved by first-hit-among-multiple-parents, i.e. containment-ambiguous):",
                     silent_pick.fn_parent_first_hits.len()
                 );
-                for site in &silent_pick.fn_parent_first_hits {
-                    eprintln!(
+            for site in &silent_pick.fn_parent_first_hits {
+                eprintln!(
                         "  SILENT-PICK-GATE fn_parent_first_hit module={} name={} parent_match_count={} chosen_parent_module={}",
                         site.env_module_path,
                         site.name,
                         site.parent_match_count,
                         site.chosen_parent_module
                     );
-                }
-                std::process::exit(1);
             }
+            std::process::exit(1);
         }
+        std::process::exit(0)
+    }
 
-        // THE FOUR VERB HANDLERS ARE DELETED, AND THIS ARM IS THE DECLARED INTERIM.
-        //
-        // Their terminal Y is NOT YET MODELLED, and this branch deliberately does not
-        // sketch it: a CLI model authored before its consumer exists is shaped by the CLI
-        // we have, not the one we are building. So until that lands these verbs have a
-        // decoder and no dispatcher.
-        //
-        // This REFUSES rather than degrading. It prints a typed, located reason and exits
-        // nonzero; it does not fall back to a partial run, does not guess a default verb,
-        // and does not print a plausible success. A cut that leaves a verb unimplemented
-        // must say so loudly at the boundary — an absorbing fallback here would be the
-        // exact §5 failure this deletion exists to remove, reintroduced by the deletion.
-        //
-        // NOT a scaffold with a trigger standing in for a decision: the terminal
-        // construction is named, its two halves exist, and the missing piece is the
-        // wiring between them.
-        Commands::Run {
-            source_roots,
-            function,
-            entry,
-            claim_run,
-            args,
-        } => run_verb(
+    // THE FOUR VERB HANDLERS ARE DELETED, AND THIS ARM IS THE DECLARED INTERIM.
+    //
+    // Their terminal Y is NOT YET MODELLED, and this branch deliberately does not
+    // sketch it: a CLI model authored before its consumer exists is shaped by the CLI
+    // we have, not the one we are building. So until that lands these verbs have a
+    // decoder and no dispatcher.
+    //
+    // This REFUSES rather than degrading. It prints a typed, located reason and exits
+    // nonzero; it does not fall back to a partial run, does not guess a default verb,
+    // and does not print a plausible success. A cut that leaves a verb unimplemented
+    // must say so loudly at the boundary — an absorbing fallback here would be the
+    // exact §5 failure this deletion exists to remove, reintroduced by the deletion.
+    //
+    // NOT a scaffold with a trigger standing in for a decision: the terminal
+    // construction is named, its two halves exist, and the missing piece is the
+    // wiring between them.
+    fn run_verb(
+        &self,
+        source_roots: Vec<String>,
+        function: String,
+        entry: Option<String>,
+        claim_run: bool,
+        args: Vec<String>,
+    ) -> ! {
+        run_verb(
             &source_roots,
             &function,
             entry.as_deref(),
-            dry_run,
+            self.dry_run,
             claim_run,
             &args,
         )
-        .apply(),
+        .apply()
+    }
 
-        // THE TARGET DISPATCH SEAM, AND THE WHOLE ARM IS A CALL.
-        //
-        // There is deliberately no mode switch here and no arm per instrument: which producer a
-        // label names is decided by the registry in `target_invocation_host`, mirroring
-        // `gunbc.instrument_targets`, and the realization that runs it is selected one level
-        // below that. A second instrument adds a row there and nothing at all here.
-        //
-        // The status is the producer's own termination, not an aggregate verdict: 0 the reading
-        // held, 1 it did not, 2 no reading was taken. `gunbc.build_target`'s
-        // `test_standing_verdict` and the Blaze status export are both deliberately NOT consulted
-        // -- each refuses instrument producers by design, so either would answer a question this
-        // verb is not asking.
-        Commands::Test { target } => {
-            let outcome = cli_run::target_invocation_host::test_verb(&target);
-            Verdict {
-                status: cli_run::target_invocation_host::invocation_exit_status(
-                    outcome.termination,
-                ),
-                message: Some(outcome.message),
-            }
-            .apply()
+    // THE TARGET DISPATCH SEAM, AND THE WHOLE ARM IS A CALL.
+    //
+    // There is deliberately no mode switch here and no arm per instrument: which producer a
+    // label names is decided by the registry in `target_invocation_host`, mirroring
+    // `gunbc.instrument_targets`, and the realization that runs it is selected one level
+    // below that. A second instrument adds a row there and nothing at all here.
+    //
+    // The status is the producer's own termination, not an aggregate verdict: 0 the reading
+    // held, 1 it did not, 2 no reading was taken. `gunbc.build_target`'s
+    // `test_standing_verdict` and the Blaze status export are both deliberately NOT consulted
+    // -- each refuses instrument producers by design, so either would answer a question this
+    // verb is not asking.
+    fn invoke_bound_target_producer(&self, target: String) -> ! {
+        let outcome = cli_run::target_invocation_host::test_verb(&target);
+        Verdict {
+            status: cli_run::target_invocation_host::invocation_exit_status(outcome.termination),
+            message: Some(outcome.message),
         }
+        .apply()
+    }
 
-        // The refusal names a CONDITION, not a branch. An earlier revision said "not
-        // available on integration/cli-run-cut", which the merge itself would have
-        // falsified — the code would keep naming a branch it no longer ran on, the §3
-        // stale-citation decay that needs no edit to break. The PR reference stays: a PR
-        // is historical after merge, not false.
-        // Converge is NOT wired here. The terminal route is the modeled convergence
-        // spine — gunbc.fleet_converge_timer -> fleet_converge_apply ->
-        // host_effect_realize host_effect_apply — consuming modeled desired state and
-        // native host-effect realizations. An earlier revision of this seam implemented
-        // it as resolve-a-.dag-entry + build-an-interpreter-context + run, which is the
-        // cheapest implementation available while the frozen engine stands and exactly
-        // why it is wrong: it would make the interpreter LOAD-BEARING FOR A NEW
-        // capability at the moment two lanes are deleting it, converting removable debt
-        // into an architectural dependency.
-        Commands::Converge { .. } => Verdict {
-            status: 2,
-            message: Some(
-                "error: `converge` is not wired to the retained engine.\n  \
-                 cause: its cli_run handler is deleted and may not be rebuilt on the \
-                 frozen v1 engine. Converge's terminal route is the modeled convergence \
-                 spine (fleet_converge_timer -> fleet_converge_apply -> \
-                 host_effect_realize), which EXISTS — so this verb has a successor to \
-                 route to and needs no host seam.\n  \
-                 status: declared Y-incomplete, not a runtime failure. See PR #8286."
-                    .to_string(),
-            ),
-        }
-        .apply(),
-
-        // SERVE IS WIRED AGAIN, AND IT IS A FROZEN QUARRY ROUTE RATHER THAN A DESIGN.
-        // #8286 deleted this seam together with converge's, but the two are not the same
-        // case and deleting them as one population is what made this wrong. Converge has
-        // a successor that EXISTS (the convergence spine above). Serve's declared
-        // successor — gunbc.roadmap_serve roadmap_serve_interpreted_scaffold, dissolving
-        // to emit-on-demand of the serve closure — was never built, so the deletion
-        // removed a live outward-facing production route with no minimal Y able to hold
-        // the boundary. DESIGN section 3 names that exact carve-out: a gap-intolerant
-        // boundary keeps the staged form, and where no Y can hold it at all, X stays but
-        // stays FROZEN. This restores X and freezes it.
-        //
-        // FROZEN MEANS: no new options, no new verbs, no new routes into the interpreter,
-        // no completion work. The substantive claim of the deleted refusal still stands
-        // and is NOT retracted — serve is a desired service occurrence that convergence
-        // should observe and reconcile, and gunbc.host_effect carries no service-occurrence
-        // member to express that with. This seam is what runs until it does.
-        //
-        // The engine objection is recorded rather than argued away: this does make the
-        // interpreter load-bearing for a capability two lanes are deleting. It is not a
-        // NEW dependency — it is the one that existed until #8286 — but if this route
-        // starts attracting completion work, the freeze has been repealed by drift.
-        Commands::Serve {
+    // The refusal names a CONDITION, not a branch. An earlier revision said "not
+    // available on integration/cli-run-cut", which the merge itself would have
+    // falsified — the code would keep naming a branch it no longer ran on, the §3
+    // stale-citation decay that needs no edit to break. The PR reference stays: a PR
+    // is historical after merge, not false.
+    // Converge is NOT wired here. The terminal route is the modeled convergence
+    // spine — gunbc.fleet_converge_timer -> fleet_converge_apply ->
+    // host_effect_realize host_effect_apply — consuming modeled desired state and
+    // native host-effect realizations. An earlier revision of this seam implemented
+    // it as resolve-a-.dag-entry + build-an-interpreter-context + run, which is the
+    // cheapest implementation available while the frozen engine stands and exactly
+    // why it is wrong: it would make the interpreter LOAD-BEARING FOR A NEW
+    // capability at the moment two lanes are deleting it, converting removable debt
+    // into an architectural dependency.
+    // SERVE IS WIRED AGAIN, AND IT IS A FROZEN QUARRY ROUTE RATHER THAN A DESIGN.
+    // #8286 deleted this seam together with converge's, but the two are not the same
+    // case and deleting them as one population is what made this wrong. Converge has
+    // a successor that EXISTS (the convergence spine above). Serve's declared
+    // successor — gunbc.roadmap_serve roadmap_serve_interpreted_scaffold, dissolving
+    // to emit-on-demand of the serve closure — was never built, so the deletion
+    // removed a live outward-facing production route with no minimal Y able to hold
+    // the boundary. DESIGN section 3 names that exact carve-out: a gap-intolerant
+    // boundary keeps the staged form, and where no Y can hold it at all, X stays but
+    // stays FROZEN. This restores X and freezes it.
+    //
+    // FROZEN MEANS: no new options, no new verbs, no new routes into the interpreter,
+    // no completion work. The substantive claim of the deleted refusal still stands
+    // and is NOT retracted — serve is a desired service occurrence that convergence
+    // should observe and reconcile, and gunbc.host_effect carries no service-occurrence
+    // member to express that with. This seam is what runs until it does.
+    //
+    // The engine objection is recorded rather than argued away: this does make the
+    // interpreter load-bearing for a capability two lanes are deleting. It is not a
+    // NEW dependency — it is the one that existed until #8286 — but if this route
+    // starts attracting completion work, the freeze has been repealed by drift.
+    fn handle_serve(
+        &self,
+        source_roots: Vec<String>,
+        entry: String,
+        function: String,
+        host: String,
+        port: u16,
+        release_revision: String,
+        eval_budget_cpu_ms: Option<u64>,
+        eval_budget_wall_ms: Option<u64>,
+    ) -> ! {
+        cli_run::handle_serve(
             source_roots,
             entry,
             function,
             host,
             port,
             release_revision,
-            eval_budget_cpu_ms,
-            eval_budget_wall_ms,
-        } => {
-            cli_run::handle_serve(
-                source_roots,
-                entry,
-                function,
-                host,
-                port,
-                release_revision,
-                cli_run::ServeEvaluationBudget {
-                    cpu_limit_ms: eval_budget_cpu_ms,
-                    wall_limit_ms: eval_budget_wall_ms,
-                },
-            );
-            Verdict {
-                status: 0,
-                message: None,
-            }
-            .apply()
-        }
+            cli_run::ServeEvaluationBudget {
+                cpu_limit_ms: eval_budget_cpu_ms,
+                wall_limit_ms: eval_budget_wall_ms,
+            },
+        );
+        std::process::exit(0)
+    }
+}
+
+fn main() {
+    let cli = Cli::parse();
+    let host = RetainedCliHost {
+        dry_run: cli.dry_run,
     };
+    gunbc_cli_dispatch_generated::dispatch(cli.command, &host)
 }
 
 /// Severity of one diagnostic, as a TOTAL partition.
