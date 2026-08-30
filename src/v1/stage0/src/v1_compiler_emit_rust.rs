@@ -61,8 +61,8 @@ pub use crate::std_operator_realization::{
     operator_realization_for, operator_realization_refusal_message,
 };
 pub use crate::std_operator_realization::{
-    HostRealizationReason, OperandRealization, OperandShapeFacts, OperatorRealization,
-    OrderingTest, StructuralOrderingBinding,
+    HostRealizationReason, OperandDeclaration, OperandRealization, OperandShapeFacts,
+    OperatorRealization, OrderingTest, StructuralOrderingBinding,
 };
 pub use crate::std_primitive_projection::{
     primitive_identity_runtime_name, primitive_projection_row_for_declaration,
@@ -22023,10 +22023,12 @@ pub fn emit_rust_expr_bin_op(
         ExprData::ExprBinOp {
             op,
             algebra_field: algebra,
+            operand: od,
             ..
         } => emit_typed_bin_op(
             op.clone(),
             algebra.clone(),
+            od.clone(),
             crate::v1_std_core::binop_left(expr.clone()),
             crate::v1_std_core::binop_right(expr.clone()),
             registry.clone(),
@@ -29356,6 +29358,7 @@ pub fn rust_zero_value(type_name: String) -> Option<String> {
 pub fn emit_typed_bin_op(
     op: BinOp,
     algebra_field: Option<AlgebraFieldKind>,
+    operand: Option<Rc<OperandDeclaration>>,
     left: Rc<Node>,
     right: Rc<Node>,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
@@ -29390,7 +29393,14 @@ pub fn emit_typed_bin_op(
                 RenderTarget::Rust,
             )
         } else {
-            match (*binop_operator_realization(op.clone(), left.clone(), scope.clone())).clone() {
+            match (*binop_operator_realization(
+                op.clone(),
+                operand.clone(),
+                left.clone(),
+                scope.clone(),
+            ))
+            .clone()
+            {
                 OperatorRealization::OperatorRealizationRefused { cause: c, .. } => {
                     emit_rust_compile_error_expr(
                         crate::std_operator_realization::operator_realization_refusal_message(
@@ -29569,14 +29579,32 @@ pub fn rust_operand_realization_of_type(
 
 pub fn binop_operator_realization(
     op: BinOp,
+    operand: Option<Rc<OperandDeclaration>>,
     left: Rc<Node>,
     scope: Rc<InferScope>,
 ) -> Rc<OperatorRealization> {
-    crate::std_operator_realization::operator_realization_for(
-        op.clone(),
-        rust_operand_realization(left.clone(), scope.clone()),
-        structural_ordering_rows(),
-    )
+    {
+        let realization = match operand.clone() {
+            Some(od) => {
+                if crate::v1_compiler_coercion::declaration_realizes_natively_on_rust(
+                    od.declaration.clone(),
+                    od.decl_file.clone(),
+                ) {
+                    Rc::new(OperandRealization::HostNumericOperand)
+                } else {
+                    Rc::new(OperandRealization::StructuralOperand {
+                        declaration: od.declaration.clone(),
+                    })
+                }
+            }
+            None => rust_operand_realization(left.clone(), scope.clone()),
+        };
+        crate::std_operator_realization::operator_realization_for(
+            op.clone(),
+            realization.clone(),
+            structural_ordering_rows(),
+        )
+    }
 }
 
 pub fn rust_declaration_path(module_path: String, decl_name: String) -> String {

@@ -2989,6 +2989,7 @@ pub fn resolve_expr_types(
             ExprData::ExprBinOp {
                 op,
                 algebra_field: af,
+                operand: od,
                 ..
             } => {
                 let ch = texpr.children.clone();
@@ -3012,6 +3013,7 @@ pub fn resolve_expr_types(
                         Rc::new(ExprData::ExprBinOp {
                             op: op.clone(),
                             algebra_field: af.clone(),
+                            operand: od.clone(),
                         }),
                         Rc::new(vec![lr.expr.clone(), rr.expr.clone()]),
                         texpr.inferred.clone(),

@@ -58,6 +58,7 @@ pub use crate::std_node::{compiler_inductive_fields, compiler_recursive_types};
 pub use crate::std_occurrence_identity::NodeOccurrenceIdentity;
 use crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic;
 pub use crate::std_occurrence_identity::OccurrenceId;
+pub use crate::std_operator_realization::OperandDeclaration;
 use crate::std_syntax::BinOp::Add;
 use crate::std_syntax::BinOp::{And, Div, Eq, Ge, Gt, Le, Lt, Mod, Mul, Ne, NullCoalesce, Or, Sub};
 use crate::std_syntax::LiteralValue::{LitBool, LitInt, LitStr};
@@ -99,8 +100,8 @@ pub use crate::v1_compiler_infer_env::{
     node_with_inferred, put_inductive_field, put_inductive_field_cross, qualified_all_but_last,
     qualify_borrowed_inferred, qualify_borrowed_type_names, qualify_decl_reference_positions,
     str_bindings_from_bindings, symbol_index_insert, symbol_index_insert_decl,
-    symbol_index_insert_service, symbol_index_lookup, type_reference_declaration_ref,
-    unit_variant_index_shadow_insert,
+    symbol_index_insert_service, symbol_index_lookup, type_reference_declaration,
+    type_reference_declaration_ref, unit_variant_index_shadow_insert,
 };
 pub use crate::v1_compiler_infer_env::{
     GlobalBareCandidate, GlobalBareLookupState, GuardedTypeEnvCacheMerge, ServiceCensusEntry,
@@ -7969,6 +7970,48 @@ pub struct BinopOperands {
     pub right: Rc<InferResult>,
 }
 
+pub fn operand_declaration_of_type(
+    mut rt: Rc<Node>,
+    mut scope: Rc<InferScope>,
+    mut fuel: i64,
+) -> Option<Rc<OperandDeclaration>> {
+    loop {
+        if ((fuel.clone() > 0) && is_where_refinement_type(rt.clone())) {
+            match rt.children.clone().first().cloned() {
+                Some(base) => {
+                    let base_resolved = match crate::v1_compiler_infer_env::lookup_type_for(
+                        scope.type_env.clone(),
+                        base.clone(),
+                    ) {
+                        Some(r) => r.clone(),
+                        None => base.clone(),
+                    };
+                    {
+                        let __tco_0 = base_resolved.clone();
+                        let __tco_1 = (fuel - 1);
+                        rt = __tco_0;
+                        fuel = __tco_1;
+                        continue;
+                    }
+                }
+                None => {
+                    break crate::v1_compiler_infer_env::type_reference_declaration(
+                        rt.clone(),
+                        scope.type_env.clone().source_indices.clone(),
+                        scope.type_env.clone(),
+                    );
+                }
+            }
+        } else {
+            break crate::v1_compiler_infer_env::type_reference_declaration(
+                rt.clone(),
+                scope.type_env.clone().source_indices.clone(),
+                scope.type_env.clone(),
+            );
+        }
+    }
+}
+
 pub fn infer_operand_literal(
     lit_expr: Rc<Node>,
     other: Rc<Node>,
@@ -10091,6 +10134,11 @@ crate::v1_compiler_infer_types::resolve_type_variables_from_template(t.clone(), 
                 Rc::new(ExprData::ExprBinOp {
                     op: op.clone(),
                     algebra_field: binop_info.algebra_field.clone(),
+                    operand: operand_declaration_of_type(
+                        crate::v1_compiler_infer_types::resolved_type(left_typed.clone()),
+                        scope.clone(),
+                        8,
+                    ),
                 }),
                 Rc::new(vec![left_typed.clone(), right_typed.clone()]),
                 Some(Rc::new(InferredNode::Resolved {

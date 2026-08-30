@@ -12,6 +12,7 @@ use crate::std_induction::SubValueRelation::{PreservedValue, SubValueUnknown};
 pub use crate::std_induction::{InductiveField, RecursionShape, SubValueRelation};
 pub use crate::std_occurrence_identity::NodeOccurrenceIdentity;
 use crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic;
+pub use crate::std_operator_realization::OperandDeclaration;
 pub use crate::std_types::is_kernel_type;
 pub use crate::std_types::SourceSpan;
 pub use crate::v1_compiler_infer_occurrence_binding::ModulePathBindingProjection;
@@ -2233,23 +2234,17 @@ pub fn binding_declares_span(binding: Rc<TypeBinding>, sp: Rc<SourceSpan>) -> bo
     }
 }
 
-pub fn type_reference_declaration_ref(
+pub fn type_reference_declaration(
     n: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     env: Rc<TypeEnv>,
-) -> Option<Rc<DeclarationRef>> {
+) -> Option<Rc<OperandDeclaration>> {
     {
         let rt = match n.inferred.clone().as_deref().cloned() {
             Some(InferredNode::Resolved { node: r, .. }) => r.clone(),
             _ => match lookup_type_for(env.clone(), n.clone()) {
                 Some(bound) => bound.clone(),
-                None => match lookup_type_by_name(
-                    env.clone(),
-                    crate::v1_std_core::authored_name_at(source_indices.clone(), n.clone()),
-                ) {
-                    Some(bound) => bound.clone(),
-                    None => n.clone(),
-                },
+                None => n.clone(),
             },
         };
         let decl_name = crate::v1_std_core::qualified_last_segment(
@@ -2273,7 +2268,13 @@ pub fn type_reference_declaration_ref(
                     ..
                 }) => {
                     if binding_declares_span(b.clone(), sp.clone()) {
-                        Some(crate::std_decl_ref::decl_ref(mp.clone(), decl_name.clone()))
+                        Some(Rc::new(OperandDeclaration {
+                            declaration: crate::std_decl_ref::decl_ref(
+                                mp.clone(),
+                                decl_name.clone(),
+                            ),
+                            decl_file: sp.file.clone(),
+                        }))
                     } else {
                         std::option::Option::None
                     }
@@ -2293,14 +2294,28 @@ pub fn type_reference_declaration_ref(
                 .first()
                 .cloned()
                 {
-                    Some(c) => Some(crate::std_decl_ref::decl_ref(
-                        c.module_path.clone(),
-                        decl_name.clone(),
-                    )),
+                    Some(c) => Some(Rc::new(OperandDeclaration {
+                        declaration: crate::std_decl_ref::decl_ref(
+                            c.module_path.clone(),
+                            decl_name.clone(),
+                        ),
+                        decl_file: sp.file.clone(),
+                    })),
                     None => std::option::Option::None,
                 },
                 None => std::option::Option::None,
             },
         }
+    }
+}
+
+pub fn type_reference_declaration_ref(
+    n: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    env: Rc<TypeEnv>,
+) -> Option<Rc<DeclarationRef>> {
+    match type_reference_declaration(n.clone(), source_indices.clone(), env.clone()) {
+        Some(od) => Some(od.declaration.clone()),
+        None => std::option::Option::None,
     }
 }

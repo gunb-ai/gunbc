@@ -45,6 +45,7 @@ pub use crate::std_occurrence_identity::{
     AuthoredTokenOrdinalSpace, NodeOccurrenceIdentity, OccurrenceIdAllocator,
     OccurrenceTransportRefusal,
 };
+pub use crate::std_operator_realization::OperandDeclaration;
 pub use crate::std_source_annotation::AnnotationAttachmentRefusal;
 use crate::std_source_annotation::AnnotationAttachmentRefusal::*;
 pub use crate::std_source_annotation::{
@@ -333,6 +334,7 @@ pub enum ExprData {
     ExprBinOp {
         op: BinOp,
         algebra_field: Option<AlgebraFieldKind>,
+        operand: Option<Rc<OperandDeclaration>>,
     },
     ExprUnaryOp {
         op: UnaryOpKind,

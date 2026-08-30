@@ -23,6 +23,12 @@ use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
 use std::rc::Rc;
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct OperandDeclaration {
+    pub declaration: Rc<DeclarationRef>,
+    pub decl_file: String,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum OperandRealization {
     HostNumericOperand,
