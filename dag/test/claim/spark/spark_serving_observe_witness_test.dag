@@ -52,6 +52,10 @@ import gunbc.spark.serving_observe {
   spark_serving_unit_outcome_from_probe_results,
   spark_serving_runtime_materialization_receipt_probe_argv,
   SparkServingObservationReportRefused,
+  SparkServingObservationReportRefusal,
+  SparkServingObservationScopeEmpty,
+  SparkServingObservationCoverageIncomplete,
+  SparkServingObservationPrerequisiteRefused,
   SparkServingObservationsProduced,
   spark_serving_observation_report_succeeded,
   spark_serving_observation_succeeded,
@@ -486,7 +490,7 @@ test fn api_field_refusal_surfaces_before_fingerprint_refusal() -> Bool {
 test fn observation_report_refused_is_not_success() -> Bool {
   !spark_serving_observation_report_succeeded(
     report: SparkServingObservationReportRefused {
-      cause: "attempt identity is not a safe path segment" as NonEmptyStr,
+      refusal: SparkServingObservationPrerequisiteRefused { cause: "attempt identity is not a safe path segment" as NonEmptyStr },
     },
   )
 }
@@ -742,8 +746,115 @@ fn ho_at_refused(host: HostIdentity) -> SparkServingHostObservation {
 fn report_is_refused(r: SparkServingObservationReport) -> Bool {
   match r {
     SparkServingObservationsProduced { first: _, more: _ } => false
-    SparkServingObservationReportRefused { cause: _ } => true
+    SparkServingObservationReportRefused { refusal: _ } => true
   }
+}
+
+// ASKING WHICH REFUSAL, NOT MERELY WHETHER. The seven controls below originally reduced every
+// coverage defect to report_is_refused, which established that the constructor refused and nothing
+// about what it carried -- so an implementation that computed the three typed populations and then
+// discarded them into a formatted string passed all seven. It did, and review of #9754 found it.
+// "Identity join versus cardinality" and "typed result versus rendered cause" are two different
+// properties and need two different controls.
+fn refusal_missing(r: SparkServingObservationReport) -> List<HostIdentity> {
+  match r {
+    SparkServingObservationsProduced { first: _, more: _ } => []
+    SparkServingObservationReportRefused { refusal: x } =>
+      match x {
+        SparkServingObservationCoverageIncomplete { missing: m, foreign: _, duplicated: _ } => m
+        SparkServingObservationScopeEmpty => []
+        SparkServingObservationPrerequisiteRefused { cause: _ } => []
+      }
+  }
+}
+
+fn refusal_foreign(r: SparkServingObservationReport) -> List<HostIdentity> {
+  match r {
+    SparkServingObservationsProduced { first: _, more: _ } => []
+    SparkServingObservationReportRefused { refusal: x } =>
+      match x {
+        SparkServingObservationCoverageIncomplete { missing: _, foreign: f, duplicated: _ } => f
+        SparkServingObservationScopeEmpty => []
+        SparkServingObservationPrerequisiteRefused { cause: _ } => []
+      }
+  }
+}
+
+fn refusal_duplicated(r: SparkServingObservationReport) -> List<HostIdentity> {
+  match r {
+    SparkServingObservationsProduced { first: _, more: _ } => []
+    SparkServingObservationReportRefused { refusal: x } =>
+      match x {
+        SparkServingObservationCoverageIncomplete { missing: _, foreign: _, duplicated: d } => d
+        SparkServingObservationScopeEmpty => []
+        SparkServingObservationPrerequisiteRefused { cause: _ } => []
+      }
+  }
+}
+
+fn refusal_is_scope_empty(r: SparkServingObservationReport) -> Bool {
+  match r {
+    SparkServingObservationsProduced { first: _, more: _ } => false
+    SparkServingObservationReportRefused { refusal: x } =>
+      match x {
+        SparkServingObservationScopeEmpty => true
+        SparkServingObservationCoverageIncomplete { missing: _, foreign: _, duplicated: _ } => false
+        SparkServingObservationPrerequisiteRefused { cause: _ } => false
+      }
+  }
+}
+
+fn only_host(hosts: List<HostIdentity>, host: HostIdentity) -> Bool {
+  (hosts |> count) == 1 && any(hosts, h => h == host)
+}
+
+// The narrowed roster names srv6 as MISSING specifically -- not merely "something was wrong".
+test fn the_narrowed_roster_refusal_names_srv6_as_missing() -> Bool {
+  let r = spark_serving_observation_report_from_observations(
+    expected: ["srv5", "srv6"],
+    observations: [ho_at(host: "srv5")],
+  )
+  only_host(hosts: refusal_missing(r: r), host: "srv6")
+    && ((refusal_foreign(r: r) |> count) == 0)
+    && ((refusal_duplicated(r: r) |> count) == 0)
+}
+
+// A foreign host is a SCOPE DISAGREEMENT and must not be reported as a missing one.
+test fn the_foreign_host_refusal_names_srv7_as_foreign_and_nothing_as_missing() -> Bool {
+  let r = spark_serving_observation_report_from_observations(
+    expected: ["srv5", "srv6"],
+    observations: [ho_at(host: "srv5"), ho_at(host: "srv6"), ho_at(host: "srv7")],
+  )
+  only_host(hosts: refusal_foreign(r: r), host: "srv7")
+    && ((refusal_missing(r: r) |> count) == 0)
+}
+
+// A duplicate is a roster that counted one machine twice, and srv6 is missing in the same breath --
+// two distinct defects carried separately rather than summed into one sentence.
+test fn the_duplicate_refusal_names_srv5_duplicated_and_srv6_missing() -> Bool {
+  let r = spark_serving_observation_report_from_observations(
+    expected: ["srv5", "srv6"],
+    observations: [ho_at(host: "srv5"), ho_at(host: "srv5")],
+  )
+  any(refusal_duplicated(r: r), h => h == "srv5")
+    && only_host(hosts: refusal_missing(r: r), host: "srv6")
+}
+
+// The empty scope is its OWN arm, not a coverage result with empty populations -- those are
+// different facts and a consumer must be able to tell them apart.
+test fn the_empty_scope_refusal_is_its_own_arm_not_an_empty_coverage_result() -> Bool {
+  refusal_is_scope_empty(r: spark_serving_observation_report_from_observations(
+    expected: [],
+    observations: [ho_at(host: "srv5")],
+  ))
+}
+
+test fn a_coverage_defect_is_never_reported_through_the_prerequisite_arm() -> Bool {
+  let r = spark_serving_observation_report_from_observations(
+    expected: ["srv5", "srv6"],
+    observations: [ho_at(host: "srv5")],
+  )
+  !refusal_is_scope_empty(r: r) && ((refusal_missing(r: r) |> count) > 0)
 }
 
 // (1) The incident itself: expected {srv5,srv6}, only srv5 answered. Nonempty, and refused.
@@ -819,7 +930,7 @@ test fn an_empty_observation_list_against_a_real_scope_still_refuses() -> Bool {
 test fn a_refused_report_is_never_read_as_observed() -> Bool {
   spark_serving_report_observations_were_made(
     report: SparkServingObservationReportRefused {
-      cause: "no host was probed" as NonEmptyStr,
+      refusal: SparkServingObservationPrerequisiteRefused { cause: "no host was probed" as NonEmptyStr },
     },
   ) == false
 }
@@ -1135,7 +1246,7 @@ test fn one_host_not_up_with_its_boot_drops_the_fleet_standing() -> Bool {
 // narrow this standing is built to refuse.
 test fn a_refused_report_is_unobserved_not_a_measured_negative() -> Bool {
   match spark_serving_current_boot_durability_standing(
-    report: SparkServingObservationReportRefused { cause: "transport refused every leg" as NonEmptyStr },
+    report: SparkServingObservationReportRefused { refusal: SparkServingObservationPrerequisiteRefused { cause: "transport refused every leg" as NonEmptyStr } },
   ) {
     CurrentBootDurabilityUnobserved { cause: c } => string_contains(s: c as String, pattern: "transport refused")
     _ => false
