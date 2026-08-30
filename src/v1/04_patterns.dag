@@ -31,7 +31,7 @@ import v1.compiler.infer_types {
 
 import v1.compiler.infer_env {
   TypeEnv,
-  lookup_type, lookup_type_by_name,
+  lookup_type, lookup_type_by_name, lookup_type_for,
   symbol_index_lookup
 }
 
@@ -383,7 +383,7 @@ fn check_match_exhaustiveness(
   let resolved_raw = if has_structure {
     scrutinee_type
   } else {
-    match lookup_type_by_name(env: env, name: authored_name_at(source_indices: env.source_indices, node: scrutinee_type)) {
+    match lookup_type_for(env: env, node: scrutinee_type) {
       Present { value: def } => def
       Absent => scrutinee_type
     }
