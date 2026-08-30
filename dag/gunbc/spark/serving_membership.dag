@@ -125,6 +125,17 @@ type SparkServingUserUnitWriteIntent {
   spec: SparkServingUserUnitSpec
 }
 
+// EQUALITY FOR THE ADDRESS, BESIDE THE TYPE THAT DECLARES IT, and derived from the one wire
+// rendering rather than a second match. A hand-written arm-by-arm comparison would be a second
+// authority for "are these the same resource", and the model slot's payload makes it the kind that
+// silently loses a field.
+fn spark_serving_resource_address_eq(
+  a: SparkServingResourceAddress,
+  b: SparkServingResourceAddress,
+) -> Bool {
+  spark_serving_resource_address_wire(address: a) == spark_serving_resource_address_wire(address: b)
+}
+
 fn spark_serving_resource_address_wire(address: SparkServingResourceAddress) -> String {
   match address {
     SparkServingRuntimeRootAddress => "runtime-root"
