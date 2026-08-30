@@ -2,12 +2,11 @@ module v2.workflow.floor_wet_route
 
 import v2.std.algebra { fold_list, length, list_append }
 import v2.std.collection { List }
-import v2.std.integer { Int, int_gt }
+import std.types { Int, EpochSecs, Seconds, Milliseconds }
 import v2.std.logic { Bool }
 import v2.std.optional { Optional, Absent, Present }
 import v2.std.text { String }
-import std.dissolution { DissolutionCondition, unbound_dissolution }
-import std.types { NonEmptyStr }
+
 
 // THE WET EXECUTION ROUTE: identities the required floor DECLINES from hermetic execution
 // because their subject is a real host effect chain no honest mock can answer, routed instead
@@ -133,7 +132,7 @@ type WetLaneOutcome =
 type WetReceiptIdentityRow = {
   identity: String,
   outcome: WetLaneOutcome,
-  wall_ms: Int
+  wall_ms: Milliseconds
 }
 
 // THE COMMITTED RECEIPT ENVELOPE (`floor_wet_route_receipt_json_rel_path`). One attempt,
@@ -145,27 +144,22 @@ type WetReceiptEnvelope = {
   subject_digest: String,
   executor_contract_digest: String,
   attempt_seq: Int,
-  executed_at_unix_secs: Int,
-  published_at_unix_secs: Int,
+  executed_at_unix_secs: EpochSecs,
+  published_at_unix_secs: EpochSecs,
   run_id: String,
   head_sha: String,
   rows: List<WetReceiptIdentityRow>
 }
 
-// FLAT-SCALAR TIME FIELDS, DECLARED AS A BOUNDED GAP RATHER THAN SILENTLY LEFT (review 57567
-// on gunbc#9725, BLOCKING on `wall_ms`, `executed_at_unix_secs`, `published_at_unix_secs`
-// and the fold's `evaluated_tree_commit_unix_secs` parameter). The finding is correct on the
-// merits, and this row is the same construction its sibling
-// `v2.workflow.required_floor.flat_scalar_millisecond_fields_dissolve_on` already carries for
-// the identical class: `std.measure` `Millisecond = Measure<Time, Milli, std.nat.Nat>` is
-// built on v1's host-backed `Nat`, while this module's `Int` is v2's inductive tower
-// (`v2.std.integer.Int = GroupCompletion<v2.std.nat.Nat>`), and no verified bridge between
-// the two numeric towers exists anywhere in this corpus. Authoring that bridge inside a
-// routing PR would be exactly the silent cross-representation seam the incident history
-// warns against, so the conversion is a typed obligation, not a prose promise.
-data flat_scalar_wet_receipt_time_fields_dissolve_on: DissolutionCondition = unbound_dissolution(
-  description: "🟡 feature: flat-scalar wet-receipt time fields. dissolve-on: WetReceiptIdentityRow.wall_ms, WetReceiptEnvelope.executed_at_unix_secs/published_at_unix_secs and wet_lane_receipt_standing's evaluated_tree_commit_unix_secs parameter (with the cadence/grace/budget/skew rows they compare against) convert from bare Int to std.measure Time carriers once a verified conversion exists between v2's inductive numeric tower (v2.std.integer.Int) and the host-backed Nat std.measure is built on — the same trigger v2.workflow.required_floor.flat_scalar_millisecond_fields_dissolve_on names (review 57567 and review 57568 on gunbc#9725; precedent review 53860 on gunbc#8584)." as NonEmptyStr,
-)
+// TIME FIELDS CONSUME THE STD CARRIERS (review 57576 on gunbc#9725, and the parent ruling
+// that followed it): `wall_ms` is `std.types.Milliseconds`, the two publication clocks and
+// the fold's evaluated-tree commit parameter are `std.types.EpochSecs` — the corpus's one
+// authority for a POSIX Unix-epoch instant — and the cadence/grace/budget/skew rows are
+// `std.types.Seconds` durations. An instant and a duration stay two types, so the freshness
+// subtraction and the skew inequality are the only places they meet. The pre-existing
+// `observed_cpu_ms`/`observed_wall_ms` fields in `v2.workflow.required_floor` remain the
+// same debt on main under their own declared dissolution row; this module does not widen
+// into repairing them.
 
 // THE FLOOR-SIDE STANDING OF THE COMMITTED ENVELOPE, one value per evaluated tree, decided
 // from four facts the floor holds: the envelope (or its absence), the wet subject digest the
@@ -192,21 +186,21 @@ fn floor_wet_route_receipt_schema_version() -> Int {
 // PR's own CI, approval, merge — each a real latency between executed_at and the receipt
 // standing in a tree). The staleness budget is DERIVED as their sum so the tolerated miss
 // count is a read, not an inference, and no third figure exists to drift.
-fn floor_wet_route_cadence_secs() -> Int {
+fn floor_wet_route_cadence_secs() -> Seconds {
   86400
 }
 
-fn floor_wet_route_receipt_grace_secs() -> Int {
+fn floor_wet_route_receipt_grace_secs() -> Seconds {
   259200
 }
 
-fn floor_wet_route_receipt_staleness_budget_secs() -> Int {
+fn floor_wet_route_receipt_staleness_budget_secs() -> Seconds {
   floor_wet_route_cadence_secs() + floor_wet_route_receipt_grace_secs()
 }
 
 // Tolerated forward clock skew between the publishing host and the evaluated commit's own
 // timestamp: published_at may not exceed commit_time + this figure.
-fn floor_wet_route_publication_skew_secs() -> Int {
+fn floor_wet_route_publication_skew_secs() -> Seconds {
   3600
 }
 
@@ -262,7 +256,7 @@ fn wet_lane_receipt_standing(
   computed_subject_digest: String,
   computed_executor_contract_digest: String,
   roster_identities: List<String>,
-  evaluated_tree_commit_unix_secs: Int
+  evaluated_tree_commit_unix_secs: EpochSecs
 ) -> WetLaneReceiptStanding {
   match envelope {
     Absent => ReceiptMissing {}
@@ -270,10 +264,10 @@ fn wet_lane_receipt_standing(
       if e.schema_version != floor_wet_route_receipt_schema_version() {
         ReceiptContractMismatch { detail: "schema_version is not the version this floor reads" }
       } else {
-        if int_gt(a: e.executed_at_unix_secs, b: e.published_at_unix_secs) {
+        if e.executed_at_unix_secs > e.published_at_unix_secs {
           ReceiptContractMismatch { detail: "executed_at exceeds published_at" }
         } else {
-          if int_gt(a: e.published_at_unix_secs, b: evaluated_tree_commit_unix_secs + floor_wet_route_publication_skew_secs()) {
+          if e.published_at_unix_secs > evaluated_tree_commit_unix_secs + floor_wet_route_publication_skew_secs() {
             ReceiptContractMismatch { detail: "published_at exceeds the evaluated tree's commit time beyond the declared skew" }
           } else {
             if e.subject_digest != computed_subject_digest {
@@ -284,7 +278,7 @@ fn wet_lane_receipt_standing(
               } else {
               if wet_receipt_rows_join_roster_exactly(rows: e.rows, roster_identities: roster_identities) {
                 let age = evaluated_tree_commit_unix_secs - e.executed_at_unix_secs
-                if int_gt(a: age, b: floor_wet_route_receipt_staleness_budget_secs()) {
+                if age > floor_wet_route_receipt_staleness_budget_secs() {
                   ReceiptExpired { age_secs: age }
                 } else {
                   let failed = wet_receipt_failed_identities(rows: e.rows)

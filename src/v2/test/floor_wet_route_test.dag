@@ -20,7 +20,7 @@ import v2.workflow.floor_wet_route {
 }
 import v2.std.algebra { filter, fold_list, length }
 import v2.std.collection { List }
-import v2.std.integer { Int }
+import std.types { EpochSecs }
 import v2.std.logic { Bool }
 import v2.std.optional { Optional, Absent, Present }
 import v2.std.text { String }
@@ -73,7 +73,7 @@ fn fixture_envelope(rows: List<WetReceiptIdentityRow>) -> WetReceiptEnvelope {
   }
 }
 
-fn standing_at(envelope: Optional<WetReceiptEnvelope>, tree_secs: Int) -> WetLaneReceiptStanding {
+fn standing_at(envelope: Optional<WetReceiptEnvelope>, tree_secs: EpochSecs) -> WetLaneReceiptStanding {
   wet_lane_receipt_standing(
     envelope: envelope,
     computed_subject_digest: fixture_digest,
