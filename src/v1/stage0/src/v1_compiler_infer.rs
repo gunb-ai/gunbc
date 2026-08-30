@@ -8417,6 +8417,7 @@ crate::v1_compiler_infer_types::resolve_type_variables_from_template(t.clone(), 
     call_semantics: Some(Rc::new(CallSemantics::PlainCallSemantics {
     target: Rc::new(CallTargetIdentity::RuntimePrimitiveCall {
     primitive_name: "empty_map".to_string(),
+    projected_from: None,
 }),
 })),
     descent_evidence: None,
@@ -8434,6 +8435,7 @@ match bare_m.clone() {
     call_semantics: Some(Rc::new(CallSemantics::PlainCallSemantics {
     target: Rc::new(CallTargetIdentity::RuntimePrimitiveCall {
     primitive_name: "empty_map".to_string(),
+    projected_from: None,
 }),
 })),
     descent_evidence: None,
@@ -8447,6 +8449,7 @@ match bare_m.clone() {
     call_semantics: Some(Rc::new(CallSemantics::PlainCallSemantics {
     target: Rc::new(CallTargetIdentity::RuntimePrimitiveCall {
     primitive_name: "empty_map".to_string(),
+    projected_from: None,
 }),
 })),
     descent_evidence: None,
@@ -8465,6 +8468,7 @@ match bare_m.clone() {
     call_semantics: Some(Rc::new(CallSemantics::PlainCallSemantics {
     target: Rc::new(CallTargetIdentity::RuntimePrimitiveCall {
     primitive_name: "empty_map".to_string(),
+    projected_from: None,
 }),
 })),
     descent_evidence: None,
@@ -8478,6 +8482,7 @@ match bare_m.clone() {
     call_semantics: Some(Rc::new(CallSemantics::PlainCallSemantics {
     target: Rc::new(CallTargetIdentity::RuntimePrimitiveCall {
     primitive_name: "empty_map".to_string(),
+    projected_from: None,
 }),
 })),
     descent_evidence: None,
@@ -8575,6 +8580,7 @@ let call_semantics = if (func_name.clone() == "lookup".to_string()) {
                                             Some(Rc::new(CallSemantics::LookupCallSemantics {
     target: Rc::new(CallTargetIdentity::RuntimePrimitiveCall {
     primitive_name: func_name.clone(),
+    projected_from: None,
 }),
 }))
                                         } else {
