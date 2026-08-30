@@ -603,10 +603,13 @@ fn hash_fields_commutative(fields: &[(Symbol, Value)]) -> u64 {
 
 pub fn fields_get(fields: &[(Symbol, Value)], sym: Symbol) -> Option<&Value> {
     // Field identity is the canonical spelling, never the order in which one evaluation
-    // frame encountered it. Some host-built values construct their fields directly rather
-    // than through `sorted_fields`; a binary search silently made lookup depend on those two
-    // unrelated orders agreeing. Records are small, and the exact identity scan is total for
-    // both direct and sorted constructors.
+    // frame encountered it. Keep the logarithmic path for values built through
+    // `sorted_fields`, then scan as the total fallback for host-built values whose constructors
+    // preserve a modeled field order instead. A binary search alone silently made lookup
+    // depend on those two unrelated orders agreeing.
+    if let Ok(i) = fields.binary_search_by_key(&sym, |(field, _)| *field) {
+        return Some(&fields[i].1);
+    }
     fields
         .iter()
         .find(|(field, _)| *field == sym)
