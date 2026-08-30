@@ -1,0 +1,120 @@
+module test.claim.memory_stall_refusal_witness
+
+import std.logic { Bool }
+import std.types { String, Int }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import gunbc.memory_stall_refusal {
+  MemoryStallObservation,
+  MemoryStallVerdict,
+  StallWindowOpen,
+  ProgressUnderMemoryAdmissible,
+  StallRefusedPageThrash,
+  memory_stall_verdict,
+  memory_stall_verdict_refuses,
+  memory_stall_major_faults_per_minute,
+  memory_stall_refusal_pressure_text,
+  memory_stall_major_fault_rate_per_minute_threshold,
+  memory_stall_verdict_window_minimum_wall_ms,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data thrash_fixture_grounding_note: String = "THE RED FIXTURE'S MAGNITUDE IS THE MEASURED TREADMILL'S, not an arbitrary big number: the 2026-08-30 default-VM specimens (gunbc.memory_stall_refusal memory_stall_observed_receipt_note) sat for hours refaulting on a swapless 7.1 GiB machine, and a page-thrashing process on such a host refaults thousands of times per second -- the fixture's 120000 faults over a two-minute window is 60000/minute, an order of magnitude over the declared line, which is where the specimen lives, and two orders over healthy background. The SLOW control is the acceptance distinction this module exists to hold: an hour of wall with 60 major faults is a resolve that is merely slow -- majflt flat means the wall is being spent computing -- and no verdict may refuse it, however long it runs, because time enters this decision only as a rate denominator (memory_stall_signal_choice_note)."
+
+fn thrashing_window() -> MemoryStallObservation {
+  MemoryStallObservation {
+    window_wall_ms: 120000,
+    major_faults_in_window: 120000,
+    cache_evictions_in_window: 4213,
+    cache_readmissions_in_window: 388,
+  }
+}
+
+fn slow_but_progressing_hour() -> MemoryStallObservation {
+  MemoryStallObservation {
+    window_wall_ms: 3600000,
+    major_faults_in_window: 60,
+    cache_evictions_in_window: 0,
+    cache_readmissions_in_window: 0,
+  }
+}
+
+test fn RED_a_thrashing_window_refuses_and_names_the_pressure() -> Bool {
+  let verdict = memory_stall_verdict(o: thrashing_window())
+  memory_stall_verdict_refuses(v: verdict)
+    && string_contains(
+      s: memory_stall_refusal_pressure_text(v: verdict),
+      pattern: "MemoryStallRefusedPageThrash"
+    )
+    && string_contains(
+      s: memory_stall_refusal_pressure_text(v: verdict),
+      pattern: "/proc/self/stat"
+    )
+    && string_contains(s: memory_stall_refusal_pressure_text(v: verdict), pattern: "--entry")
+    && string_contains(s: memory_stall_refusal_pressure_text(v: verdict), pattern: "readmissions 388")
+}
+
+test fn a_slow_but_progressing_resolve_is_admitted_however_long_it_runs() -> Bool {
+  match memory_stall_verdict(o: slow_but_progressing_hour()) {
+    ProgressUnderMemoryAdmissible { major_faults_per_minute: rate } => rate == 1
+    StallWindowOpen { window_wall_ms: _, minimum_wall_ms: _ } => false
+    StallRefusedPageThrash { major_faults_per_minute: _, threshold_per_minute: _, observation: _ } => false
+  }
+}
+
+// A cold-start refault burst inside a short window is NOT a verdict in either direction:
+// the window is still open, which is neither an admission (the treadmill also starts with
+// a burst) nor a refusal (so does a healthy process's first read of its inputs). Conflating
+// this state with admission would blind the next window; conflating it with refusal would
+// kill every cold start.
+test fn a_burst_below_the_minimum_window_is_an_open_window_not_a_verdict() -> Bool {
+  match memory_stall_verdict(o: MemoryStallObservation {
+    window_wall_ms: memory_stall_verdict_window_minimum_wall_ms - 1,
+    major_faults_in_window: 1000000,
+    cache_evictions_in_window: 0,
+    cache_readmissions_in_window: 0,
+  }) {
+    StallWindowOpen { window_wall_ms: w, minimum_wall_ms: m } =>
+      w == memory_stall_verdict_window_minimum_wall_ms - 1
+        && m == memory_stall_verdict_window_minimum_wall_ms
+    ProgressUnderMemoryAdmissible { major_faults_per_minute: _ } => false
+    StallRefusedPageThrash { major_faults_per_minute: _, threshold_per_minute: _, observation: _ } => false
+  }
+}
+
+// Tight at the declared line, derived from the row rather than retyped: over exactly one
+// minute of wall, a fault count equal to the threshold admits and one more refuses. A
+// fixture at an extreme would delete this test (the refusal must be reachable from the
+// admissible side by the smallest step the units allow).
+test fn the_refusal_is_tight_at_the_declared_rate_line() -> Bool {
+  let at_line = memory_stall_verdict(o: MemoryStallObservation {
+    window_wall_ms: 60000,
+    major_faults_in_window: memory_stall_major_fault_rate_per_minute_threshold,
+    cache_evictions_in_window: 0,
+    cache_readmissions_in_window: 0,
+  })
+  let over_line = memory_stall_verdict(o: MemoryStallObservation {
+    window_wall_ms: 60000,
+    major_faults_in_window: memory_stall_major_fault_rate_per_minute_threshold + 1,
+    cache_evictions_in_window: 0,
+    cache_readmissions_in_window: 0,
+  })
+  !memory_stall_verdict_refuses(v: at_line) && memory_stall_verdict_refuses(v: over_line)
+}
+
+test fn the_rate_is_a_per_minute_projection_of_the_window() -> Bool {
+  memory_stall_major_faults_per_minute(o: thrashing_window()) == 60000
+    && memory_stall_major_faults_per_minute(o: slow_but_progressing_hour()) == 1
+}
+
+// The non-refusing arms render no pressure clause: a consumer that logs the clause
+// unconditionally must not fabricate pressure prose for a window that admitted.
+test fn only_the_refusal_carries_pressure_text() -> Bool {
+  memory_stall_refusal_pressure_text(v: memory_stall_verdict(o: slow_but_progressing_hour())) == ""
+    && memory_stall_refusal_pressure_text(v: memory_stall_verdict(o: MemoryStallObservation {
+      window_wall_ms: 1000,
+      major_faults_in_window: 0,
+      cache_evictions_in_window: 0,
+      cache_readmissions_in_window: 0,
+    })) == ""
+}

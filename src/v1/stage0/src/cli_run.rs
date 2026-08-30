@@ -9933,6 +9933,19 @@ pub struct MultiEntryIndex {
     /// drain accumulation lane). Each eviction is a typed, located diagnostic — never
     /// a silent widen (§5).
     typed_cache_evictions: Cell<u64>,
+    /// Content keys the cap has evicted from this index — the governor's memory of its own
+    /// evictions, consulted on the next miss so a recompute of previously-evicted work is
+    /// countable as a READMISSION rather than folded into ordinary misses. Carried in the
+    /// stall refusal's observation (`gunbc.memory_stall_refusal`) so an operator reading
+    /// the refusal can see whether the typed cache was implicated in the treadmill.
+    typed_cache_evicted_keys: RefCell<std::collections::HashSet<String>>,
+    /// Count of misses whose key was previously evicted from this index (see above).
+    typed_cache_readmissions: Cell<u64>,
+    /// The open stall-observation window for this index (`gunbc.memory_stall_refusal`):
+    /// the wall instant and counter values the current window started at. Rolls forward on
+    /// every admissible verdict, so an hour of quiet history can never dilute a fresh
+    /// treadmill.
+    memory_stall_window: RefCell<Option<MemoryStallWindowStart>>,
     /// Host-budget-derived typed-cache entry cap, sampled ONCE for this index's
     /// lifetime — a run-start fact, never re-read per insert. Re-deriving the cap
     /// from a live, host-shared signal (`/proc/meminfo MemAvailable`, then the fallback
@@ -11945,6 +11958,10 @@ fn enforce_typed_cache_entry_cap(index: &MultiEntryIndex) {
             break;
         };
         cache.remove(&key);
+        // Remember WHAT was evicted, not just how many: a later miss on this key is a
+        // readmission — the governor re-buying work it already paid for — which is the
+        // eviction/readmission observation the stall refusal carries.
+        index.typed_cache_evicted_keys.borrow_mut().insert(key);
         evicted += 1;
     }
     drop(cache);
@@ -11985,6 +12002,68 @@ fn check_index_module_source_identity(
             mod_name,
             decl_file,
         )
+    }
+}
+
+/// Where the open stall window started: a wall instant and the counter values at that
+/// instant, so the window's observation is a pure delta.
+pub(crate) struct MemoryStallWindowStart {
+    started: std::time::Instant,
+    major_faults: u64,
+    cache_evictions: u64,
+    cache_readmissions: u64,
+}
+
+/// The stall governor's per-module-boundary step (`gunbc.memory_stall_refusal`): fold the
+/// counters since the window opened into one observation and act on its verdict — open
+/// window accumulates, an admissible verdict rolls the window forward, a refusal stops the
+/// line with the pressure clause located to the module that was in hand and the budget the
+/// run was admitted under. Inert (`Ok`) where the fault counter is unreadable (Darwin has
+/// no procfs): a check that cannot observe must not refuse, and must not fabricate a zero.
+fn memory_stall_check(index: &MultiEntryIndex, mod_name: &str) -> Result<(), String> {
+    let Some(now_faults) = crate::memory_governor::self_major_faults() else {
+        return Ok(());
+    };
+    let evictions = index.typed_cache_evictions.get();
+    let readmissions = index.typed_cache_readmissions.get();
+    let mut window = index.memory_stall_window.borrow_mut();
+    let Some(start) = window.as_ref() else {
+        *window = Some(MemoryStallWindowStart {
+            started: std::time::Instant::now(),
+            major_faults: now_faults,
+            cache_evictions: evictions,
+            cache_readmissions: readmissions,
+        });
+        return Ok(());
+    };
+    let observation = crate::memory_governor::MemoryStallObservation {
+        window_wall_ms: start.started.elapsed().as_millis() as u64,
+        major_faults_in_window: now_faults.saturating_sub(start.major_faults),
+        cache_evictions_in_window: evictions.saturating_sub(start.cache_evictions),
+        cache_readmissions_in_window: readmissions.saturating_sub(start.cache_readmissions),
+    };
+    match crate::memory_governor::memory_stall_verdict(observation) {
+        crate::memory_governor::MemoryStallVerdict::StallWindowOpen { .. } => Ok(()),
+        crate::memory_governor::MemoryStallVerdict::ProgressUnderMemoryAdmissible { .. } => {
+            *window = Some(MemoryStallWindowStart {
+                started: std::time::Instant::now(),
+                major_faults: now_faults,
+                cache_evictions: evictions,
+                cache_readmissions: readmissions,
+            });
+            Ok(())
+        }
+        refusal @ crate::memory_governor::MemoryStallVerdict::StallRefusedPageThrash { .. } => {
+            let (budget, source) = crate::memory_governor::read_host_budget_bytes();
+            Err(format!(
+                "{} (while typechecking module '{mod_name}'; admitted budget={} bytes, \
+                 source={source})",
+                crate::memory_governor::memory_stall_refusal_pressure_text(&refusal),
+                budget
+                    .map(|b| b.to_string())
+                    .unwrap_or_else(|| "unreadable".into()),
+            ))
+        }
     }
 }
 
@@ -14223,6 +14302,14 @@ fn reconcile_with_typed_cache(
                                 if let Some(hit) = index_get_typed(index, &typed_key)? {
                                     return Ok(hit);
                                 }
+                                // A miss on a key this index already evicted is a READMISSION —
+                                // the governor re-buying paid-for work — counted for the stall
+                                // refusal's observation (`gunbc.memory_stall_refusal`).
+                                if index.typed_cache_evicted_keys.borrow().contains(&typed_key) {
+                                    index
+                                        .typed_cache_readmissions
+                                        .set(index.typed_cache_readmissions.get() + 1);
+                                }
                                 // Once-per-node receipt (§6.2): count only genuine computes (cache misses).
                                 bump_typecheck_compute_count();
                                 if phase_profile::phase_profile_enabled() {
@@ -14350,6 +14437,11 @@ fn reconcile_with_typed_cache(
                 resolve_stage_slot_add(|s| {
                     s.assembly_environment += environment_started.elapsed().as_nanos()
                 });
+                // The stall governor's boundary (`gunbc.memory_stall_refusal`): one windowed
+                // observation per completed module, so a resolve spending its wall refaulting
+                // evicted pages refuses here with a located diagnostic instead of holding for
+                // hours (2026-08-30 default-VM treadmill, memory_stall_observed_receipt_note).
+                memory_stall_check(index, &mod_name)?;
                 progressed = true;
             }
             if !progressed {
