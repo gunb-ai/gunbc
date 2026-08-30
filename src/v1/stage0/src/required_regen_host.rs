@@ -3139,10 +3139,12 @@ fn convergence_plan_from_model(
     let changed = drifted
         .iter()
         .map(|basename| {
-            let module = basename_to_module
-                .get(basename)
-                .cloned()
-                .unwrap_or_else(|| format!("v1.compiler.emit_rust.product.{basename}"));
+            let module = basename_to_module.get(basename).cloned().ok_or_else(|| {
+                format!(
+                    "SurfaceOwnershipUnresolved: changed surface {basename} has no declaring \
+                         module in the emitted-surface ownership authority"
+                )
+            })?;
             let role = if bootstrap_products.contains(basename) {
                 "BootstrapSourceMirror"
             } else if generation_modules.contains(&module) {
@@ -3175,7 +3177,7 @@ fn convergence_plan_from_model(
                     ),
                 ]),
             };
-            Value::Record {
+            Ok::<Value, String>(Value::Record {
                 type_name: ctx.sym("RegenChangedSurface"),
                 fields: Rc::new(vec![
                     (ctx.sym("identity"), identity),
@@ -3202,9 +3204,9 @@ fn convergence_plan_from_model(
                     (ctx.sym("pre_stage_digest"), str_value("observed-by-host")),
                     (ctx.sym("candidate"), candidate),
                 ]),
-            }
+            })
         })
-        .collect::<Vec<_>>();
+        .collect::<Result<Vec<_>, _>>()?;
     let strings = |items: &[String]| {
         Value::List(Rc::new(
             items
@@ -3389,10 +3391,12 @@ fn install_convergence_stage(
             ));
         }
         surfaces.push(RegenConvergenceSurfaceReceipt {
-            declaring_module: basename_to_module
-                .get(basename)
-                .cloned()
-                .unwrap_or_else(|| format!("bootstrap-product:{basename}")),
+            declaring_module: basename_to_module.get(basename).cloned().ok_or_else(|| {
+                format!(
+                    "SurfaceOwnershipUnresolved: planned surface {basename} has no declaring \
+                     module before installation"
+                )
+            })?,
             projected_path: format!("src/v1/stage0/src/{basename}"),
             pre_stage_digest: pre,
             candidate_digest,
