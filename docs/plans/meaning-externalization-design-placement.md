@@ -2,7 +2,7 @@
 
 **Status:** analysis only. This document recommends a supervised authority edit; it does **not** edit `gunbc.design_document`, `DESIGN.md`, `gunbc.recurring_failure_mode`, or `docs/design-ledgers.md`.
 
-**Reviewed public revision:** `gunb-ai/gunbc@b60fc7dd61e5bae6b8c2e493e87815a116d4e7a5`.
+**Reviewed public revision:** `gunb-ai/gunbc@b60fc7dd61e5bae6b8c2e493e87815a116d4e7a5`; re-baselined (ROOT-0) onto `main@826824d22e964058d872e5e02a8c1718d1128ac7` — the three intervening commits touch floor execution, regen affected-set bounds, and memory-per-vCPU market material, none of which is a DESIGN authority, ledger, projection route, or §3/§4b/§5 citation surface, so the census and evidence base below stand unchanged.
 
 **Private source study:** `gunb-ai/gunbc-private` PR #25, `strategy/pricing-model-study@880facecf017767a2e80b3800823694e86536fa8`: `dag/strategy/pricing_decomposition.dag` (`strategy.pricing_decomposition`), `dag/test/claim/pricing_decomposition_witness_test.dag` (`test.claim.pricing_decomposition_witness`), and `docs/strategy/2026-08-30-pricing-model-study.md`.
 
@@ -76,7 +76,13 @@ The quality floor supplies the declared subject grain and falsifier. A named bil
 
 This is not another §5 trap paragraph. §5 forbids silence; §4b decides what evidence makes the service claim real. “A claim with no consequence is marketing” is rung honesty: an inert sentence, type, or metric establishes no contract rung.
 
-Named degradation appears here as the honest declared rung drop at the commercial subject grain. It remains coupled to §3: once the contract has materially changed, the old name cannot continue to answer for both contracts.
+Three states must stay distinct, because their dispositions differ and conflating them lets a provider rename an incident after the fact:
+
+1. **Same contract, delivery below its floor** — a breach; the disposition is the contract's own typed consequence (remedy, refusal, quarantine, disqualification), never a rename.
+2. **A materially different delivery with its own name, price, terms, and floor** — a different contract subject; the disposition is ordinary admission as a separate product. It is *not* a degradation of the premium subject and *not* a §4b(3) rung drop, because a stable lower tier may be permanent and owes no restoration trigger toward the premium product.
+3. **A temporary loss of the system's ability to verify or enforce the same subject's guarantee** — that, and only that, is a §4b(3) declared drop, with previous rung, temporary rung, reason, bounded population, and restoration trigger. A drop in the *ability to verify* a promise never authorizes silently delivering below it; it means the commercial path may need to refuse until the capability is restored.
+
+The separate-product arm remains coupled to §3: once the contract has materially changed, the old name cannot continue to answer for both contracts.
 
 ## Recurring-failure-mode decision
 
@@ -352,14 +358,14 @@ The private PR is thus executing evidence for the proposed service-floor shape a
 
 ## §6 terminal-architecture consumption test
 
-This plan passes §6's independent reviewer test because it has a named terminal consumer: the operator-supervised authority edit. The **NOT APPLIED** source copy below is intended to be consumed substantially unchanged into `gunbc.design_document`; the ledger drafts immediately preceding it are intended to be consumed into `gunbc.recurring_failure_mode`. This document is not a parallel authority and cannot generate either projection. After consumption, the `.dag` authorities remain the only live source, while this plan survives as the historical placement analysis and review rationale.
+This plan passes §6's independent reviewer test because it has a named terminal consumer: the operator-supervised authority edit. The **NOT APPLIED** source copy below is intended to be consumed substantially unchanged into `gunbc.design_document`; the ledger drafts immediately preceding it are intended to be consumed into `gunbc.recurring_failure_mode`. This document is not a parallel authority and cannot generate either projection. After consumption, the `.dag` authorities remain the only live source. The plan's own terminal disposition — retention as the historical placement record, deletion, or registration under a `HandAuthoredDocBind` row — is an operator decision made at approval time, not a fact this document can settle about itself; no bind row is proposed here, and the earlier attempt to self-register one (#9767) was correctly rejected as an authority change outside the one-file boundary.
 
 ## Proposed recurring-failure-mode source copy — NOT APPLIED
 
 ```dag
 data meaning_fork: RecurringFailureMode = RecurringFailureMode {
   identity: "meaning_fork" as NonEmptyStr,
-  authored: "**meaning fork** (one name carries materially different semantic contracts under hidden state. Recognition rule: hold the name and declared effective version constant and vary the hidden state; if obligations, quality floor, refusal behavior, billing consequence, or remedy change without a distinct variant name, the name has forked. This is the one-name/two-meanings dual of nicknaming.)",
+  authored: "**meaning fork** (one name carries materially different semantic contracts under hidden state. The subject is scoped: the key is the naming surface, the visible name, and the declared effective version or epoch — the same spelling in two explicitly distinct scopes or across a declared version transition is legitimate reuse, not a fork. Recognition rule: hold that key constant and vary the hidden state; if obligations, quality floor, refusal behavior, billing consequence, or remedy change without a distinct variant name, the name has forked. This is the one-name/two-meanings dual of nicknaming.)",
   evidence: [],
 }
 
@@ -384,13 +390,13 @@ Proposed roster tail — **NOT APPLIED**:
 Insert in `gunbc.design_document.section_3_blocks` immediately after the opening nicknaming paragraph:
 
 ```dag
-    p(text: "Single authority applies to meaning, not only to code symbols. Nicknaming gives one meaning two names; its dual, a **meaning fork**, gives one name two materially different meanings. Product names, service names, tier names, status names, and terms in every layer are semantic carriers: within one declared effective version or epoch, holding the name constant may not silently change the obligations, quality floor, refusal behavior, billing consequence, or remedy. A materially different contract needs a materially different name."),
+    p(text: "Single authority applies to meaning, not only to code symbols. Nicknaming gives one meaning two names; its dual, a **meaning fork**, gives one name two materially different meanings. Product names, service names, tier names, status names, and terms in every layer are semantic carriers: within one naming surface and one declared effective version or epoch, holding the name constant may not silently change the obligations, quality floor, refusal behavior, billing consequence, or remedy — while the same spelling in explicitly distinct scopes, or across a declared version transition, is legitimate reuse. A materially different contract needs a materially different name."),
 ```
 
 Insert in `gunbc.design_document.section_4b_blocks` immediately after the four meta-obligations and before “Every newly discovered error class…”:
 
 ```dag
-    p(text: "At a service boundary, rung honesty has a commercial consequence: a dimension may remain opaque only above a falsifiable quality floor with a named consequence. A claim that can change billing, trigger a remedy, or require refusal is a contract; without such a consequence it is marketing and establishes no rung. Delivery below the floor must refuse or discharge the remedy; a materially different delivery may be admitted only as its own named and priced product. Deviation is allowed; silence is refused."),
+    p(text: "At a service boundary, rung honesty has a commercial consequence: a dimension may remain opaque only above a falsifiable quality floor with a named consequence. A claim that can change billing, trigger a remedy, or require refusal is a contract; without such a consequence it is marketing and establishes no rung. Delivery below the floor must refuse or discharge the remedy; a materially different delivery may be admitted only as its own named and priced product — a different contract subject, not a declared drop of the premium one; and a temporary loss of the ability to verify or enforce a floor is a §4b(3) declared drop on that same subject, which may force the commercial path to refuse and never authorizes silent below-floor delivery. Deviation is allowed; silence is refused."),
 ```
 
 Insert in `gunbc.design_document.section_5_blocks` immediately after the absorbing-fallback paragraph:
