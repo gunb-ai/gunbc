@@ -11966,7 +11966,7 @@ fn emit_typed_bin_op(op: BinOp, algebra_field: AlgebraFieldKind?, left: Node, ri
   } else {
     match binop_operator_realization(op: op, left: left, scope: scope) {
       OperatorRealizationRefused { cause: c } =>
-        emit_rust_compile_error_expr(message: concat(operator_realization_refusal_message(cause: c), " [", rust_operand_shape_facts(operand: left, scope: scope), "]"))
+        emit_rust_compile_error_expr(message: operator_realization_refusal_message(cause: c))
       StructuralComparison { declaration: _, binding: b, test: t } =>
         emit_rust_structural_comparison(l_str: l_str, r_str: r_str, binding: b, test: t)
       StructuralEquality { declaration: _ } =>
@@ -12033,21 +12033,6 @@ fn rust_operand_realization_of_type(rt: Node, scope: InferScope, fuel: Int) -> O
   }
 }
 
-
-// TEMPORARY (XL-0N regen diagnosis): the operand's resolved-node shape, appended to the refusal.
-fn rust_operand_shape_facts(operand: Node, scope: InferScope) -> String {
-  let rt = resolved_type(n: operand)
-  let decl = match rt.inferred { Present { value: Resolved { node: r } } => r  _ => rt }
-  concat(
-    "rt.name=", rt.name, " rt.authored=", authored_name_at(source_indices: scope.type_env.source_indices, node: rt),
-    " rt.conn=", if rt.connective == NoConnective { "none" } else { "some" },
-    " rt.children=", to_string(value: rt.children |> count), " rt.inferred=", if rt.inferred == none { "absent" } else { "present" },
-    " decl.name=", decl.name, " decl.authored=", authored_name_at(source_indices: scope.type_env.source_indices, node: decl),
-    " decl.conn=", if decl.connective == NoConnective { "none" } else { "some" },
-    " decl.children=", to_string(value: decl.children |> count), " decl.inferred=", if decl.inferred == none { "absent" } else { "present" },
-    " decl.params=", to_string(value: decl.params |> count), " rt.type_annotation=", if rt.type_annotation == none { "absent" } else { "present" }, " where_refinement=", if is_where_refinement_type(ty: rt) { "yes" } else { "no" }, " alias_item=", if is_type_alias_item(item: decl, source_indices: scope.type_env.source_indices) { "yes" } else { "no" }
-  )
-}
 
 fn binop_operator_realization(op: BinOp, left: Node, scope: InferScope) -> OperatorRealization {
   operator_realization_for(op: op, operand: rust_operand_realization(operand: left, scope: scope), ordering_rows: structural_ordering_rows)
