@@ -79,6 +79,39 @@ import gunbc.spark.serving_observation_scope { spark_serving_observation_scope, 
 // that carried it would claim a completeness it does not have while looking exactly like a complete
 // one. Unobserved says the true thing instead, and refuses the artifact, so the missing observer is a
 // loud stop rather than a silent omission from every plan built on a Spark.
+// APPLY RE-OBSERVES THE SPARK POPULATION AS EMPTY, SO REFUSING ON THE PLAN SIDE LEFT THIS PATH SILENT.
+//
+// The plan CLI now refuses to mint an artifact for an enrolled Spark it did not observe. That closes
+// source->plan and nothing else. Apply reads an artifact off disk and re-derives the baseline from its
+// OWN observation, which hardcodes an empty spark population -- so an artifact minted against that
+// same emptiness, by this vintage or an older one, matches the baseline and is admitted. Two paths,
+// independently rung-scored, and the class sits at the minimum: an apply that actuates a Spark host
+// while blind to every serving member on it. This arm is the second path's refusal.
+//
+// It is a declaration and not an inline guard because a wet CLI body carries no executable evidence:
+// the refusal is authorable as a pure decision over the procurement roster, so it is witnessed there.
+type FleetConvergeApplySparkAdmission
+  = ApplySparkAxisAdmitted
+  | ApplySparkAxisUnobserved { host: HostIdentity, cause: NonEmptyStr }
+
+fn fleet_converge_apply_spark_admission(host: HostIdentity) -> FleetConvergeApplySparkAdmission {
+  if host_in(hosts: spark_serving_observation_scope(), host: host) {
+    ApplySparkAxisUnobserved {
+      host: host,
+      cause: join([
+        "fleet_converge_apply: SparkAxisUnobserved -- ",
+        host as String,
+        " is an enrolled Spark and apply does not run the serving observer, so it re-observes an",
+        " EMPTY spark population. An artifact minted against that same emptiness matches the",
+        " baseline and is admitted, which is why refusing on the plan side alone left this path",
+        " silent. Refusing here until the observer is wired.",
+      ], "") as NonEmptyStr,
+    }
+  } else {
+    ApplySparkAxisAdmitted
+  }
+}
+
 fn spark_axis_for_unobserved_cli(
   host: HostIdentity,
 ) -> SparkServingAxisDisposition<FleetConvergeSparkServingTypedAction> {
@@ -340,18 +373,9 @@ func fleet_converge_apply_wet() -> ProcessExit
                 observed_slots: observed_slots,
                 observed_fabric_cells: observed_fabric_cells,
               }
-              if host_in(hosts: spark_serving_observation_scope(), host: observed_host as HostIdentity) {
-                exit_failure(
-                  reason: join([
-                    "fleet_converge_apply: SparkAxisUnobserved — ",
-                    observed_host as String,
-                    " is an enrolled Spark and apply does not run the serving observer, so it",
-                    " re-observes an EMPTY spark population. An artifact minted against that same",
-                    " emptiness matches the baseline and is admitted, which is why refusing on the",
-                    " plan side alone left this path silent. Refusing here until the observer is wired.",
-                  ], ""),
-                )
-              } else {
+              match fleet_converge_apply_spark_admission(host: observed_host as HostIdentity) {
+                ApplySparkAxisUnobserved { host: _, cause: why } => exit_failure(reason: why as String)
+                ApplySparkAxisAdmitted =>
               match fleet_converge_apply_artifact_admits(
                 planned_host_text: planned_host as String,
                 planned_scope_wire: read_scope.content,
@@ -404,7 +428,6 @@ func fleet_converge_apply_wet() -> ProcessExit
                   ],
                   transport: LocalExec,
                 )
-              }
               }
               }
             }

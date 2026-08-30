@@ -136,7 +136,13 @@ import gunbc.fabric_cell_effect { fabric_cell_realization, CellPlanRealizable, C
 import gunbc.runner_host_deploy { srv3_runner_host_deploy }
 import gunbc.runner_slot_provision { runner_slot_member_from_instance_name }
 import extdeps.posix.shell_command_language { posix_single_quote }
-import gunbc.fleet_converge_plan_cli { fleet_converge_plan_cli_note, spark_axis_for_unobserved_cli }
+import gunbc.fleet_converge_plan_cli {
+  fleet_converge_plan_cli_note,
+  spark_axis_for_unobserved_cli,
+  fleet_converge_apply_spark_admission,
+  ApplySparkAxisAdmitted,
+  ApplySparkAxisUnobserved,
+}
 import gunbc.spark.serving_execution_schedule { spark_serving_axis_refusal }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
@@ -2016,5 +2022,27 @@ test fn a_non_spark_host_still_gets_a_non_applicable_axis_from_the_cli() -> Bool
   match spark_serving_axis_refusal(a: spark_axis_for_unobserved_cli(host: operator_host_srv3)) {
     Absent => true
     Present { value: _ } => false
+  }
+}
+
+// PLAN AND APPLY ARE TWO PATHS AND THE CLASS SITS AT THE MINIMUM OF THEM.
+//
+// Refusing to MINT an artifact for an unobserved Spark says nothing about applying one that already
+// exists on disk: apply re-derives the baseline from its own observation, which hardcodes an empty
+// spark population, so an artifact minted against that same emptiness matches and is admitted. This
+// claim is the apply path's own refusal, scored separately from the plan path's.
+test fn apply_refuses_an_enrolled_spark_it_did_not_observe() -> Bool {
+  match fleet_converge_apply_spark_admission(host: "srv5" as HostIdentity) {
+    ApplySparkAxisAdmitted => false
+    ApplySparkAxisUnobserved { host: h, cause: _ } => h == ("srv5" as HostIdentity)
+  }
+}
+
+// The positive control: apply is not refusing everything. A non-Spark host is admitted, so the arm
+// above discriminates on enrollment rather than shutting the actuator off.
+test fn apply_still_admits_a_non_spark_host() -> Bool {
+  match fleet_converge_apply_spark_admission(host: operator_host_srv3) {
+    ApplySparkAxisAdmitted => true
+    ApplySparkAxisUnobserved { host: _, cause: _ } => false
   }
 }
