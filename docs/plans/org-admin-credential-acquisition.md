@@ -58,6 +58,40 @@ answers custody. `CredentialStanding` answers whether executed evidence supports
 non-current/stale standing, missing validation, and receipt/credential identity mismatch. No arm
 turns absence into a skip.
 
+## Acquisition genealogy and runtime dependency
+
+`CredentialAcquisitionGenealogy` recursively records how the credential became obtainable. Every
+constructible chain has one `HumanCredentialBootstrap` root: a GitHub organization owner or app
+manager uses a token/settings, OAuth-consent/device, or app-registration web surface and records the
+bootstrap receipt and its staleness horizon. `CredentialAcquiredFrom` records each later derivation
+and whether it can renew without another human interaction. A stale human root creates a scheduled
+operator renewal obligation; a programmatic link can re-execute automatically.
+
+This history is deliberately not the runtime dependency graph. For example, the browser session
+that registered and installed a GitHub App is acquisition history, while the app private key is the
+parent that must remain current whenever an installation token is minted. That live relationship is
+`CredentialRuntimeDependency`. `runtime_dependency_standing` propagates missing, revoked, expired,
+owner-changed, and scope-changed standing from the real parent to every descendant. Fleet converge
+admits the material only when both the genealogy is structurally complete and the whole live chain
+is current.
+
+## Fleet-converge consumer
+
+The existing `gunbc.fleet_converge_workflow.fleet_converge_job` owns the first consumer; there is no
+parallel workflow. Its `org_actions_observe` mode invokes
+`gunbc.fleet.org_actions_converge.org_actions_converge_wet`. The phase refuses a missing secret,
+executes the read-only runner-groups validation call, strictly decodes the response, reads each
+group's selected repositories through `extdeps.github.org_actions.CliOrgRunnerGroups`, and evaluates
+`gunbc.fleet.org_actions_standing.org_actions_settings_diff`. Any missing/stale credential, probe
+failure, malformed response, repository-read failure, or desired-state divergence is a failing
+typed outcome. It never silently skips and it has no write/fix-divergence arm.
+
+The validation receipt is uploaded as a workflow artifact only after the probe and joined reads
+succeed. The artifact contains identity, endpoint, organization, and time—not a token, header,
+response body, or token fingerprint. Until the operator creates `GUNBC_ORG_ADMIN_TOKEN`, dispatching
+the mode witnesses the intended missing-credential refusal. Once the secret exists, the same route
+performs the live read without a code-path switch.
+
 ## Interim human handoff
 
 1. In GitHub's fine-grained token UI, the operator selects `gunb-ai` as resource owner, grants

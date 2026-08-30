@@ -7,7 +7,7 @@ import gunbc.fleet_converge_workflow {
   fleet_converge_workflow, expected_fleet_converge_yml,
   FleetConvergeYamlGenerated, FleetConvergeYamlGenerationRefused,
 }
-import gunbc.ci_spec { gunbc_ci_fleet_converge_apply_invoke }
+import gunbc.ci_spec { gunbc_ci_fleet_converge_apply_invoke, gunbc_ci_org_actions_converge_invoke }
 import extdeps.languages.yaml.gha_workflow { workflow_trigger_entry }
 import extdeps.languages.yaml.types {
   YamlValue, YamlNull, YamlBool, YamlString, YamlInt, YamlFloat, YamlSequence, YamlMapping
@@ -95,9 +95,11 @@ fn mode_input_has_choice_options(v: YamlValue) -> Bool {
                   fold(fields, init: false, f: fn(has_opts, field) {
                     has_opts || (field.key == "options" && match field.value {
                       YamlSequence { elements: opts } =>
-                        length(opts) == 8
+                        length(opts) == 10
                           && any(opts, o => match o { YamlString { value } => value == "plan"  _ => false })
+                          && any(opts, o => match o { YamlString { value } => value == "allocation_store_plan"  _ => false })
                           && any(opts, o => match o { YamlString { value } => value == "apply"  _ => false })
+                          && any(opts, o => match o { YamlString { value } => value == "org_actions_observe"  _ => false })
                           && any(opts, o => match o { YamlString { value } => value == "spark_linger"  _ => false })
                           && any(opts, o => match o { YamlString { value } => value == "spark_observe"  _ => false })
                           && any(opts, o => match o { YamlString { value } => value == "spark_reboot"  _ => false })
@@ -181,4 +183,15 @@ test fn fleet_converge_apply_step_binds_plan_hash_to_env_not_shell_literal() -> 
       pattern: "EXPECTED=\"$\{\{ github.event.inputs.plan_artifact_hash \}\}\"",
     )
     && string_contains(s: gunbc_ci_fleet_converge_apply_invoke(), pattern: "$\{EXPECTED_HASH:-\}")
+}
+
+test fn fleet_converge_org_actions_mode_binds_secret_and_modeled_entry_holds() -> Bool {
+  string_contains(
+    s: expected_fleet_converge_yml_content(),
+    pattern: "GUNBC_ORG_ADMIN_TOKEN: $\{\{ secrets.GUNBC_ORG_ADMIN_TOKEN \}\}",
+  )
+    && string_contains(
+      s: gunbc_ci_org_actions_converge_invoke(),
+      pattern: "--entry dag/gunbc/fleet/org_actions_converge.dag --function org_actions_converge_wet",
+    )
 }

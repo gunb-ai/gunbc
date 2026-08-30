@@ -75,28 +75,18 @@ type OrgAdminCredentialShape {
 
 fn grant_supports(grant: OrgAdminPermissionGrant, capability: OrgActionsCapability) -> Bool {
   match grant {
-    FineGrainedOrganizationSelfHostedRunnersRead => match capability {
-      RunnerGroupsRead => true
-      RunnerGroupRepositoriesRead => true
-      _ => false
-    }
-    FineGrainedOrganizationSelfHostedRunnersWrite => match capability {
-      RunnerGroupsRead => true
-      RunnerGroupsWrite => true
-      RunnerGroupRepositoriesRead => true
-      RunnerGroupRepositoriesWrite => true
-      OrganizationRunnerRegistrationTokenCreate => true
-      _ => false
-    }
-    FineGrainedOrganizationAdministrationRead => match capability {
-      OrganizationActionsPolicyRead => true
-      _ => false
-    }
-    FineGrainedOrganizationAdministrationWrite => match capability {
-      OrganizationActionsPolicyRead => true
-      OrganizationActionsPolicyWrite => true
-      _ => false
-    }
+    FineGrainedOrganizationSelfHostedRunnersRead =>
+      any([RunnerGroupsRead, RunnerGroupRepositoriesRead], c => c == capability)
+    FineGrainedOrganizationSelfHostedRunnersWrite => any([
+      RunnerGroupsRead,
+      RunnerGroupsWrite,
+      RunnerGroupRepositoriesRead,
+      RunnerGroupRepositoriesWrite,
+      OrganizationRunnerRegistrationTokenCreate
+    ], c => c == capability)
+    FineGrainedOrganizationAdministrationRead => capability == OrganizationActionsPolicyRead
+    FineGrainedOrganizationAdministrationWrite =>
+      any([OrganizationActionsPolicyRead, OrganizationActionsPolicyWrite], c => c == capability)
     ClassicAdminOrg => true
   }
 }

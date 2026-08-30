@@ -1,0 +1,266 @@
+module gunbc.fleet.org_actions_converge
+
+import std.types { NonEmptyStr, String, Int, List }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import extdeps.languages.json.emit { JsonValue, JsonNull, JsonBool, JsonNumber, JsonString, JsonArray, JsonObject }
+import extdeps.languages.json.parse {
+  parse_json_document,
+  JsonDocumentParsed,
+  JsonDocumentUnreadable,
+  json_document_gap_text,
+  json_object_unique_member,
+  JsonMemberFound,
+  JsonMemberAbsent,
+  JsonMemberDuplicated,
+  JsonMemberNotAnObject
+}
+import extdeps.shell.credentials { env_credential }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import gunbc.clock_read { clock_now_probed_at_or_unknown }
+import gunbc.auth.org_admin_credential {
+  SecretMaterial,
+  SecretMaterialReader,
+  FleetOrgActionsObserveLane,
+  OrgAdminCredentialAdmission,
+  OrgAdminCredentialAdmitted,
+  OrgAdminCredentialRefused,
+  OrgAdminCredentialRefusal,
+  admit_org_admin_credential
+}
+import gunbc.fleet.org_actions_standing {
+  ObservedGroupAccess,
+  OrgSettingsObservation,
+  SettingsRead,
+  OrgActionsSettingsDiff,
+  OrgActionsSettingsConverged,
+  OrgActionsSettingsDiverged,
+  OrgActionsSettingsDiffRefused,
+  org_actions_settings_diff
+}
+
+data org_admin_token_env_name: NonEmptyStr = "GUNBC_ORG_ADMIN_TOKEN"
+data org_actions_validation_receipt_path: String = "target/org-actions-credential-validation-receipt.txt"
+data org_actions_organization: NonEmptyStr = "gunb-ai"
+
+type OrgActionsConvergeRefusal
+  = OrgActionsCredentialRefused { cause: OrgAdminCredentialRefusal }
+  | OrgActionsObservationMissing
+  | OrgActionsObservationRefused { reason: NonEmptyStr }
+  | OrgActionsDiverged { access_count: Int, public_exposure_count: Int }
+
+type OrgActionsConvergePhase
+  = OrgActionsConverged { observed_on: NonEmptyStr }
+  | OrgActionsConvergeRefused { cause: OrgActionsConvergeRefusal }
+
+fn org_actions_converge_phase(
+  material: SecretMaterial?,
+  observation: OrgSettingsObservation?,
+) -> OrgActionsConvergePhase {
+  match admit_org_admin_credential(material: material, reader: FleetOrgActionsObserveLane) {
+    OrgAdminCredentialRefused { cause } =>
+      OrgActionsConvergeRefused { cause: OrgActionsCredentialRefused { cause: cause } }
+    OrgAdminCredentialAdmitted { material: _ } => match observation {
+      Absent => OrgActionsConvergeRefused { cause: OrgActionsObservationMissing }
+      Present { value: observed } => match org_actions_settings_diff(obs: observed) {
+        OrgActionsSettingsConverged { observed_on } => OrgActionsConverged { observed_on: observed_on }
+        OrgActionsSettingsDiverged { access_divergence_count, public_exposure_divergence_count, observed_on: _ } =>
+          OrgActionsConvergeRefused { cause: OrgActionsDiverged {
+            access_count: access_divergence_count,
+            public_exposure_count: public_exposure_divergence_count
+          } }
+        OrgActionsSettingsDiffRefused { reason } =>
+          OrgActionsConvergeRefused { cause: OrgActionsObservationRefused { reason: reason } }
+      }
+    }
+  }
+}
+
+type RunnerGroupIdentity { id: Int, name: NonEmptyStr, allows_public_repositories: Bool }
+
+type RunnerGroupListDecode
+  = RunnerGroupListDecoded { groups: List<RunnerGroupIdentity> }
+  | RunnerGroupListDecodeRefused { reason: NonEmptyStr }
+
+type RepositoryListDecode
+  = RepositoryListDecoded { repositories: List<NonEmptyStr> }
+  | RepositoryListDecodeRefused { reason: NonEmptyStr }
+
+type ObservedGroupRead
+  = ObservedGroupReadCompleted { group: ObservedGroupAccess }
+  | ObservedGroupReadRefused { reason: NonEmptyStr }
+
+fn json_member_string(v: JsonValue, key: String) -> NonEmptyStr? {
+  match json_object_unique_member(v: v, key: key) {
+    JsonMemberFound { value: JsonString { value } } => if value == "" { none } else { Present { value: value as NonEmptyStr } }
+    _ => none
+  }
+}
+
+fn json_member_int(v: JsonValue, key: String) -> Int? {
+  match json_object_unique_member(v: v, key: key) {
+    JsonMemberFound { value: JsonNumber { lexeme } } => parse_int(s: lexeme as String)
+    _ => none
+  }
+}
+
+fn json_member_bool(v: JsonValue, key: String) -> Bool? {
+  match json_object_unique_member(v: v, key: key) {
+    JsonMemberFound { value: JsonBool { value } } => Present { value: value }
+    _ => none
+  }
+}
+
+fn decode_runner_group(v: JsonValue) -> RunnerGroupIdentity? {
+  match json_member_int(v: v, key: "id") {
+    Absent => none
+    Present { value: id } => match json_member_string(v: v, key: "name") {
+      Absent => none
+      Present { value: name } => match json_member_bool(v: v, key: "allows_public_repositories") {
+        Absent => none
+        Present { value: allows_public } => Present { value: RunnerGroupIdentity {
+          id: id,
+          name: name,
+          allows_public_repositories: allows_public
+        } }
+      }
+    }
+  }
+}
+
+fn decode_runner_groups_json(body: String) -> RunnerGroupListDecode {
+  match parse_json_document(s: body) {
+    JsonDocumentUnreadable { gap } => RunnerGroupListDecodeRefused {
+      reason: concat("runner-groups response is ", json_document_gap_text(gap: gap)) as NonEmptyStr
+    }
+    JsonDocumentParsed { value: doc } => match json_object_unique_member(v: doc, key: "runner_groups") {
+      JsonMemberFound { value: JsonArray { elements } } => {
+        let decoded = map(elements, v => decode_runner_group(v: v))
+        if any(decoded, d => match d { Absent => true, Present { value: _ } => false }) {
+          RunnerGroupListDecodeRefused { reason: "runner_groups contains an element without exact id/name/allows_public_repositories fields" }
+        } else {
+          RunnerGroupListDecoded { groups: flat_map(decoded, d => match d {
+            Present { value } => [value]
+            Absent => []
+          }) }
+        }
+      }
+      JsonMemberFound { value: _ } => RunnerGroupListDecodeRefused { reason: "runner_groups is not a JSON array" }
+      JsonMemberAbsent => RunnerGroupListDecodeRefused { reason: "runner_groups is absent" }
+      JsonMemberDuplicated { count: _ } => RunnerGroupListDecodeRefused { reason: "runner_groups is duplicated" }
+      JsonMemberNotAnObject => RunnerGroupListDecodeRefused { reason: "runner-groups response is not a JSON object" }
+    }
+  }
+}
+
+fn decode_repository_names_json(body: String) -> RepositoryListDecode {
+  match parse_json_document(s: body) {
+    JsonDocumentUnreadable { gap } => RepositoryListDecodeRefused {
+      reason: concat("runner-group repositories response is ", json_document_gap_text(gap: gap)) as NonEmptyStr
+    }
+    JsonDocumentParsed { value: doc } => match json_object_unique_member(v: doc, key: "repositories") {
+      JsonMemberFound { value: JsonArray { elements } } => {
+        let names = map(elements, v => json_member_string(v: v, key: "full_name"))
+        if any(names, n => match n { Absent => true, Present { value: _ } => false }) {
+          RepositoryListDecodeRefused { reason: "repositories contains an element without exact full_name" }
+        } else {
+          RepositoryListDecoded { repositories: flat_map(names, n => match n {
+            Present { value } => [value]
+            Absent => []
+          }) }
+        }
+      }
+      JsonMemberFound { value: _ } => RepositoryListDecodeRefused { reason: "repositories is not a JSON array" }
+      JsonMemberAbsent => RepositoryListDecodeRefused { reason: "repositories is absent" }
+      JsonMemberDuplicated { count: _ } => RepositoryListDecodeRefused { reason: "repositories is duplicated" }
+      JsonMemberNotAnObject => RepositoryListDecodeRefused { reason: "runner-group repositories response is not a JSON object" }
+    }
+  }
+}
+
+fn read_observed_group(group: RunnerGroupIdentity) -> ObservedGroupRead {
+  let response = github.CliOrgRunnerGroups.ListRunnerGroupRepositoriesJson(
+    org: org_actions_organization,
+    runner_group_id: group.id
+  )
+  if !response.success {
+    ObservedGroupReadRefused { reason: concat("runner-group repository read refused: ", response.stderr) as NonEmptyStr }
+  } else {
+    match decode_repository_names_json(body: response.stdout) {
+      RepositoryListDecodeRefused { reason } => ObservedGroupReadRefused { reason: reason }
+      RepositoryListDecoded { repositories } => ObservedGroupReadCompleted { group: ObservedGroupAccess {
+        group_name: group.name,
+        allows_public_repositories: group.allows_public_repositories,
+        repositories: repositories
+      } }
+    }
+  }
+}
+
+fn first_group_read_refusal(reads: List<ObservedGroupRead>) -> NonEmptyStr? {
+  fold(reads, init: none, f: fn(found, r) { match found {
+    Present { value } => Present { value: value }
+    Absent => match r {
+      ObservedGroupReadRefused { reason } => Present { value: reason }
+      ObservedGroupReadCompleted { group: _ } => none
+    }
+  } })
+}
+
+fn completed_groups(reads: List<ObservedGroupRead>) -> List<ObservedGroupAccess> {
+  fold(reads, init: [], f: fn(acc, r) { match r {
+    ObservedGroupReadCompleted { group } => list_push(acc, group)
+    ObservedGroupReadRefused { reason: _ } => acc
+  } })
+}
+
+// The executable boundary first refuses absent material, then uses the runner-groups read as the
+// validation probe. Success produces the receipt before the same observation is diffed. Presence
+// alone never reaches a green outcome: probe, decode, joined repository reads, receipt persistence,
+// and desired-state agreement must all succeed.
+func org_actions_converge_wet() -> ProcessExit {
+  let credential = env_credential(env_var: org_admin_token_env_name)
+  match credential.token {
+    Absent => exit_failure(reason: "OrgActionsCredentialMissing: GUNBC_ORG_ADMIN_TOKEN is absent")
+    Present { value: _ } => {
+      let listed = github.CliOrgRunnerGroups.ListRunnerGroupsJson(org: org_actions_organization)
+      if !listed.success {
+        exit_failure(reason: concat("OrgActionsValidationProbeRefused: ", listed.stderr))
+      } else {
+        match decode_runner_groups_json(body: listed.stdout) {
+          RunnerGroupListDecodeRefused { reason } => exit_failure(reason: reason as String)
+          RunnerGroupListDecoded { groups } => {
+            let reads = map(groups, g => read_observed_group(group: g))
+            match first_group_read_refusal(reads: reads) {
+              Present { value: reason } => exit_failure(reason: reason as String)
+              Absent => {
+                let observed_on = clock_now_probed_at_or_unknown()
+                let receipt = join([
+                  "credential=github-org-admin endpoint=GET-/orgs/\{org\}/actions/runner-groups organization=",
+                  org_actions_organization as String,
+                  " validated_at=", observed_on as String, "\n"
+                ], "")
+                let wrote = Filesystem.Write(path: org_actions_validation_receipt_path, content: receipt)
+                if !wrote.success {
+                  exit_failure(reason: concat("OrgActionsValidationReceiptWriteRefused: ", wrote.error))
+                } else {
+                  match org_actions_settings_diff(obs: SettingsRead {
+                    groups: completed_groups(reads: reads),
+                    observed_on: observed_on
+                  }) {
+                    OrgActionsSettingsConverged { observed_on: _ } => ExitSuccess
+                    OrgActionsSettingsDiverged { access_divergence_count, public_exposure_divergence_count, observed_on: _ } =>
+                      exit_failure(reason: join([
+                        "OrgActionsSettingsDiverged access=", to_string(access_divergence_count),
+                        " public_exposure=", to_string(public_exposure_divergence_count)
+                      ], ""))
+                    OrgActionsSettingsDiffRefused { reason } => exit_failure(reason: reason as String)
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
