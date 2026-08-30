@@ -1244,14 +1244,23 @@ fn binding_declares_span(binding: TypeBinding, sp: SourceSpan) -> Bool {
 // (lookup_type_for) carries the declaration's own ident_span, which is the span the global roster is
 // matched on. Without this arm every recursive destination answered Absent here and fell to the
 // identity-unavailable arms downstream (measured: the Peano literal and ordering rows passed for
-// v2.std.logic Bool and failed for v2.std.nat Nat on the same compiler).
+// v2.std.logic Bool and failed for v2.std.nat Nat on the same compiler). The ident-keyed lookup
+// serves inference; the emitter's scope env answers a reference by the module-visible NAME
+// (lookup_type_by_name), which is that module's own import binding -- and either way the
+// declaration found here is then matched by SPAN against the global roster, so a by-name hit can
+// only ever confirm an exact declaration, never pick among homonyms (measured: the Peano literal
+// rows passed and the Peano operator rows failed on the same compiler after the ident arm alone).
 fn type_reference_declaration_ref(n: Node, source_indices: Map<String, NewlineIndex>, env: TypeEnv) -> DeclarationRef? {
   let rt = match n.inferred {
     Present { value: Resolved { node: r } } => r
     _ =>
       match lookup_type_for(env: env, node: n) {
         Present { value: bound } => bound
-        Absent => n
+        Absent =>
+          match lookup_type_by_name(env: env, name: authored_name_at(source_indices: source_indices, node: n)) {
+            Present { value: bound } => bound
+            Absent => n
+          }
       }
   }
   let decl_name = qualified_last_segment(name: authored_name_at(source_indices: source_indices, node: rt))
