@@ -5,7 +5,7 @@ import gunbc.generated_artifact {
   GeneratedArtifact,
   WitnessFloorYamlArtifact, FleetConvergeYamlArtifact, FleetDesiredAdmissionYamlArtifact, GitignoreArtifact, GitattributesArtifact, RoadmapArtifact, DesignArtifact, DesignLedgersArtifact,
   RunnerDeployArtifact, GithooksPrePushArtifact, GithooksPreCommitArtifact, GeneratedArtifactMergeDriverArtifact,
-  AutoinstallUserDataArtifact, ProxyDhcpDnsmasqArtifact, PlanArtifact,
+  AutoinstallUserDataArtifact, ProxyDhcpDnsmasqArtifact, RunnerHostSudoersArtifact, PlanArtifact,
   Stage0CrateLayoutGeneratedDagArtifact, Stage0CrateLayoutGeneratedRsArtifact,
   Stage0CratePartitionGeneratedDagArtifact,
   V1InterpreterDispatchGeneratedRsArtifact,
@@ -28,6 +28,8 @@ import gunbc.generated_artifact_merge_driver { expected_generated_artifact_merge
 import gunbc.ci_spec { ci_heal_author_commit_regen_command }
 import gunbc.os_install_emit { autoinstall_user_data }
 import gunbc.install_server_emit { install_server_dnsmasq_conf }
+import gunbc.runner_host_grants { runner_host_sudoers_content }
+import gunbc.runner_host_deploy { runner_host_deploy_for, RunnerHostDeployFound, RunnerHostDeployUnmodeled }
 import gunbc.plan { expected_plan_md }
 import gunbc.stage0_crate_layout_emit {
   expected_stage0_crate_layout_generated_dag,
@@ -86,6 +88,22 @@ fn artifact_generate(a: GeneratedArtifact) -> ArtifactGenerationOutcome {
     }
     AutoinstallUserDataArtifact { spec } => artifact_generated(content: autoinstall_user_data(payload: spec.payload))
     ProxyDhcpDnsmasqArtifact { spec } => artifact_generated(content: install_server_dnsmasq_conf(spec: spec))
+    RunnerHostSudoersArtifact { host } => match runner_host_deploy_for(host: host) {
+      RunnerHostDeployFound { deploy } =>
+        artifact_generated(
+          content: runner_host_sudoers_content(
+            deploy: deploy,
+            artifact_path: artifact_path(a: a),
+          )
+        )
+      RunnerHostDeployUnmodeled { host: unmodeled } =>
+        ArtifactGenerationRefused {
+          reason: concat(
+            "no runner host deploy row for enrolled host ",
+            unmodeled as String
+          )
+        }
+    }
     PlanArtifact { plan } => artifact_generated(content: expected_plan_md(p: plan))
   }
 }
@@ -115,6 +133,10 @@ fn artifact_extra_valid(a: GeneratedArtifact, generated: ArtifactGenerationOutco
     }
     AutoinstallUserDataArtifact { spec: _ } => true
     ProxyDhcpDnsmasqArtifact { spec: _ } => true
+    RunnerHostSudoersArtifact { host: _ } => match generated {
+      ArtifactGenerated { content: _ } => true
+      ArtifactGenerationRefused { reason: _ } => false
+    }
     PlanArtifact { plan: _ } => true
   }
 }
