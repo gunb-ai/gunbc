@@ -1301,7 +1301,11 @@ fn declaration_ref_of_node(rt: Node, source_indices: Map<String, NewlineIndex>, 
 // node spelled String<Product(Char)> whose span is the annotation site, so hop (1) answered none
 // and every text.String literal boundary fell to DirectLiteral while the same fold worked for the
 // declared coproducts Bool and Nat). Both hops answer only from the census by declaration span,
-// never from a spelling, so an identity neither can supply is still Absent.
+// never from a spelling, so an identity neither can supply is still Absent. A THIRD hop for the
+// emitter's scope env (merged from XL-0N c7b8056): when the reference carries no ident-keyed
+// binding, the module-visible NAME binding (lookup_type_by_name) -- that module's own import
+// binding -- still names the declaration; the found node is STILL matched by span against the
+// census, so a by-name hit only ever confirms an exact declaration, never picks among homonyms.
 fn type_reference_declaration_ref(n: Node, source_indices: Map<String, NewlineIndex>, env: TypeEnv) -> DeclarationRef? {
   let from_resolved = match n.inferred {
     Present { value: Resolved { node: r } } => declaration_ref_of_node(rt: r, source_indices: source_indices, env: env)
@@ -1312,7 +1316,11 @@ fn type_reference_declaration_ref(n: Node, source_indices: Map<String, NewlineIn
     Absent =>
       match lookup_type_for(env: env, node: n) {
         Present { value: bound } => declaration_ref_of_node(rt: bound, source_indices: source_indices, env: env)
-        Absent => declaration_ref_of_node(rt: n, source_indices: source_indices, env: env)
+        Absent =>
+          match lookup_type_by_name(env: env, name: authored_name_at(source_indices: source_indices, node: n)) {
+            Present { value: bound } => declaration_ref_of_node(rt: bound, source_indices: source_indices, env: env)
+            Absent => declaration_ref_of_node(rt: n, source_indices: source_indices, env: env)
+          }
       }
   }
 }
