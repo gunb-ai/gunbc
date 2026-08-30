@@ -1,4 +1,4 @@
-module test.claim.stage0_partition_roster_layout_join_witness
+module v2.test.claim.stage0_partition_roster_layout_join_witness
 
 import gunbc.stage0_crate_layout_generated {
   generated_pub_mod_basenames,
@@ -34,6 +34,15 @@ import std.types { Bool, List, String }
 // oracle. NEXT-RUNG TRIGGER for replacing that build with a join here: the Rust module
 // dependency graph modeled as a committed carrier, at which point the crate:: closure becomes
 // decidable without reading the tree.
+//
+// WHY THIS FILE LIVES UNDER src/v2/test/claim AND NOT dag/test/claim, which is where its two
+// imports live and where it was first written. The required floor admits a discovered witness
+// only if its module path matches v2.workflow.required_floor required_gate_prefixes, and the
+// arm for everything else is DeclinedOutsideRequiredGate -- counted in the run's disposition
+// but never executed. Measured rather than assumed: at test.claim.stage0_partition_roster_...
+// this file was discovered and declined on run 33290382542 while sitting RED on the live
+// corpus, and the floor reported failed=1 for an unrelated witness. A wall that reds and is
+// declined is DESIGN section 4b's inert lens, so the module path is part of the wall.
 //
 // WHY THE DISCRIMINATING RED IS A FIXTURE AND NOT THE LIVE CORPUS. Once the std_lens_verdict
 // row is gone the live rosters and the seed-retained filename roster are DISJOINT, so the live
