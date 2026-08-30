@@ -4,7 +4,6 @@ import std.types { Bool, List, NonEmptyStr, String, list_length }
 import std.content_hash { ContentHash, content_hash_of_value }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.std.algebra { map }
 import extdeps.uri { Uri, Https }
 import extdeps.toolchain.types { Aarch64 }
 import extdeps.external_authority { ExternalAuthority }
@@ -375,7 +374,7 @@ fn observation_of(identity: BmcObservedIdentity, surfaces: List<BmcAccessSurface
 // were read from. The control manifest names the discovery bytes and all three
 // probe fixtures' bytes; the REDs below name less.
 fn manifest_of(digests: List<ContentHash>) -> List<EvidenceRef> {
-  digests |> map(d => EvidenceRef { label: "bmc-discovery", digest: d })
+  fold(digests, init: [], f: (acc, d) => concat(acc, [EvidenceRef { label: "bmc-discovery", digest: d }]))
 }
 
 data full_manifest: List<EvidenceRef> = manifest_of(digests: [discovery_digest, probe_https.raw_response, probe_nfs_only.raw_response, probe_collection_only.raw_response])
@@ -588,7 +587,7 @@ test fn probe_bytes_absent_from_the_manifest_do_not_bind() -> Bool {
 test fn promoted_profile_without_verified_provenance_does_not_bind() -> Bool {
   let catalog = [BmcAccessProfileCatalogRow { profile: vm_profile, provenance: promoted_provenance }]
   match bind_bmc_access_context(subject: intake_subject, receipt: observed(surfaces: [SurfaceBootControl, SurfaceRedfishVirtualMedia], probe: Present { value: probe_https }), catalog: catalog) {
-    AccessContextPromotedProfileUnverified { observation_receipt: o, promotion_receipt: _ } => o == promoted_provenance.observation_receipt
+    AccessContextPromotedProfileUnverified { observation_receipt: o, promotion_receipt: _ } => o == content_hash_of_value(value: "fixture-observation-receipt")
     _ => false
   }
 }

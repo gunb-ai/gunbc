@@ -219,7 +219,7 @@ test fn install_boot_target_refuses_alike_for_both_3_22_00_hosts() -> Bool {
              InstallFirmwareVersionUncatalogued { firmware: _ } => false
              InstallFirmwareVersionAmbiguous { firmware: _, count: _ } => false
              InstallAccessContextUnbound { standing: _ } => false
-             InstallTargetContextMismatch { requested: _, bound_endpoint: _ } => false
+             InstallTargetContextMismatch { requested: _ } => false
              InstallNoBootSourceOverride { firmware: _ } => false
              InstallNoEligibleTransport { firmware: _, considered: _ } => false
              InstallDeliveryOutsideLegacyMechanism { delivery: _ } => false

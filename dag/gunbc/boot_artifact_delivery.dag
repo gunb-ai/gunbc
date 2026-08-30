@@ -705,15 +705,15 @@ fn build_boot_artifact_delivery(
   }
 }
 
-// The first candidate in the POLICY's order that is eligible.
-fn select_boot_artifact_delivery(
+// The first candidate in the POLICY's order that is eligible, built.
+fn first_eligible_boot_artifact_delivery(
   ctx: BoundBmcAccessContext,
   ev: BoundBootDeliveryEvidence,
   request: BootDeliveryRequest,
   policy: BootDeliveryPolicy,
   verdicts: List<BootDeliveryCandidateVerdict>,
-) -> BootDeliverySolution {
-  let chosen = fold(
+) -> BuiltBootArtifactDelivery? {
+  fold(
     boot_delivery_preference_order(preference: policy.preference),
     init: none,
     f: (acc, candidate) => match acc {
@@ -726,7 +726,16 @@ fn select_boot_artifact_delivery(
         }
     },
   )
-  match chosen {
+}
+
+fn select_boot_artifact_delivery(
+  ctx: BoundBmcAccessContext,
+  ev: BoundBootDeliveryEvidence,
+  request: BootDeliveryRequest,
+  policy: BootDeliveryPolicy,
+  verdicts: List<BootDeliveryCandidateVerdict>,
+) -> BootDeliverySolution {
+  match first_eligible_boot_artifact_delivery(ctx: ctx, ev: ev, request: request, policy: policy, verdicts: verdicts) {
     Present { value: built } =>
       BootDeliveryPlanned {
         plan: BootDeliveryPlan {
