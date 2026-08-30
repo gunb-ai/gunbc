@@ -163,6 +163,7 @@ fn run() -> Result<ExitCode, ExitCode> {
     let mut emit_partition_crates_write = false;
     let mut required_regen_fixed_point_mode = false;
     let mut regen_round_cost_mode = false;
+    let mut regen_affected_set_mode = false;
     let mut regen_candidate_dir = "target/stage0-regen-candidate".to_string();
     let mut regen_receipt_path = "target/stage0-regen-receipt.json".to_string();
 
@@ -233,6 +234,12 @@ fn run() -> Result<ExitCode, ExitCode> {
             // is what a round IS; the receipt names the tree and every installed path.
             "--regen-round-cost" => {
                 regen_round_cost_mode = true;
+            }
+            // THE AFFECTED SET OF THE FLOOR'S DIFF RANGE: which committed mirrors can change
+            // for the .dag modules this edit touched, as `gunbc.regen_affected_set` bounds it.
+            // Reports; it installs nothing. An edited path the tree cannot name refuses.
+            "--regen-affected-set" => {
+                regen_affected_set_mode = true;
             }
             "--regen-candidate-dir" => {
                 i += 1;
@@ -841,6 +848,23 @@ fn run() -> Result<ExitCode, ExitCode> {
     // remove, so paying it on every push would spend more than the repair saves. The instrument is
     // outside `//:required` by construction there -- `gunbc.discovery_census` derives that
     // aggregate from discovered witness sites, and no fold feeds the instrument population into it.
+
+    if regen_affected_set_mode {
+        return match v1_compiler::cli_run::run_regen_affected_set(&source_roots) {
+            Ok(outcome) => {
+                eprint!("{}", outcome.rendered);
+                if outcome.arm == "EditedSetUnlocatable" {
+                    Err(ExitCode::from(1))
+                } else {
+                    Ok(ExitCode::SUCCESS)
+                }
+            }
+            Err(e) => {
+                eprintln!("regen-affected-set: refused: {e}");
+                Err(ExitCode::from(1))
+            }
+        };
+    }
 
     if regen_round_cost_mode {
         return match v1_compiler::cli_run::run_regen_round_cost(

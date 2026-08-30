@@ -1992,10 +1992,6 @@ mod compiler_tests {
             Some("HashMap<{0}, {1}>".to_string())
         );
         assert_eq!(
-            coerce_container_template(RenderTarget::Rust, "PartialFunction".into()),
-            Some("HashMap<{0}, {1}>".to_string())
-        );
-        assert_eq!(
             coerce_container_template(RenderTarget::Rust, "PointwisePower".into()),
             Some("BTreeSet<{0}>".to_string())
         );

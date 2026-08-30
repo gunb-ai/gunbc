@@ -109,7 +109,7 @@ pub fn lower_call_pattern(pattern: Rc<CallPattern>) -> Rc<LoweringTarget> {
             primitive: IterationPrimitive::Descend,
             bound: Rc::new(SizeBound::SubtreeSize { param: a.clone() }),
             evidence: DescentEvidence::Strict,
-            factor: None,
+            factor: std::option::Option::None,
         }),
         CallPattern::CollectionShrinkCall {
             amount: p,
@@ -147,13 +147,13 @@ pub fn lower_call_pattern(pattern: Rc<CallPattern>) -> Rc<LoweringTarget> {
             primitive: IterationPrimitive::Fold,
             bound: Rc::new(SizeBound::ParserStreamSize { witness: w.clone() }),
             evidence: DescentEvidence::Strict,
-            factor: None,
+            factor: std::option::Option::None,
         }),
         CallPattern::WorklistDrainCall { element: e, .. } => Rc::new(LoweringTarget {
             primitive: IterationPrimitive::Fold,
             bound: Rc::new(SizeBound::WorklistDrainSize { element: e.clone() }),
             evidence: DescentEvidence::Strict,
-            factor: None,
+            factor: std::option::Option::None,
         }),
         CallPattern::FoldBodyCall {
             outer_collection: oc,
@@ -162,13 +162,13 @@ pub fn lower_call_pattern(pattern: Rc<CallPattern>) -> Rc<LoweringTarget> {
             primitive: IterationPrimitive::Fold,
             bound: Rc::new(SizeBound::CollectionSize { param: oc.clone() }),
             evidence: DescentEvidence::NonIncreasing,
-            factor: None,
+            factor: std::option::Option::None,
         }),
         CallPattern::SameArgumentCall => Rc::new(LoweringTarget {
             primitive: IterationPrimitive::Repeat,
             bound: Rc::new(SizeBound::Forever),
             evidence: DescentEvidence::NonIncreasing,
-            factor: None,
+            factor: std::option::Option::None,
         }),
     }
 }
@@ -180,9 +180,9 @@ pub fn size_bound_param(bound: Rc<SizeBound>) -> Option<String> {
         SizeBound::ParserStreamSize { witness: w, .. } => Some(w.clone()),
         SizeBound::WorklistDrainSize { element: e, .. } => Some(e.clone()),
         SizeBound::ArithmeticParam { param: p, .. } => Some(p.clone()),
-        SizeBound::ExplicitCountZero => None,
-        SizeBound::ExplicitCountPositive { steps: _, .. } => None,
-        SizeBound::Forever => None,
+        SizeBound::ExplicitCountZero => std::option::Option::None,
+        SizeBound::ExplicitCountPositive { steps: _, .. } => std::option::Option::None,
+        SizeBound::Forever => std::option::Option::None,
     }
 }
 
@@ -206,7 +206,7 @@ pub fn constant_bound_value(bound: Rc<SizeBound>) -> Option<i64> {
             Some(crate::std_termination::positive_descent_count(s.clone()))
         }
         SizeBound::Forever => Some(forever_iteration_bound()),
-        _ => None,
+        _ => std::option::Option::None,
     }
 }
 
@@ -228,11 +228,11 @@ pub fn algebra_profile_to_dimension(profile: AlgebraProfile) -> Option<Iteration
         AlgebraProfile::FinitelySupportedFunctionProfile => {
             Some(IterationDimension::CollectionFold)
         }
-        AlgebraProfile::PointwisePowerCollectionProfile => None,
-        AlgebraProfile::PartialFunctionProfile => None,
+        AlgebraProfile::PointwisePowerCollectionProfile => std::option::Option::None,
+        AlgebraProfile::PartialFunctionProfile => std::option::Option::None,
         AlgebraProfile::OrderedRingProfile => Some(IterationDimension::ArithmeticRepeat),
         AlgebraProfile::ApproximateFieldProfile => Some(IterationDimension::ArithmeticRepeat),
-        AlgebraProfile::BooleanAlgebraProfile => None,
+        AlgebraProfile::BooleanAlgebraProfile => std::option::Option::None,
     }
 }
 
@@ -242,7 +242,7 @@ pub fn type_iteration_dimension(type_name: String) -> Option<IterationDimension>
     } else {
         match v1_rt::map_get(&kernel_algebra_profile(), type_name.clone()) {
             Some(p) => algebra_profile_to_dimension(p.clone()),
-            None => None,
+            None => std::option::Option::None,
         }
     }
 }

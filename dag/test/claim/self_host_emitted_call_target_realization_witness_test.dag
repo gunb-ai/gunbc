@@ -1,4 +1,4 @@
-module test.claim.emitted_call_target_realization_witness_test
+module test.claim.self_host_emitted_call_target_realization_witness_test
 
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
@@ -355,6 +355,22 @@ test fn w_qualified_type_reference_earns_the_leaf_use_line() -> Bool {
   )
 }
 
+// THE SYMBOL IMPORT COLLISION, the byte-level falsifier test.claim.self_host_symbol_identity_binding specifies
+// for the exact path (symbol_import_collision_fixture_source there is this source). v2.std.node
+// `type Symbol` is opaque and bound by declaration to RustStdString; v2.std.text `String` is the
+// structural text carrier, and this module imports both. Under the spelling-keyed path Symbol
+// rendered the bare token `String`, which the v2_std_text use-line captured (the XL-0A E0308
+// population); under the exact path the declaration-keyed spelling is fully qualified and no
+// use-line can shadow it.
+test fn w_symbol_reference_renders_the_exact_qualified_spelling() -> Bool {
+  compile_dag_rust_emit_check(
+    "module test.claim.symbol_import_collision\nimport v2.std.node { Symbol }\nimport v2.std.text { String }\n\nfn takes_symbol(identity: Symbol) -> Symbol {\n  identity\n}\n\nfn takes_text(text: String) -> String {\n  text\n}\n",
+    "src/test_claim_symbol_import_collision.rs",
+    ["identity: std::string::String) -> std::string::String"],
+    ["identity: String", "identity: Symbol"]
+  )
+}
+
 // QUALIFIED VALUE HEAD, THE OTHER DIRECTION. `v2.std.nat.Succ { prev: .. }` is a variant record
 // literal; the value route imports it through its parent enum, and this route must synthesize
 // nothing for it (E0603 `variant import is private`, sixteen sites on the first regeneration).
@@ -380,6 +396,59 @@ test fn w_generic_arrow_return_renders_the_fn_scope_generic() -> Bool {
   )
 }
 
+// A VARIANT NESTED INSIDE AN OPTIONAL PATTERN IS QUALIFIED BY ITS OWN ENUM. `Present { value: U { .. } }`
+// rendered `Some(Optional::U { .. })` (four sites in v2.std.symbol_index, E0599 no variant named U in
+// Option): the Some payload inherited the OUTER scrutinee's enum. The payload's parent is the
+// enum that declares the variant, never the Optional around it.
+test fn w_variant_nested_in_an_optional_pattern_is_qualified_by_its_own_enum() -> Bool {
+  compile_dag_rust_emit_check(
+    "module test.claim.optional_nested_variant_probe\nimport std.types { Int, Bool }\ntype State = Unique { n: Int } | Ambiguous\nfn probe(s: State?) -> Bool {\n  match s {\n    Present { value: Unique { n: k } } => k == 0\n    Present { value: Ambiguous } => false\n    Absent => false\n  }\n}\n",
+    "src/test_claim_optional_nested_variant_probe.rs",
+    ["Some(State::Unique {", "Some(State::Ambiguous)"],
+    ["Optional::Unique", "Option::Unique"]
+  )
+}
+
+// A GENERIC PARAMETER FORWARDED BY THE RETURNED CLOSURE CARRIES CLONE. An arrow-returning fn
+// realizes as `Rc::new(move |x| f(x.clone()))`, so a generic that reaches an arrow-typed parameter
+// needs `Clone` (E0277 `A: Clone` not satisfied, v2.std.staging then_outcome and
+// v2.compiler.materialization_carriers cached_stage_governed). The structural rules read what a
+// value is; this obligation comes from what the realization does with it.
+test fn w_generic_forwarded_by_a_returned_closure_carries_clone() -> Bool {
+  compile_dag_rust_emit_check(
+    "module test.claim.returned_closure_clone_probe\nfn compose<A, B, C>(f: fn(A) -> B, g: fn(B) -> C) -> fn(A) -> C {\n  fn(x) { g(f(x)) }\n}\n",
+    "src/test_claim_returned_closure_clone_probe.rs",
+    ["pub fn compose<A: Clone, B: Clone, C: Clone>("],
+    ["pub fn compose<A, B"]
+  )
+}
+
+// ONE STORAGE REPRESENTATION FOR A KEYED COLLECTION, AT THE ALIAS POSITION. A `Map<K, V>` field or
+// parameter lowers to the host template `Rc<HashMap<K, V>>`; the alias RHS lowered the authored
+// base instead, so `type Slots = Map<Int, Slot>` became `Rc<crate::std_types::Map<..>>` -- the
+// algebra struct, a second representation of the same carrier, refused by rustc wherever a Slots
+// met a HashMap parameter. The positive control is the field position on the same fixture.
+test fn w_alias_of_a_keyed_collection_renders_the_host_map_template() -> Bool {
+  compile_dag_rust_emit_check(
+    "module test.claim.map_alias_probe\nimport v2.std.collection { Map }\ntype Slot\ntype Slots = Map<Int, Slot>\ntype Holder { slots: Slots, direct: Map<Int, Slot> }\n",
+    "src/test_claim_map_alias_probe.rs",
+    ["pub type Slots = Rc<HashMap<i64, ", "pub direct: Rc<HashMap<i64, "],
+    ["crate::std_types::Map<", "FinitelySupportedFunction<"]
+  )
+}
+
+// A GENERIC IN KEY POSITION CARRIES THE HOST KEY BOUNDS. The HashMap bridges declare
+// `K: Eq + Hash`; a fn generic over a Map key that emitted `K: Clone` alone refused at every bridge
+// call (E0277, three sites in v2_std_collection). The bound is read from the signature.
+test fn w_generic_map_key_parameter_carries_the_host_key_bounds() -> Bool {
+  compile_dag_rust_emit_check(
+    "module test.claim.map_key_bound_probe\nimport v2.std.collection { Map, map_lookup }\nimport v2.std.optional { Optional }\nfn probe<K, V>(m: Map<K, V>, key: K) -> Optional<V> {\n  map_lookup(m: m, key: key)\n}\n",
+    "src/test_claim_map_key_bound_probe.rs",
+    ["pub fn probe<K: Clone + std::cmp::Eq + std::hash::Hash, V"],
+    ["pub fn probe<K: Clone, V", "pub fn probe<K, V"]
+  )
+}
+
 // SERVICE OP WITHOUT A REALIZATION, THE DISCRIMINATING RED. `Filesystem.Read(path:)` inside a fn
 // the signature authority judged service-free emitted `filesystem.read(path).await?` -- an unbound
 // name in a non-async fn, the only `.await?` in the whole closure. It is a host seam with no
@@ -392,5 +461,80 @@ test fn w_service_op_in_a_service_free_fn_refuses_instead_of_awaiting_an_unbound
     "src/test_claim_service_op_probe.rs",
     ["unrealized host seam: service op Filesystem.Read"],
     [".await?"]
+  )
+}
+
+// COMMIT-3 MECHANISMS OF THE #9664 CLOSURE, ONE ROW EACH. Every must_not_contain below is the byte
+// sequence the pre-fix binary emitted for the same source (observed on the seed at 8781269 before
+// the mechanism landed), so each row is a discriminating red that went green by the mechanism it
+// names, not a decoration.
+
+// A parameter declared `Optional<T>` is optional: the applied spelling carries no cardinality flag,
+// so the fail-closed unwrap fired on an argument the callee exists to inspect.
+test fn w_optional_carrier_parameter_takes_the_optional_argument_without_an_unwrap() -> Bool {
+  compile_dag_rust_emit_check(
+    "module test.claim.optional_param_probe\nimport std.types { Int }\nimport v2.std.optional { Optional }\nfn inspect(opt: Optional<Int>) -> Optional<Int> { opt }\nfn caller(x: Optional<Int>) -> Optional<Int> { inspect(opt: x) }\n",
+    "src/test_claim_optional_param_probe.rs",
+    ["inspect(x.clone())"],
+    [".expect(\"fail-closed: an optional value flowed into non-optional parameter"]
+  )
+}
+
+// The shared-field accessor returns T by value from &self; without T: Clone on its impl rustc
+// clones the reference.
+test fn w_generic_coproduct_shared_accessor_impl_carries_the_clone_bound() -> Bool {
+  compile_dag_rust_emit_check(
+    "module test.claim.shared_accessor_probe\nimport std.types { Int }\ntype Pair<T> = Left { v: T, n: Int } | Right { v: T, m: Int }\nfn v_of<T>(p: Pair<T>) -> T { p.v }\n",
+    "src/test_claim_shared_accessor_probe.rs",
+    ["impl<T: Clone> Pair<T> {"],
+    ["impl<T> Pair<T> {"]
+  )
+}
+
+// A record pattern over a generic call's result: the scrutinee carrier is decided by the shared set,
+// exactly as a shared enum's variant pattern is, so the pattern must meet the value, not the Rc.
+test fn w_record_pattern_over_a_generic_call_result_derefs_the_shared_carrier() -> Bool {
+  compile_dag_rust_emit_check(
+    "module test.claim.record_pattern_probe\nimport std.types { Int }\nimport v2.std.collection { List }\ntype Rec { tag: Int, items: List<Int> }\nfn ident<C>(c: C) -> C { c }\nfn probe(r: Rec) -> Int { match ident(c: r) { Rec { tag: x, items: _ } => x } }\n",
+    "src/test_claim_record_pattern_probe.rs",
+    ["Rec { tag: x, .. } => x.clone()"],
+    ["match ident(r.clone()) {"]
+  )
+}
+
+// A generic stored into a `dyn Fn` must outlive it: a fn returning a record whose fields are arrows
+// carries 'static on every generic, the same gate the param-side `impl Fn` already fires.
+test fn w_fn_returning_an_arrow_field_record_carries_static_on_its_generics() -> Bool {
+  compile_dag_rust_emit_check(
+    "module test.claim.static_generic_probe\nimport std.types { Int }\ntype Ops<T> { op: fn(T, T) -> T }\nfn ops<T>(z: T) -> Ops<T> { Ops { op: fn(a, b) { z } } }\n",
+    "src/test_claim_static_generic_probe.rs",
+    ["pub fn ops<T: Clone + 'static>(z: T)"],
+    ["pub fn ops<T: Clone>(z: T)"]
+  )
+}
+
+// A module declaring a nullary variant named None also emits `pub struct None;` at module scope,
+// which captures the prelude's Option::None: the null keyword row names the item by its path.
+test fn w_null_keyword_survives_a_module_declaring_a_none_variant() -> Bool {
+  compile_dag_rust_emit_check(
+    "module test.claim.none_capture_probe\nimport std.types { Int }\ntype ScopeX = None | Keyed\ntype PlanX { layer: Int?, scope: ScopeX }\nfn plan_x() -> PlanX { PlanX { layer: none, scope: Keyed } }\n",
+    "src/test_claim_none_capture_probe.rs",
+    ["layer: std::option::Option::None,"],
+    ["layer: None,"]
+  )
+}
+
+// The fn-field header prints well-formedness bounds asked per parameter: `divergence: ValueDiffY<A>`
+// names a type declared `<A: Clone>`, so A must carry the bound even though the bare `expected: A`
+// earns none; the earlier set-difference dropped both. `hook: Hook` (an arrow field) puts the
+// record on the fn-field header path; the first version of this row reached that path through
+// `v2.std.host_run.EmitHostRunReceipt`, whose closure cost the floor 30 s CPU per fill and came
+// back false through the shared-artifact path -- the condition is local, so the fixture is.
+test fn w_fn_field_record_header_keeps_the_bound_a_field_type_demands() -> Bool {
+  compile_dag_rust_emit_check(
+    "module test.claim.wf_header_probe\nimport std.types { Int }\ntype ValueDiffY<A> { expected: A, actual: A }\ntype Hook { run: fn(Int) -> Int }\ntype ReceiptX<Subj, A> { subject: Subj, expected: A, divergence: ValueDiffY<A>, hook: Hook }\n",
+    "src/test_claim_wf_header_probe.rs",
+    ["pub struct ReceiptX<Subj, A: Clone> {"],
+    ["pub struct ReceiptX<Subj, A> {"]
   )
 }
