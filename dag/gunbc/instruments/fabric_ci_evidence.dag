@@ -5,6 +5,12 @@ import std.process { ProcessExit, ExitSuccess, exit_failure }
 import v2.std.optional { Present, Absent }
 import std.content_hash { ContentHash, content_hash_of_value }
 import extdeps.filesystem.filesystem_io { Filesystem }
+import tools.fabric_ci_evidence_projection_fixture {
+  FabricCiCalibrationProjection,
+  FabricCiCalibrationAlpha,
+  FabricCiCalibrationBeta,
+  fabric_ci_calibration_projection_wire,
+}
 
 type FabricCiEvidenceRole
   = FabricCiAssertionRole
@@ -133,18 +139,6 @@ fn decode_fabric_ci_evidence_wire(wire: String) -> FabricCiEvidenceDecode {
   }
 }
 
-type FabricCiCalibrationProjection
-  = FabricCiCalibrationAlpha { payload: NonEmptyStr }
-  | FabricCiCalibrationBeta { payload: NonEmptyStr }
-
-// This projection is total and default-free: a new variant must acquire a distinct framed arm.
-fn fabric_ci_calibration_projection_wire(value: FabricCiCalibrationProjection) -> String {
-  match value {
-    FabricCiCalibrationAlpha { payload: payload } => join(["alpha|", payload as String], "")
-    FabricCiCalibrationBeta { payload: payload } => join(["beta|", payload as String], "") // FCI_EVIDENCE_PROJECTION_BETA_ARM
-  }
-}
-
 func fabric_ci_calibration_assertion_success() -> ProcessExit { ExitSuccess }
 
 func fabric_ci_calibration_bool_must_refuse() -> Bool { true }
@@ -222,7 +216,7 @@ type FabricCiCalibrationStep
   | FabricCiCalibrationAssertionRed { function: NonEmptyStr }
   | FabricCiCalibrationWriteFailureRed { function: NonEmptyStr, path: NonEmptyStr }
   | FabricCiCalibrationIgnoredWriteRed { function: NonEmptyStr, coordinate: NonEmptyStr }
-  | FabricCiCalibrationDeleteProjectionArmRed { selector: NonEmptyStr }
+  | FabricCiCalibrationDeleteProjectionArmRed { subject: NonEmptyStr, selector: NonEmptyStr }
   | FabricCiCalibrationFinalAssertion { function: NonEmptyStr }
 
 fn fabric_ci_calibration_steps() -> List<FabricCiCalibrationStep> {
@@ -238,7 +232,10 @@ fn fabric_ci_calibration_steps() -> List<FabricCiCalibrationStep> {
     FabricCiCalibrationAssertionRed { function: "fabric_ci_calibration_collapsed_projection_must_red" },
     FabricCiCalibrationWriteFailureRed { function: "fabric_ci_calibration_transport_alpha", path: "/proc/fci-evidence-write-refusal" },
     FabricCiCalibrationIgnoredWriteRed { function: "fabric_ci_calibration_transport_ignores_write_failure", coordinate: "ignored" },
-    FabricCiCalibrationDeleteProjectionArmRed { selector: join(["FCI_EVIDENCE_PROJECTION_", "BETA_ARM"], "") as NonEmptyStr },
+    FabricCiCalibrationDeleteProjectionArmRed {
+      subject: "dag/gunbc/instruments/fabric_ci_evidence_projection_fixture.dag"
+      selector: "FabricCiCalibrationBeta { payload: payload } =>"
+    },
     FabricCiCalibrationFinalAssertion { function: "fabric_ci_calibration_assertion_success" },
   ]
 }
@@ -254,7 +251,7 @@ fn fabric_ci_calibration_step_wire(step: FabricCiCalibrationStep) -> String {
     FabricCiCalibrationAssertionRed { function } => join(["assertion-red|", function as String], "")
     FabricCiCalibrationWriteFailureRed { function, path } => join(["write-failure-red|", function as String, "|", path as String], "")
     FabricCiCalibrationIgnoredWriteRed { function, coordinate } => join(["ignored-write-red|", function as String, "|", coordinate as String], "")
-    FabricCiCalibrationDeleteProjectionArmRed { selector } => join(["delete-projection-arm-red|", selector as String], "")
+    FabricCiCalibrationDeleteProjectionArmRed { subject, selector } => join(["delete-projection-arm-red|", subject as String, "|", selector as String], "")
     FabricCiCalibrationFinalAssertion { function } => join(["final-assertion|", function as String], "")
   }
 }

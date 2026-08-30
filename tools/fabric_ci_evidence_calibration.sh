@@ -7,9 +7,15 @@ export FABRIC_CI_GUNBC_BIN=${FABRIC_CI_GUNBC_BIN:-"$repo_root/target/release/gun
 export FABRIC_CI_SOURCE_ROOT=$repo_root FABRIC_CI_ENTRY="$repo_root/dag/gunbc/instruments/fabric_ci_evidence.dag"
 export FABRIC_CI_LOG FABRIC_CI_VALUE_ROOT
 FABRIC_CI_LOG=$(mktemp); FABRIC_CI_VALUE_ROOT=$(mktemp -d); snapshot=$(mktemp)
+mutation_subject= mutation_snapshot=
 plan="$FABRIC_CI_VALUE_ROOT/calibration.plan"
 cp "$FABRIC_CI_ENTRY" "$snapshot"
-cleanup() { cp "$snapshot" "$FABRIC_CI_ENTRY"; rm -f "$snapshot" "$FABRIC_CI_LOG"; rm -rf "$FABRIC_CI_VALUE_ROOT"; }
+cleanup() {
+  cp "$snapshot" "$FABRIC_CI_ENTRY"
+  if [[ -n $mutation_subject && -n $mutation_snapshot && -f $mutation_snapshot ]]; then cp "$mutation_snapshot" "$mutation_subject"; fi
+  rm -f "$snapshot" "$FABRIC_CI_LOG" ${mutation_snapshot:+"$mutation_snapshot"}
+  rm -rf "$FABRIC_CI_VALUE_ROOT"
+}
 trap cleanup EXIT
 source "$repo_root/tools/fabric_ci_evidence_driver.sh"
 fabric_ci_driver_init
@@ -49,10 +55,23 @@ while IFS='|' read -r operation a b c; do
       if fabric_ci_capture_transport "$a" "$b" >/dev/null; then exit 1; fi
       ;;
     delete-projection-arm-red)
-      [[ $(grep -Fc "$a" "$FABRIC_CI_ENTRY") -eq 1 ]]
-      sed -i "\|$a|d" "$FABRIC_CI_ENTRY"
+      mutation_subject="$repo_root/$a"
+      mutation_snapshot=$(mktemp)
+      zero_match_subject=$(mktemp)
+      two_match_subject=$(mktemp)
+      cp "$mutation_subject" "$mutation_snapshot"
+      selector_occurs_exactly_once() { [[ $(grep -Fc "$b" "$1") -eq 1 ]]; }
+      selector_occurs_exactly_once "$mutation_subject"
+      sed "\|$b|d" "$mutation_subject" > "$zero_match_subject"
+      if selector_occurs_exactly_once "$zero_match_subject"; then exit 1; fi
+      cp "$mutation_subject" "$two_match_subject"
+      printf '%s\n' "$b" >> "$two_match_subject"
+      if selector_occurs_exactly_once "$two_match_subject"; then exit 1; fi
+      sed -i "\|$b|d" "$mutation_subject"
       if "$FABRIC_CI_GUNBC_BIN" run --source-root "$repo_root/dag" --source-root "$repo_root/src/v2" --entry "$FABRIC_CI_ENTRY" --function fabric_ci_calibration_assertion_success 2>&1 | tee -a "$FABRIC_CI_LOG" /dev/stderr; then exit 1; fi
-      cp "$snapshot" "$FABRIC_CI_ENTRY"; cmp -s "$snapshot" "$FABRIC_CI_ENTRY"
+      cp "$mutation_snapshot" "$mutation_subject"; cmp -s "$mutation_snapshot" "$mutation_subject"
+      rm -f "$mutation_snapshot" "$zero_match_subject" "$two_match_subject"
+      mutation_subject= mutation_snapshot=
       ;;
     final-assertion)
       fabric_ci_run_assertion "$a"
