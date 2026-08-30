@@ -1258,12 +1258,38 @@ fn declaration_ref_for_span(decl_name: String, sp: SourceSpan, env: TypeEnv) -> 
   }
 }
 
+// A QUALIFIED AUTHORED NAME IS ITSELF AN IDENTITY, joined against the census rather than trusted:
+// the resolver qualifies borrowed type names with their owner module path
+// (qualify_borrowed_type_names), so a resolved reference spelled `v2.std.text.String` names its
+// declaring module in its own name. The census row for the bare segment must AGREE -- a prefix
+// with no census row of that module answers none, so nothing is minted from the spelling alone.
+fn declaration_ref_from_qualified_name(qualified: String, env: TypeEnv) -> DeclarationRef? {
+  let decl_name = qualified_last_segment(name: qualified)
+  let module_prefix = qualified_all_but_last(name: qualified)
+  if decl_name == "" || module_prefix == "" { return none }
+  match map_get(env.symbol_index.global_bare, decl_name) {
+    Present { value: GlobalBareUniqueBinding { module_path: mp, binding: _ } } =>
+      if mp == module_prefix { Present { value: decl_ref(module_path: mp, decl_name: decl_name) } } else { none }
+    Present { value: GlobalBareAmbiguousBinding { candidates: cands } } =>
+      match cands |> filter(c => c.module_path == module_prefix) |> first {
+        Present { value: c } => Present { value: decl_ref(module_path: c.module_path, decl_name: decl_name) }
+        Absent => none
+      }
+    Absent => none
+  }
+}
+
 fn declaration_ref_of_node(rt: Node, source_indices: Map<String, NewlineIndex>, env: TypeEnv) -> DeclarationRef? {
-  let decl_name = qualified_last_segment(name: authored_name_at(source_indices: source_indices, node: rt))
+  let authored = authored_name_at(source_indices: source_indices, node: rt)
+  let decl_name = qualified_last_segment(name: authored)
   if decl_name == "" { return none }
-  match rt.ident_span {
+  let by_span = match rt.ident_span {
     Absent => none
     Present { value: sp } => declaration_ref_for_span(decl_name: decl_name, sp: sp, env: env)
+  }
+  match by_span {
+    Present { value: d } => Present { value: d }
+    Absent => declaration_ref_from_qualified_name(qualified: authored, env: env)
   }
 }
 
