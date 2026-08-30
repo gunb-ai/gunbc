@@ -294,8 +294,10 @@ test fn provider_standing_probe_bridge_keystone_holds() -> Bool {
     && witness_credential_liveness_splits_from_realm()
 }
 
-
-data codex_press_limit_bridge_witness_note: String = "The sibling-bucket case is the whole point: an exhausted `codex` bucket and an available `codex_bengalfox` bucket must produce DIFFERENT verdicts under draws that name them. A projection that routed either through ProviderAccountLimit would collapse both to one account verdict and refuse — or admit — work for the wrong reason."
+// The sibling-bucket case is the whole point: an exhausted `codex` bucket and an available
+// `codex_bengalfox` bucket must produce DIFFERENT verdicts under draws that name them. A projection
+// that routed either through ProviderAccountLimit would collapse both to one account verdict and
+// refuse — or admit — work for the wrong reason.
 
 fn press_bucket_credential() -> LimitCredentialLabel {
   LimitCredentialLabel { label: "srv1-codex" as NonEmptyStr }
@@ -381,7 +383,8 @@ test fn witness_no_buckets_is_a_located_unobserved_not_an_empty_list() -> Bool {
       match o { LimitObservationUnobserved { reason: _ } => true _ => false })
 }
 
-data mixed_decode_witness_note: String = "Over-refusal reads as caution while it prices out capacity the observation proved was there. The producer held the limit_id and threw it away; carrying it is the whole fix."
+// Over-refusal reads as caution while it prices out capacity the observation proved was there. The
+// producer held the limit_id and threw it away; carrying it is the whole fix.
 
 fn undecoded_codex_bucket() -> CodexRateLimitBucketVerdict {
   CodexBucketCapacityUnknown { limit_id: "codex" as NonEmptyStr }
@@ -436,8 +439,11 @@ test fn witness_credential_identity_tracks_the_observed_codex_home() -> Bool {
   })
 }
 
-
-data entitlement_realm_witness_note: String = "THE TWO NEGATIVES ARE DIFFERENT NEGATIVES. A Bedrock account is REJECTED — read successfully, wrong realization, the answer is no. An unrecognized plan string is UNOBSERVED — upstream moved and our pin is stale, the answer is not yet. Both refuse dispatch today, which is exactly why a witness that only checked `not available` would pass while the model conflated them: the first is permanent until the credential changes, the second is repaired by updating a roster."
+// THE TWO NEGATIVES ARE DIFFERENT NEGATIVES. A Bedrock account is REJECTED — read successfully,
+// wrong realization, the answer is no. An unrecognized plan string is UNOBSERVED — upstream moved
+// and our pin is stale, the answer is not yet. Both refuse dispatch today, which is exactly why a
+// witness that only checked `not available` would pass while the model conflated them: the first is
+// permanent until the credential changes, the second is repaired by updating a roster.
 
 fn chatgpt_realm_on(plan_wire: String) -> CodexAccountRealm {
   match parse_json_document(s: plan_wire) {
@@ -524,7 +530,15 @@ test fn witness_chatgpt_account_without_plan_type_is_malformed_not_unnamed() -> 
   }
 }
 
-data native_cause_fallback_witness_note: String = "THIS FILE USED TO ASSERT THE DEFECT. witness_codex_bucket_projects_to_native_bucket_never_account_scope checked `t == \"codex\"` against a fixture declaring `reached_type: none` — so the value it pinned was the projection substituting the bucket id for a cause the wire never gave. A green witness was holding the fallback in place as the contract, which is the shape DESIGN §5 names when a degradation gets enshrined by the test that was supposed to catch it.\n\nThe pair below is what the old fixture could not distinguish: one bucket reports a cause and a reset, one reports neither, and they must not project to the same thing."
+// THIS FILE USED TO ASSERT THE DEFECT.
+// witness_codex_bucket_projects_to_native_bucket_never_account_scope checked `t == "codex"` against
+// a fixture declaring `reached_type: none` — so the value it pinned was the projection substituting
+// the bucket id for a cause the wire never gave. A green witness was holding the fallback in place
+// as the contract, which is the shape DESIGN §5 names when a degradation gets enshrined by the test
+// that was supposed to catch it.
+//
+// The pair below is what the old fixture could not distinguish: one bucket reports a cause and a
+// reset, one reports neither, and they must not project to the same thing.
 
 fn exhausted_codex_bucket_with_reported_cause() -> CodexRateLimitBucketVerdict {
   CodexBucketUnavailableUntilReset {

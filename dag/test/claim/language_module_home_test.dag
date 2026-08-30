@@ -85,7 +85,17 @@ test fn every_declared_home_carries_a_canonical_prefix() -> Bool {
   all(language_target_homes, h => h.canonical_prefix != "")
 }
 
-data gate_predicate_note: String = "The gate predicate's controls. The one that matters most in practice is that THIS change's own added carriers are ADMITTED — a wall that refuses the change introducing it is a self-inflicted outage, and the only way to know is to run the real added-path list through the real predicate. THE RELATIONAL CONTROLS THAT USED TO SIT HERE WERE DELETED WITH THE PREDICATES THEY EXERCISED (operator REQUEST_CHANGES, 2026-08-05). One of them asserted that dag/extdeps/languages/html/verilog_emit.dag is admitted under the HTML home — associating that path with HTML by reading html/ OUT OF THE PATH, which is the path-to-identity fusion the module forbids, performed by the control meant to prove it never happens. A correct control names verilog_language_subject_ref and demands the Verilog prefix, and it cannot be written against a gate that receives only strings. The unregistered-directory control inverted for the same reason: gpu/ and simd/ were exceptions that bought nothing for existing files and licensed unlimited future ones, so a new file under them must now REFUSE and force the target registration."
+// The gate predicate's controls. The one that matters most is that THIS change's own added
+// carriers are ADMITTED — a wall refusing the change that introduces it is a self-inflicted outage,
+// and only running the real added-path list through the real predicate can tell.
+// THE RELATIONAL CONTROLS THAT USED TO SIT HERE WERE DELETED WITH THE PREDICATES THEY EXERCISED
+// (operator REQUEST_CHANGES, 2026-08-05). One asserted that dag/extdeps/languages/html/verilog_emit.dag
+// is admitted under the HTML home — reading html/ OUT OF THE PATH, the path-to-identity fusion the
+// module forbids, performed by the control meant to prove it never happens. A correct control names
+// verilog_language_subject_ref and demands the Verilog prefix, and cannot be written against a gate
+// that receives only strings. The unregistered-directory control inverted for the same reason: gpu/
+// and simd/ were exceptions that bought nothing for existing files and licensed unlimited future
+// ones, so a new file under them must now REFUSE and force the target registration.
 
 test fn this_changes_own_carriers_are_admitted() -> Bool {
   (added_language_paths_refused(added: [
