@@ -64,18 +64,23 @@ import v2.std.text { String }
 // through claim_batch + GUNBC_INTERP_PROFILE (2026-08-29, this lane); on the first enrolled
 // floor run each was read by 35-44 later claims (run 33269961629, [floor-shared-fill]).
 //
-// THE TWO RUST TARGET MODELS ARE DELIBERATELY NOT HERE, and the absence is a measured,
-// located fact rather than an oversight: rust_target_model_staging() and rust_target_model()
-// are ~125ms of pure re-derivation per claim (58 and 75 consumer claims on the same run),
-// but their value carries a fn at `.produced_decl_support.render` — an origin-bound
-// evaluator reference the serve tier refuses by ruling (ServeCacheValueNotPortable,
-// kind=OriginBoundNode; publication is checked totally at store time). Re-enrol them when
-// the produced-decl render transform is carried as declared rows the model layer can reify
-// rather than as a fn value — that modeling change is the named trigger, and until it lands
-// every emit claim keeps paying the ~125ms recompute this roster exists to delete.
+// THE TWO RUST TARGET MODELS ARE NOW HERE, and their earlier absence is why: their value
+// carried a fn at `.produced_decl_support.render` -- an origin-bound evaluator reference
+// the serve tier refuses by ruling (ServeCacheValueNotPortable, kind=OriginBoundNode;
+// publication is checked totally at store time). The named re-enrol trigger was "carry the
+// produced-decl render transform as declared rows the model layer can reify rather than as
+// a fn value", and that modeling change landed: v2.std.compilers.target_model
+// ProducedDeclRenderRows plus one shared fold (produced_decl_render_from_rows), with each
+// target declaring its own signature order as rows (rust_produced_decl_render_rows,
+// c_produced_decl_render_rows). The value became portable because it no longer contains a
+// fn -- the publication wall did not move, and its RED still refuses a fn-carrying value.
+// Both are ~125ms of pure re-derivation per claim (58 and 75 consumer claims on run
+// 33269961629), which is what every emit claim was paying while they sat out.
 data floor_cross_claim_pure_producers_warm: List<String> = [
   "v2.extdeps.languages.bash_command_fold.bash_fold_formal_productions",
-  "v2.extdeps.languages.bash_command_fold.bash_fold_lex"
+  "v2.extdeps.languages.bash_command_fold.bash_fold_lex",
+  "v2.extdeps.languages.rust.rust_target_model",
+  "v2.extdeps.languages.rust.rust_target_model_staging"
 ]
 
 // The claim-forced rows carry claim-independent ARGUMENTS in practice (a production
