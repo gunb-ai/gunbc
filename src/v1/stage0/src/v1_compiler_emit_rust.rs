@@ -48,7 +48,7 @@ pub use crate::std_nat::Nat;
 pub use crate::std_occurrence_identity::NodeOccurrenceIdentity;
 use crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic;
 use crate::std_operator_realization::HostRealizationReason::{
-    GenericTypeParameter, HostContainer, KernelMintedType,
+    GenericTypeParameter, HostContainer, KernelMintedType, UnnamedSynthesizedType,
 };
 use crate::std_operator_realization::OperandRealization::{
     HostNumericOperand, HostRealizedOperand, OperandIdentityUnavailable, StructuralOperand,
@@ -29794,90 +29794,62 @@ pub fn rust_operand_realization_of_type(
                         reason: HostRealizationReason::HostContainer,
                     });
                 } else {
-                    match crate::v1_compiler_infer_env::type_reference_declaration_ref(
-                        rt.clone(),
-                        scope.type_env.clone().source_indices.clone(),
-                        scope.type_env.clone(),
-                    ) {
-                        std::option::Option::None => {
-                            break Rc::new(OperandRealization::OperandIdentityUnavailable {
-                                facts: Rc::new(OperandShapeFacts {
-                                    authored_name: authored.clone(),
-                                    connective:
-                                        crate::v1_compiler_dag_collect_support::connective_name(
-                                            rt.connective.clone(),
-                                        ),
-                                    child_count: (rt.children.clone().len() as i64),
-                                    resolved: (rt.inferred.clone() != std::option::Option::None),
-                                    decl_file: decl_file.clone(),
-                                }),
-                            });
-                        }
-                        Some(d) => {
-                            if crate::v1_compiler_coercion::declaration_realizes_natively_on_rust(
-                                d.clone(),
-                                crate::v1_compiler_coercion::type_reference_decl_file(rt.clone()),
-                            ) {
-                                break Rc::new(OperandRealization::HostNumericOperand);
-                            } else {
-                                let decl = match rt.inferred.clone().as_deref().cloned() {
-                                    Some(InferredNode::Resolved { node: r, .. }) => r.clone(),
-                                    _ => rt.clone(),
-                                };
-                                if ((fuel.clone() > 0)
-                                    && crate::v1_compiler_infer::is_where_refinement_type(
-                                        rt.clone(),
-                                    ))
-                                {
-                                    match rt.children.clone().first().cloned() {
-                                        Some(base) => {
-                                            let base_resolved =
-                                                match crate::v1_compiler_infer_env::lookup_type_for(
-                                                    scope.type_env.clone(),
-                                                    base.clone(),
-                                                ) {
-                                                    Some(r) => r.clone(),
-                                                    std::option::Option::None => base.clone(),
-                                                };
-                                            {
-                                                let __tco_0 = base_resolved.clone();
-                                                let __tco_1 = (fuel - 1);
-                                                rt = __tco_0;
-                                                fuel = __tco_1;
-                                                continue;
-                                            }
-                                        }
-                                        std::option::Option::None => {
-                                            break Rc::new(OperandRealization::StructuralOperand {
-                                                declaration: d.clone(),
-                                            });
-                                        }
-                                    }
-                                } else {
-                                    if ((fuel.clone() > 0)
-                                        && crate::v1_compiler_emit_core_support::is_type_alias_item(
-                                            decl.clone(),
-                                            scope.type_env.clone().source_indices.clone(),
-                                        ))
+                    if (authored.clone() == "".to_string()) {
+                        break Rc::new(OperandRealization::HostRealizedOperand {
+                            reason: HostRealizationReason::UnnamedSynthesizedType,
+                        });
+                    } else {
+                        match crate::v1_compiler_infer_env::type_reference_declaration_ref(rt.clone(), scope.type_env.clone().source_indices.clone(), scope.type_env.clone()) {
+    std::option::Option::None => { break Rc::new(OperandRealization::OperandIdentityUnavailable {
+    facts: Rc::new(OperandShapeFacts {
+    authored_name: authored.clone(),
+    connective: crate::v1_compiler_dag_collect_support::connective_name(rt.connective.clone()),
+    child_count: (rt.children.clone().len() as i64),
+    resolved: (rt.inferred.clone() != std::option::Option::None),
+    decl_file: decl_file.clone(),
+}),
+}); },
+    Some(d) => { if crate::v1_compiler_coercion::declaration_realizes_natively_on_rust(d.clone(), crate::v1_compiler_coercion::type_reference_decl_file(rt.clone())) {
+                            break Rc::new(OperandRealization::HostNumericOperand);
+} else {
+                            let decl = match rt.inferred.clone().as_deref().cloned() {
+    Some(InferredNode::Resolved { node: r, .. }) => r.clone(),
+    _ => rt.clone(),
+};
+if ((fuel.clone() > 0) && crate::v1_compiler_infer::is_where_refinement_type(rt.clone())) {
+                                match rt.children.clone().first().cloned() {
+    Some(base) => { let base_resolved = match crate::v1_compiler_infer_env::lookup_type_for(scope.type_env.clone(), base.clone()) {
+    Some(r) => r.clone(),
+    std::option::Option::None => base.clone(),
+};
+{
+                                    let __tco_0 = base_resolved.clone();
+let __tco_1 = (fuel - 1);
+rt = __tco_0;
+fuel = __tco_1;
+continue;
+} },
+    std::option::Option::None => { break Rc::new(OperandRealization::StructuralOperand {
+    declaration: d.clone(),
+}); },
+}
+} else {
+                                if ((fuel.clone() > 0) && crate::v1_compiler_emit_core_support::is_type_alias_item(decl.clone(), scope.type_env.clone().source_indices.clone())) {
                                     {
-                                        {
-                                            let __tco_0 =
-                                                crate::v1_compiler_infer_types::resolved_type(
-                                                    decl.clone(),
-                                                );
-                                            let __tco_1 = (fuel - 1);
-                                            rt = __tco_0;
-                                            fuel = __tco_1;
-                                            continue;
-                                        }
-                                    } else {
-                                        break Rc::new(OperandRealization::StructuralOperand {
-                                            declaration: d.clone(),
-                                        });
-                                    }
-                                }
-                            }
-                        }
+                                        let __tco_0 = crate::v1_compiler_infer_types::resolved_type(decl.clone());
+let __tco_1 = (fuel - 1);
+rt = __tco_0;
+fuel = __tco_1;
+continue;
+}
+} else {
+                                    break Rc::new(OperandRealization::StructuralOperand {
+    declaration: d.clone(),
+});
+}
+}
+} },
+}
                     }
                 }
             }
