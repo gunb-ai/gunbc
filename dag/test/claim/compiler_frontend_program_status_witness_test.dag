@@ -12,12 +12,47 @@ import gunbc.compiler_frontend_program_interlock {
   SelfHostEmitterProducesEveryRetainedArtifact,
   SelfHostRatchetGateEnrolled,
   SelfHostCorpusEmitsCleanly,
+  SelfHostCargoPhaseEnrolled,
+  NamespaceWaveAdmissionEnrolled,
+  NamespaceBaselineObservationComplete,
   NamespaceFixForwardComplete,
   NamespaceGrammarRetired,
   NamespaceFirstSemanticWave,
   milestone_label,
 }
+import gunbc.required_ci_phase_roster {
+  RequiredCiPhase,
+  ParsePhase,
+  NamespaceWaveAdmissionPhase,
+  required_ci_phases,
+}
+import gunbc.namespace_cut_stage {
+  NamespaceCutStage,
+  StageXL5Waves,
+  StageXL6AtomicCutover,
+  StageXL7GrammarDeletion,
+  namespace_cut_stages,
+  namespace_cut_stage_label,
+  ActivationReceipt,
+  ActivationReceiptKind,
+  RehearsalFailureRosterDigest,
+  activation_receipts_outstanding,
+  activation_receipt_kind_outstanding,
+  activation_receipt_kind_label,
+  required_activation_receipt_kinds,
+}
+import gunbc.namespace_cut_subject_roster {
+  subjects_deleted_at,
+  subject_probe_list,
+  probe_render,
+}
 import gunbc.emit_subject_clean_frontier { emit_ratchet_runner_cadence }
+import v2.workflow.legacy_baseline_capture {
+  CaptureAvailable,
+  CaptureBlocked,
+  legacy_baseline_capture_capability,
+  capture_blocked_reason,
+}
 import v2.compiler.self_host.stage0_crate_layout { emitter_produced_divergent_registrations }
 import gunbc.cli_dispatch_surface { gunbc_cli_emitter_gap }
 import gunbc.compiler_frontend_program_status {
@@ -27,9 +62,16 @@ import gunbc.compiler_frontend_program_status {
   NotDerivable,
   MissingInstrument,
   WholeCorpusEmissionBoard,
-  NamespaceStepSubjectRoster,
-  RequiredCiPhaseRoster,
+  PhaseCargoExecutionFact,
+  DeclaringIdentitySpellingCensus,
   all_missing_instruments,
+  conditionally_awaited_instruments,
+  stages_awaiting,
+  stage_status,
+  stage_startability,
+  stage_prerequisite_names_by_class,
+  wave_admission_enrolment_outstanding,
+  stage_subject_outstanding,
   InstrumentObstacle,
   NotBuilt,
   RefusedByAuthority,
@@ -410,25 +452,110 @@ test fn the_whole_corpus_board_is_awaited_by_exactly_these_three() -> Bool {
     && any(waiting, l => l == milestone_label(m: SelfHostCorpusEmitsCleanly))
 }
 
-// THE SUBSTITUTION CONTROL. The two three-milestone instruments have DISJOINT memberships, so an
-// exchange between them preserves both counts and both cardinalities while making both sets wrong.
-// Asserting each set's exact identities plus this disjointness is what a count -- or a count plus a
-// single anchor identity, which is what this arm checked in its first cut -- cannot see.
-test fn the_two_three_milestone_instruments_do_not_share_a_milestone() -> Bool {
-  let board = milestones_awaiting(i: WholeCorpusEmissionBoard)
-  let roster = milestones_awaiting(i: NamespaceStepSubjectRoster)
-  count(roster) == 3
-    && any(roster, l => l == milestone_label(m: NamespaceFirstSemanticWave))
-    && any(roster, l => l == milestone_label(m: NamespaceFixForwardComplete))
-    && any(roster, l => l == milestone_label(m: NamespaceGrammarRetired))
-    && all(board, l => count(roster |> filter(other => other == l)) == 0)
+// THE THREE DELETION MILESTONES ARE WIRED TO THE SUBJECT ROSTER -- the same wiring relation as
+// the S4a arm: the milestone's members equal its stage's declared-subject fold, re-derived here
+// from the roster's own sources (subjects_deleted_at + subject_probe_list) rather than obtained
+// from the carrier's stage_subject_outstanding, so a fold that adds or drops a member is visible
+// instead of cancelling on both sides. Moves on both sides as waves retire rows; cannot red on
+// progress.
+fn expected_stage_subjects(stage: NamespaceCutStage) -> List<String> {
+  subjects_deleted_at(stage: stage)
+    |> flat_map(s => subject_probe_list(s: s))
+    |> map(p => probe_render(p: p))
 }
 
-// THE DISCRIMINATING ARM FOR THE SAME JOIN: an instrument that answers ONE milestone must not
-// report three, which is what a fold accidentally ignoring its predicate would produce.
-test fn a_single_milestone_instrument_reports_one() -> Bool {
-  count(milestones_awaiting(i: RequiredCiPhaseRoster)) == 1
-    && count(milestones_awaiting(i: NamespaceStepSubjectRoster)) == 3
+test fn the_deletion_milestones_are_wired_to_their_stage_subjects() -> Bool {
+  standing_agrees_with_population(
+    s: milestone_status(m: NamespaceFirstSemanticWave),
+    expected: expected_stage_subjects(stage: StageXL5Waves))
+    && standing_agrees_with_population(
+         s: milestone_status(m: NamespaceFixForwardComplete),
+         expected: expected_stage_subjects(stage: StageXL6AtomicCutover))
+    && standing_agrees_with_population(
+         s: milestone_status(m: NamespaceGrammarRetired),
+         expected: expected_stage_subjects(stage: StageXL7GrammarDeletion))
+}
+
+// THE WAVE-ADMISSION ENROLMENT FOLD ANSWERS BOTH WAYS AT FIXTURE GRAIN -- the RED the live
+// roster cannot author (the phase is enrolled) is authored here as a roster without it.
+test fn the_wave_admission_enrolment_fold_answers_both_ways() -> Bool {
+  count(wave_admission_enrolment_outstanding(phases: [ParsePhase])) == 1
+    && count(wave_admission_enrolment_outstanding(phases: [ParsePhase, NamespaceWaveAdmissionPhase])) == 0
+}
+
+// AND THE MILESTONE IS WIRED TO THAT FOLD OVER THE LIVE ROSTER -- the same self-comparison-as-
+// wiring-claim shape as the S4a arm: rewiring the milestone off the phase roster reds this.
+test fn the_wave_admission_milestone_is_wired_to_the_phase_roster() -> Bool {
+  standing_agrees_with_population(
+    s: milestone_status(m: NamespaceWaveAdmissionEnrolled),
+    expected: wave_admission_enrolment_outstanding(phases: required_ci_phases))
+}
+
+// THE BASELINE MILESTONE'S TWO ARMS, CHECKED WITHOUT PINNING TODAY'S CAPABILITY. While capture is
+// blocked the milestone must carry exactly the capability fold's reasons; when capture becomes
+// available the contract is the NotDerivable arm, and this witness accepts it rather than redding
+// on that legitimate transition (the backward contract this file has been corrected for twice).
+test fn the_baseline_milestone_follows_the_capture_capability() -> Bool {
+  match legacy_baseline_capture_capability() {
+    CaptureBlocked { phase: p, cause: c } =>
+      standing_agrees_with_population(
+        s: milestone_status(m: NamespaceBaselineObservationComplete),
+        expected: capture_blocked_reason(c: CaptureBlocked { phase: p, cause: c }))
+    CaptureAvailable =>
+      standing_is(want: ClassNotDerivable, s: milestone_status(m: NamespaceBaselineObservationComplete))
+  }
+}
+
+// THE ACTIVATION RECEIPT GATE, AT FIXTURE GRAIN IN BOTH DIRECTIONS: an empty held-roster leaves
+// every required kind outstanding by identity, and holding exactly the rehearsal receipt removes
+// exactly that kind -- so the fold is keyed on identity, not on count.
+test fn the_activation_receipt_fold_is_keyed_on_receipt_identity() -> Bool {
+  let empty_outstanding = activation_receipts_outstanding(held: [])
+  let rehearsal_held = activation_receipts_outstanding(held: [
+    ActivationReceipt {
+      kind: RehearsalFailureRosterDigest,
+      activation_base_commit: "fixture-base" as NonEmptyStr,
+      digest: "fixture-digest" as NonEmptyStr,
+    }
+  ])
+  count(empty_outstanding) == count(required_activation_receipt_kinds)
+    && all(required_activation_receipt_kinds,
+         k => any(empty_outstanding, o => o == activation_receipt_kind_label(k: k)))
+    && count(rehearsal_held) + 1 == count(required_activation_receipt_kinds)
+    && !any(rehearsal_held, o => o == activation_receipt_kind_label(k: RehearsalFailureRosterDigest))
+    && count(activation_receipt_kind_outstanding(kind: RehearsalFailureRosterDigest, held: [])) == 1
+}
+
+// STAGE STARTABILITY AGREES WITH ITS PREREQUISITE STANDINGS, over the whole chain, re-derived
+// through the carrier's own per-class partition -- the same law the milestone arm asserts, so
+// the stage classifier cannot silently stop consulting either edge kind.
+test fn every_stage_startability_agrees_with_its_prerequisite_standings() -> Bool {
+  all(namespace_cut_stages, s =>
+    startability_matches(
+      a: stage_startability(s: s),
+      b: startability_from_populations(
+        unanswerable: stage_prerequisite_names_by_class(s: s, want: ClassNotDerivable),
+        blocking: stage_prerequisite_names_by_class(s: s, want: ClassOutstanding))))
+}
+
+// THE CHAIN'S STAGE LABELS ARE DISTINCT -- the same counted-second-representation guard as the
+// milestone roster: a duplicated stage entry would silently double a report row.
+test fn the_stage_roster_entries_are_distinct() -> Bool {
+  let labels = namespace_cut_stages |> map(s => namespace_cut_stage_label(s: s) as String)
+  all(labels, l => count(labels |> filter(other => other == l)) == 1)
+}
+
+// THE SHARED-DEMAND JOIN'S SINGLETON ARMS, at identity grain: the cargo-execution fact is awaited
+// by exactly the cargo milestone, and the spelling census by exactly the XL-3 stage -- the row
+// that would read as dead if the instrument report only joined milestones.
+test fn the_two_new_instruments_are_awaited_at_the_right_grain() -> Bool {
+  let cargo = milestones_awaiting(i: PhaseCargoExecutionFact)
+  let spelling_m = milestones_awaiting(i: DeclaringIdentitySpellingCensus)
+  let spelling_s = stages_awaiting(i: DeclaringIdentitySpellingCensus)
+  count(cargo) == 1
+    && any(cargo, l => l == milestone_label(m: SelfHostCargoPhaseEnrolled))
+    && count(spelling_m) == 0
+    && count(spelling_s) == 1
 }
 
 // THE INSTRUMENT ROSTER IS THE SAME COUNTED SECOND REPRESENTATION THE MILESTONE ROSTER IS, for the
@@ -438,7 +565,9 @@ test fn a_single_milestone_instrument_reports_one() -> Bool {
 test fn every_declared_instrument_is_distinct_and_awaited() -> Bool {
   let labels = all_missing_instruments |> map(i => missing_instrument_label(i: i))
   all(labels, l => count(labels |> filter(other => other == l)) == 1)
-    && all(all_missing_instruments, i => count(milestones_awaiting(i: i)) > 0)
+    && all(all_missing_instruments,
+         i => count(milestones_awaiting(i: i)) + count(stages_awaiting(i: i)) > 0
+           || any(conditionally_awaited_instruments, c => missing_instrument_label(i: c) == missing_instrument_label(i: i)))
 }
 
 // UNBUILT AND REFUSED ARE DIFFERENT STATES WITH DIFFERENT REMEDIES, and this arm now exhibits that
