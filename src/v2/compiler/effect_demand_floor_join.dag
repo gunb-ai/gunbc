@@ -56,6 +56,8 @@ type FloorStandingCounts {
   declined_long_module: Int
   declined_fixture_member: Int
   declined_outside_required_gate: Int
+  declined_outside_gate_closure: Int
+  declined_discovery_excluded: Int
   declined_cost_debt: Int
 }
 
@@ -129,6 +131,8 @@ fn floor_join_disposition_name(d: RequiredFloorDisposition) -> String {
     DeclinedLongModule { matched_prefix } => "declined_long_module",
     DeclinedFixtureMember { matched_prefix } => "declined_fixture_member",
     DeclinedOutsideRequiredGate => "declined_outside_required_gate",
+    DeclinedOutsideGateClosure => "declined_outside_gate_closure",
+    DeclinedDiscoveryExcluded { matched_substring } => "declined_discovery_excluded",
     DeclinedCostDebt => "declined_cost_debt"
   }
 }
@@ -140,17 +144,21 @@ fn floor_join_counts_zero() -> FloorStandingCounts {
     declined_long_module: 0,
     declined_fixture_member: 0,
     declined_outside_required_gate: 0,
+    declined_outside_gate_closure: 0,
+    declined_discovery_excluded: 0,
     declined_cost_debt: 0
   }
 }
 
 fn floor_join_counts_add(c: FloorStandingCounts, d: RequiredFloorDisposition) -> FloorStandingCounts {
   match d {
-    Planned => FloorStandingCounts { offered: c.offered + 1, planned: c.planned + 1, declined_long_module: c.declined_long_module, declined_fixture_member: c.declined_fixture_member, declined_outside_required_gate: c.declined_outside_required_gate, declined_cost_debt: c.declined_cost_debt },
-    DeclinedLongModule { matched_prefix } => FloorStandingCounts { offered: c.offered + 1, planned: c.planned, declined_long_module: c.declined_long_module + 1, declined_fixture_member: c.declined_fixture_member, declined_outside_required_gate: c.declined_outside_required_gate, declined_cost_debt: c.declined_cost_debt },
-    DeclinedFixtureMember { matched_prefix } => FloorStandingCounts { offered: c.offered + 1, planned: c.planned, declined_long_module: c.declined_long_module, declined_fixture_member: c.declined_fixture_member + 1, declined_outside_required_gate: c.declined_outside_required_gate, declined_cost_debt: c.declined_cost_debt },
-    DeclinedOutsideRequiredGate => FloorStandingCounts { offered: c.offered + 1, planned: c.planned, declined_long_module: c.declined_long_module, declined_fixture_member: c.declined_fixture_member, declined_outside_required_gate: c.declined_outside_required_gate + 1, declined_cost_debt: c.declined_cost_debt },
-    DeclinedCostDebt => FloorStandingCounts { offered: c.offered + 1, planned: c.planned, declined_long_module: c.declined_long_module, declined_fixture_member: c.declined_fixture_member, declined_outside_required_gate: c.declined_outside_required_gate, declined_cost_debt: c.declined_cost_debt + 1 }
+    Planned => FloorStandingCounts { offered: c.offered + 1, planned: c.planned + 1, declined_long_module: c.declined_long_module, declined_fixture_member: c.declined_fixture_member, declined_outside_required_gate: c.declined_outside_required_gate, declined_outside_gate_closure: c.declined_outside_gate_closure, declined_discovery_excluded: c.declined_discovery_excluded, declined_cost_debt: c.declined_cost_debt },
+    DeclinedLongModule { matched_prefix } => FloorStandingCounts { offered: c.offered + 1, planned: c.planned, declined_long_module: c.declined_long_module + 1, declined_fixture_member: c.declined_fixture_member, declined_outside_required_gate: c.declined_outside_required_gate, declined_outside_gate_closure: c.declined_outside_gate_closure, declined_discovery_excluded: c.declined_discovery_excluded, declined_cost_debt: c.declined_cost_debt },
+    DeclinedFixtureMember { matched_prefix } => FloorStandingCounts { offered: c.offered + 1, planned: c.planned, declined_long_module: c.declined_long_module, declined_fixture_member: c.declined_fixture_member + 1, declined_outside_required_gate: c.declined_outside_required_gate, declined_outside_gate_closure: c.declined_outside_gate_closure, declined_discovery_excluded: c.declined_discovery_excluded, declined_cost_debt: c.declined_cost_debt },
+    DeclinedOutsideRequiredGate => FloorStandingCounts { offered: c.offered + 1, planned: c.planned, declined_long_module: c.declined_long_module, declined_fixture_member: c.declined_fixture_member, declined_outside_required_gate: c.declined_outside_required_gate + 1, declined_outside_gate_closure: c.declined_outside_gate_closure, declined_discovery_excluded: c.declined_discovery_excluded, declined_cost_debt: c.declined_cost_debt },
+    DeclinedOutsideGateClosure => FloorStandingCounts { offered: c.offered + 1, planned: c.planned, declined_long_module: c.declined_long_module, declined_fixture_member: c.declined_fixture_member, declined_outside_required_gate: c.declined_outside_required_gate, declined_outside_gate_closure: c.declined_outside_gate_closure + 1, declined_discovery_excluded: c.declined_discovery_excluded, declined_cost_debt: c.declined_cost_debt },
+    DeclinedDiscoveryExcluded { matched_substring } => FloorStandingCounts { offered: c.offered + 1, planned: c.planned, declined_long_module: c.declined_long_module, declined_fixture_member: c.declined_fixture_member, declined_outside_required_gate: c.declined_outside_required_gate, declined_outside_gate_closure: c.declined_outside_gate_closure, declined_discovery_excluded: c.declined_discovery_excluded + 1, declined_cost_debt: c.declined_cost_debt },
+    DeclinedCostDebt => FloorStandingCounts { offered: c.offered + 1, planned: c.planned, declined_long_module: c.declined_long_module, declined_fixture_member: c.declined_fixture_member, declined_outside_required_gate: c.declined_outside_required_gate, declined_outside_gate_closure: c.declined_outside_gate_closure, declined_discovery_excluded: c.declined_discovery_excluded, declined_cost_debt: c.declined_cost_debt + 1 }
   }
 }
 
