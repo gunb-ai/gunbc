@@ -1,6 +1,7 @@
 module test.claim.spark.spark_serving_observation_transaction_witness_test
 
 import std.types { Bool, List, NonEmptyStr, String }
+import std.algebra { string_contains }
 import product.placement_supply { HostIdentity }
 import extdeps.ssh.session { SshSessionExecResult }
 import gunbc.spark.serving_observation_transaction {
@@ -150,20 +151,9 @@ test fn dropping_one_required_capture_refuses_and_names_it() -> Bool {
   )
   match admission(captures: without_linger) {
     SparkServingTransactionAdmitted { txn: _ } => false
-    SparkServingTransactionRefused { cause: _ } =>
-      length(
-        filter(
-          spark_serving_transaction_missing_legs(
-            txn: SparkServingObservationTransaction {
-              host: subject_host,
-              attempt: "x" as NonEmptyStr,
-              locus: "y" as NonEmptyStr,
-              captures: without_linger,
-            },
-          ),
-          k => k == ("linger" as NonEmptyStr),
-        ),
-      ) == 1
+    SparkServingTransactionRefused { cause: why } =>
+      string_contains(s: why as String, pattern: "linger")
+        && length(without_linger) == (length(complete_captures()) - 1)
   }
 }
 
