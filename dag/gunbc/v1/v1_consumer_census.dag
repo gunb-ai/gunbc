@@ -219,9 +219,9 @@ data v1_consumer_census_population_dissolution: DissolutionCondition = unbound_d
 // THE PRODUCERS. One declaration per instrument, so a row cites a producer rather than restating a
 // command, and re-deriving the whole census is reading the commands below rather than every row.
 
-data v1_census_revision: String = "4012c89dcbccc0307430e965e5637dc01f4ddf0e"
+data v1_census_revision: String = "0bdb8dc3a22cd4cb7736b7e83d4df6c132051259"
 
-data v1_census_tree: String = "a47ed8804543badf16f157e8002ba18d1e5f3ba9"
+data v1_census_tree: String = "168f313cdd9562ff01334c3ac2d154f4c5db6d96"
 
 data producer_workflow_argv: DiscoveryProducer = discovery_producer(
   instrument: "argv and cargo invocations in the emitted workflow surface, traced back to the .dag step declaration that emits each one",
