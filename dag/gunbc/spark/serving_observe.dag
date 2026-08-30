@@ -130,6 +130,7 @@ import gunbc.spark.serving_observation_transaction {
   spark_serving_observation_transaction_of,
   spark_serving_transaction_result,
   SparkServingObservationProvenance,
+  spark_serving_observation_provenance_of,
   ProbeLoadState, ProbeIsActive, ProbeVersion, ProbeTags, ProbeNvidiaDriver,
   ProbeRuntimeReceipt, ProbeActiveEnter, ProbeDefaultTargetEnter, ProbeUptime,
   ProbeGrants, ProbePasswd, ProbeAuthorizedKeys, ProbeLinger,
@@ -595,11 +596,11 @@ fn spark_serving_host_observation(
 fn spark_serving_transaction_provenance(
   txn: SparkServingObservationTransaction,
 ) -> SparkServingObservationProvenance {
-  SparkServingObservationProvenance {
+  spark_serving_observation_provenance_of(
     host: txn.host,
     attempt: txn.attempt,
     locus: txn.locus,
-  }
+  )
 }
 
 // THE LINGER PROBE WORDS LIVE HERE NOW, and serving_converge_slice_wet imports them rather than
@@ -941,11 +942,11 @@ fn spark_serving_host_observation_from_refused_transaction(
       activity: UnitActivityUnobserved,
     },
     linger: LingerUnobservedState,
-    provenance: SparkServingObservationProvenance {
+    provenance: spark_serving_observation_provenance_of(
       host: host,
       attempt: spark_serving_observe_attempt_identity(),
       locus: "unreached: the transaction was refused before any leg was captured" as NonEmptyStr,
-    },
+    ),
   )
 }
 
