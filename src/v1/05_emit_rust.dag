@@ -12019,11 +12019,11 @@ fn rust_operand_shape_facts(operand: Node, scope: InferScope) -> String {
   concat(
     "rt.name=", rt.name, " rt.authored=", authored_name_at(source_indices: scope.type_env.source_indices, node: rt),
     " rt.conn=", if rt.connective == NoConnective { "none" } else { "some" },
-    " rt.children=", (rt.children |> count) as String, " rt.inferred=", if rt.inferred == none { "absent" } else { "present" },
+    " rt.children=", to_string(value: rt.children |> count), " rt.inferred=", if rt.inferred == none { "absent" } else { "present" },
     " decl.name=", decl.name, " decl.authored=", authored_name_at(source_indices: scope.type_env.source_indices, node: decl),
     " decl.conn=", if decl.connective == NoConnective { "none" } else { "some" },
-    " decl.children=", (decl.children |> count) as String, " decl.inferred=", if decl.inferred == none { "absent" } else { "present" },
-    " decl.params=", (decl.params |> count) as String, " alias_item=", if is_type_alias_item(item: decl, source_indices: scope.type_env.source_indices) { "yes" } else { "no" }
+    " decl.children=", to_string(value: decl.children |> count), " decl.inferred=", if decl.inferred == none { "absent" } else { "present" },
+    " decl.params=", to_string(value: decl.params |> count), " alias_item=", if is_type_alias_item(item: decl, source_indices: scope.type_env.source_indices) { "yes" } else { "no" }
   )
 }
 
