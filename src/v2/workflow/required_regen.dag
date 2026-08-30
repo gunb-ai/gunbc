@@ -482,6 +482,14 @@ fn regen_scope_lists(members: List<String>, member: String) -> Bool {
 // the declared bootstrap edges; the committed population is what is on disk. Taking the bound
 // verbatim would let a member the tree does not carry enter the compared set, where it reads as
 // a missing file rather than as what it is -- a selection naming something outside the tree.
+// A SELECTION IS A FILTER, and saying so is what keeps the answer a List.
+//
+// The affected arm was twice written as list CONSTRUCTION and twice wrong. `Cons` inside an `if`
+// did not resolve at all -- the taken branch is a coproduct and the untaken one is the
+// `List<String>` the accumulator carried. `list_append` then resolved, type-checked, and `length`
+// read it, and still handed the host a `Cons` chain where a flat list was expected ("Variant
+// where a List was expected"). Both were one mistake: building a list where the question is which
+// members of an EXISTING list survive a predicate.
 fn regen_scope_select(scope: RegenEmissionScope, committed: List<String>) -> RegenScopeSelection {
   match scope {
     WholePopulationScope => ScopeSelected { selected: committed }
@@ -490,16 +498,6 @@ fn regen_scope_select(scope: RegenEmissionScope, committed: List<String>) -> Reg
         cause: AffectedSetUnlocatable { paths: paths, reason: reason }
       }
     AffectedScope { members: members } =>
-      // A SELECTION IS A FILTER, and saying so keeps the answer a List.
-      //
-      // This was a hand fold appending with `list_append`, which is the FREE MONOID operation:
-      // it type-checks, `length` reads it, and the value handed back is a `Cons` chain rather
-      // than the flat list the caller asked for. The host read it as "Variant where a List was
-      // expected" (measured by execution, CI rust-unit-tests at 7531b272 and locally after).
-      // An earlier revision used `Cons` directly and did not resolve at all, because the two
-      // branches of the `if` were a coproduct and a `List<String>`. Both were the same mistake:
-      // building a list by monoid construction where the question is which members of an
-      // EXISTING list survive a predicate.
       ScopeSelected {
         selected: filter(
           xs: committed,
