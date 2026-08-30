@@ -18,7 +18,7 @@ import extdeps.languages.json.emit { JsonValue, JsonArray, JsonObject, JsonStrin
 import extdeps.ollama.model_store { ollama_blob_file_name }
 import gunbc.spark.serving_terminal_health {
   SparkServingTerminalHealth,
-  SparkServingProbeLegCapture,
+  SparkServingProbeCapture,
   ProbeNeverRan,
   ProbeFailed,
   ProbeAnswered,
