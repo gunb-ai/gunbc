@@ -1,5 +1,7 @@
 module v2.test.lens_wiring_liveness.wiring_liveness_test
 
+import v2.std.node_reflection { resolve_type_node }
+
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

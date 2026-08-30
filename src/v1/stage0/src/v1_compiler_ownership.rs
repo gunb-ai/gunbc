@@ -8,9 +8,8 @@ use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
 use crate::v1_std_core::Cardinality::Required;
 use crate::v1_std_core::ExprData::{
-    ExprBlock, ExprCall, ExprElaboratedLiteral, ExprError, ExprFieldAccess, ExprForEach, ExprIf,
-    ExprLambda, ExprLet, ExprLiteral, ExprMatch, ExprMethodCall, ExprRecordLit, ExprReturn,
-    ExprVar, NoExprData,
+    ExprBlock, ExprCall, ExprError, ExprFieldAccess, ExprForEach, ExprIf, ExprLambda, ExprLet,
+    ExprLiteral, ExprMatch, ExprMethodCall, ExprRecordLit, ExprReturn, ExprVar, NoExprData,
 };
 use crate::v1_std_core::InferredNode::Resolved;
 use crate::v1_std_core::VarBindingKind::{FunctionValueBinding, LocalValueBinding};
@@ -171,11 +170,11 @@ pub fn record_use(
             Some(usage) => usage.clone(),
             None => Rc::new(BindingUsage {
                 name: name.clone(),
-                binding_kind: None,
+                binding_kind: std::option::Option::None,
                 consumers: Rc::new(vec![]),
             }),
         };
-        let effective_kind = if (existing.binding_kind.clone() != None) {
+        let effective_kind = if (existing.binding_kind.clone() != std::option::Option::None) {
             existing.binding_kind.clone()
         } else {
             binding_kind.clone()
@@ -310,7 +309,6 @@ pub fn walk_expr(
                 }
             }
             ExprData::ExprLiteral { value: _, .. } => accum.clone(),
-            ExprData::ExprElaboratedLiteral { .. } => accum.clone(),
             ExprData::ExprFieldAccess { .. } => {
                 let base_node = crate::v1_std_core::field_access_base(texpr.clone());
                 match (*base_node.expr_data.clone()).clone() {
@@ -620,7 +618,7 @@ pub fn walk_expr(
                                 usage.name.clone(),
                                 EdgeKind::Read,
                                 "lambda-capture".to_string(),
-                                None,
+                                std::option::Option::None,
                                 0,
                             )
                         },
@@ -650,7 +648,7 @@ pub fn walk_expr(
                                 usage.name.clone(),
                                 EdgeKind::Read,
                                 "foreach-capture".to_string(),
-                                None,
+                                std::option::Option::None,
                                 0,
                             )
                         },
@@ -856,7 +854,6 @@ pub fn collect_callable_refs(
                 _ => v1_rt::rc_empty_set::<String>(),
             },
             ExprData::ExprLiteral { value: _, .. } => v1_rt::rc_empty_set::<String>(),
-            ExprData::ExprElaboratedLiteral { .. } => v1_rt::rc_empty_set::<String>(),
             ExprData::ExprFieldAccess { .. } => collect_callable_refs(
                 crate::v1_std_core::field_access_base(texpr.clone()),
                 si.clone(),
@@ -1332,7 +1329,7 @@ pub fn analyze_ownership(
                                 p_name.clone(),
                                 Rc::new(BindingUsage {
                                     name: p_name.clone(),
-                                    binding_kind: None,
+                                    binding_kind: std::option::Option::None,
                                     consumers: Rc::new(vec![]),
                                 }),
                             ),

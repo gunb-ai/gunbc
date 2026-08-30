@@ -3,8 +3,6 @@
 
 use self::GlobalBareLookupState::*;
 pub use crate::std_algebra::FreeMonoid;
-pub use crate::std_decl_ref::decl_ref;
-pub use crate::std_decl_ref::DeclarationRef;
 use crate::std_induction::RecursionShape::{
     DirectRecursion, ListRecursion, MapValueRecursion, OptionalRecursion, SetRecursion,
 };
@@ -29,11 +27,11 @@ use crate::v1_std_core::Cardinality::*;
 use crate::v1_std_core::CompilerDiagnostic::{AmbiguousReference, UnresolvedType};
 use crate::v1_std_core::Connective::*;
 use crate::v1_std_core::ExprData::*;
-use crate::v1_std_core::InferredNode::Resolved;
+use crate::v1_std_core::InferredNode::*;
 pub use crate::v1_std_core::{
     authored_name_at, empty_intern_table, find_child_named, intern, intern_find, intern_str,
     kernel_span, merge_intern_tables, module_path_segments, param_node_name_at,
-    param_node_type_expr, qualified_last_segment, source_text_at,
+    param_node_type_expr, source_text_at,
 };
 pub use crate::v1_std_core::{
     Cardinality, CompilerDiagnostic, Connective, ExprData, InferredNode, InternTable, NewlineIndex,
@@ -80,7 +78,9 @@ pub fn is_unit_variant_node(variant: Rc<Node>) -> bool {
 }
 
 pub fn variant_lookup_structural(ty: Rc<Node>) -> Rc<Node> {
-    if ((ty.connective.clone() == Connective::NoConnective) && (ty.inferred.clone() != None)) {
+    if ((ty.connective.clone() == Connective::NoConnective)
+        && (ty.inferred.clone() != std::option::Option::None))
+    {
         match ty.inferred.clone().as_deref().cloned() {
             Some(InferredNode::Resolved { node: target, .. }) => target.clone(),
             _ => ty,
@@ -223,16 +223,16 @@ pub fn effective_visible_binding(
 ) -> Option<Rc<TypeBinding>> {
     match v1_rt::map_get(&str_bindings, name.clone()) {
         Some(b) => Some(b.clone()),
-        None => parents
-            .iter()
-            .cloned()
-            .fold(None, |acc: _, parent: Rc<TypeEnv>| {
-                if (acc.clone() != None) {
+        None => parents.iter().cloned().fold(
+            std::option::Option::None,
+            |acc: _, parent: Rc<TypeEnv>| {
+                if (acc.clone() != std::option::Option::None) {
                     acc.clone()
                 } else {
                     v1_rt::map_get(&parent.str_bindings.clone(), name.clone())
                 }
-            }),
+            },
+        ),
     }
 }
 
@@ -1050,7 +1050,7 @@ pub fn lookup_binding_by_name(env: Rc<TypeEnv>, name: String) -> Option<Rc<TypeB
     match lookup_binding_by_name_local(env.clone(), name.clone()) {
         Some(binding) => {
             if listed_import_required_bare_call_blocked(env.clone(), name.clone()) {
-                None
+                std::option::Option::None
             } else {
                 Some(binding.clone())
             }
@@ -1090,7 +1090,7 @@ pub fn listed_import_required_bare_call_blocked(env: Rc<TypeEnv>, name: String) 
 
 pub fn lookup_binding_after_global_bare(env: Rc<TypeEnv>, name: String) -> Option<Rc<TypeBinding>> {
     if global_bare_blocked_by_listed_import_requirement(env.clone(), name.clone()) {
-        None
+        std::option::Option::None
     } else {
         match global_bare_lookup(env.clone(), name.clone()) {
             Some(binding) => Some(binding.clone()),
@@ -1194,7 +1194,7 @@ pub fn global_bare_nearest_ancestor_candidate(
         let scan = candidates.iter().cloned().fold(
             Rc::new(GlobalBareNearestCandidateScan {
                 best_lcp: (0 - 1),
-                best: None,
+                best: std::option::Option::None,
                 tie: false,
             }),
             |acc: Rc<GlobalBareNearestCandidateScan>, cand: Rc<GlobalBareCandidate>| {
@@ -1518,7 +1518,7 @@ pub fn qualify_borrowed_type_names(
         let owner_hit = if rewrite.clone() {
             global_bare_owner_module(env.clone(), owner_module_path.clone(), name.clone())
         } else {
-            None
+            std::option::Option::None
         };
         match owner_hit.clone() {
             Some(mp) => {
@@ -1731,7 +1731,8 @@ pub fn global_bare_is_ambiguous(env: Rc<TypeEnv>, name: String) -> bool {
 }
                 }
             } else {
-                (global_bare_nearest_ancestor(env.module_path.clone(), cands.clone()) == None)
+                (global_bare_nearest_ancestor(env.module_path.clone(), cands.clone())
+                    == std::option::Option::None)
             }
         }
         Some(GlobalBareLookupState::GlobalBareUniqueBinding { .. }) => false,
@@ -2167,13 +2168,13 @@ pub fn env_with_type_variable_bindings(env: Rc<TypeEnv>, tp_names: Rc<Vec<String
                     })),
                     return_cardinality: Cardinality::Required,
                     uses: Rc::new(vec![]),
-                    body: None,
-                    transport: None,
+                    body: std::option::Option::None,
+                    transport: std::option::Option::None,
                     properties: Rc::new(vec![]),
-                    type_annotation: None,
+                    type_annotation: std::option::Option::None,
                     is_self_recursive: false,
                     has_non_tail_self_call: false,
-                    match_pattern: None,
+                    match_pattern: std::option::Option::None,
                     expr_data: Rc::new(ExprData::NoExprData),
                     ident: None,
                 }),
@@ -2221,74 +2222,4 @@ pub fn env_with_type_variable_bindings(env: Rc<TypeEnv>, tp_names: Rc<Vec<String
                 unit_variant_index: updated_index.clone(),
             })
         })
-}
-
-pub fn binding_declares_span(binding: Rc<TypeBinding>, sp: Rc<SourceSpan>) -> bool {
-    match binding.resolved.clone().ident_span.clone() {
-        Some(s) => ((s.file.clone() == sp.file.clone()) && (s.start.clone() == sp.start.clone())),
-        None => false,
-    }
-}
-
-pub fn type_reference_declaration_ref(
-    n: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    env: Rc<TypeEnv>,
-) -> Option<Rc<DeclarationRef>> {
-    {
-        let rt = match n.inferred.clone().as_deref().cloned() {
-            Some(InferredNode::Resolved { node: r, .. }) => r.clone(),
-            _ => n.clone(),
-        };
-        let decl_name = crate::v1_std_core::qualified_last_segment(
-            crate::v1_std_core::authored_name_at(source_indices.clone(), rt.clone()),
-        );
-        if (decl_name.clone() == "".to_string()) {
-            return None;
-        }
-        match rt.ident_span.clone() {
-            None => None,
-            Some(sp) => match v1_rt::map_get(
-                &env.symbol_index.clone().global_bare.clone(),
-                decl_name.clone(),
-            )
-            .as_deref()
-            .cloned()
-            {
-                Some(GlobalBareLookupState::GlobalBareUniqueBinding {
-                    module_path: mp,
-                    binding: b,
-                    ..
-                }) => {
-                    if binding_declares_span(b.clone(), sp.clone()) {
-                        Some(crate::std_decl_ref::decl_ref(mp.clone(), decl_name.clone()))
-                    } else {
-                        None
-                    }
-                }
-                Some(GlobalBareLookupState::GlobalBareAmbiguousBinding {
-                    candidates: cands,
-                    ..
-                }) => match Rc::new({
-                    let mut __result = Vec::new();
-                    for c in cands.iter().cloned() {
-                        if binding_declares_span(c.binding.clone(), sp.clone()) {
-                            __result.push(c);
-                        }
-                    }
-                    __result
-                })
-                .first()
-                .cloned()
-                {
-                    Some(c) => Some(crate::std_decl_ref::decl_ref(
-                        c.module_path.clone(),
-                        decl_name.clone(),
-                    )),
-                    None => None,
-                },
-                None => None,
-            },
-        }
-    }
 }
