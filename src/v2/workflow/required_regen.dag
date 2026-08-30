@@ -490,17 +490,20 @@ fn regen_scope_select(scope: RegenEmissionScope, committed: List<String>) -> Reg
         cause: AffectedSetUnlocatable { paths: paths, reason: reason }
       }
     AffectedScope { members: members } =>
+      // A SELECTION IS A FILTER, and saying so keeps the answer a List.
+      //
+      // This was a hand fold appending with `list_append`, which is the FREE MONOID operation:
+      // it type-checks, `length` reads it, and the value handed back is a `Cons` chain rather
+      // than the flat list the caller asked for. The host read it as "Variant where a List was
+      // expected" (measured by execution, CI rust-unit-tests at 7531b272 and locally after).
+      // An earlier revision used `Cons` directly and did not resolve at all, because the two
+      // branches of the `if` were a coproduct and a `List<String>`. Both were the same mistake:
+      // building a list by monoid construction where the question is which members of an
+      // EXISTING list survive a predicate.
       ScopeSelected {
-        selected: fold_list(
+        selected: filter(
           xs: committed,
-          empty: no_string_paths,
-          cons: fn(acc, name) {
-            if regen_scope_lists(members: members, member: name) {
-              Cons { head: name, tail: acc }
-            } else {
-              acc
-            }
-          }
+          predicate: fn(name) { regen_scope_lists(members: members, member: name) }
         )
       }
   }
