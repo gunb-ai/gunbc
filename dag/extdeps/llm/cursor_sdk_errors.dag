@@ -24,7 +24,9 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
   further_citations: []
 }
 
-data cursor_sdk_error_codes_note: String = "Stable backend codes from @cursor/sdk errors.d.ts @ 1.0.26. RunError.code carries the wire spelling on terminal turns. Single authority for SDK wire codes — consumed by extdeps.llm.cursor_stream."
+// Stable backend codes from @cursor/sdk errors.d.ts @ 1.0.26. RunError.code carries the wire
+// spelling on terminal turns. Single authority for SDK wire codes — consumed by
+// extdeps.llm.cursor_stream.
 
 type CursorSdkErrorCode
   = CursorSdkAuthenticationError

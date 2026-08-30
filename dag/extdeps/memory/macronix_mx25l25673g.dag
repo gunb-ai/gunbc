@@ -16,7 +16,14 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   }
 }
 
-data mx25l25673g_note: String = "THE REVISION IN THIS LOCATOR WAS READ FROM THE PUBLISHED ATTACHMENT NAME, NOT FROM A COVER PAGE, and the distinction is recorded because it is exactly the kind of shortcut that later reads as a citation. The attachment is named for revision v1.9; a reader who opens it and finds a different revision is correcting a filename-derived claim, not a document-derived one. No package, capacity or interface fact is recorded here. WHY THIS ROW IS NOT A SELECTION: Ampere's Mt. Jade reference names this part for a firmware store, which is a reference-design precedent — a relation between a part and a particular board, and so a product-layer fact carried with that board rather than inside an upstream module."
+// THE REVISION IN THIS LOCATOR WAS READ FROM THE PUBLISHED ATTACHMENT NAME, NOT FROM A COVER PAGE,
+// and the distinction is recorded because it is exactly the kind of shortcut that later reads as a
+// citation. The attachment is named for revision v1.9; a reader who opens it and finds a different
+// revision is correcting a filename-derived claim, not a document-derived one. No package, capacity
+// or interface fact is recorded here. WHY THIS ROW IS NOT A SELECTION: Ampere's Mt. Jade reference
+// names this part for a firmware store, which is a reference-design precedent — a relation between
+// a part and a particular board, and so a product-layer fact carried with that board rather than
+// inside an upstream module.
 
 data mx25l25673g: CatalogPartIdentity = CatalogPartIdentity {
   ordering_part_number: "MX25L25673G",

@@ -4,7 +4,27 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-data emitted_call_target_realization_witness_note: String = "PERMANENT REGRESSION CONTROLS for the three emission defects that stood between the v2 compiler closure and a Rust crate rustc would accept (gunbc#9664 milestones 1 and 2). All three are one family -- emission ASSERTING a realization it had not established -- and each row here is the discriminating RED for one of them, paired with a boundary control that would go red if the repair had over-reached in the opposite direction.\n\nMEASURED POPULATIONS on the emitted closure at main 6447dd4, by `gunbc compile --entry src/v2/compiler/00_compile.dag --target rust` then `cargo check`: 260 coded errors, 254 of them E0425. Class C 102 (98 `v2` + 4 `std`), length 73, class B 65 (member 11, apply 11, is_empty 5, allocate_literal 4, step 3, init 3, and a tail of ones and twos).\n\nWHY THESE ARE NOT A SNAPSHOT. Each class's positive and negative assertion differ only in the fact the repair added, so no single edit satisfies both directions. The C rows would flip if decl_name reverted to the authored spelling; the length rows would flip if the registry membership gate were removed OR if the declaration fallback were extended to seams; the B rows would flip if runtime_bridge went back to a literal. The boundary controls (empty_map, a real bridge method) would flip if any of the three repairs had instead stopped emission reaching v1_rt at all.\n\nDISSOLVE-ON: never. Emission may change target SPELLING, but it may never again name a runtime symbol it has not established exists."
+// PERMANENT REGRESSION CONTROLS for the three emission defects that stood between the v2 compiler
+// closure and a Rust crate rustc would accept (gunbc#9664 milestones 1 and 2). All three are one
+// family -- emission ASSERTING a realization it had not established -- and each row here is the
+// discriminating RED for one of them, paired with a boundary control that would go red if the
+// repair had over-reached in the opposite direction.
+//
+// MEASURED POPULATIONS on the emitted closure at main 6447dd4, by `gunbc compile --entry
+// src/v2/compiler/00_compile.dag --target rust` then `cargo check`: 260 coded errors, 254 of them
+// E0425. Class C 102 (98 `v2` + 4 `std`), length 73, class B 65 (member 11, apply 11, is_empty 5,
+// allocate_literal 4, step 3, init 3, and a tail of ones and twos).
+//
+// WHY THESE ARE NOT A SNAPSHOT. Each class's positive and negative assertion differ only in the
+// fact the repair added, so no single edit satisfies both directions. The C rows would flip if
+// decl_name reverted to the authored spelling; the length rows would flip if the registry
+// membership gate were removed OR if the declaration fallback were extended to seams; the B rows
+// would flip if runtime_bridge went back to a literal. The boundary controls (empty_map, a real
+// bridge method) would flip if any of the three repairs had instead stopped emission reaching v1_rt
+// at all.
+//
+// DISSOLVE-ON: never. Emission may change target SPELLING, but it may never again name a runtime
+// symbol it has not established exists.
 
 // THE PROBE IMPORTS v2.std.collection AND THEN CALLS IT BY ITS QUALIFIED NAME, which looks
 // redundant and is not. compile_dag_rust_emit_check compiles through the witness harness's
@@ -619,5 +639,16 @@ test fn w_sort_by_over_a_generic_list_names_the_generic_in_its_closures() -> Boo
     "src/test_claim_generic_sort_typed_probe.rs",
     ["|a: &T, b: &T|"],
     ["|x: _|"]
+  )
+}
+
+// A native-realized alias at a VARIANT record field renders the machine scalar bare: the shared
+// wrap must not fire on `predecessor: Nat` (it rendered `Rc<Nat>` while the constructor passed i64).
+test fn w_native_alias_at_a_variant_record_field_renders_the_machine_scalar_bare() -> Bool {
+  compile_dag_rust_emit_check(
+    "module test.claim.nat_variant_field_probe\nimport std.nat { Nat }\ntype PMx = PMSucc { predecessor: Nat }\nfn pm(n: Nat) -> PMx { PMSucc { predecessor: n } }\n",
+    "src/test_claim_nat_variant_field_probe.rs",
+    ["predecessor: i64,"],
+    ["predecessor: Rc<Nat>,", "predecessor: Rc<i64>,"]
   )
 }

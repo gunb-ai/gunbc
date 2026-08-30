@@ -15,30 +15,30 @@ run on srv2 on 2026-07-30 against codex-cli **0.145.0**, captured before the
 `codex login` has **no structured output mode**. `--help` lists only
 `-c/--config`, `--with-api-key` and `--device-auth`; there is no `--json` on
 either `login` or `login status`. So the URL and one-time code can only be read
-from a text surface, and a parser over that surface is the honest realization
-rather than a shortcut — the richer source does not exist to be read.
+from a text surface, and a parser over it is the honest realization — the richer
+source does not exist.
 
 That makes this capture load-bearing. A parser written against remembered or
-re-typed output is untested against the bytes the tool actually emits, and the
-first thing such a parser gets wrong is the ANSI wrapping: the code is
-`ESC[94mYWCU-V8ESC ESC[0m`, not `YWCU-V8ESC`, so a naive line-trim yields a code
-with escape bytes in it that the user then pastes and OpenAI rejects.
+re-typed output is untested against the bytes the tool emits, and the first
+thing it gets wrong is the ANSI wrapping: the code is `ESC[94mYWCU-V8ESC ESC[0m`,
+not `YWCU-V8ESC`, so a naive line-trim yields a code with escape bytes that
+OpenAI rejects when pasted.
 
 ## Why `--device-auth` and not plain `codex login`
 
 Plain `codex login` starts a callback server and prints
 `redirect_uri=http://localhost:1455/auth/callback`. On a headless host that
 redirect **can never resolve from the operator's browser** — localhost is the
-server, not their machine. codex says so itself in its final line:
+server, not their machine. codex's own final line says so:
 
 > On a remote or headless machine? Use `codex login --device-auth` instead.
 
-The device flow needs no inbound port and no browser on the host: a URL and a
-short code, entered anywhere. It is the only flow a remote dashboard can
+The device flow needs no inbound port and no browser on the host — a URL and a
+short code, entered anywhere — so it is the only flow a remote dashboard can
 usefully surface.
 
 ## Non-goal
 
 The code in this file is **expired and consumed**; it authenticates nothing.
-It is retained as a parse fixture, not as a credential — which is why it may
-live in the repository at all.
+It is retained as a parse fixture, not a credential, which is why it may live in
+the repository.

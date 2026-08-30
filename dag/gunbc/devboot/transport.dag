@@ -19,7 +19,12 @@ import extdeps.git.plumbing {
   GitRefObservationRefused,
 }
 
-data devboot_shell_transport_note: String = "Counted retained-transport roster for the WitnessBin.Run sites of gunbc.devboot.build, gunbc.devboot.produce, and this module -- the directory ensure runs HERE, on the six callers' behalf, so a roster scoped to the other two modules would no longer name every site. Runtime-present devboot modules are not yet on host_effect_apply typed effects; every raw argv site names a RetainedWitnessRun row with reason + dissolve-on = shell→intent Phase 2 (gunbc.host_effect_realize host_effect_apply). No unmarked WitnessBin.Run calls survive review."
+// Counted retained-transport roster for the WitnessBin.Run sites of gunbc.devboot.build,
+// gunbc.devboot.produce, and this module -- the directory ensure runs HERE, on the six callers'
+// behalf, so a roster scoped to the other two modules would no longer name every site.
+// Runtime-present devboot modules are not yet on host_effect_apply typed effects; every raw argv
+// site names a RetainedWitnessRun row with reason + dissolve-on = shell→intent Phase 2
+// (gunbc.host_effect_realize host_effect_apply). No unmarked WitnessBin.Run calls survive review.
 
 // THE SEVENTEEN GIT ROWS THAT USED TO SIT HERE ARE DELETED RATHER THAN REPOINTED, and the
 // distinction is the point. Every row in this roster declares the same dissolution target,
@@ -156,7 +161,6 @@ fn devboot_observe_ref(repo_root: String, ref_name: String) -> GitRefObservation
   )
   devboot_ref_observation(exit_code: read.exit_code, revision: read.revision, stderr: read.stderr)
 }
-
 
 type WitnessBinRunOutcome {
   success: Bool

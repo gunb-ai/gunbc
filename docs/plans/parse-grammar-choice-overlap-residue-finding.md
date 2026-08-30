@@ -40,26 +40,24 @@ A  dag/extdeps/cache/catalog_placement.dag
 6 accepted, 4 refused — all four the same reason
 ```
 
-**The grouping is the finding, not the rate.** Ten files do not support a corpus refusal rate and
-none is claimed here. What ten files do support is that five separate refusals across two source
-roots — four sampled at random, plus `extdeps/shell/exec.dag` found independently — share a single
-named cause. This is one grammar deficiency with many victims, not a scattered set of
-file-specific problems. Group by *why*, not by where the fix would be typed.
+**The grouping is the finding, not the rate.** Ten files support no corpus refusal rate, and none is
+claimed. They do support that five refusals across two source roots — four sampled at random, plus
+`extdeps/shell/exec.dag` found independently — share one named cause: one grammar deficiency with
+many victims, not scattered file-specific problems. Group by *why*, not by where the fix would be typed.
 
 ## Why it is invisible
 
 `parse_dag_source_ast` has **no consumer**. Its only two call sites are inside
-`canonical_dag_source_parse_print_law`, and that function's name occurs exactly once in the entire
-tree — its own definition. It has no callers.
+`canonical_dag_source_parse_print_law`, whose name occurs exactly once in the tree — its own
+definition. It has no callers.
 
-So the deficiency is not hiding. It is simply never asked: the only code path that would surface
-it is a law that nothing executes. That is DESIGN §5's **specification-without-execution** class,
-sitting in the compiler's own source authority — a parse/print round-trip law, written, typed,
-and never run.
+So the deficiency is not hiding; it is never asked, because the only path that would surface it is
+a law nothing executes — DESIGN §5's **specification-without-execution** class, in the compiler's
+own source authority: a parse/print round-trip law, written, typed, never run.
 
-The two halves are one fact. A law nobody runs cannot report the deficiency it would catch, and a
-deficiency nobody measures leaves the law looking healthy. Executing the law is what turned an
-unknown into a named reason with a file list.
+The two halves are one fact: a law nobody runs cannot report the deficiency it would catch, and an
+unmeasured deficiency leaves the law looking healthy. Executing the law turned an unknown into a
+named reason with a file list.
 
 ## Why this matters beyond the census that found it
 
@@ -67,10 +65,10 @@ unknown into a named reason with a file list.
    `semantic_ir_from_source_with_model` and the normalize/resolve chain — the same
    tokenize→parse→normalize→resolve pipeline the `wave1_gate1` body-producer witnesses exercise on
    fixtures. Those witnesses pass on hand-authored three-line modules. The refusal population lives
-   in *authored corpus source*, which is where self-host has to work.
+   in *authored corpus source*, where self-host has to work.
 2. **Fixture-grain evidence is not corpus-grain evidence.** The gap between "parses `module m / fn
-   add`" and "parses `extdeps/shell/exec.dag`" is exactly the gap between a green witness and a
-   working compiler, and today only the first is measured.
+   add`" and "parses `extdeps/shell/exec.dag`" is the gap between a green witness and a working
+   compiler; only the first is measured today.
 3. **It is a wall on any future consumer of the parse route**, not just this census — including the
    corpus-parse alternative considered in the
    [projection increment spec](parsed-body-projection-increment-spec.md), which this finding is
@@ -87,6 +85,6 @@ unknown into a named reason with a file list.
 ## Next step
 
 Measure the refusal population properly — every file under both production roots, verdict and
-reason per file, emitted as a structured artifact — and reduce the refusals to the grammar
-production(s) at fault. That is a bounded measurement on an existing route and needs no seed
-change. Repairing the grammar is downstream of knowing which productions overlap.
+reason per file, as a structured artifact — and reduce the refusals to the grammar production(s) at
+fault: a bounded measurement on an existing route, no seed change. Repairing the grammar is
+downstream of knowing which productions overlap.

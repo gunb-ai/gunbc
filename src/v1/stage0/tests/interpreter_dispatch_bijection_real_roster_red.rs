@@ -3,29 +3,29 @@
 //! `v1_interpreter.rs` handler-arm list -- not a mirrored shape in a disconnected fixture crate.
 //!
 //! `interpreter_dispatch_bijection_compile_red.rs` proves rustc refuses a non-exhaustive match
-//! and an unresolvable macro invocation in the abstract (claim A). That is necessary but not
-//! sufficient: a fixture that only reproduces the *shape* stays green even if the real production
-//! macro in `v1_interpreter.rs` regains a wildcard catch-all -- exactly the state `origin/main`
-//! is in today for the bridge-family sites, and exactly the DESIGN.md §5 tell ("a check
-//! satisfiable by editing the declaration while the realization still lies"). This file tests the
-//! real thing: it perturbs a clone of the actual roster (or the actual hand-authored arm list),
-//! regenerates `v1_interpreter_dispatch_generated.rs` via the real `gunbc run ... main_wet`
-//! pipeline, and `cargo build`s the real `v1-compiler` crate.
+//! and an unresolvable macro invocation in the abstract (claim A). Necessary, not sufficient: a
+//! fixture reproducing only the *shape* stays green if the production macro in
+//! `v1_interpreter.rs` regains a wildcard catch-all -- the state `origin/main` is in today for the
+//! bridge-family sites, and the DESIGN.md §5 tell ("a check satisfiable by editing the declaration
+//! while the realization still lies"). This file perturbs a clone of the actual roster (or the
+//! hand-authored arm list), regenerates `v1_interpreter_dispatch_generated.rs` via the real
+//! `gunbc run ... main_wet` pipeline, and `cargo build`s the real `v1-compiler` crate.
 //!
-//! EXPENSIVE by construction (clone + real regen + real full-crate `cargo build`, twice) --
-//! `#[ignore]`d per the `route_a_emit_fresh_cargo_green_test.rs` precedent, and per the explicit
-//! ruling that a cargo subprocess must never sit in the per-PR CI discovery lane.
+//! EXPENSIVE by construction (clone + real regen + full-crate `cargo build`, twice) --
+//! `#[ignore]`d per the `route_a_emit_fresh_cargo_green_test.rs` precedent and the ruling that a
+//! cargo subprocess never sits in the per-PR CI discovery lane.
 //!
-//! ENROLLMENT: this check IS the `falsifier_self_host_wet` class (cargo build, process
-//! execution, real gunbc emit -- `gunbc.ci_layer_roots` `falsifier_self_host_wet_note`), but
-//! that lane has no scheduled executor today (`std.witness_admission`
-//! `witness_cadence_has_scheduled_route` returns false for `FalsifierSelfHostWet`, because
-//! `falsifier.yml` was deleted at 611fd02770/#8283), so this file executes only by hand
-//! (`cargo test --release -p v1-compiler --test interpreter_dispatch_bijection_real_roster_red --
-//! --ignored`) -- the same dark-lane state as `artifact_store_fs_witness_test.dag` and
-//! `direct_rust_door_write_compile_witness_test.dag`. See `v2.test.claim.witness_exclusion_reconciliation_test`
-//! `dispatch_bijection_real_roster_red_falsifier_self_host_wet_dark_note` for the full accounting
-//! and shared dissolution trigger. Do not read this test's presence in the tree as "enrolled".
+//! ENROLLMENT: this check IS the `falsifier_self_host_wet` class (cargo build, process execution,
+//! real gunbc emit -- `gunbc.ci_layer_roots` `falsifier_self_host_wet_note`), but that lane has no
+//! scheduled executor today (`std.witness_admission` `witness_cadence_has_scheduled_route` returns
+//! false for `FalsifierSelfHostWet`; `falsifier.yml` was deleted at 611fd02770/#8283), so it runs
+//! only by hand (`cargo test --release -p v1-compiler --test
+//! interpreter_dispatch_bijection_real_roster_red -- --ignored`) -- the same dark-lane state as
+//! `artifact_store_fs_witness_test.dag` and `direct_rust_door_write_compile_witness_test.dag`.
+//! Full accounting and shared dissolution trigger:
+//! `v2.test.claim.witness_exclusion_reconciliation_test`
+//! `dispatch_bijection_real_roster_red_falsifier_self_host_wet_dark_note`. Presence in the tree
+//! is not enrollment.
 
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
@@ -78,10 +78,10 @@ fn write(path: &Path, content: &str) {
     std::fs::write(path, content).unwrap_or_else(|e| panic!("write {}: {e}", path.display()));
 }
 
-/// Runs the real regen entrypoint (`dag/gunbc/instruments/generated_artifact_gate.dag` `main_wet`) inside
-/// `clone_root`, using the already-built `gunbc` binary from the real workspace (the binary's own
-/// behavior is unaffected by the roster perturbation -- it only interprets `.dag` source at
-/// `--source-root`, which points at the clone's mutated copy).
+/// Runs the real regen entrypoint (`dag/gunbc/instruments/generated_artifact_gate.dag` `main_wet`)
+/// inside `clone_root` with the already-built `gunbc` binary from the real workspace (unaffected
+/// by the perturbation -- it only interprets `.dag` source at `--source-root`, the clone's
+/// mutated copy).
 fn regen_generated_artifacts(gunbc_bin: &Path, clone_root: &Path) -> Output {
     Command::new(gunbc_bin)
         .current_dir(clone_root)
@@ -112,13 +112,11 @@ fn cargo_build_v1_compiler(clone_root: &Path) -> Output {
 const ROSTER_REL: &str = "dag/gunbc/v1/v1_interpreter_primitive_surface.dag";
 const INTERPRETER_REL: &str = "src/v1/stage0/src/v1_interpreter.rs";
 
-/// Direction 1: add a roster row at `eval_builtin_inner` with a fresh identity/spelling that has
-/// no corresponding hand-authored `arm` entry in `v1_interpreter.rs`. Regeneration mints a new
-/// `EvalBuiltinArm` variant and a new `eval_builtin_inner_arm!` macro rule for it (both derived
-/// from the roster), but the hand-authored `match arm { ... }` in `v1_interpreter.rs` -- which
-/// item ONE made exhaustive by construction, no wildcard -- was never told about it. That is
-/// exactly the invalid state item ONE's wall exists to make unwritable: real construction wall,
-/// real regression, real `cargo build` failure.
+/// Direction 1: add a roster row at `eval_builtin_inner` with a fresh identity/spelling and no
+/// hand-authored `arm` entry in `v1_interpreter.rs`. Regeneration mints a new `EvalBuiltinArm`
+/// variant and `eval_builtin_inner_arm!` macro rule (both roster-derived), but the hand-authored
+/// `match arm { ... }` -- exhaustive by construction since item ONE, no wildcard -- never learns
+/// of it: the invalid state item ONE's wall makes unwritable, a real `cargo build` failure.
 #[test]
 #[ignore = "Expensive: git clone + real gunbc regen + real `cargo build -p v1-compiler` (falsifier cadence, not per-PR CI)"]
 fn w_red_real_roster_row_with_no_real_handler_arm_refuses_compile() {
@@ -178,11 +176,10 @@ fn w_red_real_roster_row_with_no_real_handler_arm_refuses_compile() {
     let _ = std::fs::remove_dir_all(&clone);
 }
 
-/// Direction 2 (mirror defect): add a hand-authored `arm "..." { "..." } => ...,` entry directly
-/// into `v1_interpreter.rs`'s `eval_builtin_inner` arm list, with NO corresponding roster row.
-/// Regeneration leaves the generated `eval_builtin_inner_arm!` macro without a rule for that
-/// identity (the roster never named it), so the macro invocation the orphan arm compiles down to
-/// fails to expand -- an orphan handler nobody's roster row grounds.
+/// Direction 2 (mirror defect): add a hand-authored `arm "..." { "..." } => ...,` entry to
+/// `v1_interpreter.rs`'s `eval_builtin_inner` arm list with NO roster row. The generated
+/// `eval_builtin_inner_arm!` macro has no rule for that identity, so the orphan arm's macro
+/// invocation fails to expand -- a handler no roster row grounds.
 #[test]
 #[ignore = "Expensive: git clone + real gunbc regen + real `cargo build -p v1-compiler` (falsifier cadence, not per-PR CI)"]
 fn w_red_real_handler_arm_with_no_real_roster_row_refuses_compile() {

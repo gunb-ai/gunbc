@@ -288,15 +288,6 @@ pub fn global_bare_fallback_invariant() -> String {
     CACHED.with(|c: &String| c.clone())
 }
 
-pub fn qualified_module_projection_invariant() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "Grammar lane G1/G1b: container.member module projection in value/type/pattern and fn/data/let type-annotation positions resolves via symbol_index_lookup on the full qualified path (module projection), not value field-access — v2 resolve: TypeNode Conj QN spines; v1 typecheck: lookup_binding_by_name after global_bare; v1 patterns: lookup_variant_in_type routes dotted variant names through symbol_index_lookup. build_symbol_index_census materializes declared-module item paths plus module-unique Disj variant aliases (qualified path always; corpus-unique variants also enter global_bare — mirrors v2 symbol_index_fill_unique_variant_aliases); lookup_qualified_module_projection runs only when the reference carries a dot (fail-closed on miss — never widens to field-access semantics).".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
-}
-
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct GlobalBareCandidate {
     pub module_path: String,
@@ -556,15 +547,6 @@ pub struct TypeEnvCache {
     pub variant_locals: Rc<HashMap<String, Rc<TypeBinding>>>,
 }
 
-pub fn visible_bindings_invariant() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "B1 build_type_env populates ancestry_str_bindings for import chains; lookup_binding_by_name is fail-closed on miss (str_bindings then ancestry_str_bindings then intern+bindings only; 6de571f3 reverted in 80ab63a). flatten_visible_bindings and merge_envs are DELETED (2026-07-06 operator ruling: the parent-recurse counter was a parallel representation guarding a fallback; the fallback is now unwritable by construction — no whole-env flatten exists to call). Visibility reads are one-level: local str_bindings/ancestry_str_bindings, or a fold over parent.str_bindings only (see collect_unit_variant_phantom_matches). Dissolve-on: namespace-as-sole-authority ruling — env maps become a derived projection of namespace reachability.".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
-}
-
 pub fn empty_type_env_cache() -> Rc<TypeEnvCache> {
     Rc::new(TypeEnvCache {
         deps_map: v1_rt::rc_empty_map::<String, Rc<Vec<String>>>(),
@@ -621,15 +603,6 @@ pub fn conflict_is_cross_tree(c: Rc<TypeEnvCacheMergeConflict>) -> bool {
 pub struct GuardedTypeEnvCacheMerge {
     pub cache: Rc<TypeEnvCache>,
     pub conflicts: Rc<Vec<Rc<TypeEnvCacheMergeConflict>>>,
-}
-
-pub fn guarded_cache_union_note() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "Cross-parent cache union (S2a move 2 increment B; lane ruling REVISED 2026-07-11: NOVELTY, not TREE, is the refusal axis). A name reachable from two PEER imports with different bindings is a binding FORK. The union is order-INDEPENDENT by construction: keys present in both sides carrying the SAME binding (declaration-site span fast path, structural fallback) are SKIPPED (also the retained-bytes fix - the unguarded merge materialized a fresh O(|ancestry|) HAMT per module via rc_map_merge path-copy, the measured ~16.3MiB/module residency class); keys carrying DIFFERENT bindings are recorded as a typed, located conflict AND resolved by the pre-cut import-order overlay-wins winner (behavior-preserving: main already resolves these by overlay-wins, so refusing retroactively would regress working resolution, NOT close a fail-open). These conflicts are LEDGERED (out-of-band binding_forks channel, partitioned by tree for dissolution), never diagnostics; refusal is reserved for forks a PR NEWLY introduces (the separate novelty gate). Positional layers keep overlay-wins outside the guard: the kernel scope layer (merge_type_env_cache below) and locals-over-ancestry are lexical nearest-wins from the containment ruling, not peer-merge forks.".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
 }
 
 pub fn binding_same_authority(a: Rc<TypeBinding>, b: Rc<TypeBinding>) -> bool {
@@ -1075,15 +1048,6 @@ pub fn lookup_binding_by_name(env: Rc<TypeEnv>, name: String) -> Option<Rc<TypeB
     }
 }
 
-pub fn closure_independent_bare_free_call_note() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "Closure-independent bare free-call binding (#6985 / #8062): symbols registered here refuse global_bare / pool-coincidence resolution unless the name is in source_visible_names (selective import or kernel surface). Dissolve-on: PrimitiveDefinition identity-join closes the denominator so every importable free fn is registered once with its definer module — not a hand-maintained trim-only list.".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
-}
-
 pub fn bare_free_call_requires_listed_import(name: String) -> bool {
     (name.clone() == "trim".to_string())
 }
@@ -1254,15 +1218,6 @@ pub fn global_bare_nearest_ancestor(
         Some(cand) => Some(cand.binding.clone()),
         std::option::Option::None => std::option::Option::None,
     }
-}
-
-pub fn unique_on_chain_policy_note() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "namespace-resolution-design.md 13 (operator-ratified 2026-07-21), landed as 8 step 1 with step-4 default ON = NamespaceOnlyY (name_resolution_policy_is_namespace_only; host bracket false = ImportScoped byte-for-byte): a bare homonym resolves to the UNIQUE binder on the referencing module's ancestor chain — a candidate is on the chain iff its declaring module path is a leading-segment prefix of (or equal to) TypeEnv.module_path. Exactly one on-chain candidate resolves; two-plus on-chain REFUSES as typed AmbiguousReference with the full chain population; zero on-chain REFUSES as UnresolvedType. Cardinality for the chain population routes through module_path_owner_binding_decide.".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
 }
 
 pub fn global_bare_chain_candidates(
@@ -1450,15 +1405,6 @@ pub fn borrowed_generic_param_names(
             }
         },
     )
-}
-
-pub fn qualify_declaration_position_invariant() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "qualify_borrowed_type_names rewrites REFERENCE positions only. Within a type expression, a NoConnective node's children are generic ARGS (references - rename-eligible); a STRUCTURED node's (Disj/Conj) children are DECLARATIONS (variant names, field names) whose names must never be rewritten - renaming them detaches bare patterns/projections from the decl (a projected coproduct's Independent became std.realization.Independent and every bare match arm missed). Declaration subtrees are walked by qualify_decl_reference_positions: keep the declared name, qualify the inferred payload (a type expr - reference position), recurse into child declarations. The census type-decl pass (census_upgrade_type_decl_binding) uses the SAME walk - one authority for the declaration/reference distinction.".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
 }
 
 pub fn qualify_decl_reference_positions(
@@ -1810,24 +1756,6 @@ pub fn lookup_type_by_name(env: Rc<TypeEnv>, name: String) -> Option<Rc<Node>> {
     }
 }
 
-pub fn type_ref_hit_ne_bind_measure_active_note() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "Host bracket in v1_rt (type_ref_hit_ne_bind_measure_active / _set / with_type_ref_hit_ne_bind_measure) — same shape as name_resolution_policy_is_namespace_only. Armed only by compile_dag_diagnostic_census for the nested synthetic compile (N1a). Default false = production fail-open. Zero production gates consult this. No .dag body can flip it.".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
-}
-
-pub fn type_ref_measure_binding_authority_fn_note() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "MEASUREMENT-ONLY — see gunbc.type_ref_hit_ne_bind_measure type_ref_measure_binding_authority_note. Two arms: bare exact import/local key; qualified self/ancestor containment + symbol_index hit. No same-leaf×span OR-arm.".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
-}
-
 pub fn type_ref_module_path_is_containment_prefix(ancestor: String, descendant: String) -> bool {
     {
         let a_segs = crate::v1_std_core::module_path_segments(ancestor.clone());
@@ -2060,15 +1988,6 @@ pub fn put_inductive_field_cross(
             ),
         )
     }
-}
-
-pub fn merge_inductive_fields_dedupe_note() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "Set-semantics merge (v1-run-stability-throughline M1b + M1b-2, M0 receipt 2026-07-13): a type's inductive fields are a SET of (variant, field, shape, element) facts - multiplicity carries no information. The unguarded concat-on-collision compounded diamond ancestry multiplicatively along the import DAG (measured 409,240,584 retained InductiveField slots corpus-wide, ~3.3 GB of Vec slots alone; worst single module 22.6M entries at ~1,338 types), and even skip-if-equal alone left 95,050,553 slots because differing lists carried baked-in duplicate multiplicities (worst module still 4.1M at ~3k dupes/type). So the merge appends ONLY fields not already present (identity = variant|field|shape|element; type_name is the map key): equal or subset incoming lists SKIP (the sharing fast path - absent keys insert the incoming list Rc directly, never concat-with-empty), and every list is duplicate-free by induction (local collection is duplicate-free; merges never append a present fact). Genuinely new fields still append in the pre-cut encounter order. Same treatment class as guarded_union_str_bindings' skip-if-equal (#6487 cut 2); receipts on the throughline doc.".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
 }
 
 pub fn recursion_shape_key(shape: RecursionShape) -> String {

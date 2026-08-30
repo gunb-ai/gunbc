@@ -53,7 +53,13 @@ import std.occurrence_binding_resolve {
 }
 import std.types { Bool, Int, List, SourceSpan, String }
 
-data namespace_reference_derived_closure_contract_witness_note: String = "CONTROLLED FIXTURES for the six-clause closing fold. The positive population independently authors one satisfying observation per roadmap clause. Each RED changes only the discriminating output: remove the same-file neighbour, leak the sibling branch, leak the later declaration, collapse one distinct homonym, duplicate one provider dependency, or admit one unrelated loaded file. These tests prove the contract rejects every bad state; they do not claim the gated production candidate producer exists. The quarantined acceptance witness imports no fixture from this module."
+// CONTROLLED FIXTURES for the six-clause closing fold. The positive population independently
+// authors one satisfying observation per roadmap clause. Each RED changes only the discriminating
+// output: remove the same-file neighbour, leak the sibling branch, leak the later declaration,
+// collapse one distinct homonym, duplicate one provider dependency, or admit one unrelated loaded
+// file. These tests prove the contract rejects every bad state; they do not claim the gated
+// production candidate producer exists. The quarantined acceptance witness imports no fixture from
+// this module.
 
 fn oid(value: Int) -> OccurrenceId { OccurrenceId { value: value } }
 

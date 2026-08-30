@@ -43,29 +43,11 @@ pub struct ExternalSubjectRef {
     pub declaration: Rc<DeclarationRef>,
 }
 
-pub fn external_model_scope_revision_grain_note() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "ExternalModelScope deliberately carries NO revision field (operator verdict on gunbc#7571): a subject module legitimately models multiple releases of one upstream (Chromium 151/152/153 are one subject, not one module each), so an exact revision is a fact on the specific build/release/fact row, symbolically referenced where needed — never a property of the module scope. An earlier revision carried 'revision: ExternalRevision?' with a free label; both the optional module-grain slot and the label-typed revision (which erased semver vs commit vs release vs specification-edition distinctions) were removed.".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
-}
-
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ExternalModelScope {
     pub subject: Rc<ExternalSubjectRef>,
     pub first_citation: Rc<ExternalAuthority>,
     pub further_citations: Rc<Vec<Rc<ExternalAuthority>>>,
-}
-
-pub fn external_model_scope_citations_shape_note() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "citations is nonempty BY CONSTRUCTION (first_citation a required scalar + further_citations), the gunbc.doc_graph_roots primary_work/additional_works precedent — the operator sketch wrote NonEmptyList<ExternalAuthority>; no such generic carrier exists in std today, and the split-field shape makes the zero-citation scope unwritable rather than checked (DESIGN §5).".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
 }
 
 pub fn external_model_scope_citations(
@@ -81,15 +63,6 @@ pub fn external_subject_ref_eq(a: Rc<ExternalSubjectRef>, b: Rc<ExternalSubjectR
     crate::std_decl_ref::declaration_ref_eq(a.declaration.clone(), b.declaration.clone())
 }
 
-pub fn fact_citation_note() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "FactCitation is the ONE carrier for 'this modeled fact is attested by that external authority' (operator verdicts on gunbc#7556 and gunbc#7571, the §3 cite-the-symbol rule). It replaces three forks that were the same fact under three names: FactAuthorityOverride, and extdeps.cpu.types' byte-identical SocketFactCitation / CacheGeometryCitation pair — whose 'field: NonEmptyStr' was a POSITIONAL naming scheme for something the containment tree already names, so a renamed field left the citation green over a name that no longer existed, and a GPU module had to import a CPU type to cite a cache fact. The cited fact is a DeclarationRef: module + declaration + field in the containment tree's own key space, so a stale citation is decidable by symbol resolution rather than rotting as free text.".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
-}
-
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct FactCitation {
     pub fact: Rc<DeclarationRef>,
@@ -100,15 +73,6 @@ pub fn external_model_scope_decision_kernel_note() -> String {
     thread_local! {
         static CACHED: String = {
             "HONESTY BOUNDARY (operator verdict on gunbc#7571, 2026-08-01): external_model_scope_decision is a pure DECISION KERNEL over DECLARED fact rows — it is NOT an admission wall, because its inputs (DeclaredScopeFacts) are caller-authored: a module whose declarations carry three subjects admits if the caller declares one. What IS mechanically enforced today is scope PRESENCE at the storage grain (gunbc.extdeps_scope_frontier's manifest + live cover witness). Subject-content coherence — that a module's actual declarations attribute to exactly its declared subject — is the named enforcement frontier feature:extdeps-subject-content-derived: it dissolves when a Node-tree projection derives DeclaredScopeFacts from the real module tree (the module's extdeps_model_scope declaration, the subject attribution of every product-/engine-/distribution-specific declaration, and any consumer-coverage declarations actually present) and feeds THIS kernel, at which point the kernel's verdict becomes an admission fact rather than a coherence check of what a caller chose to say. The RED/GREEN controls below the kernel exercise the decision shape the projection will feed; they are controls of the kernel, not proof of a wall.".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
-}
-
-pub fn declared_scope_facts_note() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "DeclaredScopeFacts is one extdeps module's caller-declared scope facts: its declared scope, the per-row subject attribution of the product-/engine-/distribution-specific fact rows it carries, and the consumer-coverage/observation-state declarations it stores (each a DeclarationRef — coverage identity is symbolic for the same reason subject identity is).".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
@@ -251,15 +215,6 @@ pub fn external_model_scope_portfolio_decision(
             v1_rt::concat(acc, external_model_scope_findings(m.clone()))
         },
     ))
-}
-
-pub fn downstream_support_roster_note() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "Where the refused rows GO: a support/coverage roster is a downstream (product/workflow layer) fact join over the per-subject upstream modules — DESIGN §3's gunbc.served_surface_browser_support example. It is deliberately NOT judged by external_model_scope_decision: consumer policy and coverage state are exactly what an upstream module may not carry and a downstream module exists to carry.".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]

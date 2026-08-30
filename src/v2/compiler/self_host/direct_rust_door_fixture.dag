@@ -51,7 +51,8 @@ import v2.std.witness {
   Witness
 }
 
-data direct_rust_door_fixture_note: String = "Self-host fixture for v2-emitter-direct-rust-door: rust add inferred tree lives in compiler self_host (not v2.test) so closing-contract admission can execute without layer inversion."
+// Self-host fixture for v2-emitter-direct-rust-door: rust add inferred tree lives in compiler
+// self_host (not v2.test) so closing-contract admission can execute without layer inversion.
 
 data direct_rust_door_module_path: String = "src/v2/compiler/self_host/direct_rust_door_fixture.dag"
 

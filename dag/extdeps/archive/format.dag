@@ -38,7 +38,10 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
   further_citations: [gzip_rfc_1952_authority, zstd_rfc_8878_authority]
 }
 
-data archive_format_decomposition_note: String = "ArchiveFormat is container x compression codec (DESIGN section 2 deep decomposition). A .tar.zst distribution is PosixPaxUstarContainer with Zstd codec — not one opaque TarZst enum member or a literal .tar.zst string. .tar.gz and .tgz are the same axes with different distribution suffix conventions."
+// ArchiveFormat is container x compression codec (DESIGN section 2 deep decomposition). A .tar.zst
+// distribution is PosixPaxUstarContainer with Zstd codec — not one opaque TarZst enum member or a
+// literal .tar.zst string. .tar.gz and .tgz are the same axes with different distribution suffix
+// conventions.
 
 type PosixPaxUstarContainer {}
 

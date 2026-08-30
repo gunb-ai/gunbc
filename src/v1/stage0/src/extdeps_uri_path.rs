@@ -289,15 +289,6 @@ impl PathTemplateMatch {
     }
 }
 
-pub fn match_path_template_note() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "The FORWARD reading of the same PathTemplate rows gunbc.node_http_server_emit.emit_path_template_regex_source reads BACKWARD into a JS regex, and extdeps.uri_path.render_path_template reads backward into a rendered path — three directions, one row set, never parallel authorities (DESIGN 4); the binding record is extdeps.uri_path.PathParamBinding, the single binding authority (a local duplicate here briefly shadowed it and broke no-import name resolution for test.claim.uri_path_parse_witness — the §3 nickname caught by execution). Parity contract with the emitted regex, kept strict so the two realizations agree on every input: one token = one path segment joined by '/' (LiteralToken == segment text; ParamToken binds any NON-EMPTY segment, the [^/]+ class); the empty template matches exactly the root path '/'; a trailing slash is a mismatch (the regex anchors with $); an interior empty segment ('//') never matches any token (a Literal is never empty by parse construction, a Param requires non-empty). Query strings are stripped before matching, mirroring parse_path_template's own '?' strip.".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
-}
-
 pub fn match_path_segments(path_only: String) -> Rc<Vec<String>> {
     if ((path_only.clone() == "/".to_string()) || (path_only.clone() == "".to_string())) {
         Rc::new(vec![])
@@ -520,15 +511,6 @@ pub fn parse_path_template(raw: String) -> Rc<PathTemplateParseResult> {
             },
         }
     }
-}
-
-pub fn uri_query_param_note() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "Query-string parsing, the URI concern's single home (§3) — mirror of the '?' strip match_path_template/parse_path_template already do. uri_query_string returns everything after the first '?' (empty if none); uri_query_param returns the value for a key over the '&'-separated 'k=v' pairs (empty if the key is absent). Kept minimal: no percent-decoding yet (the one consumer, the /sandbox/echo status label, is an ASCII enum), so a decode pass is a named follow-on when a consumer needs it.".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
 }
 
 pub fn uri_query_string(path: String) -> String {

@@ -2134,15 +2134,6 @@ pub fn find_operator_binop(ops: Rc<Vec<Rc<OperatorSpec>>>, symbol: String) -> Op
     }
 }
 
-pub fn operator_continuation_dual_role_exclusion_note() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "Continuation-leading tokens are derived from dag_syntax_spec.operators via find_operator_bp, not a shape allowlist. PREFIX/INFIX INTERSECTION IS PROVABLY COMPLETE — not a remembered one-element hand-list. parse_prefix admits exactly two unary prefix shapes: ShBang → ExprUnaryOp { op: Not } and ShMinus → ExprUnaryOp { op: Neg } (UnaryOpKind is closed: Not | Neg only). The infix table carries '!=' but no bare '!', so operator-table derivation already excludes '!' without any exclusion row. '-' is the sole symbol with both a parse_prefix arm (unary Neg) and an infix OperatorSpec row (Sub). operator_continuation_dual_role_excluded_symbols is therefore the full intersection, with one member, and skipping '-' continuation keeps `let a = foo` newline `-bar(x)` as two statements (unary minus call) instead of silently re-parsing as `foo - bar(x)`. A future prefix/infix dual-role operator must extend UnaryOpKind and parse_prefix and will redd the singleton witness rather than silently changing existing code.".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
-}
-
 pub fn operator_continuation_dual_role_excluded_symbols() -> Rc<Vec<String>> {
     thread_local! {
         static CACHED: Rc<Vec<String>> = {
@@ -3455,15 +3446,6 @@ pub fn parse_heads_with_table(
         intern_table.authored_token_ordinals.clone(),
         true,
     )
-}
-
-pub fn parse_with_table_ready_module_path_note() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "Projects the parsed module name without naming the module field through a cross-module keyword collision. Bridge consumers (occurrence_binding_parser_walk) read this Present only when parse succeeded.".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
 }
 
 pub fn parse_with_table_ready_module_path(parsed: Rc<ParseWithTableResult>) -> Option<String> {
@@ -14562,15 +14544,6 @@ pub fn parse_match_arm_stmts(
     }
 }
 
-pub fn qualified_arm_start_note() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "WHERE AN UNBRACED ARM BODY ENDS IS DECIDED HERE, AND THE ANSWER WAS KEYED ON THE FIRST SEGMENT OF THE NEXT PATTERN. parse_match_arm_stmts consumes statements until looks_like_arm_start says the next tokens open a new arm. That predicate recognised only a bare `_` and an UPPERCASE-start leaf, so a NAMESPACE-QUALIFIED pattern -- whose first token is the lowercase module head, v1 in v1.std.core.ExprStringInterp -- answered false, the body kept consuming, it swallowed the next arm pattern as one more statement, and the parse died on the following FatArrow. The reported span is the ARROW, several lines below the arm that actually ended, which is why four separate reproductions of the surrounding shapes all parsed and the trigger had to be bisected rather than guessed. MINIMAL REPRODUCTION, and every clause is load-bearing: an unbraced arm body containing a `let`, followed by an arm whose pattern is DOTTED. Remove the let and the body is a single expression that never enters the statement loop; make the next pattern `_` or an uppercase leaf and the predicate already answers true. MEASURED: on the namespace-cut branch, where qualifying every pattern turns this from rare into ordinary, exactly one corpus file of 3875 reaches it -- src/v1/05_emit.dag -- and it is invalid under the parser that branch itself carries, surviving only because its built binary predates its own committed mirror. So this is not a cut-branch accommodation: it is a grammar gap that the cut merely made reachable, and it fails LOUDLY at preparation, which is the cheap failure discipline. The scan requires the TERMINAL segment to be uppercase and the arrow to follow the path (or its brace group), so a lowercase dotted expression ending a body is unaffected -- and an expression statement genuinely followed by a FatArrow was never a legal parse.".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
-}
-
 pub fn arm_start_after_qualified_path(mut tokens: Rc<TokenStream>, mut offset: i64) -> bool {
     loop {
         if !peek_is_expected_at(
@@ -15212,15 +15185,6 @@ pub fn parse_if(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<ExprResult
             }
         }
     })
-}
-
-pub fn required_expression_newline_continuation_note() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "A newline is whitespace in a syntactically incomplete required-expression position (the parser has consumed a keyword or separator and still owes an expression). Authority: parse_required_expression_after_separator (parse_expr sites) and parse_required_expression_no_brace_after_separator (for-in collection after 'in'). Not at generic parse_expr entry — statement boundaries stay token-aligned.".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
 }
 
 pub fn parse_required_expression_after_separator(

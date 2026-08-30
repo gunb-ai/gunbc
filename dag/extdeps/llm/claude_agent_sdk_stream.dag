@@ -46,7 +46,11 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
   further_citations: []
 }
 
-data claude_agent_sdk_stream_authority_note: String = "Upstream @anthropic-ai/claude-agent-sdk 0.3.220 (extdeps_external_authority_anchor): SDKRateLimitInfo is a closed enum surface with no raw escape hatch, and the SDK parser drops unknown top-level stream-json message types. gunbc must capture beneath the parser and model ClaudeNativeRateLimitType as NonEmptyStr with recognised projections layered over it. Internal audit receipt: provider-control-interface-audit.md section 4.1."
+// Upstream @anthropic-ai/claude-agent-sdk 0.3.220 (extdeps_external_authority_anchor):
+// SDKRateLimitInfo is a closed enum surface with no raw escape hatch, and the SDK parser drops
+// unknown top-level stream-json message types. gunbc must capture beneath the parser and model
+// ClaudeNativeRateLimitType as NonEmptyStr with recognised projections layered over it. Internal
+// audit receipt: provider-control-interface-audit.md section 4.1.
 
 data claude_stream_event_type_control_response: String = "control_response"
 data claude_stream_event_type_rate_limit_event: String = "rate_limit_event"
@@ -219,7 +223,9 @@ fn claude_sdk_control_response_parser_drop_holds(
 // bankruptcy existed to end. If the paired probe is ever modeled as an entry point, the honest
 // repair is to re-run it against the then-current SDK and let these rows follow the new receipt --
 // not to restore the deleted bytes.
-data claude_sdk_parser_drop_witness_fixture_note: String = "Positive control derived from the 2026-08-06 wet paired probe receipt on Claude Code 2.1.223 with SDK 0.3.220. The subprocess raw stream carried control_response; the SDK query() parsed surface did not."
+// Positive control derived from the 2026-08-06 wet paired probe receipt on Claude Code 2.1.223 with
+// SDK 0.3.220. The subprocess raw stream carried control_response; the SDK query() parsed surface
+// did not.
 
 data parser_drop_fixture_subprocess_raw_types: List<String> = [
   "control_response",

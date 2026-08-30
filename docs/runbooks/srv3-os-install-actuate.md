@@ -33,7 +33,7 @@ with the toolchain grant (curl, websocat, nbdkit, socat).
 
 ## Step 0a — actuator toolchain ensure (srv1)
 
-websocat is **not** in Ubuntu Noble apt; the modeled ensure installs curl/nbdkit/socat via apt and websocat from the cited [vi/websocat v1.14.0](https://github.com/vi/websocat/releases/tag/v1.14.0) GitHub release binary to `/var/lib/gunbc/bin/websocat`. Add that directory to `PATH` for the serve session if `which websocat` does not find it after ensure:
+websocat is **not** in Ubuntu Noble apt; the modeled ensure installs curl/nbdkit/socat via apt and websocat from the cited [vi/websocat v1.14.0](https://github.com/vi/websocat/releases/tag/v1.14.0) release binary to `/var/lib/gunbc/bin/websocat`. Add that directory to `PATH` for the serve session if `which websocat` fails after ensure:
 
 ```bash
 export PATH="/var/lib/gunbc/bin:$PATH"
@@ -70,7 +70,7 @@ sha256, and bytes. On hash mismatch the modeled fetch **refuses** (no silent ove
 
 ## Step 0b — seeded ISO remaster (srv1; xorriso ensure + remaster)
 
-**Seeded path only** (fully remote/CLI unattended install). The remaster chain is fail-closed on xorriso: the modeled
+**Seeded path only** (fully remote/CLI unattended install). The chain is fail-closed on xorriso: the modeled
 `install_media_remaster_toolchain_ensure` verifies `xorriso --version` or runs `apt-get install -y xorriso` before
 repack (srv1 was verified to lack xorriso/genisoimage/mkisofs — do not assume the toolchain is present).
 
@@ -104,7 +104,7 @@ which curl websocat nbdkit socat jq sha256sum gunbc
 
 ### BMCweb login — credential resolution (read before live)
 
-**Modeled (`srv3_bmcweb_session_login`):** probes BMC with `bmc_probe_credential_phase`, resolves intent vs observation via `gunbc.srv3_bmc_credential_resolve`, then materializes password from factory login or `fetch_secret_ref_credential(bmc_srv3_admin_secret_ref)`. Password is written to **`/tmp/srv3_bmcweb_login_body.json`** (file on disk); curl posts it to `https://192.168.1.192/login`. On **success**, gunbc emits no password — only writes token to **`/tmp/srv3_bmcweb_token`**. On **failure**, stderr may include curl body — do not paste logs containing credentials.
+**Modeled (`srv3_bmcweb_session_login`):** probes BMC with `bmc_probe_credential_phase`, resolves intent vs observation via `gunbc.srv3_bmc_credential_resolve`, then materializes password from factory login or `fetch_secret_ref_credential(bmc_srv3_admin_secret_ref)`. Password is written to **`/tmp/srv3_bmcweb_login_body.json`** (on disk); curl posts it to `https://192.168.1.192/login`. On **success** gunbc emits no password, only the token to **`/tmp/srv3_bmcweb_token`**. On **failure** stderr may include the curl body — do not paste logs containing credentials.
 
 Requires **gcloud auth** on the actuator host when BMC is in `RotatedCredentialActive` state.
 
@@ -144,7 +144,7 @@ gunbc run --source-root dag \
 
 (`srv3_boot_once_cd` without approval refuses with `operator approval required before srv3-boot-once-cd`.)
 
-**Boot-once semantics:** modeled `BootOverrideOnce` → Redfish wire **`"Once"`** (not `Continuous`). Applies to the **next boot only**; firmware clears the override after it is consumed. A failed install does **not** leave srv3 in a permanent CD-loop from Redfish — worst case is one retry if the host reboots back to virtual media before override clears. Post-success install reboots to disk (HDD/NVMe) and override is gone.
+**Boot-once semantics:** modeled `BootOverrideOnce` → Redfish wire **`"Once"`** (not `Continuous`). **Next boot only**; firmware clears the override once consumed. A failed install does **not** leave srv3 in a permanent CD-loop — worst case one retry if the host reboots back to virtual media before the override clears. A successful install reboots to disk (HDD/NVMe) with the override gone.
 
 **Credentials:** same resolution path as login (`srv3_bmc_credential_resolve`); netrc written to `/tmp/bmc_onboard_netrc`.
 
@@ -152,7 +152,7 @@ Host should power-cycle and boot the Ubuntu installer from virtual media.
 
 ## Autoinstall timing and hang declaration
 
-Modeled payload: `fully_automated: true`, hostname `srv3`, OpenSSH enabled. **Fail-closed seed gap (modeled, not solved):** `gunbc.srv3_os_install_actuate_scope` refuses seed delivery on the NbdProxy path — `NoCloudNet` seed at `install.srv3.lan/...` with `fleet_install_server_specs` empty. Stock ISO (`ubuntu-24.04.3-live-server-arm64.iso`) may boot **interactive** installer if autoinstall seed is not on-ISO — watch for subiquity waiting on network seed (hang risk). This PR does not paper the gap.
+Modeled payload: `fully_automated: true`, hostname `srv3`, OpenSSH enabled. **Fail-closed seed gap (modeled, not solved):** `gunbc.srv3_os_install_actuate_scope` refuses seed delivery on the NbdProxy path — `NoCloudNet` seed at `install.srv3.lan/...` with `fleet_install_server_specs` empty. The stock ISO (`ubuntu-24.04.3-live-server-arm64.iso`) may boot the **interactive** installer if the autoinstall seed is not on-ISO — watch for subiquity waiting on a network seed (hang risk). This PR does not paper the gap.
 
 | Phase | Expected wall-clock (from boot-once) |
 | ----- | ------------------------------------ |
@@ -166,7 +166,7 @@ Modeled payload: `fully_automated: true`, hostname `srv3`, OpenSSH enabled. **Fa
 
 ## Post-install subsumption check (first network-identity witness)
 
-After autoinstall completes and the host reboots, confirm srv3 OS appears on the LAN DHCP table with
+After autoinstall completes and the host reboots, confirm srv3 appears on the LAN DHCP table with
 option-12 hostname **srv3** (not merely the BMC static reservation `bmc-altrad8ud-1l2t-3` at .192).
 
 Pre-install invariant (modeled): `srv3_pre_install_has_no_os_up_subsumption()` — only BMC static row.
@@ -189,7 +189,7 @@ gunbc run --source-root dag \
 
 Emits `Srv3InstallObserveReceipt:` lines per surface, then `Srv3InstallDiagnosticReceipt: verdict=…` and `Srv3InstallDiagnosticAction: …`. Review-only script emit: `--function srv3_install_diagnostic_emit_observe_script` → `/tmp/srv3_install_diagnostic_observe.sh`.
 
-From a **non-srv1** shell, BMC websocket `101` + Redfish `BootSourceOverrideEnabled=Disabled` / `BootSourceOverrideTarget=None` without serve observation classifies as **`InconclusiveNeedsServeObservation`** — not installer-running proof. Run the checklist on srv1 next.
+From a **non-srv1** shell, BMC websocket `101` + Redfish `BootSourceOverrideEnabled=Disabled` / `BootSourceOverrideTarget=None` without serve observation classifies as **`InconclusiveNeedsServeObservation`** — not proof the installer is running. Run the checklist on srv1 next.
 
 KVM frozen / keyboard-dead is **weak evidence only** (`KvmUntrusted`); stronger surfaces are serve process/port, BMC websocket (endpoint only), Redfish `Boot`/`PowerState`, virtual media session, SOL bytes, and router DHCP option-12.
 

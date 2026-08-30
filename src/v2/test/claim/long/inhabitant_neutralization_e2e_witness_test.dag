@@ -18,7 +18,12 @@ import v2.test.manual.python_grammar_claim { python_grammar_parse_fixture }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-data inhabitant_neutralization_e2e_long_note: String = "Offline/long disposition for inhabitant cross-language e2e + translate/emit refusal poles (review 43557): these were never per-PR enrolled and must not use if-false orphan pins (DESIGN §5 specification-without-execution). They live under test/claim/long/ (OfflineLocalRecipe) as real test fns — local recipe / future falsifier enrollment, never fabricated reachability. Dissolve-on: re-enroll per-PR when measured under gunbc_ci_fast_lane_witness_eval_budget, or delete as duplicate of a faster mechanism receipt."
+// Offline/long disposition for inhabitant cross-language e2e + translate/emit refusal poles (review
+// 43557): these were never per-PR enrolled and must not use if-false orphan pins (DESIGN §5
+// specification-without-execution). They live under test/claim/long/ (OfflineLocalRecipe) as real
+// test fns — local recipe / future falsifier enrollment, never fabricated reachability.
+// Dissolve-on: re-enroll per-PR when measured under gunbc_ci_fast_lane_witness_eval_budget, or
+// delete as duplicate of a faster mechanism receipt.
 
 test fn inhabitant_neutralization_python_to_ts_cross_language_compile_refuses_underived_holds() -> Bool {
   match python_grammar_parse_fixture() {

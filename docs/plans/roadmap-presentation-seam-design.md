@@ -1,20 +1,19 @@
 # The roadmap presentation seam — one projection between the graph and the page
 
-**Status:** DESIGN for the A2 slice (operator-directed 2026-08-01, following the A1 subtraction
-pass, PR #7540). A1 removed false emphasis; this slice adds the missing layer that decides *what
-matters, why it is shown, and how strongly it speaks*. The governing framing (operator):
+**Status:** DESIGN for the A2 slice (operator-directed 2026-08-01, after the A1 subtraction
+pass, PR #7540). A1 removed false emphasis; this slice adds the layer that decides *what matters,
+why it is shown, and how strongly it speaks*. Governing framing (operator):
 
 > A stronger interface makes fewer claims, makes each claim at the right altitude, and shows the
 > evidence or consequence that makes the claim matter.
 
-A1 improved the first part. This slice owns the second and third. Doctrine line that names the
+A1 improved the first part; this slice owns the second and third. The doctrine line naming the
 gap: **truthful atoms do not automatically compose into a truthful or intelligible presentation**
 — hierarchy, causality, temporal relation, and relevance must themselves be modeled.
 
 ## 1. The falsifier specimen (acceptance test #1, ahead of all other presentation work)
 
-A live session on the daily workspace. Verified mechanics of the failure, against the tree at
-A1's head:
+A live session on the daily workspace. Verified failure mechanics against the tree at A1's head:
 
 - `gunbc.roadmap_component` `roadmap_row_archetype` declares five regions — StatusChip, Title,
   Meta, Disclosure, Actuator — and places `ActuatorRegion` at `HeadTrack{AutoTrack}`. The derived
@@ -35,9 +34,9 @@ A1's head:
   govern both the server projection and the client program's render targets.
 
 The screenshot therefore falsifies the **archetype's region model**, not its spacing: evidence
-about an action and the action itself occupy one semantic region because the layout had one cell
-left. The current representation says preserving `auto 1fr auto` outranks the primary work item's
-readability. That is backwards.
+about an action and the action itself share one semantic region because the layout had one cell
+left. The current representation ranks preserving `auto 1fr auto` above the primary work item's
+readability — backwards.
 
 **A2 is not complete until this specimen — active attempt, all seven obligation nodes, latest
 activity text, session present, attempt present, process exited, cleanup action, realistically
@@ -53,8 +52,8 @@ undifferentiated facts into two equally noisy lines.
 
 Simultaneously, as peers: open · ready · three obligations evidenced · four pending · agent turn
 completed · a session container exists · an attempt exists · the worker process exited · the
-session can be cleared · the prior dispatch produced a session. Every atom individually true;
-composed as peers they have no main proposition. Four named defects:
+session can be cleared · the prior dispatch produced a session. Each atom true; as peers they
+have no main proposition. Four named defects:
 
 1. **An obligation ledger presented as a progress meter.** Environment/Worktree/Agent/Verify/
    Publish/Review/Audit are independently evidenced obligations (`workflow_progress_note`: a

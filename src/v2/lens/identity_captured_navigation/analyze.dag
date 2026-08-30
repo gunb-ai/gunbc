@@ -1,6 +1,5 @@
 module v2.lens.identity_captured_navigation.analyze
 
-
 fn named_child_optional(cap: Node, name: Symbol) -> Optional<Node> {
   match find_named_child(root: cap, name: name) {
     Accepted { value: c, diagnostics: _ } => Present { value: c }
@@ -97,7 +96,13 @@ fn collect_value_identifiers_into(n: Node, acc: List<Symbol>) -> List<Symbol> {
   })
 }
 
-data mention_scan_note: String = "collect_value_identifiers_into skips ^grammar_production_identity_node_projection edges the same way v2.lens.complexity_accumulator_copy.analyze's edge_skips_identifier_count does (a wrapper's own identity tag is never a value mention). Binding-position idents (arg labels, field-pattern labels) are NOT lexeme-stamped in the dag surface grammar (dag_grammar_terminal, not dag_grammar_terminal_lexeme) so they never surface as atom-identity content here - only real value-reference identifiers (call heads, arguments, bare names) are collected, which is exactly the mention set this lens needs."
+// collect_value_identifiers_into skips ^grammar_production_identity_node_projection edges the same
+// way v2.lens.complexity_accumulator_copy.analyze's edge_skips_identifier_count does (a wrapper's
+// own identity tag is never a value mention). Binding-position idents (arg labels, field-pattern
+// labels) are NOT lexeme-stamped in the dag surface grammar (dag_grammar_terminal, not
+// dag_grammar_terminal_lexeme) so they never surface as atom-identity content here - only real
+// value-reference identifiers (call heads, arguments, bare names) are collected, which is exactly
+// the mention set this lens needs.
 
 data node_source_symbol_note: String = "The dag surface grammar stamps a caret-literal's referenced identifier (dag_grammar_caret_symbol_expr's right-hand terminal) with StampClass, not StampLexeme (src/v2/extdeps/languages/dag.dag), so node_atom_identity_optional on that terminal returns only the generic ^dag_token_ident token-CLASS symbol for every caret literal, never the specific text - a real grammar limitation this lens does not touch (out of scope: dag.dag's parse/identity machinery). node_source_symbol recovers the actual referenced identifier out-of-band via the same span/provenance machinery std.diagnostic's Locus and std.provenance's SpanIndex already provide for diagnostics: look up the node's minted occurrence in the SpanIndex, resolve it to a Textual\{file, extent: ByteRange\} locus, slice the original source text, and intern the slice as a Symbol. A synthetic (unminted) node or a non-textual/non-byte-range locus fail-closed to Absent - never a fabricated symbol."
 

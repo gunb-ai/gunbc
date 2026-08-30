@@ -154,15 +154,6 @@ pub fn collect_type_node_import_surface_names(
     })
 }
 
-pub fn emit_graph_fn_decl_items_note() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "fn_decl_items mirrors type_decl_items (dashboard node adhoc-574e999b-39c): a fn-name-keyed lookup into the SAME typed (post-04_infer, .inferred-populated) module items build_emit_graph_info already folds over, so a caller-side Clone-bound derivation (v1.compiler.trait_bound_witness) can resolve a callee-by-name and re-run emit_fn_def's own derivation on the callee's real declaration Node — never a second, parallel re-parse or re-inference of the callee.".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
-}
-
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct EmitGraphInfo {
     pub type_summaries: Rc<HashMap<String, Rc<TypeSummary>>>,
@@ -351,15 +342,6 @@ pub fn emit_graph_records_type_decl(
                 && (item.transport.clone() == std::option::Option::None))
         }
     }
-}
-
-pub fn emit_graph_records_fn_decl_note() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "Same criterion as v1.compiler.emit_core_support's is_function_item (05_emit_rust.dag's top-level item dispatch), duplicated here rather than imported: this module (v1.compiler.infer_emit_info) is upstream of v1.compiler.emit_core_support in the DAG (04_emit_info.dag has no import of 05_emit_core_support.dag today), and emit_graph_records_type_decl beside it already establishes the precedent of a locally-scoped duplicate one-line item-shape predicate at this stage rather than reaching downstream for one (DESIGN.md S3 -- a fact's home is its layer, and both predicates answer 'what item shape reaches this stage's fold', not 'what does emit_core_support export').".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
 }
 
 pub fn emit_graph_records_fn_decl(item: Rc<Node>) -> bool {

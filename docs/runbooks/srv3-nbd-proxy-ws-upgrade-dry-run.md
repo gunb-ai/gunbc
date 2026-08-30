@@ -10,7 +10,7 @@ modeled interface facts in `dag/extdeps/bmc/webui/nbd_proxy.dag`.
 
 Read-only HTTP GET cannot confirm the nbd-proxy ws route: `/nbd/0` and `/vm/0/0` return **404** on
 non-upgrade GET (inconclusive — ws routes commonly 404 without an `Upgrade` header). A ws-upgrade
-**spawns nbd-proxy** (side effect), so it is operator-gated.
+**spawns nbd-proxy** (side effect), hence operator-gated.
 
 | Outcome | Meaning | Next path |
 | ------- | ------- | --------- |
@@ -59,7 +59,7 @@ If login fails, stop — fix auth before probing ws routes.
 
 ## 2. ws-upgrade dry-run to `/nbd/0`
 
-**Side effect warning:** a successful upgrade may spawn `nbd-proxy` on the BMC. This is expected and
+**Side effect warning:** a successful upgrade may spawn `nbd-proxy` on the BMC — expected and
 acceptable for this gate; step 4 ensures no media is mounted.
 
 ```bash

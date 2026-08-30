@@ -37,7 +37,11 @@ That is the upstream telling us the cross-engine route is Device Orientation and
 data maintained_for_existing_deployments: Bool = true
 data upstream_recommends_device_orientation_for_new_projects: Bool = true
 
-data interface_family_note: String = "Three interfaces, and the inheritance is load-bearing rather than incidental: LinearAccelerationSensor and GravitySensor both EXTEND Accelerometer in the IDL, so all three expose the same three nullable axes and differ only in what the reading means. That difference is entirely about gravity, which is why a consumer choosing among them is really declaring how it wants gravity handled."
+// Three interfaces, and the inheritance is load-bearing rather than incidental:
+// LinearAccelerationSensor and GravitySensor both EXTEND Accelerometer in the IDL, so all three
+// expose the same three nullable axes and differ only in what the reading means. That difference is
+// entirely about gravity, which is why a consumer choosing among them is really declaring how it
+// wants gravity handled.
 
 type AccelerometerInterface
   = AccelerometerSensor
@@ -77,7 +81,10 @@ fn interface_suits_a_knock_detector(i: AccelerometerInterface) -> Bool {
   }
 }
 
-data axes_are_nullable_note: String = "All three interfaces declare 'readonly attribute double? x' and likewise y and z — nullable, exactly as the Device Orientation and Motion event fields are. So the event-versus-value distinction survives on this route too: a reading can arrive with every axis null, and a consumer counting readings is counting something weaker than values."
+// All three interfaces declare 'readonly attribute double? x' and likewise y and z — nullable,
+// exactly as the Device Orientation and Motion event fields are. So the event-versus-value
+// distinction survives on this route too: a reading can arrive with every axis null, and a consumer
+// counting readings is counting something weaker than values.
 
 data axis_x_property: String = "x"
 data axis_y_property: String = "y"
@@ -85,7 +92,10 @@ data axis_z_property: String = "z"
 data axis_count: Int = 3
 data axes_are_nullable: Bool = true
 
-data reference_frame_note: String = "The spec's AccelerometerLocalCoordinateSystem enum, defaulting to device. It matters for a chassis knock because the device frame is fixed to the hardware while the screen frame rotates with the display, so a knock's axis decomposition differs between them; the default is the one that describes the physical object being struck."
+// The spec's AccelerometerLocalCoordinateSystem enum, defaulting to device. It matters for a
+// chassis knock because the device frame is fixed to the hardware while the screen frame rotates
+// with the display, so a knock's axis decomposition differs between them; the default is the one
+// that describes the physical object being struck.
 
 type AccelerometerReferenceFrame
   = DeviceFrame
@@ -100,7 +110,11 @@ fn reference_frame_wire(f: AccelerometerReferenceFrame) -> String {
 
 data default_reference_frame: String = "device"
 
-data policy_token_note: String = "THE TOKEN IS CITED, AND ITS HOME IS NOT THIS SPECIFICATION. The sensor permission name and sensor feature name are both 'accelerometer', and this spec takes that token as defined in Device Orientation and Motion. So the same string grounds both web routes from a single upstream home, which is why extdeps.w3c.device_orientation_and_motion carries it and this module references the relationship rather than minting a second copy (DESIGN §3)."
+// THE TOKEN IS CITED, AND ITS HOME IS NOT THIS SPECIFICATION. The sensor permission name and sensor
+// feature name are both 'accelerometer', and this spec takes that token as defined in Device
+// Orientation and Motion. So the same string grounds both web routes from a single upstream home,
+// which is why extdeps.w3c.device_orientation_and_motion carries it and this module references the
+// relationship rather than minting a second copy (DESIGN §3).
 
 data accelerometer_permission_name: String = "accelerometer"
 

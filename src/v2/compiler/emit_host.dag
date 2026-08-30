@@ -383,7 +383,11 @@ fn emit_host_octets_byte_string(octets: List<Int>) -> ByteString {
   emit_host_list_map(xs: octets, f: fn(o) { emit_host_byte_from_octet(octet: o) })
 }
 
-data emit_host_run_args_note: String = "run_args is the family-member selector (std.emit_on_demand witness_family_build_grain_ruling): a family-grain crate carries one argv-dispatched main, and the member id is appended to the descriptor's run invocation at run time. The dispatcher is fail-closed — an unknown member exits nonzero, surfacing as a refused logical_run, never fabricated octets. Per-witness callers pass []."
+// run_args is the family-member selector (std.emit_on_demand witness_family_build_grain_ruling): a
+// family-grain crate carries one argv-dispatched main, and the member id is appended to the
+// descriptor's run invocation at run time. The dispatcher is fail-closed — an unknown member exits
+// nonzero, surfacing as a refused logical_run, never fabricated octets. Per-witness callers pass
+// [].
 
 fn run_host_process(
   row: EmitHostRuntimeRow,

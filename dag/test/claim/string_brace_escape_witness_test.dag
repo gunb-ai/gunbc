@@ -1,13 +1,26 @@
 module test.claim.string_brace_escape_witness_test
 
-data string_brace_escape_note: String = "Locks the literal-brace escape semantics (operator-directed fix 2026-07-24, the ${...}-in-strings gotcha): a '\{' escape inside a string literal produces ONE literal brace character and never starts interpolation, so shell-form strings are written \"$\\\{VAR:-default}\" — the principled form, no bare-dollar workaround. The length witnesses are the discriminators: if the escape ever leaked the backslash into the value, or interpolation ever consumed the brace, the counted lengths change and this file reds (it also fails to PARSE at all if the escape is removed from the tokenizer, which is the loudest red of the three)."
+// Locks the literal-brace escape semantics (operator-directed fix 2026-07-24, the ${...}-in-strings
+// gotcha): a '{' escape inside a string literal produces ONE literal brace character and never
+// starts interpolation, so shell-form strings are written "$\{VAR:-default}" — the principled form,
+// no bare-dollar workaround. The length witnesses are the discriminators: if the escape ever leaked
+// the backslash into the value, or interpolation ever consumed the brace, the counted lengths
+// change and this file reds (it also fails to PARSE at all if the escape is removed from the
+// tokenizer, which is the loudest red of the three).
 
 data shell_default_form: String = "fetch $\{GITHUB_BASE_REF:-origin/main} head"
 data lone_escaped_brace: String = "\{"
 data backslash_then_brace: String = "\\\{"
 data escaped_pair: String = "\{x}"
 
-data string_escape_refusal_wall_note: String = "CI enforcement for the v1 tokenizer's closed escape vocabulary. Each probe constructs its source at runtime so the witness module itself remains tokenizable, then sends that virtual module through compile_dag_rust_emit_check — the production v1 compile path. A malformed or unsupported escape must yield a hard, located tokenizer diagnostic, so compilation returns false; literal passthrough would make the virtual module compile and red the witness. The Rust tokenize_escape_receipt tests retain the finer exactly-one-ShUnknown, source identity, spelling, and full-span assertions; these discovery-enrolled .dag witnesses are their executing refusal wall."
+// CI enforcement for the v1 tokenizer's closed escape vocabulary. Each probe constructs its source
+// at runtime so the witness module itself remains tokenizable, then sends that virtual module
+// through compile_dag_rust_emit_check — the production v1 compile path. A malformed or unsupported
+// escape must yield a hard, located tokenizer diagnostic, so compilation returns false; literal
+// passthrough would make the virtual module compile and red the witness. The Rust
+// tokenize_escape_receipt tests retain the finer exactly-one-ShUnknown, source identity, spelling,
+// and full-span assertions; these discovery-enrolled .dag witnesses are their executing refusal
+// wall.
 
 fn string_escape_probe_source(body_after_backslash: String) -> String {
   concat(

@@ -27,7 +27,16 @@ import std.algebra { Cons, Empty }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-data msb_fast_lane_note: String = "FAST-LANE half of the Phase-1 binding witnesses (operator 5-second rule 2026-07-12; authority gunbc.ci_layer_roots long_lane_exclusion_note). These exercise the index CONSTRUCTION WALL — duplicate-module refusal, its accept control, and the produced/zero-file arm — over hand-built ModuleStorageBinding rows, so they carry ZERO parse cost and run in per-PR discovery. The parse-DERIVED proofs (that the binding is read back out of a real parsed module node, and the underivable-name refusal) cost ~13s of eval each and therefore live in src/v2/test/claim/long/module_storage_binding_derivation_test.dag, run by the long-lane recipe. Split, not deleted: the note's own division — fast receipts stay discovered, execution proofs live in long/. Duplicate detection keys on module identity independently of provenance, which is exactly why the §5 wall can be proven here without paying for a parse."
+// FAST-LANE half of the Phase-1 binding witnesses (operator 5-second rule 2026-07-12; authority
+// gunbc.ci_layer_roots long_lane_exclusion_note). These exercise the index CONSTRUCTION WALL —
+// duplicate-module refusal, its accept control, and the produced/zero-file arm — over hand-built
+// ModuleStorageBinding rows, so they carry ZERO parse cost and run in per-PR discovery. The
+// parse-DERIVED proofs (that the binding is read back out of a real parsed module node, and the
+// underivable-name refusal) cost ~13s of eval each and therefore live in
+// src/v2/test/claim/long/module_storage_binding_derivation_test.dag, run by the long-lane recipe.
+// Split, not deleted: the note's own division — fast receipts stay discovered, execution proofs
+// live in long/. Duplicate detection keys on module identity independently of provenance, which is
+// exactly why the §5 wall can be proven here without paying for a parse.
 
 data msb_fixture_qn: QualifiedName = Cons {
   head: ^v2,
@@ -132,7 +141,16 @@ test fn module_storage_parsed_module_resolves_path_to_module() -> Bool {
   }
 }
 
-data msb_agreement_control_note: String = "ENROLLED discriminating control for module_storage_host_agrees_with_oracle (review 39735). The wet gate runs only GREEN claims, so a regression of the comparator to always-Agrees would still pass wherever scan and parse happen to agree — the honesty the scaffold trigger claims was verified by hand, never by a wired consumer, which is the 'enrolled, zero executions' shape one tier up. These run in per-PR discovery over hand-built indexes at ZERO parse cost, so the negative controls execute on every PR rather than only inside the wet lane: a host row carrying the WRONG module for an oracle-covered path must report Divergent, and a host index MISSING the path must report Uncovered. Divergence and coverage stay distinct because their remedies differ. Together with the agreeing case these pin all three arms, so the comparator cannot silently collapse to a constant."
+// ENROLLED discriminating control for module_storage_host_agrees_with_oracle (review 39735). The
+// wet gate runs only GREEN claims, so a regression of the comparator to always-Agrees would still
+// pass wherever scan and parse happen to agree — the honesty the scaffold trigger claims was
+// verified by hand, never by a wired consumer, which is the 'enrolled, zero executions' shape one
+// tier up. These run in per-PR discovery over hand-built indexes at ZERO parse cost, so the
+// negative controls execute on every PR rather than only inside the wet lane: a host row carrying
+// the WRONG module for an oracle-covered path must report Divergent, and a host index MISSING the
+// path must report Uncovered. Divergence and coverage stay distinct because their remedies differ.
+// Together with the agreeing case these pin all three arms, so the comparator cannot silently
+// collapse to a constant.
 
 data msb_oracle_row: ModuleStorageBinding = module_storage_parsed_binding(
   module: msb_parsed_qn,

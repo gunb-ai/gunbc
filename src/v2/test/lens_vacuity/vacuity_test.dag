@@ -351,7 +351,15 @@ data vacuity_falsification_suite_cases: List<VacuityFalsificationCase> = [
   vacuity_falsification_case(id: StructuralEqualsSingleEval, row: vacuity_case_row_structural_equals_single_eval, expected: ProvenDuplicate)
 ]
 
-data vacuity_falsification_suite_rows_derivation_note: String = "review 47215 (PR #7620): vacuity_falsification_suite_rows was a manually maintained roster listing the same 12 VacuityCensusRow values already carried by vacuity_falsification_suite_cases's own `row` field — a second membership representation of the identical fact, exactly the DESIGN.md §2/§3 single-authority violation this lens exists to flag elsewhere. Fixed by deriving vacuity_falsification_suite_rows from vacuity_falsification_suite_cases via list_map(f: fn(c) { c.row }), so vacuity_advisory_census_partitions_falsification_suite's census-over-rows and the cases roster's expected-evidence dispositions can no longer independently drift; adding, removing, or reordering a case now changes both consumers from one edit."
+// review 47215 (PR #7620): vacuity_falsification_suite_rows was a manually maintained roster
+// listing the same 12 VacuityCensusRow values already carried by
+// vacuity_falsification_suite_cases's own `row` field — a second membership representation of the
+// identical fact, exactly the DESIGN.md §2/§3 single-authority violation this lens exists to flag
+// elsewhere. Fixed by deriving vacuity_falsification_suite_rows from
+// vacuity_falsification_suite_cases via list_map(f: fn(c) { c.row }), so
+// vacuity_advisory_census_partitions_falsification_suite's census-over-rows and the cases roster's
+// expected-evidence dispositions can no longer independently drift; adding, removing, or reordering
+// a case now changes both consumers from one edit.
 
 data vacuity_falsification_suite_rows: List<VacuityCensusRow> = list_map(
   xs: vacuity_falsification_suite_cases,

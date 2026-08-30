@@ -19,7 +19,14 @@ data kotlin_language_further_authority_1: ExternalAuthority = ExternalAuthority 
   }
 }
 
-data kotlin_language_subject_note: String = "KOTLIN, cited to the Kotlin language specification (verified live 2026-08-04 by fetching the cited locator and confirming its title and publisher from the response, per the D0 verify-or-refuse rule): the fetched document is titled 'Kotlin language specification: Kotlin/Core', authored by Marat Akhin and Mikhail Belyaev et al. and maintained by JetBrains / JetBrains Research. HONESTY NOTE CARRIED FROM UPSTREAM: the specification declares itself at experimental stability level, stating no compatibility should be expected between incremental releases. That is a property of the cited document, not of the Kotlin language or compiler, and it is recorded because a support claim resting on an experimental-stability specification is weaker evidence than one resting on a ratified standard."
+// KOTLIN, cited to the Kotlin language specification (verified live 2026-08-04 by fetching the
+// cited locator and confirming title and publisher from the response, per the D0 verify-or-refuse
+// rule): titled 'Kotlin language specification: Kotlin/Core', authored by Marat Akhin and Mikhail
+// Belyaev et al., maintained by JetBrains / JetBrains Research. HONESTY NOTE CARRIED FROM UPSTREAM:
+// the specification declares itself at experimental stability level, with no compatibility expected
+// between incremental releases. That is a property of the cited document, not of the Kotlin language
+// or compiler; recorded because a support claim resting on an experimental-stability specification
+// is weaker evidence than one resting on a ratified standard.
 
 type Kotlin
   = | KotlinTarget

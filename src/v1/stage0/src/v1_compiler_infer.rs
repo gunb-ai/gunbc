@@ -449,15 +449,6 @@ pub struct BuildTypeEnvResult {
     pub binding_forks: Rc<Vec<Rc<TypeEnvCacheMergeConflict>>>,
 }
 
-pub fn binding_forks_channel_note() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "Out-of-band binding-fork ledger channel (S2a move 2 increment B; lane ruling REVISED 2026-07-11: NOVELTY, not TREE, is the refusal axis). A binding fork is one name reaching a module from two peer imports with DIFFERENT bindings. A PRE-EXISTING fork (present on main) is already resolved there by import-order overlay-wins and every real consumer gets that winner, so refusing it retroactively is a REGRESSION (breaks working resolution, makes this PR pay pre-existing corpus debt), NOT a fail-open being closed. So ALL pre-existing forks - same-tree AND cross-tree - are LEDGERED here, keeping the pre-cut overlay-wins winner (behavior-preserving); NONE ride the diagnostics channel (consumers read diagnostics as compile cleanliness). This is the SANCTIONED declared-interim: loud + typed + counted (the floor prints a partitioned count line per run, cli_run reconcile_with_typed_cache) + dissolution-named (std consolidation / namespace Rule-1 terminal) = the std-consolidation worklist, strictly better than main's SILENT overlay-wins. TREE only labels the dissolution partition (same-tree = homonym/fork within one tree; cross-tree = v1-seed-vs-v2 migration debt). The actual WALL is novelty-refusal - hard-refuse a fork a PR NEWLY introduces - implemented as a separate per-PR gate comparing this ledger against a drift-gated baseline receipt (follow-up work item), NOT an in-run refusal (that would double floor cost by re-resolving main's ledger).".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
-}
-
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ParentModulesResult {
     pub modules: Rc<Vec<Rc<TypedModule>>>,
@@ -1123,15 +1114,6 @@ pub fn constructor_reference_admission_enforced() -> bool {
     true
 }
 
-pub fn constructor_reference_admission_frontier_note() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "Counted v1 seed realization for ConstructorReferenceAdmission (Horn 3, msg_968d6c24): unified infer construction-admission beside sole_constructor record-literal refusal. Dissolves when compiler_frontier_row_04_infer self-emits CargoGreen and v2 infer is the production typecheck path (^migrate_when_closure_self_emits_cargo_green).".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
-}
-
 pub fn constructor_reference_admission_enforced_now() -> bool {
     constructor_reference_admission_enforced()
 }
@@ -1290,15 +1272,6 @@ pub fn type_mismatch_error(
         }),
         module_name.clone(),
     )
-}
-
-pub fn seed_node_traversal_frontier() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "🟡 dissolve-on: v1_seed_deleted_at_v2_self_host (opened 2026-07-31) — the v1 seed reads and recurses substrate Node storage directly instead of consuming a canonical traversal surface. Recorded as ONE frontier row for the CLASS, because that is the honest grain: the idiom is every self-recursive `children |> flat_map` site across the seed's stages (collect_type_names_from_node, named_type_vars_in_node, collect_value_ref_names and siblings), plus the direct Node-storage field reads inside them. BOTH POPULATIONS ARE NAMED BY THEIR INSTRUMENT RATHER THAN TRANSCRIBED, and this row is the receipt for why: it previously carried a site count across a module list, and both halves were wrong. It also carried a direct-Node-storage-field-read count for 04_infer alone, a figure no recipe in this corpus reproduces; a plausible reconstruction disagrees with it by a wide margin, which establishes the number is stale WITHOUT establishing what the right one is. NO SUPERSEDED FIGURE IS RESTATED HERE, and the omission is the point: a wrong number quoted as history is still a number in a live authority, it decays the same way, and it gets cited as though this row had measured it. The before-and-after lives in the PR that made the correction. That asymmetry is exactly why the repair is DELETION rather than an update: replacing a stale number with one my own instrument produced would swap an uncheckable figure for a checkable-looking wrong one, which is worse, because it would then be cited as verified. Re-derive the site population by grepping the literal idiom under src/v1 -- the grep is LEXICAL while `self-recursive` is SEMANTIC, so it bounds the literal-occurrence population and the recursion property is read off the sites, never off the count; the field-read population has no agreed instrument and is therefore stated as a shape and not a count. THE STALENESS WAS FOUND IN THIS ROW ONLY AFTER THE SIBLING row explicit_return_conformance_note was repaired for the identical claim -- one sentence fixed while the same assertion stood untouched a few lines away, which is the document-wide-correction failure and the reason a figure must be grepped as a CLAIM rather than edited as a SENTENCE. collect_explicit_return_values and v1.compiler.trait_derive_emit.v1_type_expr_contains_param_name are further instances of that same idiom (codex review 47248), not new classes — stated without ordinals deliberately, because the ordinals they previously carried were positions in a count that has since been measured wrong, and an ordinal is a transcribed measurement wearing the costume of a structural fact, and a per-function row would assert separable work that does not exist while every identical sibling carried none (codex reviews 45570, 45580, 45666). SIBLING COUNT IS NOT THE JUSTIFICATION and the reviewer is right to reject that reading — precedent is debt, not permission. The justification is that no canonical surface is REACHABLE here: fold_node and node_query are v2 substrate, no v1 seed module imports v2, and v1 COMPILES v2, so routing seed inference through v2's fold inverts the bootstrap; and no shared v1 walker exists to route through, because every v1 collector recurses itself. DESIGN's fold_node line is scoped to the 7 v2 stages. COST OF CLOSING NOW, which is why this is retained rather than accepted: building a v1-local generic traversal for one call site adds another shape without removing any of the existing ones, and migrating the whole population is a seed-wide refactor of the stage that IS the traversal — against a seed whose declared endpoint is deletion. DISSOLVES WHEN the v1 seed is deleted at v2 self-host, at which point every row in this class goes with it; the same trigger compiler_diagnostic_seed_projection_note carries for the hand-Rust arms, because it is the same seed and the same endpoint.".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
 }
 
 pub fn collect_explicit_return_values(n: Rc<Node>) -> Rc<Vec<Rc<Node>>> {
@@ -1596,15 +1569,6 @@ pub fn rejects_string_for_optional_coproduct_field(
                 == "String".to_string()));
         (expected_is_optional_coproduct.clone() && got_is_string.clone())
     }
-}
-
-pub fn bare_none_construction_wall_note() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "CONSTRUCTION WALL (DESIGN 4b): the bare name `None` carries absence and NOTHING else, so a construction position whose declared field type cannot carry absence must refuse it rather than adopt whichever `None` variant happens to be in scope. MEASURED HOLE this closes, on the pre-wall binary: with `type Diags = None | Some { n: Int }` in scope, `Holder { n: None }` for `n: Int` and `ListHolder { xs: None }` for `xs: List<Int>` compiled with ZERO blocking diagnostics and emitted `n: Rc::new(Diags::None)` / `xs: Rc::new(Diags::None)` — a Rust program the declared types refute, produced silently. WHY THIS SLICE AND NOT THE GENERAL CONFORMANCE RULE: conformance_unjudged_live_hole_note records five successive attempts at a general named-vs-named refusal, each of which red correct code because the produced side carries no separable type identity. A bare `None` reference needs no produced-side identity — it is a SYNTACTIC form whose only meaning is absence — so admissibility is decided entirely from the DECLARED side, which is exactly why this class is decidable where the general one is not. ADMISSION is deliberately two-armed and nothing else: optional cardinality (the `T?` carrier), or a coproduct that declares a `None` variant at its own level (std.cache_interface AuthScope, v2.std.diagnostic Diagnostics — the two live carriers). A qualified `Owner.None` is not a bare reference and is not judged here. COVERAGE BOUNDARY, stated rather than left to be found: the wall fires only where the field s declared type is known at this site; a field whose declared type does not resolve is not judged, which is the check s precision frontier and not a failure arm.".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
 }
 
 pub fn field_declared_type_is_identified(ft: Rc<Node>, scope: Rc<InferScope>) -> bool {
@@ -2474,15 +2438,6 @@ pub fn where_refinement_predicates_equivalent(
     }
 }
 
-pub fn where_refinement_min_length_implication_note() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "THE FRAGMENT IS TWO PARTIAL FUNCTIONS, NOT AN IMPLICATION ENGINE, and the asymmetry between them is the entire soundness argument. Predicate implication in general is undecidable, so this decides exactly one relation and refuses outside it: a value whose refinement GUARANTEES a minimum length satisfies a formal position whose refinement DEMANDS a minimum length AND NOTHING ELSE. Provider and demander are separate partial functions over the same closed predicate vocabulary because a predicate can inhabit one side and not the other, and collapsing them into one min-length table is a FAIL-OPEN that the obvious framing walks straight into: model lower_hex_64 as min-length 64 on both sides and a formal lower_hex_64 is then satisfied by an actual lower_hex_128, since 128 >= 64 — but those predicates demand DIFFERENT EXACT LENGTHS and a 128-digit string is not a valid sha256 hex. lower_hex_N therefore appears as a PROVIDER only (it guarantees exactly N lower-hex digits, hence at least N characters) and never as a demander (it demands an exact length and a charset, neither of which a length lower bound establishes). non_empty is the only predicate in the live vocabulary that is a pure length lower bound, so it is the only demander, and it is a provider too because it demands what it guarantees. Everything outside both tables answers Absent and the caller falls through to the pre-existing name-equality path unchanged, so this widens what the wall can DECIDE and narrows nothing it already decided. oci_other_digest_algorithm and oci_other_digest_encoded are deliberately NOT providers even though their grammars happen to exclude the empty string: that fact lives in oci_digest_algorithm_wire_holds / oci_encoded_digest_syntax_valid as a consequence of a syntax walk, not as a declared constant this table could cite, and asserting a bound the predicate does not state is the fabrication DESIGN §5 forbids. The four lower_hex_N bounds ARE declared constants — each is content_hash_validate_lower_hex_length(text, expected_hex_digits: N), whose body is text.length() == N — so the number in this table is the number in the predicate, cited rather than restated. WHY THIS IS A WALL AND NOT A WIDENING: the two corpus sites it closes (std.content_hash serialize_content_hash, `s.digest as NonEmptyStr` over Fnv1a64StructuralDigestHex and `d.hex as NonEmptyStr` over Sha1DigestHex) were carrying WhereRefinementUnenforced advisories for REFUSED evidence, not absent evidence — the value's own declared type already proved the property and where_refinement_predicates_equivalent could not see it because it compares predicate NAMES for equality, and lower_hex_40 != non_empty. WHAT IS NOT STRUCTURAL, STATED AT ITS HONEST RUNG (§4b) BECAUSE A TABLE PAIR WHOSE SOUNDNESS LIVES IN PROSE DECAYS SILENTLY: nothing prevents a predicate from being enrolled in BOTH tables, and membership in both is NOT the fail-open — non_empty is deliberately in both and is sound there, because it demands exactly what it guarantees. The real enrollment condition is narrower: a predicate may take a REQUIRED row only if its entire semantics is a length lower bound and nothing else. lower_hex_64 in both tables would be unsound not because it appears twice but because it demands an exact length and a charset that a lower bound does not establish. That condition is enforced by nobody: these are two hand-written name-keyed partial functions, so a future demander row asserting more than length would fail open and no check would fire. The decided relation guaranteed >= required is mechanically enforced; the authoring discipline that populates the demander table is DILIGENCE, rung MITIGATABLE, and it is contained only by the vocabulary being closed and small. Next-rung trigger is the same dissolve-on below: once the bounds are fields on WhereRefinementPredicateKind's own declaration, a predicate states its guarantee and its demand once and the mis-enrollment has no place to be written. Dissolve-on: feature:where-refinement-predicate-coproduct — when WhereRefinementPredicateKind replaces the string classifiers, the guaranteed and required bounds become fields on the predicate's own declaration rather than two tables a reader must keep in lockstep with where_refinement_is_string_literal_predicate and decidable_where_string_predicate_holds.".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
-}
-
 pub fn where_predicate_guaranteed_min_length(pred_name: String) -> Option<i64> {
     if (pred_name.clone() == "non_empty".to_string()) {
         Some(1)
@@ -2630,15 +2585,6 @@ pub fn decidable_where_int_predicate_holds(
             std::option::Option::None
         }
     }
-}
-
-pub fn where_refinement_predicate_kind_scaffold_note() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "owner: v1.compiler.infer. lane: where_refinement_diags_for_predicate dispatch. interim: predicate kind routed via where_refinement_is_*_literal_predicate / where_refinement_is_deferred_predicate closed string sets — must stay in lockstep with decidable_*_predicate_holds and where_refinement_predicates_equivalent. bound: vocabulary changes require updating all classifier fns + eval + equivalence arms in one commit. dissolve-on: feature:where-refinement-predicate-coproduct (WhereRefinementPredicateKind coproduct replacing string classifiers).".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
 }
 
 pub fn where_refinement_is_int_literal_predicate(pred_name: String) -> bool {
@@ -2965,15 +2911,6 @@ pub fn where_refinement_value_under_cast(mut value_expr: Rc<Node>) -> Rc<Node> {
             }
         }
     }
-}
-
-pub fn where_refinement_peel_cost_note() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "Cost shape (bare-minimum-cost, DESIGN 6): peel_nominal_alias_identity runs only on the refusal path (predicates present AND not covered), inside the final else of where_refinement_mismatch_diags. That fn runs on EVERY infer_expr with an expected type; 97% of calls find zero predicates, and an eager peel at fn entry was 6.5s of discarded resolve_node_bounded work per host_effect_realize entry compile (typecheck-perf investigation, 2026-07-31). formal_checked is consumed only by where_refinement_diags_for_predicate, so the sink is behavior-identical: peel is pure and its NodeResolveResult diagnostics were already discarded.".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
 }
 
 pub fn where_refinement_mismatch_diags(
@@ -3318,7 +3255,7 @@ pub fn exposure_is_application(exposure: Rc<TypeHeadExposure>) -> bool {
 pub fn equality_admission_wall_note() -> String {
     thread_local! {
         static CACHED: String = {
-            "WALL (DESIGN 5, XL-0E ruling 2026-08-30): equality on function-bearing values is an ACCEPTANCE defect, not an emitter formatting error. Before this wall, infer_binop_type_node answered Eq/Ne with bool_type for EVERY left type and the ExprBinOp arm emitted no diagnostic, so '==' was accepted on types whose equality semantics do not exist -- a record of interpreter functions, a runtime value carrying a closure environment. The interpretation path then answered from a host comparison the emission path cannot realize (rustc E0369: no PartialEq derives for fn-carrying types -- the refusal lived below the floor, in the wrong compiler, in the wrong phase). The admission is derived from the COMPLETE RESOLVED TYPE, never from a leaf spelling: an Arrow refuses; a kernel scalar admits; an algebra-carrier spelling admits or refuses by algebra_profile_equality_extensional -- the declared support-axis consequence in std.algebra, so finite-support carriers (List, Map, Set and their canonical names) lift the question into their type ARGUMENTS while open-support carriers (PartialFunction) refuse outright; a product walks every member and a coproduct walks every arm's members, under a visited set keyed on declaration identity so recursive structural data (Peano Nat: Zero | Succ { prev: Nat }) admits by the coinductive reading; a member that resolves nowhere refuses as EqualityMemberUnjudgeable rather than admitting silently. DELIBERATE BOUNDARIES, stated per rung honesty rather than implied covered: (1) a leaf whose head is OpaqueTypeHead at every authority -- a declared brand like v2.std.node.Symbol, or a generic type parameter -- carries no member this walk can judge and ADMITS at this rung; the admission is instantiation-blind, so a type parameter later bound to a function-bearing type is not caught at the generic declaration site. A StuckTypeHead operand (no declaration identity at all) is the same parameter case seen one authority earlier -- measured live at v2.std.collection map_insert's 'candidate == key' over bare K, a load-bearing generic comparison -- and admits under the same boundary rather than refusing on a namelessness that is a property of genericity, not of brokenness. Next-rung trigger for both: instantiation-grain admission, i.e. judging '==' where type arguments are known, which requires the call-site substitution the checker does not thread to this seam today. (2) '== none' / '!= none' is a PRESENCE test on the optional structure, not member equality, and is exempt before any walk (398 live sites measured 2026-08-30). (3) Lt/Gt/Le/Ge ordering admission is the same defect one operator over and is NOT walled here -- ordering on a function-bearing type still accepts; that class is named rather than silently included. (4) Operands already carrying a compiler error are not judged: the resolution diagnostic owns the site. Cost shape (DESIGN 6): the walk runs only at Eq/Ne sites, kernel and opaque leaves return before any peel, and peel_nominal_alias_identity is reached only for structured or aliased operands (see where_refinement_peel_cost_note for why eager peels at this grain were withdrawn once already).".to_string()
+            "WALL (DESIGN 5, XL-0E ruling 2026-08-30): equality on function-bearing values is an ACCEPTANCE defect, not an emitter formatting error. Before this wall, infer_binop_type_node answered Eq/Ne with bool_type for EVERY left type and the ExprBinOp arm emitted no diagnostic, so '==' was accepted on types whose equality semantics do not exist -- a record of interpreter functions, a runtime value carrying a closure environment. The interpretation path then answered from a host comparison the emission path cannot realize (rustc E0369: no PartialEq derives for fn-carrying types -- the refusal lived below the floor, in the wrong compiler, in the wrong phase). The admission is derived from the COMPLETE RESOLVED TYPE, never from a leaf spelling: an Arrow refuses; a kernel scalar admits; an algebra-carrier spelling admits or refuses by algebra_profile_equality_extensional -- the declared support-axis consequence in std.algebra, so finite-support carriers (List, Map, Set and their canonical names) lift the question into their type ARGUMENTS while open-support carriers (PartialFunction) refuse outright; a product walks every member and a coproduct walks every arm's members, under a visited set keyed on declaration identity so recursive structural data (Peano Nat: Zero | Succ { prev: Nat }) admits by the coinductive reading; a member that resolves nowhere refuses as EqualityMemberUnjudgeable rather than admitting silently. DELIBERATE BOUNDARIES, stated per rung honesty rather than implied covered: (1) a leaf whose head is OpaqueTypeHead at every authority -- a declared brand like v2.std.node.Symbol, or a generic type parameter -- carries no member this walk can judge and ADMITS at this rung; the admission is instantiation-blind, so a type parameter later bound to a function-bearing type is not caught at the generic declaration site. A StuckTypeHead operand (no declaration identity at all) is the same parameter case seen one authority earlier -- measured live at v2.std.collection map_insert's 'candidate == key' over bare K, a load-bearing generic comparison -- and admits under the same boundary rather than refusing on a namelessness that is a property of genericity, not of brokenness. Next-rung trigger for both: instantiation-grain admission, i.e. judging '==' where type arguments are known, which requires the call-site substitution the checker does not thread to this seam today. (2) '== none' / '!= none' is a PRESENCE test on the optional structure, not member equality, and is exempt before any walk (398 live sites measured 2026-08-30). An empty list literal comparison ('x == []' / '!= []') is the same idiom one carrier over -- an EMPTINESS test on the finite container, decidable by cardinality regardless of element admissibility -- and is likewise exempt before any walk (surfaced live at dag/gunbc/commit_workflow.dag 'refusals == []' and dag/extdeps/languages/markdown.dag 'inner == []', where the floor's per-witness resolve grain hands the literal a synthesized element node with no declaration identity). (3) Lt/Gt/Le/Ge ordering admission is the same defect one operator over and is NOT walled here -- ordering on a function-bearing type still accepts; that class is named rather than silently included. (4) Operands already carrying a compiler error are not judged: the resolution diagnostic owns the site. Cost shape (DESIGN 6): the walk runs only at Eq/Ne sites, kernel and opaque leaves return before any peel, and peel_nominal_alias_identity is reached only for structured or aliased operands (see where_refinement_peel_cost_note for why eager peels at this grain were withdrawn once already).".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
@@ -3744,6 +3681,13 @@ pub fn equality_resolved_declaration_structure(
     }
 }
 
+pub fn equality_operand_is_empty_list_literal(n: Rc<Node>) -> bool {
+    match (*n.expr_data.clone()).clone() {
+        ExprData::ExprListLit => ((n.children.clone().len() as i64) == 0),
+        _ => false,
+    }
+}
+
 pub fn equality_operand_is_presence_literal(
     n: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
@@ -3807,7 +3751,7 @@ pub fn equality_admission_diags(
                 let source_indices = scope.type_env.clone().source_indices.clone();
                 let lt = crate::v1_compiler_infer_types::resolved_type(left_typed.clone());
                 let rt = crate::v1_compiler_infer_types::resolved_type(right_typed.clone());
-                if (((((equality_operand_is_presence_literal(
+                if (((((((equality_operand_is_presence_literal(
                     lt.clone(),
                     source_indices.clone(),
                 ) || equality_operand_is_presence_literal(
@@ -3819,10 +3763,12 @@ pub fn equality_admission_diags(
                 )) || equality_operand_is_presence_literal(
                     right_typed.clone(),
                     source_indices.clone(),
-                )) || ((lt.inferred.clone() != std::option::Option::None)
-                    && crate::v1_std_core::is_compiler_error(
-                        lt.inferred.clone().clone().unwrap(),
-                    )))
+                )) || equality_operand_is_empty_list_literal(left_typed.clone()))
+                    || equality_operand_is_empty_list_literal(right_typed.clone()))
+                    || ((lt.inferred.clone() != std::option::Option::None)
+                        && crate::v1_std_core::is_compiler_error(
+                            lt.inferred.clone().clone().unwrap(),
+                        )))
                     || ((rt.inferred.clone() != std::option::Option::None)
                         && crate::v1_std_core::is_compiler_error(
                             rt.inferred.clone().clone().unwrap(),
@@ -5164,15 +5110,6 @@ pub fn direct_call_structured_record_literal_resolved_type_mismatch(
     }
 }
 
-pub fn call_argument_formal_selection_note() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "SINGLE AUTHORITY (DESIGN §3) for one question: which declared formal does a call argument bind to. The question was answered in TWO places with DIFFERENT rules, and the divergence produced wrong emitted types with no diagnostic anywhere. build_call_application_plan matched an argument to a formal by AUTHORED LABEL, falling back to position -- the same rule the interpreter's call_function_inner uses. The ExprCall inference fold, which chooses the EXPECTED type each argument is inferred under, selected purely by SOURCE POSITION and read the argument's label only to tag the result node. So a call passing named arguments in a different order than declared handed each argument its NEIGHBOUR's formal, while the type check -- running the other rule -- correctly paired them and reported nothing. Measured live: src/v1/05_emit.dag:2993 calls emit_typed_match_unified with all seven arguments named and source_indices ahead of recurse, so the recurse lambda was inferred against render_pattern's fn(MatchPattern) -> String; it emitted |node: Rc<MatchPattern>, d| and the stage0 build failed E0308 + E0282, from a call the compiler had declared clean. THE FIX IS NOT A SECOND COPY OF THE NAME-FIRST SEARCH. Pasting the rule into the fold would leave two implementations that agree today and drift later, which is the same §3 failure one layer down. This selector is the rule, held once; the fold consumes it directly, and the plan builder consumes it INVERTED -- a formal's argument is the argument that selects that formal's index -- so neither side can encode a rule the other does not. It returns the formal's INDEX as well as its node precisely so that inversion needs no second search. It is deliberately PRE-TYPE: it reads authored labels only, needs no substitution and no inferred types, so it is available before recursive argument inference begins and call_subst still accumulates in authored source order, leaving generic unification order untouched. Unknown and duplicate labels stay owned by direct_call_shape_wall_note's walls; this selector decides correspondence, never admission. THE LABEL TEST IS call_param_caller_labels, NOT EXACT EQUALITY, and the distinction is the underscore idiom: a parameter declared _ctx is addressable by callers as ctx, so exact equality missed it and fell through to the positional arm -- measured, ignore_ctx(n: 1, ctx: []) against fn ignore_ctx(_ctx: List<Int>, n: Int) kept the fabricated empty-list refusal until this was corrected. call_param_caller_labels is used rather than call_arg_label_matches_param because the two answer different questions: that predicate governs ADMISSION and returns true for a bare _ against ANY label, which is correct for asking whether a label names a declared parameter and catastrophic for asking WHICH parameter a label selects -- an anonymous parameter would claim the first label it saw. call_param_caller_labels answers the selection question directly, yielding [] for a bare _ so it can never be selected by name, so the hazard is closed by the authority chosen rather than by a guard beside it. INJECTIVITY, AND WHY IT DOES NOT SUBSUME THE RUNTIME-KEY WALL. The relation this selector defines must be a partial bijection: functional -- one argument selects one formal -- falls out of the selector's shape, but INJECTIVE -- one formal receives at most one argument -- does not, and its absence was silent wrongness below the floor. Measured on both compilers before the fix: f(a: 1, _a: 2, b: 3) against fn f(_a: Int, b: Int) compiled CLEAN and emitted f(2, 3), dropping the argument a: 1 with no diagnostic anywhere, because a and _a are two caller spellings of ONE formal and nothing asked whether two arguments had chosen the same one. formal_identity_duplicate_diags closes that: an argument whose selected formal index was already claimed by an EARLIER argument is refused. THE TWO WALLS PARTITION BY CAUSE AND MUST NOT BE MERGED. duplicate_label_diags asks whether two arguments produce the same RUNTIME BINDING KEY, via call_arg_bound_param_at's running counter over positionally-eligible names, and it also catches collisions this selector cannot see; it stays separate by operator ruling. This wall asks whether two arguments select the same SEMANTIC FORMAL. The questions coincide on exactly one input shape -- two arguments carrying the SAME authored label -- and there the key wall already owns the refusal, so this wall is guarded to fire only when the two labels DIFFER. Without that guard both fired and f(a: 1, a: 2, b: 3) produced TWO byte-identical diagnostics, measured; suppressing on identical labels is not a courtesy to the reader but the statement of which wall owns which cause.".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
-}
-
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum CallArgumentFormalSelection {
@@ -5460,15 +5397,6 @@ pub struct CallFormalApplication {
     pub formal_subst: Rc<Node>,
     pub formal: Rc<Node>,
     pub matched_arg: Option<Rc<Node>>,
-}
-
-pub fn call_application_plan_note() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "Cost shape (DESIGN §6 bare-minimum-cost) and single authority (§3). direct_call_arg_mismatch_diags and direct_call_structured_application_mismatch_diags were line-for-line duplicates of the same per-formal prologue: param_node_type_expr, substitute_generics, peel_nominal_alias_identity, authored_name_at, and the named-then-positional actual search. Both run over the SAME value_params, typed_args and call_subst at the one direct-call seam, so every formal was canonicalized twice per call. peel_nominal_alias_identity is resolve_node_bounded, an unmemoized recursive rebuild allocating a fresh Node per level, and it measured as the ENTIRE cost of the conformance seam: on gunbc.host_effect_realize the two timed peels inside direct_call_arg_mismatch_diags accounted for that function to within instrument overhead (62719ms + 62804ms against 125438ms over 330 calls), while the timer around direct_call_arg_type_mismatch never entered the top fourteen operations and substitute_generics already short-circuits an empty substitution. That module holds 63% of all corpus type inference. Building the binding ONCE and passing it to both consumers is the deduplication, not a cache: no map is introduced, so nothing here becomes an order-exposing operation in the v2.std.determinism denominator. Behavior is identical because every recomputed term is a pure function of arguments both callers already share.".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
 }
 
 pub fn build_call_application_plan(
@@ -5843,15 +5771,6 @@ pub fn param_binds_positionally(
         }
         std::option::Option::None => false,
     }
-}
-
-pub fn call_arg_bound_param_at_binding_key_note() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "Runtime (v1_interpreter.rs call_function_inner) keys `bindings` differently per argument form: a NAMED actual is inserted under its own literal caller label (`bindings.insert(ctx.sym(name), ...)` — the raw label, never resolved through the underscore idiom to a declared name), while a POSITIONAL actual is inserted under the declared name it fills by running positional index (`bindings.insert(ctx.sym(&param_names[positional_idx]), ...)`). Two named actuals therefore collide only when they carry the SAME literal label, and a positional-then-named collision (`one(1, a: 2)`) only when the named label equals the positional slot's declared name (found by review 48724). Resolving a named actual's key through declared_names via call_arg_label_matches_param (the prior form of this function) is a DIFFERENT and wrong key: filter-then-first picks whichever declared param the caller-label test hits first in declaration order, and an underscore-named param (`_: Edge`) matches ANY label unconditionally, so a later exact-named actual (`child:` against declared `child`) could be shadowed into colliding with an unrelated earlier underscore-idiom actual (`e:` against declared `_`) even though the runtime keys them apart as \"e\" and \"child\" — the false positive measured live at src/v2/std/cardinality.dag's termination_proof_fold_step(acc:, e:, child:) call against fn termination_proof_fold_step(acc, _: Edge, child), which compiled clean before this correction and fails at this wall after it without the fix.".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -7146,15 +7065,6 @@ pub fn unresolved_method_frontier_trigger(
         Some(row) => Some(row.dissolution.clone()),
         std::option::Option::None => std::option::Option::None,
     }
-}
-
-pub fn unresolved_method_frontier_note() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "The declared frontier for method calls whose receiver establishes NO method surface even after where-refinement peeling (DESIGN §7: a declared row with a reason and a migration trigger, countable and prioritizable, never a silent escape hatch). WHY A ROSTER AT ALL: MethodExistenceUndecided BLOCKS. Leaving the undecided class non-blocking meant emittable_graph still emitted code containing a method whose existence was never established — the same fail-open the wall claims to close, correctly refused twice in review (codex reviews 45357 and 45383). Blocking it outright was not available either: the residue is CORRECT, WORKING code — at the time this roster was built, seven of those sites sat in the v2 tokenizer, and the clause here named them as the LexMatchThunk { apply: fn(s) } idiom, which was WRONG: that field declares its parameter String, a leaf, and a non-generic record field holding a callable resolves fine. The seven were the GENERIC algebra parameters declared fn(R, R) -> R, whose type variable nothing bound; their row is now deleted at zero observed and the repair is on method_existence_wall_note. The point the clause was making survives its own specimen: a blanket refusal would have refused the compiler v2 is migrating to — fabricating a refusal, which §5 forbids exactly as it forbids fabricating a success. THE KEY IS (module, method, receiver_shape), AND THE THIRD COMPONENT IS THE CORRECTION. A (module, method) key was shipped first and was wrong on two counts, one found by review and one by execution, which is worth recording because they are the same defect seen from two sides. Review found it as a fail-open: any NEW apply call in v2.compiler.tokenize would inherit the pass even on a fully resolved receiver, so the note claim that no new fail-open can enter was false (codex review 45398). Execution found it as an UNDERCOUNT: the roster was measured over the v1 self-compile closure alone, and the first whole-corpus run reded seven sites in three modules the roster had never seen. Both dissolve into the same fix — the frontier admits a receiver whose surface could not be established, so the SHAPE of that receiver is the evidence, and keying on it means a new call refuses unless it reproduces the exact unestablished shape the row was measured on. The residue after that is 13 sites in four shapes: Primitive() with no authored name (a lambda parameter whose type never propagates, 10 sites), Primitive(T) (a bare type variable), Primitive(ok) (a coproduct payload typed as its variant name), and a Product that is really an Optional whose cardinality was dropped. Every one is an upstream receiver-resolution defect, not a method-existence fact, which is exactly why the wall cannot decide them and why each row names the resolution fix rather than a permanent exemption. Admitted rows still emit MethodExistenceFrontierAdmitted, counted and carrying its own trigger, so the frequency stays observable rather than zeroed by construction (§5). THE RESIDUAL WIDENING, STATED RATHER THAN CLAIMED AWAY: a second unresolved call to the same method, in the same module, on a receiver that fails to resolve in the same way, is still admitted. That is narrower than the module-wide pass it replaces and it is not zero. Closing it entirely needs an occurrence identity stable across edits — content-addressed, not line-anchored — which is the same containment/content-hash authority the namespace lane is landing; until then the honest bound is this key, and the peel above is the mechanism that actually SHRINKS the frontier rather than administering it.".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
 }
 
 pub fn categorized_error(
@@ -11271,15 +11181,6 @@ pub fn call_locals_shadow_note() -> String {
     CACHED.with(|c: &String| c.clone())
 }
 
-pub fn peel_alias_fixpoint_guard_note() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "Termination (§4 boundedness) and diagnostic completeness (§5): peel iterates resolve_node toward a groundable form; a node that resolves to ITSELF (a self-resolving generic constructor such as List — NoConnective, children>0, inferred=none, unbound-or-identity under resolve) is a resolve FIXED POINT, the expansion frontier. Without the once==n check the recurse arm loops forever on that shape (measured: one peel call spun 3M+ iterations / 396M resolve calls on the #6640 total-census tree, witness test.claim.bmc_bootstrap_provision_witness, fp trace c1f861179e→d33138c3f8→256ee7d351 repeating — progress-then-self-loop, no >1-cycle, so consecutive-equal suffices; a memo cannot terminate it, only make each spin fast). The fixed-point/non-alias arm is a legitimate speculative probe miss ONLY when resolve_node returns no diagnostics. The old Node return projected .resolved and discarded .diagnostics, making that quiet miss byte-identical to a real resolver refusal and zeroing the refusal's frequency before CompileResult, compile-clean, and the diagnostic census could observe it. The peel now returns the existing NodeResolveResult authority and accumulates every hop's diagnostics. ExprFieldAccess and record-literal alias field discovery are judgment-producing callers and must carry those diagnostics. Variant-membership and emit-shaping callers are metadata-only probes: they may inspect .resolved but do not admit an executable artifact or own a diagnostic ledger, so making them emit would turn speculative shape lookup into a false red. No second peel outcome vocabulary is minted beside the resolver's own typed carrier.".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
-}
-
 pub fn peel_alias_once_for_field_access(
     n: Rc<Node>,
     env: Rc<TypeEnv>,
@@ -11415,15 +11316,6 @@ pub fn alias_chain_generic_decl(env: Rc<TypeEnv>, carrier: Rc<Node>, target: Rc<
     } else {
         crate::v1_compiler_infer_resolve::resolve_generic_use_decl(env.clone(), carrier.clone())
     }
-}
-
-pub fn alias_chain_type_arg_arity_note() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "WHY THIS SEAM REFUSES INSTEAD OF SUBSTITUTING WHAT FITS (DESIGN sec 5, the absorbing fallback; sec 4b floor band 'applications bind in exact bijection'). alias_chain_type_arg_subst folded the DECLARED parameters against the SUPPLIED type arguments positionally and absorbed every disagreement in both directions at once: with fewer arguments than parameters the fold's Absent arm left the surplus parameters unsubstituted, so the expanded record kept type-variable fields and field access on it was judged against a hole; with more arguments than parameters the surplus arguments were simply never read. Neither state produced a diagnostic, so `Alias<Int>` and `Alias<Int, String>` against a one-parameter Alias compiled identically -- correct and incorrect indistinguishable at the floor band. One of the three call sites did notice: expand_alias_chain_for_field_access computed `dropped_args` at its recursion seam and widened `lossy`, which is the absorbing fallback in its purest form -- the failure arm stood the field-presence wall DOWN rather than refusing, so the deficit's frequency was zero by construction and nothing ranked it for repair. The other two call sites (alias_chain_target_after_args, and the record branch's re-substitution over an unresolved-parameter field) did not check at all. The repair is construction before validation: the subst is now Optional and has NO spelling for a partial map, so a mismatch cannot be handed downstream by any caller; and alias_chain_arity_diagnostics states the refusal ONCE, typed and located, at the seam that owns both the declaration and the application. SCOPE, stated rather than implied: the refused population is exactly the state `dropped_args` already computed -- both counts nonzero and unequal -- so this wall adds no refusal to a shape the code was not already treating as wrong, and a zero-parameter declaration or a zero-argument use is untouched. Container spellings are excluded because their arity has its own authority (container_expected_arity) and its own diagnostic. AND THE CARRIER MUST BE A USE-SITE LEAF, which is the qualification the first cut of this wall omitted and CI refused it for -- correctly, and the refusal is recorded here rather than quietly patched out. alias_chain_carrier answers the authored node only when it is NoConnective and named; otherwise it answers structural_from_expanded_type, whose children are the record's FIELDS or the coproduct's VARIANTS, not type arguments at all. Reading those as arguments made the check compare a declaration's field count against its parameter count, so `type Medium<R> { carried: R  fidelity: DecodeFidelity }` reported 'two type arguments supplied, one type parameter declared' at its own declaration -- 2460 diagnostics over 154 sites and 65 type names across dag/ and src/v2/, none of them a use site and none of them wrong source. The predicate therefore requires connective == NoConnective, which is exactly the branch where children ARE the applied arguments, and is the same position the deleted dropped_args occupied. WHY THIS WAS NOT CAUGHT BEFORE PUSHING: the corpus control was run with a compiler built BEFORE the change, so it exercised nothing and its zero was a fact about the old binary. A control that cannot flip is not a control.".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
 }
 
 pub fn alias_chain_type_arg_arity_mismatch(
@@ -18984,15 +18876,6 @@ pub fn type_env_for_import(module_path: String, parent_env: Rc<TypeEnv>) -> Rc<T
     }
 }
 
-pub fn interface_env_for_import_note() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "Interface-grain scope parent (S2a move 2 increment B, resolver-graph-major-design.md 7): a dependent's typecheck may read exactly its direct import's exported surface - str_bindings, the flattened ancestry maps, the MERGED inductive_fields/recursive sets (each inductively carries the parent's own ancestry, so one level suffices) - and never the parent's parent-chain env OBJECTS. parents: [] cuts the whole-ancestry retention (the measured ~16.3MiB/module residency class) while every chain consumer stays satisfied: phantom-variant and paramless-generic retries read direct parents' str_bindings (carried), inductive_fields_for reads the merged fields (carried), and the kernel stays the dependent's own last scope parent. Discriminating receipt: transitive_interface_binding_test (green arm = a C-declared record projected through B's exported signature still typechecks in A; red control = a bogus field on the same transitive record still errors).".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
-}
-
 pub fn interface_env_for_import(module_path: String, parent_env: Rc<TypeEnv>) -> Rc<TypeEnv> {
     {
         let filtered = type_env_for_import(module_path.clone(), parent_env.clone());
@@ -19018,24 +18901,6 @@ pub fn interface_env_for_import(module_path: String, parent_env: Rc<TypeEnv>) ->
             unit_variant_index: rebuilt_index.clone(),
         })
     }
-}
-
-pub fn interface_summary_consumer_note() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "S2a move 2 increment B (resolver-graph-major-design.md §7): build_type_env reads a direct import's ModuleInterface (std.interface_summary carrier + interface-grain env/cache realization) — never the parent's full TypeEnv+TypeEnvCache chains. interface.env is the export surface with parents: [] (ancestry-complete via flattened str_bindings/ancestry maps and merged inductive/recursive sets); interface.cache is the flattened import-union grain (variant_locals stripped — interpretation-local). Consumption still runs interface_env_for_import for importer-specific std.types filtering. Discriminating receipt: transitive_interface_binding_test.".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
-}
-
-pub fn interface_signature_fingerprint_v0_note() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "Interim v0 export signature fingerprint (export_entry_from_item): name-grain, NOT yet structural type shape. Type/data/service exports fingerprint name + authored_name_at(binding.resolved) under tag v1-interface-sig-v0; fn/func exports fingerprint name + param resolved-type names + return-type authored name under tag v1-interface-fn-sig-v0 (the fn arm landed with the typed-module content key, PR-alpha — before it, fn exports produced NO entry, so a fn-only module's interface_hash was the constant empty rollup and the content key's import term was vacuous; the key's import-term RED control is the discriminating receipt). Two exports whose names and resolved authored-name strings all match still collide even if type STRUCTURE differs; increment-B receipt is binding transitivity (transitive_interface_binding_test), not hash-discriminated deep structure. Structural fingerprint authority: std.interface_summary.interface_summary_v0_dissolution_trigger → export_entry_fingerprint when type-structure hashing lands.".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
 }
 
 pub fn interface_env_surface(env: Rc<TypeEnv>) -> Rc<TypeEnv> {
@@ -19490,15 +19355,6 @@ pub fn disj_variant_name_counts(
             _ => counts.clone(),
         },
     )
-}
-
-pub fn census_node_base_note() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "The census reads only the module NODE, so the node list is its true input: one census over two front ends (resolved closures and parse-grade pool fills). ResolvedModule entry points delegate through census_module_nodes.".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
 }
 
 pub fn census_module_nodes(modules: Rc<Vec<Rc<ResolvedModule>>>) -> Rc<Vec<Rc<Node>>> {
@@ -20117,15 +19973,6 @@ pub fn build_symbol_index_census_raw(
         census_module_nodes(modules.clone()),
         source_indices.clone(),
     )
-}
-
-pub fn census_borrowed_sig_resolution_note() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "Borrowed-sig hoist (namespace lane): the census stores raw pre-typecheck fn nodes, so a borrowed generic fn's return leaked bare type-param leaves (T/V/E) and owner-local names into consumers — the local/borrowed asymmetry (locals resolve once per module in resolve_item_types with type params bound as TypeVariables; borrows got the raw node per lookup). Pass 2 resolves each borrowable GENERIC fn signature's return ONCE at census build, in a synthetic env at the OWNER's containment position (module_path = the candidate's declaring module; symbol_index = the completed pass-1 census; type params bound via env_with_type_variable_bindings) — order-independent (resolution reads only the completed raw census, never a partial one), once per decl (never per lookup — the per-lookup variant re-resolved recursive carriers to the depth bound on every call), and staged fail-closed: ANY resolution diagnostic keeps the raw binding, so the consumer-side refusal surface is unchanged (upgraded | raw is a typed frontier, not a widen). Scope: fn sigs with value params (params non-empty; type params may be zero — a NON-generic fn's return can still USE a generic type, e.g. Outcome<Medium<String>>, and needs the same owner-position expansion for variant-payload substitution); 0-arg fns and aliases share a census shape (body stripped) and stay raw pending a discriminator.".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
 }
 
 pub fn census_fn_sig_env(
@@ -20748,15 +20595,6 @@ pub fn build_symbol_index_census(
     }
 }
 
-pub fn census_layering_note() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "Layered census (namespace-resolution-design.md 7.5: fill = whole tree; policy gates lookup, never fill). The closure census is byte-identical to the no-fill build — bare visibility, variant-alias corpus gating, and services stay closure-scoped, so a pool homonym cannot shift what a compiled module's bare names mean (measured on the whole-tree gate: a single whole-pool census vanished bare GET/Persistent/JsonValue across 28 witness rows via the corpus-count gate and unique-to-ambiguous flips). Census-only fill modules are PARSE-GRADE (tokenize + parse, never resolve: fill imports point into the compile closure or another tree view, and resolving fill against a fill-only pool fabricated 797 unresolved-import diagnostics about the view, not the modules) and enter a QUALIFIED-ONLY entries underlay — no bare reach INTO fill is needed because cross-tree references are qualified, the migration direction. The cli_run reconcile additionally underlays each typechecked module's OWN tree-closure bare census (root modules plus import-reached pool modules — gate parity by construction: e.g. dag witnesses' bare LiveTreeDisposition is declared only in v2.std.live_tree but import-reached from the dag tree).".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
-}
-
 pub fn build_symbol_index_census_nodes(
     module_nodes: Rc<Vec<Rc<Node>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
@@ -20765,15 +20603,6 @@ pub fn build_symbol_index_census_nodes(
         let raw = build_symbol_index_census_raw_nodes(module_nodes.clone(), source_indices.clone());
         census_with_resolved_fn_sigs(raw.clone(), source_indices.clone())
     }
-}
-
-pub fn underlay_fill_direction_note() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "Fill composition overlays the CLOSURE onto the shared underlay, never the reverse. Both directions denote the same map (union of key sets, closure wins the intersection); only the cost grain differs — the underlay is a per-index memo, so walking its keys charges every entry O(|whole pool|) for an index that differs by its own closure. Receipt: docs/plans/fill-composition-overlay-direction-receipt.md. Witness: symbol_index_fill_overlay_direction_test.".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
 }
 
 pub fn symbol_index_with_bare_fill(
@@ -22588,15 +22417,6 @@ pub fn build_local_variants(
         })
 }
 
-pub fn merge_global_bare_variant_locals_cost_note() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "Cost shape (bare-minimum-cost, DESIGN 6): the census-eligible variant-owner pairs depend only on global_bare and the name-census si — whole-closure facts identical for every module — so build_global_bare_variant_locals computes them ONCE per closure in typecheck_with_census_extra and the base map threads down realize_module -> typecheck_module -> build_module_context. The former per-module shape rescanned the whole census and re-inserted every eligible pair into every module's locals: 464 modules x 12,554 census keys = 5.8M iterations and 1.29M persistent-map inserts = 31s of the host_effect_realize entry compile (typecheck-perf investigation, 2026-07-31; PR 7398 landed build_global_bare_variant_locals beside the per-module fold but never wired it). map_merge(base, state.locals) is value-identical to the old fold: overlay wins on collision exactly as the old skip-if-present arm kept state's binding, and the old checked-insert collision arm was unreachable (presence was checked before insert), so the global merge contributed zero collision errors then and now. Fidelity of the hoisted si: authored_name_at reads names identically under the raw closure source_indices and the kernel-augmented env.source_indices (kernel spans compute the same name in both arms; non-kernel misses fall back to node.name in both), and the census owners all live in closure files, so eligibility is unchanged.".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
-}
-
 pub fn merge_global_bare_variant_locals(
     state: Rc<VariantFoldState>,
     global_variant_base: Rc<HashMap<String, Rc<TypeBinding>>>,
@@ -22654,15 +22474,6 @@ pub fn build_global_bare_variant_locals(
             _ => acc.clone(),
         },
     )
-}
-
-pub fn reexport_chain_authority() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "A module re-exports its specific-name imports (get_exported_names in v1.compiler.resolve), so `import proxy { B }` where proxy itself imports B is an EXPLICIT import under the §1c ruling — the binder follows the specific-name chain to the defining module's coproduct (the import DAG is acyclic, so the recursion terminates; a chain hop that dead-ends binds nothing and the use site fails closed as UnresolvedType). Glob (is_all) imports bind the target's OWN coproduct arms only — glob re-export pass-through is not modeled here, matching get_exported_names which excludes is_all imports from the export surface.".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
 }
 
 pub fn empty_variant_export_surface() -> Rc<VariantExportSurface> {
@@ -24241,15 +24052,6 @@ pub struct ExportedTypeRelationBuild {
     pub by_module: Rc<HashMap<String, Rc<HashMap<String, bool>>>>,
 }
 
-pub fn export_index_canonical_is_the_fold_element_note() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "§6 bare-minimum cost, same receipt as module_exported_type_names_cost_note. The export-index module walk's canonical binding was `filter(bindings |> map_values, b => b.name == name) |> first` — a rescan of the WHOLE binding map (with a fresh Vec allocation) once per distinct name, i.e. O(|bindings|^2) per module per closure assembly. It is dead work by construction: the enclosing fold walks THAT SAME map_values sequence in order, and seen_names skips every repeat, so the first element whose name matches is always the fold's own current element. `canonical = binding` is therefore the identical value, not an approximation of it — the order both expressions read is one traversal of one map value, so the equality does not depend on map_values being stable ACROSS runs (§5941 determinism), only on the two reads of the same value agreeing, which the rewrite removes the need for entirely.".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
-}
-
 pub fn export_index_module_state(
     acc: Rc<HashMap<String, Rc<TypeNameExportFacts>>>,
     m: Rc<TypedModule>,
@@ -24330,15 +24132,6 @@ pub fn build_export_indexes(
             export_index_merge_module_both(acc, m.clone(), source_indices.clone())
         },
     )
-}
-
-pub fn module_exported_type_names_cost_note() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "Cost shape (§6 bare-minimum cost, floor batch-3 receipt 2026-07-25): the type names a module exports is ONE derived fact — a set — and both consumers in rewire_type_env_import_str_binding_identity read it. Before this row it existed twice: the caller's per-module `local_names` fold, and `module_exports_type_name`, a LINEAR SCAN (map_values allocates a Vec of every binding, then filters by name) re-run once per (consumer module x inherited key x direct import). Measured on 79 discovery entries: that pass alone was 191.1s of a 331.9s resolve wall (99% of all rewire time, 2.4s/entry) while the other two rewire passes together cost 1.8s. Hoisting the set per module and testing membership made the per-name exporter count O(direct imports) instead of O(direct imports x |parent bindings|), with no change to the predicate it computes. That per-name scan is itself now gone: direct_import_exporter_counts accumulates the whole relation in one traversal of the same sets and rewire_canonical_rewrites reads it by key, so the pass no longer pays a scan per candidate name at all. The caller reads its own row out of the SAME index rather than re-folding it (review 42566) — the Absent arm computes the true value from this one authority, so it is a structurally-unreachable fallback that is still honest, never a fabricated default (DESIGN section 5).".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
 }
 
 pub fn module_exported_type_names(m: Rc<TypedModule>) -> Rc<HashMap<String, bool>> {

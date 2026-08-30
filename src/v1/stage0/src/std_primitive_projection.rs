@@ -13,15 +13,6 @@ use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
 use std::rc::Rc;
 
-pub fn primitive_projection_seed_boundary_note() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "The declaration-to-primitive projection is a seed-consumed substrate authority, so its import closure stops at std.decl_ref/std.types and never reaches a target roster or v2 module. This module is a strict relocation of the projection identity, fidelity, roster, and exact-declaration query formerly declared inside std.primitive_identity. std.primitive_identity consumes this authority for its census and total disposed/undisposed answer; the stage0 resolver consumes the same exact-declaration query. Required regen is the mechanical wall: src/v1 importing the former home reached gunbc.v1_interpreter_primitive_surface and then v2.std.qualified_name, which the src/v1 + dag bootstrap closure correctly refuses. The refusal is the seed-safety boundary working, not build friction.".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
-}
-
 pub fn primitive_identity_slug_prefix() -> String {
     thread_local! {
         static CACHED: String = {
@@ -51,24 +42,6 @@ pub fn primitive_identity_runtime_name(identity: Rc<PrimitiveIdentity>) -> Strin
             v1_rt::string_length(&slug),
         )
     }
-}
-
-pub fn primitive_projection_identity_key_note() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "The projection is keyed on std.decl_ref DeclarationRef, which is the namespace layer's own identity for a declaration (DESIGN section 3: namespace supplies declaration identity, this carrier supplies semantic primitive identity). No new identity type is minted here. The alternative shape considered and refused was a per-declaration marker row beside each fn: it is a second representation scattered across modules rather than one authority, it keys on a bare name inside a module scope so two same-named declarations collapse into one, and it has no room for a fidelity distinction. Module qualification answers the second; this single carrier answers the first; ProjectionFidelity answers the third.".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
-}
-
-pub fn primitive_projection_fidelity_note() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "HostRealizedSeam and ModeledProjection agree at the resolver -- both mean the declaration and the primitive are ONE authority, so a candidate collector must not report them as two. They are kept apart because they are different facts with different futures, and averaging them into one flag would erase the difference. A HostRealizedSeam body is a SELF-CALL (v2.std.decl_index decl_facts is decl_facts(pool_roots: pool_roots)): it is correct by construction, because a body that could never survive being reached is exactly what a declared host seam should look like -- reaching it recurses to the evaluation-budget refusal. A ModeledProjection body is REAL CODE that the builtin arm intercepts ahead of user-fn dispatch (v2.std.algebra length has a genuine fold_list body no bare call reaches): it is dead code that looks live, and someone will eventually edit it believing it runs. This carrier makes that observable rather than folklore. Repairing the dead-code half is NOT this carrier's job and is not claimed here.".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -213,15 +186,6 @@ pub fn symbol_lexeme_seam_disposition_note() -> String {
     thread_local! {
         static CACHED: String = {
             "THE TWO SYMBOL BRIDGES WERE HOST SEAMS THAT NOTHING SAID WERE HOST SEAMS, and the cost of that silence is why they are rostered here rather than left alone. v2.std.compilers.lexing symbol_lexeme and symbol_intern_lexeme have self-call bodies -- the HostRealizedSeam shape exactly, correct by construction because reaching one recurses to the evaluation-budget refusal -- and the interpreter has carried real arms for both since they were written (gunbc.v1_interpreter_primitive_surface v4_bridge.symbol_lexeme, v4_bridge.symbol_intern_lexeme). But with no roster row the RESOLVER saw an ordinary declaration, so Rust emission emitted the declaration, and `pub fn symbol_lexeme(sym: String) -> String { symbol_lexeme(sym) }` COMPILES. The emitted v2 compiler closure therefore carried two functions that type-check, pass every gate we own, and diverge from the interpreter by not terminating -- the DESIGN section 5 fabricated-plausible-output failure in its quietest form, since unlike the sibling seams (decl_facts and friends, which at least refuse loudly as unresolved v1_rt symbols) nothing anywhere reports this one.\n\nWHAT MAKES THE RUST REALIZATION HONEST RATHER THAN A SHIM: extdeps.languages.rust.types already declares Symbol's target type as String, so on that target the interning table is the identity and both bridges ARE identity functions. That is a realization of the declared row, not a second opinion about it; a target where Symbol is NOT String would need a different realization and the registry is where it would say so. The interpreter's arms and the Rust registry rows now answer for the same two primitives, which is the agreement that was missing.\n\nTHE RESIDUE IS NAMED, NOT CLOSED: a self-call body is a DECIDABLE structural marker of a host seam, so the compiler could refuse an unrealized one instead of emitting it. It does not yet, and until it does this roster is the only thing standing between a new v4_bridge declaration and another silently nonterminating emission. That check is this class's next-rung trigger.".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
-}
-
-pub fn primitive_projection_roster_note() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "One row per declaration that is the modeled surface of a declared primitive. Every row was established by READING THE DECLARATION, not by matching its name: the HostRealizedSeam rows are declarations whose whole body is a self-call, and the ModeledProjection rows are declarations with a real body that the builtin arm intercepts ahead of. The single DivergentProjection row is v2.std.collection map_get, whose declared return type is Outcome<Optional<V>> against the primitive's Optional<V>; it is carried rather than omitted because omission and divergence are different answers -- omission means nobody has looked, divergence means someone looked and found two authorities. A consumer collecting call candidates must suppress the builtin co-candidate for the first two fidelities and must keep refusing on the third.".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())

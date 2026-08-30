@@ -52,7 +52,6 @@ import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
-
 type Gap4IngestProbeState
   = Gap4IngestProbePending
   | Gap4IngestProbeFound {
@@ -164,7 +163,13 @@ test fn self_host_closure_witness_layer_roots_reexports_authority_holds() -> Boo
     )
 }
 
-data closure_receipt_describes_carrier_note: String = "The gate's live assertion after capless closure-ref transport landed. produced_row_count must equal the closure-ref row count the manifest actually carries, and consumers read through those refs with hash verification at consumption time. Inline Lossless source text is no longer emitted; host_source_root_ingest stays Empty while host_source_root_closure_refs carries the full closure. Past manifest_inline_list_max the inline carrier reports SourceRootManifestElided (typed read_count/cap) while the ref population stays complete — overflow must never render as zero rows and an empty ingest."
+// The gate's live assertion after capless closure-ref transport landed. produced_row_count must
+// equal the closure-ref row count the manifest actually carries, and consumers read through those
+// refs with hash verification at consumption time. Inline Lossless source text is no longer
+// emitted; host_source_root_ingest stays Empty while host_source_root_closure_refs carries the full
+// closure. Past manifest_inline_list_max the inline carrier reports SourceRootManifestElided (typed
+// read_count/cap) while the ref population stays complete — overflow must never render as zero rows
+// and an empty ingest.
 
 test fn compiler_closure_ingest_receipt_describes_carrier_holds() -> Bool {
   source_root_overflow_never_empty_population_holds(

@@ -175,9 +175,14 @@ import gunbc.spark.serving_readback_parse {
   spark_serving_readback_field_label,
 }
 
-data spark_serving_observe_transport_note: String = "OBSERVATION PRODUCER (SPARK-SERVE-BIND-0 item B) over FleetSsh — callers supply a sealed FleetSshExecutionContext rather than hardcoding one credential route."
+// OBSERVATION PRODUCER (SPARK-SERVE-BIND-0 item B) over FleetSsh — callers supply a sealed
+// FleetSshExecutionContext rather than hardcoding one credential route.
 
-data spark_serving_observe_note: String = "Wet observation only; a green witness over fixture strings is not proof gpt-oss:20b is serving. Runtime closure identity requires the release-archive admission receipt under ~/.local/share/gunbc/spark-serving/ (archive digest admitted at materialization — not proof of completed install) plus independent /api/version and /api/tags probes. This branch does not install or start Ollama on the hosts."
+// Wet observation only; a green witness over fixture strings is not proof gpt-oss:20b is serving.
+// Runtime closure identity requires the release-archive admission receipt under
+// ~/.local/share/gunbc/spark-serving/ (archive digest admitted at materialization — not proof of
+// completed install) plus independent /api/version and /api/tags probes. This branch does not
+// install or start Ollama on the hosts.
 
 data spark_serving_observe_receipt_path: String = "target/spark-serving-observe-receipt.txt"
 
@@ -1291,7 +1296,6 @@ fn spark_serving_report_observations_were_made(report: SparkServingObservationRe
   }
 }
 
-
 func spark_serving_observe_wet() -> ProcessExit
   uses net: Network
 {
@@ -1362,7 +1366,6 @@ func spark_serving_observe_with_attempt(attempt_raw: String) -> ProcessExit
     },
   )
 }
-
 
 // RUNNER-SIDE OBSERVATION ENTRY. spark_serving_observe_wet above resolves a credential through
 // GcloudPrintToken and is therefore an operator-workstation route only; a GHA self-hosted slot
@@ -2313,7 +2316,6 @@ fn spark_serving_observe_runtime_materialization(
       }
   }
 }
-
 
 // ONE OBSERVATION IN, ONE PROJECTION OUT.
 //

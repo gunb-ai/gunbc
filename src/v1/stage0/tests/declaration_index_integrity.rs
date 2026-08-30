@@ -1,27 +1,24 @@
 // THE FIXTURE-BOUNDARY RED FOR THE INGESTION-TIME DECLARATION INDEX.
 //
-// DESIGN §4b requires this question to be asked BEFORE the check is written: is the
-// forbidden state authorable anywhere the check can run? And it is explicit that the
-// CORPUS boundary does not decide it — the FIXTURE boundary does. That distinction is the
-// whole reason this file exists. Measured on the live tree, all three arms are green:
-// every top-level lens carries `construction_justification`, every import member resolves,
-// every in-namespace citation resolves. A check that is green over the corpus and whose
-// red cannot be authored anywhere would be a decoration — permanently green by
-// construction, carrying no information, and worse than absent because it would be cited
-// as coverage.
+// DESIGN §4b asks BEFORE the check is written whether the forbidden state is authorable
+// anywhere the check can run, and says the FIXTURE boundary decides it, not the CORPUS
+// boundary. That is why this file exists. On the live tree all three arms are green: every
+// top-level lens carries `construction_justification`, every import member resolves, every
+// in-namespace citation resolves. A check green over the corpus with no authorable red would
+// be a decoration — permanently green, carrying no information, worse than absent because
+// cited as coverage.
 //
-// It is not one, and this file is the receipt. `run_dag_parse_sweep` takes a directory of
-// AUTHORED SOURCE, so a fixture hands the index whatever module text it likes and reads
-// back a typed, located refusal. Every arm below plants its own violation and requires the
-// exact refusal, beside a positive control that must stay clean.
+// It is not one; this file is the receipt. `run_dag_parse_sweep` takes a directory of
+// AUTHORED SOURCE, so a fixture hands the index any module text and reads back a typed,
+// located refusal. Every arm plants its own violation and requires the exact refusal, beside
+// a positive control that must stay clean.
 //
-// THE ONE PREMISE THAT IS MEASURED RATHER THAN INFERRED. Arm 1 is only worth anything if
-// v1's own `MissingExport` does not already cover it. It does — inside a COMPILE CLOSURE.
-// `orphan_import_claim_is_refused_here_and_nowhere_else` holds both directions: the same
-// false claim in a module the resolver sees (v1 refuses; the index agrees) and in a module
-// no closure reaches (v1 is structurally silent, because it is never asked; the index
-// refuses alone). Without both arms the exhibited cost behind this change would be an
-// inference about the compiler rather than an observation of it.
+// THE ONE PREMISE THAT IS MEASURED RATHER THAN INFERRED: v1's own `MissingExport` covers Arm 1
+// only inside a COMPILE CLOSURE. `orphan_import_claim_is_refused_here_and_nowhere_else` holds
+// both directions: the same false claim in a module the resolver sees (v1 refuses; the index
+// agrees) and in a module no closure reaches (v1 is never asked, so silent; the index refuses
+// alone). Without both arms the exhibited cost would be an inference about the compiler, not
+// an observation.
 
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
@@ -63,21 +60,20 @@ fn findings_over(dir: &Path) -> Vec<(DeclarationIntegrityKind, String)> {
 
 // ── PLANT WELL-FORMEDNESS: the precondition every planted red owes before its verdict ──
 //
-// WHY THESE EXIST, and it is a finding rather than tidiness. Two fixture defects in this file
-// produced EXACTLY the observation a broken guard produces:
+// WHY THESE EXIST — a finding, not tidiness. Two fixture defects in this file produced EXACTLY
+// the observation a broken guard produces:
 //
 //   wrong module header      -> import target absent -> claim SKIPPED  -> no finding
 //   single-variant coproduct -> parse question       -> not admitted   -> no finding
 //
-// A MALFORMED PLANT AND A BROKEN GUARD ARE INDISTINGUISHABLE AT THE ASSERTION. So "no finding"
-// is a three-way ambiguity — fixture malformed, plant never reached, guard broken — and the
-// repair pressure points at the production predicate, which is how a correct guard nearly got
-// "fixed" to satisfy a bad fixture. That is the design doc's not-applicable-versus-malformed
-// conflation arrived at from the fixture side: SKIPPED and ADMITTED are different states and
-// the assertion could not see the difference.
+// A MALFORMED PLANT AND A BROKEN GUARD ARE INDISTINGUISHABLE AT THE ASSERTION. "No finding" is
+// a three-way ambiguity — fixture malformed, plant never reached, guard broken — and repair
+// pressure points at the production predicate, which is how a correct guard nearly got "fixed"
+// to satisfy a bad fixture: the design doc's not-applicable-versus-malformed conflation from the
+// fixture side; SKIPPED and ADMITTED differ and the assertion could not see it.
 //
-// The remedy is a positive control ON THE PLANT, asserted BEFORE the guard's verdict, so the
-// guard's answer is the only remaining variable.
+// Remedy: a positive control ON THE PLANT, asserted BEFORE the guard's verdict, so the guard's
+// answer is the only remaining variable.
 
 /// The plant is in the index at the identity the fixture intended — i.e. it parsed AND
 /// declared the module path the rest of the test names.
@@ -179,18 +175,17 @@ fn import_member_present_stays_clean() {
 
 // ARM 1's DECLARED HOLE, HELD OPEN ON PURPOSE AND HELD COUNTABLE.
 //
-// `v1.03_resolve` `get_exported_names` appends every `kernel_type_set` key to every
-// module's export surface, so `import m { Int }` is admitted whatever `m` declares. The
-// index must admit it too — refusing source the seed compiler accepts is not this change's
-// to do, and editing `get_exported_names` is `NewLanguageBehavior`, which the v1 freeze
-// refuses. What the index MAY do is refuse to hide it.
+// `v1.03_resolve` `get_exported_names` appends every `kernel_type_set` key to every module's
+// export surface, so `import m { Int }` is admitted whatever `m` declares. The index must admit
+// it too — refusing source the seed accepts is not this change's to do, and editing
+// `get_exported_names` is `NewLanguageBehavior`, which the v1 freeze refuses. What the index
+// MAY do is refuse to hide it.
 //
-// So this pair asserts the hole's SHAPE rather than its absence: the planted claim produces
-// NO finding (that is the seed's rule, faithfully mirrored) and DOES produce a count of
-// exactly one. The count is the whole point. A bare `continue` would satisfy the first
-// assertion and zero the second, which is the absorbing-fallback shape DESIGN §5 names —
-// the deficit's frequency zeroed by construction, so it can never rank for fixing. This
-// test goes RED if anyone re-silences it, which is a red no corpus measurement could
+// So this pair asserts the hole's SHAPE, not its absence: the planted claim produces NO finding
+// (the seed's rule, mirrored) and a count of exactly one. The count is the point: a bare
+// `continue` would satisfy the first assertion and zero the second — the absorbing-fallback
+// shape DESIGN §5 names, the deficit's frequency zeroed by construction so it never ranks for
+// fixing. This test goes RED if anyone re-silences it, a red no corpus measurement could
 // produce, since the corpus is exactly where the class is invisible.
 #[test]
 fn kernel_named_import_member_is_admitted_but_counted() {
@@ -243,20 +238,18 @@ fn a_declared_member_does_not_count_as_kernel_named() {
 
 // KERNEL-NAMED AND DECLARED ARE INDEPENDENT AXES, AND THE COUNTER MUST SPLIT THEM.
 //
-// This is the arm that decides whether the counter measures anything. `kernel_type_set`
-// has eight keys, and over `std.types` — the module 'import std.types { Int }' names —
-// FIVE of them are genuinely declared there and THREE are not: `Bool`, `Secret`, `Json`,
-// `Unit` and `Bytes` have real declarations, while `Int`, `String` and `Float` exist only
-// as string keys of that map. So `import std.types { Bool }` is a TRUE claim and
-// `import std.types { Int }` is a FALSE one, and a counter that renders them identically
-// is reporting "this name appears in kernel_type_set", which needs no census.
+// The arm that decides whether the counter measures anything. `kernel_type_set` has eight
+// keys; over `std.types` — the module 'import std.types { Int }' names — FIVE are genuinely
+// declared (`Bool`, `Secret`, `Json`, `Unit`, `Bytes`) and THREE exist only as string keys of
+// the map (`Int`, `String`, `Float`). So `import std.types { Bool }` is TRUE and
+// `import std.types { Int }` is FALSE; a counter rendering them identically reports "this name
+// appears in kernel_type_set", which needs no census.
 //
-// The predicate splits them by ORDER — it asks `!import_surface_has` FIRST and only then
-// consults the kernel set — but an ordering is an implementation detail until something
-// asserts the behaviour it produces. This test asserts it: one module declaring a
-// kernel-NAMED type for real, one not, both imported under the same name, and the counter
-// must answer 1 rather than 2. Reversing the two conjuncts leaves every other test in this
-// file green and turns this one red.
+// The predicate splits them by ORDER — `!import_surface_has` FIRST, then the kernel set — but
+// an ordering is an implementation detail until asserted. This test asserts it: one module
+// declaring a kernel-NAMED type for real, one not, both imported under the same name, and the
+// counter must answer 1 not 2. Reversing the two conjuncts leaves every other test green and
+// turns this one red.
 #[test]
 fn kernel_named_counter_splits_declared_from_undeclared() {
     let dir = scratch_root("kernel_named_split");
@@ -279,9 +272,9 @@ fn kernel_named_counter_splits_declared_from_undeclared() {
          import probe.silent { Unit }\n\ndata claimant_present: Bool = true\n",
     );
     let sweep = run_dag_parse_sweep(&dir, &["probe_root"]).expect("fixture must parse");
-    // PRECONDITION: both plants are well-formed and both claims REACHED the decision. Without
-    // this, a wrong module header makes the claim target-absent, the counter reads 0, and the
-    // failure is indistinguishable from a broken predicate — which is what happened.
+    // PRECONDITION: both plants are well-formed and both claims REACHED the decision. Otherwise
+    // a wrong module header makes the claim target-absent, the counter reads 0, and the failure
+    // is indistinguishable from a broken predicate — which is what happened.
     plant_declares(&sweep.index, "probe.declares", "Unit");
     plant_import_target_resolves(&sweep.index, "probe.claimant", "probe.declares");
     plant_import_target_resolves(&sweep.index, "probe.claimant", "probe.silent");
@@ -303,10 +296,9 @@ fn kernel_named_counter_splits_declared_from_undeclared() {
 
 // THE DISCRIMINATING PAIR BEHIND THE EXHIBITED COST.
 //
-// Both modules make the identical false claim. The difference is whether any compile
-// closure reaches them — and that difference is what v1's `MissingExport` is a function
-// of, because `resolve_modules` only ever sees the modules it is handed. The index is a
-// function of what is AUTHORED, so it answers for both.
+// Both modules make the identical false claim; they differ in whether any compile closure
+// reaches them — what v1's `MissingExport` is a function of, since `resolve_modules` sees only
+// the modules it is handed. The index is a function of what is AUTHORED, so it answers for both.
 #[test]
 fn orphan_import_claim_is_refused_here_and_nowhere_else() {
     let dir = scratch_root("orphan");
@@ -335,9 +327,9 @@ fn orphan_import_claim_is_refused_here_and_nowhere_else() {
         "the orphan's claim must be among them: {found:?}"
     );
 
-    // (b) The compiler's own resolve answers ONLY for the closure it is handed. This is
-    // not a defect in `MissingExport` — it is what a closure-scoped check IS, and it is
-    // why an unreached module's claims are covered by nothing else in the repository.
+    // (b) The compiler's own resolve answers ONLY for the closure it is handed — not a defect
+    // in `MissingExport` but what a closure-scoped check IS, and why an unreached module's
+    // claims are covered by nothing else in the repository.
     let closure_diagnostics = missing_export_names(&dir, &["authority.dag", "in_closure.dag"]);
     assert_eq!(
         closure_diagnostics,
@@ -403,19 +395,19 @@ fn stale_citation_is_refused() {
 }
 
 // ARM 2's THIRD RED, AND IT HAD NO FIXTURE UNTIL 2026-08-26. `CitedFieldAbsent` was the one
-// refusal arm of the cited-symbol wall with no controlled fixture anywhere: its only evidence
-// was a PLANTED_CONTROL_CITATIONS row whose citation was authored inside
+// refusal arm of the cited-symbol wall with no controlled fixture: its only evidence was a
+// PLANTED_CONTROL_CITATIONS row whose citation was authored inside
 // `v2.lens.cited_symbol_resolution`. Deleting that lens deleted the citation, the row stopped
-// reproducing, and the arm would have been left with nothing executing against it — the
-// §4b(4) failure of deleting evidence along with the machinery it outlived. Measured, not
-// assumed: before this test the string `CitedFieldAbsent` did not occur in this file at all.
+// reproducing, and nothing would execute against the arm — the §4b(4) failure of deleting
+// evidence with the machinery it outlived. Measured: before this test the string
+// `CitedFieldAbsent` did not occur in this file.
 //
-// A controlled fixture is also the STRONGER replacement, not merely an equal one. The planted
-// row asserted that one hand-authored citation in the live corpus still refuses; this authors
-// both the input and the expected population, which is the oracle DESIGN §5 actually asks for.
+// A controlled fixture is the STRONGER replacement: the planted row asserted one hand-authored
+// corpus citation still refuses; this authors both input and expected population, the oracle
+// DESIGN §5 asks for.
 //
 // THE PAIR IS THE POINT: `absent_field` must refuse and `present_field` must NOT, in one
-// fixture. A wall that refused every `NamedField` citation would satisfy the red alone.
+// fixture. A wall refusing every `NamedField` citation would satisfy the red alone.
 #[test]
 fn citation_to_an_absent_field_is_refused_and_a_present_field_is_not() {
     let dir = scratch_root("citation_field");
@@ -669,15 +661,15 @@ fn lens_with_construction_justification_stays_clean() {
 
 // THE DEBT CONTRACT'S OWN DISCRIMINATING PAIR, AND WHY IT LIVES BEHIND A ROSTER PARAMETER.
 //
-// `review 55817` found that folding the debt arm into `index_findings` made every fixture in
-// this file receive 42 findings it did not plant — the production roster joined against a
-// tree of `probe.*` modules, where all 42 rows are trivially absent. That falsified the
-// §4b evidence in place: the planted-red and positive-control assertions could not pass.
+// `review 55817` found that folding the debt arm into `index_findings` gave every fixture here
+// 42 findings it did not plant — the production roster joined against a tree of `probe.*`
+// modules where all 42 rows are trivially absent — falsifying the §4b evidence in place: the
+// planted-red and positive-control assertions could not pass.
 //
-// The repair splits the arm out into `corpus_findings`, whose denominator is this repository,
-// and gives the join an explicit roster so the contract's OWN red becomes authorable here for
-// the first time. Both directions are planted below, because a one-sided assertion would not
-// distinguish a working contract from an arm that never fires.
+// The repair splits the arm into `corpus_findings` (denominator: this repository) and gives the
+// join an explicit roster, so the contract's OWN red is authorable here for the first time.
+// Both directions are planted, since a one-sided assertion cannot tell a working contract from
+// an arm that never fires.
 #[test]
 fn a_debt_row_whose_citation_still_refuses_is_live() {
     let dir = scratch_root("debt_live");
@@ -774,17 +766,17 @@ fn the_debt_arm_is_corpus_scoped_not_index_scoped() {
 
 // THE CLASS, NOT THE INSTANCE.
 //
-// `review 55817` found ONE arm reading a module-scope roster from inside itself. Asking the
-// same question of the other four found a second, and a worse one: `cited_symbol_findings`
-// SUPPRESSED citations against the same constant. A spurious refusal is loud; a spurious
-// SUPPRESSION is a citation the wall quietly declines to judge, so that arm could have
-// stopped enrolling an entire class with every fixture in this file still green.
+// `review 55817` found ONE arm reading a module-scope roster from inside itself; asking the
+// other four found a worse second: `cited_symbol_findings` SUPPRESSED citations against the
+// same constant. A spurious refusal is loud; a spurious SUPPRESSION is a citation the wall
+// quietly declines to judge, so that arm could have stopped enrolling an entire class with
+// every fixture here still green.
 //
-// Both rosters are parameters now, and the default is EMPTY rather than the production
-// constant, so `index_findings` judges every citation in whatever tree it is handed. This
-// test is the control on that default: a fixture citation that the production roster happens
-// to name must still be judged by `index_findings`, because the production roster is not a
-// fact about a fixture tree. It reds if either default is ever pointed back at the constant.
+// Both rosters are parameters now, defaulting to EMPTY rather than the production constant, so
+// `index_findings` judges every citation in whatever tree it is handed. This test controls that
+// default: a fixture citation the production roster happens to name must still be judged by
+// `index_findings`, because the production roster is not a fact about a fixture tree. It reds
+// if either default is pointed back at the constant.
 #[test]
 fn the_production_roster_does_not_reach_an_arbitrary_tree() {
     let dir = scratch_root("roster_default");
@@ -818,24 +810,23 @@ fn the_production_roster_does_not_reach_an_arbitrary_tree() {
 
 // THE SEAM THE REPAIR ITSELF CREATED.
 //
-// Both rosters now enter from exactly one place, `corpus_findings`. That is the right shape,
-// and it makes the WIRING a fact that needs its own evidence: unreachable-from-`index_findings`
-// is proven by construction, but reachable-from-`corpus_findings` is otherwise just an
-// assertion about a call site. Without this test the suppression arm would be perfectly
-// evidenced at the fixture boundary and silently disableable at the only seam that matters —
-// pass `&[]` there instead of the production roster and nothing fails.
+// Both rosters now enter from exactly one place, `corpus_findings` — the right shape, and it
+// makes the WIRING a fact needing its own evidence: unreachable-from-`index_findings` is proven
+// by construction, but reachable-from-`corpus_findings` is otherwise an assertion about a call
+// site. Without this test the suppression arm would be evidenced at the fixture boundary and
+// silently disableable at the only seam that matters — pass `&[]` there instead of the
+// production roster and nothing fails.
 //
-// The discriminating pair is authorable because a fixture may reproduce a production SITE.
-// `std.encoding` citing `std.bytes` `builtin_function_registry` is a real row of
-// `PRE_EXISTING_CITATION_DEBT`, so a fixture that declares `std.bytes` WITHOUT that
-// declaration and cites it FROM A MODULE CALLING ITSELF `std.encoding` must be refused by
-// `index_findings` (empty roster: judge everything) and suppressed by `corpus_findings`
-// (production roster: enrolled). The two answers over ONE tree are what prove the wiring
-// rather than the fold.
+// The pair is authorable because a fixture may reproduce a production SITE. `std.encoding`
+// citing `std.bytes` `builtin_function_registry` is a real row of
+// `PRE_EXISTING_CITATION_DEBT`, so a fixture declaring `std.bytes` WITHOUT that declaration
+// and citing it FROM A MODULE CALLING ITSELF `std.encoding` must be refused by `index_findings`
+// (empty roster: judge everything) and suppressed by `corpus_findings` (production roster:
+// enrolled). Two answers over ONE tree prove the wiring rather than the fold.
 //
-// THE CITING MODULE IS PART OF THE FIXTURE NOW, and that is not incidental: a row exempts a
-// SITE, so naming the target alone no longer reaches the production roster. The companion
-// test below plants the same target from a different citer and requires it to REFUSE.
+// THE CITING MODULE IS PART OF THE FIXTURE NOW: a row exempts a SITE, so naming the target
+// alone no longer reaches the production roster. The companion test below plants the same
+// target from a different citer and requires it to REFUSE.
 #[test]
 fn corpus_findings_is_wired_to_the_production_suppression_roster() {
     let dir = scratch_root("seam_suppression");
@@ -855,8 +846,8 @@ fn corpus_findings_is_wired_to_the_production_suppression_roster() {
     );
     let sweep = run_dag_parse_sweep(&dir, &["probe_root"]).expect("fixture must parse");
     // PRECONDITION: the citation is indexed at the exact identity the production roster names,
-    // and the cited module really is present and really does NOT declare it. Otherwise a
-    // "suppressed" reading below could just be a citation nobody extracted.
+    // and the cited module is present and does NOT declare it. Otherwise "suppressed" below
+    // could be a citation nobody extracted.
     plant_cites(
         &sweep.index,
         "std.encoding",
@@ -895,10 +886,9 @@ fn corpus_findings_is_wired_to_the_production_suppression_roster() {
     );
 }
 
-// THE PLANTED-CONTROL ARM READS THE SAME TRIGGER THE DEBT ARM DOES, IN THE OPPOSITE DIRECTION,
-// and that inversion is the only reason it is a second carrier rather than a flag on the first.
-// Both directions are planted, because a one-sided assertion here cannot tell a working arm
-// from one that never fires.
+// THE PLANTED-CONTROL ARM READS THE SAME TRIGGER THE DEBT ARM DOES, IN THE OPPOSITE DIRECTION —
+// the only reason it is a second carrier rather than a flag on the first. Both directions are
+// planted; a one-sided assertion cannot tell a working arm from one that never fires.
 #[test]
 fn a_planted_control_that_still_refuses_is_healthy() {
     let dir = scratch_root("control_healthy");
@@ -978,15 +968,15 @@ fn a_planted_control_that_resolves_has_lost_its_power_and_refuses() {
 // THE DESYNCHRONIZATION IS ASSERTED HERE RATHER THAN OBSERVED IN A REPORT.
 //
 // The first corpus run reported two CONTRADICTORY findings about ONE citation:
-// `extdeps.tcgplayer.store` `UpdateSkuPrice` was called unenrolled debt by the suppression arm
-// AND its roster row was called spent by the staleness arm. Cause: the citation carries
-// `field: NamedField { "price" }` and its roster row carried an empty field, so the two arms
-// were matching on different identities. Both arms were locally correct. Both were wrong.
+// `extdeps.tcgplayer.store` `UpdateSkuPrice` was unenrolled debt to the suppression arm AND its
+// roster row was spent to the staleness arm. Cause: the citation carries
+// `field: NamedField { "price" }`, the row an empty field, so the arms matched different
+// identities. Both locally correct, both wrong.
 //
-// NEITHER ARM CAN DETECT THAT ALONE — each is right about its own half — so the only observable
-// is the two answers being present together and disagreeing. That was caught by a human reading
-// two lines of a report, which is not a mechanism. This test makes it a wall: plant the exact
-// identity mismatch and require BOTH findings, then repair the row and require NEITHER.
+// NEITHER ARM CAN DETECT THAT ALONE, so the only observable is the two answers disagreeing
+// together — caught by a human reading two report lines, which is not a mechanism. This test
+// makes it a wall: plant the exact identity mismatch and require BOTH findings, then repair the
+// row and require NEITHER.
 #[test]
 fn a_roster_row_on_the_wrong_identity_desynchronizes_both_arms() {
     let dir = scratch_root("desync");
@@ -1064,12 +1054,12 @@ fn a_roster_row_on_the_wrong_identity_desynchronizes_both_arms() {
 
 // ARM 8 — a fixture carrier's citations are JUDGED, and the exemption is per citation.
 //
-// The removed form skipped every citation in a module `module_is_fixture_carrier` answered
-// true for. These three tests are the discriminating evidence that carrier identity no longer
-// suppresses anything by itself: a refusing citation inside a witness module is an ordinary
-// finding, an enumerated exemption suppresses exactly its own identity, and an exemption whose
-// citation resolves refuses as spent. Without the third, the roster could rot into a list of
-// things that used to be false — the same inverse arm the debt roster carries.
+// The removed form skipped every citation in a module `module_is_fixture_carrier` answered true
+// for. These three tests show carrier identity no longer suppresses anything by itself: a
+// refusing citation inside a witness module is an ordinary finding, an enumerated exemption
+// suppresses exactly its own identity, and an exemption whose citation resolves refuses as
+// spent. Without the third the roster could rot into things that used to be false — the same
+// inverse arm the debt roster carries.
 
 #[test]
 fn a_refusing_citation_inside_a_fixture_carrier_is_judged() {
@@ -1220,19 +1210,18 @@ fn a_fixture_exemption_whose_citation_resolves_is_spent_and_refuses() {
 // GRAIN.
 //
 // Every roster row used to name a TARGET — `(module, decl, field)` — so one row suppressed
-// every citation of that target, corpus-wide and for as long as the row stood. Measured on the
-// live tree, the 70 rows covered 75 refusing sites and six targets were already cited from more
-// than one module (`gunbc.host_effect` `host_effect_apply` from three, `std.bytes`
-// `builtin_function_registry` from three). The consequence is the one this test plants: a patch
-// could author a BRAND NEW dangling citation to any enrolled target, from any module, and the
-// wall would silently decline to judge it — citation rot admitted by the mechanism built to
-// refuse it, and decidable from the patch alone.
+// every citation of that target, corpus-wide, as long as it stood. On the live tree the 70 rows
+// covered 75 refusing sites and six targets were cited from more than one module
+// (`gunbc.host_effect` `host_effect_apply` from three, `std.bytes` `builtin_function_registry`
+// from three). So a patch could author a BRAND NEW dangling citation to any enrolled target,
+// from any module, and the wall would silently decline to judge it — citation rot admitted by
+// the mechanism built to refuse it, decidable from the patch alone.
 //
 // The fixture reproduces one production row exactly (`std.encoding` -> `std.bytes`
 // `builtin_function_registry`) and plants a SECOND citation of the same target from
 // `probe.newcomer`. Under the production roster the enrolled site is suppressed and the new one
-// must refuse. Revert the roster to target grain and this test goes green with zero findings,
-// which is precisely the state it exists to forbid.
+// must refuse. Revert the roster to target grain and this test goes green with zero findings —
+// the state it exists to forbid.
 #[test]
 fn a_new_citation_of_an_enrolled_target_from_another_module_still_refuses() {
     let dir = scratch_root("site_grain_newcomer");
@@ -1260,8 +1249,8 @@ fn a_new_citation_of_an_enrolled_target_from_another_module_still_refuses() {
          \u{20}\u{20}field: WholeDeclaration,\n}\n",
     );
     let sweep = run_dag_parse_sweep(&dir, &["probe_root"]).expect("fixture must parse");
-    // PRECONDITIONS: both citations are indexed, and the target really is absent — otherwise
-    // "one finding" below could be a citation nobody extracted rather than a wall that fired.
+    // PRECONDITIONS: both citations are indexed and the target is absent — otherwise "one
+    // finding" below could be a citation nobody extracted rather than a wall that fired.
     plant_cites(
         &sweep.index,
         "std.encoding",
@@ -1350,19 +1339,18 @@ fn a_roster_row_exempts_its_own_citer_and_no_other() {
 
 // THE RESIDUE THIS BRANCH FIRST DISCLOSED AND THEN CLOSED (review 56227).
 //
-// The citing MODULE alone was not a site: two citations of one target inside one module shared
-// a row, so a new dangling citation authored BESIDE an enrolled one stayed suppressed — the
-// same fail-open the module grain closed, one level in, and the reviewer was right that a
-// disclosed residue is not a closed one when the identity that closes it is available.
+// The citing MODULE alone was not a site: two citations of one target in one module shared a
+// row, so a new dangling citation authored BESIDE an enrolled one stayed suppressed — the same
+// fail-open the module grain closed, one level in; a disclosed residue is not a closed one when
+// the closing identity is available.
 //
-// It was available. `record_from_module` already iterates top-level items to build `declared`,
-// so the enclosing declaration's name costs one string at extraction and is a NAME rather than
-// an offset — reachable from the containment tree, and therefore not the positional citation
-// DESIGN §3 forbids.
+// It was: `record_from_module` already iterates top-level items to build `declared`, so the
+// enclosing declaration's name costs one string at extraction and is a NAME, not an offset —
+// reachable from the containment tree, not the positional citation DESIGN §3 forbids.
 //
-// The fixture is the reviewer's scenario exactly: one module, one enrolled citation, and a
-// second dangling citation of the SAME target in a DIFFERENT declaration. Under the module
-// grain this test reports zero findings, which is the state it exists to forbid.
+// The fixture is the reviewer's scenario: one module, one enrolled citation, a second dangling
+// citation of the SAME target in a DIFFERENT declaration. Under the module grain this reports
+// zero findings — the state it exists to forbid.
 #[test]
 fn a_second_citation_of_an_enrolled_target_in_another_declaration_still_refuses() {
     let dir = scratch_root("decl_grain_sibling");

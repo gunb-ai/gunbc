@@ -33,7 +33,10 @@ import gunbc.design.instrument_bob {
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-data instrument_bob_witness_note: String = "The three properties that make the bob a modelled behaviour rather than an animation — bounded, settling, inert — each with the control that reds it. The settle claim is the one worth reading closely: it is carried as descent evidence over the advance function, so a retune that made the envelope grow would not merely look wrong, it would fail a claim about termination."
+// The three properties that make the bob a modelled behaviour rather than an animation — bounded,
+// settling, inert — each with the control that reds it. The settle claim is the one worth reading
+// closely: it is carried as descent evidence over the advance function, so a retune that made the
+// envelope grow would not merely look wrong, it would fail a claim about termination.
 
 fn an_impulse(magnitude: Int) -> PhysicalImpulse {
   PhysicalImpulse {
@@ -48,7 +51,10 @@ fn an_impulse(magnitude: Int) -> PhysicalImpulse {
   }
 }
 
-data clamp_is_the_load_bearing_half_note: String = "A hand can deliver an order of magnitude more acceleration than a fingertip. The reference magnitude maps a firm knock onto the full envelope, and everything above it clamps — so a violent smack and an absurd one produce the SAME travel, and the plate cannot be thrown off the screen by a large input. This is the claim that a linear scaling would fail."
+// A hand can deliver an order of magnitude more acceleration than a fingertip. The reference
+// magnitude maps a firm knock onto the full envelope, and everything above it clamps — so a violent
+// smack and an absurd one produce the SAME travel, and the plate cannot be thrown off the screen by
+// a large input. This is the claim that a linear scaling would fail.
 
 fn witness_a_harder_smack_never_travels_further_than_the_bound() -> Bool {
   amplitude_for_impulse(magnitude_milli_m_per_s2: impulse_reference_magnitude_milli) == bob_max_travel_px * 1000
@@ -66,7 +72,10 @@ fn witness_a_gentler_knock_travels_proportionally_less() -> Bool {
     && amplitude_for_impulse(magnitude_milli_m_per_s2: impulse_reference_magnitude_milli / 2) > 0
 }
 
-data register_bound_note: String = "The bob's ceiling sits strictly under the register's attraction travel, so instrument character can never move a subject as far as a real response does. Asserted as a relationship between the two authorities rather than as two independent numbers, which is what makes a later retune of either one red rather than silently violating the law."
+// The bob's ceiling sits strictly under the register's attraction travel, so instrument character
+// can never move a subject as far as a real response does. Asserted as a relationship between the
+// two authorities rather than as two independent numbers, which is what makes a later retune of
+// either one red rather than silently violating the law.
 
 fn witness_the_bob_stays_under_the_registers_attraction_travel() -> Bool {
   bob_max_travel_px < attraction_travel_max_px
@@ -86,7 +95,13 @@ fn witness_red_every_advanced_state_stays_bounded() -> Bool {
     && bob_is_within_register_bound(s: a3)
 }
 
-data step_size_independence_note: String = "THE DEFECT THIS CONTROL EXISTS FOR. Decaying by each step's duration made the envelope a function of how a caller chose to advance rather than of elapsed time, and at the production interval — sixteen milliseconds against a one-hundred-and-eighty-millisecond half-life — it decayed by nothing at all. So this asserts the property directly: reaching one instant in many small steps and reaching it in one large step produce the SAME amplitude, and the production interval genuinely reduces it. A model that regressed to per-step decay fails the first conjunct AND the second."
+// THE DEFECT THIS CONTROL EXISTS FOR. Decaying by each step's duration made the envelope a function
+// of how a caller chose to advance rather than of elapsed time, and at the production interval —
+// sixteen milliseconds against a one-hundred-and-eighty-millisecond half-life — it decayed by
+// nothing at all. So this asserts the property directly: reaching one instant in many small steps
+// and reaching it in one large step produce the SAME amplitude, and the production interval
+// genuinely reduces it. A model that regressed to per-step decay fails the first conjunct AND the
+// second.
 
 fn advance_n(s: BobState, dt_ms: Int, n: Int) -> BobState {
   if n <= 0 { s } else { advance_n(s: bob_advance(s: s, dt_ms: dt_ms), dt_ms: dt_ms, n: n - 1) }
@@ -102,7 +117,10 @@ fn witness_decay_is_independent_of_how_the_caller_steps() -> Bool {
     && bob_amplitude_milli(s: advance_n(s: hit, dt_ms: 16, n: 60)) == 0
 }
 
-data settling_note: String = "The bob always comes to rest, and the claim is carried as descent evidence rather than as a sentence. Advancing a ringing bob past a half-life STRICTLY decreases the envelope; a shorter advance is non-increasing; neither is ever Unknown. A model whose envelope could grow would fail here rather than merely looking wrong on screen."
+// The bob always comes to rest, and the claim is carried as descent evidence rather than as a
+// sentence. Advancing a ringing bob past a half-life STRICTLY decreases the envelope; a shorter
+// advance is non-increasing; neither is ever Unknown. A model whose envelope could grow would fail
+// here rather than merely looking wrong on screen.
 
 fn witness_the_bob_always_settles_with_strict_descent() -> Bool {
   let hit = apply_impulse(i: an_impulse(magnitude: impulse_reference_magnitude_milli), m: MotionFull)
@@ -123,7 +141,10 @@ fn witness_the_envelope_strictly_decays_and_reaches_rest() -> Bool {
     && bob_amplitude_milli(s: bob_advance(s: hit, dt_ms: bob_half_life_ms * 20)) == 0
 }
 
-data derived_settle_bound_note: String = "The settle time is derived from the bound, the floor and the half-life rather than declared, so retuning any of the three moves it and no second number goes stale. The largest admissible knock rings for a little over a second, which is the interval a bobber on water actually takes and is why the number reads as correct rather than as arbitrary."
+// The settle time is derived from the bound, the floor and the half-life rather than declared, so
+// retuning any of the three moves it and no second number goes stale. The largest admissible knock
+// rings for a little over a second, which is the interval a bobber on water actually takes and is
+// why the number reads as correct rather than as arbitrary.
 
 fn witness_the_settle_time_is_derived_and_finite() -> Bool {
   half_lives_to_settle(initial_milli: bob_max_travel_px * 1000) > 0
@@ -164,7 +185,10 @@ fn witness_the_bob_carries_no_domain_fact() -> Bool {
   bob_carries_no_domain_fact()
 }
 
-data platform_blindness_note: String = "The physics never learns where the knock came from. Two impulses with the same magnitude from different bindings — one synthetic, one a hardware reading — produce identical states, which is what makes a new platform binding a new producer rather than a physics edit. The binding identity survives on the impulse for the receipt to render; it simply has no influence on travel."
+// The physics never learns where the knock came from. Two impulses with the same magnitude from
+// different bindings — one synthetic, one a hardware reading — produce identical states, which is
+// what makes a new platform binding a new producer rather than a physics edit. The binding identity
+// survives on the impulse for the receipt to render; it simply has no influence on travel.
 
 fn witness_the_physics_is_blind_to_which_binding_produced_the_impulse() -> Bool {
   let synthetic = an_impulse(magnitude: 3000)
@@ -183,15 +207,27 @@ fn witness_the_physics_is_blind_to_which_binding_produced_the_impulse() -> Bool 
     && synthetic.source_provider.module_path != hardware.source_provider.module_path
 }
 
-data frame_sequence_witness_note: String = "The deterministic frame sequence is what makes the bob judgeable without a browser: the whole response is a finite list computed with no clock and no host, so a physics regression is a diff over a list rather than something someone has to watch for. These claims assert the four properties a renderer relies on — it is deterministic, it terminates exactly once, every frame stays inside the envelope in BOTH directions, and it actually crosses rest rather than sagging."
+// The deterministic frame sequence is what makes the bob judgeable without a browser: the whole
+// response is a finite list computed with no clock and no host, so a physics regression is a diff
+// over a list rather than something someone has to watch for. These claims assert the four
+// properties a renderer relies on — it is deterministic, it terminates exactly once, every frame
+// stays inside the envelope in BOTH directions, and it actually crosses rest rather than sagging.
 
 fn a_knock_sequence() -> BobSequence {
   bob_sequence(i: an_impulse(magnitude: impulse_reference_magnitude_milli), m: MotionFull, interval_ms: 16)
 }
 
-data no_or_empty_helper_note: String = "THE FRAMES ARE REACHED ONLY THROUGH THE SETTLED ARM (review finding, 2026-08-07). This file used to call a helper that answered a refused sequence with an empty list, and five claims below then asserted properties of that empty list — every one of which a vacuous fold or an empty-list predicate can satisfy. The helper is deleted at its authority; here the consequence is that each frame claim takes the frames as a parameter, and the single match in the keystone is the one place a refusal is answered, with false."
+// THE FRAMES ARE REACHED ONLY THROUGH THE SETTLED ARM (review finding, 2026-08-07). This file used
+// to call a helper that answered a refused sequence with an empty list, and five claims below then
+// asserted properties of that empty list — every one of which a vacuous fold or an empty-list
+// predicate can satisfy. The helper is deleted at its authority; here the consequence is that each
+// frame claim takes the frames as a parameter, and the single match in the keystone is the one
+// place a refusal is answered, with false.
 
-data settled_arm_note: String = "The sequence a consumer receives is the SETTLED arm or nothing. This asserts the arm itself rather than inspecting a list that might have been truncated, which is the whole point of making exhaustion a refusal: a consumer that matched only the settled arm cannot accidentally render a bob that never came to rest."
+// The sequence a consumer receives is the SETTLED arm or nothing. This asserts the arm itself
+// rather than inspecting a list that might have been truncated, which is the whole point of making
+// exhaustion a refusal: a consumer that matched only the settled arm cannot accidentally render a
+// bob that never came to rest.
 
 fn witness_the_production_sequence_is_admitted_not_truncated() -> Bool {
   match a_knock_sequence() {
@@ -240,7 +276,10 @@ fn witness_the_sequence_terminates_exactly_once_and_is_bounded(fs: List<BobFrame
     && frames_are_within_bound(fs: fs)
 }
 
-data crosses_rest_note: String = "A bobber crosses the waterline; a sag does not; and a square wave jumps over it. The sequence must start at rest, travel downward first because a knock pushes the plate away from the hand, occupy positions that are neither rest nor an extreme, appear on both sides of rest, visibly lose reach, and end at zero on its own."
+// A bobber crosses the waterline; a sag does not; and a square wave jumps over it. The sequence
+// must start at rest, travel downward first because a knock pushes the plate away from the hand,
+// occupy positions that are neither rest nor an extreme, appear on both sides of rest, visibly lose
+// reach, and end at zero on its own.
 
 fn witness_the_plate_bobs_rather_than_sagging(fs: List<BobFrame>) -> Bool {
   frames_cross_rest(fs: fs)
@@ -249,7 +288,11 @@ fn witness_the_plate_bobs_rather_than_sagging(fs: List<BobFrame>) -> Bool {
     && frames_last_displacement(fs: fs) == 0
 }
 
-data waveform_note: String = "The waveform read directly, because the crossing claim above can be satisfied by a shape nobody would accept. It starts at rest, reaches full reach downward a quarter-period in, returns THROUGH rest at the half-period, and reaches full reach upward at three quarters — and the value a sixteenth of a period in is strictly between rest and the extreme, which is the conjunct a two-valued sign function cannot pass."
+// The waveform read directly, because the crossing claim above can be satisfied by a shape nobody
+// would accept. It starts at rest, reaches full reach downward a quarter-period in, returns THROUGH
+// rest at the half-period, and reaches full reach upward at three quarters — and the value a
+// sixteenth of a period in is strictly between rest and the extreme, which is the conjunct a
+// two-valued sign function cannot pass.
 
 fn witness_the_waveform_passes_through_rest_rather_than_jumping() -> Bool {
   oscillation_milli(elapsed_ms: 0) == 0
@@ -260,7 +303,10 @@ fn witness_the_waveform_passes_through_rest_rather_than_jumping() -> Bool {
     && oscillation_milli(elapsed_ms: 16) > (0 - oscillation_unit_milli)
 }
 
-data reach_falls_note: String = "The reach of the SHIPPED frames diminishes: the largest displacement in the first third of the settle window strictly exceeds the largest in the last third. Stated over the emitted list rather than over the envelope function, because the defect this replaces left the envelope function correct in isolation while the sequence it produced never fell."
+// The reach of the SHIPPED frames diminishes: the largest displacement in the first third of the
+// settle window strictly exceeds the largest in the last third. Stated over the emitted list rather
+// than over the envelope function, because the defect this replaces left the envelope function
+// correct in isolation while the sequence it produced never fell.
 
 fn witness_the_shipped_reach_actually_falls(fs: List<BobFrame>) -> Bool {
   let settle = max_settle_time_ms()

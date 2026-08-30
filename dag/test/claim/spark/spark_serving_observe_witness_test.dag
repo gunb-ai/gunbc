@@ -174,7 +174,8 @@ test fn absent_readback_derives_absent_observation() -> Bool {
   }
 }
 
-data unreachable_host_red_control_note: String = "RED CONTROL: an unreachable host or any probe leg that did not run must refuse observation, never license SparkServingAbsent (empty-observation narrow)."
+// RED CONTROL: an unreachable host or any probe leg that did not run must refuse observation, never
+// license SparkServingAbsent (empty-observation narrow).
 
 test fn unreachable_readback_does_not_derive_absent_observation() -> Bool {
   match derive_spark_serving_observation(readback: readback_unreachable()) {
@@ -223,7 +224,8 @@ test fn load_state_probe_leg_absent_refuses_unit_outcome() -> Bool {
   }
 }
 
-data version_parse_positive_control_note: String = "POSITIVE CONTROL: a real ollama /api/version payload must parse to the reported version string, never the desired pin."
+// POSITIVE CONTROL: a real ollama /api/version payload must parse to the reported version string,
+// never the desired pin.
 
 test fn version_json_positive_parses_reported_version() -> Bool {
   match spark_serving_parse_version_json(stdout: witness_version_json_positive) {
@@ -313,7 +315,7 @@ test fn runtime_receipt_probe_words_target_executor_receipt_path() -> Bool {
     )
 }
 
-data version_parse_malformed_red_control_note: String = "RED CONTROL: malformed /api/version output must refuse rather than return any version."
+// RED CONTROL: malformed /api/version output must refuse rather than return any version.
 
 test fn malformed_version_json_refuses_parse() -> Bool {
   match spark_serving_parse_version_json(stdout: "{\"version\":") {
@@ -323,7 +325,8 @@ test fn malformed_version_json_refuses_parse() -> Bool {
   }
 }
 
-data version_drift_red_control_note: String = "RED CONTROL: a different reported runtime version must not converge to the pinned release identity."
+// RED CONTROL: a different reported runtime version must not converge to the pinned release
+// identity.
 
 test fn different_runtime_version_refuses_loaded_identity() -> Bool {
   match derive_loaded_spark_serving_release_identity(readback: SparkServingReadback {
@@ -648,7 +651,8 @@ test fn driver_too_old_report_is_not_success() -> Bool {
   }
 }
 
-data p0_6_loaded_release_note: String = "P0-6: SparkServingReadback carries no configuration_digest or capacity fields; derive_loaded_spark_serving_release builds SparkServingRelease from runtime closure + model only."
+// P0-6: SparkServingReadback carries no configuration_digest or capacity fields;
+// derive_loaded_spark_serving_release builds SparkServingRelease from runtime closure + model only.
 
 test fn loaded_release_derivation_excludes_desired_policy_fields() -> Bool {
   match derive_loaded_spark_serving_release_identity(readback: readback_active_complete()) {
@@ -1177,7 +1181,6 @@ test fn undecodable_key_file_output_keeps_the_account_and_reports_unread() -> Bo
     _ => false
   }
 }
-
 
 // ═══════════════════════════════════════════════════════════════════════════════════════
 // CURRENT-BOOT DURABILITY STANDING

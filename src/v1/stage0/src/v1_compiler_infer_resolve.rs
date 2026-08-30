@@ -739,15 +739,6 @@ pub fn resolve_node_bounded_masked_boundary() -> String {
     CACHED.with(|c: &String| c.clone())
 }
 
-pub fn type_ref_hit_ne_bind_measure_resolve_note() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "N1a MEASUREMENT ARM (quiet-hawk-219): when type_ref_hit_ne_bind_measure_active (v1_rt host bracket), a masked leaf pool-hit without type_ref_measure_binding_authority emits UnresolvedType via bare_name_miss_diagnostic — never Product(<anon>). Production (measure off) keeps the UnlistedImportUse advisory path. Leaf path only; is_user_generic_use_site unchanged. Dissolve-on: gunbc.type_ref_hit_ne_bind_measure type_ref_hit_ne_bind_measure_dissolve_trigger.".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
-}
-
 pub fn resolve_node_bounded(
     n: Rc<Node>,
     env: Rc<TypeEnv>,

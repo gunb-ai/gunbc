@@ -1,6 +1,5 @@
 module test.claim.host_allocation_conservation
 
-
 // THIS MODULE PREVIOUSLY DECLARED NO IMPORTS AT ALL and resolved every name by bare whole-tree
 // lookup, which the flat namespace permits. The cost is that it could not be run under an entry
 // scope -- every witness in it died on NoSuchFunction locally, independent of any change here -- so
@@ -102,7 +101,22 @@ test fn allocation_conserves_when_pools_fit() -> Bool {
   )
 }
 
-data per_host_width_red_controls_note: String = "THE FOUR CONTROLS BELOW ARE THE POINT OF THE PER-HOST SPLIT, and each one goes red against a specific way of getting this wrong rather than against a changed number. Every input is the live authority except the WIDTH under test, which is perturbed by exactly one slot — so a control cannot pass by coincidence and cannot be repaired by editing a literal.\n\nThe pair matters more than either half. Asserting only that the committed widths fit would be satisfied by a wall that returns true for everything, which is exactly the wall this change replaced (it charged session_pool: 0 on every host and would have passed srv1 at seven slots). Asserting only the refusals would be satisfied by a wall that refuses everything. Together they pin the boundary at the slot, in both directions, on both host classes.\n\nWhy srv1 refuses at 6 and srv3 refuses at 7 (srv3's boundary moved down one slot with the 2026-08-17 16GiB ruling): srv1 owes the sessions reservation its roster entry declares and carries the legacy overhead allowance, srv3 owes neither and carries the measured bound. Same per-slot ceiling, same host RAM, different admissible width — which is the whole claim, stated as arithmetic that fails if either per-host fact is wrong."
+// THE FOUR CONTROLS BELOW ARE THE POINT OF THE PER-HOST SPLIT, and each one goes red against a
+// specific way of getting this wrong rather than against a changed number. Every input is the live
+// authority except the WIDTH under test, which is perturbed by exactly one slot — so a control
+// cannot pass by coincidence and cannot be repaired by editing a literal.
+//
+// The pair matters more than either half. Asserting only that the committed widths fit would be
+// satisfied by a wall that returns true for everything, which is exactly the wall this change
+// replaced (it charged session_pool: 0 on every host and would have passed srv1 at seven slots).
+// Asserting only the refusals would be satisfied by a wall that refuses everything. Together they
+// pin the boundary at the slot, in both directions, on both host classes.
+//
+// Why srv1 refuses at 6 and srv3 refuses at 7 (srv3's boundary moved down one slot with the
+// 2026-08-17 16GiB ruling): srv1 owes the sessions reservation its roster entry declares and
+// carries the legacy overhead allowance, srv3 owes neither and carries the measured bound. Same
+// per-slot ceiling, same host RAM, different admissible width — which is the whole claim, stated as
+// arithmetic that fails if either per-host fact is wrong.
 
 fn usable_ram_of(host: HostIdentity) -> ByteSize {
   match host_usable_ram_or_refusal(host: host, r: gunbc_ci_host_usable_ram_for(host: host)) {
@@ -248,7 +262,11 @@ test fn an_unsized_host_yields_no_committed_width_verdict() -> Bool {
   }
 }
 
-data boundary_is_pinned_on_the_memory_axis_note: String = "THE +1 CONTROL RUNS AGAINST host_memory_admitted_width, NOT AGAINST THE COMMITTED WIDTH, because this wall answers a question about RAM and the committed width is a minimum over more axes than RAM. srv4 no longer binds disk at allocation — disk is gated at apply via gunbc.runner_lifecycle runner_width_disk_preflight — so memory admission and committed width both read 7; the control stays on the memory axis where it belongs."
+// THE +1 CONTROL RUNS AGAINST host_memory_admitted_width, NOT AGAINST THE COMMITTED WIDTH, because
+// this wall answers a question about RAM and the committed width is a minimum over more axes than
+// RAM. srv4 no longer binds disk at allocation — disk is gated at apply via gunbc.runner_lifecycle
+// runner_width_disk_preflight — so memory admission and committed width both read 7; the control
+// stays on the memory axis where it belongs.
 
 test fn one_more_slot_than_memory_admits_refuses_on_every_host() -> Bool {
   all(
@@ -257,7 +275,10 @@ test fn one_more_slot_than_memory_admits_refuses_on_every_host() -> Bool {
   )
 }
 
-data committed_width_never_exceeds_memory_admission_note: String = "The minimum cannot exceed either of its arguments, and this row is the executable form of that: no host may commit a width its RAM does not admit. It goes red if a future axis is folded into gunbc_runner_slots_per_host with the comparison inverted, which is the one edit that would turn a constraint into a grant."
+// The minimum cannot exceed either of its arguments, and this row is the executable form of that:
+// no host may commit a width its RAM does not admit. It goes red if a future axis is folded into
+// gunbc_runner_slots_per_host with the comparison inverted, which is the one edit that would turn a
+// constraint into a grant.
 
 test fn committed_width_never_exceeds_memory_admission() -> Bool {
   all(
@@ -266,7 +287,18 @@ test fn committed_width_never_exceeds_memory_admission() -> Bool {
   )
 }
 
-data srv4_disk_gated_at_apply_not_allocation_note: String = "srv4 COMMITS THE CPU WIDTH LIKE srv3, AND MEMORY IS NO LONGER THE BINDING AXIS ON EITHER (2026-08-22 DIMM upgrade, 2026-08-23 CPU axis). Memory admits 29 and CPU admits 21, so both commit 21; before the upgrade memory admitted 6 and bound the commitment. The retired disk row-pin still does not lower allocation. Disk binding is apply-time via gunbc.runner_lifecycle runner_width_disk_preflight (~38GB/slot). host_disk_admitted_width stays DiskWidthUnconstrained at allocation so provisioning cannot silently skip the gate; unobservable disk at apply refuses rather than falling back to a lower width.\n\nTHIS ROW ASSERTS THE MEMORY VERDICT AND THE COMMITMENT SEPARATELY AND ON PURPOSE. They were equal when it was written and are not equal now, so a row checking only one of them would have gone on passing while the other moved -- which is exactly how the srv4 roster-versus-prose disagreement this test exists to prevent got started."
+// srv4 COMMITS THE CPU WIDTH LIKE srv3, AND MEMORY IS NO LONGER THE BINDING AXIS ON EITHER
+// (2026-08-22 DIMM upgrade, 2026-08-23 CPU axis). Memory admits 29 and CPU admits 21, so both
+// commit 21; before the upgrade memory admitted 6 and bound the commitment. The retired disk
+// row-pin still does not lower allocation. Disk binding is apply-time via gunbc.runner_lifecycle
+// runner_width_disk_preflight (~38GB/slot). host_disk_admitted_width stays DiskWidthUnconstrained
+// at allocation so provisioning cannot silently skip the gate; unobservable disk at apply refuses
+// rather than falling back to a lower width.
+//
+// THIS ROW ASSERTS THE MEMORY VERDICT AND THE COMMITMENT SEPARATELY AND ON PURPOSE. They were equal
+// when it was written and are not equal now, so a row checking only one of them would have gone on
+// passing while the other moved -- which is exactly how the srv4 roster-versus-prose disagreement
+// this test exists to prevent got started.
 
 test fn srv4_commits_memory_width_disk_gated_at_apply() -> Bool {
   host_memory_admitted_width(host: operator_host_srv4) == 29
@@ -306,8 +338,23 @@ test fn session_hosts_refuse_the_managed_width() -> Bool {
 // KEEPING srv1 HERE WOULD HAVE BEEN THE WORSE FAILURE: the row would have gone red and the obvious
 // repair -- relax the assertion until it passes -- would have silently retired a live claim because
 // its example had grown out of it.
-data sessions_charge_decisive_on_srv2_superseded_note: String = "sessions_charge_is_decisive_on_srv2 IS DELETED, AND IT WAS PASSING WHEN IT WAS DELETED -- which is the reason, not an objection to it. It asserted that srv2 conserves at width 6 with no session charge and refuses with one, and its refusing half was `!conserves_at_width(srv2, 6)`. Once srv2's session denominator became unestablished that conjunct went true because NO VERDICT IS MINTED for an unsized host, not because the session charge was decisive. The witness therefore reported a green for a claim it had stopped testing, which is worse than a red: a red is a question, a vacuous green is counted as coverage.\n\nTHE LAW IT CARRIED IS NOT RETIRED WITH IT. the_live_session_charge_is_decisive_on_a_derived_boundary carries the same claim on srv1, deriving both widths from current policy instead of pinning one, so it follows the boundary rather than aging out the way this row's width 6 did. sessions_subtract_from_the_same_budget independently keeps the arithmetic relation on an authored fixture, which is a different guarantee and is deliberately not merged into it.\n\nWHAT WOULD HAVE HIDDEN THIS: nothing in the diff. The witness compiled, ran, and passed. It was found by asking why a row the operator ruling had called correctly dead was reporting alive."
-
+// sessions_charge_is_decisive_on_srv2 IS DELETED, AND IT WAS PASSING WHEN IT WAS DELETED -- which
+// is the reason, not an objection to it. It asserted that srv2 conserves at width 6 with no session
+// charge and refuses with one, and its refusing half was `!conserves_at_width(srv2, 6)`. Once
+// srv2's session denominator became unestablished that conjunct went true because NO VERDICT IS
+// MINTED for an unsized host, not because the session charge was decisive. The witness therefore
+// reported a green for a claim it had stopped testing, which is worse than a red: a red is a
+// question, a vacuous green is counted as coverage.
+//
+// THE LAW IT CARRIED IS NOT RETIRED WITH IT.
+// the_live_session_charge_is_decisive_on_a_derived_boundary carries the same claim on srv1,
+// deriving both widths from current policy instead of pinning one, so it follows the boundary
+// rather than aging out the way this row's width 6 did. sessions_subtract_from_the_same_budget
+// independently keeps the arithmetic relation on an authored fixture, which is a different
+// guarantee and is deliberately not merged into it.
+//
+// WHAT WOULD HAVE HIDDEN THIS: nothing in the diff. The witness compiled, ran, and passed. It was
+// found by asking why a row the operator ruling had called correctly dead was reporting alive.
 
 test fn allocation_unsound_when_runner_pool_overcommits() -> Bool {
   !witness_allocation_conserves(
@@ -338,11 +385,46 @@ test fn sessions_subtract_from_the_same_budget() -> Bool {
     && !sessions_fixture_at(session_pool: byte_size(42949672960))
 }
 
-data sessions_subtract_fixture_note: String = "THIS WITNESS WAS NOT TESTING SESSIONS, and the repair matters more than the deletion that surfaced it. It asserted a single negative while mixing a LIVE authority (gunbc_runner_pool_budget_for(srv1)) into an otherwise authored 125 GiB fixture host. Executed with the session term at ZERO it STILL PASSES — measured, not inferred — because srv1 is now a ~502 GiB host whose live runner pool alone exceeds the fixture. The sessions term contributed nothing to the verdict, so the witness has been green-by-coincidence since that memory upgrade.\n\nMIXING A LIVE AUTHORITY INTO A FIXTURE IS THE ROOT: the two sides drifted independently, so a fleet hardware change silently redefined what the witness meant without anyone editing it. Both sides are authored constants now, and the assertion is two-sided — the SAME configuration must conserve at session_pool 0 and fail at 40 GiB, so only the session term moves. An always-conserving wall fails the second arm; an always-refusing wall fails the first.\n\nEXECUTED, both arms load-bearing: as authored true; session fixture shrunk to 2 GiB false; runner pool inflated to 192 GiB false; restored control true. The pre-repair form returned true with the session term at zero, which is the measurement that condemned it."
+// THIS WITNESS WAS NOT TESTING SESSIONS, and the repair matters more than the deletion that
+// surfaced it. It asserted a single negative while mixing a LIVE authority
+// (gunbc_runner_pool_budget_for(srv1)) into an otherwise authored 125 GiB fixture host. Executed
+// with the session term at ZERO it STILL PASSES — measured, not inferred — because srv1 is now a
+// ~502 GiB host whose live runner pool alone exceeds the fixture. The sessions term contributed
+// nothing to the verdict, so the witness has been green-by-coincidence since that memory upgrade.
+//
+// MIXING A LIVE AUTHORITY INTO A FIXTURE IS THE ROOT: the two sides drifted independently, so a
+// fleet hardware change silently redefined what the witness meant without anyone editing it. Both
+// sides are authored constants now, and the assertion is two-sided — the SAME configuration must
+// conserve at session_pool 0 and fail at 40 GiB, so only the session term moves. An
+// always-conserving wall fails the second arm; an always-refusing wall fails the first.
+//
+// EXECUTED, both arms load-bearing: as authored true; session fixture shrunk to 2 GiB false; runner
+// pool inflated to 192 GiB false; restored control true. The pre-repair form returned true with the
+// session term at zero, which is the measurement that condemned it.
 
-data per_host_usable_ram_controls_note: String = "THE GRAIN IS THE CLAIM, so these controls test the SPLIT rather than the number. Every host still resolves to the same substitution figure today — that is deliberate, and committed_width_fits_on_every_host above already pins that the derived widths did not move. What these add is that the lookup is genuinely per-host and that an unclassified host REFUSES instead of borrowing, which is the property the old fleet-level read could not have.\n\nThe refusal control is the load-bearing one. The function it replaces took no host argument at all and summed a synthetic ComputeHost that is not a member of the fold it served, so there was no unclassified-host case to get wrong — and correspondingly no way to notice one. An unknown host reaching this wall now produces a located refusal, the same shape the overhead axis beside it already had."
+// THE GRAIN IS THE CLAIM, so these controls test the SPLIT rather than the number. Every host still
+// resolves to the same substitution figure today — that is deliberate, and
+// committed_width_fits_on_every_host above already pins that the derived widths did not move. What
+// these add is that the lookup is genuinely per-host and that an unclassified host REFUSES instead
+// of borrowing, which is the property the old fleet-level read could not have.
+//
+// The refusal control is the load-bearing one. The function it replaces took no host argument at
+// all and summed a synthetic ComputeHost that is not a member of the fold it served, so there was
+// no unclassified-host case to get wrong — and correspondingly no way to notice one. An unknown
+// host reaching this wall now produces a located refusal, the same shape the overhead axis beside
+// it already had.
 
-data differential_witness_note: String = "ASSERTING THAT FOUR LOOKUPS RETURN A POSITIVE NUMBER DOES NOT TEST A PER-HOST GRAIN, which is what the first version of this witness did. Four branches returning one shared declaration satisfy it exactly as well as four independent host facts do, so it would have passed unchanged against the fleet constant this change replaces — a witness that cannot fail for the reason it exists.\n\nThe grain is only observable DIFFERENTIALLY: perturb one host and prove that host's answer moves while the others hold. Since all four rows deliberately carry the same figure today, the perturbation has to come from a synthetic lookup rather than the live rows, so what is pinned is the SHAPE of the dispatch — that it is keyed by host at all — which is precisely the property the old signature could not have had, since it took no host argument."
+// ASSERTING THAT FOUR LOOKUPS RETURN A POSITIVE NUMBER DOES NOT TEST A PER-HOST GRAIN, which is
+// what the first version of this witness did. Four branches returning one shared declaration
+// satisfy it exactly as well as four independent host facts do, so it would have passed unchanged
+// against the fleet constant this change replaces — a witness that cannot fail for the reason it
+// exists.
+//
+// The grain is only observable DIFFERENTIALLY: perturb one host and prove that host's answer moves
+// while the others hold. Since all four rows deliberately carry the same figure today, the
+// perturbation has to come from a synthetic lookup rather than the live rows, so what is pinned is
+// the SHAPE of the dispatch — that it is keyed by host at all — which is precisely the property the
+// old signature could not have had, since it took no host argument.
 
 fn synthetic_usable_ram_for(host: HostIdentity) -> HostUsableRam {
   if (host as String) == (operator_host_srv3 as String) {
@@ -452,7 +534,23 @@ test fn every_enrolled_host_carries_its_own_measured_reading() -> Bool {
   )
 }
 
-data derived_width_probe_note: String = "WHAT THIS PROBE IS FOR, stated plainly because it asserts about a function that does not exist yet. host_memory_admitted_width returns hand-authored literals 5/5/6/6 (5/5/7/7 before the 2026-08-17 16GiB ruling), while gunbc.runner_slot_allocation gunbc_runner_slot_width_ruling_note describes those numbers as falling out of the conservation arithmetic — 'neither number is authored here as a target; both are the largest width the wall will pass'. That is a claim about a derivation nobody wrote: the arithmetic was run by hand once and its answers were typed in beside the wall that checks them, which is the second-representation shape DESIGN 5 names, and it is why raising a host's RAM does not raise its width.\n\nThis probe runs the derivation the note describes and asserts it reproduces every literal exactly. It is evidence for replacing them with the derivation, and until then it is a live consumer that reds if the two ever disagree — which is the failure the current arrangement cannot detect, because nothing recomputes the literals.\n\nIt lives in a test module deliberately: the production derivation needs the overhead, session and headroom charges, and those sit downstream of runner_slot_allocation, so writing it in place would close an import cycle. Resolving that is a structural change, not a line edit."
+// WHAT THIS PROBE IS FOR, stated plainly because it asserts about a function that does not exist
+// yet. host_memory_admitted_width returns hand-authored literals 5/5/6/6 (5/5/7/7 before the
+// 2026-08-17 16GiB ruling), while gunbc.runner_slot_allocation gunbc_runner_slot_width_ruling_note
+// describes those numbers as falling out of the conservation arithmetic — 'neither number is
+// authored here as a target; both are the largest width the wall will pass'. That is a claim about
+// a derivation nobody wrote: the arithmetic was run by hand once and its answers were typed in
+// beside the wall that checks them, which is the second-representation shape DESIGN 5 names, and it
+// is why raising a host's RAM does not raise its width.
+//
+// This probe runs the derivation the note describes and asserts it reproduces every literal
+// exactly. It is evidence for replacing them with the derivation, and until then it is a live
+// consumer that reds if the two ever disagree — which is the failure the current arrangement cannot
+// detect, because nothing recomputes the literals.
+//
+// It lives in a test module deliberately: the production derivation needs the overhead, session and
+// headroom charges, and those sit downstream of runner_slot_allocation, so writing it in place
+// would close an import cycle. Resolving that is a structural change, not a line edit.
 
 type DerivedAdmittedWidth
   = DerivedWidth { host: HostIdentity, slots: Int }

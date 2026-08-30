@@ -119,10 +119,8 @@ impl SymbolInterner {
             .unwrap_or("<invalid-symbol>")
     }
 
-    // Read-only counterpart to `intern`: looks up a string already interned
-    // without requiring a mutable borrow. Used where a caller may be
-    // reentered while an immutable borrow of this interner is held elsewhere
-    // on the stack (see `free_monoid_ctx_syms`).
+    // Read-only counterpart to `intern` (no mutable borrow), for callers reentered while an
+    // immutable borrow of this interner is held elsewhere on the stack (`free_monoid_ctx_syms`).
     pub fn get(&self, s: &str) -> Option<Symbol> {
         self.index.get(s).map(|&id| Symbol(id))
     }
@@ -623,11 +621,10 @@ pub fn str_value(s: impl AsRef<str>) -> Value {
 
 /// Project an observed child-process status onto `std.process_termination` `ProcessTermination`.
 ///
-/// A signalled process has no exit code, so it gets the signal arm rather than a
-/// fabricated integer: the seed used to render `.code().unwrap_or(-1)` for both, which
-/// made a runner OOM-kill indistinguishable from a process that chose to exit -1.
-/// `ProcessTerminationUnobserved` is unreachable from an `ExitStatus` (having one means
-/// the process ran); it is the arm a caller supplies when the spawn itself refused.
+/// A signalled process has no exit code, so it gets the signal arm, not a fabricated integer:
+/// the seed's `.code().unwrap_or(-1)` made a runner OOM-kill indistinguishable from exit -1.
+/// `ProcessTerminationUnobserved` is unreachable from an `ExitStatus` (the process ran); a
+/// caller supplies it when the spawn itself refused.
 pub(crate) fn process_termination_value(
     status: &std::process::ExitStatus,
     ctx: &InterpContext,
@@ -690,13 +687,11 @@ fn optional_absent(ctx: &InterpContext) -> Value {
     }
 }
 
-/// Whether a `raw_map_lookup` result already carries the `Optional<V>` contract
-/// (a `.dag`-authored `Map.lookup` closure returns `Optional<V>` by construction)
-/// or is a bare storage read that still needs the `Optional` wrap applied
-/// (native `Value::Map`/field storage, where a miss is `Value::Null`).
-/// Distinguishing by the call site — not by sniffing the value's shape — is
-/// required so a stored `V = Optional<T>` payload isn't mistaken for an
-/// already-wrapped lookup result (DESIGN §5: construction, not validation).
+/// Whether a `raw_map_lookup` result already carries the `Optional<V>` contract (a
+/// `.dag`-authored `Map.lookup` closure returns `Optional<V>` by construction) or is a bare
+/// storage read still needing the wrap (native `Value::Map`/field storage, miss = `Value::Null`).
+/// Decided by call site, not value shape, so a stored `V = Optional<T>` payload is never
+/// mistaken for an already-wrapped result (DESIGN §5: construction, not validation).
 enum RawMapLookup {
     AlreadyOptional(Value),
     NeedsWrap(Value),
@@ -954,18 +949,14 @@ pub enum InterpError {
     },
     /// A pool root contributed NO `.dag` files to a parse-only corpus walk.
     ///
-    /// Its own variant rather than a `TypeError` because the class is exactly the
-    /// empty-observation narrow DESIGN names: a pool that silently lost its subject was
-    /// indistinguishable from a pool that legitimately matched nothing, so every row over
-    /// it kept passing on a population smaller than its author declared.
+    /// Its own variant, not a `TypeError`: this is DESIGN's empty-observation narrow — a pool
+    /// that silently lost its subject looked like one that matched nothing, so every row over it
+    /// passed on a smaller population than declared.
     ///
-    /// The variant CARRIES the classification rather than a rendered sentence: which of the
-    /// three states each root is in -- missing, naming a file, or a directory with no `.dag`
-    /// under it -- because they have different causes and different fixes, and collapsing them
-    /// re-commits the same state-space conflation one level down. A `String` here would have
-    /// done exactly that collapse at the boundary: the type would exist, be classified, and then
-    /// die into prose no consumer could match on. The message is derived from these fields in
-    /// `Display`, which is the one direction that cannot lose them.
+    /// The variant CARRIES the classification (missing / names a file / directory with no `.dag`)
+    /// rather than a sentence: the three have different causes and fixes, and a `String` would
+    /// re-commit the state-space conflation at the boundary. `Display` derives the message from
+    /// the fields — the one direction that cannot lose them.
     PoolRootContributesNothing {
         caller: &'static str,
         declared: usize,
@@ -975,11 +966,10 @@ pub enum InterpError {
         value: String,
     },
     DivisionByZero,
-    /// A native `Int` binop's true result does not fit `i64`. Native `Int` is a
-    /// bounded machine width (`std/integer.dag`'s `Compose<Int, MachineWidth<64>>` row);
-    /// wrapping past it silently answers a different number than the one asked for, which is
-    /// exactly the fabricated-plausible-output failure DESIGN section 5 forbids -- the same
-    /// class `DivisionByZero` already refuses three lines above this variant.
+    /// A native `Int` binop's true result does not fit `i64` (`std/integer.dag`'s
+    /// `Compose<Int, MachineWidth<64>>` row). Wrapping would answer a different number — the
+    /// fabricated-plausible-output failure DESIGN section 5 forbids, the same class
+    /// `DivisionByZero` refuses above.
     IntegerOverflow {
         op: &'static str,
         lhs: i64,
@@ -1003,20 +993,18 @@ pub enum InterpError {
         key: String,
         service: String,
     },
-    /// The caller-agnostic evaluation-budget result. This is what the kernel RAISES; the two
-    /// witness-named variants below are domain refusals that the witness lane maps this into at
-    /// its own boundary, never things `eval_expr` produces directly.
+    /// The caller-agnostic evaluation-budget result the kernel RAISES; the two witness-named
+    /// variants below are domain refusals the witness lane maps this into at its boundary, never
+    /// produced by `eval_expr` directly.
     ///
-    /// The split exists because the kernel had no neutral result to raise: a served HTTP request
-    /// is not a witness, so raising `EvalBudgetExceeded` at a serve route would carry the
-    /// fast-lane witness ruling — including its "relocating the file does not discharge it"
-    /// guidance — into an HTTP 5xx body, which is the DESIGN §3 nickname failure applied to a
-    /// diagnostic (operator review 2026-08-09). `entry` names which evaluation crossed, `clock`
-    /// names which bound fired (a consumer that cannot tell CPU from wall cannot tell a spin
-    /// from a stall, and those have different remedies), and `elapsed_nanos` is nanoseconds
-    /// rather than floored milliseconds per `std.measure`'s `nanosecond_millisecond_projection_note`:
-    /// a declared limit is policy and is milliseconds, an observed crossing is a measurement and
-    /// is never floored on its way into the carrier.
+    /// Without a neutral result, a served HTTP request (not a witness) raising `EvalBudgetExceeded`
+    /// would carry the fast-lane witness ruling and its "relocating the file does not discharge
+    /// it" guidance into an HTTP 5xx body — the DESIGN §3 nickname failure applied to a diagnostic
+    /// (operator review 2026-08-09). `entry` names which evaluation crossed; `clock` which bound
+    /// fired (CPU vs wall is spin vs stall, different remedies); `elapsed_nanos` is nanoseconds,
+    /// not floored milliseconds, per `std.measure`'s `nanosecond_millisecond_projection_note`: a
+    /// declared limit is policy in milliseconds, an observed crossing is a measurement and is
+    /// never floored into the carrier.
     EvaluationBudgetExceeded {
         entry: String,
         clock: EvaluationClock,
@@ -1024,11 +1012,10 @@ pub enum InterpError {
         limit_ms: u64,
     },
     /// The fast-lane per-witness eval budget, enforced on THREAD CPU by the cooperative
-    /// stride-poll in `eval_expr`. The measured field is named for its clock deliberately:
-    /// this budget and the wall-clock one below are different quantities of the same
-    /// occurrence, and a shared `elapsed_ms` spelling let a CPU figure be read as wall at
-    /// every downstream consumer (2026-08-05 — the same conflation that leaves the enforced
-    /// quantity absent from every cost receipt; see `witness_cost_clock_basis_note`).
+    /// stride-poll in `eval_expr`. The measured field is named for its clock: this and the
+    /// wall-clock budget below are different quantities of one occurrence, and a shared
+    /// `elapsed_ms` spelling let CPU be read as wall downstream (2026-08-05 — the conflation that
+    /// leaves the enforced quantity absent from every cost receipt; `witness_cost_clock_basis_note`).
     EvalBudgetExceeded {
         cpu_ms: u64,
         budget_ms: u64,
@@ -1065,11 +1052,10 @@ pub enum InterpError {
         limit_bytes: u64,
         argv0: String,
     },
-    /// Application-site contract mismatch: the caller's argument list does not match the
-    /// callee's declared parameter list. Typed and located (callee + the offending label)
-    /// so the line stops at the application site instead of surfacing later as a
-    /// `NoSuchVariable` for an unbound parameter — or, worse, not surfacing at all when
-    /// the mismatched names happen to overlap. DESIGN §5: a failure arm refuses, never widens.
+    /// Application-site contract mismatch between the caller's argument list and the callee's
+    /// parameters. Typed and located (callee + offending label) so the line stops here rather
+    /// than later as `NoSuchVariable` for an unbound parameter — or never, when mismatched names
+    /// overlap. DESIGN §5: a failure arm refuses, never widens.
     CallContractMismatch {
         callee: String,
         detail: String,
@@ -1077,20 +1063,17 @@ pub enum InterpError {
     /// A HOST EFFECT THAT THE HERMETIC ROUTE HAS NO ARM FOR — a fact about which EXECUTION
     /// ROUTE the caller must supply, never a fact about the caller's verdict.
     ///
-    /// It is its own variant for the reason `TimedOut`/`HostToolUnresolved` are their own
-    /// variants at the witness boundary: this is a route fact, and a route fact recovered by
-    /// substring-matching prose is one fact in two representations whose second copy is
-    /// re-derived from the first (DESIGN §2/§3). Before this variant the three refusal sites
-    /// below all produced `TypeError { msg: "hermetic mode: …" }`, so every consumer that
-    /// wanted to tell "this witness ASSERTED false" from "this witness was never given a route
-    /// that could run it" had to either match on the sentence or conflate them. The required
-    /// floor conflated them by not executing the population at all.
+    /// Its own variant for the reason `TimedOut`/`HostToolUnresolved` are at the witness
+    /// boundary: a route fact recovered by substring-matching prose is one fact in two
+    /// representations (DESIGN §2/§3). Previously the three refusal sites below all produced
+    /// `TypeError { msg: "hermetic mode: …" }`, so telling "ASSERTED false" from "never given a
+    /// runnable route" meant matching the sentence or conflating them; the required floor
+    /// conflated them by not executing the population at all.
     ///
-    /// `ground` carries WHY the hermetic route has no arm, because the remedies differ: an
-    /// unpublished mock case is closed by publishing the case, a missing `mock_response` by
-    /// authoring one, and a filesystem REMOVAL by a wet route, since removal has no mock arm
-    /// at all. Collapsing them into one sentence is the state-space conflation DESIGN's
-    /// recurring-failure list names.
+    /// `ground` carries WHY, because the remedies differ: an unpublished mock case is closed by
+    /// publishing it, a missing `mock_response` by authoring one, a filesystem REMOVAL by a wet
+    /// route (removal has no mock arm). One sentence for all three is the state-space
+    /// conflation DESIGN's recurring-failure list names.
     HermeticHostEffectRefused {
         operation: String,
         ground: HermeticEffectGround,
@@ -1289,25 +1272,21 @@ struct PureCallMemo {
 
 /// `Symbol`-free mirror of `Value`, used as the cross-claim memo's storage shape.
 ///
-/// A `Symbol` is an index into ONE `InterpContext`'s `SymbolInterner` (`v1_interpreter.rs`
-/// `resolve_sym`) — it carries no meaning outside that instance. Required-floor builds a
-/// FRESH `InterpContext` (fresh, empty interner) per claim by design (`cli_run.rs`
-/// `evaluation_frame`, "FRESH PER CLAIM"), while this memo's whole point is to survive
-/// across claims for the life of one prepared-subject run (`clear_cross_claim_pure_memos`
-/// is called once per `register_floor_prepared_authority`/`clear_floor_prepared_authority`,
-/// not per claim). Caching a raw `Value` there let a `Symbol` minted by claim N's interner
-/// be handed, unresolved-index-and-all, to claim N+1's unrelated interner: matching against
-/// it either missed every arm or hit the wrong one, and the `PatternMatchFailure`'s Display
-/// then resolved the stale index against claim N+1's interner and printed `<invalid-symbol>`
-/// (gunbc#8505; the 33 `body_lowering_*` floor-only rows in `floor_expected_red` chunk_14).
-/// Per-entry `claim_batch` never hit this because it keeps one interner live across the
-/// claims of an entry, so a memoized value's symbols stayed valid for every consumer.
+/// A `Symbol` indexes ONE `InterpContext`'s `SymbolInterner` (`v1_interpreter.rs`
+/// `resolve_sym`) and means nothing outside it. Required-floor builds a FRESH `InterpContext`
+/// per claim (`cli_run.rs` `evaluation_frame`, "FRESH PER CLAIM"), while this memo survives
+/// across claims for one prepared-subject run (`clear_cross_claim_pure_memos` runs once per
+/// `register_floor_prepared_authority`/`clear_floor_prepared_authority`, not per claim).
+/// Caching a raw `Value` handed claim N's `Symbol` index to claim N+1's unrelated interner:
+/// matching missed every arm or hit the wrong one, and `PatternMatchFailure`'s Display printed
+/// `<invalid-symbol>` (gunbc#8505; the 33 `body_lowering_*` floor-only rows in
+/// `floor_expected_red` chunk_14). Per-entry `claim_batch` keeps one interner across an entry's
+/// claims, so it never hit this.
 ///
-/// The fix is the boundary translation the Realization pattern (DESIGN.md §4) already
-/// prescribes: de-symbolize to `PortableValue` (raw strings) at store time, while the
-/// producing ctx is still alive, and re-intern into the CONSUMING ctx's own interner at
-/// load time. `Closure`/`Fn` are not portable this way (their `Env` chain isn't a content
-/// snapshot) and are refused rather than guessed at — `prepare_grammar` never returns them.
+/// The fix is the boundary translation the Realization pattern (DESIGN.md §4) prescribes:
+/// de-symbolize to `PortableValue` (raw strings) at store time while the producing ctx is
+/// alive, re-intern into the CONSUMING ctx at load. `Closure`/`Fn` are not portable (their
+/// `Env` chain isn't a content snapshot) and are refused — `prepare_grammar` never returns them.
 #[derive(Debug, Clone)]
 enum PortableValue {
     Null,
@@ -1526,11 +1505,10 @@ fn value_from_portable_ctx(ctx: &InterpContext, portable: &PortableValue) -> Val
         }
         PortableValue::Set(members) => Value::Set(members.clone()),
         // FIELDS ARE RE-SORTED UNDER THE CONSUMING INTERNER. `fields_get` binary-searches on
-        // the Symbol ORDINAL, and ordinals are per-interner encounter order — a vector sorted
-        // under frame A's ordinals is unsorted under frame B's, so every field read misses
-        // ("no field 'produced_decl_support' on type 'TargetModel'", six emit reds on run
-        // 33269961629). Reification is not complete until the value satisfies the consuming
-        // frame's own representation invariants, order included.
+        // Symbol ORDINAL (per-interner encounter order), so a vector sorted under frame A is
+        // unsorted under frame B and every field read misses ("no field 'produced_decl_support'
+        // on type 'TargetModel'", six emit reds on run 33269961629). Reification must satisfy
+        // the consuming frame's representation invariants, order included.
         PortableValue::Record { type_name, fields } => Value::Record {
             type_name: ctx.sym(type_name),
             fields: Rc::new(sorted_fields(
@@ -1571,46 +1549,41 @@ pub fn cross_claim_take_last_unportable() -> Option<(String, ServeCacheValueNotP
 
 #[derive(Default)]
 struct CrossClaimPureMemo {
-    /// Hash-bucketed like the eval-frame memo, and served ONLY after the stored call's
-    /// argument row verifies structurally equal in portable (interner-free) form — a hash
-    /// collision degrades to recompute, never to a wrong value. This is not hypothetical:
-    /// served-on-hash-alone, main's floor produced six emit failures whose served values
-    /// belonged to OTHER calls of the same producer (no field 'produced_decl_support' on
-    /// type 'TargetModel', run 33269961629).
+    /// Hash-bucketed like the eval-frame memo, served ONLY after the stored argument row
+    /// verifies structurally equal in portable (interner-free) form — a collision degrades to
+    /// recompute, never a wrong value. Served-on-hash-alone, main's floor produced six emit
+    /// failures whose values belonged to OTHER calls of the same producer (no field
+    /// 'produced_decl_support' on type 'TargetModel', run 33269961629).
     map: HashMap<(usize, u64), Vec<(Vec<(Option<String>, PortableValue)>, PortableValue)>>,
-    /// Stores refused because the map was at `CROSS_CLAIM_PURE_MEMO_ENTRY_CAP` or because
-    /// landing the entry would push `bytes` past `CROSS_CLAIM_PURE_MEMO_BYTE_BUDGET`.
-    /// Counted, never silent: an over-budget producer simply recomputes, and the count is
-    /// readable by the receipt so a saturated memo is visible rather than inferred from
-    /// missing hits.
+    /// Stores refused at `CROSS_CLAIM_PURE_MEMO_ENTRY_CAP` or because the entry would push
+    /// `bytes` past `CROSS_CLAIM_PURE_MEMO_BYTE_BUDGET`. Counted, never silent: the producer
+    /// recomputes, and the receipt reads the count so saturation is visible, not inferred
+    /// from missing hits.
     overflow: u64,
-    /// Estimated retained bytes across every stored entry (argument rows AND values,
-    /// collision-bucket entries included), computed from the reified `PortableValue` at
-    /// publication — reification is total, so the size is always computable before the
-    /// store lands. This is the ACTUAL byte bound review 57446's F2 demanded: the entry
-    /// cap alone bounded a bucket count while each retained value was arbitrarily large.
+    /// Estimated retained bytes over every stored entry (argument rows AND values, collision
+    /// buckets included), computed from the reified `PortableValue` at publication — reification
+    /// is total, so the size is known before the store lands. The ACTUAL byte bound review
+    /// 57446's F2 demanded: the entry cap bounded bucket count while each value was unbounded.
     bytes: usize,
     /// Stores refused because the value failed TOTAL reification (`ServeCacheValueNotPortable`).
     /// Counted, and the most recent refusal is retained for the warm path's diagnostics.
     unportable_refusals: u64,
 }
 
-/// Entry-count admission for the cross-claim tier: distinct (fn, args) keys stop being
-/// STORED past this many entries. Enrolled producers are roster-declared and mostly
-/// nullary, so the ordinary population is tens of keys; the cap exists for a mis-enrolled
-/// parametric producer whose argument space is claim-shaped. It bounds POPULATION, not
-/// RETENTION — the byte budget below is the retention bound.
+/// Entry-count admission for the cross-claim tier: distinct (fn, args) keys stop being STORED
+/// past this. Enrolled producers are roster-declared and mostly nullary (tens of keys); the cap
+/// guards a mis-enrolled parametric producer with a claim-shaped argument space. Bounds
+/// POPULATION, not RETENTION — the byte budget below bounds retention.
 const CROSS_CLAIM_PURE_MEMO_ENTRY_CAP: usize = 4096;
 
 /// Byte budget on the tier's RETAINED representation, enforced at publication against the
-/// estimated size of the reified portable entry (arguments + value). The cross-claim store
-/// lives for a whole prepared floor run (the 2026-07-10 20GiB ctx-lifetime regression is
-/// the harm class), so the bound must be denominated in bytes, not entries: a single
-/// mis-enrolled producer returning whole-corpus values would exhaust memory under any
-/// entry count. 256 MiB is ~25x the enrolled population's observed retention (run
-/// 33273530722: 320 fills of target-model/grammar values) and well under the session
-/// container's headroom; an over-budget store refuses counted (`overflow`), and the
-/// producer recomputes per claim exactly as if never enrolled.
+/// estimated reified portable entry (arguments + value). The store lives for a whole prepared
+/// floor run (harm class: the 2026-07-10 20GiB ctx-lifetime regression), so the bound is bytes,
+/// not entries — one mis-enrolled producer returning whole-corpus values exhausts memory under
+/// any entry count. 256 MiB is ~25x observed retention (run 33273530722: 320 fills of
+/// target-model/grammar values) and well under the session container's headroom; an
+/// over-budget store refuses counted (`overflow`) and the producer recomputes per claim as if
+/// never enrolled.
 const CROSS_CLAIM_PURE_MEMO_BYTE_BUDGET: usize = 256 * 1024 * 1024;
 
 #[cfg(test)]
@@ -1630,10 +1603,10 @@ fn cross_claim_byte_budget() -> usize {
     CROSS_CLAIM_PURE_MEMO_BYTE_BUDGET
 }
 
-/// Estimated retained size of one portable value: the enum footprint plus every owned
-/// heap allocation reachable from it. An estimate (allocator overhead and `Vec` spare
-/// capacity are not modeled), but computed from the same total reification the store
-/// publishes, so it can never miss a child the way a shallow `size_of` would.
+/// Estimated retained size of one portable value: enum footprint plus every reachable owned
+/// heap allocation. Allocator overhead and `Vec` spare capacity are not modeled, but it walks
+/// the same total reification the store publishes, so unlike a shallow `size_of` it cannot
+/// miss a child.
 fn portable_value_size_bytes(v: &PortableValue) -> usize {
     use std::mem::size_of;
     size_of::<PortableValue>()
@@ -1674,10 +1647,10 @@ fn portable_value_size_bytes(v: &PortableValue) -> usize {
         }
 }
 
-/// Observes cross-claim memo traffic for the floor's shared-fill ledger. Installed by the
-/// harness (required-floor preparation); `None` outside it. The interpreter itself nets fill
-/// CPU via `record_shared_artifact_fill_cpu_nanos` — the observer carries the ledger rows and
-/// the wall clock, which live in `cli_run`.
+/// Observes cross-claim memo traffic for the floor's shared-fill ledger. Installed by
+/// required-floor preparation; `None` outside it. The interpreter nets fill CPU via
+/// `record_shared_artifact_fill_cpu_nanos`; the observer carries the ledger rows and wall
+/// clock, which live in `cli_run`.
 pub struct CrossClaimShareObserver {
     /// Called when an admitted call MAY become a fill — before it computes. Paired with
     /// exactly one `on_fill` or `on_fill_abandon`, so a nesting ledger on the other side
@@ -1698,23 +1671,21 @@ thread_local! {
     static CROSS_CLAIM_PURE_MEMO: RefCell<CrossClaimPureMemo> =
         RefCell::new(CrossClaimPureMemo::default());
     static CROSS_CLAIM_FN_KEEPALIVE: RefCell<Vec<Rc<Node>>> = RefCell::new(Vec::new());
-    /// The fn-NODE identities admitted to the cross-claim tier beyond the built-in
-    /// `prepare_grammar` arm. Admission is by RESOLVED DECLARATION IDENTITY, not bare name:
-    /// the roster's qualified spellings are resolved to their fn nodes at install time, so a
-    /// bare-name homonym in a non-rostered module is never eligible — review 57446's F1
-    /// (name-set admission made any same-named fn anywhere in the subject cacheable though
-    /// absent from the modeled roster). The nodes themselves are kept alive by
-    /// `CROSS_CLAIM_FN_KEEPALIVE` at install.
+    /// Fn-NODE identities admitted to the cross-claim tier beyond the built-in
+    /// `prepare_grammar` arm. Admission is by RESOLVED DECLARATION IDENTITY: qualified roster
+    /// spellings resolve to fn nodes at install, so a bare-name homonym in a non-rostered
+    /// module is never eligible — review 57446's F1 (name-set admission cached any same-named
+    /// fn in the subject). Nodes are kept alive by `CROSS_CLAIM_FN_KEEPALIVE` at install.
     static CROSS_CLAIM_PURE_ROSTER: RefCell<std::collections::HashSet<usize>> =
         RefCell::new(std::collections::HashSet::new());
     static CROSS_CLAIM_SHARE_OBSERVER: RefCell<Option<CrossClaimShareObserver>> =
         const { RefCell::new(None) };
 }
 
-/// Clears the stored values, the installed roster and the observer together: the tier's
-/// lifetime is ONE prepared execution frame (called from register/clear of the floor's
-/// prepared authority), and an admission roster outliving the subject it was declared
-/// against would let a later, differently-prepared evaluation store under it.
+/// Clears stored values, roster and observer together: the tier's lifetime is ONE prepared
+/// execution frame (called from register/clear of the floor's prepared authority), and a
+/// roster outliving its subject would let a later, differently-prepared evaluation store
+/// under it.
 pub fn clear_cross_claim_pure_memos() {
     CROSS_CLAIM_PURE_MEMO.with(|m| *m.borrow_mut() = CrossClaimPureMemo::default());
     CROSS_CLAIM_FN_KEEPALIVE.with(|k| k.borrow_mut().clear());
@@ -1726,10 +1697,9 @@ pub fn clear_cross_claim_pure_memos() {
 }
 
 /// Install the declared producer roster as RESOLVED fn nodes (the caller resolves each
-/// qualified roster spelling in a frame over the prepared subject). Replaces any previous
-/// roster and keeps the nodes alive for the tier's lifetime; the built-in `prepare_grammar`
-/// arm stays admitted regardless, so surfaces that install no roster (claim_batch,
-/// `gunbc run`) keep today's behavior exactly.
+/// qualified spelling in a frame over the prepared subject). Replaces any previous roster and
+/// keeps the nodes alive for the tier's lifetime; the built-in `prepare_grammar` arm stays
+/// admitted, so roster-less surfaces (claim_batch, `gunbc run`) are unchanged.
 pub fn install_cross_claim_pure_share_roster<I: IntoIterator<Item = Rc<Node>>>(nodes: I) {
     let nodes: Vec<Rc<Node>> = nodes.into_iter().collect();
     CROSS_CLAIM_PURE_ROSTER.with(|r| {
@@ -1779,10 +1749,9 @@ fn cross_claim_observe_hit(func_name: &str) {
 
 thread_local! {
     /// One accumulator per admitted fill in flight, innermost last, holding the inclusive CPU
-    /// of the STORED fills that completed inside it. Enrolled producers compose (a full target
-    /// model reads its staging core), and netting both the outer and the inner inclusive CPU
-    /// from the paying claim would net the inner twice — the same composition fact the
-    /// shared-fill ledger's own child stack exists for, at this tier's grain.
+    /// of STORED fills completed inside it. Enrolled producers compose (a full target model
+    /// reads its staging core), and netting outer and inner inclusive CPU from the paying claim
+    /// would net the inner twice — the shared-fill ledger's child stack, at this tier's grain.
     static CROSS_CLAIM_FILL_CHILDREN: RefCell<Vec<(u128, u128)>> = const { RefCell::new(Vec::new()) };
 }
 
@@ -1867,12 +1836,11 @@ fn keep_cross_claim_fn(fn_node: &Rc<Node>) {
     });
 }
 
-/// One content hash over ALL of a call's arguments (names and values). `None` when any
-/// argument is not content-hashable — such a call is never admitted to the cross-claim tier.
-/// The interner/hash-memo borrows must not outlive this function: they are immutable/local
-/// borrows of `ctx`, and `value_from_portable_ctx` at the caller interns symbols into `ctx`
-/// (a `borrow_mut()`) while reconstructing a stored value — holding `interner` across that
-/// call double-borrows.
+/// One content hash over ALL of a call's arguments (names and values); `None` when any is not
+/// content-hashable — such a call is never admitted to the cross-claim tier. The interner/
+/// hash-memo borrows (immutable, local to `ctx`) must not outlive this function: the caller's
+/// `value_from_portable_ctx` does `borrow_mut()` to intern symbols, so holding `interner`
+/// across it double-borrows.
 fn cross_claim_args_hash(ctx: &InterpContext, args: &[(Option<String>, Value)]) -> Option<u64> {
     use std::hash::{Hash, Hasher};
     let mut hash_memo = ctx.eval_recompute_hash_memo.borrow_mut();
@@ -1887,13 +1855,12 @@ fn cross_claim_args_hash(ctx: &InterpContext, args: &[(Option<String>, Value)]) 
 }
 
 // 🟡 dissolve-on (narrowed, not discharged): gunbc.roadmap_authority
-// five_minute_ci_gate_program_note — this tier is now the generic cross-claim pure memo that
-// note asked for, keyed on fn-node identity + content-hashed args, with admission held to a
-// DECLARED roster (`v2.workflow.floor_pure_producer_share`) plus the built-in
-// `prepare_grammar` arm rather than to every pure call: cross-claim retention is
-// byte-unbounded by construction (the 2026-07-10 20GiB ctx-lifetime regression), so
-// admission stays a conscious, bounded row. Widening admission beyond the roster is that
-// note's remaining work, not this arm's.
+// five_minute_ci_gate_program_note — this tier is the generic cross-claim pure memo that note
+// asked for, keyed on fn-node identity + content-hashed args, admission held to a DECLARED
+// roster (`v2.workflow.floor_pure_producer_share`) plus the built-in `prepare_grammar` arm,
+// not every pure call: cross-claim retention is byte-unbounded by construction (the
+// 2026-07-10 20GiB ctx-lifetime regression), so admission stays a bounded row. Widening
+// beyond the roster is that note's remaining work, not this arm's.
 fn try_cross_claim_pure_memo(
     ctx: &InterpContext,
     fn_node: &Rc<Node>,
@@ -1935,20 +1902,17 @@ fn try_cross_claim_pure_memo(
 }
 
 /// Store a just-computed admitted call. Fill cost is recorded (netted from the paying claim,
-/// reported to the ledger) by the guard's `Drop`, and only when the store actually lands —
-/// an overflow-refused store leaves the cost genuinely the caller's, because every later
-/// caller recomputes it too.
+/// reported to the ledger) by the guard's `Drop`, only when the store lands — an
+/// overflow-refused store leaves the cost the caller's, since every later caller recomputes.
 /// What one cross-claim publication attempt did. A BOOLEAN CONFLATED TWO DIFFERENT FACTS
-/// and #9721 is the receipt: `AlreadyPresent` — the value is in the tier under this exact
-/// key with a structurally equal argument row — SATISFIES the warm's obligation, because
-/// the obligation is "later claims can serve this", not "this particular call is the one
-/// that put it there". A rostered producer reachable from an earlier rostered producer is
-/// stored by that traversal, so its own warm legitimately finds its work already done.
-/// The `Refused*` arms are the opposite: nothing is servable, so a warm that hits one
-/// would relocate its fill onto the first toucher and must stop the line. Reporting both
-/// as `stored=false` made the floor refuse a correctly populated tier and print a
-/// three-way disjunction ("duplicate key, entry cap, or byte budget") in place of the
-/// cause — the `diagnostic_name_mechanism_silent` failure mode, named in DESIGN.
+/// (#9721): `AlreadyPresent` — the value is in the tier under this exact key with a
+/// structurally equal argument row — SATISFIES the warm's obligation ("later claims can serve
+/// this", not "this call put it there"); a rostered producer reachable from an earlier one is
+/// stored by that traversal, so its own warm finds its work done. The `Refused*` arms are the
+/// opposite: nothing is servable, a warm hitting one would relocate its fill onto the first
+/// toucher and must stop the line. Reporting both as `stored=false` made the floor refuse a
+/// correctly populated tier and print "duplicate key, entry cap, or byte budget" for the cause
+/// — the `diagnostic_name_mechanism_silent` failure mode, named in DESIGN.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CrossClaimStoreOutcome {
     /// This call published the entry.
@@ -1962,14 +1926,12 @@ pub enum CrossClaimStoreOutcome {
     RefusedArgsNotHashable,
     /// The argument row failed TOTAL reification.
     RefusedArgsNotPortable,
-    /// The VALUE failed TOTAL reification. THE LOCATED REFUSAL IS CARRIED ON THE VARIANT,
-    /// not fetched from a side channel: review 57554 found that reading the retained
-    /// `CROSS_CLAIM_LAST_UNPORTABLE` slot for EVERY non-servable outcome would decorate a
-    /// byte-budget or entry-cap refusal with a stale path and kind left by some earlier
-    /// producer, since only this arm ever writes that slot and no reset clears it. Naming
-    /// one cause and then attaching another cause's evidence is the fabrication this type
-    /// exists to remove. Binding the detail to the arm that owns it makes the mismatch
-    /// UNCONSTRUCTIBLE rather than guarded (DESIGN section 5: construction over validation).
+    /// The VALUE failed TOTAL reification. THE LOCATED REFUSAL IS CARRIED ON THE VARIANT, not
+    /// a side channel: review 57554 found that reading `CROSS_CLAIM_LAST_UNPORTABLE` for EVERY
+    /// non-servable outcome decorated a byte-budget or entry-cap refusal with a stale path/kind
+    /// from an earlier producer (only this arm writes the slot, nothing clears it) — one cause
+    /// carrying another's evidence, the fabrication this type removes. Binding the detail to
+    /// its arm makes the mismatch UNCONSTRUCTIBLE, not guarded (DESIGN section 5).
     RefusedValueNotPortable(ServeCacheValueNotPortable),
     /// The key population is at `CROSS_CLAIM_PURE_MEMO_ENTRY_CAP`.
     RefusedEntryCap,
@@ -2083,11 +2045,10 @@ fn store_cross_claim_pure_memo(
     outcome
 }
 
-/// Evaluate one rostered NULLARY producer in `ctx` and seed the cross-claim tier with its
-/// value, running the same guard protocol a claim-forced fill runs — so a preparation warm
-/// lands in the ledger as an outside-fold fill rather than on the first claim. Returns the
-/// TYPED outcome, so the caller can tell a servable tier (`Stored`, `AlreadyPresent`) from
-/// each distinct refusal by name rather than from one boolean.
+/// Evaluate one rostered NULLARY producer in `ctx` and seed the cross-claim tier, under the
+/// same guard protocol as a claim-forced fill — so a preparation warm lands in the ledger as an
+/// outside-fold fill, not on the first claim. Returns the TYPED outcome: a servable tier
+/// (`Stored`, `AlreadyPresent`) vs each refusal by name, not one boolean.
 pub fn warm_cross_claim_pure_producer(
     ctx: &InterpContext,
     qualified_fn: &str,
@@ -2231,12 +2192,11 @@ mod cross_claim_memo_tests {
         super::clear_cross_claim_pure_memos();
     }
 
-    // GREEN control beside RED1, and the regression control for the field-ORDER defect: a
-    // fully portable record stored from frame A must have EVERY field readable in frame B
-    // through `fields_get` — which binary-searches on the consuming interner's Symbol
-    // ordinals, so a reconstruction that preserves frame A's field order is unsorted in
-    // frame B and misses every lookup (the actual mechanism behind run 33269961629's
-    // "no field 'produced_decl_support' on type 'TargetModel'").
+    // GREEN control beside RED1, and regression control for the field-ORDER defect: a portable
+    // record stored from frame A must have EVERY field readable in frame B via `fields_get`,
+    // which binary-searches on the consuming interner's ordinals — frame A's order is unsorted
+    // in B and misses every lookup (run 33269961629's "no field 'produced_decl_support' on
+    // type 'TargetModel'").
     #[test]
     fn every_field_of_a_served_record_resolves_under_a_reordered_interner() {
         use super::{fields_get, portable_value_from_ctx, value_from_portable_ctx};
@@ -2271,10 +2231,9 @@ mod cross_claim_memo_tests {
     }
 
     // RED (review 57446 F1): admission is by RESOLVED DECLARATION IDENTITY, so a bare-name
-    // HOMONYM in a non-rostered module must NOT store — under name-set admission any
-    // same-named fn anywhere in the subject became cacheable though absent from the
-    // modeled roster. Fn-node identity in the key stopped cross-SERVING between homonyms
-    // but never stopped CACHING the unintended fn; this red does.
+    // HOMONYM in a non-rostered module must NOT store — name-set admission cached any
+    // same-named fn in the subject. Fn-node identity in the key stopped cross-SERVING between
+    // homonyms but not CACHING the unintended fn; this red does.
     #[test]
     fn a_homonym_outside_the_roster_identity_does_not_store() {
         use super::{
@@ -2325,18 +2284,16 @@ mod cross_claim_memo_tests {
         super::clear_cross_claim_pure_memos();
     }
 
-    // RED (#9721): AN ALREADY-PRESENT ENTRY IS SERVABLE AND IS NOT A REFUSAL, and each
-    // decline names its OWN cause. The boolean this replaced reported a correctly
-    // populated tier as `stored=false`, which the required floor turned into
-    // "PureProducerShareWarmNotStored ... duplicate key, entry cap, or byte budget" —
-    // one line for three causes, and the wrong verdict for the fourth state. That is
-    // exactly what refused #9721's floor run: `rust_target_model_staging` is reachable
-    // from `rust_target_model`, so warming the first stored it and its own warm found
-    // the entry already there.
+    // RED (#9721): AN ALREADY-PRESENT ENTRY IS SERVABLE AND IS NOT A REFUSAL, and each decline
+    // names its OWN cause. The replaced boolean reported a correctly populated tier as
+    // `stored=false`, which the floor printed as "PureProducerShareWarmNotStored ... duplicate
+    // key, entry cap, or byte budget" — one line for three causes, wrong verdict for the fourth.
+    // That refused #9721's floor run: `rust_target_model_staging` is reachable from
+    // `rust_target_model`, so warming the first stored it and its own warm found it present.
     //
-    // The discriminating pair is the point: AlreadyPresent and RefusedByteBudget both
-    // decline to write, and the OLD boolean could not tell them apart. Here one is
-    // servable and one is not, so a regression that re-conflates them reds.
+    // The discriminating pair: AlreadyPresent and RefusedByteBudget both decline to write and
+    // the OLD boolean could not tell them apart; one is servable, one is not, so re-conflating
+    // them reds.
     #[test]
     fn an_already_present_entry_is_servable_while_a_declined_one_is_not() {
         use super::{store_cross_claim_pure_memo, CrossClaimStoreOutcome};
@@ -2394,15 +2351,14 @@ mod cross_claim_memo_tests {
     }
 
     // RED (review 57554): A CAUSE MUST NEVER CARRY ANOTHER CAUSE'S EVIDENCE. The located
-    // path/kind lives on the RefusedValueNotPortable arm, so a later byte-budget or
-    // entry-cap refusal has no detail to borrow. The defect this controls was real and
-    // subtle: `CROSS_CLAIM_LAST_UNPORTABLE` is written ONLY by the unportable arm and was
-    // cleared by nothing, so a runner that read it for every non-servable outcome would
-    // print a stale `path=.produced_decl_support.render kind=OriginBoundNode` beside a
-    // ByteBudgetExceeded cause — naming one cause and proving another.
+    // path/kind lives on the RefusedValueNotPortable arm, so a later byte-budget or entry-cap
+    // refusal has nothing to borrow. `CROSS_CLAIM_LAST_UNPORTABLE` is written ONLY by the
+    // unportable arm and cleared by nothing, so a runner reading it for every non-servable
+    // outcome printed a stale `path=.produced_decl_support.render kind=OriginBoundNode` beside
+    // a ByteBudgetExceeded cause.
     //
-    // The ORDER is the discriminator: the unportable refusal happens FIRST and leaves the
-    // slot populated, then the budget refusal must still report no detail.
+    // ORDER is the discriminator: the unportable refusal happens FIRST and populates the slot;
+    // the budget refusal must still report no detail.
     #[test]
     fn a_budget_refusal_after_an_unportable_one_carries_no_borrowed_detail() {
         use super::{store_cross_claim_pure_memo, CrossClaimStoreOutcome};
@@ -2550,15 +2506,13 @@ mod cross_claim_memo_tests {
         super::clear_cross_claim_pure_memos();
     }
 
-    // Regression for gunbc#8505: the cross-claim `prepare_grammar` memo cached a raw
-    // `Value` (its `Symbol`s indexing into the PRODUCING ctx's interner) keyed only on
-    // fn-node identity + content hash, with no scope tied to which `InterpContext`
-    // consumes it. Required-floor builds a fresh ctx (fresh, empty interner) per claim,
-    // so a value stored under `ctx_a` and served unmodified to `ctx_b` resolved its
-    // `Symbol`s against the wrong interner. This test would have failed under the old
-    // (pre-`PortableValue`) code: `ctx_b`'s decoy vocabulary is interned in a different
-    // order than `ctx_a`'s, so a leaked raw `Symbol` index resolves to the WRONG name
-    // (or is out of bounds) in `ctx_b`, rather than merely happening to still work.
+    // Regression for gunbc#8505: the cross-claim `prepare_grammar` memo cached a raw `Value`
+    // (`Symbol`s indexing the PRODUCING ctx's interner) keyed on fn-node identity + content
+    // hash, unscoped to the consuming `InterpContext`. Required-floor builds a fresh ctx per
+    // claim, so a value stored under `ctx_a` and served to `ctx_b` resolved against the wrong
+    // interner. Pre-`PortableValue` this failed: `ctx_b`'s decoy vocabulary is interned in a
+    // different order, so a leaked `Symbol` index resolves to the WRONG name (or out of bounds)
+    // rather than happening to work.
     #[test]
     fn cross_claim_memo_survives_a_fresh_consuming_context() {
         let ctx_a = fresh_ctx();
@@ -2619,22 +2573,17 @@ mod cross_claim_memo_tests {
         }
     }
 
-    // Regression for the SECOND half of gunbc#8505's follow-up (dashboard
-    // adhoc-e78c4260-d3a): the test above proves the STORED VALUE survives a fresh
-    // consuming interner (PortableValue). It says nothing about the memo KEY, which
-    // was still built by `eval_recompute_arg_key`/`eval_recompute_value_hash` mixing
-    // raw interner-local `Symbol` ordinals (`type_name.0`, `variant_name.0`) rather
-    // than the resolved symbol TEXT. Ordinals are assigned in per-context encounter
-    // order, so two semantically distinct arguments from two independently-interned
-    // contexts can be assigned the IDENTICAL ordinal pattern for DIFFERENT strings,
-    // aliasing one memo entry onto an unrelated logical call -- silent wrongness one
-    // level up from the bug PortableValue fixed. This test would have passed
-    // (wrongly, by returning ctx_a's stored result) under the pre-fix ordinal-keyed
-    // code: "TypeFoo" is ctx_a's first NON-well-known interned symbol and "TypeBar" is
-    // ctx_c's first NON-well-known interned symbol -- both land at the SAME ordinal
-    // (the well-known free-monoid symbols are pre-interned identically in every fresh
-    // context, so they don't disturb the collision), so the old `UnitVariant(u32,
-    // u32)` key was identical for two different types.
+    // Regression for the SECOND half of gunbc#8505's follow-up (dashboard adhoc-e78c4260-d3a):
+    // the test above covers the STORED VALUE (PortableValue), not the memo KEY, which
+    // `eval_recompute_arg_key`/`eval_recompute_value_hash` still built from interner-local
+    // `Symbol` ordinals (`type_name.0`, `variant_name.0`) rather than resolved TEXT. Ordinals
+    // are per-context encounter order, so distinct arguments from independently-interned
+    // contexts can share an ordinal pattern for DIFFERENT strings, aliasing one memo entry onto
+    // an unrelated call -- silent wrongness one level above the PortableValue bug. Under the
+    // ordinal-keyed code this passed wrongly (returning ctx_a's result): "TypeFoo" is ctx_a's
+    // first NON-well-known symbol and "TypeBar" is ctx_c's -- the SAME ordinal (well-known
+    // free-monoid symbols are pre-interned identically in every fresh context), so the old
+    // `UnitVariant(u32, u32)` key was identical for two types.
     #[test]
     fn cross_claim_memo_key_is_content_addressed_not_ordinal_addressed() {
         let ctx_a = fresh_ctx();
@@ -2689,10 +2638,9 @@ mod cross_claim_memo_tests {
         );
     }
 
-    // Same defect class, exercised through the Record/Fields-frame path
-    // (`eval_recompute_frame_integrate`'s per-field mixing) rather than the
-    // `UnitVariant` fast path above: a FIELD name ordinal collision must not alias
-    // two records of the same type but different field identity.
+    // Same defect class via the Record/Fields-frame path (`eval_recompute_frame_integrate`'s
+    // per-field mixing) rather than the `UnitVariant` fast path: a FIELD name ordinal
+    // collision must not alias two records of one type with different field identity.
     #[test]
     fn cross_claim_memo_key_distinguishes_field_names_across_ordinal_collisions() {
         let ctx_a = fresh_ctx();
@@ -2742,17 +2690,14 @@ mod cross_claim_memo_tests {
         );
     }
 
-    // Regression for the `RefCell already borrowed` panic surfaced by CI on
-    // gunbc#8565 (dashboard adhoc-e78c4260-d3a): `eval_recompute_value_hash` hashes a
-    // `Value::Map` arg by hashing each `CanonKey`, and `CanonKey::hash` calls
-    // `value_hash`, which for a String/List/Variant key calls `free_monoid_to_vec`.
-    // `free_monoid_to_vec` used to intern its well-known Cons/Empty/head/tail
-    // symbols via `ctx.sym()` (a MUTABLE borrow of `ctx.symbols`), while the memo-key
-    // computation above it holds an IMMUTABLE `ctx.symbols.borrow()` for the whole
-    // traversal -- a same-thread `RefCell` double-borrow that panics rather than
-    // erroring. This requires `active_ctx()` to resolve to the SAME ctx whose
-    // `symbols` is borrowed, so the call is wrapped in `with_active_context` (as
-    // production evaluation always is) rather than left ambient-free.
+    // Regression for the `RefCell already borrowed` panic CI surfaced on gunbc#8565 (dashboard
+    // adhoc-e78c4260-d3a): `eval_recompute_value_hash` hashes a `Value::Map` arg via each
+    // `CanonKey`, whose `hash` calls `value_hash`, which for String/List/Variant calls
+    // `free_monoid_to_vec`. That used to intern Cons/Empty/head/tail via `ctx.sym()` (MUTABLE
+    // borrow of `ctx.symbols`) while the memo-key computation held an IMMUTABLE
+    // `ctx.symbols.borrow()` -- a same-thread double-borrow that panics. Needs `active_ctx()` to
+    // be the SAME ctx whose `symbols` is borrowed, hence `with_active_context` (as production
+    // evaluation always is).
     #[test]
     fn cross_claim_memo_key_hashes_a_map_arg_with_string_keys_without_panicking() {
         let ctx = fresh_ctx();
@@ -2782,18 +2727,15 @@ mod cross_claim_memo_tests {
         });
     }
 
-    // Regression for the follow-up concern on 975f2b166d (dashboard warm-boar-256):
-    // `free_monoid_ctx_syms`'s read-only fallback (taken above when the interner is
-    // already borrowed) must actually FIND a real Cons/Empty-encoded value's symbols,
-    // not merely avoid panicking. If pre-interning at context construction were
-    // missing or wrong, a genuine free-monoid `Value::Variant` reached under a held
-    // borrow would silently fall through `value_hash`'s generic Variant arm instead
-    // of its free-monoid-aware one (DESIGN §5's empty-observation narrow: a lookup
-    // miss caused by contention reported the same as "not a list"). This constructs
-    // an actual Cons(1, Cons(2, Empty)) chain as a `Value::Map` key -- so hashing it
-    // is reached from inside `eval_recompute_key`'s held interner borrow -- and
-    // proves the memo round-trips, which only holds if the Cons/head/tail symbols
-    // were correctly resolved rather than silently missed.
+    // Regression for the follow-up on 975f2b166d (dashboard warm-boar-256):
+    // `free_monoid_ctx_syms`'s read-only fallback (taken when the interner is already borrowed)
+    // must FIND a real Cons/Empty-encoded value's symbols, not merely not panic. Missing or
+    // wrong pre-interning at context construction would let a free-monoid `Value::Variant`
+    // under a held borrow fall through `value_hash`'s generic Variant arm (DESIGN §5's
+    // empty-observation narrow: a contention miss reported as "not a list"). Builds a
+    // Cons(1, Cons(2, Empty)) chain as a `Value::Map` key -- hashed inside
+    // `eval_recompute_key`'s held borrow -- and proves the memo round-trips, which holds only
+    // if Cons/head/tail resolved.
     #[test]
     fn cross_claim_memo_key_hashes_a_map_arg_with_a_free_monoid_list_key_under_held_borrow() {
         let ctx = fresh_ctx();
@@ -2845,13 +2787,11 @@ mod cross_claim_memo_tests {
         });
     }
 
-    // Sharper version of the test above: calls `free_monoid_to_vec` directly while
-    // an immutable `ctx.symbols` borrow is held on the stack (exactly the shape
-    // `eval_recompute_key`/`eval_recompute_value_hash` create), and asserts the
-    // FLATTENED CONTENT is correct -- not just that nothing panicked. A silent
-    // narrow (the read-only fallback missing a symbol and reporting `None`, or a
-    // stale offset assumption) would make this return `None` or a wrong vec, not
-    // panic, so a not-panicking assertion alone would not have caught it.
+    // Sharper version of the test above: calls `free_monoid_to_vec` directly under a held
+    // immutable `ctx.symbols` borrow (the shape `eval_recompute_key`/`eval_recompute_value_hash`
+    // create) and asserts the FLATTENED CONTENT, not just no panic. A silent narrow (fallback
+    // missing a symbol and reporting `None`, or a stale offset assumption) returns `None` or a
+    // wrong vec rather than panicking.
     #[test]
     fn free_monoid_to_vec_resolves_well_known_syms_under_a_held_immutable_borrow() {
         let ctx = fresh_ctx();
@@ -2893,12 +2833,11 @@ struct ParseTableMemo {
     keepalive: Vec<Value>,
 }
 
-// Recompute-trace ledger (diagnostic READ mode: reports, never gates — DESIGN §5
-// stopped-line audit). Counts evaluations of pure named fns (empty `uses` row) per
-// (fn identity, argument identity). Keying is SOUND-ONLY: an argument without a
-// cheap sound identity (composite values) puts the call in the unkeyed bucket
-// instead of guessing — the ledger never merges distinct work. Durations are
-// inclusive of callees. Enabled via GUNBC_RECOMPUTE_TRACE=1.
+// Recompute-trace ledger (diagnostic READ mode: reports, never gates — DESIGN §5 stopped-line
+// audit). Counts evaluations of pure named fns (empty `uses` row) per (fn identity, argument
+// identity). Keying is SOUND-ONLY: an argument without a cheap sound identity (composite
+// values) goes to the unkeyed bucket — the ledger never merges distinct work. Durations
+// include callees. Enabled via GUNBC_RECOMPUTE_TRACE=1.
 #[derive(Default)]
 struct EvalRecomputeTrace {
     map: std::collections::HashMap<EvalRecomputeKey, EvalRecomputeEntry>,
@@ -2933,16 +2872,14 @@ enum EvalRecomputeArgKey {
     Int(i64),
     FloatBits(u64),
     StrHash(u64),
-    // Content hashes of the resolved symbol TEXT, not raw interner ordinals — see
-    // eval_recompute_str_hash callers below; ordinals are only stable within one
-    // SymbolInterner and this key must compare equal across independently-interned
-    // InterpContexts (gunbc#8505 follow-up: the cross-claim prepare_grammar memo).
+    // Content hashes of resolved symbol TEXT, not interner ordinals (see eval_recompute_str_hash
+    // callers): ordinals are stable only within one SymbolInterner and this key must compare
+    // equal across InterpContexts (gunbc#8505 follow-up: the cross-claim prepare_grammar memo).
     UnitVariant(u64, u64),
     EmptyList,
-    // Recursive content hash of a composite value (Record/Variant/List/Map/
-    // Set/Fn/Unit), memoized per allocation with Weak-liveness validation so
-    // a reused address can never serve a stale hash. Closures are the one
-    // remaining unkeyed class (captured-env identity is not computed).
+    // Recursive content hash of a composite value (Record/Variant/List/Map/Set/Fn/Unit),
+    // memoized per allocation with Weak-liveness validation so a reused address never serves a
+    // stale hash. Closures remain unkeyed (captured-env identity is not computed).
     ContentHash(u64),
 }
 
@@ -2970,11 +2907,10 @@ struct EvalRecomputeEntry {
     fn_name: Rc<str>,
     count: u64,
     total_ns: u128,
-    // Distinct call-site node ptrs (capped) with "file:offset" labels. One site
-    // recomputing = same call expression re-evaluated (loop-invariant hoist or
-    // value coincidence — Share/memoize territory, invisible to static analysis
-    // when value-coincident). Multiple sites = a cross-site duplicate demand
-    // (static rewire candidate).
+    // Distinct call-site node ptrs (capped) with "file:offset" labels. One site recomputing =
+    // the same call expression re-evaluated (loop-invariant hoist or value coincidence —
+    // Share/memoize territory, invisible to static analysis when value-coincident). Multiple
+    // sites = cross-site duplicate demand (static rewire candidate).
     sites: Vec<(usize, String)>,
 }
 
@@ -3005,34 +2941,29 @@ pub fn eval_recompute_trace_enabled() -> bool {
     }
 }
 
-/// Test harness only: re-read `GUNBC_RECOMPUTE_TRACE` into the process-wide
-/// cache. Needed because the production cache is initialized once per process;
-/// claim_executor's parallel tests set the env var after siblings may have
-/// latched tracing off (review 45756).
+/// Test harness only: re-read `GUNBC_RECOMPUTE_TRACE` into the process-wide cache, which
+/// production initializes once per process; claim_executor's parallel tests set the env var
+/// after siblings may have latched tracing off (review 45756).
 #[doc(hidden)]
 pub fn refresh_eval_recompute_trace_enabled_cache_for_tests() {
     eval_recompute_trace_refresh_cache();
 }
 
-// The eval-frame memo: the ladder's single-site discharge provider, realized
-// in the seed. Buckets by the ledger key (fn identity x argument identity) and
-// serves only after the stored call's argument names AND values verify equal —
-// a hash collision degrades to recompute, never to a wrong value. Eviction is
-// ScopeExit at the WITNESS frame: batch surfaces share one ctx across an
-// entry's witnesses and call eval_call_memo_frame_exit after each claim fn
-// (ctx-lifetime retention of argument+result values across witnesses is
-// byte-unbounded — the 2026-07-10 20GiB-class regression). Admission stops at
-// the entry cap with the refusal COUNTED (overflow), never silent. Default ON
-// everywhere;
-// GUNBC_EVAL_MEMO=0 is a diagnostic realization switch (recompute instead of
-// serve — semantics identical), and the receipt discloses hits/misses so a
-// disabled memo is visible as memo_hits=0, never silently assumed working.
+// The eval-frame memo: the ladder's single-site discharge provider, realized in the seed.
+// Buckets by the ledger key (fn identity x argument identity), serves only after the stored
+// call's argument names AND values verify equal — a collision degrades to recompute, never a
+// wrong value. Eviction is ScopeExit at the WITNESS frame: batch surfaces share one ctx across
+// an entry's witnesses and call eval_call_memo_frame_exit after each claim fn (ctx-lifetime
+// retention of argument+result values is byte-unbounded — the 2026-07-10 20GiB-class
+// regression). Admission stops at the entry cap with the refusal COUNTED (overflow). Default
+// ON everywhere; GUNBC_EVAL_MEMO=0 is a diagnostic realization switch (recompute instead of
+// serve, semantics identical), and the receipt discloses hits/misses so a disabled memo shows
+// as memo_hits=0, never assumed working.
 struct EvalCallMemo {
-    // Per-ctx realization switch (read from GUNBC_EVAL_MEMO at ctx
-    // construction, not a process-wide latch): provider-attribution tests pin
-    // the outer eval-frame provider off on their own ctx so an inner
-    // provider's hit counters stay discriminating; semantics are identical
-    // either way (recompute instead of serve).
+    // Per-ctx realization switch (GUNBC_EVAL_MEMO read at ctx construction, not a
+    // process-wide latch): provider-attribution tests pin the outer eval-frame provider off on
+    // their own ctx so an inner provider's hit counters stay discriminating; semantics are
+    // identical either way.
     enabled: bool,
     map: std::collections::HashMap<EvalRecomputeKey, Vec<(Vec<(Option<String>, Value)>, Value)>>,
     // fn-node Rcs kept alive so fn_ptr keys stay valid for the ctx lifetime
@@ -3064,24 +2995,22 @@ fn eval_call_memo_env_default() -> bool {
         .unwrap_or(true)
 }
 
-/// Realization switch, per ctx: an inner provider's by-execution receipt suite
-/// (e.g. the parse-table MemoTier's amortization tests) pins the eval-frame
-/// provider off so pass-2 demands re-execute and the inner door's hit counters
-/// keep discriminating. Values are identical either way.
+/// Realization switch, per ctx: an inner provider's by-execution receipt suite (e.g. the
+/// parse-table MemoTier's amortization tests) pins the eval-frame provider off so pass-2
+/// demands re-execute and the inner door's hit counters keep discriminating. Values are
+/// identical either way.
 pub fn set_eval_call_memo_enabled(ctx: &InterpContext, enabled: bool) {
     ctx.eval_call_memo.borrow_mut().enabled = enabled;
 }
 
-/// Frame exit for the eval-call memo: the memo's eviction scope is the WITNESS
-/// frame, not the ctx. Batch surfaces (claim_batch, claim_executor) share one
-/// ctx across an entry's witnesses for the resolve-side ReferenceTier share —
-/// but the memo stores full argument+result VALUES, so ctx-lifetime retention
-/// across N witnesses is byte-unbounded by construction (measured 2026-07-10:
-/// single witness plateaus ~3.4GiB, six witnesses in one ctx climb past
-/// ~20GiB to SIGKILL). Callers invoke this after each claim function; the map
-/// and keepalives drain, counters stay CUMULATIVE so receipts remain honest.
-/// Cross-witness serving is an outer-frame promotion that must arrive as a
-/// conscious provider row with byte-bounded admission — never a default.
+/// Frame exit for the eval-call memo: eviction scope is the WITNESS frame, not the ctx. Batch
+/// surfaces (claim_batch, claim_executor) share one ctx across an entry's witnesses for the
+/// resolve-side ReferenceTier share, but the memo stores full argument+result VALUES, so
+/// ctx-lifetime retention across N witnesses is byte-unbounded (measured 2026-07-10: one
+/// witness plateaus ~3.4GiB, six in one ctx pass ~20GiB to SIGKILL). Called after each claim
+/// function; map and keepalives drain, counters stay CUMULATIVE so receipts remain honest.
+/// Cross-witness serving is an outer-frame promotion that must arrive as a conscious provider
+/// row with byte-bounded admission — never a default.
 pub fn eval_call_memo_frame_exit(ctx: &InterpContext) {
     let mut m = ctx.eval_call_memo.borrow_mut();
     m.map.clear();
@@ -3104,10 +3033,9 @@ pub struct MutationCounters {
 
 impl fmt::Display for MutationCounters {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        // The map rows report calls only: nothing increments an entries-copied
-        // quantity for them, and printing a literal 0 would read as a measurement.
-        // The quantity is well defined -- rc_map_merge clones every overlay entry,
-        // so it is the overlay's size -- it is simply never computed.
+        // The map rows report calls only: no entries-copied quantity is incremented, and a
+        // literal 0 would read as a measurement. The quantity is well defined (rc_map_merge
+        // clones every overlay entry, so it is the overlay's size) but never computed.
         writeln!(
             f,
             "  {:<12} {:>12} calls",
@@ -3356,15 +3284,14 @@ impl ExecutionMode {
 /// THE IMMUTABLE HALF OF AN EVALUATION CONTEXT — built once per distinct scope, shared by
 /// every claim that scope serves.
 ///
-/// These indexes are a pure function of the module population: given the same modules they are
-/// the same maps. Building them belongs to preparing a scope, not to running a claim.
+/// These indexes are a pure function of the module population, so building them belongs to
+/// preparing a scope, not running a claim.
 ///
-/// The split exists because the obvious reading of "a fresh context per claim, so witnesses
-/// cannot contaminate each other" rebuilds ALL of this per claim. On the required floor that is
-/// 9,573 reconstructions of maps that only 1,155 distinct scopes can possibly differ in — the
-/// entry-major cost shape reproduced one layer below the compiler, after the compiler's own
-/// copy of it was removed. Fresh state per claim is correct; fresh INDEXES per claim is the
-/// same defect wearing the word "fresh".
+/// The naive "fresh context per claim so witnesses cannot contaminate each other" rebuilt ALL
+/// of this per claim: on the required floor, 9,573 reconstructions of maps that only 1,155
+/// distinct scopes can differ in — the entry-major cost shape reproduced one layer below the
+/// compiler after the compiler's own copy was removed. Fresh state per claim is correct; fresh
+/// INDEXES per claim is the same defect wearing the word "fresh".
 pub struct PreparedScopeIndexes {
     pub modules: Rc<im::Vector<Rc<TypedModule>>>,
     pub item_registry: Rc<HashMap<String, Rc<ItemInfo>>>,
@@ -3376,21 +3303,20 @@ pub struct PreparedScopeIndexes {
     /// reference was authored.
     ///
     /// `fn_nodes` holds one bare slot per name and one qualified slot per declaration, so two
-    /// modules that both declare `section_1` fight over the bare slot and the loser's callers
-    /// silently execute the winner's body. This map is what lets a reference authored inside a
-    /// module reach ITS OWN declaration first -- the same `local`-before-`parents` order
-    /// `v1_compiler_infer_sigs::lookup_resolved_sig` already applies at typecheck, which is why
-    /// the collapse was silent: the type layer resolved per module and the runtime did not.
+    /// modules declaring `section_1` fight over the bare slot and the loser's callers execute
+    /// the winner's body. This map lets a reference reach ITS OWN module's declaration first --
+    /// the `local`-before-`parents` order `v1_compiler_infer_sigs::lookup_resolved_sig` applies
+    /// at typecheck, which is why the collapse was silent: the type layer resolved per module,
+    /// the runtime did not.
     file_module_paths: HashMap<String, String>,
     /// (SOURCE FILE, IMPORTED NAME) -> THE MODULE PATH THAT FILE IMPORTED THE NAME FROM.
     ///
-    /// The braced list of an `import a.b.c { x, y }` survives on the module node's `params`, so
-    /// what the author wrote about WHERE a name comes from is recoverable and does not have to be
-    /// guessed from a precedence order. It has to be read from here rather than from
-    /// `ResolvedFuncEnv.parents`, which is the FLATTENED TRANSITIVE closure: `parents` keeps
-    /// module identity only, drops the per-import name list, and does not separate a direct
-    /// import from a module merely reachable through one — so a first-hit fold over it answers
-    /// with whichever closure member sorts first, which is the same silent pick one level out.
+    /// The braced list of `import a.b.c { x, y }` survives on the module node's `params`, so
+    /// WHERE the author said a name comes from is recoverable rather than guessed from
+    /// precedence. It cannot come from `ResolvedFuncEnv.parents`, the FLATTENED TRANSITIVE
+    /// closure: that keeps module identity only, drops the per-import name list, and does not
+    /// separate a direct import from a transitively reachable module — a first-hit fold over it
+    /// is the same silent pick one level out.
     ///
     /// Wildcard (`import a.b.c` with no braces) binds no names and contributes nothing here.
     file_import_bindings: HashMap<(String, String), String>,
@@ -3398,10 +3324,9 @@ pub struct PreparedScopeIndexes {
 }
 
 thread_local! {
-    /// How many times the immutable index set has been constructed. The acceptance bar asks
-    /// for `full interpreter index constructions <= distinct prepared scope identities`, and a
-    /// bound nothing counts is a bound nobody can check — this is the counter that makes the
-    /// per-claim rebuild observable instead of inferable from a profile.
+    /// How many times the immutable index set has been constructed. The acceptance bar is
+    /// `full interpreter index constructions <= distinct prepared scope identities`; this
+    /// counter makes the per-claim rebuild observable rather than inferred from a profile.
     static SCOPE_INDEX_CONSTRUCTIONS: std::cell::Cell<u64> = const { std::cell::Cell::new(0) };
 }
 
@@ -3425,22 +3350,19 @@ pub struct InterpContext {
     pub execution_mode: ExecutionMode,
     pub fixture_store: Option<Rc<crate::recorded_fixture::RecordedFixtureStore>>,
     data_cache: std::cell::RefCell<HashMap<usize, Value>>,
-    // Per-call parameter-name derivation is invariant per fn_node but was re-sliced from
-    // source spans on every call (authored_name_at). Memoize it per fn_node, keyed by fn_node
-    // pointer identity. The key alone is not sound: the ctx does not own fn_nodes (they are
-    // borrowed `Rc<Node>`s that can be dropped while the ctx lives), so a freed node's address
-    // can be reused by an unrelated later node and silently collide on this key. keepalive_fns
-    // retains the `Rc<Node>` behind each new key for the ctx's lifetime (same discipline as
-    // PureCallMemo.keepalive_fns / EvalRecomputeTrace.keepalive_fns / EvalCallMemo.keepalive_fns),
-    // making the pointer stable and the cache dies with the ctx (same discipline as data_cache).
+    // Parameter-name derivation is invariant per fn_node but was re-sliced from source spans
+    // per call (authored_name_at). Memoized per fn_node pointer. The pointer alone is unsound:
+    // the ctx does not own fn_nodes (borrowed `Rc<Node>`s droppable while the ctx lives), so a
+    // freed address can be reused and collide. keepalive_fns retains the `Rc<Node>` behind each
+    // key for the ctx's lifetime (as PureCallMemo.keepalive_fns / EvalRecomputeTrace.keepalive_fns
+    // / EvalCallMemo.keepalive_fns), and the cache dies with the ctx (as data_cache).
     // Value = (filtered named-param list, all-param list), matching call_function's two uses.
     param_name_cache: std::cell::RefCell<HashMap<usize, Rc<(Vec<String>, Vec<String>)>>>,
     param_name_cache_keepalive: std::cell::RefCell<Vec<Rc<Node>>>,
-    // Same chokepoint, ExprVar arm: eval_var rebuilt the variable name String from its source
-    // span (expr_var_name_at) and re-interned it (ctx.sym) on every read. Memoize the interned
-    // Symbol per ExprVar node — keyed by node pointer, kept alive via var_sym_cache_keepalive
-    // exactly as param_name_cache above. Eval then skips the slice + re-intern and goes straight
-    // to env.lookup(sym); the name String is materialized lazily only on the registry slow path.
+    // Same chokepoint, ExprVar arm: eval_var rebuilt the name String from its span
+    // (expr_var_name_at) and re-interned it (ctx.sym) per read. The interned Symbol is memoized
+    // per ExprVar node pointer, kept alive via var_sym_cache_keepalive as param_name_cache above;
+    // eval goes straight to env.lookup(sym), materializing the String only on the registry slow path.
     var_sym_cache: std::cell::RefCell<HashMap<usize, Symbol>>,
     var_sym_cache_keepalive: std::cell::RefCell<Vec<Rc<Node>>>,
     // Same chokepoint, ExprCall callee name: eval_call re-sliced the callee name from its source
@@ -3448,22 +3370,20 @@ pub struct InterpContext {
     // call node — keyed by node pointer, kept alive via call_func_name_cache_keepalive as above.
     call_func_name_cache: std::cell::RefCell<HashMap<usize, String>>,
     call_func_name_cache_keepalive: std::cell::RefCell<Vec<Rc<Node>>>,
-    // Same chokepoint, ExprCast arm — the one the three caches above missed. A cast resolved
-    // its target type per EVALUATION: cast_target_seed_name re-sliced authored source text
-    // (authored_name_at), and for any target whose name is not already "String" the alias-chain
-    // walk called lookup_type_item_across_modules, which SCANS every item of every module and
-    // extracts authored source text for each item it compares — once per hop, up to 32 hops.
-    // Both names are pure functions of the target node and the module set, and both are fixed
-    // for a ctx, so they are memoized per target node — keyed by node pointer, kept alive via
-    // cast_kernel_cache_keepalive exactly as call_func_name_cache above.
+    // Same chokepoint, ExprCast arm, missed by the three caches above. A cast resolved its
+    // target per EVALUATION: cast_target_seed_name re-sliced source (authored_name_at), and for
+    // any target not named "String" the alias-chain walk called lookup_type_item_across_modules,
+    // which SCANS every item of every module extracting source text per comparison — per hop, up
+    // to 32 hops. Both names are pure functions of target node + module set, fixed per ctx, so
+    // they are memoized per target node pointer, kept alive via cast_kernel_cache_keepalive as
+    // call_func_name_cache above.
     cast_kernel_cache: std::cell::RefCell<HashMap<usize, Rc<CastTargetNames>>>,
     cast_kernel_cache_keepalive: std::cell::RefCell<Vec<Rc<Node>>>,
     // The alias walk's per-hop `lookup_type_item_across_modules` was a LINEAR SCAN over every
-    // item of every module, extracting authored source text per item compared. Measured on one
-    // daily-page render: 700 lookups scanned 1,967,155 items (~2,810 each), which accounted for
-    // essentially all of ExprCast's 2,027ms — and the term grows with the closure, not the
-    // request. A name->item map is the same fact indexed instead of searched, built once per
-    // ctx. `or_insert` preserves the scan's first-match-wins order.
+    // item of every module, extracting source text per comparison. One daily-page render: 700
+    // lookups scanned 1,967,155 items (~2,810 each), essentially all of ExprCast's 2,027ms — and
+    // the term grows with the closure, not the request. A name->item map is the same fact
+    // indexed, built once per ctx. `or_insert` preserves the scan's first-match-wins order.
     type_item_index: std::cell::RefCell<Option<Rc<HashMap<String, Rc<Node>>>>>,
     // The cast's SOURCE-side name, same class as cast_kernel_cache above (see
     // cast_expr_inferred_type_name).
@@ -3473,18 +3393,17 @@ pub struct InterpContext {
     parse_table_memo: std::cell::RefCell<ParseTableMemo>,
     eval_recompute_trace: std::cell::RefCell<EvalRecomputeTrace>,
     eval_call_memo: std::cell::RefCell<EvalCallMemo>,
-    // Effect-dispatch odometer: incremented on every service-operation dispatch.
-    // The eval-call memo compares it across a named call and refuses to memoize
-    // any call during which it advanced — a WorldRead/effect is never served
-    // stale from cache (the uses-empty purity gate is vacuous corpus-wide: no
-    // corpus func declares a `uses` clause, so every effectful wrapper was
-    // memo-eligible; found via the artifact-store List-after-Delete staleness).
+    // Effect-dispatch odometer, incremented per service-operation dispatch. The eval-call memo
+    // compares it across a named call and refuses to memoize any call during which it advanced
+    // — a WorldRead/effect is never served stale (the uses-empty purity gate is vacuous
+    // corpus-wide: no corpus func declares `uses`, so every effectful wrapper was memo-eligible;
+    // found via the artifact-store List-after-Delete staleness).
     effect_dispatch_count: std::cell::Cell<u64>,
     eval_recompute_hash_memo: std::cell::RefCell<EvalRecomputeHashMemo>,
-    /// Per-context cache of values already served from the cross-claim tier: reconstructing
-    /// a `PortableValue` re-interns and re-allocates the whole structure, so a hot producer
-    /// served on every call would pay that per CALL; this bounds it to once per frame. Keyed
-    /// identically to the global tier; lives and dies with the frame.
+    /// Per-context cache of values served from the cross-claim tier: reconstructing a
+    /// `PortableValue` re-interns and re-allocates the whole structure, so this bounds a hot
+    /// producer's cost to once per frame rather than per CALL. Keyed as the global tier; lives
+    /// and dies with the frame.
     cross_claim_hit_cache: std::cell::RefCell<
         HashMap<(usize, u64), Vec<(Vec<(Option<String>, PortableValue)>, Value)>>,
     >,
@@ -3495,16 +3414,14 @@ pub struct InterpContext {
     governed_services: RefCell<Option<Rc<std::collections::HashSet<String>>>>,
     // Cooperative per-witness eval deadline (operator ruling 2026-08-17; ceiling supplied by the
     // caller from `v2.workflow.required_floor` `required_floor_claim_cpu_safety_limit_ms`, the
-    // CPU safety deadline — independent from the wall deadline that arms the sibling clock below,
-    // per the 2026-08-19 budget policy cut's superseding correction).
-    // The bound must unwind from INSIDE eval as a typed error: witness evals run on
-    // in-process worker threads with no kill authority, so a wall-clock bound imposed
-    // from outside cannot terminate them (the Phase A governor lesson). The budget is
-    // denominated in THREAD CPU TIME, not wall: the fast-lane rule targets the eval-wedge
-    // (a non-terminating eval that burns a core), so a witness inflated by cold-I/O reads
-    // or by governor time-slicing (many witnesses sharing a core) must not be misclassified
-    // — "assuming the infra isn't the problem" is exactly the CPU-vs-wall gap. The stored
-    // pair is (cpu_baseline_nanos, budget_ms).
+    // CPU safety deadline — independent of the wall deadline arming the sibling clock below, per
+    // the 2026-08-19 budget policy cut's superseding correction).
+    // It must unwind from INSIDE eval as a typed error: witness evals run on in-process worker
+    // threads with no kill authority, so an outside wall-clock bound cannot terminate them (the
+    // Phase A governor lesson). Denominated in THREAD CPU TIME, not wall: the fast-lane rule
+    // targets the eval-wedge (a non-terminating eval burning a core), so a witness inflated by
+    // cold I/O or governor time-slicing must not be misclassified — "assuming the infra isn't
+    // the problem" is the CPU-vs-wall gap. Stored pair: (cpu_baseline_nanos, budget_ms).
     eval_deadline: std::cell::Cell<Option<(u128, u64)>>,
     eval_deadline_stride: std::cell::Cell<u32>,
     /// Entry identity the armed budget belongs to, so the neutral `EvaluationBudgetExceeded`
@@ -3515,10 +3432,10 @@ pub struct InterpContext {
     // Whole-receipt wall budget for Wet self-host receipts (emit+cargo subprocess I/O included).
     witness_wall_budget_ms: std::cell::Cell<Option<u64>>,
     // Kill-at-deadline arm for the wall budget (Finding 1, 2026-07-25): (start, budget_ms).
-    // Shell waits poll this and SIGKILL the process group at the ceiling — the completion-
-    // side `wall_budget_completion_outcome` remains a backstop for non-subprocess spend.
-    // Without this arm the refusal fires only after the overrun is fully spent (707s on a
-    // 600s budget; 21–34min receipts in the original finding).
+    // Shell waits poll this and SIGKILL the process group at the ceiling; the completion-side
+    // `wall_budget_completion_outcome` remains a backstop for non-subprocess spend. Without it
+    // the refusal fires only after the overrun is spent (707s on a 600s budget; 21–34min
+    // receipts in the original finding).
     witness_wall_deadline: std::cell::Cell<Option<(Instant, u64)>>,
 }
 
@@ -3529,10 +3446,9 @@ pub struct SelectedFunctionIdentity {
     pub bare_name_ambiguous: bool,
 }
 
-/// The module path a source file authors, or `None` when the index cannot name
-/// exactly one. Made public for the FLOOR2 qualified-witness lookup: under one
-/// shared prepared subject a witness must be invoked by `module.function`, and
-/// deriving that mapping a second time in the caller would fork this one.
+/// The module path a source file authors, or `None` when the index cannot name exactly one.
+/// Public for the FLOOR2 qualified-witness lookup: under one shared prepared subject a witness
+/// is invoked by `module.function`, and re-deriving the mapping in the caller would fork this.
 pub fn selected_module_path(
     file: &str,
     module_path_index: &HashMap<String, String>,
@@ -3661,24 +3577,23 @@ impl InterpContext {
         Self::build_scope_indexes_with_module_order(graph, source_indices, None)
     }
 
-    /// Same walk as [`build_scope_indexes`], but when `module_order` is present the modules are
-    /// visited in that precedence order and bare `fn_nodes` keys use first-write-wins — the same
-    /// resolution `claim_scope_for` already applies to `item_registry`. Without an order the walk
-    /// follows `graph.modules` and bare keys keep last-write-wins for entry-major callers.
+    /// Same walk as [`build_scope_indexes`], but with `module_order` present modules are visited
+    /// in that precedence and bare `fn_nodes` keys are first-write-wins — the resolution
+    /// `claim_scope_for` applies to `item_registry`. Without an order the walk follows
+    /// `graph.modules` and bare keys stay last-write-wins for entry-major callers.
     ///
     /// THIS IS STILL NAME-BASED RESOLUTION WITH A PRECEDENCE RULE, not a wall. An entry module
-    /// now wins its own colliding helper, which makes the compute_board `refusal_is` theft
-    /// unwritable for that caller.
+    /// wins its own colliding helper, making the compute_board `refusal_is` theft unwritable
+    /// for that caller.
     ///
-    /// AND PRECEDENCE IS NO LONGER WHAT DECIDES A NON-ENTRY MODULE'S OWN REFERENCES. This clause
-    /// used to end "a non-entry homonym in the same scope still binds by order", which is the
-    /// state that emitted one plan document carrying another plan's entire body: two carriers
-    /// declaring `section_1` .. `section_9`, one bare slot, the loser's own body fold executing
-    /// the winner's sections. [`InterpContext::lookup_fn_from`] now resolves a reference to the
-    /// referring file's OWN module first whenever the bare name is claimed by more than one
-    /// module, so a module reaching its own declaration is no longer a fact about walk order.
-    /// The residue is narrower and named: a bare reference to a name the referring module does
-    /// NOT declare, claimed by two OTHER modules, is still picked by order with nothing said.
+    /// AND PRECEDENCE NO LONGER DECIDES A NON-ENTRY MODULE'S OWN REFERENCES. The former
+    /// "a non-entry homonym in the same scope still binds by order" state emitted one plan
+    /// document carrying another's entire body: two carriers declaring `section_1` ..
+    /// `section_9`, one bare slot, the loser's body fold executing the winner's sections.
+    /// [`InterpContext::lookup_fn_from`] now resolves to the referring file's OWN module first
+    /// whenever a bare name is claimed by more than one module. The named residue: a bare
+    /// reference to a name the referring module does NOT declare, claimed by two OTHER modules,
+    /// is still picked by order with nothing said.
     ///
     /// Next rung: DESIGN §3 namespace-only — a qualified reference has exactly one declarer, so
     /// ambiguous bare binding has no constructor (`floor_bare_name_ambiguity_next_rung_trigger`).
@@ -3716,10 +3631,10 @@ impl InterpContext {
         for module in modules_to_walk {
             let module_path = authored_name_at(source_indices.clone(), module.module.clone());
             // WHAT THE AUTHOR WROTE ABOUT WHERE EACH NAME COMES FROM, read once per module from
-            // the import list the parser kept. FIRST WRITE WINS within a file: two imports of one
+            // the parser's import list. FIRST WRITE WINS within a file: two imports of one
             // spelling from different modules is a double bind the grammar does not yet refuse,
-            // and picking the later one would make this tier depend on statement order in exactly
-            // the way it exists to stop depending on walk order.
+            // and picking the later would make this tier depend on statement order exactly as it
+            // exists to stop depending on walk order.
             for imp in crate::v1_std_core::module_imports(module.module.clone()).iter() {
                 if import_is_all(imp.clone()) {
                     continue;
@@ -3755,14 +3670,12 @@ impl InterpContext {
                         fn_nodes.insert(qualified.clone(), item.clone());
                     }
                 }
-                // Service-item detection is node-local: the item node carries the
-                // `transport` that *defines* it as a service, so `item_kind` of the
-                // node itself is the single authority. Do NOT gate on a name-keyed
-                // `item_registry` lookup — two top-level items can share one authored
-                // name (the `std.resources` `resource Filesystem` is an OtherItem;
-                // the `extdeps.filesystem` `service Filesystem` is a ServiceItem), and
-                // once both land in the same import closure the non-service entry can
-                // win the registry merge and poison the lookup, silently dropping the
+                // Service-item detection is node-local: the node carries the `transport` that
+                // *defines* it as a service, so its own `item_kind` is the single authority.
+                // Do NOT gate on a name-keyed `item_registry` lookup — two top-level items can
+                // share a name (`std.resources` `resource Filesystem` is an OtherItem;
+                // `extdeps.filesystem` `service Filesystem` is a ServiceItem), and in one import
+                // closure the non-service entry can win the registry merge and silently drop the
                 // service's operations (-> "unknown service operation" at runtime).
                 if item_kind(item.clone()) == ItemKind::ServiceItem {
                     for op in item.children.iter() {
@@ -3799,14 +3712,12 @@ impl InterpContext {
         })
     }
 
-    /// Join shared immutable indexes with FRESH MUTABLE STATE. This is the per-claim
-    /// constructor, and it is cheap by construction: it clones `Rc` handles and allocates empty
-    /// caches. Nothing here walks a module.
+    /// Join shared immutable indexes with FRESH MUTABLE STATE — the per-claim constructor,
+    /// cheap by construction: clones `Rc` handles, allocates empty caches, walks no module.
     ///
-    /// Every mutable field below is deliberately fresh rather than shared. Memos, name caches,
-    /// the effect odometer and the deadline arms all carry state from the claim that ran
-    /// before, and sharing them across claims is how one witness's evaluation becomes another
-    /// witness's answer.
+    /// Every mutable field is fresh, not shared: memos, name caches, the effect odometer and the
+    /// deadline arms carry state from the previous claim, and sharing them is how one witness's
+    /// evaluation becomes another's answer.
     pub fn over_scope_indexes(
         indexes: Rc<PreparedScopeIndexes>,
         execution_mode: ExecutionMode,
@@ -3885,23 +3796,20 @@ impl InterpContext {
 
     /// Enter a scoped evaluation budget that can only ever TIGHTEN what is already armed.
     ///
-    /// This exists because the paired `arm_*` / `clear_*` calls compose wrongly, and wrongly in
-    /// the fail-open direction (verified 2026-08-09). `arm_eval_deadline` sets its cell
-    /// unconditionally with a FRESH baseline, so a nested arm does not shorten an outer bound —
-    /// it restarts the clock and grants the outer evaluation a whole new budget. `clear_*` then
-    /// sets `None` rather than restoring what it displaced, so an inner clear disarms an outer
-    /// deadline entirely. Both are silent.
+    /// The paired `arm_*` / `clear_*` calls compose wrongly, in the fail-open direction
+    /// (verified 2026-08-09): `arm_eval_deadline` sets its cell unconditionally with a FRESH
+    /// baseline, so a nested arm restarts the clock and grants the outer evaluation a new budget;
+    /// `clear_*` sets `None` rather than restoring, so an inner clear disarms an outer deadline.
+    /// Both silently.
     ///
-    /// The guard fixes composition in one place: the effective limit is the smaller of what
-    /// REMAINS on the outer deadline and what this scope requests (remaining, not declared —
-    /// two scopes carrying the same declared limit but armed at different instants have
-    /// different time left, and it is the time left that decides which fires first), and every
-    /// exit path restores the displaced state because `Drop` runs on early return and on unwind.
-    /// A leaked deadline is not merely an absent bound: the CPU baseline is captured at arm
-    /// time, so a deadline surviving into a later evaluation measures that evaluation against a
-    /// baseline already spent, and refuses it immediately. On a long-lived process sharing one
-    /// `InterpContext` across requests — `gunbc serve` — that would refuse every subsequent
-    /// request for the life of the process.
+    /// The guard fixes composition once: the effective limit is the smaller of what REMAINS on
+    /// the outer deadline and what this scope requests (remaining, not declared — equal declared
+    /// limits armed at different instants have different time left, which decides which fires
+    /// first), and every exit path restores the displaced state because `Drop` runs on early
+    /// return and unwind. A leaked deadline is worse than an absent bound: its CPU baseline is
+    /// captured at arm time, so surviving into a later evaluation it measures against a baseline
+    /// already spent and refuses immediately — on `gunbc serve`, sharing one `InterpContext`
+    /// across requests, every subsequent request for the life of the process.
     pub fn enter_evaluation_budget(
         &self,
         entry: &str,
@@ -3993,10 +3901,9 @@ impl InterpContext {
         }
     }
 
-    /// Entry identity for a budget result. `arm_*` callers that set no entry (the witness lane,
-    /// which maps this result into its own refusal and supplies the witness name there) get an
-    /// explicit placeholder rather than an empty string, so an unnamed entry is visibly unnamed
-    /// instead of looking like a successfully-read empty name.
+    /// Entry identity for a budget result. `arm_*` callers setting no entry (the witness lane,
+    /// which supplies the witness name in its own refusal) get an explicit placeholder, not an
+    /// empty string, so an unnamed entry is visibly unnamed rather than a read empty name.
     fn budget_entry_or_unnamed(&self) -> String {
         self.budget_entry
             .borrow()
@@ -4056,40 +3963,37 @@ impl InterpContext {
         self.indexes.ambiguous_bare_function_names.contains(name)
     }
 
-    /// [`lookup_fn`], but a BARE name claimed by more than one module in this scope resolves
-    /// through the referring file's own declarations, then its explicit imports, before the
-    /// shared bare slot — the same `local`-then-declared-source order the type layer already
-    /// applies in `lookup_resolved_sig`. That the two layers DISAGREED is what made every defect
-    /// in this class silent: typecheck bound the reference per module and execution rebound it
-    /// globally, so nothing refused and the program simply ran a different function.
+    /// [`lookup_fn`], but a BARE name claimed by more than one module resolves through the
+    /// referring file's own declarations, then its explicit imports, before the shared bare slot
+    /// — the `local`-then-declared-source order the type layer applies in `lookup_resolved_sig`.
+    /// The two layers DISAGREEING made this class silent: typecheck bound per module, execution
+    /// rebound globally, nothing refused, the program ran a different function.
     ///
-    /// The bare slot is a single map entry: whichever module the walk visited last (or first,
-    /// under a precedence order) owns it, and every other module's references to that spelling
-    /// silently execute the winner's body. That is not shadowing the author wrote -- it is a
-    /// module losing its own declaration to an unrelated homonym, and it produced
+    /// The bare slot is one map entry owned by the last-visited module (first, under precedence);
+    /// every other module's references to that spelling execute the winner's body. Not authored
+    /// shadowing -- a module losing its own declaration to a homonym. It produced
     /// `docs/plans/import-namespace-program.md` carrying `v2-corpus-self-host`'s entire body,
-    /// because both plan carriers declare `section_1` .. `section_9` and `status_block`.
+    /// both plan carriers declaring `section_1` .. `section_9` and `status_block`.
     ///
-    /// THE TIER IS GATED ON `ambiguous_bare_function_names`, so the resolution of every name
-    /// exactly one module declares is byte-for-byte what it was. Only the colliding population
-    /// moves, and it moves toward the module that authored the reference.
+    /// THE TIER IS GATED ON `ambiguous_bare_function_names`: every name exactly one module
+    /// declares resolves byte-for-byte as before; only the colliding population moves, toward
+    /// the module that authored the reference.
     ///
-    /// WHY THE IMPORT TIER IS NOT OPTIONAL, and it took a floor red to establish rather than
-    /// reasoning: `test.claim.ilm4926_designation_witness` imports `extdeps_external_authority_anchor`
+    /// WHY THE IMPORT TIER IS NOT OPTIONAL (established by a floor red, not reasoning):
+    /// `test.claim.ilm4926_designation_witness` imports `extdeps_external_authority_anchor`
     /// explicitly from `extdeps.cpu_attachment.ilm4926` — a name 630 modules declare, one per
-    /// extdeps module by repository convention. With the own-module tier alone that import was
-    /// inert: the witness's reference still landed on `extdeps.vendor.lotes`, which it imports one
-    /// line earlier and which wins the shared slot, while the attestation row inside `ilm4926`
-    /// correctly reached ilm4926's own. The row and the query then disagreed and the filter
-    /// returned empty. Before the own-module tier existed BOTH sides read lotes, so the equality
-    /// matched and the witness was green on a query that meant nothing.
+    /// extdeps module by convention. With the own-module tier alone the import was inert: the
+    /// reference landed on `extdeps.vendor.lotes` (imported one line earlier, winning the shared
+    /// slot) while the attestation row inside `ilm4926` reached ilm4926's own; row and query
+    /// disagreed and the filter returned empty. Before the own-module tier BOTH sides read lotes,
+    /// so the witness was green on a query that meant nothing.
     ///
-    /// THIS IS NOT THE NAMESPACE PROGRAM AND DOES NOT CLAIM TO BE. Two residues stay on the
-    /// shared slot: a bare reference to a name the referring module neither declares nor imports,
-    /// and a name reached through a WILDCARD import, which binds no names and so says nothing
-    /// about where anything comes from. Both are still picked by precedence with nothing said.
-    /// That residue is `PreparedClaimScope::ambiguous_bare_names`'s subject and retires with
-    /// namespace-only resolution, where a reference has exactly one declarer by construction.
+    /// THIS IS NOT THE NAMESPACE PROGRAM. Two residues stay on the shared slot, picked by
+    /// precedence with nothing said: a bare reference to a name the referring module neither
+    /// declares nor imports, and a name reached through a WILDCARD import (binds no names, says
+    /// nothing about origin). That residue is `PreparedClaimScope::ambiguous_bare_names`'s
+    /// subject and retires with namespace-only resolution, where a reference has exactly one
+    /// declarer by construction.
     fn lookup_fn_from(&self, name: &str, site_file: &str) -> Option<&Rc<Node>> {
         if !name.contains('.')
             && !site_file.is_empty()
@@ -4101,12 +4005,11 @@ impl InterpContext {
                     return Some(node);
                 }
             }
-            // THEN WHERE THE AUTHOR SAID IT COMES FROM. A name this file explicitly imported
-            // resolves to the module it was imported FROM, which is a fact the author wrote and
-            // the shared slot discards. Without this tier an `import a.b.c { anchor }` is inert
-            // whenever any other module in the scope also declares `anchor` -- the reference
-            // still lands on whichever module won a precedence race, and the import line reads
-            // as though it decided something it did not.
+            // THEN WHERE THE AUTHOR SAID IT COMES FROM: an explicitly imported name resolves to
+            // the module it was imported FROM, a fact the shared slot discards. Without this tier
+            // `import a.b.c { anchor }` is inert whenever another module in scope declares
+            // `anchor` -- the reference lands on the precedence winner and the import line reads
+            // as though it decided something.
             if let Some(source_module) = self
                 .indexes
                 .file_import_bindings
@@ -4227,20 +4130,18 @@ pub fn call_env_depth_peak_snapshot() -> usize {
 
 /// Pre-evaluate module-level `data` into the base environment.
 ///
-/// A NAME CLAIMED BY MORE THAN ONE MODULE IS DELIBERATELY NOT PRE-BOUND, and leaving it out is
-/// what makes [`InterpContext::lookup_fn_from`] reachable for `data` at all. This binds by BARE
-/// name through the global `lookup_fn`, and `eval_var` consults the environment BEFORE the item
-/// registry, so a pre-bound ambiguous name shadows per-module resolution everywhere — the same
-/// single-slot collapse as `fn_nodes`, one layer earlier and harder to see, because it looks like
-/// an ordinary variable lookup succeeding. Measured: with the tiers in place and this loop
-/// unchanged, a `data` reference explicitly imported from one of two declarers still read the
-/// other's value, while the function form of the same collision resolved correctly — functions
-/// are not pre-bound here and so were never affected.
+/// A NAME CLAIMED BY MORE THAN ONE MODULE IS DELIBERATELY NOT PRE-BOUND — that is what makes
+/// [`InterpContext::lookup_fn_from`] reachable for `data`. This binds by BARE name via the
+/// global `lookup_fn`, and `eval_var` consults the environment BEFORE the item registry, so a
+/// pre-bound ambiguous name shadows per-module resolution everywhere — the `fn_nodes`
+/// single-slot collapse one layer earlier, disguised as a variable lookup succeeding. Measured:
+/// with the tiers in place and this loop unchanged, a `data` reference explicitly imported from
+/// one of two declarers still read the other's value, while the function form resolved
+/// correctly — functions are not pre-bound here.
 ///
-/// Skipping them costs nothing a consumer can observe: the reference falls through to
-/// `eval_var`'s registry path, which resolves per module and memoizes through `data_cache`, and a
-/// name only ONE module declares still takes this fast path untouched. Locals are unaffected in
-/// both cases — they live in extended scopes and shadow by ordinary lexical rule.
+/// Skipping them is unobservable: the reference falls through to `eval_var`'s registry path,
+/// resolving per module and memoizing via `data_cache`; a name ONE module declares keeps this
+/// fast path. Locals live in extended scopes and shadow lexically either way.
 fn build_initial_env(ctx: &InterpContext) -> InterpResult<Rc<Env>> {
     let mut bindings = HashMap::new();
     for (name, info) in ctx.item_registry.iter() {
@@ -4293,13 +4194,11 @@ thread_local! {
     static CALL_DEPTH: std::cell::Cell<u32> = const { std::cell::Cell::new(0) };
 }
 
-/// Bounded execution (§4): a call chain deeper than this is a typed, located
-/// refusal naming the frontier function — never a host stack overflow, which
-/// aborts the whole process and takes every later witness's measurement with it
-/// (measured: a cycle inside live_deploy script assembly under census-resolved
-/// bare names killed batch-2 at entry 214/619). Genuine deep-but-terminating
-/// recursion lives under `stacker::maybe_grow` guards; 100_000 interpreter
-/// frames is far past any legitimate corpus chain.
+/// Bounded execution (§4): a call chain deeper than this is a typed, located refusal naming
+/// the frontier function — never a host stack overflow, which aborts the process and every
+/// later witness's measurement (measured: a cycle in live_deploy script assembly under
+/// census-resolved bare names killed batch-2 at entry 214/619). Deep-but-terminating recursion
+/// lives under `stacker::maybe_grow`; 100_000 frames is far past any legitimate corpus chain.
 const CALL_DEPTH_LIMIT: u32 = 100_000;
 
 fn call_function(
@@ -4425,18 +4324,16 @@ fn call_function_inner(
         let mut positional_idx = 0;
         for (opt_name, val) in args {
             if let Some(name) = opt_name {
-                // A caller label that names no declared parameter is a contract mismatch, not
-                // an extra binding: inserting it would shadow nothing the body reads while the
-                // real parameter stays unbound. Refuse here (typed, located) rather than let the
-                // body fail later as `NoSuchVariable` — or silently compute when the stray label
-                // happens to collide with another in-scope name.
-                // The corpus marks a deliberately-unused parameter with a leading underscore
-                // (`_ctx`, `_spelling`) or an anonymous `_`, and call sites label it WITHOUT the
-                // underscore (`bash_fold_stmt_kind_tag_emit_transform(spelling: ..)` against
+                // A caller label naming no declared parameter is a contract mismatch, not an
+                // extra binding: it would shadow nothing while the real parameter stays unbound.
+                // Refuse here (typed, located) rather than fail later as `NoSuchVariable` — or
+                // silently compute when the stray label collides with an in-scope name.
+                // The corpus marks an unused parameter with a leading underscore (`_ctx`,
+                // `_spelling`) or `_`, and call sites label it WITHOUT the underscore
+                // (`bash_fold_stmt_kind_tag_emit_transform(spelling: ..)` against
                 // `(_spelling: String)`; the fold-step `(acc, _: Edge, child)` labelled `e:`).
-                // That is the established idiom, and it is not a contract mismatch: the body
-                // cannot read the parameter, so nothing is silently dropped. Accept `x` against
-                // a declared `x`, `_x`, or `_`.
+                // Not a mismatch: the body cannot read it, so nothing is dropped. Accept `x`
+                // against a declared `x`, `_x`, or `_`.
                 let matches_param = |p: &String| {
                     p == name
                         || p == "_"
@@ -4453,20 +4350,16 @@ fn call_function_inner(
                     });
                 }
                 // A duplicate caller label silently overwrote the earlier binding via
-                // HashMap::insert, so the earlier argument's evaluated value vanished
-                // unlocatably (DESIGN §5: the compile-side wall must not report a fact the
-                // runtime keeps quiet about). Refuse instead of taking the last value.
+                // HashMap::insert, losing the earlier value unlocatably (DESIGN §5: the
+                // compile-side wall must not report a fact the runtime keeps quiet about).
+                // Refuse instead of taking the last value.
                 //
-                // An anonymous binding key ("_") is excluded from the collision check (but
-                // still inserted, harmlessly overwriting any earlier "_" — the body cannot
-                // read a parameter named "_", so two anonymous parameters bound at different
-                // positions/labels are two distinct, unreadable slots, not a collision; the
-                // insert itself must still happen so the required-argument "supplied" check
-                // below, which reads `bindings.contains_key`, keeps seeing an anonymous
-                // parameter as filled) (review from parent session loyal-ant-382, 2026-08-05
-                // — the prior form both keyed AND refused every anonymous param under the
-                // literal "_", false-refusing a signature with two or more anonymous
-                // parameters).
+                // An anonymous key ("_") is excluded from the collision check but still inserted:
+                // the body cannot read "_", so two anonymous parameters are distinct unreadable
+                // slots, not a collision, and the insert keeps the required-argument "supplied"
+                // check below (`bindings.contains_key`) seeing it as filled (review from parent
+                // session loyal-ant-382, 2026-08-05 — the prior form keyed AND refused every
+                // anonymous param under the literal "_", false-refusing two or more of them).
                 if name != "_" && bindings.contains_key(&ctx.sym(name)) {
                     return Err(InterpError::CallContractMismatch {
                         callee: fn_node.name.clone(),
@@ -4475,18 +4368,15 @@ fn call_function_inner(
                 }
                 bindings.insert(ctx.sym(name), val.clone());
             } else if positional_idx < param_names.len() {
-                // A positional actual is keyed by its resolved declared parameter, exactly as
-                // the named branch above is — so a positional actual filling a parameter an
-                // earlier named actual already bound (`two(a: 1, 2)` against `fn two(a, b)`,
-                // where the positional slot 0's declared name is `a`, already bound by the
-                // named actual) must refuse the same way, not silently overwrite last-write-wins
-                // (DESIGN §5 fail-closed; review 48817).
+                // A positional actual is keyed by its resolved declared parameter, as the named
+                // branch is — so one filling a parameter an earlier named actual bound
+                // (`two(a: 1, 2)` against `fn two(a, b)`: slot 0 is `a`, already bound) must
+                // refuse the same way, not overwrite last-write-wins (DESIGN §5 fail-closed;
+                // review 48817).
                 //
-                // An anonymous declared parameter ("_") is excluded from the collision check
-                // (see the named-branch note above): two anonymous parameters filled
-                // positionally are two distinct, unreadable slots, not a duplicate. The
-                // insert still happens unconditionally so the required-argument check below
-                // sees the slot as filled.
+                // An anonymous declared parameter ("_") is excluded from the collision check (see
+                // the named-branch note): two anonymous slots are distinct and unreadable. The
+                // insert still happens so the required-argument check below sees it filled.
                 let pname = &param_names[positional_idx];
                 if pname != "_" && bindings.contains_key(&ctx.sym(pname)) {
                     return Err(InterpError::CallContractMismatch {
@@ -4601,24 +4491,23 @@ fn call_function_inner(
     }
 }
 
-/// Thread CPU time in nanoseconds — the metric the fast-lane eval budget is denominated in.
-/// It advances only while THIS thread is actually running on a core, so it excludes both
-/// blocking-I/O waits (a witness reading the live tree cold) and scheduler time-slicing (many
-/// witnesses sharing cores under the adaptive governor). That is exactly the "assuming the
-/// infra isn't the problem" clause of the operator's eval-budget ruling: a genuine non-terminating eval
-/// burns CPU and is still caught, while a bounded scan whose WALL time was inflated by infra is
-/// not misclassified. On unix this reads `CLOCK_THREAD_CPUTIME_ID`; elsewhere (dev only — CI is
-/// linux) it falls back to a process-monotonic wall clock. A clock error yields 0, which makes
-/// the deadline under-count rather than fire spuriously (the witness still returns its real
-/// Pass/Fail; the budget is a performance guard, not a correctness gate).
+/// Thread CPU time in nanoseconds — the fast-lane eval budget's metric. Advances only while
+/// THIS thread runs on a core, so it excludes blocking-I/O waits (a cold live-tree read) and
+/// scheduler time-slicing (many witnesses sharing cores under the adaptive governor) — the
+/// "assuming the infra isn't the problem" clause of the operator's eval-budget ruling: a
+/// non-terminating eval burns CPU and is caught; a bounded scan with infra-inflated WALL time
+/// is not misclassified. Unix reads `CLOCK_THREAD_CPUTIME_ID`; elsewhere (dev only — CI is
+/// linux) a process-monotonic wall clock. A clock error yields 0, so the deadline under-counts
+/// rather than fires spuriously (the witness still returns its real Pass/Fail; the budget is a
+/// performance guard, not a correctness gate).
 /// Maps the kernel's caller-agnostic budget result into the WITNESS lane's refusal vocabulary.
 ///
-/// The kernel raises `EvaluationBudgetExceeded` for every caller (see that variant's comment for
-/// why it must not raise a witness concept). The witness lane's diagnostics carry operator
-/// rulings its consumers depend on — the 5s fast-lane rule, and the "relocating the file does not
-/// discharge it" guidance that exists because a witness was once re-homed under `long/` to
-/// silence exactly this error — so that text stays here, at the witness boundary, rather than
-/// leaking into an HTTP response or being deleted.
+/// The kernel raises `EvaluationBudgetExceeded` for every caller (see that variant for why it
+/// must not raise a witness concept). The witness lane's diagnostics carry operator rulings its
+/// consumers depend on — the 5s fast-lane rule, and the "relocating the file does not discharge
+/// it" guidance that exists because a witness was once re-homed under `long/` to silence this
+/// error — so that text stays at the witness boundary, neither leaking into an HTTP response
+/// nor deleted.
 ///
 /// Any non-budget error passes through untouched.
 pub fn map_budget_error_to_witness_refusal(err: InterpError) -> InterpError {
@@ -4681,11 +4570,10 @@ impl Drop for EvaluationBudgetScope<'_> {
 }
 
 thread_local! {
-    /// CPU SPENT FILLING SHARED MEMOIZED ARTIFACTS ON THIS THREAD, and it lives here rather than
-    /// beside the memos that record it because it now has TWO readers with opposite lifetimes:
-    /// the claim loop, which nets it at completion, and the evaluation deadline, which must net
-    /// it WHILE the claim runs. A counter with two homes is the §3 failure this whole line of
-    /// work exists to close, so there is one cell and `cli_run` delegates to it.
+    /// CPU SPENT FILLING SHARED MEMOIZED ARTIFACTS ON THIS THREAD. Lives here, not beside the
+    /// memos, because it has TWO readers with opposite lifetimes: the claim loop nets it at
+    /// completion, the evaluation deadline WHILE the claim runs. A counter with two homes is the
+    /// §3 failure this work closes, so there is one cell and `cli_run` delegates to it.
     static SHARED_ARTIFACT_FILL_CPU_NANOS: std::cell::Cell<u128> = const { std::cell::Cell::new(0) };
 }
 
@@ -4702,21 +4590,18 @@ pub fn shared_artifact_fill_cpu_nanos() -> u128 {
 /// THE CLOCK EVERY CPU BUDGET IS MEASURED ON: thread CPU, less what this thread spent filling
 /// shared artifacts that every later claim naming the same source reads free.
 ///
-/// WHY A CLOCK RATHER THAN A BASELINE THREADED THROUGH EACH DEADLINE. Both the arming instant and
-/// the polling instant are read from this one function, so the fill accrued between them cancels
-/// in the subtraction that already exists at every site — no deadline has to carry a second
-/// baseline, and a site that forgets to net cannot arise, because there is nothing to forget.
+/// WHY A CLOCK RATHER THAN A BASELINE THREADED THROUGH EACH DEADLINE: arming and polling
+/// instants both read this function, so fill accrued between them cancels in the subtraction
+/// every site already does — no second baseline, and no site can forget to net.
 ///
-/// MONOTONE, which a deadline requires: fill is measured on this same thread clock inside the
-/// miss path, so thread CPU rises by at least as much as fill does over any interval and the
-/// difference never decreases. The saturating subtraction covers only the sampling skew between
-/// the two reads.
+/// MONOTONE, as a deadline requires: fill is measured on this same thread clock inside the miss
+/// path, so thread CPU rises at least as much as fill over any interval. The saturating
+/// subtraction covers only sampling skew between the two reads.
 ///
-/// WHAT THIS DOES NOT REACH, named rather than left for a reader to discover: the WALL deadline
-/// (`witness_wall_deadline`) is still armed on a raw `Instant` and still charges a fill to
-/// whichever claim paid it. Every interruption in the population this repairs was on the CPU
-/// clock — measured, 44 of 44 `Cpu` on run 33185280160 — so the wall half is a real and currently
-/// unexercised residue, not a fix silently omitted.
+/// WHAT THIS DOES NOT REACH: the WALL deadline (`witness_wall_deadline`) is still armed on a raw
+/// `Instant` and still charges a fill to whichever claim paid it. Every interruption in the
+/// repaired population was on the CPU clock — 44 of 44 `Cpu` on run 33185280160 — so the wall
+/// half is a real, currently unexercised residue, not a fix silently omitted.
 pub fn budgeted_cpu_nanos() -> u128 {
     thread_cpu_nanos().saturating_sub(shared_artifact_fill_cpu_nanos())
 }
@@ -4725,28 +4610,26 @@ pub fn budgeted_cpu_nanos() -> u128 {
 mod budgeted_cpu_clock_tests {
     use super::*;
 
-    /// THE DISCRIMINATING RED FOR THE DEADLINE HALF OF THE FILL-ATTRIBUTION RULING. A claim that
-    /// pays a shared fill must not have that fill counted against its own CPU deadline, because
-    /// every later claim naming the same source reads the artifact free — so charging it makes an
-    /// interrupt a function of discovery order rather than of the row.
+    /// THE DISCRIMINATING RED FOR THE DEADLINE HALF OF THE FILL-ATTRIBUTION RULING. A claim
+    /// paying a shared fill must not have it counted against its own CPU deadline — every later
+    /// claim naming the same source reads the artifact free, so charging it makes an interrupt a
+    /// function of discovery order, not the row.
     ///
-    /// ASSERTED AS A DECREASE, NOT AS A RATIO AGAINST MEASURED WORK. An earlier version of this
-    /// test burned CPU in a spin loop, declared the measured cost a fill, and compared the clock's
-    /// advance against `burned / 2`. It failed on the remote runner because `burned` came back
-    /// ZERO — the thread CPU clock did not advance across the loop — which makes the right-hand
-    /// side 0 and the assertion unsatisfiable for an unsigned quantity. The test was measuring the
-    /// runner's clock granularity, not the netting. Recording a KNOWN fill removes the
-    /// measurement from the test entirely: the fill is an input rather than an observation.
+    /// ASSERTED AS A DECREASE, NOT A RATIO AGAINST MEASURED WORK. An earlier version burned CPU
+    /// in a spin loop, called the measured cost a fill, and compared the clock's advance against
+    /// `burned / 2`; on the remote runner `burned` was ZERO (thread CPU did not advance across the
+    /// loop), making the assertion unsatisfiable for an unsigned quantity — it measured clock
+    /// granularity, not netting. Recording a KNOWN fill makes the fill an input, not an
+    /// observation.
     #[test]
     fn a_recorded_fill_moves_the_budget_clock_backwards_relative_to_raw_cpu() {
         const FILL_NANOS: u128 = 1_000_000;
 
-        // SPEND MORE CPU THAN THE FILL BEFORE RECORDING IT, because a fill larger than the thread's
-        // own CPU is a state production cannot reach — a fill is always measured FROM CPU actually
-        // spent inside the miss path, so it is bounded by the raw clock by construction. An earlier
-        // version recorded 1ms of fill against a fresh test thread that had not yet spent 1ms,
-        // saturated the clock to zero, and failed on an input the system cannot produce. That was a
-        // defect in the test's premise, not in the netting.
+        // SPEND MORE CPU THAN THE FILL BEFORE RECORDING IT: a fill exceeding the thread's own
+        // CPU is unreachable in production (fill is measured FROM CPU spent inside the miss
+        // path, so the raw clock bounds it). An earlier version recorded 1ms of fill on a fresh
+        // thread that had not spent 1ms, saturated the clock to zero, and failed on an input the
+        // system cannot produce — a defect in the test's premise, not the netting.
         let mut spin = 0u64;
         let mut rounds = 0u32;
         while thread_cpu_nanos() < FILL_NANOS * 4 && rounds < 100_000 {
@@ -4776,11 +4659,11 @@ mod budgeted_cpu_clock_tests {
              {budgeted_before} -> {budgeted_after}"
         );
 
-        // AND THE EXACT RELATION, BRACKETED RATHER THAN DIFFERENCED. An earlier version asserted
-        // `budget_drop + raw_advance == FILL`, which is false: those two deltas span different
-        // overlapping intervals, so the CPU elapsed in one does not cancel the CPU elapsed in the
-        // other. Bracketing needs no tolerance and no assumption about clock speed — `budgeted +
-        // fill` IS a raw CPU reading, so it must fall between two raw reads taken either side.
+        // AND THE EXACT RELATION, BRACKETED RATHER THAN DIFFERENCED. `budget_drop + raw_advance
+        // == FILL` (an earlier version) is false: the two deltas span different overlapping
+        // intervals, so their CPU does not cancel. Bracketing needs no tolerance or clock-speed
+        // assumption — `budgeted + fill` IS a raw CPU reading, so it falls between two raw reads
+        // taken either side.
         let lo = thread_cpu_nanos();
         let budgeted = budgeted_cpu_nanos();
         let hi = thread_cpu_nanos();
@@ -4791,14 +4674,13 @@ mod budgeted_cpu_clock_tests {
         );
     }
 
-    /// THE CONTROL THAT KEEPS THE ONE ABOVE HONEST: a clock that simply froze would satisfy
-    /// "fills do not advance it" perfectly and disarm every deadline in the process. So ordinary
-    /// CPU — nothing recorded as a fill — must still move it.
+    /// THE CONTROL THAT KEEPS THE ONE ABOVE HONEST: a frozen clock would satisfy "fills do not
+    /// advance it" and disarm every deadline, so ordinary CPU (no fill recorded) must still
+    /// move it.
     ///
-    /// The loop runs until the RAW clock is observed to advance rather than for a fixed count,
-    /// because a fixed count is what made the previous version of this test depend on the
-    /// runner's clock granularity. The cap makes a never-advancing thread CPU clock a loud
-    /// failure rather than a hang.
+    /// The loop runs until the RAW clock advances, not for a fixed count — a fixed count made
+    /// the previous version depend on runner clock granularity. The cap makes a never-advancing
+    /// clock a loud failure, not a hang.
     #[test]
     fn ordinary_work_still_advances_the_budget_clock() {
         let raw_start = thread_cpu_nanos();
@@ -4864,14 +4746,14 @@ pub fn thread_cpu_nanos() -> u128 {
 }
 
 fn eval_expr(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResult<Value> {
-    // The stride poll runs when EITHER clock is armed. Gating it on the CPU deadline alone was a
-    // real defect, found by executing a wall-only serve process rather than by reading: with no
-    // CPU limit the whole poll became unreachable, so a wall-only caller — precisely the
-    // configuration that bounds a low-CPU stall — silently had no in-eval crossing point at all.
+    // The stride poll runs when EITHER clock is armed. Gating on the CPU deadline alone was a
+    // real defect, found by executing a wall-only serve process: with no CPU limit the poll was
+    // unreachable, so a wall-only caller — the configuration that bounds a low-CPU stall — had
+    // no in-eval crossing point.
     //
-    // Neither clock contains an evaluation blocked inside a single native primitive: that never
-    // returns to `eval_expr`, so nothing is polled. That residue is why worker isolation, not a
-    // budget, is what bounds the listener unconditionally.
+    // Neither clock contains an evaluation blocked inside one native primitive: it never returns
+    // to `eval_expr`, so nothing is polled. That residue is why worker isolation, not a budget,
+    // bounds the listener unconditionally.
     let cpu_armed = ctx.eval_deadline.get();
     let wall_armed = ctx.witness_wall_deadline.get().is_some();
     if cpu_armed.is_some() || wall_armed {
@@ -5537,15 +5419,15 @@ fn eval_unaryop(op: &UnaryOpKind, val: Value) -> InterpResult<Value> {
 mod argv_representation_ambiguity_tests {
     //! THE RED FOR THE ARGV AMBIGUITY REFUSAL.
     //!
-    //! It is a unit-level construction rather than an executed process, and that is forced rather
-    //! than chosen: in hermetic mode `eval_mock_response` replays an operation's RESULT off its
-    //! declaration and never touches argv, so NO argv is constructed in the mode CI runs. There is
-    //! no execution to assert against, and a witness that waited for one would assert nothing.
+    //! A unit-level construction, not an executed process, by necessity: in hermetic mode
+    //! `eval_mock_response` replays an operation's RESULT off its declaration and never touches
+    //! argv, so NO argv is constructed in the mode CI runs; a witness waiting for one would
+    //! assert nothing.
     //!
-    //! What discriminates: both cases below carry the SAME two strings and the SAME declared
-    //! meaning. Only the runtime representation differs. The native list expands to two argv words;
-    //! the monoid-encoded form used to collapse to the single word "mainHEAD" and now refuses.
-    //! Delete the refusal and `monoid_encoded_string_sequence_refuses` fails with one argv word.
+    //! What discriminates: both cases carry the SAME two strings and declared meaning; only the
+    //! runtime representation differs. The native list expands to two argv words; the
+    //! monoid-encoded form used to collapse to the single word "mainHEAD" and now refuses. Delete
+    //! the refusal and `monoid_encoded_string_sequence_refuses` fails with one argv word.
     use crate::v1_rt::RcStr;
     use std::rc::Rc;
 
@@ -5844,55 +5726,48 @@ fn native_map_absent_diagnostic_value(ctx: &InterpContext) -> Value {
     }
 }
 
-// HAND-RUST GATE explicit deferral (review 46616): bounded growth in the existing
-// seed interpreter, not a new Rust authority. The evaluation-boundary POLICY is
-// modeled — `v2.std.witness_evaluation` owns `WitnessEvaluation`/`WitnessEvaluationFrame`
-// and `extdeps.transports.rest` `rest_exchange_resolution` owns the lookup, equality,
-// and handler-selection decisions; what lives here is only the dynamic-extent
-// realization of pushing and popping a frame, which no modeled construct can express
+// HAND-RUST GATE explicit deferral (review 46616): bounded growth in the seed interpreter, not
+// a new Rust authority. The evaluation-boundary POLICY is modeled — `v2.std.witness_evaluation`
+// owns `WitnessEvaluation`/`WitnessEvaluationFrame`, `extdeps.transports.rest`
+// `rest_exchange_resolution` owns lookup, equality and handler selection; here lives only the
+// dynamic-extent realization of pushing/popping a frame, which no modeled construct can express
 // while the seed is the evaluator.
 //
 // Lane: ROADMAP `v1-materialization-kernel` (rn_53JPH6BB7G588K7DMZNWM0E3AS,
-// witness-realization-plan (plan doc deleted 2026-08-28)) — the same lane
-// `extdeps.realization.emit_on_demand_host` `emit_on_demand_host_seed_deferral_note`
-// defers to; counted against `v1-honest-frontier` and terminating at
-// `v1-interpreter-quarantine` → `v1-interpreter-delete`.
+// witness-realization-plan (plan doc deleted 2026-08-28)) — the lane
+// `extdeps.realization.emit_on_demand_host` the `emit_on_demand_host_seed_deferral_note` annotation defers
+// to; counted against `v1-honest-frontier`, terminating at `v1-interpreter-quarantine` →
+// `v1-interpreter-delete`.
 //
-// Deletion condition, checkable by execution: witnesses emit to native code and the
-// emitted runtime realizes the evaluation frame, at which point this stack, its
-// `WITNESS_EVALUATION_MODULE` dispatch, and `witness_evaluation_diagnostic_value`
-// delete together while `rest_replay_binding_does_not_escape_its_frame` stays green
-// without them. That witness is the regression control for the deletion, not just for
-// the frame — it fails if a binding survives its frame under either realization.
+// Deletion condition, checkable by execution: witnesses emit to native code and the emitted
+// runtime realizes the evaluation frame; then this stack, its `WITNESS_EVALUATION_MODULE`
+// dispatch, and `witness_evaluation_diagnostic_value` delete together while
+// `rest_replay_binding_does_not_escape_its_frame` stays green without them — that witness is
+// the regression control for the deletion as well as the frame, failing if a binding survives
+// its frame under either realization.
 //
-// Citation note: the two sibling deferrals in this file and in
-// `emit_on_demand_host_seed_deferral_note` name a
-// `dag/gunbc/v1/v1_deletion_plan.dag ^witness_realization_kernel` deletion row. That row
-// no longer exists — the brick ledger it belonged to was retired 2026-07-28 by that
-// file's own `v1_exit_model_doc`, which moved per-node acceptance onto the roadmap
-// tickets. This deferral therefore names the live roadmap node instead of copying a
-// dead row forward; repointing the two stale siblings is left to the lane that owns
-// them rather than smuggled into this diff.
+// Citation note: the two sibling deferrals here and in the `emit_on_demand_host_seed_deferral_note` annotation
+// name a `dag/gunbc/v1/v1_deletion_plan.dag ^witness_realization_kernel` deletion row that no
+// longer exists — its brick ledger was retired 2026-07-28 by that file's the `v1_exit_model_doc` annotation,
+// which moved per-node acceptance onto roadmap tickets. This deferral names the live roadmap
+// node instead; repointing the two stale siblings is left to their owning lane.
 thread_local! {
-    /// Dynamically scoped witness frames. The .dag carrier owns their contents;
-    /// this stack is only the v1 seed realization of the evaluation boundary.
-    /// A frame is pushed immediately before its subject closure and removed by
-    /// `WitnessFramePop`'s Drop on every exit path — returned, refused, or
+    /// Dynamically scoped witness frames; the .dag carrier owns their contents, this stack is
+    /// only the v1 seed realization of the boundary. Pushed immediately before the subject
+    /// closure, removed by `WitnessFramePop`'s Drop on every exit path — returned, refused, or
     /// unwound — so replay bindings cannot become ambient.
     static WITNESS_EVALUATION_FRAMES: RefCell<Vec<Value>> = const { RefCell::new(Vec::new()) };
 }
 
-/// Pops the frame its constructor's caller pushed, on EVERY exit path including an
-/// unwind. The pop used to be an ordinary statement after `apply_closure`, which held
-/// only because no path between the two returned early — a property of the current
-/// body, not of the code, so the block comment's "removed on both returned/refused
-/// paths" was a promise the shape did not keep (review 46767).
+/// Pops the frame its constructor's caller pushed, on EVERY exit path including unwind. The
+/// pop used to be a statement after `apply_closure`, holding only because no path between
+/// returned early — a property of the current body, not the code, so the "removed on both
+/// returned/refused paths" comment was a promise the shape did not keep (review 46767).
 ///
-/// The leak is worth closing by construction rather than by care because a leaked
-/// frame is no longer merely a stale binding: `dispatch_service` consults
-/// `current_witness_evaluation_frame()` to decide whether a hermetic op routes to the
-/// real dispatcher, so an escaped frame would silently route *subsequent* ops out of
-/// the mock layer. Drop makes the escape unwritable instead of merely unlikely (§5).
+/// Closed by construction because a leaked frame is not merely a stale binding:
+/// `dispatch_service` consults `current_witness_evaluation_frame()` to decide whether a
+/// hermetic op routes to the real dispatcher, so an escaped frame would silently route
+/// *subsequent* ops out of the mock layer. Drop makes the escape unwritable (§5).
 struct WitnessFramePop;
 
 impl Drop for WitnessFramePop {
@@ -6054,24 +5929,22 @@ fn match_pattern(
             field_bindings,
         } => {
             // A qualified pattern spelling (`module.Variant`) resolves the arm name to its
-            // containment path, but values are constructed with the bare last segment
-            // (see the short-name normalization at value construction). Every name-vs-literal
-            // reconciliation below — the native Int/Str/List coproducts and the Optional/
-            // Witness raw (value-or-Null) unwraps — must compare that short segment, mirroring
-            // the `Value::Variant` arm's fallback; otherwise a qualified `Zero`/`Succ` (Nat
-            // grounded to native Int), `Empty`/`Cons`, or `Present`/`Absent` pattern misses
-            // its native value and the match falls through non-exhaustive.
+            // containment path, but values are constructed with the bare last segment (the
+            // short-name normalization at value construction). Every name-vs-literal
+            // reconciliation below — native Int/Str/List coproducts, Optional/Witness raw
+            // (value-or-Null) unwraps — compares that short segment, as the `Value::Variant`
+            // arm's fallback does; otherwise a qualified `Zero`/`Succ` (Nat grounded to native
+            // Int), `Empty`/`Cons`, or `Present`/`Absent` pattern misses and the match falls
+            // through non-exhaustive.
             let name_last = name.rsplit('.').next().unwrap_or(name);
-            // Kernel-optional / witness raw representation (value-or-Null):
-            // the `_ if Present+Optional` / `_ if Holds+Witness` unwrap arms
-            // below the kind-specific arms were UNREACHABLE for Record/List/
-            // Str/Int payloads — Value::Record etc. match their kind arm
-            // first and return None from inside it, so
-            // `match xs |> first { Present { value: t } => ... }` failed
-            // non-exhaustive on any record element (pre-existing on main;
-            // located via the interpreted-parse suite reds). Hoisted here
-            // verbatim; Variant payloads are excluded so the Variant arm's
-            // inline raw-value handling stays authoritative.
+            // Kernel-optional / witness raw representation (value-or-Null): the `_ if
+            // Present+Optional` / `_ if Holds+Witness` unwrap arms below the kind-specific arms
+            // were UNREACHABLE for Record/List/Str/Int payloads — Value::Record etc. match
+            // their kind arm first and return None inside it, so `match xs |> first { Present
+            // { value: t } => ... }` failed non-exhaustive on any record element (pre-existing
+            // on main; located via the interpreted-parse suite reds). Hoisted here verbatim;
+            // Variant payloads excluded so the Variant arm's inline raw-value handling stays
+            // authoritative.
             if name_last == "Present"
                 && parent_enum_is(parent_enum.as_ref(), "Optional")
                 && !matches!(value, Value::Null)
@@ -6274,9 +6147,9 @@ fn match_pattern(
                     _ => None,
                 },
                 // GroupCompletion{pos,neg} destructuring against a native Value::Int is
-                // deliberately unhandled here (no corpus site exercises it yet, #5-scoped
-                // deferral) — an unmatched pattern name falls through to `_ => None` below,
-                // refusing rather than fabricating a wrong (pos, neg) pair.
+                // deliberately unhandled (no corpus site exercises it, #5-scoped deferral) — an
+                // unmatched pattern name falls through to `_ => None` below, refusing rather
+                // than fabricating a (pos, neg) pair.
                 Value::Int(n) if name_last == "Zero" || name_last == "Succ" => match name_last {
                     "Zero" => {
                         if *n == 0 {
@@ -6368,24 +6241,22 @@ fn match_pattern(
 }
 
 /// Handler bodies for v4 std-bridge dispatch. Roster authority is
-/// `v1_interpreter_authored_roster_arms()` in `.dag`; generated
-/// `lookup_eval_call_bridge` routes spellings before this macro matches on
-/// the generated enum variant for each arm identity.
+/// `v1_interpreter_authored_roster_arms()` in `.dag`; generated `lookup_eval_call_bridge` routes
+/// spellings before this macro matches on the generated enum variant per arm identity.
 macro_rules! v1_bridge_family_arms {
     ($cb:ident, $fname:ident, $args:ident, $node:ident, $ctx:ident) => {
         $cb! {
             $fname, $args, $node, $ctx;
-            // ONE FAMILY, TWO ARMS, AND THE MODULE IS v2.std.node_reflection RATHER THAN THE
-            // TWO MODULES THESE ARMS USED TO SIT IN. Both are host type-reflection seams whose
-            // whole body is a self-call, so emission -- which decides membership at MODULE grain
-            // -- wrote them into the v2 compiler's own emitted crate as unrealized-seam refusals
-            // purely because v2.std.node and v2.std.node_query carry vocabulary the compile
-            // closure needs. Segregating them into one reflection module drops both out of that
-            // closure by identity. `is_v4_bridge_family` matches the item registry's module name
-            // against this literal, so the literal is what actually moves the bridge; the family
-            // enum, lookup fn and arm macro named beside it are generated from the same
+            // ONE FAMILY, TWO ARMS, AND THE MODULE IS v2.std.node_reflection RATHER THAN THE TWO
+            // MODULES THESE ARMS USED TO SIT IN. Both are host type-reflection seams whose body is
+            // a self-call, so emission (membership at MODULE grain) wrote them into the v2
+            // compiler's emitted crate as unrealized-seam refusals only because v2.std.node and
+            // v2.std.node_query carry vocabulary the compile closure needs. One reflection module
+            // drops both out of that closure by identity. `is_v4_bridge_family` matches the item
+            // registry's module name against this literal, so the literal moves the bridge; the
+            // family enum, lookup fn and arm macro are generated from the same
             // `EvalCallBridgeFamilySite.module` in gunbc.v1_interpreter_primitive_surface, and a
-            // name that disagrees with the roster fails to compile.
+            // name disagreeing with the roster fails to compile.
             family STD_NODE_REFLECTION_BRIDGE_FNS "v2.std.node_reflection"
                 lookup_eval_call_bridge_std_node_reflection eval_call_bridge__v2_std_node_reflection_arm {
                 arm "v4_bridge.resolve_type_node" { "resolve_type_node" } =>
@@ -6564,10 +6435,9 @@ fn try_v2_std_collection_map_primitive_grounding(
     }
 }
 
-/// Handler bodies for native fold intercepts (run before free-call dispatch).
-/// Roster authority is `v1_interpreter_authored_roster_arms()`; generated
-/// `lookup_eval_call_native_intercept` routes spellings before this macro
-/// matches on the generated enum variant.
+/// Handler bodies for native fold intercepts (run before free-call dispatch). Roster authority
+/// is `v1_interpreter_authored_roster_arms()`; generated `lookup_eval_call_native_intercept`
+/// routes spellings before this macro matches on the generated enum variant.
 macro_rules! v1_native_intercept_arms {
     ($cb:ident, $fname:ident, $args:ident, $env:ident, $ctx:ident) => {
         $cb! {
@@ -6622,25 +6492,22 @@ fn eval_call(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResul
         })
         .collect::<InterpResult<_>>()?;
 
-    // A LEXICAL BINDING SHADOWS EVERY NAME-KEYED TIER (nearest-first precedence, the same law
-    // 04_infer states at call_locals_shadow_note). A parameter or let named `lookup`, `count`,
-    // `filter`, ... is a function VALUE, and answering its call from the builtin table -- or from
-    // the module free-function table -- by spelling calls a different function than the program
-    // names, silently, wherever the two arities happen to agree.
+    // A LEXICAL BINDING SHADOWS EVERY NAME-KEYED TIER (nearest-first, the law 04_infer states at
+    // call_locals_shadow_note). A parameter or let named `lookup`, `count`, `filter`, ... is a
+    // function VALUE; answering its call from the builtin or module free-function table by
+    // spelling silently calls a different function wherever arities agree.
     //
-    // THE GATE IS THE BINDING, NOT THE VALUE'S REPRESENTATION. It formerly matched `Value::Closure`
-    // only, so the law held for a local bound to a LAMBDA and failed for a local bound to a NAMED
-    // top-level function -- which evaluates to `Value::Fn` (see the `ItemKind::FuncItem | FnItem`
-    // arm of `eval_expr`'s identifier path), falls past every tier here, and is answered by
-    // `ctx.lookup_fn` below at the FREE FUNCTION sharing its spelling. Measured on a complete
-    // 3x2 grid (let / parameter / pattern x named-fn / lambda) in
-    // `v2.test.claim.local_binding_shadow`: the three named-fn cells reached the free function,
-    // the three lambda cells reached the local. The axis was the VALUE VARIANT this gate matched
-    // on, and the two variants are one concept -- a lexical binding holding something callable --
-    // so the gate now names that concept instead of one of its representations.
+    // THE GATE IS THE BINDING, NOT THE VALUE'S REPRESENTATION. It formerly matched
+    // `Value::Closure` only, so the law held for a LAMBDA and failed for a NAMED top-level
+    // function -- `Value::Fn` (the `ItemKind::FuncItem | FnItem` arm of `eval_expr`'s identifier
+    // path), which fell past every tier and was answered by `ctx.lookup_fn` at the FREE FUNCTION
+    // sharing its spelling. Measured on the 3x2 grid (let / parameter / pattern x named-fn /
+    // lambda) in `v2.test.claim.local_binding_shadow`: the three named-fn cells reached the free
+    // function, the three lambda cells the local. Both variants are one concept -- a lexical
+    // binding holding something callable -- so the gate names that.
     //
-    // `ctx.lookup_fn` (module-level declarations) stays BELOW the builtins as before: this widens
-    // the lexical tier only, and does not reorder anything under it.
+    // `ctx.lookup_fn` (module-level declarations) stays BELOW the builtins: this widens the
+    // lexical tier only.
     let lexically_bound_fn: Option<Rc<Node>> = match env.lookup(ctx.sym(&func_name)) {
         Some(closure @ Value::Closure { .. }) => {
             let closure = closure.clone();
@@ -6661,12 +6528,11 @@ fn eval_call(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResul
         }
     }
 
-    // Every callable lexical binding was served by the gate above, so this tier reads the module
-    // free-function table and nothing else. The env re-lookup that used to sit in the `else` arm
-    // here -- serving `Value::Fn` and `Value::Closure` AFTER `ctx.lookup_fn` had already been
-    // asked -- is deleted rather than kept beside the gate: it is the lower-rung duplicate of the
-    // same decision (DESIGN §2/§3), and it is precisely where the shadowing defect landed,
-    // because reaching it at all required the free-function table to have answered first.
+    // Every callable lexical binding was served by the gate above, so this tier reads only the
+    // module free-function table. The former `else`-arm env re-lookup (serving `Value::Fn` and
+    // `Value::Closure` AFTER `ctx.lookup_fn`) is deleted, not kept beside the gate: it was the
+    // lower-rung duplicate of the same decision (DESIGN §2/§3) and where the shadowing defect
+    // landed, since reaching it required the free-function table to answer first.
     let fn_node = match lexically_bound_fn {
         Some(node) => node,
         None => match ctx.lookup_fn_from(&func_name, node.span.file.as_str()) {
@@ -6701,15 +6567,13 @@ fn eval_call(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResul
     call_function(ctx, &fn_node, &args, env)
 }
 
-/// Pure named-fn calls flow through here: the demand ledger records every
-/// keyed call, and the eval-frame memo (the ladder's single-site discharge
-/// provider) serves repeated demands from the first evaluation. A memo hit
-/// still records the DEMAND in the ledger — plurality is the fact the receipt
-/// counts; the provider changes its cost, never its count. Soundness: the memo
-/// is hash-bucketed on the ledger key but serves only after the stored call's
-/// argument names AND values verify equal (Value::eq, the one equality
-/// authority) — a hash collision degrades to recompute, never to a wrong
-/// value. Unkeyed calls (closure args) stay unmemoized and are counted.
+/// Pure named-fn calls flow through here: the demand ledger records every keyed call, and the
+/// eval-frame memo (the ladder's single-site discharge provider) serves repeats from the first
+/// evaluation. A hit still records the DEMAND — the receipt counts plurality; the provider
+/// changes cost, never count. Soundness: hash-bucketed on the ledger key but served only after
+/// argument names AND values verify equal (Value::eq, the one equality authority) — a collision
+/// degrades to recompute, never a wrong value. Unkeyed calls (closure args) stay unmemoized
+/// and are counted.
 fn eval_pure_named_call(
     ctx: &InterpContext,
     call_node: &Rc<Node>,
@@ -6816,19 +6680,15 @@ fn eval_fold_list_native(
             })
         }
     };
-    // NOTE (nimble-otter-476, adhoc-c328b166-bca): a streaming left-fold that
-    // walks the Cons-chain without materializing this Vec was BUILT, proven
-    // byte-identical (parse-tree content hash equal on tiny/small across two
-    // independently-built binaries), and MEASURED -- it moved neither wall-clock
-    // (~20s both, within run-to-run noise) nor peak RSS (~168 MiB both) on the
-    // small file. Reason: the datetime driver folds `elem=Int` codepoint lists
-    // (trivial copy, not a deep clone) and the intermediate Vec is transient
-    // (freed each fold, so it never contributes to peak RSS), so removing it is
-    // a clean zero. The real O(n^2) is the CALLER re-folding the whole source
-    // (`lex_repeat_loop`, 01_tokenize.dag:158 -- routed to the tokenize lane),
-    // not this per-call materialization. Kept as `free_monoid_to_vec` rather
-    // than churning the seed for a measured-zero rewrite (DESIGN §6: denominate
-    // in displaced cost; a no-op displaces nothing).
+    // NOTE (nimble-otter-476, adhoc-c328b166-bca): a streaming left-fold over the Cons-chain
+    // without this Vec was BUILT, proven byte-identical (parse-tree content hash equal on
+    // tiny/small across two independently-built binaries), and MEASURED: neither wall-clock
+    // (~20s both, within noise) nor peak RSS (~168 MiB both) moved on the small file. The
+    // datetime driver folds `elem=Int` codepoint lists (trivial copy) and the Vec is transient
+    // (freed each fold, never in peak RSS). The real O(n^2) is the CALLER re-folding the whole
+    // source (`lex_repeat_loop`, 01_tokenize.dag:158 -- routed to the tokenize lane). Kept as
+    // `free_monoid_to_vec` rather than churning the seed for a measured-zero rewrite (DESIGN
+    // §6: denominate in displaced cost; a no-op displaces nothing).
     let items = free_monoid_to_vec(xs).ok_or_else(|| InterpError::TypeError {
         msg: format!("fold_list expects a list, got {}", xs.type_label()),
     })?;
@@ -7041,27 +6901,23 @@ fn eval_recompute_canon_key_hash(k: &CanonKey) -> u64 {
     h.finish()
 }
 
-// Content hash of a Value, memoized per composite allocation. Equal values
-// (per Value::eq's structural semantics) hash equal; the pointer memo is
-// validated by Weak-liveness so a freed-then-reused address recomputes
-// instead of serving a stale hash. Returns None when the value contains a
-// Closure (no computed identity for captured envs) — the caller routes that
-// call to the disclosed unkeyed bucket. Iterative (explicit frame stack):
-// corpus values include Cons-chain lists and deep node trees whose depth is
-// data-sized, so recursion here would overflow the host stack.
+// Content hash of a Value, memoized per composite allocation. Equal values (Value::eq) hash
+// equal; the pointer memo is validated by Weak-liveness so a freed-then-reused address
+// recomputes rather than serving a stale hash. None when the value contains a Closure (no
+// identity for captured envs) — the caller routes to the disclosed unkeyed bucket. Iterative
+// (explicit frame stack): Cons-chain lists and deep node trees have data-sized depth, so
+// recursion would overflow the host stack.
 enum EvalRecomputeFrameKind {
     List {
         rc: Rc<RrbVector<Value>>,
     },
     Fields {
         rc: Rc<Vec<(Symbol, Value)>>,
-        // Content hashes of the resolved symbol TEXT (type/variant name and, per
-        // field, the field name) — never the raw interner ordinal. The cross-claim
-        // prepare_grammar memo (gunbc#8505) is a thread_local outliving any single
-        // InterpContext, so a key built from ordinals is a function of interning
-        // ORDER, not of the value's content, and two structurally-identical-shaped
-        // but semantically-different grammars from different contexts could
-        // silently alias onto the same memo entry.
+        // Content hashes of the resolved symbol TEXT (type/variant name, each field name) —
+        // never the interner ordinal. The cross-claim prepare_grammar memo (gunbc#8505) is a
+        // thread_local outliving any InterpContext, so an ordinal key is a function of
+        // interning ORDER, and two same-shaped, semantically different grammars from different
+        // contexts could alias onto one memo entry.
         type_sym_hash: u64,
         variant_sym_hash: u64,
         is_variant: bool,
@@ -7125,10 +6981,9 @@ fn eval_recompute_frame_finalize(memo: &mut EvalRecomputeHashMemo, f: EvalRecomp
             is_variant,
             ..
         } => {
-            // The fields-content hash is memoized independently of the owning
-            // type/variant symbols (a fields Rc could in principle be shared
-            // across constructions), so the memo entry never bakes in the
-            // wrapper identity.
+            // The fields-content hash is memoized independently of the owning type/variant
+            // symbols (a fields Rc could be shared across constructions), so the entry never
+            // bakes in the wrapper identity.
             memo.insert(
                 Rc::as_ptr(&rc) as usize,
                 (CompositeWeak::Fields(Rc::downgrade(&rc)), h),
@@ -7439,10 +7294,9 @@ fn eval_recompute_record_unkeyed(ctx: &InterpContext, func_name: &str) {
     *t.unkeyed_by_fn.entry(func_name.to_string()).or_insert(0) += 1;
 }
 
-/// Print the recompute-trace ledger to stderr. A no-op unless
-/// GUNBC_RECOMPUTE_TRACE=1. Report-only: prints ranked re-evaluated pure calls
-/// (count >= 2), the unkeyed-coverage disclosure, and totals; it never alters
-/// the run's outcome.
+/// Print the recompute-trace ledger to stderr. No-op unless GUNBC_RECOMPUTE_TRACE=1.
+/// Report-only: ranked re-evaluated pure calls (count >= 2), the unkeyed-coverage disclosure,
+/// and totals; never alters the run's outcome.
 pub fn print_eval_recompute_trace(ctx: &InterpContext) {
     if !eval_recompute_trace_enabled() {
         return;
@@ -7587,10 +7441,9 @@ pub fn eval_recompute_totals(ctx: &InterpContext) -> EvalRecomputeTotals {
     out
 }
 
-// Process-wide accumulator fed by InterpContext::drop, so EVERY eval path in
-// the process lands in the receipt by construction — harvest is not a
-// per-call-site discipline a future site could forget. Sums at the totals
-// grain only: raw ledger keys are address-based and single-ctx.
+// Process-wide accumulator fed by InterpContext::drop, so EVERY eval path lands in the receipt
+// by construction — harvest is not a per-call-site discipline a future site could forget.
+// Sums at the totals grain only: raw ledger keys are address-based and single-ctx.
 static PROCESS_EVAL_RECOMPUTE_TOTALS: std::sync::Mutex<Option<EvalRecomputeTotals>> =
     std::sync::Mutex::new(None);
 
@@ -7688,10 +7541,9 @@ fn eval_call_memo_put(
     value: Value,
 ) {
     let mut m = ctx.eval_call_memo.borrow_mut();
-    // Counter invariant: a miss means the call was NOT served (it evaluated),
-    // so a cap-refused store attempt is still a miss — overflow ⊆ misses, and
-    // hits + misses == keyed Ok-resulting calls through the memo path,
-    // including under overflow. `misses` is NOT "entries stored".
+    // Counter invariant: a miss means the call was NOT served (it evaluated), so a cap-refused
+    // store is still a miss — overflow ⊆ misses, and hits + misses == keyed Ok-resulting calls
+    // through the memo path, including under overflow. `misses` is NOT "entries stored".
     m.misses += 1;
     if m.map.len() >= EVAL_CALL_MEMO_ENTRY_CAP && !m.map.contains_key(&key) {
         m.overflow += 1;
@@ -7879,50 +7731,41 @@ fn extract_field(
 }
 
 /// HAND-RUST GATE explicit deferral (review 50372), covering this function and the
-/// keyed-collection branch it is dispatched from in `eval_record_lit`: bounded growth
-/// in the existing seed interpreter, not a new Rust authority. Every DECISION here is
-/// modeled and read back out of `.dag` — whether the literal is a keyed collection is
-/// `04_types` `node_is_keyed_collection`, whether its keys may be the authored field
-/// names is `05_emit_rust` `map_literal_key_is_string`, and both are the SAME functions
-/// the emitter consults about the same literal, which is the point: the seed is not
-/// deciding anything, it is projecting one modeled decision onto the interpreter's own
-/// `Value` representation. Removing this code without grounding that representation
-/// would reopen the fork it closes — infer saying map, eval building a record.
+/// keyed-collection branch dispatching to it in `eval_record_lit`: bounded growth in the seed
+/// interpreter, not a new Rust authority. Every DECISION is modeled and read out of `.dag` —
+/// keyed-collection-ness is `04_types` `node_is_keyed_collection`, key string-likeness is
+/// `05_emit_rust` `map_literal_key_is_string`, the SAME functions the emitter consults about
+/// the same literal: the seed decides nothing, it projects one modeled decision onto its own
+/// `Value` representation. Removing this without grounding that representation reopens the
+/// fork — infer saying map, eval building a record.
 ///
 /// Lane: ROADMAP `v1-interpreter-quarantine` → `v1-interpreter-delete`, counted against
-/// `v1-honest-frontier`; the underlying class is DESIGN's model↔realization fork thread
-/// (every primitive modeled as a coproduct and realized as a native `Value`, reconciled
-/// by per-site bridges), of which this is one bridge repaired rather than added.
+/// `v1-honest-frontier`; the class is DESIGN's model↔realization fork thread (every primitive
+/// modeled as a coproduct, realized as a native `Value`, reconciled by per-site bridges), of
+/// which this is one bridge repaired, not added.
 ///
 /// Checkable receipt, by execution: `w_map_typed_literal_is_a_map` in
-/// `src/v1/tests/claim/ordinary_frontend_observation_test.dag` goes RED without this
-/// code (`map_keys expects a map, got Record` — the refusal that made the ordinary front
-/// end unreachable), and `w_record_literal_is_still_a_record` goes RED if it
-/// over-converts. Both are enrolled on the v1 claim scoped roster, so the deferral is
-/// counted rather than asserted.
+/// `src/v1/tests/claim/ordinary_frontend_observation_test.dag` goes RED without this code
+/// (`map_keys expects a map, got Record` — the refusal that made the ordinary front end
+/// unreachable); `w_record_literal_is_still_a_record` goes RED if it over-converts. Both are
+/// enrolled on the v1 claim scoped roster, so the deferral is counted, not asserted.
 ///
-/// Deletion condition, narrower than the lane's: when a brace literal's representation
-/// is DERIVED from its inferred type rather than reconstructed per consumer — the
-/// grounding half of the model↔realization thread, the same move `#5428` made for the
-/// numeric tower — this function has nothing left to project and deletes outright. The
-/// witness above is then REPLACED by one over the grounded representation, not retired.
+/// Deletion condition, narrower than the lane's: when a brace literal's representation is
+/// DERIVED from its inferred type rather than reconstructed per consumer — the grounding half
+/// of the thread, the move `#5428` made for the numeric tower — this function deletes outright
+/// and the witness above is REPLACED by one over the grounded representation, not retired.
 ///
-/// Build the `Value::Map` a keyed-collection literal denotes. Keys are the
-/// authored field names, and string-likeness must be POSITIVELY established
-/// before they may be: the test is `map_literal_key_is_string`, the very
-/// function `05_emit_rust` asks about the same literal when it decides whether
-/// to render the key quoted-and-owned or bare, so the interpreter and the
-/// emitter cannot disagree about one literal's keys. Anything it does not
-/// establish is a typed, located refusal rather than a guessed key — a
-/// deny-list of known-bad key types would let every unlisted one through, which
-/// is the partial refusal that later fails open (DESIGN §5, and codex review
-/// 50168 which caught exactly that shape here). The refusal arm itself has no
-/// witness: a refusing data initializer stops module evaluation rather than
-/// returning a Bool, so it cannot be an ordinary green arm. That is
-/// can-climb-now-but-unbuilt, not cannot-climb — the trigger is an
-/// expecting-red quarantine probe declaring a non-string-keyed map literal,
-/// the mechanism named beside the witnesses in
-/// `src/v1/tests/claim/ordinary_frontend_observation_test.dag`.
+/// Build the `Value::Map` a keyed-collection literal denotes. Keys are the authored field
+/// names, and string-likeness must be POSITIVELY established first via
+/// `map_literal_key_is_string` — the function `05_emit_rust` asks about the same literal when
+/// deciding quoted-and-owned vs bare — so interpreter and emitter cannot disagree about one
+/// literal's keys. Anything not established is a typed, located refusal, not a guessed key: a
+/// deny-list of bad key types lets every unlisted one through, the partial refusal that later
+/// fails open (DESIGN §5; codex review 50168 caught exactly that shape here). The refusal arm
+/// has no witness: a refusing data initializer stops module evaluation rather than returning a
+/// Bool. That is can-climb-now-but-unbuilt, not cannot-climb — the trigger is an expecting-red
+/// quarantine probe declaring a non-string-keyed map literal, the mechanism named beside the
+/// witnesses in `src/v1/tests/claim/ordinary_frontend_observation_test.dag`.
 fn eval_map_lit(
     node: &Rc<Node>,
     map_type: &Rc<Node>,
@@ -7971,16 +7814,13 @@ fn eval_record_lit(
 ) -> InterpResult<Value> {
     let type_name = record_lit_type_name_at(node.clone(), ctx.si()).unwrap_or_default();
 
-    // A brace literal in a keyed-collection position IS a map, and the single
-    // authority for that fact is the literal's own inferred type — the same
-    // `node_is_keyed_collection` relation `05_emit_rust` reads when it renders
-    // the identical literal as a `HashMap`. Reading it here is what stops the
-    // interpreter and the emitter disagreeing about one value's representation
-    // (DESIGN §3/§5: one authority, and the representation derived from it
-    // rather than reconciled per consumer). Before this, the interpreter built
-    // a `Record`, `map_get` limped through `raw_map_lookup`'s Record arm, and
-    // `map_keys(kernel_type_set)` refused — so the whole ordinary front end was
-    // unreachable from interpreted `.dag`.
+    // A brace literal in a keyed-collection position IS a map; the single authority is the
+    // literal's inferred type — the `node_is_keyed_collection` relation `05_emit_rust` reads
+    // when rendering the same literal as a `HashMap`. Reading it here keeps interpreter and
+    // emitter agreeing on one value's representation (DESIGN §3/§5: derived from one authority,
+    // not reconciled per consumer). Before this the interpreter built a `Record`, `map_get`
+    // limped through `raw_map_lookup`'s Record arm, and `map_keys(kernel_type_set)` refused —
+    // the whole ordinary front end unreachable from interpreted `.dag`.
     if type_name.is_empty() {
         if let Some(InferredNode::Resolved { node: ty, .. }) = node.inferred.as_deref() {
             if crate::v1_compiler_infer_types::node_is_keyed_collection(ty.clone(), ctx.si()) {
@@ -8118,14 +7958,13 @@ fn cast_target_names(ctx: &InterpContext, target: Rc<Node>) -> Rc<CastTargetName
     let key = Rc::as_ptr(&target) as usize;
     let existing = ctx.cast_kernel_cache.borrow().get(&key).cloned();
     if let Some(hit) = existing {
-        // A pointer-keyed memo's one silent-wrongness class is address reuse: if a cached node
-        // were freed and a new node landed at the same address, this would answer a cast with
-        // ANOTHER type's name — no crash, just a wrong type. On the normal path that is
-        // unreachable (cast_target returns an AST-owned child, alive for the ctx's lifetime),
-        // but expr_child_at SYNTHESIZES an error node when a child is missing, and that node is
-        // temporary. Rather than inherit the keepalive discipline by imitation, GUNBC_MEMO_VERIFY=1
-        // recomputes the uncached answer on every hit and REFUSES on divergence, so the class is
-        // checked by execution over the real corpus instead of assumed.
+        // A pointer-keyed memo's one silent-wrongness class is address reuse: a freed cached
+        // node replaced at the same address would answer a cast with ANOTHER type's name — no
+        // crash, wrong type. Unreachable on the normal path (cast_target returns an AST-owned
+        // child alive for the ctx's lifetime), but expr_child_at SYNTHESIZES a temporary error
+        // node when a child is missing. Rather than imitate the keepalive discipline,
+        // GUNBC_MEMO_VERIFY=1 recomputes on every hit and REFUSES on divergence, so the class is
+        // checked by execution over the real corpus.
         if memo_verify_enabled() {
             let recomputed_seed = cast_target_seed_name_uncached(ctx, target.clone());
             if recomputed_seed != hit.seed {
@@ -8141,15 +7980,14 @@ fn cast_target_names(ctx: &InterpContext, target: Rc<Node>) -> Rc<CastTargetName
     let seed = cast_target_seed_name_uncached(ctx, target.clone());
     let kernel = cast_target_underlying_kernel_uncached(ctx, seed.clone());
     let fresh = Rc::new(CastTargetNames { seed, kernel });
-    // DEGENERATE RESOLUTIONS ARE NEVER CACHED, and this bound is load-bearing rather than
-    // tidiness. expr_child_at falls back to make_expr_error_node for a malformed cast, which
-    // Rc::new's a FRESH node per call (name "", ident_span None, inferred CompilerError). That
-    // resolves to an empty seed, and eval_cast's identity arm then returns a Value::Str
-    // unchanged on an empty kernel — so the run does NOT terminate, and a malformed cast inside
-    // a loop would allocate a new address every iteration: permanent cache miss, unbounded
-    // keepalive growth. Skipping the insert bounds the cache by the AST's real cast nodes.
-    // It costs only recomputation on a path that short-circuits before any module scan, and an
-    // empty seed is exactly the signature of a target carrying no resolvable authored name.
+    // DEGENERATE RESOLUTIONS ARE NEVER CACHED, and the bound is load-bearing. expr_child_at
+    // falls back to make_expr_error_node for a malformed cast, Rc::new-ing a FRESH node per
+    // call (name "", ident_span None, inferred CompilerError). That resolves to an empty seed,
+    // eval_cast's identity arm returns the Value::Str unchanged, the run continues, and a
+    // malformed cast in a loop allocates a new address per iteration: permanent miss, unbounded
+    // keepalive growth. Skipping the insert bounds the cache by the AST's real cast nodes, at
+    // the cost of recomputing a path that short-circuits before any module scan; an empty seed
+    // is exactly the signature of a target with no resolvable authored name.
     if fresh.seed.is_empty() {
         return fresh;
     }
@@ -8231,11 +8069,10 @@ fn cast_target_underlying_kernel_uncached(ctx: &InterpContext, seed: String) -> 
     current
 }
 
-/// The cast's SOURCE type name. Same defect as the target side and the same repair: this is a
-/// pure function of the expression node, but was re-extracting authored source text on every
-/// evaluation. Measured on one daily-page render: +27.1ms across 59,858 casts (~452ns each,
-/// ExprCast 42.8ms -> 69.9ms) once #8098 added this second `authored_name_at` beside the
-/// target-side one. Memoized per expression node under the same pointer-key + keepalive
+/// The cast's SOURCE type name. Same defect and repair as the target side: a pure function of
+/// the expression node that re-extracted source text per evaluation. One daily-page render:
+/// +27.1ms across 59,858 casts (~452ns each, ExprCast 42.8ms -> 69.9ms) once #8098 added this
+/// second `authored_name_at`. Memoized per node under the same pointer-key + keepalive
 /// discipline as `cast_kernel_cache`.
 fn cast_expr_inferred_type_name(ctx: &InterpContext, expr: Rc<Node>) -> String {
     let key = Rc::as_ptr(&expr) as usize;
@@ -8279,19 +8116,16 @@ fn cast_expr_inferred_type_name_uncached(ctx: &InterpContext, expr: Rc<Node>) ->
 /// Runtime identity casts mirror `validate_cast`'s `source_name == target_name` arm,
 /// plus String-valued casts to types whose alias chain grounds on `String`.
 ///
-/// node://adhoc-897a90b6-a9c item 1: this used to also treat an EMPTY resolved kernel as
-/// grounds for identity -- i.e. answered "the cast target's alias chain could not be resolved
-/// at all" with a value, rather than falling through to `eval_cast`'s existing typed
-/// `TypeError` arm for an unrecognized target name (DESIGN §5, ⊥-as-ignorance rendered as an
-/// answer). Measured by execution (an unconditional counter plus a discriminating
-/// positive/negative-control unit test proving the counter itself was correctly wired, then a
-/// real run of 1507 requested witnesses across every `*cast*`/`*refinement*`-named file in
-/// `dag/test/claim` plus a sixth-sample of the rest): zero hits, `kernel_calls=19` real
-/// resolutions observed. The arm is reachable in principle only when the target AST node is
-/// itself a `CompilerError` node (malformed, missing-child cast target) -- a shape that can
-/// only arise from a resolve-time defect elsewhere, and resolve already refuses before such a
-/// node can reach eval on any real program. Clean deletion per that measurement; the
-/// fallthrough below now answers instead.
+/// node://adhoc-897a90b6-a9c item 1: this also used to treat an EMPTY resolved kernel as
+/// identity -- answering "the target's alias chain could not be resolved" with a value instead
+/// of falling through to `eval_cast`'s typed `TypeError` arm (DESIGN §5, ⊥-as-ignorance as an
+/// answer). Measured by execution (an unconditional counter, a positive/negative-control unit
+/// test proving the counter wired, then 1507 requested witnesses across every
+/// `*cast*`/`*refinement*`-named file in `dag/test/claim` plus a sixth-sample of the rest):
+/// zero hits, `kernel_calls=19` real resolutions. The arm is reachable only when the target AST
+/// node is itself a `CompilerError` node (malformed, missing-child target) -- a resolve-time
+/// defect elsewhere, and resolve already refuses before such a node reaches eval on any real
+/// program. Clean deletion; the fallthrough below answers instead.
 fn cast_identity_result(
     val: &Value,
     ctx: &InterpContext,
@@ -8313,12 +8147,11 @@ fn cast_identity_result(
 
 #[cfg(test)]
 mod cast_identity_empty_kernel_tests {
-    //! Regression control for node://adhoc-897a90b6-a9c item 1: a cast target whose alias
-    //! chain cannot be resolved at all (an empty kernel) must NOT be answered with silent Str
-    //! identity. Proves the deletion above by construction: a malformed target node -- exactly
-    //! the shape `expr_child_at`'s fallback produces for a cast missing its target child --
-    //! makes `cast_identity_result` return `None`, so `eval_cast` falls through to its typed
-    //! `TypeError` arm instead of fabricating an answer.
+    //! Regression control for node://adhoc-897a90b6-a9c item 1: a cast target with an
+    //! unresolvable alias chain (empty kernel) must NOT get silent Str identity. A malformed
+    //! target node -- the shape `expr_child_at`'s fallback produces for a cast missing its
+    //! target child -- makes `cast_identity_result` return `None`, so `eval_cast` falls through
+    //! to its typed `TypeError` arm.
     use crate::v1_rt::RcStr;
     use std::rc::Rc;
 
@@ -8364,10 +8197,9 @@ mod cast_identity_empty_kernel_tests {
     #[test]
     fn well_formed_string_kernel_cast_still_returns_identity() {
         let ctx = fresh_ctx();
-        // A target node whose own name IS "String" resolves the seed directly (no alias walk
-        // needed), so the kernel is non-empty and lands on the `kernel == "String"` arm. This
-        // is the negative control: it proves the deletion above did not also remove the
-        // legitimate String-kernel identity case.
+        // A target node named "String" resolves the seed directly (no alias walk), so the
+        // kernel is non-empty and lands on the `kernel == "String"` arm. Negative control: the
+        // deletion above did not remove the legitimate String-kernel identity case.
         let string_target = make_expr_error_node(
             Rc::new(crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic),
             ExprErrorKind::InternalExprError,
@@ -8672,12 +8504,11 @@ macro_rules! v1_algebra_method_arms {
                     }
                     return Ok(str_value(result));
                 }
-                // String grounding (model↔realization): when a native String arg
-                // participates, the whole `concat` is a String and realizes as one
-                // native `Value::Str` — provided the receiver is itself string-like
-                // (all-codepoint). A `List<String>` receiver (`Str` *elements*) is
-                // rejected by `free_monoid_to_string` and falls through to the list
-                // path below, so `["a","b"].concat("c")` stays a list.
+                // String grounding (model↔realization): a native String arg makes the whole
+                // `concat` a String realized as one `Value::Str` — provided the receiver is
+                // string-like (all-codepoint). A `List<String>` receiver (`Str` *elements*) is
+                // rejected by `free_monoid_to_string` and falls to the list path below, so
+                // `["a","b"].concat("c")` stays a list.
                 if $method == "concat" && $args.iter().any(|a| matches!(a, Value::Str(_))) {
                     if let Some(base) = free_monoid_to_string(&$receiver) {
                         if let Some(rest) = $args
@@ -8691,13 +8522,12 @@ macro_rules! v1_algebra_method_arms {
                 }
                 if let Ok(items) = expect_list(&$receiver, "concat") {
                     // Fail-closed backstop (DESIGN §5): a native String arg meeting a
-                    // codepoint-bearing `Cons`-chain receiver here is the
-                    // model↔realization straddle that grounding above did not
-                    // dissolve — refuse loudly rather than push the `Str` into a
-                    // mixed `[codepoint.., Str]` list. A `Value::List` receiver is a
-                    // generic collection (`[1].append("ab")` is a legitimate
-                    // two-element list), and a homogeneous `List<String>` carries no
-                    // codepoint — both pass (the `orig` representation guard).
+                    // codepoint-bearing `Cons`-chain receiver here is the model↔realization
+                    // straddle grounding above did not dissolve — refuse rather than push the
+                    // `Str` into a mixed `[codepoint.., Str]` list. A `Value::List` receiver
+                    // is a generic collection (`[1].append("ab")` is a legitimate two-element
+                    // list) and a homogeneous `List<String>` carries no codepoint — both pass
+                    // (the `orig` representation guard).
                     if $args.iter().any(|a| matches!(a, Value::Str(_))) {
                         let snapshot: Vec<Value> = items.iter().cloned().collect();
                         if let Some(detail) = string_realization_straddle_detail(&$receiver, &snapshot) {
@@ -8749,10 +8579,9 @@ macro_rules! v1_algebra_method_arms {
                 },
             },
 
-            // Known-method bridge parity: infer rewrites bare `is_empty(xs)` on
-            // import-stripped modules into a method call (the census never serves
-            // algebra template names), so eval must implement the same member the
-            // bridge targets — emptiness via the shared length authority above.
+            // Known-method bridge parity: infer rewrites bare `is_empty(xs)` on import-stripped
+            // modules into a method call (the census never serves algebra template names), so
+            // eval implements the same member — emptiness via the shared length authority above.
             arm "method_call.is_empty" { "is_empty" } => match native_len(&$receiver) {
                 Some(n) => Ok(Value::Bool(n == 0)),
                 None => match free_monoid_to_vec(&$receiver) {
@@ -8846,12 +8675,11 @@ macro_rules! v1_algebra_method_arms {
             },
 
             arm "method_call.chars" { "chars" } => {
-                // §6 residue: this materializes a string as a `Value::List` of
-                // codepoint `Int`s, indistinguishable at the Value level from a
-                // generic `Int` list. That is the named hole in the String-straddle
-                // wall — see `string_realization_straddle_detail`'s `Value::List`
-                // exemption. Closed by regrounding `Char`/codepoint-sequence so the
-                // realization is distinguishable (grounding root, sibling #5428).
+                // §6 residue: materializes a string as a `Value::List` of codepoint `Int`s,
+                // indistinguishable from a generic `Int` list — the named hole in the
+                // String-straddle wall (`string_realization_straddle_detail`'s `Value::List`
+                // exemption). Closed by regrounding `Char`/codepoint-sequence so the realization
+                // is distinguishable (grounding root, sibling #5428).
                 let s = expect_str(Some(&$receiver), "chars")?;
                 let items: Vec<Value> = s.chars().map(|c| Value::Int(c as i64)).collect();
                 Ok(list_value(items))
@@ -8884,11 +8712,11 @@ macro_rules! v1_algebra_method_arms {
 
             // These 4 arms were absent here but present in the free-function builtin dispatch --
             // eval_algebra_method (method/pipe calls) and that dispatch (direct calls) are two
-            // surfaces over one builtin set that have diverged; they should be one authority.
-            // Pure-eval logic, in scope of ROADMAP HAND kernel D (`v1_interpreter` pure-eval
-            // dissolution, interpreter-kernel-d (plan doc deleted 2026-08-28)): dissolution trigger is the
+            // diverged surfaces over one builtin set that should be one authority. Pure-eval
+            // logic in scope of ROADMAP HAND kernel D (`v1_interpreter` pure-eval dissolution,
+            // interpreter-kernel-d (plan doc deleted 2026-08-28)): dissolution trigger is the
             // pure-eval seam (`emit_host` transport wiring) grounding this dispatch into
-            // `v2.compiler.eval`, at which point per-builtin arms stop being hand-Rust here.
+            // `v2.compiler.eval`, after which per-builtin arms stop being hand-Rust here.
             arm "method_call.map_keys" { "map_keys" } => {
                 let m = expect_map(&$receiver, "map_keys")?;
                 let keys: Vec<Value> = m.keys().map(|k| k.key.clone()).collect();
@@ -9158,10 +8986,10 @@ fn realize_clock_unix_secs_transport() -> Result<u64, crate::recorded_fixture::F
         .map_err(|_| crate::recorded_fixture::FixtureError::ClockUnavailable)
 }
 
-/// Native read of THIS process's own environment. Semantics match the former
-/// `printenv` subprocess exactly: unset → None, empty → None, value trimmed.
-/// `dispatch_service_wet` routes `shell.Env.Get` here for OnTarget locality
-/// (shell-to-dag residual census §0b); the shell argv remains the remote handler.
+/// Native read of THIS process's environment, matching the former `printenv` subprocess:
+/// unset → None, empty → None, value trimmed. `dispatch_service_wet` routes `shell.Env.Get`
+/// here for OnTarget locality (shell-to-dag residual census §0b); shell argv remains the
+/// remote handler.
 fn wet_env_var(name: &str) -> Option<String> {
     let s = std::env::var(name).ok()?.trim().to_string();
     if s.is_empty() {
@@ -9173,21 +9001,17 @@ fn wet_env_var(name: &str) -> Option<String> {
 
 /// WHY THIS SEAM STAYS `ExpectSuccess` EVEN THOUGH ITS OUTCOME LOOKS LIKE DATA.
 ///
-/// The consumer below swallows every failure arm into `None` (`_ => None`), which
-/// is the classic tell that an exit code is an observation rather than a verdict
-/// — the shape `OutcomeIsData` exists for. Re-arming it on that tell alone would
-/// be wrong, and the reason is a state-space conflation one level down: `None`
-/// here means BOTH "the variable is unset" (a legitimate answer) and "the
-/// `shell.Env.Get` dispatch itself failed" (a broken probe). Annotating
-/// `OutcomeIsData` would render the second case ambient, so a broken env service
-/// would become indistinguishable from an empty environment — trading a crude
-/// loud arm for a silent conflation, which is the worse of the two.
+/// The consumer below swallows every failure arm into `None` (`_ => None`) — the tell that an
+/// exit code is an observation, the shape `OutcomeIsData` exists for. Re-arming on that tell
+/// alone would be wrong, by a state-space conflation one level down: `None` means BOTH "the
+/// variable is unset" (a legitimate answer) and "the `shell.Env.Get` dispatch failed" (a broken
+/// probe). `OutcomeIsData` would make a broken env service indistinguishable from an empty
+/// environment — a silent conflation, worse than the crude loud arm.
 ///
-/// The correct fix is therefore a PAIR, not an annotation: split the consumer's
-/// `None` into probe-broken (refuses) versus answer-absent (`None`), and only
-/// then re-arm this site to `OutcomeIsData`. Recorded here rather than done here
-/// because the split changes this function's return type and every caller's
-/// handling, which is its own change with its own witnesses.
+/// The fix is a PAIR: split the consumer's `None` into probe-broken (refuses) vs answer-absent
+/// (`None`), then re-arm this site to `OutcomeIsData`. Recorded rather than done here because
+/// the split changes this function's return type and every caller — its own change with its
+/// own witnesses.
 fn resolve_env_var_token(ctx: &InterpContext, var_name: &str) -> Option<String> {
     if ctx.indexes.service_ops.contains_key("shell.Env.Get") {
         let args = [(Some("name".to_string()), str_value(var_name.to_string()))];
@@ -9197,9 +9021,8 @@ fn resolve_env_var_token(ctx: &InterpContext, var_name: &str) -> Option<String> 
             &args,
             &Env::empty(),
             ctx,
-            // Interpreter-own seam: no .dag call node exists to carry `expect:`,
-            // so the arm is stated here rather than defaulted. See
-            // `resolve_env_var_token_expectation_note` below for why this one is
+            // Interpreter-own seam: no .dag call node carries `expect:`, so the arm is stated
+            // here, not defaulted. See `resolve_env_var_token_expectation_note` below for why
             // ExpectSuccess and not OutcomeIsData despite the swallowing consumer.
             ExpectationDeclaration::Declared(ExpectedOutcome::ExpectSuccess),
         ) {
@@ -9217,11 +9040,11 @@ fn resolve_env_var_token(ctx: &InterpContext, var_name: &str) -> Option<String> 
     }
 }
 
-/// Decide whether a hermetic readonly `Filesystem` operation on `requested` is checkout-input access
-/// under `root`: the canonicalized path must sit under the canonicalized root with no
-/// `.git` or `target` component below it (branch state and build artifacts are not
-/// commit-deterministic, so they are host state, not input). Err carries the typed
-/// refusal cause; the caller never widens a failure into a canned response.
+/// Decide whether a hermetic readonly `Filesystem` operation on `requested` is checkout-input
+/// access under `root`: the canonicalized path must sit under the canonicalized root with no
+/// `.git` or `target` component below it (branch state and build artifacts are host state, not
+/// commit-deterministic input). Err carries the typed refusal cause; the caller never widens
+/// a failure into a canned response.
 fn hermetic_checkout_input_disposition_under(
     root: &std::path::Path,
     requested: &str,
@@ -9234,48 +9057,43 @@ fn hermetic_checkout_input_disposition_under(
     } else {
         root.join(requested_path)
     };
-    // AN ABSENT PATH UNDER THE ROOT IS AS COMMIT-DETERMINISTIC AS A PRESENT ONE, and resolving
-    // the REQUESTED leaf could not express that. `canonicalize` requires the whole path to
-    // exist, so it failed identically for three dispositions with three different remedies:
-    // a file the commit says is NOT THERE, a path that RESOLVES OUTSIDE the root, and one
-    // UNRESOLVABLE for any other reason. One error string for three states is the conflation
-    // `HermeticEffectGround` was split to prevent, sitting twenty lines above the enum that
-    // records the lesson.
+    // AN ABSENT PATH UNDER THE ROOT IS AS COMMIT-DETERMINISTIC AS A PRESENT ONE, which
+    // canonicalizing the REQUESTED leaf could not express: `canonicalize` requires the whole
+    // path to exist, so it failed identically for three dispositions with different remedies —
+    // a file the commit says is NOT THERE, a path RESOLVING OUTSIDE the root, and one
+    // UNRESOLVABLE otherwise. One error string for three states is the conflation
+    // `HermeticEffectGround` was split to prevent, twenty lines above the enum recording it.
     //
-    // The commit determines absence exactly as it determines contents: "this repository has no
-    // such file" is an answer read OFF THE INPUT, not host state, so it belongs on the same
-    // wet arm as a successful read rather than in the mock layer. Rendering it there would
-    // require a canned response, and one canned response necessarily serves every unconfirmed
-    // path -- fabricating "not found" for out-of-root and `.git` reads too.
+    // The commit determines absence as it determines contents: "no such file" is read OFF THE
+    // INPUT, not host state, so it belongs on the same wet arm as a successful read, not in the
+    // mock layer — a canned response there would serve every unconfirmed path, fabricating
+    // "not found" for out-of-root and `.git` reads too.
     //
-    // So resolve the deepest ancestor that DOES exist and carry the not-yet-existing tail
-    // separately. The existing prefix is what symlinks can move, so it is what must be proven
-    // under the root; the absent tail cannot be a symlink to anywhere, because it is not there.
-    // A `..` in the tail yields no `file_name`, so it exits through the unresolvable arm rather
-    // than being reasoned about -- refusing what cannot be confirmed rather than guessing.
+    // So resolve the deepest ancestor that DOES exist and carry the absent tail separately. The
+    // existing prefix is what symlinks can move, so it is what must be proven under the root;
+    // the absent tail cannot be a symlink. A `..` in the tail yields no `file_name`, so it
+    // exits through the unresolvable arm -- refusing what cannot be confirmed.
     let mut probe = joined.as_path();
     let mut absent_tail: Vec<std::ffi::OsString> = Vec::new();
     let canon = loop {
         match std::fs::canonicalize(probe) {
             Ok(resolved) => break resolved,
             Err(e) => {
-                // ONLY A GENUINE ABSENCE MAY PEEL A COMPONENT. `canonicalize` fails for
-                // several reasons and they are not interchangeable: a permission-denied or
-                // symlink-loop error says the path CANNOT BE CONFIRMED, which is the
-                // unresolvable arm, not a statement that the component is missing. Treating
-                // every error as absence would climb past a component that is really there.
+                // ONLY A GENUINE ABSENCE MAY PEEL A COMPONENT. A permission-denied or
+                // symlink-loop error from `canonicalize` says the path CANNOT BE CONFIRMED —
+                // the unresolvable arm, not a missing component. Treating every error as
+                // absence would climb past a component that is really there.
                 if e.kind() != std::io::ErrorKind::NotFound {
                     return Err(format!(
                         "path does not canonicalize under the checkout ({e})"
                     ));
                 }
-                // A DANGLING SYMLINK IS PRESENT, NOT ABSENT, AND `canonicalize` CANNOT SAY SO.
-                // It resolves symlinks, so a link whose target is missing returns the SAME
-                // NotFound as a name with nothing behind it. `symlink_metadata` does not
-                // follow, so it answers the question actually being asked: is there an entry
-                // here? If there is, its resolution depends on a target the commit does not
-                // contain -- host state, whose appearance later would silently change this
-                // read's result -- so it refuses rather than being peeled as absent.
+                // A DANGLING SYMLINK IS PRESENT, NOT ABSENT, AND `canonicalize` CANNOT SAY SO:
+                // it resolves symlinks, so a link with a missing target returns the SAME
+                // NotFound as an empty name. `symlink_metadata` does not follow, answering the
+                // real question: is there an entry here? If so, its resolution depends on a
+                // target the commit does not contain -- host state whose later appearance
+                // would silently change this read -- so it refuses rather than peeling.
                 if std::fs::symlink_metadata(probe).is_ok() {
                     return Err(format!(
                         "path does not canonicalize under the checkout (`{}` exists but does \
@@ -9312,10 +9130,9 @@ fn hermetic_checkout_input_disposition_under(
         std::path::Component::Normal(name) => Some(name.to_os_string()),
         _ => None,
     });
-    // The tail is checked on the SAME rule as the existing prefix: a read of
-    // `target/does-not-exist` is no more commit-deterministic than one of `target/receipt.txt`,
-    // and admitting it because the file happens to be missing would make the wall depend on
-    // the state of the very directory it exists to exclude.
+    // The tail is checked on the SAME rule as the existing prefix: `target/does-not-exist` is
+    // no more commit-deterministic than `target/receipt.txt`, and admitting it because it is
+    // missing would make the wall depend on the state of the directory it exists to exclude.
     for name in existing_names.chain(absent_tail.into_iter()) {
         if name == std::ffi::OsStr::new(".git") || name == std::ffi::OsStr::new("target") {
             return Err(format!(
@@ -9371,25 +9188,22 @@ fn eval_service_call(
             .map_err(|e| InterpError::TypeError { msg: e.to_string() })?;
 
     if ctx.execution_mode.is_hermetic() {
-        // Checkout-input carve-out: the repo checkout is the run's injected input (the
-        // commit IS the input), so a readonly Filesystem.Read or Filesystem.List of a path proven under
-        // the checkout root stays a REAL read in hermetic mode — it is input access,
-        // not a host effect. Everything else about the arm is fail-closed: an
-        // out-of-root path, a `.git`/`target` component (branch state and build
-        // artifacts are not commit-deterministic), or an unresolvable path each
-        // refuse with a typed diagnostic — never a canned response.
+        // Checkout-input carve-out: the commit IS the run's injected input, so a readonly
+        // Filesystem.Read or Filesystem.List of a path proven under the checkout root stays a
+        // REAL read in hermetic mode — input access, not a host effect. Everything else is
+        // fail-closed: an out-of-root path, a `.git`/`target` component (not
+        // commit-deterministic), or an unresolvable path each refuse with a typed diagnostic —
+        // never a canned response.
         if service_name == "Filesystem" && matches!(op_name, "Read" | "List") {
-            // Single-authority split (§3): a readonly Filesystem operation whose path the disposition
-            // CONFIRMS is a committed checkout input reads directly — the commit is the run's
-            // deterministic input, so this is input access, not a host effect, and it needs no
-            // fixture. Everything the disposition cannot confirm — a recorded fixture's
-            // scratch path, a `target/`/`.git` build artifact, an out-of-root or absent path —
-            // is NOT decided here: it FALLS THROUGH to the fixture-store / published-mock /
-            // fail-closed machinery below, which owns non-deterministic host state. So the
-            // carve-out intercepts only what it is sure about; it never pre-empts the
+            // Single-authority split (§3): a readonly Filesystem operation whose path the
+            // disposition CONFIRMS is a committed checkout input reads directly — input access,
+            // not a host effect, needing no fixture. Everything it cannot confirm — a recorded
+            // fixture's scratch path, a `target/`/`.git` artifact, an out-of-root or absent
+            // path — FALLS THROUGH to the fixture-store / published-mock / fail-closed machinery
+            // below, which owns non-deterministic host state. The carve-out never pre-empts the
             // recorded-fixture mechanism (record/replay/staleness) nor widens a host-state read
-            // into a refusal that belongs to the mock layer. Checkout inputs are read from the
-            // commit; host state is mocked or fails closed — no path is served by both.
+            // into a refusal belonging to the mock layer. Checkout inputs read from the commit;
+            // host state is mocked or fails closed — no path is served by both.
             let confirmed_checkout_input = param_env
                 .lookup(ctx.sym("path"))
                 .and_then(|v| match v {
@@ -9444,35 +9258,32 @@ fn eval_service_call(
             return crate::recorded_fixture::value_from_fixture_json(&fixture.response, ctx)
                 .map_err(|e| InterpError::TypeError { msg: e.to_string() });
         }
-        // An active witness replay frame OUTRANKS the published-mock layer, because the
-        // two answer different questions and only one of them is the seam under test.
-        // `eval_mock_response` replays the operation RESULT off the declaration; a replay
-        // frame supplies the transport OBSERVATION and requires the real dispatcher fold
-        // to run on top of it. Letting the mock answer first is the exact fail-open the
-        // seam exists to close: the fixture greens while the dispatcher is never reached,
-        // so a broken dispatcher is unobservable in the mode CI actually runs (hermetic).
+        // An active witness replay frame OUTRANKS the published-mock layer: `eval_mock_response`
+        // replays the operation RESULT off the declaration; a replay frame supplies the
+        // transport OBSERVATION and requires the real dispatcher fold on top of it. Mock-first
+        // is the fail-open the seam closes: the fixture greens while the dispatcher is never
+        // reached, so a broken dispatcher is unobservable in the mode CI runs (hermetic).
         // Measured: `rest_transport_failure_is_persistable` returns true under `gunbc run
-        // --claim-run` (Wet, reaches `dispatch_rest`) and false under `claim_batch`
-        // (Hermetic, answered here) on one binary and one tree.
+        // --claim-run` (Wet, reaches `dispatch_rest`) and false under `claim_batch` (Hermetic,
+        // answered here) on one binary and one tree.
         //
-        // Fail-closed on both arms, never a widen (§5): for a REST transport this routes
-        // to the ordinary wet dispatch so `rest_exchange_selection` decides, and that
-        // selection already refuses `RestReplayExchangeAbsent`/`Ambiguous` BEFORE any
-        // socket is opened — so an active frame with no matching fixture is a typed
-        // refusal, not a live request escaping hermetic mode. Every other transport
-        // refuses here rather than falling through: a declared replay intent this
-        // machinery cannot honor must stop the line, not silently degrade to the mock
-        // (which would fabricate a plausible answer) nor to a real shell/file effect.
+        // Fail-closed on both arms, never a widen (§5): a REST transport routes to ordinary wet
+        // dispatch so `rest_exchange_selection` decides, and that already refuses
+        // `RestReplayExchangeAbsent`/`Ambiguous` BEFORE any socket opens — an active frame with
+        // no matching fixture is a typed refusal, not a live request escaping hermetic mode.
+        // Every other transport refuses here: a replay intent this machinery cannot honor stops
+        // the line rather than degrading to the mock (a fabricated answer) or a real shell/file
+        // effect.
         //
         // HAND-RUST GATE — seed-retained, lane `v1-materialization-kernel`
         // (rn_53JPH6BB7G588K7DMZNWM0E3AS, witness-realization-plan (plan doc deleted 2026-08-28)),
-        // terminating at `v1-interpreter-quarantine` → `v1-interpreter-delete`; the same
-        // lane the `WITNESS_EVALUATION_FRAMES` deferral above names. Deletion condition,
-        // checkable by execution: when witnesses emit to native code and the emitted
-        // runtime realizes the evaluation frame, this arm deletes with that stack while
-        // `rest_transport_failure_is_persistable` stays green under the corpus runner
-        // without it. That witness is this arm's regression control, not merely the
-        // frame's — it reds if the mock layer ever preempts a replay frame again.
+        // terminating at `v1-interpreter-quarantine` → `v1-interpreter-delete`; the lane the
+        // `WITNESS_EVALUATION_FRAMES` deferral above names. Deletion condition, checkable by
+        // execution: when witnesses emit to native code and the emitted runtime realizes the
+        // evaluation frame, this arm deletes with that stack while
+        // `rest_transport_failure_is_persistable` stays green under the corpus runner without
+        // it — that witness is this arm's regression control, not merely the frame's, and reds
+        // if the mock layer ever preempts a replay frame again.
         if current_witness_evaluation_frame().is_some() {
             if is_shell_transport(transport.clone())
                 || is_file_transport(transport.clone(), ctx.si())
@@ -9543,12 +9354,11 @@ fn dispatch_service_wet(
     intent: &str,
     expected: ExpectedOutcome,
 ) -> InterpResult<Value> {
-    // Local Env.Get: reading THIS process's own environment is not a host effect
-    // (shell-to-dag residual census §0b / DESIGN §3(b)). `printenv` was the wrong
-    // single hardwired transport — unset vars exited 1 and, under ExpectSuccess,
-    // every optional floor_diff_observe injection (GUNBC_CI_DIFF_*) painted Anomaly
-    // Failed lines (operator live-log 2026-07-25). Native handler; shell printenv
-    // remains the remote-target realization.
+    // Local Env.Get: reading THIS process's environment is not a host effect (shell-to-dag
+    // residual census §0b / DESIGN §3(b)). `printenv` was the wrong hardwired transport —
+    // unset vars exited 1 and, under ExpectSuccess, every optional floor_diff_observe
+    // injection (GUNBC_CI_DIFF_*) painted Anomaly Failed lines (operator live-log 2026-07-25).
+    // Native handler; shell printenv remains the remote-target realization.
     if intent == "shell.Env.Get" {
         return dispatch_env_get_native(op_node, param_env, ctx);
     }
@@ -9656,16 +9466,15 @@ pub(crate) struct ShellResult {
 ///     within one argument's fragments  -- CONCATENATE into exactly one word
 ///
 /// WHY AN EXPLICIT ARM RATHER THAN A BETTER GUESS. `push_shell_argv_tokens` below decides
-/// "one word or many?" from the RUNTIME ENCODING of a generic value, and that distinction is
-/// genuinely erased: a `FreeMonoid<Str>` is equally a modeled String assembled from fragments
-/// and a modeled list whose members are strings. `value_as_host_string` and `free_monoid_to_vec`
-/// BOTH succeed on it, so no branch order recovers the intent -- reordering them would splice
-/// lists correctly and shred modeled strings. The missing fact is the transport ROLE, and this
-/// carrier supplies it nominally.
+/// "one word or many?" from the RUNTIME ENCODING, which erases the distinction: a
+/// `FreeMonoid<Str>` is equally a String assembled from fragments and a list of strings.
+/// `value_as_host_string` and `free_monoid_to_vec` BOTH succeed on it, so no branch order
+/// recovers intent -- reordering splices lists correctly and shreds modeled strings. The
+/// missing fact is the transport ROLE, supplied nominally by this carrier.
 ///
-/// FAIL-CLOSED. Every shape mismatch is a typed error. There is deliberately no arm that falls
-/// through to the guessing path: a carrier that says "expand this" and then silently produced one
-/// joined word would be the exact defect it exists to remove (DESIGN section 5).
+/// FAIL-CLOSED. Every shape mismatch is a typed error; no arm falls through to the guessing
+/// path — a carrier saying "expand this" that silently produced one joined word would be the
+/// defect it exists to remove (DESIGN section 5).
 fn push_process_argv_expansion(
     argv: &mut Vec<String>,
     fields: &[(Symbol, Value)],
@@ -9750,14 +9559,14 @@ fn push_process_argv_expansion(
         let word = value_as_host_string(&text).ok_or_else(|| InterpError::TypeError {
             msg: "CliArgument.text is not a host string".to_string(),
         })?;
-        // An EMPTY argument is a real argument and is pushed unchanged: `jq ""` passes one empty
-        // word, and silently dropping it would change arity -- the same boundary destruction the
-        // concatenating path performs, in the other direction.
+        // An EMPTY argument is real and pushed unchanged: `jq ""` passes one empty word, and
+        // dropping it would change arity -- the concatenating path's boundary destruction in
+        // the other direction.
         //
-        // An embedded NUL REFUSES rather than reaching the exec boundary. A C argument vector is
-        // NUL-terminated, so no argument can contain one; std::process would reject it at spawn
-        // with an errno-shaped error naming neither the argument nor the surface. Refusing here
-        // yields a located diagnostic instead (DESIGN section 5: refuse, never widen or fabricate).
+        // An embedded NUL REFUSES before the exec boundary: a C argv is NUL-terminated, so
+        // std::process would reject it at spawn with an errno-shaped error naming neither the
+        // argument nor the surface. Refusing here yields a located diagnostic (DESIGN section
+        // 5: refuse, never widen or fabricate).
         if word.contains('\0') {
             return Err(InterpError::TypeError {
                 msg: format!(
@@ -9789,42 +9598,38 @@ fn push_shell_argv_tokens(argv: &mut Vec<String>, val: Value) -> InterpResult<()
             }
             Ok(())
         }
-        // THE AMBIGUITY IS REFUSED HERE, NOT RESOLVED — and the two readings really are both
-        // well-formed, which is why no ordering of the old arms could have been correct.
+        // THE AMBIGUITY IS REFUSED HERE, NOT RESOLVED — both readings are well-formed, so no
+        // ordering of the old arms could be correct.
         //
-        // A free monoid whose elements are `Str` satisfies BOTH readings at once:
-        // `value_as_host_string` folds it into one concatenated word (its `Value::Str(s) =>
-        // out.push_str(&s)` arm), and `free_monoid_to_vec` splices it into N words. The value
-        // records no choice between them, so the previous code silently took the first — meaning
-        // one declared `List<String>` produced ONE argv word when it arrived monoid-encoded and N
-        // words when it arrived as a native list. Same type, same declaration, opposite arity,
-        // decided by a representation the author never selected.
+        // A free monoid of `Str` satisfies BOTH: `value_as_host_string` folds it into one word
+        // (its `Value::Str(s) => out.push_str(&s)` arm), `free_monoid_to_vec` splices it into N.
+        // The value records no choice, so the previous code took the first — one declared
+        // `List<String>` produced ONE argv word monoid-encoded and N words as a native list.
+        // Same type, opposite arity, decided by a representation the author never selected.
         //
-        // The measured specimen: `extdeps.git.git` `git_diff_range_argv` returns `[base, head]` on
-        // its TwoDot arm, spliced into `git diff -U0 <range>`. Monoid-encoded, that reaches the
-        // process as `mainHEAD` — and the failure is not that git errors. On any pair whose
-        // concatenation names a real object it produces a successful diff of the WRONG RANGE,
-        // which is fabricated plausible output rather than a crash (DESIGN §5).
+        // The measured specimen: `extdeps.git.git` `git_diff_range_argv` returns `[base, head]`
+        // on its TwoDot arm, spliced into `git diff -U0 <range>`. Monoid-encoded it reaches the
+        // process as `mainHEAD` — and on any pair whose concatenation names a real object git
+        // succeeds with a diff of the WRONG RANGE: fabricated plausible output, not a crash
+        // (DESIGN §5).
         //
-        // So this is a state-space conflation, not a missing wall: "one argument whose text is the
+        // A state-space conflation, not a missing wall: "one argument whose text is the
         // concatenation" and "N arguments" are different states with different remedies, and a
         // position that cannot tell them apart must refuse rather than pick.
         //
         // WHAT DELIBERATELY DOES NOT CHANGE:
-        //   * Int-element monoids stay char-decoded into one word. A code-point sequence is a
-        //     genuine host string under one reading only, so nothing is ambiguous there.
+        //   * Int-element monoids stay char-decoded into one word: a code-point sequence is a
+        //     host string under one reading only.
         //   * A native `Value::List` keeps its N-word expansion (arm above) — it states the list
         //     reading structurally.
         //   * `ProcessArgvExpansion` stays authoritative (arm at the top) — it states the role.
-        //   * `value_as_host_string` itself is UNTOUCHED. `value_to_host_string` wraps it for
-        //     general use, and narrowing a shared helper to fix one caller is precisely the forked
-        //     -logic trap this lane exists to remove. The discrimination belongs to the argv
-        //     position, so it lives here.
+        //   * `value_as_host_string` is UNTOUCHED. `value_to_host_string` wraps it for general
+        //     use, and narrowing a shared helper for one caller is the forked-logic trap this
+        //     lane removes. The discrimination belongs to the argv position, so it lives here.
         //
-        // An EMPTY monoid is treated as the empty string, preserving existing behaviour. Stated
-        // rather than left implicit: it is the one input where the two readings differ in arity
-        // (one empty word vs no words) and this arm still picks. It is called out as a deliberate
-        // narrow choice with no observed consumer, not an oversight.
+        // An EMPTY monoid is the empty string, preserving existing behaviour. Stated explicitly:
+        // it is the one input where the two readings differ in arity (one empty word vs none)
+        // and this arm still picks — a deliberate narrow choice with no observed consumer.
         Value::Variant { .. } => {
             if let Some(items) = free_monoid_to_vec(&val) {
                 let has_str_element = items.iter().any(|i| matches!(i, Value::Str(_)));
@@ -9888,9 +9693,9 @@ fn value_to_host_string(val: &Value) -> String {
 }
 
 /// Why a generic argv materialization refused. Mirrors `ArgvRefusalCause` in
-/// `src/v2/std/operation_argv.dag` arm for arm — the .dag module is the authority for
-/// the vocabulary, this enum is the seed realization of it. Every arm refuses; none
-/// widens, defaults, or sanitizes (DESIGN §5).
+/// `src/v2/std/operation_argv.dag` arm for arm — the .dag module owns the vocabulary, this
+/// enum is its seed realization. Every arm refuses; none widens, defaults, or sanitizes
+/// (DESIGN §5).
 #[derive(Debug, Clone)]
 pub enum ArgvRefusalCause {
     OperationNotFound,
@@ -9907,17 +9712,14 @@ pub enum ArgvRefusalCause {
 /// The AUTHORED name of an `ExprData` form, TOTAL over the closed `.dag` vocabulary
 /// (`v1.core` `ExprData`), and the single such authority in the seed.
 ///
-/// It exists so a projection that has no rule for a form can REFUSE BY NAME instead of
-/// substituting a plausible value, and the name it refuses with is the one the `.dag`
-/// declaration uses -- not a second spelling of the same vocabulary. This function replaced
-/// `argv_expr_kind_label`, which returned hyphenated nicknames (`call`, `record-literal`)
-/// for the same members: a refusal naming `call` cannot be grepped back to `ExprCall`, and
-/// two spellings of one closed vocabulary is the DESIGN section 3 nickname at the
-/// diagnostic layer.
+/// Lets a projection with no rule for a form REFUSE BY NAME instead of substituting a
+/// plausible value, using the `.dag` declaration's own name. Replaced `argv_expr_kind_label`,
+/// which returned hyphenated nicknames (`call`, `record-literal`): a refusal naming `call`
+/// cannot be grepped back to `ExprCall`, and two spellings of one closed vocabulary is the
+/// DESIGN section 3 nickname at the diagnostic layer.
 ///
-/// The match carries NO catch-all on purpose: a form added to the `.dag` coproduct must
-/// break this compile, which is what keeps the seed's knowledge of the vocabulary equal to
-/// the substrate's rather than merely older than it.
+/// NO catch-all, on purpose: a form added to the `.dag` coproduct must break this compile,
+/// keeping the seed's vocabulary equal to the substrate's rather than merely older.
 pub(crate) fn expr_data_form_name(expr_data: &ExprData) -> &'static str {
     match expr_data {
         ExprData::NoExprData => "NoExprData",
@@ -9960,11 +9762,10 @@ pub(crate) fn literal_value_form_name(value: &crate::std_syntax::LiteralValue) -
     }
 }
 
-/// A declared default, read from the declaration itself. Only shapes that are literal
-/// *data* are admitted (a string literal, or a list literal of string literals): a
-/// default that is a call or a reference is left UNBOUND, so an argv position that
-/// needs it refuses by name rather than being filled with a guess (DESIGN §5 — a
-/// fabricated plausible default is the failure this avoids).
+/// A declared default, read from the declaration. Only literal *data* is admitted (a string
+/// literal, or a list literal of string literals): a call or reference default is left
+/// UNBOUND, so an argv position needing it refuses by name rather than being filled with a
+/// guess (DESIGN §5 — a fabricated plausible default is the failure this avoids).
 fn declared_default_value(node: &Rc<Node>) -> Option<Value> {
     match node.expr_data.as_ref() {
         ExprData::ExprLiteral { value } => match value.as_ref() {
@@ -10056,11 +9857,10 @@ fn operation_input_binding_entry(
     Ok((name.to_string(), bound))
 }
 
-/// Bindings ∪ declared defaults, validated against the operation's OWN declared inputs.
-/// A binding naming an input the operation does not declare is refused rather than
-/// injected — the seed's previous materializer unconditionally injected `package`,
-/// `bin`, `args`, `unit` and `property` into every operation, which is exactly the
-/// channel a generic binder must not keep open.
+/// Bindings ∪ declared defaults, validated against the operation's OWN declared inputs. A
+/// binding naming an undeclared input is refused, not injected — the previous materializer
+/// unconditionally injected `package`, `bin`, `args`, `unit` and `property` into every
+/// operation, the channel a generic binder must not keep open.
 fn operation_input_binding_env(
     bindings: &Value,
     declared: &[(String, Option<Rc<Node>>)],
@@ -10146,9 +9946,9 @@ fn bind_argv_expr(
 
 /// Materialize an operation's transport argv by binding its own declared inputs.
 ///
-/// The executable position is a construction wall, not a check with a lenient arm:
-/// `argv[0]` must be a string literal in the declaration, so no binding — declared or
-/// not — can decide which program runs.
+/// The executable position is a construction wall, not a lenient check: `argv[0]` must be
+/// a string literal in the declaration, so no binding — declared or not — decides which
+/// program runs.
 pub fn materialize_operation_argv(
     path: &str,
     service: &str,
@@ -10239,15 +10039,15 @@ fn operation_ref_value(path: &str, service: &str, operation: &str, ctx: &InterpC
 }
 
 /// Projects a host diagnostic census into the `gunbc.compile_diagnostic_census` coproduct.
-/// The two arms stay distinct all the way to the substrate — `CensusNotRunnable` must never
-/// arrive as `CensusObserved` with an empty row list, because that is byte-identical to a clean
-/// compile and would let could-not-measure read as the subject passing (DESIGN §5).
+/// The two arms stay distinct to the substrate — `CensusNotRunnable` must never arrive as
+/// `CensusObserved` with an empty row list, byte-identical to a clean compile, letting
+/// could-not-measure read as the subject passing (DESIGN §5).
 /// Encode one `ReferenceDerivedClosureAdmission` as an interpreter value.
 ///
-/// Pure encoding. The judgement it carries was made by
+/// Pure encoding. The judgement was made by
 /// `gunbc.namespace_reference_derived_closure_admission assess_reference_binding_observation`,
-/// which the `.dag` producer calls; nothing here decides, reclassifies, or defaults. The three
-/// payload vocabularies are nullary coproducts, so each is carried by name.
+/// which the `.dag` producer calls; nothing here decides, reclassifies, or defaults. The
+/// three payload vocabularies are nullary coproducts, carried by name.
 fn reference_derived_closure_admission_value(
     admission: &crate::gunbc_namespace_reference_derived_closure_admission::ReferenceDerivedClosureAdmission,
     ctx: &InterpContext,
@@ -10259,12 +10059,11 @@ fn reference_derived_closure_admission_value(
         fields: Rc::new(Vec::new()),
     };
     // The variant NAME is spelled by a total match, never derived from `Debug` (review 57100).
-    // Debug happens to print exactly the variant name for these nullary enums today, and it stops
-    // doing so the moment any variant gains a payload -- it would print `Foo { .. }` and this seam
-    // would mint a variant name no `.dag` match accepts. That fails loudly rather than silently,
-    // but it fails at RUNTIME on a name; a total match makes the same mistake a COMPILE error here,
-    // which is the construction-over-validation direction DESIGN 5 asks for. It also stops the
-    // Rust identifier from being a second representation of the variant's identity (DESIGN 3).
+    // Debug prints exactly the variant name for these nullary enums today and stops the moment
+    // a variant gains a payload (`Foo { .. }`), minting a name no `.dag` match accepts — loud,
+    // but at RUNTIME; a total match makes it a COMPILE error (construction over validation,
+    // DESIGN 5) and stops the Rust identifier being a second representation of the variant's
+    // identity (DESIGN 3).
     let capability = |c: &crate::gunbc_namespace_reference_derived_closure_admission::ReferenceDerivedClosureCapability| {
         use crate::gunbc_namespace_reference_derived_closure_admission::ReferenceDerivedClosureCapability as C;
         let name = match c {
@@ -10341,14 +10140,14 @@ fn reference_derived_closure_admission_value(
 /// Encode the rows for one in-memory source: each admission the `.dag` producer computed,
 /// paired with the module path that producer read out of the same parse.
 ///
-/// The two producer exports are pure functions of `(file, source)` and the caller passes one
-/// pair of strings to both, so this join cannot pair a module path with admissions from a
-/// different subject. It is mechanical, never a decision; the split exists because a `.dag`
-/// record embedding a `sole_constructor`-bearing coproduct does not emit compilably today
-/// (see the producer's own note).
-/// Encode the subject's own identity as the observation it is: the module the parse declared, or
-/// a typed refusal naming the gap. There is deliberately no spelling in which "the parse refused"
-/// and "the module path is empty" are the same value.
+/// Both producer exports are pure functions of `(file, source)` and the caller passes one
+/// pair to both, so this join cannot pair a module path with another subject's admissions.
+/// Mechanical, never a decision; the split exists because a `.dag` record embedding a
+/// `sole_constructor`-bearing coproduct does not emit compilably today (see the producer's
+/// note).
+/// Encode the subject's identity as the observation it is: the module the parse declared, or
+/// a typed refusal naming the gap. No spelling makes "the parse refused" and "the module
+/// path is empty" the same value.
 fn subject_module_value(
     subject: &crate::std_reference_binding_observation::StructuralObservationSubjectModule,
     ctx: &InterpContext,
@@ -10448,11 +10247,11 @@ fn compile_diagnostic_census_value(
     }
 }
 
-/// Projects a host multi-module fixture outcome into the
-/// `tools.multi_module_compile_fixture` coproduct. The three arms stay distinct all the way to
-/// the substrate: a broken harness must never arrive wearing the compiler's verdict, and a
-/// compile that never ran must never arrive as `FixtureCompileCompleted` with an empty diagnostic
-/// list (DESIGN §5 — could-not-measure conflated with the subject passing).
+/// Projects a host multi-module fixture outcome into the `tools.multi_module_compile_fixture`
+/// coproduct. The three arms stay distinct to the substrate: a broken harness must never wear
+/// the compiler's verdict, and a compile that never ran must never arrive as
+/// `FixtureCompileCompleted` with an empty diagnostic list (DESIGN §5 — could-not-measure
+/// conflated with passing).
 fn multi_module_compile_fixture_value(
     outcome: crate::cli_run::MultiModuleCompileFixtureOutcome,
     ctx: &InterpContext,
@@ -10518,11 +10317,10 @@ fn multi_module_compile_fixture_value(
     }
 }
 
-/// Projects a host gate receipt into the `gunbc.ci_gate` `GateReceipt` coproduct.
-/// The arms stay distinct all the way to the substrate for the same reason
-/// `compile_diagnostic_census_value`'s do: `GateNotRun` must never arrive as a clean
-/// verdict, because could-not-measure and the subject passing are different facts with
-/// different owners, and a `Bool` at this seam made them the same value.
+/// Projects a host gate receipt into the `gunbc.ci_gate` `GateReceipt` coproduct. Arms stay
+/// distinct to the substrate as `compile_diagnostic_census_value`'s do: `GateNotRun` must
+/// never arrive as a clean verdict — could-not-measure and passing are different facts with
+/// different owners, and a `Bool` at this seam made them one value.
 fn gate_receipt_value(receipt: crate::cli_run::GateReceipt, ctx: &InterpContext) -> Value {
     let observed = |outcome: Value| Value::Variant {
         type_name: ctx.sym("GateReceipt"),
@@ -10641,11 +10439,10 @@ fn argv_materialization_value(
     }
 }
 
-/// SGR foreground parameters per `SemanticColor`, mirroring the
-/// `extdeps.render.ansi` authority (`ansi_mappings` in `dag/extdeps/render/ansi.dag`).
-/// Seed realization until the interpreter consumes that table directly; the
-/// dissolution is the single checkable receipt ROADMAP §1 "interpreter
-/// terminal-output de-fork" (`dag/gunbc/roadmap/roadmap_authority.dag`).
+/// SGR foreground parameters per `SemanticColor`, mirroring the `extdeps.render.ansi`
+/// authority (`ansi_mappings` in `dag/extdeps/render/ansi.dag`). Seed realization until the
+/// interpreter consumes that table directly; dissolution is the checkable receipt ROADMAP §1
+/// "interpreter terminal-output de-fork" (`dag/gunbc/roadmap/roadmap_authority.dag`).
 pub mod sgr {
     pub const SUCCESS: &str = "38;5;34";
     pub const ERROR: &str = "38;5;196";
@@ -10655,9 +10452,8 @@ pub mod sgr {
 }
 
 /// Whether the CLI should emit ANSI color, mirroring the `color` arm of
-/// `extdeps.render.terminal_capability.detect_capability`: NO_COLOR (no-color
-/// convention) and TERM=dumb force it off; otherwise color is on for an
-/// interactive TTY or a CI log viewer (which renders SGR). CI keeps color even
+/// `extdeps.render.terminal_capability.detect_capability`: NO_COLOR and TERM=dumb force it
+/// off; otherwise on for an interactive TTY or a CI log viewer (renders SGR). CI keeps color
 /// though it loses cursor addressing — the CI/interactive split this PR models.
 pub fn color_enabled() -> bool {
     use std::io::IsTerminal;
@@ -10688,10 +10484,10 @@ pub fn paint(text: &str, sgr_params: &str) -> String {
     }
 }
 
-/// CLI output verbosity. Seed realization of the `gunbc.output_policy.Verbosity`
-/// authority (`dag/gunbc/output_policy.dag`); resolution precedence mirrors that
-/// module's `resolve_verbosity` (verbose wins over quiet, default Normal). When
-/// the interpreter self-hosts, this dissolves into consuming the .dag policy.
+/// CLI output verbosity. Seed realization of `gunbc.output_policy.Verbosity`
+/// (`dag/gunbc/output_policy.dag`); precedence mirrors `resolve_verbosity` (verbose wins over
+/// quiet, default Normal). Dissolves into consuming the .dag policy when the interpreter
+/// self-hosts.
 #[derive(Clone, Copy, PartialEq)]
 pub enum Verbosity {
     Quiet,
@@ -10728,12 +10524,11 @@ pub fn cli_verbosity() -> Verbosity {
     })
 }
 
-/// The output channels of `gunbc.output_policy.OutputChannel`, as a carrier so
-/// host-effect trace sites can name which channel they belong to. The *decision*
-/// for each channel is NOT computed here — it is evaluated from the .dag authority
-/// (`channel_decision` via `resolve_channel_policy`) by the entry binary and
-/// installed with `set_output_policy`. Order matches the index used in the policy
-/// array below.
+/// The output channels of `gunbc.output_policy.OutputChannel`, as a carrier so host-effect
+/// trace sites can name their channel. The *decision* per channel is NOT computed here — the
+/// entry binary evaluates it from the .dag authority (`channel_decision` via
+/// `resolve_channel_policy`) and installs it with `set_output_policy`. Order matches the
+/// policy array index below.
 #[derive(Clone, Copy, PartialEq)]
 pub enum OutputChannel {
     Diagnostic = 0,
@@ -10756,9 +10551,8 @@ pub enum OutputDecision {
 static OUTPUT_POLICY: std::sync::OnceLock<[OutputDecision; 5]> = std::sync::OnceLock::new();
 
 /// Install the per-channel decisions the entry binary evaluated from
-/// `gunbc.output_policy.resolve_channel_policy`. Set once at startup (before
-/// discovery threads spawn), read process-wide. Idempotent: a second call is a
-/// no-op (the first install wins).
+/// `gunbc.output_policy.resolve_channel_policy`. Set once at startup (before discovery threads
+/// spawn), read process-wide. Idempotent: the first install wins.
 pub fn set_output_policy(decisions: [OutputDecision; 5]) {
     let _ = OUTPUT_POLICY.set(decisions);
 }
@@ -10775,27 +10569,22 @@ pub fn output_decision(channel: OutputChannel) -> OutputDecision {
 
 /// Whether a call site DECLARED its expectation, kept distinct from WHAT it declared.
 ///
-/// The dispatch boundary takes this rather than a bare `ExpectedOutcome`, so
-/// "the site said nothing" is a value the caller must construct rather than a
-/// default the boundary manufactures. Before 2026-07-26 the boundary closed the
-/// gap itself with `declared_expectation.unwrap_or(ExpectSuccess)`, which is the
-/// shape DESIGN §5 names an absorbing fallback: the missing declaration was
-/// answered with a plausible one, and because the substitution happened inside
-/// the callee it left no trace, so the frequency of undeclared sites was zero by
-/// construction and could never rank for fixing.
+/// The dispatch boundary takes this rather than a bare `ExpectedOutcome`, so "the site said
+/// nothing" is a value the caller constructs, not a default the boundary manufactures. Before
+/// 2026-07-26 the boundary used `declared_expectation.unwrap_or(ExpectSuccess)` — DESIGN §5's
+/// absorbing fallback: the substitution inside the callee left no trace, so undeclared sites
+/// counted zero by construction and never ranked for fixing.
 ///
-/// `UntracedDefault` resolves to the SAME `ExpectSuccess` — this is deliberately
-/// not a behaviour change, and deliberately not a floor-time refusal (operator
-/// guardrail, 2026-07-26: the wall is construction at the boundary, not a
-/// refusal sweep that would red the corpus on sites nobody has looked at yet).
-/// What changes is that the substitution is now typed, located and COUNTED, so
-/// the frontier is observable and shrinks under trace evidence. A site re-arms
-/// to `Declared` only when someone has actually established what it expects —
-/// never speculatively, since a wrong `ExpectFailure` would silence a real fault.
+/// `UntracedDefault` resolves to the SAME `ExpectSuccess` — not a behaviour change, and not a
+/// floor-time refusal (operator guardrail, 2026-07-26: the wall is construction at the
+/// boundary, not a refusal sweep redding sites nobody has looked at). The substitution is now
+/// typed, located and COUNTED, so the frontier is observable and shrinks under trace evidence.
+/// A site re-arms to `Declared` only once its expectation is established — never
+/// speculatively, since a wrong `ExpectFailure` would silence a real fault.
 ///
-/// 🟡 dissolve-on: when the counted frontier reaches zero corpus-wide, this arm
-/// is deleted and an undeclared site becomes a hard typed refusal at the
-/// boundary — at which point absence is unwritable rather than merely counted.
+/// 🟡 dissolve-on: when the counted frontier reaches zero corpus-wide, this arm is deleted
+/// and an undeclared site becomes a hard typed refusal at the boundary — absence unwritable
+/// rather than counted.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum ExpectationDeclaration {
     Declared(ExpectedOutcome),
@@ -10803,10 +10592,9 @@ pub enum ExpectationDeclaration {
 }
 
 impl ExpectationDeclaration {
-    /// Resolve to the outcome the dispatch grades against, counting the untraced
-    /// case at its located call site. The count is the whole point: an absorbed
-    /// default that is tallied is a declared interim frontier; one that is not is
-    /// the fail-open this type exists to delete.
+    /// Resolve to the outcome the dispatch grades against, counting the untraced case at its
+    /// located call site. A tallied absorbed default is a declared interim frontier; an
+    /// untallied one is the fail-open this type deletes.
     fn resolve(self, service_name: &str, op_name: &str) -> ExpectedOutcome {
         match self {
             ExpectationDeclaration::Declared(e) => e,
@@ -10837,20 +10625,19 @@ pub fn untraced_expectation_frontier() -> Vec<(String, u64)> {
     UNTRACED_EXPECTATION_SITES.with(|m| m.borrow().iter().map(|(k, v)| (k.clone(), *v)).collect())
 }
 
-/// Carrier for `gunbc.output_policy.ExpectedOutcome` — what the caller DECLARED an
-/// effect would do. There is deliberately no `ExpectAny`: an unknown expectation
-/// would make every observation agree, which is the empty set the untyped
-/// `exit != 0` proxy assumed (DESIGN §5 — a failure arm refuses, never widens).
+/// Carrier for `gunbc.output_policy.ExpectedOutcome` — what the caller DECLARED an effect
+/// would do. Deliberately no `ExpectAny`: an unknown expectation makes every observation
+/// agree, the empty set the untyped `exit != 0` proxy assumed (DESIGN §5 — a failure arm
+/// refuses, never widens).
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum ExpectedOutcome {
     ExpectSuccess,
     ExpectFailure,
-    /// The exit code is an OBSERVATION consumed by a typed downstream verdict, not a
-    /// pass/fail judgment of its own — a probe whose non-zero exit means "subject
-    /// absent" rather than "something broke". Renders ambient regardless of code;
-    /// only dispatch failure (the probe could not run) stays anomalous. Admissible
-    /// ONLY where the annotated helper returns a typed observation or verdict, never
-    /// unit — see `gunbc.output_policy` outcome_is_data_note for the guard.
+    /// The exit code is an OBSERVATION consumed by a typed downstream verdict, not a pass/fail
+    /// — a probe whose non-zero exit means "subject absent". Renders ambient regardless of
+    /// code; only dispatch failure (the probe could not run) stays anomalous. Admissible ONLY
+    /// where the annotated helper returns a typed observation or verdict, never unit — see
+    /// `gunbc.output_policy` outcome_is_data_note.
     OutcomeIsData,
 }
 
@@ -10858,33 +10645,28 @@ pub enum ExpectedOutcome {
 /// an effect to do — the sibling edge on the CALL node (operator decision
 /// 2026-07-25), resolving the open question this file carried at `dispatch_shell`.
 ///
-/// It is stripped from the argument list before `build_service_param_env`, so it
-/// never becomes a bound param and therefore never reaches
-/// `content_hash_service_inputs` — which iterates `op_node.params` and looks each up
-/// in `param_env`. The exclusion is structural, not a remembered filter, which is
-/// exactly why a service-op `input {}` was the wrong home: that IS a param, so it
-/// would join the digest and two invocations differing only in what the caller
-/// expected would become different cache identities for the same request.
+/// Stripped from the argument list before `build_service_param_env`, so it never becomes a
+/// bound param and never reaches `content_hash_service_inputs` (which iterates
+/// `op_node.params` against `param_env`). The exclusion is structural, not a remembered
+/// filter — why a service-op `input {}` was the wrong home: that IS a param, would join the
+/// digest, and two invocations differing only in expectation would get different cache
+/// identities for one request.
 ///
-/// It is equally NOT a transport property, despite `transport_stdin` /
-/// `transport_response_format` being the nearest local precedent. `dispatch_service_wet`
-/// receives the transport from `op_node.transport.or(service_node.transport)` — the
-/// extdeps service-op DECLARATION, shared by every caller. Hanging the expectation
-/// there would make it a per-operation fact, so a red control and a genuine check
-/// both calling `shell.Test.IsFile` could not differ, and caller policy declared in
-/// extdeps is the DESIGN §3 layer inversion. That shape would have typechecked and
-/// read as green while being wrong in both directions.
+/// Equally NOT a transport property, despite `transport_stdin` / `transport_response_format`
+/// as local precedent: `dispatch_service_wet` takes the transport from
+/// `op_node.transport.or(service_node.transport)`, the extdeps DECLARATION shared by every
+/// caller. There it would be per-operation, so a red control and a genuine check both calling
+/// `shell.Test.IsFile` could not differ, and caller policy in extdeps is the DESIGN §3 layer
+/// inversion — typechecking and reading green while wrong in both directions.
 pub const EFFECT_EXPECTATION_ARG: &str = "expect";
 
 /// Read the caller's declared expectation off the reserved argument's value.
 ///
-/// Absent is handled by the caller as `ExpectSuccess` — the DECLARED migration
-/// default, behaviour-identical to the untyped `exit != 0` proxy this replaces, so
-/// no existing call site changes meaning. A PRESENT but unreadable value REFUSES
-/// instead of falling back: `gunbc.output_policy` deliberately has no `ExpectAny`
-/// arm, so a value we cannot read is ignorance, and answering it with a default
-/// would be ⊤-as-answer conflated with ⊤-as-ignorance (DESIGN §5 — a failure arm
-/// refuses, never widens).
+/// Absent is handled by the caller as `ExpectSuccess` — the DECLARED migration default,
+/// behaviour-identical to the untyped `exit != 0` proxy it replaces. A PRESENT but unreadable
+/// value REFUSES: `gunbc.output_policy` has no `ExpectAny` arm, so an unreadable value is
+/// ignorance, and a default would be ⊤-as-answer conflated with ⊤-as-ignorance (DESIGN §5 —
+/// a failure arm refuses, never widens).
 fn expectation_from_declared_arg(val: &Value) -> InterpResult<ExpectedOutcome> {
     match val {
         Value::Variant { variant_name, .. } => match resolve_sym(*variant_name).as_str() {
@@ -10905,10 +10687,9 @@ fn expectation_from_declared_arg(val: &Value) -> InterpResult<ExpectedOutcome> {
     }
 }
 
-/// Carrier for `gunbc.output_policy.StreamDisposition` — what becomes of an effect's
-/// CAPTURED SUBJECT STREAMS. Distinct from `OutputDecision`, which grades a trace
-/// line this repo authored; see the `.dag` authority's note for why it is not a
-/// second spelling of it.
+/// Carrier for `gunbc.output_policy.StreamDisposition` — what becomes of an effect's CAPTURED
+/// SUBJECT STREAMS. Distinct from `OutputDecision`, which grades a trace line this repo
+/// authored; the `.dag` authority's note says why it is not a second spelling.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum StreamDisposition {
     SurfaceContent,
@@ -10916,10 +10697,10 @@ pub enum StreamDisposition {
     StreamSuppressed,
 }
 
-/// The `.dag` authority's four corners of `effect_stream_disposition` at the
-/// ShellTrace channel and the run's verbosity, plus the guard literal
-/// `neutralize_workflow_commands` prefixes each subject line with. The seed holds
-/// evaluated verdicts and one literal — never the rule.
+/// The `.dag` authority's four corners of `effect_stream_disposition` at the ShellTrace
+/// channel and the run's verbosity, plus the guard literal `neutralize_workflow_commands`
+/// prefixes each subject line with. The seed holds evaluated verdicts and one literal —
+/// never the rule.
 #[derive(Clone)]
 pub struct InstalledEffectStreamPolicy {
     /// Indexed by `stream_policy_index(expected, observed_success)`.
@@ -10930,11 +10711,10 @@ pub struct InstalledEffectStreamPolicy {
 static EFFECT_STREAM_POLICY: std::sync::OnceLock<InstalledEffectStreamPolicy> =
     std::sync::OnceLock::new();
 
-/// Uninstalled default, as DATA rather than a re-derivation of the `.dag` rule:
-/// the four corners at `Normal` verbosity. It is behaviour-preserving — at the
-/// migration default `ExpectSuccess` it says "content on non-zero exit, counts on
-/// zero", exactly what this file did before the expectation axis existed.
-/// `effect_stream_policy_mirror_matches_dag_authority` pins it to the same golden
+/// Uninstalled default, as DATA rather than a re-derivation of the `.dag` rule: the four
+/// corners at `Normal` verbosity. Behaviour-preserving — at the migration default
+/// `ExpectSuccess` it says "content on non-zero exit, counts on zero", as before the
+/// expectation axis. `effect_stream_policy_mirror_matches_dag_authority` pins it to the golden
 /// the `.dag` witness asserts, so the two cannot drift silently.
 const EFFECT_STREAM_POLICY_FALLBACK: [StreamDisposition; 6] = [
     StreamDisposition::SummarizeCounts, // ExpectSuccess × observed success
@@ -10985,22 +10765,20 @@ fn subject_line_guard() -> String {
     }
 }
 
-/// Transport of `extdeps.github.log_annotations.neutralize_workflow_commands`:
-/// prefix every line of relayed subject text with the guard so it cannot occupy the
-/// line-initial `::` position GitHub reads as a workflow command. Unconditional —
-/// there is no target probe that could be wrong, and the guard is readable on a
-/// plain terminal. The transformation is the `.dag` authority's; this only applies
-/// the literal it published.
+/// Transport of `extdeps.github.log_annotations.neutralize_workflow_commands`: prefix every
+/// relayed subject line with the guard so it cannot occupy the line-initial `::` position
+/// GitHub reads as a workflow command. Unconditional — no target probe to be wrong, and the
+/// guard reads fine on a plain terminal. The transformation is the `.dag` authority's; this
+/// applies the literal it published.
 fn neutralize_workflow_commands(text: &str) -> String {
     let guard = subject_line_guard();
     format!("{guard}{}", text.replace('\n', &format!("\n{guard}")))
 }
 
-/// Carrier for `extdeps.render.surface.GroupSyntax` — the per-target group-marker
-/// strings the entry binary evaluated from `resolve_group_syntax(github_actions)`.
-/// `close_line` is `None` for a plain terminal (a section closes implicitly) and
-/// `Some("::endgroup::")` under GitHub Actions. The seed only TRANSPORTS these
-/// literals; the choice of syntax per target stays the .dag authority's.
+/// Carrier for `extdeps.render.surface.GroupSyntax` — the per-target group-marker strings the
+/// entry binary evaluated from `resolve_group_syntax(github_actions)`. `close_line` is `None`
+/// on a plain terminal (implicit close) and `Some("::endgroup::")` under GitHub Actions. The
+/// seed only TRANSPORTS these literals; syntax choice per target stays the .dag authority's.
 #[derive(Clone)]
 pub struct InstalledGroupSyntax {
     pub open_prefix: String,
@@ -11017,10 +10795,9 @@ pub fn set_group_syntax(syntax: InstalledGroupSyntax) {
     let _ = GROUP_SYNTAX.set(syntax);
 }
 
-/// Whether grouping should bracket host-effect output: a syntax is installed AND at
-/// least one trace-bearing channel is actually visible. When every host-effect
-/// channel is Suppressed (e.g. Quiet) there is nothing to group, so callers skip the
-/// brackets and leave empty groups out of the log.
+/// Whether grouping should bracket host-effect output: a syntax is installed AND at least one
+/// trace-bearing channel is visible. With every host-effect channel Suppressed (e.g. Quiet)
+/// there is nothing to group, so callers skip the brackets and leave no empty groups.
 pub fn host_trace_grouping_active() -> bool {
     GROUP_SYNTAX.get().is_some()
         && (output_decision(OutputChannel::ShellTrace) != OutputDecision::Suppressed
@@ -11032,11 +10809,10 @@ pub fn host_trace_grouping_active() -> bool {
 /// a second `::endgroup::`.
 static GROUP_OPEN: AtomicBool = AtomicBool::new(false);
 
-/// Open a titled group on stderr — the same stream the host-effect trace lines use,
-/// so the runner folds those lines under the marker. No-op when no syntax is
-/// installed. Pair with `group_end`; the caller must keep the bracket tight (open →
-/// run+join the effectful work → close) and defer non-trace output (PASS/FAIL) until
-/// after `group_end` so it stays outside the collapsed section.
+/// Open a titled group on stderr — the host-effect trace stream, so the runner folds those
+/// lines under the marker. No-op without an installed syntax. Pair with `group_end`; keep the
+/// bracket tight (open → run+join the effectful work → close) and defer non-trace output
+/// (PASS/FAIL) until after `group_end` so it stays outside the collapsed section.
 pub fn group_begin(title: &str) {
     if let Some(s) = GROUP_SYNTAX.get() {
         eprintln!("{}{}{}", s.open_prefix, title, s.open_suffix);
@@ -11141,11 +10917,11 @@ fn render_shell_trace(intent: &str) {
 }
 
 /// Post-wait completion: Ambient Done via ShellTrace, or Anomaly Failed via
-/// `effect_stream_disposition` alone (never silenced by ShellTrace Suppressed).
-/// Law 4: `group_end` before an Anomaly so it lands OutsideGroup.
+/// `effect_stream_disposition` alone (never silenced by ShellTrace Suppressed). Law 4:
+/// `group_end` before an Anomaly so it lands OutsideGroup.
 ///
-/// Subject is the typed service.op intent. Failed.error carries self-describing
-/// `$ <argv> (exit=N)`; empty stderr still surfaces via the Failed line alone.
+/// Subject is the typed service.op intent. Failed.error carries `$ <argv> (exit=N)`; empty
+/// stderr still surfaces via the Failed line alone.
 fn render_shell_completion_trace(
     expected: ExpectedOutcome,
     exit_code: i32,
@@ -11183,18 +10959,17 @@ fn render_shell_completion_trace(
     trace_emit(OutputChannel::ShellTrace, &line);
 }
 
-/// Whether a SurfaceContent failure should emit a Failed observation line.
-/// Pure: disposition alone — never the ShellTrace channel. Empty stderr still
-/// returns true (the Failed line is the sole signal). RED control for the
-/// installed-policy path: pair with `effect_stream_disposition`.
+/// Whether a SurfaceContent failure should emit a Failed observation line. Pure: disposition
+/// alone, never the ShellTrace channel. Empty stderr still returns true (the Failed line is
+/// the sole signal). RED control for the installed-policy path: pair with
+/// `effect_stream_disposition`.
 fn shell_failure_surfaces(disposition: StreamDisposition) -> bool {
     disposition == StreamDisposition::SurfaceContent
 }
 
-/// Pure tail-bounding of captured stderr that follows a Failed observation line.
-/// Returns `None` when there is no stderr to surface; `Some(block)` is the content
-/// only (the Failed line already carries `$ argv (exit=N)`). Subject lines are
-/// guarded so relayed text cannot mint workflow commands in the parent run.
+/// Pure tail-bounding of captured stderr following a Failed observation line. `None` with no
+/// stderr to surface; `Some(block)` is content only (the Failed line carries `$ argv
+/// (exit=N)`). Subject lines are guarded so relayed text cannot mint workflow commands.
 fn shell_completion_stderr_content(stderr: &[u8]) -> Option<String> {
     if stderr.is_empty() {
         return None;
@@ -11230,21 +11005,18 @@ fn shell_stdin_payload(val: &Value) -> InterpResult<Vec<u8>> {
     }
 }
 
-/// Host per-argument byte ceiling. Mirrors the single authority
-/// `extdeps.exec.exec_arg_limit.host_exec_arg_max_strlen` (Linux execve(2)
-/// MAX_ARG_STRLEN = 32 * PAGE_SIZE = 131072). A single argv (or env) string
-/// longer than this makes `execve` fail with E2BIG ("Argument list too long").
-/// `argv_arg_limit_test::mirror_matches_extdeps_authority` pins this to the
-/// modeled value so the two cannot drift silently.
+/// Host per-argument byte ceiling, mirroring the single authority
+/// `extdeps.exec.exec_arg_limit.host_exec_arg_max_strlen` (Linux execve(2) MAX_ARG_STRLEN =
+/// 32 * PAGE_SIZE = 131072). A longer argv (or env) string fails `execve` with E2BIG
+/// ("Argument list too long"). `argv_arg_limit_test::mirror_matches_extdeps_authority` pins
+/// this to the modeled value.
 pub const HOST_ARG_MAX_STRLEN_BYTES: usize = 131072;
 
-/// Pure argv-size wall: refuse (typed, located) an invocation whose largest
-/// single argv token exceeds the host per-argument ceiling, instead of handing
-/// it to `execve` and getting an opaque `os error 7`. Faithful to
-/// MAX_ARG_STRLEN — the ceiling is per single argument, not the argv total
-/// (that is the separate, larger ARG_MAX). Returns `None` when the invocation
-/// is within the limit (proceed) and `Some(err)` when it must refuse — no
-/// truncation, no widening (DESIGN §5: a failure arm refuses, never absorbs).
+/// Pure argv-size wall: refuse (typed, located) an invocation whose largest single argv token
+/// exceeds the host per-argument ceiling, rather than get an opaque `os error 7` from
+/// `execve`. Per single argument as MAX_ARG_STRLEN is, not the argv total (the separate,
+/// larger ARG_MAX). `None` = within limit, `Some(err)` = refuse — no truncation, no widening
+/// (DESIGN §5: a failure arm refuses, never absorbs).
 fn argv_arg_limit_refusal(argv: &[String], limit_bytes: usize) -> Option<InterpError> {
     let offending = argv.iter().map(|a| a.len()).max().unwrap_or(0);
     if offending > limit_bytes {
@@ -11367,10 +11139,9 @@ fn dispatch_shell(
     intent: &str,
     expected: ExpectedOutcome,
 ) -> InterpResult<ShellResult> {
-    // `expected` is the caller's DECLARED expectation, threaded from the sibling edge
-    // on the call node (EFFECT_EXPECTATION_ARG). Absent at the call site it is
-    // ExpectSuccess, which keeps every undeclared site behaviour-identical to the
-    // untyped `exit != 0` proxy this replaces.
+    // `expected` is the caller's DECLARED expectation from the call node's sibling edge
+    // (EFFECT_EXPECTATION_ARG). Absent it is ExpectSuccess, keeping every undeclared site
+    // behaviour-identical to the untyped `exit != 0` proxy this replaces.
     let argv_nodes = &transport.children;
     let mut argv: Vec<String> = Vec::new();
     for node in argv_nodes.iter() {
@@ -11386,10 +11157,10 @@ fn dispatch_shell(
 
     render_shell_trace(intent);
 
-    // Arg-size wall: a single argv token over the host MAX_ARG_STRLEN would make
-    // the spawn below die with an opaque `os error 7` (E2BIG). Refuse here with a
-    // typed, located diagnostic so the deficit is diagnosable and countable. Large
-    // payloads belong in stdin (see extdeps.shell shell.Exec.Run), not argv.
+    // Arg-size wall: an argv token over the host MAX_ARG_STRLEN would kill the spawn below with
+    // an opaque `os error 7` (E2BIG). Refuse here, typed and located, so the deficit is
+    // diagnosable and countable. Large payloads belong in stdin (extdeps.shell
+    // shell.Exec.Run), not argv.
     if let Some(err) = argv_arg_limit_refusal(&argv, HOST_ARG_MAX_STRLEN_BYTES) {
         return Err(err);
     }
@@ -11535,12 +11306,10 @@ fn dispatch_shell(
             wait_child_honoring_wall_deadline(child, ctx, &argv[0], stdout_policy, stderr_policy)?;
 
         if let Some(writer) = stdin_writer {
-            // A stdin-write error (e.g. broken pipe) here is not itself the
-            // failure to report: the child may have exited (successfully or
-            // not) before consuming all of stdin, which is ordinary POSIX
-            // pipe behavior. The child's real exit_code/stdout/stderr in
-            // `output` is the authoritative result and already flows to the
-            // `exit { .. }` clause in the .dag transport declaration.
+            // A stdin-write error (e.g. broken pipe) is not the failure to report: the child
+            // may have exited before consuming all of stdin, ordinary POSIX pipe behavior. The
+            // child's exit_code/stdout/stderr in `output` is authoritative and already flows
+            // to the `exit { .. }` clause of the .dag transport declaration.
             let _ = writer.join().map_err(|_| InterpError::TypeError {
                 msg: format!("shell transport stdin writer for '{}' panicked", argv[0]),
             })?;
@@ -11784,8 +11553,8 @@ fn dispatch_file(
 
     // Optional explicit verb on the transport row (`transport file { path: ..., verb: "delete" }`).
     // Delete/List are structurally indistinguishable from Read (path-only inputs), so the
-    // transport — the realization — declares its own action; absent verb keeps the original
-    // content-param convention (write iff a `content` param exists, else read).
+    // transport declares its own action; absent verb keeps the content-param convention
+    // (write iff a `content` param exists, else read).
     let verb = find_property(transport.properties.clone(), "verb".to_string(), si.clone())
         .map(|verb_node| eval_expr(&verb_node, param_env, ctx).map(|v| format!("{}", v)))
         .transpose()?;
@@ -12033,10 +11802,10 @@ fn rest_basic_auth_header_value(username: &str, password: &str) -> String {
 }
 
 /// The interpreter's disposition for a rest transport `tls:` posture (extdeps.transports.rest
-/// TlsPosture). `VerifyPeer` proceeds on the stock verifier; `InsecureAcceptAnyCert` is realized
-/// emit-only (operator decision 2026-07-16) so the interpreter refuses it rather than carry a
-/// cert-verification bypass into the retiring seed; an unrecognized posture also refuses. Pure so
-/// each arm is execution-witnessable.
+/// TlsPosture). `VerifyPeer` proceeds on the stock verifier; `InsecureAcceptAnyCert` is
+/// emit-only (operator decision 2026-07-16), so the interpreter refuses it rather than carry
+/// a cert-verification bypass into the retiring seed; an unrecognized posture also refuses.
+/// Pure so each arm is execution-witnessable.
 fn rest_tls_posture_interp_disposition(posture: &str) -> Result<(), String> {
     match posture {
         "VerifyPeer" => Ok(()),
@@ -12059,40 +11828,35 @@ fn rest_auth_authority_conflict(config_auth_resolved: bool, has_auth_basic: bool
     config_auth_resolved && has_auth_basic
 }
 
-/// HAND-RUST GATE explicit deferral (review 46616), covering this function and the
-/// REST outcome/replay bridge below it through `dispatch_rest`: bounded growth in the
-/// existing seed interpreter, not a new Rust authority and not a second transport
-/// convention. Every DECISION this bridge makes is modeled — the outcome states are
-/// `extdeps.transports.rest` `RestOutcome`, the observation states are
-/// `RestExchangeObservation`, replay identity and its 0/1/many lookup are
-/// `rest_bound_invocation_eq` / `rest_exchange_fixture_lookup`, and the resolution is
-/// selected by calling `rest_exchange_resolution` back into `.dag`. What is seed-side
-/// is the projection of those decisions onto the operation's declared output record,
-/// which requires the interpreter's own `Value`/`Node` representation.
+/// HAND-RUST GATE explicit deferral (review 46616), covering this function and the REST
+/// outcome/replay bridge below it through `dispatch_rest`: bounded growth in the seed
+/// interpreter, not a new Rust authority nor a second transport convention. Every DECISION is
+/// modeled — outcome states `extdeps.transports.rest` `RestOutcome`, observation states
+/// `RestExchangeObservation`, replay identity and 0/1/many lookup `rest_bound_invocation_eq` /
+/// `rest_exchange_fixture_lookup`, resolution selected by calling `rest_exchange_resolution`
+/// back into `.dag`. Seed-side is only the projection onto the operation's declared output
+/// record, which needs the interpreter's `Value`/`Node` representation.
 ///
 /// Lane: ROADMAP `v1-interpreter-quarantine` → `v1-interpreter-delete`, counted against
 /// `v1-honest-frontier`.
 ///
-/// EARLIER, NARROWER deletion condition than the lane's, and the one that should fire
-/// first — stated in the SCOPE paragraph of `rest_outcome_note`: when the `response`
-/// block becomes the single authority for a result and `output` is DERIVED from its 2xx
-/// arm, every operation carries its outcome without declaring one. At that point the
-/// opt-in disappears and `rest_outcome_output_field` deletes outright, because there is
-/// no longer a field to detect; the `if status >= 400` raise below it deletes in the
-/// same motion, since it exists only to serve operations that declared no outcome.
-/// Checkable by execution: `rest_operation_without_outcome_still_refuses` is the witness
-/// that pins the opt-in's existence, so it is the one that must be REPLACED (not merely
-/// kept green) when the seam dissolves — a `Legacy` operation with no outcome field can
-/// no longer exist.
+/// EARLIER, NARROWER deletion condition than the lane's, which should fire first (SCOPE
+/// paragraph of the `rest_outcome_note` annotation): when the `response` block becomes the single authority
+/// and `output` is DERIVED from its 2xx arm, every operation carries its outcome without
+/// declaring one; the opt-in disappears, `rest_outcome_output_field` deletes outright (no
+/// field to detect), and the `if status >= 400` raise below it deletes in the same motion
+/// (it serves only operations declaring no outcome). Checkable by execution:
+/// `rest_operation_without_outcome_still_refuses` pins the opt-in's existence, so it must be
+/// REPLACED (not kept green) when the seam dissolves — a `Legacy` operation with no outcome
+/// field can no longer exist.
 ///
 /// The opt-in migration seam declared by extdeps.transports.rest.RestOutcome.
 ///
-/// An operation asks for transport observations by declaring an output field whose
-/// type is RestOutcome. Operations without that field retain the legacy raise-on-
-/// failure behavior until the response table itself becomes the universal result
-/// authority; see rest_outcome_note. Inspect the field's TYPE, not its spelling, so
-/// callers may choose a domain-appropriate field name without creating another
-/// transport convention.
+/// An operation asks for transport observations by declaring an output field of type
+/// RestOutcome. Operations without it keep the legacy raise-on-failure behavior until the
+/// response table becomes the universal result authority; see the rest_outcome_note annotation. Inspect the
+/// field's TYPE, not its spelling, so callers may pick a domain-appropriate name without
+/// another transport convention.
 fn rest_outcome_output_field(op_node: &Rc<Node>, ctx: &InterpContext) -> Option<String> {
     let return_type = match op_node.inferred.as_deref()? {
         InferredNode::Resolved { node } => node,
@@ -12206,15 +11970,13 @@ fn rest_auth_identity_value(
             // never persisted in, or made displayable through, a replay identity.
             //
             // The digest is minted through `v1_rt::atom_identity_hash` — the SAME fnv1a64
-            // primitive `std.content_hash.content_hash_atom` is realized by — for two
-            // load-bearing reasons: (1) the model types `RestAuthenticated.digest` as
-            // `Fnv1a64Structural`, and a `DefaultHasher` (SipHash) hex here would be a value
-            // from outside that family wearing the family's carrier (the labeling the
-            // constructor-wall note forbids); (2) an authored fixture can reproduce this
-            // digest through the modeled surface — `content_hash_atom(value:
-            // "<scheme>\0<secret>")` — so authenticated replay identities are expressible
-            // in .dag without pinning opaque literals. Pinned by
-            // `rest_authenticated_identity_matches_dag_constructed_value` in
+            // primitive realizing `std.content_hash.content_hash_atom` — because (1) the model
+            // types `RestAuthenticated.digest` as `Fnv1a64Structural`, and a `DefaultHasher`
+            // (SipHash) hex would be a value outside that family wearing its carrier (the
+            // labeling the constructor-wall note forbids); (2) an authored fixture can
+            // reproduce it via `content_hash_atom(value: "<scheme>\0<secret>")`, so
+            // authenticated replay identities are expressible in .dag without opaque literals.
+            // Pinned by `rest_authenticated_identity_matches_dag_constructed_value` in
             // src/v1/tests/src/cross_representation_equality_test.rs.
             let digest = v1_rt::atom_identity_hash(format!("{}\0{}", scheme, secret));
             Value::Variant {
@@ -12229,11 +11991,11 @@ fn rest_auth_identity_value(
     }
 }
 
-/// The runtime `Value` shape of `std.content_hash.Fnv1a64Structural` — the single mint
-/// for every seed-side crossing into a `Fnv1a64Structural`-typed carrier of the REST
-/// replay model (`RestBoundOperationInvocation.input_digest`, `RestAuthenticated.digest`).
-/// A bare `Value::Str` at either position is the model↔realization fork: fixture matching
-/// compares a record against a string and silently never matches (DESIGN §5).
+/// The runtime `Value` shape of `std.content_hash.Fnv1a64Structural` — the single mint for
+/// every seed-side crossing into a `Fnv1a64Structural`-typed carrier of the REST replay model
+/// (`RestBoundOperationInvocation.input_digest`, `RestAuthenticated.digest`). A bare
+/// `Value::Str` at either position is the model↔realization fork: fixture matching compares
+/// a record against a string and silently never matches (DESIGN §5).
 fn fnv1a64_structural_value(digest: String, ctx: &InterpContext) -> Value {
     Value::Record {
         type_name: ctx.sym("Fnv1a64Structural"),
@@ -12243,8 +12005,8 @@ fn fnv1a64_structural_value(digest: String, ctx: &InterpContext) -> Value {
 
 /// Witness export: lets the tests crate pin `rest_auth_identity_value`'s authenticated arm
 /// `==`-equal to a dag-authored `RestAuthenticated { scheme, digest: content_hash_atom(…) }`,
-/// so a drift on either side of the seam (mint shape, hash family, or preimage layout) goes
-/// red instead of silently failing every authenticated fixture match.
+/// so drift on either side (mint shape, hash family, preimage layout) goes red instead of
+/// silently failing every authenticated fixture match.
 #[cfg(any(test, feature = "interp_test_witness"))]
 pub fn rest_authenticated_identity_for_witness(token: &str, ctx: &InterpContext) -> Value {
     rest_auth_identity_value(
@@ -12300,10 +12062,10 @@ fn rest_bound_invocation_value(
             (
                 ctx.sym("input_digest"),
                 // Grounding, gunbc#7480 Phase A: RestBoundOperationInvocation.input_digest is
-                // modelled as std.content_hash Fnv1a64Structural (the structural family member
-                // content_hash_service_inputs actually produces), not as bare text. The realization
-                // must construct the SAME shape the model declares, or fixture matching compares a
-                // record against a string and silently never matches -- the model/realization fork.
+                // modelled as std.content_hash Fnv1a64Structural (the member
+                // content_hash_service_inputs produces), not bare text. The realization must
+                // construct the SAME shape, or fixture matching compares a record against a
+                // string and silently never matches -- the model/realization fork.
                 fnv1a64_structural_value(input_digest, ctx),
             ),
             (
@@ -12568,11 +12330,10 @@ fn decide_rest_exchange(
     }
 }
 
-/// Project an observation into the operation's declared output record. On a
-/// non-success outcome the ordinary body-derived fields are deliberately Null:
-/// RestOutcome is the only inhabited branch and therefore the only fact a caller
-/// can consume. On RestOk, preserve the already-decoded body fields and replace
-/// just the outcome field.
+/// Project an observation into the operation's declared output record. On a non-success
+/// outcome the body-derived fields are Null: RestOutcome is the only inhabited branch and so
+/// the only consumable fact. On RestOk, keep the decoded body fields and replace just the
+/// outcome field.
 fn attach_rest_outcome(
     mapped: Option<Value>,
     op_node: &Rc<Node>,
@@ -12624,12 +12385,10 @@ fn dispatch_rest(
 ) -> InterpResult<Value> {
     let si = ctx.si();
 
-    // An unresolvable endpoint REFUSES here rather than defaulting to "". An empty
-    // base produces the same `RelativeUrlWithoutBase` failure as a garbage one, so
-    // `unwrap_or_default()` was a second way for the same defect to arrive unlocated.
-    // An ABSENT key is its own refusal rather than the same one: "declared nothing"
-    // and "declared something unreadable" are different authoring mistakes, and the
-    // fix for each names a different edit.
+    // An unresolvable endpoint REFUSES rather than defaulting to "": an empty base fails with
+    // the same `RelativeUrlWithoutBase` as a garbage one, so `unwrap_or_default()` was a
+    // second unlocated route for one defect. An ABSENT key is its own refusal: "declared
+    // nothing" and "declared something unreadable" are different mistakes with different fixes.
     let base_url =
         match find_service_config_string(service_node, "svc_endpoint", &si, param_env, ctx) {
             Some(Ok(url)) => url,
@@ -12757,14 +12516,13 @@ fn dispatch_rest(
     .unwrap_or_else(|| "Json".to_string());
 
     // TLS posture (extdeps.transports.rest TlsPosture). Absent = VerifyPeer, the fail-closed
-    // default (ureq's stock rustls verifier). InsecureAcceptAnyCert is the modeled dissolution of
-    // curl's `-k` for self-signed BMC endpoints. Realization is EMIT-ONLY by decision (operator,
-    // 2026-07-16): emitted reqwest code realizes it via `.danger_accept_invalid_certs(true)`, but
-    // the interpreter refuses it by design rather than carry an accept-any rustls verifier into the
-    // bootstrap seed the self-host is retiring. So a present InsecureAcceptAnyCert is a typed
-    // refusal here — the interp is not a realization path for insecure-TLS ops (redfish etc. run
-    // through emitted code); it fails closed, never a silent no-op that would send under VerifyPeer
-    // while the row asked for insecure. An unrecognized posture also refuses.
+    // default (ureq's stock rustls verifier). InsecureAcceptAnyCert is the modeled dissolution
+    // of curl's `-k` for self-signed BMC endpoints, realized EMIT-ONLY (operator, 2026-07-16):
+    // emitted reqwest code uses `.danger_accept_invalid_certs(true)`; the interpreter refuses
+    // it rather than carry an accept-any rustls verifier into the retiring seed. So a present
+    // InsecureAcceptAnyCert is a typed refusal here (redfish etc. run through emitted code) —
+    // never a silent no-op sending under VerifyPeer while the row asked for insecure. An
+    // unrecognized posture also refuses.
     if let Some(tls_node) =
         find_property(transport.properties.clone(), "tls".to_string(), si.clone())
     {
@@ -12807,13 +12565,12 @@ fn dispatch_rest(
         }
     }
 
-    // Basic auth (RFC 7617), realized from a `auth_basic: { username: <input>, password: <input> }`
-    // transport-block property. This is the modeled dissolution of curl's `-u user:pass` / netrc
-    // argv — the credential never touches a process argv or a temp file, and its header value is
-    // derived in exactly one place (§3 rest_auth_value_single_authority_note). Fail-closed: a
-    // present `auth_basic` with a non-record shape, a missing username/password field, or a
-    // non-Str credential value is a typed refusal, never an unauthenticated send or a
-    // stringified-debug header.
+    // Basic auth (RFC 7617), from a `auth_basic: { username: <input>, password: <input> }`
+    // transport-block property — the modeled dissolution of curl's `-u user:pass` / netrc: the
+    // credential never touches argv or a temp file, and the header value is derived in one
+    // place (§3 the rest_auth_value_single_authority_note annotation). Fail-closed: a non-record `auth_basic`,
+    // a missing username/password field, or a non-Str credential is a typed refusal, never an
+    // unauthenticated send or a stringified-debug header.
     let mut basic_auth_header: Option<String> = None;
     if let Some(basic_node) = find_property(
         transport.properties.clone(),
@@ -12963,10 +12720,10 @@ pub fn resolve_auth(
         return AuthResolution::NoAuthDeclared;
     }
 
-    // §3: caller-supplied input token wins over ambient env var when non-empty; if the input
-    // field is absent or empty, fall through to auth_source so dual-declare services
-    // (auth_input + auth_source) get the env-var fallback.  Extract the String payload
-    // explicitly — a non-Str Value must NOT produce a stringified-debug Bearer header.
+    // §3: a non-empty caller-supplied input token wins over the ambient env var; absent or
+    // empty falls through to auth_source so dual-declare services (auth_input + auth_source)
+    // get the env-var fallback. Extract the String payload explicitly — a non-Str Value must
+    // NOT produce a stringified-debug Bearer header.
     if let Some(ref field) = input_field_name {
         if let Some(Value::Str(tok)) = param_env.lookup(ctx.sym(field)) {
             if !tok.is_empty() {
@@ -13001,20 +12758,17 @@ fn extract_string_value(node: &Rc<Node>) -> Option<String> {
     None
 }
 
-// A service-config value is EVALUATED, exactly like the `path` template two lines
-// below its only caller — one authority for "what does this config entry say", not
-// two. The previous reading had a literal fast-path plus a fallback that returned
-// `authored_name_at`, i.e. the SOURCE TEXT of the identifier. So a config written as
-// a data reference resolved to its own spelling: `endpoint: default_api_base` became
-// the string "default_api_base", which is a plausible non-empty value and a nonsense
-// base URL. Every `github.Pulls` caller in the corpus has been failing on it with
-// `RelativeUrlWithoutBase` — the service is modeled, cited, mock-covered and has
-// production callers, and its live path had never once succeeded.
+// A service-config value is EVALUATED, like the `path` template two lines below its only
+// caller — one authority for "what does this config entry say". The previous reading had a
+// literal fast-path plus a fallback returning `authored_name_at`, the SOURCE TEXT of the
+// identifier: `endpoint: default_api_base` became the string "default_api_base", a plausible
+// non-empty value and a nonsense base URL. Every `github.Pulls` caller in the corpus failed
+// on it with `RelativeUrlWithoutBase` — modeled, cited, mock-covered, with production
+// callers, and its live path had never once succeeded.
 //
-// The fallback is deleted rather than repaired because it was the thing that hid the
-// defect: "the configured literal" and "the name of something I could not resolve"
-// were both returned as `Some(String)`, so the failure could only surface downstream
-// as a malformed URL instead of as a located refusal at the config read.
+// The fallback is deleted, not repaired, because it hid the defect: "the configured literal"
+// and "the name of something unresolvable" were both `Some(String)`, so the failure surfaced
+// only downstream as a malformed URL instead of a located refusal at the config read.
 fn find_service_config_string(
     service_node: &Rc<Node>,
     key: &str,
@@ -13027,10 +12781,9 @@ fn find_service_config_string(
         if name == key {
             let val_node = field_init_node_value(prop.clone());
             let spelled = authored_name_at(si.clone(), val_node.clone());
-            // Narrowed to Str for the same reason the deleted branch narrowed to LitStr:
-            // Display renders every Value, so `format!` would turn Null into "null" and
-            // Int into its digits, and the non-empty check would wave both through as a
-            // base URL. That is this function's original defect one layer down.
+            // Narrowed to Str as the deleted branch narrowed to LitStr: Display renders every
+            // Value, so `format!` would turn Null into "null" and Int into digits, and the
+            // non-empty check would pass both as a base URL — the original defect one layer down.
             return Some(match eval_expr(&val_node, param_env, ctx) {
                 Ok(Value::Str(s)) if !s.is_empty() => Ok(s.to_string()),
                 Ok(_) => Err(spelled),
@@ -13448,11 +13201,11 @@ fn eval_toolchain_home_interference_probe_builtin(ctx: &InterpContext) -> Value 
         std::fs::copy("/bin/true", &reader_probe)
             .map_err(|e| format!("install safe probe: {e}"))?;
 
-        // The hostile tool replacement makes the discriminator deterministic. A second mutation
-        // of the same tool during exec is not portable (Linux may return ETXTBSY), so the writer
-        // mutates a neighboring bin entry inside the readers' start/finish interval. This retains
-        // real concurrent toolchain-home mutation without turning an executable-open race into
-        // fixture failure.
+        // The hostile tool replacement makes the discriminator deterministic. Mutating the same
+        // tool again during exec is not portable (Linux may return ETXTBSY), so the writer
+        // mutates a neighboring bin entry inside the readers' start/finish interval — real
+        // concurrent toolchain-home mutation without an executable-open race becoming fixture
+        // failure.
         let start = Arc::new(Barrier::new(3));
         let finish = Arc::new(Barrier::new(3));
         let spawn_reader =
@@ -13555,14 +13308,13 @@ fn eval_toolchain_home_interference_probe_builtin(ctx: &InterpContext) -> Value 
 }
 
 /// Host tap for `v2.compiler.emit_host.run_host_process` (kernel-D emit_host transport):
-/// materialize a workspace from resolved `{path, text}` rows, run the build argvs then the
-/// run argv with typed argv (no shell), and return exit/stdout/stderr/build-log as data.
-/// Wet-mode only — hermetic execution refuses instead of mocking (no fabricated receipt).
-/// The effects flip (build_transport_admission.dag: the intrinsic "runs only on an
-/// Permit verdict"): host builds are admitted by the modeled build_workspace_grant
-/// envelope, not by execution mode — the verdict is path containment, mode-independent,
-/// so the same law holds hermetic and wet. Anything but Permit is a typed refusal;
-/// the per-file escape guard below stays as the realization-side belt.
+/// materialize a workspace from resolved `{path, text}` rows, run the build argvs then the run
+/// argv with typed argv (no shell), return exit/stdout/stderr/build-log as data. Wet-mode
+/// only — hermetic refuses instead of mocking (no fabricated receipt). The effects flip
+/// (build_transport_admission.dag: "runs only on an Permit verdict"): host builds are admitted
+/// by the modeled build_workspace_grant envelope, not execution mode — the verdict is path
+/// containment, mode-independent, so one law holds hermetic and wet. Anything but Permit is a
+/// typed refusal; the per-file escape guard below stays as the realization-side belt.
 fn require_permitted_transport(
     admission_arg: Option<&Value>,
     ctx: &InterpContext,
@@ -13745,38 +13497,33 @@ fn eval_emit_host_run_transport_builtin(
 /// SCAFFOLD (§7 seed-retained HAND-RUST — authority: gunbc.roadmap_authority
 /// v1-materialization-kernel; receipt: dag/std/emit_on_demand.dag P3 kernel +
 /// extdeps.realization.emit_on_demand_host + emit_on_demand_kernel_witness_test):
-/// content-addressed emit_host transport persists workspace under workspace_dir and
-/// skips build when `.native_ready` is present. workspace_dir carries the caller's
-/// computation and input-realization segments; this boundary derives the actual
-/// resolved build-context identity and appends it before consulting the marker
-/// (the effective path modeled by
+/// content-addressed emit_host transport persists the workspace under workspace_dir and skips
+/// build when `.native_ready` is present. workspace_dir carries the caller's computation and
+/// input-realization segments; this boundary derives the resolved build-context identity and
+/// appends it before consulting the marker (the effective path modeled by
 /// extdeps.realization.emit_on_demand_host.native_cache_resolved_build_context_workspace_root).
-/// A different closure, materialized input, build argv, resolved compiler,
-/// admitted subprocess environment, or Cargo configuration MUST therefore land
-/// in a different workspace (benign-by-identity on partial writes before
-/// `.native_ready`). `.native_ready`
-/// is written only after a successful run (not after build alone): the P3 kernel's
-/// warm boundary is build+run proof, so a transient run failure must not skip
-/// rebuild on retry. Registered in 04_method.dag as
-/// emit_host_run_transport_cached; dissolve-on: witness_realization_kernel emits
-/// this builtin from v2 self-hosted transport rows (same dissolution as
+/// A different closure, materialized input, build argv, resolved compiler, admitted
+/// subprocess environment, or Cargo configuration MUST land in a different workspace
+/// (benign-by-identity on partial writes before `.native_ready`). `.native_ready` is written
+/// only after a successful run, not build alone: the P3 kernel's warm boundary is build+run
+/// proof, so a transient run failure must not skip rebuild on retry. Registered in
+/// 04_method.dag as emit_host_run_transport_cached; dissolve-on: witness_realization_kernel
+/// emits this builtin from v2 self-hosted transport rows (same dissolution as
 /// emit_host_run_transport seed handler).
-/// HAND-RUST GATE explicit deferral: this is bounded growth in the existing seed
-/// file, not a census-shrink receipt and not a new Rust authority. Its lane is
-/// ROADMAP "Make native materialization the shared execution kernel",
-/// witness-realization-plan (plan doc deleted 2026-08-28) P3/P6, with the concrete deletion row
-/// dag/gunbc/v1/v1_deletion_plan.dag ^witness_realization_kernel. Delete these
+/// HAND-RUST GATE explicit deferral: bounded growth in the existing seed file, not a
+/// census-shrink receipt nor a new Rust authority. Lane: ROADMAP "Make native materialization
+/// the shared execution kernel", witness-realization-plan (plan doc deleted 2026-08-28) P3/P6,
+/// deletion row dag/gunbc/v1/v1_deletion_plan.dag ^witness_realization_kernel. Delete these
 /// observation/apply helpers when the self-emitted transport consumes the modeled
-/// ResolvedBuildContext and the dispatcher-change, environment-change, and
-/// cold/warm agreement witnesses remain green without them.
-/// Durable re-root (realization-side config, GUNBC_RESOLVED_GRAPH_CACHE_DIR
-/// precedent): the root is WHERE the cache lives, never WHAT identifies an
-/// artifact — the content-hash path component stays the key. Opt-in; only the
-/// declared /tmp/gunbc_ scratch prefix (std.emit_on_demand root authority) is
-/// rebased, so an arbitrary caller path never silently moves. SINGLE authority
-/// for every host op on the native-cache namespace: the cached run transport AND
-/// emit_host_native_cache_evict share this mapping, so eviction always targets
-/// the same workspace the transport warms (a fork here silently un-evicts).
+/// ResolvedBuildContext and the dispatcher-change, environment-change, and cold/warm
+/// agreement witnesses remain green without them.
+/// Durable re-root (realization-side config, GUNBC_RESOLVED_GRAPH_CACHE_DIR precedent): the
+/// root is WHERE the cache lives, never WHAT identifies an artifact — the content-hash path
+/// component stays the key. Opt-in; only the declared /tmp/gunbc_ scratch prefix
+/// (std.emit_on_demand root authority) is rebased, so an arbitrary caller path never silently
+/// moves. SINGLE authority for every host op on the native-cache namespace: the cached run
+/// transport AND emit_host_native_cache_evict share this mapping, so eviction targets the
+/// workspace the transport warms (a fork here silently un-evicts).
 fn native_cache_rebase_workspace_dir(workspace_dir: String) -> String {
     match std::env::var("GUNBC_NATIVE_CACHE_ROOT") {
         Ok(root) if !root.trim().is_empty() => match workspace_dir.strip_prefix("/tmp/") {
@@ -13789,11 +13536,11 @@ fn native_cache_rebase_workspace_dir(workspace_dir: String) -> String {
     }
 }
 
-/// Evict one native-cache workspace (the witness content-change/cold legs' evictor).
-/// Lives beside the cached transport so both sides of the cache lifecycle read the
-/// SAME rebase mapping; a shell.Remove on the .dag-composed /tmp path would miss a
-/// rebased workspace and falsely leave it warm. Wet-only like the transport's other
-/// host effects; removing an absent workspace is a no-op success (idempotent evict).
+/// Evict one native-cache workspace (the witness content-change/cold legs' evictor). Beside
+/// the cached transport so both sides of the lifecycle read the SAME rebase mapping; a
+/// shell.Remove on the .dag-composed /tmp path would miss a rebased workspace and leave it
+/// falsely warm. Wet-only like the transport's other host effects; an absent workspace is a
+/// no-op success (idempotent).
 fn eval_emit_host_native_cache_evict_builtin(
     workspace_dir_arg: Option<&Value>,
     ctx: &InterpContext,
@@ -14036,42 +13783,37 @@ fn run_cached_process_spec(
     )
 }
 
-/// Host-tool program resolution for the emit-host transports (fleet incident
-/// 2026-07-22: srv2 runner env has no `cargo` on PATH — the repo-checkout build
-/// steps get it via the CI prelude, but the transport spawns from an emitted
-/// workspace with only the process env). Resolution order: bare name if it
-/// resolves on PATH; else $CARGO_HOME/bin/<name>; else $HOME/.cargo/bin/<name>;
-/// else refuse (DESIGN §5: never return the bare name and widen to ambient PATH
-/// at spawn time — the absorbing fallback hermetic-tool-provisioning-design (deleted)
-/// §1 names).
+/// Host-tool program resolution for the emit-host transports (fleet incident 2026-07-22: srv2
+/// runner env has no `cargo` on PATH — repo-checkout build steps get it via the CI prelude,
+/// but the transport spawns from an emitted workspace with only the process env). Order: bare
+/// name if it resolves on PATH; else $CARGO_HOME/bin/<name>; else $HOME/.cargo/bin/<name>;
+/// else refuse (DESIGN §5: never return the bare name and widen to ambient PATH at spawn —
+/// the absorbing fallback hermetic-tool-provisioning-design (deleted) §1 names).
 ///
-/// HAND-RUST GATE explicit deferral (review 44883): this function is seed
-/// retained, not a new resolver authority. Its lane is ROADMAP
-/// `toolchain-single-resolver` (gunbc.roadmap_authority,
+/// HAND-RUST GATE explicit deferral (review 44883): seed retained, not a new resolver
+/// authority. Lane: ROADMAP `toolchain-single-resolver` (gunbc.roadmap_authority,
 /// hermetic-tool-provisioning-design (plan doc deleted 2026-08-28) P2 — "one resolver",
-/// handback: delete `resolve_host_tool_program` and the bash ladder). This PR
-/// repairs only the fail-open terminal arm; it does not admit a parallel key or
-/// grow the census. Delete the whole function when P2's `membership_reconcile`
-/// instantiation routes emit-host spawns and the P2 RED control (unpinned tool
-/// refuses before spawn) is witnessed in `.dag`.
+/// handback: delete `resolve_host_tool_program` and the bash ladder). This PR repairs only the
+/// fail-open terminal arm; no parallel key, no census growth. Delete the whole function when
+/// P2's `membership_reconcile` instantiation routes emit-host spawns and the P2 RED control
+/// (unpinned tool refuses before spawn) is witnessed in `.dag`.
 ///
-/// A name containing `/` is treated as one of three cases:
-/// - **`./<rel>`** — the `ProducedProgram` wire format from
-///   `emit_host.dag` `process_program_name`; passed through because emit-host
-///   spawns set `.current_dir(workspace)` and the path is workspace-relative.
+/// A name containing `/` is one of three cases:
+/// - **`./<rel>`** — the `ProducedProgram` wire format from `emit_host.dag`
+///   `process_program_name`; passed through because emit-host spawns set
+///   `.current_dir(workspace)` and the path is workspace-relative.
 /// - **Absolute path** — caller-declared executable; must exist as a file.
 /// - **Other relative paths** (e.g. `target/release/foo`) — refused as
-///   `HostToolRelativePathAmbiguous`: `is_file()` is process-cwd-relative but
-///   spawn uses the workspace, so check and spawn would disagree.
-/// Bare names are ambient divination; absolute paths are declared intent, but a
-/// nonexistent path still refuses before `Command::new`.
-// Both host-tool spawn sites resolve argv[0] to a concrete path and exec THAT
-// path, so a spawn failure is a fact about the resolved file and not about the
-// spelling the author wrote. Reporting only the spelling discards the one fact
-// that discriminates the failure's mechanism -- a rustup shim, a system cargo and
-// a per-job copy fail identically under `spawn "cargo"` while needing different
-// remedies -- and the resolved path is a live local at both call sites. Carrying
-// BOTH keeps the spelling greppable and makes the next occurrence self-diagnosing.
+///   `HostToolRelativePathAmbiguous`: `is_file()` is process-cwd-relative but spawn uses the
+///   workspace, so check and spawn would disagree.
+/// Bare names are ambient divination; absolute paths are declared intent, but a nonexistent
+/// path still refuses before `Command::new`.
+// Both host-tool spawn sites resolve argv[0] to a concrete path and exec THAT path, so a
+// spawn failure is a fact about the resolved file, not the authored spelling. Reporting only
+// the spelling discards the fact discriminating the mechanism -- a rustup shim, a system
+// cargo and a per-job copy fail identically under `spawn "cargo"` with different remedies --
+// and the resolved path is a live local at both sites. Carrying BOTH keeps the spelling
+// greppable and the next occurrence self-diagnosing.
 fn host_tool_spawn_failure(
     operation: &str,
     spelling: &str,
@@ -14150,14 +13892,13 @@ struct EmitHostBuildEnvironment {
 ///
 /// THE ADMITTED NAMES ARE A DECLARED ROW, NOT A RUST PREFIX TABLE. `admitted_names` is the
 /// target's `HostTransportDescriptor.build_environment.ambient_names`
-/// (`v2.std.host_transport HostBuildEnvironment`), passed by every transport call; this
-/// function admits a variable only if its exact name is in that list. It used to
-/// admit every `RUST*` / `CARGO_*` / `*FLAGS` variable by prefix, which let the required
-/// floor's seed-build policy (`RUSTFLAGS=-D warnings`, exported for compiling the seed)
-/// reach the EMITTED program's build: four emit_host expected-red rows built clean on every
-/// flagless runner and were `RunFailed` only in CI, on `-D dead-code` (gunbc#9727). A build
-/// flag is policy; the emitted program's build environment is realization; the seed does not
-/// get to smuggle one into the other through a prefix (DESIGN §3).
+/// (`v2.std.host_transport HostBuildEnvironment`), passed by every transport call; a variable
+/// is admitted only by exact name. Prefix admission of `RUST*` / `CARGO_*` / `*FLAGS` let the
+/// required floor's seed-build policy (`RUSTFLAGS=-D warnings`) reach the EMITTED program's
+/// build: four emit_host expected-red rows built clean on every flagless runner and were
+/// `RunFailed` only in CI, on `-D dead-code` (gunbc#9727). A build flag is policy; the
+/// emitted program's build environment is realization; a prefix must not smuggle one into
+/// the other (DESIGN §3).
 fn emit_host_constructed_build_environment(admitted_names: &[String]) -> EmitHostBuildEnvironment {
     use std::os::unix::ffi::OsStrExt;
     // No seed-side veto: the row is the whole policy. CARGO_TARGET_DIR is constructed at the
@@ -14252,16 +13993,15 @@ fn emit_host_cargo_configuration_digest(
     Ok(digest)
 }
 
-/// Observe the host tools which will realize a cached build. This is deliberately
-/// inside the existing wet host-transport boundary: the `.dag` substrate owns the
-/// effective path shape, while only the host can resolve PATH/rustup shims and read
-/// executable bytes. Failure to resolve, read, or execute a version probe refuses
-/// the cached realization; substituting a nominal label would recreate srv2-05.
+/// Observe the host tools that will realize a cached build, inside the wet host-transport
+/// boundary: the `.dag` substrate owns the effective path shape, only the host can resolve
+/// PATH/rustup shims and read executable bytes. Failure to resolve, read, or execute a version
+/// probe refuses the cached realization; a nominal label would recreate srv2-05.
 ///
-/// Cargo is a driver, not the compiler identity. Its observation is therefore
-/// paired with the rustc selected by the same process environment. The transport
-/// runs under the target's declared build environment, in which no shipped row names
-/// RUSTC_WRAPPER or RUSTC_WORKSPACE_WRAPPER, so wrappers are not part of this identity.
+/// Cargo is a driver, not the compiler identity, so its observation is paired with the rustc
+/// selected by the same process environment. The transport runs under the target's declared
+/// build environment, where no shipped row names RUSTC_WRAPPER or RUSTC_WORKSPACE_WRAPPER,
+/// so wrappers are not part of this identity.
 #[derive(Debug, Clone)]
 struct ObservedToolIdentity {
     tool_name: String,
@@ -14743,14 +14483,13 @@ fn eval_builtin(
 /// `lookup_eval_builtin_inner` routes spellings before this macro matches on
 /// the generated enum variant for each arm identity.
 ///
-/// Call-site locals are passed in as identifiers (`$name`, `$positional`,
-/// `$ctx`) because macro_rules hygiene would otherwise not resolve them: arm
-/// bodies live in this definition, the values live at the expansion site.
+/// Call-site locals are passed as identifiers (`$name`, `$positional`, `$ctx`) because
+/// macro_rules hygiene would not resolve them otherwise: arm bodies live here, values at the
+/// expansion site.
 ///
-/// `name` is additionally re-bound here rather than only threaded as `$name`:
-/// two arm bodies use it as an inline format capture (`"{name} requires ..."`),
-/// which no token substitution can reach. Binding it inside THIS definition
-/// gives it the same hygiene context as the arms, so the capture resolves.
+/// `name` is also re-bound here, not only threaded as `$name`: two arm bodies use it as an
+/// inline format capture (`"{name} requires ..."`), unreachable by token substitution; binding
+/// it inside THIS definition gives it the arms' hygiene context.
 macro_rules! v1_builtin_arms {
     ($cb:ident, $name:ident, $positional:ident, $ctx:ident) => {{
         #[allow(unused_variables)]
@@ -15267,13 +15006,12 @@ macro_rules! v1_builtin_arms {
             // cannot report it — a fabricated 0 would be a Measured lie (DESIGN §5).
             arm "free_call.observed_peak_resident_bytes" { "observed_peak_resident_bytes" } => match $positional.as_slice() {
                 [] => {
-                    // Routed through the single portable reader rather than re-inlining a
-                    // procfs parse here. This arm previously carried its OWN copy of the
-                    // /proc/self/status VmHWM read — a second implementation of one
-                    // observation (section 3), and the copy that actually executes for
-                    // witnesses, so fixing only cli_run's would have left this one Linux-only.
-                    // Authority for the interface and its per-implementation units:
-                    // dag/extdeps/posix/rusage.dag with dag/extdeps/{linux,darwin}/rusage.dag.
+                    // Routed through the single portable reader. This arm previously carried
+                    // its OWN /proc/self/status VmHWM read — a second implementation of one
+                    // observation (section 3), and the copy executing for witnesses, so fixing
+                    // only cli_run's would have left this Linux-only. Authority for the
+                    // interface and per-implementation units: dag/extdeps/posix/rusage.dag with
+                    // dag/extdeps/{linux,darwin}/rusage.dag.
                     let bytes = crate::cli_run::peak_rss_vhwm_bytes().and_then(|b| i64::try_from(b).ok());
                     match bytes {
                         Some(b) => Ok(Some(Value::Int(b))),
@@ -15489,8 +15227,8 @@ macro_rules! v1_builtin_arms {
                     expect_str_list($positional.get(2).copied(), "dependency_resolution_facts")?;
                 // Reference-first exact union through the ONE dedup authority, then the
                 // import_module -> target_module rename. Both halves are the host twin of what
-                // `v2.lens.module_graph` used to compose in the interpreter; the composition moved
-                // because it measured 104,943ms against 151ms for the two leaves it combines.
+                // `v2.lens.module_graph` composed in the interpreter; moved because it measured
+                // 104,943ms against 151ms for the two leaves it combines.
                 let facts = crate::cli_run::dependency_resolution_facts(
                     &pool_roots,
                     &importer_roots,
@@ -16245,10 +15983,10 @@ pub fn flatten_counters_snapshot() -> (u64, u64) {
     FLATTEN_COUNTERS.with(|c| c.get())
 }
 
-/// Per-call-site attribution for the `free_monoid_to_vec` O(n) materialization
-/// cost, keyed by the immediate caller's `file:line` (`#[track_caller]`).
-/// Residual-hunt instrumentation for adhoc-c328b166-bca's follow-on (datetime.dag
-/// still DNF after the three parse-stage fixes) -- MEASURE FIRST before any cut.
+/// Per-call-site attribution for the `free_monoid_to_vec` O(n) materialization cost, keyed by
+/// the immediate caller's `file:line` (`#[track_caller]`). Residual-hunt instrumentation for
+/// adhoc-c328b166-bca's follow-on (datetime.dag still DNF after the three parse-stage fixes)
+/// -- MEASURE FIRST before any cut.
 pub fn flatten_by_site_snapshot() -> Vec<(&'static str, u32, u64, u64)> {
     let guard = FLATTEN_BY_SITE.lock().unwrap();
     match guard.as_ref() {
@@ -16260,11 +15998,10 @@ pub fn flatten_by_site_snapshot() -> Vec<(&'static str, u32, u64, u64)> {
     }
 }
 
-/// adhoc-c328b166-bca follow-on: `flatten_by_site_snapshot` attributes big
-/// materializations only to the interpreter-internal call site, which for the
-/// residual whale is always `eval_fold_list_native` -- useless granularity.
-/// This keys the same signal by the fold closure's .dag source span instead,
-/// so the dump names the v2-level fold that owns the cost.
+/// adhoc-c328b166-bca follow-on: `flatten_by_site_snapshot` attributes big materializations
+/// to the interpreter-internal call site, always `eval_fold_list_native` for the residual
+/// whale -- useless granularity. This keys the same signal by the fold closure's .dag source
+/// span, so the dump names the v2-level fold owning the cost.
 static BIG_FOLD_BY_DAG_SITE: std::sync::Mutex<
     Option<std::collections::HashMap<String, (u64, u64)>>,
 > = std::sync::Mutex::new(None);
@@ -16293,11 +16030,10 @@ pub fn big_fold_by_dag_site_snapshot() -> Vec<(String, u64, u64)> {
     }
 }
 
-/// adhoc-c328b166-bca follow-on: inclusive wall-time per native builtin
-/// (function-style and method-style dispatch), to localize the residual
-/// whale when it lives in native code the fold counters cannot see (the
-/// medium-fixture run showed a ~10-minute window with frozen fold counters
-/// and climbing RSS). Inclusive: a fold's time contains its closure applies.
+/// adhoc-c328b166-bca follow-on: inclusive wall-time per native builtin (function-style and
+/// method-style dispatch), to localize the residual whale in native code the fold counters
+/// cannot see (the medium-fixture run showed ~10 minutes of frozen fold counters and climbing
+/// RSS). Inclusive: a fold's time contains its closure applies.
 static BUILTIN_TIME: std::sync::Mutex<Option<std::collections::HashMap<String, (u64, u64)>>> =
     std::sync::Mutex::new(None);
 
@@ -16325,11 +16061,10 @@ pub fn builtin_time_snapshot() -> Vec<(String, u64, u64)> {
     }
 }
 
-// adhoc-c328b166-bca follow-on: self-time profile per .dag function. The
-// builtin-time table showed native builtins near zero while wall-clock
-// climbed, so the residual whale is tree-walk residency inside .dag bodies;
-// this names the bodies. Self-time = inclusive minus child call_function
-// frames (closure applies inside a body attribute to that body).
+// adhoc-c328b166-bca follow-on: self-time profile per .dag function. The builtin-time table
+// showed native builtins near zero while wall-clock climbed, so the residual whale is
+// tree-walk residency inside .dag bodies; this names them. Self-time = inclusive minus child
+// call_function frames (closure applies inside a body attribute to that body).
 thread_local! {
     static DAG_PROF_CHILD_STACK: std::cell::RefCell<Vec<u64>> =
         const { std::cell::RefCell::new(Vec::new()) };
@@ -16360,14 +16095,13 @@ pub fn dag_fn_self_time_snapshot() -> Vec<(String, u64, u64)> {
     }
 }
 
-// SCAFFOLD (adhoc-c328b166-bca residual hunt, nimble-otter-476): the innermost
-// `.dag` function name, pushed on each `call_function` entry (RAII-popped on
-// exit). `fold_list` is a builtin dispatched WITHOUT its own `call_function`
-// frame, so the top of this stack names the `.dag` function that CONTAINS the
-// fold_list call -- the O(n^2) re-fold caller the datetime DNF hunt is chasing.
-// Gated behind `GUNBC_FLATTEN_SITE_DUMP_SECS`; a no-op (no push/pop) otherwise.
-// dissolve-on: same as the recorders above -- delete with the residual-hunt
-// work item, not a permanent profiler.
+// SCAFFOLD (adhoc-c328b166-bca residual hunt, nimble-otter-476): the innermost `.dag`
+// function name, pushed on each `call_function` entry (RAII-popped). `fold_list` is a builtin
+// dispatched WITHOUT its own `call_function` frame, so the stack top names the `.dag`
+// function CONTAINING the fold_list call -- the O(n^2) re-fold caller the datetime DNF hunt
+// is chasing. Gated behind `GUNBC_FLATTEN_SITE_DUMP_SECS`; no push/pop otherwise.
+// dissolve-on: as the recorders above -- delete with the residual-hunt work item, not a
+// permanent profiler.
 thread_local! {
     static CURRENT_DAG_FN: std::cell::RefCell<Vec<Rc<str>>> =
         const { std::cell::RefCell::new(Vec::new()) };
@@ -16403,11 +16137,11 @@ fn current_dag_fn() -> String {
     })
 }
 
-/// Caller attribution for LARGE left-folds (`eval_fold_list_native`, the datetime
-/// driver: ~5k-element lists folded thousands of times). Keyed by the `.dag`
-/// function containing the `fold_list` call. Tuple = (calls, total_items,
-/// max_len, sample element `type_label`) -- the element type answers clever-koi's
-/// deep-clone-vs-Rc-bump axis (Str => deep, Variant/List => Rc-bump).
+/// Caller attribution for LARGE left-folds (`eval_fold_list_native`, the datetime driver:
+/// ~5k-element lists folded thousands of times), keyed by the `.dag` function containing the
+/// `fold_list` call. Tuple = (calls, total_items, max_len, sample element `type_label`) --
+/// the element type answers clever-koi's deep-clone-vs-Rc-bump axis (Str => deep,
+/// Variant/List => Rc-bump).
 static FOLD_CALLER_STATS: std::sync::Mutex<
     Option<std::collections::HashMap<String, (u64, u64, u64, &'static str)>>,
 > = std::sync::Mutex::new(None);
@@ -16442,13 +16176,11 @@ pub fn fold_caller_snapshot() -> Vec<(String, u64, u64, u64, &'static str)> {
     }
 }
 
-/// SCAFFOLD (adhoc-c328b166-bca residual hunt): the recorders below are
-/// opt-in, not always-on -- gated on the same env var that gates the dump
-/// (`GUNBC_FLATTEN_SITE_DUMP_SECS`), read once via OnceLock so the default
-/// (unset) production path pays a single relaxed load, not a mutex lock or
-/// HashMap/HashSet write, per call. dissolve-on: the residual-hunt work item
-/// closes (adhoc-c328b166-bca) -- delete these recorders and their call
-/// sites, they are not a permanent profiler.
+/// SCAFFOLD (adhoc-c328b166-bca residual hunt): the recorders below are opt-in, gated on the
+/// dump's env var (`GUNBC_FLATTEN_SITE_DUMP_SECS`), read once via OnceLock so the unset
+/// production path pays one relaxed load per call, not a mutex lock or HashMap/HashSet write.
+/// dissolve-on: the residual-hunt work item closes (adhoc-c328b166-bca) -- delete these
+/// recorders and their call sites, not a permanent profiler.
 #[cfg(any(test, feature = "test_hooks"))]
 static FORCE_FORENSICS_FOR_TEST: std::sync::atomic::AtomicBool =
     std::sync::atomic::AtomicBool::new(false);
@@ -16485,14 +16217,12 @@ fn record_flatten_site(items: usize, loc: &'static std::panic::Location<'static>
     entry.1 += items as u64;
 }
 
-/// Hypothesis-B instrumentation (adhoc-c328b166-bca residual hunt): every
-/// `Cons { head, tail }` pattern match against a native `Value::List` clones
-/// the receiver and `split_off(1)`s it to build `tail`. `im::Vector` makes
-/// this O(log n) once tree-ified, not the O(n) `free_monoid_to_vec` disease --
-/// but `list_tail`'s call volume across a memoized parse (one call per
-/// position, threaded through `parse_current_position`) could still sum to a
-/// superlinear total. `calls` and `receiver_len_sum` let the ladder answer
-/// that by execution instead of by reading `im`'s source.
+/// Hypothesis-B instrumentation (adhoc-c328b166-bca residual hunt): every `Cons { head, tail
+/// }` match against a native `Value::List` clones the receiver and `split_off(1)`s it for
+/// `tail`. `im::Vector` makes this O(log n) once tree-ified, not the O(n) `free_monoid_to_vec`
+/// disease -- but `list_tail`'s call volume across a memoized parse (one per position, via
+/// `parse_current_position`) could still sum superlinear. `calls` and `receiver_len_sum`
+/// answer that by execution instead of reading `im`'s source.
 static LIST_CONS_TAIL_SPLIT: (std::sync::atomic::AtomicU64, std::sync::atomic::AtomicU64) = (
     std::sync::atomic::AtomicU64::new(0),
     std::sync::atomic::AtomicU64::new(0),
@@ -16510,24 +16240,22 @@ fn record_list_cons_tail_split(receiver_len: usize) {
         .fetch_add(receiver_len as u64, std::sync::atomic::Ordering::Relaxed);
 }
 
-/// Hypothesis-A instrumentation (adhoc-c328b166-bca residual hunt): call
-/// frequency for the grammar-analysis entry points S1's brief named as
-/// candidates for a fixed, file-size-independent per-parse-module recompute
-/// (`grammar_validate_for_parse`, `compute_nullable_set`,
-/// `compute_production_first_rows`). A named, tiny watchlist (not a general
-/// profiler) so the ladder answers "how many times, relative to file size"
-/// by execution.
+/// Hypothesis-A instrumentation (adhoc-c328b166-bca residual hunt): call frequency for the
+/// grammar-analysis entry points S1's brief named as candidates for a fixed,
+/// file-size-independent per-parse-module recompute (`grammar_validate_for_parse`,
+/// `compute_nullable_set`, `compute_production_first_rows`). A tiny named watchlist, not a
+/// general profiler, answering "how many times, relative to file size" by execution.
 static CALL_FREQUENCY_WATCHLIST: std::sync::Mutex<
     Option<std::collections::HashMap<&'static str, u64>>,
 > = std::sync::Mutex::new(None);
 
 /// adhoc-c328b166-bca memo-effectiveness discriminator: distinct (grammar_digest,
-/// token_stream_digest, position, production) keys ever looked up, vs total lookups/hits.
+/// token_stream_digest, position, production) keys ever looked up vs total lookups/hits.
 /// `lookups >> distinct` with `hits == 0` is the smoking gun for "memo never serves a
-/// re-attempted span" (a real cache-effectiveness bug); `lookups == distinct` is the
-/// benign "every position visited exactly once" signature. Global (not per-InterpContext)
-/// so the periodic dump thread (GUNBC_FLATTEN_SITE_DUMP_SECS), which never enters
-/// with_active_context, can still read it -- survives a DNF, unlike ctx-scoped stats.
+/// re-attempted span"; `lookups == distinct` is the benign "every position visited once"
+/// signature. Global (not per-InterpContext) so the periodic dump thread
+/// (GUNBC_FLATTEN_SITE_DUMP_SECS), which never enters with_active_context, can read it --
+/// survives a DNF, unlike ctx-scoped stats.
 static PARSE_MEMO_LOOKUPS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 static PARSE_MEMO_HITS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 static PARSE_MEMO_DISTINCT_KEYS: std::sync::Mutex<
@@ -16691,12 +16419,11 @@ thread_local! {
     static CHILD_NANOS: Cell<u128> = const { Cell::new(0) };
     static PROFILE_FLAG: Cell<Option<bool>> = const { Cell::new(None) };
     static MEMO_VERIFY_FLAG: Cell<Option<bool>> = const { Cell::new(None) };
-    /// DIAGNOSTIC (2026-08-10 wedge RCA, behind GUNBC_INTERP_PROFILE=1 only).
-    /// `ExprCast` measured at 72.9% of daily-page render self-time at ~38.5us/cast. The
-    /// suspected shape is that a cast resolves its target type by SCANNING every item of
-    /// every module and extracting authored source text per item, once per alias-chain hop.
-    /// These three counters make the multiplier observable instead of argued: calls to the
-    /// kernel walk, lookups it drives, and items those lookups actually touch.
+    /// DIAGNOSTIC (2026-08-10 wedge RCA, behind GUNBC_INTERP_PROFILE=1 only). `ExprCast`
+    /// measured 72.9% of daily-page render self-time at ~38.5us/cast; suspected shape: a cast
+    /// resolves its target by SCANNING every item of every module, extracting source text per
+    /// item, once per alias-chain hop. These three counters make the multiplier observable:
+    /// kernel-walk calls, lookups it drives, items those lookups touch.
     static CAST_KERNEL_CALLS: Cell<u64> = const { Cell::new(0) };
     static TYPE_LOOKUP_CALLS: Cell<u64> = const { Cell::new(0) };
     static TYPE_LOOKUP_ITEMS: Cell<u64> = const { Cell::new(0) };
@@ -16746,26 +16473,23 @@ pub struct PerformanceReceipt {
     /// Wall-clock duration of the witness — the MEASUREMENT basis, and what every
     /// existing receipt column projects.
     pub wall_nanos: u128,
-    /// Thread-CPU duration of the witness — the ENFORCEMENT basis: the quantity the
-    /// fast-lane cap is actually compared against, by both the cooperative stride-poll
-    /// (`EvalBudgetExceeded`) and the completion-side backstop (`BudgetKind::Cpu`).
+    /// Thread-CPU duration of the witness — the ENFORCEMENT basis the fast-lane cap compares
+    /// against, in both the cooperative stride-poll (`EvalBudgetExceeded`) and the
+    /// completion-side backstop (`BudgetKind::Cpu`).
     ///
-    /// Carried beside `wall_nanos` rather than replacing it because they are two clocks
-    /// on one occurrence and neither substitutes for the other. Before this field existed
-    /// the enforced quantity was computed, spent on the budget decision, and dropped — so
-    /// no artifact in the tree recorded the number the cap reads, and any threshold built
-    /// on a cost receipt selected a different population than the cap kills.
+    /// Beside `wall_nanos`, not replacing it: two clocks on one occurrence, neither
+    /// substitutes. Before this field the enforced quantity was computed, spent on the budget
+    /// decision, and dropped — no artifact recorded the number the cap reads, so a threshold
+    /// built on a cost receipt selected a different population than the cap kills.
     ///
-    /// Recording both clocks is correct; what is provisional is that this one says which
-    /// clock it is only by its NAME. See `WITNESS_COST_CLOCK_BASIS_NOTE` for the ruled
-    /// model that replaces it (a basis-carrying measurement) and the dissolution trigger.
+    /// Recording both is correct; provisional is that this one names its clock only by its
+    /// NAME. See `WITNESS_COST_CLOCK_BASIS_NOTE` for the ruled replacement (a basis-carrying
+    /// measurement) and the dissolution trigger.
     ///
-    /// The useful bound, since eval is single-threaded and CPU is therefore bounded above
-    /// by wall: a recorded wall UNDER the cap proves CPU under the cap, so budget triggers
-    /// stated as "lands under the fast-lane budget" were always decidable from wall alone.
-    /// What wall cannot answer is the other direction — how near the cap a row sits, or
-    /// whether an over-cap wall figure reflects CPU at all — which is exactly the ranking
-    /// question the per-witness cost-envelope lane needs.
+    /// Since eval is single-threaded, CPU <= wall: a wall UNDER the cap proves CPU under it, so
+    /// "lands under the fast-lane budget" triggers were always decidable from wall alone. Wall
+    /// cannot answer the other direction — how near the cap a row sits, or whether an over-cap
+    /// wall reflects CPU at all — the ranking question the per-witness cost-envelope lane needs.
     pub cpu_nanos: u128,
     pub eval_self_nanos: u128,
     pub sample_count: u64,
@@ -16854,15 +16578,13 @@ pub fn eval_profile_reset() {
     CHILD_NANOS.set(0);
 }
 
-/// O(1) length for values whose native realization already tracks it,
-/// bypassing `free_monoid_to_vec`'s O(n) materialization. `parse_current_position`
-/// (v2 02_parse.dag) calls `length` on the full token stream every parse
-/// attempt; without this fast path that is an O(n) clone per attempt, an
-/// O(n^2) tax the compiled (Rust-emitted) realization never pays. Method-call
-/// `.length()` on native `Value::Str` routes through `v1_rt::string_length`
-/// so it does not flatten strings into per-codepoint `Value`s (LIST-CARRIER-0 /
-/// materialize OOM). Free-call `length`/`string_length` already avoided
-/// `free_monoid_to_vec` on `Str` via `chars().count()`; this arm closes the
+/// O(1) length for values whose native realization tracks it, bypassing
+/// `free_monoid_to_vec`'s O(n) materialization. `parse_current_position` (v2 02_parse.dag)
+/// calls `length` on the full token stream every parse attempt — an O(n) clone per attempt,
+/// an O(n^2) tax the Rust-emitted realization never pays. Method-call `.length()` on native
+/// `Value::Str` routes through `v1_rt::string_length` so strings are not flattened into
+/// per-codepoint `Value`s (LIST-CARRIER-0 / materialize OOM). Free-call
+/// `length`/`string_length` already used `chars().count()` on `Str`; this closes the
 /// method-call gap only.
 pub(crate) fn native_len(val: &Value) -> Option<i64> {
     match val {
@@ -16870,20 +16592,18 @@ pub(crate) fn native_len(val: &Value) -> Option<i64> {
         Value::Map(m) => Some(m.len() as i64),
         Value::Set(s) => Some(s.len() as i64),
         // Method-call `.length()` on a native `Value::Str` must not fall through to
-        // `free_monoid_to_vec` (which materializes one `Value` per codepoint). JSON
-        // parsing alone calls `.length()` O(n) times on the input buffer; without this
-        // arm that is O(n^2) allocations and pins multi-gigabyte RSS on ~500KB inputs
-        // (srv1 materialize_codex_runtime_bundle bisect, 2026-08-14).
+        // `free_monoid_to_vec` (one `Value` per codepoint). JSON parsing alone calls
+        // `.length()` O(n) times on the input buffer — O(n^2) allocations pinning
+        // multi-gigabyte RSS on ~500KB inputs (srv1 materialize_codex_runtime_bundle bisect,
+        // 2026-08-14).
         //
-        // LIMIT: non-ASCII .length()/.count() remains O(n) per call via the chars() walk.
-        // REASON: the ASCII fast path covers the dominant repeated-query case, and genuinely
-        // non-ASCII strings in this corpus are constructed-then-queried-once-or-never, so
-        // precomputing a codepoint count at construction would not amortize. Flag the
-        // ASCII-in-practice half explicitly AS AN ASSUMPTION about workloads, not a modeled
-        // fact — §6 is clear that "n is small here" is not time-stable.
-        // NEXT-RUNG TRIGGER: a workload that repeatedly length-queries the same non-ASCII
-        // string. If that appears, the amortization argument inverts and a carried count
-        // becomes correct.
+        // LIMIT: non-ASCII .length()/.count() stays O(n) per call via the chars() walk.
+        // REASON: the ASCII fast path covers the dominant repeated-query case, and non-ASCII
+        // strings in this corpus are constructed-then-queried-once-or-never, so a precomputed
+        // codepoint count would not amortize. The ASCII-in-practice half is AN ASSUMPTION about
+        // workloads, not a modeled fact — §6: "n is small here" is not time-stable.
+        // NEXT-RUNG TRIGGER: a workload repeatedly length-querying the same non-ASCII string;
+        // then the amortization inverts and a carried count becomes correct.
         Value::Str(s) => Some(s.string_length()),
         _ => None,
     }
@@ -16920,22 +16640,17 @@ mod native_len_tests {
 const FREE_MONOID_WELL_KNOWN_SYMS: [&str; 4] = ["Empty", "Cons", "head", "tail"];
 
 #[track_caller]
-// `free_monoid_to_vec` reaches for the ambient `active_ctx()` to resolve the
-// well-known Cons/Empty/head/tail symbols. It is called (transitively, via
-// `value_hash`/`CanonKey::hash`, for a Map key that is itself a free-monoid
-// value) from `eval_recompute_value_hash` while that computation holds an
-// immutable `ctx.symbols.borrow()` for its own symbol resolution -- so the
-// mutable `ctx.sym()` intern below would double-borrow and panic. The fallback
-// below takes a read-only lookup instead, which requires the four symbols to
-// already be interned. That is NOT "a free-monoid value must already carry
-// them" (true of the value being inspected, but no help if IT is what's about
-// to be constructed, or if lookup races an unrelated borrow) -- it is
-// guaranteed unconditionally by pre-interning them at context construction, so
-// a `.get()` miss here is a genuine invariant violation, not "not a list".
-// Reporting a miss as `None` would be DESIGN §5's empty-observation narrow:
-// treating "could not resolve, contention or a broken invariant" the same as
-// "genuinely absent" (⊥-as-ignorance conflated with ⊥-as-answer). So this
-// panics rather than silently misreporting a Cons/Empty value as not one.
+// `free_monoid_to_vec` uses the ambient `active_ctx()` to resolve the well-known
+// Cons/Empty/head/tail symbols. It is reached (via `value_hash`/`CanonKey::hash`, for a Map
+// key that is itself free-monoid) from `eval_recompute_value_hash` while that holds an
+// immutable `ctx.symbols.borrow()` -- so the mutable `ctx.sym()` intern would double-borrow
+// and panic. The fallback takes a read-only lookup, which requires the four symbols already
+// interned. That is NOT "a free-monoid value must already carry them" (no help if IT is
+// about to be constructed, or lookup races an unrelated borrow) -- it is guaranteed by
+// pre-interning at context construction, so a `.get()` miss is an invariant violation, not
+// "not a list". Reporting it as `None` would be DESIGN §5's empty-observation narrow
+// (⊥-as-ignorance conflated with ⊥-as-answer), so this panics rather than misreport a
+// Cons/Empty value as not one.
 fn free_monoid_ctx_syms(ctx: &InterpContext) -> Option<(Symbol, Symbol, Symbol, Symbol)> {
     if let Ok(mut symbols) = ctx.symbols.try_borrow_mut() {
         return Some((
@@ -17007,40 +16722,31 @@ pub(crate) fn free_monoid_to_vec(val: &Value) -> Option<Vec<Value>> {
     }
 }
 
-/// Fail-closed backstop for the model↔realization String straddle (DESIGN §5).
-/// At a String-meeting point (a free monoid concatenated with a native
-/// `Value::Str`), grounding (`free_monoid_to_string`) has already consumed every
-/// well-typed String (all-codepoint, rendered to a native `Value::Str`).
-/// Reaching the list path therefore means the operand is *not* a pure codepoint
-/// list — and if it nonetheless contains a `Char` codepoint (`Value::Int`), it
-/// is a *mixed* `[codepoint.., non-codepoint]` value: the straddle this
-/// grounding exists to dissolve. We refuse LOUDLY (turning the prior §5
-/// fail-open — `Accepted` carrying a wrong-type mixed list — into a typed error)
-/// rather than fabricate it. A homogeneous `List<String>` (all `Value::Str`)
-/// carries no codepoint and is legitimate, so it passes. This is the
-/// completeness insurance for grounding the known sites: any future un-grounded
-/// `FreeMonoid<Char>` × `Str` meeting point surfaces here as a loud error
-/// instead of silently straddling again.
+/// Fail-closed backstop for the model↔realization String straddle (DESIGN §5). At a
+/// String-meeting point (a free monoid concatenated with a native `Value::Str`), grounding
+/// (`free_monoid_to_string`) has already consumed every well-typed all-codepoint String, so
+/// reaching the list path means the operand is *not* a pure codepoint list — and if it still
+/// contains a `Char` codepoint (`Value::Int`) it is a *mixed* `[codepoint.., non-codepoint]`
+/// value, the straddle grounding dissolves. Refuse LOUDLY (the prior fail-open: `Accepted`
+/// carrying a wrong-type mixed list) rather than fabricate. A homogeneous `List<String>`
+/// carries no codepoint and passes. Completeness insurance: any future un-grounded
+/// `FreeMonoid<Char>` × `Str` meeting point surfaces here as a loud error.
 fn string_realization_straddle_detail(orig: &Value, items: &[Value]) -> Option<String> {
     // A `Value::List` is a generic collection, never a straddled String (see
-    // `free_monoid_to_string`); its `Int` elements are genuine data, so a `Str`
-    // appended to it is a legitimate heterogeneous element, not a straddle. Only
-    // a `Cons`-chain / `Str`-derived flattening carries codepoint semantics.
+    // `free_monoid_to_string`); its `Int` elements are data, so an appended `Str` is a
+    // legitimate heterogeneous element. Only a `Cons`-chain / `Str`-derived flattening carries
+    // codepoint semantics.
     //
-    // OPEN THREAD (DESIGN §6 residue — named, not silently shipped): this
-    // `Value::List` exemption makes the wall a RATCHET WITH A NAMED HOLE, not a
-    // universal value-level wall. The `"chars"` method (this file) materializes
-    // a string as a `Value::List` of codepoint `Int`s, structurally identical to
-    // a generic `Int` list — so a `.chars()`-result straddled with a native
-    // `Str` would be exempted here and fail open (the original bug, uncaught).
-    // This is undecidable at the Value level (a codepoint list and a generic
-    // `Int` list are element-identical), so it is honest §6 residue, the
-    // `Value::Null` pattern. LATENT today: no `.dag` program evaluates the
-    // interpreter `chars` method into a concat/`+` with a `Str` (the two
-    // `.chars()` rows in `languages.dag` / `rust/emit.dag` are emit *templates*,
-    // not interpreter calls). DISSOLVES WHEN `.chars()` / `Char` is regrounded so
-    // a codepoint-sequence is distinguishable from a generic `Int` list at the
-    // realization level (the grounding root, sibling to Int↔Nat #5428).
+    // OPEN THREAD (DESIGN §6 residue, named): this `Value::List` exemption makes the wall a
+    // RATCHET WITH A NAMED HOLE. The `"chars"` method (this file) materializes a string as a
+    // `Value::List` of codepoint `Int`s, identical to a generic `Int` list — so a `.chars()`
+    // result straddled with a native `Str` would be exempted and fail open (the original bug).
+    // Undecidable at the Value level (element-identical), so honest §6 residue, the
+    // `Value::Null` pattern. LATENT today: no `.dag` program evaluates the interpreter `chars`
+    // method into a concat/`+` with a `Str` (the two `.chars()` rows in `languages.dag` /
+    // `rust/emit.dag` are emit *templates*). DISSOLVES WHEN `.chars()` / `Char` is regrounded
+    // so a codepoint-sequence is distinguishable from a generic `Int` list at the realization
+    // level (the grounding root, sibling to Int↔Nat #5428).
     if matches!(orig, Value::List(_)) {
         return None;
     }
@@ -17054,29 +16760,24 @@ fn string_realization_straddle_detail(orig: &Value, items: &[Value]) -> Option<S
     }
 }
 
-/// String grounding (DESIGN §1/§2/§7, model↔realization fork): render a
-/// string-like free monoid (`String = FreeMonoid<Char>`, `Char = Nat`) to its
-/// native realization. A native `Value::Str` is already grounded; a modeled
-/// `Empty`/`Cons` chain or `List` is a String **only** when every element is a
-/// `Char` codepoint (`Value::Int`). A `Value::Str` *element* (not the whole
-/// value) means `List<String>`, not `String`, so it returns `None` — that
-/// discriminator is what keeps `List<String>` push/concat from collapsing into
-/// one string. Used so a folded String concatenation realizes as a single
-/// `Value::Str` instead of straddling as a mixed `[codepoint.., Str]` list that
-/// fails `==` against a native String oracle (the held emit-weld debt).
+/// String grounding (DESIGN §1/§2/§7, model↔realization fork): render a string-like free
+/// monoid (`String = FreeMonoid<Char>`, `Char = Nat`) to its native realization. A native
+/// `Value::Str` is already grounded; a modeled `Empty`/`Cons` chain or `List` is a String
+/// **only** when every element is a `Char` codepoint (`Value::Int`). A `Value::Str` *element*
+/// means `List<String>`, so it returns `None` — the discriminator keeping `List<String>`
+/// push/concat from collapsing into one string. Lets a folded String concatenation realize
+/// as one `Value::Str` instead of a mixed `[codepoint.., Str]` list failing `==` against a
+/// native String oracle (the held emit-weld debt).
 pub(crate) fn free_monoid_to_string(val: &Value) -> Option<String> {
     if let Value::Str(s) = val {
         return Some(s.to_string());
     }
-    // A `Value::List` is a generic ordered collection (the `[1]`/`[1,2,3]` list
-    // literal representation), NEVER a modeled `String`. A modeled
-    // `FreeMonoid<Char>` realizes as an `Empty`/`Cons` `Value::Variant` chain.
-    // Treating a `List` as string-like would collapse `List<Int>` append/`+`/
-    // concat into one string — exactly what the `list_free_monoid_chokepoint`
-    // tests forbid (`[1] + "ab"` stays length 2). Only a native `Str` or a
-    // `Cons`-chain is a String candidate; representation is the discriminator
-    // the Value level affords (a `List<Int>` and a codepoint `Cons`-chain are
-    // otherwise element-identical).
+    // A `Value::List` is a generic ordered collection (the `[1]`/`[1,2,3]` literal
+    // representation), NEVER a modeled `String`; a `FreeMonoid<Char>` realizes as an
+    // `Empty`/`Cons` `Value::Variant` chain. Treating a `List` as string-like would collapse
+    // `List<Int>` append/`+`/concat into one string — what the `list_free_monoid_chokepoint`
+    // tests forbid (`[1] + "ab"` stays length 2). Only a native `Str` or a `Cons`-chain is a
+    // String candidate; representation is the only discriminator the Value level affords.
     if matches!(val, Value::List(_)) {
         return None;
     }
@@ -17434,39 +17135,34 @@ fn expect_int(val: Option<&Value>, context: &str) -> InterpResult<i64> {
 
 /// Order map keys exactly as the EMITTED Rust realization orders them.
 ///
-/// The emitted realization is `v1_rt::sorted_map_keys<K: Ord + Clone, V>` --
-/// `map_keys(m)` followed by `Vec::sort()`, i.e. `K`'s own `Ord`. This arm is the
-/// interpreter's side of that one primitive, so "exists" is not the bar: the ORDER
-/// has to be the same order, or the two realizations of one `.dag` program disagree.
+/// The emitted realization is `v1_rt::sorted_map_keys<K: Ord + Clone, V>` -- `map_keys(m)`
+/// then `Vec::sort()`, i.e. `K`'s own `Ord`. This arm is the interpreter's side of that one
+/// primitive, so the ORDER must be the same order, or the two realizations of one `.dag`
+/// program disagree.
 ///
-/// So the key kinds admitted here are exactly the ones whose interpreter carrier has a
-/// proven-identical `Ord` in the emitted realization: `Value::Str(Rc<str>)` against
-/// `String` (both byte-lexicographic over the same UTF-8), `Value::Int(i64)` against
-/// `i64`, `Value::Bool` against `bool` (`false < true`). Everything else REFUSES with a
-/// typed diagnostic rather than falling back to some other order:
+/// Admitted key kinds are exactly those whose interpreter carrier has a proven-identical
+/// `Ord` in the emitted realization: `Value::Str(Rc<str>)` vs `String` (both
+/// byte-lexicographic over UTF-8), `Value::Int(i64)` vs `i64`, `Value::Bool` vs `bool`
+/// (`false < true`). Everything else REFUSES with a typed diagnostic:
 ///
-/// * `Value::Float` -- `f64` is not `Ord`, so the emitted call does not compile at all.
-///   Answering here would be an order the other realization cannot even express.
-/// * records, variants, lists, sets, maps, null -- the emitted order would come from a
-///   `derive(Ord)` this arm cannot observe (declaration order of variants, field order),
-///   so any order chosen here is a guess.
-/// * a heterogeneous key set -- `HashMap<K, V>` has one `K`, so there is no emitted
-///   ordering to agree with.
+/// * `Value::Float` -- `f64` is not `Ord`, so the emitted call does not compile; an order
+///   here is one the other realization cannot express.
+/// * records, variants, lists, sets, maps, null -- the emitted order comes from a
+///   `derive(Ord)` this arm cannot observe (variant declaration order, field order), so any
+///   order here is a guess.
+/// * a heterogeneous key set -- `HashMap<K, V>` has one `K`, so no emitted ordering exists.
 ///
-/// A fabricated order would be the worst shape of wrong: `sorted_map_keys` exists to make
-/// a fold deterministic, so a silently-different permutation produces a plausible,
-/// stable, WRONG artifact (DESIGN.md 5 -- no fabricated plausible output).
+/// A fabricated order is the worst wrong: `sorted_map_keys` exists to make a fold
+/// deterministic, so a silently-different permutation is a plausible, stable, WRONG artifact
+/// (DESIGN.md 5 -- no fabricated plausible output).
 ///
-/// SO `cmp_values` IS DELIBERATELY NOT REUSED HERE, and that is the load-bearing choice
-/// rather than an oversight. `cmp_values` answers `Ordering::Equal` for every pair it does
-/// not recognise -- mismatched kinds, records, variants, lists -- which is exactly the
-/// silent permutation above: a total comparator that never refuses produces *an* order for
-/// key sets the emitted realization cannot even represent, and `sort_by` with a
-/// non-total-order comparator leaves those keys in whatever relative position the map
-/// iteration handed them, so the answer is not merely different from Rust's, it is not
-/// stable across runs either. Refusing is the only honest arm for those kinds. (`sort_by`'s
-/// own use of `cmp_values` is a separate question with a separate caller contract and is
-/// not touched here.)
+/// SO `cmp_values` IS DELIBERATELY NOT REUSED HERE. It answers `Ordering::Equal` for every
+/// pair it does not recognise -- mismatched kinds, records, variants, lists -- exactly the
+/// silent permutation above: a never-refusing comparator produces *an* order for key sets
+/// the emitted realization cannot represent, and `sort_by` with a non-total-order comparator
+/// leaves those keys wherever map iteration put them, so the answer is not even stable across
+/// runs. Refusing is the only honest arm. (`sort_by`'s own use of `cmp_values` is a separate
+/// caller contract, untouched here.)
 fn sorted_map_keys_in_emitted_order(
     keys: Vec<Value>,
     what: &str,
@@ -17683,11 +17379,10 @@ mod shell_completion_trace_tests {
 
     #[test]
     fn at_normal_a_failing_effect_surfaces_its_command_a_passing_one_is_silent() {
-        // Composes the .dag disposition (ExpectSuccess × exit → the Normal four
-        // corners via the uninstalled fallback that mirrors Normal) with the
-        // failure-surfaces predicate. GREEN: passing → SummarizeCounts → silent.
-        // Discriminating RED: failing → SurfaceContent → Failed line must fire
-        // even with empty stderr (self-describing `$ argv`).
+        // Composes the .dag disposition (ExpectSuccess × exit → the Normal four corners via
+        // the uninstalled fallback mirroring Normal) with the failure-surfaces predicate.
+        // GREEN: passing → SummarizeCounts → silent. Discriminating RED: failing →
+        // SurfaceContent → Failed line fires even with empty stderr (self-describing `$ argv`).
         assert!(!shell_failure_surfaces(effect_stream_disposition(
             ExpectedOutcome::ExpectSuccess,
             0
@@ -17732,12 +17427,10 @@ mod shell_completion_trace_tests {
 
     #[test]
     fn effect_stream_policy_mirror_matches_dag_authority() {
-        // Mirror pin for the uninstalled fallback: these are the six corners the
-        // .dag witness `w_shell_trace_stream_policy_projects_the_four_corners`
-        // asserts at Normal verbosity, and the guard literal
-        // `extdeps.github.log_annotations.subject_text_line_guard` publishes. If the
-        // authority moves and this does not, the two go red together rather than
-        // drifting silently.
+        // Mirror pin for the uninstalled fallback: the six corners the .dag witness
+        // `w_shell_trace_stream_policy_projects_the_four_corners` asserts at Normal verbosity,
+        // and the guard literal `extdeps.github.log_annotations.subject_text_line_guard`
+        // publishes. If the authority moves and this does not, both go red together.
         assert_eq!(
             EFFECT_STREAM_POLICY_FALLBACK,
             [
@@ -17796,10 +17489,9 @@ mod shell_completion_trace_tests {
 
     #[test]
     fn hermetic_checkout_input_admits_an_absent_path_under_root() {
-        // THE COMMIT DETERMINES ABSENCE. A repository that does not contain a file is as
-        // deterministic an input as one that does, so an absent path under the root confirms
-        // and the read runs wet -- returning `success: false` on its own rather than off a
-        // canned response.
+        // THE COMMIT DETERMINES ABSENCE: a repository lacking a file is as deterministic an
+        // input as one containing it, so an absent path under the root confirms and the read
+        // runs wet -- `success: false` on its own, not off a canned response.
         let dir =
             std::env::temp_dir().join(format!("hermetic-carveout-absent-{}", std::process::id()));
         std::fs::create_dir_all(dir.join("dag/test/fixture")).unwrap();
@@ -17819,20 +17511,18 @@ mod shell_completion_trace_tests {
     }
 
     // GATED ON UNIX BECAUSE AUTHORING THE RED REQUIRES A SYMLINK. `std::os::unix::fs::symlink`
-    // is the only API here that can construct the present-but-unresolvable state this test
-    // discriminates, and an unguarded reference breaks test COMPILATION on non-unix targets
-    // (review 57247). The guard is on the test, not on the wall: the peel loop's symlink
-    // refusal in `hermetic_checkout_input_disposition_under` is unconditional, so no platform
-    // loses the refusal -- only this platform loses the ability to author its witness.
+    // is the only API that constructs the present-but-unresolvable state, and an unguarded
+    // reference breaks test COMPILATION on non-unix targets (review 57247). The guard is on
+    // the test, not the wall: the peel loop's symlink refusal in
+    // `hermetic_checkout_input_disposition_under` is unconditional; only the witness is lost.
     #[cfg(unix)]
     #[test]
     fn hermetic_checkout_refuses_a_dangling_symlink_rather_than_peeling_it_as_absent() {
-        // A DANGLING SYMLINK IS PRESENT AND UNRESOLVABLE, WHICH IS NOT ABSENCE.
-        // `canonicalize` follows links, so a link with a missing target returns the SAME
-        // NotFound as a name with nothing behind it. Peeling it would climb past an entry
-        // that really exists, admit the path, and dispatch a real host read whose result
-        // CHANGES IF THE TARGET LATER APPEARS -- host state entering a hermetic run.
-        // Reported as BLOCKING in review 57219 against the first cut of this repair.
+        // A DANGLING SYMLINK IS PRESENT AND UNRESOLVABLE, WHICH IS NOT ABSENCE. `canonicalize`
+        // follows links, so a missing target returns the SAME NotFound as an empty name.
+        // Peeling it would climb past a real entry, admit the path, and dispatch a host read
+        // whose result CHANGES IF THE TARGET LATER APPEARS -- host state in a hermetic run.
+        // BLOCKING in review 57219 against the first cut of this repair.
         let dir =
             std::env::temp_dir().join(format!("hermetic-carveout-dangling-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
@@ -17883,10 +17573,9 @@ mod shell_completion_trace_tests {
     #[test]
     fn hermetic_checkout_absent_paths_keep_the_three_dispositions_distinct() {
         // THE DISCRIMINATING RED FOR THE ABSENT-PATH REPAIR. Admitting absent-under-root is
-        // only correct if the other two refusals survive it AT THEIR OWN MESSAGES. If an
-        // absent out-of-root path or an absent `.git` path started confirming, the repair
-        // would have moved the conflation rather than removed it -- and every assertion here
-        // is on a path that DOES NOT EXIST, which is exactly the case the old
+        // correct only if the other two refusals survive AT THEIR OWN MESSAGES; if an absent
+        // out-of-root or `.git` path started confirming, the repair moved the conflation rather
+        // than removed it. Every assertion is on a path that DOES NOT EXIST -- the case the old
         // canonicalize-the-leaf form could not tell apart.
         let dir =
             std::env::temp_dir().join(format!("hermetic-carveout-absent3-{}", std::process::id()));
@@ -18296,8 +17985,8 @@ mod wall_deadline_kill_tests {
     /// REGRESSION CONTROL ON EXISTING BEHAVIOR, not new coverage. Against the paired
     /// `arm_eval_deadline` / `clear_eval_deadline` calls this replaces, the second assertion
     /// fails: `arm_*` overwrites with a fresh baseline, so an inner scope asking for a LONGER
-    /// limit wins and extends its caller's bound. Asserting only the tightening direction would
-    /// pass against that inverted behavior and prove nothing.
+    /// limit extends its caller's bound. Asserting only the tightening direction would pass
+    /// against that and prove nothing.
     #[test]
     fn nested_budget_scope_can_only_tighten() {
         let ctx = wet_ctx();
@@ -18323,12 +18012,11 @@ mod wall_deadline_kill_tests {
         }
     }
 
-    /// PINS THE DEFECT THE GUARD EXISTS FOR, so `nested_budget_scope_can_only_tighten` cannot be
-    /// mistaken for decoration. These are the raw paired calls, exercised directly: a nested
-    /// `arm_eval_deadline` with a LOOSER limit replaces the tighter outer bound, and a nested
-    /// `clear_eval_deadline` disarms it entirely. Both are the fail-open direction and both are
-    /// silent. If either assertion ever flips, the raw calls have been fixed and the guard's
-    /// tightening logic can be re-examined; until then this is why callers must not use them
+    /// PINS THE DEFECT THE GUARD EXISTS FOR, so `nested_budget_scope_can_only_tighten` is not
+    /// decoration. The raw paired calls, directly: a nested `arm_eval_deadline` with a LOOSER
+    /// limit replaces the tighter outer bound, and a nested `clear_eval_deadline` disarms it.
+    /// Both fail-open, both silent. If either assertion flips, the raw calls have been fixed
+    /// and the guard's tightening can be re-examined; until then callers must not use them
     /// directly around a nestable evaluation.
     #[test]
     fn raw_arm_and_clear_compose_fail_open() {
@@ -18350,10 +18038,10 @@ mod wall_deadline_kill_tests {
         );
     }
 
-    /// The poisoning case. `gunbc serve` shares one `InterpContext` across every request, and the
-    /// CPU baseline is captured at arm time — so a deadline that survived its scope would measure
-    /// the NEXT request against a baseline already spent and refuse it immediately. That is worse
-    /// than no bound: it converts one stuck request into a permanently broken process.
+    /// The poisoning case. `gunbc serve` shares one `InterpContext` across requests and the CPU
+    /// baseline is captured at arm time, so a deadline surviving its scope measures the NEXT
+    /// request against a spent baseline and refuses it immediately — worse than no bound: one
+    /// stuck request becomes a permanently broken process.
     #[test]
     fn budget_scope_restores_prior_state_on_exit() {
         let ctx = wet_ctx();
@@ -18463,10 +18151,10 @@ mod wall_deadline_kill_tests {
         )
         .expect_err("over-budget sleep must refuse");
         let elapsed_ms = started.elapsed().as_millis() as u64;
-        // The KERNEL result is caller-agnostic: this helper is generic shell-wait machinery, and
-        // the wall budget being armed only by the witness lane today is a fact about its callers,
-        // not about the bound. The witness lane maps this into its own refusal at the claim
-        // boundary (`map_budget_error_to_witness_refusal`), which is where its guidance text lives.
+        // The KERNEL result is caller-agnostic: this is generic shell-wait machinery, and the
+        // wall budget being armed only by the witness lane today is a fact about callers, not
+        // the bound. The witness lane maps it into its own refusal at the claim boundary
+        // (`map_budget_error_to_witness_refusal`), where its guidance text lives.
         match err {
             InterpError::EvaluationBudgetExceeded {
                 clock,
@@ -18700,11 +18388,10 @@ mod argv_arg_limit_test {
         assert!(argv_arg_limit_refusal(&many_small, limit).is_none());
     }
 
-    // Wiring proof: `dispatch_shell` must reach `argv_arg_limit_refusal` on the
-    // evaluated argv and refuse BEFORE any exec branch. Without that guard arm the
-    // same transport would proceed to `Command::spawn` and surface an opaque spawn
-    // error instead of `ArgvExceedsHostArgMax` (RED control — predicate-only tests
-    // do not exercise this call path).
+    // Wiring proof: `dispatch_shell` must reach `argv_arg_limit_refusal` on the evaluated argv
+    // and refuse BEFORE any exec branch; without the guard arm it proceeds to `Command::spawn`
+    // and surfaces an opaque spawn error instead of `ArgvExceedsHostArgMax` (RED control —
+    // predicate-only tests do not exercise this path).
     #[test]
     fn dispatch_shell_wiring_refuses_oversized_argv() {
         let ctx = argv_limit_test_context();
@@ -18755,11 +18442,10 @@ mod argv_arg_limit_test {
     }
 }
 
-/// Interim seed witnesses for the fail-closed arms above. HAND-RUST GATE
-/// explicit deferral (review 44883): not a permanent test surface — delete with
-/// `resolve_host_tool_program` when ROADMAP `toolchain-single-resolver` lands
-/// (hermetic-tool-provisioning-design (deleted) P2 RED: unpinned tool refuses before
-/// spawn, witnessed in `.dag`).
+/// Interim seed witnesses for the fail-closed arms above. HAND-RUST GATE explicit deferral
+/// (review 44883): not permanent — delete with `resolve_host_tool_program` when ROADMAP
+/// `toolchain-single-resolver` lands (hermetic-tool-provisioning-design (deleted) P2 RED:
+/// unpinned tool refuses before spawn, witnessed in `.dag`).
 #[cfg(test)]
 mod resolve_host_tool_program_tests {
     use super::host_tool_spawn_failure;
@@ -18807,9 +18493,9 @@ mod resolve_host_tool_program_tests {
     }
 
     // The root carries the process id: `temp_dir()` is the HOST's shared /tmp on a self-hosted
-    // runner, so a fixed name collides with the directory another runner slot (another uid)
-    // left behind, and the write below then refuses with PermissionDenied on a test that never
-    // touched that directory (observed on the first CI run of this crate's unit tests).
+    // runner, so a fixed name collides with a directory another runner slot (another uid) left
+    // behind, and the write refuses PermissionDenied on a test that never touched it (observed
+    // on the first CI run of this crate's unit tests).
     fn isolated_probe_root(label: &str) -> PathBuf {
         std::env::temp_dir().join(format!(
             "gunbc_resolve_host_tool_{label}_{}",
@@ -18906,10 +18592,9 @@ mod resolve_host_tool_program_tests {
         }
     }
 
-    // The discriminating property: the spelling and the resolved path are
-    // DIFFERENT strings, and the message must carry both. Asserting only that the
-    // message mentions "cargo" would pass against the old text, which carried the
-    // spelling alone -- so the resolved path is asserted as a distinct substring.
+    // The discriminating property: spelling and resolved path are DIFFERENT strings and the
+    // message must carry both. Asserting only "cargo" would pass against the old
+    // spelling-only text, so the resolved path is asserted as a distinct substring.
     #[test]
     fn host_tool_spawn_failure_names_the_resolved_path_not_only_the_spelling() {
         let err = std::io::Error::from_raw_os_error(26); // ETXTBSY
@@ -18960,11 +18645,10 @@ mod resolve_host_tool_program_tests {
 mod process_termination_tests {
     use super::process_termination_label;
 
-    /// The host transport observes a child; a child killed by a signal has NO exit
-    /// code. The seed used to render `.code().unwrap_or(-1)` for both, so an
-    /// OOM-killed cargo build and a process that chose to exit -1 produced the same
-    /// bytes. This is the discriminating control for that split: the same raw wait
-    /// status that carries a signal must never render as an exit.
+    /// A child killed by a signal has NO exit code. The seed rendered `.code().unwrap_or(-1)`
+    /// for both, so an OOM-killed cargo build and a process exiting -1 produced the same
+    /// bytes. Discriminating control for that split: a raw wait status carrying a signal must
+    /// never render as an exit.
     #[cfg(unix)]
     #[test]
     fn signal_death_is_not_flattened_to_an_exit_code() {
@@ -19001,18 +18685,16 @@ mod process_termination_tests {
 
 /// Discriminating controls for the `RcStr` string carrier (STRING-INDEX-0).
 ///
-/// The carrier's whole point is that `char_at`/`substring`/`string_length` read a
-/// PRECOMPUTED ascii flag instead of testing the string per call. That makes exactly one
-/// new way to be wrong: taking the byte path over text where byte index is not code-point
-/// index. These tests are the RED for that: they compare every carrier method against the
-/// free `v1_rt` function it shadows -- the pre-carrier semantics -- over multibyte text at
-/// every index, so a carrier that trusted a wrong flag, or that took the byte path
-/// unconditionally, disagrees at the first non-ASCII code point.
+/// The carrier's point is that `char_at`/`substring`/`string_length` read a PRECOMPUTED
+/// ascii flag instead of testing per call, which adds exactly one way to be wrong: the byte
+/// path over text where byte index is not code-point index. These tests are that RED: each
+/// carrier method against the free `v1_rt` function it shadows (pre-carrier semantics) over
+/// multibyte text at every index, so a wrong flag or an unconditional byte path disagrees at
+/// the first non-ASCII code point.
 ///
-/// The flag itself is unforgeable rather than checked: `RcStr`'s field is private and its
-/// only producer is `RcStr::new`, so "carrier says ASCII, string is not" has no
-/// constructor to write a test against (DESIGN §4b -- structurally impossible, so no probe
-/// can author its RED).
+/// The flag is unforgeable, not checked: `RcStr`'s field is private and `RcStr::new` its
+/// only producer, so "carrier says ASCII, string is not" has no constructor (DESIGN §4b --
+/// structurally impossible, so no probe can author its RED).
 #[cfg(test)]
 mod rc_str_carrier_tests {
     use super::*;
@@ -19217,12 +18899,11 @@ mod sorted_map_keys_order_tests {
     use crate::v1_rt;
     use im::HashMap;
 
-    /// The discriminating key set. Every pair here separates Rust's byte-lexicographic
-    /// `Ord` from an order a "sorted" implementation might plausibly produce instead:
-    /// `"B" < "a"` fails under case-insensitive collation, `"Z10" < "Z9"` fails under
-    /// natural/numeric sorting, and `"z"` before `"\u{e9}"` fails under a Unicode
-    /// collation that files `é` next to `e`. So an arm that merely *returns something
-    /// sorted* goes red here; only the emitted realization's own order passes.
+    /// The discriminating key set: every pair separates Rust's byte-lexicographic `Ord` from
+    /// a plausible alternative — `"B" < "a"` fails case-insensitive collation, `"Z10" < "Z9"`
+    /// fails natural/numeric sorting, `"z"` before `"\u{e9}"` fails a Unicode collation filing
+    /// `é` next to `e`. An arm that merely *returns something sorted* goes red; only the
+    /// emitted realization's order passes.
     const KEYS: [&str; 7] = ["b", "B", "Z9", "Z10", "\u{e9}", "z", "a"];
 
     fn interpreted() -> std::vec::Vec<String> {
@@ -19250,11 +18931,10 @@ mod sorted_map_keys_order_tests {
         assert_eq!(interpreted(), emitted);
     }
 
-    /// The order the two realizations agree ON, spelled out once. This is the RED control
-    /// for the oracle above: if `v1_rt::sorted_map_keys` and this arm ever drifted TOGETHER
-    /// (say both to a case-insensitive order), the equality test would still pass while the
-    /// answer had changed. Byte order is a fact about UTF-8, so it can be stated
-    /// independently of either implementation.
+    /// The order the two realizations agree ON, spelled out once — RED control for the oracle
+    /// above: if `v1_rt::sorted_map_keys` and this arm drifted TOGETHER (say to
+    /// case-insensitive), the equality test would still pass. Byte order is a fact about
+    /// UTF-8, statable independently of either implementation.
     #[test]
     fn agreed_order_is_utf8_byte_lexicographic() {
         let expected: std::vec::Vec<String> = ["B", "Z10", "Z9", "a", "b", "z", "\u{e9}"]
@@ -19264,10 +18944,9 @@ mod sorted_map_keys_order_tests {
         assert_eq!(interpreted(), expected);
     }
 
-    /// `sorted_map_keys` exists to make a fold deterministic, so the output must be a
-    /// function of the key SET alone. `HashMap` iteration order is unspecified in both
-    /// realizations, so this is the control that the sort -- not the map's incidental
-    /// traversal -- is what produces the answer.
+    /// `sorted_map_keys` makes a fold deterministic, so the output must be a function of the
+    /// key SET alone. `HashMap` iteration order is unspecified in both realizations; this
+    /// controls that the sort, not the incidental traversal, produces the answer.
     #[test]
     fn order_is_independent_of_insertion_order_in_both_realizations() {
         let mut forward: HashMap<String, i64> = HashMap::new();

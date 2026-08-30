@@ -7,12 +7,21 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 import gunbc.seed_growth { SeedGrowthJustification }
 import gunbc.roadmap_model { RoadmapNodeId }
 
-data class_b_overlay_note: String = "Derives the Class B stripped entry overlay from the live rust_test_fixtures.dag at execution time (#7817 strip_import_block property, moved to the executing transport/witness path). No checked-in copy of the live corpus file — the overlay is read from disk, the declared rust import block removed under a typed strip receipt, and written under a caller-supplied overlay root so pool-membership coincidence cannot drift silently."
+// Derives the Class B stripped entry overlay from the live rust_test_fixtures.dag at execution time
+// (#7817 strip_import_block property, moved to the executing transport/witness path). No checked-in
+// copy of the live corpus file — the overlay is read from disk, the declared rust import block
+// removed under a typed strip receipt, and written under a caller-supplied overlay root so
+// pool-membership coincidence cannot drift silently.
 
 data class_b_entry_rel: String = "src/v2/extdeps/languages/rust_test_fixtures.dag"
 data class_b_rust_import_prefix: String = "import v2.extdeps.languages.rust"
 
-data class_b_declared_import_pool_roots_note: String = "Minimal explicit pool for Class B rows 1-2 (#7835): the declared-import-closure footprint for rust_test_fixtures — entry plus v2.extdeps.languages.rust and its transitive std/extdeps dependencies — NOT witness_layer_roots. Stronger control: binding is observed with no unrelated ambient modules that could accidentally supply rust symbols; row 2 prepends fixtures/class_b_import_closure/perturbation_overlay to this baseline only. Rows 3-4 on the transport gate keep witness_layer_roots for stripped-entry pool-coincidence pressure."
+// Minimal explicit pool for Class B rows 1-2 (#7835): the declared-import-closure footprint for
+// rust_test_fixtures — entry plus v2.extdeps.languages.rust and its transitive std/extdeps
+// dependencies — NOT witness_layer_roots. Stronger control: binding is observed with no unrelated
+// ambient modules that could accidentally supply rust symbols; row 2 prepends
+// fixtures/class_b_import_closure/perturbation_overlay to this baseline only. Rows 3-4 on the
+// transport gate keep witness_layer_roots for stripped-entry pool-coincidence pressure.
 
 data class_b_accidental_coverage_seed_growth_justification: SeedGrowthJustification = SeedGrowthJustification {
   hand_authored_declarations: [
