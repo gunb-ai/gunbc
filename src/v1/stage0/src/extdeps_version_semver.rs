@@ -151,14 +151,14 @@ pub fn semver_compare(a: Rc<SemVerVersion>, b: Rc<SemVerVersion>) -> Ordering {
     }
 }
 
-pub fn semver_identifier_label(id: Rc<SemVerIdentifier>) -> String {
+pub fn semver_identifier_label(id: Rc<SemVerIdentifier>) -> std::string::String {
     match (*id.clone()).clone() {
         SemVerIdentifier::SemVerNumericIdentifier { value: v, .. } => format!("{}", v.clone()),
         SemVerIdentifier::SemVerAlphanumericIdentifier { label: s, .. } => s.clone(),
     }
 }
 
-pub fn semver_identifiers_label(ids: Rc<Vec<Rc<SemVerIdentifier>>>) -> String {
+pub fn semver_identifiers_label(ids: Rc<Vec<Rc<SemVerIdentifier>>>) -> std::string::String {
     Rc::new({
         let mut __result = Vec::new();
         for id in ids.iter().cloned() {
@@ -169,7 +169,7 @@ pub fn semver_identifiers_label(ids: Rc<Vec<Rc<SemVerIdentifier>>>) -> String {
     .join(&".".to_string())
 }
 
-pub fn semver_version_label(v: Rc<SemVerVersion>) -> String {
+pub fn semver_version_label(v: Rc<SemVerVersion>) -> std::string::String {
     {
         let core = v1_rt::concat(
             (v.major.clone()).to_string(),

@@ -8,29 +8,29 @@ use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
 use std::rc::Rc;
 
-pub fn emitted_population_manifest_basename() -> String {
+pub fn emitted_population_manifest_basename() -> std::string::String {
     thread_local! {
-        static CACHED: String = {
+        static CACHED: std::string::String = {
             "emitted_population.rs".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c: &std::string::String| c.clone())
 }
 
-pub fn emitted_population_manifest_line_prefix() -> String {
+pub fn emitted_population_manifest_line_prefix() -> std::string::String {
     thread_local! {
-        static CACHED: String = {
+        static CACHED: std::string::String = {
             "// ".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c: &std::string::String| c.clone())
 }
 
-pub fn emitted_population_manifest_line_separator() -> String {
+pub fn emitted_population_manifest_line_separator() -> std::string::String {
     thread_local! {
-        static CACHED: String = {
+        static CACHED: std::string::String = {
             "\n".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c: &std::string::String| c.clone())
 }

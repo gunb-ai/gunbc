@@ -15,13 +15,13 @@ use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
 use std::rc::Rc;
 
-pub fn keyed_roster_note() -> String {
+pub fn keyed_roster_note() -> std::string::String {
     thread_local! {
-        static CACHED: String = {
+        static CACHED: std::string::String = {
             "Keyed roster set/map CONSTRUCTION semantics (generated-file conflict policy lane 4, operator ruling 2026-08-01). Path-keyed grant and roster carriers are row 3 in the four-case policy: never line-merge, never take-ours — one value per key by construction, and duplicate-key input REFUSES rather than silently unioning. std.change.keyed_merge_row_lists is deliberately different: it keeps the left row on collision (reconcile/diff grain, first-wins). This module is the writable-authority grain: keyed_roster_insert and keyed_roster_build refuse a repeated key before a second value can exist, so a git clean-merge that appended two branches' list literals into duplicate paths is caught at per-PR admission instead of stalling main. keyed_roster_insert also refuses when the input roster already carries duplicate keys (KeyedRosterInvalidRoster), so insert cannot widen an invalid roster. keyed_roster_build folds via keyed_roster_insert_into_unique on a proven-duplicate-free accumulator (O(n²) via keyed_row_find per fold step; keyed_roster_locate_duplicate, used by keyed_roster_insert's invalid-roster pre-check, is also O(n²) worst-case — each of the n fold steps does one O(n) occurrence count plus at most two O(n) locates). Consumers inspect the canonical typed verdict (KeyedRosterBuild / KeyedRosterInsert) directly — no parallel *_holds or *_duplicate_free Bool predicates that collapse the coproduct. Dup detection for list literals: keyed_roster_locate_duplicate returns KeyedRosterDuplicateEvidence?; path_occurrence_count is a low-level count helper for totality carriers only (not a verdict surface). Live carriers wired end-to-end: gunbc.non_fold_residue frontier roster and tools.dag_compile_clean_shard_roster (path-keyed module-decl facts) both construct through keyed_roster_build; consumers accept only KeyedRosterBuilt. Rung today: mechanically preventive — typed located refusals + enrolled witnesses on commit_gate_roster. Ceiling: structural impossibility — branded KeyedRoster carrier whose success arm is reachable only through keyed_roster_build/insert. dissolve-on: feature:keyed-roster-construction-wall (corpus-wide std carrier; tracked on generated-file conflict policy charter lane 4, parent session crisp-bat-830). Until that wall lands, KeyedRosterInserted/KeyedRosterBuilt remain writable raw-list literals (wall-after-grounding: decidable class, single authority named, dissolution trigger fixed). Publication-grant carrier deferred: public_file_publish_grants deleted from main (#7591); incident row-sets held as keyed_roster_witness fixtures until re-land.".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c: &std::string::String| c.clone())
 }
 
 pub fn keyed_occurrence_count<K: Clone, V: Clone>(
@@ -49,14 +49,20 @@ pub struct KeyedRosterDuplicateEvidence<K: Clone, V: Clone> {
     pub _phantom: std::marker::PhantomData<(K, V)>,
 }
 
-pub fn path_occurrence_count(paths: Rc<Vec<String>>, target: String) -> i64 {
-    paths.iter().cloned().fold(0, |n: i64, p: String| {
-        if (p.clone() == target.clone()) {
-            (n.clone() + 1)
-        } else {
-            n.clone()
-        }
-    })
+pub fn path_occurrence_count(
+    paths: Rc<Vec<std::string::String>>,
+    target: std::string::String,
+) -> i64 {
+    paths
+        .iter()
+        .cloned()
+        .fold(0, |n: i64, p: std::string::String| {
+            if (p.clone() == target.clone()) {
+                (n.clone() + 1)
+            } else {
+                n.clone()
+            }
+        })
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]

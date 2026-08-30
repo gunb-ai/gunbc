@@ -140,7 +140,7 @@ pub fn token_stream_peek(stream: Rc<TokenStream>, offset: i64) -> Option<Rc<Toke
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ParseContext {
-    pub source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    pub source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
     pub intern_table: Rc<InternTable>,
     pub occurrence_allocator: OccurrenceIdAllocator,
     pub occurrence_index: Option<Rc<OccurrenceIndex>>,
@@ -376,7 +376,7 @@ pub struct TokenResult {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct NameResult {
-    pub name: String,
+    pub name: std::string::String,
     pub span: Rc<SourceSpan>,
     pub tokens: Rc<TokenStream>,
     pub err: Option<Rc<ErrorNode>>,
@@ -598,7 +598,7 @@ pub fn parsed_sole_constructor_properties(
 
 pub fn mint_parsed_bool_property(
     ctx: Rc<ParseContext>,
-    name: String,
+    name: std::string::String,
     span: Rc<SourceSpan>,
 ) -> Rc<ParsedPropertyResult> {
     {
@@ -627,7 +627,7 @@ pub fn mint_parsed_bool_property(
 
 pub fn mint_parsed_optional_int_property(
     ctx: Rc<ParseContext>,
-    name: String,
+    name: std::string::String,
     value: Option<i64>,
     span: Rc<SourceSpan>,
 ) -> Rc<ParsedPropertiesResult> {
@@ -727,7 +727,7 @@ pub fn parsed_predicate_result(
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ItemPrefixResult {
-    pub name: String,
+    pub name: std::string::String,
     pub name_span: Rc<SourceSpan>,
     pub type_params: Rc<Vec<Rc<Node>>>,
     pub params: Rc<Vec<Rc<Node>>>,
@@ -764,7 +764,7 @@ pub struct BindingPower {
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum ExpectedToken {
-    ExpectKeyword { text: String },
+    ExpectKeyword { text: std::string::String },
     ExpectLBrace,
     ExpectRBrace,
     ExpectLParen,
@@ -783,7 +783,7 @@ pub enum ExpectedToken {
     ExpectPipe,
 }
 impl ExpectedToken {
-    pub fn text(&self) -> String {
+    pub fn text(&self) -> std::string::String {
         match self {
             ExpectedToken::ExpectKeyword { text: __val, .. } => __val.clone(),
             ExpectedToken::ExpectLBrace => panic!("no text on unit variant"),
@@ -926,7 +926,7 @@ pub struct BindingsResult {
     pub err: Option<Rc<ErrorNode>>,
 }
 
-pub fn parse_recovery_expr(span: Rc<SourceSpan>, message: String) -> Rc<Node> {
+pub fn parse_recovery_expr(span: Rc<SourceSpan>, message: std::string::String) -> Rc<Node> {
     crate::v1_std_core::make_expr_error_node(
         Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
         ExprErrorKind::ParseRecoveryError,
@@ -978,7 +978,7 @@ pub struct PostfixResult {
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct PipeCalleeResult {
     pub spine: Option<Rc<Node>>,
-    pub method: String,
+    pub method: std::string::String,
     pub method_span: Rc<SourceSpan>,
     pub tokens: Rc<TokenStream>,
     pub ctx: Rc<ParseContext>,
@@ -988,7 +988,7 @@ pub struct PipeCalleeResult {
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ParserParam {
     pub occurrence_identity: Rc<NodeOccurrenceIdentity>,
-    pub name: String,
+    pub name: std::string::String,
     pub span: Rc<SourceSpan>,
 }
 
@@ -1021,7 +1021,7 @@ pub struct RangeArgsResult {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct NamedIntResult {
-    pub arg_name: String,
+    pub arg_name: std::string::String,
     pub arg_value: i64,
     pub tokens: Rc<TokenStream>,
     pub ctx: Rc<ParseContext>,
@@ -1118,7 +1118,7 @@ pub struct UnitResult {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct StringLitResult {
-    pub value: String,
+    pub value: std::string::String,
     pub tokens: Rc<TokenStream>,
     pub err: Option<Rc<ErrorNode>>,
 }
@@ -1144,7 +1144,7 @@ pub enum ParserHelperIdentity {
 #[serde(tag = "_variant")]
 pub enum ParserCallIdentity {
     ParserCallHelper { helper: ParserHelperIdentity },
-    ParserCallFunction { name: String },
+    ParserCallFunction { name: std::string::String },
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -1170,7 +1170,7 @@ impl ParserResultWitness {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct DescResult {
-    pub desc: Option<String>,
+    pub desc: Option<std::string::String>,
     pub tokens: Rc<TokenStream>,
 }
 
@@ -1191,7 +1191,7 @@ pub fn advance(tokens: Rc<TokenStream>) -> Rc<AdvanceResult> {
     }
 }
 
-pub fn parse_error(msg: String, span: Rc<SourceSpan>) -> Rc<ErrorNode> {
+pub fn parse_error(msg: std::string::String, span: Rc<SourceSpan>) -> Rc<ErrorNode> {
     crate::v1_std_core::make_error_node(
         Rc::new(CompilerDiagnostic::ParseError {
             message: msg.clone(),
@@ -1584,14 +1584,14 @@ pub fn is_pipe_arrow_shape(shape: TokenShape) -> bool {
     }
 }
 
-pub fn tok_is_keyword(tok: Option<Rc<Token>>, kw: String) -> bool {
+pub fn tok_is_keyword(tok: Option<Rc<Token>>, kw: std::string::String) -> bool {
     match tok.clone() {
         Some(t) => (is_keyword_shape(t.shape.clone()) && (t.text.clone() == kw.clone())),
         None => false,
     }
 }
 
-pub fn tok_keyword_text(tok: Option<Rc<Token>>) -> String {
+pub fn tok_keyword_text(tok: Option<Rc<Token>>) -> std::string::String {
     match tok.clone() {
         Some(t) => {
             if is_keyword_shape(t.shape.clone()) {
@@ -1611,14 +1611,17 @@ pub fn tok_is_ident(tok: Option<Rc<Token>>) -> bool {
     }
 }
 
-pub fn tok_is_ident_text(tok: Option<Rc<Token>>, text: String) -> bool {
+pub fn tok_is_ident_text(tok: Option<Rc<Token>>, text: std::string::String) -> bool {
     match tok.clone() {
         Some(t) => (is_ident_shape(t.shape.clone()) && (t.text.clone() == text.clone())),
         None => false,
     }
 }
 
-pub fn drop_leading_type_modifier(tokens: Rc<TokenStream>, modifier: String) -> Rc<TokenStream> {
+pub fn drop_leading_type_modifier(
+    tokens: Rc<TokenStream>,
+    modifier: std::string::String,
+) -> Rc<TokenStream> {
     if tok_is_ident_text(token_stream_first(tokens.clone()), modifier.clone()) {
         skip_newlines(token_stream_advance(tokens.clone(), 1))
     } else {
@@ -1798,7 +1801,7 @@ pub fn tok_span(tok: Option<Rc<Token>>) -> Rc<SourceSpan> {
     }
 }
 
-pub fn tok_keyword_to_name(tok: Option<Rc<Token>>) -> Option<String> {
+pub fn tok_keyword_to_name(tok: Option<Rc<Token>>) -> Option<std::string::String> {
     match tok.clone() {
         Some(t) => {
             if is_name_keyword(t.clone()) {
@@ -1818,7 +1821,7 @@ pub fn tok_is_keyword_name(tok: Option<Rc<Token>>) -> bool {
     }
 }
 
-pub fn shape_display_name(shape: TokenShape) -> String {
+pub fn shape_display_name(shape: TokenShape) -> std::string::String {
     match shape.clone() {
         TokenShape::ShKeyword => "keyword".to_string(),
         TokenShape::ShLBrace => "LBrace".to_string(),
@@ -1866,7 +1869,7 @@ pub fn shape_display_name(shape: TokenShape) -> String {
     }
 }
 
-pub fn token_display_name(token: Rc<Token>) -> String {
+pub fn token_display_name(token: Rc<Token>) -> std::string::String {
     if is_keyword_shape(token.shape.clone()) {
         v1_rt::concat(
             "keyword '".to_string(),
@@ -1877,7 +1880,7 @@ pub fn token_display_name(token: Rc<Token>) -> String {
     }
 }
 
-pub fn expected_token_name(expected: Rc<ExpectedToken>) -> String {
+pub fn expected_token_name(expected: Rc<ExpectedToken>) -> std::string::String {
     match (*expected.clone()).clone() {
         ExpectedToken::ExpectKeyword { text: kw, .. } => v1_rt::concat(
             "keyword '".to_string(),
@@ -2083,7 +2086,10 @@ pub fn skip_newlines(mut tokens: Rc<TokenStream>) -> Rc<TokenStream> {
     }
 }
 
-pub fn find_operator_bp(ops: Rc<Vec<Rc<OperatorSpec>>>, symbol: String) -> Option<BindingPower> {
+pub fn find_operator_bp(
+    ops: Rc<Vec<Rc<OperatorSpec>>>,
+    symbol: std::string::String,
+) -> Option<BindingPower> {
     {
         let matching = Rc::new({
             let mut __result = Vec::new();
@@ -2108,7 +2114,10 @@ pub fn find_operator_bp(ops: Rc<Vec<Rc<OperatorSpec>>>, symbol: String) -> Optio
     }
 }
 
-pub fn find_operator_binop(ops: Rc<Vec<Rc<OperatorSpec>>>, symbol: String) -> Option<BinOp> {
+pub fn find_operator_binop(
+    ops: Rc<Vec<Rc<OperatorSpec>>>,
+    symbol: std::string::String,
+) -> Option<BinOp> {
     {
         let matching = Rc::new({
             let mut __result = Vec::new();
@@ -2134,25 +2143,25 @@ pub fn find_operator_binop(ops: Rc<Vec<Rc<OperatorSpec>>>, symbol: String) -> Op
     }
 }
 
-pub fn operator_continuation_dual_role_exclusion_note() -> String {
+pub fn operator_continuation_dual_role_exclusion_note() -> std::string::String {
     thread_local! {
-        static CACHED: String = {
+        static CACHED: std::string::String = {
             "Continuation-leading tokens are derived from dag_syntax_spec.operators via find_operator_bp, not a shape allowlist. PREFIX/INFIX INTERSECTION IS PROVABLY COMPLETE — not a remembered one-element hand-list. parse_prefix admits exactly two unary prefix shapes: ShBang → ExprUnaryOp { op: Not } and ShMinus → ExprUnaryOp { op: Neg } (UnaryOpKind is closed: Not | Neg only). The infix table carries '!=' but no bare '!', so operator-table derivation already excludes '!' without any exclusion row. '-' is the sole symbol with both a parse_prefix arm (unary Neg) and an infix OperatorSpec row (Sub). operator_continuation_dual_role_excluded_symbols is therefore the full intersection, with one member, and skipping '-' continuation keeps `let a = foo` newline `-bar(x)` as two statements (unary minus call) instead of silently re-parsing as `foo - bar(x)`. A future prefix/infix dual-role operator must extend UnaryOpKind and parse_prefix and will redd the singleton witness rather than silently changing existing code.".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c: &std::string::String| c.clone())
 }
 
-pub fn operator_continuation_dual_role_excluded_symbols() -> Rc<Vec<String>> {
+pub fn operator_continuation_dual_role_excluded_symbols() -> Rc<Vec<std::string::String>> {
     thread_local! {
-        static CACHED: Rc<Vec<String>> = {
+        static CACHED: Rc<Vec<std::string::String>> = {
             Rc::new(vec!["-".to_string()])
         };
     }
-    CACHED.with(|c: &Rc<Vec<String>>| c.clone())
+    CACHED.with(|c: &Rc<Vec<std::string::String>>| c.clone())
 }
 
-pub fn is_prefix_infix_dual_role_operator(symbol: String) -> bool {
+pub fn is_prefix_infix_dual_role_operator(symbol: std::string::String) -> bool {
     {
         let mut __found = false;
         for s in operator_continuation_dual_role_excluded_symbols()
@@ -2225,8 +2234,8 @@ pub fn eat(tokens: Rc<TokenStream>, expected: Rc<ExpectedToken>) -> Rc<EatResult
 
 pub fn parser_result_base_var(
     expr: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Option<String> {
+    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+) -> Option<std::string::String> {
     match (*expr.expr_data.clone()).clone() {
         ExprData::ExprFieldAccess { .. } => match expr.children.clone().first().cloned() {
             Some(base) => match (*base.expr_data.clone()).clone() {
@@ -2246,7 +2255,7 @@ pub fn parser_result_base_var(
 
 pub fn parser_helper_state_arg_expr(
     call_node: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
 ) -> Option<Rc<Node>> {
     Rc::new(
         call_node
@@ -2292,8 +2301,8 @@ pub fn parser_helper_state_arg_expr(
 
 pub fn parser_progress_flag_var(
     expr: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Option<String> {
+    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+) -> Option<std::string::String> {
     match (*expr.expr_data.clone()).clone() {
         ExprData::ExprFieldAccess { .. } => {
             let field =
@@ -2310,7 +2319,7 @@ pub fn parser_progress_flag_var(
     }
 }
 
-pub fn parser_helper_identity(callee: String) -> Option<ParserHelperIdentity> {
+pub fn parser_helper_identity(callee: std::string::String) -> Option<ParserHelperIdentity> {
     if (callee.clone() == "skip_newlines".to_string()) {
         Some(ParserHelperIdentity::ParserHelperSkipNewlines)
     } else {
@@ -2328,7 +2337,7 @@ pub fn parser_helper_identity(callee: String) -> Option<ParserHelperIdentity> {
 
 pub fn parser_passthrough_state_expr(
     expr: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
 ) -> Option<Rc<Node>> {
     match (*expr.expr_data.clone()).clone() {
         ExprData::ExprCall { .. } => match parser_helper_identity(
@@ -2354,7 +2363,7 @@ pub fn parser_passthrough_state_expr(
 
 pub fn parser_result_witness(
     expr: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
 ) -> Rc<ParserResultWitness> {
     match (*expr.expr_data.clone()).clone() {
         ExprData::ExprCall { .. } => {
@@ -2382,7 +2391,7 @@ pub fn parser_result_witness(
 
 pub fn leaf_type_node(
     occurrence_identity: Rc<NodeOccurrenceIdentity>,
-    name: String,
+    name: std::string::String,
     span: Rc<SourceSpan>,
 ) -> Rc<Node> {
     Rc::new(Node {
@@ -2501,7 +2510,7 @@ pub fn child_inferred_or_empty(ch: Rc<Node>) -> Rc<Node> {
 
 pub fn node_inferred_to_outputs(
     rt: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
 ) -> Rc<Vec<Rc<Node>>> {
     if is_conj_with_children(rt.clone()) {
         {
@@ -2568,7 +2577,7 @@ pub fn parse_dotted_ident(tokens: Rc<TokenStream>) -> Rc<NameResult> {
 
 pub fn parse_dotted_ident_rest(
     mut tokens: Rc<TokenStream>,
-    mut acc: String,
+    mut acc: std::string::String,
     mut span: Rc<SourceSpan>,
 ) -> Rc<NameResult> {
     loop {
@@ -3322,7 +3331,7 @@ pub fn occurrence_transport_from_parse_context(ctx: Rc<ParseContext>) -> Rc<Occu
 
 pub fn parse_with_table_at(
     tokens: Rc<Vec<Rc<Token>>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
     intern_table: Rc<InternTable>,
     occurrence_base: Rc<AuthoredTokenOrdinalSpace>,
     heads_only: bool,
@@ -3410,7 +3419,7 @@ pub fn parse_with_table_at(
 
 pub fn parse_with_table_in_occurrence_scope(
     tokens: Rc<Vec<Rc<Token>>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
     intern_table: Rc<InternTable>,
     occurrence_allocator: OccurrenceIdAllocator,
 ) -> Rc<ParseWithTableResult> {
@@ -3427,7 +3436,7 @@ pub fn parse_with_table_in_occurrence_scope(
 
 pub fn parse_with_table(
     tokens: Rc<Vec<Rc<Token>>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
     intern_table: Rc<InternTable>,
 ) -> Rc<ParseWithTableResult> {
     parse_with_table_at(
@@ -3441,7 +3450,7 @@ pub fn parse_with_table(
 
 pub fn parse_heads_with_table(
     tokens: Rc<Vec<Rc<Token>>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
     intern_table: Rc<InternTable>,
 ) -> Rc<ParseWithTableResult> {
     parse_with_table_at(
@@ -3453,16 +3462,18 @@ pub fn parse_heads_with_table(
     )
 }
 
-pub fn parse_with_table_ready_module_path_note() -> String {
+pub fn parse_with_table_ready_module_path_note() -> std::string::String {
     thread_local! {
-        static CACHED: String = {
+        static CACHED: std::string::String = {
             "Projects the parsed module name without naming the module field through a cross-module keyword collision. Bridge consumers (occurrence_binding_parser_walk) read this Present only when parse succeeded.".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c: &std::string::String| c.clone())
 }
 
-pub fn parse_with_table_ready_module_path(parsed: Rc<ParseWithTableResult>) -> Option<String> {
+pub fn parse_with_table_ready_module_path(
+    parsed: Rc<ParseWithTableResult>,
+) -> Option<std::string::String> {
     match parsed.result.clone().error.clone() {
         Some(_) => std::option::Option::None,
         None => match parsed.result.clone().module.clone() {
@@ -3474,7 +3485,7 @@ pub fn parse_with_table_ready_module_path(parsed: Rc<ParseWithTableResult>) -> O
 
 pub fn parse(
     tokens: Rc<Vec<Rc<Token>>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
 ) -> Rc<ParseResult> {
     parse_with_table(
         tokens.clone(),
@@ -3800,7 +3811,7 @@ pub fn parse_import_names(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<
 
 pub fn parsed_name_leaf(
     occurrence_identity: Rc<NodeOccurrenceIdentity>,
-    name: String,
+    name: std::string::String,
     span: Rc<SourceSpan>,
 ) -> Rc<Node> {
     crate::v1_std_core::leaf_node_with_span(occurrence_identity.clone(), name.clone(), span.clone())
@@ -3850,7 +3861,10 @@ pub fn parse_import_names_acc(
     }
 }
 
-pub fn find_item_form(forms: Rc<Vec<Rc<ItemForm>>>, keyword: String) -> Option<Rc<ItemForm>> {
+pub fn find_item_form(
+    forms: Rc<Vec<Rc<ItemForm>>>,
+    keyword: std::string::String,
+) -> Option<Rc<ItemForm>> {
     {
         let matches = Rc::new({
             let mut __result = Vec::new();
@@ -4166,7 +4180,7 @@ pub fn parse_item_by_form(
 
 pub fn field_to_child_node(
     field: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
 ) -> Rc<Node> {
     {
         let ret_type = crate::v1_std_core::field_node_type_expr(field.clone());
@@ -4198,7 +4212,7 @@ pub fn field_to_child_node(
 
 pub fn variant_to_child_node(
     variant: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
 ) -> Rc<Node> {
     {
         let fields = crate::v1_std_core::variant_node_fields(variant.clone());
@@ -4240,7 +4254,7 @@ pub fn variant_to_child_node(
 pub fn outputs_to_inferred(
     outputs: Rc<Vec<Rc<Node>>>,
     span: Rc<SourceSpan>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
 ) -> Option<Rc<InferredNode>> {
     if ((outputs.clone().len() as i64) > 0) {
         Some(Rc::new(InferredNode::Resolved {
@@ -4279,7 +4293,7 @@ pub fn outputs_to_inferred(
 
 pub fn make_operation_node(
     occurrence_identity: Rc<NodeOccurrenceIdentity>,
-    name: String,
+    name: std::string::String,
     ident_span: Option<Rc<SourceSpan>>,
     inputs: Rc<Vec<Rc<Node>>>,
     outputs: Rc<Vec<Rc<Node>>>,
@@ -4289,7 +4303,7 @@ pub fn make_operation_node(
     modifier_props: Rc<Vec<Rc<Node>>>,
     transport: Option<Rc<Node>>,
     span: Rc<SourceSpan>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
 ) -> Rc<Node> {
     {
         let all_props = v1_rt::concat(
@@ -4338,12 +4352,12 @@ pub fn make_operation_node(
 
 pub fn make_capability_node(
     occurrence_identity: Rc<NodeOccurrenceIdentity>,
-    name: String,
+    name: std::string::String,
     ident_span: Option<Rc<SourceSpan>>,
     inputs: Rc<Vec<Rc<Node>>>,
     outputs: Rc<Vec<Rc<Node>>>,
     span: Rc<SourceSpan>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
 ) -> Rc<Node> {
     Rc::new(Node {
         occurrence_identity: occurrence_identity.clone(),
@@ -4776,7 +4790,7 @@ pub fn alias_rhs_is_anonymous_record(te: Rc<Node>) -> bool {
 
 pub fn type_item_from_alias_rhs(
     occurrence_identity: Rc<NodeOccurrenceIdentity>,
-    name: String,
+    name: std::string::String,
     name_span: Rc<SourceSpan>,
     start_span: Rc<SourceSpan>,
     type_params: Rc<Vec<Rc<Node>>>,
@@ -4833,7 +4847,7 @@ pub fn type_item_from_alias_rhs(
 pub fn parse_type_body_after_eq(
     tokens: Rc<TokenStream>,
     ctx: Rc<ParseContext>,
-    name: String,
+    name: std::string::String,
     name_span: Rc<SourceSpan>,
     start_span: Rc<SourceSpan>,
     type_params: Rc<Vec<Rc<Node>>>,
@@ -5786,7 +5800,7 @@ Rc::new(FieldsResult {
 pub fn parse_variant_fields(
     tokens: Rc<TokenStream>,
     ctx: Rc<ParseContext>,
-    vname: String,
+    vname: std::string::String,
     vname_span: Rc<SourceSpan>,
 ) -> Rc<VariantResult> {
     {
@@ -6264,7 +6278,7 @@ pub fn parse_callable_param_types(
 pub fn finish_type_expr_from_name(
     tokens: Rc<TokenStream>,
     ctx: Rc<ParseContext>,
-    type_name: String,
+    type_name: std::string::String,
     start_span: Rc<SourceSpan>,
 ) -> Rc<TypeResult> {
     {
@@ -9041,7 +9055,7 @@ pub fn parse_operation_def(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc
 pub fn parse_operation_v2_inline(
     tokens: Rc<TokenStream>,
     ctx: Rc<ParseContext>,
-    name: String,
+    name: std::string::String,
     name_span: Rc<SourceSpan>,
     start_span: Rc<SourceSpan>,
 ) -> Rc<OpResult> {
@@ -9164,7 +9178,7 @@ pub fn parse_operation_v2_inline(
 pub fn parse_operation_v1_body(
     tokens: Rc<TokenStream>,
     ctx: Rc<ParseContext>,
-    name: String,
+    name: std::string::String,
     name_span: Rc<SourceSpan>,
     start_span: Rc<SourceSpan>,
 ) -> Rc<OpResult> {
@@ -9727,8 +9741,8 @@ pub fn parse_op_body_entries(
 
 pub fn status_expr_to_str(
     expr: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> String {
+    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+) -> std::string::String {
     match (*expr.expr_data.clone()).clone() {
         ExprData::ExprLiteral { value: v, .. } => match (*v.clone()).clone() {
             LiteralValue::LitInt { value: n, .. } => int_to_string(n.clone()),
@@ -9742,7 +9756,7 @@ pub fn status_expr_to_str(
     }
 }
 
-pub fn int_to_string(value: i64) -> String {
+pub fn int_to_string(value: i64) -> std::string::String {
     if (value.clone() == 0) {
         "0".to_string()
     } else {
@@ -9753,7 +9767,10 @@ pub fn int_to_string(value: i64) -> String {
     }
 }
 
-pub fn int_to_string_acc(mut value: i64, mut acc: Rc<Vec<String>>) -> Rc<Vec<String>> {
+pub fn int_to_string_acc(
+    mut value: i64,
+    mut acc: Rc<Vec<std::string::String>>,
+) -> Rc<Vec<std::string::String>> {
     loop {
         if (value.clone() == 0) {
             break acc;
@@ -9825,8 +9842,8 @@ pub fn last_child_or_self(n: Rc<Node>) -> Rc<Node> {
 
 pub fn node_to_name_str(
     n: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> String {
+    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+) -> std::string::String {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         let is_optional = (n.return_cardinality.clone() == Cardinality::CardOptional);
         let effective_n = if is_optional.clone() {
@@ -11794,13 +11811,13 @@ pub fn heads_skip_block_tokens(
     }
 }
 
-pub fn census_heads_body_stand_in_message() -> String {
+pub fn census_heads_body_stand_in_message() -> std::string::String {
     thread_local! {
-        static CACHED: String = {
+        static CACHED: std::string::String = {
             "pool census heads-only: function body stripped -- refuse to interpret".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c: &std::string::String| c.clone())
 }
 
 pub fn census_heads_body_stand_in() -> Rc<Node> {
@@ -12097,7 +12114,7 @@ pub fn parse_constrained_assignment(
     }
 }
 
-pub fn peek_text_is(tokens: Rc<TokenStream>, expected: String) -> bool {
+pub fn peek_text_is(tokens: Rc<TokenStream>, expected: std::string::String) -> bool {
     match token_stream_first(tokens.clone()) {
         Some(t) => (is_ident_shape(t.shape.clone()) && (t.text.clone() == expected.clone())),
         None => false,
@@ -12490,7 +12507,7 @@ pub fn parse_pipe_callee_rest(
     mut tokens: Rc<TokenStream>,
     mut ctx: Rc<ParseContext>,
     mut spine: Option<Rc<Node>>,
-    mut name: String,
+    mut name: std::string::String,
     mut name_span: Rc<SourceSpan>,
 ) -> Rc<PipeCalleeResult> {
     loop {
@@ -13117,7 +13134,7 @@ pub fn parse_lambda_stmts(
 pub fn parse_ident_expr(
     tokens: Rc<TokenStream>,
     ctx: Rc<ParseContext>,
-    name: String,
+    name: std::string::String,
 ) -> Rc<ExprResult> {
     {
         let span = token_span(token_stream_first(tokens.clone()));
@@ -13170,14 +13187,14 @@ pub fn parse_ident_expr(
     }
 }
 
-pub fn is_uppercase_start(name: String) -> bool {
+pub fn is_uppercase_start(name: std::string::String) -> bool {
     {
         let ch = v1_rt::char_at(&name, 0);
         ((ch.clone() >= "A".to_string()) && (ch.clone() <= "Z".to_string()))
     }
 }
 
-pub fn is_variant_pattern_start(name: String) -> bool {
+pub fn is_variant_pattern_start(name: std::string::String) -> bool {
     if v1_rt::contains(name.clone(), ".".to_string()) {
         true
     } else {
@@ -13610,7 +13627,7 @@ pub fn make_call_expr(
     lhs: Rc<Node>,
     args: Rc<Vec<Rc<Node>>>,
     span: Rc<SourceSpan>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
 ) -> Rc<Node> {
     match (*lhs.expr_data.clone()).clone() {
         ExprData::ExprVar {
@@ -14552,13 +14569,13 @@ pub fn parse_match_arm_stmts(
     }
 }
 
-pub fn qualified_arm_start_note() -> String {
+pub fn qualified_arm_start_note() -> std::string::String {
     thread_local! {
-        static CACHED: String = {
+        static CACHED: std::string::String = {
             "WHERE AN UNBRACED ARM BODY ENDS IS DECIDED HERE, AND THE ANSWER WAS KEYED ON THE FIRST SEGMENT OF THE NEXT PATTERN. parse_match_arm_stmts consumes statements until looks_like_arm_start says the next tokens open a new arm. That predicate recognised only a bare `_` and an UPPERCASE-start leaf, so a NAMESPACE-QUALIFIED pattern -- whose first token is the lowercase module head, v1 in v1.std.core.ExprStringInterp -- answered false, the body kept consuming, it swallowed the next arm pattern as one more statement, and the parse died on the following FatArrow. The reported span is the ARROW, several lines below the arm that actually ended, which is why four separate reproductions of the surrounding shapes all parsed and the trigger had to be bisected rather than guessed. MINIMAL REPRODUCTION, and every clause is load-bearing: an unbraced arm body containing a `let`, followed by an arm whose pattern is DOTTED. Remove the let and the body is a single expression that never enters the statement loop; make the next pattern `_` or an uppercase leaf and the predicate already answers true. MEASURED: on the namespace-cut branch, where qualifying every pattern turns this from rare into ordinary, exactly one corpus file of 3875 reaches it -- src/v1/05_emit.dag -- and it is invalid under the parser that branch itself carries, surviving only because its built binary predates its own committed mirror. So this is not a cut-branch accommodation: it is a grammar gap that the cut merely made reachable, and it fails LOUDLY at preparation, which is the cheap failure discipline. The scan requires the TERMINAL segment to be uppercase and the arrow to follow the path (or its brace group), so a lowercase dotted expression ending a body is unaffected -- and an expression statement genuinely followed by a FatArrow was never a legal parse.".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c: &std::string::String| c.clone())
 }
 
 pub fn arm_start_after_qualified_path(mut tokens: Rc<TokenStream>, mut offset: i64) -> bool {
@@ -14873,7 +14890,7 @@ pub fn parse_pattern(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<Patte
 pub fn parse_variant_pattern(
     tokens: Rc<TokenStream>,
     ctx: Rc<ParseContext>,
-    name: String,
+    name: std::string::String,
 ) -> Rc<PatternResult> {
     {
         let span = token_span(token_stream_first(tokens.clone()));
@@ -15204,13 +15221,13 @@ pub fn parse_if(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<ExprResult
     })
 }
 
-pub fn required_expression_newline_continuation_note() -> String {
+pub fn required_expression_newline_continuation_note() -> std::string::String {
     thread_local! {
-        static CACHED: String = {
+        static CACHED: std::string::String = {
             "A newline is whitespace in a syntactically incomplete required-expression position (the parser has consumed a keyword or separator and still owes an expression). Authority: parse_required_expression_after_separator (parse_expr sites) and parse_required_expression_no_brace_after_separator (for-in collection after 'in'). Not at generic parse_expr entry — statement boundaries stay token-aligned.".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c: &std::string::String| c.clone())
 }
 
 pub fn parse_required_expression_after_separator(
@@ -15480,7 +15497,7 @@ pub fn field_access_chain_span(texpr: Rc<Node>) -> Rc<SourceSpan> {
 pub fn parse_record_literal(
     tokens: Rc<TokenStream>,
     ctx: Rc<ParseContext>,
-    name: String,
+    name: std::string::String,
     span: Rc<SourceSpan>,
 ) -> Rc<ExprResult> {
     parse_record_literal_named(
@@ -15495,7 +15512,7 @@ pub fn parse_record_literal(
 pub fn parse_record_literal_named(
     tokens: Rc<TokenStream>,
     ctx: Rc<ParseContext>,
-    name: String,
+    name: std::string::String,
     span: Rc<SourceSpan>,
     name_span: Rc<SourceSpan>,
 ) -> Rc<ExprResult> {
@@ -16183,7 +16200,7 @@ pub fn collect_lambda_idents(
     }
 }
 
-pub fn interp_body_error_message(err: Option<Rc<ErrorNode>>) -> String {
+pub fn interp_body_error_message(err: Option<Rc<ErrorNode>>) -> std::string::String {
     {
         let inner = match err.clone() {
             Some(e) => match (*e.diagnostic.clone()).clone() {

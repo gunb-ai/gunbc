@@ -124,9 +124,9 @@ pub fn rust_item_forms() -> Rc<Vec<Rc<ItemForm>>> {
     CACHED.with(|c: &Rc<Vec<Rc<ItemForm>>>| c.clone())
 }
 
-pub fn rust_keyword_literals() -> Rc<HashMap<String, Rc<LiteralValue>>> {
+pub fn rust_keyword_literals() -> Rc<HashMap<std::string::String, Rc<LiteralValue>>> {
     thread_local! {
-            static CACHED: Rc<HashMap<String, Rc<LiteralValue>>> = {
+            static CACHED: Rc<HashMap<std::string::String, Rc<LiteralValue>>> = {
                 let mut __m = HashMap::new();
                 __m.insert("true".to_string(), Rc::new(LiteralValue::LitBool {
         value: true,
@@ -137,12 +137,12 @@ pub fn rust_keyword_literals() -> Rc<HashMap<String, Rc<LiteralValue>>> {
                 Rc::new(__m)
             };
         }
-    CACHED.with(|c: &Rc<HashMap<String, Rc<LiteralValue>>>| c.clone())
+    CACHED.with(|c: &Rc<HashMap<std::string::String, Rc<LiteralValue>>>| c.clone())
 }
 
-pub fn rust_keyword_set() -> Rc<HashMap<String, bool>> {
+pub fn rust_keyword_set() -> Rc<HashMap<std::string::String, bool>> {
     thread_local! {
-        static CACHED: Rc<HashMap<String, bool>> = {
+        static CACHED: Rc<HashMap<std::string::String, bool>> = {
             let mut __m = HashMap::new();
             __m.insert("fn".to_string(), true);
             __m.insert("struct".to_string(), true);
@@ -184,7 +184,7 @@ pub fn rust_keyword_set() -> Rc<HashMap<String, bool>> {
             Rc::new(__m)
         };
     }
-    CACHED.with(|c: &Rc<HashMap<String, bool>>| c.clone())
+    CACHED.with(|c: &Rc<HashMap<std::string::String, bool>>| c.clone())
 }
 
 pub fn rust_operators() -> Rc<Vec<Rc<OperatorSpec>>> {

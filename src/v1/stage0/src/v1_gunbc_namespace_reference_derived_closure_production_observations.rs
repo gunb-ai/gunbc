@@ -44,22 +44,22 @@ use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
 use std::rc::Rc;
 
-pub fn namespace_reference_derived_closure_production_observations_note() -> String {
+pub fn namespace_reference_derived_closure_production_observations_note() -> std::string::String {
     thread_local! {
-        static CACHED: String = {
+        static CACHED: std::string::String = {
             "N3-A production observers for namespace-reference-derived-closure clauses (a-d), and the closing production for roadmap node namespace-structural-observations. Every observer takes ONE parsed subject: the four clauses are read out of a single ordinary compiled file, never out of four sources shaped one per clause. Observation production returns neutral std.reference_binding_observation carriers; the capability judgement is delegated, unchanged, to the one assessment authority (gunbc.namespace_reference_derived_closure_admission), and the module path each admission carries is the one THE PARSE DECLARED.".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c: &std::string::String| c.clone())
 }
 
-pub fn namespace_reference_derived_closure_production_one_subject_note() -> String {
+pub fn namespace_reference_derived_closure_production_one_subject_note() -> std::string::String {
     thread_local! {
-        static CACHED: String = {
+        static CACHED: std::string::String = {
             "THE FOUR HARD-CODED FIXTURE SOURCES ARE DELETED, and the deletion is the point rather than tidying. They were four independent strings, one per clause, and their own note recorded that they did NOT satisfy the namespace-structural-observations closing contract because that row asks for ONE ORDINARY COMPILED FILE. Keeping them beside a subject-parameterized producer would have left two ways to answer one question, and the easier one would have been the one that cannot close the row. The per-clause red control the deleted note describes is preserved and strengthened: a caller mutates the ONE subject so that exactly one rule breaks, and the assessment refuses exactly that capability. The subject and its probe spellings are supplied by the caller (gunbc.namespace_structural_observations_contract), so this module knows no fixture text.".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c: &std::string::String| c.clone())
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -97,7 +97,7 @@ impl NrdfcParsed {
     }
 }
 
-pub fn nrdfc_parse(file: String, source: String) -> Rc<NrdfcParsed> {
+pub fn nrdfc_parse(file: std::string::String, source: std::string::String) -> Rc<NrdfcParsed> {
     match (*crate::v1_gunbc_occurrence_binding_parser_walk::parse_authored_occurrence_binding_source(file.clone(), source.clone())).clone() {
     ParsedOccurrenceBindingSource::ParsedOccurrenceBindingSourceRefused => Rc::new(NrdfcParsed::NrdfcParsedRefused),
     ParsedOccurrenceBindingSource::ParsedOccurrenceBindingSourceReady { transport, module_path, .. } => Rc::new(NrdfcParsed::NrdfcParsedReady {
@@ -110,7 +110,7 @@ pub fn nrdfc_parse(file: String, source: String) -> Rc<NrdfcParsed> {
 
 pub fn same_file_neighbour_observation(
     parsed: Rc<NrdfcParsed>,
-    neighbour_name: String,
+    neighbour_name: std::string::String,
 ) -> Rc<ReferenceBindingObservation> {
     match (*parsed.clone()).clone() {
     NrdfcParsed::NrdfcParsedRefused => Rc::new(ReferenceBindingObservation::SameFileNeighbourProductionRefused {
@@ -135,7 +135,7 @@ pub fn same_file_neighbour_observation(
 
 pub fn sibling_branch_observation(
     parsed: Rc<NrdfcParsed>,
-    branch_binder_name: String,
+    branch_binder_name: std::string::String,
 ) -> Rc<ReferenceBindingObservation> {
     match (*parsed.clone()).clone() {
         NrdfcParsed::NrdfcParsedRefused => Rc::new(
@@ -186,7 +186,7 @@ pub fn sibling_branch_observation(
 
 pub fn later_declaration_observation(
     parsed: Rc<NrdfcParsed>,
-    later_name: String,
+    later_name: std::string::String,
 ) -> Rc<ReferenceBindingObservation> {
     match (*parsed.clone()).clone() {
     NrdfcParsed::NrdfcParsedRefused => Rc::new(ReferenceBindingObservation::LaterDeclarationProductionRefused {
@@ -211,7 +211,7 @@ pub fn later_declaration_observation(
 
 pub fn distinct_homonym_observation(
     parsed: Rc<NrdfcParsed>,
-    homonym_name: String,
+    homonym_name: std::string::String,
 ) -> Rc<ReferenceBindingObservation> {
     match (*parsed.clone()).clone() {
         NrdfcParsed::NrdfcParsedRefused => Rc::new(
@@ -262,10 +262,10 @@ pub fn distinct_homonym_observation(
 
 pub fn namespace_structural_binding_observations_from_parsed(
     parsed: Rc<NrdfcParsed>,
-    neighbour_name: String,
-    branch_binder_name: String,
-    later_name: String,
-    homonym_name: String,
+    neighbour_name: std::string::String,
+    branch_binder_name: std::string::String,
+    later_name: std::string::String,
+    homonym_name: std::string::String,
 ) -> Rc<Vec<Rc<ReferenceBindingObservation>>> {
     Rc::new(vec![
         same_file_neighbour_observation(parsed.clone(), neighbour_name.clone()),
@@ -276,12 +276,12 @@ pub fn namespace_structural_binding_observations_from_parsed(
 }
 
 pub fn namespace_structural_binding_observations_a_through_d(
-    file: String,
-    source: String,
-    neighbour_name: String,
-    branch_binder_name: String,
-    later_name: String,
-    homonym_name: String,
+    file: std::string::String,
+    source: std::string::String,
+    neighbour_name: std::string::String,
+    branch_binder_name: std::string::String,
+    later_name: std::string::String,
+    homonym_name: std::string::String,
 ) -> Rc<Vec<Rc<ReferenceBindingObservation>>> {
     namespace_structural_binding_observations_from_parsed(
         nrdfc_parse(file.clone(), source.clone()),
@@ -292,13 +292,13 @@ pub fn namespace_structural_binding_observations_a_through_d(
     )
 }
 
-pub fn namespace_structural_observation_admission_module_note() -> String {
+pub fn namespace_structural_observation_admission_module_note() -> std::string::String {
     thread_local! {
-        static CACHED: String = {
+        static CACHED: std::string::String = {
             "THE COMPILED MODULE AND THE ADMISSIONS ARE TWO EXPORTS OF ONE SUBJECT, and the split is forced rather than chosen. A single export pairing them needs a record whose field is a ReferenceDerivedClosureAdmission, and that coproduct carries a sole_constructor receipt, which the v1 emitter renders Serialize-only with a private field -- so any record embedding it fails to derive serde::Deserialize and the seed does not compile. Measured, not predicted: E0277 on the emitted OrdinaryCompileStructuralAdmission, E0616 on the receipt's field. Both exports are pure functions of (file, source), so a caller passing one pair of strings to both cannot pair a module path with admissions from a different subject; the join is mechanical, never a decision. The module path itself is READ OUT OF THE PARSE (ParsedOccurrenceBindingSourceReady.module_path), never echoed from the caller's file argument -- which is what makes the closing check's single-subject clause falsifiable, since a source declaring a different module reports that module and a source that does not parse reports no module at all.".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c: &std::string::String| c.clone())
 }
 
 pub fn nrdfc_compiled_module(parsed: Rc<NrdfcParsed>) -> Rc<StructuralObservationSubjectModule> {
@@ -317,19 +317,19 @@ pub fn nrdfc_compiled_module(parsed: Rc<NrdfcParsed>) -> Rc<StructuralObservatio
 }
 
 pub fn namespace_structural_observation_compiled_module(
-    file: String,
-    source: String,
+    file: std::string::String,
+    source: std::string::String,
 ) -> Rc<StructuralObservationSubjectModule> {
     nrdfc_compiled_module(nrdfc_parse(file.clone(), source.clone()))
 }
 
 pub fn namespace_structural_observation_admissions(
-    file: String,
-    source: String,
-    neighbour_name: String,
-    branch_binder_name: String,
-    later_name: String,
-    homonym_name: String,
+    file: std::string::String,
+    source: std::string::String,
+    neighbour_name: std::string::String,
+    branch_binder_name: std::string::String,
+    later_name: std::string::String,
+    homonym_name: std::string::String,
 ) -> Rc<Vec<Rc<ReferenceDerivedClosureAdmission>>> {
     Rc::new({
         let mut __result = Vec::new();

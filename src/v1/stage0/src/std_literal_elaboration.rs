@@ -43,7 +43,7 @@ pub fn literal_source_kind_of(value: Rc<LiteralValue>) -> LiteralSourceKind {
     }
 }
 
-pub fn literal_source_kind_label(kind: LiteralSourceKind) -> String {
+pub fn literal_source_kind_label(kind: LiteralSourceKind) -> std::string::String {
     match kind.clone() {
         LiteralSourceKind::KernelIntLiteral => "kernel_int_literal".to_string(),
         LiteralSourceKind::KernelStringLiteral => "kernel_string_literal".to_string(),
@@ -161,7 +161,9 @@ impl LiteralElaborationRefusal {
     }
 }
 
-pub fn literal_elaboration_refusal_message(cause: Rc<LiteralElaborationRefusal>) -> String {
+pub fn literal_elaboration_refusal_message(
+    cause: Rc<LiteralElaborationRefusal>,
+) -> std::string::String {
     match (*cause.clone()).clone() {
     LiteralElaborationRefusal::HomomorphismDuplicated { source_kind: k, destination: d, row_count: n, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("literal elaboration: ".to_string(), literal_source_kind_label(k.clone())), " into ".to_string()), d.module_path.clone()), ".".to_string()), d.decl_name.clone()), " has more than one declared homomorphism (gunbc.structural_realization_bindings authoring defect)".to_string()),
 }

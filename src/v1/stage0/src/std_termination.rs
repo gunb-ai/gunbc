@@ -97,10 +97,10 @@ pub fn optional_evidence_meet(
 }
 
 pub fn map_evidence_merge_at(
-    base: Rc<HashMap<String, DescentEvidence>>,
-    key: String,
+    base: Rc<HashMap<std::string::String, DescentEvidence>>,
+    key: std::string::String,
     new_val: DescentEvidence,
-) -> Rc<HashMap<String, DescentEvidence>> {
+) -> Rc<HashMap<std::string::String, DescentEvidence>> {
     match v1_rt::map_get(&base, key.clone()) {
         Some(existing) => v1_rt::rc_map_insert(
             base.clone(),
@@ -114,14 +114,14 @@ pub fn map_evidence_merge_at(
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum RankingDimension {
-    TreeSize { param: String },
-    ListLength { param: String },
-    ArithmeticValue { param: String },
-    TokenPosition { param: String },
-    SetCardinality { param: String },
+    TreeSize { param: std::string::String },
+    ListLength { param: std::string::String },
+    ArithmeticValue { param: std::string::String },
+    TokenPosition { param: std::string::String },
+    SetCardinality { param: std::string::String },
 }
 impl RankingDimension {
-    pub fn param(&self) -> String {
+    pub fn param(&self) -> std::string::String {
         match self {
             RankingDimension::TreeSize { param: __val, .. } => __val.clone(),
             RankingDimension::ListLength { param: __val, .. } => __val.clone(),
@@ -237,12 +237,12 @@ pub fn proportional_divisor_from_int_at_least_two(k: i64) -> Option<Rc<Proportio
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum DescentSource {
-    ChildAccessor { accessor: String },
+    ChildAccessor { accessor: std::string::String },
     ListShrink { amount: Rc<PositiveDescentAmount> },
     ArithmeticSubtractDescent { steps: Rc<PositiveDescentAmount> },
     ArithmeticDivideDescent { divisor: Rc<ProportionalDivisor> },
-    ParserAdvance { witness: String },
-    SetRemoval { element: String },
+    ParserAdvance { witness: std::string::String },
+    SetRemoval { element: std::string::String },
     FoldIteration,
 }
 
@@ -253,8 +253,8 @@ pub struct TerminationProof {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ProofEdge {
-    pub caller: String,
-    pub callee: String,
+    pub caller: std::string::String,
+    pub callee: std::string::String,
     pub evidence: Rc<Vec<DescentEvidence>>,
 }
 

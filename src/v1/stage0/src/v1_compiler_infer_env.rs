@@ -47,24 +47,26 @@ use std::rc::Rc;
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct TypeEnv {
     pub bindings: Rc<HashMap<i64, Rc<TypeBinding>>>,
-    pub str_bindings: Rc<HashMap<String, Rc<TypeBinding>>>,
-    pub ancestry_str_bindings: Rc<HashMap<String, Rc<TypeBinding>>>,
+    pub str_bindings: Rc<HashMap<std::string::String, Rc<TypeBinding>>>,
+    pub ancestry_str_bindings: Rc<HashMap<std::string::String, Rc<TypeBinding>>>,
     pub parents: Rc<Vec<Rc<TypeEnv>>>,
     pub recursive_types: Rc<Vec<i64>>,
     pub recursive_type_set: Rc<HashMap<i64, bool>>,
-    pub inductive_fields: Rc<HashMap<String, Rc<Vec<Rc<InductiveField>>>>>,
-    pub source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    pub inductive_fields: Rc<HashMap<std::string::String, Rc<Vec<Rc<InductiveField>>>>>,
+    pub source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
     pub intern_table: Rc<InternTable>,
-    pub source_visible_names: Rc<HashMap<String, bool>>,
-    pub authored_import_names: Rc<HashMap<String, bool>>,
+    pub source_visible_names: Rc<HashMap<std::string::String, bool>>,
+    pub authored_import_names: Rc<HashMap<std::string::String, bool>>,
     pub symbol_index: Rc<SymbolIndex>,
-    pub module_path: String,
-    pub unit_variant_index: Rc<HashMap<String, Rc<HashMap<String, Rc<UnitVariantContribution>>>>>,
+    pub module_path: std::string::String,
+    pub unit_variant_index: Rc<
+        HashMap<std::string::String, Rc<HashMap<std::string::String, Rc<UnitVariantContribution>>>>,
+    >,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct TypeBinding {
-    pub name: String,
+    pub name: std::string::String,
     pub resolved: Rc<Node>,
     pub provenance: Rc<SubValueRelation>,
 }
@@ -94,14 +96,15 @@ pub fn variant_lookup_structural(ty: Rc<Node>) -> Rc<Node> {
 
 pub fn binding_unit_variant_contributions(
     binding: Rc<TypeBinding>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<HashMap<String, Rc<UnitVariantContribution>>> {
+    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+) -> Rc<HashMap<std::string::String, Rc<UnitVariantContribution>>> {
     {
         let ty = variant_lookup_structural(binding.resolved.clone());
         match ty.connective.clone() {
             Connective::Disj => ty.children.clone().iter().cloned().fold(
-                v1_rt::rc_empty_map::<String, Rc<UnitVariantContribution>>(),
-                |acc: Rc<HashMap<String, Rc<UnitVariantContribution>>>, v: Rc<Node>| {
+                v1_rt::rc_empty_map::<std::string::String, Rc<UnitVariantContribution>>(),
+                |acc: Rc<HashMap<std::string::String, Rc<UnitVariantContribution>>>,
+                 v: Rc<Node>| {
                     if is_unit_variant_node(v.clone()) {
                         {
                             let vname = crate::v1_std_core::authored_name_at(
@@ -132,18 +135,19 @@ pub fn binding_unit_variant_contributions(
                     }
                 },
             ),
-            _ => v1_rt::rc_empty_map::<String, Rc<UnitVariantContribution>>(),
+            _ => v1_rt::rc_empty_map::<std::string::String, Rc<UnitVariantContribution>>(),
         }
     }
 }
 
 pub fn contributions_without_key(
-    contribs: Rc<HashMap<String, Rc<UnitVariantContribution>>>,
-    key: String,
-) -> Rc<HashMap<String, Rc<UnitVariantContribution>>> {
+    contribs: Rc<HashMap<std::string::String, Rc<UnitVariantContribution>>>,
+    key: std::string::String,
+) -> Rc<HashMap<std::string::String, Rc<UnitVariantContribution>>> {
     Rc::new(v1_rt::map_keys(&contribs)).iter().cloned().fold(
-        v1_rt::rc_empty_map::<String, Rc<UnitVariantContribution>>(),
-        |acc: Rc<HashMap<String, Rc<UnitVariantContribution>>>, k: String| {
+        v1_rt::rc_empty_map::<std::string::String, Rc<UnitVariantContribution>>(),
+        |acc: Rc<HashMap<std::string::String, Rc<UnitVariantContribution>>>,
+         k: std::string::String| {
             if (k.clone() == key.clone()) {
                 acc.clone()
             } else {
@@ -157,10 +161,13 @@ pub fn contributions_without_key(
 }
 
 pub fn unit_variant_index_remove_binding(
-    index: Rc<HashMap<String, Rc<HashMap<String, Rc<UnitVariantContribution>>>>>,
+    index: Rc<
+        HashMap<std::string::String, Rc<HashMap<std::string::String, Rc<UnitVariantContribution>>>>,
+    >,
     binding: Rc<TypeBinding>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<HashMap<String, Rc<HashMap<String, Rc<UnitVariantContribution>>>>> {
+    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+) -> Rc<HashMap<std::string::String, Rc<HashMap<std::string::String, Rc<UnitVariantContribution>>>>>
+{
     Rc::new(v1_rt::map_keys(&binding_unit_variant_contributions(
         binding.clone(),
         source_indices.clone(),
@@ -169,8 +176,13 @@ pub fn unit_variant_index_remove_binding(
     .cloned()
     .fold(
         index.clone(),
-        |acc: Rc<HashMap<String, Rc<HashMap<String, Rc<UnitVariantContribution>>>>>,
-         vname: String| match v1_rt::map_get(&acc, vname.clone()) {
+        |acc: Rc<
+            HashMap<
+                std::string::String,
+                Rc<HashMap<std::string::String, Rc<UnitVariantContribution>>>,
+            >,
+        >,
+         vname: std::string::String| match v1_rt::map_get(&acc, vname.clone()) {
             Some(contribs) => v1_rt::rc_map_insert(
                 acc.clone(),
                 vname.clone(),
@@ -182,10 +194,13 @@ pub fn unit_variant_index_remove_binding(
 }
 
 pub fn unit_variant_index_add_binding(
-    index: Rc<HashMap<String, Rc<HashMap<String, Rc<UnitVariantContribution>>>>>,
+    index: Rc<
+        HashMap<std::string::String, Rc<HashMap<std::string::String, Rc<UnitVariantContribution>>>>,
+    >,
     binding: Rc<TypeBinding>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<HashMap<String, Rc<HashMap<String, Rc<UnitVariantContribution>>>>> {
+    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+) -> Rc<HashMap<std::string::String, Rc<HashMap<std::string::String, Rc<UnitVariantContribution>>>>>
+{
     {
         let contributions =
             binding_unit_variant_contributions(binding.clone(), source_indices.clone());
@@ -194,13 +209,23 @@ pub fn unit_variant_index_add_binding(
             .cloned()
             .fold(
                 index.clone(),
-                |acc: Rc<HashMap<String, Rc<HashMap<String, Rc<UnitVariantContribution>>>>>,
-                 vname: String| match v1_rt::map_get(&contributions, vname.clone())
-                {
+                |acc: Rc<
+                    HashMap<
+                        std::string::String,
+                        Rc<HashMap<std::string::String, Rc<UnitVariantContribution>>>,
+                    >,
+                >,
+                 vname: std::string::String| match v1_rt::map_get(
+                    &contributions,
+                    vname.clone(),
+                ) {
                     Some(contribution) => {
                         let contribs = match v1_rt::map_get(&acc, vname.clone()) {
                             Some(existing) => existing.clone(),
-                            None => v1_rt::rc_empty_map::<String, Rc<UnitVariantContribution>>(),
+                            None => v1_rt::rc_empty_map::<
+                                std::string::String,
+                                Rc<UnitVariantContribution>,
+                            >(),
                         };
                         v1_rt::rc_map_insert(
                             acc.clone(),
@@ -219,9 +244,9 @@ pub fn unit_variant_index_add_binding(
 }
 
 pub fn effective_visible_binding(
-    str_bindings: Rc<HashMap<String, Rc<TypeBinding>>>,
+    str_bindings: Rc<HashMap<std::string::String, Rc<TypeBinding>>>,
     parents: Rc<Vec<Rc<TypeEnv>>>,
-    name: String,
+    name: std::string::String,
 ) -> Option<Rc<TypeBinding>> {
     match v1_rt::map_get(&str_bindings, name.clone()) {
         Some(b) => Some(b.clone()),
@@ -239,11 +264,14 @@ pub fn effective_visible_binding(
 }
 
 pub fn unit_variant_index_shadow_insert(
-    unit_variant_index: Rc<HashMap<String, Rc<HashMap<String, Rc<UnitVariantContribution>>>>>,
+    unit_variant_index: Rc<
+        HashMap<std::string::String, Rc<HashMap<std::string::String, Rc<UnitVariantContribution>>>>,
+    >,
     shadowed: Option<Rc<TypeBinding>>,
     binding: Rc<TypeBinding>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<HashMap<String, Rc<HashMap<String, Rc<UnitVariantContribution>>>>> {
+    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+) -> Rc<HashMap<std::string::String, Rc<HashMap<std::string::String, Rc<UnitVariantContribution>>>>>
+{
     {
         let cleared = match shadowed.clone() {
             Some(old) => unit_variant_index_remove_binding(
@@ -258,20 +286,29 @@ pub fn unit_variant_index_shadow_insert(
 }
 
 pub fn build_unit_variant_index(
-    str_bindings: Rc<HashMap<String, Rc<TypeBinding>>>,
+    str_bindings: Rc<HashMap<std::string::String, Rc<TypeBinding>>>,
     parents: Rc<Vec<Rc<TypeEnv>>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<HashMap<String, Rc<HashMap<String, Rc<UnitVariantContribution>>>>> {
+    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+) -> Rc<HashMap<std::string::String, Rc<HashMap<std::string::String, Rc<UnitVariantContribution>>>>>
+{
     {
         let visible = parents.iter().cloned().fold(
             str_bindings.clone(),
-            |acc: Rc<HashMap<String, Rc<TypeBinding>>>, parent: Rc<TypeEnv>| {
+            |acc: Rc<HashMap<std::string::String, Rc<TypeBinding>>>, parent: Rc<TypeEnv>| {
                 v1_rt::rc_map_merge(parent.str_bindings.clone(), acc)
             },
         );
         Rc::new(v1_rt::map_values(&visible)).iter().cloned().fold(
-            v1_rt::rc_empty_map::<String, Rc<HashMap<String, Rc<UnitVariantContribution>>>>(),
-            |acc: Rc<HashMap<String, Rc<HashMap<String, Rc<UnitVariantContribution>>>>>,
+            v1_rt::rc_empty_map::<
+                std::string::String,
+                Rc<HashMap<std::string::String, Rc<UnitVariantContribution>>>,
+            >(),
+            |acc: Rc<
+                HashMap<
+                    std::string::String,
+                    Rc<HashMap<std::string::String, Rc<UnitVariantContribution>>>,
+                >,
+            >,
              binding: Rc<TypeBinding>| {
                 unit_variant_index_add_binding(acc, binding.clone(), source_indices.clone())
             },
@@ -279,27 +316,27 @@ pub fn build_unit_variant_index(
     }
 }
 
-pub fn global_bare_fallback_invariant() -> String {
+pub fn global_bare_fallback_invariant() -> std::string::String {
     thread_local! {
-        static CACHED: String = {
+        static CACHED: std::string::String = {
             "Corpus-wide bare-name census, resolved by ONE uniform containment walk (operator ruling 2026-07-18: global uniqueness is NOT a special tier — it is the shallowest level of the same walk; filepaths are irrelevant, the declared module path is the containment tree). SymbolIndex.global_bare is keyed on the bare declared name and built once by build_symbol_index_census over graph.modules before any module typechecks (order-independent). Tracking is decl-only via symbol_index_insert_decl / local_binding_for_item (type/fn/data names) plus corpus-globally-unique Disj variant aliases (unique across the WHOLE bare-name space: a variant whose name any type/fn/data decl claims stays qualified-only, never a global_bare candidate — else a type-vs-variant tie, e.g. actions.Job vs ExpressionContext.Job, refuses every far use of the TYPE); every homonym keeps its FULL candidate list (module_path + binding), never a candidate-free Ambiguous tombstone. Resolution (global_bare_lookup): a single candidate resolves from anywhere (the one-candidate degenerate case of the walk); multiple candidates resolve by nearest-ancestor containment under ImportScoped, while NamespaceOnlyY filters to the referencing module's containment chain and routes 0/1/many through module_path_owner_binding_decide. The production flip that removes the corpus fallback is downstream of reference-derived closure. lookup_binding_by_name consults global_bare only after str_bindings/ancestry_str_bindings/intern+bindings all miss. Variant arms additionally merge into per-module variant_locals via merge_global_bare_variant_locals (constructor_binding_authority — owner is the coproduct node).".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c: &std::string::String| c.clone())
 }
 
-pub fn qualified_module_projection_invariant() -> String {
+pub fn qualified_module_projection_invariant() -> std::string::String {
     thread_local! {
-        static CACHED: String = {
+        static CACHED: std::string::String = {
             "Grammar lane G1/G1b: container.member module projection in value/type/pattern and fn/data/let type-annotation positions resolves via symbol_index_lookup on the full qualified path (module projection), not value field-access — v2 resolve: TypeNode Conj QN spines; v1 typecheck: lookup_binding_by_name after global_bare; v1 patterns: lookup_variant_in_type routes dotted variant names through symbol_index_lookup. build_symbol_index_census materializes declared-module item paths plus module-unique Disj variant aliases (qualified path always; corpus-unique variants also enter global_bare — mirrors v2 symbol_index_fill_unique_variant_aliases); lookup_qualified_module_projection runs only when the reference carries a dot (fail-closed on miss — never widens to field-access semantics).".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c: &std::string::String| c.clone())
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct GlobalBareCandidate {
-    pub module_path: String,
+    pub module_path: std::string::String,
     pub binding: Rc<TypeBinding>,
 }
 
@@ -307,7 +344,7 @@ pub struct GlobalBareCandidate {
 #[serde(tag = "_variant")]
 pub enum GlobalBareLookupState {
     GlobalBareUniqueBinding {
-        module_path: String,
+        module_path: std::string::String,
         binding: Rc<TypeBinding>,
     },
     GlobalBareAmbiguousBinding {
@@ -317,44 +354,44 @@ pub enum GlobalBareLookupState {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ImportBinding {
-    pub name: String,
+    pub name: std::string::String,
     pub resolved: Rc<Node>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ScopeBinding {
-    pub name: String,
+    pub name: std::string::String,
     pub resolved: Rc<Node>,
     pub provenance: Rc<SubValueRelation>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ServiceCensusEntry {
-    pub module_path: String,
+    pub module_path: std::string::String,
     pub item: Rc<Node>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct SymbolIndex {
-    pub entries: Rc<HashMap<String, Rc<Node>>>,
-    pub global_bare: Rc<HashMap<String, Rc<GlobalBareLookupState>>>,
-    pub services: Rc<HashMap<String, Rc<ServiceCensusEntry>>>,
-    pub transparent_alias_rep: Rc<HashMap<String, String>>,
-    pub type_head_exposures: Rc<HashMap<String, Rc<TypeHeadExposure>>>,
+    pub entries: Rc<HashMap<std::string::String, Rc<Node>>>,
+    pub global_bare: Rc<HashMap<std::string::String, Rc<GlobalBareLookupState>>>,
+    pub services: Rc<HashMap<std::string::String, Rc<ServiceCensusEntry>>>,
+    pub transparent_alias_rep: Rc<HashMap<std::string::String, std::string::String>>,
+    pub type_head_exposures: Rc<HashMap<std::string::String, Rc<TypeHeadExposure>>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Scope {
-    pub locals: Rc<HashMap<String, Rc<ScopeBinding>>>,
+    pub locals: Rc<HashMap<std::string::String, Rc<ScopeBinding>>>,
 }
 
 pub fn empty_symbol_index() -> Rc<SymbolIndex> {
     Rc::new(SymbolIndex {
-        entries: v1_rt::rc_empty_map::<String, Rc<Node>>(),
-        global_bare: v1_rt::rc_empty_map::<String, Rc<GlobalBareLookupState>>(),
-        services: v1_rt::rc_empty_map::<String, Rc<ServiceCensusEntry>>(),
-        transparent_alias_rep: v1_rt::rc_empty_map::<String, String>(),
-        type_head_exposures: v1_rt::rc_empty_map::<String, Rc<TypeHeadExposure>>(),
+        entries: v1_rt::rc_empty_map::<std::string::String, Rc<Node>>(),
+        global_bare: v1_rt::rc_empty_map::<std::string::String, Rc<GlobalBareLookupState>>(),
+        services: v1_rt::rc_empty_map::<std::string::String, Rc<ServiceCensusEntry>>(),
+        transparent_alias_rep: v1_rt::rc_empty_map::<std::string::String, std::string::String>(),
+        type_head_exposures: v1_rt::rc_empty_map::<std::string::String, Rc<TypeHeadExposure>>(),
     })
 }
 
@@ -362,25 +399,28 @@ pub fn empty_type_env() -> Rc<TypeEnv> {
     Rc::new(TypeEnv {
         module_path: "".to_string(),
         bindings: v1_rt::rc_empty_map::<i64, Rc<TypeBinding>>(),
-        str_bindings: v1_rt::rc_empty_map::<String, Rc<TypeBinding>>(),
-        ancestry_str_bindings: v1_rt::rc_empty_map::<String, Rc<TypeBinding>>(),
+        str_bindings: v1_rt::rc_empty_map::<std::string::String, Rc<TypeBinding>>(),
+        ancestry_str_bindings: v1_rt::rc_empty_map::<std::string::String, Rc<TypeBinding>>(),
         parents: Rc::new(vec![]),
         recursive_types: Rc::new(vec![]),
         recursive_type_set: v1_rt::rc_empty_map::<i64, bool>(),
-        inductive_fields: v1_rt::rc_empty_map::<String, Rc<Vec<Rc<InductiveField>>>>(),
-        source_indices: v1_rt::rc_empty_map::<String, Rc<NewlineIndex>>(),
+        inductive_fields: v1_rt::rc_empty_map::<std::string::String, Rc<Vec<Rc<InductiveField>>>>(),
+        source_indices: v1_rt::rc_empty_map::<std::string::String, Rc<NewlineIndex>>(),
         intern_table: crate::v1_std_core::empty_intern_table(),
-        source_visible_names: v1_rt::rc_empty_map::<String, bool>(),
-        authored_import_names: v1_rt::rc_empty_map::<String, bool>(),
+        source_visible_names: v1_rt::rc_empty_map::<std::string::String, bool>(),
+        authored_import_names: v1_rt::rc_empty_map::<std::string::String, bool>(),
         symbol_index: empty_symbol_index(),
         unit_variant_index: v1_rt::rc_empty_map::<
-            String,
-            Rc<HashMap<String, Rc<UnitVariantContribution>>>,
+            std::string::String,
+            Rc<HashMap<std::string::String, Rc<UnitVariantContribution>>>,
         >(),
     })
 }
 
-pub fn symbol_index_lookup(index: Rc<SymbolIndex>, qualified_name: String) -> Option<Rc<Node>> {
+pub fn symbol_index_lookup(
+    index: Rc<SymbolIndex>,
+    qualified_name: std::string::String,
+) -> Option<Rc<Node>> {
     v1_rt::map_get(&index.entries.clone(), qualified_name.clone())
 }
 
@@ -401,10 +441,10 @@ pub fn global_bare_candidates_contain(
 }
 
 pub fn symbol_index_track_global_bare(
-    global_bare: Rc<HashMap<String, Rc<GlobalBareLookupState>>>,
-    module_path: String,
+    global_bare: Rc<HashMap<std::string::String, Rc<GlobalBareLookupState>>>,
+    module_path: std::string::String,
     binding: Rc<TypeBinding>,
-) -> Rc<HashMap<String, Rc<GlobalBareLookupState>>> {
+) -> Rc<HashMap<std::string::String, Rc<GlobalBareLookupState>>> {
     match v1_rt::map_get(&global_bare, binding.name.clone())
         .as_deref()
         .cloned()
@@ -469,7 +509,7 @@ pub fn symbol_index_track_global_bare(
 
 pub fn symbol_index_insert(
     index: Rc<SymbolIndex>,
-    qualified_name: String,
+    qualified_name: std::string::String,
     resolved: Rc<Node>,
 ) -> Rc<SymbolIndex> {
     Rc::new(SymbolIndex {
@@ -487,7 +527,7 @@ pub fn symbol_index_insert(
 
 pub fn symbol_index_insert_decl(
     index: Rc<SymbolIndex>,
-    module_path: String,
+    module_path: std::string::String,
     binding: Rc<TypeBinding>,
 ) -> Rc<SymbolIndex> {
     Rc::new(SymbolIndex {
@@ -512,8 +552,8 @@ pub fn symbol_index_insert_decl(
 
 pub fn symbol_index_insert_service(
     index: Rc<SymbolIndex>,
-    name: String,
-    module_path: String,
+    name: std::string::String,
+    module_path: std::string::String,
     item: Rc<Node>,
 ) -> Rc<SymbolIndex> {
     Rc::new(SymbolIndex {
@@ -534,11 +574,11 @@ pub fn symbol_index_insert_service(
 
 pub fn empty_scope() -> Rc<Scope> {
     Rc::new(Scope {
-        locals: v1_rt::rc_empty_map::<String, Rc<ScopeBinding>>(),
+        locals: v1_rt::rc_empty_map::<std::string::String, Rc<ScopeBinding>>(),
     })
 }
 
-pub fn scope_lookup(scope: Rc<Scope>, name: String) -> Option<Rc<ScopeBinding>> {
+pub fn scope_lookup(scope: Rc<Scope>, name: std::string::String) -> Option<Rc<ScopeBinding>> {
     v1_rt::map_get(&scope.locals.clone(), name.clone())
 }
 
@@ -550,50 +590,50 @@ pub fn scope_push(scope: Rc<Scope>, binding: Rc<ScopeBinding>) -> Rc<Scope> {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct TypeEnvCache {
-    pub deps_map: Rc<HashMap<String, Rc<Vec<String>>>>,
-    pub str_bindings: Rc<HashMap<String, Rc<TypeBinding>>>,
-    pub cycle_set_str: Rc<HashMap<String, bool>>,
-    pub variant_locals: Rc<HashMap<String, Rc<TypeBinding>>>,
+    pub deps_map: Rc<HashMap<std::string::String, Rc<Vec<std::string::String>>>>,
+    pub str_bindings: Rc<HashMap<std::string::String, Rc<TypeBinding>>>,
+    pub cycle_set_str: Rc<HashMap<std::string::String, bool>>,
+    pub variant_locals: Rc<HashMap<std::string::String, Rc<TypeBinding>>>,
 }
 
-pub fn visible_bindings_invariant() -> String {
+pub fn visible_bindings_invariant() -> std::string::String {
     thread_local! {
-        static CACHED: String = {
+        static CACHED: std::string::String = {
             "B1 build_type_env populates ancestry_str_bindings for import chains; lookup_binding_by_name is fail-closed on miss (str_bindings then ancestry_str_bindings then intern+bindings only; 6de571f3 reverted in 80ab63a). flatten_visible_bindings and merge_envs are DELETED (2026-07-06 operator ruling: the parent-recurse counter was a parallel representation guarding a fallback; the fallback is now unwritable by construction — no whole-env flatten exists to call). Visibility reads are one-level: local str_bindings/ancestry_str_bindings, or a fold over parent.str_bindings only (see collect_unit_variant_phantom_matches). Dissolve-on: namespace-as-sole-authority ruling — env maps become a derived projection of namespace reachability.".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c: &std::string::String| c.clone())
 }
 
 pub fn empty_type_env_cache() -> Rc<TypeEnvCache> {
     Rc::new(TypeEnvCache {
-        deps_map: v1_rt::rc_empty_map::<String, Rc<Vec<String>>>(),
-        str_bindings: v1_rt::rc_empty_map::<String, Rc<TypeBinding>>(),
-        cycle_set_str: v1_rt::rc_empty_map::<String, bool>(),
-        variant_locals: v1_rt::rc_empty_map::<String, Rc<TypeBinding>>(),
+        deps_map: v1_rt::rc_empty_map::<std::string::String, Rc<Vec<std::string::String>>>(),
+        str_bindings: v1_rt::rc_empty_map::<std::string::String, Rc<TypeBinding>>(),
+        cycle_set_str: v1_rt::rc_empty_map::<std::string::String, bool>(),
+        variant_locals: v1_rt::rc_empty_map::<std::string::String, Rc<TypeBinding>>(),
     })
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct TypeEnvCacheMergeConflict {
-    pub name: String,
-    pub import_path: String,
-    pub existing_site: String,
-    pub incoming_site: String,
+    pub name: std::string::String,
+    pub import_path: std::string::String,
+    pub existing_site: std::string::String,
+    pub incoming_site: std::string::String,
     pub span: Rc<SourceSpan>,
     pub same_tree: bool,
 }
 
-pub fn source_tree_partition_note() -> String {
+pub fn source_tree_partition_note() -> std::string::String {
     thread_local! {
-        static CACHED: String = {
+        static CACHED: std::string::String = {
             "Tree partition for the binding-fork ledger (lane ruling REVISED 2026-07-11: NOVELTY, not TREE, is the refusal axis). Tree does NOT decide refuse-vs-ledger anymore - it only LABELS the dissolution partition of an already-ledgered fork: same-tree (both decls under one tree, incl. dag-vs-dag across dirs) = a homonym/fork to consolidate within that tree; cross-tree (dag/ vs src/v2/) = the v1-seed-vs-v2 whole-file duplication the namespace census named; kernel-synthetic sites (<kernel:...>) are their own tree = the kernel-shadow class. ALL of these are LEDGERED (pre-existing forks already resolved on main by overlay-wins; refusing retroactively would regress working resolution), keeping the pre-guard import-order winner. Refusal is reserved for forks a PR NEWLY introduces (the novelty gate, a separate follow-up comparing this ledger to a drift-gated baseline). Partition on tree, never dir.".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c: &std::string::String| c.clone())
 }
 
-pub fn source_tree_of(file: String) -> String {
+pub fn source_tree_of(file: std::string::String) -> std::string::String {
     if v1_rt::contains(file.clone(), "<kernel:".to_string()) {
         "kernel".to_string()
     } else {
@@ -623,13 +663,13 @@ pub struct GuardedTypeEnvCacheMerge {
     pub conflicts: Rc<Vec<Rc<TypeEnvCacheMergeConflict>>>,
 }
 
-pub fn guarded_cache_union_note() -> String {
+pub fn guarded_cache_union_note() -> std::string::String {
     thread_local! {
-        static CACHED: String = {
+        static CACHED: std::string::String = {
             "Cross-parent cache union (S2a move 2 increment B; lane ruling REVISED 2026-07-11: NOVELTY, not TREE, is the refusal axis). A name reachable from two PEER imports with different bindings is a binding FORK. The union is order-INDEPENDENT by construction: keys present in both sides carrying the SAME binding (declaration-site span fast path, structural fallback) are SKIPPED (also the retained-bytes fix - the unguarded merge materialized a fresh O(|ancestry|) HAMT per module via rc_map_merge path-copy, the measured ~16.3MiB/module residency class); keys carrying DIFFERENT bindings are recorded as a typed, located conflict AND resolved by the pre-cut import-order overlay-wins winner (behavior-preserving: main already resolves these by overlay-wins, so refusing retroactively would regress working resolution, NOT close a fail-open). These conflicts are LEDGERED (out-of-band binding_forks channel, partitioned by tree for dissolution), never diagnostics; refusal is reserved for forks a PR NEWLY introduces (the separate novelty gate). Positional layers keep overlay-wins outside the guard: the kernel scope layer (merge_type_env_cache below) and locals-over-ancestry are lexical nearest-wins from the containment ruling, not peer-merge forks.".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c: &std::string::String| c.clone())
 }
 
 pub fn binding_same_authority(a: Rc<TypeBinding>, b: Rc<TypeBinding>) -> bool {
@@ -640,19 +680,19 @@ pub fn binding_same_authority(a: Rc<TypeBinding>, b: Rc<TypeBinding>) -> bool {
     }
 }
 
-pub fn union_base_choice_note() -> String {
+pub fn union_base_choice_note() -> std::string::String {
     thread_local! {
-        static CACHED: String = {
+        static CACHED: std::string::String = {
             "M1a base-choice (v1-run-stability-throughline §2.1, M0 receipt dup_factor=1.00): each union walks the SMALLER side's keys into the LARGER side's HAMT, so the result Rc-shares the large spine instead of freshly path-copying it key-by-key (the pre-cut accumulator was always the first parent - typically a small leaf - so every module materialized ~its whole closure's name surface fresh, across four maps). The winner is ORIENTATION-INDEPENDENT: each public union dispatches on count (O(1) on the persistent map) between an into-acc body (the pre-cut walk) and an into-overlay mirror whose conflict winner is identical (overlay-wins for str_bindings/deps_map/variant_locals, acc-wins for cycle_set_str); same-authority keys keep the retained side's copy - the span fast path declares the copies the same binding, and the whole-corpus fingerprint oracle is the drift check. Fold order stays import-order; conflict rows keep semantic roles (existing = accumulated side, incoming = overlay side) regardless of walk direction - the ledger's consumers are count/partition-grain, row order is not load-bearing.".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c: &std::string::String| c.clone())
 }
 
 pub fn guarded_union_str_bindings_into_acc(
-    acc: Rc<HashMap<String, Rc<TypeBinding>>>,
-    overlay: Rc<HashMap<String, Rc<TypeBinding>>>,
-    import_path: String,
+    acc: Rc<HashMap<std::string::String, Rc<TypeBinding>>>,
+    overlay: Rc<HashMap<std::string::String, Rc<TypeBinding>>>,
+    import_path: std::string::String,
     conflicts: Rc<Vec<Rc<TypeEnvCacheMergeConflict>>>,
 ) -> Rc<GuardedStrBindingsUnion> {
     Rc::new(v1_rt::map_keys(&overlay)).iter().cloned().fold(
@@ -660,7 +700,7 @@ pub fn guarded_union_str_bindings_into_acc(
             bindings: acc.clone(),
             conflicts: conflicts.clone(),
         }),
-        |state: Rc<GuardedStrBindingsUnion>, name: String| match v1_rt::map_get(
+        |state: Rc<GuardedStrBindingsUnion>, name: std::string::String| match v1_rt::map_get(
             &overlay,
             name.clone(),
         ) {
@@ -720,9 +760,9 @@ pub fn guarded_union_str_bindings_into_acc(
 }
 
 pub fn guarded_union_str_bindings_into_overlay(
-    acc: Rc<HashMap<String, Rc<TypeBinding>>>,
-    overlay: Rc<HashMap<String, Rc<TypeBinding>>>,
-    import_path: String,
+    acc: Rc<HashMap<std::string::String, Rc<TypeBinding>>>,
+    overlay: Rc<HashMap<std::string::String, Rc<TypeBinding>>>,
+    import_path: std::string::String,
     conflicts: Rc<Vec<Rc<TypeEnvCacheMergeConflict>>>,
 ) -> Rc<GuardedStrBindingsUnion> {
     Rc::new(v1_rt::map_keys(&acc)).iter().cloned().fold(
@@ -730,8 +770,10 @@ pub fn guarded_union_str_bindings_into_overlay(
             bindings: overlay.clone(),
             conflicts: conflicts.clone(),
         }),
-        |state: Rc<GuardedStrBindingsUnion>, name: String| match v1_rt::map_get(&acc, name.clone())
-        {
+        |state: Rc<GuardedStrBindingsUnion>, name: std::string::String| match v1_rt::map_get(
+            &acc,
+            name.clone(),
+        ) {
             None => state.clone(),
             Some(accumulated) => match v1_rt::map_get(&state.bindings.clone(), name.clone()) {
                 None => Rc::new(GuardedStrBindingsUnion {
@@ -784,9 +826,9 @@ pub fn guarded_union_str_bindings_into_overlay(
 }
 
 pub fn guarded_union_str_bindings(
-    acc: Rc<HashMap<String, Rc<TypeBinding>>>,
-    overlay: Rc<HashMap<String, Rc<TypeBinding>>>,
-    import_path: String,
+    acc: Rc<HashMap<std::string::String, Rc<TypeBinding>>>,
+    overlay: Rc<HashMap<std::string::String, Rc<TypeBinding>>>,
+    import_path: std::string::String,
     conflicts: Rc<Vec<Rc<TypeEnvCacheMergeConflict>>>,
 ) -> Rc<GuardedStrBindingsUnion> {
     if ((acc.clone().len() as i64) >= (overlay.clone().len() as i64)) {
@@ -808,20 +850,18 @@ pub fn guarded_union_str_bindings(
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct GuardedStrBindingsUnion {
-    pub bindings: Rc<HashMap<String, Rc<TypeBinding>>>,
+    pub bindings: Rc<HashMap<std::string::String, Rc<TypeBinding>>>,
     pub conflicts: Rc<Vec<Rc<TypeEnvCacheMergeConflict>>>,
 }
 
 pub fn union_deps_map_into_acc(
-    acc: Rc<HashMap<String, Rc<Vec<String>>>>,
-    overlay: Rc<HashMap<String, Rc<Vec<String>>>>,
-) -> Rc<HashMap<String, Rc<Vec<String>>>> {
+    acc: Rc<HashMap<std::string::String, Rc<Vec<std::string::String>>>>,
+    overlay: Rc<HashMap<std::string::String, Rc<Vec<std::string::String>>>>,
+) -> Rc<HashMap<std::string::String, Rc<Vec<std::string::String>>>> {
     Rc::new(v1_rt::map_keys(&overlay)).iter().cloned().fold(
         acc.clone(),
-        |m: Rc<HashMap<String, Rc<Vec<String>>>>, name: String| match v1_rt::map_get(
-            &overlay,
-            name.clone(),
-        ) {
+        |m: Rc<HashMap<std::string::String, Rc<Vec<std::string::String>>>>,
+         name: std::string::String| match v1_rt::map_get(&overlay, name.clone()) {
             None => m.clone(),
             Some(incoming) => match v1_rt::map_get(&m, name.clone()) {
                 None => v1_rt::rc_map_insert(m.clone(), name.clone(), incoming.clone()),
@@ -838,15 +878,13 @@ pub fn union_deps_map_into_acc(
 }
 
 pub fn union_deps_map_into_overlay(
-    acc: Rc<HashMap<String, Rc<Vec<String>>>>,
-    overlay: Rc<HashMap<String, Rc<Vec<String>>>>,
-) -> Rc<HashMap<String, Rc<Vec<String>>>> {
+    acc: Rc<HashMap<std::string::String, Rc<Vec<std::string::String>>>>,
+    overlay: Rc<HashMap<std::string::String, Rc<Vec<std::string::String>>>>,
+) -> Rc<HashMap<std::string::String, Rc<Vec<std::string::String>>>> {
     Rc::new(v1_rt::map_keys(&acc)).iter().cloned().fold(
         overlay.clone(),
-        |m: Rc<HashMap<String, Rc<Vec<String>>>>, name: String| match v1_rt::map_get(
-            &acc,
-            name.clone(),
-        ) {
+        |m: Rc<HashMap<std::string::String, Rc<Vec<std::string::String>>>>,
+         name: std::string::String| match v1_rt::map_get(&acc, name.clone()) {
             None => m.clone(),
             Some(accumulated) => match v1_rt::map_get(&m, name.clone()) {
                 None => v1_rt::rc_map_insert(m.clone(), name.clone(), accumulated.clone()),
@@ -857,9 +895,9 @@ pub fn union_deps_map_into_overlay(
 }
 
 pub fn union_deps_map_skip_equal(
-    acc: Rc<HashMap<String, Rc<Vec<String>>>>,
-    overlay: Rc<HashMap<String, Rc<Vec<String>>>>,
-) -> Rc<HashMap<String, Rc<Vec<String>>>> {
+    acc: Rc<HashMap<std::string::String, Rc<Vec<std::string::String>>>>,
+    overlay: Rc<HashMap<std::string::String, Rc<Vec<std::string::String>>>>,
+) -> Rc<HashMap<std::string::String, Rc<Vec<std::string::String>>>> {
     if ((acc.clone().len() as i64) >= (overlay.clone().len() as i64)) {
         union_deps_map_into_acc(acc.clone(), overlay.clone())
     } else {
@@ -868,12 +906,15 @@ pub fn union_deps_map_skip_equal(
 }
 
 pub fn union_bool_set_into_acc(
-    acc: Rc<HashMap<String, bool>>,
-    overlay: Rc<HashMap<String, bool>>,
-) -> Rc<HashMap<String, bool>> {
+    acc: Rc<HashMap<std::string::String, bool>>,
+    overlay: Rc<HashMap<std::string::String, bool>>,
+) -> Rc<HashMap<std::string::String, bool>> {
     Rc::new(v1_rt::map_keys(&overlay)).iter().cloned().fold(
         acc.clone(),
-        |m: Rc<HashMap<String, bool>>, name: String| match v1_rt::map_get(&m, name.clone()) {
+        |m: Rc<HashMap<std::string::String, bool>>, name: std::string::String| match v1_rt::map_get(
+            &m,
+            name.clone(),
+        ) {
             Some(_) => m.clone(),
             None => match v1_rt::map_get(&overlay, name.clone()) {
                 Some(v) => v1_rt::rc_map_insert(m.clone(), name.clone(), v.clone()),
@@ -884,12 +925,15 @@ pub fn union_bool_set_into_acc(
 }
 
 pub fn union_bool_set_into_overlay(
-    acc: Rc<HashMap<String, bool>>,
-    overlay: Rc<HashMap<String, bool>>,
-) -> Rc<HashMap<String, bool>> {
+    acc: Rc<HashMap<std::string::String, bool>>,
+    overlay: Rc<HashMap<std::string::String, bool>>,
+) -> Rc<HashMap<std::string::String, bool>> {
     Rc::new(v1_rt::map_keys(&acc)).iter().cloned().fold(
         overlay.clone(),
-        |m: Rc<HashMap<String, bool>>, name: String| match v1_rt::map_get(&acc, name.clone()) {
+        |m: Rc<HashMap<std::string::String, bool>>, name: std::string::String| match v1_rt::map_get(
+            &acc,
+            name.clone(),
+        ) {
             None => m.clone(),
             Some(accumulated) => match v1_rt::map_get(&m, name.clone()) {
                 None => v1_rt::rc_map_insert(m.clone(), name.clone(), accumulated.clone()),
@@ -906,9 +950,9 @@ pub fn union_bool_set_into_overlay(
 }
 
 pub fn union_bool_set_skip_equal(
-    acc: Rc<HashMap<String, bool>>,
-    overlay: Rc<HashMap<String, bool>>,
-) -> Rc<HashMap<String, bool>> {
+    acc: Rc<HashMap<std::string::String, bool>>,
+    overlay: Rc<HashMap<std::string::String, bool>>,
+) -> Rc<HashMap<std::string::String, bool>> {
     if ((acc.clone().len() as i64) >= (overlay.clone().len() as i64)) {
         union_bool_set_into_acc(acc.clone(), overlay.clone())
     } else {
@@ -917,47 +961,47 @@ pub fn union_bool_set_skip_equal(
 }
 
 pub fn union_variant_locals_into_acc(
-    acc: Rc<HashMap<String, Rc<TypeBinding>>>,
-    overlay: Rc<HashMap<String, Rc<TypeBinding>>>,
-) -> Rc<HashMap<String, Rc<TypeBinding>>> {
+    acc: Rc<HashMap<std::string::String, Rc<TypeBinding>>>,
+    overlay: Rc<HashMap<std::string::String, Rc<TypeBinding>>>,
+) -> Rc<HashMap<std::string::String, Rc<TypeBinding>>> {
     Rc::new(v1_rt::map_keys(&overlay)).iter().cloned().fold(
         acc.clone(),
-        |m: Rc<HashMap<String, Rc<TypeBinding>>>, name: String| match v1_rt::map_get(
-            &overlay,
-            name.clone(),
-        ) {
-            None => m.clone(),
-            Some(incoming) => match v1_rt::map_get(&m, name.clone()) {
-                None => v1_rt::rc_map_insert(m.clone(), name.clone(), incoming.clone()),
-                Some(_existing) => v1_rt::rc_map_insert(m.clone(), name.clone(), incoming.clone()),
-            },
+        |m: Rc<HashMap<std::string::String, Rc<TypeBinding>>>, name: std::string::String| {
+            match v1_rt::map_get(&overlay, name.clone()) {
+                None => m.clone(),
+                Some(incoming) => match v1_rt::map_get(&m, name.clone()) {
+                    None => v1_rt::rc_map_insert(m.clone(), name.clone(), incoming.clone()),
+                    Some(_existing) => {
+                        v1_rt::rc_map_insert(m.clone(), name.clone(), incoming.clone())
+                    }
+                },
+            }
         },
     )
 }
 
 pub fn union_variant_locals_into_overlay(
-    acc: Rc<HashMap<String, Rc<TypeBinding>>>,
-    overlay: Rc<HashMap<String, Rc<TypeBinding>>>,
-) -> Rc<HashMap<String, Rc<TypeBinding>>> {
+    acc: Rc<HashMap<std::string::String, Rc<TypeBinding>>>,
+    overlay: Rc<HashMap<std::string::String, Rc<TypeBinding>>>,
+) -> Rc<HashMap<std::string::String, Rc<TypeBinding>>> {
     Rc::new(v1_rt::map_keys(&acc)).iter().cloned().fold(
         overlay.clone(),
-        |m: Rc<HashMap<String, Rc<TypeBinding>>>, name: String| match v1_rt::map_get(
-            &acc,
-            name.clone(),
-        ) {
-            None => m.clone(),
-            Some(accumulated) => match v1_rt::map_get(&m, name.clone()) {
-                None => v1_rt::rc_map_insert(m.clone(), name.clone(), accumulated.clone()),
-                Some(_incoming) => m.clone(),
-            },
+        |m: Rc<HashMap<std::string::String, Rc<TypeBinding>>>, name: std::string::String| {
+            match v1_rt::map_get(&acc, name.clone()) {
+                None => m.clone(),
+                Some(accumulated) => match v1_rt::map_get(&m, name.clone()) {
+                    None => v1_rt::rc_map_insert(m.clone(), name.clone(), accumulated.clone()),
+                    Some(_incoming) => m.clone(),
+                },
+            }
         },
     )
 }
 
 pub fn union_variant_locals_skip_equal(
-    acc: Rc<HashMap<String, Rc<TypeBinding>>>,
-    overlay: Rc<HashMap<String, Rc<TypeBinding>>>,
-) -> Rc<HashMap<String, Rc<TypeBinding>>> {
+    acc: Rc<HashMap<std::string::String, Rc<TypeBinding>>>,
+    overlay: Rc<HashMap<std::string::String, Rc<TypeBinding>>>,
+) -> Rc<HashMap<std::string::String, Rc<TypeBinding>>> {
     if ((acc.clone().len() as i64) >= (overlay.clone().len() as i64)) {
         union_variant_locals_into_acc(acc.clone(), overlay.clone())
     } else {
@@ -968,7 +1012,7 @@ pub fn union_variant_locals_skip_equal(
 pub fn merge_type_env_cache_guarded(
     base: Rc<TypeEnvCache>,
     overlay: Rc<TypeEnvCache>,
-    import_path: String,
+    import_path: std::string::String,
     conflicts: Rc<Vec<Rc<TypeEnvCacheMergeConflict>>>,
 ) -> Rc<GuardedTypeEnvCacheMerge> {
     {
@@ -1014,7 +1058,10 @@ pub fn merge_type_env_cache(base: Rc<TypeEnvCache>, overlay: Rc<TypeEnvCache>) -
     })
 }
 
-pub fn lookup_binding_local_by_name(env: Rc<TypeEnv>, name: String) -> Option<Rc<TypeBinding>> {
+pub fn lookup_binding_local_by_name(
+    env: Rc<TypeEnv>,
+    name: std::string::String,
+) -> Option<Rc<TypeBinding>> {
     match crate::v1_std_core::intern_find(env.intern_table.clone(), name.clone()) {
         Some(ident) => match v1_rt::map_get(&env.bindings.clone(), ident.clone()) {
             Some(binding) => Some(binding.clone()),
@@ -1026,16 +1073,19 @@ pub fn lookup_binding_local_by_name(env: Rc<TypeEnv>, name: String) -> Option<Rc
 
 pub fn str_bindings_from_bindings(
     bindings: Rc<HashMap<i64, Rc<TypeBinding>>>,
-) -> Rc<HashMap<String, Rc<TypeBinding>>> {
+) -> Rc<HashMap<std::string::String, Rc<TypeBinding>>> {
     Rc::new(v1_rt::map_values(&bindings)).iter().cloned().fold(
-        v1_rt::rc_empty_map::<String, Rc<TypeBinding>>(),
-        |acc: Rc<HashMap<String, Rc<TypeBinding>>>, binding: Rc<TypeBinding>| {
+        v1_rt::rc_empty_map::<std::string::String, Rc<TypeBinding>>(),
+        |acc: Rc<HashMap<std::string::String, Rc<TypeBinding>>>, binding: Rc<TypeBinding>| {
             v1_rt::rc_map_insert(acc, binding.name.clone(), binding.clone())
         },
     )
 }
 
-pub fn lookup_binding_by_name_local(env: Rc<TypeEnv>, name: String) -> Option<Rc<TypeBinding>> {
+pub fn lookup_binding_by_name_local(
+    env: Rc<TypeEnv>,
+    name: std::string::String,
+) -> Option<Rc<TypeBinding>> {
     match v1_rt::map_get(&env.str_bindings.clone(), name.clone()) {
         Some(binding) => Some(binding.clone()),
         None => match v1_rt::map_get(&env.ancestry_str_bindings.clone(), name.clone()) {
@@ -1048,7 +1098,10 @@ pub fn lookup_binding_by_name_local(env: Rc<TypeEnv>, name: String) -> Option<Rc
     }
 }
 
-pub fn lookup_binding_by_name(env: Rc<TypeEnv>, name: String) -> Option<Rc<TypeBinding>> {
+pub fn lookup_binding_by_name(
+    env: Rc<TypeEnv>,
+    name: std::string::String,
+) -> Option<Rc<TypeBinding>> {
     match lookup_binding_by_name_local(env.clone(), name.clone()) {
         Some(binding) => {
             if listed_import_required_bare_call_blocked(env.clone(), name.clone()) {
@@ -1061,36 +1114,45 @@ pub fn lookup_binding_by_name(env: Rc<TypeEnv>, name: String) -> Option<Rc<TypeB
     }
 }
 
-pub fn closure_independent_bare_free_call_note() -> String {
+pub fn closure_independent_bare_free_call_note() -> std::string::String {
     thread_local! {
-        static CACHED: String = {
+        static CACHED: std::string::String = {
             "Closure-independent bare free-call binding (#6985 / #8062): symbols registered here refuse global_bare / pool-coincidence resolution unless the name is in source_visible_names (selective import or kernel surface). Dissolve-on: PrimitiveDefinition identity-join closes the denominator so every importable free fn is registered once with its definer module — not a hand-maintained trim-only list.".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c: &std::string::String| c.clone())
 }
 
-pub fn bare_free_call_requires_listed_import(name: String) -> bool {
+pub fn bare_free_call_requires_listed_import(name: std::string::String) -> bool {
     (name.clone() == "trim".to_string())
 }
 
-pub fn import_visible_name(env: Rc<TypeEnv>, name: String) -> bool {
+pub fn import_visible_name(env: Rc<TypeEnv>, name: std::string::String) -> bool {
     match v1_rt::map_get(&env.source_visible_names.clone(), name.clone()) {
         Some(vis) => vis.clone(),
         None => false,
     }
 }
 
-pub fn global_bare_blocked_by_listed_import_requirement(env: Rc<TypeEnv>, name: String) -> bool {
+pub fn global_bare_blocked_by_listed_import_requirement(
+    env: Rc<TypeEnv>,
+    name: std::string::String,
+) -> bool {
     (bare_free_call_requires_listed_import(name.clone())
         && !import_visible_name(env.clone(), name.clone()))
 }
 
-pub fn listed_import_required_bare_call_blocked(env: Rc<TypeEnv>, name: String) -> bool {
+pub fn listed_import_required_bare_call_blocked(
+    env: Rc<TypeEnv>,
+    name: std::string::String,
+) -> bool {
     global_bare_blocked_by_listed_import_requirement(env.clone(), name.clone())
 }
 
-pub fn lookup_binding_after_global_bare(env: Rc<TypeEnv>, name: String) -> Option<Rc<TypeBinding>> {
+pub fn lookup_binding_after_global_bare(
+    env: Rc<TypeEnv>,
+    name: std::string::String,
+) -> Option<Rc<TypeBinding>> {
     if global_bare_blocked_by_listed_import_requirement(env.clone(), name.clone()) {
         std::option::Option::None
     } else {
@@ -1103,7 +1165,7 @@ pub fn lookup_binding_after_global_bare(env: Rc<TypeEnv>, name: String) -> Optio
 
 pub fn lookup_qualified_module_projection(
     env: Rc<TypeEnv>,
-    name: String,
+    name: std::string::String,
 ) -> Option<Rc<TypeBinding>> {
     match v1_rt::contains(name.clone(), ".".to_string()) {
         false => None,
@@ -1120,12 +1182,12 @@ pub fn lookup_qualified_module_projection(
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct SegmentLcpScan {
-    pub remaining: Rc<Vec<String>>,
+    pub remaining: Rc<Vec<std::string::String>>,
     pub matched: i64,
     pub live: bool,
 }
 
-pub fn segment_lcp_len(a: Rc<Vec<String>>, b: Rc<Vec<String>>) -> i64 {
+pub fn segment_lcp_len(a: Rc<Vec<std::string::String>>, b: Rc<Vec<std::string::String>>) -> i64 {
     {
         let scan = a.iter().cloned().fold(
             Rc::new(SegmentLcpScan {
@@ -1133,7 +1195,7 @@ pub fn segment_lcp_len(a: Rc<Vec<String>>, b: Rc<Vec<String>>) -> i64 {
                 matched: 0,
                 live: true,
             }),
-            |acc: Rc<SegmentLcpScan>, seg: String| {
+            |acc: Rc<SegmentLcpScan>, seg: std::string::String| {
                 if acc.live.clone() {
                     match acc.remaining.clone().first().cloned() {
                         Some(bh) => {
@@ -1188,7 +1250,7 @@ pub struct GlobalBareNearestCandidateScan {
 }
 
 pub fn global_bare_nearest_ancestor_candidate(
-    env_module_path: String,
+    env_module_path: std::string::String,
     candidates: Rc<Vec<Rc<GlobalBareCandidate>>>,
 ) -> Option<Rc<GlobalBareCandidate>> {
     {
@@ -1231,7 +1293,7 @@ pub fn global_bare_nearest_ancestor_candidate(
 }
 
 pub fn global_bare_nearest_ancestor(
-    env_module_path: String,
+    env_module_path: std::string::String,
     candidates: Rc<Vec<Rc<GlobalBareCandidate>>>,
 ) -> Option<Rc<TypeBinding>> {
     match global_bare_nearest_ancestor_candidate(env_module_path.clone(), candidates.clone()) {
@@ -1240,17 +1302,17 @@ pub fn global_bare_nearest_ancestor(
     }
 }
 
-pub fn unique_on_chain_policy_note() -> String {
+pub fn unique_on_chain_policy_note() -> std::string::String {
     thread_local! {
-        static CACHED: String = {
+        static CACHED: std::string::String = {
             "namespace-resolution-design.md 13 (operator-ratified 2026-07-21), landed as 8 step 1 with step-4 default ON = NamespaceOnlyY (name_resolution_policy_is_namespace_only; host bracket false = ImportScoped byte-for-byte): a bare homonym resolves to the UNIQUE binder on the referencing module's ancestor chain — a candidate is on the chain iff its declaring module path is a leading-segment prefix of (or equal to) TypeEnv.module_path. Exactly one on-chain candidate resolves; two-plus on-chain REFUSES as typed AmbiguousReference with the full chain population; zero on-chain REFUSES as UnresolvedType. Cardinality for the chain population routes through module_path_owner_binding_decide.".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c: &std::string::String| c.clone())
 }
 
 pub fn global_bare_chain_candidates(
-    env_module_path: String,
+    env_module_path: std::string::String,
     candidates: Rc<Vec<Rc<GlobalBareCandidate>>>,
 ) -> Rc<Vec<Rc<GlobalBareCandidate>>> {
     {
@@ -1273,7 +1335,7 @@ pub fn global_bare_chain_candidates(
 }
 
 pub fn global_bare_unique_chain_candidate(
-    env_module_path: String,
+    env_module_path: std::string::String,
     candidates: Rc<Vec<Rc<GlobalBareCandidate>>>,
 ) -> Option<Rc<GlobalBareCandidate>> {
     {
@@ -1307,7 +1369,7 @@ pub fn global_bare_unique_chain_candidate(
 }
 
 pub fn global_bare_policy_candidate(
-    env_module_path: String,
+    env_module_path: std::string::String,
     candidates: Rc<Vec<Rc<GlobalBareCandidate>>>,
 ) -> Option<Rc<GlobalBareCandidate>> {
     if v1_rt::name_resolution_policy_is_namespace_only() {
@@ -1317,7 +1379,10 @@ pub fn global_bare_policy_candidate(
     }
 }
 
-pub fn global_bare_strict_ambiguity_candidates(env: Rc<TypeEnv>, name: String) -> Rc<Vec<String>> {
+pub fn global_bare_strict_ambiguity_candidates(
+    env: Rc<TypeEnv>,
+    name: std::string::String,
+) -> Rc<Vec<std::string::String>> {
     {
         if (v1_rt::name_resolution_policy_is_namespace_only() == false) {
             return Rc::new(vec![]);
@@ -1348,7 +1413,7 @@ pub fn global_bare_strict_ambiguity_candidates(env: Rc<TypeEnv>, name: String) -
 
 pub fn bare_name_miss_diagnostic(
     env: Rc<TypeEnv>,
-    name: String,
+    name: std::string::String,
     span: Rc<SourceSpan>,
 ) -> Rc<CompilerDiagnostic> {
     {
@@ -1370,9 +1435,9 @@ pub fn bare_name_miss_diagnostic(
 
 pub fn global_bare_owner_module(
     env: Rc<TypeEnv>,
-    owner_module_path: String,
-    name: String,
-) -> Option<String> {
+    owner_module_path: std::string::String,
+    name: std::string::String,
+) -> Option<std::string::String> {
     match v1_rt::map_get(&env.symbol_index.clone().global_bare.clone(), name.clone())
         .as_deref()
         .cloned()
@@ -1404,8 +1469,8 @@ pub fn global_bare_owner_module(
 
 pub fn binding_declares_name(
     binding: Rc<TypeBinding>,
-    name: String,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    name: std::string::String,
+    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
 ) -> bool {
     (crate::v1_std_core::authored_name_at(source_indices.clone(), binding.resolved.clone())
         == name.clone())
@@ -1413,11 +1478,11 @@ pub fn binding_declares_name(
 
 pub fn borrowed_generic_param_names(
     params: Rc<Vec<Rc<Node>>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<HashMap<String, bool>> {
+    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+) -> Rc<HashMap<std::string::String, bool>> {
     params.iter().cloned().fold(
-        v1_rt::rc_empty_map::<String, bool>(),
-        |acc: Rc<HashMap<String, bool>>, p: Rc<Node>| {
+        v1_rt::rc_empty_map::<std::string::String, bool>(),
+        |acc: Rc<HashMap<std::string::String, bool>>, p: Rc<Node>| {
             let pt = crate::v1_std_core::param_node_type_expr(p.clone());
             let pname = crate::v1_std_core::param_node_name_at(p.clone(), source_indices.clone());
             let tname = crate::v1_std_core::authored_name_at(source_indices.clone(), pt.clone());
@@ -1434,20 +1499,20 @@ pub fn borrowed_generic_param_names(
     )
 }
 
-pub fn qualify_declaration_position_invariant() -> String {
+pub fn qualify_declaration_position_invariant() -> std::string::String {
     thread_local! {
-        static CACHED: String = {
+        static CACHED: std::string::String = {
             "qualify_borrowed_type_names rewrites REFERENCE positions only. Within a type expression, a NoConnective node's children are generic ARGS (references - rename-eligible); a STRUCTURED node's (Disj/Conj) children are DECLARATIONS (variant names, field names) whose names must never be rewritten - renaming them detaches bare patterns/projections from the decl (a projected coproduct's Independent became std.realization.Independent and every bare match arm missed). Declaration subtrees are walked by qualify_decl_reference_positions: keep the declared name, qualify the inferred payload (a type expr - reference position), recurse into child declarations. The census type-decl pass (census_upgrade_type_decl_binding) uses the SAME walk - one authority for the declaration/reference distinction.".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c: &std::string::String| c.clone())
 }
 
 pub fn qualify_decl_reference_positions(
     n: Rc<Node>,
-    owner_module_path: String,
+    owner_module_path: std::string::String,
     env: Rc<TypeEnv>,
-    excluded: Rc<HashMap<String, bool>>,
+    excluded: Rc<HashMap<std::string::String, bool>>,
 ) -> Rc<Node> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         let inf2 = qualify_borrowed_inferred(
@@ -1474,9 +1539,9 @@ pub fn qualify_decl_reference_positions(
 
 pub fn qualify_borrowed_type_names(
     n: Rc<Node>,
-    owner_module_path: String,
+    owner_module_path: std::string::String,
     env: Rc<TypeEnv>,
-    excluded: Rc<HashMap<String, bool>>,
+    excluded: Rc<HashMap<std::string::String, bool>>,
 ) -> Rc<Node> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         let qualified_children = if (n.connective.clone() == Connective::NoConnective) {
@@ -1611,9 +1676,9 @@ pub fn node_with_inferred(n: Rc<Node>, inferred: Option<Rc<InferredNode>>) -> Rc
 
 pub fn qualify_borrowed_inferred(
     inferred: Option<Rc<InferredNode>>,
-    owner_module_path: String,
+    owner_module_path: std::string::String,
     env: Rc<TypeEnv>,
-    excluded: Rc<HashMap<String, bool>>,
+    excluded: Rc<HashMap<std::string::String, bool>>,
 ) -> Option<Rc<InferredNode>> {
     match inferred.clone().as_deref().cloned() {
         Some(InferredNode::Resolved { node: t, .. }) => Some(Rc::new(InferredNode::Resolved {
@@ -1628,7 +1693,7 @@ pub fn qualify_borrowed_inferred(
     }
 }
 
-pub fn qualified_all_but_last(name: String) -> String {
+pub fn qualified_all_but_last(name: std::string::String) -> std::string::String {
     {
         let segs = crate::v1_std_core::module_path_segments(name.clone());
         let seg_count = (segs.clone().len() as i64);
@@ -1645,13 +1710,16 @@ pub fn qualified_all_but_last(name: String) -> String {
                 )
                 .iter()
                 .cloned()
-                .fold("".to_string(), |acc: String, seg: String| {
-                    if (acc.clone() == "".to_string()) {
-                        seg.clone()
-                    } else {
-                        v1_rt::concat(v1_rt::concat(acc.clone(), ".".to_string()), seg.clone())
-                    }
-                });
+                .fold(
+                    "".to_string(),
+                    |acc: std::string::String, seg: std::string::String| {
+                        if (acc.clone() == "".to_string()) {
+                            seg.clone()
+                        } else {
+                            v1_rt::concat(v1_rt::concat(acc.clone(), ".".to_string()), seg.clone())
+                        }
+                    },
+                );
                 scan
             }
         }
@@ -1659,8 +1727,8 @@ pub fn qualified_all_but_last(name: String) -> String {
 }
 
 pub fn record_global_bare_ambiguous_silent_pick(
-    env_module_path: String,
-    name: String,
+    env_module_path: std::string::String,
+    name: std::string::String,
     cands: Rc<Vec<Rc<GlobalBareCandidate>>>,
 ) -> () {
     let cand_count = (cands.clone().len() as i64);
@@ -1679,7 +1747,7 @@ pub fn record_global_bare_ambiguous_silent_pick(
     };
 }
 
-pub fn global_bare_lookup(env: Rc<TypeEnv>, name: String) -> Option<Rc<TypeBinding>> {
+pub fn global_bare_lookup(env: Rc<TypeEnv>, name: std::string::String) -> Option<Rc<TypeBinding>> {
     match v1_rt::map_get(&env.symbol_index.clone().global_bare.clone(), name.clone())
         .as_deref()
         .cloned()
@@ -1714,7 +1782,7 @@ pub fn global_bare_lookup(env: Rc<TypeEnv>, name: String) -> Option<Rc<TypeBindi
     }
 }
 
-pub fn global_bare_is_ambiguous(env: Rc<TypeEnv>, name: String) -> bool {
+pub fn global_bare_is_ambiguous(env: Rc<TypeEnv>, name: std::string::String) -> bool {
     match v1_rt::map_get(&env.symbol_index.clone().global_bare.clone(), name.clone())
         .as_deref()
         .cloned()
@@ -1759,7 +1827,7 @@ pub fn is_recursive_type(env: Rc<TypeEnv>, ident: i64) -> bool {
     }
 }
 
-pub fn is_recursive_type_by_name(env: Rc<TypeEnv>, name: String) -> bool {
+pub fn is_recursive_type_by_name(env: Rc<TypeEnv>, name: std::string::String) -> bool {
     match crate::v1_std_core::intern_find(env.intern_table.clone(), name.clone()) {
         Some(id) => is_recursive_type(env.clone(), id.clone()),
         None => false,
@@ -1773,7 +1841,7 @@ pub fn lookup_type(env: Rc<TypeEnv>, ident: i64) -> Option<Rc<Node>> {
     }
 }
 
-pub fn lookup_type_by_name(env: Rc<TypeEnv>, name: String) -> Option<Rc<Node>> {
+pub fn lookup_type_by_name(env: Rc<TypeEnv>, name: std::string::String) -> Option<Rc<Node>> {
     match lookup_binding_by_name(env.clone(), name.clone()) {
         Some(binding) => match (v1_rt::contains(name.clone(), ".".to_string())
             || binding_declares_name(binding.clone(), name.clone(), env.source_indices.clone()))
@@ -1792,25 +1860,28 @@ pub fn lookup_type_by_name(env: Rc<TypeEnv>, name: String) -> Option<Rc<Node>> {
     }
 }
 
-pub fn type_ref_hit_ne_bind_measure_active_note() -> String {
+pub fn type_ref_hit_ne_bind_measure_active_note() -> std::string::String {
     thread_local! {
-        static CACHED: String = {
+        static CACHED: std::string::String = {
             "Host bracket in v1_rt (type_ref_hit_ne_bind_measure_active / _set / with_type_ref_hit_ne_bind_measure) — same shape as name_resolution_policy_is_namespace_only. Armed only by compile_dag_diagnostic_census for the nested synthetic compile (N1a). Default false = production fail-open. Zero production gates consult this. No .dag body can flip it.".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c: &std::string::String| c.clone())
 }
 
-pub fn type_ref_measure_binding_authority_fn_note() -> String {
+pub fn type_ref_measure_binding_authority_fn_note() -> std::string::String {
     thread_local! {
-        static CACHED: String = {
+        static CACHED: std::string::String = {
             "MEASUREMENT-ONLY — see gunbc.type_ref_hit_ne_bind_measure type_ref_measure_binding_authority_note. Two arms: bare exact import/local key; qualified self/ancestor containment + symbol_index hit. No same-leaf×span OR-arm.".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c: &std::string::String| c.clone())
 }
 
-pub fn type_ref_module_path_is_containment_prefix(ancestor: String, descendant: String) -> bool {
+pub fn type_ref_module_path_is_containment_prefix(
+    ancestor: std::string::String,
+    descendant: std::string::String,
+) -> bool {
     {
         let a_segs = crate::v1_std_core::module_path_segments(ancestor.clone());
         let d_segs = crate::v1_std_core::module_path_segments(descendant.clone());
@@ -1819,7 +1890,7 @@ pub fn type_ref_module_path_is_containment_prefix(ancestor: String, descendant: 
     }
 }
 
-pub fn type_ref_measure_binding_authority(env: Rc<TypeEnv>, name: String) -> bool {
+pub fn type_ref_measure_binding_authority(env: Rc<TypeEnv>, name: std::string::String) -> bool {
     if (v1_rt::map_has(&env.str_bindings.clone(), name.clone())
         || v1_rt::map_has(&env.ancestry_str_bindings.clone(), name.clone()))
     {
@@ -1849,7 +1920,7 @@ pub fn type_ref_measure_binding_authority(env: Rc<TypeEnv>, name: String) -> boo
 pub fn variant_arm_type_projection(
     env: Rc<TypeEnv>,
     owner: Rc<Node>,
-    name: String,
+    name: std::string::String,
 ) -> Option<Rc<Node>> {
     match owner.connective.clone() {
         Connective::Disj => match crate::v1_std_core::find_child_named(
@@ -1867,7 +1938,7 @@ pub fn variant_arm_type_projection(
     }
 }
 
-pub fn authored_name(env: Rc<TypeEnv>, node: Rc<Node>) -> String {
+pub fn authored_name(env: Rc<TypeEnv>, node: Rc<Node>) -> std::string::String {
     crate::v1_std_core::authored_name_at(env.source_indices.clone(), node.clone())
 }
 
@@ -1906,7 +1977,10 @@ pub fn is_recursive_type_for(env: Rc<TypeEnv>, node: Rc<Node>) -> bool {
     }
 }
 
-pub fn inductive_fields_for(env: Rc<TypeEnv>, type_name: String) -> Rc<Vec<Rc<InductiveField>>> {
+pub fn inductive_fields_for(
+    env: Rc<TypeEnv>,
+    type_name: std::string::String,
+) -> Rc<Vec<Rc<InductiveField>>> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         let local = match v1_rt::map_get(&env.inductive_fields.clone(), type_name.clone()) {
             Some(fields) => fields.clone(),
@@ -1931,9 +2005,9 @@ pub fn inductive_fields_for(env: Rc<TypeEnv>, type_name: String) -> Rc<Vec<Rc<In
 
 pub fn is_inductive_field(
     env: Rc<TypeEnv>,
-    type_name: String,
-    variant_name: String,
-    field_name: String,
+    type_name: std::string::String,
+    variant_name: std::string::String,
+    field_name: std::string::String,
 ) -> bool {
     {
         let mut __found = false;
@@ -1952,13 +2026,13 @@ pub fn is_inductive_field(
     }
 }
 
-pub fn put_inductive_field_guard_note() -> String {
+pub fn put_inductive_field_guard_note() -> std::string::String {
     thread_local! {
-        static CACHED: String = {
+        static CACHED: std::string::String = {
             "M1a base-case guard (PR #6528 review commitment): the merge layer (merge_inductive_fields below) keeps lists duplicate-free by induction, but its base case - the local collection through these two put functions - was OBSERVED duplicate-free, not constructed (a source declaring the same (variant, field, shape, element) fact twice within one module would seed a duplicate the merge then faithfully preserves). The guarded append closes the last hand-concat site of the class: a fact already present by identity is a skip, so duplicate-freedom holds by construction at every layer (DESIGN §5 - construction, not validation). Local lists are per-(module, type) and small, so the linear any-scan per insert is bounded by per-type field count.".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c: &std::string::String| c.clone())
 }
 
 pub fn append_inductive_field_absent(
@@ -1982,12 +2056,12 @@ pub fn append_inductive_field_absent(
 }
 
 pub fn put_inductive_field(
-    fields: Rc<HashMap<String, Rc<Vec<Rc<InductiveField>>>>>,
-    type_name: String,
-    variant_name: String,
-    field_name: String,
+    fields: Rc<HashMap<std::string::String, Rc<Vec<Rc<InductiveField>>>>>,
+    type_name: std::string::String,
+    variant_name: std::string::String,
+    field_name: std::string::String,
     shape: RecursionShape,
-) -> Rc<HashMap<String, Rc<Vec<Rc<InductiveField>>>>> {
+) -> Rc<HashMap<std::string::String, Rc<Vec<Rc<InductiveField>>>>> {
     {
         let existing = match v1_rt::map_get(&fields, type_name.clone()) {
             Some(fs) => fs.clone(),
@@ -2011,13 +2085,13 @@ pub fn put_inductive_field(
 }
 
 pub fn put_inductive_field_cross(
-    fields: Rc<HashMap<String, Rc<Vec<Rc<InductiveField>>>>>,
-    type_name: String,
-    variant_name: String,
-    field_name: String,
+    fields: Rc<HashMap<std::string::String, Rc<Vec<Rc<InductiveField>>>>>,
+    type_name: std::string::String,
+    variant_name: std::string::String,
+    field_name: std::string::String,
     shape: RecursionShape,
-    element_type: String,
-) -> Rc<HashMap<String, Rc<Vec<Rc<InductiveField>>>>> {
+    element_type: std::string::String,
+) -> Rc<HashMap<std::string::String, Rc<Vec<Rc<InductiveField>>>>> {
     {
         let existing = match v1_rt::map_get(&fields, type_name.clone()) {
             Some(fs) => fs.clone(),
@@ -2040,16 +2114,16 @@ pub fn put_inductive_field_cross(
     }
 }
 
-pub fn merge_inductive_fields_dedupe_note() -> String {
+pub fn merge_inductive_fields_dedupe_note() -> std::string::String {
     thread_local! {
-        static CACHED: String = {
+        static CACHED: std::string::String = {
             "Set-semantics merge (v1-run-stability-throughline M1b + M1b-2, M0 receipt 2026-07-13): a type's inductive fields are a SET of (variant, field, shape, element) facts - multiplicity carries no information. The unguarded concat-on-collision compounded diamond ancestry multiplicatively along the import DAG (measured 409,240,584 retained InductiveField slots corpus-wide, ~3.3 GB of Vec slots alone; worst single module 22.6M entries at ~1,338 types), and even skip-if-equal alone left 95,050,553 slots because differing lists carried baked-in duplicate multiplicities (worst module still 4.1M at ~3k dupes/type). So the merge appends ONLY fields not already present (identity = variant|field|shape|element; type_name is the map key): equal or subset incoming lists SKIP (the sharing fast path - absent keys insert the incoming list Rc directly, never concat-with-empty), and every list is duplicate-free by induction (local collection is duplicate-free; merges never append a present fact). Genuinely new fields still append in the pre-cut encounter order. Same treatment class as guarded_union_str_bindings' skip-if-equal (#6487 cut 2); receipts on the throughline doc.".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c: &std::string::String| c.clone())
 }
 
-pub fn recursion_shape_key(shape: RecursionShape) -> String {
+pub fn recursion_shape_key(shape: RecursionShape) -> std::string::String {
     match shape.clone() {
         RecursionShape::DirectRecursion => "direct".to_string(),
         RecursionShape::ListRecursion => "list".to_string(),
@@ -2059,7 +2133,7 @@ pub fn recursion_shape_key(shape: RecursionShape) -> String {
     }
 }
 
-pub fn inductive_field_key(f: Rc<InductiveField>) -> String {
+pub fn inductive_field_key(f: Rc<InductiveField>) -> std::string::String {
     v1_rt::concat(
         v1_rt::concat(
             v1_rt::concat(
@@ -2079,64 +2153,62 @@ pub fn inductive_field_key(f: Rc<InductiveField>) -> String {
 }
 
 pub fn merge_inductive_fields(
-    left: Rc<HashMap<String, Rc<Vec<Rc<InductiveField>>>>>,
-    right: Rc<HashMap<String, Rc<Vec<Rc<InductiveField>>>>>,
-) -> Rc<HashMap<String, Rc<Vec<Rc<InductiveField>>>>> {
+    left: Rc<HashMap<std::string::String, Rc<Vec<Rc<InductiveField>>>>>,
+    right: Rc<HashMap<std::string::String, Rc<Vec<Rc<InductiveField>>>>>,
+) -> Rc<HashMap<std::string::String, Rc<Vec<Rc<InductiveField>>>>> {
     Rc::new(v1_rt::map_keys(&right)).iter().cloned().fold(
         left.clone(),
-        |acc: Rc<HashMap<String, Rc<Vec<Rc<InductiveField>>>>>, type_name: String| {
-            match v1_rt::map_get(&right, type_name.clone()) {
-                Some(incoming) => match v1_rt::map_get(&acc, type_name.clone()) {
-                    Some(existing) => {
-                        if (existing.clone() == incoming.clone()) {
-                            acc.clone()
-                        } else {
-                            {
-                                let seen = existing.iter().cloned().fold(
-                                    v1_rt::rc_empty_set::<_>(),
-                                    |s: _, f: Rc<InductiveField>| {
-                                        v1_rt::rc_set_insert(s, inductive_field_key(f.clone()))
-                                    },
-                                );
-                                let additions = Rc::new({
-                                    let mut __result = Vec::new();
-                                    for f in incoming.iter().cloned() {
-                                        if (v1_rt::set_contains(
-                                            &seen,
-                                            inductive_field_key(f.clone()),
-                                        ) == false)
-                                        {
-                                            __result.push(f);
-                                        }
+        |acc: Rc<HashMap<std::string::String, Rc<Vec<Rc<InductiveField>>>>>,
+         type_name: std::string::String| match v1_rt::map_get(&right, type_name.clone()) {
+            Some(incoming) => match v1_rt::map_get(&acc, type_name.clone()) {
+                Some(existing) => {
+                    if (existing.clone() == incoming.clone()) {
+                        acc.clone()
+                    } else {
+                        {
+                            let seen = existing.iter().cloned().fold(
+                                v1_rt::rc_empty_set::<_>(),
+                                |s: _, f: Rc<InductiveField>| {
+                                    v1_rt::rc_set_insert(s, inductive_field_key(f.clone()))
+                                },
+                            );
+                            let additions = Rc::new({
+                                let mut __result = Vec::new();
+                                for f in incoming.iter().cloned() {
+                                    if (v1_rt::set_contains(&seen, inductive_field_key(f.clone()))
+                                        == false)
+                                    {
+                                        __result.push(f);
                                     }
-                                    __result
-                                });
-                                if ((additions.clone().len() as i64) == 0) {
-                                    acc.clone()
-                                } else {
-                                    v1_rt::rc_map_insert(
-                                        acc.clone(),
-                                        type_name.clone(),
-                                        v1_rt::concat(existing.clone(), additions.clone()),
-                                    )
                                 }
+                                __result
+                            });
+                            if ((additions.clone().len() as i64) == 0) {
+                                acc.clone()
+                            } else {
+                                v1_rt::rc_map_insert(
+                                    acc.clone(),
+                                    type_name.clone(),
+                                    v1_rt::concat(existing.clone(), additions.clone()),
+                                )
                             }
                         }
                     }
-                    None => v1_rt::rc_map_insert(acc.clone(), type_name.clone(), incoming.clone()),
-                },
-                None => acc.clone(),
-            }
+                }
+                None => v1_rt::rc_map_insert(acc.clone(), type_name.clone(), incoming.clone()),
+            },
+            None => acc.clone(),
         },
     )
 }
 
 pub fn inductive_fields_list_to_map(
     fields: Rc<Vec<Rc<InductiveField>>>,
-) -> Rc<HashMap<String, Rc<Vec<Rc<InductiveField>>>>> {
+) -> Rc<HashMap<std::string::String, Rc<Vec<Rc<InductiveField>>>>> {
     fields.iter().cloned().fold(
-        v1_rt::rc_empty_map::<String, Rc<Vec<Rc<InductiveField>>>>(),
-        |acc: Rc<HashMap<String, Rc<Vec<Rc<InductiveField>>>>>, field: Rc<InductiveField>| {
+        v1_rt::rc_empty_map::<std::string::String, Rc<Vec<Rc<InductiveField>>>>(),
+        |acc: Rc<HashMap<std::string::String, Rc<Vec<Rc<InductiveField>>>>>,
+         field: Rc<InductiveField>| {
             let existing = match v1_rt::map_get(&acc, field.type_name.clone()) {
                 Some(fs) => fs.clone(),
                 None => Rc::new(vec![]),
@@ -2150,11 +2222,13 @@ pub fn inductive_fields_list_to_map(
     )
 }
 
-pub fn env_with_type_variable_bindings(env: Rc<TypeEnv>, tp_names: Rc<Vec<String>>) -> Rc<TypeEnv> {
-    tp_names
-        .iter()
-        .cloned()
-        .fold(env.clone(), |e: Rc<TypeEnv>, tp_name: String| {
+pub fn env_with_type_variable_bindings(
+    env: Rc<TypeEnv>,
+    tp_names: Rc<Vec<std::string::String>>,
+) -> Rc<TypeEnv> {
+    tp_names.iter().cloned().fold(
+        env.clone(),
+        |e: Rc<TypeEnv>, tp_name: std::string::String| {
             let tp_binding = Rc::new(TypeBinding {
                 name: tp_name.clone(),
                 resolved: Rc::new(Node {
@@ -2223,7 +2297,8 @@ pub fn env_with_type_variable_bindings(env: Rc<TypeEnv>, tp_names: Rc<Vec<String
                 symbol_index: e.symbol_index.clone(),
                 unit_variant_index: updated_index.clone(),
             })
-        })
+        },
+    )
 }
 
 pub fn binding_declares_span(binding: Rc<TypeBinding>, sp: Rc<SourceSpan>) -> bool {
@@ -2234,7 +2309,7 @@ pub fn binding_declares_span(binding: Rc<TypeBinding>, sp: Rc<SourceSpan>) -> bo
 }
 
 pub fn declaration_ref_for_span(
-    decl_name: String,
+    decl_name: std::string::String,
     sp: Rc<SourceSpan>,
     env: Rc<TypeEnv>,
 ) -> Option<Rc<DeclarationRef>> {
@@ -2281,7 +2356,7 @@ pub fn declaration_ref_for_span(
 }
 
 pub fn declaration_ref_from_qualified_name(
-    qualified: String,
+    qualified: std::string::String,
     env: Rc<TypeEnv>,
 ) -> Option<Rc<DeclarationRef>> {
     {
@@ -2333,7 +2408,7 @@ pub fn declaration_ref_from_qualified_name(
 
 pub fn declaration_ref_of_node(
     rt: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
     env: Rc<TypeEnv>,
 ) -> Option<Rc<DeclarationRef>> {
     {
@@ -2355,24 +2430,49 @@ pub fn declaration_ref_of_node(
 
 pub fn type_reference_declaration_ref(
     n: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
     env: Rc<TypeEnv>,
 ) -> Option<Rc<DeclarationRef>> {
     {
-        let from_resolved = match n.inferred.clone().as_deref().cloned() {
-            Some(InferredNode::Resolved { node: r, .. }) => {
-                declaration_ref_of_node(r.clone(), source_indices.clone(), env.clone())
+        let from_binding = match lookup_type_for(env.clone(), n.clone()) {
+            Some(bound) => {
+                declaration_ref_of_node(bound.clone(), source_indices.clone(), env.clone())
             }
-            _ => std::option::Option::None,
+            None => std::option::Option::None,
         };
-        match from_resolved.clone() {
+        match from_binding.clone() {
             Some(d) => Some(d.clone()),
-            None => match lookup_type_for(env.clone(), n.clone()) {
-                Some(bound) => {
-                    declaration_ref_of_node(bound.clone(), source_indices.clone(), env.clone())
+            None => match n.inferred.clone().as_deref().cloned() {
+                Some(InferredNode::Resolved { node: r, .. }) => {
+                    match declaration_ref_of_node(r.clone(), source_indices.clone(), env.clone()) {
+                        Some(d) => Some(d.clone()),
+                        None => type_reference_declaration_ref_by_name(
+                            n.clone(),
+                            source_indices.clone(),
+                            env.clone(),
+                        ),
+                    }
                 }
-                None => declaration_ref_of_node(n.clone(), source_indices.clone(), env.clone()),
+                _ => type_reference_declaration_ref_by_name(
+                    n.clone(),
+                    source_indices.clone(),
+                    env.clone(),
+                ),
             },
         }
+    }
+}
+
+pub fn type_reference_declaration_ref_by_name(
+    n: Rc<Node>,
+    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+    env: Rc<TypeEnv>,
+) -> Option<Rc<DeclarationRef>> {
+    match lookup_type_by_name(
+        env.clone(),
+        crate::v1_std_core::authored_name_at(source_indices.clone(), n.clone()),
+    ) {
+        Some(bound) => declaration_ref_of_node(bound.clone(), source_indices.clone(), env.clone()),
+        None => declaration_ref_of_node(n.clone(), source_indices.clone(), env.clone()),
     }
 }

@@ -23,8 +23,8 @@ use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
 use std::rc::Rc;
 
 pub fn rust_source_binding(
-    module_path: String,
-    decl_name: String,
+    module_path: std::string::String,
+    decl_name: std::string::String,
     representation: RustRepresentation,
 ) -> Rc<SourceTypeTargetBinding<RustRepresentation>> {
     Rc::new(SourceTypeTargetBinding {
@@ -114,9 +114,9 @@ pub struct SymbolCaptureDeclarer {
 }
 
 pub fn symbol_capture_declarer(
-    module_path: String,
-    decl_name: String,
-    symbol_position: String,
+    module_path: std::string::String,
+    decl_name: std::string::String,
+    symbol_position: std::string::String,
 ) -> Rc<SymbolCaptureDeclarer> {
     Rc::new(SymbolCaptureDeclarer {
         declarer: crate::std_decl_ref::decl_ref(module_path.clone(), decl_name.clone()),

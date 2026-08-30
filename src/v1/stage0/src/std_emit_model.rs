@@ -21,16 +21,16 @@ pub enum PlaceholderConvention {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct SimpleMethodSpec {
-    pub method_name: String,
-    pub template: String,
+    pub method_name: std::string::String,
+    pub template: std::string::String,
     pub wraps_result: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct MethodTemplateContract {
     pub dag_method: Rc<DeclarationRef>,
-    pub runtime_template: String,
-    pub emit_template: String,
+    pub runtime_template: std::string::String,
+    pub emit_template: std::string::String,
     pub wraps_result: bool,
     pub placeholder_convention: PlaceholderConvention,
 }

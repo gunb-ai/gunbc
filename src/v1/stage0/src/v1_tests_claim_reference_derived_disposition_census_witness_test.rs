@@ -30,16 +30,19 @@ use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
 use std::rc::Rc;
 
-pub fn reference_derived_disposition_census_witness_note() -> String {
+pub fn reference_derived_disposition_census_witness_note() -> std::string::String {
     thread_local! {
-        static CACHED: String = {
+        static CACHED: std::string::String = {
             "THE ROUTE HALF OF THIS FILE IS ABSENT AND THE REASON IS A WALL RATHER THAN A CHOICE, stated here because it is the first thing a reader of a five-row file should know: the end-to-end pair this file was designed around -- a two-module manifest whose consumer calls a peer fn in VALUE position with no import, against a control differing by one authored import line -- was authored and DOES NOT RUN. A nested compile is not evaluable in the interpreter: compile_to_resolved over an authored source vector refuses with NoSuchField Node.ident during the nested pipeline, measured 2026-08-27 on three separate subjects. That is not a property of this change; it is why the two nested-compile instruments the corpus already has (gunbc.compile_diagnostic_census and tools.multi_module_compile_fixture) both route through a HOST BUILTIN rather than calling the pipeline from .dag. The rows are not retained in a form that cannot execute, because a probe that always errors is not a red -- it is an inert artifact that would be counted as coverage. NEXT-RUNG TRIGGER FOR THE ROUTE: a nested-compile builtin returning the resolved graph, the shape tools.multi_module_compile_fixture already has, widened to carry the emitter reference-derived rows.\n\nWHERE THIS RUNS, STATED FIRST AND WITHOUT FLATTERY. THIS WITNESS IS NOT RUN BY CI. gunbc.ci_layer_roots witness_discovery_scan_dirs is [dag/test/claim, src/v2/test/claim/manual, src/v2/test/claim/emit] -- src/v1/tests/claim is not among them -- and the required run invokes claim_executor with --source-root dag --source-root src/v2, which could not resolve this file's import of v1.compiler.emit_rust even if discovery reached it. The scoped batch that once ran this directory died in the 2026-08-15 floor cut; gunbc.ci_layer_roots v1_claim_scoped_witness_batch_deleted_note records that and states the entries here have no executing consumer. The roster its sibling checkpoint_identity_keying_witness_test claims to be enrolled in, v1_claim_scoped_witness_entries, is not declared anywhere in dag/gunbc/ci/ci_layer_roots.dag -- verified by grep in both directions rather than taken from the note. THE FIVE ROWS BELOW WERE RUN DIRECTLY ON 2026-08-27 AND ALL FIVE PASS. Direct execution is evidence the assertions HOLD, never evidence that CI runs them, and conflating those two is the rung inflation this directory has now recorded twice.\n\nWHAT THE SUBJECT IS. Since PR 6848 a cross-module name resolves whether or not it is imported. At TYPE positions the resolver says so advisorily (UnlistedImportUse, is_error_diagnostic false); at VALUE positions it says nothing at all, and the emitter silently synthesizes the use-line the author did not write. That synthesis is unchanged here and deliberately so. What changed is that the per-candidate decision behind it stopped being an inline flat_map whose three non-surviving arms all returned the empty list, and became a four-armed coproduct one census can count.\n\nWHY BOTH HALVES ARE HERE. The four unit rows discriminate the DECISION: each names a distinct arm, and two of them differ ONLY in whether the provider's export set proves the symbol, so no constant, disabled mechanism or name-keyed rule satisfies them together. The end-to-end rows discriminate the CENSUS ROUTE: a two-module manifest compiled through compile_to_resolved, whose consumer references a peer's fn in VALUE position with no import, against a control differing by exactly one authored import line. The unlisted arm must produce a survived row naming peer_answer; the control must produce no row for that name at all, because an already-provided name never reaches the decision. Neither can pass vacuously -- a census that always reported zero fails the first, and one that reported every reference fails the second.\n\nTHE RED IS AUTHORABLE AT THE FIXTURE BOUNDARY, which is what makes this a probe rather than a decoration. No Accepted corpus module can be relied on to hold a value-position unlisted use on demand, but a fixture manifest can author one directly, and this file does. DESIGN 4b: a check whose RED cannot be produced anywhere it runs is permanently green by construction and worse than absent, because it gets cited as coverage. What this file lacks is a RUNNER, not a reachable red.\n\nWHAT THIS DOES NOT ESTABLISH. Nothing about the SIZE of the live population -- these are fixtures; NO PRODUCER FOR A REAL FIGURE EXISTS YET, and this file does not name one: the only route from .dag to a corpus census is a nested compile, which the interpreter refuses, so any figure quoted today names nothing that can produce it. And nothing about the names the census never sees: a candidate already provided by an authored import, the prelude, a carrier use-line or the module's own declarations is filtered before the decision, so every count is a LOWER BOUND and the gap is unmeasured. Quote it as at least N.\n\nNEXT-RUNG TRIGGER FOR THIS FILE'S EVIDENCE, which is NOT the same trigger as the class's and must not be folded into it: one prepared subject spanning dag, src/v1 and src/v2 -- the restoration gunbc.ci_layer_roots already names for the deleted batch -- at which point these rows execute and this first paragraph deletes. The CLASS's own trigger (the value-position case joining the fail-closed wall, retiring the census and the synthesis together) lives on v1.compiler.emit_rust reference_derived_census_rung_note. Either can land first; neither closes the other.".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c: &std::string::String| c.clone())
 }
 
-pub fn fixture_item_info(name: String, module_name: String) -> Rc<ItemInfo> {
+pub fn fixture_item_info(
+    name: std::string::String,
+    module_name: std::string::String,
+) -> Rc<ItemInfo> {
     Rc::new(ItemInfo {
         name: name.clone(),
         module_name: module_name.clone(),
@@ -52,29 +55,36 @@ pub fn fixture_item_info(name: String, module_name: String) -> Rc<ItemInfo> {
     })
 }
 
-pub fn fixture_registry(name: String, module_name: String) -> Rc<HashMap<String, Rc<ItemInfo>>> {
+pub fn fixture_registry(
+    name: std::string::String,
+    module_name: std::string::String,
+) -> Rc<HashMap<std::string::String, Rc<ItemInfo>>> {
     v1_rt::rc_map_insert(
-        v1_rt::rc_empty_map::<String, Rc<ItemInfo>>(),
+        v1_rt::rc_empty_map::<std::string::String, Rc<ItemInfo>>(),
         name.clone(),
         fixture_item_info(name.clone(), module_name.clone()),
     )
 }
 
 pub fn fixture_export_sets(
-    module_name: String,
-    name: String,
-) -> Rc<HashMap<String, Rc<HashMap<String, bool>>>> {
+    module_name: std::string::String,
+    name: std::string::String,
+) -> Rc<HashMap<std::string::String, Rc<HashMap<std::string::String, bool>>>> {
     v1_rt::rc_map_insert(
-        v1_rt::rc_empty_map::<String, Rc<HashMap<String, bool>>>(),
+        v1_rt::rc_empty_map::<std::string::String, Rc<HashMap<std::string::String, bool>>>(),
         module_name.clone(),
-        v1_rt::rc_map_insert(v1_rt::rc_empty_map::<String, bool>(), name.clone(), true),
+        v1_rt::rc_map_insert(
+            v1_rt::rc_empty_map::<std::string::String, bool>(),
+            name.clone(),
+            true,
+        ),
     )
 }
 
 pub fn fixture_disposition(
-    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
-    export_sets: Rc<HashMap<String, Rc<HashMap<String, bool>>>>,
-) -> String {
+    registry: Rc<HashMap<std::string::String, Rc<ItemInfo>>>,
+    export_sets: Rc<HashMap<std::string::String, Rc<HashMap<std::string::String, bool>>>>,
+) -> std::string::String {
     crate::v1_compiler_emit_rust::reference_derived_disposition_name(
         crate::v1_compiler_emit_rust::reference_derived_candidate_disposition(
             "PeerName".to_string(),
@@ -82,10 +92,10 @@ pub fn fixture_disposition(
             registry.clone(),
             export_sets.clone(),
             Rc::new(vec![]),
-            v1_rt::rc_empty_map::<String, Rc<NewlineIndex>>(),
+            v1_rt::rc_empty_map::<std::string::String, Rc<NewlineIndex>>(),
             crate::v1_compiler_emit_rust::build_module_index(Rc::new(vec![])),
-            v1_rt::rc_empty_map::<String, Rc<TypeSummary>>(),
-            v1_rt::rc_empty_map::<String, String>(),
+            v1_rt::rc_empty_map::<std::string::String, Rc<TypeSummary>>(),
+            v1_rt::rc_empty_map::<std::string::String, std::string::String>(),
             false,
         ),
     )
@@ -93,22 +103,22 @@ pub fn fixture_disposition(
 
 pub fn candidate_the_registry_does_not_know_is_registry_absent() -> bool {
     (fixture_disposition(
-        v1_rt::rc_empty_map::<String, Rc<ItemInfo>>(),
-        v1_rt::rc_empty_map::<String, Rc<HashMap<String, bool>>>(),
+        v1_rt::rc_empty_map::<std::string::String, Rc<ItemInfo>>(),
+        v1_rt::rc_empty_map::<std::string::String, Rc<HashMap<std::string::String, bool>>>(),
     ) == "registry-absent".to_string())
 }
 
 pub fn candidate_provided_by_this_module_is_own_module() -> bool {
     (fixture_disposition(
         fixture_registry("PeerName".to_string(), "fixture.consumer".to_string()),
-        v1_rt::rc_empty_map::<String, Rc<HashMap<String, bool>>>(),
+        v1_rt::rc_empty_map::<std::string::String, Rc<HashMap<std::string::String, bool>>>(),
     ) == "own-module".to_string())
 }
 
 pub fn cross_module_candidate_without_export_proof_is_export_proof_failed() -> bool {
     (fixture_disposition(
         fixture_registry("PeerName".to_string(), "fixture.provider".to_string()),
-        v1_rt::rc_empty_map::<String, Rc<HashMap<String, bool>>>(),
+        v1_rt::rc_empty_map::<std::string::String, Rc<HashMap<std::string::String, bool>>>(),
     ) == "export-proof-failed".to_string())
 }
 
@@ -119,10 +129,10 @@ pub fn cross_module_candidate_with_export_proof_survives() -> bool {
         fixture_registry("PeerName".to_string(), "fixture.provider".to_string()),
         fixture_export_sets("fixture.provider".to_string(), "PeerName".to_string()),
         Rc::new(vec![]),
-        v1_rt::rc_empty_map::<String, Rc<NewlineIndex>>(),
+        v1_rt::rc_empty_map::<std::string::String, Rc<NewlineIndex>>(),
         crate::v1_compiler_emit_rust::build_module_index(Rc::new(vec![])),
-        v1_rt::rc_empty_map::<String, Rc<TypeSummary>>(),
-        v1_rt::rc_empty_map::<String, String>(),
+        v1_rt::rc_empty_map::<std::string::String, Rc<TypeSummary>>(),
+        v1_rt::rc_empty_map::<std::string::String, std::string::String>(),
         false,
     ) == Rc::new(ReferenceDerivedCandidateDisposition::CandidateSurvived {
         provider_module: "fixture.provider".to_string(),
@@ -191,27 +201,27 @@ pub fn census_counts_each_arm_separately() -> bool {
     }
 }
 
-pub fn variant_arm_red_note() -> String {
+pub fn variant_arm_red_note() -> std::string::String {
     thread_local! {
-        static CACHED: String = {
+        static CACHED: std::string::String = {
             "THE DISCRIMINATING RED FOR THE FIFTH ARM, and it is the one this file most needs. Before the arm existed a bare variant name reached the registry lookup, missed, and answered registry-absent -- so the fixture below is RED against the four-arm classifier and green against the five-arm one, which is what makes it evidence rather than decoration. The positive control beside it is the census row above: a name that is NOT a known variant still answers registry-absent, so the arm narrows the class rather than emptying it.".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c: &std::string::String| c.clone())
 }
 
-pub fn fixture_variant_type_summaries() -> Rc<HashMap<String, Rc<TypeSummary>>> {
+pub fn fixture_variant_type_summaries() -> Rc<HashMap<std::string::String, Rc<TypeSummary>>> {
     v1_rt::rc_map_insert(
-        v1_rt::rc_empty_map::<String, Rc<TypeSummary>>(),
+        v1_rt::rc_empty_map::<std::string::String, Rc<TypeSummary>>(),
         "E".to_string(),
         Rc::new(TypeSummary {
             name: "E".to_string(),
             repr: Rc::new(TypeRepr::EnumRepr { unit_only: true }),
-            field_summaries: v1_rt::rc_empty_map::<String, Rc<FieldSummary>>(),
-            field_type_map: v1_rt::rc_empty_map::<String, String>(),
+            field_summaries: v1_rt::rc_empty_map::<std::string::String, Rc<FieldSummary>>(),
+            field_type_map: v1_rt::rc_empty_map::<std::string::String, std::string::String>(),
             field_import_surface_names: Rc::new(vec![]),
             variant_name_set: v1_rt::rc_map_insert(
-                v1_rt::rc_empty_map::<String, bool>(),
+                v1_rt::rc_empty_map::<std::string::String, bool>(),
                 "V".to_string(),
                 true,
             ),
@@ -225,14 +235,14 @@ pub fn known_variant_is_delegated_to_its_parent_not_registry_absent() -> bool {
     (crate::v1_compiler_emit_rust::reference_derived_candidate_disposition(
         "V".to_string(),
         "fixture.consumer".to_string(),
-        v1_rt::rc_empty_map::<String, Rc<ItemInfo>>(),
-        v1_rt::rc_empty_map::<String, Rc<HashMap<String, bool>>>(),
+        v1_rt::rc_empty_map::<std::string::String, Rc<ItemInfo>>(),
+        v1_rt::rc_empty_map::<std::string::String, Rc<HashMap<std::string::String, bool>>>(),
         Rc::new(vec![]),
-        v1_rt::rc_empty_map::<String, Rc<NewlineIndex>>(),
+        v1_rt::rc_empty_map::<std::string::String, Rc<NewlineIndex>>(),
         crate::v1_compiler_emit_rust::build_module_index(Rc::new(vec![])),
         fixture_variant_type_summaries(),
         v1_rt::rc_map_insert(
-            v1_rt::rc_empty_map::<String, String>(),
+            v1_rt::rc_empty_map::<std::string::String, std::string::String>(),
             "V".to_string(),
             "E".to_string(),
         ),
@@ -244,27 +254,28 @@ pub fn known_variant_is_delegated_to_its_parent_not_registry_absent() -> bool {
     ))
 }
 
-pub fn ambiguous_parent_red_note() -> String {
+pub fn ambiguous_parent_red_note() -> std::string::String {
     thread_local! {
-        static CACHED: String = {
+        static CACHED: std::string::String = {
             "THE REACHABLE HALF of the unresolved-parent arm, and the reason it is not merely a tidier name. derive_variant_to_enum inserts the EMPTY STRING as the parent when one variant name appears in two enums, so the lookup answers Present with a parent naming nothing. Without this arm that produced CandidateVariantDelegatedToParent { parent_enum: \"\" } -- a delegation to no one, wearing the payload that was supposed to make delegation honest. This fixture authors the collision directly and is RED against the arm-less form.".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c: &std::string::String| c.clone())
 }
 
-pub fn fixture_colliding_variant_type_summaries() -> Rc<HashMap<String, Rc<TypeSummary>>> {
+pub fn fixture_colliding_variant_type_summaries(
+) -> Rc<HashMap<std::string::String, Rc<TypeSummary>>> {
     v1_rt::rc_map_insert(
         fixture_variant_type_summaries(),
         "F".to_string(),
         Rc::new(TypeSummary {
             name: "F".to_string(),
             repr: Rc::new(TypeRepr::EnumRepr { unit_only: true }),
-            field_summaries: v1_rt::rc_empty_map::<String, Rc<FieldSummary>>(),
-            field_type_map: v1_rt::rc_empty_map::<String, String>(),
+            field_summaries: v1_rt::rc_empty_map::<std::string::String, Rc<FieldSummary>>(),
+            field_type_map: v1_rt::rc_empty_map::<std::string::String, std::string::String>(),
             field_import_surface_names: Rc::new(vec![]),
             variant_name_set: v1_rt::rc_map_insert(
-                v1_rt::rc_empty_map::<String, bool>(),
+                v1_rt::rc_empty_map::<std::string::String, bool>(),
                 "V".to_string(),
                 true,
             ),
@@ -278,14 +289,14 @@ pub fn a_variant_whose_parent_is_ambiguous_is_not_delegated_to_nothing() -> bool
     (crate::v1_compiler_emit_rust::reference_derived_candidate_disposition(
         "V".to_string(),
         "fixture.consumer".to_string(),
-        v1_rt::rc_empty_map::<String, Rc<ItemInfo>>(),
-        v1_rt::rc_empty_map::<String, Rc<HashMap<String, bool>>>(),
+        v1_rt::rc_empty_map::<std::string::String, Rc<ItemInfo>>(),
+        v1_rt::rc_empty_map::<std::string::String, Rc<HashMap<std::string::String, bool>>>(),
         Rc::new(vec![]),
-        v1_rt::rc_empty_map::<String, Rc<NewlineIndex>>(),
+        v1_rt::rc_empty_map::<std::string::String, Rc<NewlineIndex>>(),
         crate::v1_compiler_emit_rust::build_module_index(Rc::new(vec![])),
         fixture_colliding_variant_type_summaries(),
         v1_rt::rc_map_insert(
-            v1_rt::rc_empty_map::<String, String>(),
+            v1_rt::rc_empty_map::<std::string::String, std::string::String>(),
             "V".to_string(),
             "".to_string(),
         ),
@@ -298,14 +309,14 @@ pub fn a_known_variant_spelling_in_a_type_position_takes_the_registry_arm() -> b
         crate::v1_compiler_emit_rust::reference_derived_candidate_disposition(
             "V".to_string(),
             "fixture.consumer".to_string(),
-            v1_rt::rc_empty_map::<String, Rc<ItemInfo>>(),
-            v1_rt::rc_empty_map::<String, Rc<HashMap<String, bool>>>(),
+            v1_rt::rc_empty_map::<std::string::String, Rc<ItemInfo>>(),
+            v1_rt::rc_empty_map::<std::string::String, Rc<HashMap<std::string::String, bool>>>(),
             Rc::new(vec![]),
-            v1_rt::rc_empty_map::<String, Rc<NewlineIndex>>(),
+            v1_rt::rc_empty_map::<std::string::String, Rc<NewlineIndex>>(),
             crate::v1_compiler_emit_rust::build_module_index(Rc::new(vec![])),
             fixture_variant_type_summaries(),
             v1_rt::rc_map_insert(
-                v1_rt::rc_empty_map::<String, String>(),
+                v1_rt::rc_empty_map::<std::string::String, std::string::String>(),
                 "V".to_string(),
                 "E".to_string(),
             ),
@@ -325,14 +336,14 @@ pub fn non_variant_name_still_answers_registry_absent() -> bool {
         crate::v1_compiler_emit_rust::reference_derived_candidate_disposition(
             "NotAVariant".to_string(),
             "fixture.consumer".to_string(),
-            v1_rt::rc_empty_map::<String, Rc<ItemInfo>>(),
-            v1_rt::rc_empty_map::<String, Rc<HashMap<String, bool>>>(),
+            v1_rt::rc_empty_map::<std::string::String, Rc<ItemInfo>>(),
+            v1_rt::rc_empty_map::<std::string::String, Rc<HashMap<std::string::String, bool>>>(),
             Rc::new(vec![]),
-            v1_rt::rc_empty_map::<String, Rc<NewlineIndex>>(),
+            v1_rt::rc_empty_map::<std::string::String, Rc<NewlineIndex>>(),
             crate::v1_compiler_emit_rust::build_module_index(Rc::new(vec![])),
             fixture_variant_type_summaries(),
             v1_rt::rc_map_insert(
-                v1_rt::rc_empty_map::<String, String>(),
+                v1_rt::rc_empty_map::<std::string::String, std::string::String>(),
                 "V".to_string(),
                 "E".to_string(),
             ),
@@ -419,13 +430,13 @@ pub fn the_export_unproven_diagnostic_is_advisory() -> bool {
     }
 }
 
-pub fn registry_absent_not_surfaced_note() -> String {
+pub fn registry_absent_not_surfaced_note() -> std::string::String {
     thread_local! {
-        static CACHED: String = {
+        static CACHED: std::string::String = {
             "The RED that keeps registry-absent OUT of the diagnostic stream. Measured over the regen seed closure, that arm returns 473 rows over 63 names dominated by Rust target-language tokens -- Vec, bool, Option, i64, empty_map -- which the candidate walk proposes by tokenizing the module's own emitted Rust and for which no .dag provider can ever exist. Wiring it would print a false report on every build. This test fails the moment someone adds that arm to reference_derived_row_diagnostics, which is the intended wall until the candidate walk stops proposing target-language vocabulary.".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c: &std::string::String| c.clone())
 }
 
 pub fn registry_absent_produces_no_diagnostic() -> bool {

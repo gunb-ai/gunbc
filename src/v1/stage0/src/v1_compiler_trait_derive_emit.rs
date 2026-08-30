@@ -64,85 +64,89 @@ use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
 use std::rc::Rc;
 
-pub fn trait_derive_emit_scope_note() -> String {
+pub fn trait_derive_emit_scope_note() -> std::string::String {
     thread_local! {
-        static CACHED: String = {
+        static CACHED: std::string::String = {
             "Root-4 arm (b): v1 seed emit selects trait surface from the capability table — #[derive] attrs for shape-eligible traits, and (for GroupCompletion) pair-completion impl bodies as the realization of KernelInt arithmetic traits that cannot be #[derive]. Bool↔bool host bridge remains a separate enum-arm door (see bool dissolve-on). Also: (a) clone bounds on generic params; (c) serde/Debug/Ord #[derive] on named structs/enums.".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c: &std::string::String| c.clone())
 }
 
-pub fn trait_derive_emit_item_clone_bound_rule_note() -> String {
+pub fn trait_derive_emit_item_clone_bound_rule_note() -> std::string::String {
     thread_local! {
-        static CACHED: String = {
+        static CACHED: std::string::String = {
             "Item-level Clone bound rule: for each generic type parameter P on a derive-only struct (no fn fields, no supplemental impl_bodies from v1_emit_struct_from_capability_table), emit P: Clone when P is a bare resolved field type or a direct element of a container/FreeMonoid field (same structural trigger as v1_generic_param_used_as_collection_element on field type exprs). Under THIS trigger enum items keep bare item params — derive emits per-impl bounds, so variant-payload mention does not add declaration bounds. That is a statement about the derive trigger only, and it is not the whole rule for enums: the well-formedness trigger below DOES bound enum params, because naming a Clone-bounded declared type in a variant payload is ill-formed without the bound whatever the derive does. Read the two notes together before concluding an enum keeps bare params. Phantom-only params receive no bound. Callable-field structs keep bare item params under this trigger. ARITHMETIC CARRIERS NO LONGER DO, and this sentence is corrected in place rather than left standing: supplemental impl blocks were gated on impl_bodies being nonempty, which was ONE FLAG ENCODING TWO FACTS -- it stood in for the field-bound question AND kept the item header in agreement with its supplemental impl headers. Header bareness now derives from the well-formedness record, so GroupCompletion emits a BOUNDED header (pub struct GroupCompletion<M: Clone>) and its supplemental impls read the same record through one Bool, because Rust requires an impl's generics to satisfy the type's own bounds. Note the bound renders in the impl GENERIC LIST only and must be absent from the type reference -- one fact, two renderings. Not wired from target_derive_supplemental_generic_bound_contract.".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c: &std::string::String| c.clone())
 }
 
-pub fn trait_derive_emit_item_clone_bound_wf_propagation_note() -> String {
+pub fn trait_derive_emit_item_clone_bound_wf_propagation_note() -> std::string::String {
     thread_local! {
-        static CACHED: String = {
+        static CACHED: std::string::String = {
             "SECOND, INDEPENDENT trigger for an item-level Clone bound, distinct from the derive/lowering trigger above and NOT a widening of it: WELL-FORMEDNESS PROPAGATION. Naming a declared generic type G<A..> at all requires satisfying G's own declared bounds, so if G's i-th parameter already carries `: Clone` and the i-th argument's Clone impl requires P: Clone, then the item declaring that field is ill-formed without P: Clone -- rustc E0277 at the field, before any derive is considered. This applies to STRUCTS AND ENUMS alike, because it is a property of naming the type, not of deriving Clone for it; the rule note above correctly scopes the DERIVE trigger to structs (derive emits per-impl bounds) and that scoping is unchanged here. The two axes are grounded differently and can disagree: im::Vector<A> carries NO declaration bound (checked against im-15.1.0 vector::Vector), so a container field is a derive-trigger fact only, while Boxed<T: Clone> is a well-formedness fact that propagates through Nested<T> { boxed: Boxed<T> } and List<Boxed<T>> alike. The requirement is a LEAST FIXPOINT over the declared-type graph (v1_clone_bounded_type_params), not a one-field-shape-deep read: each round derives every declared generic type's bounded parameters from the current approximation and stops when a round adds nothing, so a chain Boxed -> Nested -> TwoHop propagates all the way and a recursive type (Cyclic<T> { self_ref: Cyclic<T>? }) saturates instead of diverging. The derive trigger SEEDS the fixpoint (v1_clone_bound_seed_for_item, structs only, reusing v1_item_type_param_needs_clone_bound_struct verbatim rather than restating it) and then propagates, because Boxed<T: Clone> earns its bound from the derive trigger and Nested<T> { boxed: Boxed<T> } inherits it from well-formedness. Two sub-predicates, deliberately separate because they answer different questions about the same type expression: v1_type_expr_clone_impl_needs_param asks whether `tau: Clone` requires P: Clone (every derive(Clone) type and every container bounds all of its parameters, so this reduces to `P occurs in tau`), while v1_type_expr_wf_needs_clone_param asks whether NAMING tau requires it (only the argument positions the fixpoint has already bounded count). The undecidable residue is answered by its own total function rather than fused into either Bool: a type application whose head is neither a container nor a declared type in the closure has no readable parameter list, so v1_type_expr_clone_undecided_head names it and the emit site refuses with compile_error!. It is NOT silently treated as `no bound needed` and NOT widened to `bound everything` -- widening would zero the deficit's frequency by construction (DESIGN section 5, absorbing fallback). Dead in corpus as of this landing; kept as the fail-closed arm.".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c: &std::string::String| c.clone())
 }
 
-pub fn trait_derive_emit_fn_clone_bound_wf_propagation_note() -> String {
+pub fn trait_derive_emit_fn_clone_bound_wf_propagation_note() -> std::string::String {
     thread_local! {
-        static CACHED: String = {
+        static CACHED: std::string::String = {
             "THIRD site for the SAME well-formedness trigger (trait_derive_emit_item_clone_bound_wf_propagation_note above), applied to FN declarations rather than item (struct/enum) declarations: naming a Clone-bounded declared type G<A..> in a fn's value-param or return type is exactly as ill-formed as naming it in a field, so a fn generic parameter P earns `: Clone` when v1_fn_param_wf_needs_clone finds it occupying a Clone-bounded argument position of some declared type mentioned in a value param or the return type — reusing v1_type_expr_wf_needs_clone_param verbatim against the same v1_clone_bounded_type_params fixpoint (EmitGraphInfo.clone_bounded_type_params), not a second fixpoint or a restated predicate. This is additive to, not a replacement for, the existing structural fn trigger (v1_type_param_needs_clone_bound: bare-generic return or direct container-element usage) computed in v1_generic_params_needing_clone_bound — the two triggers answer different questions (usage-shape vs. naming-a-bounded-declared-type) and a fn param needing either earns the bound. Enum/struct IMPL surfaces (accessor impl blocks, supplemental impls) already inherit their item's bounded type_params string from emit_item_type_params_with_clone_bounds at the struct/enum decl site, so no separate IMPL-side propagation is needed there; the gap closed here is specifically free FN declarations, whose type_params were computed independently of the item-level fixpoint. Discovered live (not hypothetical) in deep-heron's honest regen of dag/std/occurrence_binding.dag: occurrence_binding_from_candidates<N> names BindingOccurrence<N> and BindingCandidate<N> (each well-formedness-bounded because their field ContainmentPath<N> is FreeMonoid<N>-derive-bounded) at value-param position without the fn declaring N: Clone, and OccurrenceBindingResult<N> at the return position — E0277 at both without this trigger.".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c: &std::string::String| c.clone())
 }
 
-pub fn trait_derive_emit_item_clone_bound_contract_fork_note() -> String {
+pub fn trait_derive_emit_item_clone_bound_contract_fork_note() -> std::string::String {
     thread_local! {
-        static CACHED: String = {
+        static CACHED: std::string::String = {
             "MODEL-REALIZATION FORK (counted): supplemental generic bounds are also modeled at v2.std.compilers.target_model target_derive_supplemental_generic_bound_contract (trait_derive_supplemental_generic_bound_contract_test.dag) for target collection representation choices. That carrier has no consumer in v1 seed emit today; it is inhabited with cited upstream impl authorities (v2.extdeps.languages.rust) and consumed by the v2 translate path (v2.compiler.06_translate via target_derive_supplemental_generic_bound_contract_catalog_from_node). This v1 structural rule is a separate interim authority for generic struct item type-param bounds (bare field or direct container element) — an approximation of cited upstream requirements pending v2 emitter subsumption at that grain; dissolution re-grounds onto upstream impl requirements, not a mechanical lift of the same predicate — the two can disagree at the edges. PARTIALLY RE-GROUNDED (Row 1a, 2026-08-19): the DERIVE-facing half for FreeMonoid/im::Vector fields no longer approximates — v1_emit_struct_from_capability_table / v1_emit_enum_derives / v1_emit_enum_supplemental_impls consume extdeps.languages.rust.derive_contracts rust_vec_freemonoid_supplemental_generic_bound_rows (the same cited rows the v2 contract map folds), routing each row per trait_derive_emit_freemonoid_supplemental_note. The item-HEADER structural rule below remains the interim approximation; its dissolution condition is unchanged.".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c: &std::string::String| c.clone())
 }
 
-pub fn trait_derive_emit_fn_clone_bound_keyed_carrier_module_scaffold_note() -> String {
+pub fn trait_derive_emit_fn_clone_bound_keyed_carrier_module_scaffold_note() -> std::string::String
+{
     thread_local! {
-        static CACHED: String = {
+        static CACHED: std::string::String = {
             "COUNTED SCAFFOLD (emit_fn_def module_path arm): std.keyed_row and std.keyed_roster generic fns emit Clone on every item generic because List<KeyedRow<..>> value-param type exprs reach emit as opaque containers — the element applied-type children are not readable in param_node_type_expr, so v1_fn_param_type_needs_clone_bound cannot derive K/V from rows: List<KeyedRow<K, V>> even though item-level KeyedRow<K: Clone, V: Clone> and the emitted bodies clone both fields. The override is module-scoped, not a seed widen: it does not change v1_generic_params_needing_clone_bound's per-param filter. Membership is the typed allowlist trait_derive_emit_fn_clone_bound_keyed_carrier_module_allowlist, enrolled DeclaredFrontier in gunbc.roster_registry — not gunbc.non_fold_residue (no wildcard-match site). Witness: regen --verify on std_keyed_row/std_keyed_roster without this arm drops V: Clone on keyed_row_find and drops all fn-level bounds on keyed_roster_build (compile errors on .value.clone()).".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c: &std::string::String| c.clone())
 }
 
-pub fn trait_derive_emit_fn_clone_bound_keyed_carrier_module_allowlist() -> Rc<Vec<String>> {
+pub fn trait_derive_emit_fn_clone_bound_keyed_carrier_module_allowlist(
+) -> Rc<Vec<std::string::String>> {
     thread_local! {
-        static CACHED: Rc<Vec<String>> = {
+        static CACHED: Rc<Vec<std::string::String>> = {
             Rc::new(vec!["std.keyed_row".to_string(), "std.keyed_roster".to_string()])
         };
     }
-    CACHED.with(|c: &Rc<Vec<String>>| c.clone())
+    CACHED.with(|c: &Rc<Vec<std::string::String>>| c.clone())
 }
 
-pub fn trait_derive_emit_fn_clone_bound_keyed_carrier_module(module_path: String) -> bool {
+pub fn trait_derive_emit_fn_clone_bound_keyed_carrier_module(
+    module_path: std::string::String,
+) -> bool {
     trait_derive_emit_fn_clone_bound_keyed_carrier_module_allowlist()
         .iter()
         .cloned()
-        .fold(false, |acc: bool, m: String| {
+        .fold(false, |acc: bool, m: std::string::String| {
             (acc || (m.clone() == module_path.clone()))
         })
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct StructCapabilityEmit {
-    pub derive_attr: String,
-    pub impl_bodies: String,
+    pub derive_attr: std::string::String,
+    pub impl_bodies: std::string::String,
 }
 
-pub fn v1_trait_derive_refuse(message: String) -> String {
+pub fn v1_trait_derive_refuse(message: std::string::String) -> std::string::String {
     v1_rt::concat(
         v1_rt::concat("compile_error!(\"".to_string(), message.clone()),
         "\");".to_string(),
@@ -164,7 +168,7 @@ pub fn v1_coproduct_all_variants_nullary(children: Rc<Vec<Rc<Node>>>) -> bool {
 
 pub fn v1_repr_grounding_derive_elem_shape_from_coproduct_children(
     children: Rc<Vec<Rc<Node>>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
 ) -> ReprGroundingDeriveElemShape {
     if v1_coproduct_all_variants_nullary(children.clone()) {
         ReprGroundingDeriveElemShape::ReprDeriveElemNullaryEnumCopy
@@ -175,7 +179,7 @@ pub fn v1_repr_grounding_derive_elem_shape_from_coproduct_children(
 
 pub fn rust_nominal_identity_carrier_shape_eligible(
     n: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
 ) -> bool {
     ((((crate::v1_std_core::authored_name_at(source_indices.clone(), n.clone())
         == "Symbol".to_string())
@@ -186,7 +190,7 @@ pub fn rust_nominal_identity_carrier_shape_eligible(
 
 pub fn rust_symbol_wrapped_ord_carrier_shape_eligible(
     children: Rc<Vec<Rc<Node>>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
 ) -> bool {
     if ((children.clone().len() as i64) != 1) {
         false
@@ -203,7 +207,7 @@ pub fn rust_symbol_wrapped_ord_carrier_shape_eligible(
 
 pub fn v1_repr_grounding_derive_elem_shape_for_ord_carrier(
     children: Rc<Vec<Rc<Node>>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
 ) -> ReprGroundingDeriveElemShape {
     if rust_symbol_wrapped_ord_carrier_shape_eligible(children.clone(), source_indices.clone()) {
         ReprGroundingDeriveElemShape::ReprDeriveElemSymbolWrappedOrdCarrier
@@ -231,10 +235,10 @@ pub fn v1_with_map_key_requirement(
 pub enum KeyedMapVerdict {
     KeyedMap,
     NotKeyedMap,
-    KeyedMapUndecidable { name: String },
+    KeyedMapUndecidable { name: std::string::String },
 }
 impl KeyedMapVerdict {
-    pub fn name(&self) -> String {
+    pub fn name(&self) -> std::string::String {
         match self {
             KeyedMapVerdict::KeyedMap => panic!("no name on unit variant"),
             KeyedMapVerdict::NotKeyedMap => panic!("no name on unit variant"),
@@ -245,7 +249,7 @@ impl KeyedMapVerdict {
 
 pub fn v1_type_expr_keyed_map_verdict(
     type_expr: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
 ) -> Rc<KeyedMapVerdict> {
     match (*crate::v1_std_core::authored_container_spelling_verdict(
         type_expr.clone(),
@@ -269,7 +273,7 @@ pub fn v1_type_expr_keyed_map_verdict(
 
 pub fn v1_keyed_map_verdict_from_algebra(
     type_expr: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
 ) -> Rc<KeyedMapVerdict> {
     match crate::std_types::container_template_algebra(crate::v1_std_core::authored_name_at(
         source_indices.clone(),
@@ -290,7 +294,7 @@ pub fn v1_keyed_map_verdict_from_algebra(
 
 pub fn v1_type_expr_is_keyed_map(
     type_expr: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
 ) -> bool {
     match (*v1_type_expr_keyed_map_verdict(type_expr.clone(), source_indices.clone())).clone() {
         KeyedMapVerdict::KeyedMap => true,
@@ -301,8 +305,8 @@ pub fn v1_type_expr_is_keyed_map(
 
 pub fn v1_map_key_head_names_in_type_expr(
     type_expr: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<Vec<String>> {
+    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+) -> Rc<Vec<std::string::String>> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         let own = match (*v1_type_expr_keyed_map_verdict(type_expr.clone(), source_indices.clone()))
             .clone()
@@ -339,8 +343,8 @@ pub fn v1_map_key_head_names_in_type_expr(
 
 pub fn v1_type_expr_head_names(
     type_expr: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<Vec<String>> {
+    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+) -> Rc<Vec<std::string::String>> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         v1_rt::concat(
             Rc::new(vec![crate::v1_std_core::authored_name_at(
@@ -373,7 +377,7 @@ pub struct MapKeyRequirementRound {
 
 pub fn v1_map_key_round_add(
     round: Rc<MapKeyRequirementRound>,
-    name: String,
+    name: std::string::String,
 ) -> Rc<MapKeyRequirementRound> {
     if ((name.clone() == "".to_string()) || v1_rt::set_contains(&round.names.clone(), name.clone()))
     {
@@ -386,69 +390,48 @@ pub fn v1_map_key_round_add(
     }
 }
 
-pub fn map_key_alias_hop_gap_note() -> String {
+pub fn map_key_alias_hop_gap_note() -> std::string::String {
     thread_local! {
-        static CACHED: String = {
+        static CACHED: std::string::String = {
             "LANDED. The gap this note originally recorded (see git history for the full pre-landing account) was that map-key requirement propagation walks a required type's FIELD type expressions, and a type ALIAS has no fields -- it is a bare leaf item whose right-hand side hangs off the item's own inference rather than off a child -- so `type Hash = Fnv1a64Structural` in v2.std.node terminated the walk, Fnv1a64Structural was emitted with PartialEq but without Eq or std::hash::Hash, and `Map<Hash, RuntimeValue>` in v2.extdeps.runtimes.v2_effect_io_pure failed to compile at four sites. The DISSOLVE-ON trigger named at the time -- declaration identity reaching the type renderer, the same threading the identity-keyed lookup_checkpoint cut (T7, #8537) was blocked on -- landed as v1.compiler.coercion lookup_checkpoint/decl_identity_file, so the fix reuses that authority rather than inventing the DeclarationRef binding the earlier attempt lacked (DESIGN section 2/3, single authority). v1_item_alias_hop_type_exprs (below v1_item_field_type_exprs) follows a bare-leaf alias item's resolved right-hand side into the walk ONLY when lookup_checkpoint(target: Rust, dag_name, decl_file) returns Absent for the alias's own (dag_name, decl_file) -- i.e. only when the emitter has no native realization and renders the alias structurally. `type Int = AbelianGroup<GroupCompletion<Nat>>` and `type Nat = CommutativeSemiring<Magnitude>` both have Rust checkpoint rows (realize as i64), so lookup_checkpoint returns Present and the alias arm contributes nothing for them -- the previously measured false positive (AbelianGroup/CommutativeSemiring reaching map-key position via Rc<dyn Fn> fields) does not recur, because the gate is keyed on realization rather than on bare-alias shape. Folded into the single shared v1_item_field_type_exprs (see v1_item_field_type_exprs_alias_hop_note) rather than a map-key-only variant, since is_bare_leaf_item forces params.count == 0 on every alias item, so no alias ever enters the generic-only clone-bound fixpoints that are this function's other callers.".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c: &std::string::String| c.clone())
 }
 
-pub fn map_key_alias_hop_reconciliation_note() -> String {
+pub fn map_key_alias_hop_reconciliation_note() -> std::string::String {
     thread_local! {
-        static CACHED: String = {
+        static CACHED: std::string::String = {
             "RECONCILED (smart-ram-730, adhoc-2ea6fb98-a3f, 2026-08-21, merging gunbc#8736 into this branch's own review-54323-finding-3 work): this branch independently developed a map-key-only alias-hop arm (v1_map_key_propagate_alias, gated on is_type_alias_item in v1_map_key_propagate_round) that called v1.compiler.coercion type_realization_decision directly, concurrently with gunbc#8736 landing the fold-in above on main. DROPPED IN FAVOR OF THE LANDED VERSION, not run alongside it: this branch's own v1.compiler.coercion lookup_checkpoint was separately refactored in the same review cycle into a thin derivation of type_realization_decision for every decl_file != \"\" caller (coercion.dag's own note beside lookup_checkpoint records this), so v1_item_alias_hop_type_exprs's call to lookup_checkpoint already answers from type_realization_decision as the underlying authority -- a second, map-key-only function asking the same decision through a different name would be exactly the forked second copy DESIGN section 2/3 forbids and v1_item_field_type_exprs_alias_hop_note's own reasoning (below) already argues against. The two implementations are not merely similar, they are behaviorally identical for every case this fold-in covers: lookup_checkpoint(target, dag_name, decl_file) for decl_file != \"\" maps Realized -> Present, Unrealized -> Absent, Refused -> Absent, so the guard 'lookup_checkpoint == Absent' used above is the same predicate as 'type_realization_decision answers Unrealized or Refused' this branch's dropped arm matched separately. coercion.dag's DECLARED RESIDUE note, written before this reconciliation, named this arm as a caller required to use type_realization_decision directly; that requirement is satisfied indirectly, through lookup_checkpoint, and is corrected there rather than left standing.".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c: &std::string::String| c.clone())
 }
 
 pub fn v1_map_key_propagate_round(
     round: Rc<MapKeyRequirementRound>,
-    declared_type_names: Rc<Vec<String>>,
-    type_decl_items: Rc<HashMap<String, Rc<Node>>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    declared_type_names: Rc<Vec<std::string::String>>,
+    type_decl_items: Rc<HashMap<std::string::String, Rc<Node>>>,
+    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
 ) -> Rc<MapKeyRequirementRound> {
-    declared_type_names.iter().cloned().fold(
-        round.clone(),
-        |acc: Rc<MapKeyRequirementRound>, type_name: String| {
-            if !v1_rt::set_contains(&acc.names.clone(), type_name.clone()) {
-                acc.clone()
-            } else {
-                match v1_rt::map_get(&type_decl_items, type_name.clone()) {
-                    Some(item) => v1_item_field_type_exprs(item.clone(), source_indices.clone())
-                        .iter()
-                        .cloned()
-                        .fold(
-                            acc.clone(),
-                            |inner: Rc<MapKeyRequirementRound>, te: Rc<Node>| {
-                                v1_type_expr_head_names(te.clone(), source_indices.clone())
-                                    .iter()
-                                    .cloned()
-                                    .fold(
-                                        inner,
-                                        |deep: Rc<MapKeyRequirementRound>, head: String| {
-                                            if map_has_declared_type(
-                                                type_decl_items.clone(),
-                                                head.clone(),
-                                            ) {
-                                                v1_map_key_round_add(deep.clone(), head.clone())
-                                            } else {
-                                                deep.clone()
-                                            }
-                                        },
-                                    )
-                            },
-                        ),
-                    None => acc.clone(),
-                }
-            }
-        },
-    )
+    declared_type_names.iter().cloned().fold(round.clone(), |acc: Rc<MapKeyRequirementRound>, type_name: std::string::String| if !v1_rt::set_contains(&acc.names.clone(), type_name.clone()) {
+        acc.clone()
+    } else {
+        match v1_rt::map_get(&type_decl_items, type_name.clone()) {
+    Some(item) => v1_item_field_type_exprs(item.clone(), source_indices.clone()).iter().cloned().fold(acc.clone(), |inner: Rc<MapKeyRequirementRound>, te: Rc<Node>| v1_type_expr_head_names(te.clone(), source_indices.clone()).iter().cloned().fold(inner, |deep: Rc<MapKeyRequirementRound>, head: std::string::String| if map_has_declared_type(type_decl_items.clone(), head.clone()) {
+            v1_map_key_round_add(deep.clone(), head.clone())
+        } else {
+            deep.clone()
+        })),
+    None => acc.clone(),
+}
+    })
 }
 
-pub fn map_has_declared_type(type_decl_items: Rc<HashMap<String, Rc<Node>>>, name: String) -> bool {
+pub fn map_has_declared_type(
+    type_decl_items: Rc<HashMap<std::string::String, Rc<Node>>>,
+    name: std::string::String,
+) -> bool {
     match v1_rt::map_get(&type_decl_items, name.clone()) {
         Some(_) => true,
         None => false,
@@ -457,10 +440,10 @@ pub fn map_has_declared_type(type_decl_items: Rc<HashMap<String, Rc<Node>>>, nam
 
 pub fn v1_map_key_fixpoint_loop(
     mut round: Rc<MapKeyRequirementRound>,
-    mut declared_type_names: Rc<Vec<String>>,
-    mut type_decl_items: Rc<HashMap<String, Rc<Node>>>,
+    mut declared_type_names: Rc<Vec<std::string::String>>,
+    mut type_decl_items: Rc<HashMap<std::string::String, Rc<Node>>>,
     mut remaining: i64,
-    mut source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    mut source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
 ) -> Rc<BTreeSet<String>> {
     loop {
         if (remaining.clone() <= 0) {
@@ -492,9 +475,9 @@ pub fn v1_map_key_fixpoint_loop(
 
 pub fn v1_map_key_required_type_names(
     seed_type_exprs: Rc<Vec<Rc<Node>>>,
-    extra_seed_names: Rc<Vec<String>>,
-    type_decl_items: Rc<HashMap<String, Rc<Node>>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    extra_seed_names: Rc<Vec<std::string::String>>,
+    type_decl_items: Rc<HashMap<std::string::String, Rc<Node>>>,
+    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
 ) -> Rc<BTreeSet<String>> {
     {
         let declared_type_names = Rc::new(v1_rt::map_keys(&type_decl_items));
@@ -509,7 +492,7 @@ pub fn v1_map_key_required_type_names(
                     .cloned()
                     .fold(
                         acc,
-                        |inner: Rc<MapKeyRequirementRound>, key_name: String| {
+                        |inner: Rc<MapKeyRequirementRound>, key_name: std::string::String| {
                             if map_has_declared_type(type_decl_items.clone(), key_name.clone()) {
                                 v1_map_key_round_add(inner.clone(), key_name.clone())
                             } else {
@@ -521,7 +504,7 @@ pub fn v1_map_key_required_type_names(
         );
         let seeded = extra_seed_names.iter().cloned().fold(
             scanned.clone(),
-            |acc: Rc<MapKeyRequirementRound>, key_name: String| {
+            |acc: Rc<MapKeyRequirementRound>, key_name: std::string::String| {
                 if map_has_declared_type(type_decl_items.clone(), key_name.clone()) {
                     v1_map_key_round_add(acc.clone(), key_name.clone())
                 } else {
@@ -539,13 +522,13 @@ pub fn v1_map_key_required_type_names(
     }
 }
 
-pub fn trait_derive_emit_freemonoid_supplemental_note() -> String {
+pub fn trait_derive_emit_freemonoid_supplemental_note() -> std::string::String {
     thread_local! {
-        static CACHED: String = {
+        static CACHED: std::string::String = {
             "ROW 1a (materialization_carriers board): a derive-only generic item whose only Clone-requiring surface is a FreeMonoid<P> field (realized im::Vector<P>, whose Debug/PartialEq/Serialize/Deserialize impls are each conditional on the element being Clone) previously either derived with an unsatisfiable per-impl obligation (E0277/E0369 at the derive) or bounded the whole item header — both wrong: the bound belongs on specific IMPLS, not the declaration (loyal-raven review 43338). Realization here, consuming the dag-rooted single authority extdeps.languages.rust.derive_contracts rust_vec_freemonoid_supplemental_generic_bound_rows (NEVER a literal trait list in this module — coordinating-session ruling, smart-ram-730 (a session, not the operator) 2026-08-19): the item header stays BARE; rows routed FreeMonoidHandWrittenImpl (Debug, PartialEq — std derives cannot carry a bound override) leave the derive list and are realized as hand-written impls whose headers union the trait's own structural requirement with the row's supplemental requirement (impl<P: Clone + std::fmt::Debug> — a header carrying ONLY the supplemental bound would not compile, since the impl body formats/compares the field). The Debug half must be PATH-QUALIFIED and this is measured, not stylistic: the name `Debug` in the Rust prelude is the DERIVE MACRO, and the trait std::fmt::Debug is not in the prelude at all, so a bound spelled `T: Debug` in an emitted module resolves to the macro and rustc refuses with E0404 expected trait, found derive macro `Debug` — three sites on the live materialization_carriers closure when this was briefly spelled bare. Clone and PartialEq are genuinely prelude TRAITS and stay bare.; rows routed FreeMonoidSerdeBoundAttr (Serialize, Deserialize) stay derived with a #[serde(bound(..))] override naming every item generic param, supplemental-bound params carrying the row's requirement. The route split is realization knowledge (which Rust derive grammar admits a bound override) and lives here; the FACTS (which trait needs which supplemental bound, cited to im-15.1.0) live only in the shared rows. A row whose derive_trait this realization cannot route REFUSES via compile_error (typed, located), never skips. The oracle witness (originally PR #8525, corrected at c7172307 after this lane reported its non-compiling `impl<T: Clone>` headers and unqualified serde bound names) independently derives the same shapes from im's impl signatures and serde's bound-string scoping: bound-union headers with bare prelude spellings, serde::-qualified bound strings. Companion header facts: the struct path keys bareness on impl_bodies being nonempty (existing rule: supplemental-impl items keep bare params); enums were already bare under the derive trigger. Dissolution: same as trait_derive_emit_item_clone_bound_contract_fork_dissolve_on (v2 emitter subsumption at this grain).".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c: &std::string::String| c.clone())
 }
 
 #[derive(
@@ -575,7 +558,7 @@ pub fn v1_freemonoid_row_route(
     }
 }
 
-pub fn v1_freemonoid_unroutable_row_refusal() -> String {
+pub fn v1_freemonoid_unroutable_row_refusal() -> std::string::String {
     {
         let unroutable = Rc::new({
             let mut __result = Vec::new();
@@ -651,10 +634,10 @@ pub fn v1_freemonoid_filter_hand_written(
 }
 
 pub fn v1_freemonoid_element_params(
-    generic_param_names: Rc<Vec<String>>,
+    generic_param_names: Rc<Vec<std::string::String>>,
     field_type_exprs: Rc<Vec<Rc<Node>>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<Vec<String>> {
+    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+) -> Rc<Vec<std::string::String>> {
     Rc::new({
         let mut __result = Vec::new();
         for p in generic_param_names.iter().cloned() {
@@ -692,9 +675,9 @@ pub fn v1_freemonoid_element_params(
 }
 
 pub fn v1_freemonoid_param_in_fields(
-    param_name: String,
+    param_name: std::string::String,
     field_type_exprs: Rc<Vec<Rc<Node>>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
 ) -> bool {
     {
         let mut __found = false;
@@ -712,7 +695,7 @@ pub fn v1_freemonoid_param_in_fields(
     }
 }
 
-pub fn v1_freemonoid_supplemental_bound_spelling() -> String {
+pub fn v1_freemonoid_supplemental_bound_spelling() -> std::string::String {
     crate::v1_compiler_emit_core_support::unique_strings(Rc::new({
         let mut __result = Vec::new();
         for row in rust_vec_freemonoid_supplemental_generic_bound_rows()
@@ -731,12 +714,12 @@ pub fn v1_freemonoid_supplemental_bound_spelling() -> String {
 }
 
 pub fn v1_freemonoid_impl_type_params(
-    generic_param_names: Rc<Vec<String>>,
-    fm_params: Rc<Vec<String>>,
+    generic_param_names: Rc<Vec<std::string::String>>,
+    fm_params: Rc<Vec<std::string::String>>,
     field_type_exprs: Rc<Vec<Rc<Node>>>,
-    structural_spelling: String,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> String {
+    structural_spelling: std::string::String,
+    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+) -> std::string::String {
     if ((generic_param_names.clone().len() as i64) == 0) {
         "".to_string()
     } else {
@@ -790,7 +773,9 @@ pub fn v1_freemonoid_impl_type_params(
     }
 }
 
-pub fn v1_freemonoid_bare_type_args(generic_param_names: Rc<Vec<String>>) -> String {
+pub fn v1_freemonoid_bare_type_args(
+    generic_param_names: Rc<Vec<std::string::String>>,
+) -> std::string::String {
     if ((generic_param_names.clone().len() as i64) == 0) {
         "".to_string()
     } else {
@@ -812,9 +797,9 @@ pub fn v1_freemonoid_bare_type_args(generic_param_names: Rc<Vec<String>>) -> Str
 }
 
 pub fn v1_freemonoid_serde_bound_attr(
-    generic_param_names: Rc<Vec<String>>,
-    fm_params: Rc<Vec<String>>,
-) -> String {
+    generic_param_names: Rc<Vec<std::string::String>>,
+    fm_params: Rc<Vec<std::string::String>>,
+) -> std::string::String {
     {
         let supplement = v1_freemonoid_supplemental_bound_spelling();
         let ser_entries = Rc::new({
@@ -891,20 +876,20 @@ pub fn v1_freemonoid_serde_bound_attr(
     }
 }
 
-pub fn trait_derive_emit_set_ord_supplemental_note() -> String {
+pub fn trait_derive_emit_set_ord_supplemental_note() -> std::string::String {
     thread_local! {
-        static CACHED: String = {
+        static CACHED: std::string::String = {
             "ROOT A, Ord half (E0277 root-partition adhoc-a407cd3d-840): std.authorization_profile AudienceSet's EnumeratedAudience { members: Set<P> } realizes Set<P> as im::OrdSet<P>, aliased `as BTreeSet` in every emitted use statement -- NOT std::collections::BTreeSet, corrected 2026-08-21 after a first pass of this lane cited the std/serde-for-std authorities and left 16 of the true P: Ord sites open under rustc (docs/probes/curated_cargo_probe_one.sh, not gunbc-compile-clean, is what caught it -- DESIGN section 5's 'a typecheck and a grep are not consumers'). Verified against the vendored im-15.1.0 source: OrdSet's own Debug and PartialEq impls (src/ord/set.rs#937, #844) are each conditional on P: Ord alone; its Serialize and Deserialize impls (src/ser.rs#134, #125) are each conditional on BOTH P: Ord and P: Clone; Clone itself is unconditional (set.rs#830, no row). The FreeMonoid apparatus above is a Clone-shaped fork (three Clone-only triggers named in trait_derive_emit_item_clone_bound_contract_fork_note) that structurally cannot emit P: Ord, so this lane consumes the dag-rooted single authority extdeps.languages.rust.derive_contracts rust_btree_set_supplemental_generic_bound_rows (NEVER a literal trait list in this module, same discipline as the FreeMonoid rows) rather than adding a second Clone-shaped item-header fixpoint: the item header and the #[derive(...)] trait list membership are UNCHANGED (P: Ord never unions onto AudienceSet<P>'s own declaration), but per-trait ROUTING now mirrors the FreeMonoid split exactly, reusing v1_freemonoid_row_route rather than a second copy of the same two-way split: Debug and PartialEq leave the derive list and are realized as hand-written impls whose headers union the trait's own structural requirement with the row's per-derive_trait Ord requirement ONLY (never Clone -- the discriminating control this lane names explicitly: a type whose Debug impl needs Ord but whose construction does not need Clone -- correct output bounds the DERIVE, not the type, and NOT every row's required trait unioned together, which would over-bound Debug/PartialEq with Clone they do not need); Serialize and Deserialize stay derived with a combined #[serde(bound(serialize = .., deserialize = ..))] override naming every item generic param, Set-affected params carrying Ord + Clone in both clauses (mirroring v1_freemonoid_serde_bound_attr, not a deserialize-only attribute). A row this realization cannot route, or a Set-affected param whose trait list omits a routed trait, REFUSES via compile_error (typed, located), never skips. Scoped to the enum derive path (v1_emit_enum_derives / v1_emit_enum_supplemental_impls) because that is AudienceSet's actual shape and the only exercised Set<P> generic field in the corpus (verified: the sole generic Set<P> field in dag/std/authorization_profile.dag); no struct in the corpus carries a generic Set<P> field today, so struct-side wiring would be speculative. Dissolution: same as trait_derive_emit_item_clone_bound_contract_fork_dissolve_on (v2 emitter subsumption at this grain).".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c: &std::string::String| c.clone())
 }
 
 pub fn v1_set_element_params(
-    generic_param_names: Rc<Vec<String>>,
+    generic_param_names: Rc<Vec<std::string::String>>,
     field_type_exprs: Rc<Vec<Rc<Node>>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<Vec<String>> {
+    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+) -> Rc<Vec<std::string::String>> {
     Rc::new({
         let mut __result = Vec::new();
         for p in generic_param_names.iter().cloned() {
@@ -941,7 +926,7 @@ pub fn v1_set_element_params(
     })
 }
 
-pub fn v1_set_unroutable_row_refusal() -> String {
+pub fn v1_set_unroutable_row_refusal() -> std::string::String {
     {
         let unroutable = Rc::new({
             let mut __result = Vec::new();
@@ -1038,7 +1023,7 @@ pub fn v1_set_required_traits_for(derive_trait: RustCapability) -> Rc<Vec<RustCa
     })
 }
 
-pub fn v1_set_supplemental_bound_spelling_for(derive_trait: RustCapability) -> String {
+pub fn v1_set_supplemental_bound_spelling_for(derive_trait: RustCapability) -> std::string::String {
     crate::v1_compiler_emit_core_support::unique_strings(Rc::new({
         let mut __result = Vec::new();
         for t in v1_set_required_traits_for(derive_trait.clone())
@@ -1054,9 +1039,9 @@ pub fn v1_set_supplemental_bound_spelling_for(derive_trait: RustCapability) -> S
 }
 
 pub fn v1_set_serde_bound_attr(
-    generic_param_names: Rc<Vec<String>>,
-    set_params: Rc<Vec<String>>,
-) -> String {
+    generic_param_names: Rc<Vec<std::string::String>>,
+    set_params: Rc<Vec<std::string::String>>,
+) -> std::string::String {
     {
         let ser_supplement = v1_set_supplemental_bound_spelling_for(RustCapability::RustSerialize);
         let de_supplement = v1_set_supplemental_bound_spelling_for(RustCapability::RustDeserialize);
@@ -1136,9 +1121,9 @@ pub fn v1_set_serde_bound_attr(
 
 pub fn v1_set_serde_bound_attr_for_traits(
     traits: Rc<Vec<RustCapability>>,
-    generic_param_names: Rc<Vec<String>>,
-    set_params: Rc<Vec<String>>,
-) -> String {
+    generic_param_names: Rc<Vec<std::string::String>>,
+    set_params: Rc<Vec<std::string::String>>,
+) -> std::string::String {
     if ((set_params.clone().len() as i64) == 0) {
         "".to_string()
     } else {
@@ -1179,13 +1164,13 @@ pub fn v1_set_serde_bound_attr_for_traits(
 }
 
 pub fn v1_freemonoid_struct_debug_impl(
-    name: String,
-    generic_param_names: Rc<Vec<String>>,
-    fm_params: Rc<Vec<String>>,
+    name: std::string::String,
+    generic_param_names: Rc<Vec<std::string::String>>,
+    fm_params: Rc<Vec<std::string::String>>,
     children: Rc<Vec<Rc<Node>>>,
     field_type_exprs: Rc<Vec<Rc<Node>>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> String {
+    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+) -> std::string::String {
     {
         let tp = v1_freemonoid_impl_type_params(
             generic_param_names.clone(),
@@ -1222,13 +1207,13 @@ pub fn v1_freemonoid_struct_debug_impl(
 }
 
 pub fn v1_freemonoid_struct_partial_eq_impl(
-    name: String,
-    generic_param_names: Rc<Vec<String>>,
-    fm_params: Rc<Vec<String>>,
+    name: std::string::String,
+    generic_param_names: Rc<Vec<std::string::String>>,
+    fm_params: Rc<Vec<std::string::String>>,
     children: Rc<Vec<Rc<Node>>>,
     field_type_exprs: Rc<Vec<Rc<Node>>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> String {
+    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+) -> std::string::String {
     {
         let tp = v1_freemonoid_impl_type_params(
             generic_param_names.clone(),
@@ -1297,13 +1282,13 @@ pub fn v1_freemonoid_struct_partial_eq_impl(
 }
 
 pub fn v1_freemonoid_enum_debug_impl(
-    name: String,
-    generic_param_names: Rc<Vec<String>>,
-    fm_params: Rc<Vec<String>>,
+    name: std::string::String,
+    generic_param_names: Rc<Vec<std::string::String>>,
+    fm_params: Rc<Vec<std::string::String>>,
     children: Rc<Vec<Rc<Node>>>,
     field_type_exprs: Rc<Vec<Rc<Node>>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> String {
+    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+) -> std::string::String {
     {
         let tp = v1_freemonoid_impl_type_params(
             generic_param_names.clone(),
@@ -1403,13 +1388,13 @@ pub fn v1_freemonoid_enum_debug_impl(
 }
 
 pub fn v1_freemonoid_enum_partial_eq_impl(
-    name: String,
-    generic_param_names: Rc<Vec<String>>,
-    fm_params: Rc<Vec<String>>,
+    name: std::string::String,
+    generic_param_names: Rc<Vec<std::string::String>>,
+    fm_params: Rc<Vec<std::string::String>>,
     children: Rc<Vec<Rc<Node>>>,
     field_type_exprs: Rc<Vec<Rc<Node>>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> String {
+    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+) -> std::string::String {
     {
         let tp = v1_freemonoid_impl_type_params(
             generic_param_names.clone(),
@@ -1578,13 +1563,13 @@ pub fn v1_freemonoid_enum_partial_eq_impl(
 }
 
 pub fn v1_set_impl_type_params(
-    generic_param_names: Rc<Vec<String>>,
-    set_params: Rc<Vec<String>>,
+    generic_param_names: Rc<Vec<std::string::String>>,
+    set_params: Rc<Vec<std::string::String>>,
     field_type_exprs: Rc<Vec<Rc<Node>>>,
-    structural_spelling: String,
+    structural_spelling: std::string::String,
     derive_trait: RustCapability,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> String {
+    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+) -> std::string::String {
     if ((generic_param_names.clone().len() as i64) == 0) {
         "".to_string()
     } else {
@@ -1641,13 +1626,13 @@ pub fn v1_set_impl_type_params(
 }
 
 pub fn v1_set_enum_debug_impl(
-    name: String,
-    generic_param_names: Rc<Vec<String>>,
-    set_params: Rc<Vec<String>>,
+    name: std::string::String,
+    generic_param_names: Rc<Vec<std::string::String>>,
+    set_params: Rc<Vec<std::string::String>>,
     children: Rc<Vec<Rc<Node>>>,
     field_type_exprs: Rc<Vec<Rc<Node>>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> String {
+    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+) -> std::string::String {
     {
         let tp = v1_set_impl_type_params(
             generic_param_names.clone(),
@@ -1748,13 +1733,13 @@ pub fn v1_set_enum_debug_impl(
 }
 
 pub fn v1_set_enum_partial_eq_impl(
-    name: String,
-    generic_param_names: Rc<Vec<String>>,
-    set_params: Rc<Vec<String>>,
+    name: std::string::String,
+    generic_param_names: Rc<Vec<std::string::String>>,
+    set_params: Rc<Vec<std::string::String>>,
     children: Rc<Vec<Rc<Node>>>,
     field_type_exprs: Rc<Vec<Rc<Node>>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> String {
+    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+) -> std::string::String {
     {
         let tp = v1_set_impl_type_params(
             generic_param_names.clone(),
@@ -1923,19 +1908,19 @@ pub fn v1_set_enum_partial_eq_impl(
     }
 }
 
-pub fn trait_derive_emit_ord_propagation_note() -> String {
+pub fn trait_derive_emit_ord_propagation_note() -> std::string::String {
     thread_local! {
-        static CACHED: String = {
+        static CACHED: std::string::String = {
             "ROOT A, Ord half, TRANSITIVE CASE (E0277 root-partition adhoc-a407cd3d-840, PR #8770, corrected 2026-08-21 after parent-session review found the well-formedness-header approach it started from would re-open trait_derive_emit_set_ord_supplemental_note's own deliberate scoping): std.authorization_profile PublicationContext<C, P> { audience: AudienceSet<P>, context: C } does not itself carry a direct Set<P> field -- it names AudienceSet<P>, a declared coproduct whose OWN field is Set<P>. The requirement is real (AudienceSet<P>'s hand-written Debug/PartialEq impls above are literally P: Ord, so a PublicationContext<C, P> Debug/PartialEq impl calling .field(\"audience\", &self.audience) needs the same P: Ord to typecheck) but it propagates through one field's declared-type reference rather than sitting on this item's own field directly. The routing decision this note records: the propagated requirement stays in per-derive-impl vocabulary exactly like the direct case -- PublicationContext's own header/declaration and its #[derive(...)] trait list membership are UNCHANGED, never a second Clone-shaped item-header fixpoint (v1_bound_seed_for_item / v1_bounded_type_params, drafted then discarded in this PR's own predecessor commit, would have put P: Ord on every item header reachable from a Set-affected declared type, re-opening exactly the over-bounding trait_derive_emit_set_ord_supplemental_note already rejected for the direct case). v1_item_ord_propagated_param_names computes, for a consuming item's own generic params, whether that param is passed positionally into a field naming a declared type (looked up via type_decl_items) whose OWN generic slot at that position is itself Set-affected (v1_item_own_set_affected_param_names) -- one hop, matching the one hop this corpus actually exercises (PublicationContext -> AudienceSet); no phantom-slot skipping is needed because the FreeMonoid/Clone well-formedness fixpoint's phantom carve-out answers a different question (does an unused param still need a bound at all) that does not arise here. A propagated param routes through the same v1_set_* hand-written-impl / serde-bound-attr machinery as a direct Set<P> field (v1_set_filter_hand_written, v1_set_unroutable_row_refusal, v1_set_serde_bound_attr_for_traits, rust_btree_set_supplemental_generic_bound_rows) -- no duplicate rows, no duplicate routing table. Scoped to the struct path (v1_emit_struct_from_capability_table) because PublicationContext is a struct; the enum path's direct-field case (v1_emit_enum_derives / v1_emit_enum_supplemental_impls) is untouched. Dissolution: same as trait_derive_emit_set_ord_supplemental_note (v2 emitter subsumption at this grain).".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c: &std::string::String| c.clone())
 }
 
 pub fn v1_item_own_set_affected_param_names(
     item: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<Vec<String>> {
+    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+) -> Rc<Vec<std::string::String>> {
     v1_set_element_params(
         crate::v1_compiler_emit_rust::item_generic_param_names(
             item.clone(),
@@ -1947,11 +1932,11 @@ pub fn v1_item_own_set_affected_param_names(
 }
 
 pub fn v1_ord_propagated_zip_loop(
-    param_name: String,
+    param_name: std::string::String,
     decl_params: Rc<Vec<Rc<Node>>>,
     type_args: Rc<Vec<Rc<Node>>>,
-    decl_set_affected_names: Rc<Vec<String>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    decl_set_affected_names: Rc<Vec<std::string::String>>,
+    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
 ) -> bool {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         match decl_params.clone().first().cloned() {
@@ -2010,10 +1995,10 @@ pub fn v1_ord_propagated_zip_loop(
 }
 
 pub fn v1_field_type_expr_ord_propagated_for_param(
-    param_name: String,
+    param_name: std::string::String,
     type_expr: Rc<Node>,
-    type_decl_items: Rc<HashMap<String, Rc<Node>>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    type_decl_items: Rc<HashMap<std::string::String, Rc<Node>>>,
+    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
 ) -> bool {
     {
         let decl_name =
@@ -2032,11 +2017,11 @@ pub fn v1_field_type_expr_ord_propagated_for_param(
 }
 
 pub fn v1_item_ord_propagated_param_names(
-    generic_param_names: Rc<Vec<String>>,
+    generic_param_names: Rc<Vec<std::string::String>>,
     field_type_exprs: Rc<Vec<Rc<Node>>>,
-    type_decl_items: Rc<HashMap<String, Rc<Node>>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<Vec<String>> {
+    type_decl_items: Rc<HashMap<std::string::String, Rc<Node>>>,
+    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+) -> Rc<Vec<std::string::String>> {
     Rc::new({
         let mut __result = Vec::new();
         for p in generic_param_names.iter().cloned() {
@@ -2063,13 +2048,13 @@ pub fn v1_item_ord_propagated_param_names(
 }
 
 pub fn v1_set_struct_debug_impl(
-    name: String,
-    generic_param_names: Rc<Vec<String>>,
-    set_params: Rc<Vec<String>>,
+    name: std::string::String,
+    generic_param_names: Rc<Vec<std::string::String>>,
+    set_params: Rc<Vec<std::string::String>>,
     children: Rc<Vec<Rc<Node>>>,
     field_type_exprs: Rc<Vec<Rc<Node>>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> String {
+    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+) -> std::string::String {
     {
         let tp = v1_set_impl_type_params(
             generic_param_names.clone(),
@@ -2107,13 +2092,13 @@ pub fn v1_set_struct_debug_impl(
 }
 
 pub fn v1_set_struct_partial_eq_impl(
-    name: String,
-    generic_param_names: Rc<Vec<String>>,
-    set_params: Rc<Vec<String>>,
+    name: std::string::String,
+    generic_param_names: Rc<Vec<std::string::String>>,
+    set_params: Rc<Vec<std::string::String>>,
     children: Rc<Vec<Rc<Node>>>,
     field_type_exprs: Rc<Vec<Rc<Node>>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> String {
+    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+) -> std::string::String {
     {
         let tp = v1_set_impl_type_params(
             generic_param_names.clone(),
@@ -2201,14 +2186,14 @@ pub fn v1_record_derive_traits_copy_for_construction(
 }
 
 pub fn v1_emit_struct_derives(
-    name: String,
+    name: std::string::String,
     children: Rc<Vec<Rc<Node>>>,
     shared_types: Rc<BTreeSet<String>>,
     has_fn_fields: bool,
     map_key_required: bool,
     deserialize_forbidden: bool,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> String {
+    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+) -> std::string::String {
     if has_fn_fields.clone() {
         if map_key_required.clone() {
             v1_trait_derive_refuse(v1_rt::concat(v1_rt::concat("trait_derive_emit: '".to_string(), name.clone()), "' reaches a map-key position and so requires Eq + Hash, but it carries function fields whose only derivable trait is Clone — Rc<dyn Fn> is neither Eq nor Hash, so the key position is the defect, not the roster".to_string()))
@@ -2269,9 +2254,9 @@ pub fn v1_emit_enum_derives(
     has_fn_fields: bool,
     map_key_required: bool,
     deserialize_forbidden: bool,
-    generic_param_names: Rc<Vec<String>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> String {
+    generic_param_names: Rc<Vec<std::string::String>>,
+    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+) -> std::string::String {
     {
         if has_fn_fields.clone() {
             {
@@ -2381,9 +2366,9 @@ pub fn v1_emit_enum_derives(
 }
 
 pub fn v1_type_expr_contains_param_name(
-    param_name: String,
+    param_name: std::string::String,
     type_expr: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
 ) -> bool {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         if (crate::v1_std_core::authored_name_at(source_indices.clone(), type_expr.clone())
@@ -2410,11 +2395,11 @@ pub fn v1_type_expr_contains_param_name(
 }
 
 pub fn v1_generic_param_used_as_collection_element(
-    param_name: String,
+    param_name: std::string::String,
     value_params: Rc<Vec<Rc<Node>>>,
-    bounds: Rc<HashMap<String, Rc<BTreeSet<String>>>>,
-    type_decl_items: Rc<HashMap<String, Rc<Node>>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    bounds: Rc<HashMap<std::string::String, Rc<BTreeSet<String>>>>,
+    type_decl_items: Rc<HashMap<std::string::String, Rc<Node>>>,
+    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
 ) -> bool {
     {
         let mut __found = false;
@@ -2450,9 +2435,9 @@ pub fn v1_generic_param_used_as_collection_element(
 }
 
 pub fn v1_generic_param_used_as_bare_value_param_type(
-    param_name: String,
+    param_name: std::string::String,
     value_params: Rc<Vec<Rc<Node>>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
 ) -> bool {
     {
         let mut __found = false;
@@ -2473,11 +2458,11 @@ pub fn v1_generic_param_used_as_bare_value_param_type(
 }
 
 pub fn v1_generic_param_used_in_value_param_type_surface(
-    param_name: String,
+    param_name: std::string::String,
     value_params: Rc<Vec<Rc<Node>>>,
-    bounds: Rc<HashMap<String, Rc<BTreeSet<String>>>>,
-    type_decl_items: Rc<HashMap<String, Rc<Node>>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    bounds: Rc<HashMap<std::string::String, Rc<BTreeSet<String>>>>,
+    type_decl_items: Rc<HashMap<std::string::String, Rc<Node>>>,
+    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
 ) -> bool {
     {
         let mut __found = false;
@@ -2498,11 +2483,11 @@ pub fn v1_generic_param_used_in_value_param_type_surface(
 }
 
 pub fn v1_item_phantom_only_param_names(
-    item_name: String,
+    item_name: std::string::String,
     item: Rc<Node>,
-    bounds: Rc<HashMap<String, Rc<BTreeSet<String>>>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<Vec<String>> {
+    bounds: Rc<HashMap<std::string::String, Rc<BTreeSet<String>>>>,
+    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+) -> Rc<Vec<std::string::String>> {
     Rc::new({
         let mut __result = Vec::new();
         for p in Rc::new({
@@ -2529,7 +2514,10 @@ pub fn v1_item_phantom_only_param_names(
     })
 }
 
-pub fn v1_phantom_only_param_names_contains(names: Rc<Vec<String>>, param_name: String) -> bool {
+pub fn v1_phantom_only_param_names_contains(
+    names: Rc<Vec<std::string::String>>,
+    param_name: std::string::String,
+) -> bool {
     {
         let mut __found = false;
         for n in names.iter().cloned() {
@@ -2543,13 +2531,13 @@ pub fn v1_phantom_only_param_names_contains(names: Rc<Vec<String>>, param_name: 
 }
 
 pub fn v1_declared_type_app_mentions_param_non_phantom_loop(
-    param_name: String,
+    param_name: std::string::String,
     decl_params: Rc<Vec<Rc<Node>>>,
     type_args: Rc<Vec<Rc<Node>>>,
-    phantom_slot_names: Rc<Vec<String>>,
-    bounds: Rc<HashMap<String, Rc<BTreeSet<String>>>>,
-    type_decl_items: Rc<HashMap<String, Rc<Node>>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    phantom_slot_names: Rc<Vec<std::string::String>>,
+    bounds: Rc<HashMap<std::string::String, Rc<BTreeSet<String>>>>,
+    type_decl_items: Rc<HashMap<std::string::String, Rc<Node>>>,
+    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
 ) -> bool {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         match decl_params.clone().first().cloned() {
@@ -2608,13 +2596,13 @@ pub fn v1_declared_type_app_mentions_param_non_phantom_loop(
 }
 
 pub fn v1_declared_type_app_mentions_param_non_phantom(
-    param_name: String,
-    decl_name: String,
+    param_name: std::string::String,
+    decl_name: std::string::String,
     decl: Rc<Node>,
     type_args: Rc<Vec<Rc<Node>>>,
-    bounds: Rc<HashMap<String, Rc<BTreeSet<String>>>>,
-    type_decl_items: Rc<HashMap<String, Rc<Node>>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    bounds: Rc<HashMap<std::string::String, Rc<BTreeSet<String>>>>,
+    type_decl_items: Rc<HashMap<std::string::String, Rc<Node>>>,
+    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
 ) -> bool {
     v1_declared_type_app_mentions_param_non_phantom_loop(
         param_name.clone(),
@@ -2633,11 +2621,11 @@ pub fn v1_declared_type_app_mentions_param_non_phantom(
 }
 
 pub fn v1_type_expr_mentions_param_non_phantom(
-    param_name: String,
+    param_name: std::string::String,
     type_expr: Rc<Node>,
-    bounds: Rc<HashMap<String, Rc<BTreeSet<String>>>>,
-    type_decl_items: Rc<HashMap<String, Rc<Node>>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    bounds: Rc<HashMap<std::string::String, Rc<BTreeSet<String>>>>,
+    type_decl_items: Rc<HashMap<std::string::String, Rc<Node>>>,
+    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
 ) -> bool {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         if v1_type_expr_is_bare_param(
@@ -2702,13 +2690,13 @@ pub fn v1_type_expr_mentions_param_non_phantom(
 }
 
 pub fn v1_fn_phantom_only_generic_param_names(
-    generic_param_names: Rc<Vec<String>>,
+    generic_param_names: Rc<Vec<std::string::String>>,
     value_params: Rc<Vec<Rc<Node>>>,
     ret: Rc<Node>,
-    bounds: Rc<HashMap<String, Rc<BTreeSet<String>>>>,
-    type_decl_items: Rc<HashMap<String, Rc<Node>>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<Vec<String>> {
+    bounds: Rc<HashMap<std::string::String, Rc<BTreeSet<String>>>>,
+    type_decl_items: Rc<HashMap<std::string::String, Rc<Node>>>,
+    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+) -> Rc<Vec<std::string::String>> {
     Rc::new({
         let mut __result = Vec::new();
         for p in generic_param_names.iter().cloned() {
@@ -2742,9 +2730,9 @@ pub fn v1_fn_phantom_only_generic_param_names(
 }
 
 pub fn v1_type_expr_mentions_type_head(
-    type_name: String,
+    type_name: std::string::String,
     type_expr: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
 ) -> bool {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         if (crate::v1_std_core::authored_name_at(source_indices.clone(), type_expr.clone())
@@ -2771,11 +2759,11 @@ pub fn v1_type_expr_mentions_type_head(
 }
 
 pub fn v1_fn_generic_clone_bound_via_referenced_decl(
-    param_name: String,
+    param_name: std::string::String,
     value_params: Rc<Vec<Rc<Node>>>,
-    type_decl_items: Rc<HashMap<String, Rc<Node>>>,
-    clone_bounds: Rc<HashMap<String, Rc<BTreeSet<String>>>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    type_decl_items: Rc<HashMap<std::string::String, Rc<Node>>>,
+    clone_bounds: Rc<HashMap<std::string::String, Rc<BTreeSet<String>>>>,
+    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
 ) -> bool {
     {
         let mut __found = false;
@@ -2842,10 +2830,10 @@ pub fn v1_fn_generic_clone_bound_via_referenced_decl(
 }
 
 pub fn v1_fn_generic_clone_bound_via_bounded_container_element(
-    param_name: String,
+    param_name: std::string::String,
     value_params: Rc<Vec<Rc<Node>>>,
-    clone_bounds: Rc<HashMap<String, Rc<BTreeSet<String>>>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    clone_bounds: Rc<HashMap<std::string::String, Rc<BTreeSet<String>>>>,
+    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
 ) -> bool {
     {
         let mut __found = false;
@@ -2884,14 +2872,14 @@ pub fn v1_fn_generic_clone_bound_via_bounded_container_element(
 }
 
 pub fn v1_type_param_needs_clone_bound(
-    param_name: String,
+    param_name: std::string::String,
     return_is_bare_generic: bool,
-    ret_name: String,
+    ret_name: std::string::String,
     body_is_param_ref: bool,
     value_params: Rc<Vec<Rc<Node>>>,
-    bounds: Rc<HashMap<String, Rc<BTreeSet<String>>>>,
-    type_decl_items: Rc<HashMap<String, Rc<Node>>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    bounds: Rc<HashMap<std::string::String, Rc<BTreeSet<String>>>>,
+    type_decl_items: Rc<HashMap<std::string::String, Rc<Node>>>,
+    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
 ) -> bool {
     {
         let structural = (((((return_is_bare_generic.clone() && !body_is_param_ref.clone())
@@ -2920,11 +2908,11 @@ pub fn v1_type_param_needs_clone_bound(
 }
 
 pub fn v1_fn_param_type_needs_clone_bound(
-    param_name: String,
+    param_name: std::string::String,
     value_params: Rc<Vec<Rc<Node>>>,
-    bounds: Rc<HashMap<String, Rc<BTreeSet<String>>>>,
-    type_decl_items: Rc<HashMap<String, Rc<Node>>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    bounds: Rc<HashMap<std::string::String, Rc<BTreeSet<String>>>>,
+    type_decl_items: Rc<HashMap<std::string::String, Rc<Node>>>,
+    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
 ) -> bool {
     {
         let mut __found = false;
@@ -2969,16 +2957,16 @@ pub fn v1_fn_param_type_needs_clone_bound(
 }
 
 pub fn v1_generic_params_needing_clone_bound(
-    generic_param_names: Rc<Vec<String>>,
+    generic_param_names: Rc<Vec<std::string::String>>,
     value_params: Rc<Vec<Rc<Node>>>,
     return_is_bare_generic: bool,
-    ret_name: String,
+    ret_name: std::string::String,
     body_is_param_ref: bool,
     ret: Rc<Node>,
-    bounds: Rc<HashMap<String, Rc<BTreeSet<String>>>>,
-    type_decl_items: Rc<HashMap<String, Rc<Node>>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<Vec<String>> {
+    bounds: Rc<HashMap<std::string::String, Rc<BTreeSet<String>>>>,
+    type_decl_items: Rc<HashMap<std::string::String, Rc<Node>>>,
+    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+) -> Rc<Vec<std::string::String>> {
     {
         let phantom_only = v1_fn_phantom_only_generic_param_names(
             generic_param_names.clone(),
@@ -3030,10 +3018,10 @@ pub fn v1_generic_params_needing_clone_bound(
 }
 
 pub fn v1_generic_param_cloned_by_returned_closure(
-    param_name: String,
+    param_name: std::string::String,
     value_params: Rc<Vec<Rc<Node>>>,
     ret: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
 ) -> bool {
     (((ret.params.clone().len() as i64) > 0) && {
         let mut __found = false;
@@ -3052,9 +3040,9 @@ pub fn v1_generic_param_cloned_by_returned_closure(
 }
 
 pub fn v1_arrow_type_expr_mentions_param(
-    param_name: String,
+    param_name: std::string::String,
     type_expr: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
 ) -> bool {
     if ((type_expr.params.clone().len() as i64) == 0) {
         false
@@ -3119,9 +3107,9 @@ pub fn v1_arrow_type_expr_mentions_param(
 }
 
 pub fn v1_field_type_expr_needs_clone_bound_for_param_narrow(
-    param_name: String,
+    param_name: std::string::String,
     type_expr: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
 ) -> bool {
     {
         let name = crate::v1_std_core::authored_name_at(source_indices.clone(), type_expr.clone());
@@ -3152,9 +3140,9 @@ pub fn v1_field_type_expr_needs_clone_bound_for_param_narrow(
 }
 
 pub fn v1_item_type_param_needs_clone_bound_struct(
-    param_name: String,
+    param_name: std::string::String,
     field_type_exprs: Rc<Vec<Rc<Node>>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
 ) -> bool {
     {
         let mut __found = false;
@@ -3174,7 +3162,7 @@ pub fn v1_item_type_param_needs_clone_bound_struct(
 
 pub fn v1_wf_child_type_node(
     ch: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
 ) -> Rc<Node> {
     {
         let resolved = crate::v1_compiler_infer_types::child_type_node(ch.clone());
@@ -3189,9 +3177,9 @@ pub fn v1_wf_child_type_node(
 }
 
 pub fn v1_type_expr_is_bare_param(
-    param_name: String,
+    param_name: std::string::String,
     type_expr: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
 ) -> bool {
     (((crate::v1_std_core::authored_name_at(source_indices.clone(), type_expr.clone())
         == param_name.clone())
@@ -3200,8 +3188,8 @@ pub fn v1_type_expr_is_bare_param(
 }
 
 pub fn v1_type_expr_head_is_known(
-    name: String,
-    type_decl_items: Rc<HashMap<String, Rc<Node>>>,
+    name: std::string::String,
+    type_decl_items: Rc<HashMap<std::string::String, Rc<Node>>>,
 ) -> bool {
     (crate::std_types::is_container_type(name.clone())
         || (v1_rt::map_get(&type_decl_items, name.clone()) != std::option::Option::None))
@@ -3209,7 +3197,7 @@ pub fn v1_type_expr_head_is_known(
 
 pub fn v1_item_generic_param_name_set(
     item: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
 ) -> Rc<BTreeSet<String>> {
     item.params.clone().iter().cloned().fold(
         v1_rt::rc_empty_set::<String>(),
@@ -3224,10 +3212,10 @@ pub fn v1_item_generic_param_name_set(
 
 pub fn v1_type_expr_clone_undecided_head(
     type_expr: Rc<Node>,
-    type_decl_items: Rc<HashMap<String, Rc<Node>>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    type_decl_items: Rc<HashMap<std::string::String, Rc<Node>>>,
+    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
     item_generic_params: Rc<BTreeSet<String>>,
-) -> String {
+) -> std::string::String {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         let name = crate::v1_std_core::qualified_last_segment(
             crate::v1_std_core::authored_name_at(source_indices.clone(), type_expr.clone()),
@@ -3240,7 +3228,7 @@ pub fn v1_type_expr_clone_undecided_head(
             {
                 type_expr.children.clone().iter().cloned().fold(
                     "".to_string(),
-                    |acc: String, c: Rc<Node>| {
+                    |acc: std::string::String, c: Rc<Node>| {
                         if (acc.clone() != "".to_string()) {
                             acc.clone()
                         } else {
@@ -3261,11 +3249,11 @@ pub fn v1_type_expr_clone_undecided_head(
 }
 
 pub fn v1_type_expr_clone_impl_needs_param(
-    param_name: String,
+    param_name: std::string::String,
     type_expr: Rc<Node>,
-    bounds: Rc<HashMap<String, Rc<BTreeSet<String>>>>,
-    type_decl_items: Rc<HashMap<String, Rc<Node>>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    bounds: Rc<HashMap<std::string::String, Rc<BTreeSet<String>>>>,
+    type_decl_items: Rc<HashMap<std::string::String, Rc<Node>>>,
+    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
 ) -> bool {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         let name = crate::v1_std_core::authored_name_at(source_indices.clone(), type_expr.clone());
@@ -3312,13 +3300,13 @@ pub fn v1_type_expr_clone_impl_needs_param(
 }
 
 pub fn v1_declared_type_app_clone_impl_needs_param_loop(
-    param_name: String,
+    param_name: std::string::String,
     decl_params: Rc<Vec<Rc<Node>>>,
     type_args: Rc<Vec<Rc<Node>>>,
-    phantom_slot_names: Rc<Vec<String>>,
-    bounds: Rc<HashMap<String, Rc<BTreeSet<String>>>>,
-    type_decl_items: Rc<HashMap<String, Rc<Node>>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    phantom_slot_names: Rc<Vec<std::string::String>>,
+    bounds: Rc<HashMap<std::string::String, Rc<BTreeSet<String>>>>,
+    type_decl_items: Rc<HashMap<std::string::String, Rc<Node>>>,
+    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
 ) -> bool {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         match decl_params.clone().first().cloned() {
@@ -3377,13 +3365,13 @@ pub fn v1_declared_type_app_clone_impl_needs_param_loop(
 }
 
 pub fn v1_declared_type_app_clone_impl_needs_param(
-    param_name: String,
-    decl_name: String,
+    param_name: std::string::String,
+    decl_name: std::string::String,
     decl: Rc<Node>,
     type_args: Rc<Vec<Rc<Node>>>,
-    bounds: Rc<HashMap<String, Rc<BTreeSet<String>>>>,
-    type_decl_items: Rc<HashMap<String, Rc<Node>>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    bounds: Rc<HashMap<std::string::String, Rc<BTreeSet<String>>>>,
+    type_decl_items: Rc<HashMap<std::string::String, Rc<Node>>>,
+    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
 ) -> bool {
     v1_declared_type_app_clone_impl_needs_param_loop(
         param_name.clone(),
@@ -3402,13 +3390,13 @@ pub fn v1_declared_type_app_clone_impl_needs_param(
 }
 
 pub fn v1_declared_arg_positions_need_clone_param(
-    param_name: String,
+    param_name: std::string::String,
     decl_params: Rc<Vec<Rc<Node>>>,
     type_args: Rc<Vec<Rc<Node>>>,
     bound_params: Rc<BTreeSet<String>>,
-    bounds: Rc<HashMap<String, Rc<BTreeSet<String>>>>,
-    type_decl_items: Rc<HashMap<String, Rc<Node>>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    bounds: Rc<HashMap<std::string::String, Rc<BTreeSet<String>>>>,
+    type_decl_items: Rc<HashMap<std::string::String, Rc<Node>>>,
+    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
 ) -> bool {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         match decl_params.clone().first().cloned() {
@@ -3482,11 +3470,11 @@ pub fn v1_callable_type_expr_component_type_exprs(type_expr: Rc<Node>) -> Rc<Vec
 }
 
 pub fn v1_type_expr_wf_needs_clone_param(
-    param_name: String,
+    param_name: std::string::String,
     type_expr: Rc<Node>,
-    bounds: Rc<HashMap<String, Rc<BTreeSet<String>>>>,
-    type_decl_items: Rc<HashMap<String, Rc<Node>>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    bounds: Rc<HashMap<std::string::String, Rc<BTreeSet<String>>>>,
+    type_decl_items: Rc<HashMap<std::string::String, Rc<Node>>>,
+    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
 ) -> bool {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         let name = crate::v1_std_core::qualified_last_segment(
@@ -3536,18 +3524,18 @@ pub fn v1_type_expr_wf_needs_clone_param(
     })
 }
 
-pub fn v1_item_field_type_exprs_alias_hop_note() -> String {
+pub fn v1_item_field_type_exprs_alias_hop_note() -> std::string::String {
     thread_local! {
-        static CACHED: String = {
+        static CACHED: std::string::String = {
             "Threads declaration identity into the field-type-expression walk so a type ALIAS's right-hand side is followed exactly as far as the emitter renders it structurally, per map_key_alias_hop_gap_note's DISSOLVE-ON: the alias arm below fires only when the alias's own (dag_name, decl_file) resolves to no Rust checkpoint (lookup_checkpoint == Absent), meaning the emitter has no native realization for it and renders its declared structure. `type Hash = Fnv1a64Structural` in v2.std.node has no checkpoint row, so its RHS is the walk's one field type expression and the map-key fixpoint reaches Fnv1a64Structural. `type Int = AbelianGroup<GroupCompletion<Nat>>` and `type Nat = CommutativeSemiring<Magnitude>` DO have checkpoint rows (they realize as i64), so lookup_checkpoint returns Present and the arm below contributes nothing for them -- the measured false positive (AbelianGroup/CommutativeSemiring at map-key position) that sank the earlier attempt never recurs, because the gate is keyed on realization, not on 'is this a bare alias'. Safe to fold into the single shared v1_item_field_type_exprs rather than a map-key-only variant: is_bare_leaf_item requires params.count == 0, so no alias item is ever a member of v1_generic_declared_type_names (params > 0), and every OTHER caller of this function (the clone-bound wf/impl fixpoints) is seeded exclusively from that generic-only population -- the alias arm is therefore dead code on every path except the map-key propagation this note exists for, and reusing one function keeps the field-type-expression authority single (DESIGN section 2/3) instead of forking a second copy that could drift.".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c: &std::string::String| c.clone())
 }
 
 pub fn v1_item_alias_hop_type_exprs(
     item: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
 ) -> Rc<Vec<Rc<Node>>> {
     if crate::v1_compiler_emit_core_support::is_type_alias_item(
         item.clone(),
@@ -3575,7 +3563,7 @@ pub fn v1_item_alias_hop_type_exprs(
 
 pub fn v1_item_field_type_exprs(
     item: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
 ) -> Rc<Vec<Rc<Node>>> {
     if crate::v1_compiler_infer_types::is_coproduct_type(item.clone()) {
         Rc::new({
@@ -3612,11 +3600,11 @@ pub fn v1_item_field_type_exprs(
 }
 
 pub fn v1_item_field_type_expr_wf_needs_clone_param(
-    param_name: String,
+    param_name: std::string::String,
     type_expr: Rc<Node>,
-    bounds: Rc<HashMap<String, Rc<BTreeSet<String>>>>,
-    type_decl_items: Rc<HashMap<String, Rc<Node>>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    bounds: Rc<HashMap<std::string::String, Rc<BTreeSet<String>>>>,
+    type_decl_items: Rc<HashMap<std::string::String, Rc<Node>>>,
+    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
 ) -> bool {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         let callable_components = v1_callable_type_expr_component_type_exprs(type_expr.clone());
@@ -3650,11 +3638,11 @@ pub fn v1_item_field_type_expr_wf_needs_clone_param(
 }
 
 pub fn v1_item_param_wf_needs_clone(
-    param_name: String,
+    param_name: std::string::String,
     item: Rc<Node>,
-    bounds: Rc<HashMap<String, Rc<BTreeSet<String>>>>,
-    type_decl_items: Rc<HashMap<String, Rc<Node>>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    bounds: Rc<HashMap<std::string::String, Rc<BTreeSet<String>>>>,
+    type_decl_items: Rc<HashMap<std::string::String, Rc<Node>>>,
+    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
 ) -> bool {
     {
         let mut __found = false;
@@ -3678,12 +3666,12 @@ pub fn v1_item_param_wf_needs_clone(
 }
 
 pub fn v1_fn_param_wf_needs_clone(
-    param_name: String,
+    param_name: std::string::String,
     value_params: Rc<Vec<Rc<Node>>>,
     ret: Rc<Node>,
-    bounds: Rc<HashMap<String, Rc<BTreeSet<String>>>>,
-    type_decl_items: Rc<HashMap<String, Rc<Node>>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    bounds: Rc<HashMap<std::string::String, Rc<BTreeSet<String>>>>,
+    type_decl_items: Rc<HashMap<std::string::String, Rc<Node>>>,
+    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
 ) -> bool {
     ({
         let mut __found = false;
@@ -3711,16 +3699,16 @@ pub fn v1_fn_param_wf_needs_clone(
 
 pub fn v1_item_clone_undecided_head(
     item: Rc<Node>,
-    type_decl_items: Rc<HashMap<String, Rc<Node>>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> String {
+    type_decl_items: Rc<HashMap<std::string::String, Rc<Node>>>,
+    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+) -> std::string::String {
     {
         let item_generic_params =
             v1_item_generic_param_name_set(item.clone(), source_indices.clone());
         v1_item_field_type_exprs(item.clone(), source_indices.clone())
             .iter()
             .cloned()
-            .fold("".to_string(), |acc: String, te: Rc<Node>| {
+            .fold("".to_string(), |acc: std::string::String, te: Rc<Node>| {
                 if (acc.clone() != "".to_string()) {
                     acc.clone()
                 } else {
@@ -3737,14 +3725,14 @@ pub fn v1_item_clone_undecided_head(
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct CloneBoundRound {
-    pub bounds: Rc<HashMap<String, Rc<BTreeSet<String>>>>,
+    pub bounds: Rc<HashMap<std::string::String, Rc<BTreeSet<String>>>>,
     pub added: i64,
 }
 
 pub fn v1_clone_bound_round_add(
     round: Rc<CloneBoundRound>,
-    type_name: String,
-    param_name: String,
+    type_name: std::string::String,
+    param_name: std::string::String,
 ) -> Rc<CloneBoundRound> {
     {
         let current = match v1_rt::map_get(&round.bounds.clone(), type_name.clone()) {
@@ -3768,10 +3756,10 @@ pub fn v1_clone_bound_round_add(
 
 pub fn v1_clone_bound_round_for_item(
     round: Rc<CloneBoundRound>,
-    type_name: String,
+    type_name: std::string::String,
     item: Rc<Node>,
-    type_decl_items: Rc<HashMap<String, Rc<Node>>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    type_decl_items: Rc<HashMap<std::string::String, Rc<Node>>>,
+    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
 ) -> Rc<CloneBoundRound> {
     item.params.clone().iter().cloned().fold(
         round.clone(),
@@ -3795,9 +3783,9 @@ pub fn v1_clone_bound_round_for_item(
 
 pub fn v1_clone_bound_seed_for_item(
     round: Rc<CloneBoundRound>,
-    type_name: String,
+    type_name: std::string::String,
     item: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
 ) -> Rc<CloneBoundRound> {
     if crate::v1_compiler_infer_types::is_coproduct_type(item.clone()) {
         round
@@ -3827,12 +3815,12 @@ pub fn v1_clone_bound_seed_for_item(
 }
 
 pub fn v1_clone_bound_fixpoint_loop(
-    mut generic_type_names: Rc<Vec<String>>,
-    mut type_decl_items: Rc<HashMap<String, Rc<Node>>>,
-    mut bounds: Rc<HashMap<String, Rc<BTreeSet<String>>>>,
+    mut generic_type_names: Rc<Vec<std::string::String>>,
+    mut type_decl_items: Rc<HashMap<std::string::String, Rc<Node>>>,
+    mut bounds: Rc<HashMap<std::string::String, Rc<BTreeSet<String>>>>,
     mut remaining: i64,
-    mut source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<HashMap<String, Rc<BTreeSet<String>>>> {
+    mut source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+) -> Rc<HashMap<std::string::String, Rc<BTreeSet<String>>>> {
     loop {
         if (remaining.clone() <= 0) {
             break bounds;
@@ -3842,7 +3830,7 @@ pub fn v1_clone_bound_fixpoint_loop(
                     bounds: bounds,
                     added: 0,
                 }),
-                |acc: Rc<CloneBoundRound>, type_name: String| match v1_rt::map_get(
+                |acc: Rc<CloneBoundRound>, type_name: std::string::String| match v1_rt::map_get(
                     &type_decl_items,
                     type_name.clone(),
                 ) {
@@ -3872,8 +3860,8 @@ pub fn v1_clone_bound_fixpoint_loop(
 }
 
 pub fn v1_generic_declared_type_names(
-    type_decl_items: Rc<HashMap<String, Rc<Node>>>,
-) -> Rc<Vec<String>> {
+    type_decl_items: Rc<HashMap<std::string::String, Rc<Node>>>,
+) -> Rc<Vec<std::string::String>> {
     Rc::new({
         let mut __result = Vec::new();
         for n in Rc::new(v1_rt::map_keys(&type_decl_items)).iter().cloned() {
@@ -3889,17 +3877,17 @@ pub fn v1_generic_declared_type_names(
 }
 
 pub fn v1_clone_bounded_type_params(
-    type_decl_items: Rc<HashMap<String, Rc<Node>>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<HashMap<String, Rc<BTreeSet<String>>>> {
+    type_decl_items: Rc<HashMap<std::string::String, Rc<Node>>>,
+    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+) -> Rc<HashMap<std::string::String, Rc<BTreeSet<String>>>> {
     {
         let generic_type_names = v1_generic_declared_type_names(type_decl_items.clone());
         let seeded = generic_type_names.iter().cloned().fold(
             Rc::new(CloneBoundRound {
-                bounds: v1_rt::rc_empty_map::<String, Rc<BTreeSet<String>>>(),
+                bounds: v1_rt::rc_empty_map::<std::string::String, Rc<BTreeSet<String>>>(),
                 added: 0,
             }),
-            |acc: Rc<CloneBoundRound>, type_name: String| match v1_rt::map_get(
+            |acc: Rc<CloneBoundRound>, type_name: std::string::String| match v1_rt::map_get(
                 &type_decl_items,
                 type_name.clone(),
             ) {
@@ -3922,20 +3910,20 @@ pub fn v1_clone_bounded_type_params(
     }
 }
 
-pub fn clone_impl_required_type_params_note() -> String {
+pub fn clone_impl_required_type_params_note() -> std::string::String {
     thread_local! {
-        static CACHED: String = {
+        static CACHED: std::string::String = {
             "THE SECOND RECORD, and the reason there must be two. v1_clone_bounded_type_params answers 'does naming G<A..> require P: Clone' — well-formedness, which is what a DECLARATION must print, because naming an ill-formed type is an error whether or not you clone. This one answers 'does CLONING G<A..> require P: Clone' — the derive-impl fact, because derive(Clone) on G emits impl<P: Clone> Clone for G<P>.\n\nThey differ exactly on generic coproducts. An enum's declaration must NOT print a bound it earns from derive (derive supplies it per-impl, and w_coproduct_bare_payload_param_stays_bare pins that), while a CONSUMER cloning that enum must still be told the parameter is required. One map cannot hold both answers: seeding coproducts into the declaration record would print spurious enum bounds, and not seeding them anywhere leaves consumers with nothing to propagate from. So the seed differs and the fixpoint is shared.\n\nWHY THE GAP WAS INVISIBLE. The two axes have complementary blind spots. v1_type_expr_wf_needs_clone_param opens on a zero-children test, so well-formedness structurally cannot bound a BARE parameter — it only fires on a parameter occupying an argument position of an already-bounded declared type. The seed exists to cover the bare case and was switched off for coproducts. A generic coproduct with a bare payload fell between them and was bounded by nothing. Neither predicate is wrong read alone; the defect is the relation.\n\nMEASURED, at distinct-site grain over eleven entries. 142 A-class sites, of which 104 are fn signatures and only 6 are type declarations — so this is a fn-bound defect, not a declaration one. Thirteen signatures fail PARTIALLY, and they discriminate the mechanism: fold_list<T, A: Clone> misses T via Rc<im::Vector<T>>, resolve_probe<A: Clone, B> misses B via CacheProbe<B>, reconcile_grounded<A: Clone, R, E> misses R via ShowEffectiveRead<R>. Every parameter that earned its bound flows through a carrier that has one; every parameter that missed flows through a carrier that has none.\n\nWHY NO USAGE GATE. Bounding a fn that names Outcome<T> and never clones it would fabricate a requirement, since enum Outcome<T> declares no bound and the well-formedness justification does not transfer. Measured over the 03_ingest closure: of 21 generic fns taking one of these carriers in PARAMETER position, 21 clone that parameter. Zero would be spuriously bounded. The proxy is exact rather than approximate — derive emits impl<T: Clone>, so cloning the carrier IS the obligation. The one fn with no clone in its body has the carrier in return position only. A usage gate is therefore a later refinement, not a prerequisite; re-open it if the return-position population grows.\n\nNOT CLOSED BY THIS: a carrier whose declaration is UPSTREAM. im::Vector<T> has no corpus declaration to seed from, so its Clone requirement must come from the target API's own impl requirements — trait_derive_emit_item_clone_bound_contract_fork_note, whose dissolution is that grounding. Of A's 64 generic-receiver sites, 30 are im::Vector and stay standing.".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c: &std::string::String| c.clone())
 }
 
 pub fn v1_clone_impl_seed_for_item(
     round: Rc<CloneBoundRound>,
-    type_name: String,
+    type_name: std::string::String,
     item: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
 ) -> Rc<CloneBoundRound> {
     {
         let field_type_exprs = v1_item_field_type_exprs(item.clone(), source_indices.clone());
@@ -3959,17 +3947,17 @@ pub fn v1_clone_impl_seed_for_item(
 }
 
 pub fn v1_clone_impl_required_type_params(
-    type_decl_items: Rc<HashMap<String, Rc<Node>>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<HashMap<String, Rc<BTreeSet<String>>>> {
+    type_decl_items: Rc<HashMap<std::string::String, Rc<Node>>>,
+    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+) -> Rc<HashMap<std::string::String, Rc<BTreeSet<String>>>> {
     {
         let generic_type_names = v1_generic_declared_type_names(type_decl_items.clone());
         let seeded = generic_type_names.iter().cloned().fold(
             Rc::new(CloneBoundRound {
-                bounds: v1_rt::rc_empty_map::<String, Rc<BTreeSet<String>>>(),
+                bounds: v1_rt::rc_empty_map::<std::string::String, Rc<BTreeSet<String>>>(),
                 added: 0,
             }),
-            |acc: Rc<CloneBoundRound>, type_name: String| match v1_rt::map_get(
+            |acc: Rc<CloneBoundRound>, type_name: std::string::String| match v1_rt::map_get(
                 &type_decl_items,
                 type_name.clone(),
             ) {
@@ -3993,10 +3981,10 @@ pub fn v1_clone_impl_required_type_params(
 }
 
 pub fn v1_item_clone_bounded_param_names(
-    item_name: String,
-    generic_param_names: Rc<Vec<String>>,
-    bounds: Rc<HashMap<String, Rc<BTreeSet<String>>>>,
-) -> Rc<Vec<String>> {
+    item_name: std::string::String,
+    generic_param_names: Rc<Vec<std::string::String>>,
+    bounds: Rc<HashMap<std::string::String, Rc<BTreeSet<String>>>>,
+) -> Rc<Vec<std::string::String>> {
     match v1_rt::map_get(&bounds, item_name.clone()) {
         Some(s) => Rc::new({
             let mut __result = Vec::new();
@@ -4013,9 +4001,9 @@ pub fn v1_item_clone_bounded_param_names(
 
 pub fn v1_emit_type_params_with_bounds(
     params: Rc<Vec<Rc<Node>>>,
-    bounds_by_param: Rc<HashMap<String, Rc<Vec<String>>>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> String {
+    bounds_by_param: Rc<HashMap<std::string::String, Rc<Vec<std::string::String>>>>,
+    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+) -> std::string::String {
     if ((params.clone().len() as i64) == 0) {
         "".to_string()
     } else {
@@ -4055,13 +4043,13 @@ pub fn v1_emit_type_params_with_bounds(
 }
 
 pub fn v1_item_wf_propagated_clone_bounded_param_names(
-    item_name: String,
+    item_name: std::string::String,
     item: Rc<Node>,
-    generic_param_names: Rc<Vec<String>>,
-    bounds: Rc<HashMap<String, Rc<BTreeSet<String>>>>,
-    type_decl_items: Rc<HashMap<String, Rc<Node>>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<Vec<String>> {
+    generic_param_names: Rc<Vec<std::string::String>>,
+    bounds: Rc<HashMap<std::string::String, Rc<BTreeSet<String>>>>,
+    type_decl_items: Rc<HashMap<std::string::String, Rc<Node>>>,
+    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+) -> Rc<Vec<std::string::String>> {
     Rc::new({
         let mut __result = Vec::new();
         for g in v1_item_clone_bounded_param_names(
@@ -4088,14 +4076,15 @@ pub fn v1_item_wf_propagated_clone_bounded_param_names(
 
 pub fn v1_emit_type_params_with_clone_bounds(
     params: Rc<Vec<Rc<Node>>>,
-    clone_param_names: Rc<Vec<String>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> String {
+    clone_param_names: Rc<Vec<std::string::String>>,
+    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+) -> std::string::String {
     v1_emit_type_params_with_bounds(
         params.clone(),
         clone_param_names.iter().cloned().fold(
-            v1_rt::rc_empty_map::<String, Rc<Vec<String>>>(),
-            |m: Rc<HashMap<String, Rc<Vec<String>>>>, n: String| {
+            v1_rt::rc_empty_map::<std::string::String, Rc<Vec<std::string::String>>>(),
+            |m: Rc<HashMap<std::string::String, Rc<Vec<std::string::String>>>>,
+             n: std::string::String| {
                 v1_rt::rc_map_insert(m, n.clone(), Rc::new(vec!["Clone".to_string()]))
             },
         ),
@@ -4104,17 +4093,17 @@ pub fn v1_emit_type_params_with_clone_bounds(
 }
 
 pub fn v1_emit_struct_from_capability_table(
-    module_path: String,
-    name: String,
+    module_path: std::string::String,
+    name: std::string::String,
     children: Rc<Vec<Rc<Node>>>,
     shared_types: Rc<BTreeSet<String>>,
     has_fn_fields: bool,
     map_key_required: bool,
-    generic_param_names: Rc<Vec<String>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    generic_param_names: Rc<Vec<std::string::String>>,
+    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
     carrier_param_needs_clone: bool,
     deserialize_forbidden: bool,
-    type_decl_items: Rc<HashMap<String, Rc<Node>>>,
+    type_decl_items: Rc<HashMap<std::string::String, Rc<Node>>>,
 ) -> Rc<StructCapabilityEmit> {
     {
         let field_type_exprs = Rc::new({
@@ -4301,12 +4290,12 @@ pub fn v1_enum_variant_field_type_exprs(children: Rc<Vec<Rc<Node>>>) -> Rc<Vec<R
 }
 
 pub fn v1_emit_enum_supplemental_impls(
-    module_path: String,
-    name: String,
+    module_path: std::string::String,
+    name: std::string::String,
     children: Rc<Vec<Rc<Node>>>,
-    generic_param_names: Rc<Vec<String>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> String {
+    generic_param_names: Rc<Vec<std::string::String>>,
+    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+) -> std::string::String {
     {
         let field_type_exprs = v1_enum_variant_field_type_exprs(children.clone());
         let fm_params = v1_freemonoid_element_params(

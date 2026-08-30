@@ -104,8 +104,8 @@ pub struct KnownMethodResolution {
 }
 
 pub fn lookup_in_scope(
-    locals: Rc<HashMap<String, Rc<TypeBinding>>>,
-    name: String,
+    locals: Rc<HashMap<std::string::String, Rc<TypeBinding>>>,
+    name: std::string::String,
 ) -> Option<Rc<Node>> {
     match v1_rt::map_get(&locals, name.clone()) {
         Some(binding) => Some(binding.resolved.clone()),
@@ -113,7 +113,7 @@ pub fn lookup_in_scope(
     }
 }
 
-pub fn builtin_callable_candidates(name: String) -> Rc<Vec<Rc<CallableCandidate>>> {
+pub fn builtin_callable_candidates(name: std::string::String) -> Rc<Vec<Rc<CallableCandidate>>> {
     match crate::v1_compiler_infer_method::infer_builtin_call_type(name.clone()) {
         Some(builtin_return) => Rc::new(vec![Rc::new(CallableCandidate {
             identity: Rc::new(CallableIdentity::BuiltinCallable {
@@ -126,8 +126,13 @@ pub fn builtin_callable_candidates(name: String) -> Rc<Vec<Rc<CallableCandidate>
                 is_async: false,
                 output_provenance: Rc::new(vec![]),
                 variant_provenance: v1_rt::rc_empty_map::<
-                    String,
-                    Rc<HashMap<String, Rc<HashMap<String, Rc<SubValueRelation>>>>>,
+                    std::string::String,
+                    Rc<
+                        HashMap<
+                            std::string::String,
+                            Rc<HashMap<std::string::String, Rc<SubValueRelation>>>,
+                        >,
+                    >,
                 >(),
             }),
         })]),
@@ -145,7 +150,10 @@ pub enum AuthorNamedVisibility {
     VisibilityUnobservable,
 }
 
-pub fn author_named_visibility(type_env: Rc<TypeEnv>, name: String) -> AuthorNamedVisibility {
+pub fn author_named_visibility(
+    type_env: Rc<TypeEnv>,
+    name: std::string::String,
+) -> AuthorNamedVisibility {
     if v1_rt::map_is_empty(&type_env.authored_import_names.clone()) {
         AuthorNamedVisibility::VisibilityUnobservable
     } else {
@@ -236,7 +244,7 @@ pub fn resolved_declaration_call_target(
 }
 
 pub fn resolved_plain_call_target(
-    func_name: String,
+    func_name: std::string::String,
     sig_lookup: Rc<FuncSigLookup>,
 ) -> Rc<CallTargetIdentity> {
     match (*sig_lookup.clone()).clone() {
@@ -250,7 +258,9 @@ pub fn resolved_plain_call_target(
     }
 }
 
-pub fn builtin_call_target_or_undetermined(func_name: String) -> Rc<CallTargetIdentity> {
+pub fn builtin_call_target_or_undetermined(
+    func_name: std::string::String,
+) -> Rc<CallTargetIdentity> {
     match crate::v1_compiler_infer_method::infer_builtin_call_type(func_name.clone()) {
         Some(_) => Rc::new(CallTargetIdentity::RuntimePrimitiveCall {
             primitive_name: func_name.clone(),
@@ -263,7 +273,7 @@ pub fn builtin_call_target_or_undetermined(func_name: String) -> Rc<CallTargetId
 pub fn callable_lookup_over_candidates(
     func_env: Rc<ResolvedFuncEnv>,
     type_env: Rc<TypeEnv>,
-    name: String,
+    name: std::string::String,
 ) -> Rc<FuncSigLookup> {
     match v1_rt::map_get(&func_env.local.clone(), name.clone()) {
         Some(sig) => Rc::new(FuncSigLookup::FuncSigResolved {
@@ -323,7 +333,7 @@ pub fn callable_lookup_over_candidates(
 pub fn lookup_func_sig(
     func_env: Rc<ResolvedFuncEnv>,
     type_env: Rc<TypeEnv>,
-    name: String,
+    name: std::string::String,
 ) -> Rc<FuncSigLookup> {
     if crate::v1_compiler_infer_env::listed_import_required_bare_call_blocked(
         type_env.clone(),
@@ -361,7 +371,7 @@ pub fn lookup_func_sig(
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct BorrowedCensusDecl {
-    pub owner_module_path: String,
+    pub owner_module_path: std::string::String,
     pub node: Rc<Node>,
 }
 
@@ -377,7 +387,10 @@ pub enum BorrowedCensusDeclLookup {
     BorrowedCensusDeclNotFound,
 }
 
-pub fn borrowed_census_decl(type_env: Rc<TypeEnv>, name: String) -> Rc<BorrowedCensusDeclLookup> {
+pub fn borrowed_census_decl(
+    type_env: Rc<TypeEnv>,
+    name: std::string::String,
+) -> Rc<BorrowedCensusDeclLookup> {
     if v1_rt::contains(name.clone(), ".".to_string()) {
         match crate::v1_compiler_infer_env::symbol_index_lookup(
             type_env.symbol_index.clone(),
@@ -440,7 +453,10 @@ pub fn borrowed_census_decl(type_env: Rc<TypeEnv>, name: String) -> Rc<BorrowedC
     }
 }
 
-pub fn func_decl_owner_module(func_env: Rc<ResolvedFuncEnv>, name: String) -> Option<String> {
+pub fn func_decl_owner_module(
+    func_env: Rc<ResolvedFuncEnv>,
+    name: std::string::String,
+) -> Option<std::string::String> {
     match v1_rt::map_get(&func_env.local.clone(), name.clone()) {
         Some(_) => Some(func_env.name.clone()),
         None => match func_env.parents.clone().iter().cloned().fold(
@@ -464,17 +480,17 @@ pub fn func_decl_owner_module(func_env: Rc<ResolvedFuncEnv>, name: String) -> Op
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ExactDeclarationIdentity {
-    pub owner_module_path: String,
-    pub decl_name: String,
+    pub owner_module_path: std::string::String,
+    pub decl_name: std::string::String,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum DeclarationLookupFailure {
-    DeclarationNotIndexedAtQualifiedName { qualified_name: String },
+    DeclarationNotIndexedAtQualifiedName { qualified_name: std::string::String },
 }
 impl DeclarationLookupFailure {
-    pub fn qualified_name(&self) -> String {
+    pub fn qualified_name(&self) -> std::string::String {
         match self {
             DeclarationLookupFailure::DeclarationNotIndexedAtQualifiedName {
                 qualified_name: __val,
@@ -516,8 +532,8 @@ impl ConstructorDeclarationLookup {
 
 pub fn constructor_declaration_for_admission(
     type_env: Rc<TypeEnv>,
-    owner_module_path: String,
-    name: String,
+    owner_module_path: std::string::String,
+    name: std::string::String,
 ) -> Rc<ConstructorDeclarationLookup> {
     {
         let decl_name = crate::v1_std_core::qualified_last_segment(name.clone());
@@ -558,7 +574,7 @@ pub fn constructor_declaration_for_admission(
 pub fn func_decl_binding_for_call(
     func_env: Rc<ResolvedFuncEnv>,
     type_env: Rc<TypeEnv>,
-    name: String,
+    name: std::string::String,
 ) -> Rc<ConstructorDeclarationLookup> {
     match func_decl_owner_module(func_env.clone(), name.clone()) {
         Some(owner) => {
@@ -582,18 +598,18 @@ pub fn func_decl_binding_for_call(
     }
 }
 
-pub fn census_reserved_method_name_note() -> String {
+pub fn census_reserved_method_name_note() -> std::string::String {
     thread_local! {
-        static CACHED: String = {
+        static CACHED: std::string::String = {
             "Census precedence law (main-parity): the whole-pool census never serves an algebra method-template name (filter/any/contains/…) as a bare fn sig or tail callable. Those names belong to the known-method bridge in the ExprCall arm — a census sig for the UNLOADED v2.std.algebra typed filter(xs, f) as a plain call and the runtime died NoSuchFunction where main rewrote to the builtin method. Loaded providers are unaffected: lookup_resolved_sig runs before the census fallback.".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c: &std::string::String| c.clone())
 }
 
 pub fn borrowed_census_callable_candidate(
     type_env: Rc<TypeEnv>,
-    name: String,
+    name: std::string::String,
     candidate: Rc<GlobalBareCandidate>,
 ) -> Rc<CallableCandidate> {
     {
@@ -629,15 +645,23 @@ pub fn borrowed_census_callable_candidate(
                 is_async: false,
                 output_provenance: Rc::new(vec![]),
                 variant_provenance: v1_rt::rc_empty_map::<
-                    String,
-                    Rc<HashMap<String, Rc<HashMap<String, Rc<SubValueRelation>>>>>,
+                    std::string::String,
+                    Rc<
+                        HashMap<
+                            std::string::String,
+                            Rc<HashMap<std::string::String, Rc<SubValueRelation>>>,
+                        >,
+                    >,
                 >(),
             }),
         })
     }
 }
 
-pub fn func_sig_from_global_bare(type_env: Rc<TypeEnv>, name: String) -> Rc<FuncSigLookup> {
+pub fn func_sig_from_global_bare(
+    type_env: Rc<TypeEnv>,
+    name: std::string::String,
+) -> Rc<FuncSigLookup> {
     if crate::std_algebra::algebra_method_template_name(name.clone()) {
         Rc::new(FuncSigLookup::FuncSigUnresolved)
     } else {
@@ -690,11 +714,16 @@ pub fn func_sig_from_global_bare(type_env: Rc<TypeEnv>, name: String) -> Rc<Func
                                             is_async: false,
                                             output_provenance: Rc::new(vec![]),
                                             variant_provenance: v1_rt::rc_empty_map::<
-                                                String,
+                                                std::string::String,
                                                 Rc<
                                                     HashMap<
-                                                        String,
-                                                        Rc<HashMap<String, Rc<SubValueRelation>>>,
+                                                        std::string::String,
+                                                        Rc<
+                                                            HashMap<
+                                                                std::string::String,
+                                                                Rc<SubValueRelation>,
+                                                            >,
+                                                        >,
                                                     >,
                                                 >,
                                             >(
@@ -718,13 +747,13 @@ pub fn func_sig_from_global_bare(type_env: Rc<TypeEnv>, name: String) -> Rc<Func
                                                 is_async: false,
                                                 output_provenance: Rc::new(vec![]),
                                                 variant_provenance: v1_rt::rc_empty_map::<
-                                                    String,
+                                                    std::string::String,
                                                     Rc<
                                                         HashMap<
-                                                            String,
+                                                            std::string::String,
                                                             Rc<
                                                                 HashMap<
-                                                                    String,
+                                                                    std::string::String,
                                                                     Rc<SubValueRelation>,
                                                                 >,
                                                             >,
@@ -771,7 +800,10 @@ pub fn func_sig_from_global_bare(type_env: Rc<TypeEnv>, name: String) -> Rc<Func
     }
 }
 
-pub fn global_bare_callable_node(type_env: Rc<TypeEnv>, name: String) -> Option<Rc<Node>> {
+pub fn global_bare_callable_node(
+    type_env: Rc<TypeEnv>,
+    name: std::string::String,
+) -> Option<Rc<Node>> {
     {
         if crate::std_algebra::algebra_method_template_name(name.clone()) {
             return std::option::Option::None;
@@ -793,8 +825,8 @@ pub fn global_bare_callable_node(type_env: Rc<TypeEnv>, name: String) -> Option<
 
 pub fn lookup_field_type_node(
     n: Rc<Node>,
-    field_name: String,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    field_name: std::string::String,
+    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
 ) -> Option<Rc<Node>> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         let is_optional = (n.return_cardinality.clone() == Cardinality::CardOptional);
@@ -893,8 +925,8 @@ pub fn lookup_field_type_node(
 
 pub fn lookup_coproduct_common_field_node(
     variants: Rc<Vec<Rc<Node>>>,
-    field_name: String,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    field_name: std::string::String,
+    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
 ) -> Option<Rc<Node>> {
     {
         let found_in_all = {
@@ -936,7 +968,7 @@ pub fn resolve_scrutinee_type_node(env: Rc<TypeEnv>, n: Rc<Node>) -> Rc<Node> {
     resolve_scrutinee_type_node_seen(
         env.clone(),
         n.clone(),
-        v1_rt::rc_empty_map::<String, bool>(),
+        v1_rt::rc_empty_map::<std::string::String, bool>(),
     )
 }
 
@@ -978,7 +1010,7 @@ pub fn resolve_method_receiver_type(receiver_type: Rc<Node>, env: Rc<TypeEnv>) -
 pub fn resolve_scrutinee_type_node_seen(
     env: Rc<TypeEnv>,
     n: Rc<Node>,
-    seen: Rc<HashMap<String, bool>>,
+    seen: Rc<HashMap<std::string::String, bool>>,
 ) -> Rc<Node> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         let n_is_type_var = if (n.inferred.clone() != std::option::Option::None) {
@@ -1167,7 +1199,7 @@ pub fn set_element_type_in_env(type_node: Rc<Node>, env: Rc<TypeEnv>) -> Option<
 pub fn field_summary_for_type(
     base_type: Rc<Node>,
     env: Rc<TypeEnv>,
-    field: String,
+    field: std::string::String,
 ) -> Option<Rc<FieldSummary>> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         let resolved = resolve_scrutinee_type_node(env.clone(), base_type.clone());
@@ -1253,7 +1285,7 @@ pub fn product_field_result_type(field: Rc<Node>) -> Option<Rc<Node>> {
 pub fn map_lookup_result_type(
     product: Rc<Node>,
     field: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
 ) -> Option<Rc<Node>> {
     if (crate::v1_std_core::authored_name_at(source_indices.clone(), product.clone())
         == "Map".to_string())
@@ -1275,8 +1307,8 @@ pub fn map_lookup_result_type(
 
 pub fn lookup_field_in_product(
     product: Rc<Node>,
-    method_name: String,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    method_name: std::string::String,
+    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
 ) -> Option<Rc<MethodFieldResult>> {
     {
         let matching = Rc::new({
@@ -1321,8 +1353,8 @@ pub fn lookup_field_in_product(
 
 pub fn lookup_structural_method(
     receiver_type: Rc<Node>,
-    method_name: String,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    method_name: std::string::String,
+    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
 ) -> Rc<StructuralMethodLookup> {
     {
         let is_product = (receiver_type.connective.clone() == Connective::Conj);
@@ -1436,8 +1468,8 @@ impl DeclaredArgContract {
 
 pub fn declared_arg_types_for_method(
     receiver_type: Rc<Node>,
-    method_name: String,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    method_name: std::string::String,
+    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
     expand_field_type: impl Fn(Rc<Node>) -> Rc<Node> + Clone,
 ) -> Rc<DeclaredArgContract> {
     {
@@ -1520,10 +1552,10 @@ pub fn declared_arg_types_for_method(
 pub fn resolve_known_method_node(
     receiver: Rc<Node>,
     receiver_type: Rc<Node>,
-    method_name: String,
+    method_name: std::string::String,
     fold_accumulator_type: Option<Rc<Node>>,
-    service_registry: Rc<HashMap<String, Rc<Vec<Rc<OpEntry>>>>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    service_registry: Rc<HashMap<std::string::String, Rc<Vec<Rc<OpEntry>>>>>,
+    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
 ) -> Rc<KnownMethodResolution> {
     {
         let tier0 = lookup_structural_method(

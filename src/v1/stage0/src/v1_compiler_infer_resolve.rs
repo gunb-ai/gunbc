@@ -64,7 +64,7 @@ use std::rc::Rc;
 
 pub fn lookup_unit_variant_phantom_type(
     env: Rc<TypeEnv>,
-    variant_name: String,
+    variant_name: std::string::String,
 ) -> Option<Rc<Node>> {
     match v1_rt::map_get(&env.unit_variant_index.clone(), variant_name.clone()) {
         Some(contribs) => {
@@ -148,7 +148,7 @@ pub fn with_authored_identity(identity: Rc<Node>, structural: Rc<Node>) -> Rc<No
 
 pub fn is_transparent_primitive_alias_rhs(
     structural: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
 ) -> bool {
     (((structural.connective.clone() == Connective::NoConnective)
         && ((structural.children.clone().len() as i64) == 0))
@@ -161,8 +161,8 @@ pub fn is_transparent_primitive_alias_rhs(
 pub fn preserve_nominal_brand_on_resolve(
     identity: Rc<Node>,
     structural: Rc<Node>,
-    brand_name: String,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    brand_name: std::string::String,
+    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
 ) -> Rc<Node> {
     if ((((brand_name.clone() != "".to_string())
         && (brand_name.clone()
@@ -184,7 +184,11 @@ pub fn preserve_nominal_brand_on_resolve(
     }
 }
 
-pub fn peel_nominal_alias_identity(n: Rc<Node>, env: Rc<TypeEnv>, module_name: String) -> Rc<Node> {
+pub fn peel_nominal_alias_identity(
+    n: Rc<Node>,
+    env: Rc<TypeEnv>,
+    module_name: std::string::String,
+) -> Rc<Node> {
     {
         let source_indices = env.source_indices.clone();
         let brand = crate::v1_std_core::authored_name_at(source_indices.clone(), n.clone());
@@ -329,24 +333,28 @@ pub struct ResourceUseResult {
     pub diagnostics: Rc<Vec<Rc<ErrorNode>>>,
 }
 
-pub fn resolve_node(n: Rc<Node>, env: Rc<TypeEnv>, module_name: String) -> Rc<NodeResolveResult> {
+pub fn resolve_node(
+    n: Rc<Node>,
+    env: Rc<TypeEnv>,
+    module_name: std::string::String,
+) -> Rc<NodeResolveResult> {
     resolve_node_bounded(n.clone(), env.clone(), module_name.clone(), 0, true)
 }
 
-pub fn parameterized_use_site_prefers_parameterized_decl() -> String {
+pub fn parameterized_use_site_prefers_parameterized_decl() -> std::string::String {
     thread_local! {
-        static CACHED: String = {
+        static CACHED: std::string::String = {
             "A use site WITH type arguments (children > 0) whose primary name lookup lands on a PARAMLESS decl is definitionally mis-resolved - type args imply a generic declaration. The concrete seam: the kernel prelude binding for a name (e.g. the kernel Optional) shadows an explicitly imported user generic of the same name in the ancestry rung, so v2's Optional<T> consumers resolved the paramless kernel decl, is_user_generic_use_site went false, the sig return was never expanded, and pattern bindings went error-typed with zero diagnostics (the interpreted-parse cascade; pre-existing on main). Retry the DIRECT import parents (str_bindings) for a parameterized decl before accepting the paramless one - the params filter naturally excludes the kernel parent, and the ancestry rung itself carries the kernel-shadowed entry so it cannot serve as the retry source.".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c: &std::string::String| c.clone())
 }
 
 pub fn resolve_paramless_generic_use_decl_with_children(
     env: Rc<TypeEnv>,
     n: Rc<Node>,
     decl: Rc<Node>,
-    brand: String,
+    brand: std::string::String,
 ) -> Rc<Node> {
     match Rc::new({
         let mut __result = Vec::new();
@@ -385,7 +393,7 @@ pub fn resolve_paramless_generic_use_decl(
     env: Rc<TypeEnv>,
     n: Rc<Node>,
     decl: Rc<Node>,
-    brand: String,
+    brand: std::string::String,
 ) -> Rc<Node> {
     if ((n.children.clone().len() as i64) == 0) {
         decl
@@ -454,9 +462,9 @@ pub fn is_user_generic_use_site(n: Rc<Node>, env: Rc<TypeEnv>) -> bool {
 
 pub fn substitute_type_slots(
     n: Rc<Node>,
-    slot_bindings: Rc<HashMap<String, Rc<Node>>>,
-    decl_name: String,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    slot_bindings: Rc<HashMap<std::string::String, Rc<Node>>>,
+    decl_name: std::string::String,
+    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
 ) -> Rc<Node> {
     substitute_type_slots_scoped(
         n.clone(),
@@ -469,9 +477,9 @@ pub fn substitute_type_slots(
 
 pub fn substitute_type_slots_scoped(
     n: Rc<Node>,
-    slot_bindings: Rc<HashMap<String, Rc<Node>>>,
-    decl_name: String,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    slot_bindings: Rc<HashMap<std::string::String, Rc<Node>>>,
+    decl_name: std::string::String,
+    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
     bind_type_variables: bool,
 ) -> Rc<Node> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
@@ -632,7 +640,7 @@ pub fn classify_alias(target: Rc<Node>) -> AliasKind {
 pub fn resolve_alias_target(
     target: Rc<Node>,
     env: Rc<TypeEnv>,
-    module_name: String,
+    module_name: std::string::String,
     depth: i64,
 ) -> Rc<Node> {
     match classify_alias(target.clone()) {
@@ -667,7 +675,7 @@ pub fn is_parametric_type_alias_decl(item: Rc<Node>) -> bool {
 pub fn resolve_nominal_alias_rhs(
     n: Rc<Node>,
     env: Rc<TypeEnv>,
-    module_name: String,
+    module_name: std::string::String,
 ) -> Rc<NodeResolveResult> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         if ((n.connective.clone() == Connective::NoConnective)
@@ -731,28 +739,28 @@ pub fn resolve_nominal_alias_rhs(
     })
 }
 
-pub fn resolve_node_bounded_masked_boundary() -> String {
+pub fn resolve_node_bounded_masked_boundary() -> std::string::String {
     thread_local! {
-        static CACHED: String = {
+        static CACHED: std::string::String = {
             "Selective-import fail-closed (§5): 'masked' is TRUE at the resolve_node source entry and INHERITS through structural recursions (product base :391, product child rt :406, optional inner :426, variant field rt :444, generic args :477, map k/v :519/:522, list elem :538), so every use-site type-argument reaches the leaf mask check masked. It flips FALSE only into GROUNDING recursions (peel_nominal_alias_identity :150/:151/:154/:163, resolve_alias_target :342, parameterized-alias target :494, resolved-name grounding :561), which descend into DEFINING-module structure (the import responsibility of that module, not the use-site). INVARIANT (reviewed lively-raven-355 2026-07-06): grounding recursions must only ever descend into defining-module structure; the :561 arm relies on the resolved.children==0 leaf guard AND the :550-552 coproduct-container short-circuit — if a future refactor lets a parameterized use reach :561, a use-site arg could be inlined into grounding and skipped (a false-NEGATIVE / missing diagnostic once this is a hard refusal, not an availability bug in diagnostic-collect). Mask check (:568 Present arm) emits UnlistedImportUse when masked && name NOT in env.source_visible_names; keeps 'resolved' intact (diagnostic-collect, advisory). source_visible_names = locals + kernel + selective specific_names + is_all-module exports + type-params (:971). SCAFFOLD dissolve-on (§6): the advisory/non-erroring posture (is_error_diagnostic=false, 00_core.dag) is diagnostic-collect, NOT the final wall. Dissolves when (a) family-closure SVN lands — each imported name resolves to its whole coproduct family (owner + ALL siblings, lively-raven-355 ruling 2026-07-06) so the variant-owner-reverse false-positive class (import variant B then use owner E, or sibling A) is gone, AND (b) the corpus burndown of genuine unlisted uses (Symbol in v2/std/diagnostic.dag, NonEmptyStr in gcp, ...) reaches zero — at which point UnlistedImportUse promotes to a hard UnresolvedType/Refused joining §5's fail-closed wall, and the empty-source_visible_names guard (:345 count>0, a §3 dual-signal with 'masked' — flagged by claude-opus-4-7) collapses so 'masked' is the sole authority.".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c: &std::string::String| c.clone())
 }
 
-pub fn type_ref_hit_ne_bind_measure_resolve_note() -> String {
+pub fn type_ref_hit_ne_bind_measure_resolve_note() -> std::string::String {
     thread_local! {
-        static CACHED: String = {
+        static CACHED: std::string::String = {
             "N1a MEASUREMENT ARM (quiet-hawk-219): when type_ref_hit_ne_bind_measure_active (v1_rt host bracket), a masked leaf pool-hit without type_ref_measure_binding_authority emits UnresolvedType via bare_name_miss_diagnostic — never Product(<anon>). Production (measure off) keeps the UnlistedImportUse advisory path. Leaf path only; is_user_generic_use_site unchanged. Dissolve-on: gunbc.type_ref_hit_ne_bind_measure type_ref_hit_ne_bind_measure_dissolve_trigger.".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c: &std::string::String| c.clone())
 }
 
 pub fn resolve_node_bounded(
     n: Rc<Node>,
     env: Rc<TypeEnv>,
-    module_name: String,
+    module_name: std::string::String,
     depth: i64,
     masked: bool,
 ) -> Rc<NodeResolveResult> {
@@ -1239,7 +1247,7 @@ Rc::new(NodeResolveResult {
                         .iter()
                         .cloned()
                         .fold(
-                            v1_rt::rc_empty_map::<String, Rc<Node>>(),
+                            v1_rt::rc_empty_map::<std::string::String, Rc<Node>>(),
                             |acc: _, pair: (i64, Rc<Node>)| {
                                 let idx = pair.0.clone();
                                 let slot_name = crate::v1_std_core::authored_name_at(
@@ -1892,7 +1900,7 @@ Rc::new(NodeResolveResult {
 pub fn missing_generic_args_diagnostics(
     n: Rc<Node>,
     env: Rc<TypeEnv>,
-    module_name: String,
+    module_name: std::string::String,
 ) -> Rc<Vec<Rc<ErrorNode>>> {
     if ((((n.children.clone().len() as i64) == 0) && ((n.params.clone().len() as i64) == 0))
         && is_user_generic_use_site(n.clone(), env.clone()))
@@ -1921,7 +1929,7 @@ pub fn missing_generic_args_diagnostics(
 pub fn resolve_optional_node(
     n: Option<Rc<InferredNode>>,
     env: Rc<TypeEnv>,
-    module_name: String,
+    module_name: std::string::String,
 ) -> Rc<NodeResolveResult> {
     if (n.clone() == std::option::Option::None) {
         Rc::new(NodeResolveResult {
@@ -1983,7 +1991,7 @@ pub fn resolve_optional_node(
 pub fn resolve_field(
     field: Rc<Node>,
     env: Rc<TypeEnv>,
-    module_name: String,
+    module_name: std::string::String,
 ) -> Rc<FieldResolveResult> {
     {
         let authored_type = crate::v1_std_core::field_node_type_expr(field.clone());
@@ -2073,7 +2081,7 @@ pub fn rendered_use_site_type(authored: Rc<Node>, resolved: Rc<Node>) -> Rc<Node
 pub fn resolve_param(
     param: Rc<Node>,
     env: Rc<TypeEnv>,
-    module_name: String,
+    module_name: std::string::String,
 ) -> Rc<ParamResolveResult> {
     {
         let authored_type = crate::v1_std_core::param_node_type_expr(param.clone());
@@ -2122,7 +2130,7 @@ pub fn resolve_param(
 pub fn resolve_resource_use(
     ru: Rc<Node>,
     env: Rc<TypeEnv>,
-    module_name: String,
+    module_name: std::string::String,
 ) -> Rc<ResourceUseResult> {
     {
         let type_result = resolve_node(
@@ -2148,7 +2156,7 @@ pub fn resolve_resource_use(
 pub fn resolve_named_arg(
     arg: Rc<Node>,
     env: Rc<TypeEnv>,
-    module_name: String,
+    module_name: std::string::String,
 ) -> Rc<NamedArgResolveResult> {
     {
         let value_result = resolve_expr_types(
@@ -2174,7 +2182,7 @@ pub fn resolve_named_arg(
 pub fn resolve_field_init(
     field_init: Rc<Node>,
     env: Rc<TypeEnv>,
-    module_name: String,
+    module_name: std::string::String,
 ) -> Rc<FieldInitResolveResult> {
     {
         let value_result = resolve_expr_types(
@@ -2203,7 +2211,7 @@ pub fn resolve_field_init(
 pub fn resolve_match_arm(
     arm: Rc<Node>,
     env: Rc<TypeEnv>,
-    module_name: String,
+    module_name: std::string::String,
 ) -> Rc<MatchArmResolveResult> {
     {
         let arm_g = crate::v1_std_core::arm_guard(arm.clone());
@@ -2245,7 +2253,7 @@ pub fn resolve_match_arm(
 pub fn resolve_string_part(
     part: Rc<StringPart>,
     env: Rc<TypeEnv>,
-    module_name: String,
+    module_name: std::string::String,
 ) -> Rc<StringPartResolveResult> {
     match (*part.clone()).clone() {
         StringPart::Text { value: value, .. } => Rc::new(StringPartResolveResult {
@@ -2271,7 +2279,7 @@ pub fn resolve_string_part(
 pub fn resolve_transport_binding(
     transport: Rc<Node>,
     env: Rc<TypeEnv>,
-    module_name: String,
+    module_name: std::string::String,
 ) -> Rc<TransportResolveResult> {
     if crate::v1_std_core::is_local_transport(transport.clone(), env.source_indices.clone()) {
         Rc::new(TransportResolveResult {
@@ -2383,7 +2391,7 @@ pub fn resolve_transport_binding(
 pub fn resolve_expr_types(
     texpr: Rc<Node>,
     env: Rc<TypeEnv>,
-    module_name: String,
+    module_name: std::string::String,
 ) -> Rc<ExprResolveResult> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         match (*texpr.expr_data.clone()).clone() {
@@ -3329,8 +3337,8 @@ pub fn resolve_expr_types(
 
 pub fn fn_type_param_names(
     item: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<Vec<String>> {
+    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+) -> Rc<Vec<std::string::String>> {
     Rc::new({
         let mut __result = Vec::new();
         for p in Rc::new({
@@ -3359,7 +3367,7 @@ pub fn fn_type_param_names(
     })
 }
 
-pub fn has_duplicate_type_param_name(names: Rc<Vec<String>>) -> bool {
+pub fn has_duplicate_type_param_name(names: Rc<Vec<std::string::String>>) -> bool {
     {
         let mut __found = false;
         for pair in Rc::new(
@@ -3409,7 +3417,7 @@ pub fn has_duplicate_type_param_name(names: Rc<Vec<String>>) -> bool {
 pub fn resolve_item_types(
     item: Rc<Node>,
     env: Rc<TypeEnv>,
-    module_name: String,
+    module_name: std::string::String,
 ) -> Rc<ItemResolveResult> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         let tp_names = if ((item.connective.clone() != Connective::NoConnective)

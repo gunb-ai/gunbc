@@ -19,9 +19,9 @@ use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
 use std::rc::Rc;
 
-pub fn kernel_type_set() -> Rc<HashMap<String, bool>> {
+pub fn kernel_type_set() -> Rc<HashMap<std::string::String, bool>> {
     thread_local! {
-        static CACHED: Rc<HashMap<String, bool>> = {
+        static CACHED: Rc<HashMap<std::string::String, bool>> = {
             let mut __m = HashMap::new();
             __m.insert("String".to_string(), true);
             __m.insert("Int".to_string(), true);
@@ -34,37 +34,37 @@ pub fn kernel_type_set() -> Rc<HashMap<String, bool>> {
             Rc::new(__m)
         };
     }
-    CACHED.with(|c: &Rc<HashMap<String, bool>>| c.clone())
+    CACHED.with(|c: &Rc<HashMap<std::string::String, bool>>| c.clone())
 }
 
-pub fn is_kernel_type(name: String) -> bool {
+pub fn is_kernel_type(name: std::string::String) -> bool {
     match v1_rt::map_get(&kernel_type_set(), name.clone()) {
         Some(_) => true,
         None => false,
     }
 }
 
-pub fn container_type_arity() -> Rc<HashMap<String, i64>> {
+pub fn container_type_arity() -> Rc<HashMap<std::string::String, i64>> {
     thread_local! {
-        static CACHED: Rc<HashMap<String, i64>> = {
+        static CACHED: Rc<HashMap<std::string::String, i64>> = {
             v1_rt::rc_map_insert(crate::std_algebra::carrier_container_arity_rows(), "Witness".to_string(), 1)
         };
     }
-    CACHED.with(|c: &Rc<HashMap<String, i64>>| c.clone())
+    CACHED.with(|c: &Rc<HashMap<std::string::String, i64>>| c.clone())
 }
 
-pub fn is_container_type(name: String) -> bool {
+pub fn is_container_type(name: std::string::String) -> bool {
     match container_expected_arity(name.clone()) {
         Some(_) => true,
         None => false,
     }
 }
 
-pub fn container_expected_arity(name: String) -> Option<i64> {
+pub fn container_expected_arity(name: std::string::String) -> Option<i64> {
     v1_rt::map_get(&container_type_arity(), name.clone())
 }
 
-pub fn container_param_names_for(kind_name: String) -> Rc<Vec<String>> {
+pub fn container_param_names_for(kind_name: std::string::String) -> Rc<Vec<std::string::String>> {
     if (kind_name.clone() == "Witness".to_string()) {
         Rc::new(vec!["T".to_string()])
     } else {
@@ -75,7 +75,10 @@ pub fn container_param_names_for(kind_name: String) -> Rc<Vec<String>> {
     }
 }
 
-pub fn container_param_name(kind_name: String, index: i64) -> Option<String> {
+pub fn container_param_name(
+    kind_name: std::string::String,
+    index: i64,
+) -> Option<std::string::String> {
     {
         let names = container_param_names_for(kind_name.clone());
         match Rc::new({
@@ -116,48 +119,48 @@ pub fn container_param_name(kind_name: String, index: i64) -> Option<String> {
     }
 }
 
-pub fn ordered_element_collections() -> Rc<HashMap<String, bool>> {
+pub fn ordered_element_collections() -> Rc<HashMap<std::string::String, bool>> {
     thread_local! {
-        static CACHED: Rc<HashMap<String, bool>> = {
+        static CACHED: Rc<HashMap<std::string::String, bool>> = {
             let mut __m = HashMap::new();
             __m.insert("List".to_string(), true);
             Rc::new(__m)
         };
     }
-    CACHED.with(|c: &Rc<HashMap<String, bool>>| c.clone())
+    CACHED.with(|c: &Rc<HashMap<std::string::String, bool>>| c.clone())
 }
 
-pub fn is_ordered_element_collection(name: String) -> bool {
+pub fn is_ordered_element_collection(name: std::string::String) -> bool {
     v1_rt::map_contains_key(&ordered_element_collections(), name.clone())
 }
 
-pub fn container_template_algebra_rows() -> Rc<HashMap<String, String>> {
+pub fn container_template_algebra_rows() -> Rc<HashMap<std::string::String, std::string::String>> {
     thread_local! {
-        static CACHED: Rc<HashMap<String, String>> = {
+        static CACHED: Rc<HashMap<std::string::String, std::string::String>> = {
             crate::std_algebra::carrier_container_algebra_rows()
         };
     }
-    CACHED.with(|c: &Rc<HashMap<String, String>>| c.clone())
+    CACHED.with(|c: &Rc<HashMap<std::string::String, std::string::String>>| c.clone())
 }
 
-pub fn container_template_alias_rows() -> Rc<HashMap<String, String>> {
+pub fn container_template_alias_rows() -> Rc<HashMap<std::string::String, std::string::String>> {
     thread_local! {
-        static CACHED: Rc<HashMap<String, String>> = {
+        static CACHED: Rc<HashMap<std::string::String, std::string::String>> = {
             crate::std_algebra::carrier_container_alias_rows()
         };
     }
-    CACHED.with(|c: &Rc<HashMap<String, String>>| c.clone())
+    CACHED.with(|c: &Rc<HashMap<std::string::String, std::string::String>>| c.clone())
 }
 
-pub fn container_template_algebra(name: String) -> Option<String> {
+pub fn container_template_algebra(name: std::string::String) -> Option<std::string::String> {
     v1_rt::map_get(&container_template_algebra_rows(), name.clone())
 }
 
-pub fn container_template_alias_algebra(name: String) -> Option<String> {
+pub fn container_template_alias_algebra(name: std::string::String) -> Option<std::string::String> {
     v1_rt::map_get(&container_template_alias_rows(), name.clone())
 }
 
-pub fn canonical_container_names() -> Rc<Vec<String>> {
+pub fn canonical_container_names() -> Rc<Vec<std::string::String>> {
     Rc::new(v1_rt::sorted_map_keys(&v1_rt::rc_map_insert(
         crate::std_algebra::carrier_container_roster_map(),
         "Witness".to_string(),
@@ -201,16 +204,16 @@ pub fn list_length<T: Clone>(items: Rc<Vec<T>>) -> i64 {
 
 pub type CommitSha = String;
 
-pub fn commit_sha_text_holds_note() -> String {
+pub fn commit_sha_text_holds_note() -> std::string::String {
     thread_local! {
-        static CACHED: String = {
+        static CACHED: std::string::String = {
             "The located syntax wall for an EXTERNALLY SUPPLIED Git head: lowercase 40-hex. It lives here, beside CommitSha, because that is the one authority every Git-head consumer already names — it was previously homed in std.realization_schedule as scoped_witness_exact_head_text_holds, where a receipt family that has since been deleted happened to be its first caller, and a second consumer (v2.compiler.self_host.frontier_probe_survey) was already importing it across that seam. CommitSha is presently an unvalidated String alias, so this predicate is a validating CHECK a caller must remember to run, not a construction wall. Dissolve-on: CommitSha gains one validating constructor; callers reach the constructor, the invalid state stops being writable, and this predicate deletes.".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c: &std::string::String| c.clone())
 }
 
-pub fn commit_sha_text_holds(head: String) -> bool {
+pub fn commit_sha_text_holds(head: std::string::String) -> bool {
     ((v1_rt::string_length(&head) == 40) && {
         let mut __all = true;
         for cp in Rc::new(head.clone().chars().map(|c| c as i64).collect::<Vec<_>>())
@@ -254,16 +257,16 @@ pub type SecretName = String;
 
 pub type PathSegment = String;
 
-pub fn path_segment_safety_note() -> String {
+pub fn path_segment_safety_note() -> std::string::String {
     thread_local! {
-        static CACHED: String = {
+        static CACHED: std::string::String = {
             "WHAT MAKES A STRING SAFE TO USE AS ONE PATH SEGMENT — the law, held once, so every branded id that becomes a directory name tests the same thing. The brand alone never carried it: a branded NonEmptyStr accepts \"..\", \"a/b\", and an embedded newline, so a value that typechecked as a segment could still escape its parent directory, alias a sibling, or split a line-oriented file written under that name. The refused set is exactly the characters that change what a concatenated path MEANS — `/` and `\\` introduce a level, `.` and `..` navigate, CR and LF terminate a record in every line-oriented format this repo writes, NUL terminates the string at the syscall boundary. Callers REFUSE on false rather than sanitizing, because a sanitized segment silently denotes something other than what the caller named (§5: a failure arm must refuse, never widen). Percent- or hex-encoding is the reversible alternative and is deliberately not offered until a caller needs a segment it cannot rename.\n\nThis is a PREDICATE, not a constructor, and that is a modeling choice rather than a limitation worked around. A generic `path_segment(raw) -> PathSegment?` would put the branding cast in this module, and each caller would then re-cast the generic segment into its own brand anyway — two casts and two authorities for one law. Holding the law here and letting each branded id (gunbc.merge_admission.walk_attempt_id is the first) construct itself through it keeps one authority for what is hostile and one constructor per brand, which is what §3 asks for. A generic constructor earns its place when a second caller wants a bare PathSegment rather than a brand of its own; none does today.".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c: &std::string::String| c.clone())
 }
 
-pub fn path_segment_is_safe(raw: String) -> bool {
+pub fn path_segment_is_safe(raw: std::string::String) -> bool {
     !((((((((raw.clone() == "".to_string()) || (raw.clone() == ".".to_string()))
         || (raw.clone() == "..".to_string()))
         || v1_rt::string_contains(&raw, "/".to_string()))
@@ -275,13 +278,13 @@ pub fn path_segment_is_safe(raw: String) -> bool {
 
 pub type GlobSegment = String;
 
-pub fn rendered_terminal_text_note() -> String {
+pub fn rendered_terminal_text_note() -> std::string::String {
     thread_local! {
-        static CACHED: String = {
+        static CACHED: std::string::String = {
             "TEXT THAT CARRIES NO TERMINAL CONTROL SEQUENCES — the vocabulary two unrelated dependencies meet on so neither has to know the other exists. A terminal-facing tool emits SGR escapes around the values it highlights; a parser reading those values needs them absent. Those are facts about DIFFERENT upstreams, and the wrong fix is for either to mention the other: a note in a CLI's module explaining what a terminal multiplexer strips is a fact filed under the wrong authority, and it stops being true the moment a second capture transport appears (operator, 2026-07-30: 'tmux stripping ansi should be a tmux fact, and codex prompts should be a codex fact, and the interaction should be emergent').\\n\\nSo the brand is the seam. A capture surface that renders a pane PRODUCES RenderedTerminalText; a prompt parser CONSUMES it; and the composition is admissible because the types line up, not because one module was written knowing about the other. A raw stdout pipe cannot inhabit the brand, so feeding one to a parser that requires it is a type error rather than a runtime paste of escape bytes the operator discovers when the far end rejects them.\\n\\nIt lives in std because it is a property of text, not of any one tool — the same reason FilePath is not owned by whichever dependency happens to open files.".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c: &std::string::String| c.clone())
 }
 
 pub type RenderedTerminalText = String;
@@ -298,13 +301,13 @@ pub struct GlobPattern {
 
 pub type FilePath = String;
 
-pub fn file_path_sentinel_scaffold_note() -> String {
+pub fn file_path_sentinel_scaffold_note() -> std::string::String {
     thread_local! {
-        static CACHED: String = {
+        static CACHED: std::string::String = {
             "review 45141. FilePath where non_empty made empty-string absent-file sentinels unwritable; interim re-spellings encode absence in a nominally-non_empty carrier (state-space conflation — path promises a real path while sentinel means absent/synthetic). Sites: emit_rust/go/python emit_*_test_file returns TextFile { path: \"<none>\", content: \"\" }, filtered by string_length(content) > 0 not path; 00_core no_span uses SourceSpan.file \"<synthetic>\" for the null span (make_span, which fabricated that file name for CALLER-SUPPLIED offsets, is deleted -- the fileless constructor now takes no offsets, so a located range inside a nonexistent file has no constructor). Preserves pre-wall behavior. dissolve-on: feature:optional-textfile-and-source-span (lift emit carriers to Option<TextFile> and SourceSpan.file to optional FilePath; delete sentinels and content-length filter).".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c: &std::string::String| c.clone())
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -411,8 +414,8 @@ pub enum HttpMethod {
 #[serde(tag = "_variant")]
 pub enum AuthScheme {
     Bearer,
-    Header { name: String },
-    Basic { username: String },
+    Header { name: std::string::String },
+    Basic { username: std::string::String },
     ApiKey,
 }
 
@@ -427,9 +430,9 @@ pub struct AccessToken {
 pub struct Credential {
     pub token: String,
     pub scheme: Rc<AuthScheme>,
-    pub header_name: Option<String>,
-    pub source_id: String,
-    pub required_scopes: Rc<Vec<String>>,
+    pub header_name: Option<std::string::String>,
+    pub source_id: std::string::String,
+    pub required_scopes: Rc<Vec<std::string::String>>,
     pub expires_in: Option<i64>,
 }
 
@@ -442,30 +445,30 @@ pub type ToolHandle = String;
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct TransportRequest {
     pub method: HttpMethod,
-    pub url: String,
+    pub url: std::string::String,
     pub headers: serde_json::Value,
-    pub body: String,
+    pub body: std::string::String,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct TransportResponse {
     pub status: i64,
     pub headers: serde_json::Value,
-    pub body: String,
+    pub body: std::string::String,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct FileResponse {
-    pub path: String,
+    pub path: std::string::String,
     pub success: bool,
-    pub content: String,
+    pub content: std::string::String,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ShellResponse {
     pub exit_code: i64,
-    pub stdout: String,
-    pub stderr: String,
+    pub stdout: std::string::String,
+    pub stderr: std::string::String,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -477,10 +480,10 @@ pub struct RestResponse {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct TestResult {
-    pub name: String,
+    pub name: std::string::String,
     pub ok: bool,
-    pub stdout: String,
-    pub stderr: String,
+    pub stdout: std::string::String,
+    pub stderr: std::string::String,
     pub duration_ms: Milliseconds,
 }
 
@@ -493,24 +496,24 @@ pub struct Summary {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct StageResult {
-    pub name: String,
+    pub name: std::string::String,
     pub success: bool,
-    pub stdout: String,
-    pub stderr: String,
+    pub stdout: std::string::String,
+    pub stderr: std::string::String,
     pub skipped: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct RenderedTextFile {
-    pub path: String,
-    pub content: String,
+    pub path: std::string::String,
+    pub content: std::string::String,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ToolEntry {
-    pub name: String,
-    pub command: String,
-    pub description: Option<String>,
+    pub name: std::string::String,
+    pub command: std::string::String,
+    pub description: Option<std::string::String>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -522,36 +525,36 @@ pub struct ToolRegistry {
 pub struct DagTopology {
     pub nodes: Rc<Vec<Rc<TopologyNode>>>,
     pub edges: Rc<Vec<Rc<TopologyEdge>>>,
-    pub subdag_boundaries: Rc<Vec<String>>,
+    pub subdag_boundaries: Rc<Vec<std::string::String>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct TopologyNode {
-    pub id: String,
-    pub label: String,
+    pub id: std::string::String,
+    pub label: std::string::String,
     pub kind: TopologyNodeKind,
-    pub parent: Option<String>,
+    pub parent: Option<std::string::String>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct TopologyEdge {
-    pub from: String,
-    pub to: String,
-    pub port: Option<String>,
+    pub from: std::string::String,
+    pub to: std::string::String,
+    pub port: Option<std::string::String>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct DagDiff {
-    pub added: Rc<Vec<String>>,
-    pub removed: Rc<Vec<String>>,
-    pub changed: Rc<Vec<String>>,
+    pub added: Rc<Vec<std::string::String>>,
+    pub removed: Rc<Vec<std::string::String>>,
+    pub changed: Rc<Vec<std::string::String>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct PragmaDirective {
-    pub key: String,
-    pub value: String,
-    pub scope: Option<String>,
+    pub key: std::string::String,
+    pub value: std::string::String,
+    pub scope: Option<std::string::String>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]

@@ -35,13 +35,13 @@ pub struct DeclarationRef {
     pub field: Rc<DeclField>,
 }
 
-pub fn decl_ref_constructor_authority_note() -> String {
+pub fn decl_ref_constructor_authority_note() -> std::string::String {
     thread_local! {
-        static CACHED: String = {
+        static CACHED: std::string::String = {
             "The constructors live HERE, beside the type they construct — single authority (DESIGN section 3). Two parallel lanes each minted an identical fn decl_ref/decl_field_ref pair (std.primitive_identity and std.roster_frontier, both 2026-08-01), and because v1-seed fn names are not module-scoped, any closure containing both modules refused every bare decl_ref reference as ambiguous — the collision that redded the primitive_identity_join witness closure on main. Both duplicates are deleted in favor of these; a module needing a DeclarationRef imports the constructor from the type's own module, never re-mints it.".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c: &std::string::String| c.clone())
 }
 
 #[derive(
@@ -60,7 +60,10 @@ pub fn citation_is_outside_index(coverage: CitationIndexCoverage) -> bool {
     }
 }
 
-pub fn decl_ref(module_path: String, decl_name: String) -> Rc<DeclarationRef> {
+pub fn decl_ref(
+    module_path: std::string::String,
+    decl_name: std::string::String,
+) -> Rc<DeclarationRef> {
     Rc::new(DeclarationRef {
         module_path: module_path.clone(),
         decl_name: decl_name.clone(),
@@ -69,9 +72,9 @@ pub fn decl_ref(module_path: String, decl_name: String) -> Rc<DeclarationRef> {
 }
 
 pub fn decl_field_ref(
-    module_path: String,
-    decl_name: String,
-    field_name: String,
+    module_path: std::string::String,
+    decl_name: std::string::String,
+    field_name: std::string::String,
 ) -> Rc<DeclarationRef> {
     Rc::new(DeclarationRef {
         module_path: module_path.clone(),
@@ -112,7 +115,7 @@ pub fn declaration_ref_in_list(
         })
 }
 
-pub fn declaration_ref_display_key(ref_: Rc<DeclarationRef>) -> String {
+pub fn declaration_ref_display_key(ref_: Rc<DeclarationRef>) -> std::string::String {
     match (*ref_.field.clone()).clone() {
         DeclField::WholeDeclaration => v1_rt::concat(
             ref_.module_path.clone(),

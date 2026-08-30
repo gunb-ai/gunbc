@@ -36,7 +36,7 @@ pub enum CliOptionArity {
 #[serde(tag = "_variant")]
 pub enum CliOptionValue {
     CliTextValue {
-        text_default: Option<String>,
+        text_default: Option<std::string::String>,
     },
     CliToggleValue,
     CliPortValue {
@@ -74,9 +74,9 @@ impl CliVersionIdentity {
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum CliArmRealization {
-    CliDelegatesToHostFn { symbol: String },
+    CliDelegatesToHostFn { symbol: std::string::String },
     CliRetainedHostKernel,
-    CliRefusesUnwired { successor: String },
+    CliRefusesUnwired { successor: std::string::String },
     CliInvokesBoundTargetProducer,
 }
 
@@ -99,45 +99,45 @@ pub enum CliOperandArity {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct CliOperandRow {
-    pub field: String,
-    pub placeholder: String,
+    pub field: std::string::String,
+    pub placeholder: std::string::String,
     pub value: CliOperandValue,
     pub arity: CliOperandArity,
-    pub doc: Rc<Vec<String>>,
+    pub doc: Rc<Vec<std::string::String>>,
     pub emission: CliSurfaceEmission,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct CliOptionRow {
-    pub field: String,
-    pub long: String,
+    pub field: std::string::String,
+    pub long: std::string::String,
     pub value: Rc<CliOptionValue>,
     pub arity: CliOptionArity,
-    pub doc: Rc<Vec<String>>,
+    pub doc: Rc<Vec<std::string::String>>,
     pub emission: CliSurfaceEmission,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct CliSubcommandRow {
-    pub verb: String,
-    pub variant: String,
-    pub doc: Rc<Vec<String>>,
+    pub verb: std::string::String,
+    pub variant: std::string::String,
+    pub doc: Rc<Vec<std::string::String>>,
     pub operands: Rc<Vec<Rc<CliOperandRow>>>,
     pub options: Rc<Vec<Rc<CliOptionRow>>>,
     pub realization: Rc<CliArmRealization>,
     pub emission: CliSurfaceEmission,
 }
 
-pub fn gunbc_cli_binary_name() -> String {
+pub fn gunbc_cli_binary_name() -> std::string::String {
     "gunbc".to_string()
 }
 
-pub fn gunbc_cli_about() -> String {
+pub fn gunbc_cli_about() -> std::string::String {
     "A causal compiler: write .dag, get Rust/Python/Go.".to_string()
 }
 
 pub fn gunbc_cli_version_identity(
-    source_commit: String,
+    source_commit: std::string::String,
     source_dirty: bool,
 ) -> Rc<CliVersionIdentity> {
     if source_dirty.clone() {
@@ -151,7 +151,7 @@ pub fn gunbc_cli_version_identity(
     }
 }
 
-pub fn gunbc_cli_version_text(identity: Rc<CliVersionIdentity>) -> String {
+pub fn gunbc_cli_version_text(identity: Rc<CliVersionIdentity>) -> std::string::String {
     match (*identity.clone()).clone() {
         CliVersionIdentity::CliCleanSourceCommit { commit: commit, .. } => commit.clone(),
         CliVersionIdentity::CliDirtySourceCommit { commit: commit, .. } => {
@@ -460,21 +460,23 @@ pub fn cli_subcommand_emitted_options(sub: Rc<CliSubcommandRow>) -> Rc<Vec<Rc<Cl
     })
 }
 
-pub fn gunbc_cli_emitter_gap() -> Rc<Vec<String>> {
+pub fn gunbc_cli_emitter_gap() -> Rc<Vec<std::string::String>> {
     cli_emitter_gap_of(gunbc_cli_subcommands())
 }
 
-pub fn cli_emitter_gap_of(subcommands: Rc<Vec<Rc<CliSubcommandRow>>>) -> Rc<Vec<String>> {
+pub fn cli_emitter_gap_of(
+    subcommands: Rc<Vec<Rc<CliSubcommandRow>>>,
+) -> Rc<Vec<std::string::String>> {
     subcommands.iter().cloned().fold(
         Rc::new(vec![]),
-        |acc: Rc<Vec<String>>, sub: Rc<CliSubcommandRow>| match sub.emission.clone() {
+        |acc: Rc<Vec<std::string::String>>, sub: Rc<CliSubcommandRow>| match sub.emission.clone() {
             CliSurfaceEmission::AbsentFromEmitMainRs => {
                 v1_rt::concat(acc.clone(), Rc::new(vec![sub.verb.clone()]))
             }
             CliSurfaceEmission::EmittedByEmitMainRs => {
                 let with_operands = sub.operands.clone().iter().cloned().fold(
                     acc.clone(),
-                    |inner: Rc<Vec<String>>, operand: Rc<CliOperandRow>| match operand
+                    |inner: Rc<Vec<std::string::String>>, operand: Rc<CliOperandRow>| match operand
                         .emission
                         .clone()
                     {
@@ -490,7 +492,10 @@ pub fn cli_emitter_gap_of(subcommands: Rc<Vec<Rc<CliSubcommandRow>>>) -> Rc<Vec<
                 );
                 sub.options.clone().iter().cloned().fold(
                     with_operands.clone(),
-                    |inner: Rc<Vec<String>>, opt: Rc<CliOptionRow>| match opt.emission.clone() {
+                    |inner: Rc<Vec<std::string::String>>, opt: Rc<CliOptionRow>| match opt
+                        .emission
+                        .clone()
+                    {
                         CliSurfaceEmission::AbsentFromEmitMainRs => v1_rt::concat(
                             inner.clone(),
                             Rc::new(vec![v1_rt::concat(
@@ -506,23 +511,23 @@ pub fn cli_emitter_gap_of(subcommands: Rc<Vec<Rc<CliSubcommandRow>>>) -> Rc<Vec<
     )
 }
 
-pub fn gunbc_cli_emitter_gap_rendered() -> String {
-    gunbc_cli_emitter_gap()
-        .iter()
-        .cloned()
-        .fold("".to_string(), |acc: String, name: String| {
+pub fn gunbc_cli_emitter_gap_rendered() -> std::string::String {
+    gunbc_cli_emitter_gap().iter().cloned().fold(
+        "".to_string(),
+        |acc: std::string::String, name: std::string::String| {
             if (acc.clone() == "".to_string()) {
                 name.clone()
             } else {
                 v1_rt::concat(acc.clone(), v1_rt::concat(", ".to_string(), name.clone()))
             }
-        })
+        },
+    )
 }
 
-pub fn gunbc_cli_qualified_option_names() -> Rc<Vec<String>> {
+pub fn gunbc_cli_qualified_option_names() -> Rc<Vec<std::string::String>> {
     gunbc_cli_subcommands().iter().cloned().fold(
         Rc::new(vec![]),
-        |acc: Rc<Vec<String>>, sub: Rc<CliSubcommandRow>| {
+        |acc: Rc<Vec<std::string::String>>, sub: Rc<CliSubcommandRow>| {
             v1_rt::concat(
                 acc,
                 sub.options.clone().iter().cloned().fold(

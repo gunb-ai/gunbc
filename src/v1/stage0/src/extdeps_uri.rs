@@ -122,7 +122,7 @@ impl ParsedHrefScheme {
     }
 }
 
-pub fn href_is_relative_reference(s: String) -> bool {
+pub fn href_is_relative_reference(s: std::string::String) -> bool {
     ((((v1_rt::starts_with(s.clone(), "/".to_string())
         || v1_rt::starts_with(s.clone(), "#".to_string()))
         || v1_rt::starts_with(s.clone(), "./".to_string()))
@@ -130,7 +130,7 @@ pub fn href_is_relative_reference(s: String) -> bool {
         || !v1_rt::contains(s.clone(), ":".to_string()))
 }
 
-pub fn parse_href_scheme(url: String) -> Rc<ParsedHrefScheme> {
+pub fn parse_href_scheme(url: std::string::String) -> Rc<ParsedHrefScheme> {
     {
         let s = crate::std_algebra::trim(url.clone());
         if v1_rt::starts_with(s.clone(), "//".to_string()) {
@@ -201,13 +201,13 @@ pub fn parse_href_scheme(url: String) -> Rc<ParsedHrefScheme> {
     }
 }
 
-pub fn uri_component_encode_authority_note() -> String {
+pub fn uri_component_encode_authority_note() -> std::string::String {
     thread_local! {
-        static CACHED: String = {
+        static CACHED: std::string::String = {
             "RFC 3986 section 2.1 percent-encoding (https://www.rfc-editor.org/rfc/rfc3986#section-2.1) realized by extdeps.uri uri_percent_encode_* over UriUnicodeScalar / UriUtf8Octet. RFC 3986 section 3.3 path grammar is cited at extdeps.uri_path extdeps_external_authority_anchor — same specification, distinct section facts, no parallel section module. UriUnicodeScalar { cp } is the raw carrier; UriValidatedScalar is sole_constructor with admitted_cp: Int and is minted only by uri_validated_scalar_construction (scalar-range and surrogate checks live in that constructor). uri_percent_encode_admitted_scalar_wire accepts UriValidatedScalar only.".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c: &std::string::String| c.clone())
 }
 
 #[derive(
@@ -340,7 +340,7 @@ impl UriUtf8OctetConstruction {
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum UriPercentOctetWire {
-    UriPercentOctetEncoded { wire: String },
+    UriPercentOctetEncoded { wire: std::string::String },
     UriPercentOctetNibbleOutOfRange { digit: i64 },
 }
 
@@ -348,7 +348,7 @@ pub enum UriPercentOctetWire {
 #[serde(tag = "_variant")]
 pub enum UriPercentEncodeFoldState {
     UriPercentEncodeBuilding {
-        wire: String,
+        wire: std::string::String,
     },
     UriPercentEncodeRefused {
         cause: Rc<UriPercentEncodeRefusalCause>,
@@ -488,7 +488,7 @@ pub fn uri_hex_nibble_construction(d: i64) -> Rc<UriHexNibbleConstruction> {
     }
 }
 
-pub fn uri_hex_nibble_wire(nibble: UriHexNibble) -> String {
+pub fn uri_hex_nibble_wire(nibble: UriHexNibble) -> std::string::String {
     match nibble.clone() {
         UriHexNibble::UriNibble0 => "0".to_string(),
         UriHexNibble::UriNibble1 => "1".to_string(),
@@ -910,7 +910,7 @@ pub fn uri_percent_encode_scalar_fragment(cp: i64) -> Rc<UriPercentEncodeFoldSta
 #[serde(tag = "_variant")]
 pub enum UriPercentEncodeScalarOutcome {
     UriPercentEncodeScalarEncoded {
-        wire: String,
+        wire: std::string::String,
     },
     UriPercentEncodeScalarRefused {
         cause: Rc<UriPercentEncodeRefusalCause>,
@@ -953,18 +953,17 @@ pub fn uri_percent_encode_outcomes_first_refusal(
 
 pub fn uri_percent_encode_outcome_wires(
     outcomes: Rc<Vec<Rc<UriPercentEncodeScalarOutcome>>>,
-) -> Rc<Vec<String>> {
+) -> Rc<Vec<std::string::String>> {
     outcomes.iter().cloned().fold(
         Rc::new(vec![]),
-        |wires: Rc<Vec<String>>, outcome: Rc<UriPercentEncodeScalarOutcome>| match (*outcome
-            .clone())
-        .clone()
-        {
-            UriPercentEncodeScalarOutcome::UriPercentEncodeScalarEncoded { wire: wire, .. } => {
-                v1_rt::rc_list_push(wires.clone(), wire.clone())
-            }
-            UriPercentEncodeScalarOutcome::UriPercentEncodeScalarRefused { cause: _, .. } => {
-                wires.clone()
+        |wires: Rc<Vec<std::string::String>>, outcome: Rc<UriPercentEncodeScalarOutcome>| {
+            match (*outcome.clone()).clone() {
+                UriPercentEncodeScalarOutcome::UriPercentEncodeScalarEncoded {
+                    wire: wire, ..
+                } => v1_rt::rc_list_push(wires.clone(), wire.clone()),
+                UriPercentEncodeScalarOutcome::UriPercentEncodeScalarRefused {
+                    cause: _, ..
+                } => wires.clone(),
             }
         },
     )

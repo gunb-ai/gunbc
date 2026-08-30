@@ -45,7 +45,7 @@ use std::rc::Rc;
 pub fn generic_use_slot_bindings(
     scrut_node: Rc<Node>,
     env: Rc<TypeEnv>,
-) -> Rc<HashMap<String, Rc<Node>>> {
+) -> Rc<HashMap<std::string::String, Rc<Node>>> {
     {
         let decl = crate::v1_compiler_infer_resolve::resolve_generic_use_decl(
             env.clone(),
@@ -63,8 +63,8 @@ pub fn generic_use_slot_bindings(
         .iter()
         .cloned()
         .fold(
-            v1_rt::rc_empty_map::<String, Rc<Node>>(),
-            |acc: Rc<HashMap<String, Rc<Node>>>, pair: (i64, Rc<Node>)| {
+            v1_rt::rc_empty_map::<std::string::String, Rc<Node>>(),
+            |acc: Rc<HashMap<std::string::String, Rc<Node>>>, pair: (i64, Rc<Node>)| {
                 let slot = crate::v1_std_core::generic_param_name_at(
                     pair.1.clone(),
                     env.source_indices.clone(),
@@ -88,7 +88,7 @@ pub fn generic_use_slot_bindings(
 pub fn expand_scrut_from_decl(
     decl: Rc<Node>,
     scrut_node: Rc<Node>,
-    name: String,
+    name: std::string::String,
     env: Rc<TypeEnv>,
 ) -> Rc<Node> {
     {
@@ -256,7 +256,7 @@ pub fn expand_scrut_type_for_variant_lookup(
     }
 }
 
-pub fn is_witness_type_name(name: String) -> bool {
+pub fn is_witness_type_name(name: std::string::String) -> bool {
     ((name.clone() == "Witness".to_string()) || (name.clone() == "witness".to_string()))
 }
 
@@ -559,9 +559,9 @@ pub fn pattern_binding_type(subject: Rc<PatternSubject>) -> Rc<Node> {
 
 pub fn variant_not_found_result(
     scrut: Rc<Node>,
-    variant_name: String,
-    module_name: String,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    variant_name: std::string::String,
+    module_name: std::string::String,
+    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
 ) -> Rc<NodeLookupResult> {
     node_lookup_failed(Rc::new(vec![crate::v1_std_core::make_error_node(
         Rc::new(CompilerDiagnostic::VariantNotFound {
@@ -575,8 +575,8 @@ pub fn variant_not_found_result(
 
 pub fn lookup_variant_in_type(
     scrut: Rc<PatternSubject>,
-    variant_name: String,
-    module_name: String,
+    variant_name: std::string::String,
+    module_name: std::string::String,
     env: Rc<TypeEnv>,
     field_binding_count: i64,
 ) -> Rc<NodeLookupResult> {
@@ -765,9 +765,9 @@ pub fn lookup_variant_in_type(
 
 pub fn lookup_field_in_variant(
     variant: Rc<PatternSubject>,
-    field_name: String,
-    module_name: String,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    field_name: std::string::String,
+    module_name: std::string::String,
+    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
 ) -> Rc<NodeLookupResult> {
     match (*variant.clone()).clone() {
         PatternSubject::PatternLookupBlocked => node_lookup_failed(Rc::new(vec![])),
@@ -807,7 +807,7 @@ pub fn lookup_field_in_variant(
     }
 }
 
-pub fn variant_pattern_coverage_key(name: String) -> String {
+pub fn variant_pattern_coverage_key(name: std::string::String) -> std::string::String {
     {
         let segs = Rc::new(
             name.clone()
@@ -818,9 +818,10 @@ pub fn variant_pattern_coverage_key(name: String) -> String {
         if ((segs.clone().len() as i64) == 0) {
             name.clone()
         } else {
-            segs.iter()
-                .cloned()
-                .fold("".to_string(), |_: String, seg: String| seg.clone())
+            segs.iter().cloned().fold(
+                "".to_string(),
+                |_: std::string::String, seg: std::string::String| seg.clone(),
+            )
         }
     }
 }
@@ -830,7 +831,7 @@ pub fn check_match_exhaustiveness(
     arms: Rc<Vec<Rc<Node>>>,
     env: Rc<TypeEnv>,
     span: Rc<SourceSpan>,
-    module_name: String,
+    module_name: std::string::String,
 ) -> Rc<Vec<Rc<ErrorNode>>> {
     {
         let scrut_is_optional =
@@ -896,8 +897,8 @@ pub fn check_match_exhaustiveness(
                 } else {
                     {
                         let covered_set = arms.iter().cloned().fold(
-                            v1_rt::rc_empty_map::<String, bool>(),
-                            |acc: Rc<HashMap<String, bool>>, arm: Rc<Node>| {
+                            v1_rt::rc_empty_map::<std::string::String, bool>(),
+                            |acc: Rc<HashMap<std::string::String, bool>>, arm: Rc<Node>| {
                                 match (*crate::v1_std_core::arm_pattern(arm.clone())).clone() {
                                     MatchPattern::VariantPattern { name: n, .. } => {
                                         v1_rt::rc_map_insert(

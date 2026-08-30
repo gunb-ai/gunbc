@@ -110,17 +110,17 @@ pub enum WitnessKind {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct WitnessSeam {
-    pub producer: String,
-    pub consumer: String,
+    pub producer: std::string::String,
+    pub consumer: std::string::String,
 }
 
-pub fn witness_cost_clock_note() -> String {
+pub fn witness_cost_clock_note() -> std::string::String {
     thread_local! {
-        static CACHED: String = {
+        static CACHED: std::string::String = {
             "Which clock the duration carrier names (operator msg_e24f4cab, 2026-08-04): run_claim_timed builds performance receipts from wall_nanos (performance_receipt_from_witness) while the per-witness eval budget gate consumes thread CPU nanos (budget_completion_outcome). Both cross as std.measure Millisecond — without the clock tag a stored figure is not comparable to a threshold. claim_batch receipt logs cited on MeasuredAtExactSubject rows are WallClock unless re-measured on thread CPU. THE CARRIER IS std.measure ClockBasis, and this note records why it is not a second one. A local WitnessCostClock = WitnessCostWallEval | WitnessCostThreadCpuEval stood here until 2026-08-05, minted one day before std.measure ClockBasis = CpuClock | WallClock and for the SAME stated reason — the sentence above, that an untagged figure is not comparable to a threshold, appears in both notes. Two carriers, one concept, one argument, two names is the section 3 nicknaming violation exactly, and it duplicates at the meaning layer where everything derived duplicates again. It was also not merely redundant, which is what made it urgent rather than tidy: the declared side of a cost comparison was tagged in this vocabulary while the observed side (gunbc.witness_row_cost, ObservationEvent durations) was tagged in ClockBasis, so witness_row_cost_verdict's BasisClockMismatch — the wall built to refuse a thread-CPU figure compared against a wall baseline — could not see across the two spellings. A fork that defeats the mechanism written to catch that mistake reports clean while comparing the two quantities it exists to keep apart. Dissolved by IMPORT rather than by re-declaration, so the arms below are the same values the observation side already carries and a cross-clock pair refuses on one comparator.".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c: &std::string::String| c.clone())
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -129,12 +129,12 @@ pub enum WitnessCostBasis {
     MeasuredAtExactSubject {
         clock: ClockBasis,
         duration: Millisecond,
-        receipt: String,
+        receipt: std::string::String,
     },
     EstimatedFromSiblingClass {
         clock: ClockBasis,
-        source_witness: String,
-        basis: String,
+        source_witness: std::string::String,
+        basis: std::string::String,
     },
 }
 impl WitnessCostBasis {
@@ -146,13 +146,13 @@ impl WitnessCostBasis {
     }
 }
 
-pub fn scheduled_witness_envelope_typed_consumer_note() -> String {
+pub fn scheduled_witness_envelope_typed_consumer_note() -> std::string::String {
     thread_local! {
-        static CACHED: String = {
+        static CACHED: std::string::String = {
             "path_classification: WitnessConsumerCadence, not a cadence String (C-b, operator brief 2026-08-07, corrected 2026-08-07): the string fused three separate facts — path-policy classification, schedule period, and maximum tolerated staleness — into one field, so a value like \"4h\" answered both which lane classifies this row and how often it runs, and the wire decoder that tried to recover the identity half from the string only ever knew five of WitnessConsumerCadence's nine arms (witness_consumer_cadence_wire_round_trip_witness_test.dag, RED on the archived draft gunbc#7893 / origin/session/swift-wren-710). WitnessConsumerCadence (std.witness_admission) already is the closed, grounded vocabulary for path-policy classification — importing it here is the §3 single-authority move, not a second declaration. The field is named path_classification, not consumer: per src/v2/workflow/witness_admission.dag's commit_roster_enrollment_is_a_consumer_note, WitnessConsumerCadence answers which path policy classifies a row, NOT whether anything executes it — those are two different questions, and naming this field consumer would silently answer the second with the first (the state-space conflation this slice exists to remove). Whether a row has an executing consumer is answered by the separate fold in src/v2/workflow/witness_admission.dag; this envelope does not carry that fact and must not be read as carrying it. max_staleness is Millisecond, the SAME measure wall_budget already uses (std.measure) — reaching for the existing measure is the point; minting a fresh Duration carrier for a concept that already exists would itself be a failed decomposition (§2 net-concepts test). This envelope represents ACTUAL path-policy classification, never DESIRED placement — that is a distinct, later slice with its own types.".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c: &std::string::String| c.clone())
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -205,29 +205,29 @@ pub fn witness_kind_eq(a: WitnessKind, b: WitnessKind) -> bool {
     }
 }
 
-pub fn schedule_witness_entry_function_optional_note() -> String {
+pub fn schedule_witness_entry_function_optional_note() -> std::string::String {
     thread_local! {
-        static CACHED: String = {
+        static CACHED: std::string::String = {
             "function is OPTIONAL at file grain (umbrella dissolution U3, 2026-07-26): the empty string means Absent — the executor enumerates the entry's test fns through the same path discovery uses (scan_test_decl_names / floor_discovery_scan_test_decl_names). Non-empty keeps fn grain (per-row wet budgets, QuarantineProbeExpectRed probes, roster_registry rows that legitimately stay fn-scoped). CommitWitnessClaim.check_fns: [] projects one ScheduleWitnessEntry with function: \"\". Dissolve-on: Optional<String> when enrollment is derived from discovery (commit_witness_claim_roster_dissolution_trigger).".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c: &std::string::String| c.clone())
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ScheduleWitnessEntry {
-    pub entry: String,
-    pub function: String,
+    pub entry: std::string::String,
+    pub function: std::string::String,
     pub kind: WitnessKind,
 }
 
-pub fn runnable_memory_class_note() -> String {
+pub fn runnable_memory_class_note() -> std::string::String {
     thread_local! {
-        static CACHED: String = {
+        static CACHED: std::string::String = {
             "Memory class is a structural marker, not a quantity (operator ruling 2026-07-12): the former RunnableMemoryPeak predicted_peak bytes were hand-edited calibration constants — pins freezing derivations, the July OOM regime's root — and the width folds that consumed them are retired. Realization concurrency is now governed adaptively at run time (v1_compiler::memory_governor: AIMD admission against the slot's own cgroup budget, graceful back-off on creep, counted receipts), so the model keeps only the honest structural fact: Negligible vs Substantial residency, which co-residence structure keys on. Quantified per-runnable demand returns when it is derivable from the graph (CostAccount.space measured/derived), not as authored literals.".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c: &std::string::String| c.clone())
 }
 
 #[derive(
@@ -239,13 +239,13 @@ pub enum RunnableMemoryClass {
     RunnableMemorySubstantial,
 }
 
-pub fn runnable_profile_execution_mode_note() -> String {
+pub fn runnable_profile_execution_mode_note() -> std::string::String {
     thread_local! {
-        static CACHED: String = {
+        static CACHED: std::string::String = {
             "execution_mode is the runnable's declared effect envelope (operator posture 2026-07-11): the runner binds the injector the profile declares — Hermetic replays published mocks/recorded fixtures and refuses unmocked effects with typed diagnostics, Wet dispatches live transports, Record dispatches and captures fixtures. The declaration lives on the profile so every runnable kind (gate claim, discovery batch, execution batch) carries it uniformly, beside its resource siblings (spawns_host_compiler is already an effect-class fact). Fail-closed default: runnable_resource_profile_negligible declares Hermetic, so an undeclared-envelope runnable cannot silently reach live effects — it refuses, loudly, at the effect boundary. Future hardening (named trigger, not built here): an OS-level harness that fail-closes on sensed bypasses (shell spawn / network / out-of-root disk IO) beneath the interpreter seam.".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c: &std::string::String| c.clone())
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -318,13 +318,13 @@ impl FloorWorkerTerminalReceipt {
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum FloorWorkerTerminalReport {
-    FloorWorkerReportedCompleted { detail: String },
-    FloorWorkerReportedRefused { detail: String },
-    FloorWorkerReportedFailed { detail: String },
-    FloorWorkerTerminalReportMalformed { detail: String },
+    FloorWorkerReportedCompleted { detail: std::string::String },
+    FloorWorkerReportedRefused { detail: std::string::String },
+    FloorWorkerReportedFailed { detail: std::string::String },
+    FloorWorkerTerminalReportMalformed { detail: std::string::String },
 }
 impl FloorWorkerTerminalReport {
-    pub fn detail(&self) -> String {
+    pub fn detail(&self) -> std::string::String {
         match self {
             FloorWorkerTerminalReport::FloorWorkerReportedCompleted { detail: __val, .. } => {
                 __val.clone()
@@ -346,12 +346,12 @@ impl FloorWorkerTerminalReport {
 #[serde(tag = "_variant")]
 pub enum FloorWorkerObservationOutcome {
     FloorWorkerCompleted,
-    FloorWorkerRefused { detail: String },
-    FloorWorkerFailed { detail: String },
-    FloorWorkerDiedWithoutTerminalReceipt { detail: String },
+    FloorWorkerRefused { detail: std::string::String },
+    FloorWorkerFailed { detail: std::string::String },
+    FloorWorkerDiedWithoutTerminalReceipt { detail: std::string::String },
 }
 impl FloorWorkerObservationOutcome {
-    pub fn detail(&self) -> String {
+    pub fn detail(&self) -> std::string::String {
         match self {
             FloorWorkerObservationOutcome::FloorWorkerCompleted => {
                 panic!("no detail on unit variant")
@@ -459,13 +459,13 @@ pub fn floor_worker_observation_receipt_path() -> FloorWorkerObservationReceiptP
     CACHED.with(|c: &FloorWorkerObservationReceiptPath| c.clone())
 }
 
-pub fn floor_worker_observation_note() -> String {
+pub fn floor_worker_observation_note() -> std::string::String {
     thread_local! {
-        static CACHED: String = {
+        static CACHED: std::string::String = {
             "The floor coordinator is structurally closure-free: only worker processes resolve or execute a plan. Every worker writes a terminal receipt only after its result artifacts are complete; the coordinator crosses that report with the OS exit status and persists a located counted FloorWorkerObservation at floor_worker_observation_receipt_path. Missing terminal receipt is an observed state, never absence-as-success. Outcome is deliberately NOT a field: floor_worker_observation_outcome derives it totally from termination crossed with terminal_receipt, so Completed beside signal death or DiedWithoutTerminalReceipt beside an observed report is unrepresentable rather than lens-caught. The TSV outcome column is a boundary rendering of that derivation. 🟡 feature:floor-worker-observation-typed-tabular-codec dissolve-on: a std tabular-codec carrier derives the observation storage projection from FloorWorkerObservation, deleting the seed wire labels while preserving the branded path.".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c: &std::string::String| c.clone())
 }
 
 pub fn runnable_memory_negligible() -> RunnableMemoryClass {
@@ -576,16 +576,16 @@ pub fn runnable_forbids_corpus_co_residence(r: Rc<Runnable>) -> bool {
 #[serde(tag = "_variant")]
 pub enum Runnable {
     RunnableSingleClaim {
-        entry: String,
-        function: String,
+        entry: std::string::String,
+        function: std::string::String,
         profile: Rc<RunnableResourceProfile>,
     },
     RunnableDiscoveryBatch {
-        source_roots: Rc<Vec<String>>,
-        scan_dirs: Rc<Vec<String>>,
+        source_roots: Rc<Vec<std::string::String>>,
+        scan_dirs: Rc<Vec<std::string::String>>,
         explicit_entries: Rc<Vec<Rc<ScheduleWitnessEntry>>>,
-        exclude_substrings: Rc<Vec<String>>,
-        discovery_scope_dirs: Rc<Vec<String>>,
+        exclude_substrings: Rc<Vec<std::string::String>>,
+        discovery_scope_dirs: Rc<Vec<std::string::String>>,
         profile: Rc<RunnableResourceProfile>,
     },
     RunnableKernelWorkload {
@@ -606,13 +606,13 @@ pub enum OnSuccessRunnableDisposition {
     OnSuccessSubstantialRefused,
 }
 
-pub fn on_success_runnable_disposition_note() -> String {
+pub fn on_success_runnable_disposition_note() -> std::string::String {
     thread_local! {
-        static CACHED: String = {
+        static CACHED: std::string::String = {
             "The single modeled admission authority for a Runnable authored into WalkPlan.on_success_stages. Discovery and kernel workloads have no defined green-only meaning. A whole-tree resolve takes the unadmitted memo lane and leaves its context resident across later stages; host-compiler spawn and substantial residency refuse because success stages declare no resource clamp. A modeled RunnableSingleClaim always carries its full profile — absence or malformation is the strict executor parser's boundary, not a second disposition arm here. The seed executor mirrors this decision until it consumes the v2 model directly; when stage capabilities grow, this function is the one authority that changes.".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c: &std::string::String| c.clone())
 }
 
 pub fn on_success_runnable_disposition(runnable: Rc<Runnable>) -> OnSuccessRunnableDisposition {
@@ -644,31 +644,31 @@ pub fn on_success_runnable_disposition(runnable: Rc<Runnable>) -> OnSuccessRunna
     }
 }
 
-pub fn walk_plan_note() -> String {
+pub fn walk_plan_note() -> std::string::String {
     thread_local! {
-        static CACHED: String = {
+        static CACHED: std::string::String = {
             "A walk is TWO populations with DIFFERENT ordering laws, and the type says so where a bare List<List<Runnable>> could not. `batches` are the ordinary floor: batch boundaries order them, and a failure's consequence is the walk's FloorBatchStopPolicy (StopBeforeDependents on pull_request, FullLedger on push/schedule — where a failed batch deliberately does NOT stop the walk, because the per-batch ledger on main is bisection evidence, operator ruling 2026-07-23). `on_success_stages` run ONLY when the ordinary floor completed AND its receipts finalized and validated; each stage is a barrier — stage N fully completes with zero failures before stage N+1 starts — and stage-to-stage execution is ALWAYS fail-fast, regardless of the ordinary stop policy: FullLedger is an ordinary-floor policy and never applies between stages. WHY THE SECOND POPULATION EXISTS: work whose correctness is conditional on the whole floor being green (the merge-admission stamp is the first occupant — stamping Success is only true if reaching it proves green) cannot be an ordinary trailing batch, because under FullLedger a trailing batch is still reached after a red batch. The prior attempt encoded exactly that and shipped a fail-open; a second attempt then declared stamp-then-gate as one stage and rediscovered the SIBLING defect — ELIGIBLE INDEPENDENT RESOLVE GROUPS within a stage MAY overlap, subject to resource admission — no sibling ordering is guaranteed, so anything sequential must be ONE claim whose body sequences its steps, or two singleton stages. The contract is deliberately weaker than \"members run concurrently\" (review 2026-07-31), because the executor can legitimately withdraw overlap without breaking anything: same-entry same-mode claims are COMBINED into one resolve group and run serially within it; memo-lane and discovery units run on the main thread; and at governor width 1 two spawned threads exist while only one claim body is admitted at a time. Promising wall-time concurrency would make grouping, memo placement, and the governor into contract violations when they are the design. What the admission occupants actually need is the absence of a guaranteed order, and that is what is stated. Both defects are why this is a named type with a note rather than a convention (operator design ruling 2026-07-30).\n\nWHAT THE EXECUTOR PROVIDES, stated because a carrier that promises more than its executor delivers is the same defect this type exists to end (review 2026-07-30). THE THREE GAPS THIS NOTE USED TO NAME ARE CLOSED. Both populations now run through ONE executor, `run_stage`: same unit grouping, same lane partition (`batch_unit_lane`), same derived cost clamp. ADMISSION IS PER-LANE, NOT UNIVERSAL, and this note states it precisely because an earlier draft's {same governor admission} shorthand was read as a property of every unit and used to justify deleting a real refusal (review 2026-07-31): `run_batch_unit` takes an `AdmittedSlot` for the unit's lifetime. Ordinary spawned-lane units reach it on worker threads. On-success units that would otherwise take that lane reach the SAME function serially on the executor's main thread, still acquire the SAME slot, and thereby consume that thread's already-warm process_shared_index instead of rebuilding a second cold index. This is a typed consequence of the population, never a claim-name exception. It deliberately withdraws sibling overlap for on-success stages; the contract above permits that withdrawal and still guarantees NO sibling order, while the first live roster uses singleton stages and therefore loses no available overlap. Memo-lane and discovery main-thread units remain UNADMITTED. That is why a heavy-whole-tree-resolve claim is refused admission to an on-success stage rather than merely admitted narrowly — it would route to the memo lane, where no slot governs it, and its context stays resident in `stage_memo` across later stages, so wrapping the call in an ordinary slot would not bound it either. Ordinary members within a stage may therefore OVERLAP subject to per-lane admission; on-success members do not promise overlap. Each on-success stage writes ITS OWN receipt before the next begins, so a process death mid-sequence no longer erases the record of stages that had in fact completed; and the callers differ only where their population semantics require it: ordering/failure policy plus warm-index placement for green-only postconditions.\n\nWHAT MAKES THAT CHECKABLE RATHER THAN ASSERTED. Ordinary spawned-lane overlap was unreachable by a test while spawn-and-join sat inlined in the batch loop. `spawn_units`/`join_units` are split out so a LATCH can reach them: each member increments a shared counter and waits until it observes the other, which a serial ordinary executor cannot satisfy because the first member waits for a peer that was never started. The bound on that wait is a deadlock detector, never the assertion. Proven discriminating by mutation — making `spawn_units` run each ordinary unit inline turns the overlap control RED with the exact serial signature [false, true] and leaves the join and panic controls green. On-success stages deliberately do not use that overlap path. Their BARRIER is stronger and simpler: each `run_stage` returns before `run_walk` advances its loop, and the loop takes `&mut stage_memo` per iteration, so two stages cannot overlap. The schedule lens continues to treat sibling membership as an unordered multiset because implementation order is not a semantic guarantee.\n\nWHAT STILL REFUSES — the TOTAL account, replacing a paragraph that had gone self-contradictory (review 2026-07-31). The prior text asserted that the arm-time validator no longer refuses a heavy-whole-tree-resolve claim, which was true of one revision and false of the one before AND after it; the restored refusal was described elsewhere in this same note, so the canonical carrier stated both. A partial list is how that happened, so this is written as a closed enumeration rather than as commentary on what changed.\n\nAn on-success stage refuses, at arm time:\n  - an UNDECLARED resource profile — the values would be the parse's fail-closed fillers rather than the plan's statements, and a wall read off invented facts is worse than no wall;\n  - `heavy_whole_tree_resolve` — such a unit takes the memo lane, which is UNADMITTED, and its resolved context stays resident in the stage memo across every later stage;\n  - `spawns_host_compiler`;\n  - SUBSTANTIAL residency — the last two because stages supply no clamp parameters (`gunbc_ci_floor_batch_clamp_params` indexes the ORDINARY batches), so such a claim would run unclamped;\n  - a DISCOVERY runnable — it has no defined green-only meaning.\n\nAll four profile restrictions are conditional on mechanisms stages do not yet have, and each names a DIFFERENT trigger; they do not dissolve together. `spawns_host_compiler` and substantial residency dissolve on stages carrying declared clamp parameters. `heavy_whole_tree_resolve` dissolves on a context-lifetime resident reservation — and that reservation is NOT expressible today, which is the part an earlier draft of this sentence got wrong by naming the lease alone as its trigger. An `AdmittedSlot` is a CONCURRENCY slot: holding one for a memoized context's lifetime pins the active count, so the zero-active progress floor never fires, every later admission holds on a full window, and the width that would relieve it grows only on a completion that can no longer happen. The real trigger is therefore TWO steps in order: split execution-slot accounting from resident-reservation accounting, THEN take a context-lifetime reservation against the second. The undeclared-profile refusal has no dissolution — it is the fail-closed floor.\n\nEvery plan function returns WalkPlan<F> — a plan with no postconditions returns on_success_stages: [] — and the executor has ONE strict parser: a malformed or missing field is a hard error, never a fallback to a bare-list reading.".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c: &std::string::String| c.clone())
 }
 
-pub fn walk_plan_run_stage_claim_executor_seed_deferral() -> String {
+pub fn walk_plan_run_stage_claim_executor_seed_deferral() -> std::string::String {
     thread_local! {
-        static CACHED: String = {
+        static CACHED: std::string::String = {
             "§7 SEED-RETAINED, declared here because this is where the obligation is INCURRED (review 2026-07-31). `run_stage`, `spawn_units`, `join_units`, `batch_unit_lane`, the stage receipt writers, the walk-attempt observation, `maybe_run_floor_coordinator`, `spawn_floor_worker`, `observe_floor_worker`, `append_floor_phase_journal`, `journal_floor_worker_observation`, and the manifest/terminal/observation receipt projections are HAND-RUST in `claim_executor.rs`; resolving executor-owned decisions against inherited walk roots is HAND-RUST in `cli_run.rs`. The executor is the seed that runs before any `.dag` walk exists, so the code that decides how a walk executes cannot itself be a walk. The scoped extension does not mint a second deferral: it is another realization of this one executor seed. The merge-admission pre-walk extension (2026-08-02, review 47517) is likewise this SAME deferral grown, not a new one: the PreWalkExecution value parser, `run_pre_walk_execution` (including its capture-refusal-wire read), the two WalkPopulationBudget watchdogs and the WalkPopulationBudgetRefusal durable writer, and the per-stage memory snapshots are HAND-RUST in `claim_executor.rs`, all dissolving on the same trigger as the rest of this row — the executor walk and its receipt projections becoming emitted `.dag` realizations. That is a real deferral, not an exemption — the seed grew here, and a growth in the seed is a §7 debt whether or not anyone writes it down.\n\nWHY THIS ROW LIVES WITH THE CARRIER RATHER THAN WITH A CONSUMER. A first draft of this row was authored in the FIXTURE branch that later exercised this code, on the reasoning that the fixture is where the seed expansion became visible. That reverses ownership: the debt belongs to the change that added the Rust, and a downstream consumer documenting its parent's deferral means the parent could land without one. A consumer may cite this row; it may not be the row's home.\n\nWHAT THE SCOPED EXTENSION WAS, and why this row shrank. A scoped-witness worker once ran a second source-root envelope in a sequential child process, with its own clamp, execution authority, request projection and TSV receipt family, all hand-Rust here. Its single instance and every carrier behind it were deleted 2026-08-15 with affected-set selection, because the batch existed to make a second subject envelope affordable and selection was what made it affordable. The seed shrank by that whole path rather than migrating it.\n\nMIGRATION TRIGGER: the executor's own scheduling decisions become a `.dag` walk over `WalkPlan` — lane choice, admission, worker sequencing, and receipt emission expressed as modeled effects rather than as `std::thread`, `std::process`, plus `std::fs` — at which point this Rust becomes an emitted realization and the row deletes. Gated behind the witness-realization lane, concretely ROADMAP `v1-materialization-kernel` (`docs/plans/witness-realization-plan.md`), since a `.dag`-expressed executor needs native witness execution to run at all. The two codec dissolve markers are subordinate parts of this same row: they delete when typed tabular projection is available, before the whole executor can delete. Until then the honest statement is that these are seed-retained by necessity with a named trigger and executable receipts, which is exactly what a self-host frontier row is for.".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c: &std::string::String| c.clone())
 }
 
-pub fn walk_finalization_note() -> String {
+pub fn walk_finalization_note() -> std::string::String {
     thread_local! {
-        static CACHED: String = {
+        static CACHED: std::string::String = {
             "THE PLAN CARRIES ITS FINALIZATION POLICY IN ITS TYPE, and the executor never infers it — not from a function's spelling, and not from which arm of a coproduct an authored value happened to pick. Two corrections stacked here. FIRST: the original cut selected finalization by plan-function name (if plan_function == gunbc_ci_floor_plan read the law from the closure) — the same hidden seed-roster convention the WalkPlan carrier was built to remove, reintroduced in the same PR (review 2026-07-30), and the RED fixture made the coupling visible by having to impersonate the production name to arm the contract. Moving it to a field fixed that. SECOND: a field of a coproduct type is still only an authored choice (review 2026-07-30, second pass). With `finalization: WalkFinalization`, `WalkPlan { batches: floor_batches, finalization: NoWalkFinalization, .. }` typechecked — NoWalkFinalization and FloorFinalization inhabit the same sum, so nothing connected floor-shaped work to floor finalization; the production constructor merely chose correctly. So the carrier is PARAMETERIZED: WalkPlan<F>, and gunbc_ci_floor_plan returns WalkPlan<FloorFinalization> while regen, plan-artifact, and falsifier return WalkPlan<NoWalkFinalization>. One runtime parser still reads both, because the parse is over the finalization VALUE and does not care which instantiation produced it. The parameterization also stops this generic std carrier from owning a growing coproduct of gunbc-specific receipt policies: FloorFinalization moved to gunbc.ci_materialization, beside the declared count it is about, and std keeps only the parameter and the declared-empty inhabitant.\n\nWHAT THE PARAMETERIZATION DOES AND DOES NOT BUY, measured rather than assumed — and the measurement contradicted the intent, so the intent is not what gets written down. The review that requested this asked for a construction wall: the floor's return type should REJECT the empty policy. It does not, today. Probed by execution 2026-07-30: replacing the floor's finalization with NoFinalizationDeclared {} while the signature still reads WalkPlan<FloorFinalization> TYPECHECKS, and fails only later, at the first field access, as a runtime error. A narrower probe isolates the general defect — the typechecker does not check a function's declared return type against its body at all (`fn f() -> Int { \"not an int\" }` typechecks; so does a mismatched generic instantiation), nor a `data` declaration's annotation against its value, while ARGUMENT position is checked and refuses correctly. So this is a §5 WALL-AFTER-GROUNDING, not a wall now: the class is decidable, the single authority it waits on is return-position typechecking, and until that lands the enforcement is honestly VALIDATION — the enrolled witness floor_plan_projects_the_declared_resolve_count_authority (v2.test.claim.ci_floor_plan_witness) reds when the floor stops projecting the declared count, with a forked-count RED control beside it. Saying the signature walls it would be the same overclaim this note's own history is a record of. dissolve-on: return-position type enforcement in the typechecker, at which point the signature becomes the wall and the witness becomes redundant.\n\nLANGUAGE-LAYER FINDING recorded rather than absorbed (§5 workaround rule): a one-variant sum cannot be spelled `type T = OneVariant` — that production is the type-ALIAS form, and the compiler reads OneVariant as an unresolved type name (probed by execution). The nullary variant therefore has to be spelled `= NoFinalizationDeclared {}`, an empty record variant. That is position-dependent meaning for the same syntax (`= A | B` makes A a variant; `= A` makes A an alias target), and it belongs in the grammar-consolidation lane, not in a silent respelling.".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c: &std::string::String| c.clone())
 }
 
 #[derive(
@@ -684,15 +684,15 @@ pub enum NoWalkFinalization {
 pub enum PreWalkExecution {
     NoPreWalkExecution,
     TypedClaimSubprocess {
-        transport_entry: String,
-        transport_function: String,
-        source_roots: Rc<Vec<String>>,
-        claim_entry: String,
-        claim_function: String,
+        transport_entry: std::string::String,
+        transport_function: std::string::String,
+        source_roots: Rc<Vec<std::string::String>>,
+        claim_entry: std::string::String,
+        claim_function: std::string::String,
     },
 }
 impl PreWalkExecution {
-    pub fn transport_entry(&self) -> String {
+    pub fn transport_entry(&self) -> std::string::String {
         match self {
             PreWalkExecution::NoPreWalkExecution => panic!("no transport_entry on unit variant"),
             PreWalkExecution::TypedClaimSubprocess {
@@ -701,7 +701,7 @@ impl PreWalkExecution {
             } => __val.clone(),
         }
     }
-    pub fn transport_function(&self) -> String {
+    pub fn transport_function(&self) -> std::string::String {
         match self {
             PreWalkExecution::NoPreWalkExecution => panic!("no transport_function on unit variant"),
             PreWalkExecution::TypedClaimSubprocess {
@@ -710,7 +710,7 @@ impl PreWalkExecution {
             } => __val.clone(),
         }
     }
-    pub fn source_roots(&self) -> Rc<Vec<String>> {
+    pub fn source_roots(&self) -> Rc<Vec<std::string::String>> {
         match self {
             PreWalkExecution::NoPreWalkExecution => panic!("no source_roots on unit variant"),
             PreWalkExecution::TypedClaimSubprocess {
@@ -719,7 +719,7 @@ impl PreWalkExecution {
             } => __val.clone(),
         }
     }
-    pub fn claim_entry(&self) -> String {
+    pub fn claim_entry(&self) -> std::string::String {
         match self {
             PreWalkExecution::NoPreWalkExecution => panic!("no claim_entry on unit variant"),
             PreWalkExecution::TypedClaimSubprocess {
@@ -727,7 +727,7 @@ impl PreWalkExecution {
             } => __val.clone(),
         }
     }
-    pub fn claim_function(&self) -> String {
+    pub fn claim_function(&self) -> std::string::String {
         match self {
             PreWalkExecution::NoPreWalkExecution => panic!("no claim_function on unit variant"),
             PreWalkExecution::TypedClaimSubprocess {
@@ -738,13 +738,13 @@ impl PreWalkExecution {
     }
 }
 
-pub fn pre_walk_execution_note() -> String {
+pub fn pre_walk_execution_note() -> std::string::String {
     thread_local! {
-        static CACHED: String = {
+        static CACHED: std::string::String = {
             "A WalkPlan may carry one typed execution before its ordinary population. NoPreWalkExecution is explicit absence. TypedClaimSubprocess is a modeled argv-host-effect transport: the executor resolves transport_entry, calls transport_function with the authored source_roots/claim identity, and requires a true result before arming the ordinary floor. The transport function must realize the child through gunbc.WitnessBin.Run (the existing typed bin-invocation service), never through a shell program or an executor-minted command. This placement exists for small identity captures whose result must precede the floor but whose evaluator arena must die with a child address space; a refusal is located to both transport and claim and blocks batch 1.".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c: &std::string::String| c.clone())
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -760,21 +760,21 @@ pub struct WalkPlan<F: Clone> {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct WalkPopulationBudgetRefusal {
-    pub population: String,
-    pub plan_site: String,
+    pub population: std::string::String,
+    pub plan_site: std::string::String,
     pub population_index: Nat,
-    pub active_unit: String,
+    pub active_unit: std::string::String,
     pub elapsed: Millisecond,
     pub budget: Millisecond,
 }
 
-pub fn walk_population_budget_note() -> String {
+pub fn walk_population_budget_note() -> std::string::String {
     thread_local! {
-        static CACHED: String = {
+        static CACHED: std::string::String = {
             "WalkPlan carries an explicit Optional<Millisecond> budget for each population — the unit lives in the std.measure carrier, never in a field name (the RunnableBatchClamp precedent). Absent is authored unboundedness, never a parser fallback; Present must be positive. The ordinary watchdog owns the entire ordinary interval through receipt finalization and is disarmed only before green-only stages arm, so ordinary work cannot consume a reserved postcondition allowance. The postcondition watchdog separately bounds stages plus their receipts. A breach constructs WalkPopulationBudgetRefusal and durably writes floor-population-budget-refusal.txt with the population, plan site, one-based active stage/batch index, active unit, measured elapsed wall, and the budget that fired BEFORE claim_executor flushes stderr and exits nonzero. Index zero means the population had not entered its first unit. The outer workflow timeout remains only a larger wrapper backstop.".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c: &std::string::String| c.clone())
 }
 
 pub type Schedule = Rc<Vec<Rc<Vec<Rc<Runnable>>>>>;
@@ -788,7 +788,7 @@ pub struct RealizationPlan<S> {
     pub _phantom: std::marker::PhantomData<S>,
 }
 
-pub fn runnable_step_label(r: Rc<Runnable>) -> String {
+pub fn runnable_step_label(r: Rc<Runnable>) -> std::string::String {
     match (*r.clone()).clone() {
         Runnable::RunnableSingleClaim { function: f, .. } => f.clone(),
         Runnable::RunnableDiscoveryBatch { .. } => "__discovery_corpus__".to_string(),
@@ -798,7 +798,10 @@ pub fn runnable_step_label(r: Rc<Runnable>) -> String {
     }
 }
 
-pub fn schedule_batch_contains_label(batch: Rc<Vec<Rc<Runnable>>>, target: String) -> bool {
+pub fn schedule_batch_contains_label(
+    batch: Rc<Vec<Rc<Runnable>>>,
+    target: std::string::String,
+) -> bool {
     batch.iter().cloned().fold(false, |acc: bool, r: _| {
         (acc || (runnable_step_label(r.clone()) == target.clone()))
     })
@@ -816,13 +819,13 @@ pub fn schedule_witness_entry_eq(a: Rc<ScheduleWitnessEntry>, b: Rc<ScheduleWitn
         && witness_kind_eq(a.kind.clone(), b.kind.clone()))
 }
 
-pub fn schedule_witness_entry_roster_contains_note() -> String {
+pub fn schedule_witness_entry_roster_contains_note() -> std::string::String {
     thread_local! {
-        static CACHED: String = {
+        static CACHED: std::string::String = {
             "Roster membership at the ONE identity grain (entry, function, kind), beside the equality it folds, so every consumer joining two witness rosters — the eval-ceiling union, the budget partition of a known-red lane — asks the same question of the same authority. It exists because the first shape of the ceiling union carried its own private membership fold in gunbc.ci_layer_roots and the budget partition was about to author a second one; two folds over one relation is the fork DESIGN 3 names, and a roster join by bare name rather than by identity is the weaker check the schedule-multiplicity wall already refuses.".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c: &std::string::String| c.clone())
 }
 
 pub fn schedule_witness_entry_roster_contains(
@@ -836,7 +839,10 @@ pub fn schedule_witness_entry_roster_contains(
         })
 }
 
-pub fn string_list_eq(mut left: Rc<Vec<String>>, mut right: Rc<Vec<String>>) -> bool {
+pub fn string_list_eq(
+    mut left: Rc<Vec<std::string::String>>,
+    mut right: Rc<Vec<std::string::String>>,
+) -> bool {
     loop {
         if ((left.clone().len() as i64) != (right.clone().len() as i64)) {
             break false;

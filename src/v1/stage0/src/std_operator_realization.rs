@@ -156,7 +156,7 @@ pub fn binop_is_ordering(op: BinOp) -> bool {
     (ordering_test_for(op.clone()) != std::option::Option::None)
 }
 
-pub fn binop_label(op: BinOp) -> String {
+pub fn binop_label(op: BinOp) -> std::string::String {
     match op.clone() {
         BinOp::Add => "+".to_string(),
         BinOp::Sub => "-".to_string(),
@@ -180,7 +180,7 @@ pub fn binop_label(op: BinOp) -> String {
 pub enum OperatorRealizationRefusal {
     NoStructuralOperationDeclared {
         declaration: Rc<DeclarationRef>,
-        operator: String,
+        operator: std::string::String,
     },
     StructuralOrderingDuplicated {
         declaration: Rc<DeclarationRef>,
@@ -218,7 +218,9 @@ pub enum OperatorRealization {
     },
 }
 
-pub fn operator_realization_refusal_message(cause: Rc<OperatorRealizationRefusal>) -> String {
+pub fn operator_realization_refusal_message(
+    cause: Rc<OperatorRealizationRefusal>,
+) -> std::string::String {
     match (*cause.clone()).clone() {
     OperatorRealizationRefusal::NoStructuralOperationDeclared { declaration: d, operator: o, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("operator realization: host operator `".to_string(), o.clone()), "` on structural operand ".to_string()), d.module_path.clone()), ".".to_string()), d.decl_name.clone()), " -- the declaration has no host realization and declares no operation for this operator; spell the operation as a call to the declared structural operation".to_string()),
     OperatorRealizationRefusal::StructuralOrderingDuplicated { declaration: d, row_count: n, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("operator realization: structural ordering for ".to_string(), d.module_path.clone()), ".".to_string()), d.decl_name.clone()), " has more than one declared comparison (gunbc.structural_realization_bindings authoring defect)".to_string()),

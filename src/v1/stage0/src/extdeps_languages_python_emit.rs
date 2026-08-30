@@ -26,9 +26,9 @@ pub fn extdeps_external_authority_anchor() -> Rc<ExternalAuthority> {
     CACHED.with(|c: &Rc<ExternalAuthority>| c.clone())
 }
 
-pub fn python_keywords() -> Rc<HashMap<String, String>> {
+pub fn python_keywords() -> Rc<HashMap<std::string::String, std::string::String>> {
     thread_local! {
-        static CACHED: Rc<HashMap<String, String>> = {
+        static CACHED: Rc<HashMap<std::string::String, std::string::String>> = {
             let mut __m = HashMap::new();
             __m.insert("true".to_string(), "True".to_string());
             __m.insert("false".to_string(), "False".to_string());
@@ -40,12 +40,12 @@ pub fn python_keywords() -> Rc<HashMap<String, String>> {
             Rc::new(__m)
         };
     }
-    CACHED.with(|c: &Rc<HashMap<String, String>>| c.clone())
+    CACHED.with(|c: &Rc<HashMap<std::string::String, std::string::String>>| c.clone())
 }
 
-pub fn python_container_templates() -> Rc<HashMap<String, String>> {
+pub fn python_container_templates() -> Rc<HashMap<std::string::String, std::string::String>> {
     thread_local! {
-        static CACHED: Rc<HashMap<String, String>> = {
+        static CACHED: Rc<HashMap<std::string::String, std::string::String>> = {
             let mut __m = HashMap::new();
             __m.insert("list".to_string(), "list[{0}]".to_string());
             __m.insert("set".to_string(), "set[{0}]".to_string());
@@ -58,169 +58,169 @@ pub fn python_container_templates() -> Rc<HashMap<String, String>> {
             Rc::new(__m)
         };
     }
-    CACHED.with(|c: &Rc<HashMap<String, String>>| c.clone())
+    CACHED.with(|c: &Rc<HashMap<std::string::String, std::string::String>>| c.clone())
 }
 
-pub fn python_reserved() -> Rc<Vec<String>> {
+pub fn python_reserved() -> Rc<Vec<std::string::String>> {
     thread_local! {
-        static CACHED: Rc<Vec<String>> = {
+        static CACHED: Rc<Vec<std::string::String>> = {
             Rc::new(vec!["False".to_string(), "None".to_string(), "True".to_string(), "and".to_string(), "as".to_string(), "assert".to_string(), "async".to_string(), "await".to_string(), "break".to_string(), "class".to_string(), "continue".to_string(), "def".to_string(), "del".to_string(), "elif".to_string(), "else".to_string(), "except".to_string(), "finally".to_string(), "for".to_string(), "from".to_string(), "global".to_string(), "if".to_string(), "import".to_string(), "in".to_string(), "is".to_string(), "lambda".to_string(), "nonlocal".to_string(), "not".to_string(), "or".to_string(), "pass".to_string(), "raise".to_string(), "return".to_string(), "try".to_string(), "while".to_string(), "with".to_string(), "yield".to_string(), "type".to_string(), "match".to_string(), "case".to_string()])
         };
     }
-    CACHED.with(|c: &Rc<Vec<String>>| c.clone())
+    CACHED.with(|c: &Rc<Vec<std::string::String>>| c.clone())
 }
 
-pub fn python_reserved_escape_suffix() -> String {
+pub fn python_reserved_escape_suffix() -> std::string::String {
     thread_local! {
-        static CACHED: String = {
+        static CACHED: std::string::String = {
             "_".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c: &std::string::String| c.clone())
 }
 
-pub fn python_derive_attribute() -> String {
+pub fn python_derive_attribute() -> std::string::String {
     thread_local! {
-        static CACHED: String = {
+        static CACHED: std::string::String = {
             "@dataclass".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c: &std::string::String| c.clone())
 }
 
-pub fn python_default_value() -> String {
+pub fn python_default_value() -> std::string::String {
     thread_local! {
-        static CACHED: String = {
+        static CACHED: std::string::String = {
             "None".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c: &std::string::String| c.clone())
 }
 
-pub fn python_func_keyword() -> String {
+pub fn python_func_keyword() -> std::string::String {
     thread_local! {
-        static CACHED: String = {
+        static CACHED: std::string::String = {
             "def".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c: &std::string::String| c.clone())
 }
 
-pub fn python_async_prefix() -> String {
+pub fn python_async_prefix() -> std::string::String {
     thread_local! {
-        static CACHED: String = {
+        static CACHED: std::string::String = {
             "async ".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c: &std::string::String| c.clone())
 }
 
-pub fn python_struct_keyword() -> String {
+pub fn python_struct_keyword() -> std::string::String {
     thread_local! {
-        static CACHED: String = {
+        static CACHED: std::string::String = {
             "class".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c: &std::string::String| c.clone())
 }
 
-pub fn python_enum_keyword() -> String {
+pub fn python_enum_keyword() -> std::string::String {
     thread_local! {
-        static CACHED: String = {
+        static CACHED: std::string::String = {
             "class".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c: &std::string::String| c.clone())
 }
 
-pub fn python_type_alias_keyword() -> String {
+pub fn python_type_alias_keyword() -> std::string::String {
     thread_local! {
-        static CACHED: String = {
+        static CACHED: std::string::String = {
             "".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c: &std::string::String| c.clone())
 }
 
-pub fn python_param_separator() -> String {
+pub fn python_param_separator() -> std::string::String {
     thread_local! {
-        static CACHED: String = {
+        static CACHED: std::string::String = {
             ", ".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c: &std::string::String| c.clone())
 }
 
-pub fn python_return_arrow() -> String {
+pub fn python_return_arrow() -> std::string::String {
     thread_local! {
-        static CACHED: String = {
+        static CACHED: std::string::String = {
             " -> ".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c: &std::string::String| c.clone())
 }
 
-pub fn python_param_type_sep() -> String {
+pub fn python_param_type_sep() -> std::string::String {
     thread_local! {
-        static CACHED: String = {
+        static CACHED: std::string::String = {
             ": ".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c: &std::string::String| c.clone())
 }
 
-pub fn python_module_keyword() -> String {
+pub fn python_module_keyword() -> std::string::String {
     thread_local! {
-        static CACHED: String = {
+        static CACHED: std::string::String = {
             "".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c: &std::string::String| c.clone())
 }
 
-pub fn python_import_keyword() -> String {
+pub fn python_import_keyword() -> std::string::String {
     thread_local! {
-        static CACHED: String = {
+        static CACHED: std::string::String = {
             "import".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c: &std::string::String| c.clone())
 }
 
-pub fn python_import_from_keyword() -> String {
+pub fn python_import_from_keyword() -> std::string::String {
     thread_local! {
-        static CACHED: String = {
+        static CACHED: std::string::String = {
             "from".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c: &std::string::String| c.clone())
 }
 
-pub fn python_source_extension() -> String {
+pub fn python_source_extension() -> std::string::String {
     thread_local! {
-        static CACHED: String = {
+        static CACHED: std::string::String = {
             ".py".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c: &std::string::String| c.clone())
 }
 
-pub fn python_module_init() -> String {
+pub fn python_module_init() -> std::string::String {
     thread_local! {
-        static CACHED: String = {
+        static CACHED: std::string::String = {
             "__init__.py".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c: &std::string::String| c.clone())
 }
 
-pub fn python_string_types() -> Rc<Vec<String>> {
+pub fn python_string_types() -> Rc<Vec<std::string::String>> {
     thread_local! {
-        static CACHED: Rc<Vec<String>> = {
+        static CACHED: Rc<Vec<std::string::String>> = {
             Rc::new(vec!["String".to_string(), "Secret".to_string()])
         };
     }
-    CACHED.with(|c: &Rc<Vec<String>>| c.clone())
+    CACHED.with(|c: &Rc<Vec<std::string::String>>| c.clone())
 }
 
 pub fn python_simple_method_specs() -> Rc<Vec<Rc<SimpleMethodSpec>>> {
@@ -233,128 +233,128 @@ pub fn python_simple_method_specs() -> Rc<Vec<Rc<SimpleMethodSpec>>> {
     CACHED.with(|c: &Rc<Vec<Rc<SimpleMethodSpec>>>| c.clone())
 }
 
-pub fn python_method_templates_flat() -> Rc<HashMap<String, String>> {
+pub fn python_method_templates_flat() -> Rc<HashMap<std::string::String, std::string::String>> {
     python_simple_method_specs().iter().cloned().fold(
-        v1_rt::rc_empty_map::<String, String>(),
-        |acc: Rc<HashMap<String, String>>, spec: _| {
+        v1_rt::rc_empty_map::<std::string::String, std::string::String>(),
+        |acc: Rc<HashMap<std::string::String, std::string::String>>, spec: _| {
             v1_rt::rc_map_insert(acc, spec.method_name.clone(), spec.template.clone())
         },
     )
 }
 
-pub fn python_lambda_template() -> String {
+pub fn python_lambda_template() -> std::string::String {
     thread_local! {
-        static CACHED: String = {
+        static CACHED: std::string::String = {
             "lambda {0}: {1}".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c: &std::string::String| c.clone())
 }
 
-pub fn python_error_expr_template() -> String {
+pub fn python_error_expr_template() -> std::string::String {
     thread_local! {
-        static CACHED: String = {
+        static CACHED: std::string::String = {
             "raise RuntimeError({0})".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c: &std::string::String| c.clone())
 }
 
-pub fn python_list_literal_empty() -> String {
+pub fn python_list_literal_empty() -> std::string::String {
     thread_local! {
-        static CACHED: String = {
+        static CACHED: std::string::String = {
             "[]".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c: &std::string::String| c.clone())
 }
 
-pub fn python_list_literal_template() -> String {
+pub fn python_list_literal_template() -> std::string::String {
     thread_local! {
-        static CACHED: String = {
+        static CACHED: std::string::String = {
             "[{0}]".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c: &std::string::String| c.clone())
 }
 
-pub fn python_null_coalesce_template() -> String {
+pub fn python_null_coalesce_template() -> std::string::String {
     thread_local! {
-        static CACHED: String = {
+        static CACHED: std::string::String = {
             "({0} if {0} is not None else {1})".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c: &std::string::String| c.clone())
 }
 
-pub fn python_error_type_template() -> String {
+pub fn python_error_type_template() -> std::string::String {
     thread_local! {
-        static CACHED: String = {
+        static CACHED: std::string::String = {
             "__EMIT_BUG_{0}__".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c: &std::string::String| c.clone())
 }
 
-pub fn python_type_arg_open() -> String {
+pub fn python_type_arg_open() -> std::string::String {
     thread_local! {
-        static CACHED: String = {
+        static CACHED: std::string::String = {
             "[".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c: &std::string::String| c.clone())
 }
 
-pub fn python_type_arg_close() -> String {
+pub fn python_type_arg_close() -> std::string::String {
     thread_local! {
-        static CACHED: String = {
+        static CACHED: std::string::String = {
             "]".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c: &std::string::String| c.clone())
 }
 
-pub fn python_void_type() -> String {
+pub fn python_void_type() -> std::string::String {
     thread_local! {
-        static CACHED: String = {
+        static CACHED: std::string::String = {
             "None".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c: &std::string::String| c.clone())
 }
 
-pub fn python_tuple_empty() -> String {
+pub fn python_tuple_empty() -> std::string::String {
     thread_local! {
-        static CACHED: String = {
+        static CACHED: std::string::String = {
             "Tuple".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c: &std::string::String| c.clone())
 }
 
-pub fn python_tuple_pair_template() -> String {
+pub fn python_tuple_pair_template() -> std::string::String {
     thread_local! {
-        static CACHED: String = {
+        static CACHED: std::string::String = {
             "Tuple[{0}, {1}]".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c: &std::string::String| c.clone())
 }
 
-pub fn python_tuple_multi_template() -> String {
+pub fn python_tuple_multi_template() -> std::string::String {
     thread_local! {
-        static CACHED: String = {
+        static CACHED: std::string::String = {
             "Tuple[{0}]".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c: &std::string::String| c.clone())
 }
 
-pub fn python_tuple_separator() -> String {
+pub fn python_tuple_separator() -> std::string::String {
     thread_local! {
-        static CACHED: String = {
+        static CACHED: std::string::String = {
             ", ".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c: &std::string::String| c.clone())
 }

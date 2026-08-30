@@ -39,11 +39,11 @@ pub enum ArtifactKind {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Artifact {
-    pub name: String,
+    pub name: std::string::String,
     pub kind: ArtifactKind,
     pub target: RenderTarget,
-    pub entry_modules: Rc<Vec<String>>,
-    pub dependencies: Rc<Vec<String>>,
+    pub entry_modules: Rc<Vec<std::string::String>>,
+    pub dependencies: Rc<Vec<std::string::String>>,
 }
 
 #[derive(
@@ -60,10 +60,10 @@ pub enum BoundaryKind {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Boundary {
-    pub from_artifact: String,
-    pub to_artifact: String,
+    pub from_artifact: std::string::String,
+    pub to_artifact: std::string::String,
     pub kind: BoundaryKind,
-    pub contract: String,
+    pub contract: std::string::String,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -105,7 +105,7 @@ pub struct ArtifactOutput {
 }
 
 pub fn default_artifact_plan(
-    root_modules: Rc<Vec<String>>,
+    root_modules: Rc<Vec<std::string::String>>,
     target: RenderTarget,
 ) -> Rc<ArtifactPlan> {
     plan_artifacts(Rc::new(PartitionRule::Explicit {
@@ -128,10 +128,10 @@ pub enum DagInferredRecord {
         node: DagNodeId,
     },
     TypeVariableRef {
-        id: String,
+        id: std::string::String,
     },
     CompilerErrorRecord {
-        message: String,
+        message: std::string::String,
         span: Rc<SourceSpan>,
     },
 }
@@ -140,26 +140,26 @@ pub enum DagInferredRecord {
 pub struct DagModuleRef {
     pub module: DagNodeId,
     pub items: Rc<Vec<DagNodeId>>,
-    pub item_registry_keys: Rc<Vec<String>>,
+    pub item_registry_keys: Rc<Vec<std::string::String>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct DagDiagnosticRecord {
-    pub severity: String,
-    pub message: String,
+    pub severity: std::string::String,
+    pub message: std::string::String,
     pub span: Rc<SourceSpan>,
-    pub module_name: Option<String>,
-    pub category: Option<String>,
+    pub module_name: Option<std::string::String>,
+    pub category: Option<std::string::String>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct DagArtifact {
-    pub version: String,
-    pub nodes: Rc<HashMap<DagNodeId, String>>,
-    pub modules: Rc<Vec<String>>,
-    pub item_registry_keys: Rc<Vec<String>>,
-    pub diagnostics: Rc<Vec<String>>,
-    pub files: Rc<Vec<String>>,
+    pub version: std::string::String,
+    pub nodes: Rc<HashMap<DagNodeId, std::string::String>>,
+    pub modules: Rc<Vec<std::string::String>>,
+    pub item_registry_keys: Rc<Vec<std::string::String>>,
+    pub diagnostics: Rc<Vec<std::string::String>>,
+    pub files: Rc<Vec<std::string::String>>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]

@@ -14,20 +14,20 @@ use std::rc::Rc;
 #[serde(tag = "_variant")]
 pub enum TypeHeadView {
     KernelScalarHead {
-        type_identity: String,
+        type_identity: std::string::String,
     },
     ApplicationHead {
-        constructor_identity: String,
-        argument_identities: Rc<Vec<String>>,
+        constructor_identity: std::string::String,
+        argument_identities: Rc<Vec<std::string::String>>,
     },
     ProductHead {
-        type_identity: String,
+        type_identity: std::string::String,
     },
     CoproductHead {
-        type_identity: String,
+        type_identity: std::string::String,
     },
     CallableHead {
-        type_identity: String,
+        type_identity: std::string::String,
     },
 }
 
@@ -35,12 +35,15 @@ pub enum TypeHeadView {
 #[serde(tag = "_variant")]
 pub enum TypeHeadExposure {
     ExposedTypeHead { view: Rc<TypeHeadView> },
-    OpaqueTypeHead { type_identity: String },
-    StuckTypeHead { cause: String },
-    MalformedApplicationHead { cause: String },
+    OpaqueTypeHead { type_identity: std::string::String },
+    StuckTypeHead { cause: std::string::String },
+    MalformedApplicationHead { cause: std::string::String },
 }
 
-pub fn type_declaration_identity_key(decl_file: String, declared_name: String) -> String {
+pub fn type_declaration_identity_key(
+    decl_file: std::string::String,
+    declared_name: std::string::String,
+) -> std::string::String {
     v1_rt::concat(
         v1_rt::concat(decl_file.clone(), "::".to_string()),
         declared_name.clone(),

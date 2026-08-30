@@ -36,13 +36,13 @@ use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
 use std::rc::Rc;
 
-pub fn reference_binding_observation_note() -> String {
+pub fn reference_binding_observation_note() -> std::string::String {
     thread_local! {
-        static CACHED: String = {
+        static CACHED: std::string::String = {
             "Neutral structural-binding observation carrier (N3-A). Carries reference occurrence, P2a+P1 resolution (including typed index-build refusals — never collapsed to UnknownOccurrenceIdentity), and clause-local containment anchors. Carries NO ReferenceDerivedClosureCapability, ScenarioFailure, or roadmap trigger vocabulary — capability projection lives in gunbc.namespace_reference_derived_closure_admission.".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c: &std::string::String| c.clone())
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -84,7 +84,7 @@ pub enum ReferenceBindingProductionGap {
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum StructuralObservationSubjectModule {
-    SubjectModuleProduced { module_path: String },
+    SubjectModuleProduced { module_path: std::string::String },
     SubjectModuleProductionRefused { gap: ReferenceBindingProductionGap },
 }
 

@@ -32,8 +32,8 @@ pub fn extdeps_external_authority_anchor() -> Rc<ExternalAuthority> {
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum UrlPathToken {
-    LiteralToken { text: String },
-    ParamToken { name: String },
+    LiteralToken { text: std::string::String },
+    ParamToken { name: std::string::String },
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -57,7 +57,7 @@ pub fn has_path_params(template: Rc<PathTemplate>) -> bool {
     }
 }
 
-pub fn last_path_param(template: Rc<PathTemplate>) -> Option<String> {
+pub fn last_path_param(template: Rc<PathTemplate>) -> Option<std::string::String> {
     {
         let params = Rc::new({
             let mut __result = Vec::new();
@@ -83,14 +83,17 @@ pub fn last_path_param(template: Rc<PathTemplate>) -> Option<String> {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct PathParamBinding {
-    pub name: String,
-    pub value: String,
+    pub name: std::string::String,
+    pub value: std::string::String,
 }
 
-pub fn path_param_value(params: Rc<Vec<Rc<PathParamBinding>>>, name: String) -> String {
+pub fn path_param_value(
+    params: Rc<Vec<Rc<PathParamBinding>>>,
+    name: std::string::String,
+) -> std::string::String {
     params.iter().cloned().fold(
         "".to_string(),
-        |acc: String, binding: Rc<PathParamBinding>| {
+        |acc: std::string::String, binding: Rc<PathParamBinding>| {
             if (acc.clone() != "".to_string()) {
                 acc.clone()
             } else {
@@ -107,10 +110,10 @@ pub fn path_param_value(params: Rc<Vec<Rc<PathParamBinding>>>, name: String) -> 
 pub fn render_path_template(
     template: Rc<PathTemplate>,
     params: Rc<Vec<Rc<PathParamBinding>>>,
-) -> String {
+) -> std::string::String {
     template.tokens.clone().iter().cloned().fold(
         "".to_string(),
-        |acc: String, tok: Rc<UrlPathToken>| match (*tok.clone()).clone() {
+        |acc: std::string::String, tok: Rc<UrlPathToken>| match (*tok.clone()).clone() {
             UrlPathToken::LiteralToken { text: t, .. } => v1_rt::concat(acc.clone(), t.clone()),
             UrlPathToken::ParamToken { name: n, .. } => {
                 v1_rt::concat(acc.clone(), path_param_value(params.clone(), n.clone()))
@@ -122,8 +125,13 @@ pub fn render_path_template(
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum PathSegmentTokensResult {
-    ParsedSegmentTokens { tokens: Rc<Vec<Rc<UrlPathToken>>> },
-    MalformedPathSegment { segment: String, reason: String },
+    ParsedSegmentTokens {
+        tokens: Rc<Vec<Rc<UrlPathToken>>>,
+    },
+    MalformedPathSegment {
+        segment: std::string::String,
+        reason: std::string::String,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -133,13 +141,13 @@ pub enum PathTemplateParseResult {
         template: Rc<PathTemplate>,
     },
     MalformedPathTemplate {
-        raw: String,
-        segment: String,
-        reason: String,
+        raw: std::string::String,
+        segment: std::string::String,
+        reason: std::string::String,
     },
 }
 
-pub fn parse_segment_tokens(seg: String) -> Rc<PathSegmentTokensResult> {
+pub fn parse_segment_tokens(seg: std::string::String) -> Rc<PathSegmentTokensResult> {
     if !v1_rt::contains(seg.clone(), "{".to_string()) {
         if v1_rt::contains(seg.clone(), "}".to_string()) {
             Rc::new(PathSegmentTokensResult::MalformedPathSegment {
@@ -289,16 +297,16 @@ impl PathTemplateMatch {
     }
 }
 
-pub fn match_path_template_note() -> String {
+pub fn match_path_template_note() -> std::string::String {
     thread_local! {
-        static CACHED: String = {
+        static CACHED: std::string::String = {
             "The FORWARD reading of the same PathTemplate rows gunbc.node_http_server_emit.emit_path_template_regex_source reads BACKWARD into a JS regex, and extdeps.uri_path.render_path_template reads backward into a rendered path — three directions, one row set, never parallel authorities (DESIGN 4); the binding record is extdeps.uri_path.PathParamBinding, the single binding authority (a local duplicate here briefly shadowed it and broke no-import name resolution for test.claim.uri_path_parse_witness — the §3 nickname caught by execution). Parity contract with the emitted regex, kept strict so the two realizations agree on every input: one token = one path segment joined by '/' (LiteralToken == segment text; ParamToken binds any NON-EMPTY segment, the [^/]+ class); the empty template matches exactly the root path '/'; a trailing slash is a mismatch (the regex anchors with $); an interior empty segment ('//') never matches any token (a Literal is never empty by parse construction, a Param requires non-empty). Query strings are stripped before matching, mirroring parse_path_template's own '?' strip.".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c: &std::string::String| c.clone())
 }
 
-pub fn match_path_segments(path_only: String) -> Rc<Vec<String>> {
+pub fn match_path_segments(path_only: std::string::String) -> Rc<Vec<std::string::String>> {
     if ((path_only.clone() == "/".to_string()) || (path_only.clone() == "".to_string())) {
         Rc::new(vec![])
     } else {
@@ -333,7 +341,7 @@ pub fn match_path_segments(path_only: String) -> Rc<Vec<String>> {
 
 pub fn match_path_tokens(
     tokens: Rc<Vec<Rc<UrlPathToken>>>,
-    segs: Rc<Vec<String>>,
+    segs: Rc<Vec<std::string::String>>,
 ) -> Rc<PathTemplateMatch> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         match tokens.clone().first().cloned() {
@@ -397,7 +405,10 @@ pub fn match_path_tokens(
     })
 }
 
-pub fn match_path_template(template: Rc<PathTemplate>, path: String) -> Rc<PathTemplateMatch> {
+pub fn match_path_template(
+    template: Rc<PathTemplate>,
+    path: std::string::String,
+) -> Rc<PathTemplateMatch> {
     {
         let path_only = match Rc::new(
             path.clone()
@@ -418,7 +429,7 @@ pub fn match_path_template(template: Rc<PathTemplate>, path: String) -> Rc<PathT
     }
 }
 
-pub fn parse_path_template(raw: String) -> Rc<PathTemplateParseResult> {
+pub fn parse_path_template(raw: std::string::String) -> Rc<PathTemplateParseResult> {
     {
         let path_only = match Rc::new(
             raw.clone()
@@ -486,7 +497,9 @@ pub fn parse_path_template(raw: String) -> Rc<PathTemplateParseResult> {
                                 tokens: first_tokens.clone(),
                             }),
                         }),
-                        |acc: Rc<PathTemplateParseResult>, seg: String| match (*acc.clone()).clone()
+                        |acc: Rc<PathTemplateParseResult>, seg: std::string::String| match (*acc
+                            .clone())
+                        .clone()
                         {
                             PathTemplateParseResult::MalformedPathTemplate { .. } => acc.clone(),
                             PathTemplateParseResult::ParsedPathTemplate {
@@ -522,16 +535,16 @@ pub fn parse_path_template(raw: String) -> Rc<PathTemplateParseResult> {
     }
 }
 
-pub fn uri_query_param_note() -> String {
+pub fn uri_query_param_note() -> std::string::String {
     thread_local! {
-        static CACHED: String = {
+        static CACHED: std::string::String = {
             "Query-string parsing, the URI concern's single home (§3) — mirror of the '?' strip match_path_template/parse_path_template already do. uri_query_string returns everything after the first '?' (empty if none); uri_query_param returns the value for a key over the '&'-separated 'k=v' pairs (empty if the key is absent). Kept minimal: no percent-decoding yet (the one consumer, the /sandbox/echo status label, is an ASCII enum), so a decode pass is a named follow-on when a consumer needs it.".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c: &std::string::String| c.clone())
 }
 
-pub fn uri_query_string(path: String) -> String {
+pub fn uri_query_string(path: std::string::String) -> std::string::String {
     match Rc::new(
         path.clone()
             .split(&"?".to_string())
@@ -548,7 +561,7 @@ pub fn uri_query_string(path: String) -> String {
     }
 }
 
-pub fn uri_query_param(path: String, key: String) -> String {
+pub fn uri_query_param(path: std::string::String, key: std::string::String) -> std::string::String {
     {
         let pairs = Rc::new(
             uri_query_string(path.clone())
@@ -556,10 +569,9 @@ pub fn uri_query_param(path: String, key: String) -> String {
                 .map(|s| s.to_string())
                 .collect::<Vec<_>>(),
         );
-        pairs
-            .iter()
-            .cloned()
-            .fold("".to_string(), |acc: String, pair: String| {
+        pairs.iter().cloned().fold(
+            "".to_string(),
+            |acc: std::string::String, pair: std::string::String| {
                 let k = match Rc::new(
                     pair.clone()
                         .split(&"=".to_string())
@@ -591,6 +603,7 @@ pub fn uri_query_param(path: String, key: String) -> String {
                 } else {
                     acc
                 }
-            })
+            },
+        )
     }
 }

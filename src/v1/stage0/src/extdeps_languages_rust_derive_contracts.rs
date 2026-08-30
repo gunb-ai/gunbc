@@ -216,13 +216,13 @@ pub fn serde_1_0_228_hash_set_deserialize_authority() -> Rc<ExternalAuthority> {
     CACHED.with(|c: &Rc<ExternalAuthority>| c.clone())
 }
 
-pub fn rust_vec_freemonoid_supplemental_generic_bound_rows_note() -> String {
+pub fn rust_vec_freemonoid_supplemental_generic_bound_rows_note() -> std::string::String {
     thread_local! {
-        static CACHED: String = {
+        static CACHED: std::string::String = {
             "SINGLE AUTHORITY for the trait -> supplemental-generic-bound facts of the FreeMonoid/Vec realization (im-15.1.0 im::Vector): deriving Debug, PartialEq, Serialize or Deserialize for an item carrying an im::Vector<P> field additionally requires P: Clone, because each of those upstream impls is conditional on A: Clone (cited per row). Clone itself is deliberately NOT a row: derive(Clone) emits a conditional impl whose own A: Clone requirement is exactly im::Vector's, so no supplemental fact exists for it (im_15_1_0_vector_clone_impl_authority documents the upstream impl, consumed by the v2 contract map's requirement-free Clone entry). This module is dag-rooted so BOTH pools read one authority: the v1 seed emitter (regen pool [src/v1, dag]) consumes these rows in v1.compiler.trait_derive_emit, and v2.extdeps.languages.rust builds its typed target_model contract map (rust_vec_supplemental_generic_bound_contracts) by folding these same rows — the mapping formerly restated there is collapsed onto this list (coordinating-session ruling, smart-ram-730 (a session, not the operator) 2026-08-19: consume, do not mint a second copy or a witness to police one).".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c: &std::string::String| c.clone())
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -258,13 +258,13 @@ pub fn rust_vec_freemonoid_supplemental_generic_bound_rows(
     CACHED.with(|c: &Rc<Vec<Rc<RustVecSupplementalGenericBoundRow>>>| c.clone())
 }
 
-pub fn rust_btree_set_supplemental_generic_bound_rows_note() -> String {
+pub fn rust_btree_set_supplemental_generic_bound_rows_note() -> std::string::String {
     thread_local! {
-        static CACHED: String = {
+        static CACHED: std::string::String = {
             "SINGLE AUTHORITY for the trait -> supplemental-generic-bound facts of the Set/BTreeSet realization -- CORRECTED 2026-08-21: the realized type is NOT std::collections::BTreeSet, it is im-15.1.0's im::OrdSet, aliased `as BTreeSet` in every emitted use statement (src/v1/stage0/src/lib.rs: `use im::{OrdSet as BTreeSet, Vector as Vec};`), so this row list must cite OrdSet's own impls, not std's. Verified against the vendored im-15.1.0 crate source: `impl<A> Clone for OrdSet<A>` (src/ord/set.rs#830) is unconditional, no row. `impl<A: Ord> PartialEq for OrdSet<A>` (set.rs#844) and `impl<A: Ord + Debug> Debug for OrdSet<A>` (set.rs#937) each require only P: Ord. `impl<A: Ord + Clone + Serialize> Serialize for OrdSet<A>` and `impl<'de, A: Deserialize<'de> + Ord + Clone> Deserialize<'de> for OrdSet<A>` (src/ser.rs#134, #125) each require BOTH P: Ord and P: Clone -- two rows per trait, sharing one upstream authority, merged into one requirement set by v2.extdeps.languages.rust rust_collection_supplemental_generic_bound_contracts_merge_row rather than the earlier single-row-per-derive_trait fold (which would have silently dropped one of the two on insert). This module is dag-rooted so both pools read one authority: the v1 seed emitter (regen pool [src/v1, dag]) consumes these rows in v1.compiler.trait_derive_emit, and v2.extdeps.languages.rust folds them into rust_btree_set_supplemental_generic_bound_contracts -- mirroring rust_vec_freemonoid_supplemental_generic_bound_rows's row-authority split rather than restating the requirement inline a second time.".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c: &std::string::String| c.clone())
 }
 
 pub fn rust_btree_set_supplemental_generic_bound_rows(

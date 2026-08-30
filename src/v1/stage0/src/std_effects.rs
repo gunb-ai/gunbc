@@ -31,13 +31,13 @@ pub enum EffectShape<K> {
     ExecuteEffect,
 }
 
-pub fn execute_effect_note() -> String {
+pub fn execute_effect_note() -> std::string::String {
     thread_local! {
-        static CACHED: String = {
+        static CACHED: std::string::String = {
             "ExecuteEffect is the invoke-nature EffectShape variant (process/binary execution at a grounded filesystem position). NOT derived from HTTP methods; grounded by deploy-preflight displaced cost (sudo -n <binary> probes, whoami). std.effect_grant.verb_of_effect_shape coarsens it to Verb.Execute -- the verb is never minted without a shape arm (DESIGN 3). dissolve-on = none (landed authority).".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c: &std::string::String| c.clone())
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -48,21 +48,27 @@ pub enum CreateCause<K> {
     KeylessFallback { method: HttpMethod },
 }
 
-pub fn keyless_fallback_cause_note() -> String {
+pub fn keyless_fallback_cause_note() -> std::string::String {
     thread_local! {
-        static CACHED: String = {
+        static CACHED: std::string::String = {
             "KeylessFallback de-conflates PostAlways. derive_effect_shape maps a PUT/PATCH/DELETE whose path carries no key onto CreateEffect, and before this variant that arm answered PostAlways -- so one cause meant BOTH 'the spec said POST' AND 'we fell back because there was no key', losing the originating method (state-space conflation, DESIGN failure-mode list). The conflation was observable: check_modifier_vs_derivation could only hedge 'idempotency may be spec-declared' on a keyless PUT because it could not see which case it held. RESIDUE (deliberate, not oversight): is_idempotent_effect still answers false for KeylessFallback, preserving the pre-variant verdict exactly. RFC 9110 makes PUT and DELETE idempotent BY METHOD, so the method-derived refinement (keyless PUT declared idempotent => Agrees, not DerivationUnknown) is the correct end state -- it changes live verdicts and generate_idempotency_obligations output, so it lands with its own discriminating witness rather than riding this de-conflation. Discriminating control: test.claim.effects_witness_test.effects_keyless_fallback_is_not_post_witnesses.".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c: &std::string::String| c.clone())
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum KeySource {
-    PathParam { param: String },
-    InputField { field: String },
-    CompositeKey { fields: Rc<Vec<String>> },
+    PathParam {
+        param: std::string::String,
+    },
+    InputField {
+        field: std::string::String,
+    },
+    CompositeKey {
+        fields: Rc<Vec<std::string::String>>,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -74,7 +80,7 @@ pub enum IdempotencyEvidence {
     IdentityEffect,
     NonIdempotent {
         shape: Rc<EffectShape<Rc<KeySource>>>,
-        reason: String,
+        reason: std::string::String,
     },
 }
 impl IdempotencyEvidence {
@@ -87,13 +93,13 @@ impl IdempotencyEvidence {
     }
 }
 
-pub fn generic_predicate_frontier_note() -> String {
+pub fn generic_predicate_frontier_note() -> std::string::String {
     thread_local! {
-        static CACHED: String = {
+        static CACHED: std::string::String = {
             "EffectShape<K>/CreateCause<K> are GENERIC (the single-authority TYPE, shared across the REST-derivation instantiation K=KeySource here and v2's substrate-witness instantiation K=Symbol). The predicates below are CONCRETE to EffectShape<KeySource>, not generic, by a declared emitter frontier: the v1 Rust emitter lowers every match as `match (*x.clone()).clone()`, so a generic fn matching EffectShape<K> needs `where K: Clone` (and PartialEq for the key `==`), but the emitter emits generic FUNCTIONS without bounds (it bounds generic TYPES via emit_type_params_with_clone_bound, not functions). Making the predicates generic breaks the emitted stage0 seed (std.effects is real compiler seed via v1_compiler_effect_derivation). dissolve-on = emitter emits Clone/PartialEq bounds on generic functions; then these lift to <K>. v2's harness uses the TYPE at K=Symbol and does not call these predicates (it builds Node witnesses), so the concreteness costs nothing today.".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c: &std::string::String| c.clone())
 }
 
 pub fn is_idempotent_effect(shape: Rc<EffectShape<Rc<KeySource>>>) -> bool {
@@ -204,7 +210,7 @@ pub fn create_double_init_collapsible(
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct OperationEffect {
-    pub operation_name: String,
+    pub operation_name: std::string::String,
     pub shape: Rc<EffectShape<Rc<KeySource>>>,
     pub evidence: Rc<IdempotencyEvidence>,
 }
@@ -254,7 +260,7 @@ pub fn compose_effects(effects: Rc<Vec<Rc<OperationEffect>>>) -> Rc<CompositionV
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct DerivedOpEffect {
-    pub operation_name: String,
+    pub operation_name: std::string::String,
     pub method: HttpMethod,
     pub path_template: Rc<PathTemplate>,
     pub shape: Rc<EffectShape<Rc<KeySource>>>,
@@ -267,11 +273,11 @@ pub enum DeriveOpEffectResult {
         effect: Rc<DerivedOpEffect>,
     },
     MalformedPathInput {
-        operation_name: String,
+        operation_name: std::string::String,
         method: HttpMethod,
-        raw_path: String,
-        segment: String,
-        reason: String,
+        raw_path: std::string::String,
+        segment: std::string::String,
+        reason: std::string::String,
     },
 }
 
@@ -320,7 +326,7 @@ pub fn derive_effect_shape(
 }
 
 pub fn derive_op_effect(
-    operation_name: String,
+    operation_name: std::string::String,
     method: HttpMethod,
     path: Rc<PathTemplate>,
 ) -> Rc<DeriveOpEffectResult> {
@@ -341,11 +347,11 @@ pub fn derive_op_effect(
 #[serde(tag = "_variant")]
 pub enum ModifierAgreement {
     Agrees,
-    Disagrees { reason: String },
-    DerivationUnknown { reason: String },
+    Disagrees { reason: std::string::String },
+    DerivationUnknown { reason: std::string::String },
 }
 impl ModifierAgreement {
-    pub fn reason(&self) -> String {
+    pub fn reason(&self) -> std::string::String {
         match self {
             ModifierAgreement::Agrees => panic!("no reason on unit variant"),
             ModifierAgreement::Disagrees { reason: __val, .. } => __val.clone(),
@@ -356,7 +362,7 @@ impl ModifierAgreement {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ModifierCheck {
-    pub operation_name: String,
+    pub operation_name: std::string::String,
     pub declared_idempotent: bool,
     pub declared_readonly: bool,
     pub derived_shape: Rc<EffectShape<Rc<KeySource>>>,
@@ -447,9 +453,9 @@ pub fn check_modifier_vs_derivation(
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct IdempotencyTestObligation {
-    pub operation_name: String,
+    pub operation_name: std::string::String,
     pub effect_shape: Rc<EffectShape<Rc<KeySource>>>,
-    pub claim: String,
+    pub claim: std::string::String,
     pub witness_required: bool,
 }
 
@@ -483,7 +489,7 @@ pub fn generate_idempotency_obligations(
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct WorkflowEffectConcern {
-    pub workflow_name: String,
-    pub create_op: String,
-    pub reason: String,
+    pub workflow_name: std::string::String,
+    pub create_op: std::string::String,
+    pub reason: std::string::String,
 }

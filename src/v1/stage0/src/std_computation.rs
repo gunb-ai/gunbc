@@ -31,17 +31,17 @@ use std::rc::Rc;
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum SizeBound {
-    CollectionSize { param: String },
-    ParserStreamSize { witness: String },
-    WorklistDrainSize { element: String },
-    SubtreeSize { param: String },
-    ArithmeticParam { param: String },
+    CollectionSize { param: std::string::String },
+    ParserStreamSize { witness: std::string::String },
+    WorklistDrainSize { element: std::string::String },
+    SubtreeSize { param: std::string::String },
+    ArithmeticParam { param: std::string::String },
     ExplicitCountZero,
     ExplicitCountPositive { steps: Rc<PositiveDescentAmount> },
     Forever,
 }
 
-pub fn tree_size_bound(param: String) -> Rc<SizeBound> {
+pub fn tree_size_bound(param: std::string::String) -> Rc<SizeBound> {
     Rc::new(SizeBound::SubtreeSize {
         param: param.clone(),
     })
@@ -51,28 +51,28 @@ pub fn tree_size_bound(param: String) -> Rc<SizeBound> {
 #[serde(tag = "_variant")]
 pub enum CallPattern {
     ChildAccessorCall {
-        accessor: String,
+        accessor: std::string::String,
     },
     CollectionShrinkCall {
         amount: Rc<PositiveDescentAmount>,
-        collection: String,
+        collection: std::string::String,
     },
     ArithmeticSubtractCall {
         steps: Rc<PositiveDescentAmount>,
-        ring_param: String,
+        ring_param: std::string::String,
     },
     ArithmeticDivideCall {
         divisor: Rc<ProportionalDivisor>,
-        ring_param: String,
+        ring_param: std::string::String,
     },
     ParserAdvanceCall {
-        witness: String,
+        witness: std::string::String,
     },
     WorklistDrainCall {
-        element: String,
+        element: std::string::String,
     },
     FoldBodyCall {
-        outer_collection: String,
+        outer_collection: std::string::String,
     },
     SameArgumentCall,
 }
@@ -173,7 +173,7 @@ pub fn lower_call_pattern(pattern: Rc<CallPattern>) -> Rc<LoweringTarget> {
     }
 }
 
-pub fn size_bound_param(bound: Rc<SizeBound>) -> Option<String> {
+pub fn size_bound_param(bound: Rc<SizeBound>) -> Option<std::string::String> {
     match (*bound.clone()).clone() {
         SizeBound::SubtreeSize { param: p, .. } => Some(p.clone()),
         SizeBound::CollectionSize { param: p, .. } => Some(p.clone()),
@@ -236,7 +236,7 @@ pub fn algebra_profile_to_dimension(profile: AlgebraProfile) -> Option<Iteration
     }
 }
 
-pub fn type_iteration_dimension(type_name: String) -> Option<IterationDimension> {
+pub fn type_iteration_dimension(type_name: std::string::String) -> Option<IterationDimension> {
     if (type_name.clone() == "Node".to_string()) {
         Some(IterationDimension::TreeDescent)
     } else {

@@ -20,22 +20,22 @@ use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
 use std::rc::Rc;
 
-pub fn subject_with_bare_variants() -> String {
+pub fn subject_with_bare_variants() -> std::string::String {
     thread_local! {
-        static CACHED: String = {
+        static CACHED: std::string::String = {
             "module zqxbeta.user\n\ntype ZqxAnswer = ZqxYes | ZqxNo\n\nfn zqx_probe_pick() -> ZqxAnswer {\n    let probe = ZqxProbeRed\n    ZqxYes\n}\n".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c: &std::string::String| c.clone())
 }
 
-pub fn subject_without_value_references() -> String {
+pub fn subject_without_value_references() -> std::string::String {
     thread_local! {
-        static CACHED: String = {
+        static CACHED: std::string::String = {
             "module zqxbeta.user\n\ntype ZqxAnswer = ZqxYes | ZqxNo\n\nfn zqx_probe_count() -> Int {\n    1\n}\n".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c: &std::string::String| c.clone())
 }
 
 pub fn category_is_lexical_value(c: OccurrenceCategory) -> bool {
@@ -50,7 +50,7 @@ pub fn category_is_lexical_value(c: OccurrenceCategory) -> bool {
     }
 }
 
-pub fn lexical_value_reference_count(source: String) -> i64 {
+pub fn lexical_value_reference_count(source: std::string::String) -> i64 {
     match (*crate::v1_gunbc_occurrence_binding_parser_walk::parse_authored_occurrence_binding_source("bare_variant_control.dag".to_string(), source.clone())).clone() {
     ParsedOccurrenceBindingSource::ParsedOccurrenceBindingSourceRefused => (0 - 1),
     ParsedOccurrenceBindingSource::ParsedOccurrenceBindingSourceReady { transport: t, .. } => (Rc::new({ let mut __result = Vec::new(); for r in t.references.clone().iter().cloned() { if category_is_lexical_value(r.category.clone()) { __result.push(r); } } __result }).len() as i64),

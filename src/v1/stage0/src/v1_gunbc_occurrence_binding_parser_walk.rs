@@ -28,13 +28,13 @@ use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
 use std::rc::Rc;
 
-pub fn occurrence_binding_parser_walk_authority_note() -> String {
+pub fn occurrence_binding_parser_walk_authority_note() -> std::string::String {
     thread_local! {
-        static CACHED: String = {
+        static CACHED: std::string::String = {
             "Parser-to-P2-walk bridge (namespace-reference-derived-closure slice B): authored source is parsed through v1.compiler.parse.parse_with_table; OccurrenceTransport and module path come from the parser only. OccurrenceBindingCandidateInputs are projected from parser facts — module paths for every indexed occurrence, authored order from diagnostic_span.start (never OccurrenceId.value), and DeclarationExposure from containment shape (empty / single-ancestor => ModuleExposure, else LexicalExposure with parent scope). Category is never read for exposure. Index-build refusals are carried intact as StructuralBindingWalkRefused — never coarsened to a unit variant (blocker 6).".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c: &std::string::String| c.clone())
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -72,15 +72,15 @@ impl ParsedOccurrenceBindingSource {
 }
 
 pub fn parse_authored_occurrence_binding_source(
-    file: String,
-    source: String,
+    file: std::string::String,
+    source: std::string::String,
 ) -> Rc<ParsedOccurrenceBindingSource> {
     {
         let index = crate::v1_std_core::build_newline_index(file.clone(), source.clone());
         let parsed = crate::v1_compiler_parse::parse_with_table(
             crate::v1_compiler_tokenize::tokenize(source.clone(), file.clone()),
             v1_rt::rc_map_insert(
-                v1_rt::rc_empty_map::<String, Rc<NewlineIndex>>(),
+                v1_rt::rc_empty_map::<std::string::String, Rc<NewlineIndex>>(),
                 file.clone(),
                 index.clone(),
             ),
@@ -98,13 +98,13 @@ pub fn parse_authored_occurrence_binding_source(
     }
 }
 
-pub fn declaration_exposure_from_containment_note() -> String {
+pub fn declaration_exposure_from_containment_note() -> std::string::String {
     thread_local! {
-        static CACHED: String = {
+        static CACHED: std::string::String = {
             "Exposure derivation site: inputs are containment prefix shape and module path only — OccurrenceCategory is not consulted. Delegates to the single exposure authority std.occurrence_binding_candidates declaration_exposure_from_containment under the grounding ITS CALLER SUPPLIES, which is why occurrence_binding_inputs_from_transport takes a DeclarationExposureGrounding rather than fixing one: the same parse transport is projected under ModuleLocalMemberExposure for an in-module binding walk and under CrossFileProviderExportedExposure when the file is being projected as a provider exporting to consumers, and only the caller knows which it is. Under ModuleLocalMemberExposure, module-root and direct-module-child shapes => ModuleExposure; nested declaration => LexicalExposure whose exposing_scope is the nearest ancestor. Binder-as-own-path LexicalExposure (the hand-built §13 fixture shape) is correct only when uses nest under the binder in the parse tree (lets do; match-arm bodies do not, and the reason is structural rather than incidental: v1.std.core make_arm_node stores the pattern in the arm node's match_pattern FIELD and puts the body in its children, so a match-arm binder is not a node in the parse tree at all and nothing can nest under it).".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c: &std::string::String| c.clone())
 }
 
 pub fn authored_order_row_from_entry(entry: Rc<OccurrenceIndexEntry>) -> Rc<AuthoredOrderRow> {
@@ -122,13 +122,13 @@ pub fn authored_order_row_from_entry(entry: Rc<OccurrenceIndexEntry>) -> Rc<Auth
     })
 }
 
-pub fn occurrence_binding_inputs_accumulator_note() -> String {
+pub fn occurrence_binding_inputs_accumulator_note() -> std::string::String {
     thread_local! {
-        static CACHED: String = {
+        static CACHED: std::string::String = {
             "Input projection accumulates by prepend during fold and reverses once at the end — never concat(acc, [row]) (§6 bare-minimum cost / blocker 6).".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c: &std::string::String| c.clone())
 }
 
 pub fn occurrence_binding_inputs_from_transport(
@@ -149,18 +149,18 @@ pub fn occurrence_binding_inputs_from_transport(
 })
 }
 
-pub fn structural_binding_walk_refusal_note() -> String {
+pub fn structural_binding_walk_refusal_note() -> std::string::String {
     thread_local! {
-        static CACHED: String = {
+        static CACHED: std::string::String = {
             "structural_binding_walk / StructuralBindingWalk / StructuralBindingIndexRefusal are the single authority in std.occurrence_binding_candidates (N3-B0) — StructuralBindingWalkRefused wraps the exact index-build refusal payload (transport / module-path / exposure / authored-order / declaration-bucket). Coarse unit variants that discard nested refusal evidence are forbidden (operator blocker 6 / review on PR 7515).".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c: &std::string::String| c.clone())
 }
 
 pub fn reference_named(
     transport: Rc<OccurrenceTransport>,
-    name: String,
+    name: std::string::String,
 ) -> Option<Rc<ReferenceOccurrence>> {
     match references_named(transport.clone(), name.clone())
         .first()
@@ -173,7 +173,7 @@ pub fn reference_named(
 
 pub fn references_named(
     transport: Rc<OccurrenceTransport>,
-    name: String,
+    name: std::string::String,
 ) -> Rc<Vec<Rc<ReferenceOccurrence>>> {
     transport.references.clone().iter().cloned().fold(
         Rc::new(vec![]),
@@ -193,7 +193,7 @@ pub fn references_named(
 
 pub fn declarations_named(
     transport: Rc<OccurrenceTransport>,
-    name: String,
+    name: std::string::String,
 ) -> Rc<Vec<Rc<DeclarationOccurrence>>> {
     transport.declarations.clone().iter().cloned().fold(
         Rc::new(vec![]),
@@ -238,7 +238,7 @@ pub fn index_entry_for_occurrence(
 
 pub fn occurrence_id_for_authored_name(
     transport: Rc<OccurrenceTransport>,
-    name: String,
+    name: std::string::String,
 ) -> Option<OccurrenceId> {
     match transport
         .index

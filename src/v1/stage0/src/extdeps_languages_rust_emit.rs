@@ -51,9 +51,9 @@ pub fn extdeps_external_authority_anchor() -> Rc<ExternalAuthority> {
     CACHED.with(|c: &Rc<ExternalAuthority>| c.clone())
 }
 
-pub fn rust_keywords() -> Rc<HashMap<String, String>> {
+pub fn rust_keywords() -> Rc<HashMap<std::string::String, std::string::String>> {
     thread_local! {
-        static CACHED: Rc<HashMap<String, String>> = {
+        static CACHED: Rc<HashMap<std::string::String, std::string::String>> = {
             let mut __m = HashMap::new();
             __m.insert("true".to_string(), "true".to_string());
             __m.insert("false".to_string(), "false".to_string());
@@ -65,12 +65,12 @@ pub fn rust_keywords() -> Rc<HashMap<String, String>> {
             Rc::new(__m)
         };
     }
-    CACHED.with(|c: &Rc<HashMap<String, String>>| c.clone())
+    CACHED.with(|c: &Rc<HashMap<std::string::String, std::string::String>>| c.clone())
 }
 
-pub fn rust_container_templates() -> Rc<HashMap<String, String>> {
+pub fn rust_container_templates() -> Rc<HashMap<std::string::String, std::string::String>> {
     thread_local! {
-        static CACHED: Rc<HashMap<String, String>> = {
+        static CACHED: Rc<HashMap<std::string::String, std::string::String>> = {
             let mut __m = HashMap::new();
             __m.insert("list".to_string(), "Vec<{0}>".to_string());
             __m.insert("set".to_string(), "BTreeSet<{0}>".to_string());
@@ -82,7 +82,7 @@ pub fn rust_container_templates() -> Rc<HashMap<String, String>> {
             Rc::new(__m)
         };
     }
-    CACHED.with(|c: &Rc<HashMap<String, String>>| c.clone())
+    CACHED.with(|c: &Rc<HashMap<std::string::String, std::string::String>>| c.clone())
 }
 
 pub fn rust_simple_method_specs() -> Rc<Vec<Rc<SimpleMethodSpec>>> {
@@ -95,16 +95,16 @@ pub fn rust_simple_method_specs() -> Rc<Vec<Rc<SimpleMethodSpec>>> {
     CACHED.with(|c: &Rc<Vec<Rc<SimpleMethodSpec>>>| c.clone())
 }
 
-pub fn rust_method_templates() -> Rc<HashMap<String, String>> {
+pub fn rust_method_templates() -> Rc<HashMap<std::string::String, std::string::String>> {
     rust_simple_method_specs().iter().cloned().fold(
-        v1_rt::rc_empty_map::<String, String>(),
-        |acc: Rc<HashMap<String, String>>, spec: _| {
+        v1_rt::rc_empty_map::<std::string::String, std::string::String>(),
+        |acc: Rc<HashMap<std::string::String, std::string::String>>, spec: _| {
             v1_rt::rc_map_insert(acc, spec.method_name.clone(), spec.template.clone())
         },
     )
 }
 
-pub fn rust_method_wraps_result() -> Rc<HashMap<String, bool>> {
+pub fn rust_method_wraps_result() -> Rc<HashMap<std::string::String, bool>> {
     Rc::new({
         let mut __result = Vec::new();
         for s in rust_simple_method_specs().iter().cloned() {
@@ -117,77 +117,77 @@ pub fn rust_method_wraps_result() -> Rc<HashMap<String, bool>> {
     .iter()
     .cloned()
     .fold(
-        v1_rt::rc_empty_map::<String, bool>(),
-        |acc: Rc<HashMap<String, bool>>, spec: _| {
+        v1_rt::rc_empty_map::<std::string::String, bool>(),
+        |acc: Rc<HashMap<std::string::String, bool>>, spec: _| {
             v1_rt::rc_map_insert(acc, spec.method_name.clone(), true)
         },
     )
 }
 
-pub fn rust_reserved() -> Rc<Vec<String>> {
+pub fn rust_reserved() -> Rc<Vec<std::string::String>> {
     thread_local! {
-        static CACHED: Rc<Vec<String>> = {
+        static CACHED: Rc<Vec<std::string::String>> = {
             Rc::new(vec!["as".to_string(), "async".to_string(), "await".to_string(), "break".to_string(), "const".to_string(), "continue".to_string(), "crate".to_string(), "dyn".to_string(), "else".to_string(), "enum".to_string(), "extern".to_string(), "false".to_string(), "fn".to_string(), "for".to_string(), "if".to_string(), "impl".to_string(), "in".to_string(), "let".to_string(), "loop".to_string(), "match".to_string(), "mod".to_string(), "move".to_string(), "mut".to_string(), "pub".to_string(), "ref".to_string(), "return".to_string(), "self".to_string(), "Self".to_string(), "static".to_string(), "struct".to_string(), "super".to_string(), "trait".to_string(), "true".to_string(), "type".to_string(), "unsafe".to_string(), "use".to_string(), "where".to_string(), "while".to_string(), "yield".to_string(), "abstract".to_string(), "become".to_string(), "box".to_string(), "do".to_string(), "final".to_string(), "macro".to_string(), "override".to_string(), "priv".to_string(), "try".to_string(), "typeof".to_string(), "unsized".to_string(), "virtual".to_string()])
         };
     }
-    CACHED.with(|c: &Rc<Vec<String>>| c.clone())
+    CACHED.with(|c: &Rc<Vec<std::string::String>>| c.clone())
 }
 
-pub fn rust_reserved_escape_suffix() -> String {
+pub fn rust_reserved_escape_suffix() -> std::string::String {
     thread_local! {
-        static CACHED: String = {
+        static CACHED: std::string::String = {
             "_".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c: &std::string::String| c.clone())
 }
 
-pub fn rust_string_types() -> Rc<Vec<String>> {
+pub fn rust_string_types() -> Rc<Vec<std::string::String>> {
     thread_local! {
-        static CACHED: Rc<Vec<String>> = {
+        static CACHED: Rc<Vec<std::string::String>> = {
             Rc::new(vec!["String".to_string(), "Secret".to_string()])
         };
     }
-    CACHED.with(|c: &Rc<Vec<String>>| c.clone())
+    CACHED.with(|c: &Rc<Vec<std::string::String>>| c.clone())
 }
 
-pub fn rust_struct_derives() -> String {
+pub fn rust_struct_derives() -> std::string::String {
     thread_local! {
-        static CACHED: String = {
+        static CACHED: std::string::String = {
             rust_trait_derive_attr_from_traits(crate::extdeps_languages_rust_capabilities::record_derive_traits_heap())
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c: &std::string::String| c.clone())
 }
 
-pub fn rust_struct_derives_copy() -> String {
+pub fn rust_struct_derives_copy() -> std::string::String {
     thread_local! {
-        static CACHED: String = {
+        static CACHED: std::string::String = {
             rust_trait_derive_attr_from_traits(crate::extdeps_languages_rust_capabilities::record_derive_traits_copy())
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c: &std::string::String| c.clone())
 }
 
-pub fn rust_enum_derives() -> String {
+pub fn rust_enum_derives() -> std::string::String {
     thread_local! {
-        static CACHED: String = {
+        static CACHED: std::string::String = {
             rust_trait_derive_attr_from_traits(crate::extdeps_languages_rust_capabilities::payload_coproduct_derive_traits())
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c: &std::string::String| c.clone())
 }
 
-pub fn rust_enum_derives_copy() -> String {
+pub fn rust_enum_derives_copy() -> std::string::String {
     thread_local! {
-        static CACHED: String = {
+        static CACHED: std::string::String = {
             rust_trait_derive_attr_from_traits(crate::extdeps_languages_rust_capabilities::nullary_coproduct_derive_traits())
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c: &std::string::String| c.clone())
 }
 
-pub fn rust_trait_derive_spelling(derive_trait: RustCapability) -> String {
+pub fn rust_trait_derive_spelling(derive_trait: RustCapability) -> std::string::String {
     match derive_trait.clone() {
         RustCapability::RustDebug => "Debug".to_string(),
         RustCapability::RustClone => "Clone".to_string(),
@@ -208,7 +208,7 @@ pub fn rust_trait_derive_spelling(derive_trait: RustCapability) -> String {
     }
 }
 
-pub fn rust_trait_derive_attr_from_traits(traits: Rc<Vec<RustCapability>>) -> String {
+pub fn rust_trait_derive_attr_from_traits(traits: Rc<Vec<RustCapability>>) -> std::string::String {
     v1_rt::concat(
         v1_rt::concat(
             "#[derive(".to_string(),
@@ -225,298 +225,298 @@ pub fn rust_trait_derive_attr_from_traits(traits: Rc<Vec<RustCapability>>) -> St
     )
 }
 
-pub fn rust_serde_tag() -> String {
+pub fn rust_serde_tag() -> std::string::String {
     thread_local! {
-        static CACHED: String = {
+        static CACHED: std::string::String = {
             "#[serde(tag = \"_variant\")]".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c: &std::string::String| c.clone())
 }
 
-pub fn rust_serde_rename_all_snake_case() -> String {
+pub fn rust_serde_rename_all_snake_case() -> std::string::String {
     thread_local! {
-        static CACHED: String = {
+        static CACHED: std::string::String = {
             "#[serde(rename_all = \"snake_case\")]".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c: &std::string::String| c.clone())
 }
 
-pub fn rust_serde_rename_all_screaming_snake_case() -> String {
+pub fn rust_serde_rename_all_screaming_snake_case() -> std::string::String {
     thread_local! {
-        static CACHED: String = {
+        static CACHED: std::string::String = {
             "#[serde(rename_all = \"SCREAMING_SNAKE_CASE\")]".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c: &std::string::String| c.clone())
 }
 
-pub fn rust_serde_rename_template() -> String {
+pub fn rust_serde_rename_template() -> std::string::String {
     thread_local! {
-        static CACHED: String = {
+        static CACHED: std::string::String = {
             "#[serde(rename = \"{0}\")]".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c: &std::string::String| c.clone())
 }
 
-pub fn rust_func_keyword() -> String {
+pub fn rust_func_keyword() -> std::string::String {
     thread_local! {
-        static CACHED: String = {
+        static CACHED: std::string::String = {
             "fn".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c: &std::string::String| c.clone())
 }
 
-pub fn rust_async_prefix() -> String {
+pub fn rust_async_prefix() -> std::string::String {
     thread_local! {
-        static CACHED: String = {
+        static CACHED: std::string::String = {
             "async ".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c: &std::string::String| c.clone())
 }
 
-pub fn rust_struct_keyword() -> String {
+pub fn rust_struct_keyword() -> std::string::String {
     thread_local! {
-        static CACHED: String = {
+        static CACHED: std::string::String = {
             "struct".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c: &std::string::String| c.clone())
 }
 
-pub fn rust_enum_keyword() -> String {
+pub fn rust_enum_keyword() -> std::string::String {
     thread_local! {
-        static CACHED: String = {
+        static CACHED: std::string::String = {
             "enum".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c: &std::string::String| c.clone())
 }
 
-pub fn rust_type_alias_keyword() -> String {
+pub fn rust_type_alias_keyword() -> std::string::String {
     thread_local! {
-        static CACHED: String = {
+        static CACHED: std::string::String = {
             "type".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c: &std::string::String| c.clone())
 }
 
-pub fn rust_param_separator() -> String {
+pub fn rust_param_separator() -> std::string::String {
     thread_local! {
-        static CACHED: String = {
+        static CACHED: std::string::String = {
             ", ".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c: &std::string::String| c.clone())
 }
 
-pub fn rust_return_arrow() -> String {
+pub fn rust_return_arrow() -> std::string::String {
     thread_local! {
-        static CACHED: String = {
+        static CACHED: std::string::String = {
             " -> ".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c: &std::string::String| c.clone())
 }
 
-pub fn rust_param_type_sep() -> String {
+pub fn rust_param_type_sep() -> std::string::String {
     thread_local! {
-        static CACHED: String = {
+        static CACHED: std::string::String = {
             ": ".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c: &std::string::String| c.clone())
 }
 
-pub fn rust_module_keyword() -> String {
+pub fn rust_module_keyword() -> std::string::String {
     thread_local! {
-        static CACHED: String = {
+        static CACHED: std::string::String = {
             "mod".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c: &std::string::String| c.clone())
 }
 
-pub fn rust_import_keyword() -> String {
+pub fn rust_import_keyword() -> std::string::String {
     thread_local! {
-        static CACHED: String = {
+        static CACHED: std::string::String = {
             "use".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c: &std::string::String| c.clone())
 }
 
-pub fn rust_import_from_keyword() -> String {
+pub fn rust_import_from_keyword() -> std::string::String {
     thread_local! {
-        static CACHED: String = {
+        static CACHED: std::string::String = {
             "".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c: &std::string::String| c.clone())
 }
 
-pub fn rust_lambda_template() -> String {
+pub fn rust_lambda_template() -> std::string::String {
     thread_local! {
-        static CACHED: String = {
+        static CACHED: std::string::String = {
             "|{0}| {1}".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c: &std::string::String| c.clone())
 }
 
-pub fn rust_callable_value_wrap_template() -> String {
+pub fn rust_callable_value_wrap_template() -> std::string::String {
     thread_local! {
-        static CACHED: String = {
+        static CACHED: std::string::String = {
             "Rc::new(move {0})".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c: &std::string::String| c.clone())
 }
 
-pub fn rust_error_expr_template() -> String {
+pub fn rust_error_expr_template() -> std::string::String {
     thread_local! {
-        static CACHED: String = {
+        static CACHED: std::string::String = {
             "panic!({0})".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c: &std::string::String| c.clone())
 }
 
-pub fn rust_list_literal_empty() -> String {
+pub fn rust_list_literal_empty() -> std::string::String {
     thread_local! {
-        static CACHED: String = {
+        static CACHED: std::string::String = {
             "Rc::new(vec![])".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c: &std::string::String| c.clone())
 }
 
-pub fn rust_list_literal_template() -> String {
+pub fn rust_list_literal_template() -> std::string::String {
     thread_local! {
-        static CACHED: String = {
+        static CACHED: std::string::String = {
             "Rc::new(vec![{0}])".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c: &std::string::String| c.clone())
 }
 
-pub fn rust_null_coalesce_template() -> String {
+pub fn rust_null_coalesce_template() -> std::string::String {
     thread_local! {
-        static CACHED: String = {
+        static CACHED: std::string::String = {
             "{0}.unwrap_or_else(|| {1})".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c: &std::string::String| c.clone())
 }
 
-pub fn rust_error_type_template() -> String {
+pub fn rust_error_type_template() -> std::string::String {
     thread_local! {
-        static CACHED: String = {
+        static CACHED: std::string::String = {
             "compile_error!(\"{0}\")".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c: &std::string::String| c.clone())
 }
 
-pub fn rust_type_arg_open() -> String {
+pub fn rust_type_arg_open() -> std::string::String {
     thread_local! {
-        static CACHED: String = {
+        static CACHED: std::string::String = {
             "<".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c: &std::string::String| c.clone())
 }
 
-pub fn rust_type_arg_close() -> String {
+pub fn rust_type_arg_close() -> std::string::String {
     thread_local! {
-        static CACHED: String = {
+        static CACHED: std::string::String = {
             ">".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c: &std::string::String| c.clone())
 }
 
-pub fn rust_void_type() -> String {
+pub fn rust_void_type() -> std::string::String {
     thread_local! {
-        static CACHED: String = {
+        static CACHED: std::string::String = {
             "()".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c: &std::string::String| c.clone())
 }
 
-pub fn rust_tuple_empty() -> String {
+pub fn rust_tuple_empty() -> std::string::String {
     thread_local! {
-        static CACHED: String = {
+        static CACHED: std::string::String = {
             "()".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c: &std::string::String| c.clone())
 }
 
-pub fn rust_tuple_pair_template() -> String {
+pub fn rust_tuple_pair_template() -> std::string::String {
     thread_local! {
-        static CACHED: String = {
+        static CACHED: std::string::String = {
             "({0}, {1})".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c: &std::string::String| c.clone())
 }
 
-pub fn rust_tuple_multi_template() -> String {
+pub fn rust_tuple_multi_template() -> std::string::String {
     thread_local! {
-        static CACHED: String = {
+        static CACHED: std::string::String = {
             "({0})".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c: &std::string::String| c.clone())
 }
 
-pub fn rust_tuple_separator() -> String {
+pub fn rust_tuple_separator() -> std::string::String {
     thread_local! {
-        static CACHED: String = {
+        static CACHED: std::string::String = {
             ", ".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c: &std::string::String| c.clone())
 }
 
-pub fn rust_source_extension() -> String {
+pub fn rust_source_extension() -> std::string::String {
     thread_local! {
-        static CACHED: String = {
+        static CACHED: std::string::String = {
             ".rs".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c: &std::string::String| c.clone())
 }
 
-pub fn rust_source_dir() -> String {
+pub fn rust_source_dir() -> std::string::String {
     thread_local! {
-        static CACHED: String = {
+        static CACHED: std::string::String = {
             "src/".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c: &std::string::String| c.clone())
 }
 
-pub fn rust_visibility() -> String {
+pub fn rust_visibility() -> std::string::String {
     thread_local! {
-        static CACHED: String = {
+        static CACHED: std::string::String = {
             "pub ".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c: &std::string::String| c.clone())
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct RuntimeFunction {
-    pub name: String,
-    pub bridge_name: String,
+    pub name: std::string::String,
+    pub bridge_name: std::string::String,
     pub passes_by_ref: bool,
     pub wraps_result: bool,
 }
@@ -531,16 +531,16 @@ pub fn rt_function_registry() -> Rc<Vec<Rc<RuntimeFunction>>> {
     CACHED.with(|c: &Rc<Vec<Rc<RuntimeFunction>>>| c.clone())
 }
 
-pub fn rt_functions() -> Rc<HashMap<String, bool>> {
+pub fn rt_functions() -> Rc<HashMap<std::string::String, bool>> {
     rt_function_registry().iter().cloned().fold(
-        v1_rt::rc_empty_map::<String, bool>(),
-        |acc: Rc<HashMap<String, bool>>, entry: Rc<RuntimeFunction>| {
+        v1_rt::rc_empty_map::<std::string::String, bool>(),
+        |acc: Rc<HashMap<std::string::String, bool>>, entry: Rc<RuntimeFunction>| {
             v1_rt::rc_map_insert(acc, entry.name.clone(), true)
         },
     )
 }
 
-pub fn rt_ref_map_functions() -> Rc<HashMap<String, bool>> {
+pub fn rt_ref_map_functions() -> Rc<HashMap<std::string::String, bool>> {
     Rc::new({
         let mut __result = Vec::new();
         for f in rt_function_registry().iter().cloned() {
@@ -553,14 +553,14 @@ pub fn rt_ref_map_functions() -> Rc<HashMap<String, bool>> {
     .iter()
     .cloned()
     .fold(
-        v1_rt::rc_empty_map::<String, bool>(),
-        |acc: Rc<HashMap<String, bool>>, entry: Rc<RuntimeFunction>| {
+        v1_rt::rc_empty_map::<std::string::String, bool>(),
+        |acc: Rc<HashMap<std::string::String, bool>>, entry: Rc<RuntimeFunction>| {
             v1_rt::rc_map_insert(acc, entry.name.clone(), true)
         },
     )
 }
 
-pub fn rt_wraps_result() -> Rc<HashMap<String, bool>> {
+pub fn rt_wraps_result() -> Rc<HashMap<std::string::String, bool>> {
     Rc::new({
         let mut __result = Vec::new();
         for f in rt_function_registry().iter().cloned() {
@@ -573,14 +573,14 @@ pub fn rt_wraps_result() -> Rc<HashMap<String, bool>> {
     .iter()
     .cloned()
     .fold(
-        v1_rt::rc_empty_map::<String, bool>(),
-        |acc: Rc<HashMap<String, bool>>, entry: Rc<RuntimeFunction>| {
+        v1_rt::rc_empty_map::<std::string::String, bool>(),
+        |acc: Rc<HashMap<std::string::String, bool>>, entry: Rc<RuntimeFunction>| {
             v1_rt::rc_map_insert(acc, entry.name.clone(), true)
         },
     )
 }
 
-pub fn rt_bridge_function_names() -> Rc<HashMap<String, String>> {
+pub fn rt_bridge_function_names() -> Rc<HashMap<std::string::String, std::string::String>> {
     Rc::new({
         let mut __result = Vec::new();
         for f in rt_function_registry().iter().cloned() {
@@ -593,33 +593,33 @@ pub fn rt_bridge_function_names() -> Rc<HashMap<String, String>> {
     .iter()
     .cloned()
     .fold(
-        v1_rt::rc_empty_map::<String, String>(),
-        |acc: Rc<HashMap<String, String>>, entry: Rc<RuntimeFunction>| {
+        v1_rt::rc_empty_map::<std::string::String, std::string::String>(),
+        |acc: Rc<HashMap<std::string::String, std::string::String>>, entry: Rc<RuntimeFunction>| {
             v1_rt::rc_map_insert(acc, entry.name.clone(), entry.bridge_name.clone())
         },
     )
 }
 
-pub fn is_rt_function(name: String) -> bool {
+pub fn is_rt_function(name: std::string::String) -> bool {
     v1_rt::map_contains_key(&rt_functions(), name.clone())
 }
 
-pub fn rt_bridge_name(name: String) -> String {
+pub fn rt_bridge_name(name: std::string::String) -> std::string::String {
     match v1_rt::map_get(&rt_bridge_function_names(), name.clone()) {
         Some(bridge) => bridge.clone(),
         None => name.clone(),
     }
 }
 
-pub fn rt_passes_by_ref(name: String) -> bool {
+pub fn rt_passes_by_ref(name: std::string::String) -> bool {
     v1_rt::map_contains_key(&rt_ref_map_functions(), name.clone())
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct HigherOrderMethodSpec {
-    pub method_name: String,
-    pub inline_template: String,
-    pub fn_ref_template: String,
+    pub method_name: std::string::String,
+    pub inline_template: std::string::String,
+    pub fn_ref_template: std::string::String,
     pub wraps_in_sharing: bool,
 }
 
@@ -633,7 +633,9 @@ pub fn rust_higher_order_methods() -> Rc<Vec<Rc<HigherOrderMethodSpec>>> {
     CACHED.with(|c: &Rc<Vec<Rc<HigherOrderMethodSpec>>>| c.clone())
 }
 
-pub fn rust_qualified_module_mod_basename(qualified_module: String) -> String {
+pub fn rust_qualified_module_mod_basename(
+    qualified_module: std::string::String,
+) -> std::string::String {
     Rc::new(
         qualified_module
             .clone()
@@ -644,37 +646,39 @@ pub fn rust_qualified_module_mod_basename(qualified_module: String) -> String {
     .join(&"_".to_string())
 }
 
-pub fn rust_qualified_module_mod_filename(qualified_module: String) -> String {
+pub fn rust_qualified_module_mod_filename(
+    qualified_module: std::string::String,
+) -> std::string::String {
     v1_rt::concat(
         rust_qualified_module_mod_basename(qualified_module.clone()),
         ".rs".to_string(),
     )
 }
 
-pub fn rust_pair_completion_spelling_note() -> String {
+pub fn rust_pair_completion_spelling_note() -> std::string::String {
     thread_local! {
-        static CACHED: String = {
+        static CACHED: std::string::String = {
             "Rust spellings for the target-agnostic pair-completion rows in std.trait_derive_shape. Terminals only: trait paths, method names, where-bounds, carrier field syntax. The ARITHMETIC is not spelled here — each impl body is rendered from the row's polynomial arms, so a change to the Grothendieck construction is a row edit, never a string edit.".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c: &std::string::String| c.clone())
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct RustPairCompletionSpelling {
     pub capability_key: PairCompletionOp,
-    pub method: String,
-    pub trait_path: String,
-    pub where_bounds: String,
+    pub method: std::string::String,
+    pub trait_path: std::string::String,
+    pub where_bounds: std::string::String,
 }
 
-pub fn rust_pair_completion_carrier() -> String {
+pub fn rust_pair_completion_carrier() -> std::string::String {
     thread_local! {
-        static CACHED: String = {
+        static CACHED: std::string::String = {
             "GroupCompletion".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c: &std::string::String| c.clone())
 }
 
 pub fn rust_pair_completion_spellings() -> Rc<Vec<Rc<RustPairCompletionSpelling>>> {
@@ -711,13 +715,13 @@ pub fn rust_pair_completion_spellings() -> Rc<Vec<Rc<RustPairCompletionSpelling>
     CACHED.with(|c: &Rc<Vec<Rc<RustPairCompletionSpelling>>>| c.clone())
 }
 
-pub fn rust_pair_completion_key_join_note() -> String {
+pub fn rust_pair_completion_key_join_note() -> std::string::String {
     thread_local! {
-        static CACHED: String = {
+        static CACHED: std::string::String = {
             "The spelling rows carry the TargetCapabilityKey they answer for, so the join to std.trait_derive_shape pair_completion_op_rows is an identity match on the key itself. This REPLACES a sixteen-arm rust_pair_completion_op_key that mapped every capability to a method-name String purely to compare Strings -- a second, positional naming scheme for something the key already names (DESIGN section 3). That function was total-with-no-wildcard, which was the right repair for the coproduct it matched on; once the key became the open TargetCapabilityKey brand an exhaustive match was no longer available, and reconstructing one would have meant re-closing the brand. Joining on the key is the construction the totality argument was standing in for: a capability with no pair-completion spelling still resolves to Absent and still surfaces through the compile_error! arm. ONE THING GOT WEAKER AND IT IS NOT PAPERED OVER: the old arm printed the missing op's own method name, which it could only do because op_key was total over a closed coproduct. TargetCapabilityKey is an open Symbol brand and this corpus has no Symbol-to-String projection, so the arm now prints the keys that ARE spelled and says one row is unmatched, rather than naming the unmatched key. That is less precise and it is a real loss; it is not a silent one -- the arm still refuses at Rust compile time, still identifies the drifted pair of tables, and the reader can difference the printed list against pair_completion_op_rows in one step. NEXT-RUNG TRIGGER: a Symbol-to-String projection in v2.std.node, at which point the key names itself again.".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c: &std::string::String| c.clone())
 }
 
 pub fn rust_pair_completion_spelling_for(
@@ -736,7 +740,7 @@ pub fn rust_pair_completion_spelling_for(
     .cloned()
 }
 
-pub fn rust_pair_completion_factor_source(factor: Rc<PairCompletionFactor>) -> String {
+pub fn rust_pair_completion_factor_source(factor: Rc<PairCompletionFactor>) -> std::string::String {
     v1_rt::concat(
         v1_rt::concat(
             match factor.operand.clone() {
@@ -752,7 +756,9 @@ pub fn rust_pair_completion_factor_source(factor: Rc<PairCompletionFactor>) -> S
     )
 }
 
-pub fn rust_pair_completion_arm_sources(arm: Rc<PairCompletionArm>) -> Rc<Vec<String>> {
+pub fn rust_pair_completion_arm_sources(
+    arm: Rc<PairCompletionArm>,
+) -> Rc<Vec<std::string::String>> {
     Rc::new({
         let mut __result = Vec::new();
         for term in arm.terms.clone().iter().cloned() {
@@ -775,8 +781,8 @@ pub fn rust_pair_completion_arm_sources(arm: Rc<PairCompletionArm>) -> Rc<Vec<St
 pub fn rust_pair_completion_factor_render(
     factor: Rc<PairCompletionFactor>,
     term: Rc<PairCompletionTerm>,
-    later_sources: Rc<Vec<String>>,
-) -> String {
+    later_sources: Rc<Vec<std::string::String>>,
+) -> std::string::String {
     {
         let src = rust_pair_completion_factor_source(factor.clone());
         let repeats_in_term = (Rc::new({
@@ -808,8 +814,8 @@ pub fn rust_pair_completion_factor_render(
 
 pub fn rust_pair_completion_term_render(
     term: Rc<PairCompletionTerm>,
-    later_sources: Rc<Vec<String>>,
-) -> String {
+    later_sources: Rc<Vec<std::string::String>>,
+) -> std::string::String {
     Rc::new({
         let mut __result = Vec::new();
         for f in term.factors.clone().iter().cloned() {
@@ -826,8 +832,8 @@ pub fn rust_pair_completion_term_render(
 
 pub fn rust_pair_completion_arm_render(
     arm: Rc<PairCompletionArm>,
-    later_sources: Rc<Vec<String>>,
-) -> String {
+    later_sources: Rc<Vec<std::string::String>>,
+) -> std::string::String {
     Rc::new({
         let mut __result = Vec::new();
         for t in arm.terms.clone().iter().cloned() {
@@ -841,11 +847,11 @@ pub fn rust_pair_completion_arm_render(
     .join(&" + ".to_string())
 }
 
-pub fn rust_pair_completion_no_later_sources() -> Rc<Vec<String>> {
+pub fn rust_pair_completion_no_later_sources() -> Rc<Vec<std::string::String>> {
     Rc::new(vec![])
 }
 
-pub fn rust_pair_completion_body_render(body: Rc<PairCompletionBody>) -> String {
+pub fn rust_pair_completion_body_render(body: Rc<PairCompletionBody>) -> std::string::String {
     match (*body.clone()).clone() {
         PairCompletionBody::PairCompletionSumOfProducts { pos, neg, .. } => v1_rt::concat(
             v1_rt::concat(
@@ -911,7 +917,7 @@ pub fn rust_pair_completion_body_render(body: Rc<PairCompletionBody>) -> String 
 pub fn rust_pair_completion_impl_render(
     row: Rc<PairCompletionOpRow>,
     carrier_param_needs_clone: bool,
-) -> String {
+) -> std::string::String {
     match rust_pair_completion_spelling_for(row.op.clone()) {
     Some(spelling) => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(if carrier_param_needs_clone.clone() {
         "impl<M: Clone> ".to_string()
@@ -930,11 +936,13 @@ pub fn rust_pair_completion_impl_render(
 }
 }
 
-pub fn rust_supplemental_impls_group_completion(carrier_param_needs_clone: bool) -> String {
+pub fn rust_supplemental_impls_group_completion(
+    carrier_param_needs_clone: bool,
+) -> std::string::String {
     v1_rt::concat(v1_rt::concat(v1_rt::concat("\n// repr-grounding arm (b): GroupCompletion<M> carrier arithmetic, rendered from the\n".to_string(), "// pair-completion rows in std.trait_derive_shape (Add/Mul/Neg are row data; Sub/Div bodies\n".to_string()), "// remain keyed literals: only Add, Mul and Neg render from the PairCompletionSumOfProducts polynomial arms).\n".to_string()), Rc::new({ let mut __result = Vec::new(); for row in crate::std_trait_derive_shape::pair_completion_op_rows().iter().cloned() { __result.push(rust_pair_completion_impl_render(row.clone(), carrier_param_needs_clone.clone())); } __result }).join(&"".to_string()))
 }
 
-pub fn rust_supplemental_impls_bool_coproduct() -> String {
+pub fn rust_supplemental_impls_bool_coproduct() -> std::string::String {
     v1_rt::concat(v1_rt::concat(v1_rt::concat("\n// repr-grounding arm (b): Bool coproduct ↔ host bool bridge (v1 seed emit)\n".to_string(), "impl From<Bool> for bool {\n".to_string()), "    fn from(b: Bool) -> bool { match b { Bool::True => true, Bool::False => false } }\n".to_string()), "}\n".to_string())
 }
 

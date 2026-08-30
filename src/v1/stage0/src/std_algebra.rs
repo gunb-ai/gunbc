@@ -359,10 +359,10 @@ pub enum AlgebraProfile {
 #[serde(tag = "_variant")]
 pub enum ContainerSource {
     SameAsReceiver,
-    Named { name: String },
+    Named { name: std::string::String },
 }
 impl ContainerSource {
-    pub fn name(&self) -> String {
+    pub fn name(&self) -> std::string::String {
         match self {
             ContainerSource::SameAsReceiver => panic!("no name on unit variant"),
             ContainerSource::Named { name: __val, .. } => __val.clone(),
@@ -378,7 +378,7 @@ pub enum AlgebraTypeTemplate {
     ReceiverKey,
     ReceiverValue,
     NamedTemplate {
-        name: String,
+        name: std::string::String,
     },
     ContainerOf {
         source: Rc<ContainerSource>,
@@ -399,7 +399,7 @@ pub enum AlgebraTypeTemplate {
         return_type: Rc<AlgebraTypeTemplate>,
     },
     AlgebraTypeVariable {
-        id: String,
+        id: std::string::String,
     },
 }
 
@@ -426,7 +426,7 @@ pub enum CostShape {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct AlgebraFieldTemplate {
-    pub name: String,
+    pub name: std::string::String,
     pub param_types: Rc<Vec<Rc<AlgebraTypeTemplate>>>,
     pub return_type: Rc<AlgebraTypeTemplate>,
     pub size_effect: Option<CollectionSizeEffect>,
@@ -438,10 +438,10 @@ pub struct AlgebraFieldTemplate {
 #[serde(tag = "_variant")]
 pub enum CarrierRowMembership {
     RowPresent,
-    RowAbsent { reason: String },
+    RowAbsent { reason: std::string::String },
 }
 impl CarrierRowMembership {
-    pub fn reason(&self) -> String {
+    pub fn reason(&self) -> std::string::String {
         match self {
             CarrierRowMembership::RowPresent => panic!("no reason on unit variant"),
             CarrierRowMembership::RowAbsent { reason: __val, .. } => __val.clone(),
@@ -451,7 +451,7 @@ impl CarrierRowMembership {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct CarrierSpelling {
-    pub text: String,
+    pub text: std::string::String,
     pub method_surface: Rc<CarrierRowMembership>,
     pub container_algebra_row: Rc<CarrierRowMembership>,
     pub container_alias_row: Rc<CarrierRowMembership>,
@@ -461,57 +461,57 @@ pub struct CarrierSpelling {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct AlgebraCarrier {
-    pub name: String,
+    pub name: std::string::String,
     pub profile: AlgebraProfile,
     pub spellings: Rc<Vec<Rc<CarrierSpelling>>>,
 }
 
-pub fn scalar_carrier_not_container_reason() -> String {
+pub fn scalar_carrier_not_container_reason() -> std::string::String {
     thread_local! {
-        static CACHED: String = {
+        static CACHED: std::string::String = {
             "scalar carrier: names no container, so it holds no container-spelling row".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c: &std::string::String| c.clone())
 }
 
-pub fn snake_case_spelling_not_alias_reason() -> String {
+pub fn snake_case_spelling_not_alias_reason() -> std::string::String {
     thread_local! {
-        static CACHED: String = {
+        static CACHED: std::string::String = {
             "snake spelling: resolves as an algebra name, not as a declared container alias".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c: &std::string::String| c.clone())
 }
 
-pub fn canonical_spelling_sorts_ahead_of_alias_reason() -> String {
+pub fn canonical_spelling_sorts_ahead_of_alias_reason() -> std::string::String {
     thread_local! {
-        static CACHED: String = {
+        static CACHED: std::string::String = {
             "container_alias_canonical_spelling returns the FIRST sorted key mapping to an algebra, so this key would sort ahead of its own alias and silently become the emitted canonical spelling".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c: &std::string::String| c.clone())
 }
 
-pub fn carrier_name_is_not_a_declaration_spelling_reason() -> String {
+pub fn carrier_name_is_not_a_declaration_spelling_reason() -> std::string::String {
     thread_local! {
-        static CACHED: String = {
+        static CACHED: std::string::String = {
             "the carrier name is not written in declaration position; its alias carries the profile".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c: &std::string::String| c.clone())
 }
 
-pub fn arity_row_is_alias_spellings_only_reason() -> String {
+pub fn arity_row_is_alias_spellings_only_reason() -> std::string::String {
     thread_local! {
-        static CACHED: String = {
+        static CACHED: std::string::String = {
             "container_type_arity is consulted by is_container_type on authored declaration spellings; adding a key here decides containerhood for that spelling".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c: &std::string::String| c.clone())
 }
 
-pub fn scalar_carrier_spelling(text: String) -> Rc<CarrierSpelling> {
+pub fn scalar_carrier_spelling(text: std::string::String) -> Rc<CarrierSpelling> {
     Rc::new(CarrierSpelling {
         text: text.clone(),
         method_surface: Rc::new(CarrierRowMembership::RowPresent),
@@ -530,7 +530,7 @@ pub fn scalar_carrier_spelling(text: String) -> Rc<CarrierSpelling> {
     })
 }
 
-pub fn snake_alias_spelling(text: String) -> Rc<CarrierSpelling> {
+pub fn snake_alias_spelling(text: std::string::String) -> Rc<CarrierSpelling> {
     Rc::new(CarrierSpelling {
         text: text.clone(),
         method_surface: Rc::new(CarrierRowMembership::RowAbsent {
@@ -547,7 +547,7 @@ pub fn snake_alias_spelling(text: String) -> Rc<CarrierSpelling> {
     })
 }
 
-pub fn snake_algebra_spelling(text: String) -> Rc<CarrierSpelling> {
+pub fn snake_algebra_spelling(text: std::string::String) -> Rc<CarrierSpelling> {
     Rc::new(CarrierSpelling {
         text: text.clone(),
         method_surface: Rc::new(CarrierRowMembership::RowAbsent {
@@ -566,7 +566,7 @@ pub fn snake_algebra_spelling(text: String) -> Rc<CarrierSpelling> {
     })
 }
 
-pub fn pascal_alias_spelling(text: String) -> Rc<CarrierSpelling> {
+pub fn pascal_alias_spelling(text: std::string::String) -> Rc<CarrierSpelling> {
     Rc::new(CarrierSpelling {
         text: text.clone(),
         method_surface: Rc::new(CarrierRowMembership::RowPresent),
@@ -696,13 +696,14 @@ pub fn carrier_spelling_row_present(m: Rc<CarrierRowMembership>) -> bool {
     }
 }
 
-pub fn kernel_algebra_profile_value() -> Rc<HashMap<String, AlgebraProfile>> {
+pub fn kernel_algebra_profile_value() -> Rc<HashMap<std::string::String, AlgebraProfile>> {
     algebra_carriers().iter().cloned().fold(
-        v1_rt::rc_empty_map::<String, AlgebraProfile>(),
-        |acc: Rc<HashMap<String, AlgebraProfile>>, carrier: Rc<AlgebraCarrier>| {
+        v1_rt::rc_empty_map::<std::string::String, AlgebraProfile>(),
+        |acc: Rc<HashMap<std::string::String, AlgebraProfile>>, carrier: Rc<AlgebraCarrier>| {
             carrier.spellings.clone().iter().cloned().fold(
                 acc,
-                |inner: Rc<HashMap<String, AlgebraProfile>>, spelling: Rc<CarrierSpelling>| {
+                |inner: Rc<HashMap<std::string::String, AlgebraProfile>>,
+                 spelling: Rc<CarrierSpelling>| {
                     if carrier_spelling_row_present(spelling.method_surface.clone()) {
                         v1_rt::rc_map_insert(
                             inner.clone(),
@@ -718,13 +719,15 @@ pub fn kernel_algebra_profile_value() -> Rc<HashMap<String, AlgebraProfile>> {
     )
 }
 
-pub fn carrier_container_algebra_rows() -> Rc<HashMap<String, String>> {
+pub fn carrier_container_algebra_rows() -> Rc<HashMap<std::string::String, std::string::String>> {
     algebra_carriers().iter().cloned().fold(
-        v1_rt::rc_empty_map::<String, String>(),
-        |acc: Rc<HashMap<String, String>>, carrier: Rc<AlgebraCarrier>| {
+        v1_rt::rc_empty_map::<std::string::String, std::string::String>(),
+        |acc: Rc<HashMap<std::string::String, std::string::String>>,
+         carrier: Rc<AlgebraCarrier>| {
             carrier.spellings.clone().iter().cloned().fold(
                 acc,
-                |inner: Rc<HashMap<String, String>>, spelling: Rc<CarrierSpelling>| {
+                |inner: Rc<HashMap<std::string::String, std::string::String>>,
+                 spelling: Rc<CarrierSpelling>| {
                     if carrier_spelling_row_present(spelling.container_algebra_row.clone()) {
                         v1_rt::rc_map_insert(
                             inner.clone(),
@@ -740,13 +743,15 @@ pub fn carrier_container_algebra_rows() -> Rc<HashMap<String, String>> {
     )
 }
 
-pub fn carrier_container_alias_rows() -> Rc<HashMap<String, String>> {
+pub fn carrier_container_alias_rows() -> Rc<HashMap<std::string::String, std::string::String>> {
     algebra_carriers().iter().cloned().fold(
-        v1_rt::rc_empty_map::<String, String>(),
-        |acc: Rc<HashMap<String, String>>, carrier: Rc<AlgebraCarrier>| {
+        v1_rt::rc_empty_map::<std::string::String, std::string::String>(),
+        |acc: Rc<HashMap<std::string::String, std::string::String>>,
+         carrier: Rc<AlgebraCarrier>| {
             carrier.spellings.clone().iter().cloned().fold(
                 acc,
-                |inner: Rc<HashMap<String, String>>, spelling: Rc<CarrierSpelling>| {
+                |inner: Rc<HashMap<std::string::String, std::string::String>>,
+                 spelling: Rc<CarrierSpelling>| {
                     if carrier_spelling_row_present(spelling.container_alias_row.clone()) {
                         v1_rt::rc_map_insert(
                             inner.clone(),
@@ -762,13 +767,13 @@ pub fn carrier_container_alias_rows() -> Rc<HashMap<String, String>> {
     )
 }
 
-pub fn carrier_container_roster_map() -> Rc<HashMap<String, bool>> {
+pub fn carrier_container_roster_map() -> Rc<HashMap<std::string::String, bool>> {
     algebra_carriers().iter().cloned().fold(
-        v1_rt::rc_empty_map::<String, bool>(),
-        |acc: Rc<HashMap<String, bool>>, carrier: Rc<AlgebraCarrier>| {
+        v1_rt::rc_empty_map::<std::string::String, bool>(),
+        |acc: Rc<HashMap<std::string::String, bool>>, carrier: Rc<AlgebraCarrier>| {
             carrier.spellings.clone().iter().cloned().fold(
                 acc,
-                |inner: Rc<HashMap<String, bool>>, spelling: Rc<CarrierSpelling>| {
+                |inner: Rc<HashMap<std::string::String, bool>>, spelling: Rc<CarrierSpelling>| {
                     if carrier_spelling_row_present(spelling.container_roster_name.clone()) {
                         v1_rt::rc_map_insert(inner.clone(), spelling.text.clone(), true)
                     } else {
@@ -780,13 +785,13 @@ pub fn carrier_container_roster_map() -> Rc<HashMap<String, bool>> {
     )
 }
 
-pub fn carrier_container_arity_rows() -> Rc<HashMap<String, i64>> {
+pub fn carrier_container_arity_rows() -> Rc<HashMap<std::string::String, i64>> {
     algebra_carriers().iter().cloned().fold(
-        v1_rt::rc_empty_map::<String, i64>(),
-        |acc: Rc<HashMap<String, i64>>, carrier: Rc<AlgebraCarrier>| {
+        v1_rt::rc_empty_map::<std::string::String, i64>(),
+        |acc: Rc<HashMap<std::string::String, i64>>, carrier: Rc<AlgebraCarrier>| {
             carrier.spellings.clone().iter().cloned().fold(
                 acc,
-                |inner: Rc<HashMap<String, i64>>, spelling: Rc<CarrierSpelling>| {
+                |inner: Rc<HashMap<std::string::String, i64>>, spelling: Rc<CarrierSpelling>| {
                     if carrier_spelling_row_present(spelling.container_arity_row.clone()) {
                         v1_rt::rc_map_insert(
                             inner.clone(),
@@ -804,13 +809,13 @@ pub fn carrier_container_arity_rows() -> Rc<HashMap<String, i64>> {
     )
 }
 
-pub fn kernel_algebra_profile() -> Rc<HashMap<String, AlgebraProfile>> {
+pub fn kernel_algebra_profile() -> Rc<HashMap<std::string::String, AlgebraProfile>> {
     thread_local! {
-        static CACHED: Rc<HashMap<String, AlgebraProfile>> = {
+        static CACHED: Rc<HashMap<std::string::String, AlgebraProfile>> = {
             kernel_algebra_profile_value()
         };
     }
-    CACHED.with(|c: &Rc<HashMap<String, AlgebraProfile>>| c.clone())
+    CACHED.with(|c: &Rc<HashMap<std::string::String, AlgebraProfile>>| c.clone())
 }
 
 pub fn ordered_ring_templates() -> Rc<Vec<Rc<AlgebraFieldTemplate>>> {
@@ -1239,13 +1244,13 @@ pub fn pointwise_power_collection_templates() -> Rc<Vec<Rc<AlgebraFieldTemplate>
     })])
 }
 
-pub fn algebra_count_length_name_fork_note() -> String {
+pub fn algebra_count_length_name_fork_note() -> std::string::String {
     thread_local! {
-        static CACHED: String = {
+        static CACHED: std::string::String = {
             "count and length sit on the same template rows as the SAME operation, and that is a section 3 nicknaming fork being RECORDED rather than introduced (review 45499 raised it, correctly, as a smell). The fork's authority is the interpreter, which dispatches length, count and size to one native arm -- three names, one concept, and that arm predates this change. What was inconsistent was the declared surface: the templates listed only length, so a String receiver piped into count resolved at runtime while having no declared row, which the method-existence wall exposed the moment it began proving absence from the template roster. Reconciling the declaration to the runtime is the honest direction, because the runtime is what programs actually meet; inventing a distinct meaning for count to justify two rows would be the fabrication, and dropping the row would have left a working call refused. So the row is added and the fork is named here rather than silently propagated. Dissolve-on: feature:collection-size-single-spelling -- one name for this operation across the interpreter arm, the templates, and the corpus, a corpus-wide rename touching every call site, which belongs on its own lane rather than inside a P0 live-system fix. THE TRIGGER IS NAMED RATHER THAN DESCRIBED because a deferral whose condition is only prose cannot be looked up, counted, or closed by anyone but its author -- the asymmetry review 45759 caught beside unresolved_method_frontier, which cites feature:primitive-realization-single-authority and is therefore findable. The closing condition is decidable and stated: the interpreter's length/count/size arm dispatches one spelling, these two template rows carry that spelling only, and no other spelling resolves. Until then the count is the measure: three accepted spellings in the interpreter arm, two on these rows, one concept.".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c: &std::string::String| c.clone())
 }
 
 pub fn free_monoid_scalar_templates() -> Rc<Vec<Rc<AlgebraFieldTemplate>>> {
@@ -1993,7 +1998,7 @@ pub fn finitely_supported_function_templates() -> Rc<Vec<Rc<AlgebraFieldTemplate
     ])
 }
 
-pub fn algebra_method_template_name(name: String) -> bool {
+pub fn algebra_method_template_name(name: std::string::String) -> bool {
     {
         let mut __found = false;
         for profile in all_algebra_profiles().iter().cloned() {
@@ -2032,7 +2037,7 @@ pub fn algebra_templates_for_profile(profile: AlgebraProfile) -> Rc<Vec<Rc<Algeb
     }
 }
 
-pub fn algebra_type_param_names(profile: AlgebraProfile) -> Rc<Vec<String>> {
+pub fn algebra_type_param_names(profile: AlgebraProfile) -> Rc<Vec<std::string::String>> {
     match profile.clone() {
         AlgebraProfile::OrderedRingProfile => Rc::new(vec![]),
         AlgebraProfile::ApproximateFieldProfile => Rc::new(vec![]),
@@ -2076,7 +2081,7 @@ pub fn all_algebra_field_templates() -> Rc<Vec<Rc<AlgebraFieldTemplate>>> {
     })
 }
 
-pub fn all_algebra_template_names() -> Rc<Vec<String>> {
+pub fn all_algebra_template_names() -> Rc<Vec<std::string::String>> {
     Rc::new({
         let mut __result = Vec::new();
         for template in all_algebra_field_templates().iter().cloned() {
@@ -2086,13 +2091,13 @@ pub fn all_algebra_template_names() -> Rc<Vec<String>> {
     })
 }
 
-pub fn trim_free_function_authority_note() -> String {
+pub fn trim_free_function_authority_note() -> std::string::String {
     thread_local! {
-        static CACHED: String = {
+        static CACHED: std::string::String = {
             "trim is the importable free-function authority for whitespace trim on String. The declared substrate body is a pure-dag seam (1 / 0); semantic execution routes through free_call.trim (v1_rt::trim). Host realization authority: std.primitives trim_contract. Emitted host-native std.algebra::trim delegates to v1_rt::trim via rust_host_string_op_fn_emit. The scalar template row trim on FreeMonoid<String> is the method spelling on the same carrier. Free-call trim(s) requires explicit import std.algebra { trim } -- bare trim refuses via closure_independent_bare_free_call registry in v1.compiler.infer_env even when std.algebra is already in the compilation pool (#6985 Class B pool coincidence closed on trim by #8062).".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c: &std::string::String| c.clone())
 }
 
 pub fn trim(s: String) -> String {

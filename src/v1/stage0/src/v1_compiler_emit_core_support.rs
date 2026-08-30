@@ -31,17 +31,17 @@ pub struct EmitResult {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct TestProjection {
-    pub module_name: String,
-    pub service_name: String,
-    pub operation_name: String,
+    pub module_name: std::string::String,
+    pub service_name: std::string::String,
+    pub operation_name: std::string::String,
     pub inferred: Rc<Node>,
     pub params: Rc<Vec<Rc<Node>>>,
     pub mock_field_inits: Rc<Vec<Rc<Node>>>,
-    pub source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    pub source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
     pub type_env: Rc<TypeEnv>,
 }
 
-pub fn escape_json_string(s: String) -> String {
+pub fn escape_json_string(s: std::string::String) -> std::string::String {
     Rc::new(
         Rc::new(
             Rc::new(
@@ -69,7 +69,7 @@ pub fn escape_json_string(s: String) -> String {
     .join(&"\\t".to_string())
 }
 
-pub fn module_to_filename(name: String) -> String {
+pub fn module_to_filename(name: std::string::String) -> std::string::String {
     Rc::new(
         name.clone()
             .split(&".".to_string())
@@ -81,7 +81,7 @@ pub fn module_to_filename(name: String) -> String {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ModuleFilenameOwners {
-    pub owners: Rc<HashMap<String, String>>,
+    pub owners: Rc<HashMap<std::string::String, std::string::String>>,
     pub diagnostics: Rc<Vec<Rc<ErrorNode>>>,
 }
 
@@ -89,7 +89,7 @@ pub fn module_filename_collision_diagnostics(typed: Rc<ResolvedGraph>) -> Rc<Vec
     {
         let result = typed.modules.clone().iter().cloned().fold(
             Rc::new(ModuleFilenameOwners {
-                owners: v1_rt::rc_empty_map::<String, String>(),
+                owners: v1_rt::rc_empty_map::<std::string::String, std::string::String>(),
                 diagnostics: Rc::new(vec![]),
             }),
             |acc: Rc<ModuleFilenameOwners>, tm: Rc<TypedModule>| {
@@ -137,7 +137,7 @@ pub fn module_filename_collision_diagnostics(typed: Rc<ResolvedGraph>) -> Rc<Vec
     }
 }
 
-pub fn make_indent(level: i64) -> String {
+pub fn make_indent(level: i64) -> std::string::String {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         if (level.clone() <= 0) {
             "".to_string()
@@ -147,14 +147,14 @@ pub fn make_indent(level: i64) -> String {
     })
 }
 
-pub fn unique_strings(items: Rc<Vec<String>>) -> Rc<Vec<String>> {
+pub fn unique_strings(items: Rc<Vec<std::string::String>>) -> Rc<Vec<std::string::String>> {
     {
         let result = items.iter().cloned().fold(
             Rc::new(UniqueAccum {
-                seen: v1_rt::rc_empty_map::<String, bool>(),
+                seen: v1_rt::rc_empty_map::<std::string::String, bool>(),
                 result: Rc::new(vec![]),
             }),
-            |acc: Rc<UniqueAccum>, item: String| {
+            |acc: Rc<UniqueAccum>, item: std::string::String| {
                 if crate::v1_compiler_infer_types::emit_map_has(acc.seen.clone(), item.clone()) {
                     acc.clone()
                 } else {
@@ -169,7 +169,7 @@ pub fn unique_strings(items: Rc<Vec<String>>) -> Rc<Vec<String>> {
     }
 }
 
-pub fn to_string(value: i64) -> String {
+pub fn to_string(value: i64) -> std::string::String {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         if (value.clone() < 0) {
             v1_rt::concat("-".to_string(), to_string((0 - value.clone())))
@@ -197,7 +197,10 @@ pub fn to_string(value: i64) -> String {
     })
 }
 
-pub fn to_string_helper(mut value: i64, mut acc: Rc<Vec<String>>) -> Rc<Vec<String>> {
+pub fn to_string_helper(
+    mut value: i64,
+    mut acc: Rc<Vec<std::string::String>>,
+) -> Rc<Vec<std::string::String>> {
     loop {
         if (value.clone() == 0) {
             break acc;
@@ -253,7 +256,7 @@ pub fn to_string_helper(mut value: i64, mut acc: Rc<Vec<String>>) -> Rc<Vec<Stri
     }
 }
 
-pub fn to_snake(name: String) -> String {
+pub fn to_snake(name: std::string::String) -> std::string::String {
     {
         let chars_list = Rc::new(name.clone().chars().map(|c| c as i64).collect::<Vec<_>>());
         let result = Rc::new({
@@ -290,7 +293,7 @@ pub fn to_snake(name: String) -> String {
     }
 }
 
-pub fn to_screaming_snake(name: String) -> String {
+pub fn to_screaming_snake(name: std::string::String) -> std::string::String {
     {
         let snake = to_snake(name.clone());
         Rc::new({
@@ -311,7 +314,7 @@ pub fn is_upper(ch: i64) -> bool {
     ((ch.clone() >= 65) && (ch.clone() <= 90))
 }
 
-pub fn to_lower_char(ch: i64) -> String {
+pub fn to_lower_char(ch: i64) -> std::string::String {
     {
         let cp = ch.clone();
         if ((cp.clone() >= 65) && (cp.clone() <= 90)) {
@@ -325,7 +328,7 @@ pub fn to_lower_char(ch: i64) -> String {
     }
 }
 
-pub fn to_upper_char(ch: i64) -> String {
+pub fn to_upper_char(ch: i64) -> std::string::String {
     {
         let cp = ch.clone();
         if ((cp.clone() >= 97) && (cp.clone() <= 122)) {
@@ -339,7 +342,7 @@ pub fn to_upper_char(ch: i64) -> String {
     }
 }
 
-pub fn sanitize_service_name(name: String) -> String {
+pub fn sanitize_service_name(name: std::string::String) -> std::string::String {
     {
         let parts = Rc::new(
             name.clone()
@@ -358,7 +361,7 @@ pub fn sanitize_service_name(name: String) -> String {
     }
 }
 
-pub fn capitalize_first(s: String) -> String {
+pub fn capitalize_first(s: std::string::String) -> std::string::String {
     {
         let chars_list = Rc::new(s.clone().chars().map(|c| c as i64).collect::<Vec<_>>());
         if ((chars_list.clone().len() as i64) == 0) {
@@ -391,11 +394,11 @@ pub fn capitalize_first(s: String) -> String {
     }
 }
 
-pub fn service_var_name(service_name: String) -> String {
+pub fn service_var_name(service_name: std::string::String) -> std::string::String {
     to_snake(sanitize_service_name(service_name.clone()))
 }
 
-pub fn to_pascal(name: String) -> String {
+pub fn to_pascal(name: std::string::String) -> std::string::String {
     {
         let snake = to_snake(name.clone());
         let parts = Rc::new(
@@ -416,7 +419,10 @@ pub fn to_pascal(name: String) -> String {
     }
 }
 
-pub fn test_function_name(projection: Rc<TestProjection>, target: RenderTarget) -> String {
+pub fn test_function_name(
+    projection: Rc<TestProjection>,
+    target: RenderTarget,
+) -> std::string::String {
     {
         let conventions = crate::v1_compiler_languages::test_conventions_for_target(target.clone());
         let formatted = match conventions.name_style.clone() {
@@ -436,7 +442,10 @@ pub fn test_function_name(projection: Rc<TestProjection>, target: RenderTarget) 
     }
 }
 
-pub fn apply_type_template1(template: String, arg0: String) -> String {
+pub fn apply_type_template1(
+    template: std::string::String,
+    arg0: std::string::String,
+) -> std::string::String {
     Rc::new(
         template
             .clone()
@@ -447,7 +456,11 @@ pub fn apply_type_template1(template: String, arg0: String) -> String {
     .join(&arg0.clone())
 }
 
-pub fn apply_type_template2(template: String, arg0: String, arg1: String) -> String {
+pub fn apply_type_template2(
+    template: std::string::String,
+    arg0: std::string::String,
+    arg1: std::string::String,
+) -> std::string::String {
     {
         let parts = Rc::new(
             template
@@ -475,7 +488,12 @@ pub fn apply_type_template2(template: String, arg0: String, arg1: String) -> Str
     }
 }
 
-pub fn apply_type_template3(template: String, arg0: String, arg1: String, arg2: String) -> String {
+pub fn apply_type_template3(
+    template: std::string::String,
+    arg0: std::string::String,
+    arg1: std::string::String,
+    arg2: std::string::String,
+) -> std::string::String {
     {
         let parts0 = Rc::new(
             template
@@ -518,7 +536,10 @@ pub fn apply_type_template3(template: String, arg0: String, arg1: String, arg2: 
     }
 }
 
-pub fn apply_named_template(template: String, bindings: Rc<HashMap<String, String>>) -> String {
+pub fn apply_named_template(
+    template: std::string::String,
+    bindings: Rc<HashMap<std::string::String, std::string::String>>,
+) -> std::string::String {
     apply_named_template_nested(
         template.clone(),
         bindings.clone(),
@@ -527,10 +548,10 @@ pub fn apply_named_template(template: String, bindings: Rc<HashMap<String, Strin
 }
 
 pub fn apply_named_template_nested(
-    template: String,
-    bindings: Rc<HashMap<String, String>>,
-    keys: Rc<Vec<String>>,
-) -> String {
+    template: std::string::String,
+    bindings: Rc<HashMap<std::string::String, std::string::String>>,
+    keys: Rc<Vec<std::string::String>>,
+) -> std::string::String {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         match keys.clone().first().cloned() {
             None => template,
@@ -578,16 +599,16 @@ pub fn language_spec(target: RenderTarget) -> Rc<LanguageSpec> {
     crate::v1_compiler_languages::language_spec_for_target(target.clone())
 }
 
-pub fn escape_string_literal_control_chars_note() -> String {
+pub fn escape_string_literal_control_chars_note() -> std::string::String {
     thread_local! {
-        static CACHED: String = {
+        static CACHED: std::string::String = {
             "TWO defects, one in each half of the CR step. The DELIMITER used to be \"\\r\", but this language's tokenizer has no \\r escape (its table is \\\" \\\\ \\n \\t \\{ \\} and \\xHH), so that delimiter was the two characters backslash and r, not a carriage return: carriage returns have passed through unescaped into every emitted target for as long as the function has existed, dead in practice only because no corpus string carried one. The first that did turned it into a hard emit failure. The REPLACEMENT was then briefly \\r and \\0, which is a second, subtler version of the same mistake: this function is TARGET-INDEPENDENT — emit_string_literal invokes it for Rust, Dag, Go and Python alike, and never sees a RenderTarget — so a Rust-shaped escape is only correct for one of the four projections, and \\r emitted into a Dag literal reproduces the exact backslash-r bug the delimiter half just fixed (review 2026-07-30). The spelling is therefore \\x0d and \\x00, the hex form all four target grammars accept, and the acceptance is a round trip through every target rather than a Rust regen fixed point, which proves only the Rust projection. Recorded rather than quietly respelled because the class is the point: a target-specific escape inside a target-independent function is invisible until a projection other than the one under test carries the character.".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c: &std::string::String| c.clone())
 }
 
-pub fn escape_string_literal_body(s: String) -> String {
+pub fn escape_string_literal_body(s: std::string::String) -> std::string::String {
     {
         let escaped_backslash = Rc::new(
             s.clone()
@@ -639,7 +660,7 @@ pub fn escape_string_literal_body(s: String) -> String {
     }
 }
 
-pub fn has_mock_prefix(name: String) -> bool {
+pub fn has_mock_prefix(name: std::string::String) -> bool {
     if (v1_rt::string_length(&name) < 5) {
         false
     } else {
@@ -748,7 +769,7 @@ pub fn extract_test_projections(typed: Rc<ResolvedGraph>) -> Rc<Vec<Rc<TestProje
 
 pub fn is_type_alias_return_node(
     n: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
 ) -> bool {
     (crate::v1_std_core::authored_name_at(source_indices.clone(), n.clone()) != "Unit".to_string())
 }
@@ -773,7 +794,7 @@ pub fn is_bare_leaf_item(item: Rc<Node>) -> bool {
 
 pub fn is_type_alias_item(
     item: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
 ) -> bool {
     (is_bare_leaf_item(item.clone())
         && is_type_alias_return_node(
@@ -784,7 +805,7 @@ pub fn is_type_alias_item(
 
 pub fn is_type_decl_item(
     item: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
 ) -> bool {
     ((is_bare_leaf_item(item.clone())
         && !is_type_alias_return_node(

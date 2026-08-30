@@ -12,8 +12,8 @@ use std::rc::Rc;
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct GraphEdge {
-    pub caller: String,
-    pub callee: String,
+    pub caller: std::string::String,
+    pub callee: std::string::String,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -23,39 +23,42 @@ pub struct CallGraph {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct CallGraphAdjacencyViews {
-    pub forward: Rc<HashMap<String, Rc<Vec<String>>>>,
-    pub reverse: Rc<HashMap<String, Rc<Vec<String>>>>,
+    pub forward: Rc<HashMap<std::string::String, Rc<Vec<std::string::String>>>>,
+    pub reverse: Rc<HashMap<std::string::String, Rc<Vec<std::string::String>>>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct DfsFinishAcc {
     pub visited: Rc<BTreeSet<String>>,
-    pub order: Rc<Vec<String>>,
+    pub order: Rc<Vec<std::string::String>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct SccComponentAcc {
     pub visited: Rc<BTreeSet<String>>,
-    pub members: Rc<Vec<String>>,
+    pub members: Rc<Vec<std::string::String>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct SccMembersAcc {
     pub visited: Rc<BTreeSet<String>>,
-    pub members: Rc<Vec<String>>,
+    pub members: Rc<Vec<std::string::String>>,
 }
 
-pub fn seed_adjacency_map(names: Rc<Vec<String>>) -> Rc<HashMap<String, Rc<Vec<String>>>> {
+pub fn seed_adjacency_map(
+    names: Rc<Vec<std::string::String>>,
+) -> Rc<HashMap<std::string::String, Rc<Vec<std::string::String>>>> {
     names.iter().cloned().fold(
-        v1_rt::rc_empty_map::<String, Rc<Vec<String>>>(),
-        |acc: Rc<HashMap<String, Rc<Vec<String>>>>, name: String| {
+        v1_rt::rc_empty_map::<std::string::String, Rc<Vec<std::string::String>>>(),
+        |acc: Rc<HashMap<std::string::String, Rc<Vec<std::string::String>>>>,
+         name: std::string::String| {
             v1_rt::rc_map_insert(acc, name.clone(), Rc::new(vec![]))
         },
     )
 }
 
 pub fn build_call_graph_from_proof_edges(
-    names: Rc<Vec<String>>,
+    names: Rc<Vec<std::string::String>>,
     edges: Rc<Vec<Rc<ProofEdge>>>,
 ) -> Rc<CallGraph> {
     Rc::new(CallGraph {
@@ -84,7 +87,7 @@ pub fn build_call_graph_from_proof_edges(
 }
 
 pub fn build_adjacency_views(
-    names: Rc<Vec<String>>,
+    names: Rc<Vec<std::string::String>>,
     graph: Rc<CallGraph>,
 ) -> Rc<CallGraphAdjacencyViews> {
     {
@@ -124,26 +127,26 @@ pub fn build_adjacency_views(
 }
 
 pub fn forward_adjacency(
-    names: Rc<Vec<String>>,
+    names: Rc<Vec<std::string::String>>,
     graph: Rc<CallGraph>,
-) -> Rc<HashMap<String, Rc<Vec<String>>>> {
+) -> Rc<HashMap<std::string::String, Rc<Vec<std::string::String>>>> {
     build_adjacency_views(names.clone(), graph.clone())
         .forward
         .clone()
 }
 
 pub fn reverse_adjacency(
-    names: Rc<Vec<String>>,
+    names: Rc<Vec<std::string::String>>,
     graph: Rc<CallGraph>,
-) -> Rc<HashMap<String, Rc<Vec<String>>>> {
+) -> Rc<HashMap<std::string::String, Rc<Vec<std::string::String>>>> {
     build_adjacency_views(names.clone(), graph.clone())
         .reverse
         .clone()
 }
 
 pub fn dfs_finish_order(
-    node: String,
-    adjacency: Rc<HashMap<String, Rc<Vec<String>>>>,
+    node: std::string::String,
+    adjacency: Rc<HashMap<std::string::String, Rc<Vec<std::string::String>>>>,
     acc: Rc<DfsFinishAcc>,
 ) -> Rc<DfsFinishAcc> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
@@ -161,7 +164,7 @@ pub fn dfs_finish_order(
                         visited: next_visited.clone(),
                         order: acc.order.clone(),
                     }),
-                    |inner: Rc<DfsFinishAcc>, neighbor: String| {
+                    |inner: Rc<DfsFinishAcc>, neighbor: std::string::String| {
                         dfs_finish_order(neighbor.clone(), adjacency.clone(), inner)
                     },
                 );
@@ -175,8 +178,8 @@ pub fn dfs_finish_order(
 }
 
 pub fn dfs_collect_component(
-    node: String,
-    adjacency: Rc<HashMap<String, Rc<Vec<String>>>>,
+    node: std::string::String,
+    adjacency: Rc<HashMap<std::string::String, Rc<Vec<std::string::String>>>>,
     acc: Rc<SccComponentAcc>,
 ) -> Rc<SccComponentAcc> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
@@ -195,7 +198,7 @@ pub fn dfs_collect_component(
                         visited: next_visited.clone(),
                         members: next_members.clone(),
                     }),
-                    |inner: Rc<SccComponentAcc>, neighbor: String| {
+                    |inner: Rc<SccComponentAcc>, neighbor: std::string::String| {
                         dfs_collect_component(neighbor.clone(), adjacency.clone(), inner)
                     },
                 )
@@ -205,9 +208,9 @@ pub fn dfs_collect_component(
 }
 
 pub fn graph_multi_node_scc_members(
-    names: Rc<Vec<String>>,
+    names: Rc<Vec<std::string::String>>,
     graph: Rc<CallGraph>,
-) -> Rc<Vec<String>> {
+) -> Rc<Vec<std::string::String>> {
     {
         let adjacency = build_adjacency_views(names.clone(), graph.clone());
         let finish = names.iter().cloned().fold(
@@ -215,7 +218,7 @@ pub fn graph_multi_node_scc_members(
                 visited: v1_rt::rc_empty_set::<String>(),
                 order: Rc::new(vec![]),
             }),
-            |acc: Rc<DfsFinishAcc>, name: String| {
+            |acc: Rc<DfsFinishAcc>, name: std::string::String| {
                 dfs_finish_order(name.clone(), adjacency.forward.clone(), acc)
             },
         );
@@ -224,7 +227,7 @@ pub fn graph_multi_node_scc_members(
                 visited: v1_rt::rc_empty_set::<String>(),
                 members: Rc::new(vec![]),
             }),
-            |acc: Rc<SccMembersAcc>, name: String| {
+            |acc: Rc<SccMembersAcc>, name: std::string::String| {
                 if v1_rt::set_contains(&acc.visited.clone(), name.clone()) {
                     acc.clone()
                 } else {
@@ -254,11 +257,14 @@ pub fn graph_multi_node_scc_members(
     }
 }
 
-pub fn graph_has_multi_node_scc(names: Rc<Vec<String>>, graph: Rc<CallGraph>) -> bool {
+pub fn graph_has_multi_node_scc(names: Rc<Vec<std::string::String>>, graph: Rc<CallGraph>) -> bool {
     ((graph_multi_node_scc_members(names.clone(), graph.clone()).len() as i64) > 0)
 }
 
-pub fn graph_cycle_members(names: Rc<Vec<String>>, graph: Rc<CallGraph>) -> Rc<Vec<String>> {
+pub fn graph_cycle_members(
+    names: Rc<Vec<std::string::String>>,
+    graph: Rc<CallGraph>,
+) -> Rc<Vec<std::string::String>> {
     {
         let self_scan = Rc::new({
             let mut __result = Vec::new();
@@ -316,10 +322,10 @@ pub fn graph_cycle_members(names: Rc<Vec<String>>, graph: Rc<CallGraph>) -> Rc<V
 }
 
 pub fn graph_reverse_reachable_members(
-    names: Rc<Vec<String>>,
+    names: Rc<Vec<std::string::String>>,
     graph: Rc<CallGraph>,
-    start: String,
-) -> Rc<Vec<String>> {
+    start: std::string::String,
+) -> Rc<Vec<std::string::String>> {
     {
         let reached = dfs_collect_component(
             start.clone(),

@@ -38,23 +38,23 @@ pub enum WitnessEvalVerdict {
     Passed,
     BoolFalse,
     NotBool {
-        got: String,
+        got: std::string::String,
     },
     RuntimeError {
-        message: String,
+        message: std::string::String,
     },
     HostToolUnresolved {
-        name: String,
-        probed: Rc<Vec<String>>,
+        name: std::string::String,
+        probed: Rc<Vec<std::string::String>>,
     },
     HostEffectRefused {
-        operation: String,
+        operation: std::string::String,
         ground: HermeticEffectGround,
     },
     BudgetExceeded {
         elapsed_ms: i64,
         budget_ms: i64,
-        kind: String,
+        kind: std::string::String,
         completion: BudgetVerdictCompletion,
     },
 }
@@ -64,10 +64,10 @@ pub enum WitnessEvalVerdict {
 pub enum ExpectedRedJoinDisposition {
     StillRed,
     NowPasses,
-    NotEvaluated { reason: String },
+    NotEvaluated { reason: std::string::String },
 }
 impl ExpectedRedJoinDisposition {
-    pub fn reason(&self) -> String {
+    pub fn reason(&self) -> std::string::String {
         match self {
             ExpectedRedJoinDisposition::StillRed => panic!("no reason on unit variant"),
             ExpectedRedJoinDisposition::NowPasses => panic!("no reason on unit variant"),
@@ -78,22 +78,22 @@ impl ExpectedRedJoinDisposition {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ExpectedRedRosterJoinRow {
-    pub identity: String,
+    pub identity: std::string::String,
     pub disposition: Rc<ExpectedRedJoinDisposition>,
-    pub detail: String,
+    pub detail: std::string::String,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ExpectedRedRosterJoinReport {
-    pub run_head: Option<String>,
-    pub run_note: String,
+    pub run_head: Option<std::string::String>,
+    pub run_note: std::string::String,
     pub rows: Rc<Vec<Rc<ExpectedRedRosterJoinRow>>>,
 }
 
 pub fn new_expected_red_roster_join_report(
-    run_head: Option<String>,
-    run_note: String,
-    roster: Rc<Vec<String>>,
+    run_head: Option<std::string::String>,
+    run_note: std::string::String,
+    roster: Rc<Vec<std::string::String>>,
 ) -> Rc<ExpectedRedRosterJoinReport> {
     Rc::new(ExpectedRedRosterJoinReport {
         run_head: run_head.clone(),
@@ -181,10 +181,10 @@ pub fn expected_red_roster_join_not_evaluated(report: Rc<ExpectedRedRosterJoinRe
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct VerdictClassification {
     pub disposition: Rc<ExpectedRedJoinDisposition>,
-    pub detail: String,
+    pub detail: std::string::String,
 }
 
-pub fn hermetic_effect_ground_label(ground: HermeticEffectGround) -> String {
+pub fn hermetic_effect_ground_label(ground: HermeticEffectGround) -> std::string::String {
     match ground.clone() {
         HermeticEffectGround::UnpublishedMockCase => {
             "no published mock case for a corpus-governed service".to_string()
@@ -326,7 +326,7 @@ pub fn classify_verdict(verdict: Rc<WitnessEvalVerdict>) -> Rc<VerdictClassifica
     }
 }
 
-pub fn disposition_label(disposition: Rc<ExpectedRedJoinDisposition>) -> String {
+pub fn disposition_label(disposition: Rc<ExpectedRedJoinDisposition>) -> std::string::String {
     match (*disposition.clone()).clone() {
         ExpectedRedJoinDisposition::StillRed => "still_red".to_string(),
         ExpectedRedJoinDisposition::NowPasses => "now_passes".to_string(),
@@ -334,7 +334,7 @@ pub fn disposition_label(disposition: Rc<ExpectedRedJoinDisposition>) -> String 
     }
 }
 
-pub fn not_evaluated_reason(disposition: Rc<ExpectedRedJoinDisposition>) -> String {
+pub fn not_evaluated_reason(disposition: Rc<ExpectedRedJoinDisposition>) -> std::string::String {
     match (*disposition.clone()).clone() {
         ExpectedRedJoinDisposition::NotEvaluated { reason: reason, .. } => reason.clone(),
         _ => "".to_string(),
@@ -357,7 +357,7 @@ pub fn row_with_recorded_verdict(
 
 pub fn record_observed(
     report: Rc<ExpectedRedRosterJoinReport>,
-    identity: String,
+    identity: std::string::String,
     verdict: Rc<WitnessEvalVerdict>,
 ) -> Rc<ExpectedRedRosterJoinReport> {
     Rc::new(ExpectedRedRosterJoinReport {

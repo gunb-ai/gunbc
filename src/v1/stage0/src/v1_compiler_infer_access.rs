@@ -33,7 +33,11 @@ pub struct KeyedCollectionParts {
     pub value_type: Rc<Node>,
 }
 
-pub fn access_error(message: String, span: Rc<SourceSpan>, module_name: String) -> Rc<ErrorNode> {
+pub fn access_error(
+    message: std::string::String,
+    span: Rc<SourceSpan>,
+    module_name: std::string::String,
+) -> Rc<ErrorNode> {
     crate::v1_std_core::make_error_node(
         Rc::new(CompilerDiagnostic::InternalError {
             message: message.clone(),
@@ -47,7 +51,7 @@ pub fn access_result(
     inferred: Rc<Node>,
     diagnostics: Rc<Vec<Rc<ErrorNode>>>,
     span: Rc<SourceSpan>,
-    fallback_message: String,
+    fallback_message: std::string::String,
 ) -> Rc<AccessCheckResultNode> {
     if ((diagnostics.clone().len() as i64) == 0) {
         Rc::new(AccessCheckResultNode {
@@ -75,7 +79,7 @@ pub fn access_result(
 
 pub fn keyed_collection_parts(
     n: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
 ) -> Option<Rc<KeyedCollectionParts>> {
     if (crate::v1_compiler_infer_types::node_is_keyed_collection(n.clone(), source_indices.clone())
         && ((n.children.clone().len() as i64) >= 2))
@@ -99,8 +103,8 @@ pub fn check_index_access_node(
     base_type: Rc<Node>,
     index_type: Rc<Node>,
     span: Rc<SourceSpan>,
-    module_name: String,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    module_name: std::string::String,
+    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
 ) -> Rc<AccessCheckResultNode> {
     {
         let normed = crate::v1_compiler_infer_types::normalize_access_type_node(base_type.clone());
@@ -218,8 +222,8 @@ pub fn check_slice_access_node(
     start_type: Rc<Node>,
     end_type: Rc<Node>,
     span: Rc<SourceSpan>,
-    module_name: String,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    module_name: std::string::String,
+    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
 ) -> Rc<AccessCheckResultNode> {
     {
         let normed_base =

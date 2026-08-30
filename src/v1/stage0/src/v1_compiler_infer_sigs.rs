@@ -27,19 +27,28 @@ use std::rc::Rc;
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ResolvedFuncSig {
-    pub name: String,
+    pub name: std::string::String,
     pub params: Rc<Vec<Rc<Node>>>,
     pub inferred: Rc<Node>,
     pub is_async: bool,
-    pub output_provenance: Rc<Vec<Rc<HashMap<String, Rc<SubValueRelation>>>>>,
-    pub variant_provenance:
-        Rc<HashMap<String, Rc<HashMap<String, Rc<HashMap<String, Rc<SubValueRelation>>>>>>>,
+    pub output_provenance: Rc<Vec<Rc<HashMap<std::string::String, Rc<SubValueRelation>>>>>,
+    pub variant_provenance: Rc<
+        HashMap<
+            std::string::String,
+            Rc<
+                HashMap<
+                    std::string::String,
+                    Rc<HashMap<std::string::String, Rc<SubValueRelation>>>,
+                >,
+            >,
+        >,
+    >,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ResolvedFuncEnv {
-    pub name: String,
-    pub local: Rc<HashMap<String, Rc<ResolvedFuncSig>>>,
+    pub name: std::string::String,
+    pub local: Rc<HashMap<std::string::String, Rc<ResolvedFuncSig>>>,
     pub parents: Rc<Vec<Rc<ResolvedFuncEnv>>>,
 }
 
@@ -51,28 +60,28 @@ pub struct ResolveFuncSigsResult {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct SigsAccum {
-    pub signatures: Rc<HashMap<String, Rc<ResolvedFuncSig>>>,
+    pub signatures: Rc<HashMap<std::string::String, Rc<ResolvedFuncSig>>>,
     pub diagnostics: Rc<Vec<Rc<ErrorNode>>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct CallEdge {
-    pub caller: String,
-    pub callee: String,
+    pub caller: std::string::String,
+    pub callee: std::string::String,
 }
 
-pub fn sigs_env_flat_parents_note() -> String {
+pub fn sigs_env_flat_parents_note() -> std::string::String {
     thread_local! {
-        static CACHED: String = {
+        static CACHED: std::string::String = {
             "Cost shape (§6 bare-minimum cost): ResolvedFuncEnv.parents is the module's transitive import closure held FLAT — precedence-ordered (first = highest precedence: the last direct import's closure first, then earlier imports'; own local always wins before any parent), deduped by env name keeping the first occurrence. The prior shape nested each parent env recursively and lookup walked the shared import DAG as a TREE with no visited state, so a shared ancestor was probed once per PATH, not per module (measured: identical 541 signature requests cost 53.3M env probes, and 902.8M after one merge widened the host-effect closure by 54 modules — 16.95x from visibility alone), with a quadratic parents-prefix copy per recursion step. Flattening at the two assembly points (resolve_func_sigs at typecheck time; rewire_func_env_parent_links post-fold) makes lookup one ordered scan over closure members' own local maps: probes are bounded by distinct closure modules, never paths. The name dedup is load-bearing: without it flat lists compose additively along every import path and the list length re-becomes the path count. Shadowing is preserved exactly — the old deep-first, last-import-first walk linearizes to closure-of-last-import before closure-of-earlier-imports, and a member's own local precedes its parents' contributions.".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c: &std::string::String| c.clone())
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct FlattenAccum {
-    pub seen: Rc<HashMap<String, bool>>,
+    pub seen: Rc<HashMap<std::string::String, bool>>,
     pub out: Rc<Vec<Rc<ResolvedFuncEnv>>>,
 }
 
@@ -93,7 +102,7 @@ pub fn flatten_parent_envs(
         });
         let dedup = ordered.iter().cloned().fold(
             Rc::new(FlattenAccum {
-                seen: v1_rt::rc_empty_map::<String, bool>(),
+                seen: v1_rt::rc_empty_map::<std::string::String, bool>(),
                 out: Rc::new(vec![]),
             }),
             |acc: Rc<FlattenAccum>, p: Rc<ResolvedFuncEnv>| {
@@ -115,7 +124,7 @@ pub fn flatten_parent_envs(
 pub struct ParentSigScan {
     pub sig: Option<Rc<ResolvedFuncSig>>,
     pub match_count: i64,
-    pub first_parent: Option<String>,
+    pub first_parent: Option<std::string::String>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -125,7 +134,7 @@ pub enum CallableIdentity {
         identity: Rc<DeclaredCallableIdentity>,
     },
     BuiltinCallable {
-        primitive_name: String,
+        primitive_name: std::string::String,
     },
 }
 
@@ -135,7 +144,7 @@ pub struct CallableCandidate {
     pub sig: Rc<ResolvedFuncSig>,
 }
 
-pub fn callable_identity_label(identity: Rc<CallableIdentity>) -> String {
+pub fn callable_identity_label(identity: Rc<CallableIdentity>) -> std::string::String {
     match (*identity.clone()).clone() {
         CallableIdentity::DeclaredCallable {
             identity: identity, ..
@@ -153,7 +162,9 @@ pub fn callable_identity_label(identity: Rc<CallableIdentity>) -> String {
     }
 }
 
-pub fn callable_candidate_labels(candidates: Rc<Vec<Rc<CallableCandidate>>>) -> Rc<Vec<String>> {
+pub fn callable_candidate_labels(
+    candidates: Rc<Vec<Rc<CallableCandidate>>>,
+) -> Rc<Vec<std::string::String>> {
     Rc::new({
         let mut __result = Vec::new();
         for c in candidates.iter().cloned() {
@@ -224,7 +235,7 @@ pub fn func_sig_for_derivation(lookup: Rc<FuncSigLookup>) -> Rc<DerivedCalleeSig
 
 pub fn lookup_resolved_sig_unique_across_parents(
     env: Rc<ResolvedFuncEnv>,
-    name: String,
+    name: std::string::String,
 ) -> Rc<FuncSigLookup> {
     decide_callable_candidates(parent_closure_callable_candidates(
         env.clone(),
@@ -234,7 +245,7 @@ pub fn lookup_resolved_sig_unique_across_parents(
 
 pub fn parent_closure_callable_candidates(
     env: Rc<ResolvedFuncEnv>,
-    name: String,
+    name: std::string::String,
 ) -> Rc<Vec<Rc<CallableCandidate>>> {
     env.parents.clone().iter().cloned().fold(
         Rc::new(vec![]),
@@ -301,12 +312,12 @@ pub fn decide_callable_candidates(candidates: Rc<Vec<Rc<CallableCandidate>>>) ->
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ResolvedSigWithOwner {
     pub sig: Rc<ResolvedFuncSig>,
-    pub owner_module_path: String,
+    pub owner_module_path: std::string::String,
 }
 
 pub fn lookup_resolved_sig_with_telemetry(
     env: Rc<ResolvedFuncEnv>,
-    name: String,
+    name: std::string::String,
 ) -> Option<Rc<ResolvedSigWithOwner>> {
     {
         let scan = env.parents.clone().iter().cloned().fold(
@@ -359,7 +370,10 @@ pub fn lookup_resolved_sig_with_telemetry(
     }
 }
 
-pub fn lookup_resolved_sig(env: Rc<ResolvedFuncEnv>, name: String) -> Rc<FuncSigLookup> {
+pub fn lookup_resolved_sig(
+    env: Rc<ResolvedFuncEnv>,
+    name: std::string::String,
+) -> Rc<FuncSigLookup> {
     match v1_rt::map_get(&env.local.clone(), name.clone()) {
         Some(sig) => Rc::new(FuncSigLookup::FuncSigResolved {
             sig: sig.clone(),
@@ -414,8 +428,8 @@ pub fn none_resolved_sig_with_owner() -> Option<Rc<ResolvedSigWithOwner>> {
 
 pub fn collect_func_call_edges(
     items: Rc<Vec<Rc<Node>>>,
-    local_func_set: Rc<HashMap<String, bool>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    local_func_set: Rc<HashMap<std::string::String, bool>>,
+    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
 ) -> Rc<Vec<Rc<CallEdge>>> {
     Rc::new({
         let mut __result = Vec::new();
@@ -442,10 +456,10 @@ pub fn collect_func_call_edges(
 }
 
 pub fn collect_calls_in_expr(
-    caller: String,
+    caller: std::string::String,
     texpr: Rc<Node>,
-    local_func_set: Rc<HashMap<String, bool>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    local_func_set: Rc<HashMap<std::string::String, bool>>,
+    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
 ) -> Rc<Vec<Rc<CallEdge>>> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         let this_edges = match (*texpr.expr_data.clone()).clone() {
@@ -485,10 +499,10 @@ pub fn collect_calls_in_expr(
 }
 
 pub fn func_reaches_self(
-    root: String,
-    current: String,
+    root: std::string::String,
+    current: std::string::String,
     call_edges: Rc<Vec<Rc<CallEdge>>>,
-    visited: Rc<HashMap<String, bool>>,
+    visited: Rc<HashMap<std::string::String, bool>>,
 ) -> bool {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         if crate::v1_compiler_infer_types::emit_map_has(visited.clone(), current.clone()) {
@@ -538,10 +552,12 @@ pub fn func_reaches_self(
     })
 }
 
-pub fn build_name_set(names: Rc<Vec<String>>) -> Rc<HashMap<String, bool>> {
+pub fn build_name_set(
+    names: Rc<Vec<std::string::String>>,
+) -> Rc<HashMap<std::string::String, bool>> {
     names.iter().cloned().fold(
-        v1_rt::rc_empty_map::<String, bool>(),
-        |acc: Rc<HashMap<String, bool>>, name: String| {
+        v1_rt::rc_empty_map::<std::string::String, bool>(),
+        |acc: Rc<HashMap<std::string::String, bool>>, name: std::string::String| {
             v1_rt::rc_map_insert(acc, name.clone(), true)
         },
     )
@@ -559,15 +575,16 @@ pub fn declared_to_resolved(dsig: Rc<DeclaredFuncSig>) -> Rc<ResolvedFuncSig> {
 }
 
 pub fn merge_remaining_declared(
-    declared_sigs: Rc<HashMap<String, Rc<DeclaredFuncSig>>>,
-    resolved: Rc<HashMap<String, Rc<ResolvedFuncSig>>>,
-) -> Rc<HashMap<String, Rc<ResolvedFuncSig>>> {
+    declared_sigs: Rc<HashMap<std::string::String, Rc<DeclaredFuncSig>>>,
+    resolved: Rc<HashMap<std::string::String, Rc<ResolvedFuncSig>>>,
+) -> Rc<HashMap<std::string::String, Rc<ResolvedFuncSig>>> {
     Rc::new(v1_rt::map_values(&declared_sigs))
         .iter()
         .cloned()
         .fold(
             resolved.clone(),
-            |acc: Rc<HashMap<String, Rc<ResolvedFuncSig>>>, dsig: Rc<DeclaredFuncSig>| {
+            |acc: Rc<HashMap<std::string::String, Rc<ResolvedFuncSig>>>,
+             dsig: Rc<DeclaredFuncSig>| {
                 if (dsig.inferred.clone() != std::option::Option::None) {
                     v1_rt::rc_map_insert(
                         acc.clone(),
@@ -582,12 +599,12 @@ pub fn merge_remaining_declared(
 }
 
 pub fn topo_resolve_loop(
-    mut remaining: Rc<Vec<String>>,
-    mut resolved: Rc<HashMap<String, Rc<ResolvedFuncSig>>>,
-    mut declared_sigs: Rc<HashMap<String, Rc<DeclaredFuncSig>>>,
+    mut remaining: Rc<Vec<std::string::String>>,
+    mut resolved: Rc<HashMap<std::string::String, Rc<ResolvedFuncSig>>>,
+    mut declared_sigs: Rc<HashMap<std::string::String, Rc<DeclaredFuncSig>>>,
     mut call_edges: Rc<Vec<Rc<CallEdge>>>,
-    mut local_func_set: Rc<HashMap<String, bool>>,
-    mut module_name: String,
+    mut local_func_set: Rc<HashMap<std::string::String, bool>>,
+    mut module_name: std::string::String,
     mut diagnostics: Rc<Vec<Rc<ErrorNode>>>,
     mut parent_envs: Rc<Vec<Rc<ResolvedFuncEnv>>>,
     mut fuel: i64,
@@ -600,7 +617,7 @@ pub fn topo_resolve_loop(
                     .cloned()
                     .fold(
                         resolved.clone(),
-                        |acc: Rc<HashMap<String, Rc<ResolvedFuncSig>>>,
+                        |acc: Rc<HashMap<std::string::String, Rc<ResolvedFuncSig>>>,
                          dsig: Rc<DeclaredFuncSig>| {
                             if (dsig.inferred.clone() != std::option::Option::None) {
                                 v1_rt::rc_map_insert(
@@ -683,7 +700,7 @@ pub fn topo_resolve_loop(
                         signatures: resolved.clone(),
                         diagnostics: Rc::new(vec![]),
                     }),
-                    |acc: Rc<SigsAccum>, fn_name: String| match v1_rt::map_get(
+                    |acc: Rc<SigsAccum>, fn_name: std::string::String| match v1_rt::map_get(
                         &declared_sigs,
                         fn_name.clone(),
                     ) {
@@ -722,7 +739,7 @@ pub fn topo_resolve_loop(
                     .cloned()
                     .fold(
                         cycle_accum.signatures.clone(),
-                        |acc: Rc<HashMap<String, Rc<ResolvedFuncSig>>>,
+                        |acc: Rc<HashMap<std::string::String, Rc<ResolvedFuncSig>>>,
                          dsig: Rc<DeclaredFuncSig>| {
                             if (dsig.inferred.clone() != std::option::Option::None) {
                                 v1_rt::rc_map_insert(
@@ -753,7 +770,7 @@ pub fn topo_resolve_loop(
                 signatures: resolved.clone(),
                 diagnostics: diagnostics.clone(),
             }),
-            |acc: Rc<SigsAccum>, fn_name: String| match v1_rt::map_get(
+            |acc: Rc<SigsAccum>, fn_name: std::string::String| match v1_rt::map_get(
                 &declared_sigs,
                 fn_name.clone(),
             ) {
@@ -788,8 +805,8 @@ pub fn topo_resolve_loop(
             },
         );
         let ready_set = ready.iter().cloned().fold(
-            v1_rt::rc_empty_map::<String, bool>(),
-            |acc: Rc<HashMap<String, bool>>, fn_name: String| {
+            v1_rt::rc_empty_map::<std::string::String, bool>(),
+            |acc: Rc<HashMap<std::string::String, bool>>, fn_name: std::string::String| {
                 v1_rt::rc_map_insert(acc, fn_name.clone(), true)
             },
         );
@@ -821,11 +838,11 @@ pub fn topo_resolve_loop(
 }
 
 pub fn resolve_func_sigs(
-    declared_sigs: Rc<HashMap<String, Rc<DeclaredFuncSig>>>,
+    declared_sigs: Rc<HashMap<std::string::String, Rc<DeclaredFuncSig>>>,
     parent_envs: Rc<Vec<Rc<ResolvedFuncEnv>>>,
     items: Rc<Vec<Rc<Node>>>,
-    module_name: String,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    module_name: std::string::String,
+    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
 ) -> Rc<ResolveFuncSigsResult> {
     {
         let local_func_names = Rc::new({
@@ -859,7 +876,7 @@ pub fn resolve_func_sigs(
         );
         topo_resolve_loop(
             local_func_names.clone(),
-            v1_rt::rc_empty_map::<String, Rc<ResolvedFuncSig>>(),
+            v1_rt::rc_empty_map::<std::string::String, Rc<ResolvedFuncSig>>(),
             declared_sigs.clone(),
             call_edges.clone(),
             local_func_set.clone(),

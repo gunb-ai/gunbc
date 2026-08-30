@@ -23,11 +23,11 @@ use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
 use std::rc::Rc;
 
 pub fn peano_literal_homomorphism(
-    module_path: String,
-    nat: String,
-    zero: String,
-    succ: String,
-    prev_field: String,
+    module_path: std::string::String,
+    nat: std::string::String,
+    zero: std::string::String,
+    succ: std::string::String,
+    prev_field: std::string::String,
 ) -> Rc<LiteralHomomorphism> {
     Rc::new(LiteralHomomorphism {
         source_kind: LiteralSourceKind::KernelIntLiteral,
@@ -41,10 +41,10 @@ pub fn peano_literal_homomorphism(
 }
 
 pub fn boolean_literal_homomorphism(
-    module_path: String,
-    bool_decl: String,
-    true_variant: String,
-    false_variant: String,
+    module_path: std::string::String,
+    bool_decl: std::string::String,
+    true_variant: std::string::String,
+    false_variant: std::string::String,
 ) -> Rc<LiteralHomomorphism> {
     Rc::new(LiteralHomomorphism {
         source_kind: LiteralSourceKind::KernelBoolLiteral,
@@ -73,12 +73,12 @@ pub fn literal_homomorphism_rows() -> Rc<Vec<Rc<LiteralHomomorphism>>> {
 }
 
 pub fn structural_ordering_binding(
-    carrier_module: String,
-    carrier: String,
-    compare_module: String,
-    compare: String,
-    ordering_module: String,
-    ordering: String,
+    carrier_module: std::string::String,
+    carrier: std::string::String,
+    compare_module: std::string::String,
+    compare: std::string::String,
+    ordering_module: std::string::String,
+    ordering: std::string::String,
 ) -> Rc<StructuralOrderingBinding> {
     Rc::new(StructuralOrderingBinding {
         carrier: crate::std_decl_ref::decl_ref(carrier_module.clone(), carrier.clone()),

@@ -77,22 +77,22 @@ pub enum IntegerOverflowSemantics<E> {
     OverflowUndefined,
 }
 
-pub fn std_integer_overflow_semantics_note() -> String {
+pub fn std_integer_overflow_semantics_note() -> std::string::String {
     thread_local! {
-        static CACHED: String = {
+        static CACHED: std::string::String = {
             "P3b PR2 overflow authority: IntegerOverflowSemantics<E> separates return-value rules (wrapping vs saturating) from raise effects (parameter E — panic and trap are different inhabitants of E, not aliases for one arm) and from undefined overflow (its own arm — not a raise and not a return). Honest rung: accepted refinement with executing refusal at language admission boundaries; carriers are directly constructible until sole_constructor or a construction wall lands on E. v2.std.integer OverflowDisposition is the legacy conflated surface (Wrapping|Saturating|UndefinedBehavior|Trapping) — intentionally not migrated in this bounded PR per operator mandate (no corpus-wide overflow defork); feature:overflow-disposition-defork dissolve-on routes language overflow facts through this type and retires OverflowDisposition. Parallel authority is tracked debt with a named trigger, not permission to drift independently.".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c: &std::string::String| c.clone())
 }
 
-pub fn std_integer_std_nat_fork_note() -> String {
+pub fn std_integer_std_nat_fork_note() -> std::string::String {
     thread_local! {
-        static CACHED: String = {
+        static CACHED: std::string::String = {
             "PR1 Signedness lift imports std.nat here, co-resolving std.nat with v2.std.nat in whole-tree compile-clean closures. Known two-std-trees fork: std.nat.Nat = CommutativeSemiring<Magnitude> with std.nat.nat_compare versus v2.std.nat.Nat = Zero|Succ with v2.std.nat.nat_compare — not consolidated in this PR. Per nat-grounding-unification-design (census complete 2026-08-01): DESIGN READY; IMPLEMENTATION LARGE/ATOMIC sequenced with integer+float repoint after bounded P3b PR2 overflow on std.integer (#7511 merged first). Dissolve-on: two-std-trees consolidation lands a single Nat authority and retires the parallel compare fns; until then ambiguous bare references must qualify by containment path (namespace-resolution-design section 13). The bound on the deferral: until the wave lands, a bare reference to Nat or nat_compare in a closure containing both authorities is ambiguous by construction and must be qualified — no consumer may assume a bare name resolves, and the two Nat types are not interchangeable at any call site even where the name matches.".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c: &std::string::String| c.clone())
 }
 
 pub type IntPlatform = crate::std_machine_constraints::Compose<

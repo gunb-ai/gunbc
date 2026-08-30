@@ -17,13 +17,13 @@ use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
 use std::rc::Rc;
 
-pub fn witness_admission_authority_note() -> String {
+pub fn witness_admission_authority_note() -> std::string::String {
     thread_local! {
-        static CACHED: String = {
+        static CACHED: std::string::String = {
             "Phase 0(b) admission invariant (docs/plans/module-identity-storage-binding-design.md): every enrolled witness row names an executing consumer — discovery rows run per selection; SelfEmitted receipts run on the falsifier wet cadence; known-red quarantined rows run on a probe cadence expecting red (greening is a counted un-quarantine event); operator-ruled OFFLINE rows carry an explicit local-recipe consumer. Enrolled-with-zero-consumers is a typed refusal, never silent. The prior dissolve-on FIRED 2026-07-22: witness exclusion rows now carry derived consumer classification on this module's WitnessConsumerCadence authority (gunbc.ci_layer_roots.witness_exclusion_frontier; group-of-units ruling, gunbc.roster_registry). Homed in dag/std (std.witness_admission) so dag-tree consumers resolve it in dag-only closures — the authority moved here from src/v2/std 2026-07-23 when gunbc.ci_layer_roots became a consumer. This module remains the cadence vocabulary authority; dissolves into the enforcement-intent registry when that thread lands.\n\nLIVE-EXECUTION CAVEAT (2026-08-19, dashboard node adhoc-1eb1a9f9-ad9; operator ruling relayed by royal-hawk-392, revised same day to withdraw an earlier restore-the-executor instruction): the sentence above describes what each cadence arm MEANS, not that a scheduler for it is currently running. falsifier.yml, the workflow that scheduled FalsifierSelfHostWet / FalsifierRehomedBinWet / FalsifierSubstrateLongLane / BinWitnessWet / QuarantineProbeExpectRed, was deleted at 611fd02770 (2026-08-15, #8283) — FLOOR-Y's deliberate cut, which reserved re-adding a scheduled executor for a separate future operator agreement rather than restoring or improvising one here. Cadence membership (WitnessConsumerCadence) is a classification of WHICH policy claims a row and stays correct; it is not proof anything executes that row — v2.workflow.witness_admission witness_execution_standing_for_row answers coverage only through DeclaredCadenceUnrealized | WitnessHasExecutingConsumer, gated on a closed per-cadence predicate naming which of the nine cadences presently have a live scheduled route (today: DiscoverySelection, OfflineLocalRecipe, FixtureExplicitRoster only), never on enum membership alone and never on a registry carrier — no WitnessCadenceRealization mechanism exists or is planned by this change. This is a RETROSPECTIVE declaration, not a new drop: the five falsifier-family cadences above lost their executing consumer at 611fd02770/#8283, and every row classified into one of them has read as covered ever since despite executing nowhere. DeclaredCadenceUnrealized types that gap rather than closing it; restoring a scheduled route for any of these cadences is a separate, later operator decision, not implied by this note.".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c: &std::string::String| c.clone())
 }
 
 #[derive(
@@ -146,13 +146,13 @@ pub fn witness_consumer_cadence_eq(a: WitnessConsumerCadence, b: WitnessConsumer
     }
 }
 
-pub fn witness_cadence_has_scheduled_route_note() -> String {
+pub fn witness_cadence_has_scheduled_route_note() -> std::string::String {
     thread_local! {
-        static CACHED: String = {
+        static CACHED: std::string::String = {
             "THE CLOSED PER-CADENCE REALIZATION GATE (added 2026-08-19, dashboard node adhoc-1eb1a9f9-ad9). Cadence membership answers WHICH POLICY a row belongs to; this answers whether that policy currently has anything executing it. It is an exhaustive match over the nine WitnessConsumerCadence arms, not a registry carrier — no WitnessCadenceRealization mechanism exists, per the operator's explicit reversal of an earlier instruction to build one. Today exactly three arms have a live scheduled route: DiscoverySelection (per-PR discovery), OfflineLocalRecipe (an explicit local-recipe consumer is, by definition, the executing consumer), and FixtureExplicitRoster (an explicit admission row IS the enrollment). The five falsifier-family arms — FalsifierSelfHostWet, FalsifierRehomedBinWet, FalsifierSubstrateLongLane, BinWitnessWet, QuarantineProbeExpectRed — return false: falsifier.yml, the workflow that scheduled all five, was deleted at 611fd02770 (2026-08-15, #8283), and no replacement executor exists. NoConsumer also returns false and is unreachable at the one call site that consults this gate, since that site only reaches it after NoConsumer has already been dispatched separately. Restoring a scheduled route for any of the five is a separate, later, explicitly-agreed operator decision — this gate is the mechanical fact of today's state, not a policy choice made here.".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c: &std::string::String| c.clone())
 }
 
 pub fn witness_cadence_has_scheduled_route(cadence: WitnessConsumerCadence) -> bool {
@@ -203,13 +203,13 @@ pub fn witness_consumer_cadence_content_hash_structural(
     }
 }
 
-pub fn witness_admission_axis_separation_note() -> String {
+pub fn witness_admission_axis_separation_note() -> std::string::String {
     thread_local! {
-        static CACHED: String = {
+        static CACHED: std::string::String = {
             "THREE INDEPENDENT AXES, because WHICH CONSUMER RUNS THIS, HOW MUCH TIME IT NEEDS and WHAT VERDICT IS EXPECTED are different facts about one witness, and until this change they were carried on one (operator stop-line, 2026-08-06).\n\nTHE MEASURED DEFECT. WitnessConsumerCadence carried QuarantineProbeExpectRed and FalsifierSubstrateLongLane as sibling arms of one coproduct, and every carrier stored exactly one cadence per witness. A witness that is BOTH expensive AND known-red was therefore inexpressible: the eval ceiling was armed only for a batch whose explicit entries intersected the long-lane batch roster, so an expensive known-red root earned its budget by ALSO joining that batch. gunbc.explicit_witness_admission stated this verbatim as a machinery deficit and paid for it three ways — direct_rust_door_group_root_is_scheduled_exactly_once was RED BY EXECUTION at 2 occurrences; the second occurrence sat on a batch that expects green, so the falsifier alert classified a witness that is red BY DESIGN as a component failure and paged the operator once per heartbeat window (gunbc#7737); and the expectation itself was decided batch-wide on entry PATHS, so file placement and batch homogeneity, not the witness, decided its polarity.\n\nAXIS ONE — WitnessConsumerCadence, above: which consumer executes this witness. A batch roster.\nAXIS TWO — WitnessExecutionBudget: how much eval time this witness requires to reach a verdict at all. It is a property of the WITNESS (what it walks), never of the batch that happens to hold it, so declaring a long budget must not require joining a second batch. The scheduler derives its ceiling from the union of the long-lane batch roster and the rows declaring SubstrateLongLaneEvalBudget here; the residual keeps the fast lane, so a lane that forgets to declare reds loudly at 5s rather than running unbounded (the arm narrows, never widens).\nAXIS THREE — WitnessExpectedVerdict: which result is AGREEMENT. ExpectAssertionFalse means an assertion that RAN and returned false is agreement and unexpected green is a STALE QUARANTINE REFUSAL naming the admission row to delete — never a quiet pass, or the roster accumulates rows nobody revisits, and never an ordinary WitnessRed, or an un-quarantine is indistinguishable from a regression in the alert signature. It is carried at FUNCTION grain on the admission row, so a green sibling in the same file and a mixed batch are both ordinary.\n\nRESIDUAL NICKNAME, COUNTED. The cadence arm is still spelled QuarantineProbeExpectRed while the expectation it names now lives on axis three. The arm remains a real distinct batch, so the name is a nickname for a fact it no longer carries, not a second representation of it: explicit_witness_admission_is_known_red reads the EXPECTATION, and nothing derives polarity from the cadence any more. Dissolve-on: the attempt/evidence algebra (docs/plans/witness-evidence-lifecycle-design.md) retires the arm together with batch-wide inversion, which is the same trigger gunbc.doc_graph_roots already records.".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c: &std::string::String| c.clone())
 }
 
 #[derive(
@@ -221,13 +221,13 @@ pub enum WitnessExecutionBudget {
     SubstrateLongLaneEvalBudget,
 }
 
-pub fn witness_expected_verdict_split_note() -> String {
+pub fn witness_expected_verdict_split_note() -> std::string::String {
     thread_local! {
-        static CACHED: String = {
+        static CACHED: std::string::String = {
             "ExpectWitnessRed SPLIT IN TWO (operator ruling, 2026-08-06). One arm meaning 'this witness is red' let a batch bless an ARBITRARY corpus resolve failure as agreement: with no per-witness outcomes on that path, the executor asked only whether every entry was expected-red and, if so, reported any resolution or evaluation failure as the quarantine holding. That contradicts the rule the same change had just established — agreement means the assertion RAN and returned false — and it is the widest possible reading of a narrow legacy fact.\n\nSome legacy rows genuinely do expect a stop BEFORE any verdict exists: a witness that cannot resolve at all has no assertion to run. The specimen this sentence formerly named — the logic_ground_truth trio, which sat on the imported-bare-variant-constructor resolver gap — was DELETED 2026-08-16 by operator ruling during the floor cut, together with its three admission rows; the ExpectTypedPreVerdictRefusal arm is therefore currently UNINHABITED BY ANY LIVE ROW and is exercised only by the synthetic fixture in exact_witness_admission_witness_test. Those declare ExpectTypedPreVerdictRefusal and name the phase and cause. Everything else declares ExpectAssertionFalse, and for those a resolve failure proves neither the red nor the quarantine — it is an infrastructure fact about the run.\n\nTHE MATCH IS NOT EXACT YET, and that is a bounded compatibility arm rather than a claim. run_claim formats the typed InterpError into a String before ClaimOutcome exists, so the observed cause cannot be compared against the declared one without parsing that prose — which is the mechanism this whole lane exists to remove. So today the declaration GATES the inversion (a row that did not declare a pre-verdict refusal can never reach it) without VERIFYING the cause matches. Dissolve-on: the typed error survives the seam (gunbc.witness_row_cost witness_cost_timed_out_seed_deferral_note, the witness-realization lane), at which point the declared PreVerdictPhase and PreVerdictCause are matched against the observed refusal and a mismatch refuses.".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c: &std::string::String| c.clone())
 }
 
 #[derive(
@@ -239,13 +239,13 @@ pub enum PreVerdictPhase {
     PreVerdictTypecheck,
 }
 
-pub fn pre_verdict_cause_vocabulary_note() -> String {
+pub fn pre_verdict_cause_vocabulary_note() -> std::string::String {
     thread_local! {
-        static CACHED: String = {
+        static CACHED: std::string::String = {
             "A CLOSED VOCABULARY OF DOCUMENTED CAUSES, not a free-text field: a declared expectation whose cause is prose cannot be matched against an observation, which is the whole reason this axis exists. Both arms name a class this repository has diagnosed and owns. UnboundImportedVariantConstructor is a resolver gap owned by the namespace-only-resolution lane — an imported bare variant constructor in expression position does not bind, while patterns-via-scrutinee do. Its only live specimen (the logic_ground_truth trio) was deleted 2026-08-16, so the cause remains declared with no current row citing it; the vocabulary member is retained because deleting a documented cause with its last specimen would make the class unnameable when it recurs. UnresolvedModuleOutsideClosure is the Class B pool-membership defect DESIGN records under the import-strip witness-discovery cascade: a bare cross-module reference resolves only when some unrelated import elsewhere in the assembled closure has already dragged the target into the pool, so the same witness refuses or resolves depending on what else was loaded. No admission row declares the second arm today; it is here because the vocabulary is the set of causes we can name, and a cause we have diagnosed but cannot spell is a cause that gets spelled as prose the next time it appears.".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c: &std::string::String| c.clone())
 }
 
 #[derive(
@@ -288,13 +288,13 @@ impl WitnessExpectedVerdict {
     }
 }
 
-pub fn witness_execution_standing_axis_note() -> String {
+pub fn witness_execution_standing_axis_note() -> std::string::String {
     thread_local! {
-        static CACHED: String = {
+        static CACHED: std::string::String = {
             "TWO INDEPENDENT AXES, because ALLOWED TO REMAIN and HAS AN EXECUTING CONSUMER are different facts and one success arm cannot carry both (operator ruling on gunbc#7804, 2026-08-04). The first shape of the freeze wall returned WitnessAdmissionHolds — the same arm an executing consumer returns — for a frozen legacy row, and then reported the live gate green as evidence that every current row is admitted. But a frozen row has NO executing consumer; that is the entire content of its debt. Freezing establishes that the unexecuted hole existed at the cut and cannot grow. It does not establish coverage, and returning the success arm made the same fact answer differently depending on which door it entered: exact function-grain admission correctly REFUSES OfflineLocalRecipe because a local recipe is not an executing cadence, while path policy was returning success for exactly that.\n\nAXIS ONE — WitnessExecutionStanding, what actually runs this witness. WitnessHasExecutingConsumer is the only arm that means covered, and it carries WHICH cadence so the claim is checkable rather than a bare yes. LegacyFrozenPathDeferral means the identity is in the frozen baseline: tolerated by the migration ratchet, NOT covered, and anything downstream asking whether the behavior is covered must receive no from this arm. UnclassifiedPathDeferral is a row a broad OfflineLocalRecipe path policy claims but the freeze does not — the forward hole, refused. UnexecutedDeferredWitness is a row nothing claims at all; its remedy is to name a cadence or delete the witness, and it is nearly empty while the path-policy class is in the hundreds, which is why one arm would have hidden the larger population behind the rarer one.\n\nAXIS TWO — FrozenBaselineStanding, whether the migration ratchet still holds, a property of the ROSTER rather than of any row. Allowed and Shrank both permit the tolerated arm; Grew and Stale refuse regardless of any individual row, because a baseline that grew is the escape hatch reopening and a baseline naming a departed witness is an exemption the next witness to take that name inherits.\n\nTHE GATES DERIVE, and they are deliberately different: the coverage question admits ONLY WitnessHasExecutingConsumer, so seven hundred dark witnesses never read as covered; the floor gate additionally tolerates LegacyFrozenPathDeferral while axis two holds, so the tree stays green under the ratchet without anything claiming those rows execute.\n\nAXIS ONE, FIFTH ARM (added 2026-08-19, dashboard node adhoc-1eb1a9f9-ad9): DeclaredCadenceUnrealized is distinct from every other refusing arm because it is not a path-policy classification at all — it is an explicit or legacy roster row whose cadence names a real policy (FalsifierSelfHostWet, FalsifierRehomedBinWet, FalsifierSubstrateLongLane, BinWitnessWet, QuarantineProbeExpectRed today) that currently has no scheduled executing route, since falsifier.yml was deleted at 611fd02770 (#8283). It differs from UnexecutedDeferredWitness (nothing claims the row) and from LegacyFrozenPathDeferral (a path-policy tolerance, not a named cadence): here a cadence claims the row and would cover it once realized, but does not today. Like every refusing arm it reads false from both witness_has_executing_consumer and witness_floor_admission_holds — a declared-but-unrealized cadence is not floor-tolerated debt, it is an uncovered gap that happens to already have a name.".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c: &std::string::String| c.clone())
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -304,21 +304,21 @@ pub enum WitnessExecutionStanding {
         cadence: WitnessConsumerCadence,
     },
     LegacyFrozenPathDeferral {
-        entry: String,
-        function: String,
+        entry: std::string::String,
+        function: std::string::String,
     },
     UnclassifiedPathDeferral {
-        entry: String,
-        function: String,
+        entry: std::string::String,
+        function: std::string::String,
     },
     UnexecutedDeferredWitness {
-        entry: String,
-        function: String,
+        entry: std::string::String,
+        function: std::string::String,
     },
     DeclaredCadenceUnrealized {
         cadence: WitnessConsumerCadence,
-        entry: String,
-        function: String,
+        entry: std::string::String,
+        function: std::string::String,
     },
 }
 
@@ -331,13 +331,13 @@ pub enum FrozenBaselineStanding {
     FrozenBaselineDebtStale { stale_count: i64 },
 }
 
-pub fn witness_admission_predicate_dissolution_note() -> String {
+pub fn witness_admission_predicate_dissolution_note() -> std::string::String {
     thread_local! {
-        static CACHED: String = {
+        static CACHED: std::string::String = {
             "witness_consumer_cadence_is_live / witness_admission_refusal_is_holds dissolved per review 39760 — workflow and tests match the coproducts directly (integration 39758 scaffold superseded on this branch).".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c: &std::string::String| c.clone())
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]

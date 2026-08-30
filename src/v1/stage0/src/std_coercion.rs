@@ -11,12 +11,12 @@ use std::rc::Rc;
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct TypeCheckpoint {
-    pub dag_name: String,
-    pub target_type: String,
-    pub grounding_type: String,
-    pub default_expr: Option<String>,
+    pub dag_name: std::string::String,
+    pub target_type: std::string::String,
+    pub grounding_type: std::string::String,
+    pub default_expr: Option<std::string::String>,
     pub is_copy: Option<bool>,
-    pub literal_suffix: Option<String>,
+    pub literal_suffix: Option<std::string::String>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -24,46 +24,46 @@ pub struct TypeCheckpoint {
 pub enum TypeRealizationDecision {
     Realized { checkpoint: Rc<TypeCheckpoint> },
     Unrealized,
-    Refused { cause: String },
+    Refused { cause: std::string::String },
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct InhabitantDecl {
-    pub algebra: String,
-    pub template: String,
+    pub algebra: std::string::String,
+    pub template: std::string::String,
     pub arity: i64,
-    pub identity_expr: Option<String>,
-    pub import_path: Option<String>,
+    pub identity_expr: Option<std::string::String>,
+    pub import_path: Option<std::string::String>,
     pub is_copy: Option<bool>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct CallableRepr {
-    pub template: String,
-    pub param_separator: String,
-    pub return_separator: String,
-    pub import_path: Option<String>,
+    pub template: std::string::String,
+    pub param_separator: std::string::String,
+    pub return_separator: std::string::String,
+    pub import_path: Option<std::string::String>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct CastRule {
-    pub from_type: String,
-    pub to_type: String,
+    pub from_type: std::string::String,
+    pub to_type: std::string::String,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct CastSyntax {
-    pub template: String,
+    pub template: std::string::String,
     pub cast_rules: Rc<Vec<Rc<CastRule>>>,
 }
 
-pub fn grounded_primitive_coproduct_cast_note() -> String {
+pub fn grounded_primitive_coproduct_cast_note() -> std::string::String {
     thread_local! {
-        static CACHED: String = {
+        static CACHED: std::string::String = {
             "The Int->Nat and String->FreeMonoid identities are GROUNDED, not hollow casts (operator Ruling 3, 2026-07-15): a Nat IS an Int (numeric tower grounded construction-side #5428, Zero->Int(0)/Succ->Int(k+1), native form == modeled form) and a String IS a FreeMonoid<Char> (std.string_type: type String = FreeMonoid<Char> — strings over an alphabet are the free monoid). They live in their OWN list, NOT in dag_cast_rules, on purpose: dag_can_cast consults BOTH lists so the wall's kernel_value_declared_type_mismatch stops flagging an Int literal where a Nat is expected (and a String where a FreeMonoid is expected); but is_dag_cast_domain_type reads ONLY dag_cast_rules, so grounding a primitive to a coproduct does NOT drag that coproduct into the explicit-`as`-cast validation domain. Folding them into dag_cast_rules would make Nat/String cast-domain types and newly REJECT pre-existing well-typed casts whose reverse rule is absent (`Nat as Int` in bmc_onboard, `Int as String` in srv3/host_effect were skipped before because their far type was not a domain type) — a regression, not the intent. NON-grounded primitive->coproduct straddles stay red by construction: Bool->FreeMonoid (card_intake), String->Doc (live_deploy), String->AuthScheme (auth) are genuine site bugs with no identity.".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c: &std::string::String| c.clone())
 }
 
 pub fn dag_cast_rules() -> Rc<Vec<Rc<CastRule>>> {
@@ -86,7 +86,7 @@ pub fn grounded_primitive_coproduct_identities() -> Rc<Vec<Rc<CastRule>>> {
     CACHED.with(|c: &Rc<Vec<Rc<CastRule>>>| c.clone())
 }
 
-pub fn dag_can_cast(source_type: String, target_type: String) -> bool {
+pub fn dag_can_cast(source_type: std::string::String, target_type: std::string::String) -> bool {
     ({
         let mut __found = false;
         for r in dag_cast_rules().iter().cloned() {
@@ -112,7 +112,7 @@ pub fn dag_can_cast(source_type: String, target_type: String) -> bool {
     })
 }
 
-pub fn is_dag_cast_domain_type(name: String) -> bool {
+pub fn is_dag_cast_domain_type(name: std::string::String) -> bool {
     {
         let mut __found = false;
         for r in dag_cast_rules().iter().cloned() {

@@ -10,17 +10,15 @@ use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
 use std::rc::Rc;
 
 pub fn compute_in_graph_deps(
-    all_names: Rc<Vec<String>>,
-    deps_map: Rc<HashMap<String, Rc<Vec<String>>>>,
+    all_names: Rc<Vec<std::string::String>>,
+    deps_map: Rc<HashMap<std::string::String, Rc<Vec<std::string::String>>>>,
     name_set: Rc<BTreeSet<String>>,
-) -> Rc<HashMap<String, Rc<Vec<String>>>> {
+) -> Rc<HashMap<std::string::String, Rc<Vec<std::string::String>>>> {
     {
         let result = all_names.iter().cloned().fold(
-            v1_rt::rc_empty_map::<String, Rc<Vec<String>>>(),
-            |acc: Rc<HashMap<String, Rc<Vec<String>>>>, name: String| match v1_rt::map_get(
-                &deps_map,
-                name.clone(),
-            ) {
+            v1_rt::rc_empty_map::<std::string::String, Rc<Vec<std::string::String>>>(),
+            |acc: Rc<HashMap<std::string::String, Rc<Vec<std::string::String>>>>,
+             name: std::string::String| match v1_rt::map_get(&deps_map, name.clone()) {
                 Some(deps) => {
                     let local = Rc::new({
                         let mut __result = Vec::new();
@@ -43,18 +41,17 @@ pub fn compute_in_graph_deps(
 }
 
 pub fn build_reverse_adj(
-    all_names: Rc<Vec<String>>,
-    local_deps: Rc<HashMap<String, Rc<Vec<String>>>>,
-) -> Rc<HashMap<String, Rc<Vec<String>>>> {
+    all_names: Rc<Vec<std::string::String>>,
+    local_deps: Rc<HashMap<std::string::String, Rc<Vec<std::string::String>>>>,
+) -> Rc<HashMap<std::string::String, Rc<Vec<std::string::String>>>> {
     all_names.iter().cloned().fold(
-        v1_rt::rc_empty_map::<String, Rc<Vec<String>>>(),
-        |acc: Rc<HashMap<String, Rc<Vec<String>>>>, name: String| match v1_rt::map_get(
-            &local_deps,
-            name.clone(),
-        ) {
+        v1_rt::rc_empty_map::<std::string::String, Rc<Vec<std::string::String>>>(),
+        |acc: Rc<HashMap<std::string::String, Rc<Vec<std::string::String>>>>,
+         name: std::string::String| match v1_rt::map_get(&local_deps, name.clone()) {
             Some(deps) => deps.iter().cloned().fold(
                 acc.clone(),
-                |inner_acc: Rc<HashMap<String, Rc<Vec<String>>>>, dep: String| {
+                |inner_acc: Rc<HashMap<std::string::String, Rc<Vec<std::string::String>>>>,
+                 dep: std::string::String| {
                     let existing = match v1_rt::map_get(&inner_acc, dep.clone()) {
                         Some(v) => v.clone(),
                         None => Rc::new(vec![]),
@@ -72,12 +69,12 @@ pub fn build_reverse_adj(
 }
 
 pub fn build_in_degree(
-    all_names: Rc<Vec<String>>,
-    local_deps: Rc<HashMap<String, Rc<Vec<String>>>>,
-) -> Rc<HashMap<String, i64>> {
+    all_names: Rc<Vec<std::string::String>>,
+    local_deps: Rc<HashMap<std::string::String, Rc<Vec<std::string::String>>>>,
+) -> Rc<HashMap<std::string::String, i64>> {
     all_names.iter().cloned().fold(
-        v1_rt::rc_empty_map::<String, i64>(),
-        |acc: Rc<HashMap<String, i64>>, name: String| {
+        v1_rt::rc_empty_map::<std::string::String, i64>(),
+        |acc: Rc<HashMap<std::string::String, i64>>, name: std::string::String| {
             let deg = match v1_rt::map_get(&local_deps, name.clone()) {
                 Some(deps) => (deps.clone().len() as i64),
                 None => 0,
@@ -88,9 +85,9 @@ pub fn build_in_degree(
 }
 
 pub fn kahn_remove_loop(
-    remaining: Rc<Vec<String>>,
-    local_deps: Rc<HashMap<String, Rc<Vec<String>>>>,
-) -> Rc<Vec<String>> {
+    remaining: Rc<Vec<std::string::String>>,
+    local_deps: Rc<HashMap<std::string::String, Rc<Vec<std::string::String>>>>,
+) -> Rc<Vec<std::string::String>> {
     {
         let reverse_adj = build_reverse_adj(remaining.clone(), local_deps.clone());
         let in_degree = build_in_degree(remaining.clone(), local_deps.clone());
@@ -134,14 +131,14 @@ pub fn kahn_remove_loop(
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct KahnState {
-    pub in_degree: Rc<HashMap<String, i64>>,
+    pub in_degree: Rc<HashMap<std::string::String, i64>>,
     pub removed_count: i64,
 }
 
 pub fn kahn_cycle_drain(
-    mut queue: Rc<Vec<String>>,
-    mut in_degree: Rc<HashMap<String, i64>>,
-    mut reverse_adj: Rc<HashMap<String, Rc<Vec<String>>>>,
+    mut queue: Rc<Vec<std::string::String>>,
+    mut in_degree: Rc<HashMap<std::string::String, i64>>,
+    mut reverse_adj: Rc<HashMap<std::string::String, Rc<Vec<std::string::String>>>>,
     mut removed_count: i64,
     mut fuel: i64,
 ) -> Rc<KahnState> {
@@ -157,7 +154,7 @@ pub fn kahn_cycle_drain(
                 in_degree: in_degree.clone(),
                 removed_count: removed_count.clone(),
             }),
-            |state: Rc<KahnState>, node: String| {
+            |state: Rc<KahnState>, node: std::string::String| {
                 let state = v1_rt::take_owned(state);
                 {
                     let dependents = match v1_rt::map_get(&reverse_adj, node.clone()) {
@@ -166,7 +163,8 @@ pub fn kahn_cycle_drain(
                     };
                     let new_deg = dependents.iter().cloned().fold(
                         state.in_degree,
-                        |deg_acc: Rc<HashMap<String, i64>>, dep: String| {
+                        |deg_acc: Rc<HashMap<std::string::String, i64>>,
+                         dep: std::string::String| {
                             let old = match v1_rt::map_get(&deg_acc, dep.clone()) {
                                 Some(d) => d.clone(),
                                 None => 0,
@@ -181,30 +179,29 @@ pub fn kahn_cycle_drain(
                 }
             },
         );
-        let next_queue =
-            queue
-                .iter()
-                .cloned()
-                .fold(Rc::new(vec![]), |acc: Rc<Vec<String>>, node: String| {
-                    let dependents = match v1_rt::map_get(&reverse_adj, node.clone()) {
-                        Some(v) => v.clone(),
-                        None => Rc::new(vec![]),
-                    };
-                    dependents.iter().cloned().fold(
-                        acc,
-                        |inner_acc: Rc<Vec<String>>, dep: String| {
-                            let deg = match v1_rt::map_get(&result.in_degree.clone(), dep.clone()) {
-                                Some(d) => d.clone(),
-                                None => 0,
-                            };
-                            if (deg.clone() == 0) {
-                                v1_rt::rc_list_push(inner_acc.clone(), dep.clone())
-                            } else {
-                                inner_acc.clone()
-                            }
-                        },
-                    )
-                });
+        let next_queue = queue.iter().cloned().fold(
+            Rc::new(vec![]),
+            |acc: Rc<Vec<std::string::String>>, node: std::string::String| {
+                let dependents = match v1_rt::map_get(&reverse_adj, node.clone()) {
+                    Some(v) => v.clone(),
+                    None => Rc::new(vec![]),
+                };
+                dependents.iter().cloned().fold(
+                    acc,
+                    |inner_acc: Rc<Vec<std::string::String>>, dep: std::string::String| {
+                        let deg = match v1_rt::map_get(&result.in_degree.clone(), dep.clone()) {
+                            Some(d) => d.clone(),
+                            None => 0,
+                        };
+                        if (deg.clone() == 0) {
+                            v1_rt::rc_list_push(inner_acc.clone(), dep.clone())
+                        } else {
+                            inner_acc.clone()
+                        }
+                    },
+                )
+            },
+        );
         {
             let __tco_0 = next_queue.clone();
             let __tco_1 = result.in_degree.clone();
@@ -220,9 +217,9 @@ pub fn kahn_cycle_drain(
 }
 
 pub fn detect_type_cycles_kahn(
-    deps_map: Rc<HashMap<String, Rc<Vec<String>>>>,
-    bindings: Rc<HashMap<String, Rc<TypeBinding>>>,
-) -> Rc<Vec<String>> {
+    deps_map: Rc<HashMap<std::string::String, Rc<Vec<std::string::String>>>>,
+    bindings: Rc<HashMap<std::string::String, Rc<TypeBinding>>>,
+) -> Rc<Vec<std::string::String>> {
     {
         let all_names = Rc::new({
             let mut __result = Vec::new();
@@ -231,12 +228,10 @@ pub fn detect_type_cycles_kahn(
             }
             __result
         });
-        let name_set = all_names
-            .iter()
-            .cloned()
-            .fold(v1_rt::rc_empty_set::<_>(), |acc: _, n: String| {
-                v1_rt::rc_set_insert(acc, n.clone())
-            });
+        let name_set = all_names.iter().cloned().fold(
+            v1_rt::rc_empty_set::<_>(),
+            |acc: _, n: std::string::String| v1_rt::rc_set_insert(acc, n.clone()),
+        );
         let local_deps =
             compute_in_graph_deps(all_names.clone(), deps_map.clone(), name_set.clone());
         let self_refs = Rc::new({
@@ -261,16 +256,14 @@ pub fn detect_type_cycles_kahn(
             __result
         });
         let cycle_members = kahn_remove_loop(all_names.clone(), local_deps.clone());
-        let sr_set = self_refs
-            .iter()
-            .cloned()
-            .fold(v1_rt::rc_empty_set::<_>(), |acc: _, n: String| {
-                v1_rt::rc_set_insert(acc, n.clone())
-            });
+        let sr_set = self_refs.iter().cloned().fold(
+            v1_rt::rc_empty_set::<_>(),
+            |acc: _, n: std::string::String| v1_rt::rc_set_insert(acc, n.clone()),
+        );
         let cm_set = cycle_members
             .iter()
             .cloned()
-            .fold(sr_set.clone(), |acc: _, n: String| {
+            .fold(sr_set.clone(), |acc: _, n: std::string::String| {
                 v1_rt::rc_set_insert(acc, n.clone())
             });
         let result = Rc::new({

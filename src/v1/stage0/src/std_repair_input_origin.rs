@@ -16,11 +16,11 @@ use std::rc::Rc;
 #[serde(tag = "_variant")]
 pub enum CandidateSpelling {
     BareCandidate {
-        name: String,
+        name: std::string::String,
     },
     QualifiedCandidate {
-        authored_qualifier: String,
-        member: String,
+        authored_qualifier: std::string::String,
+        member: std::string::String,
     },
 }
 
@@ -41,15 +41,15 @@ pub struct RenderedTypeSurfaceOrigin;
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct SourceCarrierCandidateIdentity {
-    pub emitting_module: String,
+    pub emitting_module: std::string::String,
     pub candidate_spelling: Rc<CandidateSpelling>,
     pub producer_origin: SourceCarrierOrigin,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct RenderedTargetVocabularyIdentity {
-    pub emitting_module: String,
-    pub rendered_identifier: String,
+    pub emitting_module: std::string::String,
+    pub rendered_identifier: std::string::String,
     pub producer_origin: RenderedTypeSurfaceOrigin,
 }
 
@@ -64,7 +64,7 @@ pub enum RepairInputOriginCandidate {
     },
 }
 
-pub fn candidate_spelling_from_text(name: String) -> Rc<CandidateSpelling> {
+pub fn candidate_spelling_from_text(name: std::string::String) -> Rc<CandidateSpelling> {
     {
         let segments = Rc::new(
             name.clone()
@@ -95,8 +95,8 @@ pub fn candidate_spelling_from_text(name: String) -> Rc<CandidateSpelling> {
 }
 
 pub fn source_origin_candidates(
-    emitting_module: String,
-    names: Rc<Vec<String>>,
+    emitting_module: std::string::String,
+    names: Rc<Vec<std::string::String>>,
     origin: SourceCarrierOrigin,
 ) -> Rc<Vec<Rc<RepairInputOriginCandidate>>> {
     Rc::new({
@@ -117,8 +117,8 @@ pub fn source_origin_candidates(
 }
 
 pub fn rendered_origin_candidates(
-    emitting_module: String,
-    names: Rc<Vec<String>>,
+    emitting_module: std::string::String,
+    names: Rc<Vec<std::string::String>>,
 ) -> Rc<Vec<Rc<RepairInputOriginCandidate>>> {
     Rc::new({
         let mut __result = Vec::new();
@@ -138,13 +138,13 @@ pub fn rendered_origin_candidates(
 }
 
 pub fn repair_input_origin_candidates(
-    emitting_module: String,
-    unlisted_type_names: Rc<Vec<String>>,
-    value_reference_names: Rc<Vec<String>>,
-    item_emit_surface_names: Rc<Vec<String>>,
-    field_import_surface_names: Rc<Vec<String>>,
-    variant_payload_surface_names: Rc<Vec<String>>,
-    rendered_type_surface_names: Rc<Vec<String>>,
+    emitting_module: std::string::String,
+    unlisted_type_names: Rc<Vec<std::string::String>>,
+    value_reference_names: Rc<Vec<std::string::String>>,
+    item_emit_surface_names: Rc<Vec<std::string::String>>,
+    field_import_surface_names: Rc<Vec<std::string::String>>,
+    variant_payload_surface_names: Rc<Vec<std::string::String>>,
+    rendered_type_surface_names: Rc<Vec<std::string::String>>,
 ) -> Rc<Vec<Rc<RepairInputOriginCandidate>>> {
     v1_rt::concat(
         source_origin_candidates(
@@ -187,7 +187,9 @@ pub fn repair_input_origin_candidates(
     )
 }
 
-pub fn repair_input_origin_candidate_name(candidate: Rc<RepairInputOriginCandidate>) -> String {
+pub fn repair_input_origin_candidate_name(
+    candidate: Rc<RepairInputOriginCandidate>,
+) -> std::string::String {
     match (*candidate.clone()).clone() {
         RepairInputOriginCandidate::SourceCarrierCandidate {
             identity: identity, ..
@@ -210,7 +212,7 @@ pub fn repair_input_origin_candidate_name(candidate: Rc<RepairInputOriginCandida
 
 pub fn repair_input_origin_compatibility_names(
     candidates: Rc<Vec<Rc<RepairInputOriginCandidate>>>,
-) -> Rc<Vec<String>> {
+) -> Rc<Vec<std::string::String>> {
     Rc::new({
         let mut __result = Vec::new();
         for candidate in candidates.iter().cloned() {
@@ -222,7 +224,7 @@ pub fn repair_input_origin_compatibility_names(
 
 pub fn qualified_item_emit_surface_compatibility_names(
     candidates: Rc<Vec<Rc<RepairInputOriginCandidate>>>,
-) -> Rc<Vec<String>> {
+) -> Rc<Vec<std::string::String>> {
     Rc::new({
         let mut __result = Vec::new();
         for candidate in candidates.iter().cloned() {

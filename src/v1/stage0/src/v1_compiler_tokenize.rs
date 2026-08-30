@@ -32,16 +32,16 @@ use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
 use std::rc::Rc;
 
-pub fn is_keyword_text(text: String) -> bool {
+pub fn is_keyword_text(text: std::string::String) -> bool {
     match v1_rt::lookup(&dag_keyword_set(), text.clone()) {
         Some(_) => true,
         None => false,
     }
 }
 
-pub fn single_punct() -> Rc<HashMap<String, TokenShape>> {
+pub fn single_punct() -> Rc<HashMap<std::string::String, TokenShape>> {
     thread_local! {
-        static CACHED: Rc<HashMap<String, TokenShape>> = {
+        static CACHED: Rc<HashMap<std::string::String, TokenShape>> = {
             let mut __m = HashMap::new();
             __m.insert("(".to_string(), TokenShape::ShLParen);
             __m.insert(")".to_string(), TokenShape::ShRParen);
@@ -58,7 +58,7 @@ pub fn single_punct() -> Rc<HashMap<String, TokenShape>> {
             Rc::new(__m)
         };
     }
-    CACHED.with(|c: &Rc<HashMap<String, TokenShape>>| c.clone())
+    CACHED.with(|c: &Rc<HashMap<std::string::String, TokenShape>>| c.clone())
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -69,13 +69,13 @@ pub struct TokenizerState {
     pub interp_depth: Rc<Vec<i64>>,
 }
 
-pub fn v1_scan_step_note() -> String {
+pub fn v1_scan_step_note() -> std::string::String {
     thread_local! {
-        static CACHED: String = {
+        static CACHED: std::string::String = {
             "scan_next_token used to return exactly one Token, which encoded the assumption that every lexeme becomes one. An annotation breaks that: it consumes source and produces NO semantic token. Rather than smuggle it through as a token the parser must filter — the TokenRule mistake DESIGN 4c names — the scan result becomes a sum, and the caller decides which accumulator it lands in.".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c: &std::string::String| c.clone())
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -91,13 +91,13 @@ pub enum ScanStep {
     },
 }
 
-pub fn v1_tokenize_artifact_note() -> String {
+pub fn v1_tokenize_artifact_note() -> std::string::String {
     thread_local! {
-        static CACHED: String = {
+        static CACHED: std::string::String = {
             "tokenize keeps returning List<Token> and is the SEMANTIC PROJECTION, so every existing caller (compile.dag, the parser, the Rust seed tests) is untouched by construction. tokenize_artifact is the authored result. The projection direction is one-way on purpose: a semantic consumer cannot reach annotation text.".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c: &std::string::String| c.clone())
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -121,12 +121,12 @@ pub struct ScanResult {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct SourceRef {
-    pub file: String,
-    pub text: String,
+    pub file: std::string::String,
+    pub text: std::string::String,
     pub source_chars: Rc<Vec<i64>>,
 }
 
-pub fn make_token(text: String, span: Rc<SourceSpan>, shape: TokenShape) -> Rc<Token> {
+pub fn make_token(text: std::string::String, span: Rc<SourceSpan>, shape: TokenShape) -> Rc<Token> {
     Rc::new(Token {
         text: text.clone(),
         span: span.clone(),
@@ -134,7 +134,7 @@ pub fn make_token(text: String, span: Rc<SourceSpan>, shape: TokenShape) -> Rc<T
     })
 }
 
-pub fn source_char(source: Rc<SourceRef>, pos: i64) -> String {
+pub fn source_char(source: Rc<SourceRef>, pos: i64) -> std::string::String {
     v1_rt::from_code_point(source.source_chars.clone()[(pos.clone()) as usize].clone())
 }
 
@@ -149,7 +149,7 @@ pub fn source_len(source: Rc<SourceRef>) -> i64 {
     (source.source_chars.clone().len() as i64)
 }
 
-pub fn source_substring(source: Rc<SourceRef>, start: i64, end: i64) -> String {
+pub fn source_substring(source: Rc<SourceRef>, start: i64, end: i64) -> std::string::String {
     v1_rt::chars_to_string(&source.source_chars.clone(), start.clone(), end.clone())
 }
 
@@ -212,7 +212,10 @@ pub fn source_scan_to_eol(mut source: Rc<SourceRef>, mut start: i64) -> i64 {
     }
 }
 
-pub fn tokenize_artifact(source: String, file: String) -> Rc<V1LexArtifact> {
+pub fn tokenize_artifact(
+    source: std::string::String,
+    file: std::string::String,
+) -> Rc<V1LexArtifact> {
     {
         let c = Rc::new(source.clone().chars().map(|c| c as i64).collect::<Vec<_>>());
         let src = Rc::new(SourceRef {
@@ -246,19 +249,19 @@ pub fn tokenize_artifact(source: String, file: String) -> Rc<V1LexArtifact> {
     }
 }
 
-pub fn tokenize(source: String, file: String) -> Rc<Vec<Rc<Token>>> {
+pub fn tokenize(source: std::string::String, file: std::string::String) -> Rc<Vec<Rc<Token>>> {
     tokenize_artifact(source.clone(), file.clone())
         .tokens
         .clone()
 }
 
-pub fn v1_line_prefix_note() -> String {
+pub fn v1_line_prefix_note() -> std::string::String {
     thread_local! {
-        static CACHED: String = {
+        static CACHED: std::string::String = {
             "The seed reads the PHYSICAL LINE PREFIX directly instead of threading a `have I seen a semantic token` flag. It can, because it holds the whole source and an index: source_line_start walks back to just after the previous line feed, and the shared std.source_annotation fold then judges the slice between there and the annotation.\n\nThis is the same rule the modeled lexer applies, not a second one — that lexer walks lexemes and so must thread the state forward, while this one can look back. Only the way each obtains the code points differs. Removing the flag also removes the failure it invited: the flag was set by token CATEGORY, which is wrong for any grammar whose tokens may themselves contain line feeds.\n\nThe backward walk stops at the previous line feed, so it costs one line, not one file.".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c: &std::string::String| c.clone())
 }
 
 pub fn source_line_start(mut source: Rc<SourceRef>, mut pos: i64) -> i64 {
@@ -279,13 +282,13 @@ pub fn source_line_start(mut source: Rc<SourceRef>, mut pos: i64) -> i64 {
     }
 }
 
-pub fn v1_blank_line_lookback_note() -> String {
+pub fn v1_blank_line_lookback_note() -> std::string::String {
     thread_local! {
-        static CACHED: String = {
+        static CACHED: std::string::String = {
             "Whether a blank line precedes the annotation, observed here because it cannot be observed later — the whitespace between two captures is consumed before the parser sees anything, so by attachment time two adjacent comment lines and two blocks separated by a blank line are indistinguishable.\n\nThe previous line is the text between the line start before this one and this line's start. It is blank exactly when that text is indentation only, which is the SAME predicate placement uses, so a blank line and an indent-only prefix are one concept read at two positions rather than two spellings of whitespace. An annotation on the first line of a file has no previous line and is not preceded by one. The walk is bounded by one line.".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c: &std::string::String| c.clone())
 }
 
 pub fn preceded_by_blank_line(source: Rc<SourceRef>, pos: i64) -> bool {
@@ -306,13 +309,13 @@ pub fn preceded_by_blank_line(source: Rc<SourceRef>, pos: i64) -> bool {
     }
 }
 
-pub fn v1_annotation_line_lookback_note() -> String {
+pub fn v1_annotation_line_lookback_note() -> std::string::String {
     thread_local! {
-        static CACHED: String = {
+        static CACHED: std::string::String = {
             "Whether the previous line is a STANDALONE annotation line — indentation then the `//` delimiter — observed here beside preceded_by_blank_line for the same reason it is: the physical lines are consumed before attachment runs, so block continuation cannot be re-derived later. A trailing comment on a code line deliberately does not count. The rule this bit feeds treats an annotation-preceded capture as a continuation of the block the previous line belongs to; a capture under a code line continues nothing, whatever that code line happens to carry after its code. The walk is bounded by one line.".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c: &std::string::String| c.clone())
 }
 
 pub fn tokenize_line_first_content_pos(
@@ -763,9 +766,9 @@ pub fn scan_token(source: Rc<SourceRef>, pos: Rc<TokPos>, ch: i64) -> Rc<ScanRes
 pub fn emit(
     pos: Rc<TokPos>,
     shape: TokenShape,
-    text: String,
+    text: std::string::String,
     len: i64,
-    file: String,
+    file: std::string::String,
 ) -> Rc<ScanResult> {
     {
         let token = make_token(
@@ -887,11 +890,11 @@ impl StringScanResult {
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum EscapeProcessResult {
-    EscapesProcessed { text: String },
+    EscapesProcessed { text: std::string::String },
     EscapeProcessingRefused,
 }
 impl EscapeProcessResult {
-    pub fn text(&self) -> String {
+    pub fn text(&self) -> std::string::String {
         match self {
             EscapeProcessResult::EscapesProcessed { text: __val, .. } => __val.clone(),
             EscapeProcessResult::EscapeProcessingRefused => panic!("no text on unit variant"),
@@ -1145,62 +1148,62 @@ pub fn process_escapes(chars: Rc<Vec<i64>>) -> Rc<EscapeProcessResult> {
     process_escapes_loop(chars.clone(), 0, Rc::new(vec![]))
 }
 
-pub fn code_point_at_accessor_note() -> String {
+pub fn code_point_at_accessor_note() -> std::string::String {
     thread_local! {
-        static CACHED: String = {
+        static CACHED: std::string::String = {
             "Why this accessor exists rather than indexing inline. `04_access.check_index_access_node` types a list index as OPTIONAL (`with_optional_cardinality`) — an out-of-range index has no value — but the Rust realization of an index is a bare element that panics out of range. The two disagree, so wherever the emitter acts on the declared type it emits a coercion the realization cannot satisfy: passing `chars[i]` straight to a declared fn parameter emits `.expect(...)` on an `i64` (E0599). Untouched positions — a let binding, a comparison, arithmetic, a builtin call — happen to line up, which is why the corpus has exactly one prior index-as-argument site and it calls the BUILTIN `from_code_point`. This accessor is the same shape as `source_code_point` and `source_char` above: a declared `-> Int` return is what carries the value across a fn boundary. It works because return position is not checked against the body (recorded on the finalization carrier, #7481), so it is borrowed load-bearing behavior, not a guarantee. Dissolves together with those two when the index model and its realization are reconciled — either the index realizes as an Option or it types as the element — at which point return-position typechecking would red all three at once.".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c: &std::string::String| c.clone())
 }
 
 pub fn code_point_at(chars: Rc<Vec<i64>>, pos: i64) -> i64 {
     chars.clone()[(pos.clone()) as usize].clone()
 }
 
-pub fn escape_code_point_table_note() -> String {
+pub fn escape_code_point_table_note() -> std::string::String {
     thread_local! {
-        static CACHED: String = {
+        static CACHED: std::string::String = {
             "The escape table below is written in code points because the whole tokenizer is: scan_token compares `ch == 61 && next_ch == 62` for `=>`, source_scan_to_eol compares `== 10`. The decimal literals here are the same alphabet: 34 double-quote, 48 `0`, 92 backslash, 110 `n`, 114 `r`, 116 `t`, 117 `u`, 120 `x`, 123 open-brace, 125 close-brace; the values they resolve TO include 0 NUL, 10 line-feed, 13 carriage-return, and 9 tab. This function used to compare one-character Strings instead, which is what forced it to re-index a raw String and made it the last quadratic scan in the file.".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c: &std::string::String| c.clone())
 }
 
-pub fn escape_receipt_seed_growth_mark() -> String {
+pub fn escape_receipt_seed_growth_mark() -> std::string::String {
     thread_local! {
-        static CACHED: String = {
+        static CACHED: std::string::String = {
             "🟡 Seed-growth mark (v1-test class): src/v1/stage0/tests/tokenize_escape_receipt.rs is hand-written Rust added to the v1 seed tree, counted here rather than left silent. The discovery-enrolled .dag wall in test.claim.string_brace_escape_witness_test constructs malformed source at runtime and executes the production v1 compile path, so malformed and unknown escape refusal is enforced in CI. The Rust receipt retains finer token identity, spelling, file and full-span assertions plus the decode table. Its wall-clock cost separation stays #[ignore]d because contention can fail correct code and the available work counter does not instrument char_at/string_length. This file does not enter the hand-maintained stage0 module ratchet because tests/ is not a crate module. DISSOLVES ON the v1 terminal deletion path, when the coverage moves under the v1-test-migration bar and this hand-written receipt deletes with src/v1. The benchmark half can dissolve earlier when a structural lens rejects per-character raw-String index walks.".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c: &std::string::String| c.clone())
 }
 
-pub fn hex_escape_note() -> String {
+pub fn hex_escape_note() -> std::string::String {
     thread_local! {
-        static CACHED: String = {
+        static CACHED: std::string::String = {
             "\\xNN decodes to the byte NN names. Before this arm every \\x fell through to the unknown-escape branch below, which preserves the backslash literally — so every ANSI code authored in .dag (extdeps.render.ansi.csi_esc, extdeps.render.terminal's reset, gunbc.ci_render's red/reset) emitted the six characters backslash-x-1-b instead of ESC, and no colour this repo authored had ever rendered. The witness that was supposed to catch it compared one undecoded literal against another, so it agreed with itself and could not fail (DESIGN §5 — a check satisfied by editing the declaration while the realization lies).".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c: &std::string::String| c.clone())
 }
 
-pub fn unicode_escape_note() -> String {
+pub fn unicode_escape_note() -> std::string::String {
     thread_local! {
-        static CACHED: String = {
+        static CACHED: std::string::String = {
             "\\u{H...} decodes one to six hexadecimal digits to one Unicode scalar value. The shared std.unicode.types.unicode_scalar authority denoted by the Char refinement is checked before chars_to_string, so values above 0x10FFFF and the UTF-16 surrogate interval refuse instead of disappearing in runtime conversion. Before this arm every \\u escape fell through to unknown-escape passthrough as eight or more literal characters. That made extdeps.render.ansi's 32 ECMA-48 C1 rows inert and, more severely, made effect_plan_bash_materialize's NUL guard look for printable escape text instead of NUL. The scanner consumes the opening brace with the escape prefix so a valid hex digit A-F cannot be misread as an interpolation start; digit accumulation remains owned by this decoder rather than duplicated into the span scan.".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c: &std::string::String| c.clone())
 }
 
-pub fn unknown_escape_refusal_note() -> String {
+pub fn unknown_escape_refusal_note() -> std::string::String {
     thread_local! {
-        static CACHED: String = {
+        static CACHED: std::string::String = {
             "An escape marker has already entered a closed grammar production, so an unrecognized or malformed escape refuses as one located ShUnknown string token; it never returns a successfully decoded prefix and never copies unsupported syntax into an accepted value. A literal backslash is spelled \\\\. The former passthrough arm made unsupported syntax indistinguishable from supported syntax and was the root class behind the inert Unicode escapes. Its 142-site regex-heavy corpus frontier migrated with this close, and the whole corpus is the receipt because every source passes through this tokenizer.".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c: &std::string::String| c.clone())
 }
 
 pub fn hex_digit_value(cp: i64) -> Option<i64> {
@@ -1452,7 +1455,7 @@ pub fn is_hex_upper_digit(ch: i64) -> bool {
     (((ch.clone() >= 48) && (ch.clone() <= 57)) || ((ch.clone() >= 65) && (ch.clone() <= 70)))
 }
 
-pub fn all_hex_upper_in_range(mut text: String, mut pos: i64, mut end: i64) -> bool {
+pub fn all_hex_upper_in_range(mut text: std::string::String, mut pos: i64, mut end: i64) -> bool {
     loop {
         if (pos.clone() >= end.clone()) {
             break true;
@@ -1472,8 +1475,8 @@ pub fn all_hex_upper_in_range(mut text: String, mut pos: i64, mut end: i64) -> b
 }
 
 pub fn sentinel_prefix_matches(
-    mut text: String,
-    mut prefix: String,
+    mut text: std::string::String,
+    mut prefix: std::string::String,
     mut pos: i64,
     mut len: i64,
 ) -> bool {
@@ -1497,8 +1500,8 @@ pub fn sentinel_prefix_matches(
 }
 
 pub fn sentinel_suffix_matches(
-    mut text: String,
-    mut suffix: String,
+    mut text: std::string::String,
+    mut suffix: std::string::String,
     mut pos: i64,
     mut sfx_len: i64,
     mut text_start: i64,
@@ -1522,7 +1525,7 @@ pub fn sentinel_suffix_matches(
     }
 }
 
-pub fn is_reserved_emit_sentinel(text: String) -> bool {
+pub fn is_reserved_emit_sentinel(text: std::string::String) -> bool {
     {
         let rule = crate::v1_compiler_languages::canonical_emoji_char_escape();
         let pfx = rule.prefix.clone();

@@ -99,9 +99,9 @@ pub fn compiler_inductive_fields() -> Rc<Vec<Rc<InductiveField>>> {
     CACHED.with(|c: &Rc<Vec<Rc<InductiveField>>>| c.clone())
 }
 
-pub fn compiler_recursive_types() -> Rc<HashMap<String, bool>> {
+pub fn compiler_recursive_types() -> Rc<HashMap<std::string::String, bool>> {
     thread_local! {
-        static CACHED: Rc<HashMap<String, bool>> = {
+        static CACHED: Rc<HashMap<std::string::String, bool>> = {
             let mut __m = HashMap::new();
             __m.insert("Node".to_string(), true);
             __m.insert("InferredNode".to_string(), true);
@@ -110,10 +110,10 @@ pub fn compiler_recursive_types() -> Rc<HashMap<String, bool>> {
             Rc::new(__m)
         };
     }
-    CACHED.with(|c: &Rc<HashMap<String, bool>>| c.clone())
+    CACHED.with(|c: &Rc<HashMap<std::string::String, bool>>| c.clone())
 }
 
-pub fn is_compiler_recursive_type(name: String) -> bool {
+pub fn is_compiler_recursive_type(name: std::string::String) -> bool {
     match v1_rt::map_get(&compiler_recursive_types(), name.clone()) {
         Some(_) => true,
         None => false,

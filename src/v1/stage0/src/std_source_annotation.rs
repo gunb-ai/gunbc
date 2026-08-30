@@ -26,7 +26,7 @@ pub enum AnnotationPlacement {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct UnboundAnnotationCapture {
-    pub lexeme: String,
+    pub lexeme: std::string::String,
     pub origin: Rc<SourceSpan>,
     pub placement: AnnotationPlacement,
     pub preceded_by_blank_line: bool,
@@ -36,7 +36,7 @@ pub struct UnboundAnnotationCapture {
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct SourceAnnotationDebt {
     pub subject: OccurrenceId,
-    pub text: String,
+    pub text: std::string::String,
     pub origin: Rc<SourceSpan>,
 }
 
@@ -95,7 +95,9 @@ pub fn annotation_attachment_refusal_origin(
     }
 }
 
-pub fn annotation_attachment_refusal_message(refusal: Rc<AnnotationAttachmentRefusal>) -> String {
+pub fn annotation_attachment_refusal_message(
+    refusal: Rc<AnnotationAttachmentRefusal>,
+) -> std::string::String {
     match (*refusal.clone()).clone() {
     AnnotationAttachmentRefusal::UnattachedAtScopeEnd { origin: _, .. } => "source annotation names no subject: no module item follows it. Move it above the declaration it describes.".to_string(),
     AnnotationAttachmentRefusal::TrailingNotModeled { origin: _, .. } => "source annotation follows code on its own line. Trailing placement has no attachment rule yet; move it to its own line above the declaration.".to_string(),
@@ -137,13 +139,13 @@ pub fn non_empty_refusals_all(
     v1_rt::concat(Rc::new(vec![refusals.head.clone()]), refusals.tail.clone())
 }
 
-pub fn annotation_admission_note() -> String {
+pub fn annotation_admission_note() -> std::string::String {
     thread_local! {
-        static CACHED: String = {
+        static CACHED: std::string::String = {
             "WHAT THIS ACTUALLY GUARANTEES, AT ITS HONEST RUNG. Both production v1 frontend paths route through this function, and on that path a refusal withholds the graph entirely and blocks emitted output. That is a ROUTING INVARIANT enforced by every caller using one seam — it is NOT a construction impossibility. `AnnotationAttachmentResult` is a plain record and `annotation_attachment_result_graph` returns its graph without consulting admission, so a newly written caller could bypass this and nothing would stop it.\n\nThe two fail differently, and the distinction is why this paragraph exists rather than a stronger-sounding one. A routing invariant holds while every caller goes through the seam and breaks SILENTLY the first time one does not; an impossibility cannot break, because the bypass has no representation. Calling the first the second is the rung inflation DESIGN 4b names as worse than sitting low, since an inflated class never ranks for climbing.\n\nNEXT-RUNG TRIGGER, and it is small and known: make the bypass unrepresentable — remove the unadmitted graph accessor and seal the result carrier so a graph can only be obtained through admission — landed with a discriminating control proving a bypass does not compile. Until that exists, this is a mechanically preventive wall on the production path, not a language-level guarantee.\n\nThe refusal payload is a NON-EMPTY carrier, which does make `refused, with nothing to report` unwritable rather than merely unlikely — a refusal arm holding an empty list would be a silent success wearing a refusal's name.\n\nThis is deliberately all-or-nothing per compilation unit. A partial admission — take the rows that bound, ignore the ones that did not — is the absorbing fallback in its authored form: the deficit's frequency drops to zero, nothing counts it, and the unattachable prose quietly stops existing.".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c: &std::string::String| c.clone())
 }
 
 pub fn admit_annotations(result: Rc<AnnotationAttachmentResult>) -> Rc<AnnotationAdmission> {
@@ -196,7 +198,7 @@ pub fn advance_line_prefix_indent_only(previous: bool, code_points: Rc<Vec<i64>>
         })
 }
 
-pub fn advance_line_prefix_indent_only_text(previous: bool, lexeme: String) -> bool {
+pub fn advance_line_prefix_indent_only_text(previous: bool, lexeme: std::string::String) -> bool {
     advance_line_prefix_indent_only(
         previous.clone(),
         Rc::new(lexeme.clone().chars().map(|c| c as i64).collect::<Vec<_>>()),
@@ -220,7 +222,7 @@ pub struct AnnotationSubject {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct NormalizedAnnotationCapture {
-    pub text: String,
+    pub text: std::string::String,
     pub origin: Rc<SourceSpan>,
     pub placement: AnnotationPlacement,
     pub preceded_by_blank_line: bool,
@@ -251,13 +253,13 @@ pub struct AnnotationSubjectPick {
     pub following: Option<Rc<AnnotationSubject>>,
 }
 
-pub fn annotation_subject_pick_note() -> String {
+pub fn annotation_subject_pick_note() -> std::string::String {
     thread_local! {
-        static CACHED: String = {
+        static CACHED: std::string::String = {
             "DISSOLVE-ON: a span-ordered subject index exists on the parse artifact; then the nearest-following pick becomes a lookup and this fold reads it.".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c: &std::string::String| c.clone())
 }
 
 pub fn module_root_pick_step(
@@ -395,19 +397,19 @@ pub fn annotation_subject_pick(
     }
 }
 
-pub fn annotation_subject_key_note() -> String {
+pub fn annotation_subject_key_note() -> std::string::String {
     thread_local! {
-        static CACHED: String = {
+        static CACHED: std::string::String = {
             "DISSOLVE-ON: when the containment tree is the single naming authority, the key becomes the containment path and uniqueness stops being a per-realization precondition.".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c: &std::string::String| c.clone())
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct KeyedAnnotationRow {
-    pub subject_key: String,
-    pub text: String,
+    pub subject_key: std::string::String,
+    pub text: std::string::String,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]

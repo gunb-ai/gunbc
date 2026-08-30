@@ -81,7 +81,7 @@ pub fn dag_node_collection_anchor(mut node: Rc<Node>) -> Rc<Node> {
     }
 }
 
-pub fn dag_node_key(node: Rc<Node>) -> String {
+pub fn dag_node_key(node: Rc<Node>) -> std::string::String {
     {
         let anchor = dag_node_collection_anchor(node.clone());
         if ((anchor.span.clone().start.clone() == 0) && (anchor.span.clone().end.clone() == 0)) {
@@ -112,7 +112,7 @@ pub fn dag_node_key(node: Rc<Node>) -> String {
     }
 }
 
-pub fn dag_node_fingerprint(node: Rc<Node>) -> String {
+pub fn dag_node_fingerprint(node: Rc<Node>) -> std::string::String {
     crate::v1_compiler_dag_collect_support::dag_node_surface_fingerprint_memo(
         dag_node_collection_anchor(node.clone()),
     )
@@ -120,12 +120,12 @@ pub fn dag_node_fingerprint(node: Rc<Node>) -> String {
 
 pub fn dag_collect_nodes_list(
     nodes: Rc<Vec<Rc<Node>>>,
-    slots: Rc<HashMap<String, Rc<DagCollectSlot>>>,
+    slots: Rc<HashMap<std::string::String, Rc<DagCollectSlot>>>,
     collision_errors: Rc<Vec<Rc<ErrorNode>>>,
-) -> Rc<HashMap<String, Rc<DagCollectSlot>>> {
+) -> Rc<HashMap<std::string::String, Rc<DagCollectSlot>>> {
     nodes.iter().cloned().fold(
         slots.clone(),
-        |s: Rc<HashMap<String, Rc<DagCollectSlot>>>, n: Rc<Node>| {
+        |s: Rc<HashMap<std::string::String, Rc<DagCollectSlot>>>, n: Rc<Node>| {
             dag_collect_insert_slots(n.clone(), s, collision_errors.clone())
         },
     )
@@ -133,9 +133,9 @@ pub fn dag_collect_nodes_list(
 
 pub fn dag_collect_optional_node(
     value: Option<Rc<Node>>,
-    slots: Rc<HashMap<String, Rc<DagCollectSlot>>>,
+    slots: Rc<HashMap<std::string::String, Rc<DagCollectSlot>>>,
     collision_errors: Rc<Vec<Rc<ErrorNode>>>,
-) -> Rc<HashMap<String, Rc<DagCollectSlot>>> {
+) -> Rc<HashMap<std::string::String, Rc<DagCollectSlot>>> {
     match value.clone() {
         Some(inner) => {
             dag_collect_insert_slots(inner.clone(), slots.clone(), collision_errors.clone())
@@ -146,9 +146,9 @@ pub fn dag_collect_optional_node(
 
 pub fn dag_collect_inferred(
     value: Option<Rc<InferredNode>>,
-    slots: Rc<HashMap<String, Rc<DagCollectSlot>>>,
+    slots: Rc<HashMap<std::string::String, Rc<DagCollectSlot>>>,
     collision_errors: Rc<Vec<Rc<ErrorNode>>>,
-) -> Rc<HashMap<String, Rc<DagCollectSlot>>> {
+) -> Rc<HashMap<std::string::String, Rc<DagCollectSlot>>> {
     match value.clone().as_deref().cloned() {
         Some(InferredNode::Resolved { node: n, .. }) => {
             dag_collect_insert_slots(n.clone(), slots.clone(), collision_errors.clone())
@@ -159,9 +159,9 @@ pub fn dag_collect_inferred(
 
 pub fn dag_collect_match_pattern(
     pattern: Option<Rc<MatchPattern>>,
-    slots: Rc<HashMap<String, Rc<DagCollectSlot>>>,
+    slots: Rc<HashMap<std::string::String, Rc<DagCollectSlot>>>,
     collision_errors: Rc<Vec<Rc<ErrorNode>>>,
-) -> Rc<HashMap<String, Rc<DagCollectSlot>>> {
+) -> Rc<HashMap<std::string::String, Rc<DagCollectSlot>>> {
     match pattern.clone().as_deref().cloned() {
         Some(MatchPattern::Bind { declaration: d, .. }) => {
             dag_collect_insert_slots(d.clone(), slots.clone(), collision_errors.clone())
@@ -178,9 +178,9 @@ pub fn dag_collect_match_pattern(
 
 pub fn dag_collect_node_tree(
     node: Rc<Node>,
-    slots: Rc<HashMap<String, Rc<DagCollectSlot>>>,
+    slots: Rc<HashMap<std::string::String, Rc<DagCollectSlot>>>,
     collision_errors: Rc<Vec<Rc<ErrorNode>>>,
-) -> Rc<HashMap<String, Rc<DagCollectSlot>>> {
+) -> Rc<HashMap<std::string::String, Rc<DagCollectSlot>>> {
     {
         let slots = dag_collect_nodes_list(
             node.children.clone(),
@@ -226,9 +226,9 @@ pub fn dag_collect_node_tree(
 
 pub fn dag_collect_insert_slots(
     node: Rc<Node>,
-    slots: Rc<HashMap<String, Rc<DagCollectSlot>>>,
+    slots: Rc<HashMap<std::string::String, Rc<DagCollectSlot>>>,
     collision_errors: Rc<Vec<Rc<ErrorNode>>>,
-) -> Rc<HashMap<String, Rc<DagCollectSlot>>> {
+) -> Rc<HashMap<std::string::String, Rc<DagCollectSlot>>> {
     {
         let anchor = dag_node_collection_anchor(node.clone());
         let key = dag_node_key(anchor.clone());
@@ -265,9 +265,9 @@ pub fn dag_collect_insert_slots(
 
 pub fn dag_collect_from_module(
     module: Rc<TypedModule>,
-    slots: Rc<HashMap<String, Rc<DagCollectSlot>>>,
+    slots: Rc<HashMap<std::string::String, Rc<DagCollectSlot>>>,
     collision_errors: Rc<Vec<Rc<ErrorNode>>>,
-) -> Rc<HashMap<String, Rc<DagCollectSlot>>> {
+) -> Rc<HashMap<std::string::String, Rc<DagCollectSlot>>> {
     {
         let slots = dag_collect_insert_slots(
             module.module.clone(),
@@ -276,7 +276,7 @@ pub fn dag_collect_from_module(
         );
         module.items.clone().iter().cloned().fold(
             slots.clone(),
-            |s: Rc<HashMap<String, Rc<DagCollectSlot>>>, item: Rc<Node>| {
+            |s: Rc<HashMap<std::string::String, Rc<DagCollectSlot>>>, item: Rc<Node>| {
                 dag_collect_insert_slots(item.clone(), s, collision_errors.clone())
             },
         )
@@ -288,8 +288,8 @@ pub fn collect_dag_nodes(typed: Rc<ResolvedGraph>) -> Rc<DagCollectAcc> {
         let _memo_reset = crate::v1_compiler_dag_collect_support::dag_collect_fp_memo_reset();
         let collision_errors = Rc::new(vec![]);
         let slots = typed.modules.clone().iter().cloned().fold(
-            v1_rt::rc_empty_map::<String, Rc<DagCollectSlot>>(),
-            |s: Rc<HashMap<String, Rc<DagCollectSlot>>>, m: Rc<TypedModule>| {
+            v1_rt::rc_empty_map::<std::string::String, Rc<DagCollectSlot>>(),
+            |s: Rc<HashMap<std::string::String, Rc<DagCollectSlot>>>, m: Rc<TypedModule>| {
                 dag_collect_from_module(m.clone(), s, collision_errors.clone())
             },
         );

@@ -23,25 +23,25 @@ use std::rc::Rc;
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct DagCollectSlot {
-    pub key: String,
-    pub fp: String,
+    pub key: std::string::String,
+    pub fp: std::string::String,
     pub node: Rc<Node>,
     pub seq: i64,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct DagCollectAcc {
-    pub seen: Rc<HashMap<String, String>>,
+    pub seen: Rc<HashMap<std::string::String, std::string::String>>,
     pub order: Rc<Vec<Rc<Node>>>,
     pub collision_errors: Rc<Vec<Rc<ErrorNode>>>,
 }
 
-pub fn dag_collect_slot_seq(slots: Rc<HashMap<String, Rc<DagCollectSlot>>>) -> i64 {
+pub fn dag_collect_slot_seq(slots: Rc<HashMap<std::string::String, Rc<DagCollectSlot>>>) -> i64 {
     (slots.clone().len() as i64)
 }
 
 pub fn dag_collect_pack_slots(
-    slots: Rc<HashMap<String, Rc<DagCollectSlot>>>,
+    slots: Rc<HashMap<std::string::String, Rc<DagCollectSlot>>>,
     collision_errors: Rc<Vec<Rc<ErrorNode>>>,
 ) -> Rc<DagCollectAcc> {
     {
@@ -62,8 +62,8 @@ pub fn dag_collect_pack_slots(
             __result
         });
         let seen = ordered_slots.iter().cloned().fold(
-            v1_rt::rc_empty_map::<String, String>(),
-            |acc: Rc<HashMap<String, String>>, s: Rc<DagCollectSlot>| {
+            v1_rt::rc_empty_map::<std::string::String, std::string::String>(),
+            |acc: Rc<HashMap<std::string::String, std::string::String>>, s: Rc<DagCollectSlot>| {
                 v1_rt::rc_map_insert(acc, s.key.clone(), s.fp.clone())
             },
         );
@@ -75,7 +75,7 @@ pub fn dag_collect_pack_slots(
     }
 }
 
-pub fn json_quote(s: String) -> String {
+pub fn json_quote(s: std::string::String) -> std::string::String {
     v1_rt::concat(
         v1_rt::concat(
             "\"".to_string(),
@@ -85,7 +85,7 @@ pub fn json_quote(s: String) -> String {
     )
 }
 
-pub fn inferred_fingerprint(value: Option<Rc<InferredNode>>) -> String {
+pub fn inferred_fingerprint(value: Option<Rc<InferredNode>>) -> std::string::String {
     match value.clone().as_deref().cloned() {
         None => "none".to_string(),
         Some(InferredNode::Resolved { node: _, .. }) => "Resolved".to_string(),
@@ -98,7 +98,7 @@ pub fn inferred_fingerprint(value: Option<Rc<InferredNode>>) -> String {
     }
 }
 
-pub fn expr_data_variant(data: Rc<ExprData>) -> String {
+pub fn expr_data_variant(data: Rc<ExprData>) -> std::string::String {
     match (*data.clone()).clone() {
         ExprData::NoExprData => "NoExprData".to_string(),
         ExprData::ExprLiteral { value: _, .. } => "ExprLiteral".to_string(),
@@ -131,7 +131,7 @@ pub fn expr_data_variant(data: Rc<ExprData>) -> String {
     }
 }
 
-pub fn connective_name(value: Connective) -> String {
+pub fn connective_name(value: Connective) -> std::string::String {
     match value.clone() {
         Connective::Conj => "Conj".to_string(),
         Connective::Disj => "Disj".to_string(),
@@ -140,12 +140,12 @@ pub fn connective_name(value: Connective) -> String {
     }
 }
 
-pub fn dag_node_bag_hash(digests: Rc<Vec<String>>) -> String {
+pub fn dag_node_bag_hash(digests: Rc<Vec<std::string::String>>) -> std::string::String {
     Rc::new({
         let mut __sorted: Vec<_> = digests.iter().cloned().collect();
-        __sorted.sort_by(|a: &String, b: &String| {
-            let __ka = (|d: String| d.clone())(a.clone());
-            let __kb = (|d: String| d.clone())(b.clone());
+        __sorted.sort_by(|a: &std::string::String, b: &std::string::String| {
+            let __ka = (|d: std::string::String| d.clone())(a.clone());
+            let __kb = (|d: std::string::String| d.clone())(b.clone());
             __ka.partial_cmp(&__kb).unwrap_or(std::cmp::Ordering::Equal)
         });
         __sorted
@@ -154,18 +154,21 @@ pub fn dag_node_bag_hash(digests: Rc<Vec<String>>) -> String {
     .cloned()
     .fold(
         v1_rt::atom_identity_hash("^dag_collect_bag_empty".to_string()),
-        |acc: _, d: String| v1_rt::hash_combine(acc, d.clone()),
+        |acc: _, d: std::string::String| v1_rt::hash_combine(acc, d.clone()),
     )
 }
 
-pub fn dag_node_seq_hash(digests: Rc<Vec<String>>) -> String {
+pub fn dag_node_seq_hash(digests: Rc<Vec<std::string::String>>) -> std::string::String {
     digests.iter().cloned().fold(
         v1_rt::atom_identity_hash("^dag_collect_seq_empty".to_string()),
-        |acc: _, d: String| v1_rt::hash_combine(acc, d.clone()),
+        |acc: _, d: std::string::String| v1_rt::hash_combine(acc, d.clone()),
     )
 }
 
-pub fn child_subtree_hash(connective: Connective, digests: Rc<Vec<String>>) -> String {
+pub fn child_subtree_hash(
+    connective: Connective,
+    digests: Rc<Vec<std::string::String>>,
+) -> std::string::String {
     match connective.clone() {
         Connective::Conj => dag_node_bag_hash(digests.clone()),
         Connective::Disj => dag_node_bag_hash(digests.clone()),
@@ -174,7 +177,7 @@ pub fn child_subtree_hash(connective: Connective, digests: Rc<Vec<String>>) -> S
     }
 }
 
-pub fn dag_node_surface_leaf_mix(node: Rc<Node>) -> String {
+pub fn dag_node_surface_leaf_mix(node: Rc<Node>) -> std::string::String {
     v1_rt::atom_identity_hash(v1_rt::concat(
         v1_rt::concat(
             v1_rt::concat(
@@ -193,7 +196,7 @@ pub fn dag_node_surface_leaf_mix(node: Rc<Node>) -> String {
     ))
 }
 
-pub fn literal_value_fingerprint(value: Rc<LiteralValue>) -> String {
+pub fn literal_value_fingerprint(value: Rc<LiteralValue>) -> std::string::String {
     match (*value.clone()).clone() {
         LiteralValue::LitStr { value: v, .. } => v1_rt::concat("LitStr:".to_string(), v.clone()),
         LiteralValue::LitInt { value: v, .. } => {
@@ -212,7 +215,7 @@ pub fn literal_value_fingerprint(value: Rc<LiteralValue>) -> String {
     }
 }
 
-pub fn match_pattern_fingerprint_rec(pattern: Option<Rc<MatchPattern>>) -> String {
+pub fn match_pattern_fingerprint_rec(pattern: Option<Rc<MatchPattern>>) -> std::string::String {
     match pattern.clone().as_deref().cloned() {
         None => v1_rt::atom_identity_hash("^dag_collect_match_pattern_absent".to_string()),
         Some(MatchPattern::Bind { declaration: d, .. }) => v1_rt::hash_combine(
@@ -254,7 +257,7 @@ pub fn match_pattern_fingerprint_rec(pattern: Option<Rc<MatchPattern>>) -> Strin
     }
 }
 
-pub fn dag_node_surface_fingerprint_rec(node: Rc<Node>) -> String {
+pub fn dag_node_surface_fingerprint_rec(node: Rc<Node>) -> std::string::String {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         let child_hashes = Rc::new({
             let mut __result = Vec::new();
@@ -285,7 +288,7 @@ pub fn dag_node_surface_fingerprint_rec(node: Rc<Node>) -> String {
     })
 }
 
-pub fn dag_node_surface_fingerprint(node: Rc<Node>) -> String {
+pub fn dag_node_surface_fingerprint(node: Rc<Node>) -> std::string::String {
     dag_node_surface_fingerprint_rec(node.clone())
 }
 
@@ -293,11 +296,14 @@ pub fn dag_collect_fp_memo_reset() -> bool {
     true
 }
 
-pub fn dag_node_surface_fingerprint_memo(node: Rc<Node>) -> String {
+pub fn dag_node_surface_fingerprint_memo(node: Rc<Node>) -> std::string::String {
     dag_node_surface_fingerprint(node.clone())
 }
 
-pub fn dag_node_key_collision_error(key: String, span: Rc<SourceSpan>) -> Rc<ErrorNode> {
+pub fn dag_node_key_collision_error(
+    key: std::string::String,
+    span: Rc<SourceSpan>,
+) -> Rc<ErrorNode> {
     {
         let synthetic = ((span.start.clone() == 0) && (span.end.clone() == 0));
         let detail = if synthetic.clone() {
