@@ -1,0 +1,126 @@
+module std.target_representation
+
+import std.types { List, String, Bool, Int, NonEmptyStr }
+import std.decl_ref { DeclarationRef, declaration_ref_eq }
+
+// THREE IDENTITIES THAT ONE CHECKPOINT ROW USED TO FUSE, separated because each has a different
+// owner and a different reason to change. A std.coercion TypeCheckpoint row says "the dag name X
+// spells as Y on this target" -- one row carrying the SOURCE identity (a bare spelling), the target
+// REPRESENTATION (implicit in Y), and the emitted SPELLING (Y itself). Keyed on the bare spelling it
+// answers one thing for every declaration sharing that spelling, and carrying the spelling unqualified
+// it can be captured by any import that binds the same token. Both defects were measured on one
+// name: v2.std.node Symbol, an opaque declaration, rendered as the bare token `String` in every module
+// that also imports v2.std.text String (a structural FreeMonoid<Char>), so `fn f(identity: Symbol)`
+// came out expecting the text carrier while every caller passed the host string -- ~2400 of the first
+// self-host typeck run's 2799 refusals, one defect (XL-0, gunbc#9665 freeze).
+//
+// The split, by owner:
+//   SourceTypeTargetBinding  -- source DeclarationRef -> representation. Owned by the CORPUS, because
+//                               only the corpus knows which of its declarations realize natively on a
+//                               target and which render structurally. Keyed on the exact declaration,
+//                               never on a spelling: two declarations sharing a name are two rows or
+//                               one row and one absence, never one answer.
+//   RepresentationSpelling   -- representation -> fully qualified spelling per position. Owned by the
+//                               TARGET authority (extdeps.languages.<target>), cited to the target's
+//                               own reference. Fully qualified always: a spelling no use-line can
+//                               shadow is the construction that makes capture unwritable, where the
+//                               bare token was validation that never ran.
+// The reference/grounding position split is inherited from std.coercion TypeCheckpoint and kept for
+// the same reason it was introduced there: an alias declaration shadows its own name on the
+// right-hand side, so the two positions are two questions.
+type SourceTypeTargetBinding<R> {
+  source: DeclarationRef
+  representation: R
+}
+
+type RepresentationSpelling<R> {
+  representation: R
+  reference_position: NonEmptyStr
+  grounding_position: NonEmptyStr
+}
+
+// WHAT A RENDERER GETS BACK, AND WHY ONLY THE FIRST ARM EMITS A TABLE SPELLING. ExactBindingAbsent is
+// not a refusal by itself: the corpus binds only the declarations that realize natively, and every
+// other declaration renders its own structure -- so an absent row means "no table spelling; render
+// the declaration" and is the ordinary answer for almost every type in the corpus. It becomes a
+// refusal exactly where the declaration has no structure to render (an opaque `type X`), and that
+// refusal belongs to the renderer that knows the declaration's shape, not here. The other two arms
+// ARE refusals: an ambiguous binding is a corpus authoring defect (two rows for one declaration) and
+// an unavailable source identity is a caller that reached a declaration-keyed authority with a
+// spelling -- the bare-name fallback this carrier exists to delete. Neither arm may be answered by
+// widening to the spelling table (DESIGN section 5: a failure arm refuses, never widens).
+type ExactBindingResolution<R>
+  = ResolvedExactBinding { binding: SourceTypeTargetBinding<R> }
+  | ExactBindingAbsent
+  | ExactBindingAmbiguous { candidate_count: Int }
+  | ExactSourceIdentityUnavailable { cause: NonEmptyStr }
+
+fn exact_binding_candidates<R>(source: DeclarationRef, rows: List<SourceTypeTargetBinding<R>>) -> List<SourceTypeTargetBinding<R>> {
+  rows |> filter(r => declaration_ref_eq(a: r.source, b: source))
+}
+
+fn resolve_exact_binding<R>(source: DeclarationRef?, rows: List<SourceTypeTargetBinding<R>>) -> ExactBindingResolution<R> {
+  match source {
+    Absent => ExactSourceIdentityUnavailable { cause: "the caller reached the declaration-keyed resolver with no DeclarationRef" as NonEmptyStr }
+    Present { value: s } =>
+      let hits = exact_binding_candidates(source: s, rows: rows)
+      let candidate_count = hits |> count
+      if candidate_count == 0 { ExactBindingAbsent }
+      else if candidate_count == 1 {
+        match hits |> first {
+          Present { value: b } => ResolvedExactBinding { binding: b }
+          Absent => ExactBindingAbsent
+        }
+      } else { ExactBindingAmbiguous { candidate_count: candidate_count } }
+  }
+}
+
+fn exact_binding_is_resolved<R>(resolution: ExactBindingResolution<R>) -> Bool {
+  match resolution {
+    ResolvedExactBinding { binding: _ } => true
+    ExactBindingAbsent => false
+    ExactBindingAmbiguous { candidate_count: _ } => false
+    ExactSourceIdentityUnavailable { cause: _ } => false
+  }
+}
+
+// The representation is generic here because equality on it is the target authority's fact (a
+// target names its own representations), so the comparison is passed in rather than assumed.
+fn representation_spelling_for<R>(representation: R, spellings: List<RepresentationSpelling<R>>, same_representation: fn(R, R) -> Bool) -> RepresentationSpelling<R>? {
+  spellings |> filter(s => same_representation(s.representation, representation)) |> first
+}
+
+// EVERY BARE-NAME CHECKPOINT ROW MUST SAY WHAT BECAME OF IT, so the spelling-keyed table shrinks by
+// declared verdicts rather than by silence. Three arms, and the middle one carries a proof because
+// "unique" asserted bare is the claim a reader most wants to check:
+//   MigratedToExactBinding    -- the declarations this name resolved to now carry exact rows and the
+//                                bare row is DELETED; a spelling-keyed lookup of this name answers
+//                                nothing, which is the census (DESIGN section 3 delete-first).
+//   ProvenUniqueKernelBinding -- the bare row survives for the kernel mint (a reference the compiler
+//                                itself creates, carrying no declaration), and the proof states why
+//                                its spelling cannot be captured: a Rust primitive token, or a token
+//                                whose only capturing import binds the same name.
+//   StillBareNameDebt         -- the bare row survives because a declaration still depends on the
+//                                bypass; the trigger names the CAPABILITY that retires it, not an
+//                                artifact contributing to one (DESIGN section 4b(3)).
+type CheckpointRowDisposition
+  = MigratedToExactBinding { bindings: List<DeclarationRef> }
+  | ProvenUniqueKernelBinding { proof: NonEmptyStr }
+  | StillBareNameDebt { reason: NonEmptyStr, restoration_trigger: NonEmptyStr }
+
+type CheckpointRowMigration {
+  dag_name: NonEmptyStr
+  disposition: CheckpointRowDisposition
+}
+
+fn checkpoint_row_disposition_keeps_bare_row(disposition: CheckpointRowDisposition) -> Bool {
+  match disposition {
+    MigratedToExactBinding { bindings: _ } => false
+    ProvenUniqueKernelBinding { proof: _ } => true
+    StillBareNameDebt { reason: _, restoration_trigger: _ } => true
+  }
+}
+
+fn checkpoint_row_migration_for(dag_name: NonEmptyStr, migrations: List<CheckpointRowMigration>) -> CheckpointRowMigration? {
+  migrations |> filter(m => m.dag_name == dag_name) |> first
+}
