@@ -1,6 +1,6 @@
 module test.claim.boot_artifact_delivery_witness_test
 
-import std.types { Bool, List, NonEmptyStr, String, list_length }
+import std.types { Bool, Int, List, NonEmptyStr, String, list_length }
 import std.content_hash { ContentHash, content_hash_of_value }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -155,6 +155,10 @@ import gunbc.boot_artifact_delivery {
   CandidateRedfishProtocolNotAdmitted,
   CandidateRedfishVirtualMedia,
   CandidateMegaRacRestRemoteMedia,
+  PlanCandidateIneligible,
+  PlanCandidateSelected,
+  PlanCandidateOutrankedBy,
+  BootDeliveryPlanCandidateVerdict,
   CandidateStagedArtifactMismatch,
   ConfigfsGadgetOffer,
   DeliveryAccessUnbound,
@@ -1214,4 +1218,61 @@ test fn redfish_transport_inhabits_the_shared_axis_with_dmtf_action_path() -> Bo
   let transport = RedfishVirtualMediaTransport { params: params }
   virtual_media_transport_kind(transport: transport) == "redfish-virtualmedia"
     && redfish_virtual_media_insert_action_path(locator: params.media) == "/redfish/v1/Managers/1/VirtualMedia/CD1/Actions/VirtualMedia.InsertMedia"
+}
+
+// NO-FALLBACK-0: A PLAN NAMES ONE TRANSPORT AND OFFERS NO SECOND ONE.
+//
+// This is the only shape that separates a plan from an ordered fallback list,
+// and no other control in this module reaches it: every other plan witness
+// asserts what the SELECTED transport is, which a model that also hands over a
+// spare would satisfy identically. The fixture is deliberately the two-eligible
+// case — the profile and the live observation admit BOTH Redfish VirtualMedia
+// and the MegaRAC REST remote-media surface — so the policy has a real choice
+// to make and a real loser to record.
+//
+// The loser must appear as OUTRANKED BY the selected transport, naming it: a
+// completed decision, not an offer. If plan verdicts still carried the solving
+// standing, MegaRAC would read CandidateEligible here and an executor holding
+// this plan could attempt it after Redfish failed. The first two assertions
+// pin exactly one selection; the third is what makes the test non-vacuous,
+// because without an outranked row the fixture would have had only one eligible
+// candidate and would prove nothing about fallback at all.
+fn plan_selected_count(verdicts: List<BootDeliveryPlanCandidateVerdict>) -> Int {
+  fold(verdicts, init: 0, f: fn(acc, v) {
+    match v.disposition {
+      PlanCandidateSelected => acc + 1
+      PlanCandidateOutrankedBy { selected: _ } => acc
+      PlanCandidateIneligible { standing: _ } => acc
+    }
+  })
+}
+
+fn plan_outranked_by_redfish_count(verdicts: List<BootDeliveryPlanCandidateVerdict>) -> Int {
+  fold(verdicts, init: 0, f: fn(acc, v) {
+    match v.disposition {
+      PlanCandidateSelected => acc
+      PlanCandidateOutrankedBy { selected: sel } => if (sel == CandidateRedfishVirtualMedia) { acc + 1 } else { acc }
+      PlanCandidateIneligible { standing: _ } => acc
+    }
+  })
+}
+
+fn plan_selected_is_redfish_count(verdicts: List<BootDeliveryPlanCandidateVerdict>) -> Int {
+  fold(verdicts, init: 0, f: fn(acc, v) {
+    match v.disposition {
+      PlanCandidateSelected => if (v.candidate == CandidateRedfishVirtualMedia) { acc + 1 } else { acc }
+      PlanCandidateOutrankedBy { selected: _ } => acc
+      PlanCandidateIneligible { standing: _ } => acc
+    }
+  })
+}
+
+test fn a_plan_names_one_transport_and_records_the_rest_as_outranked() -> Bool {
+  match solve(profile: vm_profile, receipt: observed(surfaces: [SurfaceBootControl, SurfaceRedfishVirtualMedia, SurfaceOemRestRemoteMedia], probe: Present { value: probe_https }), staging: staging_all) {
+    BootDeliveryPlanned { plan: p } =>
+      plan_selected_count(verdicts: p.eligibility.considered) == 1
+        && plan_selected_is_redfish_count(verdicts: p.eligibility.considered) == 1
+        && plan_outranked_by_redfish_count(verdicts: p.eligibility.considered) >= 1
+    BootDeliveryRefused { cause: _ } => false
+  }
 }

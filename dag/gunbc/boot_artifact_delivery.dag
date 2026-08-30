@@ -377,6 +377,63 @@ type BootDeliveryCandidateVerdict {
   standing: BootDeliveryCandidateStanding
 }
 
+// WHAT A CANDIDATE IS *IN A PLAN*, WHICH IS NOT WHAT IT WAS DURING SOLVING
+// (NO-FALLBACK-0). Solving asks "is this eligible"; a plan answers "this is the
+// transport, and here is why every other candidate is NOT one". Those are
+// different questions and they had one type, so a plan carried a second
+// CandidateEligible verdict beside the selected one -- an executor holding the
+// plan could read it as the next thing to attempt when the first failed, which
+// is the ordered-fallback workflow this model refuses.
+//
+// After selection no candidate in a plan reads as available. A candidate the
+// policy outranked is recorded as OUTRANKED BY the transport that was chosen,
+// naming it, so the row states a completed decision rather than an offer; there
+// is deliberately no arm meaning "eligible and not selected". The raw standing
+// survives on the refusal path, where nothing was selected and the whole
+// considered set is the evidence.
+type BootDeliveryPlanCandidateDisposition
+  = PlanCandidateSelected
+  | PlanCandidateOutrankedBy { selected: BootDeliveryCandidate }
+  | PlanCandidateIneligible { standing: BootDeliveryCandidateStanding }
+
+type BootDeliveryPlanCandidateVerdict {
+  candidate: BootDeliveryCandidate
+  disposition: BootDeliveryPlanCandidateDisposition
+}
+
+// The one place a solving verdict becomes a plan verdict. CandidateEligible is
+// the only standing that can become either arm, and which one it becomes is
+// decided by identity against the selected candidate -- never by list position.
+fn plan_candidate_disposition(
+  verdict: BootDeliveryCandidateVerdict,
+  selected: BootDeliveryCandidate,
+) -> BootDeliveryPlanCandidateDisposition {
+  if verdict.candidate == selected {
+    PlanCandidateSelected
+  } else if verdict.standing == CandidateEligible {
+    PlanCandidateOutrankedBy { selected: selected }
+  } else {
+    PlanCandidateIneligible { standing: verdict.standing }
+  }
+}
+
+fn plan_candidate_verdict(
+  verdict: BootDeliveryCandidateVerdict,
+  selected: BootDeliveryCandidate,
+) -> BootDeliveryPlanCandidateVerdict {
+  BootDeliveryPlanCandidateVerdict {
+    candidate: verdict.candidate,
+    disposition: plan_candidate_disposition(verdict: verdict, selected: selected),
+  }
+}
+
+fn plan_candidate_verdicts(
+  verdicts: List<BootDeliveryCandidateVerdict>,
+  selected: BootDeliveryCandidate,
+) -> List<BootDeliveryPlanCandidateVerdict> {
+  verdicts |> map(v => plan_candidate_verdict(verdict: v, selected: selected))
+}
+
 // The evidence particular to the SELECTED candidate (ruling 4 §1): a
 // CandidateEligible verdict alone does not tell an executor what made it
 // eligible. Profile-shaped candidates are eligible from the profile/observation
@@ -395,7 +452,7 @@ type BootDeliveryEligibilityProvenance {
   profile_provenance: BmcAccessProfileProvenance
   evidence_manifest: List<EvidenceRef>
   selected: SelectedCandidateEvidence
-  considered: List<BootDeliveryCandidateVerdict>
+  considered: List<BootDeliveryPlanCandidateVerdict>
 }
 
 // PLANNED, NOT ESTABLISHED. A plan is a candidate the bound profile and the
@@ -623,7 +680,12 @@ fn pxe_chain_candidate(ev: BoundBootDeliveryEvidence, request: BootDeliveryReque
 
 // A built delivery together with the evidence that made its candidate
 // eligible, so the plan's provenance is read off the same selection.
+// The candidate identity travels WITH the built delivery (NO-FALLBACK-0). The
+// plan's per-candidate dispositions are decided by identity against this field,
+// so "which one was selected" is read off the construction rather than
+// re-derived from the preference list's position.
 type BuiltBootArtifactDelivery {
+  candidate: BootDeliveryCandidate
   delivery: BootArtifactDelivery
   selected: SelectedCandidateEvidence
 }
@@ -671,6 +733,7 @@ fn build_boot_artifact_delivery(
             Present { value: offer } =>
               Present {
                 value: BuiltBootArtifactDelivery {
+                  candidate: candidate,
                   delivery: RedfishVirtualMediaPull {
                     params: RedfishVirtualMediaParams { media: receipt.locator, image: offer.image, transfer_protocol: offer.transfer_protocol },
                   },
@@ -685,6 +748,7 @@ fn build_boot_artifact_delivery(
         Present { value: offer } =>
           Present {
             value: BuiltBootArtifactDelivery {
+              candidate: candidate,
               delivery: MegaRacRestRemoteMedia {
                 params: MegaRacRemoteMediaParams {
                   share_type: offer.share_type,
@@ -707,6 +771,7 @@ fn build_boot_artifact_delivery(
             Present { value: offer } =>
               Present {
                 value: BuiltBootArtifactDelivery {
+                  candidate: candidate,
                   delivery: OpenBmcNbdProxyWebsocket {
                     params: NbdProxyWebsocatParams { session_token: offer.session_token, ws_path: ws_path, local_nbd_port: offer.local_nbd_port },
                   },
@@ -726,6 +791,7 @@ fn build_boot_artifact_delivery(
             Present { value: offer } =>
               Present {
                 value: BuiltBootArtifactDelivery {
+                  candidate: candidate,
                   delivery: OpenBmcConfigfsUsbGadget {
                     params: ConfigfsGadgetParams {
                       nbd_server_host: offer.nbd_server_host,
@@ -746,20 +812,25 @@ fn build_boot_artifact_delivery(
     CandidateUefiHttpBoot =>
       match ev.uefi_http {
         UefiHttpDeliveryEstablished { target: _, params: p, evidence: evs } =>
-          Present { value: BuiltBootArtifactDelivery { delivery: UefiHttpBoot { params: p }, selected: SelectedFromUefiHttpEvidence { evidence: evs } } }
+          Present { value: BuiltBootArtifactDelivery { candidate: candidate, delivery: UefiHttpBoot { params: p }, selected: SelectedFromUefiHttpEvidence { evidence: evs } } }
         UefiHttpDeliveryUnestablished { missing: _ } => none
       }
     CandidatePxeChainBoot =>
       match ev.network_boot {
         NetworkBootDeliveryEstablished { evidence: e } =>
-          Present { value: BuiltBootArtifactDelivery { delivery: PxeChainBoot { evidence: e }, selected: SelectedFromNetworkBootEstablishment { establishment: e } } }
+          Present { value: BuiltBootArtifactDelivery { candidate: candidate, delivery: PxeChainBoot { evidence: e }, selected: SelectedFromNetworkBootEstablishment { establishment: e } } }
         NetworkBootDeliveryUnestablished { missing: _ } => none
       }
   }
 }
 
-// The first candidate in the POLICY's order that is eligible, built.
-fn first_eligible_boot_artifact_delivery(
+// THE ONE TRANSPORT THE POLICY SELECTS, built. The policy's order is a total
+// ranking over a set already decided by evidence, so this walk RANKS -- it does
+// not search, and it never attempts. Every candidate's eligibility is settled
+// before this runs; taking the highest-ranked eligible one is a completed
+// decision, and the plan records the rest as outranked rather than as
+// alternatives (NO-FALLBACK-0).
+fn selected_boot_artifact_delivery(
   ctx: BoundBmcAccessContext,
   ev: BoundBootDeliveryEvidence,
   request: BootDeliveryRequest,
@@ -789,7 +860,7 @@ fn select_boot_artifact_delivery(
   control_route: BmcBootControlRouteObservation,
   verdicts: List<BootDeliveryCandidateVerdict>,
 ) -> BootDeliverySolution {
-  match first_eligible_boot_artifact_delivery(ctx: ctx, ev: ev, request: request, policy: policy, verdicts: verdicts) {
+  match selected_boot_artifact_delivery(ctx: ctx, ev: ev, request: request, policy: policy, verdicts: verdicts) {
     Present { value: built } =>
       BootDeliveryPlanned {
         plan: BootDeliveryPlan {
@@ -802,7 +873,7 @@ fn select_boot_artifact_delivery(
             profile_provenance: ctx.profile_provenance,
             evidence_manifest: ctx.evidence_manifest,
             selected: built.selected,
-            considered: verdicts,
+            considered: plan_candidate_verdicts(verdicts: verdicts, selected: built.candidate),
           },
         },
       }
