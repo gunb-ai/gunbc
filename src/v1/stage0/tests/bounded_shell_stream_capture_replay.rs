@@ -1,3 +1,4 @@
+#![allow(clippy::disallowed_macros)]
 //! Host-boundary regression receipt for bounded shell stream drain (PR #8087).
 //!
 //! Proves the v1_interpreter seed drain does not retain stderr proportional to child

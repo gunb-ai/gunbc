@@ -516,13 +516,39 @@ fn validate_fixture_flags(
     Ok(())
 }
 
-fn run_witnesses(
-    index: &MultiEntryIndex,
-    group: &EntryGroup,
+/// The four facts that decide how a witness EVALUATES, as one carrier. They travel together on
+/// every path — the single-entry one and the grouped one — and are consumed at exactly one place
+/// ([`WitnessRuntime::eval_context`]), so carrying them as four loose parameters was one concept
+/// spelled four times per call site, with no way to add a fifth without editing both.
+struct WitnessRuntime {
     execution_mode: ExecutionMode,
     fixture_store: Option<Rc<RecordedFixtureStore>>,
     whole_tree_published_keys: Option<Rc<std::collections::HashSet<String>>>,
     eval_budget_ms: Option<u64>,
+}
+
+impl WitnessRuntime {
+    fn eval_context(
+        &self,
+        graph: &v1_compiler::v1_compiler_compile::ResolvedGraph,
+        source_indices: Rc<im::HashMap<String, Rc<v1_compiler::v1_std_core::NewlineIndex>>>,
+    ) -> v1_compiler::v1_interpreter::InterpContext {
+        let ctx = make_eval_context_with_runtime_options(
+            graph,
+            source_indices,
+            self.execution_mode,
+            self.fixture_store.clone(),
+            self.whole_tree_published_keys.clone(),
+        );
+        ctx.set_witness_eval_budget(self.eval_budget_ms);
+        ctx
+    }
+}
+
+fn run_witnesses(
+    index: &MultiEntryIndex,
+    group: &EntryGroup,
+    runtime: &WitnessRuntime,
     any_failed: &mut bool,
     timings: &mut ResolveTimings,
 ) -> Result<(), ExitCode> {
@@ -531,14 +557,7 @@ fn run_witnesses(
         eprintln!("claim_batch: closure subject for {}: {e}", group.entry);
         ExitCode::from(1)
     })?;
-    let ctx = make_eval_context_with_runtime_options(
-        &graph,
-        source_indices,
-        execution_mode,
-        fixture_store,
-        whole_tree_published_keys,
-    );
-    ctx.set_witness_eval_budget(eval_budget_ms);
+    let ctx = runtime.eval_context(&graph, source_indices);
     for function in &group.functions {
         run_claim_timed(&ctx, &closure_subject, function, any_failed, timings);
         // The eval-call memo's eviction scope is the witness frame, not this
@@ -740,6 +759,13 @@ fn run() -> Result<ExitCode, ExitCode> {
         }
     };
 
+    let runtime = WitnessRuntime {
+        execution_mode,
+        fixture_store,
+        whole_tree_published_keys,
+        eval_budget_ms,
+    };
+
     let flatten_baseline = v1_compiler::v1_interpreter::flatten_counters_snapshot();
     let stats_requested = std::env::var_os("GUNBC_INTERP_STATS").is_some_and(|v| v != "0");
 
@@ -766,14 +792,7 @@ fn run() -> Result<ExitCode, ExitCode> {
             eprintln!("claim_batch: closure subject for {}: {e}", group.entry);
             ExitCode::from(1)
         })?;
-        let ctx = make_eval_context_with_runtime_options(
-            &graph,
-            source_indices,
-            execution_mode,
-            fixture_store.clone(),
-            whole_tree_published_keys.clone(),
-        );
-        ctx.set_witness_eval_budget(eval_budget_ms);
+        let ctx = runtime.eval_context(&graph, source_indices);
         for function in &group.functions {
             run_claim_timed(
                 &ctx,
@@ -803,18 +822,7 @@ fn run() -> Result<ExitCode, ExitCode> {
             // any_failed). Aborting the whole batch on the first red entry
             // truncated the measurement: each run revealed only the NEXT red
             // class, and everything alphabetically after it went unmeasured.
-            if run_witnesses(
-                &index,
-                group,
-                execution_mode,
-                fixture_store.clone(),
-                whole_tree_published_keys.clone(),
-                eval_budget_ms,
-                &mut any_failed,
-                &mut timings,
-            )
-            .is_err()
-            {
+            if run_witnesses(&index, group, &runtime, &mut any_failed, &mut timings).is_err() {
                 for function in &group.functions {
                     println!("FAIL {} (entry resolve failed: {})", function, group.entry);
                 }

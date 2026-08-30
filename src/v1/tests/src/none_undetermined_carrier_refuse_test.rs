@@ -14,12 +14,14 @@
 //! Checkable receipt: `dag/test/retirement/none_undetermined_carrier_refuse_retained.dag`.
 
 use std::rc::Rc;
+use v1_compiler::std_occurrence_identity::NodeOccurrenceIdentity;
 use v1_compiler::v1_compiler_emit_rust::emit_none_keyword_for_resolved_type;
 use v1_compiler::v1_std_core::{no_span, Cardinality, Connective, ExprData, InferredNode, Node};
 
 fn node_with_cardinality(cardinality: Cardinality) -> Rc<Node> {
     let span = no_span();
     Rc::new(Node {
+        occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
         name: "T".to_string(),
         ident: None,
         span: span.clone(),

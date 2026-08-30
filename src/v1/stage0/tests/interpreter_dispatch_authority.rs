@@ -7,11 +7,12 @@
 
 use v1_compiler::v1_interpreter_dispatch_generated::{
     lookup_eval_algebra_method_inner, lookup_eval_builtin_inner,
-    lookup_eval_call_bridge_std_compilers_lexing, lookup_eval_call_bridge_std_node,
+    lookup_eval_call_bridge_std_compilers_lexing, lookup_eval_call_bridge_std_node_reflection,
     lookup_eval_call_native_intercept, lookup_try_parse_table_memo_dispatch,
     lookup_try_v2_std_collection_map_primitive_grounding, EvalAlgebraMethodArm, EvalBuiltinArm,
-    EvalCallBridgeStdCompilersLexingArm, EvalCallBridgeStdNodeArm, EvalCallNativeInterceptArm,
-    TryParseTableMemoDispatchArm, TryV2StdCollectionMapPrimitiveGroundingArm,
+    EvalCallBridgeStdCompilersLexingArm, EvalCallBridgeStdNodeReflectionArm,
+    EvalCallNativeInterceptArm, TryParseTableMemoDispatchArm,
+    TryV2StdCollectionMapPrimitiveGroundingArm,
 };
 
 fn all_eval_builtin_variants_reachable() {
@@ -36,7 +37,7 @@ fn all_eval_algebra_variants_reachable() {
 
 fn all_bridge_variants_reachable() {
     assert!(
-        lookup_eval_call_bridge_std_node("resolve_type_node").is_some(),
+        lookup_eval_call_bridge_std_node_reflection("resolve_type_node").is_some(),
         "missing lookup for eval_call bridge (std_node) spelling: resolve_type_node"
     );
     assert!(
@@ -70,8 +71,8 @@ fn generated_enums_are_copy_and_distinct() {
         EvalCallBridgeStdCompilersLexingArm::V4BridgeSymbolLexeme
     );
     assert_eq!(
-        EvalCallBridgeStdNodeArm::V4BridgeResolveTypeNode,
-        EvalCallBridgeStdNodeArm::V4BridgeResolveTypeNode
+        EvalCallBridgeStdNodeReflectionArm::V4BridgeResolveTypeNode,
+        EvalCallBridgeStdNodeReflectionArm::V4BridgeResolveTypeNode
     );
     assert_ne!(
         TryV2StdCollectionMapPrimitiveGroundingArm::MapGroundingMapInsert,

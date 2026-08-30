@@ -1,3 +1,4 @@
+#![allow(clippy::disallowed_macros)]
 //! CLI for generic seed-shim closure assembly (curated self-host harness).
 
 use clap::Parser;
