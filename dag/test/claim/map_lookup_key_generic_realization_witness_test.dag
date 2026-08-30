@@ -21,7 +21,10 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 // v2 closure — and it is pinned here at signature grain rather than by name, because the
 // three-file name agreement that runtime_rust_seed_bootstrap_sync_witness_test already checks
 // stayed green through the entire life of the defect.
-data map_lookup_key_generic_realization_note: String = "v1_rt::lookup realizes the ReceiverKey-generic PartialFunction lookup row and must be generic over the key type, like every sibling map builtin. A String-pinned realization type-errors at every non-String-keyed Map in emitted Rust while the interpreter accepts it, and no .dag-side check can see the difference."
+// v1_rt::lookup realizes the ReceiverKey-generic PartialFunction lookup row and must be generic
+// over the key type, like every sibling map builtin. A String-pinned realization type-errors at
+// every non-String-keyed Map in emitted Rust while the interpreter accepts it, and no .dag-side
+// check can see the difference.
 
 data runtime_rust_dag_path: String = "src/v1/runtime_rust.dag"
 data runtime_rust_seed_path: String = "src/v1/stage0/src/v1_compiler_runtime_rust.rs"

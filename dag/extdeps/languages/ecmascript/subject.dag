@@ -19,7 +19,16 @@ data ecmascript_language_further_authority_1: ExternalAuthority = ExternalAuthor
   }
 }
 
-data ecmascript_language_subject_note: String = "ECMASCRIPT, the Ecma-262 standard (verified live 2026-08-04 by fetching the cited locator and confirming its title and publisher from the response, per the D0 verify-or-refuse rule): the fetched document is the 'ECMAScript 2027 Language Specification', published by Ecma International and edited under TC39. This subject exists SEPARATELY from the TypeScript subject on purpose: ECMAScript is the runtime-semantic standard, TypeScript is an independently governed product that compiles to it, and DESIGN section 3's external-upstream decomposition keeps independently governed entities apart even when one targets the other. DESIGN's open decision 1 — whether ECMAScript is the runtime-semantic base the TypeScript target projects onto, or a deliberately separate model — is exactly a question about the relationship between these two subjects, and it stays open here; registering the subject does not decide it."
+// ECMASCRIPT, the Ecma-262 standard (verified live 2026-08-04 by fetching the cited locator and
+// confirming its title and publisher from the response, per the D0 verify-or-refuse rule): the
+// fetched document is the 'ECMAScript 2027 Language Specification', published by Ecma International
+// and edited under TC39. This subject exists SEPARATELY from the TypeScript subject on purpose:
+// ECMAScript is the runtime-semantic standard, TypeScript is an independently governed product that
+// compiles to it, and DESIGN section 3's external-upstream decomposition keeps independently
+// governed entities apart even when one targets the other. DESIGN's open decision 1 — whether
+// ECMAScript is the runtime-semantic base the TypeScript target projects onto, or a deliberately
+// separate model — is exactly a question about the relationship between these two subjects, and it
+// stays open here; registering the subject does not decide it.
 
 type EcmaScript
   = | EcmaScriptTarget

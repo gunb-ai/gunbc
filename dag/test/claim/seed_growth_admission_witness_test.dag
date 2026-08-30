@@ -20,12 +20,12 @@ test fn seed_growth_roster_mechanical_checks_hold() -> Bool {
   seed_growth_roster_mechanical_checks_holds()
 }
 
-// THE JOIN IS SPLIT AND THE SPLIT IS THE ASSERTION, not an implementation detail beside it. Under
-// the single-candidate-set form these two calls were one, so the population that found an
-// unjustified addition was the same one that declared every untouched roster row stale. Here the
-// SAME candidate list is passed to both functions and they must answer differently: the rogue is an
-// unjustified addition, and passing it as the live population makes every real roster row stale
-// rather than none. A reimplementation that collapsed them again reds on the second conjunct.
+// THE JOIN IS SPLIT AND THE SPLIT IS THE ASSERTION. Under the single-candidate-set form these two
+// calls were one, so the population that found an unjustified addition was the same one that
+// declared every untouched roster row stale. Here the SAME candidate list goes to both functions
+// and they must answer differently: the rogue is an unjustified addition, and passing it as the live
+// population makes every real roster row stale rather than none. A reimplementation that collapsed
+// them again reds on the second conjunct.
 test fn seed_growth_join_refuses_unknown_declaration() -> Bool {
   let rogue = DeclarationRef {
     module_path: "v1_compiler.cli_run",
@@ -54,14 +54,13 @@ test fn witness_seed_growth_roster_well_formed_gate_holds() -> Bool {
 }
 
 // WHAT REPLACED THE TWO SCAFFOLD WITNESSES, AND WHY THIS IS NOT AN EQUIVALENT CHECK IN A NEW
-// SPELLING. Two arms here asserted that seed_growth_admission_join_scaffold and
-// seed_growth_g0_census_host_scaffold were Scaffold dispositions, and a third asserted that a prose
-// row CONTAINED two substrings. All three are gone with their subjects: the scaffolds retired when
-// their triggers fired, and the prose assertion was the prose-self-match antipattern -- its only
-// content was that someone had written a sentence, so it could not tell a repair from a regression.
-// The g0 population note is now asserted through the mechanism it describes rather than through its
-// own text: the census host it names is a function, and the arms above and in
-// rust_item_host_observation_witness_test execute it.
+// SPELLING. Two arms asserted that seed_growth_admission_join_scaffold and
+// seed_growth_g0_census_host_scaffold were Scaffold dispositions; a third asserted a prose row
+// CONTAINED two substrings. All three are gone with their subjects: the scaffolds retired when their
+// triggers fired, and the prose assertion was the prose-self-match antipattern -- its only content
+// was that someone had written a sentence, so it could not tell a repair from a regression. The g0
+// population note is now asserted through the mechanism it describes: the census host it names is a
+// function, and the arms above and in rust_item_host_observation_witness_test execute it.
 test fn the_g0_population_note_names_a_host_that_resolves_to_a_function() -> Bool {
   string_contains(s: seed_growth_admission_g0_population_note, pattern: "gunbc.rust_item_host_observation")
     && seed_growth_roster_well_formed_gate_holds()

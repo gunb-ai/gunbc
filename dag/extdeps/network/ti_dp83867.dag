@@ -25,7 +25,17 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   }
 }
 
-data ti_dp83867_note: String = "THIS ROW IS A MECHANICAL CANDIDATE AND NOT A SELECTED PART. Nothing here says the device suits any board role; a selection is a functional-compatibility join done at the product layer, and this row supplies only the package authority that join consumes. TWO PACKAGES ON ONE DATASHEET IS THE HAZARD THIS ROW IS SHAPED AROUND. The document reprints PAP0064M and RGZ0048B, each with its own body dimensions and its own land pattern, and nothing about a record field name stops a body from one being bound beside a land pattern from the other — the two would look entirely plausible together and would produce a board with sixteen missing pads. So the designator is carried on BOTH the body and the pattern and joined by extdeps.land_pattern.types, which refuses the mismatch rather than trusting the author's attention. Only the RGZ0048B part is recorded; adding the PAP0064M ordering part number later is a second row, not an edit to this one. Mechanical facts only: this row asserts nothing about the PHY's media interfaces, its speeds or its power rails."
+// THIS ROW IS A MECHANICAL CANDIDATE AND NOT A SELECTED PART. Nothing here says the device suits
+// any board role; selection is a functional-compatibility join at the product layer, and this row
+// supplies only the package authority that join consumes. TWO PACKAGES ON ONE DATASHEET IS THE
+// HAZARD THIS ROW IS SHAPED AROUND. The document reprints PAP0064M and RGZ0048B, each with its own
+// body dimensions and land pattern, and no record field name stops a body from one being bound
+// beside a land pattern from the other — plausible together, and a board with sixteen missing
+// pads. So the designator is carried on BOTH the body and the pattern and joined by
+// extdeps.land_pattern.types, which refuses the mismatch rather than trusting the author's
+// attention. Only the RGZ0048B part is recorded; adding the PAP0064M ordering part number later is
+// a second row, not an edit to this one. Mechanical facts only: nothing here about the PHY's media
+// interfaces, speeds or power rails.
 
 data dp83867_rgz0048b_drawing: PackageDrawingRef = PackageDrawingRef {
   drawing_number: "4218795/B",

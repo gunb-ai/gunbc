@@ -56,7 +56,24 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-data materialization_provider_witness_note: String = "Model-scoped witnesses for the std.materialization_provider contract (parent mandate 6B + rework blockers, PR 7385): every outcome arm exercised by execution on BOTH doors. RED directions covered: wrong-content refusal (poisoned payload must refuse, never hit/admit), declared-input miss (a changed declared input keys apart, and a stale artifact a sloppy backend returns anyway refuses as wrong-artifact — on serve AND on admit), kind-mismatch refusal on both doors (blocker 2 — a matching key with a mismatched kind is a malformed pre-contract artifact), identity DERIVED not asserted (blocker 3 plus review 44265 — the doors take no ComputationIdentity parameter at all, so a caller cannot assert a grade; the served grade comes from the binding, and every non-Ok binding derives IdentityUnknown with a located cause), and admission-weakening (blocker 1 — provider_admit derives required outputs from the request; the v1-shape incomplete artifact cannot be admitted against ResolveClosureRequest). Post-44175 the request is a coproduct, so the witnesses construct request VARIANTS and read kind/outputs through the derivations — an under-specified obligation roster is unrepresentable, which is why no witness can even express the weakened-roster attack any more; the chained-eviction witness folds the first admission instead of projecting a store from its refusal arms (the deleted admission_store). The v1-shape incomplete artifact (graph+source_indices, no compile-clean diagnostic union) is the modeled form of extdeps.realization.resolved_graph's live disk-hit refuse arm — the contract's first named consumer target."
+// Model-scoped witnesses for the std.materialization_provider contract (parent mandate 6B + rework
+// blockers, PR 7385): every outcome arm exercised by execution on BOTH doors. RED directions
+// covered: wrong-content refusal (poisoned payload must refuse, never hit/admit), declared-input
+// miss (a changed declared input keys apart, and a stale artifact a sloppy backend returns anyway
+// refuses as wrong-artifact — on serve AND on admit), kind-mismatch refusal on both doors (blocker
+// 2 — a matching key with a mismatched kind is a malformed pre-contract artifact), identity DERIVED
+// not asserted (blocker 3 plus review 44265 — the doors take no ComputationIdentity parameter at
+// all, so a caller cannot assert a grade; the served grade comes from the binding, and every non-Ok
+// binding derives IdentityUnknown with a located cause), and admission-weakening (blocker 1 —
+// provider_admit derives required outputs from the request; the v1-shape incomplete artifact cannot
+// be admitted against ResolveClosureRequest). Post-44175 the request is a coproduct, so the
+// witnesses construct request VARIANTS and read kind/outputs through the derivations — an
+// under-specified obligation roster is unrepresentable, which is why no witness can even express
+// the weakened-roster attack any more; the chained-eviction witness folds the first admission
+// instead of projecting a store from its refusal arms (the deleted admission_store). The v1-shape
+// incomplete artifact (graph+source_indices, no compile-clean diagnostic union) is the modeled form
+// of extdeps.realization.resolved_graph's live disk-hit refuse arm — the contract's first named
+// consumer target.
 
 fn witness_compiler() -> DeclaredInput {
   compiler_identity_input(digest: content_hash_atom(value: "compiler-identity-1"))
@@ -308,9 +325,6 @@ test fn incomplete_v1_shape_artifact_refuses_naming_the_diagnostic_union() -> Bo
     && (lookup_is_hit(l: refused) == false)
 }
 
-
-
-
 test fn admission_within_budget_is_admitted_without_eviction() -> Bool {
   let a = provider_admit(
     store: witness_empty_store(budget_count: 1000),
@@ -418,9 +432,16 @@ test fn red_admission_wrong_content_is_refused() -> Bool {
   admission_is_refused_wrong_content_write(a: a) && (admission_is_admitted(a: a) == false)
 }
 
-
-
-data forged_roster_witness_note: String = "The attack codex review 44278 named, now closed by construction and exercised on BOTH doors: the bytes at the key are the v1 shape (graph + source_indices, NO compile-clean diagnostic union), so the realization's read-back is witness_v1_shape_digest. The caller submits an artifact whose carried roster claims all three outputs — under the old label-beside-digest shape that roster satisfied artifact_completeness and the door answered BindingOk, admitting bytes that could green a red. Because the content digest is now DERIVED from the carried parts, claiming a part the bytes do not hold changes the derivation, so the forgery is no longer self-consistent and lands on the wrong-content refusal instead. The paired positive control below (same artifact, its OWN derived digest) shows the refusal is discriminating rather than a blanket red: the honest complete artifact still serves and still admits."
+// The attack codex review 44278 named, now closed by construction and exercised on BOTH doors: the
+// bytes at the key are the v1 shape (graph + source_indices, NO compile-clean diagnostic union), so
+// the realization's read-back is witness_v1_shape_digest. The caller submits an artifact whose
+// carried roster claims all three outputs — under the old label-beside-digest shape that roster
+// satisfied artifact_completeness and the door answered BindingOk, admitting bytes that could green
+// a red. Because the content digest is now DERIVED from the carried parts, claiming a part the
+// bytes do not hold changes the derivation, so the forgery is no longer self-consistent and lands
+// on the wrong-content refusal instead. The paired positive control below (same artifact, its OWN
+// derived digest) shows the refusal is discriminating rather than a blanket red: the honest
+// complete artifact still serves and still admits.
 
 test fn red_forged_output_roster_refuses_as_wrong_content_on_serve() -> Bool {
   let forged = provider_serve(
@@ -448,7 +469,15 @@ test fn carried_roster_is_the_content_digest_preimage() -> Bool {
     && (witness_closure_digest() == artifact_content_digest(artifact: witness_complete_closure_artifact()))
 }
 
-data size_authentication_witness_note: String = "codex review 44300, and it is a distinct attack from the one below: keep every part DIGEST identical and understate only the BYTE COUNTS. Under the earlier preimage — (id, digest) per part — the derived content digest was unchanged, so the read-back still matched, BindingOk was returned, and the understated size was trusted by the budget check and handed to store_put. The earlier witness did not reach this: it varied the parts themselves, so it exercised a different path. These vary bytes ALONE, holding every digest fixed, which is the discriminating input the previous test set lacked. With bytes inside the preimage the understated artifact is refused wrong-content; the honest one at the same budget is admitted, so the pair discriminates rather than going blanket red."
+// codex review 44300, and it is a distinct attack from the one below: keep every part DIGEST
+// identical and understate only the BYTE COUNTS. Under the earlier preimage — (id, digest) per part
+// — the derived content digest was unchanged, so the read-back still matched, BindingOk was
+// returned, and the understated size was trusted by the budget check and handed to store_put. The
+// earlier witness did not reach this: it varied the parts themselves, so it exercised a different
+// path. These vary bytes ALONE, holding every digest fixed, which is the discriminating input the
+// previous test set lacked. With bytes inside the preimage the understated artifact is refused
+// wrong-content; the honest one at the same budget is admitted, so the pair discriminates rather
+// than going blanket red.
 
 fn witness_size_understated_closure_artifact() -> MaterializedArtifact {
   ResolvedGraphArtifact {
@@ -550,7 +579,14 @@ test fn red_typecheck_key_tracks_the_authority_when_an_import_changes() -> Bool 
     && ((request_key(req: witness_typecheck_request()) == independently_changed) == false)
 }
 
-data artifact_construction_witness_note: String = "Blocker 2 (operator review): omission, not forgery. The digest-preimage work made lying impossible; these show omitting is now impossible too. A complete resolved-graph artifact reaches its union through a REQUIRED field, so the v1 shape can no longer be spelled as a ResolvedGraphArtifact at all — it is only expressible as the named LegacyIncompleteArtifact variant, which is exactly the extdeps.realization.resolved_graph disk-hit refuse arm this contract's first consumer target retires. The completeness check is therefore still LIVE rather than inert: it is what measures that legacy variant, and the refusal below is reached by execution."
+// Blocker 2 (operator review): omission, not forgery. The digest-preimage work made lying
+// impossible; these show omitting is now impossible too. A complete resolved-graph artifact reaches
+// its union through a REQUIRED field, so the v1 shape can no longer be spelled as a
+// ResolvedGraphArtifact at all — it is only expressible as the named LegacyIncompleteArtifact
+// variant, which is exactly the extdeps.realization.resolved_graph disk-hit refuse arm this
+// contract's first consumer target retires. The completeness check is therefore still LIVE rather
+// than inert: it is what measures that legacy variant, and the refusal below is reached by
+// execution.
 
 test fn complete_artifact_reaches_its_union_through_a_required_field() -> Bool {
   let ids = artifact_carried_outputs(artifact: witness_complete_closure_artifact()) |> map(o => o.id)
@@ -579,7 +615,6 @@ test fn consumer_target_frontier_names_seven_caches_with_typed_binds() -> Bool {
     && materialization_provider_targets_contain(id: resolved_graph_cache_id)
     && materialization_provider_targets_all_bound()
 }
-
 
 test fn served_hit_carries_a_derived_structural_grade() -> Bool {
   let served = provider_serve(req: witness_closure_request(), probe: witness_good_probe())

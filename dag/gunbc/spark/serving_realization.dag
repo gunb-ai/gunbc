@@ -469,8 +469,6 @@ type SparkServingPlannedEffect
   = PlannedInstallEffect { install: ServingInstallEffect }
   | PlannedRetirementEffect { retirement: SparkServingRetirementEffect }
 
-
-
 // PRESERVED FOR THE ORDERING FOLD, and now a projection rather than an authority. It answers for
 // the DEFAULT actor -- the named serving account -- because effect_requires_escalation needs an
 // actor and the ranking question presumes one. Root would rank every realization at zero, which is
@@ -654,7 +652,10 @@ fn select_spark_serving_realization(
 // under NoLoginNoSudoIdentity is refused structurally -- with no capability observation, on any host.
 // The over-admission this note declared is closed; the note survives only as the measurement receipt
 // that produced the rule.
-data spark_user_unit_identity_contract_refutation_note: String = "A systemd user unit executes as its owning user; measured on srv5 as gunbc-automation. Under NoLoginNoSudoIdentity the serving process must be gunbc-inference, so UserUnitRealization cannot satisfy the intent on these hosts and SystemUnitRealization is the admitted candidate despite its higher effect weight."
+// A systemd user unit executes as its owning user; measured on srv5 as gunbc-automation. Under
+// NoLoginNoSudoIdentity the serving process must be gunbc-inference, so UserUnitRealization cannot
+// satisfy the intent on these hosts and SystemUnitRealization is the admitted candidate despite its
+// higher effect weight.
 
 // MEASURED SERVING PRECONDITIONS, srv5 as gunbc-automation, 2026-08-11:
 //   aarch64, NVIDIA GB10, 3.5T free on /

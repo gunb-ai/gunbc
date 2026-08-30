@@ -212,7 +212,8 @@ fn host_session_reservation_outcome(host: HostIdentity) -> HostSessionReservatio
 // reading an unobserved host as session-free removes the largest non-runner claim from the
 // conservation sum and overcommits the machine. Routing it through the present-residency join means
 // it charges when a sizing row exists and REFUSES when one does not, which is the fail-closed pair.
-data unobserved_residency_joins_as_present_note: String = "See session_residency unknown_host_defaults_to_hosting_sessions_note for why the unknown arm charges rather than exempts; this module inherits that direction rather than re-deciding it."
+// See session_residency unknown_host_defaults_to_hosting_sessions_note for why the unknown arm
+// charges rather than exempts; this module inherits that direction rather than re-deciding it.
 
 // NO CONSUMER SHOULD HAVE TO RECONSTRUCT WHICH KIND OF ABSENCE IT RECEIVED. The Option this
 // replaces returned Absent for BOTH "safely charge nothing" and "refuse the whole derivation" --

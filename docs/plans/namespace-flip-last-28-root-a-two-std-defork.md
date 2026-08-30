@@ -1,7 +1,7 @@
 # Namespace §13 flip — the last 28 reds (Root-A / two-std de-fork)
 
 Scope + dependency graph for the namespace flip's final blocker. Companion to
-[namespace-only resolution design](namespace-resolution-design.md) (the lane authority) — this
+[namespace-only resolution design](namespace-resolution-design.md) (the lane authority); this
 doc is the residue-burn-down ledger for the `NameResolutionPolicy = NamespaceOnlyY` flip
 (`src/v1/stage0/src/v1_rt.rs`, default `false` = ImportScoped byte-identical; `true` =
 NamespaceOnlyY). Ground truth for the residue is the `compile_clean_diagnostic_histogram` bin run
@@ -28,8 +28,8 @@ proxy (self-flagged unsound — a compile-path raw-count).
 | = **LANDED** | **0** | flip-oracle on merged main: `HISTOGRAM_TOTAL_HARD 0` ✓ |
 
 The flip stayed **honestly red** on these four until they consolidated — no qualify-bridge
-(operator, 2026-07-23). All four are now collapsed to a single authority, so the residue is 0 by
-execution. **Key lesson banked:** a §13 red clears only when the name has exactly **one reachable
+(operator, 2026-07-23). All four now collapse to a single authority; residue is 0 by execution.
+**Key lesson banked:** a §13 red clears only when the name has exactly **one reachable
 definition** — aligning the two models *structurally* is not enough; one side's def must be
 deleted/redirected.
 
@@ -112,8 +112,7 @@ PointwisePower lift, Bit decision, Set, Map, Byte · **goal** = flip green.
 ## Root-A — what a fresh owner picks up
 
 Root-A is the one item with **no owner** — the prior worker left ~2026-07-06
-(`dag/gunbc/plans/dag_v2_defork_audit.dag:126`). It is a fresh assignment, not a rediscovery.
-Tightly scoped:
+(`dag/gunbc/plans/dag_v2_defork_audit.dag:126`). A fresh assignment, not a rediscovery. Scope:
 
 - Move the 3 `FreeMonoid` host fns (`freemonoid_empty`, `list_snoc_item`, `fold_list`) off
   `v2.std.algebra` into `v1_rt` — beside `code_point`/`from_code_point`/`concat`, which the seam
@@ -143,24 +142,23 @@ hard.
 
 **Verification note (DISCHARGED).** "reaches 0" was trust-but-unverified — one flip-on dry-run
 after the four landed was owed to confirm no fifth name hid in the 28. clever-pike-49 ran it against
-merged main (`b4b433a27b`) in an isolated worktree with the bool flipped ON:
-`HISTOGRAM_TOTAL_HARD 0`. No fifth name. The corpus is flip-ready.
+merged main (`b4b433a27b`) in an isolated worktree, bool flipped ON: `HISTOGRAM_TOTAL_HARD 0`.
+No fifth name; the corpus is flip-ready.
 
 ---
 
 ## Post-0 roadmap — flip → global deletion (two dispatches)
 
-Residue = 0 means de-forking is *done*. Two dispatches remain, and **only two** — this section
-draws them explicitly because the number is the point.
+Residue = 0 means de-forking is *done*. Two dispatches remain, and **only two** — drawn explicitly
+because the number is the point.
 
 ### Why exactly two (the anti-infinity guarantee)
 
-The open concern was infinite regress: between "flip-ready" and "import is deleted" there is an
-unbounded chain of *minimization/micro-scoping* steps we could keep inventing (the Gojo-infinity
-worry). The defense is **decidability** (DESIGN §5 — "never" is a trap; check the wall vs the
-ratchet). Each dispatch below has a **decidable done-line** — a wall, not a ratchet — so it
-terminates and cannot be sub-divided into more dispatches without one of those done-lines already
-being green:
+The concern was infinite regress: between "flip-ready" and "import is deleted" lies an unbounded
+chain of inventable *minimization/micro-scoping* steps (the Gojo-infinity worry). The defense is
+**decidability** (DESIGN §5 — "never" is a trap; check the wall vs the ratchet). Each dispatch
+below has a **decidable done-line** — a wall, not a ratchet — so it terminates and cannot be
+sub-divided without one of those done-lines already being green:
 
 - **Dispatch 1 done-line:** with imports *stripped in a throwaway worktree*, the corpus still
   compiles clean under NamespaceOnlyY. That green **proves the imports are already redundant** —
@@ -169,9 +167,9 @@ being green:
 - **Dispatch 2 done-line:** `import` is a **parse error**. Decidable: the grammar production is
   present or it is absent.
 
-There is no third decidable wall between them, so there is no room for a third dispatch. Any
-"further minimization" would either be pre-empted by Dispatch 1's done-line (already redundant) or
-be post-deletion cleanup (cosmetic, not a blocker).
+No third decidable wall lies between them, so there is no room for a third dispatch: any "further
+minimization" is either pre-empted by Dispatch 1's done-line (already redundant) or post-deletion
+cleanup (cosmetic, not a blocker).
 
 ### Operator ruling — INLINE + GLOBAL (2026-07-24)
 
@@ -181,9 +179,9 @@ Supersedes the older per-subtree / file-alias wording in
 - **INLINE qualification, not file-level aliases.** Where a reference needs help to resolve without
   its import, qualify it **at the use site** (`container.member`, e.g. `medium.Foo`) — do *not*
   introduce a file-level alias / `using` declaration. Inline is Rule-1-minimal and survives when
-  modules stop being files; a file-scoped alias is a naming authority that only exists because files
-  do, and would have to be dissolved again the moment the storage-realization stops being 1 file =
-  1 module (the module-identity-vs-storage lane). (This is C++-style qualification, *not* a
+  modules stop being files; a file-scoped alias is a naming authority that exists only because files
+  do, and must be dissolved again once the storage-realization stops being 1 file = 1 module (the
+  module-identity-vs-storage lane). (This is C++-style qualification, *not* a
   C++ `using namespace` alias.)
 - **GLOBAL flip, not per-subtree rollout.** Because residue = 0, the *whole* corpus is unambiguous
   under NamespaceOnlyY at once — flip the policy default globally. No incremental subtree staging
@@ -237,10 +235,10 @@ Delete every `import` line and the `import` grammar production itself.
 
 §12 runtime-dispatch (namespace-resolution-design.md §12) makes the containment tree a **third**
 consumer (resolution walks it, content-addressing hashes it, termination reads its sub-value edges —
-runtime dispatch would be the fourth). If wiring runtime dispatch onto the tree turns out to need
-its *own* policy flip (a NamespaceOnlyY-equivalent for the dispatch path), that work **folds into
-Dispatch 1** (same flip-shaped acceptance), not a new dispatch. It does not extend the plan to three;
-it is called out here only so it is not mistaken for hidden regress.
+runtime dispatch would be the fourth). If wiring runtime dispatch onto the tree needs its *own*
+policy flip (a NamespaceOnlyY-equivalent for the dispatch path), that work **folds into Dispatch 1**
+(same flip-shaped acceptance), not a new dispatch. Named here only so it is not mistaken for hidden
+regress.
 
 ---
 *Scoped by execution against main; residue 10+9+5+4 = 28 → **0** (#7165). Post-0 roadmap: 2

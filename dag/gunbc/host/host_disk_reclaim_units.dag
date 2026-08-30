@@ -27,7 +27,8 @@ import gunbc.host_disk_reclaim { reclaim_per_repo_timeout }
 // directives this needs -- Nice, IOSchedulingClass, TimeoutStartSec -- did not exist on
 // SystemdServiceDirective and were added there, because a renderer that cannot express them still
 // produces a unit that runs and simply competes with live CI while doing so.
-data host_disk_reclaim_units_note: String = "Service and timer for the fleet-wide runner disk reclaimer, rendered from extdeps.systemd.unit_file. Cadence and refusal semantics are gunbc.host_disk_reclaim."
+// Service and timer for the fleet-wide runner disk reclaimer, rendered from
+// extdeps.systemd.unit_file. Cadence and refusal semantics are gunbc.host_disk_reclaim.
 
 // TWO DIRECTIVES ON THE INCUMBENT UNIT ARE DELIBERATELY NOT RENDERED, AND THE SECOND IS THE POINT.
 //

@@ -23,9 +23,24 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   }
 }
 
-data regional_compute_provenance_note: String = "Live-fetched 2026-07-25 (session gitlab-10k-scm-costs-baz90x). Two machine-readable authorities, one SKU each, held constant across every geography so a price difference is a REGION fact and not a hardware fact: AWS m7i.large (2 vCPU / 8 GiB, on-demand Linux, shared tenancy, no pre-installed software) streamed from the AWS Price List API regional CSVs -- the same authority extdeps.pricing.aws_ec2 already cites -- and Azure Standard_D2s_v5 (2 vCPU / 8 GiB, Linux pay-as-you-go) from the unauthenticated Azure retail price API (anchor above). Holding the SKU fixed is what makes the comparison honest; the one place it could not be held is recorded on its own row (Bahrain, below)."
+// Live-fetched 2026-07-25 (session gitlab-10k-scm-costs-baz90x). Two machine-readable authorities,
+// one SKU each, held constant across every geography so a price difference is a REGION fact and not
+// a hardware fact: AWS m7i.large (2 vCPU / 8 GiB, on-demand Linux, shared tenancy, no pre-installed
+// software) streamed from the AWS Price List API regional CSVs -- the same authority
+// extdeps.pricing.aws_ec2 already cites -- and Azure Standard_D2s_v5 (2 vCPU / 8 GiB, Linux
+// pay-as-you-go) from the unauthenticated Azure retail price API (anchor above). Holding the SKU
+// fixed is what makes the comparison honest; the one place it could not be held is recorded on its
+// own row (Bahrain, below).
 
-data local_provider_readability_note: String = "A structural finding about this market, recorded as rows rather than prose: the HYPERSCALERS publish machine-readable price APIs covering every geography, and essentially no regional or local provider does. Attempted and refused on 2026-07-25: E2E Networks (India) serves a GPU-only fragment and 404s its compute page; Magalu Cloud (Brazil) 404; Afrihost (South Africa) 404; Contabo 403s a non-browser fetch; Alibaba Cloud renders prices client-side; Oracle's price-list API returns an HTML error page. Sakura Internet (Japan) is the one local provider whose ladder IS readable, and it is blocked on a different axis (currency, below). Consequence for anyone building on this: a regionally-diverse cost model can be CITED only for the hyperscalers; local-provider quotes are hand-entered facts with a human in the loop, and should be typed as such rather than silently trusted."
+// A structural finding about this market, recorded as rows rather than prose: the HYPERSCALERS
+// publish machine-readable price APIs covering every geography, and essentially no regional or
+// local provider does. Attempted and refused on 2026-07-25: E2E Networks (India) serves a GPU-only
+// fragment and 404s its compute page; Magalu Cloud (Brazil) 404; Afrihost (South Africa) 404;
+// Contabo 403s a non-browser fetch; Alibaba Cloud renders prices client-side; Oracle's price-list
+// API returns an HTML error page. Sakura Internet (Japan) is the one local provider whose ladder IS
+// readable, blocked on a different axis (currency, below). Consequence: a regionally-diverse cost
+// model can be CITED only for the hyperscalers; local-provider quotes are hand-entered facts with
+// a human in the loop, and should be typed as such rather than silently trusted.
 
 type Geography
   = NorthAmerica
@@ -73,7 +88,12 @@ fn compute_provider_label(p: ComputeProvider) -> NonEmptyStr {
   }
 }
 
-data hourly_rate_availability_note: String = "Same refusal discipline as extdeps.pricing.object_storage StorageRateAvailability: a rate this fetch could not read is a typed row with a stated cause, never a remembered number. HourlyUnrepresentable is a DISTINCT third arm from HourlyUnavailable because the obstacle is different in kind -- the price was read successfully but cannot be written down in the carrier (Sakura quotes JPY and extdeps.currency.currency admits only Eur and Usd today). Collapsing 'could not read it' and 'read it but cannot represent it' into one arm would hide a modeling gap behind a fetch failure."
+// Same refusal discipline as extdeps.pricing.object_storage StorageRateAvailability: a rate this
+// fetch could not read is a typed row with a stated cause, never a remembered number.
+// HourlyUnrepresentable is a DISTINCT third arm from HourlyUnavailable because the obstacle differs
+// in kind -- the price was read but cannot be written down in the carrier (Sakura quotes JPY and
+// extdeps.currency.currency admits only Eur and Usd today). Collapsing 'could not read it' and
+// 'read it but cannot represent it' into one arm would hide a modeling gap behind a fetch failure.
 
 type HourlyRateAvailability
   = HourlyCited { hourly: MoneyPerHour }
@@ -178,7 +198,13 @@ data aws_ap_northeast_1: RegionalComputeRow = RegionalComputeRow {
   pricing_citation: "AmazonEC2/ap-northeast-1#m7i.large-OnDemand-Linux-Shared",
 }
 
-data aws_bahrain_sku_substitution_note: String = "The one place the fixed-SKU rule could not hold, recorded rather than smoothed over: me-south-1 (Bahrain) does not offer m7i.large, so this row carries m6i.large -- a PREVIOUS-generation 2 vCPU / 8 GiB instance. Its 0.1320 USD/hr is therefore NOT directly comparable to the m7i rows above (an older generation usually prices lower for the same vCPU count, so the true m7i-equivalent Bahrain premium would likely be higher still, not lower). Instance-family availability differing by region is itself the finding: newer silicon reaches the largest regions first, so a smaller region pays more AND gets older hardware."
+// The one place the fixed-SKU rule could not hold, recorded rather than smoothed over: me-south-1
+// (Bahrain) does not offer m7i.large, so this row carries m6i.large -- a PREVIOUS-generation 2 vCPU
+// / 8 GiB instance. Its 0.1320 USD/hr is therefore NOT directly comparable to the m7i rows above
+// (an older generation usually prices lower for the same vCPU count, so the true m7i-equivalent
+// Bahrain premium would likely be higher still, not lower). Instance-family availability differing
+// by region is itself the finding: newer silicon reaches the largest regions first, so a smaller
+// region pays more AND gets older hardware.
 
 data aws_me_south_1: RegionalComputeRow = RegionalComputeRow {
   provider: AwsEc2,

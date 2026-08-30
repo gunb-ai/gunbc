@@ -37,10 +37,19 @@ test fn replicated_oracle_pair_is_declared_and_admissible() -> Bool {
   )
 }
 
+// The live subject is the typed-argv projection: both facts are projected from
+// synthetic_replicated_invocation (same tool+args except the --output-dir placement flag), and the
+// two distinct --output-dir values prove the placement-flag stripping keeps the pair's
+// computation_key equal — a declared ReplicatedOracle (runs 2) pair is admissible, SingleRun reds.
+// Formerly keyed on tools.emit_determinism_transport.ed_typed_compile_invocation (the x2
+// full-corpus emit oracle); re-homed to a self-contained synthetic fixture when the x2
+// emit-determinism gate and transport were deleted (Phase D, 2026-07-14 — determinism became a
+// construction gate, v2.lens.determinism enrolled in always_required_root_lenses). The lens's
+// ShellProgram walker keeps its synthetic lens-unit subjects in v2.test.duplicate_computation and
+// the not-yet-migrated bash-program transports as its domain; it dissolves with the sidecar.
+
 test fn replicated_pair_without_declaration_reds() -> Bool {
   return v2.lens.duplicate_computation.duplicate_computation_violation_count(
     facts: replicated_pair_demand_facts(replication: v2.lens.duplicate_computation.SingleRun)
   ) == 1
 }
-
-data typed_projection_subject_note: String = "The live subject is the typed-argv projection: both facts are projected from synthetic_replicated_invocation (same tool+args except the --output-dir placement flag), and the two distinct --output-dir values prove the placement-flag stripping keeps the pair's computation_key equal — a declared ReplicatedOracle (runs 2) pair is admissible, SingleRun reds. Formerly keyed on tools.emit_determinism_transport.ed_typed_compile_invocation (the x2 full-corpus emit oracle); re-homed to a self-contained synthetic fixture when the x2 emit-determinism gate and transport were deleted (Phase D, 2026-07-14 — determinism became a construction gate, v2.lens.determinism enrolled in always_required_root_lenses). The lens's ShellProgram walker keeps its synthetic lens-unit subjects in v2.test.duplicate_computation and the not-yet-migrated bash-program transports as its domain; it dissolves with the sidecar."

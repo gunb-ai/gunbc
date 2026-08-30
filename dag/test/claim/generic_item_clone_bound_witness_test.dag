@@ -4,7 +4,26 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-data generic_item_clone_bound_witness_note: String = "Executing floor witness for v1.compiler.trait_derive_emit item-level Clone bounds. compile_dag_rust_emit_check is the per-PR enrolled consumer here; it compiles inline fixtures and asserts emitted Rust spellings. Per-PR rustc evidence is the build job cargo-checking the whole stage0 crate (generated std modules compile only when bounds are correct). TWO INDEPENDENT TRIGGERS, and the negative controls below are what keep them from collapsing into one widening rule. DERIVE trigger (structs only): bound P when P is a bare field type or a container/FreeMonoid element; enum items keep bare params, because derive emits per-impl bounds. WELL-FORMEDNESS trigger (structs AND enums): naming a declared generic type G<A..> requires satisfying G's own declared bounds, so if G's i-th parameter already carries `: Clone` and the i-th argument's Clone impl needs P, the declaring item is ill-formed without P: Clone -- rustc E0277 at the field, before any derive is considered. The second trigger is a LEAST FIXPOINT over the declared-type graph, so it propagates along a chain and saturates on a recursive type. Unused phantom-only params stay bare under both triggers. Two rows exist specifically to prove the triggers do not collapse into a dual representation: both_triggers_render_single_bound emits an item where BOTH triggers fire and asserts the bound renders exactly ONCE (the union is a guarded set-insert, so it is idempotent by construction, and the refusals assert the doubled spellings never appear); unbounded_declared_container_negative_control emits an item reached ONLY through a declared generic type whose own parameter the fixpoint leaves unbounded (FreeMonoid) and asserts no bound propagates, which is the case where trigger 2 must stay silent while trigger 1 alone carries ContainmentPath. That row locks in existing behavior rather than asserting new behavior."
+// Executing floor witness for v1.compiler.trait_derive_emit item-level Clone bounds.
+// compile_dag_rust_emit_check is the per-PR enrolled consumer here; it compiles inline fixtures and
+// asserts emitted Rust spellings. Per-PR rustc evidence is the build job cargo-checking the whole
+// stage0 crate (generated std modules compile only when bounds are correct). TWO INDEPENDENT
+// TRIGGERS, and the negative controls below are what keep them from collapsing into one widening
+// rule. DERIVE trigger (structs only): bound P when P is a bare field type or a
+// container/FreeMonoid element; enum items keep bare params, because derive emits per-impl bounds.
+// WELL-FORMEDNESS trigger (structs AND enums): naming a declared generic type G<A..> requires
+// satisfying G's own declared bounds, so if G's i-th parameter already carries `: Clone` and the
+// i-th argument's Clone impl needs P, the declaring item is ill-formed without P: Clone -- rustc
+// E0277 at the field, before any derive is considered. The second trigger is a LEAST FIXPOINT over
+// the declared-type graph, so it propagates along a chain and saturates on a recursive type. Unused
+// phantom-only params stay bare under both triggers. Two rows exist specifically to prove the
+// triggers do not collapse into a dual representation: both_triggers_render_single_bound emits an
+// item where BOTH triggers fire and asserts the bound renders exactly ONCE (the union is a guarded
+// set-insert, so it is idempotent by construction, and the refusals assert the doubled spellings
+// never appear); unbounded_declared_container_negative_control emits an item reached ONLY through a
+// declared generic type whose own parameter the fixpoint leaves unbounded (FreeMonoid) and asserts
+// no bound propagates, which is the case where trigger 2 must stay silent while trigger 1 alone
+// carries ContainmentPath. That row locks in existing behavior rather than asserting new behavior.
 
 fn w_containment_path_emits_clone_bound() -> Bool {
   compile_dag_rust_emit_check(
@@ -132,7 +151,22 @@ test fn unbounded_declared_container_negative_control() -> Bool {
   w_unbounded_declared_container_propagates_nothing()
 }
 
-data fn_clone_bound_wf_witness_note: String = "THIRD site, same fixpoint: naming a Clone-bounded declared type in a FN value-param or return type is exactly as ill-formed as naming it in a field (v1_fn_param_wf_needs_clone, extending the same well-formedness trigger onto v1_generic_params_needing_clone_bound rather than a second fixpoint). w_fn_wf_bound_propagates_to_bare_generic is the occurrence_binding_from_candidates<N> specimen shape (deep-heron's honest regen of dag/std/occurrence_binding.dag) reduced to a discriminating fixture: N is named only inside BindingOccurrence<N> (value-param position) and OccurrenceBindingResult<N> (return position), never as a bare N itself, so the structural trigger (v1_type_param_needs_clone_bound) alone would leave it unbounded and only the WF trigger renders `<N: Clone>` -- this is the RED-on-pre-fix / GREEN-on-fix witness. w_fn_no_wf_trigger_stays_bare is the negative control: a fn naming only unbounded declared types keeps its generic param bare, proving the WF trigger does not widen to every fn touching a declared type. w_impl_accessor_inherits_item_bound_once locks in the already-correct IMPL-side behavior (accessor impl blocks read the struct's own item-level clone_bounded_type_params via emit_item_type_params_with_clone_bounds, not a fn-grain re-derivation) by asserting the accessor impl header carries the bound exactly once, with doubled-spelling refusals mirroring both_triggers_render_single_bound above."
+// THIRD site, same fixpoint: naming a Clone-bounded declared type in a FN value-param or return
+// type is exactly as ill-formed as naming it in a field (v1_fn_param_wf_needs_clone, extending the
+// same well-formedness trigger onto v1_generic_params_needing_clone_bound rather than a second
+// fixpoint). w_fn_wf_bound_propagates_to_bare_generic is the occurrence_binding_from_candidates<N>
+// specimen shape (deep-heron's honest regen of dag/std/occurrence_binding.dag) reduced to a
+// discriminating fixture: N is named only inside BindingOccurrence<N> (value-param position) and
+// OccurrenceBindingResult<N> (return position), never as a bare N itself, so the structural trigger
+// (v1_type_param_needs_clone_bound) alone would leave it unbounded and only the WF trigger renders
+// `<N: Clone>` -- this is the RED-on-pre-fix / GREEN-on-fix witness. w_fn_no_wf_trigger_stays_bare
+// is the negative control: a fn naming only unbounded declared types keeps its generic param bare,
+// proving the WF trigger does not widen to every fn touching a declared type.
+// w_impl_accessor_inherits_item_bound_once locks in the already-correct IMPL-side behavior
+// (accessor impl blocks read the struct's own item-level clone_bounded_type_params via
+// emit_item_type_params_with_clone_bounds, not a fn-grain re-derivation) by asserting the accessor
+// impl header carries the bound exactly once, with doubled-spelling refusals mirroring
+// both_triggers_render_single_bound above.
 
 fn w_fn_wf_bound_propagates_to_bare_generic() -> Bool {
   compile_dag_rust_emit_check(
@@ -256,7 +290,73 @@ test fn fn_nested_value_wrapper_positive_control() -> Bool {
   w_fn_nested_value_wrapper_gets_clone()
 }
 
-data freemonoid_supplemental_impl_witness_note: String = "Row 1a target shapes (FreeMonoidUniqueState<T>, ListTailResult<T> in src/v2/std/algebra.dag), exercising v1_emit_struct_from_capability_table / v1_emit_enum_supplemental_impls end to end rather than the pre-existing structural/WF fixpoint above: a struct or enum whose only Clone-requiring field is FreeMonoid<T> keeps a BARE item-level header (the derive/WF triggers above never fire for an undeclared external container), Debug and PartialEq are realized as hand-written impls instead of #[derive(..)] (v1_exclude_hand_written_freemonoid_traits drops them from the derive list), each impl header carrying the UNION of the supplemental T: Clone bound and the structural bound its own body needs (T: Clone + std::fmt::Debug for the hand-written Debug impl, T: Clone + PartialEq for the hand-written PartialEq impl). Clone and PartialEq are bare, not path-qualified, because both are prelude traits (std::prelude::v1 re-exports std::clone::Clone and std::cmp::PartialEq by their trait names -- confirmed against doc.rust-lang.org/std/prelude/index.html's prelude-contents listing). Debug is NOT: that page's listing has no std::fmt::Debug entry at all, and the only `Debug` the prelude brings into scope is the derive macro std::prelude::v1::Debug -- a distinct namespace citizen from the trait. A bare `T: Debug` bound in a module with no explicit `use std::fmt::Debug;` therefore resolves the name to the macro and rustc refuses with error[E0404]: expected trait, found derive macro `Debug`, on every hand-written Debug impl this mechanism emits -- independent of and prior to any emitter's behavior. The bound is path-qualified (T: Clone + std::fmt::Debug) for exactly this reason, matching the `for` clause's existing std::fmt::Debug qualification rather than leaving the bound and the `for` position spelled two different ways for the same trait. Serialize/Deserialize stay #[derive(..)] with a #[serde(bound(..))] override naming every item generic param against the fully-qualified serde::Serialize / serde::Deserialize<'de> paths (serde's traits are not in the emitted module's scope by bare name either, so an unqualified bound string would fail to resolve). The struct row's derive list carries Clone but never Copy: FreeMonoid<T> is a shared type and realizes as Rc<Vec<T>> (v1_emit_struct_derives selects the heap roster over the copy roster on exactly that membership), and std::rc::Rc<T> does not implement Copy for any T regardless of T's own bounds -- confirmed against doc.rust-lang.org/std/rc/struct.Rc.html's trait-implementation list (Clone present, Copy absent) and doc.rust-lang.org/std/marker/trait.Copy.html's field requirement (every field's type must implement Copy). #[derive(Copy)] on a type with an Rc field is therefore not a spelling choice but rustc E0277/E0204 (\"the trait Copy cannot be implemented for this type\", naming the Rc-realized field) on every instantiation of T, independent of and prior to any emitter's behavior -- the corrected list is the ONLY one a correct implementation of the mechanism under test could produce. w_freemonoid_supplemental_struct_hand_written_impls and w_freemonoid_supplemental_enum_hand_written_impls assert all four facts positively (bare item header, hand-written impl headers carrying the full bound union with Debug path-qualified in the bound, fully-qualified serde bound attr) and negatively (no bounded item header, no naive #[derive(Debug...)] reintroducing the excluded traits, no bare-Debug-in-bound spelling that would resolve to the derive macro, no Copy in the struct's derive list). The struct witness additionally asserts both impl BODIES, not only their headers: correct headers over an empty or wrong body would otherwise satisfy every other assertion here -- a PartialEq whose body is literally `true` passes a header-only witness, and the enum witness's body assertions would catch that only by being the more thorough of the pair, which is luck rather than coverage wherever the struct and enum emission paths can diverge. The body spellings are grounded independently of this emitter: the `&self.<field>` access form and the `fn eq(&self, other: &Self) -> bool` signature come from the pre-existing NonEmptyVec hand-written impls the runtime prelude already emits . That same precedent independently corroborates the two impl HEADERS asserted above, which is worth stating separately because it was not the reason the precedent was consulted: the runtime prelude emits `impl<T: Clone + std::fmt::Debug> std::fmt::Debug for NonEmptyVec<T>`, character-for-character the shape of the third include here, authored before this change existed and by a different mechanism -- so those two header assertions are precedent-backed rather than author-chosen, which matters because every other assertion in this witness was authored by the same session that authored the emitter under test. And `debug_struct(..).field(..).finish()` is the std::fmt::Formatter builder documented for named-field structs, the named-field counterpart of the debug_tuple form NonEmptyVec uses for its tuple field. If this emitter disagrees with those spellings the emitter is what changes, not these strings. Two known limits of this witness, recorded so neither is mistaken for coverage: the include assertions are SPELLING-sensitive, so a semantically identical `impl<T> Debug for X<T> where T: Clone + Debug` would fail include 3 -- normal for a golden, but it means a red here is not by itself evidence of a semantic defect; and the `#[derive(Debug` exclude matches anywhere in the emitted file, which is safe only because this fixture declares a single type -- a future fixture carrying two types would silently weaken it to a file-wide rather than per-item assertion. Finally, on this row's own representation: the bulk of it is CITATIONS, which section 4c places in a typed carrier rather than in prose, so its eventual destination is not a leading // block either -- a comment is exactly as unreadable to a machine as this String, and both are the same deferral in different syntax. It is left as-is deliberately: converting this row alone, while the other rows in this file and the rest of the corpus keep the String form, would author a third representation rather than remove one."
+// Row 1a target shapes (FreeMonoidUniqueState<T>, ListTailResult<T> in src/v2/std/algebra.dag),
+// exercising v1_emit_struct_from_capability_table / v1_emit_enum_supplemental_impls end to end
+// rather than the pre-existing structural/WF fixpoint above: a struct or enum whose only
+// Clone-requiring field is FreeMonoid<T> keeps a BARE item-level header (the derive/WF triggers
+// above never fire for an undeclared external container), Debug and PartialEq are realized as
+// hand-written impls instead of #[derive(..)] (v1_exclude_hand_written_freemonoid_traits drops them
+// from the derive list), each impl header carrying the UNION of the supplemental T: Clone bound and
+// the structural bound its own body needs (T: Clone + std::fmt::Debug for the hand-written Debug
+// impl, T: Clone + PartialEq for the hand-written PartialEq impl). Clone and PartialEq are bare,
+// not path-qualified, because both are prelude traits (std::prelude::v1 re-exports
+// std::clone::Clone and std::cmp::PartialEq by their trait names -- confirmed against
+// doc.rust-lang.org/std/prelude/index.html's prelude-contents listing). Debug is NOT: that page's
+// listing has no std::fmt::Debug entry at all, and the only `Debug` the prelude brings into scope
+// is the derive macro std::prelude::v1::Debug -- a distinct namespace citizen from the trait. A
+// bare `T: Debug` bound in a module with no explicit `use std::fmt::Debug;` therefore resolves the
+// name to the macro and rustc refuses with error[E0404]: expected trait, found derive macro
+// `Debug`, on every hand-written Debug impl this mechanism emits -- independent of and prior to any
+// emitter's behavior. The bound is path-qualified (T: Clone + std::fmt::Debug) for exactly this
+// reason, matching the `for` clause's existing std::fmt::Debug qualification rather than leaving
+// the bound and the `for` position spelled two different ways for the same trait.
+// Serialize/Deserialize stay #[derive(..)] with a #[serde(bound(..))] override naming every item
+// generic param against the fully-qualified serde::Serialize / serde::Deserialize<'de> paths
+// (serde's traits are not in the emitted module's scope by bare name either, so an unqualified
+// bound string would fail to resolve). The struct row's derive list carries Clone but never Copy:
+// FreeMonoid<T> is a shared type and realizes as Rc<Vec<T>> (v1_emit_struct_derives selects the
+// heap roster over the copy roster on exactly that membership), and std::rc::Rc<T> does not
+// implement Copy for any T regardless of T's own bounds -- confirmed against
+// doc.rust-lang.org/std/rc/struct.Rc.html's trait-implementation list (Clone present, Copy absent)
+// and doc.rust-lang.org/std/marker/trait.Copy.html's field requirement (every field's type must
+// implement Copy). #[derive(Copy)] on a type with an Rc field is therefore not a spelling choice
+// but rustc E0277/E0204 ("the trait Copy cannot be implemented for this type", naming the
+// Rc-realized field) on every instantiation of T, independent of and prior to any emitter's
+// behavior -- the corrected list is the ONLY one a correct implementation of the mechanism under
+// test could produce. w_freemonoid_supplemental_struct_hand_written_impls and
+// w_freemonoid_supplemental_enum_hand_written_impls assert all four facts positively (bare item
+// header, hand-written impl headers carrying the full bound union with Debug path-qualified in the
+// bound, fully-qualified serde bound attr) and negatively (no bounded item header, no naive
+// #[derive(Debug...)] reintroducing the excluded traits, no bare-Debug-in-bound spelling that would
+// resolve to the derive macro, no Copy in the struct's derive list). The struct witness
+// additionally asserts both impl BODIES, not only their headers: correct headers over an empty or
+// wrong body would otherwise satisfy every other assertion here -- a PartialEq whose body is
+// literally `true` passes a header-only witness, and the enum witness's body assertions would catch
+// that only by being the more thorough of the pair, which is luck rather than coverage wherever the
+// struct and enum emission paths can diverge. The body spellings are grounded independently of this
+// emitter: the `&self.<field>` access form and the `fn eq(&self, other: &Self) -> bool` signature
+// come from the pre-existing NonEmptyVec hand-written impls the runtime prelude already emits .
+// That same precedent independently corroborates the two impl HEADERS asserted above, which is
+// worth stating separately because it was not the reason the precedent was consulted: the runtime
+// prelude emits `impl<T: Clone + std::fmt::Debug> std::fmt::Debug for NonEmptyVec<T>`,
+// character-for-character the shape of the third include here, authored before this change existed
+// and by a different mechanism -- so those two header assertions are precedent-backed rather than
+// author-chosen, which matters because every other assertion in this witness was authored by the
+// same session that authored the emitter under test. And `debug_struct(..).field(..).finish()` is
+// the std::fmt::Formatter builder documented for named-field structs, the named-field counterpart
+// of the debug_tuple form NonEmptyVec uses for its tuple field. If this emitter disagrees with
+// those spellings the emitter is what changes, not these strings. Two known limits of this witness,
+// recorded so neither is mistaken for coverage: the include assertions are SPELLING-sensitive, so a
+// semantically identical `impl<T> Debug for X<T> where T: Clone + Debug` would fail include 3 --
+// normal for a golden, but it means a red here is not by itself evidence of a semantic defect; and
+// the `#[derive(Debug` exclude matches anywhere in the emitted file, which is safe only because
+// this fixture declares a single type -- a future fixture carrying two types would silently weaken
+// it to a file-wide rather than per-item assertion. Finally, on this row's own representation: the
+// bulk of it is CITATIONS, which section 4c places in a typed carrier rather than in prose, so its
+// eventual destination is not a leading // block either -- a comment is exactly as unreadable to a
+// machine as this String, and both are the same deferral in different syntax. It is left as-is
+// deliberately: converting this row alone, while the other rows in this file and the rest of the
+// corpus keep the String form, would author a third representation rather than remove one.
 
 fn w_freemonoid_supplemental_struct_hand_written_impls() -> Bool {
   compile_dag_rust_emit_check(

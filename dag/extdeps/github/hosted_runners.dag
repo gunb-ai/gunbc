@@ -19,7 +19,18 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   }
 }
 
-data github_hosted_runner_catalog_citation_note: String = "Cited 2026-07-11 from the hosted-runner hardware tables (the anchor above). GitHub publishes DIFFERENT specs for the same label by repository visibility - standard Linux/Windows runners get 4 vCPU / 16GB on public repos and 2 vCPU / 8GB on private repos - so visibility is a first-class axis of the row, never folded into the label (a row without it would be a state-space conflation). Only the Ubuntu (Linux) family is modeled: it is the family this repo can select; Windows/macOS shapes extend on demand from the same tables. memory_bytes records the vendor's decimal-GB figure. The runs_on_label is a RunnerLabel row from the actions grammar (extdeps.github.actions) - the single hosted-label vocabulary, spelled once by runner_label_string - never a free string beside it (a string here would be a second representation of the same label, and hosted labels serialize as the SCALAR runs-on form, which only the HostedRunner variant carries). Version-pinned variants only (Ubuntu2404, Ubuntu2404Arm); ubuntu-latest is a vendor-floating alias of the current x64 row and is deliberately not a row here - pinning by alias would let the vendor move the fact."
+// Cited 2026-07-11 from the hosted-runner hardware tables (the anchor above). GitHub publishes
+// DIFFERENT specs for one label by repository visibility - standard Linux/Windows runners get
+// 4 vCPU / 16GB on public repos and 2 vCPU / 8GB on private - so visibility is a first-class axis
+// of the row, never folded into the label (a state-space conflation). Only the Ubuntu (Linux)
+// family is modeled, the family this repo can select; Windows/macOS extend on demand from the same
+// tables. memory_bytes records the vendor's decimal-GB figure. runs_on_label is a RunnerLabel row
+// from extdeps.github.actions - the single hosted-label vocabulary, spelled once by
+// runner_label_string, never a free string beside it (a second representation; hosted labels
+// serialize as the SCALAR runs-on form, which only the HostedRunner variant carries).
+// Version-pinned variants only (Ubuntu2404, Ubuntu2404Arm); ubuntu-latest is a vendor-floating
+// alias of the current x64 row and deliberately not a row - pinning by alias lets the vendor move
+// the fact.
 
 type RepoVisibility = PublicRepo | PrivateRepo
 

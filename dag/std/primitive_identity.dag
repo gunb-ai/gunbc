@@ -34,17 +34,51 @@ import std.primitive_projection {
   primitive_symbol_lexeme, primitive_symbol_intern_lexeme,
 }
 
-data primitive_identity_d0_scope_note: String = "D0 is NOT terminal acceptance and does NOT close the subject universe. Landed and executing: join mechanism across five carriers, five refusal variants typed, three refusal detectors executing with witnesses (see primitive_d0_refusal_execution_note), derived census across all five surfaces including InterpreterDispatch from gunbc.v1_interpreter_primitive_surface. D1 (interpreter-primitive-roster consumption): measurement scaffold deleted; primitive_surface_census_derived reads the roster authority. Population-wide identity join closure remains the terminal acceptance bar."
+// D0 is NOT terminal acceptance and does NOT close the subject universe. Landed and executing: join
+// mechanism across five carriers, five refusal variants typed, three refusal detectors executing
+// with witnesses (see primitive_d0_refusal_execution_note), derived census across all five surfaces
+// including InterpreterDispatch from gunbc.v1_interpreter_primitive_surface. D1
+// (interpreter-primitive-roster consumption): measurement scaffold deleted;
+// primitive_surface_census_derived reads the roster authority. Population-wide identity join
+// closure remains the terminal acceptance bar.
 
-data primitive_d0_refusal_execution_note: String = "Five PrimitiveJoinViolation variants typed at D0. Three detectors execute with RED witnesses: primitive_surface_missing_identity_violation, primitive_realization_unknown_primitive_violation, primitive_duplicate_semantic_definition_violation. Two scaffold detectors execute on planted inputs only (terminal join expands population-wide detection): primitive_surface_joins_two_identities_violation, primitive_incompatible_invocation_assignment_violation."
+// Five PrimitiveJoinViolation variants typed at D0. Three detectors execute with RED witnesses:
+// primitive_surface_missing_identity_violation, primitive_realization_unknown_primitive_violation,
+// primitive_duplicate_semantic_definition_violation. Two scaffold detectors execute on planted
+// inputs only (terminal join expands population-wide detection):
+// primitive_surface_joins_two_identities_violation,
+// primitive_incompatible_invocation_assignment_violation.
 
-data primitive_identity_d2_note: String = "D2 (primitive projection authority): the join gains the question a callable-resolution wall actually asks -- given a DECLARATION, is it the modeled surface of a PRIMITIVE, and are the two ONE authority or genuinely two. primitive_projection_for_declaration is total over every DeclarationRef; ProjectionFidelity separates a host-realized seam from a modeled projection from a divergent one, and only the first two mean one authority. Consumer: the bare-call candidate collector in gunbc#8952, whose first corpus run refused 1215 sites across five names precisely because a modeled std surface and the primitive it projects were two co-candidates with no relation between them. D2 also replaces the prose open denominator with a counted one: primitive_undisposed_surface_symbol_count enumerates, at symbol grain, how far the five-surface census is from the terminal bar. It does NOT close that bar -- see primitive_undisposed_residue_note."
+// D2 (primitive projection authority): the join gains the question a callable-resolution wall
+// actually asks -- given a DECLARATION, is it the modeled surface of a PRIMITIVE, and are the two
+// ONE authority or genuinely two. primitive_projection_for_declaration is total over every
+// DeclarationRef; ProjectionFidelity separates a host-realized seam from a modeled projection from
+// a divergent one, and only the first two mean one authority. Consumer: the bare-call candidate
+// collector in gunbc#8952, whose first corpus run refused 1215 sites across five names precisely
+// because a modeled std surface and the primitive it projects were two co-candidates with no
+// relation between them. D2 also replaces the prose open denominator with a counted one:
+// primitive_undisposed_surface_symbol_count enumerates, at symbol grain, how far the five-surface
+// census is from the terminal bar. It does NOT close that bar -- see
+// primitive_undisposed_residue_note.
 
-data primitive_identity_d0_note: String = "D0 (primitive-identity-join first slice): semantic primitive identity is ONE join key across five independently-writable surfaces. See primitive_identity_d0_scope_note — NOT the closing contract. primitive_surface_census_derived reads five live authorities including InterpreterDispatch from gunbc.v1_interpreter_primitive_surface. Open denominator receipt: primitive_d0_open_denominator_receipt. Dissolve-on: feature:primitive-realization-single-authority."
+// D0 (primitive-identity-join first slice): semantic primitive identity is ONE join key across five
+// independently-writable surfaces. See primitive_identity_d0_scope_note — NOT the closing contract.
+// primitive_surface_census_derived reads five live authorities including InterpreterDispatch from
+// gunbc.v1_interpreter_primitive_surface. Open denominator receipt:
+// primitive_d0_open_denominator_receipt. Dissolve-on:
+// feature:primitive-realization-single-authority.
 
 data primitive_d0_derived_surface_drift_audit_note: String = "Derived-surface drift audit (review 45947 class): AlgebraTemplate — CLOSED, all_algebra_field_templates flat_maps all_algebra_profiles (2c9c01351). EmitHandler — single authority, rt_function_registry with derived rt_functions/rt_ref_map_functions projections (no parallel roster). BuiltinRegistry — OPEN parallel enumeration: builtin_registry_surface_names hand list beside builtin_function_registry Map (witness cannot map_keys Node at runtime; builtin_registry_surface_names_note). PrimitiveContractRow — OPEN parallel enumeration: primitive_contract_roster hand list beside *_contract data rows (primitive_contract_roster_note). D0 mutation control on those two surfaces discovers drift only when the hand list is updated, not when the primary authority grows alone."
 
-data primitive_d0_open_denominator_receipt_note: String = "Typed located counted denominator (rung-honesty receipt): derived_surface_authority_count=5 (BuiltinRegistry, PrimitiveContractRow, AlgebraTemplate, EmitHandler, InterpreterDispatch); open_surface_authority_count=0; interpreter dispatch rows/arm-identities/spellings derived from gunbc.v1_interpreter_primitive_surface counters (v1_interpreter_row_count, distinct_arm_identity_count, authored_spelling_count). primitive_d0_interpreter_census_matches_roster links census to roster authority. derived_census_rows_missing_identity_count is measured live by primitive_d0_derived_rows_missing_identity_count — ranks join work remaining on derived surfaces. See primitive_d0_derived_surface_drift_audit_note for per-surface drift status."
+// Typed located counted denominator (rung-honesty receipt): derived_surface_authority_count=5
+// (BuiltinRegistry, PrimitiveContractRow, AlgebraTemplate, EmitHandler, InterpreterDispatch);
+// open_surface_authority_count=0; interpreter dispatch rows/arm-identities/spellings derived from
+// gunbc.v1_interpreter_primitive_surface counters (v1_interpreter_row_count,
+// distinct_arm_identity_count, authored_spelling_count).
+// primitive_d0_interpreter_census_matches_roster links census to roster authority.
+// derived_census_rows_missing_identity_count is measured live by
+// primitive_d0_derived_rows_missing_identity_count — ranks join work remaining on derived surfaces.
+// See primitive_d0_derived_surface_drift_audit_note for per-surface drift status.
 
 data primitive_d0_derived_surface_authority_count: Int = 5
 
@@ -52,11 +86,31 @@ data primitive_d0_open_surface_authority_count: Int = 0
 
 data primitive_d0_parallel_roster_surface_authority_count: Int = 2
 
-data primitive_d0_mutation_control_coverage_note: String = "D1 mutation-control coverage: DISCOVERED on AlgebraTemplate, EmitHandler, and InterpreterDispatch — new template, emit-handler, or interpreter-dispatch row without identity join appears on primitive_surface_census_derived and can refuse. PARTIAL on BuiltinRegistry and PrimitiveContractRow (parallel_roster_surface_authority_count=2) — mutation control fires when the hand roster (builtin_registry_surface_names, primitive_contract_roster) is updated, NOT when builtin_function_registry or a *_contract data row grows alone; see primitive_d0_derived_surface_drift_audit_note. Counted: open_surface_authority_count=0. Derived does not mean complete; parallel roster does not mean single-authority."
+// D1 mutation-control coverage: DISCOVERED on AlgebraTemplate, EmitHandler, and InterpreterDispatch
+// — new template, emit-handler, or interpreter-dispatch row without identity join appears on
+// primitive_surface_census_derived and can refuse. PARTIAL on BuiltinRegistry and
+// PrimitiveContractRow (parallel_roster_surface_authority_count=2) — mutation control fires when
+// the hand roster (builtin_registry_surface_names, primitive_contract_roster) is updated, NOT when
+// builtin_function_registry or a *_contract data row grows alone; see
+// primitive_d0_derived_surface_drift_audit_note. Counted: open_surface_authority_count=0. Derived
+// does not mean complete; parallel roster does not mean single-authority.
 
-data primitive_interpreter_dispatch_roster_note: String = "Interpreter dispatch is seven dispatch symbols in v1_interpreter (gunbc.v1_interpreter_primitive_surface): eval_builtin_inner; eval_algebra_method_inner; eval_call (bridge families plus native fold intercept); try_v2_std_collection_map_primitive_grounding; try_parse_table_memo_dispatch; eval_method_call lookup short-circuit; eval_service_call Filesystem.Read carve-out. Row/arm-identity/spelling denominators are v1_interpreter_row_count, distinct_arm_identity_count, authored_spelling_count on the roster authority — not duplicated here. primitive_interpreter_surface_rows derives from v1_interpreter_primitive_arms with provenance DerivedFromAuthority."
+// Interpreter dispatch is seven dispatch symbols in v1_interpreter
+// (gunbc.v1_interpreter_primitive_surface): eval_builtin_inner; eval_algebra_method_inner;
+// eval_call (bridge families plus native fold intercept);
+// try_v2_std_collection_map_primitive_grounding; try_parse_table_memo_dispatch; eval_method_call
+// lookup short-circuit; eval_service_call Filesystem.Read carve-out. Row/arm-identity/spelling
+// denominators are v1_interpreter_row_count, distinct_arm_identity_count, authored_spelling_count
+// on the roster authority — not duplicated here. primitive_interpreter_surface_rows derives from
+// v1_interpreter_primitive_arms with provenance DerivedFromAuthority.
 
-data primitive_interpreter_surface_unenumerable_finding_note: String = "Finding (inherits to v1 exit lane): the interpreter primitive surface was six hand-written Rust dispatch sites in v1_interpreter, not one. v1_interpreter eval_builtin_inner is the main free-call site. v2.compiler.eval v2_eval_call_primitive (carrier src/v2/compiler/05_eval.dag) is a separate v2 witness hook — real symbol, NOT v1 dispatch (§3 cite-the-symbol: never attribute it to v1_interpreter.rs). eval_call native intercept for fold_list fires before eval_builtin_inner — explains registry absence. clever-crab-111 macro authority may make eval_builtin_inner derivable sooner; five other sites remain hand-declared until macro dissolves them."
+// Finding (inherits to v1 exit lane): the interpreter primitive surface was six hand-written Rust
+// dispatch sites in v1_interpreter, not one. v1_interpreter eval_builtin_inner is the main
+// free-call site. v2.compiler.eval v2_eval_call_primitive (carrier src/v2/compiler/05_eval.dag) is
+// a separate v2 witness hook — real symbol, NOT v1 dispatch (§3 cite-the-symbol: never attribute it
+// to v1_interpreter.rs). eval_call native intercept for fold_list fires before eval_builtin_inner —
+// explains registry absence. clever-crab-111 macro authority may make eval_builtin_inner derivable
+// sooner; five other sites remain hand-declared until macro dissolves them.
 
 data primitive_fold_list_spelling_fork_note: String = "Named finding — SPELLING FORK, not alias: contract/algebra carry fold while interpreter/emit carry fold_list. Distinct from alias groups (length/count/size are one eval_builtin_inner arm with three spellings — aliases sharing an arm cannot disagree). fold and fold_list are separate surfaces that CAN disagree; fold_list additionally lives on eval_call intercept before eval_builtin_inner, so it never reaches builtin_function_registry."
 
@@ -388,7 +442,9 @@ type PrimitiveSurfaceAliasBinding {
   identity: PrimitiveIdentity
 }
 
-data primitive_d0_surface_alias_bindings_note: String = "D0 specimen alias table — single (authority × authored_symbol) → PrimitiveIdentity authority consumed by primitive_identity_lookup and all census row builders. Dissolve-on: population-wide join replaces this hand table at terminal acceptance."
+// D0 specimen alias table — single (authority × authored_symbol) → PrimitiveIdentity authority
+// consumed by primitive_identity_lookup and all census row builders. Dissolve-on: population-wide
+// join replaces this hand table at terminal acceptance.
 
 data primitive_d0_surface_alias_bindings: List<PrimitiveSurfaceAliasBinding> = [
   PrimitiveSurfaceAliasBinding {
@@ -512,7 +568,12 @@ fn primitive_identity_lookup(
     })
 }
 
-data primitive_identity_for_symbol_note: String = "The census join. It asks the D0 surface-scoped alias table first, then the DECLARED population by canonical name. The second arm is not a spelling rule: an authored symbol joins only if a PrimitiveDefinition for that canonical name has been declared in primitive_declared_definitions, so a surface that grows a new symbol nobody has declared stays UNJOINED and is counted by primitive_undisposed_surface_symbol_count rather than being admitted on the strength of matching itself."
+// The census join. It asks the D0 surface-scoped alias table first, then the DECLARED population by
+// canonical name. The second arm is not a spelling rule: an authored symbol joins only if a
+// PrimitiveDefinition for that canonical name has been declared in primitive_declared_definitions,
+// so a surface that grows a new symbol nobody has declared stays UNJOINED and is counted by
+// primitive_undisposed_surface_symbol_count rather than being admitted on the strength of matching
+// itself.
 
 fn primitive_identity_for_symbol(
   authority: PrimitiveSurfaceAuthority,
@@ -987,7 +1048,11 @@ type PrimitiveJoinProjectionViolation
     }
   | DuplicateProjectionForDeclaration { declaration: DeclarationRef }
 
-data primitive_declared_population_note: String = "The declared semantic-primitive population. It is the join's denominator: a projection row or a surface row naming an identity that is not declared here REFUSES rather than being admitted on the strength of its spelling. It is NOT yet the whole primitive vocabulary -- primitive_undisposed_surface_symbol_count measures what is still undeclared, and the roadmap node primitive-identity-join keeps population-wide closure as its terminal bar."
+// The declared semantic-primitive population. It is the join's denominator: a projection row or a
+// surface row naming an identity that is not declared here REFUSES rather than being admitted on
+// the strength of its spelling. It is NOT yet the whole primitive vocabulary --
+// primitive_undisposed_surface_symbol_count measures what is still undeclared, and the roadmap node
+// primitive-identity-join keeps population-wide closure as its terminal bar.
 
 fn primitive_definition_of(name: String) -> PrimitiveDefinition {
   PrimitiveDefinition {
@@ -1142,7 +1207,14 @@ fn primitive_projection_divergent_row_count() -> Int {
 // Typed, counted residue: what the population-wide join has NOT disposed of
 // ---------------------------------------------------------------------------
 
-data primitive_undisposed_residue_note: String = "What remains is a COUNTED DISPOSITION at symbol grain, not a sentence. A prose 'the denominator is still open' has no size, so it never ranks for closing; primitive_surface_symbol_dispositions enumerates every distinct authored symbol on the five-surface census as either SymbolJoinsDeclaredPrimitive or SymbolUndisposed, and primitive_undisposed_surface_symbol_count is a number the next session re-derives by running it. TERMINAL BAR, unchanged and owned by roadmap node primitive-identity-join: primitive_undisposed_surface_symbol_count reaches zero, at which point every surface row joins exactly one declared identity. This carrier does NOT claim that bar; it makes the distance to it observable."
+// What remains is a COUNTED DISPOSITION at symbol grain, not a sentence. A prose 'the denominator
+// is still open' has no size, so it never ranks for closing; primitive_surface_symbol_dispositions
+// enumerates every distinct authored symbol on the five-surface census as either
+// SymbolJoinsDeclaredPrimitive or SymbolUndisposed, and primitive_undisposed_surface_symbol_count
+// is a number the next session re-derives by running it. TERMINAL BAR, unchanged and owned by
+// roadmap node primitive-identity-join: primitive_undisposed_surface_symbol_count reaches zero, at
+// which point every surface row joins exactly one declared identity. This carrier does NOT claim
+// that bar; it makes the distance to it observable.
 
 type PrimitiveSymbolDisposition
   = SymbolJoinsDeclaredPrimitive {
@@ -1295,7 +1367,15 @@ fn registry_symbols_with_no_enumerated_runtime_row_count() -> Int {
 // DECLARED PrimitiveDefinition must carry exactly one PrimitiveTraversalOrderFact,
 // and a definition with no fact is a typed refusal, not a silent Deterministic.
 
-data primitive_order_free_result_note: String = "OrderFreeResult is a fourth classified answer, not a synonym for TraversalOrderUnclassified. The two are the not-applicable / malformed conflation DESIGN names as a recurring failure mode read on the traversal axis: OrderFreeResult says the primitive's result exposes no traversal at all (a count, a lookup, a constructed Map -- the order question belongs to whatever later TRAVERSES the result, not here), while TraversalOrderUnclassified says nobody has answered the question. They have opposite owners and opposite repairs: OrderFreeResult is terminal, Unclassified ranks for classification work and refuses at every call site until it is done. Collapsing them would have made every length/map_get call an order leak, which is false, or made every unclassified primitive silently safe, which is the fail-open this slice closes."
+// OrderFreeResult is a fourth classified answer, not a synonym for TraversalOrderUnclassified. The
+// two are the not-applicable / malformed conflation DESIGN names as a recurring failure mode read
+// on the traversal axis: OrderFreeResult says the primitive's result exposes no traversal at all (a
+// count, a lookup, a constructed Map -- the order question belongs to whatever later TRAVERSES the
+// result, not here), while TraversalOrderUnclassified says nobody has answered the question. They
+// have opposite owners and opposite repairs: OrderFreeResult is terminal, Unclassified ranks for
+// classification work and refuses at every call site until it is done. Collapsing them would have
+// made every length/map_get call an order leak, which is false, or made every unclassified
+// primitive silently safe, which is the fail-open this slice closes.
 
 data primitive_length_traversal: PrimitiveTraversalOrderFact = PrimitiveTraversalOrderFact { primitive: primitive_length, order: OrderFreeResult }
 
@@ -1305,7 +1385,16 @@ data primitive_map_get_traversal: PrimitiveTraversalOrderFact = PrimitiveTravers
 
 data primitive_empty_map_traversal: PrimitiveTraversalOrderFact = PrimitiveTraversalOrderFact { primitive: primitive_empty_map, order: OrderFreeResult }
 
-data primitive_decl_facts_traversal_note: String = "The four parse-only reflection primitives are CanonicalOrder by EXECUTED READING of their realizations, not by their names. decl_facts routes through coproduct_reflection decl_facts_corpus_walk, whose final step sorts every fact by (rel_path, name, kind_ord) before returning. export_signature_facts derives from decl_facts_for_roots and preserves that order. concept_decl_facts and data_decl_type_facts route through decls_parse_only_fail_closed, which sorts its module list (decls_parse_only_from_disk) or its inventory entries by source path (decls_parse_only_from_inventory) before walking items in source order. concept_decl_facts_live is the one that is NOT canonical: eval_concept_decl_facts_live walks ctx.modules and module.items directly, so its order is the program's own module-load and source order -- deterministic for a fixed program, which is what SourcePreservingOrder means, and NOT a host hash order."
+// The four parse-only reflection primitives are CanonicalOrder by EXECUTED READING of their
+// realizations, not by their names. decl_facts routes through coproduct_reflection
+// decl_facts_corpus_walk, whose final step sorts every fact by (rel_path, name, kind_ord) before
+// returning. export_signature_facts derives from decl_facts_for_roots and preserves that order.
+// concept_decl_facts and data_decl_type_facts route through decls_parse_only_fail_closed, which
+// sorts its module list (decls_parse_only_from_disk) or its inventory entries by source path
+// (decls_parse_only_from_inventory) before walking items in source order. concept_decl_facts_live
+// is the one that is NOT canonical: eval_concept_decl_facts_live walks ctx.modules and module.items
+// directly, so its order is the program's own module-load and source order -- deterministic for a
+// fixed program, which is what SourcePreservingOrder means, and NOT a host hash order.
 
 data primitive_decl_facts_traversal: PrimitiveTraversalOrderFact = PrimitiveTraversalOrderFact { primitive: primitive_decl_facts, order: CanonicalOrder }
 
@@ -1365,7 +1454,12 @@ fn primitive_traversal_order_for_identity(identity: PrimitiveIdentity) -> Traver
     })
 }
 
-data primitive_identity_for_canonical_name_note: String = "The declaration-scoped half of primitive_identity_for_symbol, lifted out so a consumer that is NOT one of the five realization surfaces can ask the same question without naming a surface it does not inhabit. A call node in a compiled tree is a SOURCE invocation, so passing it any PrimitiveSurfaceAuthority would be a fabricated join key; it may only ask whether the authored name IS a declared primitive's canonical name. primitive_identity_for_symbol's second arm now calls this, so the two cannot drift."
+// The declaration-scoped half of primitive_identity_for_symbol, lifted out so a consumer that is
+// NOT one of the five realization surfaces can ask the same question without naming a surface it
+// does not inhabit. A call node in a compiled tree is a SOURCE invocation, so passing it any
+// PrimitiveSurfaceAuthority would be a fabricated join key; it may only ask whether the authored
+// name IS a declared primitive's canonical name. primitive_identity_for_symbol's second arm now
+// calls this, so the two cannot drift.
 
 fn primitive_identity_for_canonical_name(authored_symbol: String) -> PrimitiveIdentity? {
   if primitive_identity_is_declared(identity: primitive_identity_slug(name: authored_symbol)) {
@@ -1375,7 +1469,13 @@ fn primitive_identity_for_canonical_name(authored_symbol: String) -> PrimitiveId
   }
 }
 
-data primitive_traversal_denominator_note: String = "The closure predicate the determinism gate is enrolled on. It is deliberately one-directional: it asks that every DECLARED definition carry a fact, not that every fact name a declared definition, because an orphan fact is inert while a factless definition is a call site the gate would classify Deterministic by silence. Naming a new primitive in primitive_projection_target_canonical_names without classifying its traversal order therefore reds the determinism gate on the NEXT COMPILE OF ANY TREE -- before any caller uses it -- rather than being discovered when some emitted artifact turns out to differ between runs."
+// The closure predicate the determinism gate is enrolled on. It is deliberately one-directional: it
+// asks that every DECLARED definition carry a fact, not that every fact name a declared definition,
+// because an orphan fact is inert while a factless definition is a call site the gate would
+// classify Deterministic by silence. Naming a new primitive in
+// primitive_projection_target_canonical_names without classifying its traversal order therefore
+// reds the determinism gate on the NEXT COMPILE OF ANY TREE -- before any caller uses it -- rather
+// than being discovered when some emitted artifact turns out to differ between runs.
 
 fn primitive_definitions_missing_traversal_fact_in(defs: List<PrimitiveDefinition>) -> List<PrimitiveDefinition> {
   defs

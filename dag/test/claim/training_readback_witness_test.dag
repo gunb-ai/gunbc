@@ -193,9 +193,9 @@ fn other_subject(d: TrainingRunDesired<NonEmptyStr>) -> TrainingRunSubject<NonEm
 }
 
 // BOTH HALVES OF THE SUBJECT ARE LOAD-BEARING, AND THE SUITE HAS TO SAY SO SEPARATELY. An earlier
-// revision varied only the work identity, so an equality that compared work and ignored the demand
-// would have passed every control below -- the suite would have been measuring one half of a pair
-// while claiming the pair. These two build subjects that differ in exactly one coordinate each.
+// revision varied only the work identity, so an equality comparing work and ignoring the demand
+// would have passed every control below -- measuring one half of a pair while claiming the pair.
+// These two build subjects that differ in exactly one coordinate each.
 fn subject_differing_only_in_demand() -> TrainingRunSubject<NonEmptyStr>? {
   match dp(n: 50) {
     none => none
@@ -257,11 +257,11 @@ test fn a_subject_differing_only_in_the_work_identity_is_refused() -> Bool {
   }
 }
 
-// ONE REFUSAL CONTROL PER AXIS. The binder compares five subjects, and a suite that exercised one
-// of them would establish nothing about the other four: the failure is per-field -- a comparison
-// omitted for a single axis compiles, looks complete, and lets that axis carry another run's
-// evidence. The axis is read back from the refusal, so a binder that refused on the wrong axis
-// fails here rather than passing as a generic refusal.
+// ONE REFUSAL CONTROL PER AXIS. The binder compares five subjects, and exercising one establishes
+// nothing about the other four: the failure is per-field -- a comparison omitted for one axis
+// compiles, looks complete, and lets that axis carry another run's evidence. The axis is read back
+// from the refusal, so a binder refusing on the wrong axis fails here rather than passing as a
+// generic refusal.
 fn mismatch_axis_for(which: Nat) -> NonEmptyStr {
   match desired_fixture(demand_work_key_override: none) {
     none => "fixture-failed"
@@ -329,12 +329,12 @@ test fn five_readings_of_the_same_subject_are_admitted() -> Bool {
   }
 }
 
-// SIMULTANEOUS MISMATCHES ARE CONSERVED, and this is the witness the earlier suite could not
-// express. One control per axis proves each comparison EXISTS; it says nothing about what happens
-// when two axes are foreign at once, and the binder that passed all five of those returned on the
-// first mismatch -- so a readback with foreign execution AND foreign outputs reported only
-// execution, and the hidden defect would have read as a new regression the moment the visible one
-// was fixed. Per-axis controls and this one are not redundant: they fail on different bugs.
+// SIMULTANEOUS MISMATCHES ARE CONSERVED, the witness the earlier suite could not express. One
+// control per axis proves each comparison EXISTS but says nothing about two foreign axes at once,
+// and the binder that passed all five returned on the first mismatch -- so a readback with foreign
+// execution AND foreign outputs reported only execution, and the hidden defect would have read as a
+// new regression the moment the visible one was fixed. Per-axis controls and this one fail on
+// different bugs.
 test fn two_foreign_axes_are_both_reported() -> Bool {
   match desired_fixture(demand_work_key_override: none) {
     none => false
@@ -372,10 +372,10 @@ test fn two_foreign_axes_are_both_reported() -> Bool {
   }
 }
 
-// THE THREE EPISTEMIC STATES ARE INDEPENDENTLY REPRESENTABLE AND DO NOT READ AS EACH OTHER. This is
-// the witness that would go red if an absent arm were reintroduced, or if a read that found nothing
-// were folded into the not-attempted arm: an unread population becoming an empty one licenses a
-// conclusion -- restart the run -- that ignorance does not license.
+// THE THREE EPISTEMIC STATES ARE INDEPENDENTLY REPRESENTABLE AND DO NOT READ AS EACH OTHER. Goes
+// red if an absent arm were reintroduced, or a read that found nothing were folded into the
+// not-attempted arm: an unread population becoming an empty one licenses a conclusion -- restart
+// the run -- that ignorance does not.
 fn checkpoint_state(o: TrainingPopulationObservation<TrainingCheckpointObservation<NonEmptyStr>>) -> NonEmptyStr {
   match o {
     TrainingPopulationObserved { members: m, enumeration_receipt: _ } =>
@@ -403,9 +403,9 @@ test fn a_complete_read_finding_nothing_is_not_an_unread_population() -> Bool {
 }
 
 // EVERY AXIS IS A POPULATION, AND THE CASES BELOW ARE THE ONES A SINGLETON FIELD WOULD HAVE MADE
-// UNREPRESENTABLE. Each is a state the fabric's own execution model produces: retry and capability
+// UNREPRESENTABLE. Each is a state the fabric's execution model produces: retry and capability
 // escalation create new attempts rather than mutating an earlier one, so contradictory terminals
-// and conflicting outputs are ordinary, not pathological.
+// and conflicting outputs are ordinary.
 test fn a_failed_attempt_and_a_later_successful_attempt_both_survive() -> Bool {
   let terminals: List<TrainingAttemptTerminalReceipt<NonEmptyStr>> = [
     TrainingAttemptTerminalReceipt {
@@ -449,9 +449,9 @@ test fn two_attempts_producing_different_artifacts_stay_representable() -> Bool 
 }
 
 // AXIS INDEPENDENCE. A running process WITH published checkpoints, and a terminally failed attempt
-// that nonetheless left a resumable checkpoint, are both real and have different remedies. A single
-// coproduct over the run's state -- Absent | Running | Checkpointed | Completed -- cannot spell
-// either one, which is why the readback keeps five fields rather than one verdict.
+// that left a resumable checkpoint, are both real with different remedies. A single coproduct over
+// the run's state -- Absent | Running | Checkpointed | Completed -- cannot spell either, which is
+// why the readback keeps five fields rather than one verdict.
 test fn a_terminally_failed_run_may_still_hold_a_checkpoint() -> Bool {
   match desired_fixture(demand_work_key_override: none) {
     none => false
@@ -500,9 +500,8 @@ test fn a_terminally_failed_run_may_still_hold_a_checkpoint() -> Bool {
   }
 }
 
-// THE EFFECTIVE MANIFEST IS THE TYPED MANIFEST, so a disagreement can name its coordinate. This
-// witness is the one that would go red if the axis were narrowed back to a bare hash: a hash can
-// answer same-or-different and cannot answer WHICH.
+// THE EFFECTIVE MANIFEST IS THE TYPED MANIFEST, so a disagreement can name its coordinate. Goes red
+// if the axis were narrowed back to a bare hash: a hash answers same-or-different, never WHICH.
 test fn an_effective_manifest_disagreement_names_the_coordinate() -> Bool {
   match desired_fixture(demand_work_key_override: none) {
     none => false

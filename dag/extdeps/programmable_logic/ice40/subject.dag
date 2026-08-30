@@ -24,7 +24,30 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   }
 }
 
-data ice40_subject_note: String = "THE iCE40 LP/HX FAMILY, FROM THE VENDOR'S OWN DATA SHEET. Pulled and read 2026-08-13: iCE40 LP/HX Family Data Sheet, document FPGA-DS-02029, Version 4.3, February 2025. THE DOCUMENT NUMBER ITSELF CHANGED and that is a modelled fact rather than a detail: this repository previously cited DS1040 Version 3.4, October 2017, and the current revision's own change history records 'Changed document number from DS1040 to FPGA-DS-02029'. So the same subject is reachable under two identifiers, and a citation naming only the old one does not fail loudly — it resolves to a real, stale document. Two substantive changes land with the refresh. The revision history records that the dedicated inputs for Bank 1 of the HX1K in CB132 and TQ144 were modified, which is exactly the population this repository joins against Project IceStorm's roster, and the configuration signal SPI_SS_B was renamed SPI_SS. WHAT IS AND IS NOT TRANSCRIBED HERE, and the distinction is deliberate rather than cautious. Short factual statements a design has to consult — the ordering part number, the package type and its physical dimensions, the per-bank I/O population, the I/O standards the buffer supports — are carried. The full pin assignment table is NOT: it is thirty-odd sheets of a copyrighted vendor document, and the pin-to-tile map this repository actually needs for place and route comes from Project IceStorm, which is an independently governed open-source project with its own license and its own module. Those are different authorities and modelling one as the other would fuse a specification with a reverse-engineering of it. The same reasoning is already recorded for the Altra package, where the split between public package facts and licensed board collateral was got wrong once and corrected. WHY THIS PART: the article needs a programmable device in a package a prototype assembler can place, driven by a toolchain this repository can pin and execute. TQ144 is a 20 by 20 mm quad flat pack on a half-millimetre pitch — not a ball grid array — and the HX1K in it is carried end to end by an open synthesis, place-and-route and bitstream chain. No NDA fact is required to design with it."
+// THE iCE40 LP/HX FAMILY, FROM THE VENDOR'S OWN DATA SHEET. Pulled and read 2026-08-13: iCE40 LP/HX
+// Family Data Sheet, document FPGA-DS-02029, Version 4.3, February 2025. THE DOCUMENT NUMBER ITSELF
+// CHANGED and that is a modelled fact rather than a detail: this repository previously cited DS1040
+// Version 3.4, October 2017, and the current revision's own change history records 'Changed
+// document number from DS1040 to FPGA-DS-02029'. So the same subject is reachable under two
+// identifiers, and a citation naming only the old one does not fail loudly — it resolves to a real,
+// stale document. Two substantive changes land with the refresh. The revision history records that
+// the dedicated inputs for Bank 1 of the HX1K in CB132 and TQ144 were modified, which is exactly
+// the population this repository joins against Project IceStorm's roster, and the configuration
+// signal SPI_SS_B was renamed SPI_SS. WHAT IS AND IS NOT TRANSCRIBED HERE, and the distinction is
+// deliberate rather than cautious. Short factual statements a design has to consult — the ordering
+// part number, the package type and its physical dimensions, the per-bank I/O population, the I/O
+// standards the buffer supports — are carried. The full pin assignment table is NOT: it is
+// thirty-odd sheets of a copyrighted vendor document, and the pin-to-tile map this repository
+// actually needs for place and route comes from Project IceStorm, which is an independently
+// governed open-source project with its own license and its own module. Those are different
+// authorities and modelling one as the other would fuse a specification with a reverse-engineering
+// of it. The same reasoning is already recorded for the Altra package, where the split between
+// public package facts and licensed board collateral was got wrong once and corrected. WHY THIS
+// PART: the article needs a programmable device in a package a prototype assembler can place,
+// driven by a toolchain this repository can pin and execute. TQ144 is a 20 by 20 mm quad flat pack
+// on a half-millimetre pitch — not a ball grid array — and the HX1K in it is carried end to end by
+// an open synthesis, place-and-route and bitstream chain. No NDA fact is required to design with
+// it.
 
 type Ice40Family
   = Ice40LowPower

@@ -47,8 +47,21 @@ data merge_admission_receipt_rel_path: String = ".gunbc/merge-admission-receipt.
 data merge_admission_receipt_schema_v2: String = "gunbc.merge_admission_receipt.v3"
 
 data wire_exact_arity_note: String = "BOTH v2 parsers require an EXACT line count, and every required field goes through its domain constructor (review 2026-07-30). The first cut accepted a SUPERSET — `length(lines) >= 5` — so trailing content rode along unread, and it validated only that the schema tag and attempt id were nonempty, leaving base ref, tree, and head SHA free to be empty strings that then bound into a receipt as though observed. Worse, the optional PR line converted a MALFORMED present field into an absent one: parse_int returned Absent on garbage and the receipt parsed clean with pr_number: none, which is the state-space conflation §5 forbids — `not supplied` and `supplied but unreadable` are different facts with different remedies. A seventh line that is not an integer now refuses the whole receipt. Exact arity is what makes a format extension VISIBLE: adding a field means bumping the schema tag, not silently appending a line older readers ignore."
-data gate_roster_hash_wire_note: String = "Gate roster hash wire is the serialized fnv1a64 structural fingerprint (16 lowercase hex digits — atom_identity_hash / hash_combine wire form). parse_gate_roster_hash_wire routes through std.content_hash.fnv1a64_structural_hex_digest (exact length plus lowercase-hex syntax) before branding as GateRosterHash; blank, malformed, or wrong-length receipt lines refuse the whole receipt (review 45474). An earlier cut cast arbitrary text to NonEmptyStr via structural_content_hash unchecked."
-data receipt_wire_v2_note: String = "Wire v2 is SELF-IDENTIFYING: line 1 is the schema tag, so a v1 wire (positional, no tag) read by the v2 parser refuses on the tag line instead of mis-binding fields by position — and a v2 wire read by the v1 parser mis-parses into a conclusion-line mismatch, also a refusal. Lines (v3): schema, attempt_id, gate_roster_hash, conclusion, tested_head_sha, tested_base_commit_sha, then the optional pr number. v3 REPLACED the tested_base_tree_hash line with tested_base_commit_sha rather than adding one: a commit determines its tree, and the merge base the merge actually reads is fixed by ancestry a tree does not carry. The v1 wire, path, and type stay until the entry migration completes and the old consumers delete with the emitter web (add-replacement, never in-place mutation of a live format)."
+// Gate roster hash wire is the serialized fnv1a64 structural fingerprint (16 lowercase hex digits —
+// atom_identity_hash / hash_combine wire form). parse_gate_roster_hash_wire routes through
+// std.content_hash.fnv1a64_structural_hex_digest (exact length plus lowercase-hex syntax) before
+// branding as GateRosterHash; blank, malformed, or wrong-length receipt lines refuse the whole
+// receipt (review 45474). An earlier cut cast arbitrary text to NonEmptyStr via
+// structural_content_hash unchecked.
+// Wire v2 is SELF-IDENTIFYING: line 1 is the schema tag, so a v1 wire (positional, no tag) read by
+// the v2 parser refuses on the tag line instead of mis-binding fields by position — and a v2 wire
+// read by the v1 parser mis-parses into a conclusion-line mismatch, also a refusal. Lines (v3):
+// schema, attempt_id, gate_roster_hash, conclusion, tested_head_sha, tested_base_commit_sha, then
+// the optional pr number. v3 REPLACED the tested_base_tree_hash line with tested_base_commit_sha
+// rather than adding one: a commit determines its tree, and the merge base the merge actually reads
+// is fixed by ancestry a tree does not carry. The v1 wire, path, and type stay until the entry
+// migration completes and the old consumers delete with the emitter web (add-replacement, never
+// in-place mutation of a live format).
 
 fn render_receipt_wire_v2(receipt: MergeAdmissionReceiptV2) -> String {
   let core = join([
@@ -66,7 +79,13 @@ fn render_receipt_wire_v2(receipt: MergeAdmissionReceiptV2) -> String {
   }
 }
 
-data wire_pr_number_three_states_note: String = "THREE states, named, because two of them are not the same absence: no seventh line at all (the receipt legitimately carries no PR number), a seventh line that parses, and a seventh line that does not. An Optional<Optional<Int>> would spell this with two Absents meaning different things — the state-space conflation DESIGN's failure list names — and the language refuses the spelling anyway, since `??` is the null-coalesce operator token and cannot appear in type position. WirePrMalformed is what makes the whole receipt refuse instead of quietly becoming a receipt with no PR number."
+// THREE states, named, because two of them are not the same absence: no seventh line at all (the
+// receipt legitimately carries no PR number), a seventh line that parses, and a seventh line that
+// does not. An Optional<Optional<Int>> would spell this with two Absents meaning different things —
+// the state-space conflation DESIGN's failure list names — and the language refuses the spelling
+// anyway, since `??` is the null-coalesce operator token and cannot appear in type position.
+// WirePrMalformed is what makes the whole receipt refuse instead of quietly becoming a receipt with
+// no PR number.
 
 type ReceiptWirePrNumber
   = WirePrAbsent

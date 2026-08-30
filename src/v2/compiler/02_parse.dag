@@ -204,8 +204,6 @@ fn authored_parse_annotations(artifact: AuthoredParseArtifact) -> SourceAnnotati
   artifact.annotations
 }
 
-
-
 type ParseMintSourceResult {
   id: OccurrenceId
   prov: ParseProvenanceState
@@ -259,7 +257,6 @@ type GrammarExprCornerFold {
   corners: List<Symbol>
   nullable: Bool
 }
-
 
 type ParsePositionKey {
   position: Int
@@ -391,7 +388,31 @@ fn grammar_lookup_production(root: GrammarRoot, name: Symbol) -> Witness<Grammar
   }
 }
 
-data grammar_lookup_production_indexed_note: String = "grammar_lookup_production is an O(P) filter scan over the full production list; it is the well-formedness/analysis authority, run once per grammar at prepare_grammar time (§6 already-hoisted cost) and is correct to keep as the single-authority derivation of the index below. grammar_lookup_production_indexed is the per-dispatch consumer: every nonterminal reference during recursive-descent parsing calls it, memoized or not (parse_nonterminal_memoized_core looks the production up before consulting the memo table), so the P=204-production dag grammar turned this into the dominant cost of parsing even a trivial source under the tree-walking v1 interpreter (measured: ~12s to parse a 3-line source, PR #8478). productions_by_name is that lookup's index, built once by grammar_production_index and carried on ParseTable exactly like nullable_set/first_rows already are (parse_table_carry_analysis threads all three through every table mutation) — one Map<Symbol,GrammarProduction>, not a second production roster (§3). Every ParseTableRealization construction site (parse_table_for_production_analyzed, the real-parse path; parse_table_empty; parse_table_carry_analysis, the pass-through on every table mutation) populates this field, so the O(P)->O(1) change is not opt-in per call site. Measured effect (this host, dag/test/claim/long/dag_arrow_lambda_witness_test.dag witness_single_param_lambda_parses via `gunbc run --claim-run`, fix stashed vs applied around the identical whole-process invocation): 78.023s -> 74.006s wall. That delta undercounts the fix's effect on the specific fold it repairs, because the invocation's wall time is dominated by up-front module-load/typecheck of the full v2 closure — a cost this change does not touch — rather than by the repeated per-dispatch grammar lookup inside the parse itself; the O(204)->O(1) asymptotic claim is the primary evidence (grammar_lookup_production is an unmemoized linear filter reached before every memo-table check, so even a memo HIT paid the full scan), not the crude wall-clock ratio. This is the class docs/plans/measurements/floor-slow-rows-2026-08-18.md records dag_arrow_lambda_witness_test's rows landing 1-4ms over its 1552ms ceiling for."
+// grammar_lookup_production is an O(P) filter scan over the full production list; it is the
+// well-formedness/analysis authority, run once per grammar at prepare_grammar time (§6
+// already-hoisted cost) and is correct to keep as the single-authority derivation of the index
+// below. grammar_lookup_production_indexed is the per-dispatch consumer: every nonterminal
+// reference during recursive-descent parsing calls it, memoized or not
+// (parse_nonterminal_memoized_core looks the production up before consulting the memo table), so
+// the P=204-production dag grammar turned this into the dominant cost of parsing even a trivial
+// source under the tree-walking v1 interpreter (measured: ~12s to parse a 3-line source, PR #8478).
+// productions_by_name is that lookup's index, built once by grammar_production_index and carried on
+// ParseTable exactly like nullable_set/first_rows already are (parse_table_carry_analysis threads
+// all three through every table mutation) — one Map<Symbol,GrammarProduction>, not a second
+// production roster (§3). Every ParseTableRealization construction site
+// (parse_table_for_production_analyzed, the real-parse path; parse_table_empty;
+// parse_table_carry_analysis, the pass-through on every table mutation) populates this field, so
+// the O(P)->O(1) change is not opt-in per call site. Measured effect (this host,
+// dag/test/claim/long/dag_arrow_lambda_witness_test.dag witness_single_param_lambda_parses via
+// `gunbc run --claim-run`, fix stashed vs applied around the identical whole-process invocation):
+// 78.023s -> 74.006s wall. That delta undercounts the fix's effect on the specific fold it repairs,
+// because the invocation's wall time is dominated by up-front module-load/typecheck of the full v2
+// closure — a cost this change does not touch — rather than by the repeated per-dispatch grammar
+// lookup inside the parse itself; the O(204)->O(1) asymptotic claim is the primary evidence
+// (grammar_lookup_production is an unmemoized linear filter reached before every memo-table check,
+// so even a memo HIT paid the full scan), not the crude wall-clock ratio. This is the class
+// docs/plans/measurements/floor-slow-rows-2026-08-18.md records dag_arrow_lambda_witness_test's
+// rows landing 1-4ms over its 1552ms ceiling for.
 
 fn grammar_production_index(productions: List<GrammarProduction>) -> Map<Symbol, GrammarProduction> {
   fold_list(
@@ -2055,7 +2076,6 @@ fn parse_token_second(tokens: List<Token>) -> Optional<Token> {
 fn parse_token_at_optional(tokens: List<Token>, index: Int) -> Optional<Token> {
   parse_token_first(tokens: parse_tokens_drop(tokens: tokens, count: index))
 }
-
 
 // THE INT-LITERAL WRAP IN THIS FUNCTION IS LOAD-BEARING. minted.id is a raw OccurrenceId;
 // Node.occurrence_id is the NodeOccurrenceIdentity coproduct, so the mint has to be lifted into

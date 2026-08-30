@@ -208,6 +208,14 @@ fn cooling_catalog_verdict_admits_qualification(
   }
 }
 
+// CoolingCatalogCompatible is a preflight over cited catalog rows and nothing more. It is never
+// evidence that an installed cooler actually holds a processor within its thermal limits: mounting
+// quality, thermal-interface application, DIMM/VRM/NIC airflow, sustained workload temperature,
+// throttling, acoustics, and room heat rejection are all outside what a purchase record can decide.
+// The live BMC thermal/tach readback remains the only source of those facts, and a compatible
+// catalog verdict must never be substituted for it — a consumer needs BOTH, and this module
+// supplies exactly one.
+
 fn cooling_catalog_refusal_reason(verdict: CoolingCatalogVerdict) -> String {
   match verdict {
     CoolingCatalogCompatible { host: _, cooler_asset: _ } =>
@@ -231,5 +239,3 @@ fn cooling_catalog_refusal_reason(verdict: CoolingCatalogVerdict) -> String {
       }
   }
 }
-
-data cooling_catalog_scope_note: String = "CoolingCatalogCompatible is a preflight over cited catalog rows and nothing more. It is never evidence that an installed cooler actually holds a processor within its thermal limits: mounting quality, thermal-interface application, DIMM/VRM/NIC airflow, sustained workload temperature, throttling, acoustics, and room heat rejection are all outside what a purchase record can decide. The live BMC thermal/tach readback remains the only source of those facts, and a compatible catalog verdict must never be substituted for it — a consumer needs BOTH, and this module supplies exactly one."

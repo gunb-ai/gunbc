@@ -11,9 +11,8 @@ become that PR's before/after.
 **Method.** Release bins built on srv1 from the #7106 head, run unmodified on (a) srv1 (125 GB) and
 (b) a Pi 3 (aarch64, 905 MB + 12 GB swap). Every number below is **by execution**; CI figures are
 re-derived from anchor run `29976989996` (ci job `89110963350`) and trivial-diff run `29970583893`.
-The Pi is not a target platform — it is an instrument: a phase that stretches ~8× Pi/srv is
-CPU-shaped, one that stretches 25–78× is memory-shaped, and that single signal separates real
-mechanisms from plausible-but-wrong ones (§6).
+The Pi is an instrument, not a target: a phase stretching ~8× Pi/srv is CPU-shaped, one stretching
+25–78× is memory-shaped, and that signal separates real mechanisms from plausible-but-wrong ones (§6).
 
 **Carriers (this PR):**
 
@@ -28,18 +27,17 @@ The phase walls in #7106 §2 match the re-derived log exactly (batch 1 ≈ 10.1m
 batch 6 ≈ 12.15m, batch 7 ≈ 3.3m); so do `resolves_total = 4` and the materialization receipt
 counts (`keyed 2413946 / unkeyed 2193388`). The governor pins the cgroup at its 16 GiB
 `memory.high` ceiling by t≈30m and stays there, width = 1 the whole run. And "the band is **not**
-4–5× whole-tree cold re-ingests" holds — **for the executor process**. The correction below is
-about the work that happens **outside** that process.
+4–5× whole-tree cold re-ingests" holds — **for the executor process**. The correction below is about
+the work **outside** that process.
 
 ## 2. The dominant class #7106 missed: cold child processes (≈48% of the floor)
 
 Every wet gate discharges its witnesses through `run_gunbc_claims`
 (`dag/gunbc/instruments/host_prelude.dag:177`, `run_gunbc_claims_ready`), whose fold spawns **one cold
 `gunbc` process per `ClaimRun`**. Each child rebuilds the module index and closure resolve from
-scratch; each costs ~35–73 s on srv **regardless of which claim it runs** (the cost is
-startup + resolve, not gate semantics). None of it is visible to `resolves_total = 4`, which counts
-executor-grain resolves by design (the receipt note says as much: "the duplication this lane
-still owes lives OUTSIDE this receipt").
+scratch, costing ~35–73 s on srv **regardless of which claim it runs** (startup + resolve, not gate
+semantics). None of it is visible to `resolves_total = 4`, which counts executor-grain resolves by
+design (receipt note: "the duplication this lane still owes lives OUTSIDE this receipt").
 
 | batch | #7106's story | actual mechanism (same log) |
 |---|---|---|
@@ -73,14 +71,13 @@ terminal, "resolve once, share by reference."
 (marginal warm resolve ≈ 0 ms/claim); running them against the executor's already-warm index
 displaces more.
 
-**Pi verdict (the exaggeration bench earning its keep):** *pooling's 5.1× win is a warm-cache
-win, not a work-reduction win, and it vanishes at the memory wall.* Pi pooled (72.9m) ≈ Pi
-spawn-sum (66–78m): the pooled process's unioned closure (VmSize 2.7 GB) swap-thrashes what 12
-small sequential children avoid. The 16 GiB-capped fleet runners sit on the same cliff (the
-executor already pins the cgroup). **So the child-spawn fix pays on the CI wall — but only because
-the CI runner has 125 GB; on a capped runner it helps only when paired with per-worker index
-footprint reduction** (the eviction / M2 lane, ROADMAP ①). This is a §5 caution: a warm-cache
-speedup measured on the build box must not be allowed to mask the footprint deficit on the capped
+**Pi verdict:** *pooling's 5.1× win is a warm-cache win, not a work-reduction win, and it vanishes
+at the memory wall.* Pi pooled (72.9m) ≈ Pi spawn-sum (66–78m): the pooled process's unioned
+closure (VmSize 2.7 GB) swap-thrashes what 12 small sequential children avoid. The 16 GiB-capped
+fleet runners sit on the same cliff (the executor already pins the cgroup). **So the child-spawn
+fix pays on the CI wall only because the CI runner has 125 GB; on a capped runner it helps only
+paired with per-worker index footprint reduction** (the eviction / M2 lane, ROADMAP ①). §5 caution:
+a warm-cache speedup measured on the build box must not mask the footprint deficit on the capped
 runner.
 
 ## 4. Corrections to #7106's ranked levers
@@ -111,14 +108,13 @@ runner.
 
 ## 6. The bench as an instrument (validated)
 
-The stretch factors are diagnostic, not noise: CPU-bound work stretches ~8× (child resolve
-389s/47.2s), swap-bound work stretches 25–78× (pooled closures, witness eval over whole-tree
-scans). The clearest case is the compiler's **emit** stage: on srv it is ~20–29 s (invisible next
-to reconcile); on the Pi it is **2.7 hours — ~337×** (dag-serialize alone 2.5 h), against ~8× for
-frontend and ~19× for reconcile. Emit is the most memory-shaped compiler stage and a latent wall
-as the emitted corpus grows or worker width rises — worth a footprint probe before it becomes
-one. (Whole-tree compile-clean is otherwise **84% reconcile**: 175.7s of a 209.5s 3-root compile,
-5.9 GB RSS.)
+The stretch factors are diagnostic: CPU-bound work stretches ~8× (child resolve 389s/47.2s),
+swap-bound work 25–78× (pooled closures, witness eval over whole-tree scans). Clearest case: the
+compiler's **emit** stage is ~20–29 s on srv (invisible next to reconcile) but **2.7 hours — ~337×**
+on the Pi (dag-serialize alone 2.5 h), against ~8× for frontend and ~19× for reconcile. Emit is the
+most memory-shaped compiler stage and a latent wall as the emitted corpus grows or worker width
+rises — worth a footprint probe first. (Whole-tree compile-clean is otherwise **84% reconcile**:
+175.7s of a 209.5s 3-root compile, 5.9 GB RSS.)
 
 ## 7. Side finding (needs root-cause; **not** a floor-time claim)
 
@@ -131,9 +127,9 @@ errors** on the tree CI greens (identical count at 2 and 3 roots). CI's compile-
 `UnlistedImportUse` is precisely the resolver class the namespace-resolution lane is mid-promotion
 on (`namespace_import_closure_behavioral_transport.dag:15`: "DISSOLVES WHEN … UnlistedImportUse
 promoted to an error"). So two "compile-clean" realizations apply **opposite policy to the same
-not-yet-promoted class**. Whether this is a benign staging artifact (the CLI ahead of the resolver
+not-yet-promoted class**. Whether this is a benign staging artifact (CLI ahead of the resolver
 promotion) or a fail-open fork (the floor's green depending on **not** enforcing what the CLI
-enforces, §5) is undetermined and worth a dedicated look. It does not affect §2–§5.
+enforces, §5) is undetermined and needs a dedicated look. It does not affect §2–§5.
 
 ## 8. Recommendations
 
@@ -162,14 +158,13 @@ size.
 
 ### 8.3 Add the two unledgered costs to the redundancy ledger
 
-The 4m51s selection-control step and the ~2.5m teardown are real, recurring, and currently
-invisible to the ledger — give them rows so they can be priced and prioritized (DESIGN §6).
+The 4m51s selection-control step and the ~2.5m teardown are real, recurring, and invisible to the
+ledger — give them rows so they can be priced and prioritized (DESIGN §6).
 
 ### 8.4 Keep a footprint probe on the emit stage
 
-The 337× Pi stretch flags emit as the compiler stage most likely to become the next memory wall.
-A cheap standing footprint probe (emit RSS vs emitted-module count) would catch it before the
-fleet does.
+The 337× Pi stretch flags emit as the likeliest next memory wall. A cheap standing footprint probe
+(emit RSS vs emitted-module count) would catch it before the fleet does.
 
 ---
 
