@@ -65,7 +65,7 @@ import v1.compiler.infer_types { algebra_field_kind_name }
 import v1.compiler.emit_core_support { EmitResult, escape_json_string }
 import v1.compiler.emit { unmodeled_file_transport_diagnostics }
 
-import v1.compiler.emit_rust { emit_rust }
+import v1.compiler.emit_rust { emit_rust_selected }
 
 import v1.compiler.emit_python { emit_python }
 
@@ -84,7 +84,7 @@ import std.termination {
 
 import v1.compiler.ownership { OwnershipProof, OwnershipDecision, SharedError, analyze_ownership }
 
-import v1.compiler.artifact { ArtifactPlan, Artifact, RenderTarget, Dag, default_artifact_plan }
+import v1.compiler.artifact { ArtifactPlan, Artifact, RenderTarget, Dag, default_artifact_plan, selected_artifact_plan, RustModuleRenderSelection, RenderEveryModule }
 
 import v1.compiler.dag_collect_support { DagCollectAcc, json_quote, connective_name }
 
@@ -240,7 +240,7 @@ fn emit_artifact(typed: ResolvedGraph, artifact: Artifact) -> EmitResult {
     return EmitResult { files: [], diagnostics: unmodeled_transports }
   }
   match artifact.target {
-    Rust => emit_rust(typed: typed)
+    Rust => emit_rust_selected(typed: typed, selection: artifact.module_selection)
     Python => emit_python(typed: typed)
     Go => emit_go(typed: typed)
     Dag => emit_dag_artifact(typed: typed)
@@ -1199,6 +1199,18 @@ fn compile_sources(sources: List<SourceFile>, target: RenderTarget) -> PipelineR
   )
 }
 
+// THE CHANGE-DENOMINATED ENTRY. Same pipeline, same resolved graph, same diagnostics -- the
+// selection reaches emission only, where it decides which modules are RENDERED. A caller that
+// supplies RenderEveryModule here has written `compile_sources` the long way, which is why that
+// wrapper stays the name for the whole-closure question.
+fn compile_sources_selected(sources: List<SourceFile>, target: RenderTarget, selection: RustModuleRenderSelection) -> PipelineResult {
+  emit_resolved_for_target_selected(
+    resolved: compile_to_resolved_with_options(sources: sources, options: default_compile_pipeline_options()),
+    target: target,
+    selection: selection
+  )
+}
+
 fn compile_sources_with_options(sources: List<SourceFile>, target: RenderTarget, options: CompilePipelineOptions) -> PipelineResult {
   emit_resolved_for_target(
     resolved: compile_to_resolved_with_options(sources: sources, options: options),
@@ -1319,6 +1331,25 @@ fn compile_to_resolved_with_options(sources: List<SourceFile>, options: CompileP
 }
 
 fn emit_resolved_for_target(resolved: ResolvedPipelineResult, target: RenderTarget) -> PipelineResult {
+  emit_resolved_for_target_selected(resolved: resolved, target: target, selection: RenderEveryModule)
+}
+
+// WHY THE REFUSAL PRECONDITION A SCOPED ROUND RESTS ON LIVES HERE, one binding down.
+//
+// Under RenderSelectedMirrors the emitter observes import refusals only for the modules it
+// rendered, so a reader is owed why that is EXACT rather than merely cheaper. It is exact
+// because of `final_files` below: an emit carrying one error diagnostic returns NO FILES AT ALL.
+// A committed mirror is therefore a file some emit returned, and no emit returns a file while
+// any module in the closure refuses. So a tree that exists is a tree whose whole closure emitted
+// clean, and the modules a scope declined to render had nothing to say.
+//
+// This is a construction rather than a claim about it: the `if` below is what makes the
+// implication true, and `emit_refusal_forces_empty_files` in
+// `v1.tests.claim.change_denominated_emit_witness_test` is the discriminating execution --
+// a fixture whose emit refuses, asserted to produce zero files rather than the ones that did
+// render. Delete the `if` and that witness goes red, which is the only form this argument can
+// take that a later reader can check.
+fn emit_resolved_for_target_selected(resolved: ResolvedPipelineResult, target: RenderTarget, selection: RustModuleRenderSelection) -> PipelineResult {
   match emittable_graph(resolved: resolved) {
     Absent =>
       PipelineResult {
@@ -1331,9 +1362,10 @@ fn emit_resolved_for_target(resolved: ResolvedPipelineResult, target: RenderTarg
       }
     Present { value: emittable } => {
       let typed = emittable.graph
-      let artifact_plan = default_artifact_plan(
+      let artifact_plan = selected_artifact_plan(
         root_modules: typed.modules |> map(m => authored_name_at(source_indices: resolved.source_indices, node: m.module)),
-        target: target
+        target: target,
+        selection: selection
       )
       let _ = trace_mark("compile.emit.begin")
       let emit_result = emit_from_artifact_plan(emittable: emittable, artifact_plan: artifact_plan)
