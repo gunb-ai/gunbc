@@ -400,7 +400,20 @@ pub struct TransitionAdmission {
 /// shrink cannot wait for a PR that would otherwise touch this file. Removed by the trigger they were authored with. The roster is EMPTY and empty
 /// is not permissive: a run carrying a real namespace delta still refuses it as UNADJUDICATED
 /// until its author adds a row here.
-/// FIFTH POPULATION, SAME RULE (2026-08-29, #9698). Two rows for the `RequiredCiLane` move:
+/// FIFTH TRANSITION (2026-08-29, gunbc#9675). The four `rust_source_prefix_*` constants moved
+/// from `gunbc.stage0_rust_source_lifecycle_scaffold` to `gunbc.rust_item_host_observation` --
+/// the namespace table there needs the tooling prefix, and importing it the other way closes
+/// the cycle scaffold -> seed_growth_admission -> host_observation. Every spelling that bound to
+/// the old declarer now binds to the new one: six `TargetChanged` rows, each naming the exact
+/// module, enclosing declaration and leaf, blast radius 0 on every one. DISSOLVE-ON: #9675
+/// merging -- base and head then both carry the relocation, the rows report stale, and they are
+/// removed by that trigger exactly as the four shrinks above were.
+/// FIFTH SHRINK, SAME RULE (2026-08-30). #9675 merged (e1905850789), so on every pull_request
+/// build from here the merge base and head both carry the relocation, no run can produce the
+/// deltas the six rows above named, and they report stale -- refusing every PR. Removed by
+/// the trigger they were authored with, in the first merge of main that carried the
+/// relocation on both sides.
+/// SIXTH POPULATION, SAME RULE (2026-08-29, #9698). Two rows for the `RequiredCiLane` move:
 /// `BuildLane` and `WitnessesLane` moved (not duplicated) from
 /// `gunbc.required_ci_host_verdict_census` to the new `gunbc.required_ci_phase_roster` --
 /// which the census itself named as its next rung -- so the census's

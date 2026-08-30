@@ -8,11 +8,10 @@ import gunbc.stage0_rust_host_observation {
   RustManifestReadRefused,
   RustSourceHostObservation
 }
+import gunbc.rust_item_host_observation { rust_source_prefix_stage0_test, rust_source_prefix_test_harness }
 import gunbc.stage0_rust_source_lifecycle_scaffold {
   rust_source_path_has_prefix,
-  path_in_list,
-  rust_source_prefix_stage0_test,
-  rust_source_prefix_test_harness
+  path_in_list
 }
 import std.content_hash { Fnv1a64Structural }
 import v2.std.algebra { fold_list, list_map, list_snoc_item }
