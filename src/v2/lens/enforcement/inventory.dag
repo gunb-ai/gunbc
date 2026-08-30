@@ -91,45 +91,51 @@ fn pr_floor_scheduling_disposition(
   primary: WitnessConsumerCadence,
   ci_enrolled: Bool
 ) -> SchedulingDisposition {
-  match primary {
+  if witness_cadence_is_offline_local_recipe(cadence: primary) {
+    disposition_when_bool(enrolled: ci_enrolled)
+  } else { match primary {
     DiscoverySelection => SchedulingEnrolled
     FalsifierSelfHostWet => disposition_when_bool(enrolled: ci_enrolled)
     FalsifierRehomedBinWet => disposition_when_bool(enrolled: ci_enrolled)
     FalsifierSubstrateLongLane => disposition_when_bool(enrolled: ci_enrolled)
     BinWitnessWet => disposition_when_bool(enrolled: ci_enrolled)
     QuarantineProbeExpectRed => disposition_when_bool(enrolled: ci_enrolled)
-    OfflineLocalRecipe => disposition_when_bool(enrolled: ci_enrolled)
     FixtureExplicitRoster => disposition_when_bool(enrolled: ci_enrolled)
     NoConsumer => disposition_when_bool(enrolled: ci_enrolled)
-  }
+    offline => SchedulingExcluded
+  } }
 }
 
 fn wet_falsifier_scheduling_disposition(primary: WitnessConsumerCadence) -> SchedulingDisposition {
-  match primary {
+  if witness_cadence_is_offline_local_recipe(cadence: primary) {
+    SchedulingDark
+  } else { match primary {
     FalsifierSelfHostWet => SchedulingEnrolled
     FalsifierRehomedBinWet => SchedulingEnrolled
     BinWitnessWet => SchedulingEnrolled
-    OfflineLocalRecipe => SchedulingDark
     DiscoverySelection => SchedulingExcluded
     FalsifierSubstrateLongLane => SchedulingExcluded
     QuarantineProbeExpectRed => SchedulingExcluded
     FixtureExplicitRoster => SchedulingExcluded
     NoConsumer => SchedulingExcluded
-  }
+    offline => SchedulingExcluded
+  } }
 }
 
 fn scheduled_falsifier_scheduling_disposition(primary: WitnessConsumerCadence) -> SchedulingDisposition {
-  match primary {
+  if witness_cadence_is_offline_local_recipe(cadence: primary) {
+    SchedulingExcluded
+  } else { match primary {
     FalsifierSelfHostWet => SchedulingEnrolled
     FalsifierRehomedBinWet => SchedulingEnrolled
     FalsifierSubstrateLongLane => SchedulingEnrolled
     QuarantineProbeExpectRed => SchedulingEnrolled
     DiscoverySelection => SchedulingExcluded
     BinWitnessWet => SchedulingExcluded
-    OfflineLocalRecipe => SchedulingExcluded
     FixtureExplicitRoster => SchedulingExcluded
     NoConsumer => SchedulingExcluded
-  }
+    offline => SchedulingExcluded
+  } }
 }
 
 fn scheduling_disposition_for_primary_cadence(
@@ -152,7 +158,7 @@ fn scheduling_disposition_for_primary_cadence(
     SubstrateLongLane =>
       disposition_when_bool(enrolled: primary == FalsifierSubstrateLongLane)
     OfflineLocalRecipeCadence =>
-      disposition_when_bool(enrolled: primary == OfflineLocalRecipe)
+      disposition_when_bool(enrolled: witness_cadence_is_offline_local_recipe(cadence: primary))
     ScheduledFalsifier =>
       scheduled_falsifier_scheduling_disposition(primary: primary)
   }

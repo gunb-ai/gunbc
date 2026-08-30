@@ -74,20 +74,34 @@ pub struct SymbolInterner {
     calls: u64,
 }
 
+const CANONICAL_SYMBOL_RETAINED_BYTE_CAP: usize = 16 * 1024 * 1024;
+
+#[derive(Default)]
+struct CanonicalSymbolTable {
+    spellings: std::collections::HashSet<&'static str>,
+    retained_spelling_bytes: usize,
+}
+
+static CANONICAL_SYMBOLS: std::sync::OnceLock<std::sync::Mutex<CanonicalSymbolTable>> =
+    std::sync::OnceLock::new();
+
 fn canonical_symbol_spelling(s: &str) -> &'static str {
-    static SPELLINGS: std::sync::OnceLock<
-        std::sync::Mutex<std::collections::HashMap<String, &'static str>>,
-    > = std::sync::OnceLock::new();
-    let spellings =
-        SPELLINGS.get_or_init(|| std::sync::Mutex::new(std::collections::HashMap::new()));
-    let mut spellings = spellings
+    let table =
+        CANONICAL_SYMBOLS.get_or_init(|| std::sync::Mutex::new(CanonicalSymbolTable::default()));
+    let mut table = table
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner());
-    if let Some(existing) = spellings.get(s) {
-        return existing;
+    if let Some(existing) = table.spellings.get(s) {
+        return *existing;
     }
+    let projected = table.retained_spelling_bytes.saturating_add(s.len());
+    assert!(
+        projected <= CANONICAL_SYMBOL_RETAINED_BYTE_CAP,
+        "canonical symbol retention cap exceeded: projected_spelling_bytes={projected} cap_bytes={CANONICAL_SYMBOL_RETAINED_BYTE_CAP}"
+    );
     let canonical = Box::leak(s.to_string().into_boxed_str());
-    spellings.insert(canonical.to_string(), canonical);
+    table.spellings.insert(canonical);
+    table.retained_spelling_bytes = projected;
     canonical
 }
 
@@ -126,6 +140,9 @@ pub struct InternStats {
     pub distinct: u64,
     pub hits: u64,
     pub heap_bytes: u64,
+    pub canonical_entries: u64,
+    pub canonical_retained_spelling_bytes: u64,
+    pub canonical_retained_byte_cap: u64,
 }
 
 impl SymbolInterner {
@@ -141,11 +158,18 @@ impl SymbolInterner {
 
     pub fn stats(&self) -> InternStats {
         let distinct = self.index.len() as u64;
+        let canonical = CANONICAL_SYMBOLS
+            .get_or_init(|| std::sync::Mutex::new(CanonicalSymbolTable::default()))
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
         InternStats {
             calls: self.calls,
             distinct,
             hits: self.calls.saturating_sub(distinct),
             heap_bytes: self.heap_bytes(),
+            canonical_entries: canonical.spellings.len() as u64,
+            canonical_retained_spelling_bytes: canonical.retained_spelling_bytes as u64,
+            canonical_retained_byte_cap: CANONICAL_SYMBOL_RETAINED_BYTE_CAP as u64,
         }
     }
 
@@ -2174,6 +2198,61 @@ mod cross_claim_memo_tests {
         assert_eq!(bare, qualified);
         assert_eq!(bare, imported);
         assert_ne!(bare, other);
+    }
+
+    #[test]
+    fn typed_bool_literals_do_not_need_lexeme_shorthands_but_zero_still_does() {
+        use crate::v1_compiler_compile::SourceFile;
+        let result = crate::v1_compiler_compile::compile_to_resolved(Rc::new(im_vec![Rc::new(
+            SourceFile {
+                path: "fixture/shorthand.dag".to_string(),
+                content: "module fixture.shorthand\ntype UserToken = Zero | Other\nfn literal_true() -> Bool { true }\nfn literal_false() -> Bool { false }\nfn user_zero() -> UserToken { Zero }\n"
+                    .to_string(),
+            },
+        )]));
+        let graph = result.graph.as_ref().expect("fixture graph");
+        let eval = |name| {
+            let ctx = InterpContext::new(
+                graph,
+                result.source_indices.clone(),
+                ExecutionMode::Hermetic,
+            );
+            super::run_in_context(&ctx, name, false).expect(name)
+        };
+        assert_eq!(eval("literal_true"), Value::Bool(true));
+        assert_eq!(eval("literal_false"), Value::Bool(false));
+        // Executable bounded residual: `Zero` is still the intentional native Nat encoding, but
+        // the seed receives no declaration identity with which to distinguish it from this user
+        // coproduct. NS-0B must make this select the native representation by declaration rather
+        // than by lexeme.
+        assert_eq!(eval("user_zero"), Value::Int(0));
+    }
+
+    // Bounded residual: the runtime carrier still has only parent and arm spellings. This
+    // executable specimen stays equal until NS-0B threads owner-module declaration identity.
+    #[test]
+    fn same_spelled_variants_from_distinct_owners_reproduce_identity_residual() {
+        use crate::v1_compiler_compile::SourceFile;
+        let result = crate::v1_compiler_compile::compile_to_resolved(Rc::new(im_vec![
+            Rc::new(SourceFile {
+                path: "fixture/left.dag".to_string(),
+                content: "module fixture.left\ntype Diagnostics = None\nfn left_none() -> Diagnostics { None }\n".to_string(),
+            }),
+            Rc::new(SourceFile {
+                path: "fixture/right.dag".to_string(),
+                content: "module fixture.right\ntype Diagnostics = None\nfn right_none() -> Diagnostics { None }\n".to_string(),
+            }),
+        ]));
+        let graph = result.graph.as_ref().expect("fixture graph");
+        let eval = |name| {
+            let ctx = InterpContext::new(
+                graph,
+                result.source_indices.clone(),
+                ExecutionMode::Hermetic,
+            );
+            super::run_in_context(&ctx, name, false).expect(name)
+        };
+        assert_eq!(eval("left_none"), eval("right_none"));
     }
 
     // The mirror-image defect is silent wrongness rather than a false negative: before symbols
@@ -5020,14 +5099,11 @@ fn eval_var(
         }
     };
 
-    if ctx.sym_eq(sym, "true") {
-        return Ok(Value::Bool(true));
-    }
-    if ctx.sym_eq(sym, "false") {
-        return Ok(Value::Bool(false));
-    }
-
     if let Some(VarBindingKind::VariantValueBinding { parent_enum }) = binding_kind {
+        // Bounded residual: Nat's intentional native representation is still selected by the
+        // arm lexeme because the seed binding carrier lacks exact owner declaration identity.
+        // The executable shorthand test and GuaranteeStall keep that silent-wrongness path
+        // visible until NS-0B can select the representation from typed identity instead.
         if ctx.sym_eq(sym, "Zero") {
             return Ok(Value::Int(0));
         }

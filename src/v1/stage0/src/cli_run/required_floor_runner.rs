@@ -1918,6 +1918,15 @@ pub(crate) fn run_discovery_rows(
     if let Some(prev) = schedule_prev_entry.take() {
         index_schedule_entry_completed(index, &prev, current_closure_subject.as_deref())?;
     }
+    if let Some(ctx) = ctx.as_ref() {
+        let stats = ctx.interner_stats_snapshot();
+        eprintln!(
+            "[floor-symbol-retention] canonical_entries={} retained_spelling_bytes={} cap_bytes={}",
+            stats.canonical_entries,
+            stats.canonical_retained_spelling_bytes,
+            stats.canonical_retained_byte_cap,
+        );
+    }
     summary.roster_closure_nodes = closure_modules.len();
     Ok(summary)
 }

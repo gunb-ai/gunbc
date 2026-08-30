@@ -412,19 +412,13 @@ data operation_argv_binding_wall_stall: GuaranteeStall = GuaranteeStall {
   next_rung_trigger: "node://adhoc-a3b0e05f-374 lands: the operation-argv binding wall materializes the controlled previously-unbindable operation"
 }
 
-// `None` is no longer in this population: eval_var now consults VariantValueBinding first, and
-// only an explicitly unresolved None reaches the legacy Null shorthand. `true` and `false` still
-// precede binding dispatch, while `Zero` is spelling-dispatched inside the resolved-variant arm.
-// Bool and Nat have intentional native representations, but the evaluator receives only a parent
-// spelling here, not a declaration identity sufficient to distinguish the grounded authorities
-// from a same-spelled user coproduct. Guessing by parent spelling would reproduce this class.
-data resolved_binding_lexeme_shorthand_stall: GuaranteeStall = GuaranteeStall {
-  subject: "resolved bindings cannot be reinterpreted by evaluator lexeme shorthands",
-  current: MechanicallyPreventable,
+data variant_owner_identity_stall: GuaranteeStall = GuaranteeStall {
+  subject: "same-spelled variants from distinct owner modules remain distinct at runtime",
+  current: OutsideTheLadder,
   ceiling: StructurallyImpossible,
   blocker: ClimbableButUnbuilt,
-  population: BoundedPopulation { members: Cons { head: "eval_var true-to-Bool", tail: Cons { head: "eval_var false-to-Bool", tail: Cons { head: "eval_var Zero-to-Int(0)", tail: Empty {} } } } },
-  next_rung_trigger: "host literals and intentional primitive representations are typed parser/resolver constructions and eval_var contains no raw-spelling branch capable of overriding a resolved binding identity"
+  population: BoundedPopulation { members: Cons { head: "v1_interpreter::cross_claim_memo_tests::same_spelled_variants_from_distinct_owners_reproduce_identity_residual", tail: Cons { head: "v1_interpreter::cross_claim_memo_tests::typed_bool_literals_do_not_need_lexeme_shorthands_but_zero_still_does", tail: Empty {} } } },
+  next_rung_trigger: "NS-0B threads its exact owner-module plus declaration-name identity through VariantValueBinding, Value::Variant, hashing, and PortableValue::Variant; the same-spelled-owner residual changes from reproducing equality to requiring inequality, and the intentional Nat Zero native representation is selected by that identity rather than by the raw Zero lexeme"
 }
 
 // REQUIRED-FLOOR RUN 32942047138 first executed this ReadsLiveTree carrier after #9284 landed.
@@ -513,7 +507,7 @@ data all_guarantee_stalls: List<GuaranteeStall> = [
   self_host_candidate_generation_add_slice_stall,
   non_fold_residue_roster_stall,
   retained_rust_live_tree_migration_stall,
-  resolved_binding_lexeme_shorthand_stall,
+  variant_owner_identity_stall,
   gitattributes_committed_emit_drift_stall,
   wall_deadline_shared_fill_attribution_stall
 ]
