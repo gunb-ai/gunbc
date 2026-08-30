@@ -1,7 +1,14 @@
 module v1.compiler.emit_rust
 
 import std.occurrence_identity { OccurrenceSynthetic }
-import std.decl_ref { decl_ref }
+import std.decl_ref { decl_ref, DeclarationRef }
+import std.target_representation { ResolvedExactBinding, ExactBindingAbsent, ExactBindingAmbiguous, ExactSourceIdentityUnavailable }
+import extdeps.languages.rust.representation { rust_exact_type_checkpoint }
+import std.repair_input_origin {
+  repair_input_origin_candidates,
+  repair_input_origin_compatibility_names,
+  qualified_item_emit_surface_compatibility_names,
+}
 import std.primitive_projection {
   primitive_identity_runtime_name, primitive_projection_row_for_declaration
 }
@@ -88,7 +95,7 @@ import v1.compiler.closure_stub_v2_std_integer_rust { closure_stub_v2_std_intege
 import v1.compiler.closure_stub_v2_std_text_rust { closure_stub_v2_std_text_source }
 import v1.compiler.coercion {
   coerce_primitive_type, is_copy, lookup_checkpoint, type_reference_decl_file,
-  rust_seed_host_numeric_alias, target_callable
+  rust_seed_host_numeric_alias, target_callable, rust_lookup_exact_binding
 }
 import v1.compiler.trait_derive_emit {
   v1_emit_enum_derives,
@@ -98,6 +105,7 @@ import v1.compiler.trait_derive_emit {
   v1_clone_bounded_type_params, v1_item_clone_bounded_param_names, v1_item_clone_undecided_head,
   v1_item_wf_propagated_clone_bounded_param_names,
   v1_map_key_required_type_names, v1_item_field_type_exprs, v1_with_map_key_requirement,
+  v1_map_key_head_names_in_type_expr,
   v1_clone_impl_required_type_params,
   v1_trait_derive_refuse,
   trait_derive_emit_fn_clone_bound_keyed_carrier_module,
@@ -111,7 +119,7 @@ import v1.compiler.trait_bound_witness {
 
 import std.types { is_container_type, is_kernel_type, container_template_algebra }
 import std.serialization { CoproductWireContract, VariantEncoding, VariantNaming }
-import v1.compiler.infer_env { TypeEnv, TypeBinding, authored_name, lookup_type_by_name, lookup_type_for, GlobalBareLookupState, empty_symbol_index }
+import v1.compiler.infer_env { TypeEnv, TypeBinding, authored_name, lookup_type_by_name, lookup_type_for, GlobalBareLookupState, GlobalBareUniqueBinding, GlobalBareAmbiguousBinding, empty_symbol_index }
 import v1.compiler.infer_types {
   resolved_type, normalize_access_type_node, for_each_element_type_node,
   child_type_node, emit_map_has,
@@ -270,13 +278,11 @@ fn render_rust_arrow_type(n: Node, shared_types: Set<String>, source_indices: Ma
   }
 }
 
-// ZERO-PARAMETER ALIAS AT THE EXPRESSION-TYPE POSITION (the closed_alias_peels_zero_param arm below):
-// A ZERO-PARAMETER ALIAS NEVER TAKES THE ARGUMENTS OF WHAT IT ABBREVIATES. The resolver hands an
-// alias reference back carrying its right-hand side's children, and rendering name-plus-children
-// wrote `CompileLensOutcome<Rc<Witness<Rc<Node>>>>` for `type CompileLensOutcome =
-// Outcome<Witness<Node>>` (E0107, and the E0391 variance cycle rustc reports beside it). The
-// fn-signature renderer already answers this position bare via closed_alias_peels_zero_param;
-// this is the same verdict asked at the expression-type position.
+// ZERO-PARAMETER ALIAS AT THE EXPRESSION-TYPE POSITION has no arm of its own here: the applied
+// route below reaches render_rust_applied_type, whose closed_alias_peel_verdict answers the alias
+// bare, so a second peel arm ahead of it answered nothing the route did not (measured on the XL-0A
+// falsifier batch: deleting it changed no emitted byte of the compiler closure, and
+// w_zero_param_alias_in_an_arrow_return_renders_without_its_rhs_arguments stayed green).
 fn render_rust_type_without_applied_binding(n: Node, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, emit_info: EmitGraphInfo) -> String {
   if is_host_text_carrier_type(n: n, source_indices: source_indices) { return rust_carrier_optional_wrap(n: n, rendered: "String") }
   if is_host_optional_carrier_type(n: n, source_indices: source_indices) {
@@ -287,9 +293,6 @@ fn render_rust_type_without_applied_binding(n: Node, shared_types: Set<String>, 
   }
   if rust_type_node_is_arrow(n: n) {
     render_rust_arrow_type(n: n, shared_types: shared_types, source_indices: source_indices, emit_info: emit_info)
-  } else if n.connective == NoConnective && n.children |> count > 0 && !is_container_type(name: authored_name_at(source_indices: source_indices, node: n)) && closed_alias_peels_zero_param(env: emit_info.fn_type_env, n: n) {
-    let leaf = qualified_last_segment(name: authored_name_at(source_indices: source_indices, node: n))
-    render_rust_shared_type_with_optional(n: n, type_name: leaf, rendered: leaf, shared_types: shared_types)
   } else if n.connective == NoConnective && n.children |> count > 0 && !is_container_type(name: authored_name_at(source_indices: source_indices, node: n)) {
     render_rust_applied_via_emit_info(n: n, shared_types: shared_types, source_indices: source_indices, emit_info: emit_info)
   } else if node_is_set_collection(n: n, source_indices: source_indices) {
@@ -520,8 +523,11 @@ fn rust_opaque_kernel_alias_carrier(name: String) -> String? {
   }
 }
 
-fn rust_opaque_kernel_alias_type_decl(name: String) -> String {
-  let carrier = coerce_primitive_type(target: Rust, dag_name: name, decl_file: "")
+fn rust_opaque_kernel_alias_type_decl(name: String, module_path: String) -> String {
+  let carrier = match rust_exact_binding_spelling(source: Present { value: decl_ref(module_path: module_path, decl_name: name) }, grounding: true) {
+    Present { value: exact } => exact
+    Absent => coerce_primitive_type(target: Rust, dag_name: name, decl_file: "")
+  }
   concat(rust_visibility_prefix(), rust_items().type_alias_keyword, " ", name, " = ", carrier, ";")
 }
 
@@ -607,11 +613,14 @@ data rust_checkpoint_scalar_phantom_params_note: String = "Construction wall for
 // authority suppresses the wrap. rust_scalar_checkpoint_reference_base also answers for
 // lookup_checkpoint rows that are NOT machine scalars (String is the live one), and those may
 // legitimately be shared, so widening this to every checkpoint row is a separate cut.
-fn rust_render_checkpoint_scalar_bare(n: Node, source_indices: Map<String, NewlineIndex>, shared_types: Set<String>) -> String? {
+fn rust_render_checkpoint_scalar_bare(n: Node, source_indices: Map<String, NewlineIndex>, shared_types: Set<String>, env: TypeEnv) -> String? {
   if n.children |> count == 0 { none }
   else {
     let leaf = rust_fn_sig_leaf_name(source_indices: source_indices, n: n)
     if is_container_type(name: leaf) { return none }
+    match rust_exact_reference_spelling(n: n, source_indices: source_indices, env: env) {
+      Present { value: exact } => Present { value: exact }
+      Absent =>
     match rust_seed_host_numeric_alias(name: leaf, decl_file: type_reference_decl_file(n: n)) {
       Present { value: numeric } => Present { value: numeric }
       Absent =>
@@ -625,6 +634,88 @@ fn rust_render_checkpoint_scalar_bare(n: Node, source_indices: Map<String, Newli
           Absent => none
         }
     }
+    }
+  }
+}
+
+// THE EXACT PATH, AT THE RENDERER. A type reference carries its resolved declaration
+// (`inferred: Resolved { node }`); the declaration's module is the containment fact the corpus-wide
+// bare-name census already holds (v1.compiler.infer_env SymbolIndex.global_bare, one row per declared
+// name with its module_path and the declaration node), so the DeclarationRef is read from that
+// census by identity -- the candidate whose declaration node IS the resolved node, by ident_span --
+// and never minted from a spelling. A second file->module map beside the census would be the
+// parallel representation DESIGN section 3 forbids. Identity that the census cannot supply (a
+// kernel mint, a variant alias, an unresolved reference) is absent, and absent identity is the
+// ExactSourceIdentityUnavailable arm of the resolver: the spelling-keyed path answers or refuses
+// for it exactly as before, which is the residue v1.compiler.coercion type_realization_decision declares for an empty decl_file.
+fn binding_declares_span(binding: TypeBinding, sp: SourceSpan) -> Bool {
+  match binding.resolved.ident_span {
+    Present { value: s } => s.file == sp.file && s.start == sp.start
+    Absent => false
+  }
+}
+
+fn type_reference_declaration_ref(n: Node, source_indices: Map<String, NewlineIndex>, env: TypeEnv) -> DeclarationRef? {
+  let rt = match n.inferred {
+    Present { value: Resolved { node: r } } => r
+    _ => n
+  }
+  let decl_name = qualified_last_segment(name: authored_name_at(source_indices: source_indices, node: rt))
+  if decl_name == "" { return none }
+  match rt.ident_span {
+    Absent => none
+    Present { value: sp } =>
+      match map_get(env.symbol_index.global_bare, decl_name) {
+        Present { value: GlobalBareUniqueBinding { module_path: mp, binding: b } } =>
+          if binding_declares_span(binding: b, sp: sp) { Present { value: decl_ref(module_path: mp, decl_name: decl_name) } } else { none }
+        Present { value: GlobalBareAmbiguousBinding { candidates: cands } } =>
+          match cands |> filter(c => binding_declares_span(binding: c.binding, sp: sp)) |> first {
+            Present { value: c } => Present { value: decl_ref(module_path: c.module_path, decl_name: decl_name) }
+            Absent => none
+          }
+        Absent => none
+      }
+  }
+}
+
+// The four arms of the exact resolver, rendered. Two answer a spelling; two are LOUD in the emitted
+// bytes -- a declaration bound to a representation with no realization row, and two rows for one
+// declaration -- because both are authoring defects a silent fall-through would hide behind the
+// structural rendering. Absent and identity-unavailable answer none so the caller's spelling-keyed
+// path runs, which for a Migrated name refuses (v1.compiler.coercion type_realization_decision).
+fn rust_exact_binding_spelling(source: DeclarationRef?, grounding: Bool) -> String? {
+  match rust_lookup_exact_binding(source: source) {
+    ResolvedExactBinding { binding: b } =>
+      match rust_exact_type_checkpoint(binding: b) {
+        Present { value: cp } => Present { value: if grounding { cp.grounding_type } else { cp.target_type } }
+        Absent => Present { value: emit_rust_compile_error_expr(message: concat("declaration '", b.source.decl_name as String, "' is bound to a Rust representation with no realization row")) }
+      }
+    ExactBindingAmbiguous { candidate_count: k } =>
+      Present { value: emit_rust_compile_error_expr(message: concat("ambiguous exact Rust binding: ", to_string(value: k), " rows for one declaration")) }
+    ExactBindingAbsent => none
+    ExactSourceIdentityUnavailable { cause: _ } => none
+  }
+}
+
+fn rust_exact_reference_spelling(n: Node, source_indices: Map<String, NewlineIndex>, env: TypeEnv) -> String? {
+  rust_exact_binding_spelling(source: type_reference_declaration_ref(n: n, source_indices: source_indices, env: env), grounding: false)
+}
+
+// REFERENCE position, node-bearing: exact first, then the spelling-keyed reference base.
+fn rust_reference_checkpoint_spelling_at(n: Node, source_indices: Map<String, NewlineIndex>, env: TypeEnv) -> String? {
+  match rust_exact_reference_spelling(n: n, source_indices: source_indices, env: env) {
+    Present { value: exact } => Present { value: exact }
+    Absent => rust_scalar_checkpoint_reference_base(dag_name: rust_fn_sig_leaf_name(source_indices: source_indices, n: n), decl_file: type_reference_decl_file(n: n))
+  }
+}
+
+// DECLARATION right-hand side, declaration-keyed: the declaring module is the env's own, so the
+// DeclarationRef is constructed rather than looked up. Exact first, then the spelling-keyed
+// grounding base.
+fn rust_declaration_checkpoint_grounding_at(module_path: String, decl_name: String, decl_file: String) -> String? {
+  match rust_exact_binding_spelling(source: Present { value: decl_ref(module_path: module_path, decl_name: decl_name) }, grounding: true) {
+    Present { value: exact } => Present { value: exact }
+    Absent => rust_scalar_checkpoint_grounding_base(dag_name: decl_name, decl_file: decl_file)
   }
 }
 
@@ -986,7 +1077,7 @@ fn render_rust_applied_type_arg(n: Node, generic_param_names: List<String>, shar
       Present { value: TypeVariable { id: tv } } =>
         if type_var_in_fn_generic_scope(id: tv, generic_param_names: generic_param_names) { to_pascal(name: tv) } else { "_" }
       _ =>
-        match rust_render_checkpoint_scalar_bare(n: n, source_indices: source_indices, shared_types: shared_types) {
+        match rust_render_checkpoint_scalar_bare(n: n, source_indices: source_indices, shared_types: shared_types, env: env) {
           Present { value: scalar } => scalar
           Absent => render_rust_decl_type(n: n, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env)
         }
@@ -1011,7 +1102,7 @@ fn render_rust_applied_type(n: Node, generic_param_names: List<String>, shared_t
     }
   } else {
 
-    match rust_scalar_checkpoint_reference_base(dag_name: base_name, decl_file: type_reference_decl_file(n: n)) {
+    match rust_reference_checkpoint_spelling_at(n: n, source_indices: source_indices, env: env) {
       Present { value: scalar } => scalar
       Absent =>
     match closed_alias_peel_verdict(env: env, n: n) {
@@ -1215,6 +1306,10 @@ fn render_rust_decl_type(n: Node, generic_param_names: List<String>, shared_type
       }
     Absent =>
       let name = rust_fn_sig_leaf_name(source_indices: source_indices, n: n)
+      let exact_leaf = if n.connective == NoConnective && n.children |> count == 0 && !(generic_param_names |> any(g => g == name)) { rust_exact_reference_spelling(n: n, source_indices: source_indices, env: env) } else { none }
+      match exact_leaf {
+        Present { value: exact } => rust_carrier_optional_wrap(n: n, rendered: exact)
+        Absent =>
       if n.connective == NoConnective && n.children |> count == 0 && (generic_param_names |> any(g => g == name)) {
         to_pascal(name: name)
       } else if n.connective == NoConnective && n.children |> count == 0 && applied_prop == none && is_host_text_carrier_type(n: n, source_indices: source_indices) {
@@ -1223,7 +1318,7 @@ fn render_rust_decl_type(n: Node, generic_param_names: List<String>, shared_type
         let rendered = rust_render_type_leaf_name(name: name, variant_to_enum: variant_to_enum)
         render_rust_shared_type_with_optional(n: n, type_name: name, rendered: rendered, shared_types: shared_types)
       } else if n.connective == NoConnective && n.children |> count > 0 {
-        match rust_render_checkpoint_scalar_bare(n: n, source_indices: source_indices, shared_types: shared_types) {
+        match rust_render_checkpoint_scalar_bare(n: n, source_indices: source_indices, shared_types: shared_types, env: env) {
           Present { value: scalar } => render_rust_shared_type_with_optional(n: n, type_name: rust_fn_sig_leaf_name(source_indices: source_indices, n: n), rendered: scalar, shared_types: shared_types)
           Absent =>
         if !is_container_type(name: name) && closed_alias_peels_zero_param(env: env, n: n) {
@@ -1238,7 +1333,7 @@ fn render_rust_decl_type(n: Node, generic_param_names: List<String>, shared_type
           } else if rust_type_arg_renders_as_unit(n: typed_arg, generic_param_names: generic_param_names, variant_to_enum: variant_to_enum, source_indices: source_indices) {
             "()"
           } else {
-            match rust_render_checkpoint_scalar_bare(n: typed_arg, source_indices: source_indices, shared_types: shared_types) {
+            match rust_render_checkpoint_scalar_bare(n: typed_arg, source_indices: source_indices, shared_types: shared_types, env: env) {
               Present { value: scalar } => scalar
               Absent => render_rust_decl_type(n: typed_arg, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env)
             }
@@ -1269,6 +1364,7 @@ fn render_rust_decl_type(n: Node, generic_param_names: List<String>, shared_type
         "_"
       } else {
         render_rust_type_with_applied_binding_in_scope(n: n, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, env: env)
+      }
       }
   }
 }
@@ -1306,6 +1402,10 @@ fn render_rust_fn_sig_type(n: Node, generic_param_names: List<String>, shared_ty
     return render_rust_decl_type(n: n, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env)
   }
   let name = rust_fn_sig_leaf_name(source_indices: source_indices, n: n)
+  let exact_leaf = if n.connective == NoConnective && n.children |> count == 0 && !(generic_param_names |> any(g => g == name)) { rust_exact_reference_spelling(n: n, source_indices: source_indices, env: env) } else { none }
+  match exact_leaf {
+    Present { value: exact } => rust_carrier_optional_wrap(n: n, rendered: exact)
+    Absent =>
   if n.connective == NoConnective && n.children |> count == 0 && is_host_text_carrier_type(n: n, source_indices: source_indices) {
     rust_carrier_optional_wrap(n: n, rendered: render_rust_text_carrier(shared_types: shared_types))
   } else if n.connective == NoConnective && n.children |> count == 0 && name != "" && name != "String" && !is_container_type(name: name) && closed_alias_peels_zero_param(env: env, n: n) && rust_fn_sig_preserves_authored_alias_leaf(name: name, decl_file: type_reference_decl_file(n: n)) {
@@ -1316,6 +1416,7 @@ fn render_rust_fn_sig_type(n: Node, generic_param_names: List<String>, shared_ty
     render_rust_decl_type(n: n, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env)
   } else {
     render_rust_fn_sig_type_applied_binding(n: n, shared_types: shared_types, source_indices: source_indices, env: env)
+  }
   }
 }
 
@@ -1405,6 +1506,33 @@ The v2 corpus authors qualified names in type position only rarely today, which 
 // The env travels: an alias right-hand side that is an Arrow renders its return through
 // render_rust_type, and the zero-param-alias verdict there is asked of emit_info.fn_type_env. An
 // empty env answered ClosedAliasBindingAbsent for every alias and the arm could never fire.
+// THE ALIAS RHS IS A DECLARATION POSITION, AND A CONTAINER THERE LOWERS EXACTLY AS IT DOES IN A
+// FIELD. render_rust_decl_type asks node_is_keyed_collection / node_is_collection and renders the
+// host template (`HashMap<K, V>`, `Vec<T>`); this branch rendered the authored base instead, so
+// `type Map<key, value> = FinitelySupportedFunction<key, value>` became the algebra STRUCT and
+// `type X = Map<A, B>` became `Rc<crate::std_types::Map<..>>` -- a second storage representation
+// for one carrier, met by rustc wherever an X flowed into a HashMap parameter (E0308
+// `expected Rc<Rc<..>>, found Rc<HashMap<_, _>>`; the derive rows on any struct holding an X).
+// One template, consulted from the same predicate the field renderer uses.
+fn rust_alias_rhs_applied_container_or_base(n: Node, leaf: String, base: String, arg_list: List<String>, source_indices: Map<String, NewlineIndex>) -> String {
+  if node_is_keyed_collection(n: n, source_indices: source_indices) {
+    match arg_list |> first {
+      Present { value: k } => match arg_list |> skip(1) |> first {
+        Present { value: v } => emit_map_type(key_type: k, val_type: v, target: Rust)
+        Absent => concat(base, "<", arg_list |> join(separator: ", "), ">")
+      }
+      Absent => concat(base, "<", arg_list |> join(separator: ", "), ">")
+    }
+  } else if node_is_collection(n: n, source_indices: source_indices) && (arg_list |> count) == 1 {
+    match arg_list |> first {
+      Present { value: inner } => emit_container(name: leaf, inner: inner, target: Rust)
+      Absent => concat(base, "<", arg_list |> join(separator: ", "), ">")
+    }
+  } else {
+    concat(base, "<", arg_list |> join(separator: ", "), ">")
+  }
+}
+
 fn render_rust_alias_rhs_type(n: Node, generic_param_names: List<String>, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, scope: InferScope, imports: List<Node>, registry: Map<String, ItemInfo>, module_name: String, export_sets: Map<String, Map<String, Bool>>, typed_modules: List<TypedModule>, module_index: ModuleIndex, variant_to_enum: Map<String, String>) -> String {
   if is_where_refinement_type(ty: n) {
     match n.children |> first {
@@ -1417,6 +1545,9 @@ fn render_rust_alias_rhs_type(n: Node, generic_param_names: List<String>, shared
   if n.connective == NoConnective && n.children |> count == 0 && (generic_param_names |> any(g => g == name)) {
     to_pascal(name: name)
   } else if n.connective == NoConnective && n.children |> count == 0 {
+    match rust_exact_reference_spelling(n: n, source_indices: source_indices, env: scope.type_env) {
+      Present { value: exact } => exact
+      Absent =>
     match rust_seed_host_numeric_alias(name: name, decl_file: type_reference_decl_file(n: n)) {
       Present { value: host } => host
       Absent =>
@@ -1434,9 +1565,10 @@ fn render_rust_alias_rhs_type(n: Node, generic_param_names: List<String>, shared
         }
       }
     }
+    }
   } else if n.connective == NoConnective && n.children |> count > 0 {
     let leaf = qualified_last_segment(name: name)
-    let numeric_host_alias = match rust_scalar_checkpoint_reference_base(dag_name: leaf, decl_file: type_reference_decl_file(n: n)) {
+    let numeric_host_alias = match rust_reference_checkpoint_spelling_at(n: n, source_indices: source_indices, env: scope.type_env) {
       Present { value: scalar } => Present { value: scalar }
       Absent => rust_seed_host_numeric_alias(name: leaf, decl_file: type_reference_decl_file(n: n))
     }
@@ -1462,14 +1594,15 @@ fn render_rust_alias_rhs_type(n: Node, generic_param_names: List<String>, shared
             if set_contains(shared_types, leaf) && !rust_type_is_rc_wrapped(type_name: base) { wrap_shared_type(target: Rust, inner: base) } else { base }
           AliasDeclArityHasParams => {
     let peel = is_parametric_opaque_type_base(type_name: leaf, def_mod_filename: def_mod, typed_modules: typed_modules, source_indices: source_indices, module_index: module_index)
-    let args = n.children |> map(arg =>
+    let arg_list = n.children |> map(arg =>
       if peel {
         render_rust_phantom_opaque_applied_type_arg(n: arg, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, scope: scope, imports: imports, registry: registry, module_name: module_name, export_sets: export_sets, typed_modules: typed_modules, module_index: module_index, variant_to_enum: variant_to_enum)
       } else {
         render_rust_alias_rhs_type(n: alias_rhs_container_arg(arg: arg, source_indices: source_indices), generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, scope: scope, imports: imports, registry: registry, module_name: module_name, export_sets: export_sets, typed_modules: typed_modules, module_index: module_index, variant_to_enum: variant_to_enum)
       }
-    ) |> join(separator: ", ")
-    let applied_ty = concat(base, "<", args, ">")
+    )
+    let args = arg_list |> join(separator: ", ")
+    let applied_ty = rust_alias_rhs_applied_container_or_base(n: n, leaf: leaf, base: base, arg_list: arg_list, source_indices: source_indices)
     if set_contains(shared_types, leaf) && !rust_type_is_rc_wrapped(type_name: applied_ty) {
       wrap_shared_type(target: Rust, inner: applied_ty)
     } else {
@@ -1480,14 +1613,15 @@ fn render_rust_alias_rhs_type(n: Node, generic_param_names: List<String>, shared
         }
       ClosedAliasHasParams => {
     let peel = is_parametric_opaque_type_base(type_name: leaf, def_mod_filename: def_mod, typed_modules: typed_modules, source_indices: source_indices, module_index: module_index)
-    let args = n.children |> map(arg =>
+    let arg_list = n.children |> map(arg =>
       if peel {
         render_rust_phantom_opaque_applied_type_arg(n: arg, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, scope: scope, imports: imports, registry: registry, module_name: module_name, export_sets: export_sets, typed_modules: typed_modules, module_index: module_index, variant_to_enum: variant_to_enum)
       } else {
         render_rust_alias_rhs_type(n: alias_rhs_container_arg(arg: arg, source_indices: source_indices), generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, scope: scope, imports: imports, registry: registry, module_name: module_name, export_sets: export_sets, typed_modules: typed_modules, module_index: module_index, variant_to_enum: variant_to_enum)
       }
-    ) |> join(separator: ", ")
-    let applied_ty = concat(base, "<", args, ">")
+    )
+    let args = arg_list |> join(separator: ", ")
+    let applied_ty = rust_alias_rhs_applied_container_or_base(n: n, leaf: leaf, base: base, arg_list: arg_list, source_indices: source_indices)
     if set_contains(shared_types, leaf) && !rust_type_is_rc_wrapped(type_name: applied_ty) {
       wrap_shared_type(target: Rust, inner: applied_ty)
     } else {
@@ -4180,7 +4314,16 @@ fn reference_derived_use_line_plan(items: List<Node>, unlisted_type_names: List<
     let emitted_source_tokens = rust_identifier_tokens(s: emitted_source)
     let emitted_source_token_set = emitted_source_tokens
       |> fold(init: empty_map(), f: (acc, t) => map_insert(acc, t, true))
-    let candidates = unique_strings(items: concat(concat(concat(concat(concat(unlisted_type_names, value_names), type_surface_names), field_surface_names), variant_payload_structs), realized_surface_names))
+    let origin_candidates = repair_input_origin_candidates(
+      emitting_module: this_module_name,
+      unlisted_type_names: unlisted_type_names,
+      value_reference_names: value_names,
+      item_emit_surface_names: type_surface_names,
+      field_import_surface_names: field_surface_names,
+      variant_payload_surface_names: variant_payload_structs,
+      rendered_type_surface_names: realized_surface_names,
+    )
+    let candidates = unique_strings(items: repair_input_origin_compatibility_names(candidates: origin_candidates))
       |> filter(name =>
         reference_derived_candidate_authored(module_source: module_source, name: name, type_summaries: emit_info.type_summaries, variant_to_enum: emit_info.variant_to_enum)
           || emitter_attested_anon_heads |> any(h => h == name)
@@ -4236,7 +4379,7 @@ fn reference_derived_use_line_plan(items: List<Node>, unlisted_type_names: List<
       concat(block_lines, fallback)
     )
     let names_already_in_lines = lines |> flat_map(l => imported_names_in_use_line(line: l))
-    let qualified_rows = qualified_type_reference_rows(names: type_surface_names |> filter(nm => emit_map_has(m: emitted_source_token_set, key: qualified_last_segment(name: nm))), this_module_name: this_module_name, already: already, names_already_in_lines: names_already_in_lines, registry: registry, export_sets: export_sets, typed_modules: typed_modules, source_indices: source_indices, module_index: module_index)
+    let qualified_rows = qualified_type_reference_rows(names: qualified_item_emit_surface_compatibility_names(candidates: origin_candidates) |> filter(nm => emit_map_has(m: emitted_source_token_set, key: qualified_last_segment(name: nm))), this_module_name: this_module_name, already: already, names_already_in_lines: names_already_in_lines, registry: registry, export_sets: export_sets, typed_modules: typed_modules, source_indices: source_indices, module_index: module_index)
     let qualified_lines = qualified_type_reference_use_lines(rows: qualified_rows, registry: registry)
     ReferenceDerivedUseLinePlan { lines: concat(lines, qualified_lines), rows: concat(rows, qualified_rows) }
   }
@@ -6003,11 +6146,11 @@ fn emit_typed_item(item: Node, module_name: String, registry: Map<String, ItemIn
   } else if is_type_alias_item(item: item, source_indices: env.source_indices) {
 
     if (item.params |> count) == 0 && rust_opaque_kernel_alias_type_eligible(name: item_text) {
-      rust_opaque_kernel_alias_type_decl(name: item_text)
+      rust_opaque_kernel_alias_type_decl(name: item_text, module_path: module_name)
     } else if is_zero_param_self_referential_opaque_decl(item: item, source_indices: env.source_indices) {
       emit_zero_param_phantom_opaque_struct(item: item, map_key_required: set_contains(emit_info.map_key_required_type_names, item_text), source_indices: env.source_indices)
     } else {
-      match rust_scalar_checkpoint_grounding_base(dag_name: item_text, decl_file: decl_identity_file(item: item)) {
+      match rust_declaration_checkpoint_grounding_at(module_path: module_name, decl_name: item_text, decl_file: decl_identity_file(item: item)) {
         Present { value: host } =>
           concat(rust_visibility_prefix(), rust_items().type_alias_keyword, " ", item_text, " = ", host, ";")
         Absent =>
@@ -6028,7 +6171,7 @@ fn emit_typed_item(item: Node, module_name: String, registry: Map<String, ItemIn
     }
   } else if is_type_decl_item(item: item, source_indices: env.source_indices) {
     if (item.params |> count) == 0 && rust_opaque_kernel_alias_type_eligible(name: item_text) {
-      rust_opaque_kernel_alias_type_decl(name: item_text)
+      rust_opaque_kernel_alias_type_decl(name: item_text, module_path: module_name)
     } else {
 
       match rust_seed_host_container_base(name: item_text) {
@@ -6230,6 +6373,7 @@ fn emit_item_header_clone_param_names(
       item: item,
       generic_param_names: generic_param_names,
       bounds: emit_info.clone_bounded_type_params,
+      type_decl_items: emit_info.type_decl_items,
       source_indices: source_indices
     )
   } else {
@@ -6763,6 +6907,9 @@ fn find_shared_enum_fields(children: List<Node>, env: TypeEnv) -> List<String> {
   )
 }
 
+// THE ACCESSOR RETURNS T BY VALUE FROM &self, so `__val.clone()` must be T::clone, not the
+// reference's; without `T: Clone` on the impl rustc clones the `&T` (E0308 expected `T`, found
+// `&T`, six generic carriers). The bound is on the impl the accessor lives in, not on the enum.
 fn emit_enum_shared_accessors(name: String, type_params: String, generic_param_names: List<String>, children: List<Node>, recursive_types: Set<String>, shared_types: Set<String>, env: TypeEnv, emit_info: EmitGraphInfo) -> String {
   let all_shared = find_shared_enum_fields(children: children, env: env)
   if all_shared |> count == 0 { return "" }
@@ -6808,7 +6955,10 @@ fn emit_enum_shared_accessors(name: String, type_params: String, generic_param_n
   )
   let fns_str = accessor_fns |> join(separator: "\n")
   let type_application_params = emit_bare_type_params(generic_param_names: generic_param_names)
-  concat("impl", type_params, " ", name, type_application_params, " {\n", fns_str, "\n}")
+  let impl_params = if (generic_param_names |> count) == 0 { type_params } else {
+    concat("<", generic_param_names |> map(g => concat(to_pascal(name: g), ": Clone")) |> join(separator: ", "), ">")
+  }
+  concat("impl", impl_params, " ", name, type_application_params, " {\n", fns_str, "\n}")
 }
 
 fn string_without_prefix(value: String, prefix: String) -> String? {
@@ -7094,21 +7244,61 @@ fn v1_fn_body_derived_clone_param_names(params: List<Node>, inferred: Node, body
   )
 }
 
+// A GENERIC STORED INTO A `dyn Fn` MUST OUTLIVE IT. The arrow carrier is `Rc<dyn Fn(..)>`, which
+// defaults to `'static`; a fn returning an arrow, or a record whose fields are arrows
+// (`Monoid { op: verdict_combine, .. }`), moves its generics into that object. The bound lands on
+// the generics only for the RECORD return: a fn item stored into a field is `'static` only when
+// its generics are (E0310 on `Subj`, `T` at verdict_monoid), while a returned closure captures
+// only its `impl Fn + 'static` parameters, so `compose<A, B, C>` stays bare -- pinned by
+// w_generic_forwarded_by_a_returned_closure_carries_clone, which went red when this gate was
+// first written over both surfaces.
 // Joins the two derivations onto one per-param trait list so a param earning both renders
 // `K: Clone + PartialEq`. Clone is listed first so the Clone-only case is byte-identical to what
 // the previous single-trait renderer emitted, which is what lets the regen fixed point act as the
 // oracle for "equality changed nothing that did not need changing".
 fn v1_fn_bounds_by_param(
   clone_param_names: List<String>,
-  eq_param_names: List<String>
+  eq_param_names: List<String>,
+  map_key_param_names: List<String>,
+  static_param_names: List<String>
 ) -> Map<String, List<String>> {
   let with_clone = clone_param_names |> fold(init: empty_map(), f: (m, n) => map_insert(m, n, ["Clone"]))
-  eq_param_names |> fold(init: with_clone, f: (m, n) =>
+  let with_eq = eq_param_names |> fold(init: with_clone, f: (m, n) =>
     match map_get(m, n) {
       Present { value: traits } => map_insert(m, n, concat(traits, ["PartialEq"]))
       Absent => map_insert(m, n, ["PartialEq"])
     }
   )
+  let with_key = map_key_param_names |> fold(init: with_eq, f: (m, n) =>
+    match map_get(m, n) {
+      Present { value: traits } => map_insert(m, n, concat(traits, rust_map_key_bound_traits()))
+      Absent => map_insert(m, n, rust_map_key_bound_traits())
+    }
+  )
+  static_param_names |> fold(init: with_key, f: (m, n) =>
+    match map_get(m, n) {
+      Present { value: traits } => map_insert(m, n, concat(traits, ["'static"]))
+      Absent => map_insert(m, n, ["'static"])
+    }
+  )
+}
+
+// A GENERIC IN KEY POSITION OF A KEYED COLLECTION CARRIES THE HOST KEY BOUNDS. The Rust row for
+// FinitelySupportedFunction / PartialFunction is `HashMap<K, V>`, whose every bridge
+// (v1_rt::lookup, rc_map_insert, rc_map_merge) declares `K: Eq + Hash`; a fn generic over the key
+// that emitted only `K: Clone` refused at each bridge call (E0277 on map_insert / map_lookup /
+// map_get in v2_std_collection, three sites, one class). The bound is read from the SIGNATURE --
+// parameters and return type -- through the same keyed-map walker the struct derive path uses
+// (v1_map_key_head_names_in_type_expr), so a key generic is decided by the declared carrier, not
+// by inspecting the body for a bridge call.
+fn rust_map_key_bound_traits() -> List<String> {
+  ["std::cmp::Eq", "std::hash::Hash"]
+}
+
+fn v1_fn_signature_map_key_param_names(value_params: List<Node>, ret: Node, generic_param_names: List<String>, source_indices: Map<String, NewlineIndex>) -> List<String> {
+  let from_params = value_params |> flat_map(p => v1_map_key_head_names_in_type_expr(type_expr: param_node_type_expr(n: p), source_indices: source_indices))
+  let from_ret = v1_map_key_head_names_in_type_expr(type_expr: ret, source_indices: source_indices)
+  unique_strings(items: concat(from_params, from_ret) |> filter(n => generic_param_names |> any(g => g == n)))
 }
 
 // Node-consuming extraction for the equality bound, kept here rather than in
@@ -7515,17 +7705,28 @@ fn emit_fn_def(name: String, params: List<Node>, inferred: Node, body: Node, reg
     base: self_eq_param_names,
     extra: call_forwarding_eq_param_names
   )
+  let map_key_param_names = v1_fn_signature_map_key_param_names(
+    value_params: value_params,
+    ret: inferred,
+    generic_param_names: generic_param_names,
+    source_indices: si
+  )
+  let returns_fn_field_record = type_has_fn_fields(name: rust_fn_sig_leaf_name(source_indices: si, n: inferred), emit_info: emit_info)
+  let returns_arrow_or_fn_field_record = (inferred.params |> count) > 0 || returns_fn_field_record
+  let static_param_names = if returns_fn_field_record { generic_param_names } else { [] }
   let bounds_by_param = v1_fn_bounds_by_param(
     clone_param_names: clone_param_names,
-    eq_param_names: eq_param_names
+    eq_param_names: eq_param_names,
+    map_key_param_names: map_key_param_names,
+    static_param_names: static_param_names
   )
-  let needs_bound = (clone_param_names |> count) > 0 || (eq_param_names |> count) > 0
+  let needs_bound = (clone_param_names |> count) > 0 || (eq_param_names |> count) > 0 || (map_key_param_names |> count) > 0 || (static_param_names |> count) > 0
   let type_params_str = if needs_bound {
     v1_emit_type_params_with_bounds(params: type_params, bounds_by_param: bounds_by_param, source_indices: si)
   } else {
     emit_type_params(params: type_params, source_indices: si)
   }
-  let params_str = emit_params(params: value_params, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: si, read_only_params: emit_info.read_only_params, variant_to_enum: emit_info.variant_to_enum, env: scope.type_env, enclosing_returns_arrow: (inferred.params |> count) > 0)
+  let params_str = emit_params(params: value_params, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: si, read_only_params: emit_info.read_only_params, variant_to_enum: emit_info.variant_to_enum, env: scope.type_env, enclosing_returns_arrow: returns_arrow_or_fn_field_record)
   let ret_str = emit_inferred(inferred: inferred, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: si, variant_to_enum: emit_info.variant_to_enum, env: scope.type_env)
   let body_scope = build_params_scope(scope: scope, params: value_params)
   let depth = 0
@@ -8146,7 +8347,7 @@ fn emit_variant_pattern(name: String, parent_enum: String?, field_bindings: List
         if is_string_lit_pattern(p: fb_pat) {
           "Some(ref __some_val)"
         } else {
-          let inner_pat = emit_pattern(pattern: fb_pat, path_prefix: list_push(path_prefix, rust_name), shared_types: shared_types, scrut_type: scrut_type, source_indices: source_indices, emit_info: emit_info)
+          let inner_pat = emit_pattern(pattern: fb_pat, path_prefix: list_push(path_prefix, rust_name), shared_types: shared_types, scrut_type: "", source_indices: source_indices, emit_info: emit_info)
           concat("Some(", inner_pat, ")")
         }
       Absent => qualified
@@ -8244,6 +8445,10 @@ fn field_needs_rc_ref(field_name: String, rc_analysis: RcPatternAnalysis) -> Boo
   rc_analysis.ref_bound_fields |> any(name => name == field_name)
 }
 
+// A RECORD PATTERN HAS NO PARENT ENUM, BUT ITS CARRIER IS STILL SHARED. `Record { f, .. }`
+// over a scrutinee that renders `Rc<Record>` needs the same deref a shared enum's variant
+// gets; without it the pattern met the Rc (E0308 expected `Rc<AdmitExportsFold>`, found
+// `AdmitExportsFold`, four record sites). The record is decided by the same shared set.
 fn analyze_rc_pattern(pattern: MatchPattern, scrut_type: String, shared_types: Set<String>, emit_info: EmitGraphInfo, source_indices: Map<String, NewlineIndex>) -> RcPatternAnalysis {
   match pattern {
     VariantPattern { name: n, parent_enum: parent_enum, field_bindings: fbs } =>
@@ -8266,7 +8471,11 @@ fn analyze_rc_pattern(pattern: MatchPattern, scrut_type: String, shared_types: S
         let resolved_parent = pattern_parent_enum(name: bare_n, parent_enum: parent_enum, scrut_type: scrut_type, type_summaries: emit_info.type_summaries)
         let matches_rc_variant = match resolved_parent {
           Present { value: enum_name } => set_contains(shared_types, enum_name)
-          Absent => false
+          Absent =>
+            match map_get(emit_info.type_summaries, bare_n) {
+              Present { value: _ } => set_contains(shared_types, bare_n)
+              Absent => false
+            }
         }
         let ref_bound_fields = fbs |> flat_map(fb =>
           let fb_name = field_binding_name_at(n: fb, source_indices: source_indices)
@@ -9594,12 +9803,18 @@ fn emit_typed_call_expr(func: String, args: List<Node>, inferred: InferredNode?,
   } else { call_str }
 }
 
-fn rust_call_arg_fail_closed_unwrap(arg_str: String, arg: Node, callee: ItemInfo?, idx: Int, func: String) -> String {
+// A PARAMETER DECLARED `Optional<T>` IS OPTIONAL. The cardinality flag marks the `T?` sugar; the
+// applied carrier spelling carries no flag, so a caller passing an optional into
+// `witness_from_optional(opt: Optional<T>, ..)` earned a fail-closed `.expect(..)` that unwrapped
+// the very value the callee exists to inspect (E0308 expected Option<..>, found .. at six sites).
+// Both spellings name one carrier; the predicate asks both.
+fn rust_call_arg_fail_closed_unwrap(arg_str: String, arg: Node, callee: ItemInfo?, idx: Int, func: String, source_indices: Map<String, NewlineIndex>) -> String {
   match callee {
     Present { value: info } =>
       match function_value_params(params: info.params) |> skip(idx) |> first {
         Present { value: param } =>
-          let param_required = param_node_type_expr(n: param).return_cardinality != CardOptional
+          let param_type = param_node_type_expr(n: param)
+          let param_required = param_type.return_cardinality != CardOptional && !is_host_optional_carrier_type(n: param_type, source_indices: source_indices)
           let arg_optional = resolved_type(n: arg).return_cardinality == CardOptional
           if param_required && arg_optional {
             concat(arg_str, ".expect(\"fail-closed: an optional value flowed into non-optional parameter ", to_string(value: idx), " of ", func, " (empty Optional at runtime)\")")
@@ -9829,7 +10044,7 @@ fn emit_typed_call(func: String, args: List<Node>, callee_is_function_value: Boo
       concat("&", base)
     } else {
       let base = emit_cloned_arg(texpr: arg_value(n: a), registry: registry, scope: arg_scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
-      let unwrapped = rust_call_arg_fail_closed_unwrap(arg_str: base, arg: arg_value(n: a), callee: callee, idx: idx, func: func)
+      let unwrapped = rust_call_arg_fail_closed_unwrap(arg_str: base, arg: arg_value(n: a), callee: callee, idx: idx, func: func, source_indices: scope.type_env.source_indices)
       rust_call_arg_function_value_adapt(arg_str: unwrapped, arg: arg_value(n: a), callee: callee, idx: idx)
     }
   )

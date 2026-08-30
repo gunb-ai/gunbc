@@ -19,7 +19,9 @@ import gunbc.explicit_witness_admission { explicit_witness_admissions }
 import gunbc.ci_layer_roots { falsifier_substrate_long_lane_rows }
 import v2.compiler.source_authority {
   SourceRef,
-  SourceRootIngest,
+  SourceRootIngest
+}
+import v2.compiler.source_authority_read {
   SourceRootIngestBuildOk,
   SourceRootIngestBuildReadFailed,
   source_root_ingest_build_from_source_refs

@@ -28,10 +28,6 @@ type Behavior
   | Bind
   | Match
 
-fn resolve_type_node(type_name: Symbol) -> Node {
-  resolve_type_node(type_name: type_name)
-}
-
 type ArmPayload
   = Nullary
   | Typed { target_ref: Symbol }

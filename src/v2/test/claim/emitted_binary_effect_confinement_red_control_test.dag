@@ -1,5 +1,6 @@
 module v2.test.claim.emitted_binary_effect_confinement_red_control
 
+import v2.extdeps.languages.rust { rust_host_build_environment }
 import v2.std.host_transport {
   EmitHostRuntimeRow,
   EmittedEffectFamily,
@@ -23,6 +24,7 @@ data emitted_binary_effect_confinement_red_control_note: String = "Task 4 RED co
 
 fn synthetic_transport() -> HostTransportDescriptor {
   HostTransportDescriptor {
+    build_environment: rust_host_build_environment(),
     identity: ^emitted_binary_effect_confinement_red_control_synthetic_identity,
     workspace: [],
     build: [],

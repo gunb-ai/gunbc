@@ -311,22 +311,22 @@ pub fn lookup_resolved_sig_with_telemetry(
     {
         let scan = env.parents.clone().iter().cloned().fold(
             Rc::new(ParentSigScan {
-                sig: None,
+                sig: std::option::Option::None,
                 match_count: 0,
-                first_parent: None,
+                first_parent: std::option::Option::None,
             }),
             |acc: Rc<ParentSigScan>, p: Rc<ResolvedFuncEnv>| match v1_rt::map_get(
                 &p.local.clone(),
                 name.clone(),
             ) {
                 Some(sig) => Rc::new(ParentSigScan {
-                    sig: if (acc.sig.clone() != None) {
+                    sig: if (acc.sig.clone() != std::option::Option::None) {
                         acc.sig.clone()
                     } else {
                         Some(sig.clone())
                     },
                     match_count: (acc.match_count.clone() + 1),
-                    first_parent: if (acc.first_parent.clone() != None) {
+                    first_parent: if (acc.first_parent.clone() != std::option::Option::None) {
                         acc.first_parent.clone()
                     } else {
                         Some(p.name.clone())
@@ -335,7 +335,7 @@ pub fn lookup_resolved_sig_with_telemetry(
                 None => acc.clone(),
             },
         );
-        if ((scan.match_count.clone() >= 2) && (scan.sig.clone() != None)) {
+        if ((scan.match_count.clone() >= 2) && (scan.sig.clone() != std::option::Option::None)) {
             match scan.first_parent.clone() {
                 Some(chosen_parent) => v1_rt::resolution_silent_pick_record_fn_parent_first_hit(
                     env.name.clone(),
@@ -352,9 +352,9 @@ pub fn lookup_resolved_sig_with_telemetry(
                     sig: sig.clone(),
                     owner_module_path: owner.clone(),
                 })),
-                None => None,
+                None => std::option::Option::None,
             },
-            None => None,
+            None => std::option::Option::None,
         }
     }
 }
@@ -386,7 +386,7 @@ pub fn lookup_resolved_sig(env: Rc<ResolvedFuncEnv>, name: String) -> Rc<FuncSig
                                             sig: sig.clone(),
                                             owner_module_path: p.name.clone(),
                                         })),
-                                        None => None,
+                                        None => std::option::Option::None,
                                     },
                                 }
                             },
@@ -421,7 +421,9 @@ pub fn collect_func_call_edges(
         let mut __result = Vec::new();
         for item in items.iter().cloned() {
             __result.extend(
-                (*if (((item.params.clone().len() as i64) > 0) && (item.body.clone() != None)) {
+                (*if (((item.params.clone().len() as i64) > 0)
+                    && (item.body.clone() != std::option::Option::None))
+                {
                     collect_calls_in_expr(
                         crate::v1_std_core::authored_name_at(source_indices.clone(), item.clone()),
                         item.body.clone().clone().unwrap(),
@@ -566,7 +568,7 @@ pub fn merge_remaining_declared(
         .fold(
             resolved.clone(),
             |acc: Rc<HashMap<String, Rc<ResolvedFuncSig>>>, dsig: Rc<DeclaredFuncSig>| {
-                if (dsig.inferred.clone() != None) {
+                if (dsig.inferred.clone() != std::option::Option::None) {
                     v1_rt::rc_map_insert(
                         acc.clone(),
                         dsig.name.clone(),
@@ -600,7 +602,7 @@ pub fn topo_resolve_loop(
                         resolved.clone(),
                         |acc: Rc<HashMap<String, Rc<ResolvedFuncSig>>>,
                          dsig: Rc<DeclaredFuncSig>| {
-                            if (dsig.inferred.clone() != None) {
+                            if (dsig.inferred.clone() != std::option::Option::None) {
                                 v1_rt::rc_map_insert(
                                     acc.clone(),
                                     dsig.name.clone(),
@@ -660,7 +662,8 @@ pub fn topo_resolve_loop(
                     {
                         let mut __all = true;
                         for c in local_callees.iter().cloned() {
-                            if !(v1_rt::map_get(&resolved, c.clone()) != None) {
+                            if !(v1_rt::map_get(&resolved, c.clone()) != std::option::Option::None)
+                            {
                                 __all = false;
                                 break;
                             }
@@ -685,7 +688,7 @@ pub fn topo_resolve_loop(
                         fn_name.clone(),
                     ) {
                         Some(dsig) => {
-                            if (dsig.inferred.clone() != None) {
+                            if (dsig.inferred.clone() != std::option::Option::None) {
                                 Rc::new(SigsAccum {
                                     signatures: v1_rt::rc_map_insert(
                                         acc.signatures.clone(),
@@ -721,7 +724,7 @@ pub fn topo_resolve_loop(
                         cycle_accum.signatures.clone(),
                         |acc: Rc<HashMap<String, Rc<ResolvedFuncSig>>>,
                          dsig: Rc<DeclaredFuncSig>| {
-                            if (dsig.inferred.clone() != None) {
+                            if (dsig.inferred.clone() != std::option::Option::None) {
                                 v1_rt::rc_map_insert(
                                     acc.clone(),
                                     dsig.name.clone(),
@@ -755,7 +758,7 @@ pub fn topo_resolve_loop(
                 fn_name.clone(),
             ) {
                 Some(dsig) => {
-                    if (dsig.inferred.clone() != None) {
+                    if (dsig.inferred.clone() != std::option::Option::None) {
                         Rc::new(SigsAccum {
                             signatures: v1_rt::rc_map_insert(
                                 acc.signatures.clone(),
@@ -830,7 +833,9 @@ pub fn resolve_func_sigs(
             for item in Rc::new({
                 let mut __result = Vec::new();
                 for item in items.iter().cloned() {
-                    if (((item.params.clone().len() as i64) > 0) && (item.body.clone() != None)) {
+                    if (((item.params.clone().len() as i64) > 0)
+                        && (item.body.clone() != std::option::Option::None))
+                    {
                         __result.push(item);
                     }
                 }

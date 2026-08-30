@@ -54,15 +54,15 @@ pub mod declaration_index;
 mod required_floor_runner;
 pub(crate) use required_floor_runner::*;
 pub use required_floor_runner::{
-    make_eval_context, make_eval_context_with_runtime_options, run_claim_measured,
-    run_required_floor,
+    floor_discovery_path_excluded, make_eval_context, make_eval_context_with_runtime_options,
+    run_claim_measured, run_required_floor,
 };
 mod entry_resolve;
 pub(crate) use active_workset::*;
 pub(crate) use entry_resolve::*;
 pub use entry_resolve::{
-    process_shared_index, resolve_entry_graph, resolve_entry_with_index, resolve_stage_totals,
-    source_root_ingest_content_hash_fnv1a64,
+    load_sources_for_entry, process_shared_index, resolve_entry_graph, resolve_entry_with_index,
+    resolve_stage_totals, source_root_ingest_content_hash_fnv1a64, whole_tree_resolved_ctx,
 };
 mod live_read_decode;
 pub(crate) use live_read_decode::*;
@@ -74,6 +74,7 @@ mod fallback_arm_census;
 pub(crate) use census_heads::*;
 pub(crate) use fallback_arm_census::*;
 mod declared_refs;
+pub use declared_refs::declared_import_closure_binding_observation_from_resolved;
 pub(crate) use declared_refs::*;
 mod doc_graph;
 pub(crate) use doc_graph::*;
@@ -84,7 +85,10 @@ pub(crate) use emit_host::*;
 pub use emit_host::{
     compile_dag_diagnostic_census_memo_counts, compile_dag_rust_emit_check_memo_counts,
 };
-pub use emit_host::{emit_module_storage_binding_manifest, emit_source_root_ingest_manifest};
+pub use emit_host::{
+    compile_dag_multi_module_fixture, emit_module_storage_binding_manifest,
+    emit_source_root_ingest_manifest,
+};
 mod witness_gates;
 pub use witness_gates::witness_exclusion_substrings;
 pub use witness_gates::witness_layer_roots;
@@ -100,6 +104,7 @@ pub(crate) use class_b_census::*;
 mod non_fold_residue;
 pub(crate) use non_fold_residue::*;
 mod compile_clean;
+pub use compile_clean::compile_clean_diagnostic_is_hard;
 pub(crate) use compile_clean::*;
 mod test_migration;
 pub(crate) use test_migration::*;
@@ -9930,9 +9935,9 @@ pub struct MultiEntryIndex {
     typed_cache_evictions: Cell<u64>,
     /// Host-budget-derived typed-cache entry cap, sampled ONCE for this index's
     /// lifetime — a run-start fact, never re-read per insert. Re-deriving the cap
-    /// from a live, host-shared signal (`/proc/meminfo MemAvailable`, the fallback
-    /// when no private cgroup memory limit is discoverable) on every insert was the
-    /// 2026-07-21 fleet OOM incident: the cap chased the host's real-time noise
+    /// from a live, host-shared signal (`/proc/meminfo MemAvailable`, then the fallback
+    /// when no private cgroup memory limit was discoverable — since deleted, such a host
+    /// now refuses) on every insert was the 2026-07-21 fleet OOM incident: the cap chased the host's real-time noise
     /// across every co-resident session, and each eviction's recompute-on-miss
     /// added the exact memory pressure the cap exists to relieve — a thrashing
     /// feedback loop, not a bound. `OnceCell` gives lazy single-sample semantics
@@ -22483,8 +22488,8 @@ pub fn emit_realize_advisory_for_rows(source_roots: &[String], rows: &[Discovery
         }
     };
     // Host budget: the SAME single authority the MemoryGovernor schedules against
-    // (env -> cgroup memory.high -> memory.max -> meminfo). Unreadable -> the modeled
-    // law refuses (BudgetRefused), never a fabricated width.
+    // (env -> cgroup memory.high -> memory.max -> Darwin hw.memsize). Unreadable -> the
+    // modeled law refuses (BudgetRefused), never a fabricated width.
     let (budget_opt, budget_source) = crate::memory_governor::read_host_budget_bytes();
     let budget_bytes: Option<i64> = budget_opt.map(|b| b as i64);
     let independence: i64 = std::thread::available_parallelism()
@@ -36831,6 +36836,10 @@ pub enum RequiredFloorDisposition {
     /// per identity, carried by the claim that runs it, so there is no second vocabulary here
     /// restating what the claim already says.
     Planned,
+    /// Selected by the required CI run's per-change sublane. This is distinct from `Planned`:
+    /// the static compiler-floor gate did not admit the identity; the exact changed-witness
+    /// identity set did. It nevertheless executes in the same fold and terminal ledger.
+    PlannedAsChangedWitness,
     /// Declined because the module's AUTHORED name (read from its own source, never its path)
     /// matches a `long_home_prefixes()` entry. Carries the exact prefix that matched, which the
     /// former bare `long_declined` counter discarded.
@@ -37597,6 +37606,7 @@ fn write_required_floor_disposition_tsv(
     let mut file = std::fs::File::create(path)
         .map_err(|e| format!("write_required_floor_disposition_tsv: create {path}: {e}"))?;
     let mut planned = 0usize;
+    let mut planned_as_changed_witness = 0usize;
     let mut declined_long = 0usize;
     let mut declined_fixture = 0usize;
     let mut declined_cost_debt = 0usize;
@@ -37606,6 +37616,7 @@ fn write_required_floor_disposition_tsv(
     for row in rows {
         match &row.disposition {
             RequiredFloorDisposition::Planned => planned += 1,
+            RequiredFloorDisposition::PlannedAsChangedWitness => planned_as_changed_witness += 1,
             RequiredFloorDisposition::DeclinedLongModule { .. } => declined_long += 1,
             RequiredFloorDisposition::DeclinedFixtureMember { .. } => declined_fixture += 1,
             RequiredFloorDisposition::DeclinedOutsideRequiredGate => declined_outside_gate += 1,
@@ -37618,11 +37629,12 @@ fn write_required_floor_disposition_tsv(
     }
     writeln!(
         file,
-        "# summary\ttotal={}\tplanned={}\tdeclined_long_module={}\tdeclined_fixture_member={}\
+        "# summary\ttotal={}\tplanned={}\tplanned_as_changed_witness={}\tdeclined_long_module={}\tdeclined_fixture_member={}\
          \tdeclined_outside_required_gate={}\tdeclined_outside_gate_closure={}\
          \tdeclined_discovery_excluded={}\tdeclined_cost_debt={}",
         rows.len(),
         planned,
+        planned_as_changed_witness,
         declined_long,
         declined_fixture,
         declined_outside_gate,
@@ -38265,6 +38277,24 @@ pub fn run_required_regen_fixed_point(
     pass1_digest: Option<String>,
 ) -> Result<required_regen_host::RequiredRegenOutcome, String> {
     required_regen_host::run_required_regen_fixed_point(receipt_rel, pass1_digest)
+}
+
+pub use required_regen_host::RegenAffectedSetOutcome;
+pub use required_regen_host::RegenRoundCostOutcome;
+
+/// The affected-set bound of the floor's diff range — see
+/// `required_regen_host::run_regen_affected_set` and `gunbc.regen_affected_set`.
+pub fn run_regen_affected_set(source_roots: &[String]) -> Result<RegenAffectedSetOutcome, String> {
+    required_regen_host::run_regen_affected_set(source_roots)
+}
+
+/// One priced regen round — see `required_regen_host::run_regen_round_cost`.
+pub fn run_regen_round_cost(
+    candidate_dir_rel: &str,
+    receipt_rel: &str,
+    source_roots: &[String],
+) -> Result<RegenRoundCostOutcome, String> {
+    required_regen_host::run_regen_round_cost(candidate_dir_rel, receipt_rel, source_roots)
 }
 
 /// The emitted generated surface, keyed by basename, off the SAME `measure_generated_surface`

@@ -50,6 +50,18 @@ fn uri_is_url(uri: Uri) -> Bool {
   uri_scheme_is_http(s: uri.scheme)
 }
 
+// The declared inhabitant roster for UriScheme. It exists so a consumer decoding a
+// scheme back from its variant discriminant does so from THIS module's declared arms
+// rather than from host type reflection: reflection answers at runtime and only where a
+// live declaration index exists, which the emitted compiler does not carry, so the
+// reflective form emitted as a refusal on every non-interpreter target. The roster is the
+// same fact the arms already state, so the drift risk is real and is walled by
+// v2.test.manual.coproduct_reflection_conformance, which reflects UriScheme's arms under
+// the interpreter and compares them to these rows by discriminant.
+fn uri_scheme_inhabitants() -> List<UriScheme> {
+  [Http, Https, Tftp, File, Ftp, Javascript, Data, Vbscript, Mailto]
+}
+
 fn uri_scheme_wire(s: UriScheme) -> NonEmptyStr {
   match s {
     Http => "http://"

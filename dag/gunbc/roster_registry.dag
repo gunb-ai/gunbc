@@ -186,9 +186,9 @@ data roster_registry: List<RosterRegistration> = [
   },
   RosterRegistration {
     roster: roster_decl(module_path: "gunbc.roadmap_belt_actuate", decl_name: "belt_dispatch_result_exemplars"),
-    unit_kind: "BeltDispatchResult variant exemplar",
+    unit_kind: "BeltSpawnOutcome / LaunchRefusal variant exemplar",
     membership: DeclaredFrontier {
-      reason: "hand variant enumeration standing in for coproduct-arm enumeration: belt_dispatch_result_exemplars lists one exemplar per BeltDispatchResult arm to derive the wire-label set (belt_dispatch_all_status_labels). belt_dispatch_status_label's total match walls an 8th VARIANT at compile time, but nothing ties THIS list to the variant set, so a missed exemplar would silently narrow both the derived label set and the component wire-total that reads it while the live server emits the unmodeled label",
+      reason: "hand variant enumeration standing in for coproduct-arm enumeration: belt_dispatch_result_exemplars lists one exemplar per BeltSpawnOutcome arm, the not-admitted arm expanded over launch_refusal_exemplars (one per LaunchRefusal arm), to derive the wire-label set (belt_dispatch_all_status_labels). belt_dispatch_status_label's total match walls an 8th VARIANT at compile time, but nothing ties THIS list to the variant set, so a missed exemplar would silently narrow both the derived label set and the component wire-total that reads it while the live server emits the unmodeled label",
       dissolution: unbound_dissolution(description: "substrate inhabitance enumeration lands (DESIGN section 4, fold over a coproduct's arms without a hand roster), or the exemplars derive from the serve JSON emit's own total match (belt_dispatch_result_json_value); then this list and its roster row delete")
     }
   },
@@ -252,7 +252,7 @@ data roster_registry: List<RosterRegistration> = [
     roster: roster_decl(module_path: "gunbc.stage0_rust_source_lifecycle_scaffold", decl_name: "rust_source_lifecycle_residue_rows"),
     unit_kind: "tracked .rs path outside derived authority joins (file-grain residue)",
     membership: DeclaredFrontier {
-      reason: "file-grain paths tracked on disk that no authority join classifies yet — bootstrap copies, hand-retained harness kernels, module_path_index files, frontier layout lag, and authority contradictions (stage0_core lib.rs vs partition rows); each row carries reason and dissolve_on. Cargo [[bin]] paths are host-derived (gunbc.stage0_cargo_manifest), not residue rows",
+      reason: "file-grain paths tracked on disk that no authority join classifies yet — bootstrap copies, hand-retained harness kernels, module_path_index files, and frontier layout lag; each row carries reason and dissolve_on. Cargo [[bin]] paths are host-derived (gunbc.stage0_cargo_manifest), not residue rows",
       dissolution: unbound_dissolution(description: "per row: the path derives from the observed generated population (gunbc.stage0_rust_source_lifecycle_scaffold derived_generated_stage0_repo_paths), hand_maintained_stage0_filenames, stage0_cargo_bin_paths_observed (PR B host boundary), or stage0_partition_crate_rows and the row deletes; roster-wide, rust_source_host_observation_note host boundary supplies path evidence and promotes the scaffold to ZeroHandMaintainedRust acceptance (V1FinishLine, dag/gunbc/v1/v1_deletion_plan.dag)")
     }
   },

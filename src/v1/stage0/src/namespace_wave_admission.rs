@@ -427,6 +427,45 @@ pub struct TransitionAdmission {
 /// authored with, in the first PR cut from the main that carries the move. The roster is
 /// EMPTY again and empty is not permissive: a run carrying a real namespace delta still
 /// refuses it as UNADJUDICATED until its author adds a row here.
+/// THIRD TRANSITION: `admission_from_module_root` moved home. #9710 relocated
+/// `admission_from_module_root` (with `import_rows_from_parsed_module`, `collect_import_decl_nodes`
+/// and `ImportRowsState`) from `v2.compiler.name_resolve` to `v2.lens.reference_deps`, the layer
+/// of its only two consumers, so that the compiler entry's emitted closure no longer carries the
+/// reference_deps subtree for a function no compile path reaches. The two consumers repoint their
+/// import; the spelling denotes a different declaration home, so each is a `TargetChanged`
+/// binding delta, admitted here by exact subject. Both rows dissolve when the relocation is on
+/// main: they then match no delta and report stale, refusing the first unrelated PR -- which is
+/// the trigger to delete them.
+/// FOURTH TRANSITION: three host seams segregated out of the modules the compile closure
+/// carries (A1-R). Emission decides membership at MODULE grain, so an unrealized host seam was
+/// emitted into the v2 compiler's own Rust crate whenever any NEIGHBOUR in its file was needed --
+/// measured before this change as five `panic!` sites in the emitted closure, none of them
+/// reachable from a compile. Three modules now separate the seam from the vocabulary that was
+/// actually wanted: `resolve_type_node` / `coproduct_arm_keys` / `coproduct_nullary_inhabitants`
+/// to `v2.std.node_reflection`, `layer_import_facts_live` to `v2.std.layer_import_scan`, and the
+/// `Filesystem.Read` read-through with `SourceRootIngestBuild` to
+/// `v2.compiler.source_authority_read`. Every consumer repoints its import, so each moved
+/// spelling denotes a different declaration home and arrives here as a `TargetChanged` binding
+/// delta -- the wall working on a deliberate relocation, exactly as the transitions above.
+///
+/// EVERY ROW BELOW HAS BLAST RADIUS 0 AND NAMES ONE EXACT SUBJECT. That is the whole content of
+/// the adjudication: no row admits a module, a prefix or a spelling in general, so a binding this
+/// change did not intend still refuses. The count is 56 because the read-through moved a type,
+/// two variants and a function that eight consumers each reference from several declarations --
+/// one row per (module, declaration, spelling) triple, never one row per module.
+///
+/// DISSOLVE-ON: this stack merging. Base and head then both carry the relocations, no run can
+/// produce these deltas, all 56 report stale, and they are removed by that trigger exactly as
+/// every shrink above was -- a stale row here refuses every unrelated PR in the repository.
+/// SIXTH DISSOLUTION (2026-08-30). The A1-R relocation stack (#9724 and its neighbours) merged;
+/// base and head both carry the relocations, no run can produce those deltas, and ALL 58 rows
+/// reported stale on every open PR (measured on gunbc#9746 run 33312973854 and gunbc#9743 run
+/// 33313128325, and independently on session/calm-pike-248 run 33313218281: `0 unadjudicated
+/// delta(s), 58 stale admission(s)`) while main's own push builds stayed green (NoSubject) -- the
+/// PR-only-but-universal block this ledger has now recorded five times, which is again the reason
+/// the shrink cannot wait for a PR that would otherwise touch this file. Removed by the trigger
+/// they were authored with. The roster is EMPTY and empty is not permissive: a run carrying a
+/// real namespace delta still refuses it as UNADJUDICATED until its author adds a row here.
 pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[];
 
 /// The denominators a green must name (DESIGN §5). A run that cannot say what it covered is

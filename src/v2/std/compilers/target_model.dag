@@ -129,11 +129,11 @@ import v2.std.witness {
 }
 import v2.std.node_query {
   arrow_domain_named_param_bindings,
-  coproduct_nullary_inhabitant_by_discriminant,
   find_arrow_body_child,
   find_named_child,
   node_labeled_child_edges,
-  node_positional_child_targets
+  node_positional_child_targets,
+  nullary_inhabitant_by_discriminant
 }
 import v2.std.qualified_name {
   QualifiedName,
@@ -163,7 +163,8 @@ import extdeps.external_authority {
 }
 import extdeps.uri {
   Uri,
-  UriScheme
+  UriScheme,
+  uri_scheme_inhabitants
 }
 
 // Produced-declaration support is a TARGET-owned rendering, opaque to the compiler.
@@ -171,15 +172,15 @@ import extdeps.uri {
 // scaffold; it does not know whether a signature leads with a keyword or a return
 // type, which side of a parameter the type sits on, whether a return arrow exists, or
 // how the declaration closes. Rust owns Rust order in the Rust module, C owns C order
-// in the C module, and a new target registers by supplying a renderer -- never by an
-// edit here.
+// in the C module, and a new target registers by supplying declared rendering rows --
+// never by an edit here.
 //
 // Why this is not the debt that a compiler-side slot template would have been: a
-// template puts ORDER in the compiler, so the terminal architecture deletes it. A
-// renderer puts order in the TARGET, where realization belongs, so when the
-// GrammarRelationRow forward reading lands each renderer's BODY changes to derive
-// from rows while this SEAM -- compiler asks, target renders -- survives untouched.
-// That is the test of whether the seam was cut in the right place.
+// template puts ORDER in the compiler, so the terminal architecture deletes it. The
+// target's own rows put order in the TARGET, where realization belongs, so when the
+// GrammarRelationRow forward reading lands the rows are what it subsumes while this
+// SEAM -- compiler asks, target's rows answer -- survives untouched. That is the test
+// of whether the seam was cut in the right place.
 //
 // The limit that remains, named rather than left for a third target to discover: the
 // compiler no longer knows how a declaration CLOSES, but still knows it is prefix then
@@ -194,13 +195,381 @@ import extdeps.uri {
 // already hold a row with a fixed scaffold attached, and re-attaching to that one
 // would append a second bodied-scaffold edge whose first, fixed entry would win every
 // lookup, emitting one declaration's signature for every declaration.
+//
+// THE RENDERING IS DECLARED ROWS, NOT A FUNCTION VALUE. A target used to register a
+// `render: fn(Node) -> Outcome<...>` closure, which made a TargetModel carry an
+// origin-bound evaluator reference: a value that cannot cross an evaluation frame, so
+// the required floor's cross-claim pure-producer share refused to publish either rust
+// target model (ServeCacheValueNotPortable kind=OriginBoundNode at
+// .produced_decl_support.render) and every emit claim re-derived them. The order is
+// still the TARGET's -- what changed is that the target states the order as DATA the
+// model layer can reify, and one shared fold in the compiler reads those rows. That is
+// DESIGN section 4's "one grammar read in both directions" applied to the produced-decl
+// seam: a transform is a row, and emit selects from rows.
+//
+// The seam is unmoved: the compiler still does not know whether a signature leads with a
+// keyword or a return type, which side of a parameter its type sits on, whether a return
+// arrow exists, or how the declaration closes -- it reads those facts off the target's
+// rows without any per-target arm. A new target registers by declaring rows.
+type ProducedDeclSignatureSegment
+  = ProducedSignatureFixed { token_class: Symbol }
+  | ProducedSignatureDeclName { token_class: Symbol }
+  | ProducedSignatureParams
+  | ProducedSignatureReturnType
+
+type ProducedDeclParamSegment
+  = ProducedParamFixed { token_class: Symbol }
+  | ProducedParamName { token_class: Symbol }
+  | ProducedParamType
+
+// WHY THIS IS NOT THE GRAMMAR ROWS THEMSELVES, STATED AS A DECLARED TRIGGER RATHER THAN
+// AS AN "EVENTUALLY" (review 57546 asked exactly this, and it names the right terminal
+// target). The rows below are a SCHEMA over an arbitrary declaration; a GrammarRelationRow
+// is a GROUND instance — v2.extdeps.languages.rust rust_grammar_relation_row pairs one
+// production with one emitted node and one fully-bound token list in which `add`, `x`, `y`
+// and `i32` are literals. The two are a rule and one sentence that rule generates, not two
+// encodings of one fact, which is why this change did not grow the authority count: the
+// general half already existed as the `render` FN, and what changed is its representation.
+//
+// The capability that would let the schema BE grammar rows, named so the row is countable
+// rather than open-ended: `v2.std.grammar` TerminalStampMode carries StampClass /
+// StampBinding{binding: Symbol} / StampLexeme, where StampBinding binds a FIXED symbol —
+// there is no stamp meaning "this declaration's name" or "this parameter's name", so a
+// production cannot address a hole in the subject it renders. And GrammarExpr's
+// Repeat{element} carries no separator and no declared source of repetition, so it cannot
+// say "each parameter edge of the domain, comma-separated". DISSOLUTION TRIGGER: role
+// stamps on TerminalStampMode plus separated, subject-sourced repetition on GrammarExpr —
+// together sufficient for one production to render an arbitrary declaration — at which
+// point these rows and their fold are subsumed by the GrammarRelationRow forward reading
+// and delete together. Until that lands, a produced declaration has no grammar-row form to
+// consume, and the schema has to live somewhere the model layer can reify.
+type ProducedDeclRenderRows {
+  signature: List<ProducedDeclSignatureSegment>
+  param_layout: List<ProducedDeclParamSegment>
+  param_separator: List<Symbol>
+  type_ref_token_class: Symbol
+  block_close: List<ConcreteSyntaxToken>
+  block_evaluation_mode: BlockEvaluationMode
+}
+
 type ProducedDeclSupport
   = ProducedDeclUnwired
   | ProducedDeclWired {
-      render: fn(Node) -> Outcome<TargetBodiedArrowStatementScaffold>
+      render_rows: ProducedDeclRenderRows
       scaffold_relation_rule_name: Symbol
       scaffold_base_row: Node
     }
+
+// The decl-shaped facts one produced declaration supplies to the target's rows. The
+// rows name WHERE each of these goes; this names WHAT they are, and it is derived once
+// per declaration rather than per segment.
+type ProducedDeclSignatureSubject {
+  fn_name: Symbol
+  params: List<Edge>
+  codomain: Node
+}
+
+fn produced_decl_render_diagnostic(reason: Symbol, node: Node) -> Diagnostic {
+  Diagnostic {
+    reason: reason,
+    at: node_locus(node: node),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+// A type reference renders as one bound token in the target's identifier class. Any
+// other type shape REFUSES, typed and located -- never a fabricated spelling.
+fn produced_decl_type_ref_tokens(
+  token_class: Symbol,
+  type_node: Node
+) -> Outcome<List<ConcreteSyntaxToken>> {
+  match type_node.kind {
+    TypeNode { connective: Atom { identity: id } } =>
+      outcome_accepted(value: [BoundToken { token_class: token_class, binding: id }])
+    _ =>
+      outcome_rejected(
+        d: produced_decl_render_diagnostic(
+          reason: ^produced_decl_render_type_shape_unsupported,
+          node: type_node
+        )
+      )
+  }
+}
+
+fn produced_decl_param_segment_tokens(
+  rows: ProducedDeclRenderRows,
+  edge: Edge,
+  segment: ProducedDeclParamSegment
+) -> Outcome<List<ConcreteSyntaxToken>> {
+  match segment {
+    ProducedParamFixed { token_class: tc } =>
+      outcome_accepted(value: [FixedToken { token_class: tc }])
+    ProducedParamName { token_class: tc } =>
+      match edge.label {
+        Named { name: pname } =>
+          outcome_accepted(value: [BoundToken { token_class: tc, binding: pname }])
+        Positional =>
+          outcome_rejected(
+            d: produced_decl_render_diagnostic(
+              reason: ^produced_decl_render_param_unnamed,
+              node: edge.target
+            )
+          )
+      }
+    ProducedParamType =>
+      produced_decl_type_ref_tokens(
+        token_class: rows.type_ref_token_class,
+        type_node: edge.target
+      )
+  }
+}
+
+fn produced_decl_param_layout_tokens(
+  rows: ProducedDeclRenderRows,
+  edge: Edge,
+  layout: List<ProducedDeclParamSegment>
+) -> Outcome<List<ConcreteSyntaxToken>> {
+  fold_list(
+    xs: layout,
+    empty: outcome_accepted(value: Empty),
+    cons: fn(acc, segment) {
+      bind_outcome(
+        o: acc,
+        f: fn(so_far) {
+          bind_outcome(
+            o: produced_decl_param_segment_tokens(rows: rows, edge: edge, segment: segment),
+            f: fn(toks) {
+              outcome_accepted(value: list_append(left: so_far, right: toks))
+            }
+          )
+        }
+      )
+    }
+  )
+}
+
+fn produced_decl_separator_tokens(separator: List<Symbol>) -> List<ConcreteSyntaxToken> {
+  fold_list(
+    xs: separator,
+    empty: Empty,
+    cons: fn(acc, tc) {
+      list_snoc_item(xs: acc, item: FixedToken { token_class: tc })
+    }
+  )
+}
+
+// The separator is written BETWEEN parameters, so the fold carries whether anything has
+// been emitted yet rather than splitting into a first-element function and a near-identical
+// tail function. `any_written` is the fold's own state and not a test on the accumulated
+// token list: a layout that renders a parameter to zero tokens would make an emptiness test
+// silently drop that parameter's separator.
+type ProducedDeclParamsFold {
+  any_written: Bool
+  tokens: List<ConcreteSyntaxToken>
+}
+
+fn produced_decl_params_tokens(
+  rows: ProducedDeclRenderRows,
+  params: List<Edge>
+) -> Outcome<List<ConcreteSyntaxToken>> {
+  bind_outcome(
+    o: fold_list(
+      xs: params,
+      empty: outcome_accepted(
+        value: ProducedDeclParamsFold { any_written: false, tokens: Empty }
+      ),
+      cons: fn(acc, edge) {
+        bind_outcome(
+          o: acc,
+          f: fn(so_far) {
+            bind_outcome(
+              o: produced_decl_param_layout_tokens(
+                rows: rows,
+                edge: edge,
+                layout: rows.param_layout
+              ),
+              f: fn(toks) {
+                outcome_accepted(
+                  value: ProducedDeclParamsFold {
+                    any_written: true,
+                    tokens: list_append(
+                      left: so_far.tokens,
+                      right: match so_far.any_written {
+                        true =>
+                          list_append(
+                            left: produced_decl_separator_tokens(
+                              separator: rows.param_separator
+                            ),
+                            right: toks
+                          )
+                        false => toks
+                      }
+                    )
+                  }
+                )
+              }
+            )
+          }
+        )
+      }
+    ),
+    f: fn(folded) { outcome_accepted(value: folded.tokens) }
+  )
+}
+
+fn produced_decl_signature_segment_tokens(
+  rows: ProducedDeclRenderRows,
+  subject: ProducedDeclSignatureSubject,
+  segment: ProducedDeclSignatureSegment
+) -> Outcome<List<ConcreteSyntaxToken>> {
+  match segment {
+    ProducedSignatureFixed { token_class: tc } =>
+      outcome_accepted(value: [FixedToken { token_class: tc }])
+    ProducedSignatureDeclName { token_class: tc } =>
+      outcome_accepted(value: [BoundToken { token_class: tc, binding: subject.fn_name }])
+    ProducedSignatureParams =>
+      produced_decl_params_tokens(rows: rows, params: subject.params)
+    ProducedSignatureReturnType =>
+      produced_decl_type_ref_tokens(
+        token_class: rows.type_ref_token_class,
+        type_node: subject.codomain
+      )
+  }
+}
+
+fn produced_decl_signature_segments_tokens(
+  rows: ProducedDeclRenderRows,
+  subject: ProducedDeclSignatureSubject,
+  segments: List<ProducedDeclSignatureSegment>
+) -> Outcome<List<ConcreteSyntaxToken>> {
+  fold_list(
+    xs: segments,
+    empty: outcome_accepted(value: Empty),
+    cons: fn(acc, segment) {
+      bind_outcome(
+        o: acc,
+        f: fn(so_far) {
+          bind_outcome(
+            o: produced_decl_signature_segment_tokens(
+              rows: rows,
+              subject: subject,
+              segment: segment
+            ),
+            f: fn(toks) {
+              outcome_accepted(value: list_append(left: so_far, right: toks))
+            }
+          )
+        }
+      )
+    }
+  )
+}
+
+fn produced_decl_subject_from_name_and_arrow(
+  fn_name: Symbol,
+  arrow: Node
+) -> Outcome<ProducedDeclSignatureSubject> {
+  match list_at_optional(xs: node_positional_child_targets(node: arrow), index: 0) {
+    Present { value: domain } =>
+      match list_at_optional(xs: node_positional_child_targets(node: arrow), index: 1) {
+        Present { value: codomain } =>
+          outcome_accepted(
+            value: ProducedDeclSignatureSubject {
+              fn_name: fn_name,
+              params: domain.children,
+              codomain: codomain
+            }
+          )
+        Absent =>
+          outcome_rejected(
+            d: produced_decl_render_diagnostic(
+              reason: ^produced_decl_render_codomain_missing,
+              node: arrow
+            )
+          )
+      }
+    Absent =>
+      outcome_rejected(
+        d: produced_decl_render_diagnostic(
+          reason: ^produced_decl_render_domain_missing,
+          node: arrow
+        )
+      )
+  }
+}
+
+fn produced_decl_subject_from_decl(decl: Node) -> Outcome<ProducedDeclSignatureSubject> {
+  match decl.kind {
+    TypeNode { connective: Conj } =>
+      match list_at_optional(xs: decl.children, index: 0) {
+        Present { value: decl_edge } =>
+          match decl_edge.label {
+            Named { name: fn_name } =>
+              produced_decl_subject_from_name_and_arrow(
+                fn_name: fn_name,
+                arrow: decl_edge.target
+              )
+            Positional =>
+              outcome_rejected(
+                d: produced_decl_render_diagnostic(
+                  reason: ^produced_decl_render_decl_unnamed,
+                  node: decl
+                )
+              )
+          }
+        Absent =>
+          outcome_rejected(
+            d: produced_decl_render_diagnostic(
+              reason: ^produced_decl_render_decl_empty,
+              node: decl
+            )
+          )
+      }
+    _ =>
+      outcome_rejected(
+        d: produced_decl_render_diagnostic(
+          reason: ^produced_decl_render_decl_not_conj,
+          node: decl
+        )
+      )
+  }
+}
+
+fn produced_decl_signature_with_open_from_rows(
+  rows: ProducedDeclRenderRows,
+  decl: Node
+) -> Outcome<List<ConcreteSyntaxToken>> {
+  bind_outcome(
+    o: produced_decl_subject_from_decl(decl: decl),
+    f: fn(subject) {
+      produced_decl_signature_segments_tokens(
+        rows: rows,
+        subject: subject,
+        segments: rows.signature
+      )
+    }
+  )
+}
+
+// The whole produced-declaration rendering, read off the target's declared rows. This
+// is the structural inverse of the target's rows and holds no per-target knowledge.
+fn produced_decl_render_from_rows(
+  rows: ProducedDeclRenderRows,
+  decl: Node
+) -> Outcome<TargetBodiedArrowStatementScaffold> {
+  bind_outcome(
+    o: produced_decl_signature_with_open_from_rows(rows: rows, decl: decl),
+    f: fn(signature_with_open) {
+      outcome_accepted(
+        derive_bodied_arrow_scaffold(
+          signature_with_open: signature_with_open,
+          block_close: rows.block_close,
+          mode: rows.block_evaluation_mode
+        )
+      )
+    }
+  )
+}
 
 type TargetModel {
   bundle: Node
@@ -9232,9 +9601,9 @@ fn target_type_expr_emitted_validate_positional_arity(
       }
     TargetTypeExprArrow =>
       match target_type_expr_arrow_wire_shape(node: node) {
-        Accepted { value: TargetTypeExprArrowPositionalWire, diagnostics: None } =>
-          Accepted { value: true, diagnostics: None }
-        Accepted { value: TargetTypeExprArrowLabeledWire, diagnostics: None } =>
+        Accepted { value: TargetTypeExprArrowPositionalWire, diagnostics: d } =>
+          Accepted { value: true, diagnostics: d }
+        Accepted { value: TargetTypeExprArrowLabeledWire, diagnostics: _ } =>
           outcome_rejected(target_type_expr_emitted_shape_malformed_diagnostic(node: node))
         Rejected { diagnostics: r } => Rejected { diagnostics: r }
       }
@@ -9261,6 +9630,8 @@ fn target_type_expr_emitted_validate_positional_wire(
                   match target_type_expr_emitted_validate_positional_arity(node: node, kind: kind) {
                     Accepted { value: true, diagnostics: d2 } =>
                       Accepted { value: true, diagnostics: diagnostics_merge(outer: d, inner: d2) }
+                    Accepted { value: false, diagnostics: _ } =>
+                      outcome_rejected(target_type_expr_emitted_shape_malformed_diagnostic(node: node))
                     Rejected { diagnostics: r } => Rejected { diagnostics: r }
                   }
                 } else {
@@ -9335,18 +9706,24 @@ fn target_type_expr_emitted_validate_wire_shape(
       )
     TargetTypeExprArrow =>
       match target_type_expr_arrow_wire_shape(node: node) {
-        Accepted { value: TargetTypeExprArrowLabeledWire, diagnostics: None } =>
-          target_type_expr_emitted_validate_labeled_wire(
+        Accepted { value: TargetTypeExprArrowLabeledWire, diagnostics: d } =>
+          match target_type_expr_emitted_validate_labeled_wire(
             node: node,
             kind: kind,
             projection: projection
-          )
-        Accepted { value: TargetTypeExprArrowPositionalWire, diagnostics: None } =>
-          target_type_expr_emitted_validate_positional_wire(
+          ) {
+            Accepted { value: v, diagnostics: d2 } => Accepted { value: v, diagnostics: diagnostics_merge(outer: d, inner: d2) }
+            Rejected { diagnostics: r } => Rejected { diagnostics: r }
+          }
+        Accepted { value: TargetTypeExprArrowPositionalWire, diagnostics: d } =>
+          match target_type_expr_emitted_validate_positional_wire(
             node: node,
             kind: kind,
             projection: projection
-          )
+          ) {
+            Accepted { value: v, diagnostics: d2 } => Accepted { value: v, diagnostics: diagnostics_merge(outer: d, inner: d2) }
+            Rejected { diagnostics: r } => Rejected { diagnostics: r }
+          }
         Rejected { diagnostics: r } => Rejected { diagnostics: r }
       }
     _ =>
@@ -9629,7 +10006,7 @@ type TargetDeriveSupplementalGenericBoundContractCatalog {
   contracts: Map<TargetCapabilityKey, TargetDeriveSupplementalGenericBoundContractAuthority>
 }
 
-data target_capability_key_wire_identity_note: String = "There is no key-to-wire projection here and there is deliberately no function for one. When the capability key was a closed coproduct this module carried target_grounding_derive_trait_discriminant (discriminant of the variant) and target_capability_key_for_derive_trait (a second name for the same call), and the node decoder recovered the variant with coproduct_nullary_inhabitant_by_discriminant. TargetCapabilityKey is now a branded Symbol, so the key IS its own wire identity and all three collapse to the identity function. THIS WAS NOT A TIDY-UP, IT WAS A DEFECT: the wrappers survived the carrier change and kept calling discriminant on a Symbol. gunbc compile reported zero blocking errors on every affected entry; under gunbc run the interpreter could not bridge discriminant for a non-coproduct, fell back to a free-function lookup, and NoSuchFunction discriminant then surfaced in UNRELATED modules whose closure reached this one -- because target_grounding_derive_trait_discriminant was also passed as a function VALUE to coproduct_nullary_inhabitant_by_discriminant, so it was resolved eagerly rather than only when called. Section 5: a typecheck is not a consumer."
+data target_capability_key_wire_identity_note: String = "There is no key-to-wire projection here and there is deliberately no function for one. When the capability key was a closed coproduct this module carried target_grounding_derive_trait_discriminant (discriminant of the variant) and target_capability_key_for_derive_trait (a second name for the same call), and the node decoder recovered the variant with the reflective coproduct_nullary_inhabitant_by_discriminant (since replaced by v2.std.node_query nullary_inhabitant_by_discriminant, which reads a declared inhabitant roster instead of the host type index). TargetCapabilityKey is now a branded Symbol, so the key IS its own wire identity and all three collapse to the identity function. THIS WAS NOT A TIDY-UP, IT WAS A DEFECT: the wrappers survived the carrier change and kept calling discriminant on a Symbol. gunbc compile reported zero blocking errors on every affected entry; under gunbc run the interpreter could not bridge discriminant for a non-coproduct, fell back to a free-function lookup, and NoSuchFunction discriminant then surfaced in UNRELATED modules whose closure reached this one -- because target_grounding_derive_trait_discriminant was also passed as a function VALUE to coproduct_nullary_inhabitant_by_discriminant, so it was resolved eagerly rather than only when called. Section 5: a typecheck is not a consumer."
 
 fn target_derive_supplemental_generic_bound_requirement_set_empty() -> TargetDeriveSupplementalGenericBoundRequirementSet {
   empty_map()
@@ -9725,10 +10102,11 @@ fn target_external_authority_from_node(node: Node) -> Outcome<ExternalAuthority>
           o: target_collection_node_atom_identity(node: scheme_node),
           f: fn(scheme_id) {
             bind_outcome(
-              o: coproduct_nullary_inhabitant_by_discriminant(
-                type_name: ^UriScheme,
+              o: nullary_inhabitant_by_discriminant(
+                inhabitants: uri_scheme_inhabitants(),
                 discriminant_of: target_uri_scheme_discriminant,
-                wanted: scheme_id
+                wanted: scheme_id,
+                at: scheme_node
               ),
               f: fn(scheme) {
                 bind_outcome(
@@ -9974,7 +10352,7 @@ fn target_representation_parameter_slots_from_node(
           match acc {
             Rejected { diagnostics: r } => Rejected { diagnostics: r }
             Accepted { value: slots, diagnostics: _ } =>
-              match slots.lookup(parameter) {
+              match map_lookup(m: slots, key: parameter) {
                 Present { value: _ } =>
                   outcome_rejected(
                     target_derive_supplemental_generic_bound_contract_choice_malformed_diagnostic(

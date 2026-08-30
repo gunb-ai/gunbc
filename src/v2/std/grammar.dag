@@ -1877,7 +1877,6 @@ type RebuildRhsWalkState
 
 type RebuildEmittedResult
   = RebuildEmittedOk { emitted: Node, token_index: Int }
-  | RebuildEmittedFail
 
 type RebuildProductionMatchFold
   = RebuildProductionMatchNone

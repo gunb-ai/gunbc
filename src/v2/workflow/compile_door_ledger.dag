@@ -4,10 +4,8 @@ import extdeps.communication.medium { Lossless, Medium }
 import extdeps.filesystem.filesystem_io
 import std.algebra { Cons, Empty, FreeMonoid }
 import v2.compiler.compile { compile_source_root_ingest_with_admission }
-import v2.compiler.name_resolve {
-  Admission,
-  admission_from_module_root
-}
+import v2.compiler.name_resolve { Admission }
+import v2.lens.reference_deps { admission_from_module_root }
 import v2.compiler.source_authority { DagSourceReadWitness, SourceRootIngest }
 import v2.extdeps.languages.rust { rust_target_model }
 import v2.lens.module_graph {

@@ -4,7 +4,7 @@ import extdeps.languages.yaml.types { yaml_string, yaml_int, yaml_bool, kv, Yaml
 import gunbc.roadmap_execution_contract {
   CargoCapability, RustcCapability, RustfmtCapability, RustupCapability,
 }
-import gunbc.repo_self_build { repo_self_build_command, repo_self_build_all_bins_command, repo_self_test_command }
+import gunbc.repo_self_build { repo_self_build_command, repo_self_build_all_bins_command, repo_self_build_partition_crates_command, repo_self_test_command, repo_self_clippy_command }
 import gunbc.workflow_capability_closure {
   CapabilityAnnotatedStep,
   StepCapabilityRole,
@@ -18,6 +18,7 @@ import v2.std.algebra { list_map }
 import extdeps.languages.yaml.emit { serialize_yaml }
 import extdeps.languages.yaml.gha_workflow { project_workflow_to_yaml }
 import v2.workflow.ci_workflow_run_emit { ci_toolchain_homes_isolated_or_refuse_command }
+import std.dissolution { DissolutionCondition, unbound_dissolution, dissolution_description }
 import gunbc.toolchain_home_standing {
   admit_workflow_toolchain_homes,
   WorkflowToolchainHomesAdmitted,
@@ -375,8 +376,25 @@ fn witness_floor_build_script() -> String {
   repo_self_build_command(bins: witness_floor_required_bins)
 }
 
+// TWO INVOCATIONS, BECAUSE THEY BUILD DISJOINT PACKAGE SETS AND NEITHER SUBSUMES THE OTHER.
+// The first is every declared bin target of the v1-compiler package. The second is the seven
+// sibling packages of the derived stage0 partition, whose roster gunbc.repo_self_build reads
+// from the partition authority itself. Before this pair the build lane covered only the first,
+// which is how #9689 left main's whole-workspace build red on E0432 in v1-stage0-v1-infer while
+// every required context stayed green -- the partition crates are the ONLY consumers that
+// compile a stage0 module through a per-crate reexport closure, so a roster short of a module is
+// invisible to the monolith and fatal to them.
+//
+// THE SECOND COMMAND IS THE EXECUTING FORM OF A WALL THAT HAS NO HERMETIC WITNESS. Its refusal
+// is rustc's: a module missing from a roster reds E0432 naming the module and the referring
+// module, a roster entry naming no file reds E0583 naming the entry. gunbc.repo_self_build
+// carries why a joining witness is not available instead, and names the modeled Rust module
+// dependency graph as the trigger for climbing off the compiler as oracle.
 fn build_lane_build_script() -> String {
-  repo_self_build_all_bins_command()
+  join(
+    [repo_self_build_all_bins_command(), repo_self_build_partition_crates_command()],
+    "\n"
+  )
 }
 
 fn witness_floor_build_step(build_script: String) -> Step {
@@ -1263,6 +1281,31 @@ fn rust_unit_tests_step() -> Step {
   }
 }
 
+// THE ALL-TARGETS LINT PASS, IN THE SAME JOB. `cargo clippy --all-targets -- -D warnings` is the
+// check DESIGN names, and until this step it ran on no CI path either: the required build lane
+// builds `--bins` and the partition crates, the unit-test step compiles `--lib`, and the
+// integration-test and example targets were compiled by nobody -- which is how twelve of them
+// sat red on main (2026-08-30) behind a green required run. Ordered after the unit tests so a
+// red test verdict is never hidden behind a lint verdict in the same job.
+data rust_clippy_all_targets_shell_emit_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "dissolve-on: rust_clippy_all_targets_step -- hand-shell `run:` carrier for the one cargo clippy invocation gunbc.repo_self_build repo_self_clippy_command names; the argv is modeled, the step body is a foreign-executor shell line. DISSOLVES WHEN the orchestration-to-shell bash emission (v2.workflow.ci_workflow_run_emit ci_workflow_run_emit_pipeline) renders a modeled cargo Pipeline step for this command, the same capability ci_pin_rustup_default_script waits on -- at which point this data row and the concat below delete together.")
+
+fn rust_clippy_all_targets_step() -> Step {
+  RunStep {
+    name: Present { value: "clippy, all targets" },
+    id: Present { value: "rust_clippy_all_targets" },
+    run: concat(
+      concat("# ", concat(dissolution_description(condition: rust_clippy_all_targets_shell_emit_dissolution_trigger), "\n")),
+      concat(repo_self_clippy_command(), "\n")
+    ),
+    shell: none,
+    env: none,
+    working_directory: none,
+    if_condition: none,
+    continue_on_error: none,
+    timeout_minutes: none
+  }
+}
+
 fn rust_unit_tests_bound_steps() -> List<WitnessFloorBoundStep> {
   [
     WitnessFloorBoundStep {
@@ -1291,6 +1334,11 @@ fn rust_unit_tests_bound_steps() -> List<WitnessFloorBoundStep> {
       step: rust_unit_tests_step(),
       role: consumes_only(capabilities: [CargoCapability]),
       step_name: "v1-compiler unit tests",
+    },
+    WitnessFloorBoundStep {
+      step: rust_clippy_all_targets_step(),
+      role: consumes_only(capabilities: [CargoCapability]),
+      step_name: "clippy, all targets",
     },
   ]
 }

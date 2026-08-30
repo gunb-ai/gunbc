@@ -1,0 +1,147 @@
+module v2.test.claim.stage0_partition_roster_layout_join_witness
+
+import gunbc.stage0_crate_layout_generated {
+  generated_pub_mod_basenames,
+  generated_stage0_filenames
+}
+import gunbc.stage0_crate_partition_generated {
+  GeneratedLayeredCoreCrate,
+  GeneratedPartitionCrateRow,
+  generated_partition_crate_rows
+}
+import std.types { Bool, List, String }
+
+// ONE CLASS, NAMED EXACTLY, BECAUSE IT WOULD OTHERWISE BE READ AS THE CLASS NEXT TO IT.
+//
+// WHAT THIS CATCHES: a derived-partition crate roster naming a stage0 file that lib.rs does
+// NOT declare -- specifically a file the crate-layout authority registers as seed-retained
+// with has_pub_mod false. Such a row makes the partition crates compile a module the monolith
+// does not, through the `#[path = "../../stage0/src/<name>.rs"] pub mod <name>;` include the
+// partition emitter renders, so one file acquires two compilation stories and only one of them
+// is reachable from the authority that says which modules stage0 has. main carried exactly one
+// such row -- std_lens_verdict, whose source module std.lens_verdict no longer exists -- and
+// this witness was RED on main until the row was dropped from v2.workflow.rust_crate_partition.
+//
+// WHAT THIS DOES NOT CATCH, stated so nobody cites it for the defect that motivated the file.
+// #9689 left main's whole-workspace build red because three modules were in lib.rs and in NO
+// partition roster, which is E0432 at the crate boundary. This witness cannot see that class
+// and is not evidence about it. The reason is not that the check is lazy: the join needs the
+// Rust module dependency graph, which gunbc.stage0_rust_product_reachability declares unmodeled
+// in as many words (rust_module_dependency_graph_unresolved_edge), and the only other referent
+// is the tree itself, which would make this entry ReadsLiveTree and the required floor declines
+// those. The executing wall for that class is the required build lane compiling the partition
+// packages (gunbc.repo_self_build repo_self_build_partition_crates_command), with rustc as the
+// oracle. NEXT-RUNG TRIGGER for replacing that build with a join here: the Rust module
+// dependency graph modeled as a committed carrier, at which point the crate:: closure becomes
+// decidable without reading the tree.
+//
+// WHY THIS FILE LIVES UNDER src/v2/test/claim AND NOT dag/test/claim, which is where its two
+// imports live and where it was first written. The required floor admits a discovered witness
+// only if its module path matches v2.workflow.required_floor required_gate_prefixes, and the
+// arm for everything else is DeclinedOutsideRequiredGate -- counted in the run's disposition
+// but never executed. Measured rather than assumed: at test.claim.stage0_partition_roster_...
+// this file was discovered and declined on run 33290382542 while sitting RED on the live
+// corpus, and the floor reported failed=1 for an unrelated witness. A wall that reds and is
+// declined is DESIGN section 4b's inert lens, so the module path is part of the wall.
+//
+// WHY THE DISCRIMINATING RED IS A FIXTURE AND NOT THE LIVE CORPUS. Once the std_lens_verdict
+// row is gone the live rosters and the seed-retained filename roster are DISJOINT, so the live
+// assertion below is an empty-set claim whose condition is absent -- green whether the check
+// works or not. DESIGN section 4b's rule for exactly this shape is that a state unrepresentable
+// in the accepted corpus may still be representable in a fixture, and here it plainly is: the
+// detector is a pure fold over rows, so a constructed row reproduces the refused state directly.
+// The two fixture witnesses below are therefore the evidence that this file carries a wall at
+// all, and the live witness is the regression control over the corpus.
+
+fn stage0_file_is_seed_retained(basename: String, filenames: List<String>) -> Bool {
+  filenames |> any(f => f == join([basename, ".rs"], ""))
+}
+
+fn stage0_file_has_pub_mod(basename: String, pub_mod_basenames: List<String>) -> Bool {
+  pub_mod_basenames |> any(b => b == basename)
+}
+
+// A rostered module is admissible when the crate-layout authority does not register it as a
+// seed-retained file at all (it is emitter-produced, and stage0 lib.rs declares the emitted
+// population), or registers it AND declares a pub mod for it. The refused state is the third
+// combination, and it is returned by name rather than counted so the failure locates itself.
+fn roster_entry_violates_pub_mod_join(
+  basename: String,
+  filenames: List<String>,
+  pub_mod_basenames: List<String>
+) -> Bool {
+  stage0_file_is_seed_retained(basename: basename, filenames: filenames)
+    && !stage0_file_has_pub_mod(basename: basename, pub_mod_basenames: pub_mod_basenames)
+}
+
+fn roster_pub_mod_violations(
+  rows: List<GeneratedPartitionCrateRow>,
+  filenames: List<String>,
+  pub_mod_basenames: List<String>
+) -> List<String> {
+  rows
+    |> fold(init: [], f: (acc, row) => acc |> concat(
+        row.modules |> filter(m => roster_entry_violates_pub_mod_join(
+          basename: m,
+          filenames: filenames,
+          pub_mod_basenames: pub_mod_basenames
+        ))
+      ))
+}
+
+test fn w_live_partition_roster_declares_no_undeclared_module() -> Bool {
+  roster_pub_mod_violations(
+    rows: generated_partition_crate_rows,
+    filenames: generated_stage0_filenames,
+    pub_mod_basenames: generated_pub_mod_basenames
+  ) |> count == 0
+}
+
+// THE DISCRIMINATING RED, made green as an assertion that the detector fires. The fixture
+// preserves the exact formerly-live contradiction after its production rows dissolve: one
+// filename registration for std_lens_verdict.rs, no matching pub mod, and one partition row
+// naming the basename. It supplies both sides of the layout join explicitly because borrowing
+// the accepted generated population made the RED disappear when the dead registration was
+// correctly deleted. This witness reds if the detector stops firing; the live assertion above
+// independently stays bound to the generated authorities.
+fn violating_fixture_row() -> GeneratedPartitionCrateRow {
+  GeneratedPartitionCrateRow {
+    package_name: "fixture-violating-crate",
+    crate_dir: "src/v1/fixture_violating_crate",
+    kind: GeneratedLayeredCoreCrate,
+    modules: ["std_types", "std_lens_verdict"],
+    reexport_packages: [],
+    carries_non_empty_wrappers: false
+  }
+}
+
+test fn w_fixture_roster_naming_an_undeclared_module_is_refused() -> Bool {
+  let violations = roster_pub_mod_violations(
+    rows: [violating_fixture_row()],
+    filenames: ["std_types.rs", "std_lens_verdict.rs"],
+    pub_mod_basenames: ["std_types"]
+  )
+  (violations |> count == 1) && (violations |> any(v => v == "std_lens_verdict"))
+}
+
+// The negative control, on the same fixture shape: an ordinary emitted module in the same row
+// position is admitted, so the witness above is discriminating between the two names rather
+// than refusing every fixture handed to it.
+fn clean_fixture_row() -> GeneratedPartitionCrateRow {
+  GeneratedPartitionCrateRow {
+    package_name: "fixture-clean-crate",
+    crate_dir: "src/v1/fixture_clean_crate",
+    kind: GeneratedLayeredCoreCrate,
+    modules: ["std_types", "std_node"],
+    reexport_packages: [],
+    carries_non_empty_wrappers: false
+  }
+}
+
+test fn w_fixture_roster_of_emitted_modules_is_admitted() -> Bool {
+  roster_pub_mod_violations(
+    rows: [clean_fixture_row()],
+    filenames: generated_stage0_filenames,
+    pub_mod_basenames: generated_pub_mod_basenames
+  ) |> count == 0
+}

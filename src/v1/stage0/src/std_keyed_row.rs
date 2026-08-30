@@ -30,13 +30,14 @@ pub fn keyed_row_find<K: Clone, V: Clone>(
     wanted_key: K,
     key_eq: impl Fn(K, K) -> bool + Clone,
 ) -> Option<Rc<KeyedRow<K, V>>> {
-    rows.iter()
-        .cloned()
-        .fold(None, |acc: _, row: Rc<KeyedRow<K, V>>| {
+    rows.iter().cloned().fold(
+        std::option::Option::None,
+        |acc: _, row: Rc<KeyedRow<K, V>>| {
             if key_eq(row.row_key.clone(), wanted_key.clone()) {
                 Some(row.clone())
             } else {
                 acc.clone()
             }
-        })
+        },
+    )
 }
