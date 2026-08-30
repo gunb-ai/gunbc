@@ -315,11 +315,19 @@ fn ingested_classical_not_octet_value(n: Int) -> RuntimeValue {
 }
 
 fn ingested_classical_not_bool_true(value: RuntimeValue) -> Bool {
-  value == ingested_classical_not_octet_value(n: 1)
+  match runtime_value_equality(a: value, b: ingested_classical_not_octet_value(n: 1)) {
+    RuntimeValuesEqual => true
+    RuntimeValuesDiffer => false
+    RuntimeValueEqualityUnavailable { reason: _ } => false
+  }
 }
 
 fn ingested_classical_not_bool_false(value: RuntimeValue) -> Bool {
-  value == ingested_classical_not_octet_value(n: 0)
+  match runtime_value_equality(a: value, b: ingested_classical_not_octet_value(n: 0)) {
+    RuntimeValuesEqual => true
+    RuntimeValuesDiffer => false
+    RuntimeValueEqualityUnavailable { reason: _ } => false
+  }
 }
 
 fn ingested_classical_not_allocate_literal(node: Node, _env: EvaluationEnvironment) -> Outcome<RuntimeValue> {
@@ -495,7 +503,11 @@ test fn ingested_classical_not_eval_subgraph_canonical_octet_zero_holds() -> Boo
         inputs: inputs_root_only(root: ingested_classical_not_eval_subgraph_canonical())
       ) {
         Accepted { value: v, diagnostics: _ } =>
-          v == ingested_classical_not_octet_value(n: 0)
+          match runtime_value_equality(a: v, b: ingested_classical_not_octet_value(n: 0)) {
+            RuntimeValuesEqual => true
+            RuntimeValuesDiffer => false
+            RuntimeValueEqualityUnavailable { reason: _ } => false
+          }
         Rejected { diagnostics: _ } => false
       }
     Rejected { diagnostics: _ } => false

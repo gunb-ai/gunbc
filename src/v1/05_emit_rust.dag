@@ -94,7 +94,7 @@ import v1.compiler.compiler_tests_rust { compiler_tests_source }
 import v1.compiler.closure_stub_v2_std_integer_rust { closure_stub_v2_std_integer_source }
 import v1.compiler.closure_stub_v2_std_text_rust { closure_stub_v2_std_text_source }
 import v1.compiler.coercion {
-  coerce_primitive_type, is_copy, lookup_checkpoint, type_reference_decl_file,
+  coerce_primitive_type, is_copy, lookup_checkpoint, type_reference_decl_file, decl_identity_file,
   rust_seed_host_numeric_alias, target_callable, rust_lookup_exact_binding
 }
 import v1.compiler.trait_derive_emit {
@@ -152,7 +152,7 @@ import v1.compiler.infer {
 import v1.compiler.infer_emit_info {
   EmitGraphInfo, TypeSummary, StructRepr, EnumRepr,
   lookup_emit_type_summary, lookup_emit_type_decl, empty_emit_graph_info,
-  emit_info_with_fn_type_context, emit_info_with_fn_return,
+  emit_info_with_fn_type_context, emit_info_with_fn_return, emit_info_with_expected_type,
   is_enum_in_summaries, find_variant_parent, is_known_variant,
   variant_belongs_to_enum, variant_summary_key,
   collect_type_node_import_surface_names
@@ -613,18 +613,47 @@ data rust_checkpoint_scalar_phantom_params_note: String = "Construction wall for
 // authority suppresses the wrap. rust_scalar_checkpoint_reference_base also answers for
 // lookup_checkpoint rows that are NOT machine scalars (String is the live one), and those may
 // legitimately be shared, so widening this to every checkpoint row is a separate cut.
+// type_reference_decl_file reads the DECLARING module off the reference's resolved inference, and
+// falls back to the reference's own file when no inference is bound -- which is every type
+// argument inside a record FIELD's type expression (field type exprs are not inferred). At that
+// position `Nat` in `Measure<Time, S, Nat>` therefore answered dag/std/realization_schedule.dag,
+// not dag/std/nat.dag, so the native-alias row could not fire and the argument rendered as the
+// shared carrier `Rc<Nat>` while every signature rendered it `i64` (E0308 x8 across std_measure,
+// std_realization_schedule, std_cache_interface, std_realization_measurement; E0369 x1). The
+// binding is still decidable from the env: the reference's leaf name resolves to one declaration
+// in the referencing module's scope. Accepted only when that declaration IS named by the leaf,
+// so an alias's right-hand side node can never stand in for the alias.
+fn type_reference_decl_file_in_env(n: Node, env: TypeEnv, source_indices: Map<String, NewlineIndex>) -> String {
+  match n.inferred {
+    Present { value: Resolved { node: _ } } => type_reference_decl_file(n: n)
+    _ =>
+      let leaf = rust_fn_sig_leaf_name(source_indices: source_indices, n: n)
+      if leaf == "" { type_reference_decl_file(n: n) }
+      else {
+        match lookup_type_by_name(env: env, name: leaf) {
+          Present { value: decl } =>
+            if authored_name_at(source_indices: source_indices, node: decl) == leaf {
+              decl_identity_file(item: decl)
+            } else { type_reference_decl_file(n: n) }
+          Absent => type_reference_decl_file(n: n)
+        }
+      }
+  }
+}
+
 fn rust_render_checkpoint_scalar_bare(n: Node, source_indices: Map<String, NewlineIndex>, shared_types: Set<String>, env: TypeEnv) -> String? {
   if n.children |> count == 0 { none }
   else {
     let leaf = rust_fn_sig_leaf_name(source_indices: source_indices, n: n)
     if is_container_type(name: leaf) { return none }
+    let decl_file = type_reference_decl_file_in_env(n: n, env: env, source_indices: source_indices)
     match rust_exact_reference_spelling(n: n, source_indices: source_indices, env: env) {
       Present { value: exact } => Present { value: exact }
       Absent =>
-    match rust_seed_host_numeric_alias(name: leaf, decl_file: type_reference_decl_file(n: n)) {
+    match rust_seed_host_numeric_alias(name: leaf, decl_file: decl_file) {
       Present { value: numeric } => Present { value: numeric }
       Absent =>
-        match rust_scalar_checkpoint_reference_base(dag_name: leaf, decl_file: type_reference_decl_file(n: n)) {
+        match rust_scalar_checkpoint_reference_base(dag_name: leaf, decl_file: decl_file) {
           Present { value: scalar } =>
             if set_contains(shared_types, leaf) && !rust_type_is_rc_wrapped(type_name: scalar) {
               Present { value: wrap_shared_type(target: Rust, inner: scalar) }
@@ -705,7 +734,7 @@ fn rust_exact_reference_spelling(n: Node, source_indices: Map<String, NewlineInd
 fn rust_reference_checkpoint_spelling_at(n: Node, source_indices: Map<String, NewlineIndex>, env: TypeEnv) -> String? {
   match rust_exact_reference_spelling(n: n, source_indices: source_indices, env: env) {
     Present { value: exact } => Present { value: exact }
-    Absent => rust_scalar_checkpoint_reference_base(dag_name: rust_fn_sig_leaf_name(source_indices: source_indices, n: n), decl_file: type_reference_decl_file(n: n))
+    Absent => rust_scalar_checkpoint_reference_base(dag_name: rust_fn_sig_leaf_name(source_indices: source_indices, n: n), decl_file: type_reference_decl_file_in_env(n: n, env: env, source_indices: source_indices))
   }
 }
 
@@ -870,14 +899,14 @@ fn rust_witness_type_arg_from_holds_value_field(fields: List<Node>, shared_types
       let val_rt = resolved_type(n: field_init_node_value(n: f))
       match rust_witness_carrier_from_type_node(type_node: val_rt, shared_types: shared_types, emit_info: emit_info, source_indices: source_indices) {
         Present { value: arg } => Present { value: arg }
-        Absent => rust_witness_type_arg_from_fn_return(emit_info: emit_info, shared_types: shared_types, source_indices: source_indices)
+        Absent => rust_witness_type_arg_from_expected_type(emit_info: emit_info, shared_types: shared_types, source_indices: source_indices)
       }
     Absent => none
   }
 }
 
-fn rust_witness_type_arg_from_fn_return(emit_info: EmitGraphInfo, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>) -> String? {
-  match emit_info.fn_return_type {
+fn rust_witness_type_arg_from_expected_type(emit_info: EmitGraphInfo, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>) -> String? {
+  match emit_info.expected_type {
     Present { value: rt } => rust_witness_carrier_from_type_node(type_node: rt, shared_types: shared_types, emit_info: emit_info, source_indices: source_indices)
     Absent => none
   }
@@ -887,10 +916,10 @@ fn rust_witness_type_arg_for_variant(variant_name: String, resolved_type: Node, 
   if variant_name == "Holds" {
     match rust_witness_type_arg_from_holds_value_field(fields: fields, shared_types: shared_types, emit_info: emit_info, source_indices: source_indices) {
       Present { value: arg } => Present { value: arg }
-      Absent => rust_witness_type_arg_from_fn_return(emit_info: emit_info, shared_types: shared_types, source_indices: source_indices)
+      Absent => rust_witness_type_arg_from_expected_type(emit_info: emit_info, shared_types: shared_types, source_indices: source_indices)
     }
   } else if variant_name == "Violates" {
-    match rust_witness_type_arg_from_fn_return(emit_info: emit_info, shared_types: shared_types, source_indices: source_indices) {
+    match rust_witness_type_arg_from_expected_type(emit_info: emit_info, shared_types: shared_types, source_indices: source_indices) {
       Present { value: arg } => Present { value: arg }
       Absent => rust_witness_carrier_from_type_node(type_node: resolved_type, shared_types: shared_types, emit_info: emit_info, source_indices: source_indices)
     }
@@ -2866,7 +2895,8 @@ fn build_emit_rust_context(typed: ResolvedGraph) -> EmitRustContext {
     clone_impl_required_type_params: clone_impl_required,
     fn_generic_param_names: base_info.fn_generic_param_names,
     fn_type_env: base_info.fn_type_env,
-    fn_return_type: none
+    fn_return_type: none,
+    expected_type: none
   }
   let registry = merge_item_registries(
     bare: typed.item_registry,
@@ -3200,7 +3230,8 @@ fn emit_module(typed_module: TypedModule, registry: Map<String, ItemInfo>) -> Te
     clone_impl_required_type_params: clone_impl_required,
     fn_generic_param_names: base_info.fn_generic_param_names,
     fn_type_env: base_info.fn_type_env,
-    fn_return_type: none
+    fn_return_type: none,
+    expected_type: none
   }
   let shared_types = emit_info.shared_types
   let export_sets = build_module_export_sets(modules: [typed_module])
@@ -6261,7 +6292,8 @@ fn emit_typed_item(item: Node, module_name: String, registry: Map<String, ItemIn
       clone_impl_required_type_params: emit_info.clone_impl_required_type_params,
       fn_generic_param_names: emit_info.fn_generic_param_names,
       fn_type_env: emit_info.fn_type_env,
-      fn_return_type: emit_info.fn_return_type
+      fn_return_type: emit_info.fn_return_type,
+      expected_type: emit_info.expected_type
     }
 
     let is_effectful = match lookup_item(registry: registry, name: authored_name(env: env, node: item)) {
@@ -10473,7 +10505,8 @@ fn emit_rust_fold_method_call(method_call_node: Node, fold_accumulator_type: Nod
               clone_impl_required_type_params: emit_info.clone_impl_required_type_params,
               fn_generic_param_names: emit_info.fn_generic_param_names,
               fn_type_env: emit_info.fn_type_env,
-              fn_return_type: emit_info.fn_return_type
+              fn_return_type: emit_info.fn_return_type,
+              expected_type: emit_info.expected_type
             }
           Absent => emit_info
         }
@@ -10504,7 +10537,8 @@ fn emit_rust_fold_method_call(method_call_node: Node, fold_accumulator_type: Nod
               clone_impl_required_type_params: emit_info.clone_impl_required_type_params,
               fn_generic_param_names: emit_info.fn_generic_param_names,
               fn_type_env: emit_info.fn_type_env,
-              fn_return_type: emit_info.fn_return_type
+              fn_return_type: emit_info.fn_return_type,
+              expected_type: emit_info.expected_type
             }
           Absent => emit_info
         }
@@ -10597,12 +10631,19 @@ fn emit_rust_sort_by_method_call(receiver: Node, args: List<Node>, registry: Map
   let iter_str = apply_type_template1(template: sharing.iter_owned, arg0: recv_str)
   let a_clone = apply_type_template1(template: sharing.clone_value, arg0: "a")
   let b_clone = apply_type_template1(template: sharing.clone_value, arg0: "b")
-  if elem_type_str == "_" {
-    rust_shared_wrap_ctor(inner_expr: concat("{ let mut __sorted: Vec<_> = ", iter_str, ".collect(); __sorted.sort_by(|a, b| { a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal) }); __sorted }"))
+  let closure_params = if elem_type_str == "_" {
+    "|a, b|"
   } else {
-    rust_shared_wrap_ctor(inner_expr: concat("{ let mut __sorted: Vec<_> = ", iter_str, ".collect(); __sorted.sort_by(|a: &", elem_type_str, ", b: &", elem_type_str, "| { let __ka = (", sort_key_fn, ")(", a_clone, "); let __kb = (", sort_key_fn, ")(", b_clone, "); __ka.partial_cmp(&__kb).unwrap_or(std::cmp::Ordering::Equal) }); __sorted }"))
+    concat("|a: &", elem_type_str, ", b: &", elem_type_str, "|")
   }
+  rust_shared_wrap_ctor(inner_expr: concat("{ let mut __sorted: Vec<_> = ", iter_str, ".collect(); __sorted.sort_by(", closure_params, " { let __ka = (", sort_key_fn, ")(", a_clone, "); let __kb = (", sort_key_fn, ")(", b_clone, "); __ka.partial_cmp(&__kb).unwrap_or(std::cmp::Ordering::Equal) }); __sorted }"))
 }
+
+// The element-type-unknown arm used to emit `sort_by(|a, b| a.partial_cmp(b))` -- it DROPPED the
+// authored key function and compared elements directly, which is a fabricated plausible output
+// (DESIGN 5): rustc reported it only where T carried no PartialOrd (E0599 at v2.std.node
+// sort_labeled), and where T happened to be ordered it would have sorted by the wrong key with no
+// diagnostic at all. The key function is the semantics; only the closure annotations are optional.
 
 fn emit_rust_map_method_call(receiver: Node, args: List<Node>, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo) -> String {
   let recv_str = emit_typed_expr(texpr: receiver, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
@@ -11075,6 +11116,17 @@ type RcGroupedArmPlan {
   pat_str: String
   ref_field: String
   inner_pat_str: String
+  plain_bindings: List<RcPlainFieldBinding>
+  plain_refutable: Bool
+}
+
+// A field of the outer pattern that is NOT the discriminated Rc field and is bound irrefutably to
+// an identifier. Two arms of one variant may bind different such fields (`target: magnitude` in one,
+// `target: _` in the next); the arm binding the superset carries the outer pattern for the whole
+// group, because a plain binding selects nothing -- it only names a component the body may read.
+type RcPlainFieldBinding {
+  field: String
+  ident: String
 }
 
 type RcGroupedArmEntry {
@@ -11088,7 +11140,61 @@ type RcGroupedArmAcc {
 }
 
 fn ungroupable_arm_plan(variant: String, pat_str: String) -> RcGroupedArmPlan {
-  RcGroupedArmPlan { groupable: false, variant: variant, pat_str: pat_str, ref_field: "", inner_pat_str: "" }
+  RcGroupedArmPlan { groupable: false, variant: variant, pat_str: pat_str, ref_field: "", inner_pat_str: "", plain_bindings: [], plain_refutable: false }
+}
+
+fn rc_arm_plain_bindings(pattern: MatchPattern, ref_field: String, source_indices: Map<String, NewlineIndex>) -> List<RcPlainFieldBinding> {
+  match pattern {
+    VariantPattern { name: _, parent_enum: _, field_bindings: fbs } =>
+      fbs |> flat_map(fb =>
+        let fb_name = field_binding_name_at(n: fb, source_indices: source_indices)
+        if fb_name == ref_field { [] }
+        else {
+          match field_binding_pattern(n: fb) {
+            Bind { declaration: d } => [RcPlainFieldBinding { field: fb_name, ident: d.name }]
+            _ => []
+          }
+        }
+      )
+    _ => []
+  }
+}
+
+fn rc_arm_has_refutable_plain_field(pattern: MatchPattern, ref_field: String, source_indices: Map<String, NewlineIndex>) -> Bool {
+  match pattern {
+    VariantPattern { name: _, parent_enum: _, field_bindings: fbs } =>
+      fbs |> any(fb =>
+        field_binding_name_at(n: fb, source_indices: source_indices) != ref_field
+          && !match_pattern_is_irrefutable(pattern: field_binding_pattern(n: fb))
+      )
+    _ => false
+  }
+}
+
+// `member` may take `rep`'s outer pattern when the two agree byte-for-byte (the #8570 rule), or when
+// neither discriminates on a plain field and every plain binding of `member` is one `rep` also
+// makes under the same identifier -- then `rep`'s pattern binds a superset and selects the same
+// values, so the inner match is exhaustive exactly where the source arms were.
+fn rc_plan_bindings_within(member: RcGroupedArmPlan, rep: RcGroupedArmPlan) -> Bool {
+  member.pat_str == rep.pat_str
+    || (!member.plain_refutable && !rep.plain_refutable
+        && (member.plain_bindings |> all(b => rep.plain_bindings |> any(r => r.field == b.field && r.ident == b.ident))))
+}
+
+fn rc_group_representative(entries: List<RcGroupedArmEntry>, variant: String) -> RcGroupedArmPlan? {
+  let members = rc_group_members(entries: entries, variant: variant)
+  match members |> first {
+    Present { value: head } =>
+      let all_groupable = members |> all(e => e.plan.groupable && e.plan.ref_field == head.plan.ref_field)
+      if !all_groupable { none }
+      else {
+        match members |> filter(cand => members |> all(e => rc_plan_bindings_within(member: e.plan, rep: cand.plan))) |> first {
+          Present { value: rep } => Present { value: rep.plan }
+          Absent => none
+        }
+      }
+    Absent => none
+  }
 }
 
 fn variant_pattern_field_binding_named(pattern: MatchPattern, field_name: String, source_indices: Map<String, NewlineIndex>) -> Node? {
@@ -11134,7 +11240,15 @@ fn rc_grouped_arm_plan(arm: Node, scope: InferScope, shared_types: Set<String>, 
               ungroupable_arm_plan(variant: variant, pat_str: pat_str)
             } else {
               let inner_pat_str = emit_pattern(pattern: fb_pat, path_prefix: list_push(list_push([], variant), field_name), shared_types: shared_types, scrut_type: "", source_indices: si, emit_info: emit_info)
-              RcGroupedArmPlan { groupable: true, variant: variant, pat_str: pat_str, ref_field: field_name, inner_pat_str: inner_pat_str }
+              RcGroupedArmPlan {
+                groupable: true,
+                variant: variant,
+                pat_str: pat_str,
+                ref_field: field_name,
+                inner_pat_str: inner_pat_str,
+                plain_bindings: rc_arm_plain_bindings(pattern: arm_pat, ref_field: field_name, source_indices: si),
+                plain_refutable: rc_arm_has_refutable_plain_field(pattern: arm_pat, ref_field: field_name, source_indices: si)
+              }
             }
           Absent => ungroupable_arm_plan(variant: variant, pat_str: pat_str)
         }
@@ -11152,20 +11266,18 @@ fn rc_grouped_arm_plan(arm: Node, scope: InferScope, shared_types: Set<String>, 
 // `unreachable pattern` errors, at v2.compiler.normalize, v2.compiler.resolve, v2.compiler.eval,
 // v2.compiler.translate, v2.std.compilers.target_model and v2.extdeps.languages.dag.
 //
-// So a variant is grouped only when EVERY arm carrying it is groupable AND agrees on both the
-// emitted outer pattern and the discriminated field. One dissenting arm -- a wildcard field, a
-// second Rc-bound field, an authored guard -- and the whole variant keeps the #8570 guard, which
-// is the honest arm: the guards are what make those arms selectable in the first place.
+// So a variant is grouped only when EVERY arm carrying it is groupable, agrees on the discriminated
+// field, and can take one representative's outer pattern (rc_plan_bindings_within: byte-equal, or a
+// plain-binding subset of it). One dissenting arm -- a refutable plain field, a second Rc-bound
+// field, an authored guard -- and the whole variant keeps the #8570 guard, which is the honest arm:
+// the guards are what make those arms selectable in the first place. The subset rule exists because
+// the guard form is invisible to rustc's exhaustiveness check: `Edge { label: Named {..}, target: t }`
+// beside `Edge { label: Positional, target: _ }` disagreed only on a plain binding and produced two
+// guarded arms, E0004 at v2.extdeps.languages.dag and v2.std.compilers.target_model.
 fn rc_group_members(entries: List<RcGroupedArmEntry>, variant: String) -> List<RcGroupedArmEntry> {
   entries |> filter(e => e.plan.variant == variant)
 }
 
-fn rc_group_is_whole_coverage(entries: List<RcGroupedArmEntry>, plan: RcGroupedArmPlan) -> Bool {
-  let members = rc_group_members(entries: entries, variant: plan.variant)
-  (members |> all(e =>
-    e.plan.groupable && e.plan.ref_field == plan.ref_field && e.plan.pat_str == plan.pat_str
-  ))
-}
 
 fn emit_rc_grouped_match_arm(members: List<RcGroupedArmEntry>, plan: RcGroupedArmPlan, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo, match_result_type: Node) -> String {
   let inner_arms = members |> map(e =>
@@ -11184,20 +11296,22 @@ fn emit_typed_match_arm_strs(arms: List<Node>, registry: Map<String, ItemInfo>, 
       plan: rc_grouped_arm_plan(arm: arm, scope: scope, shared_types: shared_types, emit_info: emit_info, scrut_type: scrut_type)
     })
     let folded = entries |> fold(init: RcGroupedArmAcc { seen: [], out: [] }, f: (acc, e) =>
-      if e.plan.groupable && rc_group_is_whole_coverage(entries: entries, plan: e.plan) {
-        if acc.seen |> any(s => s == e.plan.variant) {
-          acc
-        } else {
-          RcGroupedArmAcc {
-            seen: list_push(acc.seen, e.plan.variant),
-            out: list_push(acc.out, emit_rc_grouped_match_arm(members: rc_group_members(entries: entries, variant: e.plan.variant), plan: e.plan, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, match_result_type: match_result_type))
+      let representative = if e.plan.groupable { rc_group_representative(entries: entries, variant: e.plan.variant) } else { none }
+      match representative {
+        Present { value: rep } =>
+          if acc.seen |> any(s => s == e.plan.variant) {
+            acc
+          } else {
+            RcGroupedArmAcc {
+              seen: list_push(acc.seen, e.plan.variant),
+              out: list_push(acc.out, emit_rc_grouped_match_arm(members: rc_group_members(entries: entries, variant: e.plan.variant), plan: rep, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, match_result_type: match_result_type))
+            }
           }
-        }
-      } else {
-        RcGroupedArmAcc {
-          seen: acc.seen,
-          out: list_push(acc.out, emit_typed_match_arm(arm: e.arm, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, scrut_type: scrut_type, match_result_type: match_result_type, string_from_mode: false))
-        }
+        Absent =>
+          RcGroupedArmAcc {
+            seen: acc.seen,
+            out: list_push(acc.out, emit_typed_match_arm(arm: e.arm, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, scrut_type: scrut_type, match_result_type: match_result_type, string_from_mode: false))
+          }
       }
     )
     folded.out
@@ -11666,10 +11780,25 @@ fn emit_field_value_with_context(field_value: Node, struct_node: Node, outer_typ
             rust_shared_wrap_ctor(inner_expr: raw)
           } else { raw }
         Absent =>
-          emit_typed_expr(texpr: field_value, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
+          emit_typed_expr(texpr: field_value, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info_with_expected_type(emit_info: emit_info, expected_type: record_field_expected_type(struct_node: struct_node, outer_type_name: outer_type_name, field_name: field_name, scope: scope, emit_info: emit_info)), fuel: 1024)
       }
     _ =>
-      emit_typed_expr(texpr: field_value, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
+      emit_typed_expr(texpr: field_value, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info_with_expected_type(emit_info: emit_info, expected_type: record_field_expected_type(struct_node: struct_node, outer_type_name: outer_type_name, field_name: field_name, scope: scope, emit_info: emit_info)), fuel: 1024)
+  }
+}
+
+// The declared type of a record-literal field: the resolved product node first, then the named
+// struct or variant declaration when the literal's node does not carry the field. None when
+// neither names it -- a field value never inhabits the enclosing fn's return type, so the
+// expectation is cleared rather than inherited.
+fn record_field_expected_type(struct_node: Node, outer_type_name: String?, field_name: String, scope: InferScope, emit_info: EmitGraphInfo) -> Node? {
+  match rust_struct_field_type_node_from_container(container: struct_node, field_name: field_name, source_indices: scope.type_env.source_indices) {
+    Present { value: n } => Present { value: n }
+    Absent =>
+      match outer_type_name {
+        Present { value: sn } => rust_struct_field_type_node_variant_aware(scope: scope, emit_info: emit_info, struct_name: sn, field_name: field_name)
+        Absent => none
+      }
   }
 }
 
