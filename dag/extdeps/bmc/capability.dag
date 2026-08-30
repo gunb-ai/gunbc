@@ -25,6 +25,7 @@ type BmcCapability
   | CapabilityFirmwareUpdate
   | CapabilityVirtualMedia
   | CapabilityNbdProxyVirtualMedia
+  | CapabilityOemRemoteMedia
   | CapabilityBiosAttributeConfig
   | CapabilitySerialConsole
 
@@ -144,6 +145,44 @@ type BmcFirmwareCapabilityLookup
   | BmcFirmwareCapabilityUncatalogued { firmware: BmcFirmwareVersion }
   | BmcFirmwareCapabilityAmbiguous { firmware: BmcFirmwareVersion, count: Int }
 
+// THE EXACT VENDOR RELEASE IDENTITY, OPAQUE. A BMC reports its firmware as a
+// string the vendor chose ("0.32", "3.22.00", "2.7.1"); bmc_firmware_version_from_wire
+// admits exactly three numeric components, so a live "0.32" either refuses or has
+// to be fabricated as "0.32.0". Profile lookup and observation identity therefore
+// bind on the RAW string plus family; the semantic reading is a derived view that
+// is Present only when the wire parses, never a prerequisite for observing the
+// firmware (machine-intake ruling 3 §1).
+type BmcFirmwareReleaseIdentity {
+  family: BmcFirmwareFamily
+  raw_version: NonEmptyStr
+  semantic_version: FirmwareSemanticVersion?
+}
+
+fn bmc_firmware_release_identity_eq(a: BmcFirmwareReleaseIdentity, b: BmcFirmwareReleaseIdentity) -> Bool {
+  a.family == b.family && a.raw_version == b.raw_version
+}
+
+fn bmc_firmware_release_identity_of_wire(family: BmcFirmwareFamily, wire: NonEmptyStr) -> BmcFirmwareReleaseIdentity {
+  match bmc_firmware_version_from_wire(wire: wire as String) {
+    BmcFirmwareVersionParsed { version: v } =>
+      BmcFirmwareReleaseIdentity { family: family, raw_version: wire, semantic_version: Present { value: v } }
+    BmcFirmwareVersionRefused { wire: _ } =>
+      BmcFirmwareReleaseIdentity { family: family, raw_version: wire, semantic_version: none }
+  }
+}
+
+// Whether a semantic capability row describes this release: same family and the
+// release's derived semantic reading is Present and equal. A release with no
+// semantic reading matches no semantic row — the join refuses rather than
+// guessing a patch component.
+fn bmc_firmware_release_matches_version(rel: BmcFirmwareReleaseIdentity, version: BmcFirmwareVersion) -> Bool {
+  match rel.semantic_version {
+    Absent => false
+    Present { value: v } =>
+      bmc_firmware_version_eq(a: BmcFirmwareVersion { family: rel.family, version: v }, b: version)
+  }
+}
+
 fn bmc_firmware_version_eq(a: BmcFirmwareVersion, b: BmcFirmwareVersion) -> Bool {
   a.family == b.family
     && a.version.major == b.version.major
@@ -183,6 +222,22 @@ fn bmc_firmware_capability_row_for(
 }
 
 fn firmware_has_capability(row: BmcFirmwareCapabilityRow, cap: BmcCapability) -> Bool {
+  row.capabilities |> any(c => c == cap)
+}
+
+// THE EXACT-RELEASE CAPABILITY CARRIER (machine-intake ruling 4 §2). A
+// BmcFirmwareCapabilityRow is keyed by a SEMANTIC version, so a release whose
+// vendor string has no semantic reading — the observed Mt. Collins "0.32" — can
+// be represented as a BmcFirmwareReleaseIdentity but can never match a row, and
+// every profile embedding a semantic row refused it forever. This row is keyed
+// by the exact release identity; the access-profile path consumes it, and the
+// semantic row remains for the existing OpenBMC evidence consumers.
+type BmcFirmwareReleaseCapabilityRow {
+  firmware: BmcFirmwareReleaseIdentity
+  capabilities: List<BmcCapability>
+}
+
+fn release_row_has_capability(row: BmcFirmwareReleaseCapabilityRow, cap: BmcCapability) -> Bool {
   row.capabilities |> any(c => c == cap)
 }
 

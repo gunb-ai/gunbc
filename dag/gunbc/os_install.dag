@@ -37,14 +37,12 @@ import gunbc.os_install_mechanism {
   OsInstallMechanismRefused,
   OsInstallMechanismSelected,
   OsInstallMechanismSolution,
-  srv3_install_mechanism,
   srv3_install_mechanism_solution,
   install_boot_target_for,
   OsInstallMechanism,
   NbdProxyVirtualMediaInstall,
   PxeHttpInstall,
   VirtualMediaInstall,
-  FirmwareUpdateThenVirtualMedia,
 }
 
 type NetworkBootDelivery {
@@ -60,7 +58,6 @@ fn os_install_delivery_for(mechanism: OsInstallMechanism, pxe_chain: NetworkBoot
   match mechanism {
     NbdProxyVirtualMediaInstall => VirtualMediaIso { autoinstall: autoinstall }
     VirtualMediaInstall => VirtualMediaIso { autoinstall: autoinstall }
-    FirmwareUpdateThenVirtualMedia => VirtualMediaIso { autoinstall: autoinstall }
     PxeHttpInstall => NetworkBoot {
       delivery: NetworkBootDelivery {
         chain: pxe_chain,
@@ -256,28 +253,3 @@ data srv3_autoinstall_spec: HostAutoinstall = HostAutoinstall {
 }
 
 data fleet_autoinstall_specs: List<HostAutoinstall> = [srv3_autoinstall_spec]
-
-type InstallServerSpec {
-  host: HostIdentity
-  plan: Srv3OsInstallPlan
-  serving_segment: NetworkSegment
-}
-
-fn fleet_install_server_specs_for(mechanism: OsInstallMechanism) -> List<InstallServerSpec> {
-  match mechanism {
-    PxeHttpInstall => [srv3_install_server_spec]
-    NbdProxyVirtualMediaInstall => []
-    VirtualMediaInstall => []
-    FirmwareUpdateThenVirtualMedia => []
-  }
-}
-
-data srv3_install_server_spec: InstallServerSpec = InstallServerSpec {
-  host: operator_host_srv3,
-  plan: srv3_pxe_os_install_plan,
-  serving_segment: operator_lan_segment,
-}
-
-data fleet_install_server_specs: List<InstallServerSpec> = fleet_install_server_specs_for(
-  mechanism: srv3_install_mechanism
-)
