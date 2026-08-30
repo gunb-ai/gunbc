@@ -339,6 +339,23 @@ test fn witness_spawn_member_refuses_observed_shape() -> Bool {
   is_spawn_failed(o: belt_actuate_spawn_member(m: m, workdir: "/", launch: launch_identity_exemplar()))
 }
 
+// review 5059520727 finding 4: the admitted identity SURVIVES an actuation failure -- the failed
+// outcome carries the exact LaunchIdentity the admission produced, so the route JSON, the tick
+// receipt and the attempt state can all name the decision that led to the failed attempt.
+test fn witness_identity_survives_actuation_failure() -> Bool {
+  let m = ObservedMember { node_id: "z", session: live_session(node_id: "z", verdict: Converged) }
+  let id = launch_identity_exemplar()
+  match belt_actuate_spawn_member(m: m, workdir: "/", launch: id) {
+    SpawnFailed { node_id: _, step, detail: _, provider: _, launch } =>
+      step == "member-shape"
+        && launch.node_id == id.node_id
+        && launch.instance_id == id.instance_id
+        && launch.revision == id.revision
+    Spawned { node_id: _, session_name: _, provider: _, launch: _ } => false
+    SpawnNotAdmitted { node_id: _, refusal: _ } => false
+  }
+}
+
 test fn witness_teardown_member_refuses_desired_shape() -> Bool {
   let m = DesiredMember { node_id: "a", node: ready_node(id: "a") }
   is_teardown_failed(o: belt_actuate_teardown_member(m: m))

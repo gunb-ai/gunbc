@@ -2330,6 +2330,50 @@ fn belt_tick_desired_candidates(frontier: SpawnFrontier) -> List<DispatchMember>
   frontier.ready |> map(n => DesiredMember { node_id: n.node as String, node: n })
 }
 
+fn belt_tick_launch_pass_refused(
+  standing: LaunchHostStanding,
+  state: SpawnMode,
+  frontier: SpawnFrontier,
+  graph: LaunchGraphStanding,
+  merged: List<Int>,
+  host_refusal: LaunchRefusal,
+) -> BeltLaunchPass {
+  BeltLaunchPass {
+    reconcile: belt_tick_empty_reconcile(state: state),
+    host_refusal: Present { value: host_refusal },
+    decisions: belt_tick_admit(
+      candidates: belt_tick_desired_candidates(frontier: frontier),
+      standing: standing,
+      graph: graph,
+      merged: merged,
+    ),
+    teardowns: [],
+  }
+}
+
+fn belt_tick_launch_pass_observed(
+  standing: LaunchHostStanding,
+  state: SpawnMode,
+  frontier: SpawnFrontier,
+  graph: LaunchGraphStanding,
+  merged: List<Int>,
+  live: List<DispatchLiveSession>,
+) -> BeltLaunchPass {
+  let classified = belt_tick_classify_sessions(live: live)
+  let r = belt_reconcile(
+    state: state,
+    frontier: frontier,
+    live: classified.running,
+    cap: roadmap_belt_default_capacity,
+  )
+  BeltLaunchPass {
+    reconcile: r,
+    host_refusal: none,
+    decisions: belt_tick_admit(candidates: r.upserts, standing: standing, graph: graph, merged: merged),
+    teardowns: concat(r.teardowns, map(classified.stale, s => ObservedMember { node_id: s.node_id, session: s })),
+  }
+}
+
 fn belt_tick_launch_pass(
   standing: LaunchHostStanding,
   state: SpawnMode,
@@ -2337,49 +2381,24 @@ fn belt_tick_launch_pass(
   graph: LaunchGraphStanding,
   merged: List<Int>,
 ) -> BeltLaunchPass {
-  let host_refusal = launch_host_refusal(standing: standing)
-  match host_refusal {
-    Present { value: _ } =>
-      BeltLaunchPass {
-        reconcile: belt_tick_empty_reconcile(state: state),
-        host_refusal: host_refusal,
-        decisions: belt_tick_admit(
-          candidates: belt_tick_desired_candidates(frontier: frontier),
-          standing: standing,
-          graph: graph,
-          merged: merged,
-        ),
-        teardowns: [],
-      }
+  match launch_host_refusal(standing: standing) {
+    Present { value: r } =>
+      belt_tick_launch_pass_refused(standing: standing, state: state, frontier: frontier, graph: graph, merged: merged, host_refusal: r)
     Absent =>
       match standing {
-        LaunchHostObserved { instance_id: _, actuation: _, transition: _, revision: _, sessions: LaunchSessionsObserved { live }, capacity: _, mode: _ } => {
-          let classified = belt_tick_classify_sessions(live: live)
-          let r = belt_reconcile(
-            state: state,
-            frontier: frontier,
-            live: classified.running,
-            cap: roadmap_belt_default_capacity,
-          )
-          BeltLaunchPass {
-            reconcile: r,
-            host_refusal: none,
-            decisions: belt_tick_admit(candidates: r.upserts, standing: standing, graph: graph, merged: merged),
-            teardowns: concat(r.teardowns, map(classified.stale, s => ObservedMember { node_id: s.node_id, session: s })),
+        LaunchHostObserved { instance_id: _, actuation: _, transition: _, revision: _, sessions, capacity: _, mode: _ } =>
+          match sessions {
+            LaunchSessionsObserved { live } =>
+              belt_tick_launch_pass_observed(standing: standing, state: state, frontier: frontier, graph: graph, merged: merged, live: live)
+            LaunchSessionsUnobserved { reason } =>
+              belt_tick_launch_pass_refused(standing: standing, state: state, frontier: frontier, graph: graph, merged: merged, host_refusal: LaunchSessionsUnobservable { reason: reason })
           }
-        }
-        _ =>
-          BeltLaunchPass {
-            reconcile: belt_tick_empty_reconcile(state: state),
-            host_refusal: Present { value: LaunchGateNotEvaluated { gate: "sessions" } },
-            decisions: belt_tick_admit(
-              candidates: belt_tick_desired_candidates(frontier: frontier),
-              standing: standing,
-              graph: graph,
-              merged: merged,
-            ),
-            teardowns: [],
-          }
+        LaunchHostObserveOnly { instance_id } =>
+          belt_tick_launch_pass_refused(standing: standing, state: state, frontier: frontier, graph: graph, merged: merged, host_refusal: LaunchInstanceActuationRefused { instance_id: instance_id, reason: "observe-only instance reached the launch pass without a host refusal; fail-closed" })
+        LaunchHostHalted { instance_id: _, gate: _, refusal } =>
+          belt_tick_launch_pass_refused(standing: standing, state: state, frontier: frontier, graph: graph, merged: merged, host_refusal: refusal)
+        LaunchHostUnobserved { reason } =>
+          belt_tick_launch_pass_refused(standing: standing, state: state, frontier: frontier, graph: graph, merged: merged, host_refusal: LaunchInstanceActuationRefused { instance_id: "", reason: reason })
       }
   }
 }
