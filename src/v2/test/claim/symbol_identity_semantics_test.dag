@@ -1,0 +1,44 @@
+module v2.test.claim.symbol_identity_semantics
+
+import std.types { NonEmptyStr }
+import std.content_hash { content_hash_atom }
+import v2.std.node { Symbol, symbol_identity_digest }
+import v2.std.compilers.lexing { symbol_intern_lexeme, symbol_lexeme }
+import v2.std.text { String }
+import v2.std.logic { Bool }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// EXECUTING EVIDENCE FOR gunbc.symbol_identity_census symbol_identity_decision (value semantics LexemeBacked),
+// each row one of the decision's fields asked of the live substrate rather than of prose. Each must
+// go red under the OTHER semantics: an interned symbol whose id is not its lexeme fails the round
+// trip and the hash-coherence rows; a canonicalizing literal fails the distinctness row.
+
+test fn w_intern_then_lexeme_is_the_identity_on_the_lexeme() -> Bool {
+  symbol_lexeme(sym: symbol_intern_lexeme(lexeme: "alpha_lexeme")) == "alpha_lexeme"
+}
+
+test fn w_lexeme_then_intern_is_the_identity_on_the_symbol() -> Bool {
+  symbol_intern_lexeme(lexeme: symbol_lexeme(sym: ^alpha_lexeme)) == ^alpha_lexeme
+}
+
+test fn w_equality_is_decided_by_the_lexeme() -> Bool {
+  ^alpha_lexeme == ^alpha_lexeme && symbol_intern_lexeme(lexeme: "alpha_lexeme") == ^alpha_lexeme
+}
+
+test fn w_distinct_lexemes_are_distinct_symbols() -> Bool {
+  ^alpha_lexeme != ^beta_lexeme && ^Alpha_lexeme != ^alpha_lexeme
+}
+
+test fn w_hashing_consumes_the_lexeme() -> Bool {
+  symbol_identity_digest(sym: ^alpha_lexeme) == content_hash_atom(value: "alpha_lexeme" as NonEmptyStr)
+    && symbol_identity_digest(sym: ^alpha_lexeme) != symbol_identity_digest(sym: ^beta_lexeme)
+}
+
+test fn w_ordering_is_decided_by_the_lexeme() -> Bool {
+  match sort_by([^beta_lexeme, ^alpha_lexeme], fn(s) { s }) |> first {
+    Present { value: s } => s == ^alpha_lexeme
+    Absent => false
+  }
+}

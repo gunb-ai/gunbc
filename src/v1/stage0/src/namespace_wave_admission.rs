@@ -367,7 +367,103 @@ pub struct TransitionAdmission {
 /// the shape the paragraph above records for the first 53. Removed by the trigger they were
 /// authored with. The roster is EMPTY and empty is not permissive: a run carrying a real
 /// namespace delta still refuses it as UNADJUDICATED until its author adds a row here.
-pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[];
+/// FOURTH TRANSITION (2026-08-29, gunbc#9665 / issue #9664). `DeclaredCallableIdentity` moved
+/// from `v1.compiler.infer_sigs` to `v1.std.core`, so every binding of that spelling inside
+/// `v1.compiler.infer_lookup` reports `TargetChanged`. The move is not cosmetic and not
+/// avoidable by re-spelling: `v1.std.core`'s own `CallTargetIdentity` now CARRIES a
+/// `DeclaredCallableIdentity` on its `RuntimePrimitiveCall` arm -- the declaration a runtime
+/// target was projected from, which is what lets Rust emission fall back to the declaration
+/// when its registry has no bridge for the primitive instead of inventing `v1_rt::length`.
+/// `v1.compiler.infer_sigs` imports `v1.std.core`, so the type could not stay where it was
+/// without a cycle, and re-declaring the pair in `v1.std.core` beside the original is the
+/// second-representation defect DESIGN §3 forbids -- the type's own note already says so, and
+/// that note travelled with the declaration.
+///
+/// FOUR ROWS, ONE PER BINDING SITE, and they are enumerated rather than matched by a module
+/// pattern because the roster's own rule is that its population is an enumeration and never a
+/// predicate. The two `membership` deltas this change also produces
+/// (`v1.compiler.emit_rust -> std.decl_ref` and `-> std.primitive_projection`) are
+/// `ExplicitlyEvaluatedZeroDelta` and auto-admit, so they are deliberately absent here.
+///
+/// DISSOLVE-ON: this PR merging. Once `DeclaredCallableIdentity` is declared in `v1.std.core`
+/// on main, the merge base and head both carry it, no run can produce these deltas, and all
+/// four report stale -- which refuses every unrelated PR in the repository, exactly the shape
+/// the three shrinks above record. Remove them by that trigger, not by reinterpreting it.
+/// FOURTH SHRINK, SAME RULE (2026-08-30). The six `DeclaredCallableIdentity hoist to
+/// v1.std.core 2026-08-29` rows dissolved on the trigger written above: #9665 merged as
+/// ecdeb492, so on every pull_request build the merge commit and its base both carry the
+/// hoist, no run can produce the deltas those rows named, and all six were reported stale
+/// (measured on #9689 @ bfd9524881: `0 unadjudicated delta(s), 6 stale admission(s)`) --
+/// refusing every unrelated PR in the repository, the fourth time this roster has reproduced
+/// that shape. Main's own push build at ecdeb492 stayed green, because its base is pre-#9665
+/// and the deltas exist there: the block is PR-only but universal, which is the reason the
+/// shrink cannot wait for a PR that would otherwise touch this file. Removed by the trigger they were authored with. The roster is EMPTY and empty
+/// is not permissive: a run carrying a real namespace delta still refuses it as UNADJUDICATED
+/// until its author adds a row here.
+/// FIFTH TRANSITION (2026-08-29, gunbc#9675). The four `rust_source_prefix_*` constants moved
+/// from `gunbc.stage0_rust_source_lifecycle_scaffold` to `gunbc.rust_item_host_observation` --
+/// the namespace table there needs the tooling prefix, and importing it the other way closes
+/// the cycle scaffold -> seed_growth_admission -> host_observation. Every spelling that bound to
+/// the old declarer now binds to the new one: six `TargetChanged` rows, each naming the exact
+/// module, enclosing declaration and leaf, blast radius 0 on every one. DISSOLVE-ON: #9675
+/// merging -- base and head then both carry the relocation, the rows report stale, and they are
+/// removed by that trigger exactly as the four shrinks above were.
+pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
+    TransitionAdmission {
+        label: "rust-source-prefix-relocation-01",
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.stage0_rust_product_reachability",
+            in_declaration: "path_is_test_harness",
+            spelling: "rust_source_prefix_stage0_test",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "rust-source-prefix-relocation-02",
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.stage0_rust_product_reachability",
+            in_declaration: "path_is_test_harness",
+            spelling: "rust_source_prefix_test_harness",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "rust-source-prefix-relocation-03",
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.stage0_rust_source_lifecycle_scaffold",
+            in_declaration: "rust_source_discovery_prefix_hints",
+            spelling: "rust_source_prefix_stage0_example",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "rust-source-prefix-relocation-04",
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.stage0_rust_source_lifecycle_scaffold",
+            in_declaration: "rust_source_discovery_prefix_hints",
+            spelling: "rust_source_prefix_stage0_test",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "rust-source-prefix-relocation-05",
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.stage0_rust_source_lifecycle_scaffold",
+            in_declaration: "rust_source_discovery_prefix_hints",
+            spelling: "rust_source_prefix_test_harness",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "rust-source-prefix-relocation-06",
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.stage0_rust_source_lifecycle_scaffold",
+            in_declaration: "rust_source_discovery_prefix_hints",
+            spelling: "rust_source_prefix_tooling",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+];
 
 /// The denominators a green must name (DESIGN §5). A run that cannot say what it covered is
 /// an instrument failure wearing coverage's clothes.

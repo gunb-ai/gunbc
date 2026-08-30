@@ -1,0 +1,665 @@
+module test.claim.self_host_semantic_conformance_witness
+
+// Imported from the definer rather than left as bare references: a module this new is in nobody
+// else's closure, so bare references would not bind.
+import std.types { String, NonEmptyStr, Bool, Int, List, CommitSha }
+import std.decl_ref { DeclarationRef, decl_ref }
+import std.primitive_projection { primitive_identity_slug }
+import v2.workflow.floor_discovery { FloorDiscoveryTreeId, floor_discovery_tree_id }
+import extdeps.git.object_store { GitObjectId, git_sha1_object_id }
+import gunbc.semantic_conformance {
+  PrimarySemanticAuthority, AuthoredExpectedOutcome,
+  ExpectedOutcome, ExpectsValue, ExpectsRefusal, ExpectsEffectOrder,
+  ObservedResult, ProducedValue, NotRun,
+  LegacyObservation, LegacyRun, LegacyNotConsulted,
+  EffectReceiptEntry,
+  CoverageArea, CompilerClosureMechanism, RequiredV2TestClaim,
+  BehaviorSubject,
+  SubjectAuthorityBinding, AuthorityBound, AuthorityMissing,
+  DifferentialRecord,
+  ConformanceDisposition, Conforms, NativeV2Defect, V2EvaluatorDefect, HostRealizationDefect,
+  SemanticAuthorityMissing, WitnessDefect, LegacyV1Defect,
+  ContractFacet, ValueResultFacet, RefusalBehaviorFacet, EffectOrderingFacet,
+  BehaviorSubjectIdentity,
+  PromotedRoute, EvaluatorOnPromotedRoute, EvaluatorOffPromotedRoute,
+  CoverageStanding, CoveragePopulationUnmeasured, CoveragePopulationMeasuredComplete,
+  ExitGateVerdict, ExitGateOpen, ExitGateBlocked,
+  ConformanceAdmission, ConformanceAdmitted, ConformanceRefused,
+  OmittedArmTripleHeld, OmittedArmVerdict, OmittedArmHeld, OmittedArmFailedOpen, OmittedArmUnobserved,
+  FixtureObservation, FixtureRejectedWith, FixtureAccepted,
+  omitted_arm_triple,
+  admit_conformance,
+  classify_differential_record,
+  disposition_blocks_cutover,
+  conformance_exit_gate,
+  subjects_conflict,
+}
+
+fn nes(s: String) -> NonEmptyStr { s as NonEmptyStr }
+
+fn fixture_rev(s: String) -> CommitSha { s as CommitSha }
+
+// The tree fixture goes THROUGH the validating GitObjectId constructor rather than casting, so the
+// fixture cannot inhabit the join key with a non-id. A refused decode falls back to nothing: the
+// witness would then fail on the match below, which is the correct loudness for a broken fixture.
+fn fixture_tree() -> FloorDiscoveryTreeId? {
+  match git_sha1_object_id(hex: "cccccccccccccccccccccccccccccccccccccccc") {
+    Present { value: oid } => Present { value: floor_discovery_tree_id(object_id: oid) }
+    Absent => Absent
+  }
+}
+
+fn fixture_ref(name: String) -> DeclarationRef {
+  decl_ref(module_path: "fixture.semantic_conformance", decl_name: name)
+}
+
+// THE AUTHORITY IS AUTHORED HERE AND ITS EXPECTED DIGEST IS NOT ANY IMPLEMENTATION'S OUTPUT. That is
+// the property the whole fixture rests on: "authority-value" is a string this witness decides, so a
+// route producing "legacy-value" is wrong even when every other route produces it too.
+fn fixture_authority() -> PrimarySemanticAuthority {
+  AuthoredExpectedOutcome {
+    statement: nes(s: "the subject evaluates to the authored authority value")
+  }
+}
+
+fn fixture_expected() -> ExpectedOutcome {
+  ExpectsValue { digest: nes(s: "authority-value") }
+}
+
+fn fixture_identity(consumer: String, facet: ContractFacet) -> BehaviorSubjectIdentity {
+  BehaviorSubjectIdentity { retained_consumer: fixture_ref(name: consumer), facet: facet }
+}
+
+fn fixture_subject() -> BehaviorSubject {
+  BehaviorSubject {
+    subject_id: fixture_identity(consumer: "subject_one", facet: ValueResultFacet),
+    authority: fixture_authority(),
+    authority_producer: fixture_ref(name: "authored_authority_producer"),
+    expected: fixture_expected(),
+    supplementary: [],
+  }
+}
+
+fn right() -> ObservedResult { ProducedValue { digest: nes(s: "authority-value") } }
+fn wrong() -> ObservedResult { ProducedValue { digest: nes(s: "legacy-value") } }
+
+fn record(
+  native: ObservedResult,
+  evaluator: ObservedResult,
+  legacy: LegacyObservation
+) -> DifferentialRecord {
+  DifferentialRecord {
+    binding: AuthorityBound { subject: fixture_subject() },
+    native_v2: native,
+    v2_evaluator: evaluator,
+    legacy_v1: legacy,
+    effect_receipt: [],
+  }
+}
+
+fn is_conforms(d: ConformanceDisposition) -> Bool {
+  match d {
+    Conforms => true
+    _ => false
+  }
+}
+
+fn is_native_defect(d: ConformanceDisposition) -> Bool {
+  match d {
+    NativeV2Defect { detail: _ } => true
+    _ => false
+  }
+}
+
+fn is_evaluator_defect(d: ConformanceDisposition) -> Bool {
+  match d {
+    V2EvaluatorDefect { detail: _ } => true
+    _ => false
+  }
+}
+
+fn is_host_realization_defect(d: ConformanceDisposition) -> Bool {
+  match d {
+    HostRealizationDefect { detail: _ } => true
+    _ => false
+  }
+}
+
+fn is_legacy_defect(d: ConformanceDisposition) -> Bool {
+  match d {
+    LegacyV1Defect { detail: _ } => true
+    _ => false
+  }
+}
+
+fn is_witness_defect(d: ConformanceDisposition) -> Bool {
+  match d {
+    WitnessDefect { detail: _ } => true
+    _ => false
+  }
+}
+
+fn is_authority_missing(d: ConformanceDisposition) -> Bool {
+  match d {
+    SemanticAuthorityMissing { subject_id: _ } => true
+    _ => false
+  }
+}
+
+fn dispositions_same_arm(a: ConformanceDisposition, b: ConformanceDisposition) -> Bool {
+  (is_conforms(d: a) == is_conforms(d: b))
+    && (is_native_defect(d: a) == is_native_defect(d: b))
+    && (is_evaluator_defect(d: a) == is_evaluator_defect(d: b))
+    && (is_host_realization_defect(d: a) == is_host_realization_defect(d: b))
+    && (is_legacy_defect(d: a) == is_legacy_defect(d: b))
+    && (is_witness_defect(d: a) == is_witness_defect(d: b))
+    && (is_authority_missing(d: a) == is_authority_missing(d: b))
+}
+
+test fn conformance_all_routes_satisfy_authority_conforms() -> Bool {
+  is_conforms(
+    d: classify_differential_record(
+      record: record(native: right(), evaluator: right(), legacy: LegacyRun { result: right() }),
+      route: EvaluatorOnPromotedRoute
+    )
+  )
+}
+
+// THE CENTRAL CLAIM OF THE LANE, EXECUTABLE. Native, evaluator and v1 all agree on "legacy-value".
+// Under an equivalence oracle this record is perfect: three implementations, unanimous. Under the
+// authority it is a NativeV2Defect, because agreement is not a definition. Mutation control: change
+// fixture_expected's digest to "legacy-value" and this witness goes red -- which is the WitnessDefect
+// direction, a bad expected value, and is exactly the mutation that must not pass silently.
+test fn unanimous_agreement_on_a_wrong_value_is_not_conformance() -> Bool {
+  is_native_defect(
+    d: classify_differential_record(
+      record: record(native: wrong(), evaluator: wrong(), legacy: LegacyRun { result: wrong() }),
+      route: EvaluatorOnPromotedRoute
+    )
+  )
+}
+
+// v1 IS A PROBE, STATED AS AN INVARIANCE RATHER THAN AS A SENTENCE. For a record whose native route
+// is already defective, substituting v1's observation -- agreeing, disagreeing, or not consulted at
+// all -- cannot move the disposition. If any arm of the classifier read v1 before the v2 routes had
+// decided, one of these three would differ.
+test fn legacy_observation_cannot_move_a_native_verdict() -> Bool {
+  dispositions_same_arm(
+    a: classify_differential_record(
+      record: record(native: wrong(), evaluator: right(), legacy: LegacyRun { result: wrong() }),
+      route: EvaluatorOnPromotedRoute
+    ),
+    b: classify_differential_record(
+      record: record(native: wrong(), evaluator: right(), legacy: LegacyNotConsulted),
+      route: EvaluatorOnPromotedRoute
+    )
+  )
+    && dispositions_same_arm(
+      a: classify_differential_record(
+        record: record(native: wrong(), evaluator: right(), legacy: LegacyRun { result: right() }),
+        route: EvaluatorOnPromotedRoute
+      ),
+      b: classify_differential_record(
+        record: record(native: wrong(), evaluator: right(), legacy: LegacyNotConsulted),
+        route: EvaluatorOnPromotedRoute
+      )
+    )
+}
+
+test fn legacy_divergence_alone_is_a_legacy_defect_and_never_blocks() -> Bool {
+  is_legacy_defect(
+    d: classify_differential_record(
+      record: record(native: right(), evaluator: right(), legacy: LegacyRun { result: wrong() }),
+      route: EvaluatorOnPromotedRoute
+    )
+  )
+    && !disposition_blocks_cutover(
+      disposition: classify_differential_record(
+        record: record(native: right(), evaluator: right(), legacy: LegacyRun { result: wrong() }),
+        route: EvaluatorOnPromotedRoute
+      ),
+      route: EvaluatorOnPromotedRoute
+    )
+}
+
+test fn evaluator_divergence_blocks_on_route_and_not_off_it() -> Bool {
+  is_evaluator_defect(
+    d: classify_differential_record(
+      record: record(native: right(), evaluator: wrong(), legacy: LegacyNotConsulted),
+      route: EvaluatorOnPromotedRoute
+    )
+  )
+    && disposition_blocks_cutover(
+      disposition: classify_differential_record(
+        record: record(native: right(), evaluator: wrong(), legacy: LegacyNotConsulted),
+        route: EvaluatorOnPromotedRoute
+      ),
+      route: EvaluatorOnPromotedRoute
+    )
+    && !disposition_blocks_cutover(
+      disposition: classify_differential_record(
+        record: record(native: right(), evaluator: wrong(), legacy: LegacyNotConsulted),
+        route: EvaluatorOffPromotedRoute
+      ),
+      route: EvaluatorOffPromotedRoute
+    )
+}
+
+// A record carrying ONLY a v1 result is a defective witness, not a conforming subject and not a
+// legacy defect. This is the arm that refuses the shape the lane exists to forbid: a conformance row
+// whose entire content is what the old implementation printed.
+test fn a_record_with_no_v2_observation_is_a_witness_defect() -> Bool {
+  is_witness_defect(
+    d: classify_differential_record(
+      record: record(native: NotRun, evaluator: NotRun, legacy: LegacyRun { result: right() }),
+      route: EvaluatorOnPromotedRoute
+    )
+  )
+}
+
+test fn a_subject_with_no_primary_authority_is_authority_missing_and_blocks() -> Bool {
+  is_authority_missing(
+    d: classify_differential_record(
+      record: DifferentialRecord {
+        binding: AuthorityMissing {
+          subject_id: fixture_identity(consumer: "undeclared_subject", facet: RefusalBehaviorFacet),
+          area: CompilerClosureMechanism,
+        },
+        native_v2: right(),
+        v2_evaluator: right(),
+        legacy_v1: LegacyNotConsulted,
+        effect_receipt: [],
+      },
+      route: EvaluatorOnPromotedRoute
+    )
+  )
+    && disposition_blocks_cutover(
+      disposition: SemanticAuthorityMissing {
+        subject_id: fixture_identity(consumer: "undeclared_subject", facet: RefusalBehaviorFacet)
+      },
+      route: EvaluatorOffPromotedRoute
+    )
+}
+
+fn effect(name: String, ordinal: Int) -> EffectReceiptEntry {
+  EffectReceiptEntry { operation: primitive_identity_slug(name: name), ordinal: ordinal }
+}
+
+fn ordered_effect_subject() -> BehaviorSubject {
+  BehaviorSubject {
+    subject_id: fixture_identity(consumer: "effect_subject", facet: EffectOrderingFacet),
+    authority: fixture_authority(),
+    authority_producer: fixture_ref(name: "authored_authority_producer"),
+    expected: ExpectsEffectOrder {
+      ordered: [effect(name: "open", ordinal: 0), effect(name: "write", ordinal: 1)],
+    },
+    supplementary: [],
+  }
+}
+
+fn effect_record(receipt: List<EffectReceiptEntry>) -> DifferentialRecord {
+  DifferentialRecord {
+    binding: AuthorityBound { subject: ordered_effect_subject() },
+    native_v2: right(),
+    v2_evaluator: right(),
+    legacy_v1: LegacyNotConsulted,
+    effect_receipt: receipt,
+  }
+}
+
+test fn effect_receipt_in_order_conforms() -> Bool {
+  is_conforms(
+    d: classify_differential_record(
+      record: effect_record(
+        receipt: [effect(name: "open", ordinal: 0), effect(name: "write", ordinal: 1)]
+      ),
+      route: EvaluatorOnPromotedRoute
+    )
+  )
+}
+
+// TWO SEPARATE MUTATIONS OF THE RECEIPT, because a positional comparison passes one of them. The
+// reorder keeps both operations and both ordinals present as a SET; only carrying the ordinal in the
+// joined identity makes it a defect. The drop changes the length. Both must land on
+// HostRealizationDefect and neither may be absorbed into a value comparison.
+test fn a_reordered_effect_receipt_is_a_host_realization_defect() -> Bool {
+  is_host_realization_defect(
+    d: classify_differential_record(
+      record: effect_record(
+        receipt: [effect(name: "write", ordinal: 0), effect(name: "open", ordinal: 1)]
+      ),
+      route: EvaluatorOnPromotedRoute
+    )
+  )
+}
+
+test fn a_dropped_effect_is_a_host_realization_defect() -> Bool {
+  is_host_realization_defect(
+    d: classify_differential_record(
+      record: effect_record(receipt: [effect(name: "open", ordinal: 0)]),
+      route: EvaluatorOnPromotedRoute
+    )
+  )
+}
+
+// THE THIRD RECEIPT MUTATION, added after a mutation control exposed its absence: with the length
+// check deleted from effect_receipts_agree, the DROP witness above stays green (the containment
+// join already refuses a missing expected entry), so the length conjunct's only discriminating
+// input is an EXTRA effect the authority never ordered -- the exfiltration direction, and the more
+// dangerous one. This witness is what makes that conjunct's RED reachable.
+test fn an_extra_unexpected_effect_is_a_host_realization_defect() -> Bool {
+  is_host_realization_defect(
+    d: classify_differential_record(
+      record: effect_record(
+        receipt: [
+          effect(name: "open", ordinal: 0),
+          effect(name: "write", ordinal: 1),
+          effect(name: "exfiltrate", ordinal: 2),
+        ]
+      ),
+      route: EvaluatorOnPromotedRoute
+    )
+  )
+}
+
+fn measured(area: CoverageArea) -> CoverageStanding {
+  CoveragePopulationMeasuredComplete {
+    area: area,
+    members: [],
+    measured_revision: fixture_rev(s: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"),
+    producer: fixture_ref(name: "fixture_coverage_producer"),
+  }
+}
+
+fn unmeasured(area: CoverageArea) -> CoverageStanding {
+  CoveragePopulationUnmeasured {
+    area: area,
+    reason: nes(s: "not measured in this fixture"),
+  }
+}
+
+fn gate_is_open(v: ExitGateVerdict) -> Bool {
+  match v {
+    ExitGateOpen => true
+    ExitGateBlocked { blocking_dispositions: _, unmeasured_areas: _ } => false
+  }
+}
+
+// THE ANTI-VACUITY RED, and the reason the coverage argument is in the gate at all. With no judged
+// dispositions the numerator is zero, and a gate that reads only the numerator opens on an empty
+// roster -- passing at zero equals zero while nothing has been measured. Here the same empty
+// disposition list is BLOCKED by an unmeasured area and OPEN once the area reports measured, so the
+// denominator is load-bearing rather than decorative.
+test fn an_unmeasured_coverage_area_blocks_the_gate_with_no_dispositions() -> Bool {
+  !gate_is_open(
+    v: conformance_exit_gate(
+      dispositions: [],
+      route: EvaluatorOffPromotedRoute,
+      coverage: [measured(area: CompilerClosureMechanism), unmeasured(area: RequiredV2TestClaim)]
+    )
+  )
+    && gate_is_open(
+      v: conformance_exit_gate(
+        dispositions: [],
+        route: EvaluatorOffPromotedRoute,
+        coverage: [measured(area: CompilerClosureMechanism), measured(area: RequiredV2TestClaim)]
+      )
+    )
+}
+
+test fn a_blocking_disposition_shuts_a_fully_measured_gate() -> Bool {
+  !gate_is_open(
+    v: conformance_exit_gate(
+      dispositions: [
+        Conforms,
+        LegacyV1Defect { detail: nes(s: "v1 diverges and does not block") },
+        NativeV2Defect { detail: nes(s: "this one does") },
+      ],
+      route: EvaluatorOffPromotedRoute,
+      coverage: [measured(area: CompilerClosureMechanism)]
+    )
+  )
+    && gate_is_open(
+      v: conformance_exit_gate(
+        dispositions: [Conforms, LegacyV1Defect { detail: nes(s: "v1 diverges and does not block") }],
+        route: EvaluatorOffPromotedRoute,
+        coverage: [measured(area: CompilerClosureMechanism)]
+      )
+    )
+}
+
+fn subject_with(id: String, expected: ExpectedOutcome) -> BehaviorSubject {
+  BehaviorSubject {
+    subject_id: fixture_identity(consumer: id, facet: ValueResultFacet),
+    authority: fixture_authority(),
+    authority_producer: fixture_ref(name: "authored_authority_producer"),
+    expected: expected,
+    supplementary: [],
+  }
+}
+
+// A conflict is two authorities disagreeing about ONE subject; two rows agreeing about one subject
+// is a duplicate, which is a different defect with a different remedy. Both directions are asserted
+// so the predicate cannot be satisfied by returning true on every shared id.
+test fn two_authorities_disagreeing_about_one_subject_conflict() -> Bool {
+  subjects_conflict(
+    a: subject_with(id: "s", expected: ExpectsValue { digest: nes(s: "a") }),
+    b: subject_with(id: "s", expected: ExpectsRefusal { diagnostic_identity: nes(s: "a") })
+  )
+    && !subjects_conflict(
+      a: subject_with(id: "s", expected: ExpectsValue { digest: nes(s: "a") }),
+      b: subject_with(id: "s", expected: ExpectsValue { digest: nes(s: "a") })
+    )
+    && !subjects_conflict(
+      a: subject_with(id: "s", expected: ExpectsValue { digest: nes(s: "a") }),
+      b: subject_with(id: "t", expected: ExpectsRefusal { diagnostic_identity: nes(s: "a") })
+    )
+}
+
+// ADMISSION IS DERIVED FROM THE GATE, in both directions: the same inputs that open the gate admit,
+// and one blocking disposition or one unmeasured area flips the constructor to the refusal arm with
+// its counts carried. The revision is asserted to survive into BOTH arms, because the field is what
+// XL-4 cross-checks a generation against and an admission that lost its subject tree would be a
+// receipt about nothing.
+fn held_verdict(tree: FloorDiscoveryTreeId) -> OmittedArmVerdict {
+  omitted_arm_triple(
+    judged_generation_tree: tree,
+    required_identity: nes(s: "infer_match_non_exhaustive"),
+    incomplete: FixtureRejectedWith { diagnostic_identity: nes(s: "infer_match_non_exhaustive") },
+    complete_control: FixtureAccepted,
+    widened: FixtureRejectedWith { diagnostic_identity: nes(s: "infer_match_non_exhaustive") }
+  )
+}
+
+fn verdict_is_held(v: OmittedArmVerdict) -> Bool {
+  match v {
+    OmittedArmHeld { held: _ } => true
+    OmittedArmFailedOpen { judged_generation_tree: _, detail: _ } => false
+    OmittedArmUnobserved { reason: _ } => false
+  }
+}
+
+fn verdict_is_failed_open(v: OmittedArmVerdict) -> Bool {
+  match v {
+    OmittedArmHeld { held: _ } => false
+    OmittedArmFailedOpen { judged_generation_tree: _, detail: _ } => true
+    OmittedArmUnobserved { reason: _ } => false
+  }
+}
+
+// EACH LEG OF THE TRIPLE DISCRIMINATES: the held pattern holds only on
+// reject-with-identity / accept / reject-with-identity, and each single-leg deviation lands in
+// FailedOpen -- including the reject-everything checker, which only the complete control catches,
+// and the wrong-identity rejection, which a presence/absence check would wave through.
+test fn omitted_arm_triple_holds_only_on_the_exact_pattern() -> Bool {
+  match fixture_tree() {
+    Absent => false
+    Present { value: tree } =>
+      verdict_is_held(v: held_verdict(tree: tree))
+        && verdict_is_failed_open(
+          v: omitted_arm_triple(
+            judged_generation_tree: tree,
+            required_identity: nes(s: "infer_match_non_exhaustive"),
+            incomplete: FixtureAccepted,
+            complete_control: FixtureAccepted,
+            widened: FixtureRejectedWith { diagnostic_identity: nes(s: "infer_match_non_exhaustive") }
+          )
+        )
+        && verdict_is_failed_open(
+          v: omitted_arm_triple(
+            judged_generation_tree: tree,
+            required_identity: nes(s: "infer_match_non_exhaustive"),
+            incomplete: FixtureRejectedWith { diagnostic_identity: nes(s: "infer_match_non_exhaustive") },
+            complete_control: FixtureRejectedWith { diagnostic_identity: nes(s: "infer_match_non_exhaustive") },
+            widened: FixtureRejectedWith { diagnostic_identity: nes(s: "infer_match_non_exhaustive") }
+          )
+        )
+        && verdict_is_failed_open(
+          v: omitted_arm_triple(
+            judged_generation_tree: tree,
+            required_identity: nes(s: "infer_match_non_exhaustive"),
+            incomplete: FixtureRejectedWith { diagnostic_identity: nes(s: "infer_match_non_exhaustive") },
+            complete_control: FixtureAccepted,
+            widened: FixtureAccepted
+          )
+        )
+        && verdict_is_failed_open(
+          v: omitted_arm_triple(
+            judged_generation_tree: tree,
+            required_identity: nes(s: "infer_match_non_exhaustive"),
+            incomplete: FixtureRejectedWith { diagnostic_identity: nes(s: "some_other_diagnostic") },
+            complete_control: FixtureAccepted,
+            widened: FixtureRejectedWith { diagnostic_identity: nes(s: "infer_match_non_exhaustive") }
+          )
+        )
+  }
+}
+
+test fn admission_is_derived_from_the_gate_and_carries_the_revision() -> Bool {
+  match fixture_tree() {
+    Absent => false
+    Present { value: tree } =>
+      match admit_conformance(
+        source_revision: fixture_rev(s: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"),
+        source_tree: tree,
+        omitted_arm: held_verdict(tree: tree),
+        dispositions: [Conforms, LegacyV1Defect { detail: nes(s: "probe divergence") }],
+        route: EvaluatorOffPromotedRoute,
+        coverage: [measured(area: CompilerClosureMechanism)],
+        producer: fixture_ref(name: "fixture_admission_producer")
+      ) {
+        ConformanceAdmitted {
+          source_revision: r,
+          source_tree: _,
+          omitted_arm: _,
+          judged_route: _,
+          subject_count: n,
+          producer: _
+        } => r == fixture_rev(s: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa") && n == 2
+        ConformanceRefused {
+          source_revision: _,
+          source_tree: _,
+          omitted_arm: _,
+          judged_route: _,
+          blocking_dispositions: _,
+          unmeasured_areas: _,
+          producer: _
+        } => false
+      }
+        && match admit_conformance(
+          source_revision: fixture_rev(s: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"),
+          source_tree: tree,
+          omitted_arm: held_verdict(tree: tree),
+          dispositions: [NativeV2Defect { detail: nes(s: "blocks") }],
+          route: EvaluatorOffPromotedRoute,
+          coverage: [unmeasured(area: RequiredV2TestClaim)],
+          producer: fixture_ref(name: "fixture_admission_producer")
+        ) {
+          ConformanceAdmitted {
+            source_revision: _,
+            source_tree: _,
+            omitted_arm: _,
+            judged_route: _,
+            subject_count: _,
+            producer: _
+          } => false
+          ConformanceRefused {
+            source_revision: r,
+            source_tree: _,
+            omitted_arm: _,
+            judged_route: _,
+            blocking_dispositions: b,
+            unmeasured_areas: u,
+            producer: _
+          } => r == fixture_rev(s: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa") && b == 1 && u == 1
+        }
+  }
+}
+
+// A CLEAN GATE WITH A FAILED-OPEN OR UNOBSERVED OMITTED ARM REFUSES: this is XL-4's nameable
+// refusal cause, and it must not be manufacturable as Admitted even when every disposition
+// conforms and every area is measured. The FailedOpen refusal counts as a blocking disposition;
+// the Unobserved refusal counts as an unmeasured area -- they are different facts.
+test fn a_failed_open_omitted_arm_refuses_a_clean_gate() -> Bool {
+  match fixture_tree() {
+    Absent => false
+    Present { value: tree } =>
+      match admit_conformance(
+        source_revision: fixture_rev(s: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"),
+        source_tree: tree,
+        omitted_arm: OmittedArmFailedOpen {
+          judged_generation_tree: tree,
+          detail: nes(s: "incomplete cross-module match accepted")
+        },
+        dispositions: [Conforms],
+        route: EvaluatorOffPromotedRoute,
+        coverage: [measured(area: CompilerClosureMechanism)],
+        producer: fixture_ref(name: "fixture_admission_producer")
+      ) {
+        ConformanceAdmitted {
+          source_revision: _,
+          source_tree: _,
+          omitted_arm: _,
+          judged_route: _,
+          subject_count: _,
+          producer: _
+        } => false
+        ConformanceRefused {
+          source_revision: _,
+          source_tree: _,
+          omitted_arm: v,
+          judged_route: _,
+          blocking_dispositions: b,
+          unmeasured_areas: _,
+          producer: _
+        } => verdict_is_failed_open(v: v) && b == 1
+      }
+        && match admit_conformance(
+          source_revision: fixture_rev(s: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"),
+          source_tree: tree,
+          omitted_arm: OmittedArmUnobserved { reason: nes(s: "candidate not yet judged") },
+          dispositions: [Conforms],
+          route: EvaluatorOffPromotedRoute,
+          coverage: [measured(area: CompilerClosureMechanism)],
+          producer: fixture_ref(name: "fixture_admission_producer")
+        ) {
+          ConformanceAdmitted {
+            source_revision: _,
+            source_tree: _,
+            omitted_arm: _,
+            judged_route: _,
+            subject_count: _,
+            producer: _
+          } => false
+          ConformanceRefused {
+            source_revision: _,
+            source_tree: _,
+            omitted_arm: _,
+            judged_route: _,
+            blocking_dispositions: b,
+            unmeasured_areas: u,
+            producer: _
+          } => b == 0 && u == 1
+        }
+  }
+}
