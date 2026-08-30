@@ -26,7 +26,7 @@ import gunbc.roadmap_belt_actuate {
   belt_dispatch_result_exemplars,
 }
 import gunbc.roadmap_launch_admission {
-  LaunchRefusal,
+  LaunchRefusal, launch_identity_exemplar,
   LaunchInstanceActuationRefused, LaunchTransitionInhibited, LaunchRevisionUnobserved, LaunchRevisionDrift,
   LaunchAuthorityUnobserved, LaunchNodeUnknown, LaunchAlreadyAccepted, LaunchSessionsUnobservable,
   LaunchAlreadyLive, LaunchStaleSession, LaunchLivenessUnobserved, LaunchSessionMultiplicityConflict,
@@ -170,14 +170,14 @@ fn status_is_typed(s: Int) -> Bool {
 }
 
 test fn witness_dispatch_status_total() -> Bool {
-  belt_dispatch_status(r: Spawned { node_id: "n", session_name: "s", provider: "codex" }) == 200
+  belt_dispatch_status(r: Spawned { node_id: "n", session_name: "s", provider: "codex", launch: launch_identity_exemplar() }) == 200
     && belt_dispatch_status(r: na(r: LaunchAlreadyLive { session_name: "s" })) == 200
     && belt_dispatch_status(r: na(r: LaunchInstanceActuationRefused { instance_id: "i", reason: "r" })) == 403
     && belt_dispatch_status(r: na(r: LaunchNodeUnknown)) == 404
     && belt_dispatch_status(r: na(r: LaunchAlreadyAccepted)) == 409
     && belt_dispatch_status(r: na(r: LaunchSessionsUnobservable { reason: "r" })) == 503
     && belt_dispatch_status(r: na(r: LaunchAuthorityUnobserved { detail: "d" })) == 503
-    && belt_dispatch_status(r: SpawnFailed { node_id: "n", step: "git", detail: "d", provider: "codex" }) == 502
+    && belt_dispatch_status(r: SpawnFailed { node_id: "n", step: "git", detail: "d", provider: "codex", launch: launch_identity_exemplar() }) == 502
     && belt_dispatch_status(r: na(r: LaunchStaleSession { session_name: "s", detail: "d" })) == 409
     && belt_dispatch_status(r: na(r: LaunchRevisionDrift { desired: "a", local: "b" })) == 409
     && belt_dispatch_status(r: na(r: LaunchSessionMultiplicityConflict { session_names: "s1, s2", session_count: 2 })) == 409

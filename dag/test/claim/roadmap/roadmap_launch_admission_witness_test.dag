@@ -6,12 +6,20 @@ import gunbc.roadmap_status { Unsigned }
 import gunbc.roadmap_execution_contract { ExecutionContractUnspecified }
 import gunbc.roadmap_document { RoadmapDocument }
 import gunbc.roadmap_spawner { spawn_frontier }
-import gunbc.worker_lifecycle { WorkerProcessRunning, WorkerProcessExited }
-import gunbc.roadmap_belt { SpawnMode, Paused, ManualReady, AutomaticReady, DesiredMember, roadmap_belt_production_spawn_mode, spawn_mode_label }
+import gunbc.worker_lifecycle { WorkerProcessRunning, WorkerProcessExited, WorkerProcessAbsent, WorkerProcessUnobserved }
+import gunbc.roadmap_dispatch_actuator { DispatchLiveSession }
+import gunbc.roadmap_belt { SpawnMode, Paused, ManualReady, AutomaticReady, DesiredMember, roadmap_belt_production_spawn_mode, spawn_mode_label, belt_reconcile_upsert_count }
 import gunbc.roadmap_belt_actuate {
   BeltSpawnOutcome, Spawned, SpawnFailed, SpawnNotAdmitted,
   belt_tick_admit_and_spawn, belt_dispatch_status_label, belt_dispatch_result_ok,
+  BeltLaunchDecision, BeltLaunchDecided, BeltLaunchWithheld, belt_tick_admit,
+  BeltLaunchPass, belt_tick_launch_pass,
+  belt_spawn_outcome_json,
+  BeltTickReceipt, belt_tick_receipt_json_value, belt_tick_receipt_decode,
+  BeltTickReceiptRead, BeltTickReceiptPresent, BeltTickReceiptAbsent, BeltTickReceiptUnreadable,
+  BeltPassRecorded,
 }
+import extdeps.languages.json.emit { serialize_json }
 import gunbc.roadmap_presentation {
   WorkAction, ActionAvailable, ActionUnavailable, PrimaryAction, SecondaryAction, DiagnosticAction,
   OpenLifecycle, DoneLifecycle, dispatch_action,
@@ -24,8 +32,10 @@ import gunbc.roadmap_launch_admission {
   LaunchSizeMissing, LaunchExecutionContractMissing, LaunchDependenciesBlocked, LaunchSessionsUnobservable,
   LaunchAlreadyLive, LaunchStaleSession, LaunchLivenessUnobserved, LaunchSessionMultiplicityConflict,
   LaunchNoCapacity, LaunchCauseNotPermitted, LaunchGateNotEvaluated,
-  LaunchAdmission, LaunchAdmitted, LaunchRefused,
-  LaunchHostStanding, LaunchHostObserveOnly, LaunchGraphStanding, LaunchGraphProjected, LaunchGraphUnobserved,
+  LaunchAdmission, LaunchAdmitted, LaunchRefused, LaunchIdentity, launch_cause_label,
+  LaunchHostStanding, LaunchHostObserveOnly, LaunchHostHalted, HostTransitionGate, HostRevisionGate,
+  launch_host_refusal,
+  LaunchGraphStanding, LaunchGraphProjected, LaunchGraphUnobserved,
   LaunchGateVerdict, GatePassed, GateRefused, GateNotReached,
   LaunchGateLedger, launch_gate_ledger, launch_admission_of_ledger,
   launch_admission, launch_admission_label, launch_admission_reason, launch_refusal_label, launch_refusal_reason,
@@ -40,12 +50,15 @@ import gunbc.roadmap_launch_canary {
 import test.claim.roadmap_launch_canary_witness {
   canary_node, canary_parent, canary_child, canary_doc, accepted_signoff,
 }
+import gunbc.roadmap_launch_canary { roadmap_launch_canary_parent_identity }
 import test.claim.roadmap.roadmap_launch_admission_fixture {
   launch_fixture_instance_id, launch_fixture_desired_hex,
   launch_fixture_standing, launch_fixture_standing_clear,
   launch_fixture_standing_observe_only, launch_fixture_standing_transition_inhibited,
   launch_fixture_revision_converged, launch_fixture_revision_drifted,
   launch_fixture_session,
+  launch_fixture_standing_halt_transition, launch_fixture_standing_halt_drift, launch_fixture_standing_sessions_unobserved,
+  launch_fixture_identity,
 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
@@ -115,8 +128,8 @@ test fn witness_blocked_child_refused_dependencies_blocked() -> Bool {
 fn no_actuation_outcome(o: BeltSpawnOutcome) -> Bool {
   match o {
     SpawnNotAdmitted { node_id: _, refusal: _ } => true
-    Spawned { node_id: _, session_name: _, provider: _ } => false
-    SpawnFailed { node_id: _, step: _, detail: _, provider: _ } => false
+    Spawned { node_id: _, session_name: _, provider: _, launch: _ } => false
+    SpawnFailed { node_id: _, step: _, detail: _, provider: _, launch: _ } => false
   }
 }
 
@@ -449,4 +462,282 @@ test fn witness_contract_text_carries_gate_order_and_digest_is_hex16() -> Bool {
     && string_contains(s: text, pattern: "modes=paused,manual_ready,automatic_ready")
     && string_length(s: hex) == 16
     && count(launch_gate_names()) == 9
+}
+
+data review_5059520727_controls_note: String = "Controls for the four production-boundary findings of review 5059520727 on #9696, each enrolled RED FIRST against the head the review named. (1) three Ready rows against one slot: the timer's fold reaches the admission for ALL of them -- AutomaticReady admits the first and answers LaunchNoCapacity for the rest, ManualReady answers LaunchCauseNotPermitted for all three; the reconcile no longer truncates. (2) the real timer decision (belt_tick_launch_pass) over STAGED host standings built by the production observer's own producers: a transition halt, a revision drift and an unobservable session set each refuse every desired node through the shared vocabulary, with the page and the route naming the same label and reason; a halted standing has no later fields, so the effect order is structural. (3) a present-but-unobserved session occupies its slot; a proven-exited or process-absent one frees it. (4) page, POST and timer bind one identity (node, mode, instance, revision), differing only in cause; the route's JSON and the durable tick receipt carry it whole and the receipt round-trips."
+
+fn rlm_ready_node(id: String) -> RoadmapNode {
+  canary_node(
+    identity: roadmap_launch_canary_parent_identity,
+    id: id as RoadmapNodeId,
+    execution: roadmap_launch_canary_execution_contract(),
+    signoff: Unsigned,
+  )
+}
+
+fn rlm_three_ready() -> List<RoadmapNode> {
+  [ rlm_ready_node(id: "rlm-a"), rlm_ready_node(id: "rlm-b"), rlm_ready_node(id: "rlm-c") ]
+}
+
+fn rlm_three_graph() -> LaunchGraphStanding {
+  LaunchGraphProjected { doc: canary_doc(nodes: rlm_three_ready(), edges: []) }
+}
+
+fn rlm_three_candidates() -> List<DesiredMember> {
+  rlm_three_ready() |> map(n => DesiredMember { node_id: n.node as String, node: n })
+}
+
+fn decision_admits_node(d: BeltLaunchDecision, id: String) -> Bool {
+  match d {
+    BeltLaunchDecided { member: _, launch } => launch.node_id == id
+    BeltLaunchWithheld { node_id: _, refusal: _ } => false
+  }
+}
+
+fn decision_withheld_as(d: BeltLaunchDecision, id: String, label: String) -> Bool {
+  match d {
+    BeltLaunchDecided { member: _, launch: _ } => false
+    BeltLaunchWithheld { node_id, refusal } => node_id == id && launch_refusal_label(r: refusal) == label
+  }
+}
+
+fn nth(ds: List<BeltLaunchDecision>, n: Int) -> BeltLaunchDecision? {
+  ds.skip(n: n).first()
+}
+
+// (1) AutomaticReady, three Ready rows, one slot: all three are decided by the admission; the first
+// is admitted and the remainder carry LaunchNoCapacity with the reserved count in the refusal.
+test fn witness_three_candidates_one_slot_all_reach_admission() -> Bool {
+  let ds = belt_tick_admit(
+    candidates: rlm_three_candidates(),
+    standing: launch_fixture_standing(mode: AutomaticReady, revision: launch_fixture_revision_converged(), live: [], max_concurrent: 1),
+    graph: rlm_three_graph(),
+    merged: [],
+  )
+  count(ds) == 3
+    && (match nth(ds: ds, n: 0) { Present { value: d } => decision_admits_node(d: d, id: "rlm-a") Absent => false })
+    && (match nth(ds: ds, n: 1) { Present { value: d } => decision_withheld_as(d: d, id: "rlm-b", label: "no_capacity") Absent => false })
+    && (match nth(ds: ds, n: 2) {
+      Present { value: d } =>
+        match d {
+          BeltLaunchWithheld { node_id: _, refusal: LaunchNoCapacity { occupied, max_concurrent } } => occupied == 1 && max_concurrent == 1
+          _ => false
+        }
+      Absent => false
+    })
+}
+
+// (1) ManualReady over the same three rows: nothing is truncated before the cause gate -- all three
+// reach the admission and all three are CauseNotPermitted.
+test fn witness_three_candidates_manual_ready_all_reach_cause_gate() -> Bool {
+  let ds = belt_tick_admit(
+    candidates: rlm_three_candidates(),
+    standing: launch_fixture_standing(mode: ManualReady, revision: launch_fixture_revision_converged(), live: [], max_concurrent: 1),
+    graph: rlm_three_graph(),
+    merged: [],
+  )
+  count(ds) == 3
+    && all(ds, d => match d {
+      BeltLaunchWithheld { node_id: _, refusal: LaunchCauseNotPermitted { cause: Timer, mode: ManualReady } } => true
+      _ => false
+    })
+}
+
+fn pass_withholds_every_desired_as(pass: BeltLaunchPass, label: String) -> Bool {
+  count(pass.decisions) == 1
+    && all(pass.decisions, d => decision_withheld_as(d: d, id: parent_id(), label: label))
+    && count(pass.teardowns) == 0
+    && belt_reconcile_upsert_count(r: pass.reconcile) == 0
+    && (match pass.host_refusal { Present { value: r } => launch_refusal_label(r: r) == label Absent => false })
+}
+
+fn page_label_and_reason_match(standing: LaunchHostStanding, label: String, pass: BeltLaunchPass) -> Bool {
+  match action_of(a: decide(cause: Operator, standing: standing, g: graph(), node_id: parent_id())) {
+    Absent => false
+    Present { value: action } =>
+      action.label == label
+        && (match action.availability { ActionUnavailable => true ActionAvailable => false })
+        && all(pass.decisions, d => match d {
+          BeltLaunchWithheld { node_id: _, refusal } =>
+            launch_refusal_reason(r: refusal) == action.detail
+              && belt_dispatch_status_label(r: SpawnNotAdmitted { node_id: parent_id(), refusal: refusal }) == action.label
+          BeltLaunchDecided { member: _, launch: _ } => false
+        })
+  }
+}
+
+fn timer_pass_over_canary(standing: LaunchHostStanding) -> BeltLaunchPass {
+  belt_tick_launch_pass(
+    standing: standing,
+    state: AutomaticReady,
+    frontier: spawn_frontier(doc: canary_doc(nodes: [canary_parent(signoff: Unsigned), canary_child()], edges: [roadmap_launch_canary_edge()]), merged: []),
+    graph: graph(),
+    merged: [],
+  )
+}
+
+// (2) The real timer decision over a transition halt: every desired node is withheld with
+// TransitionInhibited, no reconcile, no teardown, and the page / route name the same label + reason.
+test fn witness_timer_pass_transition_halt_refuses_every_desired_node() -> Bool {
+  let standing = launch_fixture_standing_halt_transition()
+  let pass = timer_pass_over_canary(standing: standing)
+  pass_withholds_every_desired_as(pass: pass, label: "deployment_transition_inhibited")
+    && page_label_and_reason_match(standing: standing, label: "deployment_transition_inhibited", pass: pass)
+}
+
+// (2) Revision drift staged by the observer's own producer, before any session observation.
+test fn witness_timer_pass_revision_drift_refuses_before_sessions() -> Bool {
+  let standing = launch_fixture_standing_halt_drift()
+  let pass = timer_pass_over_canary(standing: standing)
+  pass_withholds_every_desired_as(pass: pass, label: "deployed_revision_drifted")
+    && page_label_and_reason_match(standing: standing, label: "deployed_revision_drifted", pass: pass)
+    && (match standing { LaunchHostHalted { instance_id: _, gate: HostRevisionGate, refusal: _ } => true _ => false })
+}
+
+// (2) An unobservable session set is the shared SessionsUnobservable, for the timer and the page alike.
+test fn witness_timer_pass_sessions_unobserved_is_shared_refusal() -> Bool {
+  let standing = launch_fixture_standing_sessions_unobserved(mode: AutomaticReady)
+  let pass = timer_pass_over_canary(standing: standing)
+  pass_withholds_every_desired_as(pass: pass, label: "observe_refused")
+    && page_label_and_reason_match(standing: standing, label: "observe_refused", pass: pass)
+}
+
+// (2) The order is structural: a halted standing's ledger marks every later gate not reached, and the
+// halt refusal is the one the fully observed standing would have produced at that gate.
+test fn witness_halted_ledger_marks_later_gates_not_reached() -> Bool {
+  let l = launch_gate_ledger(cause: Timer, standing: launch_fixture_standing_halt_transition(), graph: graph(), merged: [], node_id: parent_id(), reserved: 0)
+  (match l.instance { GatePassed => true _ => false })
+    && (match l.transition { GateRefused { refusal: LaunchTransitionInhibited { reason: _ } } => true _ => false })
+    && (match l.revision { GateNotReached => true _ => false })
+    && (match l.live { GateNotReached => true _ => false })
+    && (match launch_host_refusal(standing: launch_fixture_standing_transition_inhibited()) {
+      Present { value: LaunchTransitionInhibited { reason: _ } } => true
+      _ => false
+    })
+}
+
+// (2) The positive control for the pass: a clear AutomaticReady host decides the Ready parent and
+// keeps the reconcile's upsert as the candidate (one decision, no host refusal).
+test fn witness_timer_pass_clear_host_decides_ready_parent() -> Bool {
+  let pass = timer_pass_over_canary(standing: launch_fixture_standing_clear(mode: AutomaticReady))
+  count(pass.decisions) == 1
+    && all(pass.decisions, d => decision_admits_node(d: d, id: parent_id()))
+    && belt_reconcile_upsert_count(r: pass.reconcile) == 1
+    && (match pass.host_refusal { Absent => true Present { value: _ } => false })
+}
+
+// (3) A present session whose process is unobserved OCCUPIES its slot: with one slot it refuses the
+// unrelated Ready node with LaunchNoCapacity, naming the conservative count.
+test fn witness_unobserved_process_occupies_a_slot() -> Bool {
+  let unknown = launch_fixture_session(node_id: "some-other-node", process: WorkerProcessUnobserved { reason: "pane unreadable" as NonEmptyStr })
+  match decide(
+    cause: Operator,
+    standing: launch_fixture_standing(mode: ManualReady, revision: launch_fixture_revision_converged(), live: [unknown], max_concurrent: 1),
+    g: graph(),
+    node_id: parent_id(),
+  ) {
+    LaunchRefused { refusal: LaunchNoCapacity { occupied, max_concurrent } } => occupied == 1 && max_concurrent == 1
+    _ => false
+  }
+}
+
+// (3) positive controls: a proven-exited process and a container with no provider process free the slot.
+test fn witness_exited_or_absent_process_frees_its_slot() -> Bool {
+  let exited = launch_fixture_session(node_id: "some-other-node", process: WorkerProcessExited { exit_code: 0, last_command: "codex" })
+  let absent = launch_fixture_session(node_id: "another-node", process: WorkerProcessAbsent)
+  one_slot_admits_parent_beside(live: [exited]) && one_slot_admits_parent_beside(live: [absent])
+}
+
+fn one_slot_admits_parent_beside(live: List<DispatchLiveSession>) -> Bool {
+  match decide(
+    cause: Operator,
+    standing: launch_fixture_standing(mode: ManualReady, revision: launch_fixture_revision_converged(), live: live, max_concurrent: 1),
+    g: graph(),
+    node_id: parent_id(),
+  ) {
+    LaunchAdmitted { identity: _ } => true
+    LaunchRefused { refusal: _ } => false
+  }
+}
+
+fn identity_parity(a: LaunchIdentity, b: LaunchIdentity) -> Bool {
+  a.node_id == b.node_id
+    && a.instance_id == b.instance_id
+    && a.revision == b.revision
+    && spawn_mode_label(m: a.mode) == spawn_mode_label(m: b.mode)
+}
+
+// (4) Page, POST and timer bind ONE identity for the same observed facts, differing only in cause.
+test fn witness_page_post_timer_bind_one_identity() -> Bool {
+  let standing = launch_fixture_standing_clear(mode: AutomaticReady)
+  let page = match action_of(a: decide(cause: Operator, standing: standing, g: graph(), node_id: parent_id())) {
+    Present { value: action } => action.launch
+    Absent => none
+  }
+  let post = match decide(cause: Operator, standing: standing, g: graph(), node_id: parent_id()) {
+    LaunchAdmitted { identity } => Present { value: identity }
+    LaunchRefused { refusal: _ } => none
+  }
+  let timer = match (belt_tick_admit(
+    candidates: [ DesiredMember { node_id: parent_id(), node: canary_parent(signoff: Unsigned) } ],
+    standing: standing,
+    graph: graph(),
+    merged: [],
+  )).first() {
+    Present { value: BeltLaunchDecided { member: _, launch } } => Present { value: launch }
+    _ => none
+  }
+  match page {
+    Absent => false
+    Present { value: p } =>
+      match post {
+        Absent => false
+        Present { value: q } =>
+          match timer {
+            Absent => false
+            Present { value: t } =>
+              identity_parity(a: p, b: q) && identity_parity(a: p, b: t)
+                && launch_cause_label(c: p.cause) == "operator"
+                && launch_cause_label(c: q.cause) == "operator"
+                && launch_cause_label(c: t.cause) == "timer"
+                && p.node_id == parent_id()
+                && p.instance_id == launch_fixture_instance_id
+                && p.revision == launch_fixture_desired_hex
+          }
+      }
+  }
+}
+
+// (4) The route's response carries the identity whole.
+test fn witness_spawn_outcome_json_carries_launch_identity() -> Bool {
+  let id = launch_fixture_identity(node_id: parent_id(), cause: Operator, mode: ManualReady)
+  let spawned = serialize_json(v: belt_spawn_outcome_json(o: Spawned { node_id: parent_id(), session_name: "s", provider: "codex", launch: id }))
+  let failed = serialize_json(v: belt_spawn_outcome_json(o: SpawnFailed { node_id: parent_id(), step: "git", detail: "d", provider: "codex", launch: id }))
+  string_contains(s: spawned, pattern: "\"launch\"")
+    && string_contains(s: spawned, pattern: "\"cause\": \"operator\"")
+    && string_contains(s: spawned, pattern: "\"mode\": \"manual_ready\"")
+    && string_contains(s: spawned, pattern: launch_fixture_instance_id)
+    && string_contains(s: spawned, pattern: launch_fixture_desired_hex)
+    && string_contains(s: failed, pattern: "\"launch\"")
+    && string_contains(s: failed, pattern: launch_fixture_desired_hex)
+}
+
+// (4) The durable tick receipt carries the admitted identities and reads them back unchanged.
+test fn witness_tick_receipt_round_trips_launch_identities() -> Bool {
+  let id = launch_fixture_identity(node_id: parent_id(), cause: Timer, mode: AutomaticReady)
+  let receipt = BeltTickReceipt {
+    observed_at: "2026-08-30T00:00:00Z",
+    launches: [id],
+    spawn_pass: BeltPassRecorded,
+    teardown_pass: BeltPassRecorded,
+    verify_pass: BeltPassRecorded,
+    publish_pass: BeltPassRecorded,
+  }
+  match belt_tick_receipt_decode(raw: serialize_json(v: belt_tick_receipt_json_value(receipt: receipt))) {
+    BeltTickReceiptPresent { receipt: back } =>
+      count(back.launches) == 1
+        && all(back.launches, l => identity_parity(a: l, b: id) && launch_cause_label(c: l.cause) == "timer")
+    BeltTickReceiptAbsent => false
+    BeltTickReceiptUnreadable { reason: _ } => false
+  }
 }

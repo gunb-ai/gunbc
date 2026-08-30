@@ -143,6 +143,7 @@ import gunbc.roadmap_launch_admission {
   LaunchSessionsObserved,
   LaunchGateVerdict, GatePassed, GateRefused, GateNotReached,
   launch_gate_live, launch_gate_revision,
+  launch_identity_exemplar,
 }
 import gunbc.roadmap_dashboard_instance {
   DashboardInstanceResolved,
@@ -244,8 +245,8 @@ fn is_exec_refused(o: BeltExecOutcome) -> Bool {
 
 fn is_spawn_failed(o: BeltSpawnOutcome) -> Bool {
   match o {
-    SpawnFailed { node_id: _, step: _, detail: _, provider: _ } => true
-    Spawned { node_id: _, session_name: _, provider: _ } => false
+    SpawnFailed { node_id: _, step: _, detail: _, provider: _, launch: _ } => true
+    Spawned { node_id: _, session_name: _, provider: _, launch: _ } => false
     SpawnNotAdmitted { node_id: _, refusal: _ } => false
   }
 }
@@ -335,7 +336,7 @@ test fn witness_named_exec_steps_locate_the_first_failure() -> Bool {
 
 test fn witness_spawn_member_refuses_observed_shape() -> Bool {
   let m = ObservedMember { node_id: "z", session: live_session(node_id: "z", verdict: Converged) }
-  is_spawn_failed(o: belt_actuate_spawn_member(m: m, workdir: "/"))
+  is_spawn_failed(o: belt_actuate_spawn_member(m: m, workdir: "/", launch: launch_identity_exemplar()))
 }
 
 test fn witness_teardown_member_refuses_desired_shape() -> Bool {
@@ -604,7 +605,7 @@ test fn witness_stale_session_is_never_ok() -> Bool {
 }
 
 test fn witness_dispatch_result_ok_spawned_and_live() -> Bool {
-  belt_dispatch_result_ok(r: Spawned { node_id: "a", session_name: "gunbc-dispatch-a", provider: "codex" })
+  belt_dispatch_result_ok(r: Spawned { node_id: "a", session_name: "gunbc-dispatch-a", provider: "codex", launch: launch_identity_exemplar() })
     && belt_dispatch_result_ok(r: not_admitted(r: LaunchAlreadyLive { session_name: "gunbc-dispatch-a" }))
 }
 
@@ -613,7 +614,7 @@ test fn witness_dispatch_result_refusals_not_ok() -> Bool {
     && !belt_dispatch_result_ok(r: not_admitted(r: LaunchNodeUnknown))
     && !belt_dispatch_result_ok(r: not_admitted(r: LaunchAlreadyAccepted))
     && !belt_dispatch_result_ok(r: not_admitted(r: LaunchSessionsUnobservable { reason: "x" }))
-    && !belt_dispatch_result_ok(r: SpawnFailed { node_id: "a", step: "git", detail: "x", provider: "codex" })
+    && !belt_dispatch_result_ok(r: SpawnFailed { node_id: "a", step: "git", detail: "x", provider: "codex", launch: launch_identity_exemplar() })
     && !belt_dispatch_result_ok(r: not_admitted(r: LaunchDependenciesBlocked { blockers: ["p"] }))
     && !belt_dispatch_result_ok(r: not_admitted(r: LaunchNoCapacity { occupied: 3, max_concurrent: 3 }))
 }
@@ -625,25 +626,25 @@ fn status_label_glued_to_ok(r: BeltSpawnOutcome) -> Bool {
 }
 
 test fn witness_dispatch_status_labels_glued_to_ok_set() -> Bool {
-  status_label_glued_to_ok(r: Spawned { node_id: "a", session_name: "s", provider: "codex" })
+  status_label_glued_to_ok(r: Spawned { node_id: "a", session_name: "s", provider: "codex", launch: launch_identity_exemplar() })
     && status_label_glued_to_ok(r: not_admitted(r: LaunchAlreadyLive { session_name: "s" }))
     && status_label_glued_to_ok(r: not_admitted(r: LaunchInstanceActuationRefused { instance_id: "preview", reason: "observe-only" }))
     && status_label_glued_to_ok(r: not_admitted(r: LaunchNodeUnknown))
     && status_label_glued_to_ok(r: not_admitted(r: LaunchAlreadyAccepted))
     && status_label_glued_to_ok(r: not_admitted(r: LaunchSessionsUnobservable { reason: "x" }))
-    && status_label_glued_to_ok(r: SpawnFailed { node_id: "a", step: "git", detail: "x", provider: "codex" })
+    && status_label_glued_to_ok(r: SpawnFailed { node_id: "a", step: "git", detail: "x", provider: "codex", launch: launch_identity_exemplar() })
     && all(belt_dispatch_result_exemplars(), r => status_label_glued_to_ok(r: r))
 }
 
 test fn witness_dispatch_status_labels_pin_wire_contract() -> Bool {
-  belt_dispatch_status_label(r: Spawned { node_id: "a", session_name: "s", provider: "codex" }) == "spawned"
+  belt_dispatch_status_label(r: Spawned { node_id: "a", session_name: "s", provider: "codex", launch: launch_identity_exemplar() }) == "spawned"
     && belt_dispatch_status_label(r: not_admitted(r: LaunchAlreadyLive { session_name: "s" })) == "already_live"
     && belt_dispatch_status_label(r: not_admitted(r: LaunchInstanceActuationRefused { instance_id: "preview", reason: "observe-only" })) == "disabled"
     && belt_dispatch_status_label(r: not_admitted(r: LaunchNodeUnknown)) == "node_not_found"
     && belt_dispatch_status_label(r: not_admitted(r: LaunchAlreadyAccepted)) == "already_done_signed_off"
     && belt_dispatch_status_label(r: not_admitted(r: LaunchSessionsUnobservable { reason: "x" })) == "observe_refused"
     && belt_dispatch_status_label(r: not_admitted(r: LaunchAuthorityUnobserved { detail: "x" })) == "authority_refused"
-    && belt_dispatch_status_label(r: SpawnFailed { node_id: "a", step: "git", detail: "x", provider: "codex" }) == "spawn_failed"
+    && belt_dispatch_status_label(r: SpawnFailed { node_id: "a", step: "git", detail: "x", provider: "codex", launch: launch_identity_exemplar() }) == "spawn_failed"
     && belt_dispatch_status_label(r: not_admitted(r: LaunchDependenciesBlocked { blockers: ["p"] })) == "dependencies_blocked"
     && belt_dispatch_status_label(r: not_admitted(r: LaunchExecutionContractMissing { reason: "r" })) == "execution_contract_missing"
     && belt_dispatch_status_label(r: not_admitted(r: LaunchCauseNotPermitted { cause: gunbc.roadmap_launch_admission.Timer, mode: ManualReady })) == "cause_not_permitted_by_mode"
@@ -652,11 +653,11 @@ test fn witness_dispatch_status_labels_pin_wire_contract() -> Bool {
 test fn witness_fresh_spawn_wire_names_selected_provider() -> Bool {
   string_contains(
     s: serialize_json(v: belt_spawn_outcome_json(
-      o: Spawned { node_id: "a", session_name: "s", provider: "codex" })),
+      o: Spawned { node_id: "a", session_name: "s", provider: "codex", launch: launch_identity_exemplar() })),
     pattern: "\"provider\": \"codex\"")
     && string_contains(
       s: serialize_json(v: belt_spawn_outcome_json(
-        o: SpawnFailed { node_id: "a", step: "codex-auth", detail: "not logged in", provider: "codex" })),
+        o: SpawnFailed { node_id: "a", step: "codex-auth", detail: "not logged in", provider: "codex", launch: launch_identity_exemplar() })),
       pattern: "\"provider\": \"codex\"")
 }
 
@@ -750,7 +751,7 @@ test fn witness_exemplar_roster_reconciles_variant_set() -> Bool {
 
 fn d4_exemplars_missing_one() -> List<BeltSpawnOutcome> {
   [
-    Spawned { node_id: "a", session_name: "s", provider: "codex" },
+    Spawned { node_id: "a", session_name: "s", provider: "codex", launch: launch_identity_exemplar() },
     not_admitted(r: LaunchAlreadyLive { session_name: "s" }),
     not_admitted(r: LaunchInstanceActuationRefused { instance_id: "preview", reason: "observe-only" }),
     not_admitted(r: LaunchNodeUnknown),
@@ -1192,8 +1193,7 @@ data belt_tick_decouple_witness_note: String = "RED control (operator P1, 2026-0
 
 test fn observe_refused_spawn_does_not_zero_verify_pass() -> Bool {
   let result = BeltTickResult {
-    observe_refused: true,
-    observe_refusal_reason: "belt_observe: tmux ls failed; session containers are unknowable",
+    host_refusal: Present { value: LaunchSessionsUnobservable { reason: "belt_observe: tmux ls failed; session containers are unknowable" } },
     reconcile: belt_tick_empty_reconcile(state: ManualReady),
     spawn_outcomes: [],
     teardown_outcomes: [],
@@ -1222,8 +1222,7 @@ test fn observe_refused_spawn_does_not_zero_verify_pass() -> Bool {
 
 test fn observe_refused_with_empty_verify_is_deferred_not_recorded() -> Bool {
   let result = BeltTickResult {
-    observe_refused: true,
-    observe_refusal_reason: "tmux refused",
+    host_refusal: Present { value: LaunchSessionsUnobservable { reason: "tmux refused" } },
     reconcile: belt_tick_empty_reconcile(state: ManualReady),
     spawn_outcomes: [],
     teardown_outcomes: [],
@@ -1267,8 +1266,7 @@ test fn verification_presentation_unreadable_receipt_is_blocked() -> Bool {
 test fn verification_presentation_decouples_verify_from_spawn_observe_refusal() -> Bool {
   let receipt = belt_tick_receipt_from_result(
     result: BeltTickResult {
-      observe_refused: true,
-      observe_refusal_reason: "belt_observe: tmux ls failed; session containers are unknowable",
+      host_refusal: Present { value: LaunchSessionsUnobservable { reason: "belt_observe: tmux ls failed; session containers are unknowable" } },
       reconcile: belt_tick_empty_reconcile(state: ManualReady),
       spawn_outcomes: [],
       teardown_outcomes: [],
@@ -1294,6 +1292,7 @@ test fn verification_presentation_decouples_verify_from_spawn_observe_refusal() 
 test fn verification_presentation_verify_refused_is_blocked() -> Bool {
   let receipt = BeltTickReceipt {
     observed_at: "2026-08-02T02:00:00Z",
+    launches: [],
     spawn_pass: BeltPassRecorded,
     teardown_pass: BeltPassRecorded,
     verify_pass: BeltPassRefused { reason: "validation receipt could not be read" },
@@ -1309,6 +1308,7 @@ test fn verification_presentation_verify_refused_is_blocked() -> Bool {
 test fn verification_presentation_verify_failed_is_failed() -> Bool {
   let receipt = BeltTickReceipt {
     observed_at: "2026-08-02T02:00:00Z",
+    launches: [],
     spawn_pass: BeltPassRecorded,
     teardown_pass: BeltPassRecorded,
     verify_pass: BeltPassFailed { reason: "validation verdict failed" },
@@ -1331,7 +1331,7 @@ test fn verification_presentation_wire_carries_detail() -> Bool {
 
 test fn malformed_pass_reason_makes_receipt_unreadable() -> Bool {
   let raw = join([
-    "{\"schema\":\"roadmap-belt-tick-receipt/v2\",",
+    "{\"schema\":\"roadmap-belt-tick-receipt/v3\",",
     "\"observed_at\":\"2026-08-02T02:00:00Z\",",
     "\"spawn_pass\":{\"outcome\":\"recorded\"},",
     "\"teardown_pass\":{\"outcome\":\"recorded\"},",
@@ -1981,14 +1981,14 @@ test fn witness_tick_multiplicity_is_a_node_fact() -> Bool {
 // rather than passing on the other three.
 test fn a_failed_spawn_names_its_node_gate_and_detail_in_the_receipt() -> Bool {
   match belt_spawn_pass_outcome_from(
-    observe_refused: false,
-    observe_reason: "",
+    host_refusal: none,
     spawn_outcomes: [
       SpawnFailed {
         node_id: "v2-emitter-direct-rust-door",
         step: "codex-cli",
         detail: "codex not found at the pinned bundled path",
         provider: "codex",
+        launch: launch_identity_exemplar(),
       },
     ],
   ) {
@@ -2009,11 +2009,10 @@ test fn a_failed_spawn_names_its_node_gate_and_detail_in_the_receipt() -> Bool {
 // reach BeltPassRecorded, with no reason at all.
 test fn a_tick_with_no_failed_spawn_records_instead_of_reporting_a_cause() -> Bool {
   match belt_spawn_pass_outcome_from(
-    observe_refused: false,
-    observe_reason: "",
+    host_refusal: none,
     spawn_outcomes: [
-      Spawned { node_id: "n1", session_name: "s1", provider: "codex" },
-      Spawned { node_id: "n2", session_name: "s2", provider: "codex" },
+      Spawned { node_id: "n1", session_name: "s1", provider: "codex", launch: launch_identity_exemplar() },
+      Spawned { node_id: "n2", session_name: "s2", provider: "codex", launch: launch_identity_exemplar() },
     ],
   ) {
     BeltPassRecorded => true
@@ -2027,15 +2026,15 @@ test fn a_tick_with_no_failed_spawn_records_instead_of_reporting_a_cause() -> Bo
 // what distinguishes "report the failures" from "report everything that happened".
 test fn a_mixed_tick_names_only_the_failed_spawn() -> Bool {
   match belt_spawn_pass_outcome_from(
-    observe_refused: false,
-    observe_reason: "",
+    host_refusal: none,
     spawn_outcomes: [
-      Spawned { node_id: "healthy-node", session_name: "s1", provider: "codex" },
+      Spawned { node_id: "healthy-node", session_name: "s1", provider: "codex", launch: launch_identity_exemplar() },
       SpawnFailed {
         node_id: "broken-node",
         step: "codex-auth",
         detail: "login status exited nonzero",
         provider: "codex",
+        launch: launch_identity_exemplar(),
       },
     ],
   ) {
@@ -2053,13 +2052,12 @@ test fn a_mixed_tick_names_only_the_failed_spawn() -> Bool {
 // the new reason-building cannot quietly displace it.
 test fn an_observation_refusal_still_outranks_the_spawn_summary() -> Bool {
   match belt_spawn_pass_outcome_from(
-    observe_refused: true,
-    observe_reason: "tmux list refused",
+    host_refusal: Present { value: LaunchSessionsUnobservable { reason: "tmux list refused" } },
     spawn_outcomes: [
-      SpawnFailed { node_id: "n", step: "codex-cli", detail: "d", provider: "codex" },
+      SpawnFailed { node_id: "n", step: "codex-cli", detail: "d", provider: "codex", launch: launch_identity_exemplar() },
     ],
   ) {
-    BeltPassRefused { reason: r } => r == "tmux list refused"
+    BeltPassRefused { reason: r } => string_contains(s: r, pattern: "tmux list refused")
     BeltPassFailed { reason: _ } => false
     BeltPassRecorded => false
     BeltPassDeferred { reason: _ } => false
