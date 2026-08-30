@@ -356,21 +356,26 @@ test fn w_rostered_identity_declines_for_cost_debt() -> Bool {
     PlannedAsChangedWitness => false
     DeclinedLongModule { matched_prefix: _ } => false
     DeclinedFixtureMember { matched_prefix: _ } => false
-    DeclinedOutsideRequiredGate => false
   }
 }
 
-// THE POSITIVE CONTROL BESIDE IT: the same module, an identity the roster does not hold, is
-// planned. Without this the row above would pass under a disposition that declined the whole
-// module, which is exactly the module-grain reading the fourth arm exists to refuse.
-test fn w_unrostered_sibling_in_the_same_module_is_planned() -> Bool {
+// THE POSITIVE CONTROL BESIDE IT: the same module, an identity the roster does not hold, keeps
+// its HOME disposition. That home is `DeclinedOutsideRequiredGate` — the module's real spelling
+// is `dag.test.claim.…`, which no `required_gate_prefixes` row admits — and the discriminating
+// fact is only that it is NOT `DeclinedCostDebt`: a module-grain reading of the fourth arm
+// would decline the sibling for cost too, and this row would go red. An earlier revision of
+// this witness expected `Planned`, a claim about the GATE the fixture never satisfied; the
+// witness had never executed (its match went non-exhaustive when `PlannedAsChangedWitness`
+// landed, so the module refused compile and the row read outcome=absent), and the first real
+// execution surfaced the wrong expectation, not a disposition regression.
+test fn w_unrostered_sibling_keeps_its_home_disposition_not_cost_debt() -> Bool {
   match required_floor_site_disposition(
     module_path: "dag.test.claim.lifecycle_survivor_corpus_census",
     identity: "dag.test.claim.lifecycle_survivor_corpus_census.a_sibling_the_roster_does_not_hold"
   ) {
-    Planned => true
+    Planned => false
     PlannedAsChangedWitness => false
-    DeclinedOutsideRequiredGate => false
+    DeclinedOutsideRequiredGate => true
     DeclinedCostDebt => false
     DeclinedOutsideGateClosure => false
     DeclinedDiscoveryExcluded { matched_substring: _ } => false
