@@ -111,11 +111,7 @@ fn emit_eval_allocate_literal(_node: Node, _env: EvaluationEnvironment) -> Outco
 }
 
 fn emit_eval_arg_is_two(value: RuntimeValue) -> Bool {
-  match runtime_value_equality(a: value, b: emit_eval_oct5_value(n: 2)) {
-    RuntimeValuesEqual => true
-    RuntimeValuesDiffer => false
-    RuntimeValueEqualityUnavailable { reason: _ } => false
-  }
+  value == emit_eval_oct5_value(n: 2)
 }
 
 fn emit_eval_args_are_two_twos(args: List<RuntimeValue>) -> Bool {

@@ -2464,11 +2464,24 @@ fn equality_leaf_admission(peeled: Node, name: String, ident_key: String, scope:
   }
 }
 
+fn equality_ambiguous_candidate_by_identity(cs: List<GlobalBareCandidate>, ident: String, source_indices: Map<String, NewlineIndex>) -> Node? {
+  fold(cs, init: none, f: (acc, c) =>
+    match acc {
+      Present { value: _ } => acc
+      Absent => if node_declaration_identity(n: c.binding.resolved, source_indices: source_indices) == ident { Present { value: c.binding.resolved } } else { none }
+    })
+}
+
 fn equality_unresolved_leaf_admission(peeled: Node, name: String, scope: InferScope, visited: Map<String, Bool>, depth: Int) -> EqualityAdmissionRefusal? {
   match map_get(scope.type_env.symbol_index.global_bare, qualified_last_segment(name: name)) {
     Present { value: GlobalBareUniqueBinding { module_path: _, binding: b } } =>
       equality_resolved_declaration_admission(rt: b.resolved, peeled: peeled, name: name, scope: scope, visited: visited, depth: depth)
-    _ => equality_exposure_refusal(exposure: expected_type_head_exposure(formal: peeled, scope: scope), name: name, at_operand_root: depth == 0)
+    Present { value: GlobalBareAmbiguousBinding { candidates: cs } } =>
+      match equality_ambiguous_candidate_by_identity(cs: cs, ident: type_reference_identity(n: peeled, source_indices: scope.type_env.source_indices), source_indices: scope.type_env.source_indices) {
+        Present { value: rt } => equality_resolved_declaration_admission(rt: rt, peeled: peeled, name: name, scope: scope, visited: visited, depth: depth)
+        Absent => equality_exposure_refusal(exposure: expected_type_head_exposure(formal: peeled, scope: scope), name: name, at_operand_root: depth == 0)
+      }
+    Absent => equality_exposure_refusal(exposure: expected_type_head_exposure(formal: peeled, scope: scope), name: name, at_operand_root: depth == 0)
   }
 }
 
@@ -2492,6 +2505,8 @@ fn equality_resolved_declaration_structure(rt: Node, peeled: Node, name: String,
         Present { value: _ } => acc
         Absent => equality_member_fields_refusal(owner_name: concat(name, ".", authored_name_at(source_indices: scope.type_env.source_indices, node: v)), fields: v.children, scope: scope, visited: visited, depth: depth + 1)
       })
+  } else if (rt.children |> count) > 0 || type_reference_identity(n: rt, source_indices: scope.type_env.source_indices) != type_reference_identity(n: peeled, source_indices: scope.type_env.source_indices) {
+    equality_operand_admission(n: rt, scope: scope, visited: visited, depth: depth + 1)
   } else {
     equality_exposure_refusal(exposure: expected_type_head_exposure(formal: peeled, scope: scope), name: name, at_operand_root: depth == 0)
   }

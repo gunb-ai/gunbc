@@ -267,19 +267,11 @@ fn emit_variant_construct_eval_arm_body_node(arm_wire: Node) -> Outcome<Node> {
 }
 
 fn emit_variant_construct_eval_scrutinee_is_holds(value: RuntimeValue) -> Bool {
-  match runtime_value_equality(a: value, b: emit_variant_construct_eval_octet_value(n: 1)) {
-    RuntimeValuesEqual => true
-    RuntimeValuesDiffer => false
-    RuntimeValueEqualityUnavailable { reason: _ } => false
-  }
+  value == emit_variant_construct_eval_octet_value(n: 1)
 }
 
 fn emit_variant_construct_eval_scrutinee_is_true(value: RuntimeValue) -> Bool {
-  match runtime_value_equality(a: value, b: emit_variant_construct_eval_octet_value(n: 0)) {
-    RuntimeValuesEqual => true
-    RuntimeValuesDiffer => false
-    RuntimeValueEqualityUnavailable { reason: _ } => false
-  }
+  value == emit_variant_construct_eval_octet_value(n: 0)
 }
 
 fn emit_variant_construct_eval_choose_arm(
