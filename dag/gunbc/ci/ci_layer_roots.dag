@@ -221,10 +221,26 @@ data required_v2_emission_dissolution: DissolutionCondition = unbound_dissolutio
 // all, rather than a green whose restore was never established (operator ruling relayed
 // 2026-08-26).
 //
+// CONSUMER STANDING, corrected 2026-08-30 and stated before the instrument because it changes
+// what the instrument IS. After the 2026-08-29 required-gate rung drop ("Required gate reduced to
+// the compiler floor"), NO REQUIRED CI LANE CONSUMES THIS ROSTER. emit-compile is one of that
+// drop's four deleted required phases: the required phase set is parse, namespace-wave-admission,
+// regen and floor, and the build lane owns regen alone -- measured on the run, which prints
+// `lane=build phases_run=1`. The phase is dark there BY AUTHORITY, not by misrouting or by a
+// transient failure, so nothing is waiting to be repaired here.
+//
+// Its execution entry point is now standalone `claim_executor --required-emit-compile`, which
+// selects the canonical probe roots when none are supplied. A green standalone receipt
+// establishes THIS RUNNABLE PHASE AND ITS DECLARED ROSTER -- that the members are selected, that
+// baselines compile, that a planted emitted-leaf mutation makes cargo refuse, and that the
+// restore is byte-exact. It establishes NEITHER recurring required-CI coverage NOR protection of
+// this roster on any subsequent pull request. Reading a standalone green as gate coverage is the
+// inert-lens tier DESIGN section 6 warns about, one layer up.
+//
 // THE INSTRUMENT, not its output (DESIGN, the 2026-08-24 measurement ruling): the phase prints
-// one `required-ci: emit-compile` line per entry carrying its own file count, baseline verdict
-// and mutation verdict, and `claim_executor --required-ci --required-lane build` re-derives
-// them. No figure from a run is transcribed here.
+// one `emit-compile` line per entry carrying its own file count, baseline verdict and mutation
+// verdict, and `claim_executor --required-emit-compile` re-derives them. No figure from a run is
+// transcribed here.
 // SEVEN MEMBERS, NOT EIGHT: gunbc.scm.load_standing left this roster as a DECLARED COVERAGE
 // DECISION, argued on its own terms as the note above requires, and NOT as a way to turn a
 // failing run green -- it was green. Its subject was WITHDRAWN FROM PRODUCT SCOPE by the
