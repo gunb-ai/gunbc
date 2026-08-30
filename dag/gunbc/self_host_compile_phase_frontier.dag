@@ -115,10 +115,12 @@ fn phase_identities(ds: List<RustcCodedDiagnostic>, phase: RustcPhase) -> List<S
 }
 
 fn unplaced_identities(ds: List<RustcCodedDiagnostic>) -> List<String> {
-  ds |> filter(d => match diagnostic_phase(d: d) {
-    ErrorCodePlaced { phase: _, authority: _ } => false
-    ErrorCodeUnplaced { code: _, index: _ } => true
-  }) |> map(d => rustc_diagnostic_row(d: d)) |> deduplicate_identities()
+  deduplicate_identities(
+    identities: ds |> filter(d => match diagnostic_phase(d: d) {
+      ErrorCodePlaced { phase: _, authority: _ } => false
+      ErrorCodeUnplaced { code: _, index: _ } => true
+    }) |> map(d => rustc_diagnostic_row(d: d))
+  )
 }
 
 fn phase_row(ds: List<RustcCodedDiagnostic>, phase: RustcPhase, reached: Bool) -> RustcPhaseBoardRow {
@@ -175,7 +177,7 @@ fn cargo_phase_board(parse_errors: Int, ds: List<RustcCodedDiagnostic>) -> Rustc
 // parse_errors is the directly observed rustfmt parse-error count from the same emitted workspace.
 // The runner supplies it rather than deriving it from rustc codes: rustc issues uncoded parse
 // diagnostics, while rustfmt's success/refusal is the stable parse oracle.
-fn self_host_emission_board(entry: String, parse_errors: Int) -> RustcPhaseBoardRead {
+fn self_host_compile_phase_frontier(entry: String, parse_observation: RustfmtParseObservation) -> RustcPhaseBoardRead {
   match measure_entry_emission(entry: entry) {
     EmissionMeasured {
       subject: _,
@@ -184,7 +186,7 @@ fn self_host_emission_board(entry: String, parse_errors: Int) -> RustcPhaseBoard
       cargo_clean: _,
       cargo_diagnostics: ds,
       cargo_lines_scanned: _
-    } => cargo_phase_board(parse_errors: parse_errors, ds: ds)
+    } => cargo_phase_board(parse_errors: parse_observation.parse_errors, ds: ds)
     measurement => PhaseBoardMeasurementUnreached
   }
 }
@@ -412,9 +414,10 @@ fn phase_board_series_ratchet(series: List<CompilePhaseFrontierReceipt>) -> Phas
   }
 }
 
-// Raw identity population produced by the 3af83d9 emitted-crate census. This is receipt
-// payload, not an authored board count; cargo_phase_board derives the standing from it.
-data self_host_compile_phase_frontier_genesis_raw_identities: List<String> = [
+// Pre-model identity population produced by the 3af83d9 short-format emitted-crate census.
+// It remains historical evidence, not a CompilePhaseFrontierReceipt: that run did not observe
+// the full subject required by this frontier (artifact/toolchain identities and rustfmt evidence).
+data self_host_compile_phase_frontier_pre_model_raw_identities: List<String> = [
   "src/gunbc_v1_interpreter_primitive_surface.rs\t2065\t77\tE0308\tmismatched types: expected `Rc<Vector<i64>>`, found `String`",
   "src/gunbc_v1_interpreter_primitive_surface.rs\t2077\t77\tE0308\tmismatched types: expected `Rc<Vector<i64>>`, found `String`",
   "src/gunbc_v1_interpreter_primitive_surface.rs\t2089\t77\tE0308\tmismatched types: expected `Rc<Vector<i64>>`, found `String`",
@@ -433,7 +436,7 @@ data self_host_compile_phase_frontier_genesis_raw_identities: List<String> = [
   "src/std_cache_interface.rs\t701\t5\tE0308\tmismatched types: expected `Rc<CacheInterfaceFacts>`, found `Option<Rc<CacheInterfaceFacts>>`",
   "src/std_checked_arithmetic.rs\t304\t12\tE0308\tmismatched types: expected `Rc<i64>`, found `i64`",
   "src/std_measure.rs\t510\t18\tE0308\tmismatched types: expected `Rc<i64>`, found `i64`",
-  "src/std_measure.rs\t530\t109\tE0369\tcannot add `{integer}` to `Rc<i64>`",
+  "src/std_measure.rs\t530\t109\tE0369\tcannot add `\{integer\}` to `Rc<i64>`",
   "src/std_realization_measurement.rs\t96\t11\tE0308\tmismatched types: expected `Rc<Measure<(), S, Rc<i64>>>`, found `Rc<Measure<(), S, i64>>`",
   "src/std_realization_schedule.rs\t64\t11\tE0308\tmismatched types: expected `Rc<Measure<(), S, Rc<i64>>>`, found `Rc<Measure<(), _, i64>>`",
   "src/std_realization_schedule.rs\t74\t11\tE0308\tmismatched types: expected `Rc<Measure<(), S, Rc<i64>>>`, found `Rc<Measure<(), S, i64>>`",
@@ -654,7 +657,7 @@ data self_host_compile_phase_frontier_genesis_raw_identities: List<String> = [
   "src/v2_std_integer.rs\t1381\t41\tE0308\tmismatched types: expected `Rc<Vector<i64>>`, found `String`",
   "src/v2_std_integer.rs\t1395\t30\tE0308\tmismatched types: expected `Rc<Nat>`, found integer",
   "src/v2_std_integer.rs\t1398\t31\tE0369\tbinary operation `<` cannot be applied to type `Rc<v2_std_nat::Nat>`",
-  "src/v2_std_integer.rs\t1402\t47\tE0369\tcannot divide `Rc<v2_std_nat::Nat>` by `{integer}`",
+  "src/v2_std_integer.rs\t1402\t47\tE0369\tcannot divide `Rc<v2_std_nat::Nat>` by `\{integer\}`",
   "src/v2_std_layer.rs\t38\t5\tE0618\texpected function, found `!`",
   "src/v2_std_nat.rs\t56\t23\tE0369\tbinary operation `<` cannot be applied to type `Rc<v2_std_nat::Nat>`",
   "src/v2_std_node.rs\t748\t103\tE0599\tthe method `partial_cmp` exists for reference `&T`, but its trait bounds were not satisfied: method cannot be called on `&T` due to unsatisfied trait bounds",
