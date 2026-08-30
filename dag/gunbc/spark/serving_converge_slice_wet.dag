@@ -62,6 +62,7 @@ import gunbc.spark.serving_observe {
   spark_serving_observe_residency,
   spark_serving_observe_host_via_locus,
   spark_serving_observed_facts_via_locus,
+  SparkServingPlanObservation,
   SparkServingObservationProvenance,
   SparkServingObservedFactsReady,
   SparkServingObservedFactsRefused,
@@ -316,7 +317,7 @@ fn spark_serving_replan_rows(
   host: HostIdentity,
   linger_enabled: Bool,
 ) -> SparkServingReplanRows {
-  match spark_serving_observed_facts_via_locus(context: context, host: host) {
+  match spark_serving_observed_facts_via_locus(context: context, host: host, phase: SparkServingPlanObservation) {
     SparkServingObservedFactsRefused { cause: why } =>
       SparkServingReplanRowsRefused { cause: why as String }
     SparkServingObservedFactsReady { runtime: rt, store: st, observed_unit: ou, linger: _, provenance: prov } =>
@@ -488,7 +489,7 @@ fn spark_serving_converge_slice_wet_host_report(
 ) -> SparkServingSliceHostReport {
   let endpoint = fleet_probe_endpoint_for(host: host as String)
   let transport = fleet_locus_transport(context: context, host: host)
-  match spark_serving_observed_facts_via_locus(context: context, host: host) {
+  match spark_serving_observed_facts_via_locus(context: context, host: host, phase: SparkServingPlanObservation) {
     SparkServingObservedFactsRefused { cause: why } =>
       spark_serving_converge_slice_host_line(
         host: host,

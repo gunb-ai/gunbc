@@ -131,6 +131,11 @@ import gunbc.spark.serving_observation_transaction {
   spark_serving_transaction_result,
   SparkServingObservationProvenance,
   spark_serving_observation_provenance_of,
+  SparkServingObservationPhase,
+  SparkServingPlanObservation,
+  SparkServingPostApplyObservation,
+  SparkServingReportObservation,
+  spark_serving_observation_attempt_of,
   ProbeLoadState, ProbeIsActive, ProbeVersion, ProbeTags, ProbeNvidiaDriver,
   ProbeRuntimeReceipt, ProbeActiveEnter, ProbeDefaultTargetEnter, ProbeUptime,
   ProbeGrants, ProbePasswd, ProbeAuthorizedKeys, ProbeLinger,
@@ -722,14 +727,18 @@ type SparkServingObservationReportRefusal
 fn spark_serving_acquire_observation_transaction(
   context: FleetSshExecutionContext,
   host: HostIdentity,
-  attempt: NonEmptyStr,
+  phase: SparkServingObservationPhase,
 ) -> SparkServingTransactionAdmission {
   let manifest = spark_serving_captured_leg(
     context: context, host: host, request: ModelManifestRequest,
   )
   spark_serving_observation_transaction_of(
     host: host,
-    attempt: attempt,
+    attempt: spark_serving_observation_attempt_of(
+      fleet_attempt: context.attempt as NonEmptyStr,
+      host: host,
+      phase: phase,
+    ),
     locus: fleet_locus_label(context: context) as NonEmptyStr,
     captures: concat(
       [
@@ -894,7 +903,7 @@ fn spark_serving_observe_host_via_locus(
   match spark_serving_acquire_observation_transaction(
     context: context,
     host: host,
-    attempt: spark_serving_observe_attempt_identity(),
+    phase: SparkServingReportObservation,
   ) {
     SparkServingTransactionRefused { cause: why } =>
       spark_serving_host_observation_from_refused_transaction(host: host, cause: why)
@@ -928,11 +937,12 @@ type SparkServingObservedFacts
 fn spark_serving_observed_facts_via_locus(
   context: FleetSshExecutionContext,
   host: HostIdentity,
+  phase: SparkServingObservationPhase,
 ) -> SparkServingObservedFacts {
   match spark_serving_acquire_observation_transaction(
     context: context,
     host: host,
-    attempt: spark_serving_observe_attempt_identity(),
+    phase: phase,
   ) {
     SparkServingTransactionRefused { cause: why } =>
       SparkServingObservedFactsRefused { cause: why }
@@ -947,10 +957,6 @@ fn spark_serving_observed_facts_via_locus(
         provenance: spark_serving_transaction_provenance(txn: txn),
       }
   }
-}
-
-fn spark_serving_observe_attempt_identity() -> NonEmptyStr {
-  "spark-serving-observe" as NonEmptyStr
 }
 
 // A REFUSED TRANSACTION IS NOT AN EMPTY OBSERVATION.
@@ -980,7 +986,7 @@ fn spark_serving_host_observation_from_refused_transaction(
     linger: LingerUnobservedState,
     provenance: spark_serving_observation_provenance_of(
       host: host,
-      attempt: spark_serving_observe_attempt_identity(),
+      attempt: "unreached: no admitted transaction, so no observation attempt exists" as NonEmptyStr,
       locus: "unreached: the transaction was refused before any leg was captured" as NonEmptyStr,
     ),
   )
