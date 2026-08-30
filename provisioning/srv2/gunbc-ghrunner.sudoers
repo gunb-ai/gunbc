@@ -1,0 +1,25 @@
+# GENERATED from dag/gunbc/runner/runner_host_grants.dag into provisioning/srv2/gunbc-ghrunner.sudoers — do not hand-edit; regenerate through gunbc.generated_artifact_emit artifact_generate
+ghrunner ALL=(root) NOPASSWD: /usr/bin/rm -rf /opt/actions-runner/srv2-01
+ghrunner ALL=(root) NOPASSWD: /usr/bin/install -d -m 755 -o ghrunner -g ghrunner /opt/actions-runner/srv2-01
+ghrunner ALL=(root) NOPASSWD: /usr/bin/rm -rf /opt/actions-runner/srv2-02
+ghrunner ALL=(root) NOPASSWD: /usr/bin/install -d -m 755 -o ghrunner -g ghrunner /opt/actions-runner/srv2-02
+ghrunner ALL=(root) NOPASSWD: /usr/bin/rm -rf /opt/actions-runner/srv2-03
+ghrunner ALL=(root) NOPASSWD: /usr/bin/install -d -m 755 -o ghrunner -g ghrunner /opt/actions-runner/srv2-03
+ghrunner ALL=(root) NOPASSWD: /usr/bin/rm -rf /opt/actions-runner/srv2-04
+ghrunner ALL=(root) NOPASSWD: /usr/bin/install -d -m 755 -o ghrunner -g ghrunner /opt/actions-runner/srv2-04
+ghrunner ALL=(root) NOPASSWD: /usr/bin/rm -rf /opt/actions-runner/srv2-05
+ghrunner ALL=(root) NOPASSWD: /usr/bin/install -d -m 755 -o ghrunner -g ghrunner /opt/actions-runner/srv2-05
+ghrunner ALL=(root) NOPASSWD: /usr/bin/systemctl enable actions-runner@srv2-01.service
+ghrunner ALL=(root) NOPASSWD: /usr/bin/systemctl start actions-runner@srv2-01.service
+ghrunner ALL=(root) NOPASSWD: /usr/bin/systemctl enable actions-runner@srv2-02.service
+ghrunner ALL=(root) NOPASSWD: /usr/bin/systemctl start actions-runner@srv2-02.service
+ghrunner ALL=(root) NOPASSWD: /usr/bin/systemctl enable actions-runner@srv2-03.service
+ghrunner ALL=(root) NOPASSWD: /usr/bin/systemctl start actions-runner@srv2-03.service
+ghrunner ALL=(root) NOPASSWD: /usr/bin/systemctl enable actions-runner@srv2-04.service
+ghrunner ALL=(root) NOPASSWD: /usr/bin/systemctl start actions-runner@srv2-04.service
+ghrunner ALL=(root) NOPASSWD: /usr/bin/systemctl enable actions-runner@srv2-05.service
+ghrunner ALL=(root) NOPASSWD: /usr/bin/systemctl start actions-runner@srv2-05.service
+ghrunner ALL=(root) NOPASSWD: /usr/bin/install -d -m 755 -o ghrunner -g ghrunner /var/lib/gunbc/fleet-converge
+ghrunner ALL=(root) NOPASSWD: /usr/bin/install -d -m 755 -o briansrls -g briansrls /opt/actions-runner
+ghrunner ALL=(root) NOPASSWD: /usr/bin/install -d -m 755 -o briansrls -g briansrls /opt/actions-runner-cache
+ghrunner ALL=(root) NOPASSWD: /usr/bin/systemctl daemon-reload
