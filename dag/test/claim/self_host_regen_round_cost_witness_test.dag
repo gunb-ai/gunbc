@@ -48,7 +48,8 @@ fn a_receipt(marks: List<TraceMark>) -> RegenRoundCostReceipt {
     rebuild_compiled_crates: 2,
     rustfmt_spawns: 7,
     marks: marks,
-    changed_paths: ["v1_rt.rs", "v1_compiler_runtime_rust.rs"]
+    changed_paths: ["v1_rt.rs", "v1_compiler_runtime_rust.rs"],
+    installed_mirrors: ["v1_rt.rs"]
   }
 }
 
@@ -139,7 +140,10 @@ test fn a_receipt_renders_provenance_marks_totals_and_changed_paths() -> Bool {
     "regen-round-cost: producer=claim_executor --regen-round-cost host=srv1 tree=2a11b317d2caf3c37d1d38a4421e8e0c06188925 tree_dirty=false seed_build_compiled_crates=0 rebuild_compiled_crates=2 rustfmt_spawns=7\n",
     concat(
       "regen-round-cost: phase=seed_build wall_ms=1500 cpu_ms=9000\nregen-round-cost: phase=compile.emit wall_ms=300000 cpu_ms=299000\n",
-      "regen-round-cost: total wall_ms=301500 cpu_ms=308000\nregen-round-cost: changed_paths=2 [v1_rt.rs, v1_compiler_runtime_rust.rs]\n"
+      concat(
+        "regen-round-cost: total wall_ms=301500 cpu_ms=308000\nregen-round-cost: changed_paths=2 [v1_rt.rs, v1_compiler_runtime_rust.rs]\n",
+        "partition-rebuild: PartitionRebuildScopeDerived changed_mirrors=[v1_rt.rs] owning_packages=[v1-stage0-runtime] package_closure=[v1-stage0-runtime, v1-stage0-std-core, v1-stage0-std-surface, v1-stage0-extdeps-languages, v1-stage0-v1-artifact, v1-stage0-v1-infer, v1-stage0-emit-core] executable_assembly=unavailable trigger=PartitionedClaimExecutorAssembly\n"
+      )
     )
   )
 }
