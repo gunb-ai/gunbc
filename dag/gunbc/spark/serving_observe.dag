@@ -157,9 +157,9 @@ import gunbc.spark.serving_runtime_receipt {
 }
 import gunbc.spark.serving_runtime_admission { spark_serving_parse_nvidia_driver_version }
 import gunbc.spark.serving_desired {
-  spark_serving_desired_hosts,
   spark_serving_automation_principal_login,
 }
+import gunbc.spark.serving_observation_scope { spark_serving_observation_scope }
 import gunbc.spark.serving_readback_parse {
   SparkServingReadbackField,
   SparkServingReadbackAbsent,
@@ -1152,7 +1152,7 @@ func spark_serving_observe_with_attempt(attempt_raw: String) -> ProcessExit
             Present { value: context } =>
               spark_serving_observe_with_context(
                 context: context,
-                hosts: spark_serving_desired_hosts,
+                hosts: spark_serving_observation_scope(),
               )
           }
         }
@@ -1208,7 +1208,7 @@ func spark_serving_observe_ci_with_context(
 ) -> ProcessExit {
   let now = clock_now_probed_at()
   let observations = map(
-    spark_serving_desired_hosts,
+    spark_serving_observation_scope(),
     h => spark_serving_observe_host_via_locus(context: context, host: h),
   )
   let report = match spark_serving_observation_report_from_observations(observations: observations) {
