@@ -2023,7 +2023,7 @@ test fn an_enrolled_spark_gets_an_unobserved_axis_from_the_cli_not_a_non_applica
     SparkServingAxisUnobserved { host: h } => h == ("srv5" as HostIdentity)
     SparkServingAxisNotApplicable { host: _ } => false
     SparkServingAxisRefused { host: _, cause: _ } => false
-    SparkServingAxisPlanned { host: _, observed_members: _, rows: _ } => false
+    SparkServingAxisPlanned { plan: _ } => false
   }
 }
 
@@ -2034,7 +2034,7 @@ test fn a_non_spark_host_still_gets_a_non_applicable_axis_from_the_cli() -> Bool
     SparkServingAxisNotApplicable { host: h } => h == operator_host_srv3
     SparkServingAxisUnobserved { host: _ } => false
     SparkServingAxisRefused { host: _, cause: _ } => false
-    SparkServingAxisPlanned { host: _, observed_members: _, rows: _ } => false
+    SparkServingAxisPlanned { plan: _ } => false
   }
 }
 
@@ -2108,7 +2108,7 @@ test fn plan_and_apply_read_one_enrollment_classification() -> Bool {
       SparkServingAxisUnobserved { host: _ } => true
       SparkServingAxisNotApplicable { host: _ } => false
       SparkServingAxisRefused { host: _, cause: _ } => false
-      SparkServingAxisPlanned { host: _, observed_members: _, rows: _ } => false
+      SparkServingAxisPlanned { plan: _ } => false
     }
   let spark_apply_refuses =
     match fleet_converge_apply_spark_admission(host: "srv6" as HostIdentity) {
@@ -2120,7 +2120,7 @@ test fn plan_and_apply_read_one_enrollment_classification() -> Bool {
       SparkServingAxisUnobserved { host: _ } => true
       SparkServingAxisNotApplicable { host: _ } => false
       SparkServingAxisRefused { host: _, cause: _ } => false
-      SparkServingAxisPlanned { host: _, observed_members: _, rows: _ } => false
+      SparkServingAxisPlanned { plan: _ } => false
     }
   let plain_apply_refuses =
     match fleet_converge_apply_spark_admission(host: operator_host_srv3) {

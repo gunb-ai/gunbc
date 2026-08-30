@@ -29,6 +29,7 @@ import gunbc.ollama_runtime_bundle {
   RuntimeExecutableMissing,
   ollama_runtime_materialization_identity_for_required_release,
 }
+import gunbc.fleet_intent_network { operator_host_srv3 }
 import gunbc.spark.serving_membership { spark_serving_membership_reconcile, spark_serving_user_unit_state_digest }
 import gunbc.spark.serving_execution_schedule {
   SparkServingAxisDisposition,
@@ -1293,9 +1294,16 @@ test fn a_genuinely_unobserved_activity_still_refuses() -> Bool {
 fn c3_projection(
   linger: SparkServingObservedLingerState,
 ) -> SparkServingObservedMemberProjection {
+  c3_projection_at(host: subject_host, linger: linger)
+}
+
+fn c3_projection_at(
+  host: HostIdentity,
+  linger: SparkServingObservedLingerState,
+) -> SparkServingObservedMemberProjection {
   spark_serving_observed_members(
-    provenance: witness_provenance(host: subject_host),
-    host: subject_host,
+    provenance: witness_provenance(host: host),
+    host: host,
     store: complete_required_store(),
     runtime: RuntimeMaterializationAbsent,
     unit: UserUnitStateObserved { unit_state_digest: spark_serving_user_unit_state_digest() },
@@ -1368,9 +1376,24 @@ test fn the_generic_artifact_carries_the_schedule_it_is_handed() -> Bool {
 // ── The axis disposition: what the pair-of-lists shape could not prevent ─────────────────────────
 
 fn c3_axis(linger: SparkServingObservedLingerState) -> SparkServingAxisDisposition<FleetConvergeSparkServingTypedAction> {
+  c3_axis_at(host: subject_host, linger: linger)
+}
+
+// A PLANNED AXIS CAN ONLY BE OBTAINED FROM THE PRODUCER NOW.
+//
+// BoundSparkServingAxisPlan is sole_constructor in the schedule module, so this witness cannot author
+// a Planned arm out of a host, a member list and some rows the way it used to -- which is the point:
+// that literal was exactly the forgery the artifact's host join could not detect, because all three
+// parts agreed by the author's arrangement rather than by provenance. The foreign-host RED is still
+// authorable, and that matters: it is minted for srv3 by the real producer and then handed to an
+// artifact whose subject is srv5, which is a mismatch no amount of opacity can rule out.
+fn c3_axis_at(
+  host: HostIdentity,
+  linger: SparkServingObservedLingerState,
+) -> SparkServingAxisDisposition<FleetConvergeSparkServingTypedAction> {
   spark_serving_axis_for(
-    host: subject_host as NonEmptyStr,
-    projection: c3_projection(linger: linger),
+    host: host as NonEmptyStr,
+    projection: c3_projection_at(host: host, linger: linger),
   )
 }
 
@@ -1379,21 +1402,43 @@ fn c3_axis_host(a: SparkServingAxisDisposition<FleetConvergeSparkServingTypedAct
     SparkServingAxisNotApplicable { host: h } => h
     SparkServingAxisUnobserved { host: h } => h
     SparkServingAxisRefused { host: h, cause: _ } => h
-    SparkServingAxisPlanned { host: h, observed_members: _, rows: _ } => h
+    SparkServingAxisPlanned { plan: p } => p.host
   }
 }
 
 // (1) and (2): rows and members travel in ONE arm, so they cannot be sourced from different
-// observations or different hosts. The host is read off the arm rather than supplied beside it --
-// there is no second parameter for it to disagree with.
-test fn the_axis_binds_its_host_to_the_observation_that_produced_it() -> Bool {
+// observations or different hosts.
+//
+// THIS CLAIM WAS NARROWED BECAUSE ITS OLD NAME OVERSOLD IT. It used to be called
+// the_axis_binds_its_host_to_the_observation_that_produced_it and simply read back the host it had
+// itself passed to spark_serving_axis_for beside an independently supplied projection -- so it
+// proved that an accessor returns what a constructor was given, not that the host came from an
+// observation. Real provenance now lives in the bound payload, whose host, members, rows, attempt
+// and locus are all projections of the producer that consumed one transaction, and whose sole
+// constructor makes the old forgery unwritable. What remains here is the accessor's own behaviour,
+// stated as that and nothing more.
+test fn the_axis_accessor_reads_the_host_off_the_arm_it_is_given() -> Bool {
   c3_axis_host(a: c3_axis(linger: LingerObservedEnabled)) == subject_host
+}
+
+// The provenance claim proper: the attempt and locus in a planned axis are the ones the projection
+// was observed under. Nothing at the plan site supplies them, so they cannot be set to a value the
+// observation never had.
+test fn a_planned_axis_carries_the_attempt_and_locus_its_projection_was_observed_under() -> Bool {
+  match c3_axis(linger: LingerObservedEnabled) {
+    SparkServingAxisPlanned { plan: p } =>
+      p.attempt == ("witness-attempt" as NonEmptyStr)
+        && p.locus == ("witness-locus" as NonEmptyStr)
+    SparkServingAxisNotApplicable { host: _ } => false
+    SparkServingAxisUnobserved { host: _ } => false
+    SparkServingAxisRefused { host: _, cause: _ } => false
+  }
 }
 
 test fn a_planned_axis_carries_members_and_rows_together() -> Bool {
   match c3_axis(linger: LingerObservedEnabled) {
-    SparkServingAxisPlanned { host: _, observed_members: ms, rows: rows } =>
-      length(ms) > 0 && length(scheduled_rows_list(scheduled: rows)) > 0
+    SparkServingAxisPlanned { plan: p } =>
+      length(p.observed_members) > 0 && length(scheduled_rows_list(scheduled: p.rows)) > 0
     SparkServingAxisNotApplicable { host: _ } => false
     SparkServingAxisUnobserved { host: _ } => false
     SparkServingAxisRefused { host: _, cause: _ } => false
@@ -1429,13 +1474,22 @@ test fn an_unobserved_probe_is_a_refusal_and_not_a_non_spark_subject() -> Bool {
     SparkServingAxisRefused { host: _, cause: _ } => true
     SparkServingAxisNotApplicable { host: _ } => false
     SparkServingAxisUnobserved { host: _ } => false
-    SparkServingAxisPlanned { host: _, observed_members: _, rows: _ } => false
+    SparkServingAxisPlanned { plan: _ } => false
   }
 }
 
-// A non-Spark subject still assembles a plan -- it just has no Spark axis to speak of.
+// A NON-SPARK SUBJECT IS srv3, NOT srv5.
+//
+// This claim used to build a NotApplicable axis for subject_host -- which is srv5, an enrolled Spark
+// -- and call it the non-Spark case. It proved only that the artifact trusts a same-host
+// NotApplicable arm it was handed; applicability was SUPPLIED, never derived, so the claim's name
+// asserted something its body never asked. srv3 is genuinely outside the observation scope, so the
+// subject and the axis now agree on a host for which NotApplicable is true.
 test fn a_non_spark_subject_still_assembles_an_artifact() -> Bool {
-  match artifact_outcome(axis: SparkServingAxisNotApplicable { host: subject_host }) {
+  match artifact_outcome_for(
+    host: operator_host_srv3,
+    axis: SparkServingAxisNotApplicable { host: operator_host_srv3 },
+  ) {
     FleetConvergePlanArtifactRefused { refusal: _ } => false
     FleetConvergePlanArtifactReady { artifact: a } =>
       length(scheduled_rows_list(scheduled: a.spark_serving_typed_actions)) == 0
@@ -1445,14 +1499,21 @@ test fn a_non_spark_subject_still_assembles_an_artifact() -> Bool {
 fn artifact_outcome(
   axis: SparkServingAxisDisposition<FleetConvergeSparkServingTypedAction>,
 ) -> FleetConvergePlanArtifactOutcome {
+  artifact_outcome_for(host: subject_host, axis: axis)
+}
+
+fn artifact_outcome_for(
+  host: HostIdentity,
+  axis: SparkServingAxisDisposition<FleetConvergeSparkServingTypedAction>,
+) -> FleetConvergePlanArtifactOutcome {
   fleet_converge_plan_artifact(
-    host: subject_host as NonEmptyStr,
+    host: host as NonEmptyStr,
     prior_generation: 0,
     observed_timers: [],
     observed_caps: [],
     spark_axis: axis,
     observed_slots: [],
-    observed_fabric_cells: fabric_cell_observation_unobserved(host: subject_host),
+    observed_fabric_cells: fabric_cell_observation_unobserved(host: host),
     observed_activation_readiness: runner_activation_readiness_unobserved_no_transaction,
   )
 }
@@ -1466,11 +1527,7 @@ fn artifact_outcome(
 // artifact now reads the axis's own host and refuses when it disagrees.
 test fn an_axis_tagged_for_another_host_refuses_instead_of_planning_for_the_subject() -> Bool {
   match artifact_outcome(
-    axis: SparkServingAxisPlanned {
-      host: "srv3" as HostIdentity,
-      observed_members: [],
-      rows: scheduled_rows_empty(),
-    },
+    axis: c3_axis_at(host: "srv3" as HostIdentity, linger: LingerObservedEnabled),
   ) {
     FleetConvergePlanArtifactReady { artifact: _ } => false
     FleetConvergePlanArtifactRefused { refusal: _ } => true
@@ -1480,13 +1537,7 @@ test fn an_axis_tagged_for_another_host_refuses_instead_of_planning_for_the_subj
 // The positive control that keeps the guard from being satisfied by refusing everything: the same
 // arm, tagged for the subject, is admitted.
 test fn an_axis_tagged_for_the_subject_is_admitted_by_the_same_guard() -> Bool {
-  match artifact_outcome(
-    axis: SparkServingAxisPlanned {
-      host: subject_host,
-      observed_members: [],
-      rows: scheduled_rows_empty(),
-    },
-  ) {
+  match artifact_outcome(axis: c3_axis_at(host: subject_host, linger: LingerObservedEnabled)) {
     FleetConvergePlanArtifactReady { artifact: _ } => true
     FleetConvergePlanArtifactRefused { refusal: _ } => false
   }
@@ -1513,7 +1564,7 @@ fn axis_rows_or_empty(
   a: SparkServingAxisDisposition<FleetConvergeSparkServingTypedAction>,
 ) -> ScheduledRows<FleetConvergeSparkServingTypedAction> {
   match a {
-    SparkServingAxisPlanned { host: _, observed_members: _, rows: rows } => rows
+    SparkServingAxisPlanned { plan: p } => p.rows
     SparkServingAxisNotApplicable { host: _ } => scheduled_rows_empty()
     SparkServingAxisUnobserved { host: _ } => scheduled_rows_empty()
     SparkServingAxisRefused { host: _, cause: _ } => scheduled_rows_empty()
@@ -1527,11 +1578,7 @@ fn axis_rows_or_empty(
 // identities out of the typed refusal and checks they are the two hosts that actually disagreed.
 test fn a_foreign_host_axis_refuses_with_both_identities_recoverable() -> Bool {
   match artifact_outcome(
-    axis: SparkServingAxisPlanned {
-      host: "srv3" as HostIdentity,
-      observed_members: [],
-      rows: scheduled_rows_empty(),
-    },
+    axis: c3_axis_at(host: "srv3" as HostIdentity, linger: LingerObservedEnabled),
   ) {
     FleetConvergePlanArtifactReady { artifact: _ } => false
     FleetConvergePlanArtifactRefused { refusal: r } =>
