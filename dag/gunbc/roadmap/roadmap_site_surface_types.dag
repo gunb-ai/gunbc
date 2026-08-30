@@ -97,6 +97,12 @@ type LiveRoadmapSiteSurfaceBundle {
   bundle: RoadmapSiteSurfaceBundle
 }
 
-data roadmap_site_surface_subject: String = "gunbc.roadmap_static_site/live-tree"
+// ONE semantic snapshot per operation: authority projected once, surface rendered once, healthz
+// serialized once. subject_identity hashes acceptance plus roadmap/dispatch document bodies (or the
+// exact typed refusal detail). producer_identity names the observe/render implementation.
+// bundle_identity joins the five served-artifact digests. RoadmapSiteSurfaceBundle is the retained
+// carrier every readiness witness and production healthz path evaluates — member predicates take
+// the bundle as an argument and cannot re-invoke filesystem, Git, authority projection, or
+// rendering producers.
 
-data roadmap_site_surface_bundle_schema_note: String = "ONE semantic snapshot per operation: authority projected once, surface rendered once, healthz serialized once. subject_identity hashes acceptance plus roadmap/dispatch document bodies (or the exact typed refusal detail). producer_identity names the observe/render implementation. bundle_identity joins the five served-artifact digests. RoadmapSiteSurfaceBundle is the retained carrier every readiness witness and production healthz path evaluates — member predicates take the bundle as an argument and cannot re-invoke filesystem, Git, authority projection, or rendering producers."
+data roadmap_site_surface_subject: String = "gunbc.roadmap_static_site/live-tree"

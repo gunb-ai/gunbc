@@ -29,7 +29,9 @@ import extdeps.standards.rfc_8118 {
   project_navigable_uri,
 }
 
-data pdf_safe_profile_note: String = "gunbc bounded admission policy for RFC 8118 PDF open parameters — NOT upstream semantics. extdeps.standards.rfc_8118 owns the full RFC vocabulary; this module declines parameters gunbc has not yet admitted for citation use."
+// gunbc bounded admission policy for RFC 8118 PDF open parameters — NOT upstream semantics.
+// extdeps.standards.rfc_8118 owns the full RFC vocabulary; this module declines parameters gunbc
+// has not yet admitted for citation use.
 
 type PdfRefusedParameterKind
   = PdfParameterComment

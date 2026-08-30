@@ -220,7 +220,11 @@ fn bmc_fan_policy_suitability_refusal_reason(
   }
 }
 
-// BMC and Ubuntu convergence share std.upsert_decision for observe/classify/plan and std.realization_reconcile for apply/read-back. Fan-policy reconciliation is three separable questions: apply suitability, post-apply durability qualification, and ordinary convergence after qualification. Apply may proceed without prior durability evidence; Noop requires qualification plus a live canonical digest equal to the admitted digest.
+// BMC and Ubuntu convergence share std.upsert_decision for observe/classify/plan and
+// std.realization_reconcile for apply/read-back. Fan-policy reconciliation is three separable
+// questions: apply suitability, post-apply durability qualification, and ordinary convergence after
+// qualification. Apply may proceed without prior durability evidence; Noop requires qualification
+// plus a live canonical digest equal to the admitted digest.
 fn bmc_firmware_intent_mismatch_reason(
   required: BmcFirmwareTrack,
   observed: BmcFirmwareVersion,
@@ -791,7 +795,13 @@ fn bmc_fan_policy_durability_gated_convergence_from_inputs(
   )
 }
 
-data bmc_fan_firmware_unpinned_realizer_note: String = "The fan realizer needs a firmware-matched projection (the projection's config bytes and digest are firmware-version-specific). It does NOT require the fleet to pin a single firmware track: an unpinned firmware intent is admitted, and each host qualifies against a projection whose firmware matches that host's observed firmware (bmc_fan_policy_apply_suitability rejects a firmware mismatch). What is refused is a PINNED track that the host has not yet converged to (FanPolicyFirmwareMustConvergeBeforeRealizer) -- a firmware update would replace the flash and wipe the fan config, so fans must not be realized until that update lands. Unpinned means no update is intended, so realization is safe."
+// The fan realizer needs a firmware-matched projection (its config bytes and digest are
+// firmware-version-specific). It does NOT require the fleet to pin a single firmware track: an
+// unpinned firmware intent is admitted, and each host qualifies against a projection matching its
+// observed firmware (bmc_fan_policy_apply_suitability rejects a mismatch). What is refused is a
+// PINNED track the host has not yet converged to (FanPolicyFirmwareMustConvergeBeforeRealizer) -- a
+// firmware update would replace the flash and wipe the fan config, so fans must not be realized
+// until it lands. Unpinned means no update is intended, so realization is safe.
 
 fn bmc_fan_firmware_blocks_realizer(
   intent_firmware: BmcFirmwareIntent,
@@ -909,17 +919,16 @@ fn bmc_fan_policy_qualify_with_projection(
               }
 }
 
-// THE ROSTER IS A PARAMETER HERE AND CLOSED AT THE WET EDGE, which is a correction to where I
-// first put the closure. Closing it inside the projection seam meant every fixture exercising a
-// DOWNSTREAM distinction -- durability linkage, topology drift, live digest -- was answered by
-// the alignment gate instead, because srv4's real standing refuses. Nine such tests went red, and
-// they were not wrong: the pipeline's order had changed under them and they could no longer reach
-// the subject they were written for.
+// THE ROSTER IS A PARAMETER HERE AND CLOSED AT THE WET EDGE, a correction to where the closure was
+// first put. Closing it inside the projection seam meant every fixture exercising a DOWNSTREAM
+// distinction -- durability linkage, topology drift, live digest -- was answered by the alignment
+// gate instead, because srv4's real standing refuses. Nine such tests went red, and rightly: the
+// pipeline's order had changed under them and they could no longer reach their subject.
 //
-// A confinement belongs at the boundary where production actually enters, not mid-pipeline where
-// it also excludes every fixture. bmc_fan_converge_with_credential and
-// bmc_fan_observe_only_with_credential pass the fleet roster and take no roster argument
-// themselves; a fixture supplies its own and reaches the arm it is testing.
+// A confinement belongs at the boundary where production enters, not mid-pipeline where it also
+// excludes every fixture. bmc_fan_converge_with_credential and bmc_fan_observe_only_with_credential
+// pass the fleet roster and take no roster argument; a fixture supplies its own and reaches the arm
+// it is testing.
 fn bmc_fan_policy_classification(
   standings: List<HostBmcFanAlignmentStanding>,
   host: HostIdentity,
