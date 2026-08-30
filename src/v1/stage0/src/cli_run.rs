@@ -16312,6 +16312,14 @@ pub fn reconcile_identity_population<'a>(
 pub enum CostDebtRosterStanding {
     /// Withheld for cost: the operative debt. This is the only arm that may be counted as debt.
     Withheld,
+    /// Enrolled, still valid debt, and PLANNED ANYWAY because changed-witness selection required
+    /// its correctness verdict on this run (FLOOR-CHANGED-COST-0, operator ruling 2026-08-30).
+    ///
+    /// THIS IS NOT STALE, and separating it from `DeclaredButNotWithheld` is the whole reason the
+    /// arm exists: nothing about the identity's measured expensiveness changed and the roster
+    /// line still describes the tree, so the stale remedy — delete the row — would be wrong
+    /// advice. It is not counted as withheld either, because this run withheld nothing for it.
+    WithholdOverriddenForChangedVerdict,
     /// Declared by the tree, but preparation never offered it — its module is outside the gate
     /// closure or was excluded from discovery. It withholds NOTHING on this run, so it is not
     /// debt; it is kept as the record that the identity was once measured expensive, and it
@@ -16360,6 +16368,12 @@ pub fn partition_cost_debt_roster<'a>(
                 None => CostDebtRosterStanding::Undeclared,
                 Some(RequiredFloorDisposition::DeclinedCostDebt) => {
                     CostDebtRosterStanding::Withheld
+                }
+                // The changed-witness sublane replaced the withhold with its own planned arm, so
+                // the row is overridden rather than stale. `v2.workflow.required_floor`
+                // `cost_debt_roster_standing` is the authority for this mapping.
+                Some(RequiredFloorDisposition::PlannedAsChangedWitness) => {
+                    CostDebtRosterStanding::WithholdOverriddenForChangedVerdict
                 }
                 Some(RequiredFloorDisposition::DeclinedOutsideGateClosure)
                 | Some(RequiredFloorDisposition::DeclinedDiscoveryExcluded { .. }) => {
@@ -36802,6 +36816,61 @@ pub struct RequiredFloorClaim {
     /// calibration evidence and read only by the diagnostic `exceeds_completed_cost_line`; no
     /// admission-path code may consult it.
     pub cost_line_ms: u64,
+    /// WHICH COST POLICY THIS CLAIM RUNS UNDER. Modeled authority:
+    /// `v2.workflow.required_floor` `ChangedWitnessCostPolicy`, derived by
+    /// `changed_witness_cost_policy` from the intersection of changed-witness selection and
+    /// `v2.workflow.floor_cost_debt` enrollment (FLOOR-CHANGED-COST-0, operator ruling
+    /// 2026-08-30). It selects WHICH CLOCK IS ARMED, never what the claim is allowed to cost:
+    /// `cpu_safety_limit_ms` above carries the same 500ms figure under both policies, and under
+    /// the override that figure is measured against and published rather than enforced.
+    pub cost_policy: ChangedWitnessCostPolicy,
+}
+
+/// The cost policy of one executing claim. Modeled authority: `v2.workflow.required_floor`
+/// `ChangedWitnessCostPolicy` — this enum is the seed realization of those arms, not their
+/// origin.
+///
+/// `ChangedCostDebtVerdictOnly` applies to exactly one population: an identity this change
+/// touched AND that `v2.workflow.floor_cost_debt` enrolls. Cost debt answers "should this
+/// witness run on every ordinary floor"; changed selection answers "did the witness this PR
+/// changed reach a semantic verdict". Neither erases the other, so the CPU line is observed and
+/// published while the WALL safety deadline stays armed and stays a red.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ChangedWitnessCostPolicy {
+    /// The standing policy: the CPU safety deadline is armed and a crossing blocks.
+    Ordinary,
+    /// The join: the CPU line is measured against and published against the debt identity, and
+    /// decides nothing. Every other red — semantic failure, panic, route gap, runtime error,
+    /// unreadable observation, and no verdict before the wall deadline — is unchanged.
+    ChangedCostDebtVerdictOnly,
+}
+
+/// What the run measured for one claim executing under `ChangedCostDebtVerdictOnly`, published
+/// against the DEBT identity. Modeled authority: `v2.workflow.floor_changed_witness`
+/// `ChangedWitnessCostObservation`.
+///
+/// IT IS A RECEIPT AND NOT A REPAYMENT: nothing here edits or deletes the authored roster row.
+/// A single run landing under the line does not establish that a row whose observations ranged
+/// through 505ms has become safely ordinary; the row leaves through the explicit debt-removal
+/// transaction or not at all.
+///
+/// THE MEASUREMENTS ARE NANOSECONDS AND THE LINE IS MILLISECONDS, matching the modeled carrier:
+/// `std.measure` `nanosecond_millisecond_projection_note` makes nanosecond the canonical exact
+/// elapsed carrier and millisecond a policy and presentation scale, and the line IS policy. The
+/// millisecond figures are floored at the printing boundary only.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ChangedWitnessCostObservation {
+    /// The CPU-clock reading: marginal CPU, with shared-artifact fill already subtracted by
+    /// `run_claim_measured` — the same quantity the CPU deadline would have enforced against.
+    /// Modeled as the `CpuClock` member of the observation's `List<TimedMeasurement>`.
+    pub cpu_clock_nanos: u128,
+    /// The wall-clock reading, for the deadline that remains armed. Modeled as the `WallClock`
+    /// member of the same list.
+    pub wall_clock_nanos: u128,
+    /// The policy line the observation is reported against
+    /// (`required_floor_claim_cpu_safety_limit_ms`), on the CPU clock — the model carries that
+    /// basis beside it as `observed_against_basis` rather than in this field's name.
+    pub cpu_line_ms: u64,
 }
 
 /// The site-projection loop's one decision, per identity, kept instead of discarded into three
