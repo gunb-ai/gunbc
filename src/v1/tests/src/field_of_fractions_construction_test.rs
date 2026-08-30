@@ -27,11 +27,14 @@ fn three_quarters() -> FieldOfFractions<Int> { FieldOfFractions { num: 3, denom:
 "#;
 
 fn assert_resolved(resolved: &ResolvedPipelineResult) {
+    // Hard-vs-advisory is `cli_run::compile_clean_diagnostic_is_hard`'s decision (delegating to
+    // `00_core.dag` `is_interpreter_blocking_diagnostic`); a message-prefix allowlist here was a
+    // second copy of that policy and went stale when the undecided-inhabitance advisory landed.
     let msgs: Vec<String> = resolved
         .diagnostics
         .iter()
+        .filter(|d| cli_run::compile_clean_diagnostic_is_hard(d))
         .map(|d| v1_compiler::v1_std_core::diagnostic_to_message(d.diagnostic.clone()))
-        .filter(|m| !m.starts_with("complexity: ") && !m.starts_with("unlisted import use "))
         .collect();
     assert!(
         msgs.is_empty() && resolved.graph.is_some(),

@@ -3,7 +3,7 @@
 Status: DRAFT for operator review. Owner: lively-raven-355 (realization / SymbolIndex) — inherited 2026-07-06 when cool-hawk-899 archived; cool-hawk-899 authored §1–§8.
 Directive: operator (2026-07-05) — "fix v1, it's worth it; then apply the same to v2." · (2026-07-06) — the intra-process node-level memo must be built as one shard of an eventual content-addressed, distributable realize (map-reduce / RBE); see §5.5.
 
-**Resolver half (companion):** `docs/plans/namespace-resolution-design.md` (loyal-dove-903). This doc is the INDEX/storage half (fill-once `SymbolIndex`, the O(M²) fix); the companion is the SEMANTICS half (`resolve(name, position)`). One index, two `ResolutionPolicy` values over it — `import-scoped` (this doc's §3, behavior-preserving, ships first) and `namespace-only-Y` (the companion's nearest-enclosing-subtree pivot, on top). **One-index invariant (companion §7.5):** the fill stays policy-agnostic (topo prepass fills everything import-DAG-reachable); the policy gates LOOKUP only, never fill — else two policies materialize two indices, the dual-representation Rule 1 forbids.
+**Resolver half (companion):** `docs/plans/namespace-resolution-design.md` (loyal-dove-903). This doc is the INDEX/storage half (fill-once `SymbolIndex`, the O(M²) fix); the companion is the SEMANTICS half (`resolve(name, position)`). One index, two `ResolutionPolicy` values over it — `import-scoped` (this doc's §3, behavior-preserving, ships first) and `namespace-only-Y` (the companion's nearest-enclosing-subtree pivot, on top). **One-index invariant (companion §7.5):** the fill stays policy-agnostic (topo prepass fills everything import-DAG-reachable); the policy gates LOOKUP only, never fill — else two policies materialize two indices, the dual representation Rule 1 forbids.
 
 This is reasoned serially (per DESIGN preamble): the problem fixes the axioms, each section a consequence.
 
@@ -34,7 +34,7 @@ populations that have nothing to do with each other:
   (`std.induction` descent evidence: `PreservedValue` for params `04_infer.dag:1077`, `compose_sub_value`
   on inductive-field access `3362/3834`) — it is how structural recursion is proven to terminate.
 
-So the O(M²) population is dragging a field only the O(1)-per-function population uses, and is stored
+So the O(M²) population drags a field only the O(1)-per-function population uses, and is stored
 per-module instead of once. Fusing + materializing is the whole defect.
 
 ## 3. The ideal representation (§3 single authority + §5 unwritable-by-construction)
@@ -53,15 +53,15 @@ Split the two concerns; the copies then cannot exist:
   place `provenance` lives.
 
 This is the operator's cursor/windowed model: forward DFS from the DAG root, minimal context, resolve on
-encounter. It replaces "start from a requested module and walk backward, repeatedly, flattening ancestry."
-Reverse-from-request + per-module flatten is exactly what forced the copies; forward-DFS + one shared index
-+ a scope cursor removes the *need* for them.
+encounter, replacing "start from a requested module and walk backward, repeatedly, flattening ancestry."
+Reverse-from-request + per-module flatten is what forced the copies; forward-DFS + one shared index + a
+scope cursor removes the *need* for them.
 
 ### 3.1 CORRECTION — flat direct-import is NOT byte-identical; re-export transitivity is load-bearing (lively-raven-355, 2026-07-07, proven by execution)
 
 The naïve reading of §3 — "resolve a name = locals, else imports → qualified name → the one index" as a *flat direct-import* lookup (a module sees only its direct imports' **own** exports) — is **NOT byte-identical on the live corpus.** A direct-import experiment (own-only module caches, ancestry = direct imports + kernel) was implemented, regen'd, and run against `regen --verify`; it **failed loudly** (the fail-closed fixpoint oracle working as designed) with unresolved `EmitResult` / `parse_with_table` / `default_artifact_plan` / `Rust` in `compile.dag` + `probe_emit_interp.dag`.
 
-**Root cause — re-export transitivity.** Those names *are* directly imported (`compile.dag:29` `import v1.compiler.emit { EmitResult }`) but `v1.compiler.emit` does **not define** `EmitResult` — it imports it from `emit_core_support` (the definition, `emit_core_support.dag:17`) and **re-exports** it. The corpus relies on modules re-exporting their **entire visible surface** (own ∪ ancestry), and importers resolving names *through* the re-exporter. That "re-export everything" **IS** the transitive accumulation — i.e. it is the O(M²) itself.
+**Root cause — re-export transitivity.** Those names *are* directly imported (`compile.dag:29` `import v1.compiler.emit { EmitResult }`) but `v1.compiler.emit` does **not define** `EmitResult` — it imports it from `emit_core_support` (the definition, `emit_core_support.dag:17`) and **re-exports** it. The corpus relies on modules re-exporting their **entire visible surface** (own ∪ ancestry) and importers resolving names *through* the re-exporter. That "re-export everything" **IS** the transitive accumulation — the O(M²) itself.
 
 **The separation that saves the reform (clever-koi adjudication, 2026-07-07):** re-export transitivity and the quadratic are **separable**. The O(M²) is the eager per-module union-**copy** of ancestry maps, *not* the semantics. So **import-scoped resolution = own bindings, else a walk of the import DAG (the re-export chain)** — the walk **memoized and Rc-shared** (per `(module, name)` or lazy per-module name→definer maps), **never unioned into importers**. `SymbolIndex` stores per-module **own** bindings only; the transitive surface is *derived at lookup, stored nowhere* (so increment-2's completeness receipt is just `index == Σ own bindings`, and the dual-representation risk drops out). Cycle-safety = §7.6 inv-1 (import DAG acyclic). **Precedence crux:** when a name is reachable via >1 branch, the walk's winner must reproduce the current union's exact `(fold-order over resolved_imports) × (map_merge overwrite direction)`; byte-identity (`regen --verify` + corpus emit) is the oracle.
 
@@ -143,13 +143,13 @@ separate std-induction PR so the termination checker's soundness is reviewed on 
 
 ## 5.5 Distributability invariants (map-reduce / RBE endgame — operator 2026-07-06)
 
-The intra-process node-level memo is not a terminal design — it is **shard 0 of a content-addressed, distributable realize** (map-reduce / Bazel-RBE shape: infinitely scalable, across-process/host irrelevant). The whole RBE idea reduces to one shape: *each realize-unit is a pure function of content-addressed inputs → a content-addressed result in a shared CAS*. Given that, **map** (realize the ready frontier) and **reduce** (merge results into the index/CAS) are the same operations whether workers are threads, processes, or hosts — only the CAS transport changes. So "across process/host is irrelevant" becomes true exactly when three invariants hold, and we commit to them NOW so wiring the intra-process memo cannot foreclose the endgame (cheap now, a re-architecture later):
+The intra-process node-level memo is not a terminal design — it is **shard 0 of a content-addressed, distributable realize** (map-reduce / Bazel-RBE shape: infinitely scalable, across-process/host irrelevant). RBE reduces to one shape: *each realize-unit is a pure function of content-addressed inputs → a content-addressed result in a shared CAS*. Then **map** (realize the ready frontier) and **reduce** (merge results into the index/CAS) are the same operations whether workers are threads, processes, or hosts — only the CAS transport changes. So "across process/host is irrelevant" holds exactly when three invariants hold; we commit to them NOW so wiring the intra-process memo cannot foreclose the endgame (cheap now, a re-architecture later):
 
 1. **Content-hash-groundable key.** The `SymbolIndex` key is `String` (qualified name) intra-process, but must be *groundable to a content-hash* so results are location-independent and dedupe across processes. The substrate already exists (`std.content_hash`, `std.cache_identity`, `std.cache_interface`, `std.realization_schedule`; the DAG nodes are already content-addressed). Build the index as one shard of the CAS keyed by a projection of that hash — not a name-only map that forks when distributed.
 2. **Exact minimal input closure per unit.** A superset digest = spurious cache misses + poisoned dedup. **#6306 already delivers this** ("exact dependency closure, not topological superset") — it is the RBE-critical property and it is landed.
 3. **Per-unit determinism.** Each realize-unit a pure deterministic function of its input digests. The whole-compile byte-identical fixpoint (§7 self-host) proves it at *corpus* level; RBE needs it *per-unit* — the live thread is the determinism construction gate (`src/v2/lens/determinism.dag` / DESIGN.md §5 open thread; #5941 P1 → #6594).
 
-The demand-driven shape #6306 already has **is** the map-reduce shape: the set of modules whose deps are all realized is the wavefront. `fold → thread pool → RBE workers` is a scheduler swap; `local Map → content-addressed CAS` is the only backend swap. The reform must keep those two seams clean (a `RealizationBackend` the fill writes through, a scheduler the driver folds through) rather than inlining `HashMap` + a serial fold as load-bearing assumptions.
+The demand-driven shape #6306 already has **is** the map-reduce shape: the modules whose deps are all realized are the wavefront. `fold → thread pool → RBE workers` is a scheduler swap; `local Map → content-addressed CAS` the only backend swap. The reform must keep those two seams clean (a `RealizationBackend` the fill writes through, a scheduler the driver folds through) rather than inlining `HashMap` + a serial fold as load-bearing assumptions.
 
 ## 6. Validation (§5 prove-by-execution)
 
@@ -179,12 +179,12 @@ earlier "~710s resolve+typecheck dominates" grounding (likely stale / different 
 
 IMPLICATION: the dominant O(M?) cost is **emit — `emit_imports`** (the per-module transitive re-export
 closure recompute, audit finding #1), NOT `build_type_env`'s ancestry materialization (reconcile, the 17%).
-BUT it is the SAME fix: both re-derive the import closure per module. So the `SymbolIndex` single authority
-is consumed by BOTH — and the **first realization should target `emit_imports`** (the 78%), then
-`build_type_env` (the 17%). The design is unchanged; the ORDER of consumers flips to emit-first.
+BUT it is the SAME fix: both re-derive the import closure per module, so the `SymbolIndex` single authority
+is consumed by BOTH — the **first realization should target `emit_imports`** (the 78%), then
+`build_type_env` (the 17%). Design unchanged; the ORDER of consumers flips to emit-first.
 
 CAVEAT: 85-module RATIOS ≠ 876-module SCALING. Which stage is O(M²) vs high-linear is settled only by the
-scaling curve (100/200/400/800), loyal-heron's next deliverable. Do NOT start surgery until it lands — it
+scaling curve (100/200/400/800), loyal-heron's next deliverable. Do NOT start surgery before it lands — it
 decides emit-first vs both-at-once and confirms the target is superlinear, not a fat constant.
 
 ## 7.6 Preserve-invariants the reform MUST NOT break (loyal-heron infer review)

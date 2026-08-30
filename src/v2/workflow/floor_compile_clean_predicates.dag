@@ -43,6 +43,10 @@ fn compile_clean_all_touched_paths_selectable(touched_paths: List<String>) -> Bo
   )
 }
 
+// Lightweight path-grain predicates for the CI floor fast path. tools.dag_compile_clean_scope
+// re-exports the same logic for disposition probes; this module is the resolve target for host
+// floor_fast so compile_clean_shard_entry_paths() is never cold-scanned on the hot path.
+
 fn compile_clean_departed_paths_outside_docs(departed_paths: List<String>) -> Bool {
   fold(
     departed_paths,
@@ -50,5 +54,3 @@ fn compile_clean_departed_paths_outside_docs(departed_paths: List<String>) -> Bo
     f: fn(found, p) { found || (compile_clean_touched_path_is_docs_only(path: p) == false) }
   )
 }
-
-data floor_compile_clean_predicates_note: String = "Lightweight path-grain predicates for the CI floor fast path. tools.dag_compile_clean_scope re-exports the same logic for disposition probes; this module is the resolve target for host floor_fast so compile_clean_shard_entry_paths() is never cold-scanned on the hot path."

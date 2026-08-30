@@ -20,7 +20,12 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 
 data salesforce_opportunity_subject: Vendor<Securities> = salesforce
 
-data salesforce_opportunity_provenance_note: String = "Vocabulary facts live-fetched 2026-08-01 from the Salesforce Platform object reference (en-us, API version 252.0, read through the docs content endpoint get_document_content because the doc site shell is client-rendered): the Opportunity object page for StageName and the OpportunityStage object page (the anchor) for the stage row schema and the ForecastCategory value set. These are vocabulary facts about the upstream product's published surface -- no sales-process opinion lives in this module."
+// Vocabulary facts live-fetched 2026-08-01 from the Salesforce Platform object reference (en-us,
+// API version 252.0, read through the docs content endpoint get_document_content because the doc
+// site shell is client-rendered): the Opportunity object page for StageName and the
+// OpportunityStage object page (the anchor) for the stage row schema and the ForecastCategory value
+// set. These are vocabulary facts about the upstream product's published surface -- no
+// sales-process opinion lives in this module.
 
 // The load-bearing upstream fact: StageName is a required picklist on Opportunity that the reference says controls ForecastCategoryName, IsClosed, IsWon, and Probability, and the reference directs, quoted: 'To obtain the stage name values in the picklist, query the OpportunityStage object.' The stage VOCABULARY is therefore org-configurable DATA in the vendor's own model, not a published universal roster -- what Salesforce publishes as vocabulary is the stage row SCHEMA and the closed ForecastCategory value set, both modeled here under their real names. OpportunityStage is read-only via the API upstream.
 type SalesforceForecastCategory

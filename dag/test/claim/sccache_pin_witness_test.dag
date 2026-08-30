@@ -44,7 +44,11 @@ data sccache_x86_64_artifact: SccacheBinaryArtifact = SccacheBinaryArtifact {
 
 data sccache_aarch64_pin: SubjectProjectedPin<SccacheBinaryArtifact> = sccache_binary_artifact_pin(artifact: sccache_aarch64_artifact)
 
-data sccache_pin_grain_family_note: String = "Discriminating witness for feature:pin-artifact-grain. SubjectProjectedPin<SccacheBinaryArtifact> pins ONE cited musl tarball per row with no restated expected_identity field — identity projected via sha256_digest_content_hash bridge (review 44999). RED CONTROL reconcile_bridge_projects_identity_and_version fails if subject_projected_pin_as_pin does not project both ContentHash and VersionIdentity onto Pin."
+// Discriminating witness for feature:pin-artifact-grain. SubjectProjectedPin<SccacheBinaryArtifact>
+// pins ONE cited musl tarball per row with no restated expected_identity field — identity projected
+// via sha256_digest_content_hash bridge (review 44999). RED CONTROL
+// reconcile_bridge_projects_identity_and_version fails if subject_projected_pin_as_pin does not
+// project both ContentHash and VersionIdentity onto Pin.
 
 test fn sccache_pin_subject_carries_release_version() -> Bool {
   sccache_aarch64_artifact.binary_release.version == sccache_release_0_15_0.version

@@ -20,9 +20,44 @@ import v2.std.optional { Optional, Absent, Present, optional_absent, optional_pr
 import v2.std.logic { Bool }
 import v2.std.text { String }
 
-data wet_receipt_route_standing_doc: String = "ROW-GRAIN ROUTE STANDING FOR THE WET SELF-HOST BEHAVIORAL RECEIPTS, and the grain is the whole point of the module. std.witness_admission witness_cadence_has_scheduled_route answers at CADENCE grain -- FalsifierSelfHostWet -> true or false -- which is the correct authority for the question it asks and the wrong one for the question a partial executor raises. If an executor covers SOME rows and that Boolean is flipped true, EVERY row classified into the cadence reads as covered, including rows the executor cannot reach. That is the identical coverage inflation gunbc#9295 removed by cutting falsifier_self_host_wet_cadence_active, re-entering through a different input: there the fork was `if active { FalsifierSelfHostWet } else { OfflineLocalRecipe }`, here it would be a true Boolean spread across a population it does not describe. Operator ruling 2026-08-26: the route may not go live until the scheduled row identities equal the live FalsifierSelfHostWet row identities, OR the authority is strengthened to row grain. This module is that strengthening.\n\nWHAT A STANDING IS AND IS NOT. It answers CAN THIS ROW BE RUN, never DOES THIS ROW PASS. A row with a driver, an enrolment and a derivable fault marker is WetReceiptExecutable whatever its last verdict was; a row whose last measurement was red is still executable, and a row that has never been measured is not thereby unexecutable. Fusing route and verdict is what made the previous Boolean unable to distinguish the two causes below."
+// ROW-GRAIN ROUTE STANDING FOR THE WET SELF-HOST BEHAVIORAL RECEIPTS, and the grain is the whole
+// point of the module. std.witness_admission witness_cadence_has_scheduled_route answers at CADENCE
+// grain -- FalsifierSelfHostWet -> true or false -- the correct authority for its own question and
+// the wrong one for the question a partial executor raises. If an executor covers SOME rows and
+// that Boolean is flipped true, EVERY row classified into the cadence reads as covered, including
+// rows the executor cannot reach: the identical coverage inflation gunbc#9295 removed by cutting
+// falsifier_self_host_wet_cadence_active, re-entering through a different input -- there the fork
+// was `if active { FalsifierSelfHostWet } else { OfflineLocalRecipe }`, here it would be a true
+// Boolean spread across a population it does not describe. Operator ruling 2026-08-26: the route
+// may not go live until the scheduled row identities equal the live FalsifierSelfHostWet row
+// identities, OR the authority is strengthened to row grain. This module is that strengthening.
+//
+// WHAT A STANDING IS AND IS NOT. It answers CAN THIS ROW BE RUN, never DOES THIS ROW PASS. A row
+// with a driver, an enrolment and a derivable fault marker is WetReceiptExecutable whatever its
+// last verdict was; a row whose last measurement was red is still executable, and a row never
+// measured is not thereby unexecutable. Fusing route and verdict is what made the previous Boolean
+// unable to distinguish the two causes below.
 
-data wet_receipt_population_note: String = "THE CONCRETE POPULATION THIS TYPE EXISTS FOR, without which the type reads as over-modelled. The 17 dag/test/claim/self_host_*_behavioral_witness_test.dag receipts are THREE causes, not one, and no Boolean can say so:\n\n  ONE (self_host_logic) was a scheduled template row on falsifier_self_host_wet_template_entries and lost its executor when falsifier.yml was deleted at 611fd02770/#8283 on 2026-08-15. It needs no module binding -- template enrolment IS its binding -- so it is executable and unenrolled, which are different facts.\n\n  SIX carry an executed RED from cadence run 30126573464 on 2026-07-25 and had their bindings REVOKED for it (falsifier_self_host_wet_module_bindings_revocation_note names exactly six). They are the ExecutionWitnessKind known_red rows on gunbc.explicit_witness_admission.\n\n  TEN have no binding, no cadence run and no recorded verdict in either direction. Their standing is UNKNOWN, NOT RED. An earlier revision of the proposal document read the revocation note -- which names six -- as covering the whole unenrolled remainder of sixteen and derived a bound from it; that is authority substitution, caught by review 56141 on gunbc#9306.\n\nBindingRevokedOnMeasuredRed and BindingNeverEstablished are that distinction made structural. A single unavailable arm would re-collapse it, and a Boolean never had it at all."
+// THE CONCRETE POPULATION THIS TYPE EXISTS FOR, without which the type reads as over-modelled. The
+// 17 dag/test/claim/self_host_*_behavioral_witness_test.dag receipts are THREE causes, not one, and
+// no Boolean can say so:
+//
+//   ONE (self_host_logic) was a scheduled template row on falsifier_self_host_wet_template_entries
+//   and lost its executor when falsifier.yml was deleted at 611fd02770/#8283 on 2026-08-15. It
+//   needs no module binding -- template enrolment IS its binding -- so it is executable and
+//   unenrolled, which are different facts.
+//
+//   SIX carry an executed RED from cadence run 30126573464 on 2026-07-25 and had their bindings
+//   REVOKED for it (falsifier_self_host_wet_module_bindings_revocation_note names exactly six).
+//   They are the ExecutionWitnessKind known_red rows on gunbc.explicit_witness_admission.
+//
+//   TEN have no binding, no cadence run and no recorded verdict in either direction. Their standing
+//   is UNKNOWN, NOT RED. An earlier revision of the proposal document read the revocation note --
+//   which names six -- as covering the whole unenrolled remainder of sixteen and derived a bound
+//   from it; that is authority substitution, caught by review 56141 on gunbc#9306.
+//
+// BindingRevokedOnMeasuredRed and BindingNeverEstablished make that distinction structural. A
+// single unavailable arm would re-collapse it, and a Boolean never had it at all.
 
 type WetReceiptIdentity {
   entry: String
@@ -48,7 +83,7 @@ type WetReceiptUnavailableCause
 // receipts name a repo-relative witness_main.rs; the logic receipt's driver is an inline source
 // constant in its own transport module. Both are drivers; only one has a path. Writing the symbol
 // into a path-shaped String would be a positional/symbolic conflation in one field, so the two
-// carriers are variants -- which is the operator's `driver` field decomposed, not widened.
+// carriers are variants -- the operator's `driver` field decomposed, not widened.
 type WetReceiptDriver
   = DriverFile { path: String }
   | DriverInlineSource { citation: String }
@@ -108,8 +143,8 @@ fn wet_receipt_unavailable_cause(receipt: WetReceiptIdentity) -> WetReceiptUnava
 
 // A MODULE ROW'S STANDING IS DERIVED, not authored. Every input has exactly one home: the driver and
 // pass marker come from the transport roster, the fault marker from the harness's own stem function,
-// and binding presence from find_wet_receipt_binding. Nothing here is a second copy of a fact that
-// lives elsewhere, so this authority cannot drift from the mechanism it describes.
+// and binding presence from find_wet_receipt_binding. Nothing here is a second copy of a fact living
+// elsewhere, so this authority cannot drift from the mechanism it describes.
 fn wet_receipt_module_row_standing(
   receipt: WetReceiptIdentity,
   module_path: String
@@ -300,11 +335,11 @@ fn wet_receipt_standing_receipt(standing: WetReceiptRouteStanding) -> WetReceipt
   }
 }
 
-// THE MARKER DERIVATION IS ASKABLE WITHOUT A BINDING, and it has to be. expected_fault_marker is
+// THE MARKER DERIVATION IS ASKABLE WITHOUT A BINDING, and has to be. expected_fault_marker is
 // carried only on the Executable arm, so with the binding roster empty no row exposes one and the
-// derivation would be untestable at exactly the moment it most needs a control. The question "what
-// marker would this module's driver print on the fault path" is a property of the transport, not of
-// the enrolment, so it is answerable for all sixteen module rows today.
+// derivation would be untestable exactly when it most needs a control. "What marker would this
+// module's driver print on the fault path" is a property of the transport, not the enrolment, so
+// it is answerable for all sixteen module rows today.
 fn wet_receipt_expected_fault_marker_for_module(module_path: String) -> String {
   match module_behavioral_transport_config_for(module_path: module_path) {
     Absent => ""

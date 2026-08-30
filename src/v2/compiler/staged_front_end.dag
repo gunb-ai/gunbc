@@ -29,9 +29,23 @@ import v2.std.diagnostic {
 }
 import v2.std.node { Node, Symbol, node_subtree_count }
 
-data staged_front_end_note: String = "One authority for the .dag front-end ORDER, two projections. The order tokenize -> parse -> normalize -> resolve was spelled once inside ingested_resolved_module_from_source as a nest of bind_outcome, which returns one Outcome<Node> for the whole front end and therefore cannot say WHICH stage a candidate died at. The acceptance harness needs exactly that fact per candidate, and re-inlining the four calls beside the existing arrow would have been a second copy of the order — the section-3 nickname class, and one that drifts silently because nothing makes the two copies disagree loudly. So the order moved HERE and both consumers project from it: front_end_run_outcome folds the staged run back to the Outcome<Node> the old arrow returned, and the acceptance harness reads the per-stage steps."
+// One authority for the .dag front-end ORDER, two projections. The order tokenize -> parse ->
+// normalize -> resolve was spelled once inside ingested_resolved_module_from_source as a nest of
+// bind_outcome, which returns one Outcome<Node> for the whole front end and therefore cannot say
+// WHICH stage a candidate died at. The acceptance harness needs exactly that fact per candidate,
+// and re-inlining the four calls beside the existing arrow would have been a second copy of the
+// order — the section-3 nickname class, and one that drifts silently because nothing makes the two
+// copies disagree loudly. So the order moved HERE and both consumers project from it:
+// front_end_run_outcome folds the staged run back to the Outcome<Node> the old arrow returned, and
+// the acceptance harness reads the per-stage steps.
 
-data staged_front_end_projection_fidelity_note: String = "The projection is a FOLD OF THE STAGED RESULT AND NOTHING ELSE — it never re-runs a stage, so it cannot disagree with the steps it reports. It reproduces bind_outcome's diagnostic threading exactly, which is the whole of the behavior it must preserve: accepted-stage diagnostics accumulate in stage order (diagnostics_merge), and a refusal carries the accumulated pending diagnostics ahead of its own (rejected_with_pending) — the two moves bind_outcome_accepted makes. A projection that dropped accepted-stage diagnostics would be silently lossy for every existing caller while still typechecking."
+// The projection is a FOLD OF THE STAGED RESULT AND NOTHING ELSE — it never re-runs a stage, so it
+// cannot disagree with the steps it reports. It reproduces bind_outcome's diagnostic threading
+// exactly, which is the whole of the behavior it must preserve: accepted-stage diagnostics
+// accumulate in stage order (diagnostics_merge), and a refusal carries the accumulated pending
+// diagnostics ahead of its own (rejected_with_pending) — the two moves bind_outcome_accepted makes.
+// A projection that dropped accepted-stage diagnostics would be silently lossy for every existing
+// caller while still typechecking.
 
 type FrontEndStage
   = FrontEndTokenize
@@ -66,7 +80,13 @@ type FrontEndRun {
   completion: FrontEndCompletion
 }
 
-data front_end_bound_note: String = "A BOUNDED RUN IS A THIRD COMPLETION, NOT AN ABSENT NODE. run_front_end_to stops after the deepest stage its caller actually needs — the acceptance harness asks for exactly the depth its contract requires, so a contract requiring only tokenize never pays for resolve. Rendering that stop as 'no resolved node' would make it indistinguishable from a refusal at the last stage, which is the empty-observation narrow DESIGN section 5 names: an observation that could not express what happened read as the verdict that nothing happened. So the completion says WHICH stage the bound stopped at, and the whole-front-end projection refuses over it rather than answering."
+// A BOUNDED RUN IS A THIRD COMPLETION, NOT AN ABSENT NODE. run_front_end_to stops after the deepest
+// stage its caller actually needs — the acceptance harness asks for exactly the depth its contract
+// requires, so a contract requiring only tokenize never pays for resolve. Rendering that stop as
+// 'no resolved node' would make it indistinguishable from a refusal at the last stage, which is the
+// empty-observation narrow DESIGN section 5 names: an observation that could not express what
+// happened read as the verdict that nothing happened. So the completion says WHICH stage the bound
+// stopped at, and the whole-front-end projection refuses over it rather than answering.
 
 fn front_end_stage_index(stage: FrontEndStage) -> Int {
   match stage {
@@ -294,7 +314,11 @@ fn front_end_run_outcome(run: FrontEndRun) -> Outcome<Node> {
   }
 }
 
-data front_end_incomplete_note: String = "The no-refusal-and-no-resolved arm is unreachable by construction: run_front_end reaches FrontEndRun with Present resolved only through front_end_resolve_step's Accepted arm, and every other exit appends a FrontEndStageRejected. It refuses with a typed, located diagnostic rather than fabricating an Accepted over a node it does not have — an unreachable arm refuses, never fabricates (DESIGN section 5)."
+// The no-refusal-and-no-resolved arm is unreachable by construction: run_front_end reaches
+// FrontEndRun with Present resolved only through front_end_resolve_step's Accepted arm, and every
+// other exit appends a FrontEndStageRejected. It refuses with a typed, located diagnostic rather
+// than fabricating an Accepted over a node it does not have — an unreachable arm refuses, never
+// fabricates (DESIGN section 5).
 
 fn front_end_bound_reason(stage: FrontEndStage) -> Symbol {
   match stage {

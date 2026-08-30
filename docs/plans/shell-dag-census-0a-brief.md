@@ -1,6 +1,6 @@
 # SHELL-DAG-CENSUS-0A — dispatch brief (derived shell execution census)
 
-Status: dispatch brief for the next shell→dag cut. Authored 2026-08-20 against `4cec10f6`, corrected twice before dispatch (see "Corrections that produced this brief" at the end). Not a design authority — the carriers it describes become the authority when they land.
+Status: dispatch brief for the next shell→dag cut. Authored 2026-08-20 against `4cec10f6`, corrected twice before dispatch (see "Corrections that produced this brief"). Not a design authority — the carriers it describes become the authority when they land.
 
 # Revised call
 
@@ -11,7 +11,7 @@ The 0A contract changes in four material ways:
 3. **The argv representation-ambiguity repair is removed from scope.** #8549 already closed it at the seam.
 4. **Instrument validity includes formatting, subject identity, exact-token discrimination, and message integrity—not merely detector-logic mutations.**
 
-The dispatch precondition remains unmet. `main` is still `4cec10f66a3d84cbde631e20ca9feaa31457d88c`; #8652 remains open, while #8653 is closed unmerged. Since your message, #8652’s body has been updated to claim that a clean two-generation fixed-point protocol was run, but its CI checkbox remains open and the repair is not on `main`. The prerequisite is therefore unchanged: the merged `main` SHA itself must pass required regen, fixed point, and the full witnesses workflow. fileciteturn121file0L1-L7 fileciteturn114file0L4-L13 fileciteturn115file0L4-L13
+The dispatch precondition remains unmet. `main` is still `4cec10f66a3d84cbde631e20ca9feaa31457d88c`; #8652 remains open, #8653 is closed unmerged. Since your message, #8652’s body claims a clean two-generation fixed-point protocol was run, but its CI checkbox remains open and the repair is not on `main`. The prerequisite is unchanged: the merged `main` SHA itself must pass required regen, fixed point, and the full witnesses workflow. fileciteturn121file0L1-L7 fileciteturn114file0L4-L13 fileciteturn115file0L4-L13
 
 # The corrected historical calibration
 
@@ -44,7 +44,7 @@ gunbc.host_effect_realize.realize_converge_on_host
   -> retained script execution
 ```
 
-The number `36` must **not** be compiled into the detector as its expected current population. Instead, 0A must run the completed detector against a worktree pinned to that exact SHA and produce a dated calibration receipt. It must separately run against its own branch head and publish the current population.
+The number `36` must **not** be compiled into the detector as its expected current population. 0A must run the completed detector against a worktree pinned to that exact SHA and produce a dated calibration receipt, and separately run against its own branch head and publish the current population.
 
 A disagreement has this disposition:
 
@@ -55,15 +55,13 @@ HistoricalCalibrationDisagrees {
 }
 ```
 
-It is neither “the detector is wrong” nor “update the expected count.” It stops acceptance until the discrepancy is explained.
+It is neither “the detector is wrong” nor “update the expected count”; it stops acceptance until the discrepancy is explained.
 
-The omitted Codex arm is now an explicit control. Its `EmitArtifactThenThinRun` branch returns `CodexSupervisedSessionApplyRefused`, but only a body read establishes that it performs no execution. The return variant’s name is not the evidence. fileciteturn120file0L2-L7
+The omitted Codex arm is now an explicit control. Its `EmitArtifactThenThinRun` branch returns `CodexSupervisedSessionApplyRefused`, but only a body read establishes that it performs no execution; the return variant’s name is not the evidence. fileciteturn120file0L2-L7
 
 # Evidence grain is part of every fact
 
-The prior brief used “reach” too loosely. Given the current refinement and coproduct construction gaps, 0A must not imply that a statically visible route is a successfully executable runtime route.
-
-I would rename the central result from:
+The prior brief used “reach” too loosely. Given the current refinement and coproduct construction gaps, 0A must not imply that a statically visible route is a successfully executable runtime route. Rename the central result from:
 
 ```text
 MayReachShell
@@ -145,15 +143,15 @@ Most 0A rows should carry:
 runtime_shape = RuntimeShapeUnobserved
 ```
 
-That is not a defect in 0A. It is an honest statement of its static grain.
+That is not a defect in 0A; it is an honest statement of its static grain.
 
-The sharp-ant `258 operations / five declared argv shapes` measurement can be retained as a **declared-type side receipt**, but it is not an 0A acceptance condition and cannot establish that a runtime `Value` is a list, string, or `ProcessArgvExpansion`.
+The sharp-ant `258 operations / five declared argv shapes` measurement may be retained as a **declared-type side receipt**, but it is not an 0A acceptance condition and cannot establish that a runtime `Value` is a list, string, or `ProcessArgvExpansion`.
 
 # Class 1 is struck completely
 
 The reissued brief must contain no work item to repair `push_shell_argv_tokens`’ former list-versus-concatenated-string ambiguity.
 
-#8549 already changed that position to refuse with a typed, located diagnostic when the same free monoid admits both readings. It preserved native list expansion, codepoint-monoid decoding, and the explicit `ProcessArgvExpansion` route. That is a completed prerequisite, not remaining SHELL-DAG work. fileciteturn119file0L4-L14
+#8549 already made that position refuse with a typed, located diagnostic when the same free monoid admits both readings, preserving native list expansion, codepoint-monoid decoding, and the explicit `ProcessArgvExpansion` route. A completed prerequisite, not remaining SHELL-DAG work. fileciteturn119file0L4-L14
 
 For 0A, direct argv execution is simply a negative discrimination control:
 
@@ -163,11 +161,11 @@ shell.Exec.RunArgv
     -> NOT a POSIX/Bash program sink
 ```
 
-A malformed or unexpected runtime representation may cause a refusal. It does not transform direct process execution into shell interpretation.
+A malformed or unexpected runtime representation may cause a refusal; it does not turn direct process execution into shell interpretation.
 
 # Instrument robustness contract
 
-The five failures you identified should become five independent controls. They are not one generic “bad grep” class because each has a different remedy.
+The five failures you identified become five independent controls — not one generic “bad grep” class, because each has a different remedy.
 
 | Failure observed | Required 0A control |
 |---|---|
@@ -193,9 +191,9 @@ variant-name patterns
 comment or prose matching
 ```
 
-A text search may be used during development to locate candidates. It may not produce the committed census.
+A text search may locate candidates during development; it may not produce the committed census.
 
-If current body projections cannot preserve callee identity, branch identity, and argument edges, the worker must stop and open a separate substrate projection increment. It must not fill the gap with a source-text approximation.
+If current body projections cannot preserve callee identity, branch identity, and argument edges, the worker must stop and open a separate substrate projection increment, never fill the gap with a source-text approximation.
 
 ## 2. Format-equivalence fixture
 
@@ -270,7 +268,7 @@ shell_producer_facts()
 
 or their shared selection predicate.
 
-The historical `36/1` audit is a second, human-produced orthogonal calibration. Its earlier `24` error demonstrates why it cannot be the authority, but the corrected measurement remains useful as an independent comparison.
+The historical `36/1` audit is a second, human-produced orthogonal calibration. Its earlier `24` error shows why it cannot be the authority; the corrected measurement remains useful as an independent comparison.
 
 ## 5. Exact identity, never token substrings
 
@@ -323,9 +321,9 @@ reported digest == content digest of artifact
 reported subject == requested subject
 ```
 
-The PR body may quote that artifact. It must not be the only home of the result.
+The PR body may quote that artifact but must not be the result's only home.
 
-No command should place report text containing backticks, dollar signs, braces, or shell metacharacters inside an interpolated shell string. The artifact path—not its content—is the handoff.
+No command may place report text containing backticks, dollar signs, braces, or shell metacharacters inside an interpolated shell string. The artifact path—not its content—is the handoff.
 
 # Revised result types
 
@@ -669,19 +667,19 @@ The strongest honest conclusion from 0A is:
 
 ## Corrections that produced this brief
 
-Recorded because each one falsified an input the brief had already been written against, and a reader who finds only the final text will re-derive them.
+Recorded because each falsified an input the brief had already been written against, and a reader who finds only the final text would re-derive them.
 
-1. **The acceptance oracle was wrong.** An earlier revision required the detector to reconcile against a manual 24-arm `EmitArtifactThenThinRun` audit. Measuring that audit in order to pin it falsified it: at `4cec10f66a3d84cbde631e20ca9feaa31457d88c` the tree carries 41 occurrences — 1 variant declaration, **36 production match arms across 14 modules**, 4 under `dag/test/claim/`. Neither of the two manual audits reached 36, and neither named `gunbc.host_effect_codex_supervised_turn`. The conclusion was unaffected — exactly one arm realizes — but had 24 been pinned as the oracle, the first *correct* detector would have reported 36 and the reconciliation step would have read as a detector bug. Hence `HistoricalCalibrationDisagrees` stops acceptance for investigation rather than indicting either side.
+1. **The acceptance oracle was wrong.** An earlier revision required the detector to reconcile against a manual 24-arm `EmitArtifactThenThinRun` audit. Measuring that audit in order to pin it falsified it: at `4cec10f66a3d84cbde631e20ca9feaa31457d88c` the tree carries 41 occurrences — 1 variant declaration, **36 production match arms across 14 modules**, 4 under `dag/test/claim/`. Neither manual audit reached 36, and neither named `gunbc.host_effect_codex_supervised_turn`. The conclusion was unaffected — exactly one arm realizes — but with 24 pinned as the oracle, the first *correct* detector would have reported 36 and the reconciliation step would have read as a detector bug. Hence `HistoricalCalibrationDisagrees` stops acceptance for investigation rather than indicting either side.
 
-2. **Declared types constrain less than the brief assumed.** The argv reachability probe found 258 shell-transport operations whose argv elements resolve to five shapes, none typed `Map`, `Set`, `Record` or nullable. That is a *declared-type* result, and declared types are not construction-enforced here: 3939 `WhereRefinementUnenforced` across 612 files, and separately any coproduct in this tree can be constructed by naming the type with no variant tag, refused only at runtime by the interpreter. Hence the `EvidenceGrain` vocabulary, and hence the rule that the detector may not prune a route because a declaration says `List<String>`.
+2. **Declared types constrain less than the brief assumed.** The argv reachability probe found 258 shell-transport operations whose argv elements resolve to five shapes, none typed `Map`, `Set`, `Record` or nullable. That is a *declared-type* result, and declared types are not construction-enforced here: 3939 `WhereRefinementUnenforced` across 612 files, and separately any coproduct in this tree can be constructed by naming the type with no variant tag, refused only at runtime by the interpreter. Hence the `EvidenceGrain` vocabulary and the rule that the detector may not prune a route because a declaration says `List<String>`.
 
-3. **A scoped repair was already closed.** The brief's original Class 1 item — the argv representation ambiguity — was closed on main before dispatch, by the same lane that was about to be assigned it. It survives only as a negative control.
+3. **A scoped repair was already closed.** The brief's original Class 1 item — the argv representation ambiguity — was closed on main before dispatch, by the lane about to be assigned it. It survives only as a negative control.
 
-4. **Prior art exists with the exact blind spot this census is built to avoid.** `v2.lens.effect_reach` classifies host-effect sinks and carries a `ShellExecRunSink` variant, but `sink_kind_for_callee` selects by name equality against a remembered callee-text list, everything else falling to `UnknownHostEffectSink`. It therefore cannot see `sh -c`, `sh -s` on stdin, or a `sudo -S sh -s` wrapper — the same hole the hand census carried before `gunbc.spark.managed_access_apply` was found. Disposition is **supersede, not extend**: extending it inherits its selection principle.
+4. **Prior art exists with the exact blind spot this census is built to avoid.** `v2.lens.effect_reach` classifies host-effect sinks and carries a `ShellExecRunSink` variant, but `sink_kind_for_callee` selects by name equality against a remembered callee-text list, everything else falling to `UnknownHostEffectSink`. It therefore cannot see `sh -c`, `sh -s` on stdin, or a `sudo -S sh -s` wrapper — the hole the hand census carried before `gunbc.spark.managed_access_apply` was found. Disposition: **supersede, not extend** — extending inherits its selection principle.
 
 ## Where the instrument controls came from
 
-The seven controls are not theorized. Each is a failure that actually occurred while producing this brief, and they are **not one class**:
+The seven controls are not theorized: each is a failure that occurred while producing this brief, and they are **not one class**:
 
 | control | the failure it encodes |
 | --- | --- |
@@ -693,4 +691,4 @@ The seven controls are not theorized. Each is a failure that actually occurred w
 | orthogonal anchor | every one of the above was caught only because an observation existed that did not come through the instrument |
 | same-run dirty partition | a zero is admissible only when something non-zero is proven visible in the same run |
 
-The generalization, which is the reason a zero production count is inadmissible unless all seven hold: **when a scan returns zero, the first hypothesis is the scan.**
+The generalization, and why a zero production count is inadmissible unless all seven hold: **when a scan returns zero, the first hypothesis is the scan.**

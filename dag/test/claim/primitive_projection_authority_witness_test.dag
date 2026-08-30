@@ -46,7 +46,12 @@ import std.primitive_identity {
 }
 import std.types { Bool, List, String }
 
-data primitive_projection_authority_witness_note: String = "Executes the question a candidate collector asks of this carrier: given a DECLARATION, is it the modeled surface of a PRIMITIVE, and are the two one authority or two. The discriminating control is the DivergentProjection row -- v2.std.collection map_get -- which must answer NOT one authority while the seam and modeled rows answer that they are. A carrier that collapsed the three fidelities into a boolean suppress flag reds w_divergent_projection_is_not_one_authority, which is the whole reason the third variant exists."
+// Executes the question a candidate collector asks of this carrier: given a DECLARATION, is it the
+// modeled surface of a PRIMITIVE, and are the two one authority or two. The discriminating control
+// is the DivergentProjection row -- v2.std.collection map_get -- which must answer NOT one
+// authority while the seam and modeled rows answer that they are. A carrier that collapsed the
+// three fidelities into a boolean suppress flag reds w_divergent_projection_is_not_one_authority,
+// which is the whole reason the third variant exists.
 
 fn projection_declaration(module_path: String, decl_name: String) -> DeclarationRef {
   decl_ref(module_path: module_path, decl_name: decl_name)
@@ -246,7 +251,12 @@ test fn w_every_census_symbol_lands_in_exactly_one_disposition_arm() -> Bool {
     && primitive_surface_distinct_symbol_count() > 0
 }
 
-data primitive_runtime_coverage_witness_note: String = "The opposite direction from the projection query, and it catches the class the projection query is blind to by construction: a symbol registered on the typecheck surface with no row on any runtime-bearing surface. The three planted controls are a controlled fixture -- the population and the expected answer are authored here, not copied from the tree -- so the detector is exercised in all three arms rather than only in whichever arm the live corpus happens to occupy today."
+// The opposite direction from the projection query, and it catches the class the projection query
+// is blind to by construction: a symbol registered on the typecheck surface with no row on any
+// runtime-bearing surface. The three planted controls are a controlled fixture -- the population
+// and the expected answer are authored here, not copied from the tree -- so the detector is
+// exercised in all three arms rather than only in whichever arm the live corpus happens to occupy
+// today.
 
 fn planted_registry_row(authority: PrimitiveSurfaceAuthority, sym: String) -> PrimitiveSurfaceRow {
   surface_row(

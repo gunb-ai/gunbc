@@ -30,7 +30,17 @@ import v2.std.text { String }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-data produced_decl_support_preserved_note: String = "Regression control for a defect the mechanical field addition introduced and the green corpus could not show: augmenters reconstruct a TargetModel field-by-field, and the inserted produced_decl_support was reset to ProducedDeclUnwired rather than copied from the source. With every target unwired the reset is a no-op, so nothing reds; the moment a target is WIRED an ordinary augmentation silently erases its rendering capability. Preservation is proven by EXECUTING the surviving rendering rows through the shared fold on a real declaration, not by comparing them: the rows are now data and would compare, but a comparison would prove only that bytes survived, while the defect this controls is the loss of a working rendering. Both augmenters are driven with NONEMPTY input deliberately: each returns its argument unchanged on empty input, so an empty-input control would pass without ever reaching the reconstruction that carries the defect."
+// Regression control for a defect the mechanical field addition introduced and the green corpus
+// could not show: augmenters reconstruct a TargetModel field-by-field, and the inserted
+// produced_decl_support was reset to ProducedDeclUnwired rather than copied from the source. With
+// every target unwired the reset is a no-op, so nothing reds; the moment a target is WIRED an
+// ordinary augmentation silently erases its rendering capability. Preservation is proven by
+// EXECUTING the surviving rendering rows through the shared fold on a real declaration, not by
+// comparing them: the rows are now data and would compare, but a comparison would prove only that
+// bytes survived, while the defect this controls is the loss of a working rendering. Both
+// augmenters are driven with NONEMPTY input deliberately: each returns its argument unchanged on
+// empty input, so an empty-input control would pass without ever reaching the reconstruction that
+// carries the defect.
 
 fn pdp_marker_token_class() -> Symbol {
   ^pdp_renderer_executed_marker

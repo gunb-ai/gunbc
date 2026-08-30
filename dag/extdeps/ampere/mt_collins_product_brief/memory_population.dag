@@ -102,7 +102,12 @@ data mt_collins_population_32_dimms_completion: MtCollinsPopulationCorrection = 
   basis: "Tables 12-13 of the same document populate all sixteen connectors per socket in the full configuration - #17..#32 for socket 1, J32 included - so the printed omission of J32 in Table 11 reads as a printing defect, not a population rule. This completion is gunbc's inference from in-document evidence, not an upstream statement.",
 }
 
-data population_constraint_note: String = "Table 10 constraint carried with the rows: supported channel counts per socket are 1, 2, 4, 6, and 8 - the population sequences above are the only supported shapes, not a fill-in-any-order suggestion. DIMMs on all populated channels of one socket must be identically sized; socket 0 and socket 1 may differ from each other. Max data rate at these populations is the platform row's DDR4-3200; the guide states the sequences without per-population data-rate derating, so any 2DPC downclock is unstated by this source rather than absent."
+// Table 10 constraint carried with the rows: supported channel counts per socket are 1, 2, 4, 6,
+// and 8 - the population sequences above are the only supported shapes, not a fill-in-any-order
+// suggestion. DIMMs on all populated channels of one socket must be identically sized; socket 0 and
+// socket 1 may differ from each other. Max data rate at these populations is the platform row's
+// DDR4-3200; the guide states the sequences without per-population data-rate derating, so any 2DPC
+// downclock is unstated by this source rather than absent.
 
 data mt_collins_memory_population_model_scope: ExternalModelScope = ExternalModelScope {
   subject: ExternalSubjectRef {

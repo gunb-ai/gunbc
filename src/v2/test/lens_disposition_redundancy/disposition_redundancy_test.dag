@@ -139,7 +139,17 @@ data redundancy_region_budget_marks: List<Disposition> = [
   gunbc_ci_concurrent_runs_conservative_high_disposition
 ]
 
-data redundancy_region_budget_split_note: String = "The budget region tracked ONE fixed-overhead scaffold bound to gunbc_ci_per_service_overhead until 2026-08-05, when that number split into a measured bound for the managed hosts and an operator allowance for the legacy pair (gunbc.ci_floor_measurement gunbc_ci_host_fixed_overhead_kind_note). Two facts, two closure conditions, two successors — so the region carries both marks and the locator below names the MANAGED successor specifically.\n\nThat specificity is the point of the control rather than an accident of which one was picked: with both marks in the region and only one successor present, a lens that ignored the bind and merely counted scaffolds would report 2 and fail. The expectation stays 1, so the test still discriminates bind-matching from mark-counting — which is the property the original single-mark version could not distinguish."
+// The budget region tracked ONE fixed-overhead scaffold bound to gunbc_ci_per_service_overhead
+// until 2026-08-05, when that number split into a measured bound for the managed hosts and an
+// operator allowance for the legacy pair (gunbc.ci_floor_measurement
+// gunbc_ci_host_fixed_overhead_kind_note). Two facts, two closure conditions, two successors — so
+// the region carries both marks and the locator below names the MANAGED successor specifically.
+//
+// That specificity is the point of the control rather than an accident of which one was picked:
+// with both marks in the region and only one successor present, a lens that ignored the bind and
+// merely counted scaffolds would report 2 and fail. The expectation stays 1, so the test still
+// discriminates bind-matching from mark-counting — which is the property the original single-mark
+// version could not distinguish.
 
 data redundancy_region_budget_per_service_overhead_locator: DeclarationRef = DeclarationRef {
   module_path: "gunbc.ci_floor_measurement",

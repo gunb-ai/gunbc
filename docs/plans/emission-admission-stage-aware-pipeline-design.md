@@ -8,8 +8,8 @@
 >
 > No roadmap acceptance and no promotion authority derives from this document.
 
-*(This replaces the rough-draft banner that recorded the nine corrections as outstanding. They
-are no longer outstanding; the document is no longer a rough draft; it is also not signed.)*
+*(Replaces the rough-draft banner that recorded the nine corrections as outstanding. They are
+applied; the document is no longer a rough draft; it is also not signed.)*
 
 **Status:** design-only (model-before-implement). This document is the deliverable for
 work item `node://adhoc-48a1f19c-1f8` (session calm-eagle-92). No load-bearing `.dag`
@@ -18,21 +18,20 @@ separately-signed PR.
 
 **Revision 2026-08-02 (session proud-fox-809, operator correction relayed via still-bat-561).**
 [#7681](https://github.com/gunb-ai/gunbc/pull/7681) merged before its review completed, so the
-first revision is a **merged rough draft**, not an accepted design. It is not reverted — it is
+first revision is a **merged rough draft**, not an accepted design. Not reverted — it is
 document-only and no promoted generation depends on it. This revision applies nine operator
-corrections; §12 records what each one supersedes. The single largest one, stated as the
-operator stated it:
+corrections; §12 records what each supersedes. The largest, as the operator stated it:
 
 > **Not:** a candidate carries a `FixForwardProof`.
 > **But:** the actual `DeclaredTransition` derives exact **transition exercises**, whose stage
 > and behavior receipts establish successor capability, under an explicit **BootstrapGenesis**
 > and a retained anchor with a named **`NoTrustedFixForwardPath`** failure state.
 
-Parent context: v1-deletion / self-host lane (`still-bat-561`). The operator framing:
-self-host must not collapse to one boolean fixed-point check. Each compiler stage needs
-durable provenance — implementation, inputs, outputs, refusal, seed fallback, and named
-consumers — and emission must **fail fast per stage** with a typed, located reason rather
-than deferring classification to review or a corpus-wide rerun.
+Parent context: v1-deletion / self-host lane (`still-bat-561`). Operator framing: self-host
+must not collapse to one boolean fixed-point check. Each compiler stage needs durable
+provenance — implementation, inputs, outputs, refusal, seed fallback, named consumers — and
+emission must **fail fast per stage** with a typed, located reason, never deferring
+classification to review or a corpus-wide rerun.
 
 **Downstream:** [#7683](https://github.com/gunb-ai/gunbc/pull/7683) builds on this design;
 correcting this note is on the critical path for that lane.
@@ -91,9 +90,9 @@ Related: [five-minute-ci-gate-design.md](five-minute-ci-gate-design.md)
 
 ## 2. DFS — existing machinery (reuse, do not fork)
 
-Apply DESIGN §2 before proposing vocabulary: the concept DAG already carries most of the
-stage/provenance spine. **§3 names the genuinely new obligations**; everything below is
-live on main and should be cited, extended, or joined — not re-invented.
+Per DESIGN §2, the concept DAG already carries most of the stage/provenance spine. **§3 names
+the genuinely new obligations**; everything below is live on main — cite, extend, or join it,
+never re-invent.
 
 ### 2.1 Producer × qualification provenance (live)
 
@@ -152,15 +151,15 @@ generation can build the *changed* successor (not merely reproduce the old one).
 
 ## 3. New design obligations
 
-Everything in §2 is reuse. **These are the genuinely new concepts** — detecting unexpected
-output movement alone is insufficient; the design must answer whether the last accepted
-compiler can understand and validate the changed requirements needed to build the repair.
+§2 is reuse. **These are the genuinely new concepts** — detecting unexpected output movement
+is insufficient; the design must answer whether the last accepted compiler can understand and
+validate the changed requirements needed to build the repair.
 
 ### 3.1 Two revision identities — requirement and validation
 
 **Correction 5.** The first revision folded the witness roster into `RequirementRevision`,
-which made enrolling a single witness a requirement bump demanding a declared transition.
-That is not the intent and would price enrollment out of existence. The two facts separate:
+making a single witness enrollment a requirement bump demanding a declared transition — not
+the intent, and it would price enrollment out of existence. The two facts separate:
 
 ```
 RequirementRevision { semantic_contract_digest, stage_contract_digest, artifact_contract_digest }
@@ -183,16 +182,16 @@ ValidationRevision  { witness_roster_digest, validator_contract_digest }
 - Every `DeclaredTransition`, candidate, and accepted generation names **both** revisions it
   was evaluated against. Comparing artifacts across different requirement revision IDs without
   an explicit `BridgeGeneration` protocol is `RefusedRevisionMismatch`.
-- Neither identity is a stored transcribable field where it can be derived from content;
-  a derived identity makes a forged one unrepresentable rather than merely refused
-  (DESIGN §4b — construction over validation).
+- Neither identity is a stored transcribable field where it can be derived from content; a
+  derived identity makes a forged one unrepresentable, not merely refused (DESIGN §4b —
+  construction over validation).
 
 ### 3.2 Requirement delta and declared transition
 
 **Correction 1 (first half).** A transition does not merely list surfaces that may move — it
-names, in typed form, **what about the requirement contract changed**. That typed list is what
-§3.8's exercises are derived from, and it is the reason a synthesized proof subject is
-unrepresentable rather than merely discouraged.
+names, in typed form, **what about the requirement contract changed**. §3.8's exercises derive
+from that typed list, which is why a synthesized proof subject is unrepresentable rather than
+merely discouraged.
 
 ```
 RequirementDelta
@@ -215,10 +214,9 @@ DeclaredTransition {
 ```
 
 `TransitionEvidence` carries a **required machine leg** (the affected-set projection) and an
-**optional** operator declaration. It is a record, not a coproduct, and the distinction is the
-whole of §9 Q1: a coproduct would let an operator declaration stand *where* the machine
-evidence is missing, which is precisely the override Q1 forbids. A refused selection refuses
-the transition no matter what the operator wrote.
+**optional** operator declaration. It is a record, not a coproduct — the whole of §9 Q1: a
+coproduct would let an operator declaration stand *where* machine evidence is missing, precisely
+the override Q1 forbids. A refused selection refuses the transition whatever the operator wrote.
 
 **Law:** a candidate at the target revision is inadmissible without a `DeclaredTransition`
 from the currently accepted generation's revision. Human-authored declarations are **inputs**
@@ -226,10 +224,10 @@ to admission, never overrides of missing evidence.
 
 ### 3.3 Declared-change vs regression (within one revision)
 
-**Scope, narrowed (correction 8).** This section is stated **within one requirement revision,
-under one accepted genesis**. It classifies candidate and audit dispositions; it carries **no
-promotion authority** and does not reach across revisions. That narrowing is what lets stage 2
-land before the lineage stages — see §10.
+**Scope, narrowed (correction 8).** Stated **within one requirement revision, under one
+accepted genesis**: it classifies candidate and audit dispositions, carries **no promotion
+authority**, and does not reach across revisions. That narrowing lets stage 2 land before the
+lineage stages — see §10.
 
 Within a single requirement revision, admission classifies emission deltas:
 
@@ -248,10 +246,10 @@ if bytes happen to match a prior generation.
 ### 3.4 Accepted generation — genesis and successor
 
 **Correction 2.** The first revision stated every law relative to an existing
-`PromotedGeneration` and never said how the first one exists. That is not a footnote: the
-available wrong answer — authoring a row declaring the current tree `Promoted` — is exactly
-the self-promotion this section forbids, performed by hand instead of by a candidate. So
-generation zero gets a **structurally distinct constructor**:
+`PromotedGeneration` and never said how the first one exists. Not a footnote: the available
+wrong answer — authoring a row declaring the current tree `Promoted` — is exactly the
+self-promotion this section forbids, done by hand instead of by a candidate. So generation zero
+gets a **structurally distinct constructor**:
 
 ```
 AcceptedCompilerGeneration
@@ -271,24 +269,23 @@ GenesisAdmissionReceipt {
 ```
 
 The current **v1 committed-Rust compiler is the genesis** — *not* because it proves itself
-clean, but because it is the **explicit trust root**. The residuals it carries are declared and
-enumerated rather than argued away, and the trust boundary is stated in the receipt as an
-operator decision rather than implied by the tree's existence.
+clean, but because it is the **explicit trust root**. Its residuals are declared and enumerated,
+not argued away, and the trust boundary is stated in the receipt as an operator decision, not
+implied by the tree's existence.
 
-**Construction wall, and the reason it is the load-bearing one:** the generic
-candidate-promotion constructor **must be incapable of producing a `BootstrapGenesis`**. A
-candidate cannot become the trust root by any path through promotion; establishing a new
-genesis is always a fresh operator trust decision. This is what stops
+**Construction wall, the load-bearing one:** the generic candidate-promotion constructor
+**must be incapable of producing a `BootstrapGenesis`**. No path through promotion makes a
+candidate the trust root; a new genesis is always a fresh operator trust decision. This stops
 *declare-the-current-tree-promoted-because-we-need-a-parent*.
 
-A **candidate** is emitted and validated under candidate rules and is not authoritative for
-promotion, warm reuse, or merge admission. It **cannot be the sole authority promoting itself**
+A **candidate** is emitted and validated under candidate rules; it is not authoritative for
+promotion, warm reuse, or merge admission, and **cannot be the sole authority promoting itself**
 (§3.8's sole-validator condition).
 
 **Non-blocking path:** candidate generation through the direct Rust door (`V1SeedEmitter` /
-committed seed emit) **must not be blocked** by this design. The operator supports merging
-this design note **before** the first behavioral-module promotion; only promotion and
-authoritative admission are gated.
+committed seed emit) **must not be blocked** by this design. The operator supports merging this
+note **before** the first behavioral-module promotion; only promotion and authoritative
+admission are gated.
 
 ### 3.5 Generation lineage graph
 
@@ -313,9 +310,9 @@ ConsumerRead { consumer_id, artifact_binding, admission_verdict }
 ### 3.6 Retained recovery anchor — immutable, never referencing the future
 
 **Correction 6.** The first revision gave the anchor a `retained_until: PromotedSuccessor`
-field, naming a state that **does not exist at the moment the anchor is minted**. Such a field
-is either fabricated at construction or dishonest until something backfills it. The anchor is
-therefore immutable and carries no forward reference; its lifecycle is a separate state:
+field, naming a state that **does not exist when the anchor is minted** — fabricated at
+construction or dishonest until backfilled. The anchor is therefore immutable with no forward
+reference; its lifecycle is a separate state:
 
 ```
 RecoveryAnchor { generation: AcceptedCompilerGeneration }   // immutable, minted in AnchorRetained
@@ -331,9 +328,9 @@ RecoveryAnchorState
 - An anchor is minted in `AnchorRetained`. Only a function **consuming a valid
   successor-capability receipt** may produce `AnchorReleaseEligible`.
 - **Eligibility is not release.** Release is another explicit transition producing
-  `AnchorReleased` with its own receipt, so nothing is discharged as a side effect of a
-  candidate existing.
-- The anchor is not deleted on candidate mint. It remains the fallback that can still build the
+  `AnchorReleased` with its own receipt; nothing is discharged as a side effect of a candidate
+  existing.
+- The anchor is not deleted on candidate mint; it remains the fallback that can still build the
   prior generation's artifacts if promotion refuses.
 
 Rollback (`git checkout` an earlier commit) remains possible independently; it is **not**
@@ -342,10 +339,10 @@ the fix-forward story and does not discharge the anchor obligation.
 ### 3.7 Bridge-generation protocol (incompatible requirement changes)
 
 When `DeclaredTransition` crosses incompatible **requirement** revisions (new IR shape, new
-emitter contract, a retired or weakened requirement), a **bridge generation** mediates. Note
-what is *not* on that list after correction 5: a witness roster change moves the
-`ValidationRevision` only and needs no bridge (§3.1) — the first revision listed it here, which
-would have demanded expand-migrate-contract for enrolling a witness.
+emitter contract, a retired or weakened requirement), a **bridge generation** mediates. *Not*
+on that list after correction 5: a witness roster change moves the `ValidationRevision` only
+and needs no bridge (§3.1) — the first revision listed it here, which would have demanded
+expand-migrate-contract for enrolling a witness.
 
 ```
 BridgeGeneration {
@@ -365,12 +362,12 @@ revisions is `RefusedBridgeRequired`.
 
 **Correction 1 (second half) — `FixForwardProof` is DELETED as a free-standing concept.** In
 the first revision it was a field name and a comment: no structure, no constructor. The failure
-mode that shape invites is cheap and predictable — synthesize a fixture the anchor happens to
-fail on, watch the candidate accept it, call that fix-forward. **A fixture the anchor cannot
-build proves nothing about the requirement change that motivated the transition.**
+mode that invites is cheap — synthesize a fixture the anchor happens to fail on, watch the
+candidate accept it, call that fix-forward. **A fixture the anchor cannot build proves nothing
+about the requirement change that motivated the transition.**
 
-The replacement is not a better-specified proof field. It is that **the complete receipt IS the
-proof**, and its subject is not free:
+The replacement is not a better-specified proof field: **the complete receipt IS the proof**,
+and its subject is not free:
 
 ```
 TransitionExercise {
@@ -390,8 +387,8 @@ SuccessorCapabilityReceipt {
 ```
 
 **A `TransitionExercise` may only be derived from an actual `RequirementDelta` in the
-corresponding `DeclaredTransition`.** It is not authored beside the transition and then checked
-against it — deriving it is the only way to obtain one, so an exercise about a subject the
+corresponding `DeclaredTransition`.** It is never authored beside the transition and checked
+against it — derivation is the only way to obtain one, so an exercise about a subject the
 transition does not name has no constructor.
 
 **Admission conditions** (all required):
@@ -403,32 +400,30 @@ transition does not name has no constructor.
    compatible ones;
 5. the candidate is **not the sole validator** of its own capability.
 
-**The nuance the first revision got wrong, and which the operator supplied:** the anchor
-**need not fail** to build the exercise. For a compatible transition both generations may
-understand the changed source, and that is fine. The required fact is that the **candidate can
-produce and validate a changed successor under the new requirement revision**. *The anchor
-failing is never, by itself, positive evidence* — an anchor failure is a fact about the anchor,
-not a capability of the candidate, and the first revision's `anchor_outcome: Refused` condition
-mistook one for the other.
+**The nuance the first revision got wrong (operator-supplied):** the anchor **need not fail**
+to build the exercise. For a compatible transition both generations may understand the changed
+source. The required fact is that the **candidate can produce and validate a changed successor
+under the new requirement revision**. *The anchor failing is never, by itself, positive
+evidence* — it is a fact about the anchor, not a capability of the candidate; the first
+revision's `anchor_outcome: Refused` condition mistook one for the other.
 
 **Law:** `PromotedSuccessor` is unwritable without a `SuccessorCapabilityReceipt` satisfying
 all five conditions. Digest equality between the two generations on unchanged surfaces is
 necessary but not sufficient — it proves reproduction, not fix-forward.
 
-**Dissolve-on:** when `frontier_probe_survey` binds execution-measured digests, lineage
-edges and exercise receipts upgrade from scaffold digests to measured digests without
-changing graph shape.
+**Dissolve-on:** when `frontier_probe_survey` binds execution-measured digests, lineage edges
+and exercise receipts upgrade from scaffold to measured digests without changing graph shape.
 
 ### 3.9 Stage execution receipt — a total result, not a stamp
 
 **Correction 4.** §6.1 and the staged plan both leaned on a `StageStamp` that §3 never typed —
-and it is the carrier for this document's headline cost, which is that a stage-local failure has
-no receipt naming **which** stage failed. `RefusedStageMismatch` does not answer that: it
-catches a *mis-declaration*, not a stage's own execution outcome, and the two must not be
-allowed to substitute for one another.
+the carrier for this document's headline cost: a stage-local failure has no receipt naming
+**which** stage failed. `RefusedStageMismatch` does not answer that: it catches a
+*mis-declaration*, not a stage's own execution outcome, and the two must not substitute for one
+another.
 
 **Before minting anything: check whether `gunbc.guarantee_measurement` extends to carry this.**
-A parallel receipt beside it would be the §3 fork this document spends §2 avoiding.
+A parallel receipt beside it would be the §3 fork §2 exists to avoid.
 
 ```
 StageExecutionSubject {
@@ -444,20 +439,20 @@ StageExecutionVerdict = StageAccepted | StageRefused { … } | StageFallbackUsed
 StageExecutionReceipt { subject: StageExecutionSubject, verdict: StageExecutionVerdict, execution_identity }
 ```
 
-`StageFallbackUsed` is a first-class third arm rather than a shade of accepted: a stage that
-completed *by falling back* has not established what a stage that completed did, and collapsing
-them is the state-space conflation DESIGN §5 forbids.
+`StageFallbackUsed` is a first-class third arm, not a shade of accepted: a stage that completed
+*by falling back* has not established what a completed stage did; collapsing them is the
+state-space conflation DESIGN §5 forbids.
 
 **Law:** `StageStamp` is **only the content identity of a `StageExecutionReceipt`** — never a
 free-standing label, and never the receipt itself.
 
 ### 3.10 Generation continuity — including the state that means stop
 
-**Correction 3.** §5's retention law covers the candidate being defective: *N* stays
-authoritative, a refused candidate does not demote it, and the tree is fine. The **bricking case
-is the inverse** — the anchor is the defective generation and no candidate can establish
-successor capability — and the first revision had no state for it at all. A situation the model
-can represent while having no name for it does not read as absent; it reads as healthy.
+**Correction 3.** §5's retention law covers a defective candidate: *N* stays authoritative, a
+refused candidate does not demote it, the tree is fine. The **bricking case is the inverse** —
+the anchor is defective and no candidate can establish successor capability — and the first
+revision had no state for it. A situation the model can represent but not name does not read as
+absent; it reads as healthy.
 
 ```
 GenerationContinuityVerdict
@@ -471,9 +466,8 @@ GenerationContinuityVerdict
 `NoTrustedFixForwardPath` **authorizes none of**: candidate promotion, warm reuse, anchor
 release, old-emitter deletion, requirement contraction.
 
-Its permitted next actions are **explicit and enumerated** — and the enumeration is the point,
-because an unlisted escape is how this state would otherwise resolve itself into
-*use-the-candidate-anyway*:
+Its permitted next actions are **explicit and enumerated** — the enumeration is the point: an
+unlisted escape is how this state would otherwise resolve into *use-the-candidate-anyway*:
 
 1. revert to an earlier valid anchor;
 2. retreat the transition;
@@ -481,15 +475,15 @@ because an unlisted escape is how this state would otherwise resolve itself into
 4. repair through an external trusted toolchain or a reviewed Rust artifact;
 5. establish a new `BootstrapGenesis` under a fresh operator trust decision (§3.4).
 
-**There is no `use the candidate anyway` arm.** Note that rollback does not dissolve this
-state on its own: rolling back reaches the same defective anchor.
+**There is no `use the candidate anyway` arm.** Rollback does not dissolve this state on its
+own: rolling back reaches the same defective anchor.
 
 ### 3.11 Byte-only admission must be proved by reachability
 
 **Correction 7.** §9 Q2 permits formatting-only byte-contract artifacts to close on digest
-alone. That permission is only safe if the *formatting-only* fact is **proved**, never authored
-— an authored `formatting_only: true` is Q1's human override wearing different clothes, since
-the author who wants the digest-only path is exactly the author who would set the flag.
+alone. That is safe only if the *formatting-only* fact is **proved**, never authored — an
+authored `formatting_only: true` is Q1's human override in different clothes: the author who
+wants the digest-only path is exactly the one who would set the flag.
 
 ```
 ByteOnlyAdmissionEvidence {
@@ -501,50 +495,50 @@ ByteOnlyAdmissionEvidence {
 ```
 
 **Law: unknown reachability means semantic validation is required.** Not "assume byte-only",
-not "counted debt" — a reachability question that has not been answered has not been answered,
-and the fail-closed arm is the expensive one. **There must be no authored `formatting_only`
-anywhere in the realization.**
+not "counted debt" — an unanswered reachability question is unanswered, and the fail-closed arm
+is the expensive one. **There must be no authored `formatting_only` anywhere in the
+realization.**
 
 **Two prerequisites, measured against the live tree 2026-08-02** (while probing a G0 carrier
-since withdrawn, and independently re-verified against the carrier). They are prerequisites for
-this section's realization, not incidental notes.
+since withdrawn, and independently re-verified against the carrier). Prerequisites for this
+section's realization, not incidental notes.
 
 **(a) The existing axis is wrong, not merely absent.** `gunbc.generated_artifact`'s
 `artifact_commit_policy` assigns `CommitRequired { consumer: GitProtocol }` to
 `Stage0CrateLayoutGeneratedRsArtifact` *and* to `GitignoreArtifact` — a compiled Rust source and
-a git config file carry the identical classification, so consumer identity cannot separate
+a git config file carry identical classification, so consumer identity cannot separate
 executable from non-executable. But the diagnosis is not *a missing axis*: **the consumer of a
 generated `.rs` file is `rustc`. Git is how the file is stored.** Labelling its consumer
-`GitProtocol` conflates storage with consumption, and it is the same conflation for all four
-`Stage0*` rows — three `.dag` artifacts whose consumer is the gunbc compiler, and one `.rs`
-whose consumer is `rustc`, all filed under the protocol that merely carries them. That reframes
-the prerequisite from *invent a new fact* to **correct a fact already carried**, which is the
-cheaper and more likely repair.
+`GitProtocol` conflates storage with consumption — the same conflation for all four `Stage0*`
+rows: three `.dag` artifacts whose consumer is the gunbc compiler and one `.rs` whose consumer
+is `rustc`, all filed under the protocol that merely carries them. That reframes the
+prerequisite from *invent a new fact* to **correct a fact already carried** — the cheaper and
+more likely repair.
 
 **(b) There is no emitted-artifact-to-module join.** `GeneratedArtifact` is a closed enum of
-specific artifacts and emitted stage0 Rust as a surface is not among them
-(the generated stage0 surface is now a derived population, `gunbc.stage0_rust_source_lifecycle_scaffold`
-`derived_generated_stage0_repo_paths`, not a roster), and nothing
-today derives **which compiler module emitted a given `.rs` path** -- which is exactly why that
-derivation is the complement of the crate-layout claim rather than a module-to-path join. So an authorization minted
-for a `.dag` module cannot be checked against a `.rs` surface at all. This also constrains
-§10 stage 5: a transition exercise over an emitted `.rs` artifact has no identity join today,
-and condition 4 of §3.8 — every receipt naming the same exact artifact identities — cannot be
-satisfied for such a surface until the join exists. Stated as a prerequisite rather than
-modelled around.
+specific artifacts and emitted stage0 Rust as a surface is not among them (the generated stage0
+surface is now a derived population, `gunbc.stage0_rust_source_lifecycle_scaffold`
+`derived_generated_stage0_repo_paths`, not a roster), and nothing today derives **which
+compiler module emitted a given `.rs` path** -- exactly why that derivation is the complement of
+the crate-layout claim rather than a module-to-path join. So an authorization minted for a
+`.dag` module cannot be checked against a `.rs` surface at all. This also constrains §10 stage
+5: a transition exercise over an emitted `.rs` artifact has no identity join today, and
+condition 4 of §3.8 — every receipt naming the same exact artifact identities — cannot be
+satisfied for such a surface until the join exists. Stated as a prerequisite, not modelled
+around.
 
 ---
 
 ## 4. Fix-forward de-risk (replaces rollback-only framing)
 
 A prior briefing claimed bricking fear was handled because emitted Rust is committed and
-`rustc` builds it, so checking out an earlier commit suffices. That proves **rollback**,
-not **fix-forward**.
+`rustc` builds it, so checking out an earlier commit suffices. That proves **rollback**, not
+**fix-forward**.
 
-**The actual risk:** generation *N* can rebuild its own old source while being unable to
-understand the new source, IR, or requirement revision. The repair to a defective
-generation *N+1* may only be buildable by the defective generation itself — leaving the
-tree stuck even though `git checkout` still works.
+**The actual risk:** generation *N* can rebuild its own old source while unable to understand
+the new source, IR, or requirement revision. The repair to a defective generation *N+1* may be
+buildable only by the defective generation itself — the tree stuck even though `git checkout`
+still works.
 
 **This design's answer:**
 
@@ -562,13 +556,13 @@ tree stuck even though `git checkout` still works.
 
 **What the evidence is and is not** (operator correction, 2026-08-02): the required fact is
 that the **candidate can produce and validate a changed successor under the new requirement
-revision**. The anchor may well also understand the changed source — for a compatible
-transition that is expected and fine. **An anchor failure is never by itself positive evidence
-of candidate capability.**
+revision**. The anchor may also understand the changed source — expected and fine for a
+compatible transition. **An anchor failure is never by itself positive evidence of candidate
+capability.**
 
-Rollback remains a valid operator escape hatch via version control. This design does not
-introduce rollback machinery — it introduces **typed successor-capability validation** so
-promotion cannot proceed on reproduction alone.
+Rollback remains a valid operator escape hatch via version control. This design introduces no
+rollback machinery — it introduces **typed successor-capability validation** so promotion cannot
+proceed on reproduction alone.
 
 ---
 
@@ -601,8 +595,8 @@ PromotedSuccessor N+1                          [only if all conditions hold]
 ```
 
 **Genesis law:** generation 0 exists by a `GenesisAdmissionReceipt` naming an explicit operator
-trust boundary and its declared residuals — never by promotion, and never by a row asserting
-the state it is supposed to establish.
+trust boundary and its declared residuals — never by promotion, never by a row asserting the
+state it is supposed to establish.
 
 **Retention law:** generation *N* stays accepted and authoritative until *N+1* establishes
 successor capability. A refused candidate does not demote *N*, and eligibility for release is
@@ -644,9 +638,9 @@ Admission may consume warm receipts only for `AcceptedCompilerGeneration` bindin
 
 ### 6.2 Prelude duplication metric
 
-First slice for `phased-single-process-ci`: attribute resolve/index/discovery time per
-phase with and without stage receipts. **RED control:** if phase *N+1* repeats resolve whose
-inputs are unchanged per its receipt, count > 0 ⇒ `RefusedStaleSubstrate` or a dedicated prelude
+First slice for `phased-single-process-ci`: attribute resolve/index/discovery time per phase
+with and without stage receipts. **RED control:** if phase *N+1* repeats a resolve whose inputs
+are unchanged per its receipt, count > 0 ⇒ `RefusedStaleSubstrate` or a dedicated prelude
 duplication refusal (roadmap red_control, made executable).
 
 ---
@@ -668,11 +662,11 @@ duplication refusal (roadmap red_control, made executable).
 ## 8. Witness / RED discipline (§4b, §5)
 
 **Correction 9 — the first revision's table was wrong in kind, not merely incomplete.** It
-labelled *observing a refusal* a GREEN control, which inverts what a control is: a control is a
-fixture whose verdict is known, and the discriminating fact is the **mutation that must change
-that verdict**. Its `RefusedRegression` row ("declaration cannot green behavioral failure") was
-not a control at all — it restated the law rather than naming an input. Four columns, and the
-fourth is the one that makes a row evidence:
+labelled *observing a refusal* a GREEN control, inverting what a control is: a fixture whose
+verdict is known, where the discriminating fact is the **mutation that must change that
+verdict**. Its `RefusedRegression` row ("declaration cannot green behavioral failure") was not a
+control at all — it restated the law rather than naming an input. Four columns; the fourth
+makes a row evidence:
 
 | Subject | Fixture | Expected verdict | Mutation that MUST change the verdict |
 |---|---|---|---|
@@ -686,12 +680,12 @@ fourth is the one that makes a row evidence:
 | Anchor release | valid successor-capability receipt consumed | `AnchorReleaseEligible` | withhold the receipt ⇒ stays `AnchorRetained`; reaching `AnchorReleased` requires the separate release transition |
 | Continuity deadlock | anchor defective, every candidate refused | `NoTrustedFixForwardPath` | repair the anchor ⇒ `AnchorDegradedButRepairable`; land a capable candidate ⇒ `ProgressAvailable` |
 
-The fix-forward row carries **two** mutations on purpose. The first proves the subject is bound
+The fix-forward row carries **two** mutations on purpose: the first proves the subject is bound
 to the transition; the second proves the receipt does not secretly depend on the anchor failing
-— the exact confusion corrected in §3.8.
+— the confusion corrected in §3.8.
 
-Probes that go green when a wall lands **flip to permanent regression controls** — they do
-not retire (§4b dissolution-on rule).
+Probes that go green when a wall lands **flip to permanent regression controls** — they do not
+retire (§4b dissolution-on rule).
 
 ---
 
@@ -750,8 +744,8 @@ the reachability proofs of §3.11; it is a proved property, never an authored la
 **Correction 8 — reordered.** The first revision put declared-change derivation (its stage 2)
 before generation state (its stage 4), while stating §3.2 admissibility against a promoted
 generation that would not exist until stage 4. Either stage 2 was narrower than §3.2 or the
-order was wrong. It is resolved by **narrowing stage 2 explicitly** (§3.3) and by landing the
-genesis first, so a lineage root exists before anything is stated relative to one.
+order was wrong. Resolved by **narrowing stage 2 explicitly** (§3.3) and landing the genesis
+first, so a lineage root exists before anything is stated relative to one.
 
 | Stage | Deliverable | Dissolution trigger |
 |---|---|---|
@@ -767,8 +761,8 @@ genesis first, so a lineage root exists before anything is stated relative to on
 | **9 — warm-merge join** | #7522 admits accepted-generation receipts only, with matching transition + lineage | Cold rerun as default merge path |
 | **10 — phased single process** | Shared substrate; prelude duplication witness | Per-phase `process_shared_index` duplication |
 
-Guarantee-path measurement rows (the first revision's stage 9) are not a separate stage: the
-stage-execution receipt of stage 1 is that measurement, and minting a second one beside
+Guarantee-path measurement rows (the first revision's stage 9) are not a separate stage: stage
+1's stage-execution receipt is that measurement, and a second one beside
 `gunbc.guarantee_measurement` is the fork §2 exists to prevent.
 
 ---
@@ -776,19 +770,18 @@ stage-execution receipt of stage 1 is that measurement, and minting a second one
 ## 11. The superseded sign-off bar, and why it did not catch this
 
 The first revision ended in a sign-off bar whose completion read as merge readiness. It is
-**retained here as a record, annotated**, rather than deleted — the durable lesson is not that
-the bar was incomplete but *how* it failed, and that lesson would be lost with the text:
+**retained as a record, annotated**, not deleted — the durable lesson is *how* it failed, not
+that it was incomplete, and that lesson would be lost with the text:
 
 > **Every item it named is satisfiable while the highest-stakes concepts stay undefined.**
 
-Read the list against the merged draft it passed. §2's symbols did resolve. §3's obligations
-were explicit. §4 did state fix-forward. §5's graph was there. §9's decisions were recorded.
-The doc-graph bind landed. No code shipped. All eight items met — while `FixForwardProof` was a
-field name with no structure, `StageStamp` was named and never typed, and there was no
-generation zero at all. **A checklist that counts sections cannot detect an undefined concept
-inside one.** That is why §8's witness table now asks, for every row, which *mutation must
-change the verdict*: a bar phrased as presence is satisfiable by presence, and a bar phrased as
-discrimination is not.
+Read against the merged draft it passed: §2's symbols resolved, §3's obligations were explicit,
+§4 stated fix-forward, §5's graph was there, §9's decisions were recorded, the doc-graph bind
+landed, no code shipped. All eight items met — while `FixForwardProof` was a field name with no
+structure, `StageStamp` was named and never typed, and there was no generation zero. **A
+checklist that counts sections cannot detect an undefined concept inside one.** That is why §8's
+witness table now asks, per row, which *mutation must change the verdict*: a bar phrased as
+presence is satisfiable by presence; one phrased as discrimination is not.
 
 The original items, retained verbatim as the record:
 
@@ -804,29 +797,27 @@ The original items, retained verbatim as the record:
 
 ### What this document is not
 
-The bar is superseded as a *readiness* device: it is what let #7681 merge before its review
-finished.
+The bar is superseded as a *readiness* device: it let #7681 merge before its review finished.
 
 - This document confers **no merge readiness**. Being written does not make it accepted.
-- It confers **no promotion authority**. Nothing here authorizes a generation to be promoted,
-  an anchor to be released, or a warm receipt to be reused; those come from the receipts §3
-  describes, once they exist and execute.
+- It confers **no promotion authority**. Nothing here authorizes promoting a generation,
+  releasing an anchor, or reusing a warm receipt; those come from the receipts §3 describes,
+  once they exist and execute.
 - It confers **no roadmap acceptance**. A roadmap row is accepted by its own explicit
   acceptance, never by a design note describing it.
-- It ships **no implementation code**, and each stage in §10 is a separately dispatched,
-  separately reviewed PR.
+- It ships **no implementation code**; each §10 stage is a separately dispatched, separately
+  reviewed PR.
 
-Item 8 above is the one entry that survives as a live constraint rather than as record, because
-it is a scope statement and not a readiness claim: candidate generation through the direct Rust
-door remains unblocked, and only promotion and authoritative admission are gated. It is carried
-into the staged plan as §10 stage 7.
+Item 8 alone survives as a live constraint rather than record, being a scope statement and not
+a readiness claim: candidate generation through the direct Rust door remains unblocked; only
+promotion and authoritative admission are gated. Carried into the staged plan as §10 stage 7.
 
 ---
 
 ## 12. Correction record (2026-08-02)
 
 Nine operator corrections, relayed through still-bat-561. Each names what it supersedes so a
-reader of the merged first revision can see what moved.
+reader of the merged first revision sees what moved.
 
 | # | Correction | Supersedes |
 |---|---|---|
@@ -843,16 +834,16 @@ reader of the merged first revision can see what moved.
 **Three consequences found while applying them**, changed here though not among the nine:
 
 - **Correction 5 silently invalidated a bridge trigger.** §3.7 listed *new witness roster* as an
-  incompatible-requirement trigger; once the roster moves to `ValidationRevision`, that reading
-  would demand expand-migrate-contract for enrolling a witness. Removed, with the reason stated
-  inline so it cannot return.
+  incompatible-requirement trigger; with the roster in `ValidationRevision`, that reading would
+  demand expand-migrate-contract for enrolling a witness. Removed, reason stated inline so it
+  cannot return.
 - **`RefusedRegression` was carrying two causes.** §3.3's table let it mean both *moved without a
   declaration* and *moved with one but the witness failed*, while `RefusedUndeclaredDelta` sat
   beside it meaning the first. Two causes with different remedies sharing an arm is the
   state-space conflation DESIGN §5 names; the table now says which is which.
 - **The first revision's stage 9 was a fork.** Guarantee-path measurement rows are not a
-  separate stage — the stage-execution receipt of the new stage 1 *is* that measurement, and a
-  second receipt beside `gunbc.guarantee_measurement` is what §2 exists to prevent.
+  separate stage — the new stage 1's stage-execution receipt *is* that measurement, and a second
+  receipt beside `gunbc.guarantee_measurement` is what §2 exists to prevent.
 
 **Kept from the first revision, unchanged:** the §2 DFS-existing-machinery inventory (reuse, do
 not fork); candidate-cannot-promote-itself; the generation lineage graph; rollback-is-not-fix-forward

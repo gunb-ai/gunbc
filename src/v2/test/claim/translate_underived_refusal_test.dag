@@ -73,7 +73,18 @@ import v2.test.manual.sg2_mode2_non_grammar_emit {
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-data translate_underived_refusal_note: String = "Discriminating witnesses for v2-translate-underived-refusal. gunbc#7485 made infer surface GroundingNotDerived on the Accepted path, but 06_translate's projection-absent coerce fallback swallowed canonical_grounding_for_node's Rejected arm and continued via translate_type_fold_init — and ComputationNode leaves bypassed grounding entirely. Eval already refuses via inferred_facts_for_eval; translate must agree at the same class minimum. translate_grounding_derived_gate routes Holds through canonical_grounding_from_inferred_facts and propagates its typed rejection; Violates (lookup miss) remains the orch-emit compatibility frontier (review 46789). translate_grounding_derived_gate_at_producer applies that gate at producer entry; translate_derived_parent_underived_child_gate re-applies it on every fold attach; translate_grounding_derived_gate_subtree covers bodied-arrow/import shortcuts and translate_projection_absent_bodied_arrow_fold_init (review 46681, review 46766). Synthetic empty-facts trees remain on the named orch-emit frontier until v2-inferred-tree-completeness."
+// Discriminating witnesses for v2-translate-underived-refusal. gunbc#7485 made infer surface
+// GroundingNotDerived on the Accepted path, but 06_translate's projection-absent coerce fallback
+// swallowed canonical_grounding_for_node's Rejected arm and continued via translate_type_fold_init
+// — and ComputationNode leaves bypassed grounding entirely. Eval already refuses via
+// inferred_facts_for_eval; translate must agree at the same class minimum.
+// translate_grounding_derived_gate routes Holds through canonical_grounding_from_inferred_facts and
+// propagates its typed rejection; Violates (lookup miss) remains the orch-emit compatibility
+// frontier (review 46789). translate_grounding_derived_gate_at_producer applies that gate at
+// producer entry; translate_derived_parent_underived_child_gate re-applies it on every fold attach;
+// translate_grounding_derived_gate_subtree covers bodied-arrow/import shortcuts and
+// translate_projection_absent_bodied_arrow_fold_init (review 46681, review 46766). Synthetic
+// empty-facts trees remain on the named orch-emit frontier until v2-inferred-tree-completeness.
 
 fn translate_refused_canonical_grounding(d: NonEmptyDiagnostics) -> Bool {
   d.head.reason == ^infer_grounding_not_derived

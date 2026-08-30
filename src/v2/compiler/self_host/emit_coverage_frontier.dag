@@ -9,9 +9,36 @@ import std.realization_schedule { ScheduleWitnessEntry }
 import v2.compiler.self_host.wet_receipt_enrollment { falsifier_self_host_wet_template_entries }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 
-data emit_coverage_frontier_note: String = "Kernel-D Stage 3 (session loyal-raven-94, 2026-07-24): a typed, counted roster over the emit_host_*/rust_*_equals_eval witness families tracking NATIVE-EVAL CONSTRUCT COVERAGE — each row is exactly one of SelfEmittedNative (a real ingest to emit to compile to run witness exists and its body is decoded stdout, eval() never called) or InterpreterRetained (the family's coverage witness is an equals_eval AGREEMENT test — it calls v1_interpreter eval() as one of its two legs, so the construct is not yet proven native standalone). This is a DIFFERENT authority from v2.compiler.self_host.native_routing_frontier (that frontier tracks CI EXECUTION ROUTING COST for agreement legs that already run native in the floor — a family can be InterpretedRetained there for cost reasons while its underlying construct is already SelfEmittedNative here, or vice versa) and from v2.compiler.self_host.seed_retention_frontier (that frontier tracks which .rs FILES OF THE SEED CRATE never enter the required-regen comparison and why, a meta-level fact about the host pipeline's own source, not about witness bodies). The third sibling was named here as v2.compiler.self_host.frontier until 2026-08-24; that module was deleted and its roster with it, so the citation named nothing — corrected when the seed-retention axis it was pointing at got a real carrier. Reused shape (DESIGN section 2, horizontal): DeclarationRef subject + disposition enum with reason/dissolve_on + count-based census, the same pattern as both siblings."
+// Kernel-D Stage 3 (session loyal-raven-94, 2026-07-24): a typed, counted roster over the
+// emit_host_*/rust_*_equals_eval witness families tracking NATIVE-EVAL CONSTRUCT COVERAGE — each
+// row is exactly one of SelfEmittedNative (a real ingest to emit to compile to run witness exists
+// and its body is decoded stdout, eval() never called) or InterpreterRetained (the family's
+// coverage witness is an equals_eval AGREEMENT test — it calls v1_interpreter eval() as one of its
+// two legs, so the construct is not yet proven native standalone). This is a DIFFERENT authority
+// from v2.compiler.self_host.native_routing_frontier (that frontier tracks CI EXECUTION ROUTING
+// COST for agreement legs that already run native in the floor — a family can be
+// InterpretedRetained there for cost reasons while its underlying construct is already
+// SelfEmittedNative here, or vice versa) and from v2.compiler.self_host.seed_retention_frontier
+// (that frontier tracks which .rs FILES OF THE SEED CRATE never enter the required-regen comparison
+// and why, a meta-level fact about the host pipeline's own source, not about witness bodies). The
+// third sibling was named here as v2.compiler.self_host.frontier until 2026-08-24; that module was
+// deleted and its roster with it, so the citation named nothing — corrected when the seed-retention
+// axis it was pointing at got a real carrier. Reused shape (DESIGN section 2, horizontal):
+// DeclarationRef subject + disposition enum with reason/dissolve_on + count-based census, the same
+// pattern as both siblings.
 
-data emit_coverage_frontier_two_axis_note: String = "TWO AXES, do not conflate (parent-directed 2026-07-24): axis (a) witness-body-runs-native — does the construct's OWN discriminating test execute compiled-native code and read a real stdout/side-effect, never calling eval()? This frontier answers axis (a) only. Axis (b) — does the .dag HOST/COMPILER PIPELINE itself (ingest, infer, emit, the tooling that produces the witness) run as emitted-native code rather than the interpreted v1 seed? — is the Gate-1 self-host-frontier lane, never claimed by a row here. That lane's carrier was v2.compiler.self_host.frontier, deleted 2026-08-17 (39859f15b7) with its 27-row roster; the axis it named has no single carrier today, and the nearest live one is v2.compiler.self_host.seed_retention_frontier, which answers the narrower file-grain question of which seed sources the emitter never reaches at all. A SelfEmittedNative row here says only: this CONSTRUCT's behavior has been proven native-executed at least once, by a real compile+run witness; it says nothing about which engine compiled or ran the compiler itself."
+// TWO AXES, do not conflate (parent-directed 2026-07-24): axis (a) witness-body-runs-native — does
+// the construct's OWN discriminating test execute compiled-native code and read a real
+// stdout/side-effect, never calling eval()? This frontier answers axis (a) only. Axis (b) — does
+// the .dag HOST/COMPILER PIPELINE itself (ingest, infer, emit, the tooling that produces the
+// witness) run as emitted-native code rather than the interpreted v1 seed? — is the Gate-1
+// self-host-frontier lane, never claimed by a row here. That lane's carrier was
+// v2.compiler.self_host.frontier, deleted 2026-08-17 (39859f15b7) with its 27-row roster; the axis
+// it named has no single carrier today, and the nearest live one is
+// v2.compiler.self_host.seed_retention_frontier, which answers the narrower file-grain question of
+// which seed sources the emitter never reaches at all. A SelfEmittedNative row here says only: this
+// CONSTRUCT's behavior has been proven native-executed at least once, by a real compile+run
+// witness; it says nothing about which engine compiled or ran the compiler itself.
 
 type EmitCoverageDisposition
   = SelfEmittedNative { backing_entry: String, backing_function: String }
@@ -234,7 +261,9 @@ fn coverage_frontier_row_for_subject(subject: DeclarationRef) -> List<EmitCovera
   )
 }
 
-data schedule_entry_matches_file_grain_note: String = "U3 file-grain enrollment uses function: \"\" to mean every test decl in the entry — the same sentinel admission expands. Exact-name match alone would refuse a backed SelfEmittedNative row whose wet roster flipped to file-grain (#7273)."
+// U3 file-grain enrollment uses function: "" to mean every test decl in the entry — the same
+// sentinel admission expands. Exact-name match alone would refuse a backed SelfEmittedNative row
+// whose wet roster flipped to file-grain (#7273).
 
 fn schedule_entry_matches(entry: ScheduleWitnessEntry, backing_entry: String, backing_function: String) -> Bool {
   (entry.entry == backing_entry) && (
@@ -242,7 +271,12 @@ fn schedule_entry_matches(entry: ScheduleWitnessEntry, backing_entry: String, ba
   )
 }
 
-data emit_coverage_backing_check_note: String = "Construction, not a vibe check (DESIGN section 5): a SelfEmittedNative claim is only as good as its citation. coverage_row_backing_is_enrolled cross-references the row's backing_entry/backing_function against falsifier_self_host_wet_template_entries — the SAME enrolled-offline-witness roster wet_receipt_enrollment.dag already gates. A row claiming SelfEmittedNative whose backing citation is not enrolled there is unbacked and the check returns false; this is the discriminating oracle behind the RED probe in emit_coverage_frontier_test.dag."
+// Construction, not a vibe check (DESIGN section 5): a SelfEmittedNative claim is only as good as
+// its citation. coverage_row_backing_is_enrolled cross-references the row's
+// backing_entry/backing_function against falsifier_self_host_wet_template_entries — the SAME
+// enrolled-offline-witness roster wet_receipt_enrollment.dag already gates. A row claiming
+// SelfEmittedNative whose backing citation is not enrolled there is unbacked and the check returns
+// false; this is the discriminating oracle behind the RED probe in emit_coverage_frontier_test.dag.
 
 fn coverage_row_backing_is_enrolled(row: EmitCoverageFrontierRow) -> Bool {
   match row.disposition {

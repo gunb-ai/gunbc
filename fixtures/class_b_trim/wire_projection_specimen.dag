@@ -24,7 +24,11 @@ import extdeps.filesystem.filesystem_io { Filesystem }
 // the call form. If BOTH refuse, the pool or the import is wrong and the specimen proves nothing
 // about the class — that is the reading this pairing exists to prevent.
 
-data class_b_trim_wire_projection_specimen_note: String = "Class B trim wire-projection specimen: the method form on a service-op String wire field (Filesystem.Read content: String from \"content\") against the free-call control on the same value. Discriminates whether the wire projection mints the type node the extdeps output declaration names. Pairs with monoid_specimen.dag, which pins the neighbouring and still-correct fact that trim does not attach to a collection monoid receiver."
+// Class B trim wire-projection specimen: the method form on a service-op String wire field
+// (Filesystem.Read content: String from "content") against the free-call control on the same value.
+// Discriminates whether the wire projection mints the type node the extdeps output declaration
+// names. Pairs with monoid_specimen.dag, which pins the neighbouring and still-correct fact that
+// trim does not attach to a collection monoid receiver.
 
 fn wire_field_method_form(path: String) -> String {
   let read = Filesystem.Read(path: path)

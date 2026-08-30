@@ -64,9 +64,11 @@ import gunbc.spark.serving_realization {
 // one list read in two directions.
 data spark_serving_desired_hosts: List<HostIdentity> = spark_serving_cell_hosts()
 
-data spark_serving_desired_note: String = "OPERATOR DECLARATION (2026-08-12): LAN boundary, ollama runtime, gpt-oss:20b model, executor-owned serving process under gunbc-automation. Runtime closure identity derives from extdeps.ollama.binary_release cited digest — materialization binds through gunbc.package_delivery (#8225), not a parallel install path. Model identity is the manifest digest from /api/tags, not the serving label."
-
-
+// OPERATOR DECLARATION (2026-08-12): LAN boundary, ollama runtime, gpt-oss:20b model,
+// executor-owned serving process under gunbc-automation. Runtime closure identity derives from
+// extdeps.ollama.binary_release cited digest — materialization binds through gunbc.package_delivery
+// (#8225), not a parallel install path. Model identity is the manifest digest from /api/tags, not
+// the serving label.
 
 data spark_serving_desired_bind_listen: SparkServingBindListen = SparkServingBindListen {
   host: "0.0.0.0" as NonEmptyStr,

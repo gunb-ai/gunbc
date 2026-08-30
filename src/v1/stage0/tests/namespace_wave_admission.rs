@@ -1,16 +1,15 @@
 // THE FIXTURE-BOUNDARY RED FOR THE NAMESPACE WAVE-ADMISSION WALL.
 //
-// DESIGN §4b requires the question BEFORE the check is written: is the forbidden state
-// authorable anywhere the check can run? For this wall the corpus boundary cannot decide it —
-// on any given pull request the live delta may be empty, and a wall that is green because
-// nothing moved is indistinguishable from a wall that is green because it cannot move. The
-// FIXTURE boundary decides it, and this file is the receipt: `adjudicate` takes TWO INDEXES,
-// so a fixture authors a base tree and a head tree and reads back the exact disposition.
+// DESIGN §4b asks BEFORE the check is written: is the forbidden state authorable anywhere the
+// check can run? The corpus boundary cannot decide it — a pull request's live delta may be empty,
+// and green-because-nothing-moved is indistinguishable from green-because-it-cannot-move. The
+// FIXTURE boundary decides it: `adjudicate` takes TWO INDEXES, so a fixture authors a base tree
+// and a head tree and reads back the exact disposition.
 //
-// EVERY ARM BELOW IS A MUTATION OF ONE OTHER ARM. The wall's own auto-admitted case
+// EVERY ARM BELOW IS A MUTATION OF ONE OTHER ARM. The auto-admitted case
 // (`same_module_moved_route_same_declarer_is_a_rebind`) is the positive control; each refusing
-// arm changes ONE fact about it and requires a different disposition. An arm that passed
-// whatever the fixture said would be the decoration this file exists to disprove.
+// arm changes ONE fact about it and requires a different disposition. An arm that passed whatever
+// the fixture said would be the decoration this file exists to disprove.
 
 use std::path::{Path, PathBuf};
 
@@ -32,9 +31,8 @@ fn author(dir: &Path, basename: &str, source: &str) {
     std::fs::write(dir.join("probe_root").join(basename), source).expect("fixture source");
 }
 
-/// Index one authored tree. Panics on a parse refusal, because a fixture that does not parse
-/// is testing the parser rather than the wall — the malformed-plant-versus-broken-guard
-/// ambiguity, refused up front.
+/// Index one authored tree. Panics on a parse refusal: a fixture that does not parse tests the
+/// parser, not the wall — the malformed-plant-versus-broken-guard ambiguity, refused up front.
 fn index_of(dir: &Path) -> v1_compiler::cli_run::declaration_index::DeclarationIndex {
     match run_dag_parse_sweep(dir, &["probe_root"]) {
         Ok(sweep) => sweep.index,
@@ -457,32 +455,30 @@ fn an_exact_transition_admission_admits_that_delta_and_only_that_delta() {
 
 // THE ROSTER IS INHABITABLE, AND THIS TEST IS THE ONLY THING THAT SAYS SO.
 //
-// The two arms above prove the MATCHING mechanism works, and they proved it while the production
-// roster could not hold a single row. They build their admissions in a `let` with `.to_string()`,
-// so nothing in them ever touched the constraint that actually bound
-// `NAMESPACE_TRANSITION_ADMISSIONS`: it is a `const`, and `String::from` is not callable there.
-// Every authorable production row had to name the empty module, which matches no delta.
+// The two arms above prove the MATCHING mechanism works, and did so while the production roster
+// could not hold a single row: they build admissions in a `let` with `.to_string()`, never
+// touching the constraint that bound `NAMESPACE_TRANSITION_ADMISSIONS` — a `const`, where
+// `String::from` is not callable. Every authorable production row had to name the empty module,
+// which matches no delta.
 //
-// SO THE COVERAGE MADE THE DEFECT MORE HIDDEN RATHER THAN LESS. A reader auditing the admission
-// path found two thorough tests, green, exercising exact-match and wrong-subject-refuses — and
-// none of it was evidence about the roster a human would actually author. That is the shape where
-// a fixture cannot see the carrier it is a fixture for.
+// SO THE COVERAGE MADE THE DEFECT MORE HIDDEN: two thorough green tests of exact-match and
+// wrong-subject-refuses, none of it evidence about the roster a human would author — a fixture
+// that cannot see the carrier it is a fixture for.
 //
-// THE DISCRIMINATING PROPERTY IS COMPILATION, NOT THE ASSERTION, and the boundary is exact rather
-// than "a const row would not compile". Measured against main's own types, both arms:
+// THE DISCRIMINATING PROPERTY IS COMPILATION, NOT THE ASSERTION, and the boundary is exact.
+// Measured against main's own types, both arms:
 //
 //   module: String::from("probe.consumer")  ->  error[E0015]: cannot call non-const associated
 //                                               function `<String as From<&str>>::from` in
 //                                               constants — three times, one per field
 //   module: String::new()                   ->  compiles clean, emits metadata
 //
-// So a const row was always AUTHORABLE; what no const row could do was NAME A REAL MODULE. Stating
-// it as "the roster could not hold a row" would have been the overclaim — it held exactly one
-// shape, the shape that matches nothing, and the arm below pins what that shape does.
+// So a const row was always AUTHORABLE; what none could do was NAME A REAL MODULE. "The roster
+// could not hold a row" would be the overclaim — it held exactly one shape, the one matching
+// nothing, and the arm below pins what that shape does.
 //
-// This test stays enrolled after the climb rather than dissolving with the defect, because what it
-// now guards is that the roster REMAINS authorable AT A REAL MODULE NAME (DESIGN §4b — a climb
-// deletes the redundant production machinery, never the evidence).
+// Stays enrolled after the climb: it now guards that the roster REMAINS authorable AT A REAL
+// MODULE NAME (DESIGN §4b — a climb deletes redundant production machinery, never the evidence).
 const AUTHORED_LIKE_PRODUCTION: &[TransitionAdmission] = &[TransitionAdmission {
     label: "authored-in-a-const",
     subject: AdmissionSubject::Binding {
@@ -537,10 +533,10 @@ fn a_row_authored_in_a_const_admits_its_delta_exactly_as_a_runtime_row_would() {
 // AN EMPTY-MODULE ROW REFUSES, LOUDLY, AND THIS ARM RECORDS THAT THE OLD DEFECT WAS NEVER SILENT.
 //
 // Before `AdmissionSubject`, the only authorable row named the empty module. It was reported as an
-// escape hatch that accepts a row and silently matches nothing; that reading was withdrawn, and
-// this is the executing evidence for why. Such a row matches no delta, lands in
-// `stale_admissions`, and the ADMITTED arm is conjoined on that list being empty — so it REFUSES,
-// with its own named cause. The defect was a hatch with no working position, never one that lied.
+// escape hatch that silently matches nothing; that reading was withdrawn, and this is the
+// executing evidence why: such a row matches no delta, lands in `stale_admissions`, and the
+// ADMITTED arm is conjoined on that list being empty — so it REFUSES with its own named cause. A
+// hatch with no working position, never one that lied.
 #[test]
 fn a_row_naming_the_empty_module_refuses_rather_than_admitting_silently() {
     let base = [
@@ -717,19 +713,17 @@ fn an_absent_authority_refuses_rather_than_proceeding_on_the_hosts_say_so() {
 
 // THE BASELINE-OBSERVABILITY ARMS (review 56449).
 //
-// These two are not mutations of the positive control above, because their subject is a
-// different question: not "what disposition does this delta get" but "is there a baseline to
-// compare against at all". A base file that does not parse used to return an EMPTY record
-// vec, and empty is indistinguishable from "this module declared nothing" — so every row that
-// file carried stopped being compared while the run still answered `Adjudicated`. Quieter, and
-// silently uncovered.
+// Not mutations of the positive control: their question is not "what disposition does this delta
+// get" but "is there a baseline to compare against at all". A base file that does not parse used
+// to return an EMPTY record vec, indistinguishable from "this module declared nothing" — every row
+// it carried stopped being compared while the run still answered `Adjudicated`.
 
 /// RED for the empty-observation narrow at the base side.
 ///
-/// The plant assertion is what keeps this arm honest: if the malformed source ever started
-/// parsing, `base_records` would legitimately return `Ok` and this arm would pass for a reason
-/// that has nothing to do with the wall. The control below is the other half — a source that
-/// DOES parse must return records, or "refuses on everything" would satisfy the same assertion.
+/// The plant assertion keeps this arm honest: if the malformed source ever parsed, `base_records`
+/// would legitimately return `Ok` and the arm would pass for a reason unrelated to the wall. The
+/// control below is the other half — a source that DOES parse must return records, or "refuses on
+/// everything" would satisfy the same assertion.
 #[test]
 fn a_base_side_source_that_does_not_parse_refuses_instead_of_reading_as_empty() {
     let malformed = "module probe.home\n\nfn broken( -> { this is not a program";
@@ -755,13 +749,13 @@ fn a_base_side_source_that_does_not_parse_refuses_instead_of_reading_as_empty() 
 
 /// A RENAME HAS TWO SIDES AND THE DIFF NAMES ONLY ONE OF THEM.
 ///
-/// `git diff --name-only` reports a detected rename as its destination alone, so reading that
-/// single list as both the head-touched set and the base-side set drops the source path: the
-/// baseline for a renamed module is never read, every declaration in it looks newly added, and
-/// the wall can refuse an ordinary `.dag` rename over a delta it invented. The arm drives the
-/// rename-aware form and asserts the two sides come apart -- destination on the head side, source
-/// on the base side -- and the controls beside it assert the other three statuses still land where
-/// they belong, so the arm cannot pass by putting every path on both sides.
+/// `git diff --name-only` reports a detected rename as its destination alone, so reading that list
+/// as both the head-touched and base-side set drops the source path: the renamed module's
+/// baseline is never read, every declaration in it looks newly added, and the wall can refuse an
+/// ordinary `.dag` rename over a delta it invented. The arm drives the rename-aware form and
+/// asserts the sides come apart -- destination on head, source on base -- and the controls beside
+/// it assert the other three statuses still land where they belong, so the arm cannot pass by
+/// putting every path on both sides.
 #[test]
 fn a_rename_contributes_its_source_to_the_base_side_and_its_destination_to_the_head_side() {
     let z = "R096\0dag/probe/old.dag\0dag/probe/new.dag\0";
@@ -803,15 +797,13 @@ fn a_rename_contributes_its_source_to_the_base_side_and_its_destination_to_the_h
 
 // ── THE FIELD-LABEL PAIR: what a name OCCURRENCE has to be before it can carry a verdict ──
 //
-// The reference channel this wall reads once collected EVERY authored name in a module's tree.
-// A record literal's field label has an authored name, so `Row { widget: "x" }` contributed a
-// reference to `widget` — and the supplier set a reference is asked for is a function of the
-// CORPUS, so deleting an unrelated declaration of that spelling moved it to empty and the wall
-// refused a correct cut. The specimen was gunbc#9106: twelve labels, twelve fabricated
-// `NewUnresolvedness` rows. The two arms below are one mutation apart — the SAME deletion of
-// the SAME spelling, reached once from a field label and once from a real reference — because
-// collecting less is how a wall becomes a decoration, and only the pair can tell the repair
-// from that.
+// The reference channel this wall reads once collected EVERY authored name in a module's tree, so
+// `Row { widget: "x" }` contributed a reference to `widget` — and a reference's supplier set is a
+// function of the CORPUS, so deleting an unrelated declaration of that spelling moved it to empty
+// and the wall refused a correct cut. Specimen: gunbc#9106, twelve labels, twelve fabricated
+// `NewUnresolvedness` rows. The two arms below are one mutation apart — the SAME deletion of the
+// SAME spelling, reached once from a field label and once from a real reference — because
+// collecting less is how a wall becomes a decoration, and only the pair tells the repair from that.
 
 const HOME_ROW: &str =
     "module probe.home\n\ntype Row { widget: String }\n\ndata other: String = \"o\"\n";
@@ -895,24 +887,22 @@ fn deleting_a_declaration_a_qualified_spelling_reaches_is_still_unresolvedness()
 //
 // `probe.coproduct` declares a coproduct; the consumer imports two of its VARIANTS and mentions
 // them ONLY as match-arm pattern heads. `declaration_index`'s walk cannot reach either name IN
-// PRINCIPLE -- `MatchPattern::VariantPattern.name` is a `String`, never a `Node`, so no node
-// walker reaches it -- so the reference set is empty for that target and the add-side predicate
-// answered "NO name in this module resolves into it" about a module the consumer explicitly
-// imports.
+// PRINCIPLE -- `MatchPattern::VariantPattern.name` is a `String`, never a `Node` -- so the
+// reference set is empty for that target and the add-side predicate answered "NO name in this
+// module resolves into it" about a module the consumer explicitly imports.
 //
-// THE SCRUTINEE'S TYPE IS DELIBERATELY NOT NAMED IN THE CONSUMER, and that is the whole reason
-// this fixture is trustworthy. An earlier revision wrote `fn decide(v: Verdict)`, which made the
-// test PASS BOTH WAYS: `Verdict` in the signature is an ordinary reachable `Node`, so the
-// reference-set path already answered membership and the import clause was never load-bearing.
-// Measured -- green with the fix AND green with the fix reverted -- which is the decoration
-// DESIGN §4b names as worse than absent, because it would have been cited as coverage. The
-// scrutinee now arrives from a third module, so the ONLY names this import contributes are the
-// two variant heads, which is exactly the population no walker reaches.
+// THE SCRUTINEE'S TYPE IS DELIBERATELY NOT NAMED IN THE CONSUMER; that is why this fixture is
+// trustworthy. An earlier revision wrote `fn decide(v: Verdict)`, which PASSED BOTH WAYS:
+// `Verdict` in the signature is an ordinary reachable `Node`, so the reference-set path answered
+// membership and the import clause was never load-bearing. Measured -- green with the fix AND
+// with it reverted -- the decoration DESIGN §4b names as worse than absent. The scrutinee now
+// arrives from a third module, so the ONLY names this import contributes are the two variant
+// heads, exactly the population no walker reaches.
 //
-// THE RED IS AUTHORABLE HERE AND WAS AUTHORED. On the corrected fixture, with the add-side
-// predicate reading the reference set alone, this arm reports `UnexplainedSubjectMotion`. It is
-// retained as the regression control per §4b(4): the climb deletes the redundant production
-// handling, never the executing evidence that the higher rung still holds.
+// THE RED IS AUTHORABLE HERE AND WAS AUTHORED: on the corrected fixture, with the add-side
+// predicate reading the reference set alone, this arm reports `UnexplainedSubjectMotion`.
+// Retained as the regression control per §4b(4): the climb deletes redundant production handling,
+// never the executing evidence that the higher rung holds.
 const COPRODUCT_HOME: &str = "module probe.coproduct\n\ntype Verdict\n  = Accepted\n  | Refused\n";
 
 const VERDICT_HOLDER: &str = "module probe.holder\n\nimport probe.coproduct { Verdict, Accepted }\n\nfn fetch() -> Verdict { Accepted }\n";
@@ -971,27 +961,27 @@ fn membership_declared_by_an_import_whose_names_appear_only_in_pattern_arms() {
 // THE FIVE CONTROLS FOR THE AUTHORED-REFERENCE CHANNELS, AND THEY ARE ON THE REMOVAL SIDE
 // DELIBERATELY -- WHICH IS THE WHOLE REASON THEY DISCRIMINATE ANYTHING.
 //
-// The add side cannot test this repair any more. #9490 made an authored import claim answer
-// membership outright for ADD, so an add-side fixture over either channel goes green whether or
-// not `referenced` can see the reference -- the disjunct answers first. That is precisely the
-// green-with-and-without decoration this file already records one instance of, and building four
-// more of them would have looked like coverage of a repair that was never exercised.
+// The add side cannot test this repair: #9490 made an authored import claim answer membership
+// outright for ADD, so an add-side fixture over either channel goes green whether or not
+// `referenced` sees the reference -- the disjunct answers first. That is the green-with-and-without
+// decoration this file already records once; four more would look like coverage of a repair never
+// exercised.
 //
-// The REMOVAL side has no such disjunct and cannot have one: an import claim states that a
-// dependency was DECLARED, and removal asks whether anything was BOUND THROUGH it. Only seeing the
-// reference answers that. So `membership_bound_through` is the one predicate these channels are
-// load-bearing for, and every arm below drops an import while KEEPING the reference that needs it.
+// The REMOVAL side has no such disjunct and cannot: an import claim states a dependency was
+// DECLARED; removal asks whether anything was BOUND THROUGH it, which only seeing the reference
+// answers. So `membership_bound_through` is the one predicate these channels are load-bearing for,
+// and every arm below drops an import while KEEPING the reference that needs it.
 //
 // WHAT THE FALSE GREEN WAS: the gate reported `UnusedSubjectMembershipRemoved` -- "removed, nothing
-// bound through it" -- about an import whose name is still referenced in the very tree it just
-// examined. That verdict tells a reader the import is dead, so the natural next action is to delete
-// it, and the wall that exists to catch unsound namespace motion is the thing recommending it. A
-// refusal is loud and gets investigated; this is a green, and nothing stops.
+// bound through it" -- about an import whose name is still referenced in the tree it just examined.
+// That verdict says the import is dead, so the natural next action is to delete it, recommended by
+// the wall that exists to catch unsound namespace motion. A refusal is loud and gets investigated;
+// this is a green, and nothing stops.
 //
 // EVERY ARM'S RED IS AUTHORABLE BY ONE ISOLATED MUTATION, and the three mutations below were
 // EXECUTED after the reader was rebuilt on the parser's transport -- not carried over from the
-// earlier Node-reading construction, which no longer exists. A receipt about deleted code is
-// worse than no receipt, because it reads as evidence for what is actually there.
+// earlier Node-reading construction, which no longer exists; a receipt about deleted code reads as
+// evidence for what is actually there.
 //
 //   the pattern-head String read deleted:        2 failed
 //     a_removed_import_whose_names_survive_only_as_pattern_heads_is_not_reported_unused
@@ -1005,25 +995,23 @@ fn membership_declared_by_an_import_whose_names_appear_only_in_pattern_arms() {
 //     removing_membership_nothing_bound_through_is_admitted_as_unused   <- PRE-EXISTING
 //   nothing mutated:                             27 passed
 //
-// THE THIRD MUTATION IS THE ONE WORTH READING. Its second casualty is an arm nobody wrote for
-// this change: consuming every `TypeOccurrence` the transport carries folds in IMPORT MEMBER
-// NAMES, so each import becomes bound-through by its own member and
-// `UnusedSubjectMembershipRemoved` stops being reachable at all. A disposition going
-// permanently quiet is worse than the false green this file exists to close, and no arm added
-// here would have caught it -- the existing suite did. That is the argument for running the
-// whole file under each mutation rather than the arms one believes are relevant.
+// THE THIRD MUTATION IS THE ONE WORTH READING. Its second casualty is an arm nobody wrote for this
+// change: consuming every `TypeOccurrence` the transport carries folds in IMPORT MEMBER NAMES, so
+// each import becomes bound-through by its own member and `UnusedSubjectMembershipRemoved` stops
+// being reachable. A disposition going permanently quiet is worse than the false green this file
+// closes, and no arm added here caught it -- the existing suite did. Hence run the whole file
+// under each mutation, not the arms one believes relevant.
 //
-// THE MORE INFORMATIVE HALF REMAINS WHAT DOES NOT MOVE. Under BOTH channel mutations, the
-// pre-existing add-side arm `membership_declared_by_an_import_whose_names_appear_only_in_pattern_arms`
-// stayed GREEN: gunbc#9490's import-claim disjunct answers first, so an add-side fixture over
-// these channels passes with the repair and without it. Anyone extending this family must run
-// the revert arm before believing a new fixture covers anything.
+// THE MORE INFORMATIVE HALF IS WHAT DOES NOT MOVE. Under BOTH channel mutations, the pre-existing
+// add-side arm `membership_declared_by_an_import_whose_names_appear_only_in_pattern_arms` stayed
+// GREEN: gunbc#9490's import-claim disjunct answers first, so an add-side fixture over these
+// channels passes with the repair and without it. Anyone extending this family must run the
+// revert arm before believing a new fixture covers anything.
 //
-// Two arms stay green under every mutation BY DESIGN and bound the repair from the other side:
-// one requires that a locally declared spelling fabricate no support for a foreign target, and
-// one requires that an ordinary Node-visible reference still be seen. Without them, every arm
-// above is satisfied by a reader that simply collects more -- which, as the third mutation
-// shows, is not a hypothetical failure mode here.
+// Two arms stay green under every mutation BY DESIGN and bound the repair from the other side: one
+// requires that a locally declared spelling fabricate no support for a foreign target, one that an
+// ordinary Node-visible reference still be seen. Without them every arm above is satisfied by a
+// reader that simply collects more -- which the third mutation shows is not hypothetical here.
 
 const FIELD_TYPE_HOME: &str =
     "module probe.payload\n\ntype Wrapper\n  = Wrapped { inner: String }\n  | Empty\n";
@@ -1180,12 +1168,11 @@ fn each_authored_channel_lands_in_the_field_whose_authority_supplied_it() {
     );
 }
 
-// AN IMPORT MEMBER IS NOT A REFERENCE, and this arm exists because the first cut of the
-// transport reader treated it as one. The transport stamps an import's member name as a
-// `TypeOccurrence` enclosed by the import target, so consuming every TypeOccurrence made each
-// import bound-through by its own member and `UnusedSubjectMembershipRemoved` became
-// unreachable. That is a disposition going permanently quiet, which is worse than the false
-// green this change closes -- and it was caught by a PRE-EXISTING arm rather than by review.
+// AN IMPORT MEMBER IS NOT A REFERENCE; the first cut of the transport reader treated it as one.
+// The transport stamps an import's member name as a `TypeOccurrence` enclosed by the import
+// target, so consuming every TypeOccurrence made each import bound-through by its own member and
+// `UnusedSubjectMembershipRemoved` unreachable -- a disposition going permanently quiet, worse
+// than the false green this change closes, caught by a PRE-EXISTING arm rather than by review.
 #[test]
 fn an_import_member_name_is_not_an_authored_reference() {
     let dir = scratch("import_member_not_reference");
@@ -1215,11 +1202,11 @@ fn an_import_member_name_is_not_an_authored_reference() {
     );
 }
 
-// THE ARM THAT CATCHES A LAZY PROJECTION. `Wrapper` is declared LOCALLY here and named nowhere
-// else, so nothing in this module supports membership in probe.payload. A projection that
-// collected the spelling without caring where it resolves would fabricate that support -- and a
-// fabricated membership looks exactly like a real one, which is why the operator ruling forbids
-// minting membership from anything but authored references and why this arm is not optional.
+// THE ARM THAT CATCHES A LAZY PROJECTION. `Wrapper` is declared LOCALLY and named nowhere else, so
+// nothing in this module supports membership in probe.payload. A projection collecting the
+// spelling without caring where it resolves would fabricate that support, and a fabricated
+// membership looks exactly like a real one -- why the operator ruling forbids minting membership
+// from anything but authored references.
 const LOCAL_SHADOW_CONSUMER: &str = "module probe.consumer\n\ntype Wrapper = Local { n: String }\n\ntype Holder = Held { w: Wrapper }\n";
 
 #[test]
@@ -1253,9 +1240,9 @@ fn a_locally_declared_spelling_fabricates_no_support_for_a_foreign_target() {
 }
 
 // THE UNCHANGED CONTROL. An ordinary Node-visible reference -- a function call through an imported
-// name -- was reachable by the seven-slot walk before this change and must still be. This is the
-// arm that catches a projection which broke what already worked, and without it every arm above is
-// satisfied by a reader that collects too much.
+// name -- was reachable by the seven-slot walk before this change and must still be. Catches a
+// projection that broke what worked; without it every arm above is satisfied by a reader that
+// collects too much.
 const ORDINARY_HOME: &str = "module probe.lib\n\nfn helper() -> String { \"h\" }\n";
 const ORDINARY_BASE: &str =
     "module probe.consumer\n\nimport probe.lib { helper }\n\nfn use_it() -> String { helper() }\n";
@@ -1283,12 +1270,11 @@ fn an_ordinary_node_visible_reference_removal_is_still_reported_unchanged() {
 //
 // A type alias's right-hand side is the same authored channel as a declared field type -- the
 // parser parks BOTH in `inferred` -- so the block above was expected to cover it. Expected is not
-// measured, and the projection is generic over the slot rather than special-cased to a field, so
-// whether it reaches an alias RHS is a fact about the parser's shape and not about the reader's
-// intent. Executed both ways: with channel two present the wall reports
-// `SameDeclarationIdentityRebind`; with channel two deleted it reports
-// `UnusedSubjectMembershipRemoved`. That is a real specimen of the same false green, closed by the
-// same block, so it is an arm here rather than a second change.
+// measured: the projection is generic over the slot, so whether it reaches an alias RHS is a fact
+// about the parser's shape, not the reader's intent. Executed both ways: with channel two present
+// the wall reports `SameDeclarationIdentityRebind`; with it deleted, `UnusedSubjectMembershipRemoved`.
+// A real specimen of the same false green, closed by the same block, so an arm here rather than a
+// second change.
 const ALIAS_RHS_HOME: &str = "module probe.payload\n\ntype QualifiedName = Qn { text: String }\n";
 const ALIAS_RHS_BASE: &str = "module probe.consumer\n\nimport probe.payload { QualifiedName }\n\ntype ModulePath = QualifiedName\n";
 const ALIAS_RHS_HEAD: &str = "module probe.consumer\n\ntype ModulePath = QualifiedName\n";
@@ -1332,48 +1318,44 @@ fn a_removed_import_whose_name_survives_only_as_a_type_alias_right_hand_side_is_
 // AND ONE MEASURED NEGATIVE, RECORDED RATHER THAN ENROLLED, because an arm here would be the
 // permanently-green decoration DESIGN §4b names as worse than absent.
 //
-// A function's RETURN TYPE was the other candidate from the six-site parser reading, and the same
-// argument covered it. It does not reproduce: measured, `fn make() -> QualifiedName` with the
-// import dropped reports `SameDeclarationIdentityRebind` WITH channel two and
-// `SameDeclarationIdentityRebind` WITHOUT it -- identical, because a return type is already
-// reachable through an ordinary Node slot, so it was never invisible. An arm asserting the correct
-// verdict there would pass with this repair and pass with it reverted, carrying no information
-// about the thing it appeared to cover. The argument was good and the receipt refused it, which is
-// the whole reason the receipt is taken.
+// A function's RETURN TYPE was the other candidate from the six-site parser reading, covered by the
+// same argument. It does not reproduce: measured, `fn make() -> QualifiedName` with the import
+// dropped reports `SameDeclarationIdentityRebind` WITH channel two and WITHOUT it -- identical,
+// because a return type is already reachable through an ordinary Node slot. An arm asserting the
+// correct verdict there would pass with the repair and with it reverted, carrying no information.
+// The argument was good and the receipt refused it -- why the receipt is taken.
 
 // THE ADD-SIDE CONTROL THAT SURVIVES THE READER REPAIR, AND WHY THE SIBLING ABOVE DOES NOT.
 //
-// This was authored predicting that
+// Authored predicting that
 // `membership_declared_by_an_import_whose_names_appear_only_in_pattern_arms` would stop
-// discriminating once an authored-reference channel landed beneath it. IT HAS, AND THE
-// PREDICTION IS NOW A MEASUREMENT. Running the whole file with the import-claim disjunct
-// deleted from `membership_declared`, against this tree:
+// discriminating once an authored-reference channel landed beneath it. IT HAS, AND THE PREDICTION
+// IS NOW A MEASUREMENT. The whole file with the import-claim disjunct deleted from
+// `membership_declared`, against this tree:
 //
 //     membership_declared_by_..._appear_only_in_pattern_arms          ok
 //     membership_declared_by_..._authored_and_never_referenced        FAILED
 //
-// One failure, where the same two arms on the pre-merge tree gave two. The sibling is green
-// with the disjunct AND without it, so it now carries no information about the disjunct.
-// Nothing edited that test; a repair landing UNDERNEATH it removed its power.
+// One failure, where the same two arms on the pre-merge tree gave two. The sibling is green with
+// the disjunct AND without it, so it carries no information about it. Nothing edited that test; a
+// repair landing UNDERNEATH it removed its power.
 //
 // WHICH REPAIR, AND WHY THIS ANNOTATION DOES NOT SAY. The obvious candidate is the new
-// `authored_type_references` channel, and the obvious mechanism -- import member names being
-// stamped as `TypeOccurrence` -- is REFUTED by the producer: `authored_type_references_from_transport`
-// filters those out deliberately, and says so. So the mechanism is unverified and is deliberately
-// not named here. A cause invented to fit a real measurement is the failure this file keeps
-// catching in other places; recording the measurement without it costs nothing.
+// `authored_type_references` channel, and the obvious mechanism -- import member names stamped as
+// `TypeOccurrence` -- is REFUTED by the producer: `authored_type_references_from_transport` filters
+// those out deliberately, and says so. The mechanism is unverified and deliberately not named; a
+// cause invented to fit a real measurement is the failure this file keeps catching elsewhere.
 //
-// AND THE DISJUNCT *IS* LOAD-BEARING, on a case no reader channel can ever reach. An import whose
-// member is authored and never referenced has NO reference by construction -- there is nothing in
-// the tree, and nothing in any transport, for a projection to find, however many channels are
-// added. Removing the disjunct therefore does not degrade to the reference set, it FABRICATES A
-// REFUSAL over an import that is declared, correct, and merely unused: the mirror of the false
-// green the reader repair closes.
+// AND THE DISJUNCT *IS* LOAD-BEARING, on a case no reader channel can reach. An import whose member
+// is authored and never referenced has NO reference by construction -- nothing in the tree or any
+// transport for a projection to find, however many channels are added. Removing the disjunct does
+// not degrade to the reference set; it FABRICATES A REFUSAL over an import that is declared,
+// correct, and merely unused: the mirror of the false green the reader repair closes.
 //
-// So DESIGN 4b(4) does not fire the way it first appears. The clause deletes machinery a climb
-// made REDUNDANT; here the climb made the sibling TEST redundant and left the MACHINERY answering
-// a case that test never covered. Deleting the disjunct on the strength of the sibling's green
-// arm alone would have opened a false-refusal direction and looked principled doing it.
+// So DESIGN 4b(4) does not fire as it first appears. The clause deletes machinery a climb made
+// REDUNDANT; here the climb made the sibling TEST redundant and left the MACHINERY answering a case
+// that test never covered. Deleting the disjunct on the sibling's green alone would have opened a
+// false-refusal direction and looked principled doing it.
 const UNUSED_MEMBER_HOME: &str = "module probe.payload\n\ntype Wrapper\n  = Wrapped\n";
 
 const UNUSED_MEMBER_CONSUMER: &str =

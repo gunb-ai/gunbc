@@ -1,6 +1,5 @@
 module extdeps.git
 
-
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import extdeps.exec.command { ArgvCommand, argv_command }
@@ -458,18 +457,48 @@ data git_worktree_external_authority_anchor: ExternalAuthority = ExternalAuthori
   }
 }
 
-data advertised_ref_note: String = "WHY THIS EXISTS BESIDE RemoteBranches, which already lists remote branches. RemoteBranches runs `git branch -r`, whose output is ref NAMES and nothing else, and it reads the local remote-tracking refs rather than asking the remote. Neither property is a defect in it - it answers `which remote branches does this clone know about` - but it cannot answer `what commit is the remote branch AT`, and a consumer that needs an exact head therefore cannot be built on it at all. `git ls-remote --heads` is the ref-advertisement protocol reading: it contacts the remote and returns object id plus full ref name per line, which is the pair an exact-head judgment needs.\\n\\nThe two are kept separate rather than one being widened because they answer different questions with different freshness: `branch -r` is local and offline, ls-remote is a network read that can fail on its own. Collapsing them would make every name listing pay a network round trip and inherit its failure modes."
+// WHY THIS EXISTS BESIDE RemoteBranches, which already lists remote branches. RemoteBranches runs
+// `git branch -r`, whose output is ref NAMES and nothing else, and it reads the local
+// remote-tracking refs rather than asking the remote. Neither property is a defect in it - it
+// answers `which remote branches does this clone know about` - but it cannot answer `what commit is
+// the remote branch AT`, and a consumer that needs an exact head therefore cannot be built on it at
+// all. `git ls-remote --heads` is the ref-advertisement protocol reading: it contacts the remote
+// and returns object id plus full ref name per line, which is the pair an exact-head judgment
+// needs.\n\nThe two are kept separate rather than one being widened because they answer different
+// questions with different freshness: `branch -r` is local and offline, ls-remote is a network read
+// that can fail on its own. Collapsing them would make every name listing pay a network round trip
+// and inherit its failure modes.
 
 type AdvertisedRef {
   object_id: CommitSha
   ref_name: String
 }
 
-data advertised_ref_scan_note: String = "The scan REFUSES on a line it cannot read rather than skipping it, and the located line is carried so the refusal names what it choked on. Dropping unparseable lines is the shape DESIGN 5 calls the absorbing fallback: the answer would still be a well-formed ref list, so a consumer could not tell a complete advertisement from a partial one, and the deficit's frequency would be zero by construction. A partial ref list is exactly the input that makes an exact-head judgment answer `not published` about a branch that is in fact published."
+// The scan REFUSES on a line it cannot read rather than skipping it, and the located line is
+// carried so the refusal names what it choked on. Dropping unparseable lines is the shape DESIGN 5
+// calls the absorbing fallback: the answer would still be a well-formed ref list, so a consumer
+// could not tell a complete advertisement from a partial one, and the deficit's frequency would be
+// zero by construction. A partial ref list is exactly the input that makes an exact-head judgment
+// answer `not published` about a branch that is in fact published.
 
 data ls_remote_reports_termination_not_success_note: String = "IT REPORTS THE EXIT CODE AND NOT A SUCCESS BOOL, WHICH IS A NARROWING FROM ITS FIRST CUT. That cut declared `success: Bool from \"exit_success\"` beside `exit_code`, and the two are not independent: the seed derives exit_success as exactly `exit_code == 0` (v1_interpreter.rs, the shell dispatch output-source match), so the pair carried one fact twice.\\n\\nCARRYING IT TWICE WAS NOT MERELY REDUNDANT, IT MADE A CONTRADICTION WRITABLE. A caller of the deciding function could pass success true beside a nonzero exit code, and the function branched on success - so a failed advertisement read as a successful one and the branch reported unpublished rather than unreadable. That is the ignorance-as-answer conflation this operation exists to prevent, reachable through the operation own output shape. Dropping the Bool makes the contradictory pair unrepresentable rather than merely unlikely, which is why this is construction and not a check.\\n\\nWHICH LAYER OWNS SUCCESS, since something still has to answer it: the caller EXPECTATION does. Process termination, operation observation, caller expectation and log disposition are four facts, and a probe may legitimately use a nonzero exit as an ANSWER rather than a verdict - so an operation that pre-judges its own exit code as success has decided something only its caller can. See gunbc.plans.transport_argv_anemia_dissolution, which measures 148 sibling operations in dag/extdeps still carrying the Bool while 51 preserve the integer. This operation is the first consumer of that correction, not a local exception."
 
-data remote_url_takes_its_repository_as_a_parameter_note: String = "BOTH THE REPOSITORY AND THE REMOTE NAME ARE PARAMETERS, AND NEITHER IS A LITERAL IN THE ARGV. `origin` is the obvious literal to bake in, because almost every caller wants it - and baking it in would make this operation a model of one checkout's configuration rather than of git's remote-url lookup. Which remote a caller cares about is a caller fact; the operation models the read.\\n\\nTHE PATH IS A PARAMETER FOR A SHARPER REASON: without it this operation reads whatever repository the process happens to be standing in. Its first consumer asks whether a specific attempt's worktree is bound to the repository a publication subject names, and a read that silently answered for the process's own checkout would confirm the binding for the wrong repository while looking entirely ordinary - the precise class of coincidence the consumer exists to refuse. `git -C <path>` is git's own mechanism for this, so the repository is named rather than inherited.\\n\\nIt reports exit_code and stderr rather than a success Bool, for the reason ls_remote_reports_termination_not_success_note gives at length: the seed derives exit_success as exactly `exit_code == 0`, so the pair would carry one fact twice and make a contradictory pair writable. It declares no exit block for the reason the note below gives: those arms are parsed, re-emitted, and never realized, so authoring one here would mint a fresh declared-but-unrealized instance."
+// BOTH THE REPOSITORY AND THE REMOTE NAME ARE PARAMETERS, AND NEITHER IS A LITERAL IN THE ARGV.
+// `origin` is the obvious literal to bake in, because almost every caller wants it - and baking it
+// in would make this operation a model of one checkout's configuration rather than of git's
+// remote-url lookup. Which remote a caller cares about is a caller fact; the operation models the
+// read.\n\nTHE PATH IS A PARAMETER FOR A SHARPER REASON: without it this operation reads whatever
+// repository the process happens to be standing in. Its first consumer asks whether a specific
+// attempt's worktree is bound to the repository a publication subject names, and a read that
+// silently answered for the process's own checkout would confirm the binding for the wrong
+// repository while looking entirely ordinary - the precise class of coincidence the consumer exists
+// to refuse. `git -C <path>` is git's own mechanism for this, so the repository is named rather
+// than inherited.\n\nIt reports exit_code and stderr rather than a success Bool, for the reason
+// ls_remote_reports_termination_not_success_note gives at length: the seed derives exit_success as
+// exactly `exit_code == 0`, so the pair would carry one fact twice and make a contradictory pair
+// writable. It declares no exit block for the reason the note below gives: those arms are parsed,
+// re-emitted, and never realized, so authoring one here would mint a fresh declared-but-unrealized
+// instance.
 
 data ls_remote_carries_no_exit_block_note: String = "WHY LsRemoteHeads DECLARES NO `exit` BLOCK WHILE EVERY SIBLING OPERATION DOES, which is the first thing a reader will notice. The `exit` arms are INERT AT RUN TIME - established by reading the seed, not assumed. The shell dispatch in v1_interpreter.rs maps declared output sources (`stdout`, `stderr`, `exit_success`, `exit_code`, `stdout_lines`) onto the process result and returns a record; it never consults the operation's exit arms and never raises on a nonzero exit. The only consumer of exit_props anywhere outside the parser is v1_compiler_emit_rust.rs, which round-trips them back to source so the self-host fixed point holds. So an exit arm is a declaration that is parsed, re-emitted, and never realized.\\n\\nThat makes this operation's OUTPUTS the realized authority for its outcome: a caller learns whether the read succeeded from `exit_code`/`stderr`, which are values it can match on. (It carried a `success` Bool too until this operation narrowed - see ls_remote_reports_termination_not_success_note directly above, which is the authority for why. Left unfixed, this sentence would have been a stale citation inside the very PR that made it false.) Adding an exit block beside them would be a second representation of the same fact where only one of the two executes - and since this operation is new, authoring one knowing it is inert would be minting a fresh declared-but-unrealized instance rather than inheriting an existing one. The corpus-wide inertness of exit blocks is a real finding and a separate correction; it is not fixed by making one operation diverge from a hundred siblings, and it is not made worse by declining to add the hundred-and-first."
 
@@ -661,7 +690,25 @@ fn shape_git_branch_show_current_argv() -> List<String> {
   ["git", "branch", "--show-current"]
 }
 
-data git_pathspec_exclude_note: String = "PATHSPEC MAGIC IS GIT'S INTERFACE; WHICH PATHS TO EXCLUDE IS NOT (DESIGN §3 (a)/(c) split). gitglossary(7) 'pathspec' defines the long-form magic word `exclude` — a pathspec of the form `:(exclude)<pattern>` removes matching paths from the set an otherwise-matching pathspec selected, and git requires at least one positive pathspec beside it for there to be a set to subtract from (hence the leading `.` that shape_git_diff_unmerged_pathspec_args emits). This module owns only that SPELLING. The exclusion LIST is a caller's business policy — a workflow fact — and passing pathspec WORDS as a parameter is what keeps this row from becoming the layer inversion §3 names (an argv carrying a literal it should receive as an argument).\n\nA PATHSPEC WORD IS NOT A SHELL WORD, AND THIS MODULE DELIBERATELY DOES NOT QUOTE IT. `:(exclude)p` contains `(` and `)`, which are bash metacharacters, so any shell realization that joins this word into a command line unquoted emits a SYNTAX ERROR — proven by execution, not reasoned: the first cut of the heal skew guard did exactly that and `bash -n` rejected the emitted line. git_shell_join_argv is a join over already-spelled words, not a quoter, and must not become one (its existing callers pass words that are already quoted, so quoting there would double-quote them). Quoting therefore belongs to the emitting realization, which is the only layer that knows the target shell — see v2.workflow.ci_heal_skew_guard_emit ci_heal_skew_shell_single_quoted. Callers composing a pathspec into shell MUST quote the whole word."
+// PATHSPEC MAGIC IS GIT'S INTERFACE; WHICH PATHS TO EXCLUDE IS NOT (DESIGN §3 (a)/(c) split).
+// gitglossary(7) 'pathspec' defines the long-form magic word `exclude` — a pathspec of the form
+// `:(exclude)<pattern>` removes matching paths from the set an otherwise-matching pathspec
+// selected, and git requires at least one positive pathspec beside it for there to be a set to
+// subtract from (hence the leading `.` that shape_git_diff_unmerged_pathspec_args emits). This
+// module owns only that SPELLING. The exclusion LIST is a caller's business policy — a workflow
+// fact — and passing pathspec WORDS as a parameter is what keeps this row from becoming the layer
+// inversion §3 names (an argv carrying a literal it should receive as an argument).
+//
+// A PATHSPEC WORD IS NOT A SHELL WORD, AND THIS MODULE DELIBERATELY DOES NOT QUOTE IT.
+// `:(exclude)p` contains `(` and `)`, which are bash metacharacters, so any shell realization that
+// joins this word into a command line unquoted emits a SYNTAX ERROR — proven by execution, not
+// reasoned: the first cut of the heal skew guard did exactly that and `bash -n` rejected the
+// emitted line. git_shell_join_argv is a join over already-spelled words, not a quoter, and must
+// not become one (its existing callers pass words that are already quoted, so quoting there would
+// double-quote them). Quoting therefore belongs to the emitting realization, which is the only
+// layer that knows the target shell — see v2.workflow.ci_heal_skew_guard_emit
+// ci_heal_skew_shell_single_quoted. Callers composing a pathspec into shell MUST quote the whole
+// word.
 
 fn git_pathspec_exclude(path: String) -> String {
   concat(":(exclude)", path)
@@ -765,11 +812,38 @@ fn git_observe_meta_shell_fragment() -> String {
   )
 }
 
-data forced_ref_exchange_operations_note: String = "FORCED, REPOSITORY-ADDRESSED REF EXCHANGE -- FetchForcedRefInRepo and PushForcedRefInRepo. `--force` with an explicit refspec is git's own interface for `make the destination equal the source`, which is what a scratch exchange channel between two processes needs and what a publication does NOT: these are deliberately not the operations git.PublicationTransport declares, and neither is a lease-bearing form. `--quiet` suppresses progress on a channel whose only consumer reads exit_code and stderr. Both take their repository as a parameter rather than inheriting the process working directory, per remote_url_takes_its_repository_as_a_parameter_note, and both report exit_code and stderr rather than a success Bool, per ls_remote_reports_termination_not_success_note."
+// FORCED, REPOSITORY-ADDRESSED REF EXCHANGE -- FetchForcedRefInRepo and PushForcedRefInRepo.
+// `--force` with an explicit refspec is git's own interface for `make the destination equal the
+// source`, which is what a scratch exchange channel between two processes needs and what a
+// publication does NOT: these are deliberately not the operations git.PublicationTransport
+// declares, and neither is a lease-bearing form. `--quiet` suppresses progress on a channel whose
+// only consumer reads exit_code and stderr. Both take their repository as a parameter rather than
+// inheriting the process working directory, per
+// remote_url_takes_its_repository_as_a_parameter_note, and both report exit_code and stderr rather
+// than a success Bool, per ls_remote_reports_termination_not_success_note.
 
-data integration_write_operations_note: String = "THE SIX WRITE/READ OPERATIONS BELOW MODEL GIT'S ORDINARY INTEGRATION SURFACE — stage, commit, branch checkout, merge, and the unmerged-stage read — each taking its repository as a parameter rather than inheriting the process's checkout, for the reason remote_url_takes_its_repository_as_a_parameter_note gives: an operation that answered for whatever directory the process happens to stand in would confirm a result for the wrong repository while looking entirely ordinary. They report exit_code and stderr and NOT a success Bool, per ls_remote_reports_termination_not_success_note: the seed derives exit_success as exactly exit_code == 0, so the pair would carry one fact twice and make a contradictory pair writable. That narrowing matters most for MergeNoEditInRepo, whose nonzero exit is an ANSWER rather than a failure — a caller asking whether a merge left the tree conflicted reads the code, and an operation pre-judging it as unsuccessful would decide something only the caller can. They declare no exit block, per ls_remote_carries_no_exit_block_note: those arms are parsed, re-emitted, and never realized, so authoring one here would mint a fresh declared-but-unrealized instance. Committer identity is deliberately not an input — a caller sets user.email and user.name through ConfigLocalSetInRepo, so identity stays one modeled binding rather than a second per-commit representation."
+// THE SIX WRITE/READ OPERATIONS BELOW MODEL GIT'S ORDINARY INTEGRATION SURFACE — stage, commit,
+// branch checkout, merge, and the unmerged-stage read — each taking its repository as a parameter
+// rather than inheriting the process's checkout, for the reason
+// remote_url_takes_its_repository_as_a_parameter_note gives: an operation that answered for
+// whatever directory the process happens to stand in would confirm a result for the wrong
+// repository while looking entirely ordinary. They report exit_code and stderr and NOT a success
+// Bool, per ls_remote_reports_termination_not_success_note: the seed derives exit_success as
+// exactly exit_code == 0, so the pair would carry one fact twice and make a contradictory pair
+// writable. That narrowing matters most for MergeNoEditInRepo, whose nonzero exit is an ANSWER
+// rather than a failure — a caller asking whether a merge left the tree conflicted reads the code,
+// and an operation pre-judging it as unsuccessful would decide something only the caller can. They
+// declare no exit block, per ls_remote_carries_no_exit_block_note: those arms are parsed,
+// re-emitted, and never realized, so authoring one here would mint a fresh declared-but-unrealized
+// instance. Committer identity is deliberately not an input — a caller sets user.email and
+// user.name through ConfigLocalSetInRepo, so identity stays one modeled binding rather than a
+// second per-commit representation.
 
-data repository_coherence_operations_note: String = "Independent repository-coherence observations. WriteTreeInRepo asks git to serialize the repository's actual index; TrackedWorktreeDiffFromInRepo compares tracked working-tree content directly with a named treeish. The latter deliberately does not use status, diff-index or diff-files: each incorporates the index and can therefore report a false difference when the index is the stale side of the three-way state being diagnosed."
+// Independent repository-coherence observations. WriteTreeInRepo asks git to serialize the
+// repository's actual index; TrackedWorktreeDiffFromInRepo compares tracked working-tree content
+// directly with a named treeish. The latter deliberately does not use status, diff-index or
+// diff-files: each incorporates the index and can therefore report a false difference when the
+// index is the stale side of the three-way state being diagnosed.
 
 service git.Core {
   operation CurrentBranch {

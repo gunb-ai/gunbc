@@ -4,14 +4,26 @@ import std.types { String, NonEmptyStr, List }
 import std.nat { Nat }
 import std.measure { ByteSize, HardwareThreadCount, byte_size, hardware_thread_count }
 
-data compute_board_intent_note: String = "THE MACHINE CONTRACT, WHICH IS WHERE A BOARD DESIGN STARTS INSTEAD OF A FEATURE CHECKLIST. Every element of a resolved board must trace to a capability required here or to a constraint some selected component imposes; an element that traces to neither is unearned and must not be in the design. THE TWO STRUCTURAL CHECKS THIS BUYS, and the reason the contract is modelled rather than written in prose: removing an element must identify the obligation that becomes unsatisfied, and an element whose removal breaks no obligation is detectable rather than debatable. WHAT THIS TYPE DELIBERATELY DOES NOT DECIDE: it names capabilities, never realizations. 'Needs one boot-storage path' is a requirement; 'has an M.2 connector' is a choice made downstream against authorities, and fusing the two here would smuggle a component selection into the contract that is supposed to justify it. FEATURE-MINIMAL IS NOT COST-MINIMAL, so this contract carries no instruction to minimize part count: deleting a small support device can force more layers, harder routing, more firmware, or a worse process, and the quantity that actually matters is total realized cost. Nothing here optimizes anything; it only fixes what must be true."
+// THE MACHINE CONTRACT, WHICH IS WHERE A BOARD DESIGN STARTS INSTEAD OF A FEATURE CHECKLIST. Every
+// element of a resolved board must trace to a capability required here or to a constraint a
+// selected component imposes; an element tracing to neither is unearned and must not be in the
+// design. THE TWO STRUCTURAL CHECKS THIS BUYS, and why the contract is modelled rather than prose:
+// removing an element must identify the obligation that becomes unsatisfied, and an element whose
+// removal breaks no obligation is detectable rather than debatable. WHAT THIS TYPE DELIBERATELY
+// DOES NOT DECIDE: it names capabilities, never realizations. 'Needs one boot-storage path' is a
+// requirement; 'has an M.2 connector' is a choice made downstream against authorities, and fusing
+// them here would smuggle a component selection into the contract meant to justify it.
+// FEATURE-MINIMAL IS NOT COST-MINIMAL, so this contract carries no instruction to minimize part
+// count: deleting a small support device can force more layers, harder routing, more firmware, or a
+// worse process, and the quantity that matters is total realized cost. Nothing here optimizes; it
+// only fixes what must be true.
 
-// The capability axis of a compute node, closed deliberately. This is OUR product contract,
-// not an upstream taxonomy, so a closed enum is the right shape: a new capability is a
-// considered widening of what we build, not an open extension point. Expansion estates
-// (general-purpose slots, SATA/RAID, audio, display, broad USB, legacy I/O) are absent from
-// the axis rather than present and disabled — an omitted feature must be unrepresentable, not
-// carried as `enabled: false`, or the type keeps describing a machine we are not building.
+// The capability axis of a compute node, closed deliberately. This is OUR product contract, not an
+// upstream taxonomy, so a closed enum is right: a new capability is a considered widening of what
+// we build, not an open extension point. Expansion estates (general-purpose slots, SATA/RAID,
+// audio, display, broad USB, legacy I/O) are absent from the axis rather than present and disabled
+// — an omitted feature must be unrepresentable, not carried as `enabled: false`, or the type keeps
+// describing a machine we are not building.
 type BoardCapability
   = Compute
   | MemorySubsystem
@@ -54,10 +66,9 @@ fn requirement_capability(r: CapabilityRequirement) -> BoardCapability {
 }
 
 // Equality via ONE ordinal projection rather than a ten-by-ten nested match. The nested form
-// carried a wildcard arm per row, which meant a new capability compared unequal to everything
-// including itself in nine of them and nobody would hear about it. Here a new variant is a
-// typecheck failure in exactly one place, and equality is derived from the ordinal rather than
-// being restated per pair.
+// carried a wildcard arm per row, so a new capability compared unequal to everything including
+// itself in nine of them, silently. Here a new variant is a typecheck failure in exactly one place,
+// and equality is derived from the ordinal rather than restated per pair.
 fn capability_ordinal(c: BoardCapability) -> Int {
   match c {
     Compute => 0

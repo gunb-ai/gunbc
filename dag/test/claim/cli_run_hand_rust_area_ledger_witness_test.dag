@@ -19,7 +19,22 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-data ledger_witness_scope_note: String = "WHAT REPLACED THE PREVIOUS SHAPE, AND WHY IT IS NOT AN EQUIVALENT CHECK. This file used to assert that a prose row CONTAINED the substring 'scripts/rust_item_census.py'. That is the prose-self-match antipattern in its purest form -- the assertion's only content was that someone had written a path into a string -- and it was worse than empty, because the path it pinned had been DELETED from the tree by gunbc#9132 and this witness was the thing keeping the dead citation green. A check whose sole failure mode is 'the sentence was edited' cannot tell a repair from a regression, and here it actively defended the regression.\n\nWHAT IS ASSERTED NOW IS STRUCTURE OVER THE ROWS. The load-bearing one is that the LIVE ledger carries no GenerateNow row, because GenerateNow now carries the entry point that emits the area and no such entry point can be named for any of the sixteen. Its RED IS AUTHORABLE and is authored below rather than argued for: the fixture arm constructs a GenerateNow row and requires the counter to see it. Without that arm the live assertion would be a decoration -- permanently green because the counter could be broken in a way that returns zero for every input, which is exactly the shape DESIGN section 4b calls worse than absent. The two arms together are the check: one says the counter can count, the other says the tree has nothing to count."
+// WHAT REPLACED THE PREVIOUS SHAPE, AND WHY IT IS NOT AN EQUIVALENT CHECK. This file used to assert
+// that a prose row CONTAINED the substring 'scripts/rust_item_census.py'. That is the
+// prose-self-match antipattern in its purest form -- the assertion's only content was that someone
+// had written a path into a string -- and it was worse than empty, because the path it pinned had
+// been DELETED from the tree by gunbc#9132 and this witness was the thing keeping the dead citation
+// green. A check whose sole failure mode is 'the sentence was edited' cannot tell a repair from a
+// regression, and here it actively defended the regression.
+//
+// WHAT IS ASSERTED NOW IS STRUCTURE OVER THE ROWS. The load-bearing one is that the LIVE ledger
+// carries no GenerateNow row, because GenerateNow now carries the entry point that emits the area
+// and no such entry point can be named for any of the sixteen. Its RED IS AUTHORABLE and is
+// authored below rather than argued for: the fixture arm constructs a GenerateNow row and requires
+// the counter to see it. Without that arm the live assertion would be a decoration -- permanently
+// green because the counter could be broken in a way that returns zero for every input, which is
+// exactly the shape DESIGN section 4b calls worse than absent. The two arms together are the check:
+// one says the counter can count, the other says the tree has nothing to count.
 
 data fixture_generate_now_row: CliRunHandRustAreaRow = CliRunHandRustAreaRow {
   area_id: "fixture",

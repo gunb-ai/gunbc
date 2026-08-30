@@ -18,7 +18,12 @@ import product.placement_supply { HostIdentity }
 
 data toolchain_completeness_authority_note: String = "B3's toolchain-completeness axis, and it is keyed on a RESOLVED TOOLCHAIN rather than on a host, because the host-shaped question is the one that produces a true-sounding wrong answer. The incident that grounds it, read live on srv2 2026-07-25: floor gates died with `spawn rustfmt: No such file or directory` across two hosts in two days, and the natural reading — rustfmt is missing from the machine — was wrong. rustfmt WAS on srv2. The job principal ghrunner carried two rustup toolchains, 1.93.0 with rustfmt and stable WITHOUT it, ~/.cargo/bin/rustfmt was a shim, and ghrunner's default was stable. So a completeness check keyed on 'is rustfmt installed on this host' answers yes, converges green, and the gate keeps failing — the same presupposition failure gunbc.host_swap_backing found in a MemorySwapMax over absent swap, and gunbc.auth.materialized_secret found in an SmEnabled version upstream had revoked. Three incidents, one shape: a value reported green because the condition under which it would MEAN something was assumed instead of observed. The cell therefore names the toolchain it resolved and the component set THAT toolchain carries, and a requirement is satisfied only by the components of the ACTIVE toolchain."
 
-data toolchain_requirement_derivation_note: String = "The requirement is derived from the gate that needs it, carried as a DeclarationRef rather than a label, so a component nothing requires cannot accumulate here and the reason a component is required stays pointable. Today there is exactly one row: the required CI fmt step invokes rustfmt, so it needs rustfmt on the job principal's resolved toolchain. Clippy is deliberately NOT a row — it was removed from CI 2026-07-08 as zero-signal under a crate-wide allow, and adding it here because it is a familiar component would be requiring something no consumer needs."
+// The requirement is derived from the gate that needs it, carried as a DeclarationRef rather than a
+// label, so a component nothing requires cannot accumulate here and the reason a component is
+// required stays pointable. Today there is exactly one row: the required CI fmt step invokes
+// rustfmt, so it needs rustfmt on the job principal's resolved toolchain. Clippy is deliberately
+// NOT a row — it was removed from CI 2026-07-08 as zero-signal under a crate-wide allow, and adding
+// it here because it is a familiar component would be requiring something no consumer needs.
 
 type ToolchainComponentRequirement {
   component: RustupComponent
@@ -54,7 +59,14 @@ fn resolved_toolchain_missing(
   filter(reqs, r => !resolved_toolchain_has(t: t, c: r.component))
 }
 
-data toolchain_completeness_verdict_note: String = "The fail-closed fold, with the arms separated by the work each names. No observation at all is UnknownRefused — nothing has asked this host's job principal what its toolchain resolves, and the remedy is to build the probe. A resolved toolchain missing a required component is Absent — the question was asked and the answer is that the component the gate needs is not in the toolchain the shim will reach, and the remedy is to add it to THAT toolchain. A complete resolution is Converged. There is deliberately no arm for 'the component exists in some other toolchain on the box': that state is exactly the srv2 incident, and it is not a partial success — under it the gate fails every time, so it must not read as anything other than Absent."
+// The fail-closed fold, with the arms separated by the work each names. No observation at all is
+// UnknownRefused — nothing has asked this host's job principal what its toolchain resolves, and the
+// remedy is to build the probe. A resolved toolchain missing a required component is Absent — the
+// question was asked and the answer is that the component the gate needs is not in the toolchain
+// the shim will reach, and the remedy is to add it to THAT toolchain. A complete resolution is
+// Converged. There is deliberately no arm for 'the component exists in some other toolchain on the
+// box': that state is exactly the srv2 incident, and it is not a partial success — under it the
+// gate fails every time, so it must not read as anything other than Absent.
 
 fn toolchain_completeness_verdict(
   reqs: List<ToolchainComponentRequirement>,
@@ -71,7 +83,13 @@ fn toolchain_completeness_verdict(
   }
 }
 
-data toolchain_probe_note: String = "The probe, classified. Listing a toolchain's components reads a directory and installs nothing, so it is ProbeInert and its Converged survives. The sketch beside it is the shape an ensure lane reaches for by reflex and must not: a check that runs `rustup component add` when the component is missing reports success it caused, so it can never witness the deficit it exists to find — and the deficit's frequency would drop to zero by construction, which is the absorbing fallback in its purest form. That matters here beyond principle: the two-hosts-in-two-days recurrence is only visible BECAUSE the checks so far have refused rather than repaired."
+// The probe, classified. Listing a toolchain's components reads a directory and installs nothing,
+// so it is ProbeInert and its Converged survives. The sketch beside it is the shape an ensure lane
+// reaches for by reflex and must not: a check that runs `rustup component add` when the component
+// is missing reports success it caused, so it can never witness the deficit it exists to find — and
+// the deficit's frequency would drop to zero by construction, which is the absorbing fallback in
+// its purest form. That matters here beyond principle: the two-hosts-in-two-days recurrence is only
+// visible BECAUSE the checks so far have refused rather than repaired.
 
 data rustup_component_list_probe: ReadBackProbe = ReadBackProbe {
   label: "rustup component list --installed, as the job principal, on the active toolchain",
@@ -102,7 +120,19 @@ fn toolchain_completeness_observed_verdict(
   }
 }
 
-data srv2_live_reading_note: String = "A CITED LIVE READING, not a fixture, and the distinction is the whole reason this row is allowed to exist. Taken over an ssh hop to srv2 on 2026-07-25 as part of diagnosing the recurring floor failure: ghrunner's default toolchain is stable-aarch64-unknown-linux-gnu, and BEFORE the operator-directed hand-install that toolchain carried cargo/rustc/rustdoc and the rust-gdb and rust-lldb wrappers, with NO rustfmt — while 1.93.0-aarch64-unknown-linux-gnu carried rustfmt the whole time. The hand-install then added rustfmt to stable, verified by execution through the shim on the job's PATH shape (rustfmt 1.9.0-stable). Both readings are recorded because the BEFORE row is what makes the axis discriminating — a module that only ever saw the fixed state could not show that its verdict would have caught the incident. The reading covers srv2's nine slots at once, since they share one ghrunner principal and therefore one toolchain. srv1, srv3 and srv4 have no reading: srv1 refuses every credential available to this session, and no probe runs anywhere in the tree, so their honest verdict is UnknownRefused and this module does not invent one."
+// A CITED LIVE READING, not a fixture, and the distinction is the whole reason this row is allowed
+// to exist. Taken over an ssh hop to srv2 on 2026-07-25 as part of diagnosing the recurring floor
+// failure: ghrunner's default toolchain is stable-aarch64-unknown-linux-gnu, and BEFORE the
+// operator-directed hand-install that toolchain carried cargo/rustc/rustdoc and the rust-gdb and
+// rust-lldb wrappers, with NO rustfmt — while 1.93.0-aarch64-unknown-linux-gnu carried rustfmt the
+// whole time. The hand-install then added rustfmt to stable, verified by execution through the shim
+// on the job's PATH shape (rustfmt 1.9.0-stable). Both readings are recorded because the BEFORE row
+// is what makes the axis discriminating — a module that only ever saw the fixed state could not
+// show that its verdict would have caught the incident. The reading covers srv2's nine slots at
+// once, since they share one ghrunner principal and therefore one toolchain. srv1, srv3 and srv4
+// have no reading: srv1 refuses every credential available to this session, and no probe runs
+// anywhere in the tree, so their honest verdict is UnknownRefused and this module does not invent
+// one.
 
 data srv2_ghrunner_toolchain_before_fix: ResolvedToolchain = ResolvedToolchain {
   principal: "ghrunner",
@@ -138,7 +168,6 @@ fn host_toolchain_completeness_verdict(host: HostIdentity) -> ObservationVerdict
   )
 }
 
-
 data toolchain_ensure_frontier_note: String = "What is NOT here, named rather than half-built. The operator's routing puts the component on the modeled toolchain ensure (B3), which means a HostToolchainKind variant for the runner floor toolchain and a HostEffect arm that applies `rustup component add` to the RESOLVED toolchain of the job principal. That effect cannot be realized today: it hits the argv materializer's hardcoded five-parameter vocabulary, the same blocker gunbc.host_swap_backing and gunbc.auth.materialized_secret both name, now dispatched as its own work item. Landing the variant before the materializer is generic would put an unreachable arm into gunbc.host_effect — a load-bearing type with six match sites and no exhaustiveness checking in the seed, so a variant nothing can apply would fall through silently rather than refuse. The requirement rows, the resolution shape, the verdict and its probe classification are all live now and are what the ensure will consume; the apply arm lands when the materializer child unblocks it. srv2's components were brought into the desired state BY HAND on operator instruction in the meantime, and that hand action is exactly what this axis makes visible and counted rather than invisible."
 
 data toolchain_ensure_apply_scaffold: Disposition = Scaffold {
@@ -150,7 +179,24 @@ data toolchain_ensure_apply_scaffold: Disposition = Scaffold {
   }
 }
 
-data spawn_reachability_is_a_second_condition_note: String = "A CORRECTION to this module, found by execution after the hand-install and before any of it was believed. Installing the component into the resolving toolchain is NECESSARY and is NOT SUFFICIENT, and the two conditions must not be fused into one cell. Read live on srv2 2026-07-25: the runner unit declares no PATH, so it inherits systemd's default (/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/snap/bin), which does not contain /home/ghrunner/.cargo/bin at all. A child spawned with that environment cannot find rustfmt no matter which components are installed, and `spawn rustfmt: No such file or directory` is precisely a PATH-lookup failure rather than a component-missing failure — a component-missing shim produces a rustup diagnostic instead. A ghrunner LOGIN shell does resolve it, because the profile adds the cargo bin directory, so the observed outcome depends on which of those two environments the gate's spawn inherits. That is not observable from a host read at all; it is a property of the job step, and answering it needs a probe INSIDE a job. So the honest state is: the component condition is now Converged on srv2 and the reachability condition is UNOBSERVED, and 'will the gate find rustfmt' is therefore UnknownRefused. Recording this as a second axis rather than letting completeness stand in for it is the same discipline the module was built to enforce, applied to the module itself — a completeness cell reported as the answer would be a value green because the condition under which it MEANS the gate works was assumed, which is the exact error this file opens by describing."
+// A CORRECTION to this module, found by execution after the hand-install and before any of it was
+// believed. Installing the component into the resolving toolchain is NECESSARY and is NOT
+// SUFFICIENT, and the two conditions must not be fused into one cell. Read live on srv2 2026-07-25:
+// the runner unit declares no PATH, so it inherits systemd's default
+// (/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/snap/bin), which does not contain
+// /home/ghrunner/.cargo/bin at all. A child spawned with that environment cannot find rustfmt no
+// matter which components are installed, and `spawn rustfmt: No such file or directory` is
+// precisely a PATH-lookup failure rather than a component-missing failure — a component-missing
+// shim produces a rustup diagnostic instead. A ghrunner LOGIN shell does resolve it, because the
+// profile adds the cargo bin directory, so the observed outcome depends on which of those two
+// environments the gate's spawn inherits. That is not observable from a host read at all; it is a
+// property of the job step, and answering it needs a probe INSIDE a job. So the honest state is:
+// the component condition is now Converged on srv2 and the reachability condition is UNOBSERVED,
+// and 'will the gate find rustfmt' is therefore UnknownRefused. Recording this as a second axis
+// rather than letting completeness stand in for it is the same discipline the module was built to
+// enforce, applied to the module itself — a completeness cell reported as the answer would be a
+// value green because the condition under which it MEANS the gate works was assumed, which is the
+// exact error this file opens by describing.
 
 type ComponentSpawnReachability
   = ReachableOnSpawnPath { path_source: NonEmptyStr }
@@ -174,11 +220,19 @@ fn host_toolchain_spawn_reachability(host: HostIdentity) -> ComponentSpawnReacha
   none
 }
 
+// No host on the fleet has a reachability observation, srv2 included, and the reason is structural
+// rather than incidental: the question is what PATH the gate's spawn inherits, which only a probe
+// running INSIDE a job step can answer. A host read cannot see it — I tried, and what a host read
+// CAN show (the unit's inherited PATH, and that a login shell differs from it) is exactly enough to
+// prove the question is open and not enough to close it. The probe is a step emitting its own
+// resolved PATH and the resolution of each required component, and it is the same shape as the
+// read-back independence criterion demands: it must observe, never repair. Until it exists,
+// host_gate_finds_component_verdict answers UnknownRefused for every host, which is the honest
+// reading of a fleet where the same failure has now recurred on two hosts in two days.
+
 fn host_gate_finds_component_verdict(host: HostIdentity) -> ObservationVerdict {
   gate_finds_component_verdict(
     completeness: host_toolchain_completeness_verdict(host: host),
     reachability: host_toolchain_spawn_reachability(host: host),
   )
 }
-
-data spawn_reachability_probe_frontier_note: String = "No host on the fleet has a reachability observation, srv2 included, and the reason is structural rather than incidental: the question is what PATH the gate's spawn inherits, which only a probe running INSIDE a job step can answer. A host read cannot see it — I tried, and what a host read CAN show (the unit's inherited PATH, and that a login shell differs from it) is exactly enough to prove the question is open and not enough to close it. The probe is a step emitting its own resolved PATH and the resolution of each required component, and it is the same shape as the read-back independence criterion demands: it must observe, never repair. Until it exists, host_gate_finds_component_verdict answers UnknownRefused for every host, which is the honest reading of a fleet where the same failure has now recurred on two hosts in two days."

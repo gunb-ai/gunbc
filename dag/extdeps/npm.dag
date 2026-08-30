@@ -69,11 +69,24 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
   further_citations: [npm_sri_w3c_authority]
 }
 
-data npm_scope_subject_note: String = "THE SUBJECT IS the npm package-lock format — path keys, node metadata, declared dependency maps, and integrity wire — not the npm registry HTTP API and not gunbc Codex product policy. Citation pins the v10 package-lock docs matching the measured Codex npm 10.x line; lockfileVersion is observed as an integer and closed to NpmPackageLockV3 by typed decode. SRI decode is a BOUNDED first profile (single expression, no options, sha512|sha1 only) — not a claim to implement the full W3C SRI grammar."
+// THE SUBJECT IS the npm package-lock format — path keys, node metadata, declared dependency maps,
+// and integrity wire — not the npm registry HTTP API and not gunbc Codex product policy. Citation
+// pins the v10 package-lock docs matching the measured Codex npm 10.x line; lockfileVersion is
+// observed as an integer and closed to NpmPackageLockV3 by typed decode. SRI decode is a BOUNDED
+// first profile (single expression, no options, sha512|sha1 only) — not a claim to implement the
+// full W3C SRI grammar.
 
-data npm_integrity_decode_note: String = "THREE STAGES, DO NOT FUSE. (1) npm_decode_integrity: raw SRI wire → NpmIntegrityDecode (typed wire outcomes). (2) npm_registry_integrity_from_decode: successful decode → NpmRegistryIntegrity; wire refusals stay typed, never Option. (3) gunbc.package_delivery.codex_admit_npm_integrity: product policy over NpmRegistryIntegrity only. Decoding EXPECTED digest is not artifact verification."
+// THREE STAGES, DO NOT FUSE. (1) npm_decode_integrity: raw SRI wire → NpmIntegrityDecode (typed
+// wire outcomes). (2) npm_registry_integrity_from_decode: successful decode → NpmRegistryIntegrity;
+// wire refusals stay typed, never Option. (3) gunbc.package_delivery.codex_admit_npm_integrity:
+// product policy over NpmRegistryIntegrity only. Decoding EXPECTED digest is not artifact
+// verification.
 
-data npm_resolved_graph_boundary_note: String = "TWO npm-owned facts, do not fuse. A parsed roster carries path-keyed nodes and declared dependency maps from the lock JSON. Exact consumer→dependency PackageLockGraph edges require an npm-owned realization receipt (resolver / Arborist / post-npm-ci read-back) — never name→first-matching-node inventing inside gunbc. npm remains the resolver; gunbc models and verifies its result."
+// TWO npm-owned facts, do not fuse. A parsed roster carries path-keyed nodes and declared
+// dependency maps from the lock JSON. Exact consumer→dependency PackageLockGraph edges require an
+// npm-owned realization receipt (resolver / Arborist / post-npm-ci read-back) — never
+// name→first-matching-node inventing inside gunbc. npm remains the resolver; gunbc models and
+// verifies its result.
 
 type NpmPackageLockFormat
   = | NpmPackageLockV3
@@ -104,14 +117,19 @@ type NpmLockPathKey
       key: NonEmptyStr
     }
 
-data npm_lock_path_key_note: String = "npm package-lock packages map uses the empty string \"\" for the root project — NpmRootLockPath is derived only from that exact empty JSON object key. Every other key is an opaque upstream lock key (NpmRelativeLockPath.key). It is NOT automatically a safe filesystem-relative host path; materialization later decides whether and how to project it."
+// npm package-lock packages map uses the empty string "" for the root project — NpmRootLockPath is
+// derived only from that exact empty JSON object key. Every other key is an opaque upstream lock
+// key (NpmRelativeLockPath.key). It is NOT automatically a safe filesystem-relative host path;
+// materialization later decides whether and how to project it.
 
 type NpmDependencyKind
   = NpmRuntimeDependency
   | NpmOptionalDependency
   | NpmPeerDependency
 
-data npm_dependency_kind_note: String = "Declared edge kinds come from the lock's dependency maps once an npm realization supplies exact node-key endpoints. A node marked dev/optional is NODE METADATA, not a second edge category invented as NpmDevDependency."
+// Declared edge kinds come from the lock's dependency maps once an npm realization supplies exact
+// node-key endpoints. A node marked dev/optional is NODE METADATA, not a second edge category
+// invented as NpmDevDependency.
 
 type NpmLockNodeFlags {
   dev: Bool
@@ -136,13 +154,17 @@ type NpmPackageLockManager {
   format: NpmPackageLockFormat
 }
 
-data npm_package_lock_manager_note: String = "FIRST SLICE: the lockfile carries lockfileVersion, not an npm CLI version. NpmPackageLockManager is format-only. A separate npm-version observation (e.g. npm --version at materialization) may join later — do not invent a VersionIdentity from silence."
+// FIRST SLICE: the lockfile carries lockfileVersion, not an npm CLI version. NpmPackageLockManager
+// is format-only. A separate npm-version observation (e.g. npm --version at materialization) may
+// join later — do not invent a VersionIdentity from silence.
 
 type NpmResolvedRegistryArtifact {
   locator: NonEmptyStr
 }
 
-data npm_resolved_registry_source_note: String = "FIRST SLICE: locator remains NonEmptyStr until acquisition types a registry tarball URL vs configured-registry marker vs file: source. Do not treat those as interchangeable forever — typed source identity lands with archive acquisition."
+// FIRST SLICE: locator remains NonEmptyStr until acquisition types a registry tarball URL vs
+// configured-registry marker vs file: source. Do not treat those as interchangeable forever — typed
+// source identity lands with archive acquisition.
 
 type NpmRegistryIntegrity
   = NpmRegistrySha512Integrity {
@@ -176,7 +198,10 @@ type NpmLockNodeDecode
       native_form: NonEmptyStr
     }
 
-data npm_lock_node_selection_note: String = "FIRST CODEX PROFILE supports only root + registry-artifact nodes. Git, link, and local forms decode as NpmLockNodeFormUnsupported — add typed arms only when a real supported consumer needs them. NpmRegistryArtifact is the native selection record; Pin<PackageCoordinate<NpmRegistry>> is DERIVED (npm_registry_artifact_pin), never stored beside native integrity."
+// FIRST CODEX PROFILE supports only root + registry-artifact nodes. Git, link, and local forms
+// decode as NpmLockNodeFormUnsupported — add typed arms only when a real supported consumer needs
+// them. NpmRegistryArtifact is the native selection record; Pin<PackageCoordinate<NpmRegistry>> is
+// DERIVED (npm_registry_artifact_pin), never stored beside native integrity.
 
 fn npm_registry_integrity_content_hash(integrity: NpmRegistryIntegrity) -> ContentHash {
   match integrity {
@@ -338,7 +363,11 @@ fn npm_decode_integrity(wire: String) -> NpmIntegrityDecode {
   }
 }
 
-data npm_package_lock_parse_note: String = "FORWARD READ of package-lock.json v3 via parse_json. Produces a path-keyed roster of NpmLockNodeDecode outcomes and a PackageLockGraph with EMPTY edges — exact consumer→dependency endpoints require an npm-owned realization (npm_resolved_graph_boundary_note). Do not invent edges by name matching. Package name absent on a node is derived from the lock path key after the last node_modules/ segment (npm docs)."
+// FORWARD READ of package-lock.json v3 via parse_json. Produces a path-keyed roster of
+// NpmLockNodeDecode outcomes and a PackageLockGraph with EMPTY edges — exact consumer→dependency
+// endpoints require an npm-owned realization (npm_resolved_graph_boundary_note). Do not invent
+// edges by name matching. Package name absent on a node is derived from the lock path key after the
+// last node_modules/ segment (npm docs).
 
 type NpmPackageLockGraph = PackageLockGraph<NpmPackageLockManager, NpmLockPathKey, NpmLockNodeSelection, NpmLockNodeMetadata, NpmDependencyKind>
 
@@ -401,7 +430,9 @@ type NpmBooleanMemberObservation
     }
   | NpmBooleanMemberNotAnObject
 
-data npm_boolean_member_observation_note: String = "Absent / observed / duplicate / wrong-type are DISTINCT. package-lock defaults apply only on Absent (npm docs: missing Boolean flags are false). Duplicate and wrong-type refuse — never collapse to false."
+// Absent / observed / duplicate / wrong-type are DISTINCT. package-lock defaults apply only on
+// Absent (npm docs: missing Boolean flags are false). Duplicate and wrong-type refuse — never
+// collapse to false.
 
 fn npm_json_boolean_member(v: JsonValue, key: String) -> NpmBooleanMemberObservation {
   match json_object_unique_member(v: v, key: key) {
@@ -432,7 +463,8 @@ type NpmStringListMemberObservation
     }
   | NpmStringListMemberNotAnObject
 
-data npm_string_list_member_observation_note: String = "Platform os/cpu lists: Absent means unconstrained ([]). Duplicate, wrong container type, or non-string element refuse — never silently project to []."
+// Platform os/cpu lists: Absent means unconstrained ([]). Duplicate, wrong container type, or
+// non-string element refuse — never silently project to [].
 
 type NpmStringListFoldAcc
   = NpmStringListFoldOk {
