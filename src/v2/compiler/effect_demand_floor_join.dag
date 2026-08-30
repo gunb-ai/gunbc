@@ -38,10 +38,27 @@ import v2.workflow.required_floor {
   required_floor_site_disposition
 }
 
-data effect_demand_floor_join_note: String = "THE INSTRUMENT, NAMED, THAT A COMMITTED TABLE ONCE STOOD IN FOR. XL-1 needs one population: every claim the required floor discovers whose entry's dependency closure reaches a whole-body self-call seam, joined to the floor's own standing for that claim. An earlier revision committed that population as a TSV -- the output of an instrument standing where the instrument should be named (DESIGN section 6), and a second representation of what required_floor_site_disposition already derives (DESIGN section 3). This module is the producer. Three authorities, none re-coined: the discovery walk is v2.workflow.floor_discovery_producer's, the closure is v2.lens.module_graph's dependency_closure over the same import-and-reference edge family claim_scope_for walks, and the standing is v2.workflow.required_floor's required_floor_site_disposition, called with the dotted module.function identity the cost-debt roster keys on. A consumer re-derives from this entry point and joins by identity; the digest is how two derivations know they saw one population. WHAT THE STANDING IS AND IS NOT: it is the floor's SCHEDULER standing -- planned, or declined for a named reason -- and it is not a cutover disposition, which another lane owns. Reading FloorDeclinedLongModule as 'too expensive to run' is wrong on its face: that arm declines by authored module prefix, and the corpus records a member whose cost justification lapsed."
-
-data effect_demand_floor_join_identity_note: String = "THE ROW'S IDENTITY IS A DeclarationRef, AND THE DOTTED STRING IS DERIVED FROM IT, not the other way round. Two lanes joining on this population spelled the same claim two ways -- module.function here, module::decl there -- which is a hollow-alias fork on the join key, the class caught one field over on source_revision. std.decl_ref already owns declaration identity; the row carries it, a consumer joins on it, and claim_identity survives only because the cost-debt roster and the digest are keyed on the dotted rendering."
-
+// THE INSTRUMENT, NAMED, THAT A COMMITTED TABLE ONCE STOOD IN FOR. XL-1 needs one population: every
+// claim the required floor discovers whose entry's dependency closure reaches a whole-body self-call
+// seam, joined to the floor's own standing for that claim. An earlier revision committed that
+// population as a TSV -- the output of an instrument standing where the instrument should be named
+// (DESIGN section 6), and a second representation of what required_floor_site_disposition already
+// derives (DESIGN section 3). This module is the producer. Three authorities, none re-coined: the
+// discovery walk is v2.workflow.floor_discovery_producer's, the closure is v2.lens.module_graph's
+// dependency_closure over the same import-and-reference edge family claim_scope_for walks, and the
+// standing is v2.workflow.required_floor's required_floor_site_disposition, called with the dotted
+// module.function identity the cost-debt roster keys on. A consumer re-derives from this entry point
+// and joins by identity; the digest is how two derivations know they saw one population. WHAT THE
+// STANDING IS AND IS NOT: it is the floor's SCHEDULER standing -- planned, or declined for a named
+// reason -- and it is not a cutover disposition, which another lane owns. Reading
+// FloorDeclinedLongModule as 'too expensive to run' is wrong on its face: that arm declines by
+// authored module prefix, and the corpus records a member whose cost justification lapsed.
+// THE ROW'S IDENTITY IS A DeclarationRef, AND THE DOTTED STRING IS DERIVED FROM IT, not the other way
+// round. Two lanes joining on this population spelled the same claim two ways -- module.function here,
+// module::decl there -- which is a hollow-alias fork on the join key, the class caught one field over
+// on source_revision. std.decl_ref already owns declaration identity; the row carries it, a consumer
+// joins on it, and claim_identity survives only because the cost-debt roster and the digest are keyed
+// on the dotted rendering.
 type FloorStandingJoinRow {
   identity_ref: DeclarationRef
   claim_identity: String
@@ -63,8 +80,14 @@ type FloorStandingCounts {
   declined_cost_debt: Int
 }
 
-data effect_demand_floor_join_refusal_note: String = "EVERY WAY THE POPULATION CAN BE WRONG IS AN ARM, AND NONE OF THEM IS A SKIP. An entry the walk found but no declaration fact names is not dropped: dropping it would shrink the denominator by exactly the rows most likely to be mis-homed, in the direction that under-reports. Two rows with one identity are not deduplicated, because the identity is what the join is keyed on and a silent merge would make the floor's standing answerable twice. And an empty population is refused rather than hashed, because a digest over nothing is a digest a consumer can match by also seeing nothing. One thing IS a skip, and is named as such: an entry whose closure reaches no seam is not in the population by definition, so it is neither a row nor a refusal."
-
+// EVERY WAY THE POPULATION CAN BE WRONG IS AN ARM, AND NONE OF THEM IS A SKIP. An entry the walk found
+// but no declaration fact names is not dropped: dropping it would shrink the denominator by exactly
+// the rows most likely to be mis-homed, in the direction that under-reports. Two rows with one
+// identity are not deduplicated, because the identity is what the join is keyed on and a silent merge
+// would make the floor's standing answerable twice. And an empty population is refused rather than
+// hashed, because a digest over nothing is a digest a consumer can match by also seeing nothing. One
+// thing IS a skip, and is named as such: an entry whose closure reaches no seam is not in the
+// population by definition, so it is neither a row nor a refusal.
 type FloorStandingJoinRefusal
   = DiscoveryRefused { reason: String }
   | EntryPathUndeclared { entry_path: String, function: String }
@@ -170,8 +193,12 @@ fn floor_join_counts(rows: List<FloorStandingJoinRow>) -> FloorStandingCounts {
   fold_list(xs: rows, empty: floor_join_counts_zero(), cons: fn(acc, row) { floor_join_counts_add(c: acc, d: row.disposition) })
 }
 
-data effect_demand_floor_join_digest_note: String = "THE DIGEST IS OVER IDENTITY AND STANDING, IN PRODUCER ORDER, and order is part of it on purpose. Two consumers re-deriving from this producer over one tree walk the same discovery order, so their digests agree; a consumer that reordered rows and still matched would be matching a weaker fact than the one carried. What the digest deliberately does NOT cover is the entry path or the module path, because those are the KEYS the identity was built from and a change to either already changes the identity."
-
+// THE DIGEST IS OVER IDENTITY AND STANDING, IN PRODUCER ORDER, and order is part of it on purpose. Two
+// consumers re-deriving from this producer over one tree walk the same discovery order, so their
+// digests agree; a consumer that reordered rows and still matched would be matching a weaker fact than
+// the one carried. What the digest deliberately does NOT cover is the entry path or the module path,
+// because those are the KEYS the identity was built from and a change to either already changes the
+// identity.
 fn floor_join_digest_text(rows: List<FloorStandingJoinRow>) -> String {
   fold_list(
     xs: rows,
@@ -204,8 +231,12 @@ fn floor_join_refuse(state: FloorJoinFoldState, cause: FloorStandingJoinRefusal)
   }
 }
 
-data effect_demand_floor_join_memo_note: String = "ONE CLOSURE WALK PER ENTRY, NOT PER CLAIM. The floor discovers several claims per entry file -- five figures of claims over four figures of entries -- and the closure is a fact about the ENTRY, so walking it once per claim would pay the breadth-first walk a multiple of the times the population warrants. DESIGN's bare-minimum-cost rule admits no 'n is small here', so the reach verdict is memoized on the normalized entry path in the fold state and the first refusal stays sticky while the fold runs to the end, exactly as the discovery census does."
-
+// ONE CLOSURE WALK PER ENTRY, NOT PER CLAIM. The floor discovers several claims per entry file -- five
+// figures of claims over four figures of entries -- and the closure is a fact about the ENTRY, so
+// walking it once per claim would pay the breadth-first walk a multiple of the times the population
+// warrants. DESIGN's bare-minimum-cost rule admits no 'n is small here', so the reach verdict is
+// memoized on the normalized entry path in the fold state and the first refusal stays sticky while the
+// fold runs to the end, exactly as the discovery census does.
 fn floor_join_reach_memoized(
   memo: Map<String, Bool>,
   entry: String,
@@ -293,8 +324,13 @@ fn effect_demand_floor_join(
   }
 }
 
-data effect_demand_floor_join_live_basis_note: String = "THE LIVE SHELL STATES ITS OWN POPULATION BASIS INSTEAD OF HIDING IT. The floor's discovery admits two kinds of witness: test-marked functions found by the source walk, and Bool-valued owned data declarations supplied to the producer as OwnedDataDeclRecord rows by the host's own scan. No substrate producer of those records exists today, so this shell supplies none and says so in owned_data_records_supplied, which the joined result carries. A consumer that needs the owned-data witnesses in the population is reading a stated lower bound, not a silent one, and the digest is over exactly the basis the result names."
-
+// THE LIVE SHELL STATES ITS OWN POPULATION BASIS INSTEAD OF HIDING IT. The floor's discovery admits
+// two kinds of witness: test-marked functions found by the source walk, and Bool-valued owned data
+// declarations supplied to the producer as OwnedDataDeclRecord rows by the host's own scan. No
+// substrate producer of those records exists today, so this shell supplies none and says so in
+// owned_data_records_supplied, which the joined result carries. A consumer that needs the owned-data
+// witnesses in the population is reading a stated lower bound, not a silent one, and the digest is
+// over exactly the basis the result names.
 fn effect_demand_floor_join_live(
   source_roots: List<String>,
   exclude_substrings: List<String>
@@ -311,8 +347,12 @@ fn effect_demand_floor_join_live(
   }
 }
 
-data effect_demand_floor_join_live_default_note: String = "THE DEFAULT LIVE ENTRY BINDS THE FLOOR'S OWN ROOTS AND EXCLUSIONS, not a copy of them. The required floor's Rust runner parses witness_exclusion_substrings out of gunbc.ci_layer_roots; this shell reads the same declaration through an import, so the two cannot drift apart without a resolve refusal, and a discovery refusal here over a test-marked declaration outside a *_test.dag file is the same refusal the floor would raise, not a defect in this producer. The digest entry returns text so a consumer can quote it: a digest on success, or the refusal in the same words the join carries."
-
+// THE DEFAULT LIVE ENTRY BINDS THE FLOOR'S OWN ROOTS AND EXCLUSIONS, not a copy of them. The required
+// floor's Rust runner parses witness_exclusion_substrings out of gunbc.ci_layer_roots; this shell
+// reads the same declaration through an import, so the two cannot drift apart without a resolve
+// refusal, and a discovery refusal here over a test-marked declaration outside a *_test.dag file is
+// the same refusal the floor would raise, not a defect in this producer. The digest entry returns text
+// so a consumer can quote it: a digest on success, or the refusal in the same words the join carries.
 data effect_demand_floor_join_source_roots: List<String> = ["dag", "src/v2"]
 
 fn effect_demand_floor_join_live_default() -> FloorStandingJoin {

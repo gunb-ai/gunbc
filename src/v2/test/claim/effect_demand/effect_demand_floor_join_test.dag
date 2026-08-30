@@ -30,8 +30,12 @@ import v2.workflow.required_floor {
   RequiredFloorDisposition
 }
 
-data floor_join_probe_note: String = "A CONTROLLED FIXTURE, NEVER THE LIVE TREE. Six declared modules, four discovered claims, one seam. Entry A reaches the seam only transitively through B, so a walk that stopped at direct imports would drop it; C reaches it and lives under a long-home prefix; D reaches it and lives outside the required gate; N reaches nothing and must be absent without being a refusal. Standings are the real required_floor_site_disposition over synthetic module paths chosen to land on named arms of the real prefix rosters, so a witness here goes red if either the join or the floor's own rule moves."
-
+// A CONTROLLED FIXTURE, NEVER THE LIVE TREE. Six declared modules, four discovered claims, one seam.
+// Entry A reaches the seam only transitively through B, so a walk that stopped at direct imports would
+// drop it; C reaches it and lives under a long-home prefix; D reaches it and lives outside the
+// required gate; N reaches nothing and must be absent without being a refusal. Standings are the real
+// required_floor_site_disposition over synthetic module paths chosen to land on named arms of the real
+// prefix rosters, so a witness here goes red if either the join or the floor's own rule moves.
 fn probe_node(module: String, path: String) -> ModuleDeclarationFact {
   ModuleDeclarationFact { module: module, path: path }
 }
