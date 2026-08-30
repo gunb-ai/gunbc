@@ -286,6 +286,7 @@ pub fn run_required_regen(
     let sources = super::regen_input_sources(&workspace)?;
     v1_rt::trace_mark("regen.corpus_load.done".to_string());
     let authority_digest = authority_digest_from_sources(&sources)?;
+    let formatter = formatter.with_normalize_cache(&workspace)?;
 
     // PRODUCTION, THEN ADJUDICATION -- and the order is the whole repair.
     //
@@ -310,7 +311,7 @@ pub fn run_required_regen(
     // refusal, because it is emit's output and not a reward for agreeing with the committed tree.
     // Authority for the ordering: `v2.workflow.required_regen` `required_regen_run`, whose verdict
     // arms cannot be spelled without the tree they judged.
-    let (emitted, emitted_basenames) = match emit_generated_surface(&workspace)? {
+    let (emitted, emitted_basenames) = match emit_generated_surface(&sources)? {
         // EMIT PRODUCED NOTHING IS NOT A VERDICT ABOUT A TREE. Writing a receipt here would name a
         // `candidate_artifact` no pass had written, which is the impersonation the receipt split
         // above exists to end, one field over. `CandidateTreeUnproduced` in
@@ -519,10 +520,10 @@ pub fn run_required_regen_fixed_point(
     }
 
     let pass1 = reconcile_pass1_digest(pass1_digest, &prior.candidate_generated_digest)?;
-    let formatter = ResolvedFormatter::admit()?;
+    let formatter = ResolvedFormatter::admit()?.with_normalize_cache(&workspace)?;
     let sources = super::regen_input_sources(&workspace)?;
     let authority_digest = authority_digest_from_sources(&sources)?;
-    let emitted = compile_stage0(&workspace)?;
+    let emitted = compile_stage0(&sources)?;
     let committed_basenames = committed_generated_basenames(&workspace.join("src/v1/stage0/src"))?;
     if emitted.is_empty() {
         return Err("refusal: fixed-point emit produced zero files".to_string());
@@ -635,8 +636,8 @@ enum GeneratedSurfaceAdjudicated {
     Refused { reason: String },
 }
 
-fn emit_generated_surface(workspace: &Path) -> Result<GeneratedSurfaceEmit, String> {
-    let emitted = compile_stage0(workspace)?;
+fn emit_generated_surface(sources: &[(String, String)]) -> Result<GeneratedSurfaceEmit, String> {
+    let emitted = compile_stage0(sources)?;
     if emitted.is_empty() {
         return Ok(GeneratedSurfaceEmit::EmitRefused {
             reason: "refusal: emit produced zero files".to_string(),
@@ -674,10 +675,10 @@ fn adjudicate_generated_surface(
 /// write the candidate BETWEEN them, reaches for the halves.
 fn measure_generated_surface(
     formatter: &ResolvedFormatter,
-    workspace: &Path,
+    sources: &[(String, String)],
     stage0_src: &Path,
 ) -> Result<GeneratedSurfaceMeasured, String> {
-    let (emitted, emitted_basenames) = match emit_generated_surface(workspace)? {
+    let (emitted, emitted_basenames) = match emit_generated_surface(sources)? {
         GeneratedSurfaceEmit::EmitRefused { reason } => {
             return Ok(GeneratedSurfaceMeasured::Refused { reason })
         }
@@ -715,8 +716,9 @@ pub fn emitted_generated_sources() -> Result<HashMap<String, String>, String> {
     // rustfmt" would not have named it -- it is three calls above the spawn. Threading the
     // resolved formatter as an argument made the omission a compile error instead of a fourth
     // way to discover an absent formatter fifty minutes in.
-    let formatter = ResolvedFormatter::admit()?;
-    let emitted = match measure_generated_surface(&formatter, &workspace, &stage0_src)? {
+    let formatter = ResolvedFormatter::admit()?.with_normalize_cache(&workspace)?;
+    let sources = super::regen_input_sources(&workspace)?;
+    let emitted = match measure_generated_surface(&formatter, &sources, &stage0_src)? {
         GeneratedSurfaceMeasured::Refused { reason } => return Err(reason),
         GeneratedSurfaceMeasured::Measured { emitted, .. } => emitted,
     };
@@ -781,16 +783,20 @@ fn is_declared_divergent(file_name: &str) -> bool {
     EMITTER_PRODUCED_DIVERGENT_STAGE0_FILES.contains(&file_name)
 }
 
-fn compile_stage0(workspace: &Path) -> Result<HashMap<String, String>, String> {
-    // A SECOND READ OF THE SAME CLOSURE. `run_required_regen` already read these sources for
-    // the authority digest; this is the same walk again, and it is stamped under its own label
-    // so the receipt prices the duplication instead of folding it into the frontend.
-    v1_rt::trace_mark("regen.corpus_reload.begin".to_string());
-    let sources = super::regen_input_sources(workspace)?;
-    v1_rt::trace_mark("regen.corpus_reload.done".to_string());
+/// ONE READ OF THE CLOSURE, SUPPLIED BY THE CALLER. This used to call `regen_input_sources`
+/// itself, so every regen walked and read the corpus twice -- once for the authority digest
+/// and once here -- and the receipt priced the second walk at a quarter of the first phase
+/// (`regen.corpus_reload`, measured 2026-08-30: 24 s on srv1, 17 s on BuildBuddy). The
+/// sources are one fact; the caller reads them once and both consumers take that one value.
+fn compile_stage0(sources: &[(String, String)]) -> Result<HashMap<String, String>, String> {
     let source_files: Vec<Rc<SourceFile>> = sources
-        .into_iter()
-        .map(|(path, content)| Rc::new(SourceFile { path, content }))
+        .iter()
+        .map(|(path, content)| {
+            Rc::new(SourceFile {
+                path: path.clone(),
+                content: content.clone(),
+            })
+        })
         .collect();
     let result = compile_sources(Rc::new(source_files.into()), RenderTarget::Rust);
     if let Some(message) =
@@ -1373,6 +1379,69 @@ fn normalize_generated_source(
     formatter: &ResolvedFormatter,
     content: &str,
 ) -> Result<String, String> {
+    if let Some(hit) = formatter.memo.borrow().get(content) {
+        return Ok(hit.clone());
+    }
+    if let Some(hit) = normalize_cache_read(formatter, content) {
+        formatter
+            .memo
+            .borrow_mut()
+            .insert(content.to_string(), hit.clone());
+        return Ok(hit);
+    }
+    let normalized = normalize_generated_source_uncached(formatter, content)?;
+    formatter
+        .memo
+        .borrow_mut()
+        .insert(content.to_string(), normalized.clone());
+    normalize_cache_write(formatter, content, &normalized)?;
+    Ok(normalized)
+}
+
+/// The cache file layout: `<raw byte length>\n<raw bytes><normalized bytes>`. The raw bytes
+/// are stored whole and compared whole on read, so the file name (a digest) only locates the
+/// entry and never stands in for its identity.
+fn normalize_cache_path(formatter: &ResolvedFormatter, content: &str) -> Option<PathBuf> {
+    formatter
+        .disk_cache
+        .as_ref()
+        .map(|dir| dir.join(v1_rt::bytes_identity_hash(content.as_bytes())))
+}
+
+fn normalize_cache_read(formatter: &ResolvedFormatter, content: &str) -> Option<String> {
+    let path = normalize_cache_path(formatter, content)?;
+    let bytes = fs::read(&path).ok()?;
+    let newline = bytes.iter().position(|b| *b == b'\n')?;
+    let raw_len: usize = std::str::from_utf8(&bytes[..newline]).ok()?.parse().ok()?;
+    let raw_start = newline + 1;
+    let raw_end = raw_start.checked_add(raw_len)?;
+    if raw_end > bytes.len() || &bytes[raw_start..raw_end] != content.as_bytes() {
+        return None;
+    }
+    String::from_utf8(bytes[raw_end..].to_vec()).ok()
+}
+
+fn normalize_cache_write(
+    formatter: &ResolvedFormatter,
+    content: &str,
+    normalized: &str,
+) -> Result<(), String> {
+    let Some(path) = normalize_cache_path(formatter, content) else {
+        return Ok(());
+    };
+    let mut bytes = format!("{}\n", content.len()).into_bytes();
+    bytes.extend_from_slice(content.as_bytes());
+    bytes.extend_from_slice(normalized.as_bytes());
+    // Write-then-rename, so a reader never sees a half-written entry as a miss-with-garbage.
+    let tmp = path.with_extension(format!("tmp{}", std::process::id()));
+    fs::write(&tmp, &bytes).map_err(|e| format!("write {}: {e}", tmp.display()))?;
+    fs::rename(&tmp, &path).map_err(|e| format!("rename {}: {e}", path.display()))
+}
+
+fn normalize_generated_source_uncached(
+    formatter: &ResolvedFormatter,
+    content: &str,
+) -> Result<String, String> {
     let mut current = normalize_generated_source_attempt(formatter, content)?;
     for _ in 1..NORMALIZE_FIXED_POINT_MAX_PASSES {
         let next = normalize_generated_source_attempt(formatter, &current)?;
@@ -1429,7 +1498,33 @@ pub struct ResolvedFormatter {
     /// The PATH the program was found on, kept so a later failure can say what was searched
     /// rather than making the reader reconstruct it from the environment they are not in.
     searched: String,
+    /// NORMALIZE ONCE PER DISTINCT INPUT. Every regen pass normalized the whole emitted
+    /// population THREE times -- `write_emitted_tree`, `compare_generated_surfaces`,
+    /// `tree_digest_from_map` each called `normalize_generated_source` on the same bytes --
+    /// and each normalize is at least two rustfmt spawns (the fixed-point seek). Measured
+    /// 2026-08-30 by `--regen-round-cost`: mirror_write + adjudicate + digest = 67 s on the
+    /// BuildBuddy runner, 97 s on srv1, for one population. The memo is keyed by the RAW
+    /// input bytes, so a hit is exact by construction; clones share it so the three
+    /// consumers see one table.
+    memo: Rc<std::cell::RefCell<HashMap<String, String>>>,
+    /// The on-disk half, keyed by rustfmt's own version string, so a fixed-point run on a tree
+    /// whose emit did not change pays ZERO rustfmt spawns. Each entry stores the raw input
+    /// beside the normalized output and is honoured only when the stored raw is byte-equal to
+    /// the request -- a digest-named file is a LOCATION, never the identity, so a hash
+    /// collision cannot serve another input's formatting (DESIGN section 5).
+    disk_cache: Option<PathBuf>,
 }
+
+/// Every rustfmt spawn this process has made. Read by `--regen-round-cost` before and after
+/// the round so the receipt carries the count -- the fixed-point control's claim is that it
+/// is ~0, and a claim about a count is checked against the count.
+static RUSTFMT_SPAWNS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+pub fn rustfmt_spawn_count() -> u64 {
+    RUSTFMT_SPAWNS.load(std::sync::atomic::Ordering::Relaxed)
+}
+
+const NORMALIZE_CACHE_DIR_REL: &str = "target/stage0-regen-rustfmt-cache";
 
 impl ResolvedFormatter {
     /// Resolve `rustfmt` against a supplied PATH string. Separate from the environment read so
@@ -1444,6 +1539,8 @@ impl ResolvedFormatter {
             let resolved = ResolvedFormatter {
                 program: candidate,
                 searched: path_var.to_string(),
+                memo: Rc::new(std::cell::RefCell::new(HashMap::new())),
+                disk_cache: None,
             };
             resolved.probe()?;
             return Ok(resolved);
@@ -1524,6 +1621,36 @@ impl ResolvedFormatter {
         Self::from_path_var(&std::env::var("PATH").unwrap_or_default())
     }
 
+    /// Attach the on-disk normalize cache for this formatter's version under `target/`.
+    /// The version is read from the program itself, so a toolchain change opens a new
+    /// directory rather than serving another rustfmt's fixed points.
+    fn with_normalize_cache(mut self, workspace: &Path) -> Result<Self, String> {
+        let out = self
+            .command()
+            .arg("--version")
+            .output()
+            .map_err(|e| self.spawn_refusal(e))?;
+        if !out.status.success() {
+            return Err(format!(
+                "rustfmt --version failed at {}: {}",
+                self.program.display(),
+                String::from_utf8_lossy(&out.stderr)
+            ));
+        }
+        let version: String = String::from_utf8_lossy(&out.stdout)
+            .trim()
+            .chars()
+            .map(|c| if c.is_ascii_alphanumeric() { c } else { '_' })
+            .collect();
+        if version.is_empty() {
+            return Err("rustfmt --version printed nothing; the cache has no key".to_string());
+        }
+        let dir = workspace.join(NORMALIZE_CACHE_DIR_REL).join(version);
+        fs::create_dir_all(&dir).map_err(|e| format!("create {}: {e}", dir.display()))?;
+        self.disk_cache = Some(dir);
+        Ok(self)
+    }
+
     fn command(&self) -> Command {
         Command::new(&self.program)
     }
@@ -1550,6 +1677,7 @@ fn normalize_generated_source_attempt(
     formatter: &ResolvedFormatter,
     content: &str,
 ) -> Result<String, String> {
+    RUSTFMT_SPAWNS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     let mut child = formatter
         .command()
         .arg("--edition")
@@ -1587,6 +1715,7 @@ fn normalize_with_workdir(
 ) -> Result<String, String> {
     let path = work_dir.join(format!("{label}.rs"));
     fs::write(&path, content).map_err(|e| format!("write {}: {e}", path.display()))?;
+    RUSTFMT_SPAWNS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     let output = formatter
         .command()
         .arg("--edition")
@@ -2296,6 +2425,7 @@ fn render_round_cost_receipt(
     tree_dirty: bool,
     seed_build_compiled_crates: u64,
     rebuild_compiled_crates: u64,
+    rustfmt_spawns: u64,
     marks: &[v1_rt::TraceLedgerRow],
     changed_paths: &[String],
 ) -> Result<String, String> {
@@ -2382,6 +2512,7 @@ fn render_round_cost_receipt(
                 ctx.sym("rebuild_compiled_crates"),
                 Value::Int(rebuild_compiled_crates as i64),
             ),
+            (ctx.sym("rustfmt_spawns"), Value::Int(rustfmt_spawns as i64)),
             (ctx.sym("marks"), Value::List(Rc::new(mark_values.into()))),
             (
                 ctx.sym("changed_paths"),
@@ -2417,6 +2548,7 @@ pub fn run_regen_round_cost(
     let exe_before = current_exe_digest()?;
 
     v1_rt::trace_ledger_arm();
+    let rustfmt_spawns_before = rustfmt_spawn_count();
     let seed_build = seed_cargo_build(&workspace, "round.seed_build")?;
     let exe_after = current_exe_digest()?;
     if exe_before != exe_after {
@@ -2487,6 +2619,7 @@ pub fn run_regen_round_cost(
         tree_dirty,
         seed_build.compiled_crates,
         rebuild_compiled_crates,
+        rustfmt_spawn_count() - rustfmt_spawns_before,
         &marks,
         &changed_paths,
     )?;
@@ -2538,6 +2671,7 @@ mod regen_round_cost_tests {
             true,
             0,
             2,
+            7,
             &marks,
             &["v1_rt.rs".to_string()],
         )
@@ -2546,7 +2680,7 @@ mod regen_round_cost_tests {
             rendered,
             "regen-round-cost: producer=claim_executor --regen-round-cost host=srv1 \
              tree=2a11b317d2caf3c37d1d38a4421e8e0c06188925 tree_dirty=true \
-             seed_build_compiled_crates=0 rebuild_compiled_crates=2\n\
+             seed_build_compiled_crates=0 rebuild_compiled_crates=2 rustfmt_spawns=7\n\
              regen-round-cost: phase=seed_build wall_ms=1500 cpu_ms=9000\n\
              regen-round-cost: phase=compile.emit wall_ms=300000 cpu_ms=na\n\
              regen-round-cost: total wall_ms=301500 cpu_ms=na\n\
