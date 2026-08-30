@@ -34,7 +34,7 @@ import extdeps.languages.json.emit {
 }
 import gunbc.roadmap_launch_admission {
   LaunchRefusal,
-  LaunchInstanceActuationRefused, LaunchTransitionInhibited, LaunchRevisionUnobserved, LaunchRevisionDrift,
+  LaunchNoActuatingInstance, LaunchInstanceActuationRefused, LaunchTransitionInhibited, LaunchRevisionUnobserved, LaunchRevisionDrift,
   LaunchAuthorityUnobserved, LaunchNodeUnknown, LaunchNodeSuperseded, LaunchAlreadyAccepted, LaunchReviewRequired,
   LaunchSizeMissing, LaunchExecutionContractMissing, LaunchDependenciesBlocked, LaunchSessionsUnobservable,
   LaunchAlreadyLive, LaunchStaleSession, LaunchLivenessUnobserved, LaunchSessionMultiplicityConflict,
@@ -258,11 +258,12 @@ fn serve_page_response_with_status(page: Fragment, status: HttpStatus) -> ServeH
   }
 }
 
-data belt_dispatch_status_note: String = "TOTAL per-variant status mapping — every BeltDispatchResult arm has its own row, no lazy 200-or-500 collapse (DESIGN 5; parent review 2026-07-20). Spawned/AlreadyLive = 200 (the click achieved or already holds the desired state — the same idempotent-success fold the CLI's exit map uses); NodeNotFound = 404; AlreadyDone = 409 (the operator's signoff makes the node undisp atchable — a conflict with current state, retryable never); ObserveRefused = 503 (the live session set was unknowable, retry can succeed); SpawnFailed = 502 (actuation behind the server failed; the receipt carries step + detail)."
+data belt_dispatch_status_note: String = "TOTAL per-arm status mapping over the route's outcome (DESIGN 5): every BeltSpawnOutcome arm and every LaunchRefusal arm has its own row in launch_refusal_http_status -- no lazy 200-or-500 collapse. Spawned and LaunchAlreadyLive = 200 (the click achieved or already holds the desired state, the same idempotent-success fold the CLI exit map uses); LaunchNoActuatingInstance and LaunchInstanceActuationRefused = 403 (no actuating instance stands behind the request); LaunchNodeUnknown = 404; the state conflicts (superseded, accepted, review-only, unsized, contract missing, dependencies blocked, stale or conflicting session, capacity, cause not permitted by mode) = 409, retryable only after the state changes; the observation refusals (transition inhibited, revision unobserved or drifted, authority unobserved, sessions unobservable, liveness unobserved, gate not evaluated) = 503, a retry can succeed; SpawnFailed = 502 (actuation behind the server failed; the receipt carries step, detail and the admitted launch identity)."
 
 fn launch_refusal_http_status(r: LaunchRefusal) -> HttpStatus {
   match r {
     LaunchAlreadyLive { session_name: _ } => 200
+    LaunchNoActuatingInstance { reason: _ } => 403
     LaunchInstanceActuationRefused { instance_id: _, reason: _ } => 403
     LaunchNodeUnknown => 404
     LaunchAlreadyAccepted => 409

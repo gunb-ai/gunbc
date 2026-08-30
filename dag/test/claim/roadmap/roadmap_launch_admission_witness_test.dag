@@ -27,7 +27,7 @@ import gunbc.roadmap_presentation {
 import gunbc.roadmap_launch_admission {
   LaunchCause, Operator, Timer,
   LaunchRefusal,
-  LaunchInstanceActuationRefused, LaunchTransitionInhibited, LaunchRevisionUnobserved, LaunchRevisionDrift,
+  LaunchNoActuatingInstance, LaunchInstanceActuationRefused, LaunchTransitionInhibited, LaunchRevisionUnobserved, LaunchRevisionDrift,
   LaunchAuthorityUnobserved, LaunchNodeUnknown, LaunchNodeSuperseded, LaunchAlreadyAccepted, LaunchReviewRequired,
   LaunchSizeMissing, LaunchExecutionContractMissing, LaunchDependenciesBlocked, LaunchSessionsUnobservable,
   LaunchAlreadyLive, LaunchStaleSession, LaunchLivenessUnobserved, LaunchSessionMultiplicityConflict,
@@ -37,7 +37,7 @@ import gunbc.roadmap_launch_admission {
   launch_host_refusal,
   LaunchStagedAdmission, LaunchStageDecided, LaunchStageNeedsSessions, launch_admission_staged,
   LaunchSessionsObserved, launch_host_with_sessions,
-  LaunchGraphStanding, LaunchGraphProjected, LaunchGraphUnobserved,
+  LaunchGraphStanding, launch_graph_of_document, LaunchGraphUnobserved,
   LaunchGateVerdict, GatePassed, GateRefused, GateNotReached,
   LaunchGateLedger, launch_gate_ledger, launch_admission_of_ledger,
   launch_admission, launch_admission_label, launch_admission_reason, launch_refusal_label, launch_refusal_reason,
@@ -70,7 +70,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 data roadmap_launch_admission_witness_note: String = "RLM-1 red controls (docs/plans/roadmap-launch-mvp-plan.md section 3, RLM-1 falsifiers), each enrolled as a permanent regression control over the RLM-0 synthetic canary graph and the fixture host: (a) the blocked child is refused DependenciesBlocked and the tick fold over it produces no actuation outcome at all -- SpawnNotAdmitted is the only arm a refusal can reach, and Spawned / SpawnFailed are what actuation returns, so their absence IS the effect-ordering receipt; POST /dispatch shares the same LaunchAdmitted guard (gunbc.roadmap_belt_actuate belt_dispatch_node_for_instance); (b) a Timer in ManualReady over a Ready node is CauseNotPermitted and the fold starts nothing; (c) the mutation control: the blocked child's ledger with its dependency verdict replaced by GatePassed ADMITS, so the dependency gate is the load-bearing one; (d) revision drift refuses the page action and the backend outcome with one label and one reason; (e) a second Operator admission beside a running session is AlreadyLive. Every refusal here is a value the pure decision produced from fabricated facts; no witness reaches a host."
 
 fn graph() -> LaunchGraphStanding {
-  LaunchGraphProjected { doc: canary_doc(nodes: [canary_parent(signoff: Unsigned), canary_child()], edges: [roadmap_launch_canary_edge()]) }
+  launch_graph_of_document(doc: canary_doc(nodes: [canary_parent(signoff: Unsigned), canary_child()], edges: [roadmap_launch_canary_edge()]))
 }
 
 fn child_with_contract() -> RoadmapNode {
@@ -83,11 +83,11 @@ fn child_with_contract() -> RoadmapNode {
 }
 
 fn graph_child_contracted() -> LaunchGraphStanding {
-  LaunchGraphProjected { doc: canary_doc(nodes: [canary_parent(signoff: Unsigned), child_with_contract()], edges: [roadmap_launch_canary_edge()]) }
+  launch_graph_of_document(doc: canary_doc(nodes: [canary_parent(signoff: Unsigned), child_with_contract()], edges: [roadmap_launch_canary_edge()]))
 }
 
 fn graph_parent_accepted() -> LaunchGraphStanding {
-  LaunchGraphProjected { doc: canary_doc(nodes: [canary_parent(signoff: accepted_signoff()), child_with_contract()], edges: [roadmap_launch_canary_edge()]) }
+  launch_graph_of_document(doc: canary_doc(nodes: [canary_parent(signoff: accepted_signoff()), child_with_contract()], edges: [roadmap_launch_canary_edge()]))
 }
 
 fn parent_id() -> String { roadmap_launch_canary_parent_node_id() as String }
@@ -434,14 +434,14 @@ test fn witness_unspecified_contract_refused_where_frontier_admits() -> Bool {
   let doc = canary_doc(nodes: [canary_child()], edges: [])
   let frontier_admits = any(spawn_frontier(doc: doc, merged: []).ready, n => n.node == roadmap_launch_canary_child_node_id())
   frontier_admits
-    && refused_as(a: decide(cause: Operator, standing: launch_fixture_standing_clear(mode: ManualReady), g: LaunchGraphProjected { doc: doc }, node_id: child_id()), label: "execution_contract_missing")
+    && refused_as(a: decide(cause: Operator, standing: launch_fixture_standing_clear(mode: ManualReady), g: launch_graph_of_document(doc: doc), node_id: child_id()), label: "execution_contract_missing")
 }
 
 test fn witness_static_render_refuses_at_instance_gate() -> Bool {
   match decide(cause: Operator, standing: launch_host_unobserved_static_render(), g: graph(), node_id: parent_id()) {
     LaunchRefused { refusal } =>
       match refusal {
-        LaunchInstanceActuationRefused { instance_id, reason: _ } => instance_id == ""
+        LaunchNoActuatingInstance { reason } => string_contains(s: reason, pattern: "no dashboard instance")
         _ => false
       }
     LaunchAdmitted { identity: _ } => false
@@ -454,7 +454,7 @@ fn labels_distinct(labels: List<String>) -> Bool {
 
 test fn witness_refusal_labels_are_distinct_and_total() -> Bool {
   let labels = map(launch_refusal_exemplars(), r => launch_refusal_label(r: r))
-  count(labels) == 20 && labels_distinct(labels: labels)
+  count(labels) == 21 && labels_distinct(labels: labels)
 }
 
 test fn witness_contract_text_carries_gate_order_and_digest_is_hex16() -> Bool {
@@ -483,7 +483,7 @@ fn rlm_three_ready() -> List<RoadmapNode> {
 }
 
 fn rlm_three_graph() -> LaunchGraphStanding {
-  LaunchGraphProjected { doc: canary_doc(nodes: rlm_three_ready(), edges: []) }
+  launch_graph_of_document(doc: canary_doc(nodes: rlm_three_ready(), edges: []))
 }
 
 fn rlm_three_candidates() -> List<DesiredMember> {

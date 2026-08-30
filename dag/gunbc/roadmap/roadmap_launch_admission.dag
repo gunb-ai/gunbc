@@ -122,7 +122,8 @@ fn launch_identity_exemplar() -> LaunchIdentity {
 }
 
 type LaunchRefusal
-  = LaunchInstanceActuationRefused { instance_id: String, reason: String }
+  = LaunchNoActuatingInstance { reason: String }
+  | LaunchInstanceActuationRefused { instance_id: String, reason: String }
   | LaunchTransitionInhibited { reason: String }
   | LaunchRevisionUnobserved { cause: String }
   | LaunchRevisionDrift { desired: String, local: String }
@@ -151,6 +152,7 @@ data launch_refusal_label_note: String = "The ONE wire vocabulary for a launch r
 
 fn launch_refusal_label(r: LaunchRefusal) -> String {
   match r {
+    LaunchNoActuatingInstance { reason: _ } => "no_instance"
     LaunchInstanceActuationRefused { instance_id: _, reason: _ } => "disabled"
     LaunchTransitionInhibited { reason: _ } => "deployment_transition_inhibited"
     LaunchRevisionUnobserved { cause: _ } => "deployed_revision_unobserved"
@@ -176,6 +178,7 @@ fn launch_refusal_label(r: LaunchRefusal) -> String {
 
 fn launch_refusal_reason(r: LaunchRefusal) -> String {
   match r {
+    LaunchNoActuatingInstance { reason } => reason
     LaunchInstanceActuationRefused { instance_id, reason } => join(["instance ", instance_id, ": ", reason], "")
     LaunchTransitionInhibited { reason } => reason
     LaunchRevisionUnobserved { cause } => join(["deployed revision could not be observed: ", cause], "")
@@ -201,6 +204,7 @@ fn launch_refusal_reason(r: LaunchRefusal) -> String {
 
 fn launch_refusal_exemplars() -> List<LaunchRefusal> {
   [
+    LaunchNoActuatingInstance { reason: "r" },
     LaunchInstanceActuationRefused { instance_id: "i", reason: "r" },
     LaunchTransitionInhibited { reason: "r" },
     LaunchRevisionUnobserved { cause: "c" },
@@ -277,7 +281,7 @@ data launch_host_refusal_note: String = "The node-independent part of the decisi
 
 fn launch_host_refusal(standing: LaunchHostStanding) -> LaunchRefusal? {
   match standing {
-    LaunchHostUnobserved { reason } => Present { value: LaunchInstanceActuationRefused { instance_id: "", reason: reason } }
+    LaunchHostUnobserved { reason } => Present { value: LaunchNoActuatingInstance { reason: reason } }
     LaunchHostObserveOnly { instance_id } => Present { value: LaunchInstanceActuationRefused { instance_id: instance_id, reason: launch_observe_only_reason } }
     LaunchHostHalted { instance_id: _, gate: _, refusal } => Present { value: refusal }
     LaunchHostObserved { instance_id, actuation, transition, revision, sessions, capacity: _, mode: _ } =>
@@ -315,13 +319,19 @@ fn launch_host_unobserved_static_render() -> LaunchHostStanding {
 data launch_graph_standing_note: String = "The GRAPH the decision reads: the projected roadmap document, or the located reason the authority projection refused. A page that already holds a projected document passes LaunchGraphProjected; the route and the tick derive it from the live projection through launch_graph_of_projection. Unobserved refuses at the node gate (LaunchAuthorityUnobserved), AFTER the host gates, which is the plan's order."
 
 type LaunchGraphStanding
-  = LaunchGraphProjected { doc: RoadmapDocument }
+  = LaunchGraphProjected { nodes: List<RoadmapNode>, edges: List<RoadmapEdge> }
   | LaunchGraphUnobserved { detail: String }
+
+data launch_graph_resolved_note: String = "The graph is FLATTENED ONCE per standing (launch_graph_of_document), not once per row: a page render asks the decision for every row, and re-walking the document's sections for each would be a quadratic re-derivation of one fact (DESIGN 6 bare-minimum cost, review 57491). The per-row node find and the dependency scan over these lists remain linear scans -- the substrate carries no keyed index here yet -- and that residual is named rather than hidden."
+
+fn launch_graph_of_document(doc: RoadmapDocument) -> LaunchGraphStanding {
+  LaunchGraphProjected { nodes: doc_all_nodes(doc: doc), edges: doc_all_edges(doc: doc) }
+}
 
 fn launch_graph_of_projection(proj: RoadmapAuthorityProjection) -> LaunchGraphStanding {
   match proj {
     RoadmapAuthorityProjectionRefused { detail } => LaunchGraphUnobserved { detail: detail }
-    RoadmapAuthorityProjected { doc, accepted: _ } => LaunchGraphProjected { doc: doc }
+    RoadmapAuthorityProjected { doc, accepted: _ } => launch_graph_of_document(doc: doc)
   }
 }
 
@@ -349,22 +359,29 @@ fn launch_gate_names() -> List<String> {
   ["instance", "transition", "revision", "node", "contract", "dependencies", "live", "capacity", "cause"]
 }
 
+type LaunchGateStage
+  = PreSessionGate
+  | SessionGate
+
+data launch_gate_stage_note: String = "Each ledger row declares its STAGE beside its verdict, at the one place the rows are authored (launch_ledger_rows): the pre-session gates are decidable from the model and the host's earlier observations; the session gates (live, capacity, cause) need the observed session set. launch_admission_staged partitions by this mark, never by position, so reordering the ledger cannot silently move a gate across the observation boundary (review 57491)."
+
 type LaunchGateRow {
   gate: String
+  stage: LaunchGateStage
   verdict: LaunchGateVerdict
 }
 
 fn launch_ledger_rows(l: LaunchGateLedger) -> List<LaunchGateRow> {
   [
-    LaunchGateRow { gate: "instance", verdict: l.instance },
-    LaunchGateRow { gate: "transition", verdict: l.transition },
-    LaunchGateRow { gate: "revision", verdict: l.revision },
-    LaunchGateRow { gate: "node", verdict: l.node },
-    LaunchGateRow { gate: "contract", verdict: l.contract },
-    LaunchGateRow { gate: "dependencies", verdict: l.dependencies },
-    LaunchGateRow { gate: "live", verdict: l.live },
-    LaunchGateRow { gate: "capacity", verdict: l.capacity },
-    LaunchGateRow { gate: "cause", verdict: l.cause },
+    LaunchGateRow { gate: "instance", stage: PreSessionGate, verdict: l.instance },
+    LaunchGateRow { gate: "transition", stage: PreSessionGate, verdict: l.transition },
+    LaunchGateRow { gate: "revision", stage: PreSessionGate, verdict: l.revision },
+    LaunchGateRow { gate: "node", stage: PreSessionGate, verdict: l.node },
+    LaunchGateRow { gate: "contract", stage: PreSessionGate, verdict: l.contract },
+    LaunchGateRow { gate: "dependencies", stage: PreSessionGate, verdict: l.dependencies },
+    LaunchGateRow { gate: "live", stage: SessionGate, verdict: l.live },
+    LaunchGateRow { gate: "capacity", stage: SessionGate, verdict: l.capacity },
+    LaunchGateRow { gate: "cause", stage: SessionGate, verdict: l.cause },
   ]
 }
 
@@ -451,13 +468,11 @@ fn launch_lookup_node(graph: LaunchGraphStanding, node_id: String) -> LaunchNode
   match graph {
     LaunchGraphUnobserved { detail } =>
       LaunchNodeLookupRefused { refusal: LaunchAuthorityUnobserved { detail: detail } }
-    LaunchGraphProjected { doc } => {
-      let nodes = doc_all_nodes(doc: doc)
+    LaunchGraphProjected { nodes, edges } =>
       match launch_find_node(nodes: nodes, node_id: node_id) {
         Absent => LaunchNodeLookupRefused { refusal: LaunchNodeUnknown }
-        Present { value: n } => LaunchNodeFound { node: n, nodes: nodes, edges: doc_all_edges(doc: doc) }
+        Present { value: n } => LaunchNodeFound { node: n, nodes: nodes, edges: edges }
       }
-    }
   }
 }
 
@@ -613,7 +628,7 @@ fn launch_gate_ledger(
   match standing {
     LaunchHostUnobserved { reason } =>
       launch_ledger_unreached_after_instance(
-        refusal: LaunchInstanceActuationRefused { instance_id: "", reason: reason },
+        refusal: LaunchNoActuatingInstance { reason: reason },
       )
     LaunchHostObserveOnly { instance_id } =>
       launch_ledger_unreached_after_instance(
@@ -733,7 +748,7 @@ type LaunchStagedAdmission
   | LaunchStageNeedsSessions
 
 fn launch_ledger_pre_session_rows(l: LaunchGateLedger) -> List<LaunchGateRow> {
-  launch_ledger_rows(l: l).take(n: 6)
+  launch_ledger_rows(l: l) |> filter(row => match row.stage { PreSessionGate => true SessionGate => false })
 }
 
 fn launch_admission_staged(

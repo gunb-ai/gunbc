@@ -26,7 +26,7 @@ import gunbc.roadmap_belt {
 import gunbc.roadmap_launch_admission {
   LaunchCause, Operator, Timer,
   LaunchRefusal,
-  LaunchInstanceActuationRefused, LaunchTransitionInhibited, LaunchRevisionUnobserved, LaunchRevisionDrift,
+  LaunchNoActuatingInstance, LaunchInstanceActuationRefused, LaunchTransitionInhibited, LaunchRevisionUnobserved, LaunchRevisionDrift,
   LaunchAuthorityUnobserved, LaunchNodeUnknown, LaunchNodeSuperseded, LaunchAlreadyAccepted, LaunchReviewRequired,
   LaunchSizeMissing, LaunchExecutionContractMissing, LaunchDependenciesBlocked, LaunchSessionsUnobservable,
   LaunchAlreadyLive, LaunchStaleSession, LaunchLivenessUnobserved, LaunchSessionMultiplicityConflict,
@@ -37,7 +37,7 @@ import gunbc.roadmap_launch_admission {
   launch_host_refusal,
   LaunchSessionsStanding, LaunchSessionsObserved, LaunchSessionsUnobserved, LaunchSessionsPending,
   launch_host_with_sessions, LaunchStagedAdmission, LaunchStageDecided, LaunchStageNeedsSessions, launch_admission_staged,
-  LaunchGraphStanding, LaunchGraphProjected, LaunchGraphUnobserved, launch_graph_of_projection,
+  LaunchGraphStanding, LaunchGraphProjected, LaunchGraphUnobserved, launch_graph_of_projection, launch_graph_of_document,
   LaunchIdentity, launch_identity_json, launch_identity_of_json, LaunchIdentityDecode, LaunchIdentityDecoded, LaunchIdentityUnreadable,
   launch_identity_exemplar,
   launch_admission, launch_refusal_label, launch_refusal_reason, launch_refusal_exemplars,
@@ -2408,7 +2408,7 @@ fn belt_tick_launch_pass(
         LaunchHostHalted { instance_id: _, gate: _, refusal } =>
           belt_tick_launch_pass_refused(standing: standing, state: state, frontier: frontier, graph: graph, merged: merged, host_refusal: refusal)
         LaunchHostUnobserved { reason } =>
-          belt_tick_launch_pass_refused(standing: standing, state: state, frontier: frontier, graph: graph, merged: merged, host_refusal: LaunchInstanceActuationRefused { instance_id: "", reason: reason })
+          belt_tick_launch_pass_refused(standing: standing, state: state, frontier: frontier, graph: graph, merged: merged, host_refusal: LaunchNoActuatingInstance { reason: reason })
       }
   }
 }
@@ -5064,7 +5064,7 @@ fn belt_launch_host_standing_for_page(instance: HostDashboardInstance) -> Launch
   match roadmap_authority_projection() {
     RoadmapAuthorityProjectionRefused { detail: _ } => pre
     RoadmapAuthorityProjected { doc, accepted: _ } => {
-      let graph = LaunchGraphProjected { doc: doc }
+      let graph = launch_graph_of_document(doc: doc)
       let merged = authored_merged_prs()
       if any(doc_all_nodes(doc: doc), n => belt_launch_row_needs_sessions(standing: pre, graph: graph, merged: merged, node_id: n.node as String)) {
         belt_launch_host_standing_complete(instance: instance, standing: pre)
@@ -5131,8 +5131,8 @@ fn belt_dispatch_node_staged_over(
     LaunchAdmitted { identity } =>
       match (match graph {
         LaunchGraphUnobserved { detail } => AuthorityProjectionRefused { detail: detail }
-        LaunchGraphProjected { doc } =>
-          belt_find_node_in(nodes: doc_all_nodes(doc: doc), node_id: node_id)
+        LaunchGraphProjected { nodes, edges: _ } =>
+          belt_find_node_in(nodes: nodes, node_id: node_id)
       }) {
         AuthorityProjectionRefused { detail } =>
           SpawnFailed {
@@ -5208,6 +5208,7 @@ type DispatchBand
 fn launch_refusal_band(r: LaunchRefusal) -> DispatchBand {
   match r {
     LaunchAlreadyLive { session_name: _ } => BandOk
+    LaunchNoActuatingInstance { reason: _ } => BandFail
     LaunchInstanceActuationRefused { instance_id: _, reason: _ } => BandFail
     LaunchNodeUnknown => BandFail
     LaunchNodeSuperseded { by: _ } => BandFail

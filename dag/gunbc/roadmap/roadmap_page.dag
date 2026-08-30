@@ -39,7 +39,7 @@ import gunbc.roadmap_component {
 }
 import gunbc.roadmap_belt { spawn_mode_label }
 import gunbc.roadmap_launch_admission {
-  LaunchHostStanding, LaunchGraphStanding, LaunchGraphProjected,
+  LaunchHostStanding, LaunchGraphStanding, launch_graph_of_document,
   launch_host_unobserved_static_render, launch_cause_label,
 }
 import gunbc.roadmap_presentation {
@@ -803,7 +803,7 @@ fn live_work_family_members_for_accepted(accepted: List<RoadmapNodeId>) -> List<
 }
 
 fn page_launch_context(doc: RoadmapDocument, merged: List<Int>, launch: LaunchHostStanding) -> LaunchRowContext {
-  LaunchRowContext { standing: launch, graph: LaunchGraphProjected { doc: doc }, merged: merged }
+  LaunchRowContext { standing: launch, graph: launch_graph_of_document(doc: doc), merged: merged }
 }
 
 fn daily_workspace_view_of_for_accepted(

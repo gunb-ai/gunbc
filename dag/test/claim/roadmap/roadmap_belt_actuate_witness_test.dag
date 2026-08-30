@@ -147,7 +147,7 @@ import gunbc.roadmap_launch_admission {
   launch_gate_live, launch_gate_revision,
   launch_identity_exemplar,
   LaunchRevisionDrift, LaunchNodeUnknown, LaunchExecutionContractMissing, LaunchDependenciesBlocked,
-  LaunchHostStanding, LaunchGraphStanding, LaunchGraphProjected,
+  LaunchHostStanding, LaunchGraphStanding, launch_graph_of_document,
 }
 import test.claim.roadmap.roadmap_launch_admission_fixture {
   launch_fixture_standing_pending, launch_fixture_standing_halt_transition,
@@ -699,7 +699,7 @@ fn band_key_for_label(label: String) -> String {
 }
 
 test fn witness_band_fold_pins_operator_vocabulary() -> Bool {
-  belt_dispatch_label_band_rows().length() == 22
+  belt_dispatch_label_band_rows().length() == 23
     && band_key_for_label(label: "stale_session") == "loud"
     && band_key_for_label(label: "dependencies_blocked") == "fail"
     && band_key_for_label(label: "execution_contract_missing") == "fail"
@@ -746,6 +746,7 @@ fn d4_wire_contract_labels() -> List<String> {
   [
     "spawned",
     "spawn_failed",
+    "no_instance",
     "disabled",
     "deployment_transition_inhibited",
     "deployed_revision_unobserved",
@@ -2151,11 +2152,11 @@ test fn revision_refusal_keeps_verify_independently_recorded() -> Bool {
 }
 
 fn launch_fixture_canary_graph() -> LaunchGraphStanding {
-  LaunchGraphProjected { doc: canary_doc(nodes: [canary_parent(signoff: Unsigned), canary_child()], edges: [roadmap_launch_canary_edge()]) }
+  launch_graph_of_document(doc: canary_doc(nodes: [canary_parent(signoff: Unsigned), canary_child()], edges: [roadmap_launch_canary_edge()]))
 }
 
 fn launch_fixture_canary_graph_child_contracted() -> LaunchGraphStanding {
-  LaunchGraphProjected { doc: canary_doc(
+  launch_graph_of_document(doc: canary_doc(
     nodes: [
       canary_parent(signoff: Unsigned),
       canary_node(
@@ -2166,7 +2167,7 @@ fn launch_fixture_canary_graph_child_contracted() -> LaunchGraphStanding {
       ),
     ],
     edges: [roadmap_launch_canary_edge()],
-  ) }
+  ))
 }
 
 fn staged_post_over_canary(graph: LaunchGraphStanding, standing: LaunchHostStanding, node_id: String) -> BeltSpawnOutcome {

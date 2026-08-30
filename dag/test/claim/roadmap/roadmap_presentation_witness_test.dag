@@ -24,7 +24,7 @@ import gunbc.worker_lifecycle {
 import gunbc.roadmap_belt { ManualReady }
 import gunbc.roadmap_launch_admission {
   LaunchAdmission, LaunchAdmitted, LaunchRefused, LaunchIdentity, Operator,
-  LaunchDependenciesBlocked, LaunchGraphProjected,
+  LaunchDependenciesBlocked, launch_graph_of_document,
 }
 import test.claim.roadmap.roadmap_launch_admission_fixture {
   launch_fixture_standing_clear, launch_fixture_doc,
@@ -407,7 +407,7 @@ fn fx_row_edges() -> List<RoadmapEdge> {
 fn fx_row_launch(nodes: List<RoadmapNode>, edges: List<RoadmapEdge>) -> LaunchRowContext {
   LaunchRowContext {
     standing: launch_fixture_standing_clear(mode: ManualReady),
-    graph: LaunchGraphProjected { doc: launch_fixture_doc(nodes: nodes, edges: edges) },
+    graph: launch_graph_of_document(doc: launch_fixture_doc(nodes: nodes, edges: edges)),
     merged: [],
   }
 }
