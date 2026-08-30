@@ -10,6 +10,10 @@ import gunbc.spark.cell_role {
   SparkTrainingCell,
   spark_cell_role_of,
   spark_cell_role_eq,
+  SparkCellRoleLookup,
+  SparkCellRoleAbsent,
+  SparkCellRoleUnique,
+  SparkCellRoleAmbiguous,
 }
 import extdeps.curl.exit_status { curl_exit_failed_to_connect }
 import extdeps.procps.pgrep { pgrep_exit_no_match }
@@ -312,11 +316,15 @@ fn spark_training_readiness(
   pool: SparkUnifiedPoolObservation,
 ) -> SparkTrainingReadiness {
   match spark_cell_role_of(host: retirement.host) {
-    Absent =>
+    SparkCellRoleAbsent =>
       SparkTrainingNotReady {
         cause: "spark_training_ready: the host holds no Spark cell role, so nothing assigned it to training" as NonEmptyStr,
       }
-    Present { value: role } =>
+    SparkCellRoleAmbiguous { assignments: _ } =>
+      SparkTrainingNotReady {
+        cause: "spark_training_ready: more than one assignment row names this host, so the roster does not decide what the cell is for — an ambiguous role never authorizes training" as NonEmptyStr,
+      }
+    SparkCellRoleUnique { role: role } =>
       if !spark_cell_role_eq(a: role, b: SparkTrainingCell) {
         SparkTrainingNotReady {
           cause: "spark_training_ready: the host's role is serving — a serving cell is statically reserved and never becomes training capacity by observation" as NonEmptyStr,

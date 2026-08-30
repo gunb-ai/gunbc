@@ -1,6 +1,6 @@
 module extdeps.curl.exit_status
 
-import std.types { String, Bool, Int, NonEmptyStr }
+import std.types { String, Int }
 
 data curl_exit_status_authority_note: String = "curl(1) EXIT CODES, cited to the upstream manual. Only the codes this repository actually reads are modelled; the list is deliberately not exhaustive, because a code nobody consumes is a row with no consumer."
 
@@ -10,14 +10,9 @@ data curl_exit_status_authority_note: String = "curl(1) EXIT CODES, cited to the
 // nonzero says something else entirely: 6 could not resolve the host, 22 the server answered with an
 // HTTP error, 28 the operation timed out. A caller that reads "nonzero" as "absent" therefore reads
 // a DNS failure, an authentication rejection and a slow network as proof that a service is gone.
+// Those other codes are named here in prose rather than minted as rows, because nothing reads them.
 //
-// Cited to curl(1) EXIT CODES, curl 8.x. The version is not pinned here because these two codes are
-// stable across every curl release that has had them and the repository consumes no others; a row
-// that grows to codes whose meaning has moved should carry the version it was read from.
+// Cited to curl(1) EXIT CODES, curl 8.x. The version is not pinned here because this code is stable
+// across every curl release that has had it and the repository consumes no others; a row that grows
+// to codes whose meaning has moved should carry the version it was read from.
 data curl_exit_failed_to_connect: Int = 7
-
-data curl_exit_ok: Int = 0
-
-fn curl_exit_proves_no_listener(exit_code: Int) -> Bool {
-  exit_code == curl_exit_failed_to_connect
-}

@@ -43,16 +43,24 @@ data spark_training_ready_witness_note: String = "SPARK-PAIR-0 P0. The readiness
 // job on its own witness, and the repair is the right one -- a fixture now assembles the same
 // probe captures a real run would, so these claims exercise the decode path rather than asserting
 // past it.
-fn w_refused_capture(detail: String) -> SparkServingProbeCapture {
-  ProbeFailed { exit_code: 7, stderr: detail }
+fn w_endpoint_absent_capture() -> SparkServingProbeCapture {
+  ProbeFailed { exit_code: 7, stderr: "connection refused" }
+}
+
+fn w_process_absent_capture() -> SparkServingProbeCapture {
+  ProbeFailed { exit_code: 1, stderr: "" }
+}
+
+fn w_unit_absent_capture() -> SparkServingProbeCapture {
+  ProbeAnswered { stdout: "not-found" }
 }
 
 fn w_retired(host: HostIdentity) -> SparkServingRetirementObservation {
   spark_serving_retirement_observation_from_probes(
     host: host,
-    endpoint_capture: w_refused_capture(detail: "connection refused"),
-    process_capture: w_refused_capture(detail: "no such process"),
-    unit_capture: w_refused_capture(detail: "unit not-found"),
+    endpoint_capture: w_endpoint_absent_capture(),
+    process_capture: w_process_absent_capture(),
+    unit_capture: w_unit_absent_capture(),
   )
 }
 
@@ -72,25 +80,25 @@ fn w_retired_endpoint_silent() -> SparkServingRetirementObservation {
   spark_serving_retirement_observation_from_probes(
     host: operator_host_srv6,
     endpoint_capture: w_silent_capture(),
-    process_capture: w_refused_capture(detail: "no such process"),
-    unit_capture: w_refused_capture(detail: "unit not-found"),
+    process_capture: w_process_absent_capture(),
+    unit_capture: w_unit_absent_capture(),
   )
 }
 
 fn w_retired_process_silent() -> SparkServingRetirementObservation {
   spark_serving_retirement_observation_from_probes(
     host: operator_host_srv6,
-    endpoint_capture: w_refused_capture(detail: "connection refused"),
+    endpoint_capture: w_endpoint_absent_capture(),
     process_capture: w_silent_capture(),
-    unit_capture: w_refused_capture(detail: "unit not-found"),
+    unit_capture: w_unit_absent_capture(),
   )
 }
 
 fn w_retired_unit_silent() -> SparkServingRetirementObservation {
   spark_serving_retirement_observation_from_probes(
     host: operator_host_srv6,
-    endpoint_capture: w_refused_capture(detail: "connection refused"),
-    process_capture: w_refused_capture(detail: "no such process"),
+    endpoint_capture: w_endpoint_absent_capture(),
+    process_capture: w_process_absent_capture(),
     unit_capture: w_silent_capture(),
   )
 }
@@ -154,8 +162,8 @@ test fn w_a_still_serving_endpoint_refuses() -> Bool {
     retirement: spark_serving_retirement_observation_from_probes(
       host: operator_host_srv6,
       endpoint_capture: ProbeAnswered { stdout: "0.12.11" },
-      process_capture: w_refused_capture(detail: "no such process"),
-      unit_capture: w_refused_capture(detail: "unit not-found"),
+      process_capture: w_process_absent_capture(),
+      unit_capture: w_unit_absent_capture(),
     ),
     host: operator_host_srv6,
     free_pool: byte_size(count: 100000000000),

@@ -8,12 +8,19 @@ import gunbc.spark.cell_role {
   SparkServingCell,
   SparkTrainingCell,
   spark_cell_role_of,
+  SparkCellRoleLookup,
+  SparkCellRoleAbsent,
+  SparkCellRoleUnique,
+  SparkCellRoleAmbiguous,
   spark_cell_role_eq,
   spark_serving_cell_hosts,
   spark_training_cell_hosts,
   spark_host_offerable_for_training,
 }
 import gunbc.spark.serving_desired {
+  SparkServingDesiredAdmitted,
+  SparkServingDesiredRefused,
+  spark_serving_desired_admission,
   spark_serving_desired_hosts,
   spark_serving_desired_model_artifact,
   spark_serving_desired_launch_profile,
@@ -29,6 +36,11 @@ import gunbc.spark.serving_converge_plan {
   SparkServingRoleScopedDesiredReady,
   SparkServingRoleScopedDesiredRefused,
   spark_serving_role_scoped_desired_members,
+  SparkServingPlanArtifactVerdict,
+  SparkServingPlanArtifactReady,
+  SparkServingPlanArtifactRefused,
+  spark_serving_fleet_converge_plan_artifact,
+  fleet_converge_spark_serving_action_at,
 }
 import gunbc.spark.serving_execution_schedule {
   SparkServingScheduleVerdict,
@@ -36,6 +48,7 @@ import gunbc.spark.serving_execution_schedule {
   SparkServingScheduleRefused,
   spark_serving_freeze_execution_schedule,
   spark_serving_frozen_schedule_order,
+  scheduled_rows_list,
 }
 import gunbc.spark.serving_membership {
   SparkServingMember,
@@ -53,6 +66,7 @@ import gunbc.spark.serving_membership {
   spark_serving_role_scoped_members,
   spark_serving_baseline_members,
   spark_serving_membership_reconcile,
+  spark_serving_user_unit_state_digest,
 }
 import gunbc.spark.serving_member_realization {
   spark_serving_retirement_effects_for_address,
@@ -67,13 +81,36 @@ import gunbc.spark.serving_realization {
   SparkServingRetirementEffect,
   SparkServingRealization,
   UserUnitRealization,
-  realization_retirement_effects,
   StopUserUnit,
   DisableUserUnit,
   RemoveUserUnitFile,
   ReloadUserManagerAfterRemoval,
 }
 import gunbc.ownership { Owned }
+import std.content_hash { serialize_content_hash }
+import gunbc.ollama_runtime_bundle {
+  RuntimeMaterializationObservation,
+  RuntimeMaterializationComplete,
+  ModelStoreObservation,
+  ModelStoreComplete,
+  ModelStoreObservationRefused,
+  ollama_runtime_materialization_identity_for_required_release,
+}
+import gunbc.spark.serving_observed_members {
+  SparkServingObservedMemberProjection,
+  UserUnitStateObserved,
+  UserUnitManagerEnabled,
+  UnitActivityRunning,
+  LingerObservedEnabled,
+  spark_serving_observed_members,
+}
+import gunbc.fleet_converge_plan {
+  FleetConvergeSparkServingTypedAction,
+  fleet_converge_spark_serving_row_effects,
+  SparkServingPlannedEffect,
+  PlannedInstallEffect,
+  PlannedRetirementEffect,
+}
 import gunbc.membership_reconcile {
   MembershipPlan,
   MemberAction,
@@ -140,8 +177,9 @@ test fn w_spark_roles_are_disjoint_over_the_assignment() -> Bool {
 // every machine in the fleet would be a serving cell and this goes red.
 test fn w_unassigned_host_has_no_spark_role() -> Bool {
   match spark_cell_role_of(host: "srv1" as HostIdentity) {
-    Absent => true
-    Present { value: _ } => false
+    SparkCellRoleAbsent => true
+    SparkCellRoleUnique { role: _ } => false
+    SparkCellRoleAmbiguous { assignments: _ } => false
   }
 }
 
@@ -211,37 +249,6 @@ test fn w_content_retires_by_file_removal_and_registration_by_reload() -> Bool {
     && !spark_serving_retirement_effects_include(effects: content, needle: ReloadUserManagerAfterRemoval)
     && spark_serving_retirement_effects_include(effects: registration, needle: ReloadUserManagerAfterRemoval)
     && !spark_serving_retirement_effects_include(effects: registration, needle: RemoveUserUnitFile)
-}
-
-// THE RETIREMENT SEQUENCE IS THE INSTALL ORDER REVERSED, AND EVERY STEP IN IT IS AN OPERATION.
-//
-// This replaces a claim that asked a Bool predicate whether each effect mutated the host. That
-// predicate had no production consumer once the retain arms were dropped -- it existed only to be
-// asserted, which is the inert-declaration shape, and a claim whose whole subject is a function
-// nothing else calls measures the claim's own fixture.
-//
-// The subject that actually matters is the realization's ordered sequence: stop before disable
-// before remove-file before reload. Every adjacent pair is load-bearing -- removing the unit file
-// before stopping leaves a running process the manager can no longer name, and reloading before the
-// file is gone re-reads a definition that still exists.
-fn w_effect_at_is(
-  seq: List<SparkServingRetirementEffect>,
-  index: Int,
-  expected: SparkServingRetirementEffect,
-) -> Bool {
-  match seq.skip(n: index).first() {
-    Absent => false
-    Present { value: e } => e == expected
-  }
-}
-
-test fn w_the_retirement_sequence_is_the_install_order_reversed() -> Bool {
-  let seq = realization_retirement_effects(realization: UserUnitRealization)
-  length(seq) == 4
-    && w_effect_at_is(seq: seq, index: 0, expected: StopUserUnit)
-    && w_effect_at_is(seq: seq, index: 1, expected: DisableUserUnit)
-    && w_effect_at_is(seq: seq, index: 2, expected: RemoveUserUnitFile)
-    && w_effect_at_is(seq: seq, index: 3, expected: ReloadUserManagerAfterRemoval)
 }
 
 // THE SPLIT PARTITIONS THE ROSTER -- NEITHER SIDE IS EMPTY AND NOTHING IS IN BOTH.
@@ -380,11 +387,19 @@ test fn w_a_retirement_plan_freezes_instead_of_refusing() -> Bool {
   length(w_frozen_order(v: w_srv6_frozen_retirement())) == 4
 }
 
-// THE ORDER IS THE EXECUTABLE ONE, ASSERTED POSITIONALLY.
+// THE ORDER IS THE EXECUTABLE ONE, ASSERTED POSITIONALLY -- AND ONLY WHERE A HOST FACT GROUNDS IT.
 //
-// Stop, then disable, then remove the file, then reload. The two adjacent pairs that matter are
-// checked by position rather than by membership, because this claim's ancestor in this file was a
-// membership assertion wearing an order's name and every permutation passed it.
+// Positions rather than membership, because this claim's ancestor in this file was a membership
+// assertion wearing an order's name and every permutation passed it.
+//
+// What is asserted is a PARTIAL order, and the missing edge is the point. Stop and disable both
+// precede the file removal -- disable reads the unit file, and stopping a unit whose definition is
+// gone leaves a process the manager cannot name -- and the reload follows the removal. Nothing
+// grounds an edge BETWEEN stop and disable: they answer independent obligations and neither reads the
+// other's result, so `disable → stop → rm → reload` is equally safe. An earlier draft declared the
+// total chain and this claim required `activity < enablement`, which would have rejected that
+// execution for no reason a host fact could be cited for. Asserting the order the facts establish and
+// not one edge more is what keeps the claim from cementing an arbitrary convention.
 type WIndexScan {
   seen: Int
   found: Int
@@ -423,7 +438,7 @@ test fn w_the_frozen_retirement_stops_before_it_disables_and_removes_before_it_r
     && enablement >= 0
     && content >= 0
     && registration >= 0
-    && activity < enablement
+    && activity < content
     && enablement < content
     && content < registration
 }
@@ -496,4 +511,143 @@ test fn w_the_planner_scopes_desired_state_by_role() -> Bool {
 // convergence installs a model server on the wrong box.
 test fn w_the_planner_refuses_a_host_with_no_spark_role() -> Bool {
   w_role_scoped_count(host: "srv1" as HostIdentity) == 0 - 1
+}
+
+// ── THE PRODUCTION ROOT, WHICH IS WHERE THE EVIDENCE HAD STOPPED SHORT ──────────────────────────
+//
+// Every claim above enters through a helper: the role-scoped desired members, the reconcile, the
+// freeze. Each is a real production function, and together they are not the production path -- a
+// regression that pointed `spark_serving_full_membership_plan` back at the unscoped
+// `spark_serving_desired_members` would leave all of them green, because none of them is what the
+// converge actuator calls. `spark_serving_fleet_converge_plan_artifact` is, so the closing claim
+// enters there and reads the frozen artifact back.
+fn w_complete_store() -> ModelStoreObservation {
+  match spark_serving_desired_admission {
+    SparkServingDesiredRefused { cause: _ } =>
+      ModelStoreObservationRefused { cause: "w: no admitted release" as NonEmptyStr }
+    SparkServingDesiredAdmitted { serving_release: r } =>
+      ModelStoreComplete {
+        manifest_identity: serialize_content_hash(hash: r.model.identity) as NonEmptyStr,
+        blob_closure_count: 1,
+      }
+  }
+}
+
+fn w_observed_serving_projection(host: HostIdentity) -> SparkServingObservedMemberProjection {
+  spark_serving_observed_members(
+    host: host,
+    runtime: RuntimeMaterializationComplete {
+      identity: ollama_runtime_materialization_identity_for_required_release(),
+    },
+    store: w_complete_store(),
+    unit: UserUnitStateObserved { unit_state_digest: spark_serving_user_unit_state_digest() },
+    enablement: UserUnitManagerEnabled,
+    activity: UnitActivityRunning,
+    linger: LingerObservedEnabled,
+  )
+}
+
+fn w_artifact(host: HostIdentity) -> SparkServingPlanArtifactVerdict {
+  spark_serving_fleet_converge_plan_artifact(
+    host: host as NonEmptyStr,
+    prior_generation: 0,
+    observed_timers: [],
+    observed_caps: [],
+    projection: w_observed_serving_projection(host: host),
+  )
+}
+
+fn w_artifact_rows(host: HostIdentity) -> List<FleetConvergeSparkServingTypedAction> {
+  match w_artifact(host: host) {
+    SparkServingPlanArtifactReady { artifact: a } => scheduled_rows_list(scheduled: a.spark_serving_typed_actions)
+    SparkServingPlanArtifactRefused { cause: _ } => []
+  }
+}
+
+fn w_row_is_retirement(row: FleetConvergeSparkServingTypedAction) -> Bool {
+  w_action_is_removal(action: row.action)
+    && length(fleet_converge_spark_serving_row_effects(row: row)) > 0
+    && all(fleet_converge_spark_serving_row_effects(row: row), e =>
+      match e {
+        PlannedRetirementEffect { retirement: _ } => true
+        PlannedInstallEffect { install: _ } => false
+      })
+}
+
+// A FULLY SERVING TRAINING CELL PLANS FOUR RETIREMENTS THROUGH THE PRODUCTION ROOT.
+//
+// The observation handed in is a host serving perfectly: runtime materialized, model held, unit
+// present and enabled and RUNNING, linger on. Under the pre-role planner this input produced zero
+// rows -- it is exactly the desired seven-member serving state -- so this claim is red on the old
+// production path for the right reason, rather than red because the fixture was rebuilt.
+test fn w_the_production_artifact_plans_four_retirements_for_the_training_cell() -> Bool {
+  let rows = w_artifact_rows(host: operator_host_srv6)
+  length(rows) == 4 && all(rows, r => w_row_is_retirement(row: r))
+}
+
+// AND THE SERVING CELL IN THE SAME STATE PLANS NOTHING. Without this, "four rows" could be true of a
+// planner that retires every host it is handed.
+test fn w_the_production_artifact_plans_no_rows_for_the_converged_serving_cell() -> Bool {
+  length(w_artifact_rows(host: operator_host_srv5)) == 0
+}
+
+// THE RETAINED CACHE IS ABSENT FROM THE PRODUCTION ROWS, not merely from the fixture reconcile.
+test fn w_the_production_retirement_touches_no_baseline_address() -> Bool {
+  let rows = w_artifact_rows(host: operator_host_srv6)
+  length(rows) == 4
+    && !any(rows, r => string_contains(
+        fleet_converge_spark_serving_action_at(action: r.action),
+        spark_serving_resource_address_wire(address: SparkServingRuntimeRootAddress)))
+    && !any(rows, r => string_contains(
+        fleet_converge_spark_serving_action_at(action: r.action),
+        spark_serving_resource_address_wire(address: SparkServingLingerAddress)))
+}
+
+// A HOST WITH NO ROLE REFUSES AT THE PRODUCTION ROOT.
+//
+// This is the claim that now exercises the role authority rather than the hardcoded srv5-or-srv6
+// predicate that used to answer first and would have rejected a newly assigned Spark cell.
+test fn w_the_production_artifact_refuses_a_host_with_no_role() -> Bool {
+  match w_artifact(host: "srv1" as HostIdentity) {
+    SparkServingPlanArtifactRefused { cause: c } => string_contains(c, "no Spark cell role")
+    SparkServingPlanArtifactReady { artifact: _ } => false
+  }
+}
+
+// A PLAN OF REFUSALS IS NOT AN EMPTY PLAN, AND IT NEVER FREEZES.
+//
+// A plan whose only actions are refusals classified as EMPTY, projected to zero rows, and froze --
+// a schedule saying "nothing to do" about a reconcile that said "I could not answer". Both refusal
+// actions are checked, because they are produced by different arms of the reconcile.
+fn w_freeze_of(plan: MembershipPlan<SparkServingMember, SparkServingMemberAt>) -> SparkServingScheduleVerdict {
+  spark_serving_freeze_execution_schedule(plan: plan, desired_addresses: [])
+}
+
+fn w_refuses(v: SparkServingScheduleVerdict) -> Bool {
+  match v {
+    SparkServingScheduleRefused { cause: c } => length(c) > 0
+    SparkServingScheduleFrozen { schedule: _ } => false
+  }
+}
+
+test fn w_a_plan_carrying_only_refusals_refuses_instead_of_freezing_empty() -> Bool {
+  let removal_refused = MembershipPlan {
+    actions: [
+      MemberRemovalRefused {
+        from: w_member(host: operator_host_srv6, address: SparkServingRuntimeRootAddress),
+        cause: "w-refusal" as NonEmptyStr,
+      },
+    ],
+  }
+  let duplicate_refused = MembershipPlan {
+    actions: [
+      MemberRosterDuplicateKeyRefused {
+        roster: "desired" as NonEmptyStr,
+        first: w_member(host: operator_host_srv6, address: SparkServingLingerAddress),
+        duplicate: w_member(host: operator_host_srv6, address: SparkServingLingerAddress),
+      },
+    ],
+  }
+  w_refuses(v: w_freeze_of(plan: removal_refused))
+    && w_refuses(v: w_freeze_of(plan: duplicate_refused))
 }

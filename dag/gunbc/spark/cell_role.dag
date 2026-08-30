@@ -82,16 +82,46 @@ fn spark_cell_role_wire(role: SparkCellRole) -> String {
   }
 }
 
-// ABSENT IS "NOT A SPARK CELL", WHICH IS NOT A ROLE.
+// ABSENT IS "NOT A SPARK CELL", WHICH IS NOT A ROLE -- AND TWO ROWS FOR ONE HOST IS NEITHER.
 //
-// Answering a role for an unassigned host would make every non-Spark machine in the fleet a
-// candidate for whichever arm the default picked. The lookup therefore returns an optional, and the
-// callers that project host rosters never see it -- they walk the assignments and filter, so a host
-// can only appear in a roster by having been assigned.
-fn spark_cell_role_of(host: HostIdentity) -> SparkCellRole? {
-  fold(spark_cell_role_assignments, init: none, f: fn(acc, a) {
-    if host_identity_eq(a: a.host, b: host) { Present { value: a.role } } else { acc }
-  })
+// Answering a role for an unassigned host would make every non-Spark machine in the fleet a candidate
+// for whichever arm the default picked. So the lookup is a sum, and it has three arms rather than an
+// optional's two.
+//
+// The third arm is the one worth explaining. Each ROW carries a sum-valued role, so no single row can
+// say a cell both serves and trains -- but the ROSTER is an ordinary list, and two rows naming one
+// host can. An earlier fold answered the last match and called it the role: last-row-wins, in a
+// lookup the training offer and the production planner both authorize against. That the current
+// roster has no duplicate is a fact about today's data, checked by a claim that is outside the
+// required gate; it is not a property of the lookup. Ambiguity is therefore an ANSWER here, carrying
+// the rows that conflict, and every authorization consumer must match it and refuse.
+type SparkCellRoleLookup
+  = SparkCellRoleAbsent
+  | SparkCellRoleUnique { role: SparkCellRole }
+  | SparkCellRoleAmbiguous { assignments: List<SparkCellRoleAssignment> }
+
+fn spark_cell_role_of(host: HostIdentity) -> SparkCellRoleLookup {
+  let matched = filter(spark_cell_role_assignments, a => host_identity_eq(a: a.host, b: host))
+  if length(matched) > 1 {
+    SparkCellRoleAmbiguous { assignments: matched }
+  } else {
+    fold(matched, init: SparkCellRoleAbsent, f: fn(acc, a) { SparkCellRoleUnique { role: a.role } })
+  }
+}
+
+fn spark_cell_role_lookup_refusal(lookup: SparkCellRoleLookup) -> NonEmptyStr? {
+  match lookup {
+    SparkCellRoleUnique { role: _ } => none
+    SparkCellRoleAbsent =>
+      Present { value: "spark cell role refused: the host holds no Spark cell role assignment, so it is not a Spark cell and has neither a serving nor a training population" as NonEmptyStr }
+    SparkCellRoleAmbiguous { assignments: rows } =>
+      Present {
+        value: join([
+          "spark cell role refused: ", to_string(length(rows)),
+          " assignment rows name one host, so the roster does not decide what this cell is for",
+        ], "") as NonEmptyStr,
+      }
+  }
 }
 
 fn spark_hosts_with_role(role: SparkCellRole) -> List<HostIdentity> {
@@ -113,7 +143,8 @@ fn spark_training_cell_hosts() -> List<HostIdentity> {
 // and not a filter somebody remembered to write in the supply module.
 fn spark_host_offerable_for_training(host: HostIdentity) -> Bool {
   match spark_cell_role_of(host: host) {
-    Absent => false
-    Present { value: r } => spark_cell_role_eq(a: r, b: SparkTrainingCell)
+    SparkCellRoleAbsent => false
+    SparkCellRoleAmbiguous { assignments: _ } => false
+    SparkCellRoleUnique { role: r } => spark_cell_role_eq(a: r, b: SparkTrainingCell)
   }
 }

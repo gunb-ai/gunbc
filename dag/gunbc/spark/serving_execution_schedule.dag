@@ -162,22 +162,50 @@ fn spark_serving_address_requires(address: SparkServingResourceAddress) -> List<
 // procedural barrier in the teardown direction, and this module's own requirement vocabulary already
 // says why it cannot be derived: barriers do not reverse.
 //
-// So the teardown chain is declared as its own relation, address by address, each edge carrying the
-// reason it exists:
+// WHAT THE HOST FACTS ESTABLISH IS A PARTIAL ORDER, AND NOT ONE EDGE MORE.
 //
-//   activity  →  enablement  →  content  →  registration
-//   stop         disable        rm file     daemon-reload
+//   activity   (stop)    ──┐
+//                          ├──→ content (rm file) ──barrier──→ registration (daemon-reload)
+//   enablement (disable) ──┘
 //
-// which is exactly the order `realization_retirement_effects` authors, now stated once as a relation
-// the scheduler can check rather than twice as a list and a schedule.
+// The chain `activity → enablement` that an earlier draft of this function declared is NOT grounded.
+// `stop` and `disable` answer independent final-state obligations -- one makes the process inactive,
+// the other stops the unit returning at boot -- and neither reads the other's result. Declaring a
+// total chain therefore rejected `disable → stop → rm → reload`, which is equally safe. An authority
+// edge nobody established is exactly the kind of arbitrary convention §1 says to remove: it would
+// have constrained every future executor for no reason a host fact could be cited for.
+//
+// The kinds are not decoration. The two edges into content are enduring resource requirements -- the
+// file must exist while those remedies run, whoever established it -- while content → registration is
+// procedural: the reload is a step that must follow the deletion, not a resource state disable reads.
+// The same distinction the install requirements already carry, and for the same reason.
+type SparkServingTeardownRequirement {
+  predecessor: SparkServingResourceAddress
+  kind: DependencyKind
+}
+
 fn spark_serving_address_teardown_predecessors(
   address: SparkServingResourceAddress,
-) -> List<SparkServingResourceAddress> {
+) -> List<SparkServingTeardownRequirement> {
   match address {
     SparkServingUserUnitActivityAddress => []
-    SparkServingUserUnitEnablementAddress => [SparkServingUserUnitActivityAddress]
-    SparkServingUserUnitAddress => [SparkServingUserUnitEnablementAddress]
-    SparkServingUserUnitRegistrationAddress => [SparkServingUserUnitAddress]
+    SparkServingUserUnitEnablementAddress => []
+    SparkServingUserUnitAddress => [
+      SparkServingTeardownRequirement {
+        predecessor: SparkServingUserUnitActivityAddress,
+        kind: ResourceDependsOn,
+      },
+      SparkServingTeardownRequirement {
+        predecessor: SparkServingUserUnitEnablementAddress,
+        kind: ResourceDependsOn,
+      },
+    ]
+    SparkServingUserUnitRegistrationAddress => [
+      SparkServingTeardownRequirement {
+        predecessor: SparkServingUserUnitAddress,
+        kind: BarrierBefore,
+      },
+    ]
     SparkServingRuntimeRootAddress => []
     SparkServingModelSlotAddress { slot: _ } => []
     SparkServingLingerAddress => []
@@ -191,8 +219,31 @@ type SparkServingScheduledRow {
   address: SparkServingResourceAddress
 }
 
+// THE DIRECTION A SCHEDULE CAN RUN IN HAS THREE ARMS, AND MIXED IS NOT ONE OF THEM.
+//
+// This is the narrowing that closes a fallback. An earlier draft carried one direction sum with a
+// `Mixed` arm all the way to relation selection, where the mixed case answered the EMPTY relation on
+// the stated grounds that the projection had already refused it. That reasoning is exactly the shape
+// §5 names an absorbing fallback: correct only because of a caller arrangement, silent if the
+// arrangement changes, and the silence would schedule a mixed plan in diff order -- the one thing the
+// frozen carrier exists to prevent.
+//
+// So the unschedulable cases have no constructor past the projection. `SparkServingPlanDirection`
+// classifies a plan and admits the bad cases so a refusal can name them; only
+// `SparkServingSchedulableDirection` reaches relation selection, and it cannot spell them.
+type SparkServingSchedulableDirection
+  = SparkServingSchedulableInstalls
+  | SparkServingSchedulableTeardown
+  | SparkServingSchedulableEmpty
+
+// THE DIRECTION IS CARRIED BESIDE THE ROWS, NOT RECOMPUTED FROM THE PLAN. Classifying once and
+// passing the answer makes "the rows and the relation agree about which direction this is" a
+// construction fact rather than two derivations a later edit could split.
 type SparkServingScheduleRowProjection
-  = SparkServingScheduleRowsProjected { rows: List<SparkServingScheduledRow> }
+  = SparkServingScheduleRowsProjected {
+      rows: List<SparkServingScheduledRow>
+      direction: SparkServingSchedulableDirection
+    }
   | SparkServingScheduleRowsRefused { cause: String }
 
 // A PLAN IS ALL INSTALL OR ALL TEARDOWN, AND A MIXED ONE STILL REFUSES.
@@ -212,6 +263,7 @@ type SparkServingPlanDirection
   | SparkServingPlanTeardown
   | SparkServingPlanEmpty
   | SparkServingPlanMixed { install_count: Int, removal_count: Int }
+  | SparkServingPlanCarriesRefusals { refusal_count: Int }
 
 fn spark_serving_plan_direction(
   plan: MembershipPlan<SparkServingMember, SparkServingMemberAt>,
@@ -234,7 +286,18 @@ fn spark_serving_plan_direction(
       MemberRosterDuplicateKeyRefused { roster: _, first: _, duplicate: _ } => false
     }
   )
-  if length(removals) > 0 && length(installs) > 0 {
+  let refusals = filter(plan.actions, a =>
+    match a {
+      MemberAdded { at: _, to: _ } => false
+      MemberChanged { at: _, from: _, to: _ } => false
+      MemberRemoved { at: _, from: _ } => false
+      MemberRemovalRefused { from: _, cause: _ } => true
+      MemberRosterDuplicateKeyRefused { roster: _, first: _, duplicate: _ } => true
+    }
+  )
+  if length(refusals) > 0 {
+    SparkServingPlanCarriesRefusals { refusal_count: length(refusals) }
+  } else if length(removals) > 0 && length(installs) > 0 {
     SparkServingPlanMixed { install_count: length(installs), removal_count: length(removals) }
   } else if length(removals) > 0 {
     SparkServingPlanTeardown
@@ -245,6 +308,13 @@ fn spark_serving_plan_direction(
   }
 }
 
+// A REFUSAL IN THE PLAN IS NOT AN EMPTY PLAN, WHICH IS THE SECOND CONFLATION THIS CLOSES.
+//
+// `MemberRemovalRefused` and `MemberRosterDuplicateKeyRefused` are neither installs nor removals, so
+// a plan consisting entirely of them classified as EMPTY and projected to zero rows -- and a frozen
+// empty schedule for a nonempty plan of refusals is a schedule saying "nothing to do" about a plan
+// that said "I could not answer". The row-count check downstream happens to catch it in today's
+// artifact path; the scheduler that claims to be the ordering authority accepted it. It refuses here.
 fn spark_serving_schedule_rows(
   plan: MembershipPlan<SparkServingMember, SparkServingMemberAt>,
 ) -> SparkServingScheduleRowProjection {
@@ -257,9 +327,19 @@ fn spark_serving_schedule_rows(
           " removal row(s) in one plan, and the composition of the forward and teardown orders is not modeled",
         ], ""),
       }
-    SparkServingPlanEmpty => SparkServingScheduleRowsProjected { rows: [] }
-    SparkServingPlanTeardown => spark_serving_schedule_row_projection(plan: plan)
-    SparkServingPlanInstalls => spark_serving_schedule_row_projection(plan: plan)
+    SparkServingPlanCarriesRefusals { refusal_count: n } =>
+      SparkServingScheduleRowsRefused {
+        cause: join([
+          "spark serving execution schedule refused: the plan carries ", to_string(n),
+          " refusal action(s), which are neither installs nor removals -- a plan whose reconcile could not answer has no execution order to freeze",
+        ], ""),
+      }
+    SparkServingPlanEmpty =>
+      SparkServingScheduleRowsProjected { rows: [], direction: SparkServingSchedulableEmpty }
+    SparkServingPlanTeardown =>
+      spark_serving_schedule_row_projection(plan: plan, direction: SparkServingSchedulableTeardown)
+    SparkServingPlanInstalls =>
+      spark_serving_schedule_row_projection(plan: plan, direction: SparkServingSchedulableInstalls)
   }
 }
 
@@ -273,8 +353,10 @@ fn spark_serving_schedule_rows(
 // existed.
 fn spark_serving_schedule_row_projection(
   plan: MembershipPlan<SparkServingMember, SparkServingMemberAt>,
+  direction: SparkServingSchedulableDirection,
 ) -> SparkServingScheduleRowProjection {
   SparkServingScheduleRowsProjected {
+    direction: direction,
     rows: flat_map(plan.actions, a =>
       match a {
         MemberAdded { at: at, to: to } => [SparkServingScheduledRow { at: at, address: to.address }]
@@ -394,14 +476,14 @@ fn spark_serving_teardown_relations(
   rows: List<SparkServingScheduledRow>,
 ) -> List<DependencyRelation<SparkServingMemberAt>> {
   flat_map(rows, row =>
-    flat_map(spark_serving_address_teardown_predecessors(address: row.address), pred =>
+    flat_map(spark_serving_address_teardown_predecessors(address: row.address), requirement =>
       flat_map(
-        filter(rows, r => spark_serving_resource_address_eq(a: r.address, b: pred)),
+        filter(rows, r => spark_serving_resource_address_eq(a: r.address, b: requirement.predecessor)),
         p => [
           DependencyRelation {
             prerequisite: p.at,
             dependent: row.at,
-            kind: ResourceDependsOn,
+            kind: requirement.kind,
           },
         ],
       )
@@ -451,26 +533,23 @@ type SparkServingScheduleVerdict
 // mean subjects remain, and remaining subjects under a fixed point means a cycle -- so both refuse,
 // and neither is distinguished by anything authored in this module. Writing a cycle check beside the
 // kernel that already refuses on cycles would be the second representation §3 forbids.
-// WHICH RELATION GOVERNS IS DECIDED BY THE PLAN'S DIRECTION, ONCE.
+// WHICH RELATION GOVERNS IS DECIDED BY THE DIRECTION THE PROJECTION ALREADY CARRIES.
 //
-// The mixed arm is unreachable from here -- spark_serving_schedule_rows already refused it and this
-// function is only entered on a projection -- so it answers the empty relation rather than inventing
-// a composition. That is the arm to watch if the mixed refusal is ever softened: it would silently
-// schedule a mixed plan in diff order, which is precisely what the frozen carrier exists to prevent.
+// There is no arm here for a plan that cannot be scheduled, because the parameter type has no
+// constructor for one. The earlier version took the wide direction and answered the empty relation
+// for `Mixed`; this one cannot be handed `Mixed` at all.
 fn spark_serving_relations_for_direction(
-  direction: SparkServingPlanDirection,
+  direction: SparkServingSchedulableDirection,
   rows: List<SparkServingScheduledRow>,
   preestablished: List<SparkServingResourceFact>,
 ) -> SparkServingScheduleRelations {
   match direction {
-    SparkServingPlanTeardown =>
+    SparkServingSchedulableTeardown =>
       SparkServingScheduleRelationsDerived { relations: spark_serving_teardown_relations(rows: rows) }
-    SparkServingPlanInstalls =>
+    SparkServingSchedulableInstalls =>
       spark_serving_schedule_relations(rows: rows, preestablished: preestablished)
-    SparkServingPlanEmpty =>
+    SparkServingSchedulableEmpty =>
       spark_serving_schedule_relations(rows: rows, preestablished: preestablished)
-    SparkServingPlanMixed { install_count: _, removal_count: _ } =>
-      SparkServingScheduleRelationsDerived { relations: [] }
   }
 }
 
@@ -480,13 +559,13 @@ fn spark_serving_freeze_execution_schedule(
 ) -> SparkServingScheduleVerdict {
   match spark_serving_schedule_rows(plan: plan) {
     SparkServingScheduleRowsRefused { cause: why } => SparkServingScheduleRefused { cause: why }
-    SparkServingScheduleRowsProjected { rows: rows } => {
+    SparkServingScheduleRowsProjected { rows: rows, direction: direction } => {
       let preestablished = spark_serving_preestablished_facts(
         desired_addresses: desired_addresses,
         rows: rows,
       )
       match spark_serving_relations_for_direction(
-        direction: spark_serving_plan_direction(plan: plan),
+        direction: direction,
         rows: rows,
         preestablished: preestablished,
       ) {

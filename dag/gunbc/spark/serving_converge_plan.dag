@@ -8,7 +8,7 @@ import gunbc.spark.serving_observed_members {
 import std.types { String, List, Bool, NonEmptyStr, Int }
 import std.content_hash { content_hash_of_value, content_hash_atom, serialize_content_hash }
 import product.placement_supply { HostIdentity }
-import gunbc.fleet_intent_network { operator_host_srv5, operator_host_srv6 }
+import gunbc.fleet_intent_network { operator_host_srv5 }
 import gunbc.membership_reconcile {
   MembershipPlan,
   MemberAction,
@@ -65,6 +65,7 @@ import gunbc.spark.serving_member_realization {
 }
 import gunbc.spark.cell_role {
   SparkCellRole, SparkServingCell, SparkTrainingCell, spark_cell_role_of,
+  SparkCellRoleLookup, SparkCellRoleAbsent, SparkCellRoleUnique, SparkCellRoleAmbiguous,
 }
 import gunbc.spark.serving_realization {
   ServingInstallEffect, EnableLingerForOwnAccount,
@@ -105,10 +106,6 @@ import gunbc.fleet_converge_plan {
   fleet_converge_spark_serving_row_effects,
 }
 data spark_serving_converge_plan_authority_note: String = "Seam 2 vertical slice — Spark serving membership frozen into FleetConvergePlanArtifact typed rows. First member kind: Ensured linger (SparkServingLingerAddress → EnableLingerForOwnAccount). Plan observes linger state, runs membership_reconcile once, serializes MemberAction + install_effects into typed_action_rows on the artifact; apply MUST read those frozen rows (never re-derive). Spark actuation is typed argv via spark_serving_converge_realize + typed_argv_exec — NOT merged into apply_shell. Change arm (disable-linger) is NOT claimed proven — sudoers grants enable-linger only."
-
-fn spark_serving_converge_host_is_spark(host: NonEmptyStr) -> Bool {
-  host == (operator_host_srv5 as NonEmptyStr) || host == (operator_host_srv6 as NonEmptyStr)
-}
 
 fn spark_serving_desired_linger_member(host: HostIdentity) -> SparkServingMember {
   spark_serving_member(
@@ -405,26 +402,20 @@ fn spark_serving_fleet_converge_plan_artifact(
   observed_caps: List<CapMember>,
   projection: SparkServingObservedMemberProjection,
 ) -> SparkServingPlanArtifactVerdict {
-  if !spark_serving_converge_host_is_spark(host: host) {
-    SparkServingPlanArtifactRefused {
-      cause: join(["plan-refused host-not-spark host=", host as String], ""),
-    }
-  } else {
-    match spark_serving_desired_admission {
-      SparkServingDesiredRefused { cause: why } =>
-        SparkServingPlanArtifactRefused {
-          cause: join(["plan-refused desired-release-unadmitted ", why as String], ""),
-        }
-      SparkServingDesiredAdmitted { serving_release: admitted_release } =>
-        spark_serving_fleet_converge_plan_artifact_for_release(
-          host: host,
-          prior_generation: prior_generation,
-          observed_timers: observed_timers,
-          observed_caps: observed_caps,
-          projection: projection,
-          serving_release: admitted_release,
-        )
-    }
+  match spark_serving_desired_admission {
+    SparkServingDesiredRefused { cause: why } =>
+      SparkServingPlanArtifactRefused {
+        cause: join(["plan-refused desired-release-unadmitted ", why as String], ""),
+      }
+    SparkServingDesiredAdmitted { serving_release: admitted_release } =>
+      spark_serving_fleet_converge_plan_artifact_for_release(
+        host: host,
+        prior_generation: prior_generation,
+        observed_timers: observed_timers,
+        observed_caps: observed_caps,
+        projection: projection,
+        serving_release: admitted_release,
+      )
   }
 }
 
@@ -674,11 +665,18 @@ fn spark_serving_role_scoped_desired_members(
   serving_release: SparkServingRelease,
 ) -> SparkServingRoleScopedDesired {
   match spark_cell_role_of(host: occurrence.host) {
-    Absent =>
+    SparkCellRoleAbsent =>
       SparkServingRoleScopedDesiredRefused {
         cause: "spark serving plan refused: the host holds no Spark cell role, and a machine nobody assigned must not receive serving desired state by default",
       }
-    Present { value: role } =>
+    SparkCellRoleAmbiguous { assignments: rows } =>
+      SparkServingRoleScopedDesiredRefused {
+        cause: join([
+          "spark serving plan refused: ", to_string(length(rows)),
+          " Spark cell role assignments name this host, so the roster does not decide whether it serves or trains",
+        ], ""),
+      }
+    SparkCellRoleUnique { role: role } =>
       match role {
         SparkServingCell =>
           SparkServingRoleScopedDesiredReady {
