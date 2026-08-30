@@ -251,12 +251,12 @@ fn exec_start_argv_of_show_value(value: String) -> ExecStartRead {
     ExecStartUnparseable { value: value }
   } else {
     match list_head(xs: reverse(parts)) {
-      Absent => ExecStartUnparseable { value: value }
-      Present { value: tail } => {
+      HeadAbsent => ExecStartUnparseable { value: value }
+      HeadFound { value: tail } => {
         let segs = split(s: tail, delimiter: " ; ")
         match list_head(xs: segs) {
-          Absent => ExecStartUnparseable { value: value }
-          Present { value: argv_text } => ExecStartArgv { argv_text: trim(s: argv_text) }
+          HeadAbsent => ExecStartUnparseable { value: value }
+          HeadFound { value: argv_text } => ExecStartArgv { argv_text: trim(s: argv_text) }
         }
       }
     }

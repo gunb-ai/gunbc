@@ -68,7 +68,7 @@ test fn witness_apply_receipt_round_trips() -> Bool {
 // (2) RED: a tampered member no longer matches the carried identity, so the receipt refuses.
 test fn witness_plan_receipt_with_tampered_host_refuses() -> Bool {
   let wire = serialize_json(v: fleet_converge_plan_receipt_json(r: fixture_plan_receipt()))
-  let tampered = replace(wire, "\"observed_host\":\"srv1\"", "\"observed_host\":\"srv2\"")
+  let tampered = replace(wire, "\"observed_host\": \"srv1\"", "\"observed_host\": \"srv2\"")
   tampered != wire
     && (match fleet_converge_plan_receipt_decode(raw: tampered) {
       FleetConvergePlanReceiptDecoded { receipt: _ } => false

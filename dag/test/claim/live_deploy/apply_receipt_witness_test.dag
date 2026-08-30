@@ -60,7 +60,7 @@ test fn witness_dashboard_receipt_not_converged_round_trips_its_reason() -> Bool
 // RED: a tampered candidate revision fails the identity check.
 test fn witness_dashboard_receipt_with_tampered_candidate_refuses() -> Bool {
   let wire = serialize_json(v: live_deploy_apply_receipt_json(r: fixture_dashboard_receipt()))
-  let tampered = replace(wire, join(["\"candidate_revision\":\"", apply_receipt_fixture_r, "\""], ""), "\"candidate_revision\":\"89abcdef0123456789abcdef0123456789abcdef\"")
+  let tampered = replace(wire, join(["\"candidate_revision\": \"", apply_receipt_fixture_r, "\""], ""), "\"candidate_revision\": \"89abcdef0123456789abcdef0123456789abcdef\"")
   tampered != wire
     && (match live_deploy_apply_receipt_decode(raw: tampered) {
       LiveDeployApplyReceiptDecoded { receipt: _ } => false

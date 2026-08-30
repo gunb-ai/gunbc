@@ -120,7 +120,7 @@ test fn witness_v4_tick_receipt_round_trips_execution_and_identity() -> Bool {
 
 test fn witness_v4_tick_receipt_with_tampered_mode_refuses() -> Bool {
   let wire = serialize_json(v: belt_tick_receipt_json_value(receipt: fixture_v4_tick()))
-  let tampered = replace(wire, "\"spawn_mode\":\"manual_ready\"", "\"spawn_mode\":\"automatic_ready\"")
+  let tampered = replace(wire, "\"spawn_mode\": \"manual_ready\"", "\"spawn_mode\": \"automatic_ready\"")
   tampered != wire
     && (match belt_tick_receipt_decode(raw: tampered) {
       BeltTickReceiptUnreadable { reason: r } => string_contains(s: r, pattern: "identity does not match")
