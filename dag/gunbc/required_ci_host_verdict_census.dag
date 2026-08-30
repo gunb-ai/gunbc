@@ -3,6 +3,7 @@ module gunbc.required_ci_host_verdict_census
 import std.types { List, String, Bool }
 import std.decl_ref { DeclarationRef, decl_ref }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
+import gunbc.required_ci_phase_roster { RequiredCiLane, BuildLane, WitnessesLane }
 
 // Census of the phases selected by claim_executor's RequiredCiPhase roster -- one row each, so the
 // roster IS the count and no number is transcribed here.  IT READ "the seven phases" AND THE ROWS
@@ -30,13 +31,15 @@ import std.dissolution { DissolutionCondition, unbound_dissolution }
 // cut.  RealizesCarrier is retained as the negative population so "host Rust exists" cannot be
 // mistaken for the defect being counted.
 //
-// CEILING. Phase existence and lane ownership are themselves host facts: RequiredCiPhase, its
-// exhaustive lane match, and REQUIRED_CI_PHASES have no substrate authority.  Therefore this is an
-// authored census inside a host-owned frame, not a completeness proof.  A newly added Rust phase
-// does not appear here by construction.  The next-rung trigger at the bottom cuts that root; a
-// count pinned to today's list would merely turn this limitation into measure() == measure().
-
-type RequiredCiLane = BuildLane | WitnessesLane
+// CEILING, PARTIALLY LIFTED. When this census was authored, phase existence and lane ownership
+// were host facts with no substrate authority.  gunbc.required_ci_phase_roster now carries both,
+// the workflow emission consumes its lane vocabulary, and every --required-ci run joins the host
+// enum's variant set against that declaration in both directions -- so a newly added phase that
+// exists on only one side refuses at run time rather than appearing nowhere.  What has NOT fired
+// is the atomic-deletion half of the trigger at the bottom: the host enum, lane match and
+// REQUIRED_CI_PHASES still exist, so this remains an authored census inside a host-realized
+// frame, and the trigger below stands until the host side deletes.  A count pinned to today's
+// list would still merely turn this limitation into measure() == measure().
 
 type HostVerdictRelation
   = ReDecidesCarrier {
