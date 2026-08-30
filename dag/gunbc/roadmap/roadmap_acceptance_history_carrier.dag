@@ -42,6 +42,17 @@ fn load_roadmap_acceptance_event_history(path: String) -> RoadmapAcceptanceEvent
   }
 }
 
+// THE BRIDGE IS A CODEC, NOT A PARSER, and this description was corrected when the SCM excision
+// added a disposition arm and had to edit BOTH directions. The seed module owns JSON -> typed value
+// in event_value AND typed value -> JSON in event_to_json; calling it a parser hid half the surface,
+// and a dissolution trigger that names less than the whole boundary retires while the capability is
+// still dead (DESIGN section 4b(3)). The three modified items carry their own item-grain
+// dispositions in gunbc.roadmap_acceptance_codec_seed_disposition.
+//
+// THE TRIGGER IS CAPABILITY-SHAPED, not artifact-shaped: this bridge dissolves when a generated or
+// ordinary .dag realization can PARSE AND SERIALIZE every RoadmapAcceptanceEvent arm between JSONL
+// and typed values without the seed. A realization covering only the read direction, or only the
+// arms that exist today, does not retire it.
 data roadmap_acceptance_event_history_jsonl_parser_seed_scaffold: Disposition = Scaffold {
   dissolves_to: RealizationDispatch,
   bind: DeclarationRef {

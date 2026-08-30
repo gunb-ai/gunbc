@@ -1,0 +1,58 @@
+module gunbc.roadmap_acceptance_codec_seed_disposition
+
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.types { List, String }
+import gunbc.capability_origin { NoNewCapability }
+import gunbc.seed_growth_admission { SeedGrowthChangeDisposition, ExistingSeedItemModified }
+
+// THREE EXISTING SEED ITEMS WERE MODIFIED, AND NONE WAS ADDED. The SCM excision had to record five
+// withdrawn acceptances, and the one existing AcceptanceRevocationDisposition arm claims the node
+// REOPENS onto the active frontier -- false for a node whose rows and carriers the same change
+// deletes. Adding AcceptanceNodeWithdrawnFromProgram to the .dag model meant the seed's JSONL codec
+// had to carry the new arm in both directions, because that codec is where JSONL and typed values
+// meet and there is no second route.
+//
+// NOT A SeedGrowthJustification: nothing was added. Writing one would claim three new hand
+// declarations where three existing ones changed shape, which is the netting error in reverse --
+// it would inflate the addition population instead of hiding it.
+//
+// THE ~34,000 DELETED LINES IN THIS CHANGE OFFSET NOTHING. seed_growth_deletions_offset_nothing
+// executes that rule rather than instructing it: no arm of seed_growth_admit_change reads the
+// deleted population, so a large deletion buys no admission for a single modified item.
+//
+// CAPABILITY ORIGIN IS NoNewCapability, and the boundary below is what makes that classification
+// checkable rather than asserted: the Rust does not decide THAT withdrawal exists or WHAT it means.
+// Both facts come from gunbc.roadmap_model -- the arm, and the terminal-disposition relation that
+// refuses a withdrawal whose node is still declared. The seed only transports the arm across the
+// JSONL boundary. If any policy about withdrawal were ever decided inside these items, this
+// classification would be wrong and the row would have to change with it.
+fn roadmap_acceptance_disposition_dag_authority() -> DeclarationRef {
+  DeclarationRef {
+    module_path: "gunbc.roadmap_model",
+    decl_name: "AcceptanceRevocationDisposition",
+    field: WholeDeclaration
+  }
+}
+
+data roadmap_acceptance_codec_boundary: String = "JSONL <-> typed RoadmapAcceptanceEvent transport only. The codec maps each AcceptanceRevocationDisposition arm to and from its internally tagged snake_case wire spelling and refuses an unrecognised variant name rather than defaulting to one. It decides no lifecycle question: whether a withdrawal is legitimate, whether its node may still be declared, and whether the history extends its prior prefix are all answered in gunbc.roadmap_model by acceptance_disposition_agreement, acceptance_history_integrity_verdict and replay_acceptance_event, none of which the seed implements."
+
+data roadmap_acceptance_codec_seed_dispositions: List<SeedGrowthChangeDisposition> = [
+  ExistingSeedItemModified {
+    item: DeclarationRef { module_path: "v1_compiler.cli_run.roadmap_acceptance_history_carrier", decl_name: "JsonAcceptanceRevocationDisposition", field: WholeDeclaration },
+    dag_authority: roadmap_acceptance_disposition_dag_authority(),
+    capability_origin: NoNewCapability,
+    current_boundary: roadmap_acceptance_codec_boundary
+  },
+  ExistingSeedItemModified {
+    item: DeclarationRef { module_path: "v1_compiler.cli_run.roadmap_acceptance_history_carrier", decl_name: "event_value", field: WholeDeclaration },
+    dag_authority: roadmap_acceptance_disposition_dag_authority(),
+    capability_origin: NoNewCapability,
+    current_boundary: roadmap_acceptance_codec_boundary
+  },
+  ExistingSeedItemModified {
+    item: DeclarationRef { module_path: "v1_compiler.cli_run.roadmap_acceptance_history_carrier", decl_name: "event_to_json", field: WholeDeclaration },
+    dag_authority: roadmap_acceptance_disposition_dag_authority(),
+    capability_origin: NoNewCapability,
+    current_boundary: roadmap_acceptance_codec_boundary
+  }
+]

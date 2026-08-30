@@ -547,7 +547,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       identity: "rn_629P2SF909R5C71V2HPCK4TJMD",
       id: "2-claim-indexed-evidence",
       owner: "deduction",
-      path: "docs/plans/dag-scm-design.md",
+      path: "dag/std/claim_evidence.dag",
       intricacy: IntricacyHigh,
       volume: VolumeMedium,
       t: fields(

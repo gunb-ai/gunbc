@@ -64,6 +64,12 @@ import gunbc.roadmap_model {
   AcceptanceRecorded,
   AcceptanceRevoked,
   AcceptanceNodeReopensActiveFrontier,
+  AcceptanceNodeWithdrawnFromProgram,
+  acceptance_disposition_agreement,
+  acceptance_disposition_agreement_holds,
+  AcceptanceDispositionAgreementHolds,
+  AcceptanceDispositionRefusedWithdrawnNodeStillDeclared,
+  AcceptanceDispositionRefusedReopenedNodeMissing,
   node_accepted,
   receipt_matches_node,
   node_criteria_digest,
@@ -804,5 +810,65 @@ test fn witness_projected_dependency_edges_include_active_edges() -> Bool {
         ProjectedRoadmapDependencyEdgesProjectionRefused { detail: _ } => false
       }
     AcceptedRoadmapNodeIdsProjectionRefused { detail: _ } => false
+  }
+}
+
+data disposition_agreement_witness_note: String = "THE ARM HAD TO CONTROL A STATE DISTINCTION, NOT ONLY A DIGEST. Replay matches disposition: _, so both revocation arms remove the same receipt and produce the same active set -- which means the withdrawal arm added by the SCM excision could be flipped to AcceptanceNodeReopensActiveFrontier while its node stayed deleted and NOTHING would refuse. Equality cross-arms and a distinct content-hash tag preserved the distinction without enforcing it, which is the state DESIGN section 4b describes when it says a richer type name is not safety. These three witnesses are the enforcement: one positive control on the live head, and one red for EACH direction so the relation cannot be satisfied by always choosing a single arm. The reds are constructed fixtures rather than SCM id assertions, so they keep discriminating after the SCM ids are gone."
+
+fn declared_node_ids() -> List<RoadmapNodeId> { nodes() |> map(n => n.node) }
+
+test fn witness_terminal_disposition_agrees_with_declared_nodes() -> Bool {
+  acceptance_disposition_agreement_holds(
+    events: live_acceptance_event_history(),
+    declared: declared_node_ids(),
+  )
+}
+
+test fn witness_reopening_a_deleted_node_refuses() -> Bool {
+  let history = live_acceptance_event_history()
+  let receipt = first(
+    project_live_acceptance_receipts(history: history)
+      |> filter(r => r.node == tnid(s: "namespace-occurrence-transport")),
+  )
+  let flipped = concat(history, [
+    AcceptanceRevoked {
+      exact_prior_receipt: receipt,
+      disposition: AcceptanceNodeReopensActiveFrontier {},
+      reason: "red control: reopening claims the node is back on the active frontier" as NonEmptyStr,
+      revoked_by: "operator" as NonEmptyStr,
+      revoked_on: "2026-08-30" as NonEmptyStr,
+    },
+  ])
+  match acceptance_disposition_agreement(
+    events: flipped,
+    declared: declared_node_ids() |> filter(d => d != tnid(s: "namespace-occurrence-transport")),
+  ) {
+    AcceptanceDispositionRefusedReopenedNodeMissing { node } =>
+      node == tnid(s: "namespace-occurrence-transport")
+    AcceptanceDispositionAgreementHolds => false
+    AcceptanceDispositionRefusedWithdrawnNodeStillDeclared { node: _ } => false
+  }
+}
+
+test fn witness_withdrawing_a_declared_node_refuses() -> Bool {
+  let history = live_acceptance_event_history()
+  let receipt = first(
+    project_live_acceptance_receipts(history: history)
+      |> filter(r => r.node == tnid(s: "namespace-occurrence-transport")),
+  )
+  let withdrawn = concat(history, [
+    AcceptanceRevoked {
+      exact_prior_receipt: receipt,
+      disposition: AcceptanceNodeWithdrawnFromProgram {},
+      reason: "red control: withdrawal claims the node left the program" as NonEmptyStr,
+      revoked_by: "operator" as NonEmptyStr,
+      revoked_on: "2026-08-30" as NonEmptyStr,
+    },
+  ])
+  match acceptance_disposition_agreement(events: withdrawn, declared: declared_node_ids()) {
+    AcceptanceDispositionRefusedWithdrawnNodeStillDeclared { node } =>
+      node == tnid(s: "namespace-occurrence-transport")
+    AcceptanceDispositionAgreementHolds => false
+    AcceptanceDispositionRefusedReopenedNodeMissing { node: _ } => false
   }
 }

@@ -598,6 +598,96 @@ fn project_live_acceptance_receipts(history: List<RoadmapAcceptanceEvent>) -> Li
   }
 }
 
+// A DISPOSITION THAT ONLY CHANGES A DIGEST IS DECORATION, AND THIS RELATION IS WHAT MAKES THE
+// SECOND ARM MEAN SOMETHING. Replay deliberately ignores the disposition -- both arms remove the
+// same receipt and leave the same active set -- so equality cross-arms and a distinct content-hash
+// tag preserve the DISTINCTION without any acceptance path ENFORCING it. That is the failure
+// DESIGN section 4b names when it says richer type names are not safety: a state the model can
+// express, a lie it cannot refuse. Flipping a withdrawal to a reopening while its node stays
+// deleted would have passed every check that existed before this relation.
+//
+// The rule is read off what each arm CLAIMS about the world, at the TERMINAL event for a node so a
+// later explicit event supersedes an earlier one: a reopening says the node is back on the active
+// frontier, so the node must still be declared; a withdrawal says the node left the program, so it
+// must not be. Both directions refuse, which is what keeps this from being satisfiable by always
+// choosing one arm.
+type AcceptanceDispositionAgreement
+  = AcceptanceDispositionAgreementHolds
+  | AcceptanceDispositionRefusedWithdrawnNodeStillDeclared { node: RoadmapNodeId }
+  | AcceptanceDispositionRefusedReopenedNodeMissing { node: RoadmapNodeId }
+
+fn acceptance_event_node(event: RoadmapAcceptanceEvent) -> RoadmapNodeId {
+  match event {
+    AcceptanceRecorded { receipt } => receipt.node
+    AcceptanceRevoked { exact_prior_receipt, disposition: _, reason: _, revoked_by: _, revoked_on: _ } =>
+      exact_prior_receipt.node
+  }
+}
+
+fn terminal_acceptance_event_for_node(
+  events: List<RoadmapAcceptanceEvent>,
+  node: RoadmapNodeId,
+) -> RoadmapAcceptanceEvent? {
+  fold(events, init: none, f: fn(acc, event) {
+    if acceptance_event_node(event: event) == node {
+      Present { value: event }
+    } else { acc }
+  })
+}
+
+fn acceptance_disposition_agreement_for_node(
+  events: List<RoadmapAcceptanceEvent>,
+  declared: List<RoadmapNodeId>,
+  node: RoadmapNodeId,
+) -> AcceptanceDispositionAgreement {
+  match terminal_acceptance_event_for_node(events: events, node: node) {
+    Absent => AcceptanceDispositionAgreementHolds
+    Present { value: event } =>
+      match event {
+        AcceptanceRecorded { receipt: _ } => AcceptanceDispositionAgreementHolds
+        AcceptanceRevoked { exact_prior_receipt: _, disposition, reason: _, revoked_by: _, revoked_on: _ } =>
+          match disposition {
+            AcceptanceNodeWithdrawnFromProgram {} =>
+              if declared |> any(d => d == node) {
+                AcceptanceDispositionRefusedWithdrawnNodeStillDeclared { node: node }
+              } else { AcceptanceDispositionAgreementHolds }
+            AcceptanceNodeReopensActiveFrontier {} =>
+              if declared |> any(d => d == node) {
+                AcceptanceDispositionAgreementHolds
+              } else { AcceptanceDispositionRefusedReopenedNodeMissing { node: node } }
+          }
+      }
+  }
+}
+
+fn acceptance_disposition_agreement(
+  events: List<RoadmapAcceptanceEvent>,
+  declared: List<RoadmapNodeId>,
+) -> AcceptanceDispositionAgreement {
+  fold(events, init: AcceptanceDispositionAgreementHolds, f: fn(acc, event) {
+    match acc {
+      AcceptanceDispositionAgreementHolds =>
+        acceptance_disposition_agreement_for_node(
+          events: events,
+          declared: declared,
+          node: acceptance_event_node(event: event),
+        )
+      refusal => refusal
+    }
+  })
+}
+
+fn acceptance_disposition_agreement_holds(
+  events: List<RoadmapAcceptanceEvent>,
+  declared: List<RoadmapNodeId>,
+) -> Bool {
+  match acceptance_disposition_agreement(events: events, declared: declared) {
+    AcceptanceDispositionAgreementHolds => true
+    AcceptanceDispositionRefusedWithdrawnNodeStillDeclared { node: _ } => false
+    AcceptanceDispositionRefusedReopenedNodeMissing { node: _ } => false
+  }
+}
+
 fn acceptance_history_integrity_verdict(
   history: List<RoadmapAcceptanceEvent>,
   prior_history: List<RoadmapAcceptanceEvent>,
