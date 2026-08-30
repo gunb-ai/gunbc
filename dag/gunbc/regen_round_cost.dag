@@ -296,8 +296,8 @@ type AffectedSetDisposition
 // correct over-approximation (DESIGN section 5: a structural over-approximation computed AS
 // the answer), not an exact set.
 data regen_affected_set_disposition: AffectedSetDisposition = DerivableNow {
-  from: "the .dag dependency closure the regen already builds: cli_run regen_input_sources_over_roots / extend_sources_to_both_closure_fixpoint (imports, dotted and bare references), read in reverse from the edited module, restricted to the compared mirror population, plus the runtime template products (v1_rt.rs) whenever v1.compiler.runtime_rust is in the set",
-  residual: "the emitting seed's own baked mirrors are a generation-level input to every emitted byte (the two-round bootstrap); the reverse closure over-approximates -- 72 predicted against 1 changed for a std.content_hash data row -- and exactness needs the per-module emit itself"
+  from: "gunbc.regen_affected_set regen_affected_set, whose bound is the .dag dependency closure the regen already builds: cli_run regen_input_sources_over_roots / extend_sources_to_both_closure_fixpoint (imports, dotted and bare references), read in reverse from the edited module, restricted to the compared mirror population, plus the declared bootstrap edge (regen_bootstrap_edges: v1_rt.rs whenever v1.compiler.runtime_rust is in the set); an edited path the tree cannot name refuses (EditedSetUnlocatable) rather than widening",
+  residual: "the emitting seed's own baked mirrors are a generation-level input to every emitted byte (the two-round bootstrap); the reverse closure over-approximates -- 72 predicted against 1 changed for a std.content_hash data row -- so an edit under regen_generation_input_prefixes answers WholePopulation; the AffectedMirrors arm over-approximates -- 72 predicted against 1 changed for a std.content_hash data row -- and exactness needs the per-module emit itself"
 }
 
 // WHERE THE ROUND'S TIME GOES, read from the instrument on 2026-08-30 (producer: this module's

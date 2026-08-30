@@ -2569,3 +2569,619 @@ mod regen_round_cost_tests {
         }
     }
 }
+
+// ===========================================================================================
+// THE AFFECTED SET OF ONE EDIT -- host realization of `gunbc.regen_affected_set`.
+//
+// The host does three things the model cannot: read the edit (the floor's git diff range), read
+// the tree (module names from the edited files, the seed's closure edge index, the committed
+// mirror population), and take the reverse walk over the full edge index at native cost. The
+// VERDICT -- which arm, which members -- is the model's: the host hands `regen_affected_set` the
+// edited modules, the unlocatable paths, the edges among the modules its own walk reached, the
+// compared rows, and the declared bootstrap rows, and prints what the model answers. The host's
+// walk is then held to the model's answer on every run (`lockstep` below): a disagreement is a
+// refusal, never a silently preferred side.
+// ===========================================================================================
+
+const REGEN_AFFECTED_SET_PRODUCER: &str = "claim_executor --regen-affected-set";
+const REGEN_AFFECTED_SET_ENTRY_UNDER_ROOT: &str = "gunbc/regen_affected_set.dag";
+
+pub struct RegenAffectedSetOutcome {
+    /// Provenance, the edited population, the bound line, and one `member` line per mirror.
+    pub rendered: String,
+    /// The model's arm name (`AffectedMirrors` | `WholePopulation` | `EditedSetUnlocatable`).
+    pub arm: String,
+    /// The mirrors the bound names, by committed basename; empty for the two non-selecting arms.
+    pub members: Vec<String>,
+}
+
+/// The model's answer for one edited population, as the host consumes it.
+pub struct AffectedSetBound {
+    pub line: String,
+    pub arm: String,
+    pub members: Vec<String>,
+}
+
+/// The edited population, classified. `unlocatable` is every `.dag` path the diff names that the
+/// tree cannot name as a module -- departed, unreadable, or without a `module` line -- and a
+/// non-empty list is the model's refusal arm. Paths that are not `.dag` are not the selection's
+/// subject (a hand edit to a mirror is what the regen's own diff catches) and are only counted.
+#[derive(Debug, PartialEq, Eq)]
+pub struct EditedPopulation {
+    pub edited_modules: Vec<String>,
+    pub unlocatable: Vec<String>,
+    pub non_dag_paths: Vec<String>,
+}
+
+pub fn edited_population_from_diff(workspace: &Path, diff_text: &str) -> EditedPopulation {
+    let departed = super::parse_unified_diff_departed_paths(diff_text);
+    let mut paths: BTreeSet<String> = super::parse_unified_diff_changed_new_lines(diff_text)
+        .keys()
+        .cloned()
+        .collect();
+    paths.extend(super::parse_unified_diff_added_paths(diff_text));
+    paths.extend(departed.iter().cloned());
+    let mut edited_modules: BTreeSet<String> = BTreeSet::new();
+    let mut unlocatable = Vec::new();
+    let mut non_dag_paths = Vec::new();
+    for path in paths {
+        if !path.ends_with(".dag") {
+            non_dag_paths.push(path);
+            continue;
+        }
+        if departed.contains(&path) {
+            unlocatable.push(format!(
+                "{path} (departed: no module line remains in the tree)"
+            ));
+            continue;
+        }
+        match fs::read_to_string(workspace.join(&path)) {
+            Ok(content) => match super::extract_module_path_public(&content) {
+                Some(module) => {
+                    edited_modules.insert(module);
+                }
+                None => unlocatable.push(format!("{path} (no module line)")),
+            },
+            Err(e) => unlocatable.push(format!("{path} (unreadable: {e})")),
+        }
+    }
+    EditedPopulation {
+        edited_modules: edited_modules.into_iter().collect(),
+        unlocatable,
+        non_dag_paths,
+    }
+}
+
+/// The seed's closure edges, module to module, off the SAME edge index the regen's closure walk
+/// uses (`both_closure_edge_index`: dotted references, which include every import line, plus bare
+/// references) -- one authority for "what pulls what", read here in reverse. A file the index
+/// names but cannot map to a module is a refusal: an edge dropped silently would shrink the bound.
+pub fn regen_module_edges(
+    workspace: &Path,
+) -> Result<(Vec<(String, String)>, Vec<String>), String> {
+    let abs_roots: Vec<String> = super::regen_source_roots()
+        .all()
+        .iter()
+        .map(|root| {
+            workspace
+                .join(root.repo_relative_path())
+                .to_string_lossy()
+                .into_owned()
+        })
+        .collect();
+    let index = super::build_multi_entry_index(&abs_roots);
+    let edge_index = super::both_closure_edge_index(&index)?;
+    let mut module_of_path: HashMap<String, String> = HashMap::new();
+    let mut modules: BTreeSet<String> = BTreeSet::new();
+    for (module, source) in index.source_files.iter() {
+        module_of_path.insert(
+            super::workspace_relative_repo_path(&source.path),
+            module.clone(),
+        );
+        modules.insert(module.clone());
+    }
+    let mut edges: BTreeSet<(String, String)> = BTreeSet::new();
+    let mut unmapped: BTreeSet<String> = BTreeSet::new();
+    for table in [&edge_index.ref_out, &edge_index.bare_out] {
+        for (from_path, to_paths) in table {
+            let from_key = super::workspace_relative_repo_path(from_path);
+            let Some(from) = module_of_path.get(&from_key) else {
+                unmapped.insert(from_key);
+                continue;
+            };
+            for to_path in to_paths {
+                let to_key = super::workspace_relative_repo_path(to_path);
+                match module_of_path.get(&to_key) {
+                    Some(to) if to != from => {
+                        edges.insert((from.clone(), to.clone()));
+                    }
+                    Some(_) => {}
+                    None => {
+                        unmapped.insert(to_key);
+                    }
+                }
+            }
+        }
+    }
+    if !unmapped.is_empty() {
+        return Err(format!(
+            "refusal: {} closure edge endpoint(s) name no module in the index, so the reverse \
+             walk would be missing edges: {:?}",
+            unmapped.len(),
+            unmapped.iter().take(8).collect::<Vec<_>>()
+        ));
+    }
+    Ok((edges.into_iter().collect(), modules.into_iter().collect()))
+}
+
+/// The host's reverse walk: every module from which an edited module is reachable. The model's
+/// `regen_reverse_closure` is the same relation as a bounded fold; `lockstep` holds them equal.
+pub fn regen_reverse_closure_host(
+    edited: &[String],
+    edges: &[(String, String)],
+) -> BTreeSet<String> {
+    let mut dependents_of: HashMap<&str, Vec<&str>> = HashMap::new();
+    for (from, to) in edges {
+        dependents_of
+            .entry(to.as_str())
+            .or_default()
+            .push(from.as_str());
+    }
+    let mut reached: BTreeSet<String> = edited.iter().cloned().collect();
+    let mut frontier: Vec<String> = edited.to_vec();
+    while let Some(module) = frontier.pop() {
+        if let Some(dependents) = dependents_of.get(module.as_str()) {
+            for dependent in dependents {
+                if reached.insert((*dependent).to_string()) {
+                    frontier.push((*dependent).to_string());
+                }
+            }
+        }
+    }
+    reached
+}
+
+/// The committed mirror population as `(module, basename)` rows: a module whose mirror basename
+/// (`a.b.c` -> `a_b_c.rs`) is a committed generated file. Rows are the join of two authorities the
+/// regen already owns -- the module index and the committed generated population -- never a list.
+pub fn compared_mirror_rows(
+    stage0_src: &Path,
+    modules: &[String],
+) -> Result<Vec<(String, String)>, String> {
+    let committed: BTreeSet<String> = committed_generated_basenames(stage0_src)?
+        .into_iter()
+        .collect();
+    Ok(modules
+        .iter()
+        .filter_map(|module| {
+            let basename = format!("{}.rs", module.replace('.', "_"));
+            committed
+                .contains(&basename)
+                .then(|| (module.clone(), basename))
+        })
+        .collect())
+}
+
+fn affected_set_entry(source_roots: &[String]) -> Result<String, String> {
+    source_roots
+        .iter()
+        .map(|root| Path::new(root).join(REGEN_AFFECTED_SET_ENTRY_UNDER_ROOT))
+        .find(|candidate| candidate.is_file())
+        .map(|found| found.to_string_lossy().into_owned())
+        .ok_or_else(|| {
+            format!(
+                "refusal: {REGEN_AFFECTED_SET_ENTRY_UNDER_ROOT} is not under any declared source \
+                 root {source_roots:?}, so the bound has no authority to answer from"
+            )
+        })
+}
+
+/// Ask the model. The edges handed over are those whose target the host's walk reached -- the
+/// subgraph on which the model's bounded fold re-derives the same closure at interpreter cost --
+/// and `modules` is that reached set, which bounds the fold (a path among n modules has at most
+/// n-1 edges). The bootstrap rows are the model's own declaration; nothing is passed for them.
+pub fn render_affected_set_bound(
+    source_roots: &[String],
+    edited: &[String],
+    unlocatable: &[String],
+    edges: &[(String, String)],
+    compared: &[(String, String)],
+) -> Result<AffectedSetBound, String> {
+    use crate::v1_interpreter::{self, str_value, ExecutionMode, Value};
+    let entry = affected_set_entry(source_roots)?;
+    let index = super::process_shared_index(source_roots);
+    let (graph, indices) = super::resolve_entry_with_index_for_discovery_corpus(&index, &entry)
+        .map_err(|e| {
+            format!("refusal: {entry} did not resolve, so the bound cannot answer: {e}")
+        })?;
+    let ctx = super::make_eval_context(&graph, indices, ExecutionMode::Hermetic);
+
+    let reached = regen_reverse_closure_host(edited, edges);
+    let edge_values: Vec<Value> = edges
+        .iter()
+        .filter(|(_, to)| reached.contains(to))
+        .map(|(from, to)| Value::Record {
+            type_name: ctx.sym("DependencyEdge"),
+            fields: Rc::new(vec![
+                (ctx.sym("from"), str_value(from.clone())),
+                (ctx.sym("to"), str_value(to.clone())),
+            ]),
+        })
+        .collect();
+    let compared_values: Vec<Value> = compared
+        .iter()
+        .map(|(module, basename)| Value::Record {
+            type_name: ctx.sym("MirrorRow"),
+            fields: Rc::new(vec![
+                (ctx.sym("module"), str_value(module.clone())),
+                (ctx.sym("basename"), str_value(basename.clone())),
+            ]),
+        })
+        .collect();
+    let strs = |items: &[String]| {
+        let values: Vec<Value> = items.iter().map(str_value).collect();
+        Value::List(Rc::new(values.into()))
+    };
+    let reached_list: Vec<String> = reached.iter().cloned().collect();
+    let args = vec![
+        (Some("edited".to_string()), strs(edited)),
+        (Some("unlocatable".to_string()), strs(unlocatable)),
+        (
+            Some("edges".to_string()),
+            Value::List(Rc::new(edge_values.into())),
+        ),
+        (
+            Some("compared".to_string()),
+            Value::List(Rc::new(compared_values.into())),
+        ),
+        (Some("modules".to_string()), strs(&reached_list)),
+    ];
+    let bound = v1_interpreter::with_active_context(&ctx, || {
+        v1_interpreter::run_in_context_with_args(&ctx, "regen_affected_set", &args, false)
+    })
+    .map_err(|e| format!("refusal: regen_affected_set did not answer: {e}"))?;
+    let bound_arg = vec![(Some("bound".to_string()), bound)];
+    let line = match v1_interpreter::with_active_context(&ctx, || {
+        v1_interpreter::run_in_context_with_args(
+            &ctx,
+            "regen_affected_set_bound_line",
+            &bound_arg,
+            false,
+        )
+    })
+    .map_err(|e| format!("refusal: regen_affected_set_bound_line did not render: {e}"))?
+    {
+        Value::Str(s) => s.to_string(),
+        other => {
+            return Err(format!(
+                "refusal: regen_affected_set_bound_line returned {} where a String was expected",
+                other.type_label_public()
+            ))
+        }
+    };
+    let members: Vec<String> = match v1_interpreter::with_active_context(&ctx, || {
+        v1_interpreter::run_in_context_with_args(
+            &ctx,
+            "regen_affected_set_members",
+            &bound_arg,
+            false,
+        )
+    })
+    .map_err(|e| format!("refusal: regen_affected_set_members did not answer: {e}"))?
+    {
+        Value::List(items) => items
+            .iter()
+            .map(|item| match item {
+                Value::Str(s) => Ok(s.to_string()),
+                other => Err(format!(
+                    "refusal: regen_affected_set_members holds a {} where a String was expected",
+                    other.type_label_public()
+                )),
+            })
+            .collect::<Result<Vec<_>, _>>()?,
+        other => {
+            return Err(format!(
+                "refusal: regen_affected_set_members returned {} where a List was expected",
+                other.type_label_public()
+            ))
+        }
+    };
+    let arm = line
+        .strip_prefix("regen-affected-set: ")
+        .and_then(|rest| rest.split_whitespace().next())
+        .ok_or_else(|| format!("refusal: bound line has no arm: {line}"))?
+        .to_string();
+    // LOCKSTEP, every run: on the selecting arm the model's mirrors must be exactly the host's
+    // reached modules joined to the compared rows. Either side alone could be wrong; agreement is
+    // the evidence, and disagreement stops the line rather than electing a side.
+    if arm == "AffectedMirrors" {
+        let host_mirrors: BTreeSet<String> = compared
+            .iter()
+            .filter(|(module, _)| reached.contains(module))
+            .map(|(_, basename)| basename.clone())
+            .collect();
+        let model_mirrors: BTreeSet<String> = members
+            .iter()
+            .filter(|m| host_mirrors.contains(*m) || compared.iter().any(|(_, b)| b == *m))
+            .cloned()
+            .collect();
+        if host_mirrors != model_mirrors {
+            return Err(format!(
+                "refusal: lockstep disagreement -- host reverse walk names {} mirror(s), the model's \
+                 regen_affected_set names {}; host-only {:?}, model-only {:?}",
+                host_mirrors.len(),
+                model_mirrors.len(),
+                host_mirrors.difference(&model_mirrors).take(8).collect::<Vec<_>>(),
+                model_mirrors.difference(&host_mirrors).take(8).collect::<Vec<_>>()
+            ));
+        }
+    }
+    Ok(AffectedSetBound { line, arm, members })
+}
+
+/// The bound for an edited population against the live tree: edges and compared rows from the
+/// tree, verdict from the model.
+pub fn affected_set_bound_for(
+    workspace: &Path,
+    source_roots: &[String],
+    edited: &[String],
+    unlocatable: &[String],
+) -> Result<AffectedSetBound, String> {
+    let (edges, modules) = regen_module_edges(workspace)?;
+    let compared = compared_mirror_rows(&workspace.join("src/v1/stage0/src"), &modules)?;
+    render_affected_set_bound(source_roots, edited, unlocatable, &edges, &compared)
+}
+
+/// `claim_executor --regen-affected-set`: the edited population is the floor's own diff range
+/// (the same "what changed" the required floor selects witnesses from), so the selection and the
+/// gate read one edit.
+pub fn run_regen_affected_set(source_roots: &[String]) -> Result<RegenAffectedSetOutcome, String> {
+    let workspace = workspace_root();
+    let tree = git_head_sha(&workspace)?;
+    let tree_dirty = git_tree_dirty(&workspace)?;
+    let diff_text = super::required_floor_runner::floor_git_diff_range()?;
+    let population = edited_population_from_diff(&workspace, &diff_text);
+    let bound = affected_set_bound_for(
+        &workspace,
+        source_roots,
+        &population.edited_modules,
+        &population.unlocatable,
+    )?;
+    let mut rendered = format!(
+        "regen-affected-set: producer={REGEN_AFFECTED_SET_PRODUCER} host={} tree={tree} tree_dirty={tree_dirty}\n",
+        host_name()
+    );
+    for module in &population.edited_modules {
+        rendered.push_str(&format!("regen-affected-set: edited {module}\n"));
+    }
+    for path in &population.unlocatable {
+        rendered.push_str(&format!("regen-affected-set: unlocatable {path}\n"));
+    }
+    rendered.push_str(&format!(
+        "regen-affected-set: non_dag_paths={}\n",
+        population.non_dag_paths.len()
+    ));
+    rendered.push_str(&bound.line);
+    rendered.push('\n');
+    for member in &bound.members {
+        rendered.push_str(&format!("regen-affected-set: member {member}\n"));
+    }
+    Ok(RegenAffectedSetOutcome {
+        rendered,
+        arm: bound.arm,
+        members: bound.members,
+    })
+}
+
+#[cfg(test)]
+mod regen_affected_set_tests {
+    use super::*;
+
+    fn roots() -> Vec<String> {
+        ["dag", "src/v2"]
+            .iter()
+            .map(|r| workspace_root().join(r).to_string_lossy().into_owned())
+            .collect()
+    }
+
+    fn s(x: &str) -> String {
+        x.to_string()
+    }
+
+    /// The witness's fixture graph, so the host walk and the model fold are held to one answer on
+    /// the same edges the .dag witness asserts against.
+    fn fixture_edges() -> Vec<(String, String)> {
+        vec![
+            (s("std.b"), s("std.a")),
+            (s("gunbc.c"), s("std.b")),
+            (s("gunbc.d"), s("std.x")),
+            (s("v1.compiler.emit_rust"), s("std.a")),
+        ]
+    }
+
+    fn fixture_compared() -> Vec<(String, String)> {
+        [
+            "std.a",
+            "std.b",
+            "gunbc.c",
+            "gunbc.d",
+            "std.x",
+            "v1.compiler.emit_rust",
+        ]
+        .iter()
+        .map(|m| (s(m), format!("{}.rs", m.replace('.', "_"))))
+        .collect()
+    }
+
+    #[test]
+    fn host_walk_and_model_fold_agree_on_the_fixture_graph() {
+        let host = regen_reverse_closure_host(&[s("std.a")], &fixture_edges());
+        assert_eq!(
+            host,
+            ["std.a", "std.b", "gunbc.c", "v1.compiler.emit_rust"]
+                .iter()
+                .map(|m| s(m))
+                .collect::<BTreeSet<_>>()
+        );
+        let bound = render_affected_set_bound(
+            &roots(),
+            &[s("std.a")],
+            &[],
+            &fixture_edges(),
+            &fixture_compared(),
+        )
+        .expect("the model answers on the fixture");
+        assert_eq!(bound.arm, "AffectedMirrors");
+        assert_eq!(
+            bound.line,
+            "regen-affected-set: AffectedMirrors edited=1 mirrors=4 bootstrap_products=0"
+        );
+        let members: BTreeSet<String> = bound.members.into_iter().collect();
+        assert_eq!(
+            members,
+            [
+                "std_a.rs",
+                "std_b.rs",
+                "gunbc_c.rs",
+                "v1_compiler_emit_rust.rs"
+            ]
+            .iter()
+            .map(|m| s(m))
+            .collect()
+        );
+    }
+
+    /// RED CONTROL: an unlocatable path refuses with no members, and does not widen to the
+    /// population -- the arm is the refusal, and the edited module beside it is not walked.
+    #[test]
+    fn an_unlocatable_edited_path_refuses_and_selects_nothing() {
+        let bound = render_affected_set_bound(
+            &roots(),
+            &[s("std.a")],
+            &[s(
+                "dag/std/gone.dag (departed: no module line remains in the tree)",
+            )],
+            &fixture_edges(),
+            &fixture_compared(),
+        )
+        .expect("the refusal is an arm, not an error");
+        assert_eq!(bound.arm, "EditedSetUnlocatable");
+        assert!(bound.members.is_empty());
+        assert!(bound
+            .line
+            .starts_with("regen-affected-set: EditedSetUnlocatable unlocatable=1 reason="));
+    }
+
+    /// The edit reader on a synthetic diff: an existing module is named, a departed `.dag` and an
+    /// added `.dag` that is not in the tree are unlocatable, and a `.rs` is only counted.
+    #[test]
+    fn edited_population_classifies_named_departed_and_missing_paths() {
+        let diff = "\
+diff --git a/dag/std/content_hash.dag b/dag/std/content_hash.dag
+--- a/dag/std/content_hash.dag
++++ b/dag/std/content_hash.dag
+@@ -1,1 +1,2 @@
+ module std.content_hash
++data planted: Int = 1
+diff --git a/dag/std/gone.dag b/dag/std/gone.dag
+deleted file mode 100644
+--- a/dag/std/gone.dag
++++ /dev/null
+@@ -1,1 +0,0 @@
+-module std.gone
+diff --git a/dag/std/never_written.dag b/dag/std/never_written.dag
+new file mode 100644
+--- /dev/null
++++ b/dag/std/never_written.dag
+@@ -0,0 +1,1 @@
++module std.never_written
+diff --git a/src/v1/stage0/src/v1_rt.rs b/src/v1/stage0/src/v1_rt.rs
+--- a/src/v1/stage0/src/v1_rt.rs
++++ b/src/v1/stage0/src/v1_rt.rs
+@@ -1,1 +1,2 @@
+ // x
++// y
+";
+        let population = edited_population_from_diff(&workspace_root(), diff);
+        assert_eq!(population.edited_modules, vec![s("std.content_hash")]);
+        assert_eq!(
+            population.unlocatable.len(),
+            2,
+            "{:?}",
+            population.unlocatable
+        );
+        assert!(population.unlocatable[0].starts_with("dag/std/gone.dag (departed"));
+        assert!(population.unlocatable[1].starts_with("dag/std/never_written.dag (unreadable"));
+        assert_eq!(
+            population.non_dag_paths,
+            vec![s("src/v1/stage0/src/v1_rt.rs")]
+        );
+    }
+
+    /// THE LIVE-TREE CONTROLS, one index build for all three: the three measured edits of
+    /// 2026-08-30 (tree 677988a2 / 0fe2c517) each land on the arm and members the measurement
+    /// drifted. A leaf std edit names its own mirror and not the runtime shim; the runtime
+    /// template names its mirror AND the shim through the declared bootstrap edge; an emitter
+    /// edit is the whole population.
+    #[test]
+    fn live_tree_controls_land_on_the_measured_arms() {
+        let workspace = workspace_root();
+        let (edges, modules) = regen_module_edges(&workspace).expect("the closure edge index maps");
+        let compared = compared_mirror_rows(&workspace.join("src/v1/stage0/src"), &modules)
+            .expect("committed population");
+        assert!(compared.iter().any(|(m, _)| m == "std.content_hash"));
+
+        let leaf =
+            render_affected_set_bound(&roots(), &[s("std.content_hash")], &[], &edges, &compared)
+                .expect("leaf edit answers");
+        assert_eq!(leaf.arm, "AffectedMirrors", "{}", leaf.line);
+        assert!(
+            leaf.members.iter().any(|m| m == "std_content_hash.rs"),
+            "{:?}",
+            leaf.members
+        );
+        assert!(
+            !leaf.members.iter().any(|m| m == "v1_rt.rs"),
+            "{:?}",
+            leaf.members
+        );
+        assert!(
+            leaf.members.len() < compared.len(),
+            "the leaf bound is a proper subset"
+        );
+
+        let template = render_affected_set_bound(
+            &roots(),
+            &[s("v1.compiler.runtime_rust")],
+            &[],
+            &edges,
+            &compared,
+        )
+        .expect("template edit answers");
+        assert_eq!(template.arm, "AffectedMirrors", "{}", template.line);
+        assert!(
+            template
+                .members
+                .iter()
+                .any(|m| m == "v1_compiler_runtime_rust.rs"),
+            "{:?}",
+            template.members
+        );
+        assert!(
+            template.members.iter().any(|m| m == "v1_rt.rs"),
+            "{:?}",
+            template.members
+        );
+
+        let emitter = render_affected_set_bound(
+            &roots(),
+            &[s("v1.compiler.emit_rust")],
+            &[],
+            &edges,
+            &compared,
+        )
+        .expect("emitter edit answers");
+        assert_eq!(emitter.arm, "WholePopulation", "{}", emitter.line);
+        assert!(emitter.members.is_empty());
+    }
+}
