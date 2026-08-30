@@ -26,9 +26,15 @@ import gunbc.discovery_census {
   RequiredAggregateDerivation, RequiredAggregateDerived, RequiredAggregateUnderivable,
   required_aggregate_from_census,
 }
+// THE TWO PREPARATION-STAGE DECLINES ARE IMPORTED AND ANSWERED `false` EVERYWHERE BELOW.
+// `required_floor_site_disposition` can never RETURN `DeclinedOutsideGateClosure` or
+// `DeclinedDiscoveryExcluded`: both are decided before a module reaches the prepared subject,
+// from facts a module NAME cannot carry. So their arms here are a claim about that
+// unreachability, not an omission padded out to satisfy exhaustiveness.
 import v2.workflow.required_floor {
   RequiredFloorDisposition,
   Planned, DeclinedLongModule, DeclinedFixtureMember, DeclinedOutsideRequiredGate, DeclinedCostDebt,
+  DeclinedOutsideGateClosure, DeclinedDiscoveryExcluded,
   required_floor_site_disposition,
 }
 import v2.workflow.floor_terminal_ledger { ClaimDisposition, Passed }
@@ -61,7 +67,7 @@ fn live_tree_site(module_path: String, function: String) -> DiscoveredSite {
   }
 }
 
-// A MIXED POPULATION spanning all FOUR disposition arms. Two members read the live tree; one is
+// A MIXED POPULATION spanning all FIVE disposition arms. Two members read the live tree; one is
 // fixture-declined and the ordinary witnesses are planned, proving live-tree access forms no
 // admission arm of its own.
 // THE LAST SITE IS A REAL MEMBER OF `floor_cost_debt_roster`, spelled as the module/function pair
@@ -75,6 +81,7 @@ fn mixed_sites() -> List<DiscoveredSite> {
     hermetic_site(module_path: "test.claim.long.slow_witness", function: "w_slow"),
     live_tree_site(module_path: "v2.test.fixture.walk_plan_stage.common", function: "w_member"),
     live_tree_site(module_path: "v2.test.claim.reads_tree_witness", function: "w_reads"),
+    hermetic_site(module_path: "test.claim.live_deploy.some_product_witness", function: "w_product"),
     hermetic_site(
       module_path: "dag.test.claim.lifecycle_survivor_corpus_census",
       function: "no_raw_lifecycle_string_survivors_remain"
@@ -207,6 +214,8 @@ test fn w_fixture_home_declines_with_its_matched_prefix() -> Bool {
     DeclinedLongModule { matched_prefix: _ } => false
     DeclinedOutsideRequiredGate => false
     DeclinedCostDebt => false
+    DeclinedOutsideGateClosure => false
+    DeclinedDiscoveryExcluded { matched_substring: _ } => false
   }
 }
 
@@ -220,6 +229,8 @@ test fn w_long_home_module_declines_with_its_matched_prefix() -> Bool {
     DeclinedFixtureMember { matched_prefix: _ } => false
     DeclinedOutsideRequiredGate => false
     DeclinedCostDebt => false
+    DeclinedOutsideGateClosure => false
+    DeclinedDiscoveryExcluded { matched_substring: _ } => false
   }
 }
 
@@ -236,6 +247,8 @@ test fn w_long_home_is_a_prefix_not_a_substring() -> Bool {
     DeclinedFixtureMember { matched_prefix: _ } => false
     DeclinedOutsideRequiredGate => false
     DeclinedCostDebt => false
+    DeclinedOutsideGateClosure => false
+    DeclinedDiscoveryExcluded { matched_substring: _ } => false
   }
 }
 
@@ -249,6 +262,8 @@ test fn w_site_is_planned_when_no_home_matched() -> Bool {
     DeclinedFixtureMember { matched_prefix: _ } => false
     DeclinedOutsideRequiredGate => false
     DeclinedCostDebt => false
+    DeclinedOutsideGateClosure => false
+    DeclinedDiscoveryExcluded { matched_substring: _ } => false
   }
 }
 
@@ -265,6 +280,8 @@ test fn w_site_outside_the_required_gate_is_declined() -> Bool {
     DeclinedLongModule { matched_prefix: _ } => false
     DeclinedFixtureMember { matched_prefix: _ } => false
     DeclinedCostDebt => false
+    DeclinedOutsideGateClosure => false
+    DeclinedDiscoveryExcluded { matched_substring: _ } => false
   }
 }
 
@@ -272,21 +289,25 @@ test fn w_site_outside_the_required_gate_is_declined() -> Bool {
 // THE PARTITION
 // ---------------------------------------------------------------------------------------------
 
-// THE THREE ARMS SUM TO THE OFFERED POPULATION. The production fold has no partition check
+// THE FIVE ARMS SUM TO THE OFFERED POPULATION. The production fold has no partition check
 // because a row holds exactly one disposition and the counting match has no wildcard, so this is
 // the executing evidence for that construction rather than a second wall beside it.
 test fn w_counts_partition_the_offered_population() -> Bool {
   let counts = census_counts(rows: census_rows_of(sites: mixed_sites()))
-  (counts.offered == 6)
+  (counts.offered == 7)
     && (counts.planned == 3)
     && (counts.declined_long_module == 1)
     && (counts.declined_fixture_member == 1)
-    && (counts.declined_outside_required_gate == 0)
+    && (counts.declined_outside_required_gate == 1)
     && (counts.declined_cost_debt == 1)
+    && (counts.declined_outside_gate_closure == 0)
+    && (counts.declined_discovery_excluded == 0)
     && (counts.offered ==
         counts.planned + counts.declined_long_module
           + counts.declined_fixture_member
           + counts.declined_outside_required_gate
+          + counts.declined_outside_gate_closure
+          + counts.declined_discovery_excluded
           + counts.declined_cost_debt)
 }
 
@@ -316,9 +337,13 @@ test fn w_rostered_identity_declines_for_cost_debt() -> Bool {
     identity: "dag.test.claim.lifecycle_survivor_corpus_census.no_raw_lifecycle_string_survivors_remain"
   ) {
     DeclinedCostDebt => true
+    DeclinedOutsideRequiredGate => false
+    DeclinedOutsideGateClosure => false
+    DeclinedDiscoveryExcluded { matched_substring: _ } => false
     Planned => false
     DeclinedLongModule { matched_prefix: _ } => false
     DeclinedFixtureMember { matched_prefix: _ } => false
+    DeclinedOutsideRequiredGate => false
   }
 }
 
@@ -333,6 +358,8 @@ test fn w_unrostered_sibling_in_the_same_module_is_planned() -> Bool {
     Planned => true
     DeclinedOutsideRequiredGate => false
     DeclinedCostDebt => false
+    DeclinedOutsideGateClosure => false
+    DeclinedDiscoveryExcluded { matched_substring: _ } => false
     DeclinedLongModule { matched_prefix: _ } => false
     DeclinedFixtureMember { matched_prefix: _ } => false
   }
@@ -351,6 +378,8 @@ test fn w_home_decline_outranks_cost_debt() -> Bool {
     DeclinedLongModule { matched_prefix: p } => p == "test.claim.long."
     DeclinedOutsideRequiredGate => false
     DeclinedCostDebt => false
+    DeclinedOutsideGateClosure => false
+    DeclinedDiscoveryExcluded { matched_substring: _ } => false
     Planned => false
     DeclinedFixtureMember { matched_prefix: _ } => false
   }
@@ -378,17 +407,43 @@ test fn w_partition_returns_both_sides_and_loses_no_row() -> Bool {
     && (declined_n == ((census_declined_rows(rows: rows)) |> count))
 }
 
+// POPULATION-LEVEL PAIR FOR THE STATIC GATE: one admitted compiler witness and one product
+// witness outside the gate. Each identity appears on exactly one side, neither disappears, and
+// the union is the offered census. This is the discriminating RED for dropping the fifth arm
+// from census_partition_step: the outside row then reaches runtime pattern-match failure.
+test fn w_planned_and_outside_gate_rows_partition_once_each() -> Bool {
+  let rows = census_rows_of(sites: [
+    hermetic_site(module_path: "v2.test.claim.compiler_witness", function: "w_compiler"),
+    hermetic_site(module_path: "test.claim.live_deploy.product_witness", function: "w_product")
+  ])
+  let split = census_partition(rows: rows)
+  count(rows) == 2
+    && count(split.planned) == 1
+    && count(split.declined) == 1
+    && all(split.planned, r => match r.disposition {
+      Planned => true
+      DeclinedLongModule { matched_prefix: _ } => false
+      DeclinedFixtureMember { matched_prefix: _ } => false
+      DeclinedOutsideRequiredGate => false
+      DeclinedCostDebt => false
+      DeclinedOutsideGateClosure => false
+      DeclinedDiscoveryExcluded { matched_substring: _ } => false
+    })
+    && all(split.declined, r => match r.disposition {
+      DeclinedOutsideRequiredGate => true
+      Planned => false
+      DeclinedLongModule { matched_prefix: _ } => false
+      DeclinedFixtureMember { matched_prefix: _ } => false
+      DeclinedCostDebt => false
+      DeclinedOutsideGateClosure => false
+      DeclinedDiscoveryExcluded { matched_substring: _ } => false
+    })
+}
+
 test fn w_declined_sites_are_rows_not_omissions() -> Bool {
   let rows = census_rows_of(sites: mixed_sites())
-  let rendered = fold(rows, init: [], f: fn(acc, row) { concat([render_label(l: row.label)], acc) })
-  ((rows |> count) == 6)
-    && list_holds(xs: rendered, wanted: "//test/claim/long/slow_witness:w_slow")
-    && list_holds(xs: rendered, wanted: "//v2/test/fixture/walk_plan_stage/common:w_member")
-    && list_holds(xs: rendered, wanted: "//test/claim/reads_tree_witness:w_reads")
-    && list_holds(
-         xs: rendered,
-         wanted: "//dag/test/claim/lifecycle_survivor_corpus_census:no_raw_lifecycle_string_survivors_remain"
-       )
+  let split = census_partition(rows: rows)
+  (count(rows) == 7) && (count(split.planned) == 3) && (count(split.declined) == 4)
 }
 
 // ---------------------------------------------------------------------------------------------

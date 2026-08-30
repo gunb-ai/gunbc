@@ -8,7 +8,18 @@ import std.coercion {
   TypeCheckpoint, InhabitantDecl, CallableRepr, CastSyntax, TypeRealizationDecision
 }
 
-import std.types { container_template_algebra, canonical_container_names }
+import std.decl_ref { DeclarationRef }
+
+import std.target_representation {
+  ExactBindingResolution, ResolvedExactBinding, ExactBindingAbsent, ExactBindingAmbiguous, ExactSourceIdentityUnavailable,
+  resolve_exact_binding, checkpoint_row_migration_for, checkpoint_row_disposition_keeps_bare_row
+}
+
+import extdeps.languages.rust.representation { RustRepresentation, rust_exact_type_checkpoint }
+
+import gunbc.rust_source_type_bindings { rust_source_type_binding_rows, checkpoint_row_migration_rows }
+
+import std.types { container_template_algebra, canonical_container_names, NonEmptyStr }
 
 import extdeps.languages.rust.types {
   rust_type_checkpoints, rust_algebra_inhabitants, rust_callable,
@@ -217,6 +228,8 @@ fn type_realization_decision(
     Refused { cause: "declaration identity unknown: empty decl_file" }
   } else if decl_file_declares_structurally(dag_name: dag_name, decl_file: decl_file) {
     Unrealized
+  } else if target == Rust && !rust_checkpoint_row_keeps_bare_row(dag_name: dag_name) {
+    Refused { cause: concat("declaration-keyed name '", dag_name, "' reached the spelling-keyed arm without a DeclarationRef: its bare row is MigratedToExactBinding (gunbc.rust_source_type_bindings checkpoint_row_migration_rows); answer from rust_exact_realization_decision") }
   } else {
     match target_checkpoints(target: target) |> filter(cp => cp.dag_name == dag_name) |> first {
       Present { value: cp } => Realized { checkpoint: cp }
@@ -288,6 +301,49 @@ fn lookup_checkpoint(target: RenderTarget, dag_name: String, decl_file: String) 
       Realized { checkpoint: cp } => Present { value: cp }
       Unrealized => none
       Refused { cause: _ } => none
+    }
+  }
+}
+
+// THE EXACT PATH. A caller holding the resolved declaration (std.decl_ref DeclarationRef) answers
+// from gunbc.rust_source_type_bindings, keyed on the declaration and never on its spelling, and the
+// spelling it receives is the fully qualified one extdeps.languages.rust.representation carries for
+// the bound representation. The three non-resolving arms are typed and located: absent (render the
+// declaration; a refusal only where the declaration is opaque, which the renderer decides), ambiguous
+// (two rows for one declaration -- corpus authoring defect), and identity unavailable (the caller
+// reached a declaration-keyed authority with a spelling -- the bare-name fallback this path deletes).
+// No arm consults rust_type_checkpoints.
+fn rust_lookup_exact_binding(source: DeclarationRef?) -> ExactBindingResolution<RustRepresentation> {
+  resolve_exact_binding(source: source, rows: rust_source_type_binding_rows)
+}
+
+// The decision the emitter and std.reference_realization already consume, produced from the exact
+// path: a synthesized TypeCheckpoint whose dag_name is the DECLARATION's name and whose two spellings
+// are the representation's qualified reference/grounding spellings. A bound representation with no
+// realization row (RustSymbolNewtype, RustInternedSymbol) refuses rather than inventing a spelling.
+fn rust_exact_realization_decision(source: DeclarationRef?) -> TypeRealizationDecision {
+  match rust_lookup_exact_binding(source: source) {
+    ResolvedExactBinding { binding: b } =>
+      match rust_exact_type_checkpoint(binding: b) {
+        Present { value: cp } => Realized { checkpoint: cp }
+        Absent => Refused { cause: concat("declaration '", b.source.decl_name as String, "' is bound to a Rust representation with no realization row") }
+      }
+    ExactBindingAbsent => Unrealized
+    ExactBindingAmbiguous { candidate_count: _ } => Refused { cause: "ambiguous exact binding: more than one row for one declaration (gunbc.rust_source_type_bindings authoring defect)" }
+    ExactSourceIdentityUnavailable { cause: c } => Refused { cause: c }
+  }
+}
+
+// Whether a bare-name row may still answer for this spelling: every row of rust_type_checkpoints
+// carries a verdict in gunbc.rust_source_type_bindings, and a name with no verdict is not a table
+// row at all (false here means the spelling-keyed arm refuses for it). Consulted by
+// type_realization_decision ahead of the table so a Migrated name cannot be answered by spelling.
+fn rust_checkpoint_row_keeps_bare_row(dag_name: String) -> Bool {
+  if dag_name == "" { false }
+  else {
+    match checkpoint_row_migration_for(dag_name: dag_name as NonEmptyStr, migrations: checkpoint_row_migration_rows()) {
+      Present { value: m } => checkpoint_row_disposition_keeps_bare_row(disposition: m.disposition)
+      Absent => true
     }
   }
 }

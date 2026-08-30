@@ -367,7 +367,67 @@ pub struct TransitionAdmission {
 /// the shape the paragraph above records for the first 53. Removed by the trigger they were
 /// authored with. The roster is EMPTY and empty is not permissive: a run carrying a real
 /// namespace delta still refuses it as UNADJUDICATED until its author adds a row here.
-/// FIFTH ENTRY, SAME RULE (2026-08-29, gunbc#9690). The network-boot and firmware-transition
+/// FOURTH TRANSITION (2026-08-29, gunbc#9665 / issue #9664). `DeclaredCallableIdentity` moved
+/// from `v1.compiler.infer_sigs` to `v1.std.core`, so every binding of that spelling inside
+/// `v1.compiler.infer_lookup` reports `TargetChanged`. The move is not cosmetic and not
+/// avoidable by re-spelling: `v1.std.core`'s own `CallTargetIdentity` now CARRIES a
+/// `DeclaredCallableIdentity` on its `RuntimePrimitiveCall` arm -- the declaration a runtime
+/// target was projected from, which is what lets Rust emission fall back to the declaration
+/// when its registry has no bridge for the primitive instead of inventing `v1_rt::length`.
+/// `v1.compiler.infer_sigs` imports `v1.std.core`, so the type could not stay where it was
+/// without a cycle, and re-declaring the pair in `v1.std.core` beside the original is the
+/// second-representation defect DESIGN §3 forbids -- the type's own note already says so, and
+/// that note travelled with the declaration.
+///
+/// FOUR ROWS, ONE PER BINDING SITE, and they are enumerated rather than matched by a module
+/// pattern because the roster's own rule is that its population is an enumeration and never a
+/// predicate. The two `membership` deltas this change also produces
+/// (`v1.compiler.emit_rust -> std.decl_ref` and `-> std.primitive_projection`) are
+/// `ExplicitlyEvaluatedZeroDelta` and auto-admit, so they are deliberately absent here.
+///
+/// DISSOLVE-ON: this PR merging. Once `DeclaredCallableIdentity` is declared in `v1.std.core`
+/// on main, the merge base and head both carry it, no run can produce these deltas, and all
+/// four report stale -- which refuses every unrelated PR in the repository, exactly the shape
+/// the three shrinks above record. Remove them by that trigger, not by reinterpreting it.
+/// FOURTH SHRINK, SAME RULE (2026-08-30). The six `DeclaredCallableIdentity hoist to
+/// v1.std.core 2026-08-29` rows dissolved on the trigger written above: #9665 merged as
+/// ecdeb492, so on every pull_request build the merge commit and its base both carry the
+/// hoist, no run can produce the deltas those rows named, and all six were reported stale
+/// (measured on #9689 @ bfd9524881: `0 unadjudicated delta(s), 6 stale admission(s)`) --
+/// refusing every unrelated PR in the repository, the fourth time this roster has reproduced
+/// that shape. Main's own push build at ecdeb492 stayed green, because its base is pre-#9665
+/// and the deltas exist there: the block is PR-only but universal, which is the reason the
+/// shrink cannot wait for a PR that would otherwise touch this file. Removed by the trigger they were authored with. The roster is EMPTY and empty
+/// is not permissive: a run carrying a real namespace delta still refuses it as UNADJUDICATED
+/// until its author adds a row here.
+/// FIFTH TRANSITION (2026-08-29, gunbc#9675). The four `rust_source_prefix_*` constants moved
+/// from `gunbc.stage0_rust_source_lifecycle_scaffold` to `gunbc.rust_item_host_observation` --
+/// the namespace table there needs the tooling prefix, and importing it the other way closes
+/// the cycle scaffold -> seed_growth_admission -> host_observation. Every spelling that bound to
+/// the old declarer now binds to the new one: six `TargetChanged` rows, each naming the exact
+/// module, enclosing declaration and leaf, blast radius 0 on every one. DISSOLVE-ON: #9675
+/// merging -- base and head then both carry the relocation, the rows report stale, and they are
+/// removed by that trigger exactly as the four shrinks above were.
+/// FIFTH SHRINK, SAME RULE (2026-08-30). #9675 merged (e1905850789), so on every pull_request
+/// build from here the merge base and head both carry the relocation, no run can produce the
+/// deltas the six rows above named, and they report stale -- refusing every PR. Removed by
+/// the trigger they were authored with, in the first merge of main that carried the
+/// relocation on both sides.
+/// SIXTH POPULATION, SAME RULE (2026-08-29, #9698). Two rows for the `RequiredCiLane` move:
+/// `BuildLane` and `WitnessesLane` moved (not duplicated) from
+/// `gunbc.required_ci_host_verdict_census` to the new `gunbc.required_ci_phase_roster` --
+/// which the census itself named as its next rung -- so the census's
+/// `required_ci_host_verdict_rows` now binds those spellings through the roster.
+/// `TargetChanged` firing on a deliberate declaration move is the wall working; these rows
+/// adjudicate exactly those two subjects and nothing else. They go STALE the moment #9698
+/// merges and MUST be removed then, exactly as the shrinks above were.
+/// SIXTH SHRINK, SAME RULE (2026-08-30). #9698 merged, so the merge base and head of every
+/// run from here both carry the lane move, no run can produce the two deltas those rows
+/// named, and both report stale -- refusing every PR. Removed by the trigger they were
+/// authored with, in the first PR cut from the main that carries the move. The roster is
+/// EMPTY again and empty is not permissive: a run carrying a real namespace delta still
+/// refuses it as UNADJUDICATED until its author adds a row here.
+/// SEVENTH POPULATION, SAME RULE (2026-08-29, gunbc#9690). The network-boot and firmware-transition
 /// standings (`NetworkBootDeliveryStanding`, `NetworkBootRequirement*`, `NetworkBoot*`
 /// establishment evidence, `FirmwareTransitionStanding` and their `*_requirements_all`
 /// rosters) moved from `gunbc.os_install_mechanism` to `gunbc.boot_artifact_delivery`: the
@@ -713,7 +773,15 @@ fn direct_membership(
             out.insert(claim.target.clone());
         }
     }
-    for (_, spelling) in &record.referenced {
+    // Both authored-reference channels, the same union `membership_bound_through` takes and
+    // for the same measured reason: a declared type is parked in `inferred`, which the walk
+    // behind `referenced` never visits, so a module whose only reach into another is a
+    // declared type contributed no edge here -- the closure and blast radius under-reported.
+    for (_, spelling) in record
+        .referenced
+        .iter()
+        .chain(record.authored_type_references.iter())
+    {
         if let Some((module, _leaf)) = module_prefix_of(index, spelling) {
             if module != record.module_path {
                 out.insert(module);
@@ -857,7 +925,14 @@ fn binding_rows(
     record: &ModuleDeclarationRecord,
 ) -> BTreeMap<(String, String), BTreeSet<String>> {
     let mut out: BTreeMap<(String, String), BTreeSet<String>> = BTreeMap::new();
-    for (in_declaration, spelling) in &record.referenced {
+    // Both authored-reference channels, as in `direct_membership` and
+    // `membership_bound_through`: a cut that repoints a DECLARED type -- visible only through
+    // the parser's stamped channel -- must produce a row on both sides of the wall.
+    for (in_declaration, spelling) in record
+        .referenced
+        .iter()
+        .chain(record.authored_type_references.iter())
+    {
         let leaf = qualified_last_segment(spelling.clone());
         let candidates = declaring_candidates(index, record, spelling);
         out.entry((in_declaration.clone(), leaf))

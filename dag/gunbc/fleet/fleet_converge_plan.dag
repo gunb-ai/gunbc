@@ -62,16 +62,23 @@ import gunbc.fabric_cell_converge {
 }
 import gunbc.fabric_cell_effect {
   FabricCellRealizationRefusal,
-  BoundaryDirectiveVocabularyIncomplete,
   CellTeardownRefusedByOwnership,
   CellRosterDuplicateKey,
   CellChangeNotYetRealizable,
   CellTeardownNotYetRealizable,
   CellPlanRealizable,
   CellPlanRefused,
-  FabricCellDirectoryCreate,
+  FabricCellEffect,
+  FabricCellDirectoryEnsure,
+  FabricCellSliceEnsure,
+  CellSubstrateRootOwned,
+  CellAttemptWriterOwned,
   fabric_cell_realization,
 }
+import gunbc.runner_host_grants {
+  fabric_cell_effect_operations,
+}
+import gunbc.executor_privileged_operation { executor_privileged_operation_shell_command }
 import gunbc.fabric_cell_observation_admission {
   FabricCellObservationDecision,
   FabricCellObservationOutcome,
@@ -667,18 +674,15 @@ fn fleet_converge_slot_family(
 // is a plan reporting work as applied that nothing performs. Landing the observer alone would have
 // turned that live on its first honest empty read.
 //
-// So the family has a third arm. Actions due with no host-effect realizer is REFUSED-REALIZATION:
-// typed, counted, rendered in the plan and in the apply shell, and never representable as an
-// ordinary converged plan. The arm carries the actions it refused to realize so the reviewer sees
-// exactly what is owed.
-//
-// WHY THIS IS AN ARM RATHER THAN A CHECK: the alternative is a rule somewhere that says "if the
-// fabric plan is nonempty and no realizer exists, refuse", which concedes that the converged-looking
-// state is writable and catches it afterwards. With the arm, a fabric plan carrying actions has no
-// spelling that also reports zero refusals.
-//
-// DISSOLVE-ON: the fabric cell host-effect realizer. When it lands, this arm's condition becomes
-// unreachable for realizable actions and it narrows to whatever remains genuinely unrealizable.
+// So the family has a third arm, carrying the planned actions. Its meaning NARROWED when the
+// declared dissolve-on fired: this arm was REFUSED-REALIZATION back when the family had no
+// host-effect realizer at all, and its own trigger said it narrows "to whatever remains genuinely
+// unrealizable" when the realizer lands. The realizer has landed (gunbc.fabric_cell_effect emits
+// typed effects; the apply shell renders them through the exact-argv privileged-operation seam), so
+// the arm is now PLANNED: each consumer asks fabric_cell_realization, realizable actions render as
+// executable work, and what still refuses -- teardown, change realization, ownership walls -- is
+// rendered and counted as the typed refusal it is, never as an ADD a reader would take for work
+// that will happen.
 // A POPULATION OBSERVED ON ONE HOST IS NOT EVIDENCE ABOUT ANOTHER, AND UNTIL THIS ARM EXISTED IT
 // WAS SILENTLY TREATED AS SUCH. The observed arm's host was discarded (`host: _`) and the desired
 // side was derived from the SEPARATELY SUPPLIED plan host, so a perfectly valid srv4 population
@@ -697,7 +701,7 @@ fn fleet_converge_slot_family(
 type FleetConvergeFabricCellFamily
   = FabricCellFamilyNotApplicable
   | FabricCellFamilyConvergedNoActions
-  | FabricCellFamilyRealizationUnavailable { planned: MembershipPlan<FabricCellMember, String> }
+  | FabricCellFamilyPlanned { planned: MembershipPlan<FabricCellMember, String> }
   | FabricCellFamilyObservationRefused { blocked: List<FabricCellObservationRefusal> }
   | FabricCellFamilyObservationHostMismatch { planned_host: String, observed_host: String }
 
@@ -730,7 +734,7 @@ fn fleet_converge_fabric_cell_family(
       if list_length(items: planned.actions) == 0 {
         FabricCellFamilyConvergedNoActions
       } else {
-        FabricCellFamilyRealizationUnavailable { planned: planned }
+        FabricCellFamilyPlanned { planned: planned }
       }
       }
   }
@@ -750,7 +754,7 @@ fn fleet_converge_fabric_cell_lines(
       map(b, r => concat("REFUSED-OBSERVATION fabric-cell ", fabric_cell_observation_refusal_line(refusal: r)))
     FabricCellFamilyNotApplicable => []
     FabricCellFamilyConvergedNoActions => []
-    FabricCellFamilyRealizationUnavailable { planned: p } =>
+    FabricCellFamilyPlanned { planned: p } =>
       fabric_cell_realization_lines(actions: p.actions)
     FabricCellFamilyObservationHostMismatch { planned_host: ph, observed_host: oh } =>
       [concat(
@@ -776,10 +780,7 @@ fn fabric_cell_realization_lines(
 ) -> List<String> {
   match fabric_cell_realization(actions: actions) {
     CellPlanRealizable { effects: es } =>
-      map(es, e => match e {
-        FabricCellDirectoryCreate { path: pth, command: _ } =>
-          concat("REALIZE fabric-cell create-directory ", pth as String)
-      })
+      fabric_cell_effect_plan_lines(effects: es)
     CellPlanRefused { refusals: rs } =>
       concat(
         map(rs, r => concat("REFUSED-REALIZATION ", fabric_cell_realization_refusal_line(refusal: r))),
@@ -788,13 +789,38 @@ fn fabric_cell_realization_lines(
   }
 }
 
+fn fabric_cell_effect_plan_lines(effects: List<FabricCellEffect>) -> List<String> {
+  map(effects, e => fabric_cell_effect_plan_line(effect: e))
+}
+
+fn fabric_cell_substrate_owner_word(effect: FabricCellEffect) -> String {
+  match effect {
+    FabricCellDirectoryEnsure { path: _, owner: o } =>
+      match o {
+        CellSubstrateRootOwned => "root-owned-substrate"
+        CellAttemptWriterOwned => "attempt-writer-owned"
+      }
+    FabricCellSliceEnsure { slice_unit: _, directives: _ } => "slice-boundary"
+  }
+}
+
+fn fabric_cell_effect_plan_line(effect: FabricCellEffect) -> String {
+  match effect {
+    FabricCellDirectoryEnsure { path: pth, owner: _ } =>
+      join([
+        "REALIZE fabric-cell ensure-directory ", pth as String,
+        " ", fabric_cell_substrate_owner_word(effect: effect),
+      ], "")
+    FabricCellSliceEnsure { slice_unit: u, directives: ds } =>
+      join([
+        "REALIZE fabric-cell ensure-slice ", u as String,
+        " directives=", to_string(list_length(items: ds)),
+      ], "")
+  }
+}
+
 fn fabric_cell_realization_refusal_line(refusal: FabricCellRealizationRefusal) -> String {
   match refusal {
-    BoundaryDirectiveVocabularyIncomplete { address_wire: w, missing: m } =>
-      concat(
-        concat("fabric-cell ", w),
-        concat(" boundary directives unmodeled in extdeps.systemd.unit_file: ", join(m, "; ")),
-      )
     CellTeardownRefusedByOwnership { address_wire: w, cause: _ } =>
       concat("fabric-cell ", concat(w, " teardown refused: member is not Owned"))
     CellRosterDuplicateKey { address_wire: w } =>
@@ -824,7 +850,11 @@ fn fleet_converge_fabric_cell_refusal_count(
     FabricCellFamilyObservationRefused { blocked: b } => list_length(items: b)
     FabricCellFamilyNotApplicable => 0
     FabricCellFamilyConvergedNoActions => 0
-    FabricCellFamilyRealizationUnavailable { planned: p } => list_length(items: p.actions)
+    FabricCellFamilyPlanned { planned: p } =>
+      match fabric_cell_realization(actions: p.actions) {
+        CellPlanRealizable { effects: _ } => 0
+        CellPlanRefused { refusals: _ } => list_length(items: p.actions)
+      }
     FabricCellFamilyObservationHostMismatch { planned_host: _, observed_host: _ } => 1
   }
 }
@@ -2051,7 +2081,7 @@ fn fleet_converge_apply_shell(
       [
         concat("# ", dissolution_description(condition: fleet_converge_apply_shell_emit_dissolution_trigger)),
         concat("# ", fleet_converge_cap_apply_shell_note),
-        "# Admission gates enforced in fleet_converge_apply_wet before bash — this script runs timer teardown and runner-slot ADD",
+        "# Admission gates enforced in fleet_converge_apply_wet before bash — this script runs timer teardown, runner-slot ADD, and fabric-cell ensure effects",
         "set -euo pipefail",
       ],
       ["# generated at plan time — apply MUST NOT recompute membership_reconcile"],
@@ -2076,29 +2106,94 @@ fn fleet_converge_apply_shell(
   )
 }
 
-// THE FABRIC FAMILY EMITS NO HOST EFFECT YET, AND THE COMMENT IT EMITS INSTEAD IS NOT DECORATION.
+// THE FABRIC FAMILY NOW EMITS ITS HOST EFFECTS, AND EVERY EXECUTED WORD RIDES THE PRIVILEGED
+// OPERATION SEAM. Each line is executor_privileged_operation_shell_command over an operation that
+// gunbc.runner_host_grants ALSO enrolls in the host's derived sudoers roster -- the executed argv
+// and its authorization are one value rendered twice, so a command with no grant has no spelling
+// here (the drift class measured on srv3 2026-08-24). What still refuses -- teardown, change
+// realization, an observation refusal -- reaches the script as a comment refusal line, counted in
+// the terminal, never as work claimed applied.
 //
-// Its resources are a cgroup slice and two directories, and provisioning them is a realization this
-// cut deliberately does not ship -- the brief stops at the model and its readback. Emitting the
-// resolved membership as comments keeps the property the plan/apply split rests on: what apply would
-// do is derived from the SAME typed resolution the reviewer read, so when the realization lands it
-// replaces a comment whose content already had to be right, rather than introducing a second
-// resolution nobody had reviewed.
+// THE BOUNDARY IS APPLIED BEFORE THE SUBSTRATE DIRECTORIES, AND THE ORDER IS THE SAFETY PROPERTY.
+// The all-or-nothing realization already refuses a cell any of whose addresses cannot be realized;
+// this ordering closes the RUNTIME half of the same hazard: under `set -euo pipefail` a failing
+// line stops the script, and with the slice ensured first a stop can strand a boundary with no
+// directories -- inert -- but never a cell root without its resource boundary, which is the
+// unbounded-slice state the fold exists to forbid. A half-applied cell reconciles forward: the next
+// plan reads the missing addresses as MemberAdded and completes, because every effect here is an
+// idempotent ensure.
 //
-// AN OBSERVATION REFUSAL REACHES THE SCRIPT AS A REFUSAL LINE rather than as no lines at all, for
-// the same reason it reaches the baseline as a row: a host that could not be read must not look
-// like a host with no fabric work.
+// AN UNMODELED DEPLOY HOST CONTRIBUTES NO FABRIC LINES, mirroring the activation family: the slot
+// family already stops the whole script for an unmodeled host, one axis earlier and with the
+// louder diagnostic, so a second stop here would report one defect twice.
 fn fabric_cell_apply_lines(
   host: NonEmptyStr,
   observed_fabric_cells: FabricCellObservationDecision,
 ) -> List<String> {
+  match fleet_converge_fabric_cell_family(host: host, observed_fabric_cells: observed_fabric_cells) {
+    FabricCellFamilyPlanned { planned: p } =>
+      match fabric_cell_realization(actions: p.actions) {
+        CellPlanRealizable { effects: es } =>
+          fabric_cell_apply_executable_lines(host: host, effects: es)
+        CellPlanRefused { refusals: _ } =>
+          fabric_cell_apply_comment_lines(host: host, observed_fabric_cells: observed_fabric_cells)
+      }
+    FabricCellFamilyNotApplicable =>
+      fabric_cell_apply_comment_lines(host: host, observed_fabric_cells: observed_fabric_cells)
+    FabricCellFamilyConvergedNoActions =>
+      fabric_cell_apply_comment_lines(host: host, observed_fabric_cells: observed_fabric_cells)
+    FabricCellFamilyObservationRefused { blocked: _ } =>
+      fabric_cell_apply_comment_lines(host: host, observed_fabric_cells: observed_fabric_cells)
+    FabricCellFamilyObservationHostMismatch { planned_host: _, observed_host: _ } =>
+      fabric_cell_apply_comment_lines(host: host, observed_fabric_cells: observed_fabric_cells)
+  }
+}
+
+// AN OBSERVATION REFUSAL REACHES THE SCRIPT AS A REFUSAL LINE rather than as no lines at all, for
+// the same reason it reaches the baseline as a row: a host that could not be read must not look
+// like a host with no fabric work.
+fn fabric_cell_apply_comment_lines(
+  host: NonEmptyStr,
+  observed_fabric_cells: FabricCellObservationDecision,
+) -> List<String> {
   concat(
-    ["# fabric-cell membership (gunbc.fabric_cell_converge) — resolved at plan time; no host effect is emitted by this cut"],
+    ["# fabric-cell membership (gunbc.fabric_cell_converge) — resolved at plan time"],
     map(
       fleet_converge_fabric_cell_lines(host: host, observed_fabric_cells: observed_fabric_cells),
       l => concat("# ", l),
     ),
   )
+}
+
+fn fabric_cell_effect_shell_lines(effect: FabricCellEffect, job_user: NonEmptyStr) -> List<String> {
+  map(
+    fabric_cell_effect_operations(effect: effect, job_user: job_user),
+    op => executor_privileged_operation_shell_command(op: op),
+  )
+}
+
+fn fabric_cell_effect_apply_command_lines(
+  effects: List<FabricCellEffect>,
+  job_user: NonEmptyStr,
+) -> List<String> {
+  flat_map(effects, e => fabric_cell_effect_shell_lines(effect: e, job_user: job_user))
+}
+
+data fabric_cell_apply_effects_header: String = "# fabric-cell effects (gunbc.fabric_cell_effect) — boundary first, then root-owned substrate, then delegated attempt root"
+
+fn fabric_cell_apply_executable_lines(
+  host: NonEmptyStr,
+  effects: List<FabricCellEffect>,
+) -> List<String> {
+  match runner_host_deploy_for(host: host as HostIdentity) {
+    RunnerHostDeployUnmodeled { host: _ } => []
+    RunnerHostDeployFound { deploy: d } => {
+      concat(
+        [fabric_cell_apply_effects_header],
+        fabric_cell_effect_apply_command_lines(effects: effects, job_user: d.job_user),
+      )
+    }
+  }
 }
 
 fn fleet_converge_plan_artifact(

@@ -10,14 +10,29 @@ pub use crate::extdeps_languages_python_types::{
     python_algebra_inhabitants, python_callable, python_cast_syntax, python_optional_template,
     python_type_checkpoints,
 };
+pub use crate::extdeps_languages_rust_representation::rust_exact_type_checkpoint;
+pub use crate::extdeps_languages_rust_representation::RustRepresentation;
+use crate::extdeps_languages_rust_representation::RustRepresentation::*;
 pub use crate::extdeps_languages_rust_types::{
     rust_algebra_inhabitants, rust_callable, rust_cast_syntax, rust_optional_template,
     rust_type_checkpoints,
+};
+pub use crate::gunbc_rust_source_type_bindings::{
+    checkpoint_row_migration_rows, rust_source_type_binding_rows,
 };
 use crate::std_coercion::TypeRealizationDecision::*;
 pub use crate::std_coercion::{
     CallableRepr, CastSyntax, InhabitantDecl, TypeCheckpoint, TypeRealizationDecision,
 };
+pub use crate::std_decl_ref::DeclarationRef;
+pub use crate::std_target_representation::ExactBindingResolution;
+use crate::std_target_representation::ExactBindingResolution::{
+    ExactBindingAbsent, ExactBindingAmbiguous, ExactSourceIdentityUnavailable, ResolvedExactBinding,
+};
+pub use crate::std_target_representation::{
+    checkpoint_row_disposition_keeps_bare_row, checkpoint_row_migration_for, resolve_exact_binding,
+};
+pub use crate::std_types::NonEmptyStr;
 pub use crate::std_types::{canonical_container_names, container_template_algebra};
 pub use crate::v1_compiler_artifact::RenderTarget;
 use crate::v1_compiler_artifact::RenderTarget::{Dag, Go, Python, Rust};
@@ -250,39 +265,47 @@ pub fn type_realization_decision(
         if decl_file_declares_structurally(dag_name.clone(), decl_file.clone()) {
             Rc::new(TypeRealizationDecision::Unrealized)
         } else {
-            match Rc::new({
-                let mut __result = Vec::new();
-                for cp in target_checkpoints(target.clone()).iter().cloned() {
-                    if (cp.dag_name.clone() == dag_name.clone()) {
-                        __result.push(cp);
-                    }
-                }
-                __result
-            })
-            .first()
-            .cloned()
+            if ((target.clone() == RenderTarget::Rust)
+                && !rust_checkpoint_row_keeps_bare_row(dag_name.clone()))
             {
-                Some(cp) => Rc::new(TypeRealizationDecision::Realized {
-                    checkpoint: cp.clone(),
-                }),
-                None => {
-                    let native = if (target.clone() == RenderTarget::Rust) {
-                        rust_seed_host_numeric_alias(dag_name.clone(), decl_file.clone())
-                    } else {
-                        None
-                    };
-                    match native.clone() {
-                        Some(host) => Rc::new(TypeRealizationDecision::Realized {
-                            checkpoint: Rc::new(TypeCheckpoint {
-                                dag_name: dag_name.clone(),
-                                target_type: host.clone(),
-                                grounding_type: host.clone(),
-                                default_expr: None,
-                                is_copy: None,
-                                literal_suffix: None,
+                Rc::new(TypeRealizationDecision::Refused {
+    cause: v1_rt::concat(v1_rt::concat("declaration-keyed name '".to_string(), dag_name.clone()), "' reached the spelling-keyed arm without a DeclarationRef: its bare row is MigratedToExactBinding (gunbc.rust_source_type_bindings checkpoint_row_migration_rows); answer from rust_exact_realization_decision".to_string()),
+})
+            } else {
+                match Rc::new({
+                    let mut __result = Vec::new();
+                    for cp in target_checkpoints(target.clone()).iter().cloned() {
+                        if (cp.dag_name.clone() == dag_name.clone()) {
+                            __result.push(cp);
+                        }
+                    }
+                    __result
+                })
+                .first()
+                .cloned()
+                {
+                    Some(cp) => Rc::new(TypeRealizationDecision::Realized {
+                        checkpoint: cp.clone(),
+                    }),
+                    None => {
+                        let native = if (target.clone() == RenderTarget::Rust) {
+                            rust_seed_host_numeric_alias(dag_name.clone(), decl_file.clone())
+                        } else {
+                            None
+                        };
+                        match native.clone() {
+                            Some(host) => Rc::new(TypeRealizationDecision::Realized {
+                                checkpoint: Rc::new(TypeCheckpoint {
+                                    dag_name: dag_name.clone(),
+                                    target_type: host.clone(),
+                                    grounding_type: host.clone(),
+                                    default_expr: None,
+                                    is_copy: None,
+                                    literal_suffix: None,
+                                }),
                             }),
-                        }),
-                        None => Rc::new(TypeRealizationDecision::Unrealized),
+                            None => Rc::new(TypeRealizationDecision::Unrealized),
+                        }
                     }
                 }
             }
@@ -314,6 +337,53 @@ pub fn lookup_checkpoint(
             TypeRealizationDecision::Realized { checkpoint: cp, .. } => Some(cp.clone()),
             TypeRealizationDecision::Unrealized => None,
             TypeRealizationDecision::Refused { cause: _, .. } => None,
+        }
+    }
+}
+
+pub fn rust_lookup_exact_binding(
+    source: Option<Rc<DeclarationRef>>,
+) -> Rc<ExactBindingResolution<RustRepresentation>> {
+    crate::std_target_representation::resolve_exact_binding(
+        source.clone(),
+        rust_source_type_binding_rows(),
+    )
+}
+
+pub fn rust_exact_realization_decision(
+    source: Option<Rc<DeclarationRef>>,
+) -> Rc<TypeRealizationDecision> {
+    match (*rust_lookup_exact_binding(source.clone())).clone() {
+    ExactBindingResolution::ResolvedExactBinding { binding: b, .. } => match crate::extdeps_languages_rust_representation::rust_exact_type_checkpoint(b.clone()) {
+    Some(cp) => Rc::new(TypeRealizationDecision::Realized {
+    checkpoint: cp.clone(),
+}),
+    None => Rc::new(TypeRealizationDecision::Refused {
+    cause: v1_rt::concat(v1_rt::concat("declaration '".to_string(), b.source.clone().decl_name.clone()), "' is bound to a Rust representation with no realization row".to_string()),
+}),
+},
+    ExactBindingResolution::ExactBindingAbsent => Rc::new(TypeRealizationDecision::Unrealized),
+    ExactBindingResolution::ExactBindingAmbiguous { candidate_count: _, .. } => Rc::new(TypeRealizationDecision::Refused {
+    cause: "ambiguous exact binding: more than one row for one declaration (gunbc.rust_source_type_bindings authoring defect)".to_string(),
+}),
+    ExactBindingResolution::ExactSourceIdentityUnavailable { cause: c, .. } => Rc::new(TypeRealizationDecision::Refused {
+    cause: c.clone(),
+}),
+}
+}
+
+pub fn rust_checkpoint_row_keeps_bare_row(dag_name: String) -> bool {
+    if (dag_name.clone() == "".to_string()) {
+        false
+    } else {
+        match crate::std_target_representation::checkpoint_row_migration_for(
+            dag_name.clone(),
+            crate::gunbc_rust_source_type_bindings::checkpoint_row_migration_rows(),
+        ) {
+            Some(m) => crate::std_target_representation::checkpoint_row_disposition_keeps_bare_row(
+                m.disposition.clone(),
+            ),
+            None => true,
         }
     }
 }

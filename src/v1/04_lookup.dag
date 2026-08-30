@@ -9,6 +9,7 @@ import std.primitive_projection {
 }
 
 import v1.std.core {
+  DeclaredCallableIdentity,
   Node, param_node_type_expr,
   authored_name_at, NewlineIndex, find_child_named, has_child_named,
   qualified_last_segment,
@@ -58,7 +59,7 @@ import v1.compiler.infer_emit_info {
 import v1.compiler.infer_sigs {
   ResolvedFuncSig, ResolvedFuncEnv, lookup_resolved_sig,
   FuncSigLookup, FuncSigResolved, FuncSigUnresolved, FuncSigAmbiguous,
-  CallableCandidate, CallableIdentity, DeclaredCallableIdentity, DeclaredCallable, BuiltinCallable,
+  CallableCandidate, CallableIdentity, DeclaredCallable, BuiltinCallable,
   parent_closure_callable_candidates, decide_callable_candidates
 }
 
@@ -231,6 +232,19 @@ fn builtin_is_a_rival_authority(declared: List<CallableCandidate>) -> Bool {
   declared |> any(c => declared_candidate_rivals_the_builtin(candidate: c))
 }
 
+// A DECLARATION'S IDENTITY IS ITS LAST SEGMENT, NEVER THE SPELLING THE CALLER USED.
+//
+// The four DeclaredCallableIdentity constructions in this module took `decl_name` from the
+// authored name. For a qualified call that name is the whole dotted path, so `v2.std.grammar.f(..)`
+// resolved with owner `v2.std.grammar` AND decl_name `v2.std.grammar.f`, and 05_emit_rust rendered
+// `crate::v2_std_grammar::v2.std.grammar.f(..)` -- 102 E0425s in the v2 compiler closure. The same
+// pair also keys `lookup_item` for default-argument filling and `decl_ref` for the primitive
+// projection roster, so both silently missed on every qualified call.
+//
+// `qualified_last_segment` is the idiom `constructor_declaration_for_admission` already uses for
+// exactly this, and it is the identity on a bare name -- so it is applied at all four sites rather
+// than at the one that was measured failing, which removes the class instead of an instance.
+//
 // TARGET SELECTION, DECIDED HERE AND CONSUMED VERBATIM BY EMISSION.
 //
 // A call's target is chosen once, from the declaration resolution actually bound, and 05_emit
@@ -243,14 +257,23 @@ fn builtin_is_a_rival_authority(declared: List<CallableCandidate>) -> Bool {
 // The runtime NAME comes from the roster row's primitive identity, never from the call's leaf
 // spelling. That is the whole repair: a bare `contains` resolving to a v2 declaration no longer
 // reaches the bridge merely because `contains` is also a v1_rt name.
+//
+// ONLY ModeledProjection CARRIES `projected_from`, AND THE FIDELITY DISTINCTION IS WHY.
+// `projected_from` is what an emitter falls back to when its own runtime has no realization for
+// the primitive, so it is only sound where the declaration's body is real code -- which is
+// precisely what ModeledProjection means. A HostRealizedSeam body is a SELF-CALL by construction
+// (decl_facts is `decl_facts(pool_roots: pool_roots)`), so emitting it would produce a
+// well-formed, compiling, NONTERMINATING function: silent wrongness, strictly worse than the
+// unresolved-symbol refusal it would replace. A seam with no realization in the target has no
+// honest lowering at all, so it carries nothing and reaches emission's refusal arm.
 fn resolved_declaration_call_target(declared: DeclaredCallableIdentity) -> CallTargetIdentity {
   match primitive_projection_row_for_declaration(
     declaration: decl_ref(module_path: declared.owner_module_path, decl_name: declared.decl_name)
   ) {
     Present { value: row } =>
       match row.fidelity {
-        HostRealizedSeam => RuntimePrimitiveCall { primitive_name: primitive_identity_runtime_name(identity: row.primitive) }
-        ModeledProjection => RuntimePrimitiveCall { primitive_name: primitive_identity_runtime_name(identity: row.primitive) }
+        HostRealizedSeam => RuntimePrimitiveCall { primitive_name: primitive_identity_runtime_name(identity: row.primitive), projected_from: none }
+        ModeledProjection => RuntimePrimitiveCall { primitive_name: primitive_identity_runtime_name(identity: row.primitive), projected_from: Present { value: declared } }
         DivergentProjection { divergence: _ } =>
           SourceDeclarationCall { owner_module_path: declared.owner_module_path, decl_name: declared.decl_name }
       }
@@ -274,7 +297,7 @@ fn resolved_plain_call_target(func_name: String, sig_lookup: FuncSigLookup) -> C
 
 fn builtin_call_target_or_undetermined(func_name: String) -> CallTargetIdentity {
   match infer_builtin_call_type(name: func_name) {
-    Present { value: _ } => RuntimePrimitiveCall { primitive_name: func_name }
+    Present { value: _ } => RuntimePrimitiveCall { primitive_name: func_name, projected_from: none }
     Absent => CallableTargetUndetermined
   }
 }
@@ -347,7 +370,7 @@ fn callable_lookup_over_candidates(
 ) -> FuncSigLookup {
   match map_get(func_env.local, name) {
     Present { value: sig } =>
-      FuncSigResolved { sig: sig, declared: DeclaredCallableIdentity { owner_module_path: func_env.name, decl_name: name } }
+      FuncSigResolved { sig: sig, declared: DeclaredCallableIdentity { owner_module_path: func_env.name, decl_name: qualified_last_segment(name: name) } }
     Absent =>
       let declared = parent_closure_callable_candidates(env: func_env, name: name)
       let builtin_admissible = match author_named_visibility(type_env: type_env, name: name) {
@@ -561,7 +584,7 @@ fn borrowed_census_callable_candidate(type_env: TypeEnv, name: String, candidate
     excluded: excluded
   )
   CallableCandidate {
-    identity: DeclaredCallable { identity: DeclaredCallableIdentity { owner_module_path: candidate.module_path, decl_name: name } },
+    identity: DeclaredCallable { identity: DeclaredCallableIdentity { owner_module_path: candidate.module_path, decl_name: qualified_last_segment(name: name) } },
     sig: ResolvedFuncSig {
       name: name,
       params: node.params,
@@ -606,7 +629,7 @@ fn func_sig_from_global_bare(type_env: TypeEnv, name: String) -> FuncSigLookup {
             is_async: false,
             output_provenance: [],
             variant_provenance: empty_map()
-          }, declared: DeclaredCallableIdentity { owner_module_path: bd.owner_module_path, decl_name: name } }
+          }, declared: DeclaredCallableIdentity { owner_module_path: bd.owner_module_path, decl_name: qualified_last_segment(name: name) } }
         } else {
           let qualified_return = qualify_borrowed_type_names(n: raw_return, owner_module_path: bd.owner_module_path, env: type_env, excluded: excluded)
           FuncSigResolved { sig: ResolvedFuncSig {
@@ -616,7 +639,7 @@ fn func_sig_from_global_bare(type_env: TypeEnv, name: String) -> FuncSigLookup {
             is_async: false,
             output_provenance: [],
             variant_provenance: empty_map()
-          }, declared: DeclaredCallableIdentity { owner_module_path: bd.owner_module_path, decl_name: name } }
+          }, declared: DeclaredCallableIdentity { owner_module_path: bd.owner_module_path, decl_name: qualified_last_segment(name: name) } }
         }
       }
     BorrowedCensusDeclAmbiguous { candidates: cands } =>

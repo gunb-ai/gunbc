@@ -752,10 +752,7 @@ pub fn var_binding_kind_name(value: Rc<VarBindingKind>) -> String {
 
 pub fn serialize_call_target_identity(value: Rc<CallTargetIdentity>) -> String {
     match (*value.clone()).clone() {
-        CallTargetIdentity::RuntimePrimitiveCall {
-            primitive_name: primitive_name,
-            ..
-        } => v1_rt::concat(
+        CallTargetIdentity::RuntimePrimitiveCall { primitive_name, .. } => v1_rt::concat(
             v1_rt::concat(
                 "{\"kind\": \"RuntimePrimitiveCall\", \"primitive_name\": ".to_string(),
                 crate::v1_compiler_dag_collect_support::json_quote(primitive_name.clone()),
