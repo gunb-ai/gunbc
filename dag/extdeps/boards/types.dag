@@ -23,6 +23,7 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 type BaseboardModel
   = AsrockRackAltrad8ud1l2t
   | GigabyteMp72Hb0
+  | AmpereMtCollins
 
 type BaseboardCatalogRow {
   model: BaseboardModel
