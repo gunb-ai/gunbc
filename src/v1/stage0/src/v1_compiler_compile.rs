@@ -1397,6 +1397,13 @@ pub fn serialize_expr_data(
                 ),
                 "}".to_string(),
             ),
+            ExprData::ExprElaboratedLiteral { value, .. } => v1_rt::concat(
+                v1_rt::concat(
+                    "{\"kind\": \"ExprElaboratedLiteral\", \"value\": ".to_string(),
+                    serialize_literal(value.clone()),
+                ),
+                "}".to_string(),
+            ),
             ExprData::ExprError { kind, message, .. } => v1_rt::concat(
                 v1_rt::concat(
                     v1_rt::concat(

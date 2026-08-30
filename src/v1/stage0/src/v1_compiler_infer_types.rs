@@ -32,6 +32,9 @@ pub use crate::std_types::{
     container_expected_arity, container_param_name, container_template_algebra,
     container_template_alias_algebra, container_template_alias_rows, is_container_type,
 };
+pub use crate::v1_compiler_coercion::{
+    decl_file_declares_structurally, decl_file_realizes_natively, type_reference_decl_file,
+};
 pub use crate::v1_compiler_infer_env::TypeBinding;
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
@@ -2376,7 +2379,7 @@ pub fn node_type_compatible(
                                     if (left_opt.clone() || right_opt.clone()) {
                                         break false;
                                     } else {
-                                        break crate::v1_std_core::type_name_compatible(
+                                        break (crate::v1_std_core::type_name_compatible(
                                             crate::v1_std_core::authored_name_at(
                                                 source_indices.clone(),
                                                 left.clone(),
@@ -2385,7 +2388,11 @@ pub fn node_type_compatible(
                                                 source_indices.clone(),
                                                 right.clone(),
                                             ),
-                                        );
+                                        ) && !structural_identity_disjoint(
+                                            left.clone(),
+                                            right.clone(),
+                                            source_indices.clone(),
+                                        ));
                                     }
                                 }
                             }
@@ -2531,6 +2538,33 @@ pub fn node_type_equals(
     }
 }
 
+pub fn structural_native_identity_pairing(
+    structural: Rc<Node>,
+    native: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    {
+        let s_name = crate::v1_std_core::qualified_last_segment(
+            crate::v1_std_core::authored_name_at(source_indices.clone(), structural.clone()),
+        );
+        (crate::v1_compiler_coercion::decl_file_declares_structurally(
+            s_name.clone(),
+            crate::v1_compiler_coercion::type_reference_decl_file(structural.clone()),
+        ) && crate::v1_compiler_coercion::decl_file_realizes_natively(
+            crate::v1_compiler_coercion::type_reference_decl_file(native.clone()),
+        ))
+    }
+}
+
+pub fn structural_identity_disjoint(
+    a: Rc<Node>,
+    b: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    (structural_native_identity_pairing(a.clone(), b.clone(), source_indices.clone())
+        || structural_native_identity_pairing(b.clone(), a.clone(), source_indices.clone()))
+}
+
 pub fn node_type_equals_core(
     left: Rc<Node>,
     right: Rc<Node>,
@@ -2549,7 +2583,12 @@ pub fn node_type_equals_core(
         let right_name =
             crate::v1_std_core::authored_name_at(source_indices.clone(), right.clone());
         if (left_leaf.clone() && right_leaf.clone()) {
-            crate::v1_std_core::type_name_compatible(left_name.clone(), right_name.clone())
+            (crate::v1_std_core::type_name_compatible(left_name.clone(), right_name.clone())
+                && !structural_identity_disjoint(
+                    left.clone(),
+                    right.clone(),
+                    source_indices.clone(),
+                ))
         } else {
             if (left_struct.clone() && right_struct.clone()) {
                 if !crate::v1_std_core::type_name_compatible(left_name.clone(), right_name.clone())
@@ -2606,13 +2645,24 @@ pub fn node_type_equals_core(
                 }
             } else {
                 if (left_leaf.clone() && right_struct.clone()) {
-                    crate::v1_std_core::type_name_compatible(left_name.clone(), right_name.clone())
+                    (crate::v1_std_core::type_name_compatible(
+                        left_name.clone(),
+                        right_name.clone(),
+                    ) && !structural_identity_disjoint(
+                        left.clone(),
+                        right.clone(),
+                        source_indices.clone(),
+                    ))
                 } else {
                     if (left_struct.clone() && right_leaf.clone()) {
-                        crate::v1_std_core::type_name_compatible(
+                        (crate::v1_std_core::type_name_compatible(
                             left_name.clone(),
                             right_name.clone(),
-                        )
+                        ) && !structural_identity_disjoint(
+                            left.clone(),
+                            right.clone(),
+                            source_indices.clone(),
+                        ))
                     } else {
                         {
                             let left_is_container =
