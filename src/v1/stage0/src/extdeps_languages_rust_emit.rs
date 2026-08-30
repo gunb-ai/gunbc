@@ -78,7 +78,6 @@ pub fn rust_container_templates() -> Rc<HashMap<String, String>> {
             __m.insert("optional".to_string(), "Option<{0}>".to_string());
             __m.insert("map".to_string(), "HashMap<{0}, {1}>".to_string());
             __m.insert("free_monoid".to_string(), "Vec<{0}>".to_string());
-            __m.insert("partial_function".to_string(), "HashMap<{0}, {1}>".to_string());
             __m.insert("boolean_algebra".to_string(), "bool".to_string());
             Rc::new(__m)
         };
