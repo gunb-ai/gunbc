@@ -28,6 +28,10 @@ import gunbc.ollama_runtime_bundle {
 import gunbc.spark.serving_membership { spark_serving_membership_reconcile, spark_serving_user_unit_state_digest }
 import gunbc.spark.serving_execution_schedule {
   spark_serving_axis_rows,
+  SparkServingAxisDisposition,
+  SparkServingAxisNotApplicable,
+  SparkServingAxisRefused,
+  SparkServingAxisPlanned,
   SparkServingScheduleFrozen,
   SparkServingScheduleRefused,
   spark_serving_freeze_execution_schedule,
@@ -68,11 +72,13 @@ import gunbc.fleet_converge_plan {
   fleet_converge_plan_artifact,
   FleetConvergePlanArtifactReady,
   FleetConvergePlanArtifactRefused,
+  FleetConvergePlanArtifactOutcome,
 }
 import gunbc.fabric_cell_observation_admission { fabric_cell_observation_unobserved }
 import gunbc.runner_service_activation { runner_activation_readiness_unobserved_no_transaction }
 import gunbc.spark.serving_converge_plan {
   spark_serving_scheduled_rows_for,
+  spark_serving_axis_for,
   SparkServingScheduledRowsVerdict,
   SparkServingScheduledRowsReady,
   SparkServingScheduledRowsRefused,
@@ -1341,4 +1347,93 @@ test fn the_generic_artifact_carries_the_schedule_it_is_handed() -> Bool {
             && length(scheduled_rows_list(scheduled: a.spark_serving_typed_actions)) > 0
       }
   }
+}
+
+// ── The axis disposition: what the pair-of-lists shape could not prevent ─────────────────────────
+
+fn c3_axis(linger: SparkServingObservedLingerState) -> SparkServingAxisDisposition<FleetConvergeSparkServingTypedAction> {
+  spark_serving_axis_for(
+    host: subject_host as NonEmptyStr,
+    projection: c3_projection(linger: linger),
+  )
+}
+
+fn c3_axis_host(a: SparkServingAxisDisposition<FleetConvergeSparkServingTypedAction>) -> HostIdentity {
+  match a {
+    SparkServingAxisNotApplicable { host: h } => h
+    SparkServingAxisRefused { host: h, cause: _ } => h
+    SparkServingAxisPlanned { host: h, observed_members: _, rows: _ } => h
+  }
+}
+
+// (1) and (2): rows and members travel in ONE arm, so they cannot be sourced from different
+// observations or different hosts. The host is read off the arm rather than supplied beside it --
+// there is no second parameter for it to disagree with.
+test fn the_axis_binds_its_host_to_the_observation_that_produced_it() -> Bool {
+  c3_axis_host(a: c3_axis(linger: LingerObservedEnabled)) == subject_host
+}
+
+test fn a_planned_axis_carries_members_and_rows_together() -> Bool {
+  match c3_axis(linger: LingerObservedEnabled) {
+    SparkServingAxisPlanned { host: _, observed_members: ms, rows: rows } =>
+      length(ms) > 0 && length(scheduled_rows_list(scheduled: rows)) > 0
+    SparkServingAxisNotApplicable { host: _ } => false
+    SparkServingAxisRefused { host: _, cause: _ } => false
+  }
+}
+
+// (3) Changing the observed population necessarily changes what the artifact fingerprints, because
+// the baseline reads its members from the same arm the rows came from.
+test fn the_artifact_baseline_moves_with_the_observed_spark_population() -> Bool {
+  match artifact_outcome(axis: c3_axis(linger: LingerObservedEnabled)) {
+    FleetConvergePlanArtifactRefused { cause: _ } => false
+    FleetConvergePlanArtifactReady { artifact: with_members } =>
+      match artifact_outcome(axis: SparkServingAxisNotApplicable { host: subject_host }) {
+        FleetConvergePlanArtifactRefused { cause: _ } => false
+        FleetConvergePlanArtifactReady { artifact: without } =>
+          !(with_members.observed_baseline_hex == without.observed_baseline_hex)
+      }
+  }
+}
+
+// (4) A refusal cannot become an empty plan. This is the arm that had no producer at all before.
+test fn a_refused_axis_refuses_the_artifact_instead_of_planning_nothing() -> Bool {
+  match artifact_outcome(axis: c3_axis(linger: LingerUnobservedState)) {
+    FleetConvergePlanArtifactReady { artifact: _ } => false
+    FleetConvergePlanArtifactRefused { cause: _ } => true
+  }
+}
+
+// The refusal is a refusal and not a NotApplicable: an unobserved linger is a probe that failed, and
+// a non-Spark host is a different fact entirely.
+test fn an_unobserved_probe_is_a_refusal_and_not_a_non_spark_subject() -> Bool {
+  match c3_axis(linger: LingerUnobservedState) {
+    SparkServingAxisRefused { host: _, cause: _ } => true
+    SparkServingAxisNotApplicable { host: _ } => false
+    SparkServingAxisPlanned { host: _, observed_members: _, rows: _ } => false
+  }
+}
+
+// A non-Spark subject still assembles a plan -- it just has no Spark axis to speak of.
+test fn a_non_spark_subject_still_assembles_an_artifact() -> Bool {
+  match artifact_outcome(axis: SparkServingAxisNotApplicable { host: subject_host }) {
+    FleetConvergePlanArtifactRefused { cause: _ } => false
+    FleetConvergePlanArtifactReady { artifact: a } =>
+      length(scheduled_rows_list(scheduled: a.spark_serving_typed_actions)) == 0
+  }
+}
+
+fn artifact_outcome(
+  axis: SparkServingAxisDisposition<FleetConvergeSparkServingTypedAction>,
+) -> FleetConvergePlanArtifactOutcome {
+  fleet_converge_plan_artifact(
+    host: subject_host as NonEmptyStr,
+    prior_generation: 0,
+    observed_timers: [],
+    observed_caps: [],
+    spark_axis: axis,
+    observed_slots: [],
+    observed_fabric_cells: fabric_cell_observation_unobserved(host: subject_host),
+    observed_activation_readiness: runner_activation_readiness_unobserved_no_transaction,
+  )
 }
