@@ -85,7 +85,7 @@ type CpuEntitlement
 // ByteBasis re-homed onto std.measure — which that module's own ClockBasis
 // note already argues for, on the ground that an authority half the corpus
 // cannot reach is not an authority — and that migration crosses
-// object_storage, gunbc.econ.scm_serving_model and three witnesses. Doing it
+// object_storage and three witnesses. Doing it
 // under a provisioning brief would be a load-bearing edit nobody reviewed for
 // its own sake. Recorded here so the next author meets the question instead of
 // rediscovering it.

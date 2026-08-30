@@ -5,8 +5,8 @@ import std.measure { TokenCount, Nanosecond, Joule, nanosecond_count, token_coun
 import std.nat { Nat }
 import std.types { Bool, List, NonEmptyStr }
 
-// Typed receipt for one LLM attempt against gunbc work, sibling to gunbc.econ.knowable_wedge and
-// gunbc.econ.scm_serving_model. A RECEIPT in the observing product layer, never a fact owned by an
+// Typed receipt for one LLM attempt against gunbc work, sibling to gunbc.econ.knowable_wedge.
+// A RECEIPT in the observing product layer, never a fact owned by an
 // upstream provider (DESIGN external-upstream-decomposition rule): extdeps.llm.anthropic owns the
 // provider wire contract; this module owns what WE observed. It carries counts, durations and
 // outcomes only -- no throughput, cost or tokens-per-second field exists in the record, so a

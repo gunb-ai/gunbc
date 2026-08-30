@@ -37,8 +37,8 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 // model that silently picked one basis would produce comparisons wrong in a way no test would
 // catch. Each row therefore carries the vendor's quoted unit label VERBATIM plus a typed
 // ByteBasis, and every row here is ByteBasisUnstated because none of the cited surfaces states
-// it. Cross-vendor comparison is only possible under a DECLARED basis assumption
-// (gunbc.econ.scm_serving_model), never silently. Dissolve-on: citing each vendor's own definition
+// it. Cross-vendor comparison is only possible under a DECLARED basis assumption stated by the
+// comparing consumer, never silently. Dissolve-on: citing each vendor's own definition
 // page where one exists.
 
 type ByteBasis

@@ -154,6 +154,12 @@ test fn cpp_alias_mediated_payload_must_also_refuse() -> Bool {
 // #8876 closed and the same shape as the conformance wall's original silence: the absence of a
 // check read as the presence of a proof.
 //
+// THE THREE `gunbc.scm.*` MODULES CITED BELOW WERE WITHDRAWN FROM PRODUCT SCOPE (gunbc#9756) AFTER
+// THIS NOTE WAS WRITTEN. They are retained as the RECEIPT of where this class was found and
+// fixed, not as a live route: the paragraphs below read as history. The wall itself is general
+// and its discriminating red does not depend on those modules, so per DESIGN 4b the evidence
+// stays enrolled while the production subject is gone.
+//
 // IT IS NOT A DEMONSTRATION. gunbc#9215 repaired two live instances of exactly this at
 // `gunbc.scm.repository_envelope` `decode_commit_members`, which wrapped a `MemberReadRefusal` into
 // `RepositoryDecodeClosureDocRefusal` whose declared field is `ClosureDocRefusal`. Those are the
