@@ -69,15 +69,6 @@ pub struct TokenizerState {
     pub interp_depth: Rc<Vec<i64>>,
 }
 
-pub fn v1_scan_step_note() -> std::string::String {
-    thread_local! {
-        static CACHED: std::string::String = {
-            "scan_next_token used to return exactly one Token, which encoded the assumption that every lexeme becomes one. An annotation breaks that: it consumes source and produces NO semantic token. Rather than smuggle it through as a token the parser must filter — the TokenRule mistake DESIGN 4c names — the scan result becomes a sum, and the caller decides which accumulator it lands in.".to_string()
-        };
-    }
-    CACHED.with(|c: &std::string::String| c.clone())
-}
-
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum ScanStep {
@@ -89,15 +80,6 @@ pub enum ScanStep {
         capture: Rc<UnboundAnnotationCapture>,
         interp_depth: Rc<Vec<i64>>,
     },
-}
-
-pub fn v1_tokenize_artifact_note() -> std::string::String {
-    thread_local! {
-        static CACHED: std::string::String = {
-            "tokenize keeps returning List<Token> and is the SEMANTIC PROJECTION, so every existing caller (compile.dag, the parser, the Rust seed tests) is untouched by construction. tokenize_artifact is the authored result. The projection direction is one-way on purpose: a semantic consumer cannot reach annotation text.".to_string()
-        };
-    }
-    CACHED.with(|c: &std::string::String| c.clone())
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -307,15 +289,6 @@ pub fn preceded_by_blank_line(source: Rc<SourceRef>, pos: i64) -> bool {
             )
         }
     }
-}
-
-pub fn v1_annotation_line_lookback_note() -> std::string::String {
-    thread_local! {
-        static CACHED: std::string::String = {
-            "Whether the previous line is a STANDALONE annotation line — indentation then the `//` delimiter — observed here beside preceded_by_blank_line for the same reason it is: the physical lines are consumed before attachment runs, so block continuation cannot be re-derived later. A trailing comment on a code line deliberately does not count. The rule this bit feeds treats an annotation-preceded capture as a continuation of the block the previous line belongs to; a capture under a code line continues nothing, whatever that code line happens to carry after its code. The walk is bounded by one line.".to_string()
-        };
-    }
-    CACHED.with(|c: &std::string::String| c.clone())
 }
 
 pub fn tokenize_line_first_content_pos(
@@ -1148,26 +1121,8 @@ pub fn process_escapes(chars: Rc<Vec<i64>>) -> Rc<EscapeProcessResult> {
     process_escapes_loop(chars.clone(), 0, Rc::new(vec![]))
 }
 
-pub fn code_point_at_accessor_note() -> std::string::String {
-    thread_local! {
-        static CACHED: std::string::String = {
-            "Why this accessor exists rather than indexing inline. `04_access.check_index_access_node` types a list index as OPTIONAL (`with_optional_cardinality`) — an out-of-range index has no value — but the Rust realization of an index is a bare element that panics out of range. The two disagree, so wherever the emitter acts on the declared type it emits a coercion the realization cannot satisfy: passing `chars[i]` straight to a declared fn parameter emits `.expect(...)` on an `i64` (E0599). Untouched positions — a let binding, a comparison, arithmetic, a builtin call — happen to line up, which is why the corpus has exactly one prior index-as-argument site and it calls the BUILTIN `from_code_point`. This accessor is the same shape as `source_code_point` and `source_char` above: a declared `-> Int` return is what carries the value across a fn boundary. It works because return position is not checked against the body (recorded on the finalization carrier, #7481), so it is borrowed load-bearing behavior, not a guarantee. Dissolves together with those two when the index model and its realization are reconciled — either the index realizes as an Option or it types as the element — at which point return-position typechecking would red all three at once.".to_string()
-        };
-    }
-    CACHED.with(|c: &std::string::String| c.clone())
-}
-
 pub fn code_point_at(chars: Rc<Vec<i64>>, pos: i64) -> i64 {
     chars.clone()[(pos.clone()) as usize].clone()
-}
-
-pub fn escape_code_point_table_note() -> std::string::String {
-    thread_local! {
-        static CACHED: std::string::String = {
-            "The escape table below is written in code points because the whole tokenizer is: scan_token compares `ch == 61 && next_ch == 62` for `=>`, source_scan_to_eol compares `== 10`. The decimal literals here are the same alphabet: 34 double-quote, 48 `0`, 92 backslash, 110 `n`, 114 `r`, 116 `t`, 117 `u`, 120 `x`, 123 open-brace, 125 close-brace; the values they resolve TO include 0 NUL, 10 line-feed, 13 carriage-return, and 9 tab. This function used to compare one-character Strings instead, which is what forced it to re-index a raw String and made it the last quadratic scan in the file.".to_string()
-        };
-    }
-    CACHED.with(|c: &std::string::String| c.clone())
 }
 
 pub fn escape_receipt_seed_growth_mark() -> std::string::String {
@@ -1183,24 +1138,6 @@ pub fn hex_escape_note() -> std::string::String {
     thread_local! {
         static CACHED: std::string::String = {
             "\\xNN decodes to the byte NN names. Before this arm every \\x fell through to the unknown-escape branch below, which preserves the backslash literally — so every ANSI code authored in .dag (extdeps.render.ansi.csi_esc, extdeps.render.terminal's reset, gunbc.ci_render's red/reset) emitted the six characters backslash-x-1-b instead of ESC, and no colour this repo authored had ever rendered. The witness that was supposed to catch it compared one undecoded literal against another, so it agreed with itself and could not fail (DESIGN §5 — a check satisfied by editing the declaration while the realization lies).".to_string()
-        };
-    }
-    CACHED.with(|c: &std::string::String| c.clone())
-}
-
-pub fn unicode_escape_note() -> std::string::String {
-    thread_local! {
-        static CACHED: std::string::String = {
-            "\\u{H...} decodes one to six hexadecimal digits to one Unicode scalar value. The shared std.unicode.types.unicode_scalar authority denoted by the Char refinement is checked before chars_to_string, so values above 0x10FFFF and the UTF-16 surrogate interval refuse instead of disappearing in runtime conversion. Before this arm every \\u escape fell through to unknown-escape passthrough as eight or more literal characters. That made extdeps.render.ansi's 32 ECMA-48 C1 rows inert and, more severely, made effect_plan_bash_materialize's NUL guard look for printable escape text instead of NUL. The scanner consumes the opening brace with the escape prefix so a valid hex digit A-F cannot be misread as an interpolation start; digit accumulation remains owned by this decoder rather than duplicated into the span scan.".to_string()
-        };
-    }
-    CACHED.with(|c: &std::string::String| c.clone())
-}
-
-pub fn unknown_escape_refusal_note() -> std::string::String {
-    thread_local! {
-        static CACHED: std::string::String = {
-            "An escape marker has already entered a closed grammar production, so an unrecognized or malformed escape refuses as one located ShUnknown string token; it never returns a successfully decoded prefix and never copies unsupported syntax into an accepted value. A literal backslash is spelled \\\\. The former passthrough arm made unsupported syntax indistinguishable from supported syntax and was the root class behind the inert Unicode escapes. Its 142-site regex-heavy corpus frontier migrated with this close, and the whole corpus is the receipt because every source passes through this tokenizer.".to_string()
         };
     }
     CACHED.with(|c: &std::string::String| c.clone())

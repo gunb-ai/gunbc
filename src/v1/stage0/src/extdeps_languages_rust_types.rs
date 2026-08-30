@@ -38,15 +38,6 @@ pub fn rust_type_checkpoints() -> Rc<Vec<Rc<TypeCheckpoint>>> {
     CACHED.with(|c: &Rc<Vec<Rc<TypeCheckpoint>>>| c.clone())
 }
 
-pub fn rust_checkpoint_symbol_row_migrated_note() -> std::string::String {
-    thread_local! {
-        static CACHED: std::string::String = {
-            "The Symbol row is MIGRATED, not retired: v2.std.node Symbol -- the only declaration of that spelling in the corpus -- now carries an exact row in gunbc.rust_source_type_bindings (RustStdString, spelled std::string::String in both positions by extdeps.languages.rust.representation), and this table no longer answers for the spelling at all. WHAT THE ROW COST WHILE IT STOOD, measured on the first self-host typeck run (XL-0, gunbc#9665 freeze): it answered the bare token `String` for a reference to an OPAQUE declaration, and in every module that also imports v2.std.text String (a structural FreeMonoid<Char> the emitter renders as its own alias) that token re-resolved to the text carrier, so `fn f(identity: Symbol)` came out expecting Rc<im::Vector<i64>> while every caller passed the host string -- the dominant E0308 population, one defect. Two independent faults were in the row: it was keyed on a spelling (the bypass checkpoint_table_bypasses_identity_note in v1.compiler.emit_rust records for every row here) and it carried a spelling a use-line can shadow. Exact keying closes the first, qualification closes the second, and both were required. The verdict on every remaining row of this table is in gunbc.rust_source_type_bindings checkpoint_row_migration_rows, held to this table by test.claim.symbol_identity_binding_witness. The kernel Symbol literal (`^x`) never needed this row: v1.compiler.types types it string_type and v1.compiler.emit reads its suffix from the String row when no Symbol row exists.".to_string()
-        };
-    }
-    CACHED.with(|c: &std::string::String| c.clone())
-}
-
 pub fn rust_checkpoint_hash_row_retired_note() -> std::string::String {
     thread_local! {
         static CACHED: std::string::String = {

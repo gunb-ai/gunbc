@@ -239,15 +239,6 @@ pub enum PreVerdictPhase {
     PreVerdictTypecheck,
 }
 
-pub fn pre_verdict_cause_vocabulary_note() -> std::string::String {
-    thread_local! {
-        static CACHED: std::string::String = {
-            "A CLOSED VOCABULARY OF DOCUMENTED CAUSES, not a free-text field: a declared expectation whose cause is prose cannot be matched against an observation, which is the whole reason this axis exists. Both arms name a class this repository has diagnosed and owns. UnboundImportedVariantConstructor is a resolver gap owned by the namespace-only-resolution lane — an imported bare variant constructor in expression position does not bind, while patterns-via-scrutinee do. Its only live specimen (the logic_ground_truth trio) was deleted 2026-08-16, so the cause remains declared with no current row citing it; the vocabulary member is retained because deleting a documented cause with its last specimen would make the class unnameable when it recurs. UnresolvedModuleOutsideClosure is the Class B pool-membership defect DESIGN records under the import-strip witness-discovery cascade: a bare cross-module reference resolves only when some unrelated import elsewhere in the assembled closure has already dragged the target into the pool, so the same witness refuses or resolves depending on what else was loaded. No admission row declares the second arm today; it is here because the vocabulary is the set of causes we can name, and a cause we have diagnosed but cannot spell is a cause that gets spelled as prose the next time it appears.".to_string()
-        };
-    }
-    CACHED.with(|c: &std::string::String| c.clone())
-}
-
 #[derive(
     Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
 )]

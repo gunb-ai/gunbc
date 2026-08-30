@@ -8,15 +8,6 @@ use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
 use std::rc::Rc;
 
-pub fn closure_stub_v2_std_text_dissolve_on_note() -> std::string::String {
-    thread_local! {
-        static CACHED: std::string::String = {
-            "dissolve-on (FreeMonoid pass 2026-07-20): NOT a second v2.std.text authority — a minimal closure projection when narrow typed.modules omits v2.std.text but emitted refs need crate::v2_std_text::. Dissolves when emit_lib_rs_from_files derives pub-mod membership from the emitted ref set and emits the real v2.std.text module instead.".to_string()
-        };
-    }
-    CACHED.with(|c: &std::string::String| c.clone())
-}
-
 pub fn closure_stub_v2_std_text_source() -> std::string::String {
     v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("// Generated closure stub — dissolve-on: derive from emitted ref set\n".to_string(), "// Source module: v2.std.text (closure projection; std_algebra + std_types only)\n\n".to_string()), "use std::rc::Rc;\n".to_string()), "use crate::std_types::Char;\n\n".to_string()), "pub type String = Rc<crate::std_algebra::FreeMonoid<Char>>;\n".to_string())
 }

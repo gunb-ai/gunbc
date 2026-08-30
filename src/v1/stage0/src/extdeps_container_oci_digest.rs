@@ -52,15 +52,6 @@ pub fn extdeps_model_scope() -> Rc<ExternalModelScope> {
     CACHED.with(|c: &Rc<ExternalModelScope>| c.clone())
 }
 
-pub fn oci_content_digest_note() -> std::string::String {
-    thread_local! {
-        static CACHED: std::string::String = {
-            "OCI digest authority (image-spec descriptor.md; distribution-spec digest): algorithm-qualified content address with wire form algorithm:encoded. Modelled as OciContentDigest coproduct (review 45466) — OciSha256Digest(Sha256Digest) | OciSha512Digest(Sha512Digest) | OciOtherDigest(OciOtherDigestBody) — so algorithm tag and payload cannot be forged independently. Both sha256 and sha512 arms carry std.content_hash digest carriers directly (operator portfolio 2026-08-04: npm is the second validated SHA-512 consumer that dissolved OciSha512DigestHex / OciSha512DigestBody). other body uses OciOtherDigestAlgorithm (String where oci_other_digest_algorithm — construction-walls reserved sha256/sha512 wire tokens and cites image-spec algorithm grammar algorithm-component ([a-z0-9]+) separated by [+._-], review 45505) plus OciOtherDigestEncoded (String where oci_other_digest_encoded — [a-zA-Z0-9=_-]+ per descriptor.md, review 45479/45731). Equality is substrate structural == on the coproduct (no parallel oci_content_digest_eq predicate).".to_string()
-        };
-    }
-    CACHED.with(|c: &std::string::String| c.clone())
-}
-
 pub fn oci_encoded_digest_char_allowed(cp: i64) -> bool {
     (((((((cp.clone() >= 48) && (cp.clone() <= 57))
         || ((cp.clone() >= 65) && (cp.clone() <= 90)))

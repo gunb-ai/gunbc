@@ -126,15 +126,6 @@ pub struct PipelineResult {
     pub newline_indices: Rc<Vec<Rc<NewlineIndex>>>,
 }
 
-pub fn frontend_result_authored_note() -> std::string::String {
-    thread_local! {
-        static CACHED: std::string::String = {
-            "The authored source annotation graph rides beside the semantic result rather than inside it. Every existing consumer reads the fields it already read and is unaffected; annotation-aware machinery reads the graph. Refusals are carried too, because a graph without them cannot distinguish prose that was never written from prose that was dropped.".to_string()
-        };
-    }
-    CACHED.with(|c: &std::string::String| c.clone())
-}
-
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct FrontendResult {
     pub graph: Option<Rc<ModuleGraph>>,
@@ -377,15 +368,6 @@ pub fn ownership_diagnostics(proofs: Rc<Vec<Rc<OwnershipProof>>>) -> Rc<Vec<Rc<E
 pub struct CompilePipelineOptions {
     pub analyze_complexity: bool,
     pub census_only_sources: Rc<Vec<Rc<SourceFile>>>,
-}
-
-pub fn census_only_sources_note() -> std::string::String {
-    thread_local! {
-        static CACHED: std::string::String = {
-            "Sources included in the NAME CENSUS but not compiled (fill = whole tree; policy gates lookup, never fill — namespace-resolution-design.md 7.5). Qualified references to modules outside the compile closure resolve against these; compiling them here instead would subject them to this invocation's pool-precedence tree view, where cross-tree bare names break (measured: 344 diagnostics, the Empty/Cons poisoning class).".to_string()
-        };
-    }
-    CACHED.with(|c: &std::string::String| c.clone())
 }
 
 pub fn default_compile_pipeline_options() -> Rc<CompilePipelineOptions> {
@@ -2639,15 +2621,6 @@ pub struct CensusFillParse {
     pub diagnostics: Rc<Vec<Rc<ErrorNode>>>,
     pub occurrence_transport: Rc<OccurrenceTransport>,
     pub annotations: Rc<SourceAnnotationGraph>,
-}
-
-pub fn parse_census_fill_note() -> std::string::String {
-    thread_local! {
-        static CACHED: std::string::String = {
-            "Parse-grade front end for census-only fill: tokenize + parse, NEVER resolve (a fill module's imports live in the compile closure or a different tree view; resolving against a fill-only pool fabricates unresolved-import diagnostics about the view, not the modules). Diagnostics are parse errors only — those are load-bearing (a broken-parse module contributes no names to the census) and must surface, never be skipped.".to_string()
-        };
-    }
-    CACHED.with(|c: &std::string::String| c.clone())
 }
 
 pub fn parse_census_fill_sources(sources: Rc<Vec<Rc<SourceFile>>>) -> Rc<CensusFillParse> {

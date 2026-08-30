@@ -599,15 +599,6 @@ pub struct KernelTypeBuild {
     pub diagnostics: Rc<Vec<Rc<ErrorNode>>>,
 }
 
-pub fn kernel_record_type_note() -> std::string::String {
-    thread_local! {
-        static CACHED: std::string::String = {
-            "A builtin whose return type is registered as a bare type_variable_node establishes NOTHING about its result, so every field access on that result falls through lookup_field_type_node's Absent arm and the caller fabricates a success-shaped Primitive() in its place. That is this lane's own finding one level down — a missing judgment rendered as an accepted type — and it stayed invisible because the fabricated type propagates silently until some later stage asks a question it cannot answer. make_kernel_record_type lets a builtin declare the product type it actually returns, so the field's type is READ from the declaration rather than invented. It is the same Conj-with-named-children shape lookup_field_type_node already walks for authored records, not a second representation of one (DESIGN §3): the kernel path and the authored path resolve fields through the identical traversal, so a kernel record cannot drift from what an authored record means.".to_string()
-        };
-    }
-    CACHED.with(|c: &std::string::String| c.clone())
-}
-
 pub fn make_kernel_record_field(field_name: std::string::String, field_type: Rc<Node>) -> Rc<Node> {
     Rc::new(Node {
         occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),

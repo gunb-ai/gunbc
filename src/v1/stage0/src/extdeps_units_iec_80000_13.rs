@@ -26,15 +26,6 @@ pub fn extdeps_external_authority_anchor() -> Rc<ExternalAuthority> {
     CACHED.with(|c: &Rc<ExternalAuthority>| c.clone())
 }
 
-pub fn iec_80000_13_version_note() -> std::string::String {
-    thread_local! {
-        static CACHED: std::string::String = {
-            "IEC 80000-13:2008 (Quantities and units — Part 13: Information science and technology): binary prefixes (kibi = 2^10) and the octet (8 bits) as the information-unit byte.".to_string()
-        };
-    }
-    CACHED.with(|c: &std::string::String| c.clone())
-}
-
 pub fn iec_kibi_factor() -> Nat {
     1024
 }

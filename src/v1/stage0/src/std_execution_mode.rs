@@ -11,15 +11,6 @@ use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
 use std::rc::Rc;
 
-pub fn execution_mode_home_note() -> std::string::String {
-    thread_local! {
-        static CACHED: std::string::String = {
-            "ExecutionMode is the single authority for the hermetic/wet/record execution axis (operator posture 2026-07-11: CI witnesses run hermetic/mocked by default; live host effects are dependency-injected by the runner, never reached for by the witness). Re-homed from v2.std so the dag/std schedule layer (RunnableResourceProfile.execution_mode) and the v2 effect-io host model share one authority. The Rust seed realization is v1_interpreter::ExecutionMode: Hermetic refuses unmocked effects with typed diagnostics, Wet dispatches transports, Record dispatches and captures fixtures for hermetic replay.".to_string()
-        };
-    }
-    CACHED.with(|c: &std::string::String| c.clone())
-}
-
 #[derive(
     Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
 )]
@@ -28,15 +19,6 @@ pub enum ExecutionMode {
     Hermetic,
     Wet,
     Record,
-}
-
-pub fn execution_mode_is_wet_dispatch_note() -> std::string::String {
-    thread_local! {
-        static CACHED: std::string::String = {
-            "execution_mode_is_wet_dispatch survives the 2026-07-12 predicate dissolution (which deleted the single-variant is_hermetic/is_record nicknames) because it is a two-variant semantic partition, not a variant test: Wet and Record share dispatch semantics (both drive live transports; Record additionally captures fixtures), and the effect-io host branches on exactly that partition at both its dispatch sites. Deciding it here keeps the grouping a single authority instead of two inline matches.".to_string()
-        };
-    }
-    CACHED.with(|c: &std::string::String| c.clone())
 }
 
 pub fn execution_mode_is_wet_dispatch(mode: ExecutionMode) -> bool {

@@ -655,15 +655,6 @@ pub fn rust_qualified_module_mod_filename(
     )
 }
 
-pub fn rust_pair_completion_spelling_note() -> std::string::String {
-    thread_local! {
-        static CACHED: std::string::String = {
-            "Rust spellings for the target-agnostic pair-completion rows in std.trait_derive_shape. Terminals only: trait paths, method names, where-bounds, carrier field syntax. The ARITHMETIC is not spelled here — each impl body is rendered from the row's polynomial arms, so a change to the Grothendieck construction is a row edit, never a string edit.".to_string()
-        };
-    }
-    CACHED.with(|c: &std::string::String| c.clone())
-}
-
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct RustPairCompletionSpelling {
     pub capability_key: PairCompletionOp,
@@ -713,15 +704,6 @@ pub fn rust_pair_completion_spellings() -> Rc<Vec<Rc<RustPairCompletionSpelling>
             };
         }
     CACHED.with(|c: &Rc<Vec<Rc<RustPairCompletionSpelling>>>| c.clone())
-}
-
-pub fn rust_pair_completion_key_join_note() -> std::string::String {
-    thread_local! {
-        static CACHED: std::string::String = {
-            "The spelling rows carry the TargetCapabilityKey they answer for, so the join to std.trait_derive_shape pair_completion_op_rows is an identity match on the key itself. This REPLACES a sixteen-arm rust_pair_completion_op_key that mapped every capability to a method-name String purely to compare Strings -- a second, positional naming scheme for something the key already names (DESIGN section 3). That function was total-with-no-wildcard, which was the right repair for the coproduct it matched on; once the key became the open TargetCapabilityKey brand an exhaustive match was no longer available, and reconstructing one would have meant re-closing the brand. Joining on the key is the construction the totality argument was standing in for: a capability with no pair-completion spelling still resolves to Absent and still surfaces through the compile_error! arm. ONE THING GOT WEAKER AND IT IS NOT PAPERED OVER: the old arm printed the missing op's own method name, which it could only do because op_key was total over a closed coproduct. TargetCapabilityKey is an open Symbol brand and this corpus has no Symbol-to-String projection, so the arm now prints the keys that ARE spelled and says one row is unmatched, rather than naming the unmatched key. That is less precise and it is a real loss; it is not a silent one -- the arm still refuses at Rust compile time, still identifies the drifted pair of tables, and the reader can difference the printed list against pair_completion_op_rows in one step. NEXT-RUNG TRIGGER: a Symbol-to-String projection in v2.std.node, at which point the key names itself again.".to_string()
-        };
-    }
-    CACHED.with(|c: &std::string::String| c.clone())
 }
 
 pub fn rust_pair_completion_spelling_for(

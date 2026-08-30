@@ -57,15 +57,6 @@ pub struct CastSyntax {
     pub cast_rules: Rc<Vec<Rc<CastRule>>>,
 }
 
-pub fn grounded_primitive_coproduct_cast_note() -> std::string::String {
-    thread_local! {
-        static CACHED: std::string::String = {
-            "The Int->Nat and String->FreeMonoid identities are GROUNDED, not hollow casts (operator Ruling 3, 2026-07-15): a Nat IS an Int (numeric tower grounded construction-side #5428, Zero->Int(0)/Succ->Int(k+1), native form == modeled form) and a String IS a FreeMonoid<Char> (std.string_type: type String = FreeMonoid<Char> — strings over an alphabet are the free monoid). They live in their OWN list, NOT in dag_cast_rules, on purpose: dag_can_cast consults BOTH lists so the wall's kernel_value_declared_type_mismatch stops flagging an Int literal where a Nat is expected (and a String where a FreeMonoid is expected); but is_dag_cast_domain_type reads ONLY dag_cast_rules, so grounding a primitive to a coproduct does NOT drag that coproduct into the explicit-`as`-cast validation domain. Folding them into dag_cast_rules would make Nat/String cast-domain types and newly REJECT pre-existing well-typed casts whose reverse rule is absent (`Nat as Int` in bmc_onboard, `Int as String` in srv3/host_effect were skipped before because their far type was not a domain type) — a regression, not the intent. NON-grounded primitive->coproduct straddles stay red by construction: Bool->FreeMonoid (card_intake), String->Doc (live_deploy), String->AuthScheme (auth) are genuine site bugs with no identity.".to_string()
-        };
-    }
-    CACHED.with(|c: &std::string::String| c.clone())
-}
-
 pub fn dag_cast_rules() -> Rc<Vec<Rc<CastRule>>> {
     thread_local! {
         static CACHED: Rc<Vec<Rc<CastRule>>> = {

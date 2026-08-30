@@ -204,15 +204,6 @@ pub fn list_length<T: Clone>(items: Rc<Vec<T>>) -> i64 {
 
 pub type CommitSha = String;
 
-pub fn commit_sha_text_holds_note() -> std::string::String {
-    thread_local! {
-        static CACHED: std::string::String = {
-            "The located syntax wall for an EXTERNALLY SUPPLIED Git head: lowercase 40-hex. It lives here, beside CommitSha, because that is the one authority every Git-head consumer already names — it was previously homed in std.realization_schedule as scoped_witness_exact_head_text_holds, where a receipt family that has since been deleted happened to be its first caller, and a second consumer (v2.compiler.self_host.frontier_probe_survey) was already importing it across that seam. CommitSha is presently an unvalidated String alias, so this predicate is a validating CHECK a caller must remember to run, not a construction wall. Dissolve-on: CommitSha gains one validating constructor; callers reach the constructor, the invalid state stops being writable, and this predicate deletes.".to_string()
-        };
-    }
-    CACHED.with(|c: &std::string::String| c.clone())
-}
-
 pub fn commit_sha_text_holds(head: std::string::String) -> bool {
     ((v1_rt::string_length(&head) == 40) && {
         let mut __all = true;
@@ -277,15 +268,6 @@ pub fn path_segment_is_safe(raw: std::string::String) -> bool {
 }
 
 pub type GlobSegment = String;
-
-pub fn rendered_terminal_text_note() -> std::string::String {
-    thread_local! {
-        static CACHED: std::string::String = {
-            "TEXT THAT CARRIES NO TERMINAL CONTROL SEQUENCES — the vocabulary two unrelated dependencies meet on so neither has to know the other exists. A terminal-facing tool emits SGR escapes around the values it highlights; a parser reading those values needs them absent. Those are facts about DIFFERENT upstreams, and the wrong fix is for either to mention the other: a note in a CLI's module explaining what a terminal multiplexer strips is a fact filed under the wrong authority, and it stops being true the moment a second capture transport appears (operator, 2026-07-30: 'tmux stripping ansi should be a tmux fact, and codex prompts should be a codex fact, and the interaction should be emergent').\\n\\nSo the brand is the seam. A capture surface that renders a pane PRODUCES RenderedTerminalText; a prompt parser CONSUMES it; and the composition is admissible because the types line up, not because one module was written knowing about the other. A raw stdout pipe cannot inhabit the brand, so feeding one to a parser that requires it is a type error rather than a runtime paste of escape bytes the operator discovers when the far end rejects them.\\n\\nIt lives in std because it is a property of text, not of any one tool — the same reason FilePath is not owned by whichever dependency happens to open files.".to_string()
-        };
-    }
-    CACHED.with(|c: &std::string::String| c.clone())
-}
 
 pub type RenderedTerminalText = String;
 

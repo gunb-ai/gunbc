@@ -598,15 +598,6 @@ pub fn func_decl_binding_for_call(
     }
 }
 
-pub fn census_reserved_method_name_note() -> std::string::String {
-    thread_local! {
-        static CACHED: std::string::String = {
-            "Census precedence law (main-parity): the whole-pool census never serves an algebra method-template name (filter/any/contains/…) as a bare fn sig or tail callable. Those names belong to the known-method bridge in the ExprCall arm — a census sig for the UNLOADED v2.std.algebra typed filter(xs, f) as a plain call and the runtime died NoSuchFunction where main rewrote to the builtin method. Loaded providers are unaffected: lookup_resolved_sig runs before the census fallback.".to_string()
-        };
-    }
-    CACHED.with(|c: &std::string::String| c.clone())
-}
-
 pub fn borrowed_census_callable_candidate(
     type_env: Rc<TypeEnv>,
     name: std::string::String,

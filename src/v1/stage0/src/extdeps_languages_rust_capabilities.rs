@@ -551,15 +551,6 @@ pub fn kernel_int_arithmetic_traits() -> Rc<Vec<RustCapability>> {
     })
 }
 
-pub fn rust_capability_list_ops_home_note() -> std::string::String {
-    thread_local! {
-        static CACHED: std::string::String = {
-            "derive_traits_contain and derive_traits_union live HERE, typed on the closed RustCapability alphabet, and not in std.trait_derive_shape. They arrived in this migration by relocation rather than by authoring: in std they were typed on the OPEN TargetCapabilityKey brand while their only consumer, v1.compiler.trait_derive_emit v1_with_map_key_requirement, threads RustCapability end to end -- so the signature laundered the closed alphabet into the open key space, which is exactly the guarantee the alphabet exists to hold (DESIGN section 4b). Caught in review, not by the compiler. THE ALTERNATIVE REPAIR WAS WORSE AND IS RECORDED SO IT IS NOT RETRIED: keeping them in std and lifting to keys at the call site would have forced the union result back through a key-to-spelling step that no longer exists, since spelling is total only over the alphabet. DECLARED SECTION 2 RESIDUE: these are a set-union and a membership test over a list, specialized to one element type because this corpus carries no generic list union to instance. That is duplication waiting to happen -- the next element type that needs a union will either copy these or finally write the generic. Dissolves into a generic std list union when a second element type asks for one; deliberately not minted here, because authoring a new std primitive is a wider change than the review finding that produced this move.".to_string()
-        };
-    }
-    CACHED.with(|c: &std::string::String| c.clone())
-}
-
 pub fn derive_traits_contain(traits: Rc<Vec<RustCapability>>, capability: RustCapability) -> bool {
     {
         let mut __found = false;

@@ -64,15 +64,6 @@ pub struct Stage0CratePlan {
     pub crates: Rc<Vec<Rc<Stage0CrateSpec>>>,
 }
 
-pub fn stage0_crate_plan_note() -> std::string::String {
-    thread_local! {
-        static CACHED: std::string::String = {
-            "Derived from v2.workflow.rust_crate_partition via gunbc.stage0_crate_partition_generated (HandExplicit ~8-crate interim partition). Dissolve-on: rust_crate_partition_interim_explicit when PolicyPartition lands.".to_string()
-        };
-    }
-    CACHED.with(|c: &std::string::String| c.clone())
-}
-
 pub fn stage0_crate_allow_block() -> std::string::String {
     Rc::new(vec![
         "#![allow(".to_string(),
@@ -89,15 +80,6 @@ pub fn stage0_crate_allow_block() -> std::string::String {
         "#![recursion_limit = \"256\"]".to_string(),
     ])
     .join(&"\n".to_string())
-}
-
-pub fn unreachable_patterns_deny_note() -> std::string::String {
-    thread_local! {
-        static CACHED: std::string::String = {
-            "unreachable_patterns is DENIED, not allowed (DESIGN §5 no-escape-hatches). The emitter lowers a nested variant pattern by hoisting the inner discriminant out of the arm into a `let .. = x.as_ref() else { unreachable!() }` prelude, because Rust cannot match through Rc<T> in a pattern. That is sound for ONE arm per outer constructor; two arms sharing an outer constructor collapse to identical Rust patterns, so the second is unreachable and the FIRST panics on any value it did not expect. Allowing unreachable_patterns suppressed the one signal that detects this -- the deficit frequency was zero by construction, so it never ranked for fixing (the exact §5 absorbing shape). Denying converts each occurrence into a located compile error. Proven by execution: reintroducing the nested-pattern form in std.effects.check_modifier_vs_derivation reds std_effects.rs with `unreachable pattern`; the corpus otherwise carried exactly ONE occurrence (a redundant wildcard in v1.compiler.emit.classify_expr, removed with this change). RESIDUE: this is validation, not construction -- the emitter still GENERATES the broken lowering and is merely caught downstream. The construction fix is to group arms sharing an outer constructor into a nested match (the form the emitter already lowers correctly); tracked as follow-on emitter work.".to_string()
-        };
-    }
-    CACHED.with(|c: &std::string::String| c.clone())
 }
 
 pub fn stage0_foundation_header_doc() -> std::string::String {
