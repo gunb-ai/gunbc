@@ -96,7 +96,7 @@ pub fn oci_encoded_digest(text: String) -> Option<String> {
     if oci_other_digest_encoded(text.clone()) {
         Some(text.clone())
     } else {
-        None
+        std::option::Option::None
     }
 }
 
@@ -240,7 +240,7 @@ pub fn oci_wire_digest_parts(raw: String) -> Option<Rc<OciWireDigestParts>> {
                 .collect::<Vec<_>>(),
         );
         if ((parts.clone().len() as i64) != 2) {
-            None
+            std::option::Option::None
         } else {
             Some(oci_wire_digest_parts_from_split(parts.clone().first().cloned().expect("fail-closed: an optional value flowed into non-optional parameter 0 of oci_wire_digest_parts_from_split (empty Optional at runtime)"), parts.clone().iter().cloned().skip(1 as usize).next().expect("fail-closed: an optional value flowed into non-optional parameter 1 of oci_wire_digest_parts_from_split (empty Optional at runtime)")))
         }
@@ -255,7 +255,7 @@ pub fn parse_oci_content_digest_wire(raw: String) -> Option<Rc<OciContentDigest>
                     Some(digest) => {
                         Some(Rc::new(OciContentDigest::OciSha256Digest(digest.clone())))
                     }
-                    None => None,
+                    None => std::option::Option::None,
                 }
             } else {
                 if (parts.algorithm.clone() == "sha512".to_string()) {
@@ -263,11 +263,11 @@ pub fn parse_oci_content_digest_wire(raw: String) -> Option<Rc<OciContentDigest>
                         Some(digest) => {
                             Some(Rc::new(OciContentDigest::OciSha512Digest(digest.clone())))
                         }
-                        None => None,
+                        None => std::option::Option::None,
                     }
                 } else {
                     if !oci_other_digest_algorithm(parts.algorithm.clone()) {
-                        None
+                        std::option::Option::None
                     } else {
                         match oci_encoded_digest(parts.encoded.clone()) {
                             Some(encoded) => Some(Rc::new(OciContentDigest::OciOtherDigest(
@@ -276,20 +276,20 @@ pub fn parse_oci_content_digest_wire(raw: String) -> Option<Rc<OciContentDigest>
                                     encoded: encoded.clone(),
                                 }),
                             ))),
-                            None => None,
+                            None => std::option::Option::None,
                         }
                     }
                 }
             }
         }
-        None => None,
+        None => std::option::Option::None,
     }
 }
 
 pub fn oci_sha256_content_digest(hex: String) -> Option<Rc<OciContentDigest>> {
     match crate::std_content_hash::sha256_hex_digest(hex.clone()) {
         Some(digest) => Some(oci_content_digest_from_validated_sha256(digest.clone())),
-        None => None,
+        None => std::option::Option::None,
     }
 }
 
