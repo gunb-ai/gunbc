@@ -28142,11 +28142,18 @@ pub fn emit_field_value_with_context(
                         }
                         None => pe.clone(),
                     };
+                    let nested_rt = crate::v1_compiler_infer::expand_type_for_field_access(
+                        crate::v1_compiler_infer_types::resolved_type(field_value.clone()),
+                        scope.type_env.clone(),
+                        scope.module_name.clone(),
+                    )
+                    .resolved
+                    .clone();
                     let raw = emit_typed_record_lit(
                         tn.clone(),
                         inner_fields.clone(),
                         corrected_parent.clone(),
-                        crate::v1_compiler_infer_types::resolved_type(field_value.clone()),
+                        nested_rt.clone(),
                         registry.clone(),
                         scope.clone(),
                         depth.clone(),
