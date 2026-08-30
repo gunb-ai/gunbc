@@ -3,6 +3,7 @@ module extdeps.cargo_build
 import std.types { FilePath, NonEmptyStr }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
+import extdeps.exec.command { ArgvCommand, argv_command }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -14,6 +15,26 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 data cargo_compile_env: Map<String, String> = empty_map()
 
 data cargo_test_with_cwd_env_note: String = "cargo.Build.TestWithCwdEnv: env composes cwd (-C) and process env vars (leading VAR=val argv words) into ONE argv vector, matching the shell.Find.Files precedent of argv-native env -C workdir substitution — no shell is needed to chain a cd/export prefix onto a cargo invocation (SHELL-DAG dissolution of the interpreter_dispatch_bijection_real_roster_transport retained_foreign multi-line script: set -euo pipefail; cd; export; two cargo test invocations, now two sequential typed calls with caller-side short-circuit)."
+
+// PATH-resolved program name, deliberately, for the reason extdeps.exec.command
+// program_spelling_is_an_observation_claim records once: an absolute path is a filesystem
+// observation this repository has not made about the host the command runs on.
+data cargo_program: NonEmptyStr = "cargo"
+
+// THE ONE PLACE THE CLIPPY VERB AND ITS LINT SEPARATOR ARE SPELLED. The Clippy operation below
+// carries the same shape fused to `transport shell`, which is unreachable from any expression --
+// the fork repo_self_build_authority_note measured and named. This builder is the first step of the
+// de-fusion that note declares as its dissolution trigger: the operation's argv shape, expressed
+// once as a value, so a SECOND realization of it (a workflow YAML line) is a projection of this
+// node rather than a second spelling of cargo's vocabulary in a consumer. `--` is part of the
+// operation and not the caller's, because it is what separates cargo's own arguments from the lint
+// levels rustc receives, and a caller free to omit it would hand `-D warnings` to cargo.
+fn cargo_clippy_command(extra_args: List<String>, lint_args: List<String>) -> ArgvCommand {
+  argv_command(
+    program: cargo_program,
+    arguments: append(append(["clippy"], items: extra_args), items: append(["--"], items: lint_args))
+  )
+}
 
 fn cargo_build_jobs_flag(count: Int) -> List<String> {
   ["--jobs", to_string(count)]

@@ -100,33 +100,31 @@ fn edge_target_named(ctx: &InterpContext, projection: &Value, label: &str) -> Op
                 _ => return None,
             };
             for edge in children.iter() {
-                match edge {
-                    Value::Record {
-                        fields: edge_fields,
-                        ..
-                    } => {
-                        let edge_label = match ctx.field(edge_fields, "label") {
-                            Some(Value::Variant {
-                                variant_name,
-                                fields: label_fields,
-                                ..
-                            }) => {
-                                if *variant_name != ctx.sym("Named") {
-                                    continue;
-                                }
-                                match ctx.field(label_fields, "name") {
-                                    Some(Value::Str(s)) => s.as_ref(),
-                                    _ => continue,
-                                }
+                if let Value::Record {
+                    fields: edge_fields,
+                    ..
+                } = edge
+                {
+                    let edge_label = match ctx.field(edge_fields, "label") {
+                        Some(Value::Variant {
+                            variant_name,
+                            fields: label_fields,
+                            ..
+                        }) => {
+                            if *variant_name != ctx.sym("Named") {
+                                continue;
                             }
-                            _ => continue,
-                        };
-                        if edge_label != label {
-                            continue;
+                            match ctx.field(label_fields, "name") {
+                                Some(Value::Str(s)) => s.as_ref(),
+                                _ => continue,
+                            }
                         }
-                        return ctx.field(edge_fields, "target").cloned().map(|v| v.clone());
+                        _ => continue,
+                    };
+                    if edge_label != label {
+                        continue;
                     }
-                    _ => {}
+                    return ctx.field(edge_fields, "target").cloned();
                 }
             }
             None
