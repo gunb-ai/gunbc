@@ -1365,47 +1365,58 @@ fn declaration_ref_of_node(rt: Node, source_indices: Map<String, NewlineIndex>, 
 // the Peano battery: the binding hops answer by NAME, so put first they pick the wrong homonym
 // (dag/std nat vs v2.std.nat Nat) where the resolved node was exact. The invariant that separates
 // the two failure shapes is that a hop's answer is the reference's destination only if it names
-// the declaration the author spelled: declaration_ref_names_authored_leaf rejects an answer whose
-// decl_name differs from the reference's authored leaf, which discards the expansion artifact
-// (FreeMonoid for an authored String) without ever letting a name-keyed hop outrank the exact one.
-// An empty authored leaf (a synthetic node) skips the guard. All hops answer only from the census
-// by declaration span,
+// the declaration the author spelled. When the resolved-node hop answers a decl_name that differs
+// from the reference's authored leaf, the answer is an expansion artifact (FreeMonoid for an
+// authored String) and the destination is re-derived from the MODULE-LEVEL name binding
+// (lookup_type_by_name) -- import-driven, homonym-correct, and by construction the SAME answer at
+// every reference of that spelling in the module, which is what keeps one module from splitting
+// into structural annotations beside host values (the per-node binding hop answered differently
+// across positions of one module, measured as a 108-to-174 board regression). The per-node binding
+// hop (lookup_type_for) still answers when the resolved-node hop yields nothing -- the recursive
+// in-place case. An empty authored leaf (a synthetic node) accepts the resolved answer as-is. All
+// hops answer only from the census by declaration span,
 // never from a spelling, so an identity neither can supply is still Absent. A THIRD hop for the
 // emitter's scope env (merged from XL-0N c7b8056): when the reference carries no ident-keyed
 // binding, the module-visible NAME binding (lookup_type_by_name) -- that module's own import
 // binding -- still names the declaration; the found node is STILL matched by span against the
 // census, so a by-name hit only ever confirms an exact declaration, never picks among homonyms.
-fn declaration_ref_names_authored_leaf(d: DeclarationRef?, authored_leaf: String) -> DeclarationRef? {
-  match d {
+fn declaration_ref_from_module_binding(n: Node, source_indices: Map<String, NewlineIndex>, env: TypeEnv) -> DeclarationRef? {
+  match lookup_type_by_name(env: env, name: authored_name_at(source_indices: source_indices, node: n)) {
+    Present { value: bound } => declaration_ref_of_node(rt: bound, source_indices: source_indices, env: env)
     Absent => none
-    Present { value: dr } =>
-      if authored_leaf == "" || dr.decl_name == authored_leaf { Present { value: dr } } else { none }
   }
 }
 
 fn type_reference_declaration_ref(n: Node, source_indices: Map<String, NewlineIndex>, env: TypeEnv) -> DeclarationRef? {
   let authored_leaf = qualified_last_segment(name: authored_name_at(source_indices: source_indices, node: n))
-  let from_resolved = match n.inferred {
+  match n.inferred {
     Present { value: Resolved { node: r } } =>
-      declaration_ref_names_authored_leaf(
-        d: declaration_ref_of_node(rt: r, source_indices: source_indices, env: env),
-        authored_leaf: authored_leaf)
-    _ => none
-  }
-  match from_resolved {
-    Present { value: d } => Present { value: d }
-    Absent =>
-      match lookup_type_for(env: env, node: n) {
-        Present { value: bound } =>
-          declaration_ref_names_authored_leaf(
-            d: declaration_ref_of_node(rt: bound, source_indices: source_indices, env: env),
-            authored_leaf: authored_leaf)
+      match declaration_ref_of_node(rt: r, source_indices: source_indices, env: env) {
+        Present { value: d } =>
+          if authored_leaf == "" || d.decl_name == authored_leaf {
+            Present { value: d }
+          } else {
+            match declaration_ref_from_module_binding(n: n, source_indices: source_indices, env: env) {
+              Present { value: mb } => Present { value: mb }
+              Absent => Present { value: d }
+            }
+          }
         Absent =>
-          match lookup_type_by_name(env: env, name: authored_name_at(source_indices: source_indices, node: n)) {
-            Present { value: bound } =>
-              declaration_ref_names_authored_leaf(
-                d: declaration_ref_of_node(rt: bound, source_indices: source_indices, env: env),
-                authored_leaf: authored_leaf)
+          match lookup_type_for(env: env, node: n) {
+            Present { value: bound } => declaration_ref_of_node(rt: bound, source_indices: source_indices, env: env)
+            Absent =>
+              match declaration_ref_from_module_binding(n: n, source_indices: source_indices, env: env) {
+                Present { value: mb } => Present { value: mb }
+                Absent => none
+              }
+          }
+      }
+    _ =>
+      match lookup_type_for(env: env, node: n) {
+        Present { value: bound } => declaration_ref_of_node(rt: bound, source_indices: source_indices, env: env)
+        Absent =>
+          match declaration_ref_from_module_binding(n: n, source_indices: source_indices, env: env) {
+            Present { value: mb } => Present { value: mb }
             Absent => declaration_ref_of_node(rt: n, source_indices: source_indices, env: env)
           }
       }
