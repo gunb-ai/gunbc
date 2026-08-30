@@ -271,7 +271,11 @@ test fn rust_emit_host_call_eval_subgraph_holds() -> Bool {
     inputs: inputs_root_only(root: rust_call_helper_eval_subgraph)
   ) {
     Accepted { value: v, diagnostics: d } =>
-      (v == emit_call_eval_octet_value(n: 7)) && (d == None)
+      match runtime_value_equality(a: v, b: emit_call_eval_octet_value(n: 7)) {
+        RuntimeValuesEqual => d == None
+        RuntimeValuesDiffer => false
+        RuntimeValueEqualityUnavailable { reason: _ } => false
+      }
     Rejected { diagnostics: _ } => false
   }
 }

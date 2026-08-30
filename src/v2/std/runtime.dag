@@ -264,6 +264,69 @@ fn runtime_value_node_projection(value: RuntimeValue) -> RuntimeValueNodeProject
   }
 }
 
+// THERE IS NO UNIVERSAL BOOLEAN COMPARATOR FOR RuntimeValue, by construction (XL-0E ruling
+// 2026-08-30). A RuntimeValue can carry a closure, and a closure's environment reaches an open
+// partial function, so generic '==' has no denotation and the equality admission wall refuses
+// it at acceptance. This verdict is what replaces it: primitives and aggregates are compared
+// through their admitted structural projection; references through their explicit declared
+// RuntimeIdentity; two values of different kinds differ decidably; and a comparison the model
+// cannot decide -- closure against closure, or two aggregates whose projections both decline --
+// answers RuntimeValueEqualityUnavailable, a typed third state that is NEVER collapsed to
+// 'false' here. A consumer that needs a Bool must match this verdict and route Unavailable to
+// its own typed refusal; no Bool adapter is provided, deliberately, because the adapter would
+// be the universal comparator this type exists to make unwritable.
+type RuntimeValueEquality
+  = RuntimeValuesEqual
+  | RuntimeValuesDiffer
+  | RuntimeValueEqualityUnavailable { reason: Symbol }
+
+data runtime_closure_equality_unavailable: Symbol = ^runtime_closure_equality_unavailable
+data runtime_value_structural_projection_unavailable: Symbol = ^runtime_value_structural_projection_unavailable
+
+fn runtime_value_equality(a: RuntimeValue, b: RuntimeValue) -> RuntimeValueEquality {
+  match a {
+    RuntimeReference { value: ra } =>
+      match b {
+        RuntimeReference { value: rb } =>
+          if ra.identity.identity == rb.identity.identity { RuntimeValuesEqual } else { RuntimeValuesDiffer }
+        _ => RuntimeValuesDiffer
+      }
+    RuntimeClosure { value: _ } =>
+      match b {
+        RuntimeClosure { value: _ } =>
+          RuntimeValueEqualityUnavailable { reason: runtime_closure_equality_unavailable }
+        _ => RuntimeValuesDiffer
+      }
+    RuntimeUnit { value: ua } =>
+      match b {
+        RuntimeUnit { value: ub } =>
+          if ua.unit_type == ub.unit_type { RuntimeValuesEqual } else { RuntimeValuesDiffer }
+        _ => RuntimeValuesDiffer
+      }
+    _ =>
+      match b {
+        RuntimeReference { value: _ } => RuntimeValuesDiffer
+        RuntimeClosure { value: _ } => RuntimeValuesDiffer
+        RuntimeUnit { value: _ } => RuntimeValuesDiffer
+        _ =>
+          match runtime_value_node_projection(value: a) {
+            RuntimeValueNodeProjected { node: na } =>
+              match runtime_value_node_projection(value: b) {
+                RuntimeValueNodeProjected { node: nb } =>
+                  if na == nb { RuntimeValuesEqual } else { RuntimeValuesDiffer }
+                RuntimeValueNodeUnrepresentable => RuntimeValuesDiffer
+              }
+            RuntimeValueNodeUnrepresentable =>
+              match runtime_value_node_projection(value: b) {
+                RuntimeValueNodeProjected { node: _ } => RuntimeValuesDiffer
+                RuntimeValueNodeUnrepresentable =>
+                  RuntimeValueEqualityUnavailable { reason: runtime_value_structural_projection_unavailable }
+              }
+          }
+      }
+  }
+}
+
 type ValueRepresentationModel {
   represent_literal: fn(Node, EvaluationEnvironment) -> Outcome<RuntimeValue>
   represent_result: fn(RuntimeValue) -> Outcome<RuntimeValue>
@@ -351,6 +414,22 @@ type InterpretationStructureWitness {
   step_loop: Symbol,
   bind_value: Symbol,
   choose_arm: Symbol
+}
+
+// THE DECLARED IDENTITY OF AN INTERPRETATION is the six slot identities its interpreters
+// carry, compared directly as Symbols. Generic '==' on InterpretationAlgebra has no
+// denotation -- every slot's primary member is a function, and function equality does not
+// exist -- so the equality admission wall refuses it at acceptance; this comparison is what
+// a consumer actually asks: "are these the same six declared interpreters?". It deliberately
+// does not hash: a digest is a projection of these symbols, never the sole authority for
+// the comparison (XL-0E ruling 2026-08-30).
+fn interpretation_algebra_slot_identities_equal(a: InterpretationAlgebra, b: InterpretationAlgebra) -> Bool {
+  a.value.identity == b.value.identity
+    && a.transform.identity == b.transform.identity
+    && a.branch.identity == b.branch.identity
+    && a.loop.identity == b.loop.identity
+    && a.bind.identity == b.bind.identity
+    && a.match.identity == b.match.identity
 }
 
 type RuntimeBehaviorInterpreter

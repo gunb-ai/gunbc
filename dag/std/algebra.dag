@@ -609,6 +609,38 @@ fn carrier_container_arity_rows() -> Map<String, Int> {
       }))
 }
 
+// EQUALITY ADMISSIBILITY IS A CONSEQUENCE OF THE SUPPORT AXIS, declared beside the profiles it
+// follows from rather than re-derived by any consumer. A carrier with finite support (or a scalar
+// carrier) has decidable extensional equality: two values agree exactly when they agree on the
+// finitely many points that exist, so equality LIFTS over the carrier's type arguments and the
+// admission question recurses into them. An open-support carrier (PartialFunction, the pointwise
+// power) cannot answer extensional equality at all -- the agreement set is not enumerable -- so
+// generic equality on it is refused, never approximated. The rows are per-profile because the
+// support axis is a fact about the algebra, not about any spelling that resolves to it.
+fn algebra_profile_equality_extensional(profile: AlgebraProfile) -> Bool {
+  match profile {
+    OrderedRingProfile => true
+    ApproximateFieldProfile => true
+    BooleanAlgebraProfile => true
+    FinitePowerSetProfile => true
+    PointwisePowerCollectionProfile => false
+    FreeMonoidScalarProfile => true
+    FreeMonoidCollectionProfile => true
+    PartialFunctionProfile => false
+    FinitelySupportedFunctionProfile => true
+  }
+}
+
+fn carrier_container_equality_rows() -> Map<String, Bool> {
+  algebra_carriers() |> fold(init: empty_map(), f: (acc, carrier) =>
+    carrier.spellings |> fold(init: acc, f: (inner, spelling) =>
+      if carrier_spelling_row_present(m: spelling.container_algebra_row) {
+        map_insert(inner, spelling.text, algebra_profile_equality_extensional(profile: carrier.profile))
+      } else {
+        inner
+      }))
+}
+
 data kernel_algebra_profile: Map<String, AlgebraProfile> = kernel_algebra_profile_value()
 
 fn ordered_ring_templates() -> List<AlgebraFieldTemplate> {
