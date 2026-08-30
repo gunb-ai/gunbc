@@ -413,7 +413,7 @@ data operation_argv_binding_wall_stall: GuaranteeStall = GuaranteeStall {
 }
 
 data variant_owner_identity_stall: GuaranteeStall = GuaranteeStall {
-  subject: "same-spelled variants from distinct owner modules remain distinct at runtime",
+  subject: "runtime variant equality and native-representation selection derive from exact owner-module plus declaration identity, never parent/arm lexemes",
   current: OutsideTheLadder,
   ceiling: StructurallyImpossible,
   blocker: ClimbableButUnbuilt,

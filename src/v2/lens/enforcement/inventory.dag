@@ -17,7 +17,7 @@ type LensExecutionCadence
   | SubstrateLongLane
   | WetFalsifier
   | PrePushHook
-  | OfflineLocalRecipeCadence
+  | OfflineLocalRecipe
   | KnownRedQuarantine
 
 type SchedulingDisposition
@@ -87,55 +87,67 @@ fn disposition_when_bool(enrolled: Bool) -> SchedulingDisposition {
   if enrolled { SchedulingEnrolled } else { SchedulingExcluded }
 }
 
+// Pattern arms are resolved against the WitnessConsumerCadence scrutinee. Keep this predicate
+// local and keep LensExecutionCadence.OfflineLocalRecipe's colliding spelling: importing or bare-
+// calling an owner-side predicate, or renaming the local arm, perturbs the prepared bare closure
+// of unrelated import-free v2.lens.mock_totality modules (gunbc#9741's 21-row discriminator).
+fn primary_is_offline_local_recipe(primary: WitnessConsumerCadence) -> Bool {
+  match primary {
+    DiscoverySelection => false
+    FalsifierSelfHostWet => false
+    FalsifierRehomedBinWet => false
+    FalsifierSubstrateLongLane => false
+    BinWitnessWet => false
+    QuarantineProbeExpectRed => false
+    OfflineLocalRecipe => true
+    FixtureExplicitRoster => false
+    NoConsumer => false
+  }
+}
+
 fn pr_floor_scheduling_disposition(
   primary: WitnessConsumerCadence,
   ci_enrolled: Bool
 ) -> SchedulingDisposition {
-  if witness_cadence_is_offline_local_recipe(cadence: primary) {
-    disposition_when_bool(enrolled: ci_enrolled)
-  } else { match primary {
+  match primary {
     DiscoverySelection => SchedulingEnrolled
     FalsifierSelfHostWet => disposition_when_bool(enrolled: ci_enrolled)
     FalsifierRehomedBinWet => disposition_when_bool(enrolled: ci_enrolled)
     FalsifierSubstrateLongLane => disposition_when_bool(enrolled: ci_enrolled)
     BinWitnessWet => disposition_when_bool(enrolled: ci_enrolled)
     QuarantineProbeExpectRed => disposition_when_bool(enrolled: ci_enrolled)
+    OfflineLocalRecipe => disposition_when_bool(enrolled: ci_enrolled)
     FixtureExplicitRoster => disposition_when_bool(enrolled: ci_enrolled)
     NoConsumer => disposition_when_bool(enrolled: ci_enrolled)
-    offline => SchedulingExcluded
-  } }
+  }
 }
 
 fn wet_falsifier_scheduling_disposition(primary: WitnessConsumerCadence) -> SchedulingDisposition {
-  if witness_cadence_is_offline_local_recipe(cadence: primary) {
-    SchedulingDark
-  } else { match primary {
+  match primary {
     FalsifierSelfHostWet => SchedulingEnrolled
     FalsifierRehomedBinWet => SchedulingEnrolled
     BinWitnessWet => SchedulingEnrolled
+    OfflineLocalRecipe => SchedulingDark
     DiscoverySelection => SchedulingExcluded
     FalsifierSubstrateLongLane => SchedulingExcluded
     QuarantineProbeExpectRed => SchedulingExcluded
     FixtureExplicitRoster => SchedulingExcluded
     NoConsumer => SchedulingExcluded
-    offline => SchedulingExcluded
-  } }
+  }
 }
 
 fn scheduled_falsifier_scheduling_disposition(primary: WitnessConsumerCadence) -> SchedulingDisposition {
-  if witness_cadence_is_offline_local_recipe(cadence: primary) {
-    SchedulingExcluded
-  } else { match primary {
+  match primary {
     FalsifierSelfHostWet => SchedulingEnrolled
     FalsifierRehomedBinWet => SchedulingEnrolled
     FalsifierSubstrateLongLane => SchedulingEnrolled
     QuarantineProbeExpectRed => SchedulingEnrolled
     DiscoverySelection => SchedulingExcluded
     BinWitnessWet => SchedulingExcluded
+    OfflineLocalRecipe => SchedulingExcluded
     FixtureExplicitRoster => SchedulingExcluded
     NoConsumer => SchedulingExcluded
-    offline => SchedulingExcluded
-  } }
+  }
 }
 
 fn scheduling_disposition_for_primary_cadence(
@@ -157,8 +169,8 @@ fn scheduling_disposition_for_primary_cadence(
       disposition_when_bool(enrolled: primary == QuarantineProbeExpectRed)
     SubstrateLongLane =>
       disposition_when_bool(enrolled: primary == FalsifierSubstrateLongLane)
-    OfflineLocalRecipeCadence =>
-      disposition_when_bool(enrolled: witness_cadence_is_offline_local_recipe(cadence: primary))
+    OfflineLocalRecipe =>
+      disposition_when_bool(enrolled: primary_is_offline_local_recipe(primary: primary))
     ScheduledFalsifier =>
       scheduled_falsifier_scheduling_disposition(primary: primary)
   }
@@ -225,9 +237,9 @@ fn cadence_scheduling_rows_for_primary(
       )
     },
     CadenceSchedulingRow {
-      cadence: OfflineLocalRecipeCadence,
+      cadence: OfflineLocalRecipe,
       disposition: scheduling_disposition_for_primary_cadence(
-        target: OfflineLocalRecipeCadence,
+        target: OfflineLocalRecipe,
         primary: primary,
         ci_enrolled: ci_enrolled,
         prepush_enrolled: prepush_enrolled
@@ -274,7 +286,7 @@ fn cadence_rows_unbound() -> List<CadenceSchedulingRow> {
     CadenceSchedulingRow { cadence: SubstrateLongLane, disposition: SchedulingExcluded },
     CadenceSchedulingRow { cadence: WetFalsifier, disposition: SchedulingExcluded },
     CadenceSchedulingRow { cadence: PrePushHook, disposition: SchedulingExcluded },
-    CadenceSchedulingRow { cadence: OfflineLocalRecipeCadence, disposition: SchedulingExcluded },
+    CadenceSchedulingRow { cadence: OfflineLocalRecipe, disposition: SchedulingExcluded },
     CadenceSchedulingRow { cadence: KnownRedQuarantine, disposition: SchedulingExcluded }
   ]
 }
@@ -632,7 +644,7 @@ fn cadence_row_is_main_push_floor(row: CadenceSchedulingRow) -> Bool {
 }
 
 fn cadence_row_is_offline_local_recipe(row: CadenceSchedulingRow) -> Bool {
-  match row.cadence { OfflineLocalRecipeCadence => true _ => false }
+  match row.cadence { OfflineLocalRecipe => true _ => false }
 }
 
 fn scheduling_disposition_is_enrolled(disposition: SchedulingDisposition) -> Bool {

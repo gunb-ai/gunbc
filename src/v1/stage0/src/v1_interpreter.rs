@@ -74,12 +74,32 @@ pub struct SymbolInterner {
     calls: u64,
 }
 
-const CANONICAL_SYMBOL_RETAINED_BYTE_CAP: usize = 16 * 1024 * 1024;
+const CANONICAL_SYMBOL_RETAINED_SPELLING_BYTE_CAP: usize = 16 * 1024 * 1024;
 
 #[derive(Default)]
 struct CanonicalSymbolTable {
     spellings: std::collections::HashSet<&'static str>,
     retained_spelling_bytes: usize,
+}
+
+impl CanonicalSymbolTable {
+    fn intern_with_cap(
+        &mut self,
+        spelling: &str,
+        spelling_cap_bytes: usize,
+    ) -> Result<&'static str, (usize, usize)> {
+        if let Some(existing) = self.spellings.get(spelling) {
+            return Ok(*existing);
+        }
+        let projected = self.retained_spelling_bytes.saturating_add(spelling.len());
+        if projected > spelling_cap_bytes {
+            return Err((projected, spelling_cap_bytes));
+        }
+        let canonical = Box::leak(spelling.to_string().into_boxed_str());
+        self.spellings.insert(canonical);
+        self.retained_spelling_bytes = projected;
+        Ok(canonical)
+    }
 }
 
 static CANONICAL_SYMBOLS: std::sync::OnceLock<std::sync::Mutex<CanonicalSymbolTable>> =
@@ -91,23 +111,18 @@ fn canonical_symbol_spelling(s: &str) -> &'static str {
     let mut table = table
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner());
-    if let Some(existing) = table.spellings.get(s) {
-        return *existing;
-    }
-    let projected = table.retained_spelling_bytes.saturating_add(s.len());
-    assert!(
-        projected <= CANONICAL_SYMBOL_RETAINED_BYTE_CAP,
-        "canonical symbol retention cap exceeded: projected_spelling_bytes={projected} cap_bytes={CANONICAL_SYMBOL_RETAINED_BYTE_CAP}"
-    );
-    let canonical = Box::leak(s.to_string().into_boxed_str());
-    table.spellings.insert(canonical);
-    table.retained_spelling_bytes = projected;
-    canonical
+    table
+        .intern_with_cap(s, CANONICAL_SYMBOL_RETAINED_SPELLING_BYTE_CAP)
+        .unwrap_or_else(|(projected, cap)| {
+            panic!(
+                "canonical symbol retention refused before allocation: projected_spelling_bytes={projected} spelling_cap_bytes={cap}"
+            )
+        })
 }
 
 #[cfg(test)]
 mod selected_identity_path_tests {
-    use super::{ExecutionMode, InterpContext};
+    use super::{CanonicalSymbolTable, ExecutionMode, InterpContext};
     use crate::v1_compiler_compile::SourceFile;
     use im::HashMap;
     use std::rc::Rc;
@@ -132,6 +147,25 @@ mod selected_identity_path_tests {
         index.insert("two".to_string(), "common.dag".to_string());
         assert_eq!(ctx.selected_function_identity("check", &index), None);
     }
+
+    #[test]
+    fn canonical_symbol_table_refuses_before_allocation_and_reuses_at_cap() {
+        let mut table = CanonicalSymbolTable::default();
+        let first = table.intern_with_cap("four", 4).expect("below cap stores");
+        assert_eq!(table.spellings.len(), 1);
+        assert_eq!(table.retained_spelling_bytes, 4);
+
+        let reused = table
+            .intern_with_cap("four", 4)
+            .expect("reuse at cap adds no billing");
+        assert!(std::ptr::eq(first, reused));
+        assert_eq!(table.spellings.len(), 1);
+        assert_eq!(table.retained_spelling_bytes, 4);
+
+        assert_eq!(table.intern_with_cap("x", 4), Err((5, 4)));
+        assert_eq!(table.spellings.len(), 1);
+        assert_eq!(table.retained_spelling_bytes, 4);
+    }
 }
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
@@ -142,7 +176,7 @@ pub struct InternStats {
     pub heap_bytes: u64,
     pub canonical_entries: u64,
     pub canonical_retained_spelling_bytes: u64,
-    pub canonical_retained_byte_cap: u64,
+    pub canonical_spelling_cap_bytes: u64,
 }
 
 impl SymbolInterner {
@@ -169,7 +203,7 @@ impl SymbolInterner {
             heap_bytes: self.heap_bytes(),
             canonical_entries: canonical.spellings.len() as u64,
             canonical_retained_spelling_bytes: canonical.retained_spelling_bytes as u64,
-            canonical_retained_byte_cap: CANONICAL_SYMBOL_RETAINED_BYTE_CAP as u64,
+            canonical_spelling_cap_bytes: CANONICAL_SYMBOL_RETAINED_SPELLING_BYTE_CAP as u64,
         }
     }
 

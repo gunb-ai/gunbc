@@ -146,20 +146,6 @@ fn witness_cadence_has_scheduled_route(cadence: WitnessConsumerCadence) -> Bool 
   }
 }
 
-fn witness_cadence_is_offline_local_recipe(cadence: WitnessConsumerCadence) -> Bool {
-  match cadence {
-    DiscoverySelection => false
-    FalsifierSelfHostWet => false
-    FalsifierRehomedBinWet => false
-    FalsifierSubstrateLongLane => false
-    BinWitnessWet => false
-    QuarantineProbeExpectRed => false
-    OfflineLocalRecipe => true
-    FixtureExplicitRoster => false
-    NoConsumer => false
-  }
-}
-
 fn witness_consumer_cadence_content_hash_structural(cadence: WitnessConsumerCadence) -> Fnv1a64Structural {
   match cadence {
     DiscoverySelection => content_hash_atom(value: "DiscoverySelection")
