@@ -1,0 +1,361 @@
+module gunbc.fabric_required_build_cell
+
+import std.types { Bool, Int, List, NonEmptyStr, String, list_length }
+import std.content_hash {
+  ContentHash, ContentHashEqual, ContentHashDifferent, ContentHashCrossFamilyIncomparable,
+  compare_content_hash, content_hash_of_value, content_hash_from_structural_digest,
+  serialize_content_hash,
+}
+import std.durable_compare_and_set { CasObservedReadable, CasObservedUnreadable, CasReadableAbsent, CasReadablePresent }
+import product.fabric.identity { FabricIdentity, DemandKey, OfferKey, WorkKey }
+import product.fabric.demand { Demand }
+import product.fabric.supply { SupplierOffer }
+import product.fabric.sanitation { CellId }
+import product.placement_supply { HostIdentity }
+import gunbc.ownership { Owned }
+import gunbc.build_cache_instance { RunnerSlotIdentity, runner_slot_identity_equal }
+import gunbc.durable_cas_file_store { observe_cas_slot_state }
+import gunbc.fabric_control_plane {
+  fabric_cell_allocation_key, fabric_money_reservation_ref,
+  CellSlotDecoded, CellSlotUndecodable, CellHeld, CellFree, decode_cell_slot_payload,
+}
+import gunbc.fabric_cell_acquire { fabric_cell_probe_wet }
+import gunbc.fabric_cell_observation_admission {
+  FabricCellObservationAdmitted, FabricCellObservationDenied, FabricCellObservationNotApplicable,
+  fabric_cell_observation_outcome, fabric_cell_observed_population_members, admit_fabric_cell_probe,
+}
+import gunbc.fabric_cell_converge {
+  FabricCellMember, FabricCellRootAddress, FabricCellAttemptRootAddress, FabricCellResourceBoundaryAddress,
+  fabric_cell_id_for_slot, fabric_cell_member_key, fabric_cell_member_ownership, fabric_cell_resource_address_equal,
+}
+import v2.std.optional { Present, Absent }
+import extdeps.posix.identity { PosixOwnerSpec }
+
+// Mode is intentionally a separate coordinate from owner/group. FCI-1 has a production owner/group
+// observer, but no mode observer; carrying this arm makes that absence part of the accepted value
+// rather than a prose omission or an inflated directory-metadata claim.
+type DirectoryModeStanding
+  = DirectoryModeUnobserved { path: NonEmptyStr, desired_mode: NonEmptyStr, trigger: NonEmptyStr }
+
+type DirectoryOwnerGroupStanding
+  = DirectoryOwnerGroupObserved { path: NonEmptyStr, owner: PosixOwnerSpec }
+  | DirectoryOwnerGroupUnobserved { path: NonEmptyStr, reason: NonEmptyStr }
+
+type DirectoryMetadataStanding {
+  owner_group: DirectoryOwnerGroupStanding
+  mode: DirectoryModeStanding
+}
+
+// This is the pre-reservation standing of the persistent cell, not a claim about the allocation
+// slot. Clean means the production observer admitted the exact three-member substrate and found no
+// foreign member; absent is retained as a distinct observation for the privileged creation path.
+// FCI-1 requires Clean because its subject is an already-converged cell and never creates one.
+type FabricCellPreReservationStanding
+  = FabricCellPreReservationClean { cell: CellId, members_content: ContentHash }
+  | FabricCellPreReservationAbsent { cell: CellId }
+  | FabricCellPreReservationRefused { cell: CellId }
+
+// Mode remains outside the observed guarantee until the same exact-path producer reports it.
+fn fci1_directory_mode_unobserved(path: NonEmptyStr, desired_mode: NonEmptyStr) -> DirectoryModeStanding {
+  DirectoryModeUnobserved {
+    path: path,
+    desired_mode: desired_mode,
+    trigger: "exact-path production mode observation and comparison lands",
+  }
+}
+
+// FCI-1 joins two existing authorities. The CAS slot is the sole Work-to-cell holding; the
+// converged-cell observation is the sole account of the persistent bounded substrate. There is no
+// supervisor, passive unit, waiting process, Grant, Attempt, or execution Receipt in this module.
+// The production constructor reads the allocation slot and admitted cell probe itself. Generation,
+// payload, content digest, substrate members and modeled teardown ownership enter from their
+// existing producers; none is a request field. Release changes only the CAS holding and must leave
+// the persistent substrate byte-identical.
+
+type RequiredBuildCellSnapshot sole_constructor {
+  work: FabricIdentity<NonEmptyStr, WorkKey>
+  demand: FabricIdentity<NonEmptyStr, DemandKey>
+  offer: FabricIdentity<NonEmptyStr, OfferKey>
+  cell: CellId
+  slot_key: NonEmptyStr
+  generation: Int
+  reservation_payload: NonEmptyStr
+  reservation_content: ContentHash
+  cell_members: List<FabricCellMember>
+  resource_boundary_digest: NonEmptyStr
+}
+
+type RequiredBuildCellObservation
+  = RequiredBuildCellObserved { snapshot: RequiredBuildCellSnapshot }
+  | ReservationAbsent { slot_key: NonEmptyStr }
+  | ReservationUnreadable { slot_key: NonEmptyStr }
+  | ReservationPayloadUndecodable { slot_key: NonEmptyStr }
+  | ReservationPayloadWorkMismatch { slot_key: NonEmptyStr }
+  | SelectedOfferCellMismatch { slot_key: NonEmptyStr, executor: NonEmptyStr }
+  | CellSubstrateNotConverged { cell: CellId }
+  | UnownedCell { cell: CellId }
+
+fn members_for_slot(members: List<FabricCellMember>, slot: RunnerSlotIdentity) -> List<FabricCellMember> {
+  filter(members, m => runner_slot_identity_equal(a: m.slot, b: slot))
+}
+
+fn cell_member_shape_complete(members: List<FabricCellMember>) -> Bool {
+  list_length(items: members) == 3
+    && list_length(items: filter(members, m => fabric_cell_resource_address_equal(a: m.address, b: FabricCellRootAddress))) == 1
+    && list_length(items: filter(members, m => fabric_cell_resource_address_equal(a: m.address, b: FabricCellAttemptRootAddress))) == 1
+    && list_length(items: filter(members, m => fabric_cell_resource_address_equal(a: m.address, b: FabricCellResourceBoundaryAddress))) == 1
+}
+
+fn members_owned(members: List<FabricCellMember>) -> Bool {
+  fold(members, init: true, f: (ok, m) => ok && match fabric_cell_member_ownership(member: m) {
+    Present { value: Owned } => true
+    Present { value: _ } => false
+    Absent => false
+  })
+}
+
+fn boundary_digests(members: List<FabricCellMember>) -> List<NonEmptyStr> {
+  fold(members, init: [], f: (acc, m) =>
+    if fabric_cell_resource_address_equal(a: m.address, b: FabricCellResourceBoundaryAddress) {
+      acc + [m.state_digest]
+    } else { acc })
+}
+
+fn required_build_cell_member_wire(member: FabricCellMember) -> NonEmptyStr {
+  join([
+    "member|key=", fabric_cell_member_key(member: member),
+    "|state=", member.state_digest as String,
+  ], "") as NonEmptyStr
+}
+
+fn required_build_cell_members_hash(members: List<FabricCellMember>) -> ContentHash {
+  content_hash_of_value(
+    value: join(map(members, member => required_build_cell_member_wire(member: member) as String), "\n") as NonEmptyStr,
+  )
+}
+
+// Production join: callers select a Work/Demand/Offer/slot, but cannot state the reservation or
+// host facts. Both are acquired here from the canonical CAS and converged-cell producers.
+func observe_required_build_cell_wet(
+  root: NonEmptyStr,
+  host: HostIdentity,
+  slot: RunnerSlotIdentity,
+  demand: Demand<NonEmptyStr>,
+  offer: SupplierOffer<NonEmptyStr>,
+) -> RequiredBuildCellObservation {
+  let slot_key = fabric_cell_allocation_key(slot: slot)
+  if (offer.executor as String) != (slot_key as String) {
+    SelectedOfferCellMismatch { slot_key: slot_key, executor: offer.executor }
+  } else {
+    match observe_cas_slot_state(root: root, key: slot_key) {
+      CasObservedUnreadable { cause: _ } => ReservationUnreadable { slot_key: slot_key }
+      CasObservedReadable { readable: CasReadableAbsent } => ReservationAbsent { slot_key: slot_key }
+      CasObservedReadable { readable: CasReadablePresent { version: version } } =>
+        match decode_cell_slot_payload(payload: version.value) {
+          CellSlotUndecodable { detail: _ } => ReservationPayloadUndecodable { slot_key: slot_key }
+          CellSlotDecoded { state: CellFree { released_by: _ } } => ReservationAbsent { slot_key: slot_key }
+          CellSlotDecoded { state: CellHeld { reservation: held } } =>
+            if (held as String) != (fabric_money_reservation_ref(demand: demand.id, offer: offer.id) as String) {
+              ReservationPayloadWorkMismatch { slot_key: slot_key }
+            } else {
+              match fabric_cell_observation_outcome(decision: admit_fabric_cell_probe(probe: fabric_cell_probe_wet(host: host))) {
+                FabricCellObservationDenied { host: _, blocked: _ } => CellSubstrateNotConverged { cell: fabric_cell_id_for_slot(slot: slot) }
+                FabricCellObservationNotApplicable { host: _ } => CellSubstrateNotConverged { cell: fabric_cell_id_for_slot(slot: slot) }
+                FabricCellObservationAdmitted { population: population } =>
+                  let selected = members_for_slot(members: fabric_cell_observed_population_members(population: population), slot: slot)
+                  if !cell_member_shape_complete(members: selected) {
+                    CellSubstrateNotConverged { cell: fabric_cell_id_for_slot(slot: slot) }
+                  } else {
+                    if !members_owned(members: selected) {
+                      UnownedCell { cell: fabric_cell_id_for_slot(slot: slot) }
+                    } else {
+                      let boundary = boundary_digests(members: selected)
+                      RequiredBuildCellObserved { snapshot: RequiredBuildCellSnapshot {
+                        work: demand.work,
+                        demand: demand.id,
+                        offer: offer.id,
+                        cell: fabric_cell_id_for_slot(slot: slot),
+                        slot_key: slot_key,
+                        generation: version.generation as Int,
+                        reservation_payload: version.value,
+                        reservation_content: version.content,
+                        cell_members: selected,
+                        resource_boundary_digest: boundary[0],
+                      } }
+                    }
+                  }
+              }
+            }
+        }
+    }
+  }
+}
+
+type RequiredBuildCellLifetimeVerdict
+  = RequiredBuildCellLifetimeHeld { snapshot: RequiredBuildCellSnapshot }
+  | ReservationLifetimeDependentOnSubmitter { slot_key: NonEmptyStr }
+  | ReservationGenerationChanged { expected_generation: Int, observed_generation: Int }
+  | ReservationContentChanged { slot_key: NonEmptyStr }
+  | CellSubstrateChanged { cell: CellId }
+  | RequiredBuildCellObservationRefused
+
+// Run-boundary projection. The interpreter cannot transport a coproduct directly: it reports the
+// type name, erasing both variant and payload. This total fold is therefore the sole wire authority.
+// Each tag is delimiter-terminated and no tag prefixes another, so a consumer cannot accept one
+// verdict through another verdict's prefix pattern.
+fn required_build_cell_lifetime_verdict_wire(verdict: RequiredBuildCellLifetimeVerdict) -> String {
+  match verdict {
+    RequiredBuildCellLifetimeHeld { snapshot: s } => join([
+      "held|slot=", s.slot_key as String,
+      "|generation=", to_string(s.generation),
+      "|reservation-content=", serialize_content_hash(hash: s.reservation_content) as String,
+      "|members-content=", serialize_content_hash(hash: required_build_cell_members_hash(members: s.cell_members)) as String,
+      "|boundary=", s.resource_boundary_digest as String,
+    ], "")
+    ReservationLifetimeDependentOnSubmitter { slot_key: key } =>
+      join(["lifetime-dependent|slot=", key as String], "")
+    ReservationGenerationChanged { expected_generation: expected, observed_generation: observed } =>
+      join(["generation-changed|expected=", to_string(expected), "|observed=", to_string(observed)], "")
+    ReservationContentChanged { slot_key: key } => join(["reservation-content-changed|slot=", key as String], "")
+    CellSubstrateChanged { cell: cell } => join(["cell-substrate-changed|cell=", cell as String], "")
+    RequiredBuildCellObservationRefused => "observation-refused|cause=before-wire-or-live-observation"
+  }
+}
+
+type RequiredBuildCellLifetimeSample sole_constructor {
+  slot_key: NonEmptyStr
+  generation: Int
+  reservation_payload: NonEmptyStr
+  reservation_content: ContentHash
+  cell: CellId
+  cell_members_content: ContentHash
+  resource_boundary_digest: NonEmptyStr
+}
+
+type RequiredBuildCellLifetimeSampleDecode
+  = RequiredBuildCellLifetimeSampleDecoded { sample: RequiredBuildCellLifetimeSample }
+  | RequiredBuildCellLifetimeSampleUndecodable
+
+fn required_build_cell_lifetime_sample(observation: RequiredBuildCellObservation) -> RequiredBuildCellLifetimeSampleDecode {
+  match observation {
+    RequiredBuildCellObserved { snapshot: s } => RequiredBuildCellLifetimeSampleDecoded {
+      sample: RequiredBuildCellLifetimeSample {
+        slot_key: s.slot_key,
+        generation: s.generation,
+        reservation_payload: s.reservation_payload,
+        reservation_content: s.reservation_content,
+        cell: s.cell,
+        cell_members_content: required_build_cell_members_hash(members: s.cell_members),
+        resource_boundary_digest: s.resource_boundary_digest,
+      },
+    }
+    ReservationAbsent { slot_key: _ } => RequiredBuildCellLifetimeSampleUndecodable
+    ReservationUnreadable { slot_key: _ } => RequiredBuildCellLifetimeSampleUndecodable
+    ReservationPayloadUndecodable { slot_key: _ } => RequiredBuildCellLifetimeSampleUndecodable
+    ReservationPayloadWorkMismatch { slot_key: _ } => RequiredBuildCellLifetimeSampleUndecodable
+    SelectedOfferCellMismatch { slot_key: _, executor: _ } => RequiredBuildCellLifetimeSampleUndecodable
+    CellSubstrateNotConverged { cell: _ } => RequiredBuildCellLifetimeSampleUndecodable
+    UnownedCell { cell: _ } => RequiredBuildCellLifetimeSampleUndecodable
+  }
+}
+
+// Seven newline-delimited fields, with exact arity on decode. Every field is produced from the
+// first live observation. The wire crosses the process-lifetime boundary; it is not evidence by
+// itself and becomes usable only after this module validates and reconstructs the sealed sample.
+fn required_build_cell_lifetime_sample_wire(sample: RequiredBuildCellLifetimeSample) -> String {
+  join([
+    sample.slot_key as String,
+    to_string(sample.generation),
+    sample.reservation_payload as String,
+    serialize_content_hash(hash: sample.reservation_content) as String,
+    sample.cell as String,
+    serialize_content_hash(hash: sample.cell_members_content) as String,
+    sample.resource_boundary_digest as String,
+  ], "\n")
+}
+
+fn decode_required_build_cell_lifetime_sample(wire: String) -> RequiredBuildCellLifetimeSampleDecode {
+  let fields = split(s: wire, delimiter: "\n")
+  if list_length(items: fields) != 7 {
+    RequiredBuildCellLifetimeSampleUndecodable
+  } else {
+    match parse_int(s: fields.skip(n: 1).first()) {
+      Absent => RequiredBuildCellLifetimeSampleUndecodable
+      Present { value: generation } =>
+        match content_hash_from_structural_digest(digest: fields.skip(n: 3).first()) {
+          Absent => RequiredBuildCellLifetimeSampleUndecodable
+          Present { value: reservation_content } =>
+            match content_hash_from_structural_digest(digest: fields.skip(n: 5).first()) {
+              Absent => RequiredBuildCellLifetimeSampleUndecodable
+              Present { value: members_content } =>
+                match fields.first() {
+                  Absent => RequiredBuildCellLifetimeSampleUndecodable
+                  Present { value: slot_key } => if slot_key == "" { RequiredBuildCellLifetimeSampleUndecodable } else {
+                    match fields.skip(n: 2).first() {
+                      Absent => RequiredBuildCellLifetimeSampleUndecodable
+                      Present { value: payload } => if payload == "" { RequiredBuildCellLifetimeSampleUndecodable } else {
+                        match fields.skip(n: 4).first() {
+                          Absent => RequiredBuildCellLifetimeSampleUndecodable
+                          Present { value: cell } => if cell == "" { RequiredBuildCellLifetimeSampleUndecodable } else {
+                            match fields.skip(n: 6).first() {
+                              Absent => RequiredBuildCellLifetimeSampleUndecodable
+                              Present { value: boundary } => if boundary == "" { RequiredBuildCellLifetimeSampleUndecodable } else {
+                                RequiredBuildCellLifetimeSampleDecoded {
+                                  sample: RequiredBuildCellLifetimeSample {
+                                    slot_key: slot_key as NonEmptyStr,
+                                    generation: generation,
+                                    reservation_payload: payload as NonEmptyStr,
+                                    reservation_content: reservation_content,
+                                    cell: cell as CellId,
+                                    cell_members_content: members_content,
+                                    resource_boundary_digest: boundary as NonEmptyStr,
+                                  },
+                                }
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+            }
+        }
+    }
+  }
+}
+
+fn required_build_cell_lifetime_verdict(
+  before: RequiredBuildCellLifetimeSample,
+  after: RequiredBuildCellObservation,
+) -> RequiredBuildCellLifetimeVerdict {
+  match after {
+    ReservationAbsent { slot_key: _ } => ReservationLifetimeDependentOnSubmitter { slot_key: before.slot_key }
+    ReservationUnreadable { slot_key: _ } => ReservationLifetimeDependentOnSubmitter { slot_key: before.slot_key }
+    RequiredBuildCellObserved { snapshot: a } =>
+      if before.generation != a.generation {
+        ReservationGenerationChanged { expected_generation: before.generation, observed_generation: a.generation }
+      } else {
+        match compare_content_hash(left: before.reservation_content, right: a.reservation_content) {
+          ContentHashDifferent => ReservationContentChanged { slot_key: before.slot_key }
+          ContentHashCrossFamilyIncomparable => ReservationContentChanged { slot_key: before.slot_key }
+          ContentHashEqual => if before.reservation_payload != a.reservation_payload {
+            ReservationContentChanged { slot_key: before.slot_key }
+          } else {
+            match compare_content_hash(left: before.cell_members_content, right: required_build_cell_members_hash(members: a.cell_members)) {
+              ContentHashDifferent => CellSubstrateChanged { cell: before.cell }
+              ContentHashCrossFamilyIncomparable => CellSubstrateChanged { cell: before.cell }
+              ContentHashEqual => if before.resource_boundary_digest != a.resource_boundary_digest {
+                CellSubstrateChanged { cell: before.cell }
+              } else { RequiredBuildCellLifetimeHeld { snapshot: a } }
+            }
+          }
+        }
+      }
+    ReservationPayloadUndecodable { slot_key: _ } => RequiredBuildCellObservationRefused
+    ReservationPayloadWorkMismatch { slot_key: _ } => RequiredBuildCellObservationRefused
+    SelectedOfferCellMismatch { slot_key: _, executor: _ } => RequiredBuildCellObservationRefused
+    CellSubstrateNotConverged { cell: _ } => RequiredBuildCellObservationRefused
+    UnownedCell { cell: _ } => RequiredBuildCellObservationRefused
+  }
+}
