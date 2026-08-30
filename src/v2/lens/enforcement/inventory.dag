@@ -1,5 +1,7 @@
 module v2.lens.enforcement.inventory
 
+import std.witness_admission { WitnessConsumerCadence, OfflineLocalRecipe }
+
 data lens_enforcement_inventory_authority_note: String = "Phase 0B derived inventory (operator acceptance 2026-08-02): every row is computed from lens_contract_registry, standing_intent_registry, enrollment discovery receipts, and witness-admission cadence facts — never stored, never a parallel ledger (#7664 bare-minimum-computation ruling). Bidirectional reconciliation: one inventory row per registry contract, no orphan rows. Unbound and inert lenses stay visible. Support status lives on LensEnforcementApplication, not on the lens id — Cost may be Supported on its bound consumer application and Unsupported on complexity.repo-wide in the same inventory. evaluated_scope is typed absent until Phase 1 execution receipts exist; required_scope and claimed_scope are reported separately."
 
 type LensExecutionCadence
