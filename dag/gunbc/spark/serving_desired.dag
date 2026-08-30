@@ -6,7 +6,13 @@ import product.placement_supply { HostIdentity }
 import gunbc.spark.cell_role { spark_serving_cell_hosts }
 import gunbc.ollama_runtime_bundle { ollama_runtime_materialization_identity_for_required_release }
 import gunbc.model_artifact { ModelArtifact, model_artifact_from_resolution }
-import gunbc.ollama_model_resolution { gpt_oss_20b_resolution }
+import gunbc.ollama_model_resolution { gpt_oss_120b_resolution }
+import gunbc.spark.serving_memory_reserve {
+  ServingContextAdmission,
+  ServingContextAdmitted,
+  ServingContextRefused,
+  spark_serving_context_admission,
+}
 import extdeps.ollama.api {
   OllamaModelRef,
 
@@ -26,7 +32,7 @@ import extdeps.ollama.capability {
   OllamaPlatformSupportUnobserved,
   OllamaPlatformSupportUncatalogued,
   ollama_runtime_model_compatibility_verdict,
-  ollama_gpt_oss_20b_model_ref,
+  ollama_gpt_oss_120b_model_ref,
 }
 import gunbc.spark.serving_release {
   SparkServingRelease,
@@ -64,7 +70,7 @@ import gunbc.spark.serving_realization {
 // one list read in two directions.
 data spark_serving_desired_hosts: List<HostIdentity> = spark_serving_cell_hosts()
 
-data spark_serving_desired_note: String = "OPERATOR DECLARATION (2026-08-12): LAN boundary, ollama runtime, gpt-oss:20b model, executor-owned serving process under gunbc-automation. Runtime closure identity derives from extdeps.ollama.binary_release cited digest — materialization binds through gunbc.package_delivery (#8225), not a parallel install path. Model identity is the manifest digest from /api/tags, not the serving label."
+data spark_serving_desired_note: String = "OPERATOR DECLARATION (2026-08-12): LAN boundary, ollama runtime, gpt-oss:120b model (SPARK-PAIR-0 P1, 2026-08-30; was gpt-oss:20b), executor-owned serving process under gunbc-automation. Runtime closure identity derives from extdeps.ollama.binary_release cited digest — materialization binds through gunbc.package_delivery (#8225), not a parallel install path. Model identity is the manifest digest from /api/tags, not the serving label."
 
 
 
@@ -104,7 +110,7 @@ fn spark_serving_local_api_version_url() -> String {
 
 data spark_serving_desired_endpoint_intent: ServingEndpointIntent = UnauthenticatedEndpoint
 
-data spark_serving_desired_model_ref: OllamaModelRef = ollama_gpt_oss_20b_model_ref
+data spark_serving_desired_model_ref: OllamaModelRef = ollama_gpt_oss_120b_model_ref
 
 // DESIRED MODEL IDENTITY IS A RESOLUTION, NOT A LITERAL.
 //
@@ -137,7 +143,7 @@ type SparkServingDesiredAdmission
 fn spark_serving_desired_model_artifact() -> ModelArtifact {
   model_artifact_from_resolution(
     publisher: "ollama" as NonEmptyStr,
-    resolution: gpt_oss_20b_resolution(),
+    resolution: gpt_oss_120b_resolution(),
   )
 }
 
@@ -180,14 +186,62 @@ fn spark_serving_occurrence(host: HostIdentity, serving_release: SparkServingRel
   }
 }
 
+// THE MEMORY GATE IS APPLIED HERE BECAUSE THIS IS WHERE THE FACTS MEET. Release admission above
+// answers "can this runtime run this model on this architecture" -- a question about the platform,
+// with no host and no window in it. Whether a host can hold this model AT THE CONFIGURED WINDOW is
+// a different question with a different denominator, and it is per-host: two Sparks with identical
+// specifications are still two machines, and gunbc.ci.ci_floor_measurement's HostUsableRam split
+// exists because borrowing one host's memory reading for another is how a budget's arithmetic stays
+// correct while its premise is fabricated.
+//
+// So a host reaches SparkServingFleetDesiredReady only if a wet observation covers its exact
+// (host, model, context) triple with headroom clearing the declared reserve. This is the wiring that
+// makes the gate causal rather than a lens nobody reads: switching the desired model to something
+// unmeasured, or widening the window past what was measured, refuses the fleet's desired state
+// outright instead of planning a converge against an affordability nobody established.
+fn spark_serving_host_context_admission(host: HostIdentity) -> ServingContextAdmission {
+  spark_serving_context_admission(
+    host: host,
+    model: spark_serving_desired_model_ref,
+    context: spark_serving_desired_context_length,
+  )
+}
+
+fn spark_serving_host_context_is_refused(host: HostIdentity) -> Bool {
+  match spark_serving_host_context_admission(host: host) {
+    ServingContextAdmitted { observation: _, headroom: _ } => false
+    ServingContextRefused { cause: _ } => true
+  }
+}
+
+// The refused host is carried forward rather than its cause, so the cause is read off the admission
+// itself at the end. Mapping to a cause first would have needed a stand-in value for the admitted
+// arm -- a placeholder that exists only to be discarded, which is how a sum type gets flattened into
+// a sentinel nobody checks.
+fn spark_serving_first_context_refusal(hosts: List<HostIdentity>) -> NonEmptyStr? {
+  match hosts |> filter(h => spark_serving_host_context_is_refused(host: h)) |> first {
+    Absent => none
+    Present { value: h } =>
+      match spark_serving_host_context_admission(host: h) {
+        ServingContextAdmitted { observation: _, headroom: _ } => none
+        ServingContextRefused { cause: c } => Present { value: c }
+      }
+  }
+}
+
 fn spark_serving_fleet_desired_from_admission() -> SparkServingFleetDesired {
   match spark_serving_desired_admission {
     SparkServingDesiredAdmitted { serving_release: r } =>
-      SparkServingFleetDesiredReady {
-        occurrences: map(
-          spark_serving_desired_hosts,
-          h => spark_serving_occurrence(host: h, serving_release: r),
-        ),
+      match spark_serving_first_context_refusal(hosts: spark_serving_desired_hosts) {
+        Present { value: cause } =>
+          SparkServingFleetDesiredRefused { cause: cause }
+        Absent =>
+          SparkServingFleetDesiredReady {
+            occurrences: map(
+              spark_serving_desired_hosts,
+              h => spark_serving_occurrence(host: h, serving_release: r),
+            ),
+          }
       }
     SparkServingDesiredRefused { cause: c } =>
       SparkServingFleetDesiredRefused { cause: c }
@@ -211,12 +265,25 @@ fn spark_serving_desired_launch_profile() -> OllamaServingLaunchProfile {
 // live window 16x on the first converge, as a side effect of a repair whose subject was causality
 // and not capacity.
 //
-// 131072 is SELECTED here, and the wet observation is its EVIDENCE, not its source: both hosts were
-// read reporting `context_length: 131072` from the Ollama /api/ps surface, which establishes that
-// this value preserves what the running service already exposes. Observed state does not silently
-// become desired state -- an operator chose this number and the reading is why it is defensible. A
-// smaller window remains writable, and a larger one than the model declares is a real request the
-// runtime is free to refuse.
+// 131072 is SELECTED here, and the wet observation is its EVIDENCE, not its source. Observed state
+// does not silently become desired state -- an operator chose this number and the reading is why it
+// is defensible. A smaller window remains writable, and a larger one than the model declares is a
+// real request the runtime is free to refuse.
+//
+// THE EVIDENCE WAS REPLACED WHEN THE MODEL WAS (SPARK-PAIR-0 P1, 2026-08-30), and this is the part
+// worth stating plainly because the tempting edit was to leave it alone. The reading that justified
+// 131072 was an /api/ps observation taken against gpt-oss:20b. The number under P1 is unchanged, so
+// nothing about this line would have looked stale -- but the model beneath it grew roughly five
+// times, and a window affordable over 21 GB of weights is not thereby affordable over 65 GB. An
+// unchanged value with a receipt about a different subject is exactly the silent carry-forward the
+// ruling forbids: not necessarily a wrong number, but one whose warrant had quietly stopped
+// applying to it.
+//
+// So the warrant is no longer prose at all. gunbc.spark.serving_memory_reserve holds a wet
+// observation keyed on the (host, model, context) TRIPLE, and spark_serving_fleet_desired_from_admission
+// refuses any host that triple does not cover. This value is admitted by a lookup that can miss
+// rather than by a sentence that can go stale -- which is why the number below is safe to leave
+// standing while everything under it changed.
 data spark_serving_desired_context_length: TokenCount = token_count(count: 131072)
 
 // The unit's window is DERIVED from the serving policy rather than authored beside it. This is the

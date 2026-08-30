@@ -1,0 +1,173 @@
+module gunbc.spark.serving_memory_reserve
+
+import std.types { List, Bool, NonEmptyStr, String }
+import std.measure { ByteSize, byte_size, byte_size_count, TokenCount, token_count, token_count_value }
+import product.placement_supply { HostIdentity, host_identity_eq }
+import extdeps.ollama.api { OllamaModelRef, ollama_model_ref_wire }
+import gunbc.fleet_intent_network { operator_host_srv5 }
+import std.content_hash { Sha256DigestHex }
+
+// WHY A CONTEXT WINDOW NEEDS A GATE AND NOT A JUSTIFICATION.
+//
+// gunbc.spark.serving_desired selects 131072 tokens. Under SPARK-PAIR-0 P1 the model underneath
+// that number changes from gpt-oss:20b to gpt-oss:120b -- roughly five times the weights -- and the
+// evidence standing beside the selection was an /api/ps reading taken against the 20B. A window
+// that was affordable over 21 GB of weights is not thereby affordable over 65 GB, so leaving the
+// number in place with its old receipt would be the carry-forward the ruling forbids: not a wrong
+// value necessarily, but a value whose warrant is about a different subject.
+//
+// So admission is keyed on the TRIPLE (host, model, context). An observation admits the exact
+// combination it was taken under and nothing else. Changing the desired model, the desired window,
+// or the host moves the desired state to a combination no observation covers, and this module
+// REFUSES rather than reasoning by proximity -- which is the whole content of "must not silently
+// carry forward", expressed as a lookup that can miss instead of a sentence that can go stale.
+
+// THE FOOTPRINT IS THE MEMAVAILABLE DELTA, NOT THE SIZE THE RUNTIME REPORTS, and this is the
+// finding that makes the gate worth executing rather than deriving. Ollama's /api/ps reported
+// size 65192916418 for the loaded 120B; the host's MemAvailable fell by 73773551616 across the
+// same load -- about 8.6 GB more. The reported figure is the runtime's account of the weights it
+// mapped, and it does not include the allocator, the KV arena at the configured window, or the
+// compute buffers, all of which are real occupancy on a unified-memory part where there is no
+// separate VRAM pool to hide them in.
+//
+// A reserve computed from the reported size would therefore have understated the cost by that
+// margin, in the optimistic direction, on the one axis where being wrong optimistically is how a
+// host gets OOM-killed. Both numbers are carried below because the GAP is the evidence: a future
+// reader who trusts size_vram needs to see it refuted rather than be told not to.
+type ServingMemoryReserveObservation {
+  host: HostIdentity
+  model: OllamaModelRef
+  model_digest: Sha256DigestHex
+  observed_at: NonEmptyStr
+  configured_context: TokenCount
+  mem_total: ByteSize
+  mem_available_before: ByteSize
+  mem_available_after: ByteSize
+  runtime_reported_size: ByteSize
+}
+
+// The measured cost of holding this model at this window: what the host had, minus what it kept.
+fn serving_memory_reserve_measured_footprint(obs: ServingMemoryReserveObservation) -> ByteSize {
+  let before = byte_size_count(b: obs.mem_available_before)
+  let after = byte_size_count(b: obs.mem_available_after)
+  if before > after { byte_size(before - after) } else { byte_size(0) }
+}
+
+// What remains available to the host with the model resident. This is the quantity the policy
+// budget is spent against -- not MemTotal, and not MemTotal minus the weights.
+fn serving_memory_reserve_headroom(obs: ServingMemoryReserveObservation) -> ByteSize {
+  obs.mem_available_after
+}
+
+// True exactly when the runtime's own size understates the measured footprint, which is the
+// condition this module exists to keep visible. Enrolled as a claim rather than asserted in prose.
+fn serving_memory_reserve_runtime_size_understates(obs: ServingMemoryReserveObservation) -> Bool {
+  byte_size_count(b: serving_memory_reserve_measured_footprint(obs: obs))
+    > byte_size_count(b: obs.runtime_reported_size)
+}
+
+// THE RESERVE IS A DECLARED POLICY BUDGET, AND IS LABELLED AS ONE. It is not a measurement and
+// must never be reported as one (the HostFixedOverhead three-arm split in gunbc.ci
+// .ci_floor_measurement is the receipt for why that distinction is worth carrying explicitly).
+//
+// Its basis IS measured, which is a different claim: on srv5 with nothing loaded, MemTotal minus
+// MemAvailable was about 2.85 GiB of genuinely resident operating system. 8 GiB is that floor with
+// room for the unmodeled -- a login session, a converge run, an operator's shell -- chosen by an
+// operator rather than derived, because "how much slack a serving host should keep" is a judgement
+// about intended use and not a property of the hardware.
+data spark_serving_memory_reserve_minimum: ByteSize = byte_size(8589934592)
+
+type ServingContextAdmission
+  = ServingContextAdmitted {
+      observation: ServingMemoryReserveObservation
+      headroom: ByteSize
+    }
+  | ServingContextRefused { cause: NonEmptyStr }
+
+fn serving_memory_reserve_observation_covers(
+  obs: ServingMemoryReserveObservation,
+  host: HostIdentity,
+  model: OllamaModelRef,
+  context: TokenCount,
+) -> Bool {
+  host_identity_eq(a: obs.host, b: host)
+    && obs.model.name == model.name
+    && obs.model.tag == model.tag
+    && token_count_value(t: obs.configured_context) == token_count_value(t: context)
+}
+
+// THE WET RECEIPT. Every field is a reading taken on the host named, in one uninterrupted probe:
+// /proc/meminfo before, one generate call pinning options.num_ctx, /proc/meminfo and /api/ps after.
+// The digest is carried so that the observation cannot outlive the bytes it was taken against --
+// if upstream republishes the tag, this row stops covering the desired model and admission refuses,
+// rather than vouching for weights nobody measured.
+data spark_serving_memory_reserve_observations: List<ServingMemoryReserveObservation> = [
+  ServingMemoryReserveObservation {
+    host: operator_host_srv5,
+    model: OllamaModelRef {
+      name: "gpt-oss" as NonEmptyStr,
+      tag: "120b" as NonEmptyStr,
+    },
+    model_digest: "a951a23b46a1f6093dafee2ea481d634b4e31ac720a8a16f3f91e04f5a40ecd9" as Sha256DigestHex,
+    observed_at: "2026-08-30T13:46Z" as NonEmptyStr,
+    configured_context: token_count(count: 131072),
+    mem_total: byte_size(130663231488),
+    mem_available_before: byte_size(127606288384),
+    mem_available_after: byte_size(53832736768),
+    runtime_reported_size: byte_size(65192916418),
+  },
+]
+
+fn serving_memory_reserve_lookup(
+  host: HostIdentity,
+  model: OllamaModelRef,
+  context: TokenCount,
+) -> ServingMemoryReserveObservation? {
+  let hits = spark_serving_memory_reserve_observations |> filter(o =>
+    serving_memory_reserve_observation_covers(obs: o, host: host, model: model, context: context))
+  hits.first()
+}
+
+// The gate. Three refusals, each naming what it could not establish -- never one verdict the caller
+// has to re-interpret, and never a pass derived from an observation of something else.
+fn spark_serving_context_admission(
+  host: HostIdentity,
+  model: OllamaModelRef,
+  context: TokenCount,
+) -> ServingContextAdmission {
+  match serving_memory_reserve_lookup(host: host, model: model, context: context) {
+    Absent =>
+      ServingContextRefused {
+        cause: join([
+          "no wet memory-reserve observation covers host ",
+          host as String,
+          " model ",
+          ollama_model_ref_wire(ref: model),
+          " at the configured context; take one before serving this combination",
+        ], "") as NonEmptyStr,
+      }
+    Present { value: obs } =>
+      if byte_size_count(b: serving_memory_reserve_headroom(obs: obs))
+        >= byte_size_count(b: spark_serving_memory_reserve_minimum) {
+        ServingContextAdmitted {
+          observation: obs,
+          headroom: serving_memory_reserve_headroom(obs: obs),
+        }
+      } else {
+        ServingContextRefused {
+          cause: join([
+            "wet observation for ",
+            ollama_model_ref_wire(ref: model),
+            " leaves less headroom than the declared serving reserve",
+          ], "") as NonEmptyStr,
+        }
+      }
+  }
+}
+
+fn serving_context_admission_is_admitted(a: ServingContextAdmission) -> Bool {
+  match a {
+    ServingContextAdmitted { observation: _, headroom: _ } => true
+    ServingContextRefused { cause: _ } => false
+  }
+}

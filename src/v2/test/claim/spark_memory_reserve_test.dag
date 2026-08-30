@@ -1,0 +1,120 @@
+module v2.test.claim.spark_memory_reserve
+
+import std.types { Bool, NonEmptyStr }
+import std.measure { byte_size_count, token_count }
+import extdeps.ollama.api { OllamaModelRef }
+import gunbc.fleet_intent_network { operator_host_srv5, operator_host_srv6 }
+import gunbc.spark.serving_desired {
+  spark_serving_fleet_desired,
+  SparkServingFleetDesiredReady,
+  SparkServingFleetDesiredRefused,
+}
+import gunbc.spark.serving_memory_reserve {
+  spark_serving_context_admission,
+  serving_context_admission_is_admitted,
+  serving_memory_reserve_measured_footprint,
+  serving_memory_reserve_runtime_size_understates,
+  serving_memory_reserve_lookup,
+  spark_serving_memory_reserve_observations,
+  spark_serving_memory_reserve_minimum,
+}
+
+fn desired_120b() -> OllamaModelRef {
+  OllamaModelRef { name: "gpt-oss" as NonEmptyStr, tag: "120b" as NonEmptyStr }
+}
+
+fn the_20b() -> OllamaModelRef {
+  OllamaModelRef { name: "gpt-oss" as NonEmptyStr, tag: "20b" as NonEmptyStr }
+}
+
+test fn w_the_measured_triple_is_admitted() -> Bool {
+  serving_context_admission_is_admitted(
+    a: spark_serving_context_admission(
+      host: operator_host_srv5,
+      model: desired_120b(),
+      context: token_count(count: 131072),
+    ))
+}
+
+test fn w_a_larger_window_than_was_measured_refuses() -> Bool {
+  !serving_context_admission_is_admitted(
+    a: spark_serving_context_admission(
+      host: operator_host_srv5,
+      model: desired_120b(),
+      context: token_count(count: 262144),
+    ))
+}
+
+test fn w_a_window_nobody_measured_refuses_even_though_it_is_smaller() -> Bool {
+  !serving_context_admission_is_admitted(
+    a: spark_serving_context_admission(
+      host: operator_host_srv5,
+      model: desired_120b(),
+      context: token_count(count: 65536),
+    ))
+}
+
+test fn w_the_other_model_at_the_same_window_refuses() -> Bool {
+  !serving_context_admission_is_admitted(
+    a: spark_serving_context_admission(
+      host: operator_host_srv5,
+      model: the_20b(),
+      context: token_count(count: 131072),
+    ))
+}
+
+test fn w_the_other_host_refuses_rather_than_borrowing_srv5s_reading() -> Bool {
+  !serving_context_admission_is_admitted(
+    a: spark_serving_context_admission(
+      host: operator_host_srv6,
+      model: desired_120b(),
+      context: token_count(count: 131072),
+    ))
+}
+
+test fn w_the_runtime_reported_size_understates_the_measured_footprint() -> Bool {
+  match serving_memory_reserve_lookup(
+    host: operator_host_srv5,
+    model: desired_120b(),
+    context: token_count(count: 131072),
+  ) {
+    Absent => false
+    Present { value: o } => serving_memory_reserve_runtime_size_understates(obs: o)
+  }
+}
+
+test fn w_the_measured_footprint_exceeds_the_reported_size_by_over_eight_gigabytes() -> Bool {
+  match serving_memory_reserve_lookup(
+    host: operator_host_srv5,
+    model: desired_120b(),
+    context: token_count(count: 131072),
+  ) {
+    Absent => false
+    Present { value: o } =>
+      (byte_size_count(b: serving_memory_reserve_measured_footprint(obs: o)) - byte_size_count(b: o.runtime_reported_size)) > 8000000000
+  }
+}
+
+test fn w_the_measured_headroom_clears_the_declared_reserve() -> Bool {
+  match serving_memory_reserve_lookup(
+    host: operator_host_srv5,
+    model: desired_120b(),
+    context: token_count(count: 131072),
+  ) {
+    Absent => false
+    Present { value: o } =>
+      byte_size_count(b: o.mem_available_after)
+        > byte_size_count(b: spark_serving_memory_reserve_minimum)
+  }
+}
+
+test fn w_exactly_one_wet_observation_stands_today() -> Bool {
+  spark_serving_memory_reserve_observations |> count == 1
+}
+
+test fn w_the_fleet_desired_state_is_ready_under_the_admitted_triple() -> Bool {
+  match spark_serving_fleet_desired {
+    SparkServingFleetDesiredReady { occurrences: os } => (os |> count) > 0
+    SparkServingFleetDesiredRefused { cause: _ } => false
+  }
+}
