@@ -3065,6 +3065,7 @@ fn convergence_plan_from_model(
     generation_modules: &BTreeSet<String>,
     bootstrap_sources: &BTreeSet<String>,
     bootstrap_products: &BTreeSet<String>,
+    affected_bound: &RegenEmissionScope,
 ) -> Result<(String, Vec<String>), String> {
     use crate::v1_interpreter::{self, str_value, ExecutionMode, Value};
     let entry = source_roots
@@ -3148,6 +3149,69 @@ fn convergence_plan_from_model(
             }
         })
         .collect::<Vec<_>>();
+    let strings = |items: &[String]| {
+        Value::List(Rc::new(
+            items
+                .iter()
+                .map(|item| str_value(item))
+                .collect::<Vec<_>>()
+                .into(),
+        ))
+    };
+    let changed_value = Value::List(Rc::new(changed.into()));
+    let bound_value = match affected_bound {
+        RegenEmissionScope::WholePopulation => Value::Variant {
+            type_name: ctx.sym("RegenAffectedBound"),
+            variant_name: ctx.sym("CompleteCandidatePopulation"),
+            fields: Rc::new(vec![]),
+        },
+        RegenEmissionScope::Affected { members } => Value::Variant {
+            type_name: ctx.sym("RegenAffectedBound"),
+            variant_name: ctx.sym("AffectedCandidatePopulation"),
+            fields: Rc::new(vec![(ctx.sym("projected_paths"), strings(members))]),
+        },
+        RegenEmissionScope::Unlocatable { reason, .. } => Value::Variant {
+            type_name: ctx.sym("RegenAffectedBound"),
+            variant_name: ctx.sym("AffectedCandidatePopulationRefused"),
+            fields: Rc::new(vec![(ctx.sym("reason"), str_value(reason))]),
+        },
+    };
+    let bound_args = vec![
+        (Some("bound".to_string()), bound_value),
+        (Some("changed".to_string()), changed_value.clone()),
+    ];
+    let bound_admission = v1_interpreter::with_active_context(&ctx, || {
+        v1_interpreter::run_in_context_with_args(
+            &ctx,
+            "regen_admit_affected_bound",
+            &bound_args,
+            false,
+        )
+    })
+    .map_err(|e| format!("refusal: affected bound admission did not answer: {e}"))?;
+    let bound_label = v1_interpreter::with_active_context(&ctx, || {
+        v1_interpreter::run_in_context_with_args(
+            &ctx,
+            "regen_affected_bound_admission_label",
+            &[(Some("admission".to_string()), bound_admission)],
+            false,
+        )
+    })
+    .map_err(|e| format!("refusal: affected bound admission projection failed: {e}"))?;
+    match bound_label {
+        Value::Str(label) if label.as_ref() == "Admitted" => {}
+        Value::Str(label) => {
+            return Err(format!(
+                "affected-set bound and convergence stage population disagree: {label}"
+            ))
+        }
+        other => {
+            return Err(format!(
+                "refusal: affected bound admission returned {}",
+                other.type_label_public()
+            ))
+        }
+    }
     let args = vec![
         (Some("ordinal".to_string()), Value::Int(ordinal as i64)),
         (
@@ -3162,10 +3226,7 @@ fn convergence_plan_from_model(
             Some("candidate_tree_digest".to_string()),
             str_value(candidate_tree_digest),
         ),
-        (
-            Some("changed".to_string()),
-            Value::List(Rc::new(changed.into())),
-        ),
+        (Some("changed".to_string()), changed_value),
         (
             Some("build_target".to_string()),
             str_value("claim_executor"),
@@ -3397,6 +3458,7 @@ pub fn run_regen_round_cost(
             &generation_modules,
             &bootstrap_sources,
             &bootstrap_products,
+            &scope,
         )?;
         let stage_kind = match kind.as_str() {
             "PromoteGenerationInputs" => RegenConvergenceStageKindReceipt::PromoteGenerationInputs,

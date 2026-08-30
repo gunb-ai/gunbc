@@ -6,6 +6,13 @@ import v2.workflow.regen_convergence_transaction {
   RegenSurfaceIdentity,
   RegenCandidateIdentity,
   RegenChangedSurface,
+  CompleteCandidatePopulation,
+  AffectedCandidatePopulation,
+  AffectedCandidatePopulationRefused,
+  RegenAffectedBoundAdmitted,
+  RegenAffectedBoundRefused,
+  AffectedSetBoundRefused,
+  AffectedSetStagePopulationDisagrees,
   RegenGenerationRole,
   RegenSeedMembership,
   RegenStageKind,
@@ -42,7 +49,40 @@ import v2.workflow.regen_convergence_transaction {
   GenerationCycleDetected,
   GenerationBoundExceeded,
   regen_admit_stage_execution,
-  regen_plan_stage
+  regen_plan_stage,
+  regen_admit_affected_bound
+}
+
+test fn affected_bound_refusal_cannot_widen_into_stage_planning() -> Bool {
+  match regen_admit_affected_bound(
+    bound: AffectedCandidatePopulationRefused { reason: "edited module unlocatable" },
+    changed: []
+  ) {
+    RegenAffectedBoundRefused { refusal: AffectedSetBoundRefused { reason: _ } } => true
+    _ => false
+  }
+}
+
+test fn stage_population_outside_the_affected_bound_refuses() -> Bool {
+  let inside = fixture_surface(module: "compiler.inside", path: "inside.rs", role: GenerationInput, seed: SeedEmbedded)
+  let outside = fixture_surface(module: "compiler.outside", path: "outside.rs", role: GenerationInput, seed: SeedEmbedded)
+  match regen_admit_affected_bound(
+    bound: AffectedCandidatePopulation { projected_paths: ["inside.rs"] },
+    changed: [inside, outside]
+  ) {
+    RegenAffectedBoundRefused {
+      refusal: AffectedSetStagePopulationDisagrees { changed: changed, outside_bound: outside_bound }
+    } => count(changed) == 2 && count(outside_bound) == 1
+    _ => false
+  }
+}
+
+test fn whole_population_bound_admits_the_observed_stage_population() -> Bool {
+  let row = fixture_surface(module: "compiler.any", path: "any.rs", role: GenerationInput, seed: SeedEmbedded)
+  match regen_admit_affected_bound(bound: CompleteCandidatePopulation, changed: [row]) {
+    RegenAffectedBoundAdmitted => true
+    _ => false
+  }
 }
 
 test fn repeated_seed_and_candidate_state_is_a_cycle_refusal() -> Bool {

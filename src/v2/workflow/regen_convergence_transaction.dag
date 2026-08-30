@@ -37,6 +37,18 @@ type RegenChangedSurface {
   candidate: RegenCandidateIdentity
 }
 
+// The affected-set authority answers before stage planning. A whole-population run and a
+// narrowed run are distinct admitted inputs; an unlocatable edit is a refusal, never permission
+// to widen. The narrowed member list names the maximum population staging may observe.
+type RegenAffectedBound
+  = CompleteCandidatePopulation
+  | AffectedCandidatePopulation { projected_paths: List<String> }
+  | AffectedCandidatePopulationRefused { reason: String }
+
+type RegenAffectedBoundAdmission
+  = RegenAffectedBoundAdmitted
+  | RegenAffectedBoundRefused { refusal: RegenConvergenceRefusal }
+
 type RegenStageKind
   = PromoteGenerationInputs
   | InstallSeedCompatibilityCut
@@ -87,6 +99,53 @@ type RegenConvergenceRefusal
   | FinalRegenerationStillDrifts { surfaces: List<RegenSurfaceIdentity> }
   | FinalRustConsistencyInstrumentRefused { reason: String }
   | TransactionRestoreRefused { reason: String }
+  | AffectedSetBoundRefused { reason: String }
+  | AffectedSetStagePopulationDisagrees {
+      changed: List<RegenSurfaceIdentity>
+      outside_bound: List<RegenSurfaceIdentity>
+    }
+
+fn regen_affected_bound_lists(bound: RegenAffectedBound, path: String) -> Bool {
+  match bound {
+    CompleteCandidatePopulation => true
+    AffectedCandidatePopulation { projected_paths: paths } => paths |> any(p => p == path)
+    AffectedCandidatePopulationRefused { reason: _ } => false
+  }
+}
+
+fn regen_admit_affected_bound(
+  bound: RegenAffectedBound,
+  changed: List<RegenChangedSurface>
+) -> RegenAffectedBoundAdmission {
+  match bound {
+    AffectedCandidatePopulationRefused { reason: reason } =>
+      RegenAffectedBoundRefused { refusal: AffectedSetBoundRefused { reason: reason } }
+    CompleteCandidatePopulation => RegenAffectedBoundAdmitted
+    AffectedCandidatePopulation { projected_paths: paths } => {
+      let admitted = AffectedCandidatePopulation { projected_paths: paths }
+      let outside = changed
+        |> filter(row => !regen_affected_bound_lists(bound: admitted, path: row.identity.projected_path))
+        |> map(row => row.identity)
+      if count(outside) == 0 {
+        RegenAffectedBoundAdmitted
+      } else {
+        RegenAffectedBoundRefused {
+          refusal: AffectedSetStagePopulationDisagrees {
+            changed: changed |> map(row => row.identity),
+            outside_bound: outside
+          }
+        }
+      }
+    }
+  }
+}
+
+fn regen_affected_bound_admission_label(admission: RegenAffectedBoundAdmission) -> String {
+  match admission {
+    RegenAffectedBoundAdmitted => "Admitted"
+    RegenAffectedBoundRefused { refusal: _ } => "Refused"
+  }
+}
 
 type RegenStagePlanOutcome
   = RegenStagePlanned { stage: RegenStagePlan }
