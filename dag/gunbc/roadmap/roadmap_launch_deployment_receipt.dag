@@ -1,0 +1,687 @@
+module gunbc.roadmap_launch_deployment_receipt
+
+import std.types { String, Bool, NonEmptyStr, Int, List }
+import std.content_hash { content_hash_atom, content_hash_tagged_structural }
+import extdeps.languages.json.emit { JsonValue, json_kv, json_string, json_object, json_array, json_bool, serialize_json }
+import gunbc.actions_run_binding { ActionsRunBinding, run_binding_names_workflow_file }
+import gunbc.fleet_converge_receipt {
+  FleetConvergePlanReceipt, FleetConvergeApplyReceipt,
+  fleet_converge_plan_receipt_identity_hex, fleet_converge_apply_receipt_identity_hex,
+}
+import gunbc.live_deploy.apply_receipt {
+  LiveDeployApplyReceipt, DecisionProceed, DecisionTerminalNoOp, DecisionRefused,
+  LiveDeployApplyConverged, LiveDeployApplyNotConverged,
+  LiveDeployReadinessObserved, LiveDeployReadinessRefused,
+  live_deploy_apply_receipt_identity_hex,
+}
+import gunbc.live_deploy.deployed_tree_observation {
+  DeployedRootTreeStanding, DeployedRootTreeMatches, DeployedRootTreeMismatch, DeployedRootTreeScopeDiverged, DeployedRootTreeUnobserved,
+  deployed_root_tree_standing_text,
+}
+import gunbc.live_deploy.release_binding {
+  DeployedReleaseBinding, ReleaseBoundToTree, ReleaseMixed, ReleaseSurfaceMixed, ReleaseBindingUnobserved,
+  release_binding_line,
+}
+import extdeps.git.object_store { git_object_id_wire_hex }
+import gunbc.deploy_transition { ActuationStanding, ActuationPermitted, ActuationInhibited, ActuationStandingUnreadable }
+import gunbc.live_deploy.unit_standing { LaunchUnitStanding, launch_unit_standing_holds, launch_unit_standing_text }
+import gunbc.roadmap_belt_actuate {
+  BeltTickReceipt, BeltTickReceiptRead, BeltTickReceiptPresent, BeltTickReceiptAbsent, BeltTickReceiptUnreadable,
+  TickExecuted, TickExecutionWithheld, belt_tick_receipt_identity_hex,
+  BeltFootprintAdmission, FootprintAdmitted, FootprintRefused,
+  BeltProviderPreflight, ProviderPreflightOk, ProviderPreflightRefused,
+}
+import gunbc.roadmap_belt { SpawnMode, ManualReady, spawn_mode_label }
+import gunbc.roadmap_launch_deployment_observe {
+  TickFreshness, TickFresh, TickStale, TickBeforeDeploy, TickInstantUnparseable, tick_freshness_text,
+}
+
+data roadmap_launch_deployment_receipt_note: String = "THE ONE JOIN THE ROADMAP LAUNCH MVP'S RLM-2 GATE PRODUCES. Every independent read RUNS -- desired revision, plan receipt, apply receipt, dashboard receipt, deployed root tree, release binding, readiness, transition, unit standing, tick standing, footprint, provider preflight, dispatch preflight, the three public routes, the effective principal, the observed host, and the observation window -- and the fact population is TOTAL: each member is a typed standing with its own refusal arms, none is optional, and the verdict fold consults all of them before deciding. The ruling (docs/plans/roadmap-launch-mvp-plan.md, RLM-2 sections 3 and 9) rejected the earlier `Complete | Incomplete { first blocking member }` because it discarded sibling evidence after the first refusal and made diagnosis depend on evaluation order; here `first_blocker` is a presentation projection over a nonempty blocker list, and `further_blockers` is the rest of that list.\n\nDeploymentComplete CANNOT BE AUTHORED. Its `proof` member is a sole_constructor record declared in this module, so no other module can write the literal; the only producer is roadmap_launch_deployment_verdict, which builds the proof exactly when the blocker fold is empty. A witness that wants a Complete verdict must hand the fold a fact population the fold accepts -- which is what the red controls do, one substituted member at a time.\n\nEVERY EQUALITY IS AGAINST THE SUBJECT, not against a sibling fact: R, the candidate tree, the host, the active instance, the four run ids and the service principal are fixed in the subject FIRST (from the operator's inputs and this run's own binding), and each fact is then held to them. Facts are never compared to each other where the subject can stand between them, so a coincidence between two wrong facts cannot green the join."
+
+// ---------------------------------------------------------------- subject
+
+type RoadmapLaunchDeploymentSubject {
+  rlm1_merge_commit: String
+  rlm1_contract_digest: String
+  revision: String
+  candidate_tree_oid: String
+  host: String
+  active_instance: String
+  service_principal: String
+  repository: String
+  workflow_path: String
+  plan_run_id: String
+  apply_run_id: String
+  dashboard_run_id: String
+  receipt_run_id: String
+}
+
+// ---------------------------------------------------------------- facts
+
+type DesiredRevisionFact
+  = DesiredRevisionObserved { main_hex: String, desired_hex: String }
+  | DesiredRevisionUnobserved { detail: String }
+
+type PlanReceiptFact
+  = PlanReceiptRead { receipt: FleetConvergePlanReceipt }
+  | PlanReceiptUnreadable { reason: String }
+
+type ApplyReceiptFact
+  = ApplyReceiptRead { receipt: FleetConvergeApplyReceipt }
+  | ApplyReceiptUnreadable { reason: String }
+
+type DashboardReceiptFact
+  = DashboardReceiptRead { receipt: LiveDeployApplyReceipt }
+  | DashboardReceiptUnreadable { reason: String }
+
+type ReadinessFact
+  = ReadinessServed { revision: String, surface: String }
+  | ReadinessRefused { detail: String }
+
+type TickFact
+  = TickObserved { receipt: BeltTickReceipt, freshness: TickFreshness }
+  | TickUnobserved { detail: String }
+
+type DispatchPreflightFact
+  = DispatchPreflightAdmittedFact { instance_id: String, revision_hex: String }
+  | DispatchPreflightRefusedFact { refused_axis_count: Int, detail: String }
+
+type WorkflowEndpointFact
+  = WorkflowServedFact { observe_refused: Bool, tick: BeltTickReceiptRead }
+  | WorkflowRefusedFact { detail: String }
+
+type InstanceEndpointFact
+  = InstanceServedFact { instance_id: String, host_identity: String, actuation: String, repo_root: String }
+  | InstanceRefusedFact { detail: String }
+
+type PrincipalFact
+  = PrincipalObserved { name: String }
+  | PrincipalUnobserved { detail: String }
+
+type HostFact
+  = HostObserved { name: String }
+  | HostUnobserved { detail: String }
+
+type WindowSnapshot {
+  main_hex: String
+  desired_hex: String
+  deployed_revision_hex: String
+  deployed_tree_hex: String
+  running_release_hex: String
+  transition: String
+  active_instance: String
+}
+
+type ObservationWindowFact
+  = WindowStable { opened: WindowSnapshot, closed: WindowSnapshot }
+  | WindowChanged { opened: WindowSnapshot, closed: WindowSnapshot, changed: List<String> }
+  | WindowUnobserved { detail: String }
+
+type RoadmapLaunchDeploymentFacts {
+  desired_revision: DesiredRevisionFact
+  plan_receipt: PlanReceiptFact
+  apply_receipt: ApplyReceiptFact
+  dashboard_receipt: DashboardReceiptFact
+  deployed_tree: DeployedRootTreeStanding
+  release_binding: DeployedReleaseBinding
+  readiness: ReadinessFact
+  transition: ActuationStanding
+  unit_standing: LaunchUnitStanding
+  tick_standing: TickFact
+  footprint: BeltFootprintAdmission
+  provider_preflight: BeltProviderPreflight
+  dispatch_preflight: DispatchPreflightFact
+  workflow_endpoint: WorkflowEndpointFact
+  instance_endpoint: InstanceEndpointFact
+  principal: PrincipalFact
+  observed_host: HostFact
+  observation_window: ObservationWindowFact
+}
+
+// ---------------------------------------------------------------- blockers
+
+type RoadmapLaunchDeploymentBlocker {
+  member: String
+  detail: String
+}
+
+fn blocker(member: String, detail: String) -> List<RoadmapLaunchDeploymentBlocker> {
+  [RoadmapLaunchDeploymentBlocker { member: member, detail: detail }]
+}
+
+fn window_snapshot_differences(a: WindowSnapshot, b: WindowSnapshot) -> List<String> {
+  concat(
+    concat(
+      concat(
+        if a.main_hex != b.main_hex { ["main"] } else { [] },
+        if a.desired_hex != b.desired_hex { ["refs/fleet/desired"] } else { [] },
+      ),
+      concat(
+        if a.deployed_revision_hex != b.deployed_revision_hex { ["deployed revision"] } else { [] },
+        if a.deployed_tree_hex != b.deployed_tree_hex { ["deployed tree"] } else { [] },
+      ),
+    ),
+    concat(
+      concat(
+        if a.running_release_hex != b.running_release_hex { ["running release"] } else { [] },
+        if a.transition != b.transition { ["transition standing"] } else { [] },
+      ),
+      if a.active_instance != b.active_instance { ["active instance"] } else { [] },
+    ),
+  )
+}
+
+fn observation_window_fact(opened: WindowSnapshot, closed: WindowSnapshot) -> ObservationWindowFact {
+  let changed = window_snapshot_differences(a: opened, b: closed)
+  if list_length(items: changed) == 0 {
+    WindowStable { opened: opened, closed: closed }
+  } else {
+    WindowChanged { opened: opened, closed: closed, changed: changed }
+  }
+}
+
+fn desired_revision_blockers(s: RoadmapLaunchDeploymentSubject, f: DesiredRevisionFact) -> List<RoadmapLaunchDeploymentBlocker> {
+  match f {
+    DesiredRevisionUnobserved { detail: d } => blocker(member: "desired_revision", detail: d)
+    DesiredRevisionObserved { main_hex: m, desired_hex: d } =>
+      concat(
+        if m != s.revision { blocker(member: "desired_revision", detail: join(["main is ", m, ", not R ", s.revision], "")) } else { [] },
+        if d != s.revision { blocker(member: "desired_revision", detail: join(["refs/fleet/desired is ", d, ", not R ", s.revision], "")) } else { [] },
+      )
+  }
+}
+
+fn run_binding_blockers(member: String, s: RoadmapLaunchDeploymentSubject, run: ActionsRunBinding, expected_run_id: String) -> List<RoadmapLaunchDeploymentBlocker> {
+  concat(
+    concat(
+      if run.run_revision != s.revision { blocker(member: member, detail: join(["run ", run.run_id, " executed at ", run.run_revision, ", not R ", s.revision], "")) } else { [] },
+      if run.run_id != expected_run_id { blocker(member: member, detail: join(["receipt was minted by run ", run.run_id, " but the transaction names run ", expected_run_id], "")) } else { [] },
+    ),
+    concat(
+      if run.repository != s.repository { blocker(member: member, detail: join(["run executed in ", run.repository, ", not ", s.repository], "")) } else { [] },
+      if !run_binding_names_workflow_file(binding: run, workflow_path: s.workflow_path) { blocker(member: member, detail: join(["run workflow ref ", run.workflow_ref, " is not ", s.workflow_path], "")) } else { [] },
+    ),
+  )
+}
+
+fn plan_receipt_blockers(s: RoadmapLaunchDeploymentSubject, f: PlanReceiptFact) -> List<RoadmapLaunchDeploymentBlocker> {
+  match f {
+    PlanReceiptUnreadable { reason: r } => blocker(member: "plan_receipt", detail: r)
+    PlanReceiptRead { receipt: p } =>
+      concat(
+        run_binding_blockers(member: "plan_receipt", s: s, run: p.run, expected_run_id: s.plan_run_id),
+        if p.observed_host != s.host { blocker(member: "plan_receipt", detail: join(["plan observed host ", p.observed_host, ", not ", s.host], "")) } else { [] },
+      )
+  }
+}
+
+fn apply_receipt_blockers(s: RoadmapLaunchDeploymentSubject, plan: PlanReceiptFact, f: ApplyReceiptFact) -> List<RoadmapLaunchDeploymentBlocker> {
+  match f {
+    ApplyReceiptUnreadable { reason: r } => blocker(member: "apply_receipt", detail: r)
+    ApplyReceiptRead { receipt: a } =>
+      concat(
+        concat(
+          run_binding_blockers(member: "apply_receipt", s: s, run: a.run, expected_run_id: s.apply_run_id),
+          concat(
+            if a.plan_run_id != s.plan_run_id { blocker(member: "apply_receipt", detail: join(["apply consumed plan run ", a.plan_run_id, ", not ", s.plan_run_id], "")) } else { [] },
+            if a.observed_host != s.host { blocker(member: "apply_receipt", detail: join(["apply observed host ", a.observed_host, ", not ", s.host], "")) } else { [] },
+          ),
+        ),
+        concat(
+          if a.locked_apply_exit_code != 0 { blocker(member: "apply_receipt", detail: join(["locked apply exited ", to_string(a.locked_apply_exit_code)], "")) } else { [] },
+          match plan {
+            PlanReceiptUnreadable { reason: _ } => []
+            PlanReceiptRead { receipt: p } =>
+              concat(
+                if a.plan_receipt_identity != fleet_converge_plan_receipt_identity_hex(r: p) { blocker(member: "apply_receipt", detail: "apply is bound to a plan receipt other than the one in this transaction") } else { [] },
+                if a.plan_artifact_hash != p.plan_artifact_hash { blocker(member: "apply_receipt", detail: join(["apply consumed plan bundle ", a.plan_artifact_hash, ", the plan minted ", p.plan_artifact_hash], "")) } else { [] },
+              )
+          },
+        ),
+      )
+  }
+}
+
+fn dashboard_receipt_blockers(s: RoadmapLaunchDeploymentSubject, plan: PlanReceiptFact, f: DashboardReceiptFact) -> List<RoadmapLaunchDeploymentBlocker> {
+  match f {
+    DashboardReceiptUnreadable { reason: r } => blocker(member: "dashboard_receipt", detail: r)
+    DashboardReceiptRead { receipt: d } =>
+      concat(
+        concat(
+          run_binding_blockers(member: "dashboard_receipt", s: s, run: d.run, expected_run_id: s.dashboard_run_id),
+          concat(
+            concat(
+              if d.target != s.host { blocker(member: "dashboard_receipt", detail: join(["deploy targeted ", d.target, ", not ", s.host], "")) } else { [] },
+              if d.expected_revision != s.revision { blocker(member: "dashboard_receipt", detail: join(["deploy expected ", d.expected_revision, ", not R ", s.revision], "")) } else { [] },
+            ),
+            concat(
+              if d.candidate_revision != s.revision { blocker(member: "dashboard_receipt", detail: join(["deploy candidate was ", d.candidate_revision, ", not R ", s.revision], "")) } else { [] },
+              if d.candidate_tree_oid != s.candidate_tree_oid { blocker(member: "dashboard_receipt", detail: join(["deploy candidate tree was ", d.candidate_tree_oid, ", not ", s.candidate_tree_oid], "")) } else { [] },
+            ),
+          ),
+        ),
+        concat(
+          concat(
+            match d.target_decision {
+              DecisionProceed => []
+              DecisionTerminalNoOp => blocker(member: "dashboard_receipt", detail: "deploy was a terminal no-op; R was not installed by this transaction")
+              DecisionRefused => blocker(member: "dashboard_receipt", detail: "deploy target decision refused")
+            },
+            match d.apply_outcome {
+              LiveDeployApplyConverged => []
+              LiveDeployApplyNotConverged { reason: why } => blocker(member: "dashboard_receipt", detail: join(["deploy did not converge: ", why], ""))
+            },
+          ),
+          concat(
+            match d.readiness {
+              LiveDeployReadinessObserved { revision: r, surface: _ } =>
+                if r != s.revision { blocker(member: "dashboard_receipt", detail: join(["post-deploy readiness served ", r, ", not R ", s.revision], "")) } else { [] }
+              LiveDeployReadinessRefused { detail: why } => blocker(member: "dashboard_receipt", detail: join(["post-deploy readiness refused: ", why], ""))
+            },
+            concat(
+              concat(
+                if d.provenance.plan_run_id != s.plan_run_id { blocker(member: "dashboard_receipt", detail: join(["deploy provenance names plan run ", d.provenance.plan_run_id, ", not ", s.plan_run_id], "")) } else { [] },
+                if d.provenance.apply_run_id != s.apply_run_id { blocker(member: "dashboard_receipt", detail: join(["deploy provenance names apply run ", d.provenance.apply_run_id, ", not ", s.apply_run_id], "")) } else { [] },
+              ),
+              match plan {
+                PlanReceiptUnreadable { reason: _ } => []
+                PlanReceiptRead { receipt: p } =>
+                  if d.provenance.plan_artifact_hash != p.plan_artifact_hash { blocker(member: "dashboard_receipt", detail: join(["deploy provenance names plan bundle ", d.provenance.plan_artifact_hash, ", the plan minted ", p.plan_artifact_hash], "")) } else { [] }
+              },
+            ),
+          ),
+        ),
+      )
+  }
+}
+
+fn deployed_tree_blockers(s: RoadmapLaunchDeploymentSubject, f: DeployedRootTreeStanding) -> List<RoadmapLaunchDeploymentBlocker> {
+  match f {
+    DeployedRootTreeMatches { tree_hex: t } =>
+      if t != s.candidate_tree_oid { blocker(member: "deployed_tree", detail: join(["deployed root tree ", t, " is not the subject's candidate tree ", s.candidate_tree_oid], "")) } else { [] }
+    DeployedRootTreeMismatch { candidate_hex: _, deployed_hex: _ } => blocker(member: "deployed_tree", detail: deployed_root_tree_standing_text(s: f))
+    DeployedRootTreeScopeDiverged { tree_hex: _, changed_paths: _ } => blocker(member: "deployed_tree", detail: deployed_root_tree_standing_text(s: f))
+    DeployedRootTreeUnobserved { cause: _ } => blocker(member: "deployed_tree", detail: deployed_root_tree_standing_text(s: f))
+  }
+}
+
+fn release_binding_blockers(s: RoadmapLaunchDeploymentSubject, f: DeployedReleaseBinding) -> List<RoadmapLaunchDeploymentBlocker> {
+  match f {
+    ReleaseBoundToTree { revision: r, surface: _ } =>
+      if (git_object_id_wire_hex(oid: r) as String) != s.revision { blocker(member: "release_binding", detail: join(["release bound to ", git_object_id_wire_hex(oid: r) as String, ", not R ", s.revision], "")) } else { [] }
+    ReleaseMixed { tree_revision: _, process_revision: _ } => blocker(member: "release_binding", detail: release_binding_line(binding: f))
+    ReleaseSurfaceMixed { revision: _, expected_surface: _, process_surface: _ } => blocker(member: "release_binding", detail: release_binding_line(binding: f))
+    ReleaseBindingUnobserved { cause: _ } => blocker(member: "release_binding", detail: release_binding_line(binding: f))
+  }
+}
+
+fn readiness_blockers(s: RoadmapLaunchDeploymentSubject, f: ReadinessFact) -> List<RoadmapLaunchDeploymentBlocker> {
+  match f {
+    ReadinessServed { revision: r, surface: _ } =>
+      if r != s.revision { blocker(member: "readiness", detail: join(["/healthz serves ", r, ", not R ", s.revision], "")) } else { [] }
+    ReadinessRefused { detail: d } => blocker(member: "readiness", detail: d)
+  }
+}
+
+fn transition_blockers(f: ActuationStanding) -> List<RoadmapLaunchDeploymentBlocker> {
+  match f {
+    ActuationPermitted => []
+    ActuationInhibited { record: _ } => blocker(member: "transition", detail: "a transition inhibition record is present on the instance root")
+    ActuationStandingUnreadable { cause: c } => blocker(member: "transition", detail: join(["transition standing unreadable: ", c], ""))
+  }
+}
+
+fn unit_standing_blockers(f: LaunchUnitStanding) -> List<RoadmapLaunchDeploymentBlocker> {
+  if launch_unit_standing_holds(s: f) { [] } else { blocker(member: "unit_standing", detail: launch_unit_standing_text(s: f)) }
+}
+
+fn tick_blockers(s: RoadmapLaunchDeploymentSubject, f: TickFact) -> List<RoadmapLaunchDeploymentBlocker> {
+  match f {
+    TickUnobserved { detail: d } => blocker(member: "tick_standing", detail: d)
+    TickObserved { receipt: r, freshness: fr } =>
+      concat(
+        match r.execution {
+          TickExecutionWithheld { refusal: why } => blocker(member: "tick_standing", detail: join(["tick execution withheld: ", why], ""))
+          TickExecuted { instance_id: i, deployed_revision: rev, spawn_mode: m } =>
+            concat(
+              concat(
+                if i != s.active_instance { blocker(member: "tick_standing", detail: join(["tick ran on instance ", i, ", not ", s.active_instance], "")) } else { [] },
+                if rev != s.revision { blocker(member: "tick_standing", detail: join(["tick ran at ", rev, ", not R ", s.revision], "")) } else { [] },
+              ),
+              match m {
+                ManualReady => []
+                _ => blocker(member: "tick_standing", detail: join(["tick ran under ", spawn_mode_label(m: m), ", not manual_ready"], ""))
+              },
+            )
+        },
+        match fr {
+          TickFresh { age_seconds: _ } => []
+          TickStale { age_seconds: _, bound_seconds: _ } => blocker(member: "tick_standing", detail: tick_freshness_text(f: fr))
+          TickBeforeDeploy { observed_at: _, deploy_completed_at: _ } => blocker(member: "tick_standing", detail: tick_freshness_text(f: fr))
+          TickInstantUnparseable { which: _, text: _ } => blocker(member: "tick_standing", detail: tick_freshness_text(f: fr))
+        },
+      )
+  }
+}
+
+fn footprint_blockers(f: BeltFootprintAdmission) -> List<RoadmapLaunchDeploymentBlocker> {
+  match f {
+    FootprintAdmitted => []
+    FootprintRefused { step: st, detail: d } => blocker(member: "footprint", detail: join([st, ": ", d], ""))
+  }
+}
+
+fn provider_blockers(f: BeltProviderPreflight) -> List<RoadmapLaunchDeploymentBlocker> {
+  match f {
+    ProviderPreflightOk => []
+    ProviderPreflightRefused { step: st, detail: d } => blocker(member: "provider_preflight", detail: join([st, ": ", d], ""))
+  }
+}
+
+fn dispatch_preflight_blockers(s: RoadmapLaunchDeploymentSubject, f: DispatchPreflightFact) -> List<RoadmapLaunchDeploymentBlocker> {
+  match f {
+    DispatchPreflightRefusedFact { refused_axis_count: n, detail: d } =>
+      blocker(member: "dispatch_preflight", detail: join([to_string(n), " axis refused: ", d], ""))
+    DispatchPreflightAdmittedFact { instance_id: i, revision_hex: r } =>
+      concat(
+        if i != s.active_instance { blocker(member: "dispatch_preflight", detail: join(["preflight ran for instance ", i, ", not ", s.active_instance], "")) } else { [] },
+        if r != s.revision { blocker(member: "dispatch_preflight", detail: join(["preflight observed revision ", r, ", not R ", s.revision], "")) } else { [] },
+      )
+  }
+}
+
+fn workflow_endpoint_blockers(tick: TickFact, f: WorkflowEndpointFact) -> List<RoadmapLaunchDeploymentBlocker> {
+  match f {
+    WorkflowRefusedFact { detail: d } => blocker(member: "workflow_endpoint", detail: d)
+    WorkflowServedFact { observe_refused: refused, tick: served } =>
+      concat(
+        if refused { blocker(member: "workflow_endpoint", detail: "/workflow.json reports its attempt ledger as unobservable") } else { [] },
+        match served {
+          BeltTickReceiptAbsent => blocker(member: "workflow_endpoint", detail: "/workflow.json carries no belt tick receipt")
+          BeltTickReceiptUnreadable { reason: r } => blocker(member: "workflow_endpoint", detail: join(["/workflow.json belt tick unreadable: ", r], ""))
+          BeltTickReceiptPresent { receipt: served_receipt } =>
+            match tick {
+              TickUnobserved { detail: _ } => []
+              TickObserved { receipt: on_disk, freshness: _ } =>
+                if belt_tick_receipt_identity_hex(receipt: served_receipt) != belt_tick_receipt_identity_hex(receipt: on_disk) {
+                  blocker(member: "workflow_endpoint", detail: "/workflow.json embeds a tick receipt other than the one on the instance")
+                } else { [] }
+            }
+        },
+      )
+  }
+}
+
+fn instance_endpoint_blockers(s: RoadmapLaunchDeploymentSubject, f: InstanceEndpointFact) -> List<RoadmapLaunchDeploymentBlocker> {
+  match f {
+    InstanceRefusedFact { detail: d } => blocker(member: "instance_endpoint", detail: d)
+    InstanceServedFact { instance_id: i, host_identity: h, actuation: a, repo_root: _ } =>
+      concat(
+        concat(
+          if i != s.active_instance { blocker(member: "instance_endpoint", detail: join(["/instance.json serves instance ", i, ", not ", s.active_instance], "")) } else { [] },
+          if h != s.host { blocker(member: "instance_endpoint", detail: join(["/instance.json serves host ", h, ", not ", s.host], "")) } else { [] },
+        ),
+        if a != "actuating" { blocker(member: "instance_endpoint", detail: join(["/instance.json actuation is ", a, ", not actuating"], "")) } else { [] },
+      )
+  }
+}
+
+fn principal_blockers(s: RoadmapLaunchDeploymentSubject, f: PrincipalFact) -> List<RoadmapLaunchDeploymentBlocker> {
+  match f {
+    PrincipalUnobserved { detail: d } => blocker(member: "principal", detail: d)
+    PrincipalObserved { name: n } =>
+      if n != s.service_principal { blocker(member: "principal", detail: join(["preflights ran as ", n, ", not the belt service principal ", s.service_principal], "")) } else { [] }
+  }
+}
+
+fn host_blockers(s: RoadmapLaunchDeploymentSubject, f: HostFact) -> List<RoadmapLaunchDeploymentBlocker> {
+  match f {
+    HostUnobserved { detail: d } => blocker(member: "observed_host", detail: d)
+    HostObserved { name: n } =>
+      if n != s.host { blocker(member: "observed_host", detail: join(["receipt run observed host ", n, ", not ", s.host], "")) } else { [] }
+  }
+}
+
+fn window_blockers(f: ObservationWindowFact) -> List<RoadmapLaunchDeploymentBlocker> {
+  match f {
+    WindowStable { opened: _, closed: _ } => []
+    WindowChanged { opened: _, closed: _, changed: c } => blocker(member: "observation_window", detail: join(["production state changed during capture: ", join(c, ", ")], ""))
+    WindowUnobserved { detail: d } => blocker(member: "observation_window", detail: d)
+  }
+}
+
+// THE TOTAL FOLD: every member consulted, in declaration order, blockers accumulated.
+fn roadmap_launch_deployment_blockers(s: RoadmapLaunchDeploymentSubject, f: RoadmapLaunchDeploymentFacts) -> List<RoadmapLaunchDeploymentBlocker> {
+  concat(
+    concat(
+      concat(
+        concat(desired_revision_blockers(s: s, f: f.desired_revision), plan_receipt_blockers(s: s, f: f.plan_receipt)),
+        concat(apply_receipt_blockers(s: s, plan: f.plan_receipt, f: f.apply_receipt), dashboard_receipt_blockers(s: s, plan: f.plan_receipt, f: f.dashboard_receipt)),
+      ),
+      concat(
+        concat(deployed_tree_blockers(s: s, f: f.deployed_tree), release_binding_blockers(s: s, f: f.release_binding)),
+        concat(readiness_blockers(s: s, f: f.readiness), transition_blockers(f: f.transition)),
+      ),
+    ),
+    concat(
+      concat(
+        concat(unit_standing_blockers(f: f.unit_standing), tick_blockers(s: s, f: f.tick_standing)),
+        concat(footprint_blockers(f: f.footprint), provider_blockers(f: f.provider_preflight)),
+      ),
+      concat(
+        concat(dispatch_preflight_blockers(s: s, f: f.dispatch_preflight), workflow_endpoint_blockers(tick: f.tick_standing, f: f.workflow_endpoint)),
+        concat(
+          concat(instance_endpoint_blockers(s: s, f: f.instance_endpoint), principal_blockers(s: s, f: f.principal)),
+          concat(host_blockers(s: s, f: f.observed_host), window_blockers(f: f.observation_window)),
+        ),
+      ),
+    ),
+  )
+}
+
+// ---------------------------------------------------------------- verdict
+
+// THE PROOF IS sole_constructor: only this module can write the literal, and this module writes
+// it in exactly one place -- the arm of roadmap_launch_deployment_verdict where the blocker list is
+// empty. There is no public record literal that authors DeploymentComplete.
+type DeploymentCompleteProof sole_constructor {
+  receipt_identity: String
+}
+
+type RoadmapLaunchDeploymentVerdict
+  = DeploymentComplete { subject: RoadmapLaunchDeploymentSubject, facts: RoadmapLaunchDeploymentFacts, proof: DeploymentCompleteProof }
+  | DeploymentIncomplete {
+      subject: RoadmapLaunchDeploymentSubject,
+      facts: RoadmapLaunchDeploymentFacts,
+      first_blocker: RoadmapLaunchDeploymentBlocker,
+      further_blockers: List<RoadmapLaunchDeploymentBlocker>,
+    }
+
+fn roadmap_launch_deployment_verdict(subject: RoadmapLaunchDeploymentSubject, facts: RoadmapLaunchDeploymentFacts) -> RoadmapLaunchDeploymentVerdict {
+  let blockers = roadmap_launch_deployment_blockers(s: subject, f: facts)
+  match list_head(xs: blockers) {
+    Absent =>
+      DeploymentComplete {
+        subject: subject,
+        facts: facts,
+        proof: DeploymentCompleteProof { receipt_identity: roadmap_launch_deployment_receipt_identity_hex(subject: subject, facts: facts) },
+      }
+    Present { value: first } =>
+      DeploymentIncomplete { subject: subject, facts: facts, first_blocker: first, further_blockers: blockers |> skip(1) }
+  }
+}
+
+fn verdict_is_complete(v: RoadmapLaunchDeploymentVerdict) -> Bool {
+  match v {
+    DeploymentComplete { subject: _, facts: _, proof: _ } => true
+    DeploymentIncomplete { subject: _, facts: _, first_blocker: _, further_blockers: _ } => false
+  }
+}
+
+fn verdict_blockers(v: RoadmapLaunchDeploymentVerdict) -> List<RoadmapLaunchDeploymentBlocker> {
+  match v {
+    DeploymentComplete { subject: _, facts: _, proof: _ } => []
+    DeploymentIncomplete { subject: _, facts: _, first_blocker: f, further_blockers: rest } => concat([f], rest)
+  }
+}
+
+// ---------------------------------------------------------------- rendering
+
+fn subject_json(s: RoadmapLaunchDeploymentSubject) -> JsonValue {
+  json_object(members: [
+    json_kv(key: "rlm1_merge_commit", value: json_string(s: s.rlm1_merge_commit)),
+    json_kv(key: "rlm1_contract_digest", value: json_string(s: s.rlm1_contract_digest)),
+    json_kv(key: "revision", value: json_string(s: s.revision)),
+    json_kv(key: "candidate_tree_oid", value: json_string(s: s.candidate_tree_oid)),
+    json_kv(key: "host", value: json_string(s: s.host)),
+    json_kv(key: "active_instance", value: json_string(s: s.active_instance)),
+    json_kv(key: "service_principal", value: json_string(s: s.service_principal)),
+    json_kv(key: "repository", value: json_string(s: s.repository)),
+    json_kv(key: "workflow_path", value: json_string(s: s.workflow_path)),
+    json_kv(key: "plan_run_id", value: json_string(s: s.plan_run_id)),
+    json_kv(key: "apply_run_id", value: json_string(s: s.apply_run_id)),
+    json_kv(key: "dashboard_run_id", value: json_string(s: s.dashboard_run_id)),
+    json_kv(key: "receipt_run_id", value: json_string(s: s.receipt_run_id)),
+  ])
+}
+
+fn subject_identity_text(s: RoadmapLaunchDeploymentSubject) -> String {
+  join([
+    s.rlm1_merge_commit, "|", s.rlm1_contract_digest, "|", s.revision, "|", s.candidate_tree_oid, "|", s.host, "|",
+    s.active_instance, "|", s.service_principal, "|", s.repository, "|", s.workflow_path, "|",
+    s.plan_run_id, "|", s.apply_run_id, "|", s.dashboard_run_id, "|", s.receipt_run_id,
+  ], "")
+}
+
+fn window_snapshot_text(w: WindowSnapshot) -> String {
+  join(["main=", w.main_hex, " desired=", w.desired_hex, " deployed=", w.deployed_revision_hex, " tree=", w.deployed_tree_hex, " running=", w.running_release_hex, " transition=", w.transition, " instance=", w.active_instance], "")
+}
+
+fn tick_receipt_identity_of_read(r: BeltTickReceiptRead) -> String {
+  match r {
+    BeltTickReceiptPresent { receipt: t } => belt_tick_receipt_identity_hex(receipt: t)
+    BeltTickReceiptAbsent => "absent"
+    BeltTickReceiptUnreadable { reason: why } => join(["unreadable: ", why], "")
+  }
+}
+
+fn facts_lines(f: RoadmapLaunchDeploymentFacts) -> List<String> {
+  [
+    join(["desired_revision: ", match f.desired_revision {
+      DesiredRevisionObserved { main_hex: m, desired_hex: d } => join(["main=", m, " desired=", d], "")
+      DesiredRevisionUnobserved { detail: d } => join(["unobserved: ", d], "")
+    }], ""),
+    join(["plan_receipt: ", match f.plan_receipt {
+      PlanReceiptRead { receipt: p } => join(["identity=", fleet_converge_plan_receipt_identity_hex(r: p), " run=", p.run.run_id, " revision=", p.run.run_revision, " host=", p.observed_host, " hash=", p.plan_artifact_hash, " lease=", p.lease_key, " generation=", to_string(p.planned_generation)], "")
+      PlanReceiptUnreadable { reason: r } => join(["unreadable: ", r], "")
+    }], ""),
+    join(["apply_receipt: ", match f.apply_receipt {
+      ApplyReceiptRead { receipt: a } => join(["identity=", fleet_converge_apply_receipt_identity_hex(r: a), " run=", a.run.run_id, " revision=", a.run.run_revision, " plan_run=", a.plan_run_id, " plan_identity=", a.plan_receipt_identity, " exit=", to_string(a.locked_apply_exit_code)], "")
+      ApplyReceiptUnreadable { reason: r } => join(["unreadable: ", r], "")
+    }], ""),
+    join(["dashboard_receipt: ", match f.dashboard_receipt {
+      DashboardReceiptRead { receipt: d } => join(["identity=", live_deploy_apply_receipt_identity_hex(r: d), " run=", d.run.run_id, " revision=", d.run.run_revision, " candidate=", d.candidate_revision, " tree=", d.candidate_tree_oid, " completed_at=", d.completed_at], "")
+      DashboardReceiptUnreadable { reason: r } => join(["unreadable: ", r], "")
+    }], ""),
+    join(["deployed_tree: ", deployed_root_tree_standing_text(s: f.deployed_tree)], ""),
+    join(["release_binding: ", release_binding_line(binding: f.release_binding)], ""),
+    join(["readiness: ", match f.readiness {
+      ReadinessServed { revision: r, surface: s } => join(["revision=", r, " surface=", s], "")
+      ReadinessRefused { detail: d } => join(["refused: ", d], "")
+    }], ""),
+    join(["transition: ", match f.transition {
+      ActuationPermitted => "permitted"
+      ActuationInhibited { record: _ } => "inhibited"
+      ActuationStandingUnreadable { cause: c } => join(["unreadable: ", c], "")
+    }], ""),
+    join(["unit_standing: ", launch_unit_standing_text(s: f.unit_standing)], ""),
+    join(["tick_standing: ", match f.tick_standing {
+      TickObserved { receipt: r, freshness: fr } => join(["identity=", belt_tick_receipt_identity_hex(receipt: r), " observed_at=", r.observed_at, " ", tick_freshness_text(f: fr)], "")
+      TickUnobserved { detail: d } => join(["unobserved: ", d], "")
+    }], ""),
+    join(["footprint: ", match f.footprint {
+      FootprintAdmitted => "admitted"
+      FootprintRefused { step: st, detail: d } => join(["refused at ", st, ": ", d], "")
+    }], ""),
+    join(["provider_preflight: ", match f.provider_preflight {
+      ProviderPreflightOk => "ok"
+      ProviderPreflightRefused { step: st, detail: d } => join(["refused at ", st, ": ", d], "")
+    }], ""),
+    join(["dispatch_preflight: ", match f.dispatch_preflight {
+      DispatchPreflightAdmittedFact { instance_id: i, revision_hex: r } => join(["admitted instance=", i, " revision=", r], "")
+      DispatchPreflightRefusedFact { refused_axis_count: n, detail: d } => join(["refused ", to_string(n), " axes: ", d], "")
+    }], ""),
+    join(["workflow_endpoint: ", match f.workflow_endpoint {
+      WorkflowServedFact { observe_refused: r, tick: t } => join(["served observe_refused=", if r { "true" } else { "false" }, " tick=", tick_receipt_identity_of_read(r: t)], "")
+      WorkflowRefusedFact { detail: d } => join(["refused: ", d], "")
+    }], ""),
+    join(["instance_endpoint: ", match f.instance_endpoint {
+      InstanceServedFact { instance_id: i, host_identity: h, actuation: a, repo_root: rr } => join(["instance=", i, " host=", h, " actuation=", a, " repo_root=", rr], "")
+      InstanceRefusedFact { detail: d } => join(["refused: ", d], "")
+    }], ""),
+    join(["principal: ", match f.principal {
+      PrincipalObserved { name: n } => n
+      PrincipalUnobserved { detail: d } => join(["unobserved: ", d], "")
+    }], ""),
+    join(["observed_host: ", match f.observed_host {
+      HostObserved { name: n } => n
+      HostUnobserved { detail: d } => join(["unobserved: ", d], "")
+    }], ""),
+    join(["observation_window: ", match f.observation_window {
+      WindowStable { opened: o, closed: _ } => join(["stable; ", window_snapshot_text(w: o)], "")
+      WindowChanged { opened: o, closed: c, changed: ch } => join(["changed (", join(ch, ", "), "); opened ", window_snapshot_text(w: o), "; closed ", window_snapshot_text(w: c)], "")
+      WindowUnobserved { detail: d } => join(["unobserved: ", d], "")
+    }], ""),
+  ]
+}
+
+fn roadmap_launch_deployment_receipt_identity_hex(subject: RoadmapLaunchDeploymentSubject, facts: RoadmapLaunchDeploymentFacts) -> String {
+  content_hash_tagged_structural(
+    tag: "roadmap-launch-deployment-receipt-v1" as NonEmptyStr,
+    payload: content_hash_atom(value: join([subject_identity_text(s: subject), "\n", join(facts_lines(f: facts), "\n")], "") as NonEmptyStr),
+  ).digest as String
+}
+
+data roadmap_launch_deployment_receipt_schema: String = "roadmap-launch-deployment-receipt/v1"
+
+fn blocker_json(b: RoadmapLaunchDeploymentBlocker) -> JsonValue {
+  json_object(members: [
+    json_kv(key: "member", value: json_string(s: b.member)),
+    json_kv(key: "detail", value: json_string(s: b.detail)),
+  ])
+}
+
+fn roadmap_launch_deployment_verdict_json(v: RoadmapLaunchDeploymentVerdict) -> JsonValue {
+  match v {
+    DeploymentComplete { subject: s, facts: f, proof: p } =>
+      json_object(members: [
+        json_kv(key: "schema", value: json_string(s: roadmap_launch_deployment_receipt_schema)),
+        json_kv(key: "verdict", value: json_string(s: "DeploymentComplete")),
+        json_kv(key: "receipt_identity", value: json_string(s: p.receipt_identity)),
+        json_kv(key: "subject", value: subject_json(s: s)),
+        json_kv(key: "facts", value: json_array(elements: facts_lines(f: f) |> map(l => json_string(s: l)))),
+        json_kv(key: "blockers", value: json_array(elements: [])),
+      ])
+    DeploymentIncomplete { subject: s, facts: f, first_blocker: first, further_blockers: rest } =>
+      json_object(members: [
+        json_kv(key: "schema", value: json_string(s: roadmap_launch_deployment_receipt_schema)),
+        json_kv(key: "verdict", value: json_string(s: "DeploymentIncomplete")),
+        json_kv(key: "receipt_identity", value: json_string(s: roadmap_launch_deployment_receipt_identity_hex(subject: s, facts: f))),
+        json_kv(key: "subject", value: subject_json(s: s)),
+        json_kv(key: "facts", value: json_array(elements: facts_lines(f: f) |> map(l => json_string(s: l)))),
+        json_kv(key: "first_blocker", value: blocker_json(b: first)),
+        json_kv(key: "blockers", value: json_array(elements: concat([first], rest) |> map(b => blocker_json(b: b)))),
+      ])
+  }
+}
+
+fn roadmap_launch_deployment_receipt_document(v: RoadmapLaunchDeploymentVerdict) -> String {
+  serialize_json(v: roadmap_launch_deployment_verdict_json(v: v))
+}
+
+fn verdict_receipt_identity(v: RoadmapLaunchDeploymentVerdict) -> String {
+  match v {
+    DeploymentComplete { subject: _, facts: _, proof: p } => p.receipt_identity
+    DeploymentIncomplete { subject: s, facts: f, first_blocker: _, further_blockers: _ } => roadmap_launch_deployment_receipt_identity_hex(subject: s, facts: f)
+  }
+}

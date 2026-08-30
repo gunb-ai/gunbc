@@ -1,0 +1,357 @@
+module gunbc.fleet_converge_receipt
+
+import std.types { String, Bool, NonEmptyStr, Int, List }
+import std.algebra { trim }
+import std.content_hash { Fnv1a64Structural, content_hash_atom, content_hash_tagged_structural }
+import extdeps.languages.json.emit { JsonValue, json_kv, json_string, json_object, serialize_json }
+import extdeps.languages.json.parse {
+  parse_json_document, JsonDocumentParsed, JsonDocumentUnreadable, json_document_gap_text,
+}
+import extdeps.filesystem.filesystem_io { Filesystem }
+import gunbc.actions_run_binding {
+  ActionsRunBinding,
+  actions_run_binding_json,
+  actions_run_binding_of_member,
+  ActionsRunBindingDecoded, ActionsRunBindingUnreadable,
+  json_required_string_member,
+  JsonStringMemberFound, JsonStringMemberRefused,
+  actions_run_binding_identity_text,
+}
+
+data fleet_converge_receipt_note: String = "THE TYPED PLAN AND APPLY RECEIPTS THE FLEET TRANSACTION LACKED. gunbc.fleet_converge_plan_cli flattened both wet entries to ProcessExit: the plan artifact on disk carried the subject, baseline, generation and bundle hash, and apply re-verified every one of them, but nothing durable said WHICH RUN, at WHICH REVISION, on WHICH OBSERVED HOST minted the plan or performed the apply. gunbc.fleet_converge_cli ConvergeCliReceipt is not that receipt: it belongs to the periodic `gunbc converge` path and binds no plan hash, subject, lease generation or run. The RLM-2 ruling (docs/plans/roadmap-launch-mvp-plan.md, RLM-2 section 2) requires one receipt per phase, produced INSIDE the typed composition before the CLI projection to ProcessExit, so the final RoadmapLaunchDeploymentReceipt can join a plan run to an apply run to a dashboard run by identity rather than by narrative.\n\nTHE PLAN RECEIPT LIVES INSIDE THE PLAN ARTIFACT DIRECTORY, so the existing upload step carries it and the existing apply download step delivers it -- no new artifact, no new transport. THE APPLY RECEIPT has its own directory and its own upload step because apply produces nothing else the workflow keeps.\n\nGENERATIONS ARE CARRIED AS DECIMAL STRINGS ON THE WIRE. The receipt is decoded by a later run through extdeps.languages.json.parse, whose number carrier is a lexeme; a string round-trips through parse_int exactly and refuses on anything that is not a non-negative decimal, which is the same wall fleet_converge_parse_nonneg_generation_text already holds for the on-disk generation files.\n\nTHE OBSERVED HOST IS RECORDED AND ALSO ADMITTED AGAINST THE WORKFLOW INPUT. The runner label is what aims a dispatch at srv1; the kernel hostname is what the plan actually observed. FLEET_CONVERGE_EXPECTED_HOST carries the input into the step, and a plan whose observed host is not the input's host refuses before writing anything -- artifact naming from an input was never host evidence, and this is the row that makes the input a CHECK rather than a label."
+
+data fleet_converge_plan_receipt_schema: String = "fleet-converge-plan-receipt/v1"
+data fleet_converge_apply_receipt_schema: String = "fleet-converge-apply-receipt/v1"
+
+data fleet_converge_plan_receipt_path: String = "/tmp/fleet-converge-plan/plan_receipt.json"
+data fleet_converge_apply_receipt_dir: String = "/tmp/fleet-converge-apply"
+data fleet_converge_apply_receipt_path: String = "/tmp/fleet-converge-apply/apply_receipt.json"
+
+data fleet_converge_expected_host_env_name: String = "FLEET_CONVERGE_EXPECTED_HOST"
+data fleet_converge_plan_run_id_env_name: String = "FLEET_CONVERGE_PLAN_RUN_ID"
+
+type FleetConvergePlanReceipt {
+  run: ActionsRunBinding
+  observed_host: String
+  scope_wire: String
+  member_set_fingerprint_hex: String
+  plan_artifact_hash: String
+  observed_baseline_hex: String
+  prior_generation: Int
+  planned_generation: Int
+  lease_key: String
+}
+
+type FleetConvergeApplyReceipt {
+  run: ActionsRunBinding
+  plan_run_id: String
+  plan_receipt_identity: String
+  plan_artifact_hash: String
+  observed_host: String
+  prior_generation: Int
+  planned_generation: Int
+  locked_apply_exit_code: Int
+}
+
+fn fleet_converge_plan_receipt_identity_text(r: FleetConvergePlanReceipt) -> String {
+  join([
+    actions_run_binding_identity_text(binding: r.run), "|",
+    r.observed_host, "|", r.scope_wire, "|", r.member_set_fingerprint_hex, "|",
+    r.plan_artifact_hash, "|", r.observed_baseline_hex, "|",
+    to_string(r.prior_generation), "|", to_string(r.planned_generation), "|", r.lease_key,
+  ], "")
+}
+
+fn fleet_converge_plan_receipt_identity_hex(r: FleetConvergePlanReceipt) -> String {
+  content_hash_tagged_structural(
+    tag: "fleet-converge-plan-receipt-v1" as NonEmptyStr,
+    payload: content_hash_atom(value: fleet_converge_plan_receipt_identity_text(r: r) as NonEmptyStr),
+  ).digest as String
+}
+
+fn fleet_converge_apply_receipt_identity_text(r: FleetConvergeApplyReceipt) -> String {
+  join([
+    actions_run_binding_identity_text(binding: r.run), "|",
+    r.plan_run_id, "|", r.plan_receipt_identity, "|", r.plan_artifact_hash, "|", r.observed_host, "|",
+    to_string(r.prior_generation), "|", to_string(r.planned_generation), "|", to_string(r.locked_apply_exit_code),
+  ], "")
+}
+
+fn fleet_converge_apply_receipt_identity_hex(r: FleetConvergeApplyReceipt) -> String {
+  content_hash_tagged_structural(
+    tag: "fleet-converge-apply-receipt-v1" as NonEmptyStr,
+    payload: content_hash_atom(value: fleet_converge_apply_receipt_identity_text(r: r) as NonEmptyStr),
+  ).digest as String
+}
+
+fn fleet_converge_plan_receipt_json(r: FleetConvergePlanReceipt) -> JsonValue {
+  json_object(members: [
+    json_kv(key: "schema", value: json_string(s: fleet_converge_plan_receipt_schema)),
+    json_kv(key: "run", value: actions_run_binding_json(binding: r.run)),
+    json_kv(key: "observed_host", value: json_string(s: r.observed_host)),
+    json_kv(key: "scope_wire", value: json_string(s: r.scope_wire)),
+    json_kv(key: "member_set_fingerprint_hex", value: json_string(s: r.member_set_fingerprint_hex)),
+    json_kv(key: "plan_artifact_hash", value: json_string(s: r.plan_artifact_hash)),
+    json_kv(key: "observed_baseline_hex", value: json_string(s: r.observed_baseline_hex)),
+    json_kv(key: "prior_generation", value: json_string(s: to_string(r.prior_generation))),
+    json_kv(key: "planned_generation", value: json_string(s: to_string(r.planned_generation))),
+    json_kv(key: "lease_key", value: json_string(s: r.lease_key)),
+    json_kv(key: "receipt_identity", value: json_string(s: fleet_converge_plan_receipt_identity_hex(r: r))),
+  ])
+}
+
+fn fleet_converge_apply_receipt_json(r: FleetConvergeApplyReceipt) -> JsonValue {
+  json_object(members: [
+    json_kv(key: "schema", value: json_string(s: fleet_converge_apply_receipt_schema)),
+    json_kv(key: "run", value: actions_run_binding_json(binding: r.run)),
+    json_kv(key: "plan_run_id", value: json_string(s: r.plan_run_id)),
+    json_kv(key: "plan_receipt_identity", value: json_string(s: r.plan_receipt_identity)),
+    json_kv(key: "plan_artifact_hash", value: json_string(s: r.plan_artifact_hash)),
+    json_kv(key: "observed_host", value: json_string(s: r.observed_host)),
+    json_kv(key: "prior_generation", value: json_string(s: to_string(r.prior_generation))),
+    json_kv(key: "planned_generation", value: json_string(s: to_string(r.planned_generation))),
+    json_kv(key: "locked_apply_exit_code", value: json_string(s: to_string(r.locked_apply_exit_code))),
+    json_kv(key: "receipt_identity", value: json_string(s: fleet_converge_apply_receipt_identity_hex(r: r))),
+  ])
+}
+
+type ReceiptIntMember
+  = ReceiptIntFound { value: Int }
+  | ReceiptIntRefused { reason: String }
+
+fn receipt_int_member(doc: JsonValue, key: String) -> ReceiptIntMember {
+  match json_required_string_member(doc: doc, key: key) {
+    JsonStringMemberRefused { reason: r } => ReceiptIntRefused { reason: r }
+    JsonStringMemberFound { value: text } =>
+      match parse_int(s: trim(s: text)) {
+        Absent => ReceiptIntRefused { reason: join([key, " is not a decimal integer"], "") }
+        Present { value: n } =>
+          if n < 0 { ReceiptIntRefused { reason: join([key, " is negative"], "") } } else { ReceiptIntFound { value: n } }
+      }
+  }
+}
+
+type FleetConvergePlanReceiptDecode
+  = FleetConvergePlanReceiptDecoded { receipt: FleetConvergePlanReceipt }
+  | FleetConvergePlanReceiptUnreadable { reason: String }
+
+fn fleet_converge_plan_receipt_decode(raw: String) -> FleetConvergePlanReceiptDecode {
+  match parse_json_document(s: raw) {
+    JsonDocumentUnreadable { gap: gap } =>
+      FleetConvergePlanReceiptUnreadable { reason: join(["plan receipt is ", json_document_gap_text(gap: gap)], "") }
+    JsonDocumentParsed { value: doc } =>
+      match json_required_string_member(doc: doc, key: "schema") {
+        JsonStringMemberRefused { reason: r } => FleetConvergePlanReceiptUnreadable { reason: r }
+        JsonStringMemberFound { value: schema } =>
+          if schema != fleet_converge_plan_receipt_schema {
+            FleetConvergePlanReceiptUnreadable { reason: join(["plan receipt schema is not ", fleet_converge_plan_receipt_schema, ": ", schema], "") }
+          } else {
+            match actions_run_binding_of_member(doc: doc, key: "run") {
+              ActionsRunBindingUnreadable { reason: r } => FleetConvergePlanReceiptUnreadable { reason: join(["plan receipt run: ", r], "") }
+              ActionsRunBindingDecoded { binding: run } =>
+                match json_required_string_member(doc: doc, key: "observed_host") {
+                  JsonStringMemberRefused { reason: r } => FleetConvergePlanReceiptUnreadable { reason: r }
+                  JsonStringMemberFound { value: observed_host } =>
+                    match json_required_string_member(doc: doc, key: "scope_wire") {
+                      JsonStringMemberRefused { reason: r } => FleetConvergePlanReceiptUnreadable { reason: r }
+                      JsonStringMemberFound { value: scope_wire } =>
+                        match json_required_string_member(doc: doc, key: "member_set_fingerprint_hex") {
+                          JsonStringMemberRefused { reason: r } => FleetConvergePlanReceiptUnreadable { reason: r }
+                          JsonStringMemberFound { value: member_fp } =>
+                            match json_required_string_member(doc: doc, key: "plan_artifact_hash") {
+                              JsonStringMemberRefused { reason: r } => FleetConvergePlanReceiptUnreadable { reason: r }
+                              JsonStringMemberFound { value: plan_hash } =>
+                                match json_required_string_member(doc: doc, key: "observed_baseline_hex") {
+                                  JsonStringMemberRefused { reason: r } => FleetConvergePlanReceiptUnreadable { reason: r }
+                                  JsonStringMemberFound { value: baseline } =>
+                                    match receipt_int_member(doc: doc, key: "prior_generation") {
+                                      ReceiptIntRefused { reason: r } => FleetConvergePlanReceiptUnreadable { reason: r }
+                                      ReceiptIntFound { value: prior } =>
+                                        match receipt_int_member(doc: doc, key: "planned_generation") {
+                                          ReceiptIntRefused { reason: r } => FleetConvergePlanReceiptUnreadable { reason: r }
+                                          ReceiptIntFound { value: planned } =>
+                                            match json_required_string_member(doc: doc, key: "lease_key") {
+                                              JsonStringMemberRefused { reason: r } => FleetConvergePlanReceiptUnreadable { reason: r }
+                                              JsonStringMemberFound { value: lease_key } => {
+                                                let receipt = FleetConvergePlanReceipt {
+                                                  run: run,
+                                                  observed_host: observed_host,
+                                                  scope_wire: scope_wire,
+                                                  member_set_fingerprint_hex: member_fp,
+                                                  plan_artifact_hash: plan_hash,
+                                                  observed_baseline_hex: baseline,
+                                                  prior_generation: prior,
+                                                  planned_generation: planned,
+                                                  lease_key: lease_key,
+                                                }
+                                                match json_required_string_member(doc: doc, key: "receipt_identity") {
+                                                  JsonStringMemberRefused { reason: r } => FleetConvergePlanReceiptUnreadable { reason: r }
+                                                  JsonStringMemberFound { value: claimed } =>
+                                                    if claimed != fleet_converge_plan_receipt_identity_hex(r: receipt) {
+                                                      FleetConvergePlanReceiptUnreadable { reason: "plan receipt identity does not match its members" }
+                                                    } else {
+                                                      FleetConvergePlanReceiptDecoded { receipt: receipt }
+                                                    }
+                                                }
+                                              }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+          }
+      }
+  }
+}
+
+type FleetConvergeApplyReceiptDecode
+  = FleetConvergeApplyReceiptDecoded { receipt: FleetConvergeApplyReceipt }
+  | FleetConvergeApplyReceiptUnreadable { reason: String }
+
+fn fleet_converge_apply_receipt_decode(raw: String) -> FleetConvergeApplyReceiptDecode {
+  match parse_json_document(s: raw) {
+    JsonDocumentUnreadable { gap: gap } =>
+      FleetConvergeApplyReceiptUnreadable { reason: join(["apply receipt is ", json_document_gap_text(gap: gap)], "") }
+    JsonDocumentParsed { value: doc } =>
+      match json_required_string_member(doc: doc, key: "schema") {
+        JsonStringMemberRefused { reason: r } => FleetConvergeApplyReceiptUnreadable { reason: r }
+        JsonStringMemberFound { value: schema } =>
+          if schema != fleet_converge_apply_receipt_schema {
+            FleetConvergeApplyReceiptUnreadable { reason: join(["apply receipt schema is not ", fleet_converge_apply_receipt_schema, ": ", schema], "") }
+          } else {
+            match actions_run_binding_of_member(doc: doc, key: "run") {
+              ActionsRunBindingUnreadable { reason: r } => FleetConvergeApplyReceiptUnreadable { reason: join(["apply receipt run: ", r], "") }
+              ActionsRunBindingDecoded { binding: run } =>
+                match json_required_string_member(doc: doc, key: "plan_run_id") {
+                  JsonStringMemberRefused { reason: r } => FleetConvergeApplyReceiptUnreadable { reason: r }
+                  JsonStringMemberFound { value: plan_run_id } =>
+                    match json_required_string_member(doc: doc, key: "plan_receipt_identity") {
+                      JsonStringMemberRefused { reason: r } => FleetConvergeApplyReceiptUnreadable { reason: r }
+                      JsonStringMemberFound { value: plan_receipt_identity } =>
+                        match json_required_string_member(doc: doc, key: "plan_artifact_hash") {
+                          JsonStringMemberRefused { reason: r } => FleetConvergeApplyReceiptUnreadable { reason: r }
+                          JsonStringMemberFound { value: plan_hash } =>
+                            match json_required_string_member(doc: doc, key: "observed_host") {
+                              JsonStringMemberRefused { reason: r } => FleetConvergeApplyReceiptUnreadable { reason: r }
+                              JsonStringMemberFound { value: observed_host } =>
+                                match receipt_int_member(doc: doc, key: "prior_generation") {
+                                  ReceiptIntRefused { reason: r } => FleetConvergeApplyReceiptUnreadable { reason: r }
+                                  ReceiptIntFound { value: prior } =>
+                                    match receipt_int_member(doc: doc, key: "planned_generation") {
+                                      ReceiptIntRefused { reason: r } => FleetConvergeApplyReceiptUnreadable { reason: r }
+                                      ReceiptIntFound { value: planned } =>
+                                        match receipt_int_member(doc: doc, key: "locked_apply_exit_code") {
+                                          ReceiptIntRefused { reason: r } => FleetConvergeApplyReceiptUnreadable { reason: r }
+                                          ReceiptIntFound { value: exit_code } => {
+                                            let receipt = FleetConvergeApplyReceipt {
+                                              run: run,
+                                              plan_run_id: plan_run_id,
+                                              plan_receipt_identity: plan_receipt_identity,
+                                              plan_artifact_hash: plan_hash,
+                                              observed_host: observed_host,
+                                              prior_generation: prior,
+                                              planned_generation: planned,
+                                              locked_apply_exit_code: exit_code,
+                                            }
+                                            match json_required_string_member(doc: doc, key: "receipt_identity") {
+                                              JsonStringMemberRefused { reason: r } => FleetConvergeApplyReceiptUnreadable { reason: r }
+                                              JsonStringMemberFound { value: claimed } =>
+                                                if claimed != fleet_converge_apply_receipt_identity_hex(r: receipt) {
+                                                  FleetConvergeApplyReceiptUnreadable { reason: "apply receipt identity does not match its members" }
+                                                } else {
+                                                  FleetConvergeApplyReceiptDecoded { receipt: receipt }
+                                                }
+                                            }
+                                          }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+          }
+      }
+  }
+}
+
+// APPLY BINDS ITSELF TO THE PLAN IT WAS HANDED, and each of the four equalities has its own arm
+// because each has a different remedy: a substituted run id is an operator typo, a hash mismatch is
+// a stale artifact, a revision mismatch is a plan from a different R, a repository mismatch is a
+// fork's artifact.
+type FleetConvergePlanBindingAdmission
+  = PlanBindingAdmitted
+  | PlanBindingRunIdMismatch { planned: String, requested: String }
+  | PlanBindingHashMismatch { receipt: String, on_disk: String }
+  | PlanBindingRevisionMismatch { plan: String, apply: String }
+  | PlanBindingRepositoryMismatch { plan: String, apply: String }
+
+fn admit_apply_plan_binding(
+  plan: FleetConvergePlanReceipt,
+  apply_run: ActionsRunBinding,
+  plan_run_id_input: String,
+  plan_hash_on_disk: String,
+) -> FleetConvergePlanBindingAdmission {
+  if plan.run.run_id != plan_run_id_input {
+    PlanBindingRunIdMismatch { planned: plan.run.run_id, requested: plan_run_id_input }
+  } else if plan.plan_artifact_hash != plan_hash_on_disk {
+    PlanBindingHashMismatch { receipt: plan.plan_artifact_hash, on_disk: plan_hash_on_disk }
+  } else if plan.run.run_revision != apply_run.run_revision {
+    PlanBindingRevisionMismatch { plan: plan.run.run_revision, apply: apply_run.run_revision }
+  } else if plan.run.repository != apply_run.repository {
+    PlanBindingRepositoryMismatch { plan: plan.run.repository, apply: apply_run.repository }
+  } else {
+    PlanBindingAdmitted
+  }
+}
+
+fn plan_binding_admission_text(a: FleetConvergePlanBindingAdmission) -> String {
+  match a {
+    PlanBindingAdmitted => "plan binding admitted"
+    PlanBindingRunIdMismatch { planned: p, requested: r } =>
+      join(["PlanRunIdMismatch — the plan receipt was minted by run ", p, " but apply was asked to execute run ", r], "")
+    PlanBindingHashMismatch { receipt: a, on_disk: b } =>
+      join(["PlanReceiptHashMismatch — the plan receipt names bundle ", a, " but the artifact on disk hashes to ", b], "")
+    PlanBindingRevisionMismatch { plan: a, apply: b } =>
+      join(["PlanRevisionMismatch — the plan ran at ", a, " and this apply runs at ", b], "")
+    PlanBindingRepositoryMismatch { plan: a, apply: b } =>
+      join(["PlanRepositoryMismatch — the plan ran in ", a, " and this apply runs in ", b], "")
+  }
+}
+
+type FleetConvergeReceiptWrite
+  = ReceiptWritten { path: String }
+  | ReceiptWriteRefused { path: String, error: String }
+
+fn write_fleet_converge_plan_receipt(r: FleetConvergePlanReceipt) -> FleetConvergeReceiptWrite {
+  let w = Filesystem.Write(path: fleet_converge_plan_receipt_path, content: serialize_json(v: fleet_converge_plan_receipt_json(r: r)))
+  if w.success { ReceiptWritten { path: fleet_converge_plan_receipt_path } } else { ReceiptWriteRefused { path: fleet_converge_plan_receipt_path, error: w.error } }
+}
+
+fn write_fleet_converge_apply_receipt(r: FleetConvergeApplyReceipt) -> FleetConvergeReceiptWrite {
+  let w = Filesystem.Write(path: fleet_converge_apply_receipt_path, content: serialize_json(v: fleet_converge_apply_receipt_json(r: r)))
+  if w.success { ReceiptWritten { path: fleet_converge_apply_receipt_path } } else { ReceiptWriteRefused { path: fleet_converge_apply_receipt_path, error: w.error } }
+}
+
+fn read_fleet_converge_plan_receipt_at(path: String) -> FleetConvergePlanReceiptDecode {
+  let read = Filesystem.Read(path: path)
+  if !read.success {
+    FleetConvergePlanReceiptUnreadable { reason: join(["plan receipt could not be read at ", path, ": ", read.error], "") }
+  } else {
+    fleet_converge_plan_receipt_decode(raw: read.content)
+  }
+}
+
+fn read_fleet_converge_apply_receipt_at(path: String) -> FleetConvergeApplyReceiptDecode {
+  let read = Filesystem.Read(path: path)
+  if !read.success {
+    FleetConvergeApplyReceiptUnreadable { reason: join(["apply receipt could not be read at ", path, ": ", read.error], "") }
+  } else {
+    fleet_converge_apply_receipt_decode(raw: read.content)
+  }
+}

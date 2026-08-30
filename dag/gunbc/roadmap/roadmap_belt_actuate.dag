@@ -13,7 +13,7 @@ import gunbc.roadmap_authority {
   authored_merged_prs,
 }
 import gunbc.roadmap_belt {
-  SpawnMode, Paused, ManualReady, AutomaticReady, spawn_mode_label,
+  SpawnMode, Paused, ManualReady, AutomaticReady, spawn_mode_label, spawn_mode_of_label,
   BeltCapacity,
   BeltReconcile,
   belt_reconcile,
@@ -347,6 +347,7 @@ import gunbc.roadmap_dispatch_actuator { host_exec_argv }
 import gunbc.roadmap_provider_events { ProviderCompleted, provider_execution_activity }
 import extdeps.version { VersionIdentity }
 import std.content_hash {
+  content_hash_tagged_structural,
   ContentHash,
   serialize_content_hash,
   content_hash_atom,
@@ -1856,8 +1857,19 @@ type BeltPassOutcome
   | BeltPassRefused { reason: String }
   | BeltPassFailed { reason: String }
 
+// THE EXECUTION STANDING (RLM-2 ruling section 6): a receipt names the instance that ticked, the
+// revision the instance was serving, and the mode the tick ran under -- or says why it could not
+// bind those -- so a reader can tell a fresh tick of THIS deployment from any other file that
+// parses. `receipt_identity` is DERIVED from the members (belt_tick_receipt_identity_hex), written
+// on the wire and verified on decode; it is not a stored field, because a stored copy would be a
+// second authority for what the members already say.
+type BeltTickExecutionStanding
+  = TickExecuted { instance_id: String, deployed_revision: String, spawn_mode: SpawnMode }
+  | TickExecutionWithheld { refusal: String }
+
 type BeltTickReceipt {
   observed_at: String,
+  execution: BeltTickExecutionStanding,
   launches: List<LaunchIdentity>,
   spawn_pass: BeltPassOutcome,
   teardown_pass: BeltPassOutcome,
@@ -1872,7 +1884,7 @@ type BeltTickReceiptRead
 
 data belt_tick_receipt_note: String = "THE PERSISTED TICK RECEIPT IS WHAT THE WORKFLOW UI READS to answer whether a belt tick ran, deferred, refused, or failed — today it exists only in journald stdout and the row cannot say 'Verification queued - next belt tick' or 'blocked - belt session observation refused'. Each pass is typed independently (BeltPassOutcome): spawn/teardown depend on tmux session observation; verify depends only on the attempt ledger plus terminal provider/process evidence; publish depends on exact verified head plus repository observation. A tmux-list refusal may block spawn/reap while verify still examines its own attempt evidence (DESIGN section 5: a failure arm must refuse narrowly, never widen to zeroing sibling passes). Written to the instance's own receipts directory (gunbc.host_layout instance_receipts_dir) so /workflow.json can read it without re-running the belt. CORRECTED 2026-08-19: this sentence read 'beside the instance's attempt-state root', which was wrong in two ways at once and is recorded rather than quietly reworded. The code never wrote there — it wrote <instance_root>/belt-last-tick.json, a root-owned directory, so the receipt was EACCES and absent on every instance. And the attempt-state root is not a per-instance home at all: the srv1 pair is DispatchStateHostShared, so blue and green resolve it to ONE path and a receipt written there would be a single file answering for two instances. A note describing a home the implementation did not use, and could not have used safely, is the stale-authority class DESIGN section 3 names."
 
-data belt_tick_receipt_schema: String = "roadmap-belt-tick-receipt/v3"
+data belt_tick_receipt_schema: String = "roadmap-belt-tick-receipt/v4"
 
 // THE RECEIPT HAD NO WRITABLE HOME AND THEREFORE HAS NEVER BEEN WRITTEN ON ANY INSTANCE.
 // This path was <instance_root>/belt-last-tick.json, and every instance_root on srv1 is
@@ -2006,15 +2018,30 @@ fn belt_tick_receipt_decode(raw: String) -> BeltTickReceiptRead {
                                   BeltTickLaunchesUnreadable { reason: r } =>
                                     BeltTickReceiptUnreadable { reason: r }
                                   BeltTickLaunchesDecoded { launches } =>
-                                    BeltTickReceiptPresent {
-                                      receipt: BeltTickReceipt {
-                                        observed_at: observed_at,
-                                        launches: launches,
-                                        spawn_pass: spawn_pass,
-                                        teardown_pass: teardown_pass,
-                                        verify_pass: verify_pass,
-                                        publish_pass: publish_pass,
-                                      },
+                                    match belt_tick_execution_from_member(doc: doc) {
+                                      BeltTickExecutionUnreadable { reason: r } =>
+                                        BeltTickReceiptUnreadable { reason: r }
+                                      BeltTickExecutionDecoded { execution } => {
+                                        let receipt = BeltTickReceipt {
+                                          observed_at: observed_at,
+                                          execution: execution,
+                                          launches: launches,
+                                          spawn_pass: spawn_pass,
+                                          teardown_pass: teardown_pass,
+                                          verify_pass: verify_pass,
+                                          publish_pass: publish_pass,
+                                        }
+                                        match json_object_unique_member(v: doc, key: "receipt_identity") {
+                                          JsonMemberFound { value: JsonString { value: claimed } } =>
+                                            if claimed != belt_tick_receipt_identity_hex(receipt: receipt) {
+                                              BeltTickReceiptUnreadable { reason: "belt tick receipt identity does not match its members" }
+                                            } else {
+                                              BeltTickReceiptPresent { receipt: receipt }
+                                            }
+                                          _ =>
+                                            BeltTickReceiptUnreadable { reason: "belt tick receipt receipt_identity is missing" }
+                                        }
+                                      }
                                     }
                                 }
                             }
@@ -2097,10 +2124,102 @@ fn belt_tick_receipt_read_for_instance(
   )
 }
 
+fn belt_tick_execution_json(e: BeltTickExecutionStanding) -> JsonValue {
+  match e {
+    TickExecuted { instance_id: i, deployed_revision: r, spawn_mode: m } =>
+      json_object(members: [
+        json_kv(key: "standing", value: json_string(s: "executed")),
+        json_kv(key: "instance_id", value: json_string(s: i)),
+        json_kv(key: "deployed_revision", value: json_string(s: r)),
+        json_kv(key: "spawn_mode", value: json_string(s: spawn_mode_label(m: m))),
+      ])
+    TickExecutionWithheld { refusal: why } =>
+      json_object(members: [
+        json_kv(key: "standing", value: json_string(s: "withheld")),
+        json_kv(key: "refusal", value: json_string(s: why)),
+      ])
+  }
+}
+
+fn belt_tick_execution_text(e: BeltTickExecutionStanding) -> String {
+  match e {
+    TickExecuted { instance_id: i, deployed_revision: r, spawn_mode: m } =>
+      join(["executed|", i, "|", r, "|", spawn_mode_label(m: m)], "")
+    TickExecutionWithheld { refusal: why } => join(["withheld|", why], "")
+  }
+}
+
+fn belt_tick_receipt_identity_text(receipt: BeltTickReceipt) -> String {
+  join([
+    receipt.observed_at, "|",
+    belt_tick_execution_text(e: receipt.execution), "|",
+    join(receipt.launches |> map(l => serialize_json(v: launch_identity_json(id: l))), ","), "|",
+    belt_pass_outcome_key(o: receipt.spawn_pass), "|",
+    belt_pass_outcome_key(o: receipt.teardown_pass), "|",
+    belt_pass_outcome_key(o: receipt.verify_pass), "|",
+    belt_pass_outcome_key(o: receipt.publish_pass),
+  ], "")
+}
+
+fn belt_tick_receipt_identity_hex(receipt: BeltTickReceipt) -> String {
+  content_hash_tagged_structural(
+    tag: "roadmap-belt-tick-receipt-v4" as NonEmptyStr,
+    payload: content_hash_atom(value: belt_tick_receipt_identity_text(receipt: receipt) as NonEmptyStr),
+  ).digest as String
+}
+
+type BeltTickExecutionDecode
+  = BeltTickExecutionDecoded { execution: BeltTickExecutionStanding }
+  | BeltTickExecutionUnreadable { reason: String }
+
+fn belt_tick_execution_from_member(doc: JsonValue) -> BeltTickExecutionDecode {
+  match json_object_unique_member(v: doc, key: "execution") {
+    JsonMemberFound { value: inner } =>
+      match json_object_unique_member(v: inner, key: "standing") {
+        JsonMemberFound { value: JsonString { value: standing } } =>
+          match standing {
+            "executed" =>
+              match json_object_unique_member(v: inner, key: "instance_id") {
+                JsonMemberFound { value: JsonString { value: instance_id } } =>
+                  match json_object_unique_member(v: inner, key: "deployed_revision") {
+                    JsonMemberFound { value: JsonString { value: revision } } =>
+                      match json_object_unique_member(v: inner, key: "spawn_mode") {
+                        JsonMemberFound { value: JsonString { value: mode_label } } =>
+                          match spawn_mode_of_label(label: mode_label) {
+                            Absent => BeltTickExecutionUnreadable { reason: join(["belt tick receipt execution spawn_mode is unknown: ", mode_label], "") }
+                            Present { value: mode } =>
+                              BeltTickExecutionDecoded {
+                                execution: TickExecuted { instance_id: instance_id, deployed_revision: revision, spawn_mode: mode },
+                              }
+                          }
+                        _ => BeltTickExecutionUnreadable { reason: "belt tick receipt execution spawn_mode is missing" }
+                      }
+                    _ => BeltTickExecutionUnreadable { reason: "belt tick receipt execution deployed_revision is missing" }
+                  }
+                _ => BeltTickExecutionUnreadable { reason: "belt tick receipt execution instance_id is missing" }
+              }
+            "withheld" =>
+              match json_object_unique_member(v: inner, key: "refusal") {
+                JsonMemberFound { value: JsonString { value: why } } =>
+                  BeltTickExecutionDecoded { execution: TickExecutionWithheld { refusal: why } }
+                _ => BeltTickExecutionUnreadable { reason: "belt tick receipt execution withheld without refusal" }
+              }
+            _ => BeltTickExecutionUnreadable { reason: join(["belt tick receipt execution standing is unknown: ", standing], "") }
+          }
+        _ => BeltTickExecutionUnreadable { reason: "belt tick receipt execution standing is missing" }
+      }
+    JsonMemberAbsent => BeltTickExecutionUnreadable { reason: "belt tick receipt execution is missing" }
+    JsonMemberDuplicated { count: _ } => BeltTickExecutionUnreadable { reason: "belt tick receipt execution is duplicated" }
+    JsonMemberNotAnObject => BeltTickExecutionUnreadable { reason: "belt tick receipt is not an object" }
+  }
+}
+
 fn belt_tick_receipt_json_value(receipt: BeltTickReceipt) -> JsonValue {
   json_object(members: [
     json_kv(key: "schema", value: json_string(s: belt_tick_receipt_schema)),
     json_kv(key: "observed_at", value: json_string(s: receipt.observed_at)),
+    json_kv(key: "execution", value: belt_tick_execution_json(e: receipt.execution)),
+    json_kv(key: "receipt_identity", value: json_string(s: belt_tick_receipt_identity_hex(receipt: receipt))),
     json_kv(key: "launches", value: json_array(elements: receipt.launches |> map(l => launch_identity_json(id: l)))),
     json_kv(key: "spawn_pass", value: belt_pass_outcome_json(o: receipt.spawn_pass)),
     json_kv(key: "teardown_pass", value: belt_pass_outcome_json(o: receipt.teardown_pass)),
@@ -4868,6 +4987,10 @@ fn belt_run_once_cli_in(spawn_workdir: String) -> ProcessExit {
       let tick_receipt = belt_tick_receipt_from_result(
         result: t,
         observed_at: belt_tick_observed_at(),
+        execution: belt_tick_execution_standing_for_instance(
+          instance: instance,
+          mode: roadmap_belt_production_spawn_mode,
+        ),
       )
       match belt_tick_receipt_write_for_instance(instance: instance, receipt: tick_receipt) {
         BeltPassFailed { reason: r } =>
@@ -5648,12 +5771,42 @@ fn belt_verification_presentation_detail(
   }
 }
 
+// THE EXECUTION STANDING IS OBSERVED AT THE MINT SITE from the instance the tick ran for and the
+// revision standing of that instance's tree -- the same fleet_revision_standing read the dispatch
+// preflight makes -- and the mode is the production row the tick itself consumed. A drifted or
+// unobservable revision withholds the binding rather than recording a revision the tick did not
+// serve.
+fn belt_tick_execution_standing_for_instance(
+  instance: HostDashboardInstance,
+  mode: SpawnMode,
+) -> BeltTickExecutionStanding {
+  match fleet_revision_standing(repo: instance.repo_root) {
+    RevisionConverged { revision: r } =>
+      TickExecuted {
+        instance_id: instance.instance_id as String,
+        deployed_revision: git_object_id_wire_hex(oid: r) as String,
+        spawn_mode: mode,
+      }
+    RevisionDrifted { desired: d, local: l } =>
+      TickExecutionWithheld {
+        refusal: join([
+          "revision drifted: desired ", git_object_id_wire_hex(oid: d) as String,
+          " local ", git_object_id_wire_hex(oid: l) as String,
+        ], ""),
+      }
+    RevisionUnobserved { cause: c } =>
+      TickExecutionWithheld { refusal: join(["revision unobserved: ", c], "") }
+  }
+}
+
 fn belt_tick_receipt_from_result(
   result: BeltTickResult,
   observed_at: String,
+  execution: BeltTickExecutionStanding,
 ) -> BeltTickReceipt {
   BeltTickReceipt {
     observed_at: observed_at,
+    execution: execution,
     launches: belt_tick_launch_identities(outcomes: result.spawn_outcomes),
     spawn_pass: (match result.wholesale {
       TickPassesWithheld { refusal } => BeltPassRefused { reason: launch_refusal_reason(r: refusal) }

@@ -734,6 +734,7 @@ test fn witness_tick_receipt_round_trips_launch_identities() -> Bool {
   let id = launch_fixture_identity(node_id: parent_id(), cause: Timer, mode: AutomaticReady)
   let receipt = BeltTickReceipt {
     observed_at: "2026-08-30T00:00:00Z",
+    execution: TickExecuted { instance_id: "srv1-live", deployed_revision: "0123456789abcdef0123456789abcdef01234567", spawn_mode: ManualReady },
     launches: [id],
     spawn_pass: BeltPassRecorded,
     teardown_pass: BeltPassRecorded,

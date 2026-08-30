@@ -1,0 +1,131 @@
+module test.claim.live_deploy.unit_standing_witness
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data unit_fixture_exec: String = "/opt/gunbc/bin/gunbc run --source-root dag --source-root src/v2 --entry dag/gunbc/roadmap/roadmap_belt_actuate.dag --function belt_run_once_cli"
+
+fn fixture_service_expectation() -> ServiceUnitExpectation {
+  ServiceUnitExpectation { exec_start: unit_fixture_exec, user: "briansrls", working_directory: "/opt/gunbc/gunbc" }
+}
+
+fn fixture_show_exec_start(argv: String) -> String {
+  join(["{ path=/opt/gunbc/bin/gunbc ; argv[]=", argv, " ; ignore_errors=no ; start_time=[n/a] ; stop_time=[n/a] ; pid=0 ; code=(null) ; status=0/0 }"], "")
+}
+
+fn fixture_oneshot_observed(unit_file_state: String, active_state: String, result: String, exec_main_status: String, user: String) -> ServiceUnitObserved {
+  ServiceUnitObserved {
+    load_state: "loaded",
+    unit_file_state: unit_file_state,
+    active_state: active_state,
+    sub_state: if active_state == "active" { "running" } else { "dead" },
+    result: result,
+    exec_main_status: exec_main_status,
+    exec_start: fixture_show_exec_start(argv: unit_fixture_exec),
+    user: user,
+    working_directory: "/opt/gunbc/gunbc",
+  }
+}
+
+fn fixture_timer_observed(unit_file_state: String, active_state: String, target: String) -> TimerUnitObserved {
+  TimerUnitObserved {
+    load_state: "loaded",
+    unit_file_state: unit_file_state,
+    active_state: active_state,
+    sub_state: if active_state == "active" { "waiting" } else { "dead" },
+    unit: target,
+    timers_monotonic: "{ OnBootUSec=2min ; next_elapse=1min 30s }, { OnUnitInactiveUSec=1min ; next_elapse=5min 2s }",
+  }
+}
+
+// (1) systemctl show's ExecStart rendering yields the exact argv text.
+test fn witness_exec_start_argv_is_read_from_the_show_rendering() -> Bool {
+  match exec_start_argv_of_show_value(value: fixture_show_exec_start(argv: unit_fixture_exec)) {
+    ExecStartArgv { argv_text: a } => a == unit_fixture_exec
+    ExecStartUnparseable { value: _ } => false
+  }
+}
+
+test fn witness_exec_start_without_argv_segment_is_unparseable() -> Bool {
+  match exec_start_argv_of_show_value(value: "") {
+    ExecStartArgv { argv_text: _ } => false
+    ExecStartUnparseable { value: _ } => true
+  }
+}
+
+// (2) POSITIVE CONTROL (ruling section 7): a correctly completed, currently INACTIVE oneshot is green.
+test fn witness_inactive_successful_oneshot_is_converged() -> Bool {
+  match judge_belt_oneshot(unit: "gunbc-belt.service", expect: fixture_service_expectation(), o: fixture_oneshot_observed(unit_file_state: "static", active_state: "inactive", result: "success", exec_main_status: "0", user: "briansrls")) {
+    BeltOneshotConverged { unit: u, active_state: a } => u == "gunbc-belt.service" && a == "inactive"
+    BeltOneshotRefused { unit: _, property: _, expected: _, observed: _ } => false
+  }
+}
+
+// (3) RED: a oneshot whose last run failed refuses on Result.
+test fn witness_failed_oneshot_refuses_on_result() -> Bool {
+  match judge_belt_oneshot(unit: "gunbc-belt.service", expect: fixture_service_expectation(), o: fixture_oneshot_observed(unit_file_state: "static", active_state: "inactive", result: "exit-code", exec_main_status: "1", user: "briansrls")) {
+    BeltOneshotConverged { unit: _, active_state: _ } => false
+    BeltOneshotRefused { unit: _, property: p, expected: _, observed: o } => p == "Result" && o == "exit-code"
+  }
+}
+
+// (4) RED: the oneshot running as the wrong principal refuses on User.
+test fn witness_oneshot_under_wrong_user_refuses() -> Bool {
+  match judge_belt_oneshot(unit: "gunbc-belt.service", expect: fixture_service_expectation(), o: fixture_oneshot_observed(unit_file_state: "static", active_state: "inactive", result: "success", exec_main_status: "0", user: "root")) {
+    BeltOneshotConverged { unit: _, active_state: _ } => false
+    BeltOneshotRefused { unit: _, property: p, expected: e, observed: o } => p == "User" && e == "briansrls" && o == "root"
+  }
+}
+
+// (5) RED: a DISABLED timer refuses on UnitFileState even when everything else reads clean --
+// this is the control the ruling names beside a fresh, manually fabricated tick.
+test fn witness_disabled_timer_refuses() -> Bool {
+  match judge_belt_timer(unit: "gunbc-belt.timer", expect: TimerUnitExpectation { target_unit: "gunbc-belt.service" }, o: fixture_timer_observed(unit_file_state: "disabled", active_state: "active", target: "gunbc-belt.service")) {
+    BeltTimerConverged { unit: _ } => false
+    BeltTimerRefused { unit: _, property: p, expected: e, observed: o } => p == "UnitFileState" && e == "enabled" && o == "disabled"
+  }
+}
+
+test fn witness_enabled_waiting_timer_on_the_exact_service_is_converged() -> Bool {
+  match judge_belt_timer(unit: "gunbc-belt.timer", expect: TimerUnitExpectation { target_unit: "gunbc-belt.service" }, o: fixture_timer_observed(unit_file_state: "enabled", active_state: "active", target: "gunbc-belt.service")) {
+    BeltTimerConverged { unit: u } => u == "gunbc-belt.timer"
+    BeltTimerRefused { unit: _, property: _, expected: _, observed: _ } => false
+  }
+}
+
+test fn witness_timer_targeting_another_service_refuses() -> Bool {
+  match judge_belt_timer(unit: "gunbc-belt.timer", expect: TimerUnitExpectation { target_unit: "gunbc-belt.service" }, o: fixture_timer_observed(unit_file_state: "enabled", active_state: "active", target: "gunbc-belt-lab.service")) {
+    BeltTimerConverged { unit: _ } => false
+    BeltTimerRefused { unit: _, property: p, expected: _, observed: _ } => p == "Unit"
+  }
+}
+
+// (6) The dashboard service must be enabled AND active; ExecStart is compared exactly.
+test fn witness_dashboard_service_with_drifted_exec_start_refuses() -> Bool {
+  let o = ServiceUnitObserved {
+    load_state: "loaded", unit_file_state: "enabled", active_state: "active", sub_state: "running", result: "success", exec_main_status: "0",
+    exec_start: fixture_show_exec_start(argv: "/opt/gunbc/bin/gunbc serve --release-revision 0000000000000000000000000000000000000000"),
+    user: "briansrls", working_directory: "/opt/gunbc/gunbc",
+  }
+  match judge_dashboard_service(unit: "gunbc-roadmap.service", expect: ServiceUnitExpectation { exec_start: "/opt/gunbc/bin/gunbc serve --release-revision 0123456789abcdef0123456789abcdef01234567", user: "briansrls", working_directory: "/opt/gunbc/gunbc" }, o: o) {
+    DashboardServiceConverged { unit: _ } => false
+    DashboardServiceRefused { unit: _, property: p, expected: _, observed: _ } => p == "ExecStart"
+  }
+}
+
+// (7) The expectation is DERIVED from the emitted unit of the srv1 spec, never typed beside it.
+test fn witness_expectations_derive_from_the_emitted_srv1_units() -> Bool {
+  let spec = deployment_spec_srv1()
+  let belt = match service_unit_expectation_of(file: live_deploy_belt_service_unit_file(spec: spec)) {
+    ServiceExpectationDerived { expectation: e } => e.user == (spec.service.service_user as String) && string_contains(s: e.exec_start, pattern: "belt_run_once_cli")
+    ServiceExpectationUnderivable { detail: _ } => false
+  }
+  let timer = match timer_unit_expectation_of(file: live_deploy_belt_timer_unit_file(spec: spec)) {
+    TimerExpectationDerived { expectation: e } => e.target_unit == (deployment_belt_service_unit_name(names: spec.names) as String)
+    TimerExpectationUnderivable { detail: _ } => false
+  }
+  let mismatched = match timer_unit_expectation_of(file: live_deploy_belt_service_unit_file(spec: spec)) {
+    TimerExpectationDerived { expectation: _ } => false
+    TimerExpectationUnderivable { detail: _ } => true
+  }
+  belt && timer && mismatched
+}

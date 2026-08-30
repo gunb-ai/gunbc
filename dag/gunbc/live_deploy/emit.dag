@@ -316,11 +316,15 @@ fn release_revision_execstart_text(binding: ReleaseRevisionBinding) -> String {
   }
 }
 
-fn emit_systemd_unit_doc(spec: DeploymentSpec, revision: ReleaseRevisionBinding) -> Doc {
+// THE TYPED UNIT VALUE IS A NAMED PRODUCER, so a reader that compares the EFFECTIVE unit on a host
+// against what this revision would install (gunbc.live_deploy.unit_standing) consumes the same
+// directive list the emission serializes, rather than re-parsing the rendered text. The doc
+// producers below delegate here; behaviour is unchanged.
+fn live_deploy_serve_unit_file(spec: DeploymentSpec, revision: ReleaseRevisionBinding) -> SystemdUnitFile {
   let svc = spec.service
   let port = to_string(svc.listen.port)
   let host = svc.listen.host
-  doc_text(text: serialize_systemd_unit_file(file: ServiceUnitFile {
+  ServiceUnitFile {
     unit: [
       Description { text: "gunbc roadmap HTTP server (gunbc serve)" as NonEmptyStr },
       After { target: "network-online.target tailscaled.service" as NonEmptyStr },
@@ -343,16 +347,20 @@ fn emit_systemd_unit_doc(spec: DeploymentSpec, revision: ReleaseRevisionBinding)
       Restart { policy: "on-failure" as NonEmptyStr },
     ],
     install: Installable { directives: [WantedBy { target: "multi-user.target" as NonEmptyStr }] },
-  }))
+  }
+}
+
+fn emit_systemd_unit_doc(spec: DeploymentSpec, revision: ReleaseRevisionBinding) -> Doc {
+  doc_text(text: serialize_systemd_unit_file(file: live_deploy_serve_unit_file(spec: spec, revision: revision)))
 }
 
 data belt_tick_cadence_note: String = "OnUnitInactiveSec, NOT OnUnitActiveSec, and the difference is a fail-closed choice rather than a formatting one. OnUnitActiveSec measures from when the tick STARTED, so a tick that runs longer than the cadence schedules its successor while it is still running and ticks pile up back-to-back — for a unit whose job is spawning agent sessions, that converts a slow tick into overlapping spawns. OnUnitInactiveSec measures from when the previous tick FINISHED, so the gap is real regardless of how long a tick takes and the belt can never outrun itself. systemd additionally refuses to start a Type=oneshot unit that is already active, so the two together make overlap unwritable rather than unlikely.\\n\\n60s is the operator's stated default for this lane and is deliberately not tuned against anything: a tick against an unchanged frontier is an idempotent reconcile that observes live tmux sessions and does nothing (belt_run_once_note), so the cost of a too-fast cadence is an observation, not an action. AccuracySec=5s keeps systemd from coalescing the timer into a distant wakeup window, which is the default behavior and would otherwise make the effective cadence unpredictable.\\n\\nOnBootSec=2min rather than firing immediately: at boot the tree sync, the serve unit and tailscale are all converging, and a belt tick that spawns before the repo tree is in place produces SpawnFailed rows for a condition that resolves itself within seconds. The delay costs one cadence period and removes a class of self-inflicted refusals from the receipt."
 
 data belt_tick_cadence: String = "60s"
 
-fn emit_belt_service_unit_doc(spec: DeploymentSpec) -> Doc {
+fn live_deploy_belt_service_unit_file(spec: DeploymentSpec) -> SystemdUnitFile {
   let svc = spec.service
-  doc_text(text: serialize_systemd_unit_file(file: ServiceUnitFile {
+  ServiceUnitFile {
     unit: [
       Description { text: "gunbc roadmap belt tick (one reconcile pass over the ready frontier)" as NonEmptyStr },
       After { target: "network-online.target" as NonEmptyStr },
@@ -373,7 +381,11 @@ fn emit_belt_service_unit_doc(spec: DeploymentSpec) -> Doc {
       ], "") as NonEmptyStr },
     ],
     install: NotInstallable,
-  }))
+  }
+}
+
+fn emit_belt_service_unit_doc(spec: DeploymentSpec) -> Doc {
+  doc_text(text: serialize_systemd_unit_file(file: live_deploy_belt_service_unit_file(spec: spec)))
 }
 
 // THE PUBLICATION HELPER: THE ONLY UNIT IN THIS DEPLOYMENT THAT BINDS A CREDENTIAL, AND THE ONLY
@@ -500,8 +512,8 @@ fn apply_publication_spool_steps(spec: DeploymentSpec) -> List<PipelineStep> {
   ]
 }
 
-fn emit_belt_timer_unit_doc(spec: DeploymentSpec) -> Doc {
-  doc_text(text: serialize_systemd_unit_file(file: TimerUnitFile {
+fn live_deploy_belt_timer_unit_file(spec: DeploymentSpec) -> SystemdUnitFile {
+  TimerUnitFile {
     unit: [Description { text: "gunbc roadmap belt tick cadence" as NonEmptyStr }],
     timer: [
       TimerUnit { target: deployment_belt_service_unit_name(names: spec.names) },
@@ -510,7 +522,11 @@ fn emit_belt_timer_unit_doc(spec: DeploymentSpec) -> Doc {
       AccuracySec { duration: "5s" as NonEmptyStr },
     ],
     install: Installable { directives: [WantedBy { target: "timers.target" as NonEmptyStr }] },
-  }))
+  }
+}
+
+fn emit_belt_timer_unit_doc(spec: DeploymentSpec) -> Doc {
+  doc_text(text: serialize_systemd_unit_file(file: live_deploy_belt_timer_unit_file(spec: spec)))
 }
 
 // THE DEPLOYED TREE'S REMOTE, CONVERGED BY ITS OWNER.

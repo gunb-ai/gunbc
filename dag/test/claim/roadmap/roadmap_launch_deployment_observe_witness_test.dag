@@ -1,0 +1,155 @@
+module test.claim.roadmap.roadmap_launch_deployment_observe_witness
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data observe_fixture_r: String = "0123456789abcdef0123456789abcdef01234567"
+
+fn fixture_v4_tick() -> BeltTickReceipt {
+  BeltTickReceipt {
+    observed_at: "2026-08-30T12:01:00Z",
+    execution: TickExecuted { instance_id: "srv1-live", deployed_revision: observe_fixture_r, spawn_mode: ManualReady },
+    launches: [],
+    spawn_pass: BeltPassRecorded,
+    teardown_pass: BeltPassRecorded,
+    verify_pass: BeltPassRecorded,
+    publish_pass: BeltPassRecorded,
+  }
+}
+
+data fixture_v3_tick_wire: String = "{\"schema\":\"roadmap-belt-tick-receipt/v3\",\"observed_at\":\"2026-08-30T12:01:00Z\",\"launches\":[],\"spawn_pass\":{\"outcome\":\"recorded\"},\"teardown_pass\":{\"outcome\":\"recorded\"},\"verify_pass\":{\"outcome\":\"recorded\"},\"publish_pass\":{\"outcome\":\"recorded\"}}"
+
+// (1) ISO-8601 UTC instants decode to epoch seconds on known values (Python datetime as the oracle).
+test fn witness_iso8601_utc_epoch_seconds_matches_known_instants() -> Bool {
+  (match iso8601_utc_epoch_seconds(text: "2026-08-30T12:00:00Z") { Present { value: s } => s == 1788091200  Absent => false })
+    && (match iso8601_utc_epoch_seconds(text: "2000-03-01T00:00:00Z") { Present { value: s } => s == 951868800  Absent => false })
+    && (match iso8601_utc_epoch_seconds(text: "1970-01-01T00:00:00Z") { Present { value: s } => s == 0  Absent => false })
+    && (match iso8601_utc_epoch_seconds(text: "2026-08-30 12:00:00") { Present { value: _ } => false  Absent => true })
+    && (match iso8601_utc_epoch_seconds(text: "clock-unreadable") { Present { value: _ } => false  Absent => true })
+}
+
+// (2) Freshness: fresh within the cadence bound, stale beyond it, refused before the deploy, and
+// refused on an unparseable instant -- four typed arms, none of which is a default.
+test fn witness_tick_freshness_arms() -> Bool {
+  let deploy = "2026-08-30T12:00:00Z"
+  (match belt_tick_freshness(observed_at: "2026-08-30T12:01:00Z", deploy_completed_at: deploy, now: "2026-08-30T12:02:00Z") { TickFresh { age_seconds: a } => a == 60  _ => false })
+    && (match belt_tick_freshness(observed_at: "2026-08-30T12:01:00Z", deploy_completed_at: deploy, now: "2026-08-30T12:10:00Z") { TickStale { age_seconds: a, bound_seconds: b } => a == 540 && b == 180  _ => false })
+    && (match belt_tick_freshness(observed_at: "2026-08-30T11:59:00Z", deploy_completed_at: deploy, now: "2026-08-30T12:00:30Z") { TickBeforeDeploy { observed_at: _, deploy_completed_at: _ } => true  _ => false })
+    && (match belt_tick_freshness(observed_at: "clock-unreadable", deploy_completed_at: deploy, now: "2026-08-30T12:00:30Z") { TickInstantUnparseable { which: w, text: _ } => string_contains(s: w, pattern: "observed_at")  _ => false })
+}
+
+// (3) /instance.json decodes the members the serve route writes, and refuses another schema.
+test fn witness_instance_document_decodes_the_served_members() -> Bool {
+  let body = dashboard_instance_json(instance: srv1_live_dashboard_instance())
+  match dashboard_instance_document_decode(raw: body) {
+    InstanceDocumentServed { document: d } => d.instance_id == "srv1-live" && d.host_identity == "srv1" && d.actuation == "actuating"
+    InstanceDocumentRefused { detail: _ } => false
+  }
+}
+
+test fn witness_instance_document_refuses_another_schema() -> Bool {
+  match dashboard_instance_document_decode(raw: "{\"schema\":\"roadmap-dashboard-instance/v0\",\"instance_id\":\"srv1-live\"}") {
+    InstanceDocumentServed { document: _ } => false
+    InstanceDocumentRefused { detail: d } => string_contains(s: d, pattern: "schema is not")
+  }
+}
+
+// (4) /workflow.json: the embedded v4 tick decodes; an embedded v3 tick is UNREADABLE, not Idle;
+// an absent tick is Absent; observe_refused is carried, not swallowed.
+fn workflow_wire(observe_refused: String, belt_tick: String) -> String {
+  join(["{\"schema\":\"roadmap-workflow/v1\",\"observe_refused\":", observe_refused, ",\"attempts\":[],\"belt_tick\":", belt_tick, "}"], "")
+}
+
+test fn witness_workflow_document_decodes_an_embedded_v4_tick() -> Bool {
+  let tick = serialize_json(v: belt_tick_receipt_wire_json_from_read(tick_read: BeltTickReceiptPresent { receipt: fixture_v4_tick() }))
+  match roadmap_workflow_document_decode(raw: workflow_wire(observe_refused: "false", belt_tick: tick)) {
+    WorkflowDocumentServed { document: d } =>
+      !d.observe_refused
+        && (match d.belt_tick {
+          BeltTickReceiptPresent { receipt: r } => belt_tick_receipt_identity_hex(receipt: r) == belt_tick_receipt_identity_hex(receipt: fixture_v4_tick())
+          _ => false
+        })
+    WorkflowDocumentRefused { detail: _ } => false
+  }
+}
+
+test fn witness_workflow_document_with_embedded_v3_tick_is_unreadable() -> Bool {
+  let tick = join(["{\"present\":true,\"receipt\":", fixture_v3_tick_wire, "}"], "")
+  match roadmap_workflow_document_decode(raw: workflow_wire(observe_refused: "false", belt_tick: tick)) {
+    WorkflowDocumentServed { document: d } =>
+      match d.belt_tick {
+        BeltTickReceiptUnreadable { reason: r } => string_contains(s: r, pattern: "schema is unknown")
+        _ => false
+      }
+    WorkflowDocumentRefused { detail: _ } => false
+  }
+}
+
+test fn witness_workflow_document_without_a_tick_is_absent_and_refused_ledger_is_carried() -> Bool {
+  match roadmap_workflow_document_decode(raw: workflow_wire(observe_refused: "true", belt_tick: "{\"present\":false}")) {
+    WorkflowDocumentServed { document: d } =>
+      d.observe_refused && (match d.belt_tick { BeltTickReceiptAbsent => true  _ => false })
+    WorkflowDocumentRefused { detail: _ } => false
+  }
+}
+
+test fn witness_workflow_document_of_another_schema_refuses() -> Bool {
+  match roadmap_workflow_document_decode(raw: "{\"schema\":\"roadmap-workflow/v0\",\"observe_refused\":false}") {
+    WorkflowDocumentServed { document: _ } => false
+    WorkflowDocumentRefused { detail: d } => string_contains(s: d, pattern: "schema is not")
+  }
+}
+
+// (5) The on-disk v3 receipt refuses the v4 decoder outright (ruling section 6: an old v3 refuses).
+test fn witness_v3_tick_receipt_refuses_the_v4_decoder() -> Bool {
+  match belt_tick_receipt_decode(raw: fixture_v3_tick_wire) {
+    BeltTickReceiptPresent { receipt: _ } => false
+    BeltTickReceiptAbsent => false
+    BeltTickReceiptUnreadable { reason: r } => string_contains(s: r, pattern: "schema is unknown")
+  }
+}
+
+test fn witness_v4_tick_receipt_round_trips_execution_and_identity() -> Bool {
+  let t = fixture_v4_tick()
+  match belt_tick_receipt_decode(raw: serialize_json(v: belt_tick_receipt_json_value(receipt: t))) {
+    BeltTickReceiptPresent { receipt: back } =>
+      belt_tick_receipt_identity_hex(receipt: back) == belt_tick_receipt_identity_hex(receipt: t)
+        && (match back.execution { TickExecuted { instance_id: i, deployed_revision: r, spawn_mode: ManualReady } => i == "srv1-live" && r == observe_fixture_r  _ => false })
+    _ => false
+  }
+}
+
+test fn witness_v4_tick_receipt_with_tampered_mode_refuses() -> Bool {
+  let wire = serialize_json(v: belt_tick_receipt_json_value(receipt: fixture_v4_tick()))
+  let tampered = replace(wire, "\"spawn_mode\":\"manual_ready\"", "\"spawn_mode\":\"automatic_ready\"")
+  tampered != wire
+    && (match belt_tick_receipt_decode(raw: tampered) {
+      BeltTickReceiptUnreadable { reason: r } => string_contains(s: r, pattern: "identity does not match")
+      _ => false
+    })
+}
+
+// (6) The deployed root-tree argv is admitted by the fleet portability wall (the `HEAD:` spelling),
+// and the join refuses a deployed tree that is not the candidate's.
+test fn witness_root_tree_argv_is_admitted_by_the_portability_wall() -> Bool {
+  match portable_remote_words(raws: deployed_tree_root_tree_argv(repo: "/opt/gunbc/gunbc" as NonEmptyStr)) {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
+test fn witness_root_tree_standing_refuses_a_mismatched_tree() -> Bool {
+  let a = "fedcba9876543210fedcba9876543210fedcba98"
+  let b = "0000000000000000000000000000000000000001"
+  match git_object_id_from_untagged_hex(hex: observe_fixture_r) {
+    Absent => false
+    Present { value: rev } =>
+      match git_object_id_from_untagged_hex(hex: a) {
+        Absent => false
+        Present { value: tree } => {
+          let obs = DeployedTreeObserved { revision: rev, tree: tree, content: DeployedScopeMatchesCommit }
+          (match deployed_root_tree_standing(candidate_tree_hex: a, observation: obs) { DeployedRootTreeMatches { tree_hex: h } => h == a  _ => false })
+            && (match deployed_root_tree_standing(candidate_tree_hex: b, observation: obs) { DeployedRootTreeMismatch { candidate_hex: c, deployed_hex: d } => c == b && d == a  _ => false })
+        }
+      }
+  }
+}

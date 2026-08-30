@@ -535,6 +535,18 @@ data gunbc_ci_live_deploy_apply_srv1_target: GunbcRunStepTarget = GunbcRunStepTa
   function: "live_deploy_apply_srv1_wet",
 }
 
+// THE RECEIPTED DASHBOARD DEPLOY (RLM-2a): the same fold as live_deploy_apply_srv1_wet, bound to
+// the expected revision and the fleet transaction, minting gunbc.live_deploy.apply_receipt.
+data gunbc_ci_live_deploy_transaction_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/live_deploy/apply.dag",
+  function: "live_deploy_apply_srv1_transaction_wet",
+}
+
+data gunbc_ci_rlm_launch_deployment_receipt_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/roadmap/roadmap_launch_deployment_cli.dag",
+  function: "rlm_launch_deployment_receipt_wet",
+}
+
 data gunbc_ci_srv1_tasks_observation_target: GunbcRunStepTarget = GunbcRunStepTarget {
   entry: "dag/gunbc/srv1_tasks_preapply_observation.dag",
   function: "observe_srv1_tasks_preapply_wet",
@@ -582,7 +594,7 @@ data gunbc_ci_heal_dispatch_target: GunbcRunStepTarget = GunbcRunStepTarget {
 // turns a fold over "the rows someone remembered to list" into a fold over "the rows that
 // exist". Until that lands, hole 2 is open and this list is diligence, not a denominator.
 //
-// Counted at authoring: 19 declarations, 19 entries. That equality is the thing nothing checks.
+// Counted at authoring: 21 declarations, 21 entries. That equality is the thing nothing checks.
 fn gunbc_run_step_targets() -> List<GunbcRunStepTarget> {
   [
     gunbc_ci_fleet_reach_probe_target,
@@ -600,6 +612,8 @@ fn gunbc_run_step_targets() -> List<GunbcRunStepTarget> {
     gunbc_ci_probe_identity_observe_target,
     gunbc_ci_authorized_key_enroll_target,
     gunbc_ci_live_deploy_apply_srv1_target,
+    gunbc_ci_live_deploy_transaction_target,
+    gunbc_ci_rlm_launch_deployment_receipt_target,
     gunbc_ci_srv1_tasks_observation_target,
     gunbc_ci_heal_regen_target,
     gunbc_ci_heal_repo_local_git_config_target,
@@ -619,6 +633,33 @@ fn gunbc_ci_live_deploy_apply_srv1_invoke() -> String {
     function: gunbc_ci_live_deploy_apply_srv1_target.function,
     claim_run: false,
     receipt_rel: "target/live-deploy-srv1-receipt.txt"
+  )
+}
+
+data gunbc_live_deploy_receipt_artifact_name: String = "live-deploy-srv1-receipt"
+data gunbc_live_deploy_receipt_artifact_dir: String = "target/live-deploy-srv1-receipt"
+data gunbc_fleet_converge_apply_receipt_artifact_name: String = "fleet-converge-apply-receipt"
+data gunbc_fleet_converge_apply_receipt_artifact_dir: String = "/tmp/fleet-converge-apply"
+data gunbc_rlm_launch_deployment_receipt_artifact_name: String = "rlm-launch-deployment-receipt"
+data gunbc_rlm_launch_deployment_receipt_artifact_dir: String = "target/rlm-launch-deployment-receipt"
+
+fn gunbc_ci_live_deploy_transaction_invoke() -> String {
+  gunbc_run_step_script(
+    source_roots: witness_layer_roots,
+    entry: gunbc_ci_live_deploy_transaction_target.entry,
+    function: gunbc_ci_live_deploy_transaction_target.function,
+    claim_run: false,
+    receipt_rel: "target/live-deploy-srv1-receipt/live_deploy_receipt.json"
+  )
+}
+
+fn gunbc_ci_rlm_launch_deployment_receipt_invoke() -> String {
+  gunbc_run_step_script(
+    source_roots: witness_layer_roots,
+    entry: gunbc_ci_rlm_launch_deployment_receipt_target.entry,
+    function: gunbc_ci_rlm_launch_deployment_receipt_target.function,
+    claim_run: false,
+    receipt_rel: "target/rlm-launch-deployment-receipt/receipt.json"
   )
 }
 

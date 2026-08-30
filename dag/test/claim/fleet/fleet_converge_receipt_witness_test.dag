@@ -1,0 +1,174 @@
+module test.claim.fleet_converge_receipt_witness
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data receipt_fixture_r: String = "0123456789abcdef0123456789abcdef01234567"
+data receipt_fixture_other_r: String = "89abcdef0123456789abcdef0123456789abcdef"
+
+fn fixture_run(run_id: String, revision: String) -> ActionsRunBinding {
+  ActionsRunBinding {
+    repository: "gunb-ai/gunbc",
+    workflow_ref: "gunb-ai/gunbc/.github/workflows/fleet-converge.yml@refs/heads/main",
+    run_id: run_id,
+    run_revision: revision,
+  }
+}
+
+fn fixture_plan_receipt() -> FleetConvergePlanReceipt {
+  FleetConvergePlanReceipt {
+    run: fixture_run(run_id: "1001", revision: receipt_fixture_r),
+    observed_host: "srv1",
+    scope_wire: "full_host",
+    member_set_fingerprint_hex: "fnv1a64:0011223344556677",
+    plan_artifact_hash: "a1b2c3d4e5f60718",
+    observed_baseline_hex: "1122334455667788",
+    prior_generation: 4,
+    planned_generation: 5,
+    lease_key: "fleet-converge-plan:srv1",
+  }
+}
+
+fn fixture_apply_receipt() -> FleetConvergeApplyReceipt {
+  FleetConvergeApplyReceipt {
+    run: fixture_run(run_id: "1002", revision: receipt_fixture_r),
+    plan_run_id: "1001",
+    plan_receipt_identity: fleet_converge_plan_receipt_identity_hex(r: fixture_plan_receipt()),
+    plan_artifact_hash: "a1b2c3d4e5f60718",
+    observed_host: "srv1",
+    prior_generation: 4,
+    planned_generation: 5,
+    locked_apply_exit_code: 0,
+  }
+}
+
+// The plan receipt round-trips through its wire, identity included.
+test fn witness_plan_receipt_round_trips() -> Bool {
+  let r = fixture_plan_receipt()
+  match fleet_converge_plan_receipt_decode(raw: serialize_json(v: fleet_converge_plan_receipt_json(r: r))) {
+    FleetConvergePlanReceiptDecoded { receipt: back } =>
+      fleet_converge_plan_receipt_identity_hex(r: back) == fleet_converge_plan_receipt_identity_hex(r: r)
+        && back.run.run_id == "1001"
+        && back.planned_generation == 5
+        && back.lease_key == "fleet-converge-plan:srv1"
+    FleetConvergePlanReceiptUnreadable { reason: _ } => false
+  }
+}
+
+test fn witness_apply_receipt_round_trips() -> Bool {
+  let r = fixture_apply_receipt()
+  match fleet_converge_apply_receipt_decode(raw: serialize_json(v: fleet_converge_apply_receipt_json(r: r))) {
+    FleetConvergeApplyReceiptDecoded { receipt: back } =>
+      fleet_converge_apply_receipt_identity_hex(r: back) == fleet_converge_apply_receipt_identity_hex(r: r)
+        && back.plan_receipt_identity == fleet_converge_plan_receipt_identity_hex(r: fixture_plan_receipt())
+        && back.locked_apply_exit_code == 0
+    FleetConvergeApplyReceiptUnreadable { reason: _ } => false
+  }
+}
+
+// (2) RED: a tampered member no longer matches the carried identity, so the receipt refuses.
+test fn witness_plan_receipt_with_tampered_host_refuses() -> Bool {
+  let wire = serialize_json(v: fleet_converge_plan_receipt_json(r: fixture_plan_receipt()))
+  let tampered = replace(wire, "\"observed_host\":\"srv1\"", "\"observed_host\":\"srv2\"")
+  tampered != wire
+    && (match fleet_converge_plan_receipt_decode(raw: tampered) {
+      FleetConvergePlanReceiptDecoded { receipt: _ } => false
+      FleetConvergePlanReceiptUnreadable { reason: r } => string_contains(s: r, pattern: "identity does not match")
+    })
+}
+
+test fn witness_plan_receipt_wrong_schema_refuses() -> Bool {
+  match fleet_converge_plan_receipt_decode(raw: "{\"schema\":\"fleet-converge-plan-receipt/v0\"}") {
+    FleetConvergePlanReceiptDecoded { receipt: _ } => false
+    FleetConvergePlanReceiptUnreadable { reason: r } => string_contains(s: r, pattern: "schema is not")
+  }
+}
+
+// (3) Apply-to-plan binding: admitted on the exact plan, and four distinct refusals.
+test fn witness_apply_plan_binding_admits_the_exact_plan() -> Bool {
+  match admit_apply_plan_binding(
+    plan: fixture_plan_receipt(),
+    apply_run: fixture_run(run_id: "1002", revision: receipt_fixture_r),
+    plan_run_id_input: "1001",
+    plan_hash_on_disk: "a1b2c3d4e5f60718",
+  ) {
+    PlanBindingAdmitted => true
+    _ => false
+  }
+}
+
+test fn witness_apply_plan_binding_refuses_run_id_substitution() -> Bool {
+  match admit_apply_plan_binding(
+    plan: fixture_plan_receipt(),
+    apply_run: fixture_run(run_id: "1002", revision: receipt_fixture_r),
+    plan_run_id_input: "1099",
+    plan_hash_on_disk: "a1b2c3d4e5f60718",
+  ) {
+    PlanBindingRunIdMismatch { planned: p, requested: r } => p == "1001" && r == "1099"
+    _ => false
+  }
+}
+
+test fn witness_apply_plan_binding_refuses_hash_substitution() -> Bool {
+  match admit_apply_plan_binding(
+    plan: fixture_plan_receipt(),
+    apply_run: fixture_run(run_id: "1002", revision: receipt_fixture_r),
+    plan_run_id_input: "1001",
+    plan_hash_on_disk: "ffffffffffffffff",
+  ) {
+    PlanBindingHashMismatch { receipt: a, on_disk: b } => a == "a1b2c3d4e5f60718" && b == "ffffffffffffffff"
+    _ => false
+  }
+}
+
+test fn witness_apply_plan_binding_refuses_a_plan_from_another_revision() -> Bool {
+  match admit_apply_plan_binding(
+    plan: fixture_plan_receipt(),
+    apply_run: fixture_run(run_id: "1002", revision: receipt_fixture_other_r),
+    plan_run_id_input: "1001",
+    plan_hash_on_disk: "a1b2c3d4e5f60718",
+  ) {
+    PlanBindingRevisionMismatch { plan: p, apply: a } => p == receipt_fixture_r && a == receipt_fixture_other_r
+    _ => false
+  }
+}
+
+test fn witness_apply_plan_binding_refuses_another_repository() -> Bool {
+  let foreign = ActionsRunBinding {
+    repository: "someone/fork",
+    workflow_ref: "someone/fork/.github/workflows/fleet-converge.yml@refs/heads/main",
+    run_id: "1002",
+    run_revision: receipt_fixture_r,
+  }
+  match admit_apply_plan_binding(plan: fixture_plan_receipt(), apply_run: foreign, plan_run_id_input: "1001", plan_hash_on_disk: "a1b2c3d4e5f60718") {
+    PlanBindingRepositoryMismatch { plan: p, apply: a } => p == "gunb-ai/gunbc" && a == "someone/fork"
+    _ => false
+  }
+}
+
+// (4) Run binding: the workflow-file predicate and the wire round trip.
+test fn witness_run_binding_names_its_workflow_file() -> Bool {
+  let run = fixture_run(run_id: "1", revision: receipt_fixture_r)
+  run_binding_names_workflow_file(binding: run, workflow_path: ".github/workflows/fleet-converge.yml")
+    && !run_binding_names_workflow_file(binding: run, workflow_path: ".github/workflows/witnesses.yml")
+    && !run_binding_names_workflow_file(binding: run, workflow_path: ".github/workflows/fleet-converge.ym")
+}
+
+test fn witness_run_binding_round_trips_and_refuses_a_short_revision() -> Bool {
+  let run = fixture_run(run_id: "7", revision: receipt_fixture_r)
+  let ok = match actions_run_binding_of_json(doc: actions_run_binding_json(binding: run)) {
+    ActionsRunBindingDecoded { binding: back } => back.run_id == "7" && back.run_revision == receipt_fixture_r
+    ActionsRunBindingUnreadable { reason: _ } => false
+  }
+  let short = ActionsRunBinding { repository: "gunb-ai/gunbc", workflow_ref: "x", run_id: "7", run_revision: "abc" }
+  let refused = match actions_run_binding_of_json(doc: actions_run_binding_json(binding: short)) {
+    ActionsRunBindingDecoded { binding: _ } => false
+    ActionsRunBindingUnreadable { reason: r } => string_contains(s: r, pattern: "40-digit")
+  }
+  ok && refused
+}
+
+test fn witness_admit_run_revision_is_a_comparison_of_two_origins() -> Bool {
+  let run = fixture_run(run_id: "1", revision: receipt_fixture_r)
+  (match admit_run_revision(binding: run, expected: receipt_fixture_r) { RunRevisionAdmitted { revision: r } => r == receipt_fixture_r  RunRevisionRefused { expected: _, observed: _ } => false })
+    && (match admit_run_revision(binding: run, expected: receipt_fixture_other_r) { RunRevisionAdmitted { revision: _ } => false  RunRevisionRefused { expected: e, observed: o } => e == receipt_fixture_other_r && o == receipt_fixture_r })
+}
