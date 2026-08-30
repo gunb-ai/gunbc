@@ -10,7 +10,7 @@ import extdeps.github.actions { RunnerSpec }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import gunbc.runner_spec_from_offer { runner_spec_from_offer }
-import gunbc.runner_slot_allocation { gunbc_runner_slot_desired, gunbc_runner_slots_per_host }
+import gunbc.runner_slot_allocation { gunbc_runner_slot_desired, gunbc_runner_slots_per_host, gunbc_runner_cores_per_slot }
 import gunbc.session_reservation_policy {
   SessionReservationCharged, SessionReservationUnsized,
   SessionReservationNotApplicable, SessionReservationAuthorityDisagreement,
@@ -42,7 +42,12 @@ import gunbc.fabric_control_plane_charge {
   FabricControlPlanePlacement,
   HostFabricControlPlaneClaim,
 }
-import extdeps.jobserver { jobserver_config }
+import extdeps.jobserver {
+  jobserver_config,
+  derive_jobserver_tokens,
+  JobserverCited,
+  JobserverAbsent,
+}
 import extdeps.cpu { cpu_facts_threads }
 import gunbc.ci_floor_measurement {
   HostUsableRam,
@@ -91,6 +96,60 @@ fn workload_class_cpu_weight(wc: WorkloadClass) -> Int {
 // the ConvergeTarget.PerSlotMemoryCap → PerSlotUnitProperty P3 axis rework (a std.measure
 // TaskCount, the HardwareThreadCount shape), which also retires the to_string() re-serialization
 // at the host_converge knob seam.
+// WHAT A RUNNER SLOT IS ENTITLED TO ON THE CPU, AS A CONTRACT AND NOT A HINT.
+//
+// systemd offers two different promises here and they are not aliases. CPUWeight= is a RELATIVE
+// share against sibling cgroups: under contention it decides who yields first and guarantees no
+// amount of anything. CPUQuota= is an ABSOLUTE ceiling on CPU time per wall second. AllowedCPUs=
+// is a third thing again -- a pinning of the unit to named CPUs.
+//
+// CapacityQuota is the no-overcommit contract this fleet adopts: each slot may consume at most
+// cores_per_slot threads' worth of CPU time, and the sum of the runner, compile-pool and host
+// reserve ceilings must fit the machine. DisjointCpuSet is the STRONGER affinity contract --
+// pairwise-disjoint CPU sets per slot -- and it is modeled rather than omitted so the promise the
+// fleet does NOT make has a name. Nothing produces it today.
+//
+// THE ARM THIS TYPE REPLACES WAS NEITHER OF THEM. cores_per_slot was consumed to decide how many
+// units to create and then dropped, so the width was CPU-derived while the units it created carried
+// no CPU directive at all -- srv1 and srv2 show MemoryMax as their only resource line, CPUWeight
+// unset and CPUQuota infinity. Admission without confinement: the arithmetic said six threads per
+// slot and the host was never told.
+type RunnerCpuBoundary
+  = CapacityQuota { threads: HardwareThreadCount }
+  | DisjointCpuSet { cpus: List<Int> }
+
+type RunnerCpuBoundaryResolution
+  = RunnerCpuBoundaryDerived { boundary: RunnerCpuBoundary }
+  | RunnerCpuBoundaryUnchargeable { reason: String }
+
+// THE PER-SLOT CPU CEILING IS A FUNCTION OF WHERE COMPILER WORK IS CHARGED, AND cores_per_slot
+// ALONE DOES NOT DETERMINE IT. Under CompilePoolInRunnerSlots the compiler children of a job run
+// inside that job's own runner boundary, so the slot's ceiling is exactly its share and the host
+// sum is runner_width * cores_per_slot + reserve. Under CompilePoolSliceDeclared those children are
+// charged to a separate host pool instead, and the host sum gains a third term -- so the SAME
+// per-slot number that conserves under the first topology over-commits under the second.
+//
+// On this fleet that is not a margin: 21 slots at 6 threads is 126 of 128, which leaves two threads
+// for a pool that would then carry every cache-miss rustc on the host.
+//
+// So the arm REFUSES rather than emitting the quota it cannot justify. compile_pool_bytes_for
+// charges the pool in BYTES and there is no CPU charge for it anywhere in the tree, so under the
+// declared-slice topology this producer has no conserving allocation to state. The refusal is the
+// point: it makes the topology flip impossible to land WITHOUT rederiving the width, rather than
+// letting a quota authored under one topology survive silently into the other.
+//
+// NEXT-RUNG TRIGGER: a compile-pool CPU charge in the host allocation, at which point this arm
+// derives a rebalanced width and ceiling instead of refusing.
+fn runner_cpu_boundary_for(placement: CompilePoolPlacement, per_slot: HardwareThreadCount) -> RunnerCpuBoundaryResolution {
+  match placement {
+    CompilePoolInRunnerSlots => RunnerCpuBoundaryDerived { boundary: CapacityQuota { threads: per_slot } }
+    CompilePoolSliceDeclared { slice_unit: u } =>
+      RunnerCpuBoundaryUnchargeable {
+        reason: concat("compile pool is a declared host slice and carries no modeled CPU charge, so a per-slot CPU ceiling derived from cores_per_slot alone would commit the host past its threads once that pool runs: rederive runner width and the per-slot ceiling together with the pool's CPU charge. Slice: ", u)
+      }
+  }
+}
+
 type RunnerHostDeployment {
   identity: HostIdentity
   runner_count: Int
@@ -99,6 +158,7 @@ type RunnerHostDeployment {
   per_runner_memory_swap_cap: ByteSize
   per_runner_memory_high_cap: ByteSize
   per_runner_tasks_max: Int
+  per_runner_cpu_boundary: RunnerCpuBoundary
   build_tokens: HardwareThreadCount
   runner: RunnerSpec
   workload_class: WorkloadClass
@@ -126,6 +186,8 @@ type HostRunnerDeploymentRefusal
   | HostAllocationOversubscribedOnHost { cause: String }
   | HostAllocationUnchargeableOnHost { cause: String }
   | ZeroRunnerWidth
+  | JobserverCitationAbsent { cause: String }
+  | HostCpuAllocationUnchargeable { cause: String }
   | HostNotEnrolledInFleet
 
 type RefusedHostDeployment {
@@ -220,7 +282,18 @@ fn host_overhead_or_refusal(host: HostIdentity, o: HostFixedOverhead) -> HostOve
   }
 }
 
-fn conservation_host_deployment(offer: ComputeOffer, nproc: HardwareThreadCount) -> RunnerHostDeployment {
+// build_tokens IS A DERIVED COMPILE-POOL BUDGET AND NOT THE HOST'S THREAD COUNT. This parameter was
+// `nproc` and was stored raw, so the compile concurrency written into the jobserver's configuration
+// was every hardware thread on the machine -- 128 on this fleet -- while extdeps.jobserver already
+// carried the installed daemon's own formula, cited term for term from its defaults:
+// min(cores - margin, floor((MemTotal - reserve) / mib_per_job)).
+//
+// TWO PRODUCERS FOR ONE NUMBER IS THE DEFECT, not the size of either. The compile pool could be
+// sized from the derivation while the host was converged to nproc, and nothing joined them. The
+// derivation is the one that survives, because it is the one that charges memory: a purely
+// core-shaped count admits more concurrent rustc than RAM can hold, which is the class the daemon's
+// own header records as the reason the memory bound exists.
+fn conservation_host_deployment(offer: ComputeOffer, build_tokens: HardwareThreadCount, cpu_boundary: RunnerCpuBoundary) -> RunnerHostDeployment {
   RunnerHostDeployment {
     identity: offer.supply.physical.identity,
     runner_count: gunbc_runner_slots_per_host(host: offer.supply.physical.identity),
@@ -229,7 +302,8 @@ fn conservation_host_deployment(offer: ComputeOffer, nproc: HardwareThreadCount)
     per_runner_memory_swap_cap: gunbc_runner_slot_desired().memory_swap_max,
     per_runner_memory_high_cap: gunbc_runner_slot_desired().memory_high,
     per_runner_tasks_max: gunbc_runner_slot_desired().tasks_max,
-    build_tokens: nproc,
+    per_runner_cpu_boundary: cpu_boundary,
+    build_tokens: build_tokens,
     runner: runner_spec_from_offer(offer: offer),
     workload_class: BatchLatencyTolerant,
   }
@@ -407,6 +481,8 @@ fn host_deployment_refusal_text(c: HostRunnerDeploymentRefusal) -> String {
     HostAllocationOversubscribedOnHost { cause: t } => concat("host_allocation_oversubscribed ", t)
     HostAllocationUnchargeableOnHost { cause: t } => concat("host_allocation_unchargeable ", t)
     ZeroRunnerWidth => "zero_runner_width"
+    JobserverCitationAbsent { cause: t } => concat("jobserver_citation_absent ", t)
+    HostCpuAllocationUnchargeable { cause: t } => concat("host_cpu_allocation_unchargeable ", t)
     HostNotEnrolledInFleet => "host_not_enrolled_in_fleet"
   }
 }
@@ -482,14 +558,37 @@ fn host_standing_with_session_slice(
               refuse_host(host: host_id, cause: HostAllocationUnchargeableOnHost {
                 cause: concat(concat("host allocation unchargeable on ", host_id), concat(": ", c))
               })
-            HostAllocationConserves => {
-              let dep = conservation_host_deployment(offer: offer, nproc: cpu_facts_threads(cpu: cpu))
+            HostAllocationConserves =>
+              match jobserver_config {
+                JobserverAbsent =>
+                  refuse_host(host: host_id, cause: JobserverCitationAbsent {
+                    cause: concat("no cited jobserver configuration, so the compile-token budget has no derivation and the host cannot be told a bound it did not compute: ", host_id)
+                  })
+                JobserverCited { config: jcfg, provenance: _ } =>
+                  match runner_cpu_boundary_for(
+                    placement: gunbc_compile_pool_placement,
+                    per_slot: gunbc_runner_cores_per_slot()
+                  ) {
+                    RunnerCpuBoundaryUnchargeable { reason: cr } =>
+                      refuse_host(host: host_id, cause: HostCpuAllocationUnchargeable { cause: cr })
+                    RunnerCpuBoundaryDerived { boundary: cpub } => {
+              let dep = conservation_host_deployment(
+                offer: offer,
+                build_tokens: derive_jobserver_tokens(
+                  nproc: cpu_facts_threads(cpu: cpu),
+                  mem_total: host_ram,
+                  cfg: jcfg
+                ),
+                cpu_boundary: cpub
+              )
               if dep.runner_count == 0 {
                 refuse_host(host: host_id, cause: ZeroRunnerWidth)
               } else {
                 HostRunnerDeploymentDerived { deployment: dep }
               }
             }
+                  }
+              }
           }
       }
   }

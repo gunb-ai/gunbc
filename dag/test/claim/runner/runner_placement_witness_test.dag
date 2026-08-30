@@ -279,6 +279,8 @@ test fn a_refused_host_does_not_erase_a_derived_one() -> Bool {
         HostAllocationOversubscribedOnHost { cause: _ } => false
         HostAllocationUnchargeableOnHost { cause: _ } => false
         ZeroRunnerWidth => false
+        JobserverCitationAbsent { cause: _ } => false
+        HostCpuAllocationUnchargeable { cause: _ } => false
         HostNotEnrolledInFleet => false
       }
     HostRunnerDeploymentDerived { deployment: _ } => false
