@@ -355,12 +355,14 @@ pub fn clear_floor_decl_parse_memo() {
     FLOOR_DECL_FACTS_MEMO.with(|cell| *cell.borrow_mut() = None);
 }
 
-/// The canonical pool-root set: order-free and duplicate-free, because the walk's output is
-/// sorted by (rel_path, name, kind) and so cannot depend on either.
+/// The canonical pool-root MULTISET: order-free because the walk sorts its output by
+/// (rel_path, name, kind), but NOT duplicate-free, because the walk visits every supplied root
+/// and appends what it finds — `[r, r]` yields every declaration twice, so it is a different
+/// population from `[r]` and must be a different key. A dedup here made the memo's answer a
+/// function of call order (whichever spelling filled first served the other).
 fn decl_facts_memo_key(pool_roots: &[String]) -> Vec<String> {
     let mut key = pool_roots.to_vec();
     key.sort();
-    key.dedup();
     key
 }
 
@@ -1914,29 +1916,53 @@ mod decl_facts_shared_memo_tests {
     }
 
     /// The memo is an ownership change, not a population change: with the floor memo registered,
-    /// two spellings of one root set share one walk, and that walk is identical — by declaration
-    /// identity, kind and path — to the unmemoized one; clearing the authority drops it.
+    /// two ORDERINGS of one root multiset share one walk, two MULTIPLICITIES do not alias, each
+    /// shared walk is identical — by declaration identity, kind and path — to its unmemoized
+    /// walk, and clearing the authority drops the artifact.
     #[test]
     fn shared_walk_is_the_unmemoized_walk_by_identity_and_is_walked_once() {
-        let roots = vec!["dag/std".to_string()];
-        let duplicated_roots = vec!["dag/std".to_string(), "dag/std".to_string()];
+        let roots = vec![
+            "dag/std".to_string(),
+            "dag/gunbc/machine_intake".to_string(),
+        ];
+        let reordered = vec![
+            "dag/gunbc/machine_intake".to_string(),
+            "dag/std".to_string(),
+        ];
+        let duplicated = vec!["dag/std".to_string(), "dag/std".to_string()];
+        let singleton = vec!["dag/std".to_string()];
         let cold = decl_facts_for_roots(&roots);
+        let cold_duplicated = decl_facts_for_roots(&duplicated);
+        let cold_singleton = decl_facts_for_roots(&singleton);
         assert!(
             !cold.is_empty(),
-            "dag/std must yield declarations or this decides nothing"
+            "the roots must yield declarations or this decides nothing"
+        );
+        assert_ne!(
+            names(&cold_singleton),
+            names(&cold_duplicated),
+            "the walk visits every supplied root, so [r, r] is a different population from [r]"
         );
         clear_floor_decl_parse_memo();
         let unregistered = decl_facts_for_roots_shared(&roots);
         assert_eq!(names(&cold), names(&unregistered));
         register_floor_decl_parse_memo();
         let first = decl_facts_for_roots_shared(&roots);
-        let second = decl_facts_for_roots_shared(&duplicated_roots);
+        let second = decl_facts_for_roots_shared(&reordered);
+        let shared_singleton = decl_facts_for_roots_shared(&singleton);
+        let shared_duplicated = decl_facts_for_roots_shared(&duplicated);
         clear_floor_decl_parse_memo();
         assert!(
             Rc::ptr_eq(&first, &second),
-            "a duplicate-root spelling of the same set must read the same walk"
+            "a reordering of the same root multiset must read the same walk"
         );
         assert_eq!(names(&cold), names(&first));
+        assert!(
+            !Rc::ptr_eq(&shared_singleton, &shared_duplicated),
+            "[r] and [r, r] must not alias"
+        );
+        assert_eq!(names(&cold_singleton), names(&shared_singleton));
+        assert_eq!(names(&cold_duplicated), names(&shared_duplicated));
         let after_clear = decl_facts_for_roots_shared(&roots);
         assert!(
             !Rc::ptr_eq(&first, &after_clear),

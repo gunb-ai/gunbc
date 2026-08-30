@@ -160,17 +160,19 @@ fn bind_known_profile(
   }
 }
 
-fn probe_evidence_named(receipt: AccessObservationReceipt, observation: BmcAccessObservation) -> Bool {
+// The probe's bytes when the manifest does not name them, if there is a probe
+// at all: Present is the unnamed digest itself, so the refusal carries the
+// digest that failed and never a stand-in. An absent probe has no bytes to
+// name and is Absent here, as it is for the control routes below.
+fn probe_evidence_unnamed(receipt: AccessObservationReceipt, observation: BmcAccessObservation) -> ContentHash? {
   match observation.redfish_virtual_media_probe {
-    Absent => true
-    Present { value: probe } => evidence_manifest_names(manifest: receipt.evidence_manifest, digest: probe.raw_response)
-  }
-}
-
-fn probe_raw_response_or(observation: BmcAccessObservation, fallback: ContentHash) -> ContentHash {
-  match observation.redfish_virtual_media_probe {
-    Absent => fallback
-    Present { value: probe } => probe.raw_response
+    Absent => none
+    Present { value: probe } =>
+      if evidence_manifest_names(manifest: receipt.evidence_manifest, digest: probe.raw_response) {
+        none
+      } else {
+        Present { value: probe.raw_response }
+      }
   }
 }
 
@@ -210,12 +212,14 @@ fn bind_observed_access_context(
 ) -> BoundBmcAccessContextStanding {
   if evidence_manifest_names(manifest: receipt.evidence_manifest, digest: observation.raw_response) == false {
     AccessContextObservationEvidenceMismatch { endpoint: observation.endpoint, manifest: receipt.evidence_manifest, raw_response: observation.raw_response }
-  } else if probe_evidence_named(receipt: receipt, observation: observation) == false {
-    AccessContextProbeEvidenceMismatch { endpoint: observation.endpoint, manifest: receipt.evidence_manifest, raw_response: probe_raw_response_or(observation: observation, fallback: observation.raw_response) }
   } else {
-    match control_route_evidence_unnamed(receipt: receipt, observation: observation) {
-      Present { value: unnamed } => AccessContextControlRouteEvidenceMismatch { endpoint: observation.endpoint, manifest: receipt.evidence_manifest, raw_response: unnamed }
-      Absent => bind_looked_up_access_context(subject: subject, receipt: receipt, observation: observation, catalog: catalog)
+    match probe_evidence_unnamed(receipt: receipt, observation: observation) {
+      Present { value: unnamed } => AccessContextProbeEvidenceMismatch { endpoint: observation.endpoint, manifest: receipt.evidence_manifest, raw_response: unnamed }
+      Absent =>
+        match control_route_evidence_unnamed(receipt: receipt, observation: observation) {
+          Present { value: unnamed } => AccessContextControlRouteEvidenceMismatch { endpoint: observation.endpoint, manifest: receipt.evidence_manifest, raw_response: unnamed }
+          Absent => bind_looked_up_access_context(subject: subject, receipt: receipt, observation: observation, catalog: catalog)
+        }
     }
   }
 }

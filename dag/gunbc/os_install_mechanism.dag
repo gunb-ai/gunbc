@@ -2,6 +2,7 @@ module gunbc.os_install_mechanism
 
 import extdeps.bmc.endpoint { BmcControllerEndpoint, BmcEndpoint, bmc_controller_of_endpoint }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.dissolution { BoundDissolution, DeclarationRetires, DissolutionCondition }
 import std.types { Bool, EpochMs, Int, List, String }
 import extdeps.bmc.types {
   RedfishBootSourceOverrideTarget,
@@ -92,10 +93,9 @@ type OsInstallMechanism
 // fleet_install_server_specs and the ProxyDhcpDnsmasqArtifact path that consumed them. The
 // per-host rows here never bind an access context — nothing on the install path observes an
 // endpoint or runs a profile lookup — so every host's solution is
-// InstallAccessProfileNotLookedUp for its evidence endpoint, asserted, not defaulted.
-// DISSOLVE-ON: each remaining consumer reading BootDeliverySolution directly, at which point
-// this module is deleted whole; growth surfaces (new arms, new causes, new per-host rows) are
-// closed.
+// InstallAccessProfileNotLookedUp for its evidence endpoint, asserted, not defaulted. Growth
+// surfaces (new arms, new causes, new per-host rows) are closed; the retirement trigger is
+// not this prose but the two typed rows that follow, one per consumer.
 type OsInstallMechanismRefusalCause
   = InstallFirmwareEvidenceAbsent { endpoint: BmcEndpoint }
   | InstallFirmwareVersionUncatalogued { firmware: BmcFirmwareVersion }
@@ -110,6 +110,14 @@ type OsInstallMechanismRefusalCause
       considered: List<BootDeliveryCandidateVerdict>,
     }
   | InstallDeliveryOutsideLegacyMechanism { delivery: BootArtifactDelivery }
+
+// The projection dissolves when its consumers read gunbc.boot_artifact_delivery's
+// BootDeliverySolution directly — that is, when the two declarations that take an
+// OsInstallMechanismSolution retire. Bound, so std.dissolution can decide it from the
+// present-declaration census rather than from anyone's say-so.
+data os_install_mechanism_projection_dissolves_with_srv3_plan_standing: DissolutionCondition = BoundDissolution { trigger: DeclarationRetires { ref: DeclarationRef { module_path: "gunbc.os_install", decl_name: "srv3_os_install_plan_standing_for", field: WholeDeclaration } } }
+
+data os_install_mechanism_projection_dissolves_with_actuator_plan_standing: DissolutionCondition = BoundDissolution { trigger: DeclarationRetires { ref: DeclarationRef { module_path: "gunbc.nbd_proxy_virtual_media_install", decl_name: "os_install_actuator_plan_standing_for", field: WholeDeclaration } } }
 
 type OsInstallMechanismSolution
   = OsInstallMechanismSelected { mechanism: OsInstallMechanism }
