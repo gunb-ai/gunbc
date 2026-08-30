@@ -494,6 +494,50 @@ func fci1_live_binding_sample_wire(root: NonEmptyStr, path: String) -> ProcessEx
   }
 }
 
+// The durable CAS generation is monotone, so release cannot restore byte-identical slot bytes: an
+// absent slot becomes a present Free successor and an existing Free slot advances. The invariant
+// FCI-1 owns is availability -- never a held reservation -- projected identically for both clean
+// pre-states. Unreadable, undecodable, and held are deliberately distinct.
+fn fci1_allocation_availability_wire(root: NonEmptyStr) -> NonEmptyStr {
+  match observe_cas_slot_state(root: root, key: fabric_cell_allocation_key(slot: cp_probe_slot())) {
+    CasObservedUnreadable { cause: _ } => "allocation-unreadable"
+    CasObservedReadable { readable: CasReadableAbsent } => "allocation-available"
+    CasObservedReadable { readable: CasReadablePresent { version: version } } =>
+      match decode_cell_slot_payload(payload: version.value) {
+        CellSlotDecoded { state: CellFree { released_by: _ } } => "allocation-available"
+        CellSlotDecoded { state: CellHeld { reservation: _ } } => "allocation-held"
+        CellSlotUndecodable { detail: _ } => "allocation-undecodable"
+      }
+  }
+}
+
+func fci1_live_allocation_availability(root: NonEmptyStr, path: String) -> ProcessExit {
+  fabric_ci_write_wire(
+    path: path,
+    wire: fabric_ci_evidence_wire(value: fci1_allocation_availability_wire(root: root)),
+  )
+}
+
+func fci1_assert_allocation_available(root: NonEmptyStr) -> ProcessExit {
+  let observed = fci1_allocation_availability_wire(root: root)
+  if observed == "allocation-available" { ExitSuccess }
+  else { exit_failure(reason: join(["FCI-1 allocation store is not available: ", observed as String], "")) }
+}
+
+func fci1_assert_allocation_restored(root: NonEmptyStr, before_wire: String) -> ProcessExit {
+  match decode_fabric_ci_evidence_wire(wire: before_wire) {
+    FabricCiEvidenceUndecodable => exit_failure(reason: "FCI-1 allocation pre-state wire undecodable")
+    FabricCiEvidenceDecoded { value: before } => {
+      let after = fci1_allocation_availability_wire(root: root)
+      if before == "allocation-available" && after == "allocation-available" { ExitSuccess }
+      else { exit_failure(reason: join([
+        "FCI-1 allocation availability not restored; before=", before as String,
+        "; after=", after as String,
+      ], "")) }
+    }
+  }
+}
+
 fn fci1_decode_transport_sample(wire: String) -> RequiredBuildCellLifetimeSampleDecode {
   match decode_fabric_ci_evidence_wire(wire: wire) {
     FabricCiEvidenceUndecodable => RequiredBuildCellLifetimeSampleUndecodable

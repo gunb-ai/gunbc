@@ -17,11 +17,28 @@ canonical_root=/var/lib/gunbc/fabric/allocation
 mutation_runtime=fci1-submitter-owned-reservation
 mutation_root=/run/$mutation_runtime
 subject="$repo_root/dag/gunbc/fabric/fabric_required_build_cell.dag"
+canonical_reservation_may_be_held=0
 
 cleanup() {
+  local original_status=$?
+  local cleanup_status=0
+  trap - EXIT
+  set +e
   systemctl stop fci1-positive-submitter.service fci1-dependent-submitter.service >/dev/null 2>&1 || true
+  if (( canonical_reservation_may_be_held )); then
+    "$FABRIC_CI_GUNBC_BIN" run --source-root "$repo_root/dag" --source-root "$repo_root/src/v2" \
+      --entry "$FABRIC_CI_ENTRY" --function fci1_live_release --arg root="$canonical_root" >/dev/null 2>&1
+    "$FABRIC_CI_GUNBC_BIN" run --source-root "$repo_root/dag" --source-root "$repo_root/src/v2" \
+      --entry "$FABRIC_CI_ENTRY" --function fci1_assert_allocation_available --arg root="$canonical_root"
+    cleanup_status=$?
+  fi
   rm -f "$FABRIC_CI_LOG"
   rm -rf "$FABRIC_CI_VALUE_ROOT"
+  if (( cleanup_status != 0 )); then
+    echo 'InstrumentRefused: cleanup could not positively restore allocation availability' >&2
+    exit 1
+  fi
+  exit "$original_status"
 }
 trap cleanup EXIT
 
@@ -40,6 +57,8 @@ fabric_ci_run_assertion fci1_assert_host_preconditions
 fabric_ci_run_assertion fci1_assert_clean_cell_prestate
 fabric_ci_run_assertion fci1_assert_cell_admitted
 cell_before=$(fabric_ci_capture_transport fci1_live_cell_observation cell-before)
+allocation_before=$(fabric_ci_capture_transport fci1_live_allocation_availability allocation-before --arg root="$canonical_root")
+fabric_ci_run_assertion fci1_assert_allocation_available --arg root="$canonical_root"
 
 capture_submitter_transport() {
   local unit=$1 function_name=$2 coordinate=$3 root=$4
@@ -56,6 +75,7 @@ capture_submitter_transport() {
   printf '%s' "$value"
 }
 
+canonical_reservation_may_be_held=1
 positive_before=$(capture_submitter_transport fci1-positive-submitter.service fci1_live_reserve_and_observe_available positive-before "$canonical_root")
 submitter_state=$(systemctl show fci1-positive-submitter.service --property=ActiveState --value 2>&1 || true)
 [[ -z $submitter_state || $submitter_state == inactive || $submitter_state == failed ]] || {
@@ -69,6 +89,8 @@ fabric_ci_run_assertion fci1_assert_replace_held --arg root="$canonical_root"
 fabric_ci_run_assertion fci1_assert_generation_changed --arg root="$canonical_root" --arg before_wire="$generation_before"
 
 fabric_ci_run_assertion fci1_live_release --arg root="$canonical_root"
+canonical_reservation_may_be_held=0
+fabric_ci_run_assertion fci1_assert_allocation_restored --arg root="$canonical_root" --arg before_wire="$allocation_before"
 fabric_ci_run_assertion fci1_assert_cell_unchanged --arg before_wire="$cell_before"
 
 dependent_before=$(capture_submitter_transport fci1-dependent-submitter.service fci1_live_reserve_and_observe_available dependent-before "$mutation_root" --property=RuntimeDirectory="$mutation_runtime")
