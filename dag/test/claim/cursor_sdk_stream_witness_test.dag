@@ -170,7 +170,16 @@ test fn cursor_sdk_stream_witness_keystone_holds() -> Bool {
     && agent_report_text_does_not_classify_as_terminal_error()
 }
 
-data cursor_line_reading_discrimination_note: String = "THE COLLAPSE THIS CHANGE REMOVES, AND WHY A CLASSIFIER IS THE WORST PLACE FOR IT. Both classifiers returned an Optional whose `none` answered four different facts, and a classifier is asked about EVERY line of a stream -- so `none` is its ordinary answer and nothing about it looks wrong. A stream that became malformed halfway through (truncated write, interleaved writer, crash mid-line) was therefore indistinguishable from a stream of lines the classifier simply had nothing to say about. The witnesses below assert that an unreadable line and a well-formed line missing its type member are now different values, and the untouched unknown_event_stays_unclassified control is what keeps them honest: an UNRECOGNISED KIND is a CLASSIFIED answer, not a reading failure, and a decoder that refused it would break the classifier while satisfying a naive refusal test."
+// THE COLLAPSE THIS CHANGE REMOVES, AND WHY A CLASSIFIER IS THE WORST PLACE FOR IT. Both
+// classifiers returned an Optional whose `none` answered four different facts, and a classifier is
+// asked about EVERY line of a stream -- so `none` is its ordinary answer and nothing about it looks
+// wrong. A stream that became malformed halfway through (truncated write, interleaved writer, crash
+// mid-line) was therefore indistinguishable from a stream of lines the classifier simply had
+// nothing to say about. The witnesses below assert that an unreadable line and a well-formed line
+// missing its type member are now different values, and the untouched
+// unknown_event_stays_unclassified control is what keeps them honest: an UNRECOGNISED KIND is a
+// CLASSIFIED answer, not a reading failure, and a decoder that refused it would break the
+// classifier while satisfying a naive refusal test.
 
 test fn RED_unreadable_cursor_line_is_not_a_missing_type_member() -> Bool {
   match cursor_sdk_stream_classify_message_line(raw: "{ truncated mid-lin") {

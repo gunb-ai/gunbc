@@ -105,7 +105,13 @@ import gunbc.fleet_converge_plan {
   fleet_converge_spark_serving_typed_actions_wire,
   fleet_converge_spark_serving_row_effects,
 }
-data spark_serving_converge_plan_authority_note: String = "Seam 2 vertical slice — Spark serving membership frozen into FleetConvergePlanArtifact typed rows. First member kind: Ensured linger (SparkServingLingerAddress → EnableLingerForOwnAccount). Plan observes linger state, runs membership_reconcile once, serializes MemberAction + install_effects into typed_action_rows on the artifact; apply MUST read those frozen rows (never re-derive). Spark actuation is typed argv via spark_serving_converge_realize + typed_argv_exec — NOT merged into apply_shell. Change arm (disable-linger) is NOT claimed proven — sudoers grants enable-linger only."
+// Seam 2 vertical slice — Spark serving membership frozen into FleetConvergePlanArtifact typed
+// rows. First member kind: Ensured linger (SparkServingLingerAddress → EnableLingerForOwnAccount).
+// Plan observes linger state, runs membership_reconcile once, serializes MemberAction +
+// install_effects into typed_action_rows on the artifact; apply MUST read those frozen rows (never
+// re-derive). Spark actuation is typed argv via spark_serving_converge_realize + typed_argv_exec —
+// NOT merged into apply_shell. Change arm (disable-linger) is NOT claimed proven — sudoers grants
+// enable-linger only.
 
 fn spark_serving_desired_linger_member(host: HostIdentity) -> SparkServingMember {
   spark_serving_member(

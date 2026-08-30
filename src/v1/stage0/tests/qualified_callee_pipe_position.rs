@@ -1,27 +1,25 @@
 // A QUALIFIED CALLEE IN PIPE POSITION DENOTES THAT CALLEE, NOT A METHOD NAMED BY ITS ROOT SEGMENT.
 //
 // WHAT WAS WRONG. `parse_pipe_rhs` consumed exactly one identifier after `|>`, so `xs |> a.b.f()`
-// parsed as `xs |> a` -- a method call named `a` on the receiver -- and the remaining `.b.f(...)`
-// folded on top of it as field access and a call. The refusal that reached the author therefore
-// named the ROOT SEGMENT as a missing method on the receiver's type ("method 'a' not found on
-// receiver Container(List, Primitive(Int))"), which points at neither the callee nor the defect.
-// The same callee written in ordinary call position -- `a.b.f(xs: xs)` -- resolved and still does:
-// one authored denotation, two answers, decided by which syntactic position it stood in.
+// parsed as `xs |> a` (a method call named `a`) with `.b.f(...)` folded on top as field access and
+// a call. The refusal named the ROOT SEGMENT as a missing method on the receiver's type ("method
+// 'a' not found on receiver Container(List, Primitive(Int))"), pointing at neither the callee nor
+// the defect. The same callee in call position -- `a.b.f(xs: xs)` -- resolved and still does: one
+// denotation, two answers, decided by syntactic position.
 //
-// WHY THE PAIR IS THE TEST. Each half alone is satisfiable by the wrong compiler. The direct-call
-// case passes today and passed before the fix, so it proves nothing on its own; the pipe case is
-// the discriminating input, and it is red on the pre-fix parser. Held together they say the two
-// positions agree, which is the actual claim -- not "the pipe case compiles".
+// WHY THE PAIR IS THE TEST. Each half alone is satisfiable by the wrong compiler: the direct-call
+// case passed before the fix and proves nothing alone; the pipe case is the discriminating input,
+// red on the pre-fix parser. Together they say the two positions agree -- the actual claim.
 //
-// THE THIRD CASE IS THE NON-REGRESSION HALF, and it is not decoration: the fix changes the node a
-// pipe produces, so a bare `|> count` -- kernel method dispatch, the shape dag/std relies on
-// throughout -- must still lower to a method call on the receiver and not to anything else.
+// THE THIRD CASE IS THE NON-REGRESSION HALF: the fix changes the node a pipe produces, so a bare
+// `|> count` -- kernel method dispatch, the shape dag/std relies on throughout -- must still lower
+// to a method call on the receiver.
 //
-// HERMETIC BY CONSTRUCTION. Every case hands `compile_sources` its own in-memory sources, so this
-// test reads no repository file and depends on no module index. That is why it can be a test at
-// all: the `compile_dag_*` builtins that back the `.dag` witness family resolve against
-// `build_module_path_index_from_witness_roots`, which walks the live tree, so a witness written on
-// them declares `ReadsLiveTree` and is declined by the required floor rather than executed.
+// HERMETIC BY CONSTRUCTION. Every case hands `compile_sources` in-memory sources, so this test
+// reads no repository file and needs no module index. That is why it can be a test at all: the
+// `compile_dag_*` builtins backing the `.dag` witness family resolve against
+// `build_module_path_index_from_witness_roots`, which walks the live tree, so a witness on them
+// declares `ReadsLiveTree` and is declined by the required floor rather than executed.
 
 use std::rc::Rc;
 
@@ -39,9 +37,8 @@ fn provider_source() -> (&'static str, &'static str) {
 
 /// Compile the given `(path, content)` sources together and return every diagnostic message.
 ///
-/// Returns messages rather than a bool so a failing case names what the compiler said: an
-/// assertion that only counts diagnostics reports "1 != 0" for a defect and for an unrelated
-/// typo alike.
+/// Returns messages rather than a bool so a failing case names what the compiler said: a count
+/// assertion reports "1 != 0" for a defect and an unrelated typo alike.
 fn diagnostics_of(sources: &[(&str, &str)]) -> Vec<String> {
     let files: Vec<Rc<SourceFile>> = sources
         .iter()
@@ -90,10 +87,10 @@ fn qualified_callee_in_pipe_position_resolves() {
     );
 }
 
-/// A dotted pipe callee with NO application is a method followed by field access, and this case
-/// is the one that decides the rule rather than illustrating it: `v1.compiler.emit_rust` writes
-/// `field_names |> first.value`, so a rule that consumed every dotted segment after the pipe
-/// callee would re-denote a live, correct site as a call into a module named `first`.
+/// A dotted pipe callee with NO application is a method followed by field access; this case
+/// decides the rule: `v1.compiler.emit_rust` writes `field_names |> first.value`, so a rule that
+/// consumed every dotted segment after the pipe callee would re-denote a live, correct site as a
+/// call into a module named `first`.
 #[test]
 fn dotted_pipe_callee_without_application_is_method_then_field() {
     let messages = diagnostics_for_consumer(

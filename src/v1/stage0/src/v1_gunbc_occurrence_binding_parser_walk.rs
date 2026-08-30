@@ -3,8 +3,6 @@
 
 use self::ParsedOccurrenceBindingSource::*;
 pub use crate::std_occurrence_binding_candidates::declaration_exposure_from_containment;
-pub use crate::std_occurrence_binding_candidates::DeclarationExposure;
-use crate::std_occurrence_binding_candidates::DeclarationExposure::*;
 use crate::std_occurrence_binding_candidates::DeclarationExposureGrounding::ModuleLocalMemberExposure;
 pub use crate::std_occurrence_binding_candidates::{
     AuthoredOrderRow, DeclarationExposureGrounding, DeclarationExposureRow,
@@ -27,15 +25,6 @@ use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
 use std::rc::Rc;
-
-pub fn occurrence_binding_parser_walk_authority_note() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "Parser-to-P2-walk bridge (namespace-reference-derived-closure slice B): authored source is parsed through v1.compiler.parse.parse_with_table; OccurrenceTransport and module path come from the parser only. OccurrenceBindingCandidateInputs are projected from parser facts — module paths for every indexed occurrence, authored order from diagnostic_span.start (never OccurrenceId.value), and DeclarationExposure from containment shape (empty / single-ancestor => ModuleExposure, else LexicalExposure with parent scope). Category is never read for exposure. Index-build refusals are carried intact as StructuralBindingWalkRefused — never coarsened to a unit variant (blocker 6).".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
-}
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
@@ -120,15 +109,6 @@ pub fn authored_order_row_from_entry(entry: Rc<OccurrenceIndexEntry>) -> Rc<Auth
                 .clone(),
         },
     })
-}
-
-pub fn occurrence_binding_inputs_accumulator_note() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "Input projection accumulates by prepend during fold and reverses once at the end — never concat(acc, [row]) (§6 bare-minimum cost / blocker 6).".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
 }
 
 pub fn occurrence_binding_inputs_from_transport(

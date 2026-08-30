@@ -20,7 +20,13 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-data roadmap_sandbox_witness_note: String = "P4 keystone: /sandbox is the register at every depth plus every component in every state, and it doubles as the visual witness. Gallery totality is the wire vocabulary re-witnessed as coverage (one static instance per wire label; drop one -> RED). The echo answers ANY wire arm on demand with the SAME belt JSON shape production sends (proven per label; unknown label refuses 400). The live instances are one pressable button per arm, all driven by the shared client program. The register depths (roles under both themes, scales) render from the authorities, so the sandbox cannot drift from the live surfaces."
+// P4 keystone: /sandbox is the register at every depth plus every component in every state, and it
+// doubles as the visual witness. Gallery totality is the wire vocabulary re-witnessed as coverage
+// (one static instance per wire label; drop one -> RED). The echo answers ANY wire arm on demand
+// with the SAME belt JSON shape production sends (proven per label; unknown label refuses 400). The
+// live instances are one pressable button per arm, all driven by the shared client program. The
+// register depths (roles under both themes, scales) render from the authorities, so the sandbox
+// cannot drift from the live surfaces.
 
 fn sandbox_html() -> String {
   match try_serialize_html_source(node: sandbox_page()) {
@@ -109,8 +115,20 @@ test fn witness_sandbox_gallery_and_live_render() -> Bool {
     && all(belt_dispatch_all_status_labels(), l => string_contains(s: h, pattern: join(["data-status=\"", l, "\""], "")))
 }
 
-
-data family_fixture_witness_note: String = "The A3 exhibit's discriminating pins, strengthened per review 46754 (the containment-only draft would have survived a duplicated claim, a '13 nodes' count, the neighbour absorbed into the family, or chips reappearing). Three layers: (1) the TYPED band_entries output is pinned by exact list equality — exactly one BandFamily (claim exact, member count exactly 3, member headlines exactly the three subjects in order) followed by exactly one BandRow (the neighbour's full headline) — so claim duplication, count drift, membership drift, and the subject swap are all caught at the structure the renderer consumes; (2) ONE serialized frame carries exact occurrence counts (family-claim/family-count/family-group/family-rows spans each render exactly once, the count span is exactly '>3 nodes<' so a '13 nodes' regression cannot hide inside a containment check, the member's full task headline occurs zero times — the RED control for family_subject_row — and the A3 chip collapse holds: zero 'status status-open' and zero activity markup, routine state earns no ink); (3) the PAGE contains all three width frames verbatim, so the frame-level pins transfer to the page without scanning it. Occurrence counting walks an index over the ~2KB frame (the std.encoding base64_collect_values shape), never the full page."
+// The A3 exhibit's discriminating pins, strengthened per review 46754 (the containment-only draft
+// would have survived a duplicated claim, a '13 nodes' count, the neighbour absorbed into the
+// family, or chips reappearing). Three layers: (1) the TYPED band_entries output is pinned by exact
+// list equality — exactly one BandFamily (claim exact, member count exactly 3, member headlines
+// exactly the three subjects in order) followed by exactly one BandRow (the neighbour's full
+// headline) — so claim duplication, count drift, membership drift, and the subject swap are all
+// caught at the structure the renderer consumes; (2) ONE serialized frame carries exact occurrence
+// counts (family-claim/family-count/family-group/family-rows spans each render exactly once, the
+// count span is exactly '>3 nodes<' so a '13 nodes' regression cannot hide inside a containment
+// check, the member's full task headline occurs zero times — the RED control for family_subject_row
+// — and the A3 chip collapse holds: zero 'status status-open' and zero activity markup, routine
+// state earns no ink); (3) the PAGE contains all three width frames verbatim, so the frame-level
+// pins transfer to the page without scanning it. Occurrence counting walks an index over the ~2KB
+// frame (the std.encoding base64_collect_values shape), never the full page.
 
 fn frame_occurrence_count_go(s: String, pattern: String, i: Int, len: Int, plen: Int, acc: Int) -> Int {
   if i + plen > len {

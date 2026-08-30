@@ -53,7 +53,12 @@ import v2.std.refinement {
 }
 import v2.std.witness { Holds, Violates, Witness }
 
-data complexity_variables_list_carrier_note: String = "ComplexityVariables is List<SizeVariable> with no Refined/Witness carrier. The admits predicate is vacuous, so refine+Holds rewrap added no admission fact and under discovery (PR 7765) Witness peels left Holds-wrapped lists that concat rejected as Record. complexity_lens returns ComplexityBound directly (UnknownComplexity on cost Violates) so discovery cannot nest an extra Holds around the bound. dissolve-on: root-cause the discovery shared-index path that injected the extra Holds layer."
+// ComplexityVariables is List<SizeVariable> with no Refined/Witness carrier. The admits predicate
+// is vacuous, so refine+Holds rewrap added no admission fact and under discovery (PR 7765) Witness
+// peels left Holds-wrapped lists that concat rejected as Record. complexity_lens returns
+// ComplexityBound directly (UnknownComplexity on cost Violates) so discovery cannot nest an extra
+// Holds around the bound. dissolve-on: root-cause the discovery shared-index path that injected the
+// extra Holds layer.
 
 fn complexity_variables_admits(xs: List<SizeVariable>) -> Bool {
   true

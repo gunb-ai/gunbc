@@ -1,12 +1,50 @@
 module gunbc.generated_artifact_merge_driver
 
-data generated_artifact_merge_driver_note: String = "THE MERGE DRIVER FOR merge=generated-artifact PATHS, AND WHY IT REFUSES INSTEAD OF ANSWERING `true`. The binding was `merge.generated-artifact.driver=true` — the shell builtin, which leaves the ours side in place and exits 0. Git then records the merge as CLEAN and the other side's bytes are gone with no signal. That is the absorbing fallback of DESIGN section 5 at the integration boundary: the driver's failure arm answered instead of refusing, and it destroyed the one fact worth keeping — that a provisional choice was made at all — so the deficit's frequency was zero by construction and nothing ranked it for fixing. MEASURED CLASS: PR #7836, twice in one session. Merging main into a branch that also touched src/v1/stage0/src/v1_compiler_infer.rs resolved the SEED to the branch side and dropped main's emit changes (103 lines, then 130 lines) while src/v1/04_infer.dag — the AUTHORITY — merged correctly and carried them. Git reported no conflict either time; the tree was left authority-ahead-of-seed, and the class surfaced a full CI cycle later as a red regen job, or not at all until someone happened to run regen_stage0 --verify. THE REFUSAL IS PRECISE, NOT A WIDEN, and this is measured rather than argued: git invokes a low-level merge driver ONLY when both sides changed the path relative to the merge base. Executed against git 2.x with a probe driver on a four-case matrix — one-sided theirs, one-sided ours, both sides identical, both sides different — the driver was invoked in exactly the fourth case; the first three merged clean with the correct content and never reached it. So driver invocation holds exactly when taking either side drops the other side's authority-derived content, and refusing there adds no stop to any merge that was previously correct. WHAT THE REFUSAL LEAVES BEHIND: the script does not write to the result file, so git keeps the ours side verbatim — clean bytes, NO conflict markers — and marks the path unmerged. The regenerators can therefore run against the worktree immediately, and a writer that would sweep the tree cannot commit marker text (there is none to sweep); the unmerged index stage is what the landed commit-writer admission already refuses on. RUNG (DESIGN section 4b), stated at its honest ceiling: this class moves from mitigatable — the regen gate detecting the bad transition a CI cycle after it exists — to MECHANICALLY PREVENTABLE at the merge boundary. It is NOT structural: the invalid state stays writable, because a resolver can still `git add` the provisional bytes without regenerating, and a clone that never converged the repo-local binding gets vanilla text merge. NEXT TRIGGER for the remaining climb, already a countable row rather than a new program: gunbc.commit_workflow commit_writer_binding_work — the DashboardAutocommit and heal-arm writers calling admit_commit_writer at their actual write boundary, whose unmerged-stage refusal is what turns this stop into one no writer can pass. Until those bindings land, an out-of-repository autocommit that stages and commits through the unmerged path defeats this refusal, and that is a stated residue, not an unnoticed one."
+// THE MERGE DRIVER FOR merge=generated-artifact PATHS, AND WHY IT REFUSES INSTEAD OF ANSWERING
+// `true`. The binding was `merge.generated-artifact.driver=true` — the shell builtin, which leaves
+// the ours side in place and exits 0. Git then records the merge as CLEAN and the other side's
+// bytes are gone with no signal. That is the absorbing fallback of DESIGN section 5 at the
+// integration boundary: the driver's failure arm answered instead of refusing, and it destroyed the
+// one fact worth keeping — that a provisional choice was made at all — so the deficit's frequency
+// was zero by construction and nothing ranked it for fixing. MEASURED CLASS: PR #7836, twice in one
+// session. Merging main into a branch that also touched src/v1/stage0/src/v1_compiler_infer.rs
+// resolved the SEED to the branch side and dropped main's emit changes (103 lines, then 130 lines)
+// while src/v1/04_infer.dag — the AUTHORITY — merged correctly and carried them. Git reported no
+// conflict either time; the tree was left authority-ahead-of-seed, and the class surfaced a full CI
+// cycle later as a red regen job, or not at all until someone happened to run regen_stage0
+// --verify. THE REFUSAL IS PRECISE, NOT A WIDEN, and this is measured rather than argued: git
+// invokes a low-level merge driver ONLY when both sides changed the path relative to the merge
+// base. Executed against git 2.x with a probe driver on a four-case matrix — one-sided theirs,
+// one-sided ours, both sides identical, both sides different — the driver was invoked in exactly
+// the fourth case; the first three merged clean with the correct content and never reached it. So
+// driver invocation holds exactly when taking either side drops the other side's authority-derived
+// content, and refusing there adds no stop to any merge that was previously correct. WHAT THE
+// REFUSAL LEAVES BEHIND: the script does not write to the result file, so git keeps the ours side
+// verbatim — clean bytes, NO conflict markers — and marks the path unmerged. The regenerators can
+// therefore run against the worktree immediately, and a writer that would sweep the tree cannot
+// commit marker text (there is none to sweep); the unmerged index stage is what the landed
+// commit-writer admission already refuses on. RUNG (DESIGN section 4b), stated at its honest
+// ceiling: this class moves from mitigatable — the regen gate detecting the bad transition a CI
+// cycle after it exists — to MECHANICALLY PREVENTABLE at the merge boundary. It is NOT structural:
+// the invalid state stays writable, because a resolver can still `git add` the provisional bytes
+// without regenerating, and a clone that never converged the repo-local binding gets vanilla text
+// merge. NEXT TRIGGER for the remaining climb, already a countable row rather than a new program:
+// gunbc.commit_workflow commit_writer_binding_work — the DashboardAutocommit and heal-arm writers
+// calling admit_commit_writer at their actual write boundary, whose unmerged-stage refusal is what
+// turns this stop into one no writer can pass. Until those bindings land, an out-of-repository
+// autocommit that stages and commits through the unmerged path defeats this refusal, and that is a
+// stated residue, not an unnoticed one.
 
 data generated_artifact_merge_driver_script_directory: String = ".githooks"
 
 data generated_artifact_merge_driver_script_name: String = "generated-artifact-merge"
 
-data generated_artifact_merge_driver_script_path_note: String = "THE PATH IS DERIVED FROM ITS PARTS, NOT PARSED BACK OUT OF ITSELF. A consumer that needs the directory to LIST it, and the entry name to look for inside that listing, would otherwise have to split this string on its last separator -- re-deriving by parsing something this module already knew structurally, where the parse can fail and the construction cannot. So the parts are the authority and the joined path is the projection. The path string is unchanged, which is the point: every existing consumer reads the same bytes."
+// THE PATH IS DERIVED FROM ITS PARTS, NOT PARSED BACK OUT OF ITSELF. A consumer that needs the
+// directory to LIST it, and the entry name to look for inside that listing, would otherwise have to
+// split this string on its last separator -- re-deriving by parsing something this module already
+// knew structurally, where the parse can fail and the construction cannot. So the parts are the
+// authority and the joined path is the projection. The path string is unchanged, which is the
+// point: every existing consumer reads the same bytes.
 
 data generated_artifact_merge_driver_script_path: String = concat(
   concat(generated_artifact_merge_driver_script_directory, "/"),
@@ -15,7 +53,14 @@ data generated_artifact_merge_driver_script_path: String = concat(
 
 data generated_artifact_merge_driver_shell_program: String = "bash"
 
-data generated_artifact_merge_driver_invocation_note: String = "The configured driver value invokes the script through `bash <path>` rather than executing it directly, so the binding does not depend on a file mode. A generated artifact is written by Filesystem.Write, which carries no executable-bit fact, and a driver that git could not spawn would fail the merge for a reason unrelated to the divergence it exists to report. The home is .githooks/ because that directory is already this repository's home for emitted repo-local Git integration scripts (the pre-commit hook there converges these same bindings); git invokes hooks by exact name, so a non-hook file beside them is inert. Placeholders are git's own: %O base, %A ours AND the result path git reads back, %B theirs, %P the pathname in the worktree."
+// The configured driver value invokes the script through `bash <path>` rather than executing it
+// directly, so the binding does not depend on a file mode. A generated artifact is written by
+// Filesystem.Write, which carries no executable-bit fact, and a driver that git could not spawn
+// would fail the merge for a reason unrelated to the divergence it exists to report. The home is
+// .githooks/ because that directory is already this repository's home for emitted repo-local Git
+// integration scripts (the pre-commit hook there converges these same bindings); git invokes hooks
+// by exact name, so a non-hook file beside them is inert. Placeholders are git's own: %O base, %A
+// ours AND the result path git reads back, %B theirs, %P the pathname in the worktree.
 
 fn generated_artifact_merge_driver_config_value_at(script_path: String) -> String {
   concat(
@@ -28,7 +73,14 @@ fn generated_artifact_merge_driver_config_value() -> String {
   generated_artifact_merge_driver_config_value_at(script_path: generated_artifact_merge_driver_script_path)
 }
 
-data generated_artifact_merge_driver_regen_command_parameter_note: String = "THE REGENERATION COMMAND IS A PARAMETER, NOT AN IMPORT, AND THE REASON IS THE ACYCLICITY LAW RATHER THAN TASTE. Its single authority is gunbc.ci_spec ci_heal_author_commit_regen_command, and importing it here would close a real cycle: gunbc.generated_artifact reads this module for the artifact path, and ci_spec reaches gunbc.generated_artifact through the heal roster. So the consumer that already sits downstream of both — gunbc.generated_artifact_emit — supplies it, and the string is still authored in exactly one place. Restating it here as a literal would have been the second representation this document forbids; taking it as a parameter keeps one authority and an acyclic graph."
+// THE REGENERATION COMMAND IS A PARAMETER, NOT AN IMPORT, AND THE REASON IS THE ACYCLICITY LAW
+// RATHER THAN TASTE. Its single authority is gunbc.ci_spec ci_heal_author_commit_regen_command, and
+// importing it here would close a real cycle: gunbc.generated_artifact reads this module for the
+// artifact path, and ci_spec reaches gunbc.generated_artifact through the heal roster. So the
+// consumer that already sits downstream of both — gunbc.generated_artifact_emit — supplies it, and
+// the string is still authored in exactly one place. Restating it here as a literal would have been
+// the second representation this document forbids; taking it as a parameter keeps one authority and
+// an acyclic graph.
 
 // STEP 3 IS NOT REDUNDANT WITH STEP 2. The regen route emits the seed by running a binary built FROM the seed, so a single pass can self-verify for the wrong reason: the binary that emitted the output predates the change it was emitting. The second build-and-verify is what makes the fixed point a claim about the merged authorities rather than about the stale binary.
 // THE RECIPE NAMED regen_stage0 UNTIL 2026-08-20, AND THAT BINARY WAS DELETED AT THE ROOT BY THE REGEN CUT. A repair recipe is printed at exactly the moment an author is blocked, so a recipe naming a deleted producer is the same stranding this repository just closed inside required-regen itself: the stop is real, and the only move it offers does not exist. Measured cost: it was followed, verbatim, by the session that landed the producer repair. The steps now name the surviving route, whose first pass WRITES the candidate tree before adjudicating it (v2.workflow.required_regen required_regen_run), which is what makes step 2 a producer instruction rather than a request to re-run a check. NOT SWEPT HERE, and named rather than left to be rediscovered: other regen_stage0 citations survive in the corpus (v1_source_audit_witness_test, stage0_regen_convergence_real_execution_witness_test, stage0_crates and workspace_members generated-file headers, several plan carriers). They are a census of their own; this fix covers the one recipe that strands an author mid-merge. This recipe is the author-facing repair for an unmerged generated projection; the CI transport recipe is gunbc.proactive_verification_ledger spine_regen_recipe and is deliberately not restated here.

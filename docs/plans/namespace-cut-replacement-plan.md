@@ -1,43 +1,38 @@
 # Namespace cut (NAMESPACE-Y): delete the import concept, resolve by containment
 
 > **CENSUS RECEIPT (2026-08-25).** Generation 3 executed steps 0-5 on
-> `integration/namespace-cut` (gunbc#8282), which is now frozen. **This plan is not
-> superseded as to its ROOT or its CENSUS** — its 2026-08-15 ruling called for
-> exactly what happened on that branch, and the defects it surfaced are the
-> concealment census running. (It IS superseded on ORDER; see the next
-> paragraph, which is the one an executor reads for sequencing.) What the census
-> returned, with a terminal shape per class, is the namespace-cut postmortem —
-> **which is deliberately NOT a file in this tree.** It is carried as an open PR
-> (gunbc#9201) under the 2026-08-26 operator rule that document-only changes are
-> read as a PR and closed, never merged; its measurement rows are snapshots that
-> rot. **Nothing an executor needs is sourced from it: every ruling it records
-> lives in a typed carrier, cited by symbol below.**
-> **THE 2026-08-15 ORDERING IS SUPERSEDED ON ORDER (operator, 2026-08-25): the
-> grammar deletion is the LAST step, not the first.** The ROOT is unchanged —
-> grammar, parse surface and import-name universe are all still inside it, and
-> delete-first as a doctrine is untouched — but the order in which that root is
-> cut was reversed by a later ruling from the same authority, which also ruled
-> the cut "doesn't have to be atomic technically". Every sentence below that
-> states or implies grammar-first is read subject to this paragraph. Neither this
+> `integration/namespace-cut` (gunbc#8282), now frozen. **This plan is not superseded as to
+> its ROOT or its CENSUS** — its 2026-08-15 ruling called for exactly what happened on that
+> branch, and the defects it surfaced are the concealment census running. (It IS superseded
+> on ORDER; see the next paragraph, which an executor reads for sequencing.) What the census
+> returned, with a terminal shape per class, is the namespace-cut postmortem — **deliberately
+> NOT a file in this tree.** It is carried as an open PR (gunbc#9201) under the 2026-08-26
+> operator rule that document-only changes are read as a PR and closed, never merged; its
+> measurement rows are snapshots that rot. **Nothing an executor needs is sourced from it:
+> every ruling it records lives in a typed carrier, cited by symbol below.**
+> **THE 2026-08-15 ORDERING IS SUPERSEDED ON ORDER (operator, 2026-08-25): the grammar
+> deletion is the LAST step, not the first.** The ROOT is unchanged — grammar, parse surface
+> and import-name universe are all still inside it, and delete-first as a doctrine is
+> untouched — but the order of cutting that root was reversed by a later ruling from the same
+> authority, which also ruled the cut "doesn't have to be atomic technically". Every sentence
+> below that states or implies grammar-first is read subject to this paragraph. Neither this
 > plan nor any other artifact may claim the two rulings agree.
 >
-> **THE RULING'S AUTHORITY IS THE CARRIER, NOT THIS PARAGRAPH AND NOT A
-> DOCUMENT.** `gunbc.namespace_cut_landing_order` holds both rulings verbatim
-> with the supersession typed (`namespace_cut_grammar_last_ruling`,
-> `SupersedesOnOrderOnly`); `current_landing_order` derives the answer rather
-> than storing a copy of it. Cite that module and symbol, never a file path —
-> DESIGN §4c names *ruling* among the facts that belong in a typed carrier, so
-> prose here is the reasoning and the carrier is the fact.
+> **THE RULING'S AUTHORITY IS THE CARRIER, NOT THIS PARAGRAPH AND NOT A DOCUMENT.**
+> `gunbc.namespace_cut_landing_order` holds both rulings verbatim with the supersession typed
+> (`namespace_cut_grammar_last_ruling`, `SupersedesOnOrderOnly`); `current_landing_order`
+> derives the answer rather than storing a copy. Cite that module and symbol, never a file
+> path — DESIGN §4c names *ruling* among the facts that belong in a typed carrier; prose here
+> is the reasoning, the carrier is the fact.
 >
-> Two further amendments it argues for: the
-> census output lands on **main** rather than being fixed forward on the branch
-> (the branch will not merge, so fixes on it are throwaway work per DESIGN section 6),
-> and the re-cut runs in a temporary worktree rather than a maintained PR (222
-> merges of main into the branch, against roughly 380 commits of its own work).
-> The **target qualification spelling** — this plan's full qualification vs
-> namespace-resolution-design's shortest unique suffix, whose *sequencing* this
-> plan quarries but whose *terminal shapes* it keeps as evidence — is reopened
-> there as an operator decision.
+> Two further amendments it argues for: the census output lands on **main** rather than being
+> fixed forward on the branch (the branch will not merge, so fixes on it are throwaway work
+> per DESIGN section 6), and the re-cut runs in a temporary worktree rather than a maintained
+> PR (222 merges of main into the branch, against roughly 380 commits of its own work). The
+> **target qualification spelling** — this plan's full qualification vs
+> namespace-resolution-design's shortest unique suffix, whose *sequencing* this plan quarries
+> but whose *terminal shapes* it keeps as evidence — is reopened there as an operator
+> decision.
 
 > **CURRENT-STATE AUTHORITY (2026-08-29): this document carries REASONING and HISTORY, never
 > live standing.** Enrolment, standing and sequencing facts are typed carriers, cited by symbol:
@@ -50,7 +45,7 @@
 > disagrees with those carriers, the carrier is correct and the sentence is a dated record —
 > in particular, sentences predating #9365 that say no wall or CI mechanism exists.
 
-Doctrine: DESIGN §3 *replacement migrations cut over at the root* (delete-first; the deletion is the census — bounded by the three silent populations measured across the five parallel cuts, recorded once in [floor-cut-replacement-plan.md](floor-cut-replacement-plan.md) under *What the census does not do*; they apply to this cut identically). Vehicle: integration branch `integration/namespace-cut`, forked from main `64ebefa74`; standing cutover PR gunbc#8282 (draft — the one merge main receives). Executing session: crisp-crab-430; doctrine/coordination: tidy-pike-117. Operator ruling (2026-08-15): delete all the grammar/import up front, then solve each problem as it is revealed — expecting the deletion to also reveal problems import was standing up (the concealment census). **SUPERSEDED ON ORDER 2026-08-25 — `gunbc.namespace_cut_landing_order` `namespace_cut_grammar_last_ruling`: grammar deletion is last.** The concealment-census expectation survives unchanged — what moved is when the grammar is cut, not what cutting it reveals. **Step gating:** each major step closes only when the operator is satisfied with its performance — the executing session stops at the boundary and presents, never rolls into the next step on its own judgment; within a step, the fix-forward loop runs continuously. **Existing designs** covering this region (namespace-resolution-design, the layering repoint design, and kin) are quarry — terminal shapes and mechanisms are evidence; their sequencing never defers the deletion (operator ruling, 2026-08-15; the 2026-08-25 reordering above is the same authority moving the grammar step, not a quarried design deferring it — the distinction this clause exists to enforce).
+Doctrine: DESIGN §3 *replacement migrations cut over at the root* (delete-first; the deletion is the census — bounded by the three silent populations measured across the five parallel cuts, recorded once in [floor-cut-replacement-plan.md](floor-cut-replacement-plan.md) under *What the census does not do*; they apply to this cut identically). Vehicle: integration branch `integration/namespace-cut`, forked from main `64ebefa74`; standing cutover PR gunbc#8282 (draft — the one merge main receives). Executing session: crisp-crab-430; doctrine/coordination: tidy-pike-117. Operator ruling (2026-08-15): delete all the grammar/import up front, then solve each problem as it is revealed — expecting the deletion to also reveal problems import was standing up (the concealment census). **SUPERSEDED ON ORDER 2026-08-25 — `gunbc.namespace_cut_landing_order` `namespace_cut_grammar_last_ruling`: grammar deletion is last.** The concealment-census expectation survives; what moved is when the grammar is cut, not what cutting it reveals. **Step gating:** each major step closes only when the operator is satisfied with its performance — the executing session stops at the boundary and presents, never rolls into the next step on its own judgment; within a step, the fix-forward loop runs continuously. **Existing designs** covering this region (namespace-resolution-design, the layering repoint design, and kin) are quarry — terminal shapes and mechanisms are evidence; their sequencing never defers the deletion (operator ruling, 2026-08-15; the 2026-08-25 reordering is the same authority moving the grammar step, not a quarried design deferring it — the distinction this clause enforces).
 
 ## The cut, stated in .dag terms
 
@@ -63,7 +58,7 @@ Doctrine: DESIGN §3 *replacement migrations cut over at the root* (delete-first
 - `d4916cacf3` — Delete every import statement from `dag/` and `src/v2/` (2,975 files, −62,850 lines)
 - `59db42ffc9` — Delete every import statement from `src/v1/` (the seed; 60 files, −1,837 lines)
 
-Standing census on the branch (2026-08-15): **5,531 hard diagnostics · 280 distinct names · 935 files · 2,355 of 3,709 modules in closure**; by class: function-not-found 2,065 · unresolved type 1,742 · undefined variable 1,067; top names `LiveTreeDisposition` 579 · `SubstrateInputsOnly` 506 · `OccurrenceId` 347. Two earlier root-cause hypotheses (declaration-registration gap; sibling-homonym eligibility) were **retracted** — the probes ran under conditions that differ from the corpus (their diagnostic appears zero times in the census). The census stands; the hypotheses are open questions for step 4's instrument.
+Standing census on the branch (2026-08-15): **5,531 hard diagnostics · 280 distinct names · 935 files · 2,355 of 3,709 modules in closure**; by class: function-not-found 2,065 · unresolved type 1,742 · undefined variable 1,067; top names `LiveTreeDisposition` 579 · `SubstrateInputsOnly` 506 · `OccurrenceId` 347. Two earlier root-cause hypotheses (declaration-registration gap; sibling-homonym eligibility) were **retracted** — the probes ran under conditions differing from the corpus (their diagnostic appears zero times in the census). The census stands; the hypotheses are open questions for step 4's instrument.
 
 ## Step 1 — import-name-universe deletion (before deep census diagnosis)
 
@@ -76,7 +71,7 @@ Standing census on the branch (2026-08-15): **5,531 hard diagnostics · 280 dist
 - `src/v2/compiler/body_lowering_fold.dag`: the `dag_surface_import_decl`/`_block` passthrough arms
 - `src/v2/lens/reference_deps.dag`: only the import-reading arms (`reference_qn_from_import_decl_strict` + dispatch, `reference_paths_from_import_edges`, `import_edge_to_reference_fact`) — the module survives as the replacement producer
 
-**Sequencing consequence:** land this before deep-diagnosing the census. Until X's resolution arms are gone, part of the 5,531 may be X's machinery judging over now-empty import lists (for example `get_exported_names` folding `imported_names` into export sets) — measuring the corpse, not Y. Re-derive the census after; the numbers moving is expected.
+**Sequencing consequence:** land this before deep-diagnosing the census. Until X's resolution arms are gone, part of the 5,531 may be X's machinery judging over now-empty import lists (e.g. `get_exported_names` folding `imported_names` into export sets) — measuring the corpse, not Y. Re-derive the census after; the numbers moving is expected.
 
 ## Step 2 — host and emit machinery
 
@@ -87,30 +82,30 @@ Standing census on the branch (2026-08-15): **5,531 hard diagnostics · 280 dist
 
 **Trap (regen fixed point):** every v1 `.dag` deletion has a generated `.rs` twin under `src/v1/stage0/src/` — cut both sides in the same pass or `regen_verify` reds.
 
-**Trap (attribute orphans, measured 2026-08-15 — three defects):** deleting a generated Rust struct while leaving its preceding `#[derive(...)]` lines behind attaches them to the next item (E0774 / conflicting impls). The rule: a struct deletion takes its preceding attribute lines with it — and the repair sweep is scoped to the files the deletion touched, never repo-wide (a repo-wide sweep removed three legitimate derives in untouched files, including the CLI's `#[derive(Parser)]`; caught only by pre-commit diff).
+**Trap (attribute orphans, measured 2026-08-15 — three defects):** deleting a generated Rust struct while leaving its preceding `#[derive(...)]` lines attaches them to the next item (E0774 / conflicting impls). Rule: a struct deletion takes its preceding attribute lines with it, and the repair sweep is scoped to the files the deletion touched, never repo-wide (a repo-wide sweep removed three legitimate derives in untouched files, including the CLI's `#[derive(Parser)]`; caught only by pre-commit diff).
 
 ## Step 3 — repoints (contested: surviving consumers change edge supply)
 
 - `src/v2/lens/module_graph.dag`: repoint `dependency_resolution_facts_live` to the reference-derived producer per the file's own `dependency_edge_source_migration_note`; `dependency_closure`, `import_closure`, `touched_path_in_closure`, `entry_affected_by_touched_paths` are edge-source-agnostic and survive under the new supply. Consumers riding through unchanged: `dag/gunbc/instruments/dag_compile_clean_scope.dag`, `dag/gunbc/instruments/module_impact_query_front_door.dag`, `dag/gunbc/instruments/rust_stage0_gates.dag`, `dag/gunbc/doc_graph_roots.dag`, `gunbc.stage0_partition_closure`, `gunbc.repo_atlas_projection`, affected-set entry selection
 - `cli_run.rs` `import_resolution_facts` / `dependency_resolution_facts` / `union_dedup_import_facts_reference_first`: the reference-first union collapses to reference-only; the dedup authority survives with one arm
 - `layer_import_facts` family + its interpreter builtin arm: `v2.std.layer` consumes it; the transitional reference arm already exists (`reference_edges_as_import_facts` strict=true, per `docs/plans/layering-imports-reference-repoint-design.md` §3.1) — becomes reference-only; repoint + rename
-- `src/v1/05_emit_rust.dag` `reference_derived_use_lines`: re-derive its type-ref channel from the containment resolver; the pass becomes the sole use-line producer once `emit_imports` goes. **This is restoration, not cleanup** (crisp-crab finding, 2026-08-15): the channel was fed by `UnlistedImportUse` diagnostics whose mask guards on a non-empty `source_visible_names` — empty for every module post-strip — so the strip already silently emptied it. Rust emission is degraded on the branch until this lands, and an emit-green result before it is the suspicious one. Related: `topological_sort` derives build order from `module_imports`, so ordering is flat (every module in-degree 0) until reference-derived edges supply it — ordering-sensitive results are not meaningful before then.
+- `src/v1/05_emit_rust.dag` `reference_derived_use_lines`: re-derive its type-ref channel from the containment resolver; the pass becomes the sole use-line producer once `emit_imports` goes. **This is restoration, not cleanup** (crisp-crab finding, 2026-08-15): the channel was fed by `UnlistedImportUse` diagnostics whose mask guards on a non-empty `source_visible_names` — empty for every module post-strip — so the strip already silently emptied it. Rust emission is degraded on the branch until this lands; an emit-green result before it is the suspicious one. Related: `topological_sort` derives build order from `module_imports`, so ordering is flat (every module in-degree 0) until reference-derived edges supply it — ordering-sensitive results are not meaningful before then.
 - `src/v1/05_emit_python.dag` `emit_py_imports` / `05_emit_go.dag` `emit_go_imports` etc.: target-language import emission survives; only the input (dag import nodes) is re-derived from references
 - `dag/gunbc/instruments/dag_compile_clean_scope.dag`: re-word the import-closure prose; keep the tool
 - `src/v1/04_emit_info.dag` `collect_type_node_import_surface_names`: re-derive from references
 
 ## Step 4 — fix-forward on the census, class grain
 
-Method (post-retraction): instrument **real specimens** from the census, never synthetic fixtures — a probe answers questions about the probe. First specimen: `LiveTreeDisposition` (579 failures) at `dag/test/claim/lifecycle_survivor_corpus_census_test.dag`. Per specimen, the first fact to pin is **which resolver path judged it** (mask / single-candidate-from-anywhere / NamespaceOnlyY chain filter); the instrumented binary is rebuilt from the branch head. Classes are decided deliberately in sequence, applied mechanically within a class; the function-not-found majority carries an open question — were function references ever candidates in the reference-derived path, or only visible through the import universe? The qualification sweep uses the old resolver as offline oracle only.
+Method (post-retraction): instrument **real specimens** from the census, never synthetic fixtures — a probe answers questions about the probe. First specimen: `LiveTreeDisposition` (579 failures) at `dag/test/claim/lifecycle_survivor_corpus_census_test.dag`. Per specimen, pin first **which resolver path judged it** (mask / single-candidate-from-anywhere / NamespaceOnlyY chain filter); the instrumented binary is rebuilt from the branch head. Classes are decided deliberately in sequence and applied mechanically within a class; the function-not-found majority carries an open question — were function references ever candidates in the reference-derived path, or only visible through the import universe? The qualification sweep uses the old resolver as offline oracle only.
 
 ## Step 5 — grammar/parse deletion, LAST (`import` becomes a parse error)
 
 > **THIS STEP MOVED FROM FIRST TO LAST (operator, 2026-08-25 — `gunbc.namespace_cut_landing_order`
-> `namespace_cut_grammar_last_ruling`, derived by `current_landing_order`).** It was numbered Step 1 in
-> this plan until 2026-08-26, when `review 56029` found that the operative sequence still encoded the
-> superseded order while the header paragraph declared the new one — an executor reading the steps would
-> have run grammar-first. The step CONTENT is unchanged; only its position moved. Steps 1-4 below were
-> renumbered down by one, and every "step N" cross-reference in this document was re-pointed with them.
+> `namespace_cut_grammar_last_ruling`, derived by `current_landing_order`).** It was numbered Step 1
+> until 2026-08-26, when `review 56029` found the operative sequence still encoded the superseded order
+> while the header paragraph declared the new one — an executor reading the steps would have run
+> grammar-first. Step CONTENT is unchanged; only its position moved. Steps 1-4 were renumbered down by
+> one and every "step N" cross-reference re-pointed with them.
 
 
 - `src/v2/extdeps/languages/dag.dag`: `dag_grammar_import_decl_expr`, `dag_grammar_import_block_expr`, `emit_import_decl_emitted_node`, `emit_row_import_decl`, `parse_import_block_idents`, the `dag_token_kw_import` lex rule, the import grammar formal rows, the production registrations, and the top-level-item alternative for import (retires the `dag_production_import_decl`/`_block` and `dag_surface_import_decl`/`_block`/`_qualified_name` identities). The v2 parser is production-table-driven, so deleting these rows is the cut.
@@ -122,30 +117,30 @@ Method (post-retraction): instrument **real specimens** from the census, never s
   `v1_compiler_parse.rs`) is a wall on **import syntax**, so by DESIGN §6's
   survival test — *will this artifact survive the terminal architecture
   substantially unchanged, and be consumed by it?* — the answer is **no: it dies
-  with the grammar it parses**, which makes it presumed scaffold. It was landed
-  anyway as an explicit operator override on **cost, not principle**: it was
-  already built, approved, regenerated and executing, and swapping it for an
-  equal-strength fixture over a population of one is the churn §6 warns about as
-  loudly as it warns about scaffolds. **The condition of that override is this
-  entry.** It is in Step 5's deletion list rather than carrying a "temporary"
-  note, so the grammar deletion removes it *by the census* — a row someone must
-  execute — instead of leaving residue that survives because nobody remembers to
-  look for it. A dissolution trigger that depends on memory is the
-  self-authorized dissolution DESIGN names as a failure mode.
+  with the grammar it parses**, making it presumed scaffold. It landed anyway as
+  an explicit operator override on **cost, not principle**: it was already built,
+  approved, regenerated and executing, and swapping it for an equal-strength
+  fixture over a population of one is the churn §6 warns about as loudly as
+  scaffolds. **The condition of that override is this entry.** It sits in Step
+  5's deletion list rather than carrying a "temporary" note, so the grammar
+  deletion removes it *by the census* — a row someone must execute — instead of
+  leaving residue that survives because nobody remembers to look. A dissolution
+  trigger that depends on memory is the self-authorized dissolution DESIGN names
+  as a failure mode.
 
 **Trap (typed refusal):** removing the keyword alone makes `import` lex as a bare identifier that fails much later with a confusing message. Keep a token class and add a refusing production so the refusal is typed, located, and names the cut.
 
 ## Do-not-delete (the replacement, and grep false-positives)
 
-`src/v2/std/symbol_index.dag` · `src/v2/compiler/symbol_index_fill.dag` · `src/v2/compiler/03_resolve.dag` (verified zero import machinery) · `src/v2/compiler/namespace_graft.dag` · `src/v2/std/qualified_name.dag` · `src/v2/std/decl_ref_resolution.dag` · the rest of `src/v2/extdeps/languages/dag.dag` beyond the import production · the v2 stage files `01_tokenize`/`02_parse`/`03_normalize`/`03_ingest`/`program_assembly`/`parse_engine_hooks`/`normalized_tree` (verified import-free) · `src/v1/stage0/src/gunbc_namespace_reference_derived_closure_admission.rs` + `_contract.rs`. **CORRECTED (2026-08-15, lane divergence report):** the raw-text scanner family (`referenced_module_paths_in_text`, `extend_with_reference_closure` and kin) is **not** the terminal closure authority this plan originally named it — it is a pre-parse byte scanner that longest-matches dotted identifiers against a name index and cannot distinguish a reference from prose (in-tree receipt: the English word "edge" in a source annotation bound to `fn edge` and pulled its module into an unrelated entry's pool). DESIGN §4 rules the heuristic never necessary in a closed system, so the terminal mechanism is **parse-then-derive**: parse the entry standalone (per-file, needs no closure), read real references from the `Node` tree, load those modules, fixpoint — terminating by construction. The scanner family dies, and its five `extract_imports` forks (tests/helpers.rs plus four witness bins) with it. The new closure assembly is homed **outside `cli_run.rs`**, which `integration/cli-run-cut` deletes wholesale. Grep false-positives: the TypeScript/Go/Swift extdeps files and the two typescript import pipeline tests — other languages own their `import` keywords.
+`src/v2/std/symbol_index.dag` · `src/v2/compiler/symbol_index_fill.dag` · `src/v2/compiler/03_resolve.dag` (verified zero import machinery) · `src/v2/compiler/namespace_graft.dag` · `src/v2/std/qualified_name.dag` · `src/v2/std/decl_ref_resolution.dag` · the rest of `src/v2/extdeps/languages/dag.dag` beyond the import production · the v2 stage files `01_tokenize`/`02_parse`/`03_normalize`/`03_ingest`/`program_assembly`/`parse_engine_hooks`/`normalized_tree` (verified import-free) · `src/v1/stage0/src/gunbc_namespace_reference_derived_closure_admission.rs` + `_contract.rs`. **CORRECTED (2026-08-15, lane divergence report):** the raw-text scanner family (`referenced_module_paths_in_text`, `extend_with_reference_closure` and kin) is **not** the terminal closure authority this plan originally named — it is a pre-parse byte scanner that longest-matches dotted identifiers against a name index and cannot distinguish a reference from prose (in-tree receipt: the English word "edge" in a source annotation bound to `fn edge` and pulled its module into an unrelated entry's pool). DESIGN §4 rules the heuristic never necessary in a closed system, so the terminal mechanism is **parse-then-derive**: parse the entry standalone (per-file, needs no closure), read real references from the `Node` tree, load those modules, fixpoint — terminating by construction. The scanner family dies, with its five `extract_imports` forks (tests/helpers.rs plus four witness bins). The new closure assembly is homed **outside `cli_run.rs`**, which `integration/cli-run-cut` deletes wholesale. Grep false-positives: the TypeScript/Go/Swift extdeps files and the two typescript import pipeline tests — other languages own their `import` keywords.
 
 **Declared mid-loop gap (2026-08-15):** `regen_stage0` cannot run while the corpus does not resolve, so every `.dag` → `.rs` mirror edit is hand-written and verified by a real build for the lane's duration — a declared rung-drop carried openly.
 
-**Restoration trigger is ORDER-DEPENDENT (corrected 2026-08-15).** `integration/v1-cut` (gunbc#8293) deletes `regen_stage0` and its 142-entry roster outright, so "regen green on the branch" can fire **only if this cut reaches main first**. If the v1 cut lands first, this obligation **retires with its mechanism, carrying a receipt** — it is not restored, and it must not be left standing as a trigger whose subject no longer exists. That is §3 step 6 (evidence whose only subject is retired is retired with it), not a §4b stall: a class below its ceiling must name a trigger that *can* fire, and an unfireable one is worse than none because it reads as tracked. The same order-dependency governs step 2's two regen mentions (the `emit_imports` seed-regrowth warning and the regen fixed-point trap) and the green-bar item below; it is stated once here rather than repeated at each mention. The banked import-semantics properties (`docs/plans/import-deletion-recovered-behaviors.md`, branch-local) need a reachability edge before cutover.
+**Restoration trigger is ORDER-DEPENDENT (corrected 2026-08-15).** `integration/v1-cut` (gunbc#8293) deletes `regen_stage0` and its 142-entry roster outright, so "regen green on the branch" can fire **only if this cut reaches main first**. If the v1 cut lands first, this obligation **retires with its mechanism, carrying a receipt** — not restored, and not left standing as a trigger whose subject no longer exists. That is §3 step 6 (evidence whose only subject is retired is retired with it), not a §4b stall: a class below its ceiling must name a trigger that *can* fire, and an unfireable one is worse than none because it reads as tracked. The same order-dependency governs step 2's two regen mentions (the `emit_imports` seed-regrowth warning and the regen fixed-point trap) and the green-bar item below; it is stated once here. The banked import-semantics properties (`docs/plans/import-deletion-recovered-behaviors.md`, branch-local) need a reachability edge before cutover.
 
 ## Green bar / cutover
 
-`import` refuses at parse with a typed, located refusal (step 5, the LAST step — the branch receipt for it predates the 2026-08-25 reordering and is evidence the deletion works, not evidence this cut's step 5 is done); the corpus resolves through the containment rule **by construction — never pool coincidence**; Rust-emit use-lines restored from the containment resolver (the strip silently emptied the old channel — see step 3); the census worked to zero or every remaining row dispositioned; the regen fixed point and drift gates re-established on the branch — **or, if `integration/v1-cut` reached main first, the regen half retired with `regen_stage0` under the order-dependency above, the drift gates standing on their own** (they are independent of regen — **observed 2026-08-15** on `integration/v1-cut`: `heal_generated_artifacts` passed while `regen` was red. That branch has since retired the regen job outright, so the observation is a dated receipt for the independence, not a live claim about either branch's current jobs). Then #8282 flips ready and the operator merges — one atomic cutover.
+`import` refuses at parse with a typed, located refusal (step 5, the LAST step — the branch receipt for it predates the 2026-08-25 reordering and is evidence the deletion works, not that this cut's step 5 is done); the corpus resolves through the containment rule **by construction — never pool coincidence**; Rust-emit use-lines restored from the containment resolver (the strip silently emptied the old channel — see step 3); the census worked to zero or every remaining row dispositioned; the regen fixed point and drift gates re-established on the branch — **or, if `integration/v1-cut` reached main first, the regen half retired with `regen_stage0` under the order-dependency above, the drift gates standing on their own** (they are independent of regen — **observed 2026-08-15** on `integration/v1-cut`: `heal_generated_artifacts` passed while `regen` was red; that branch has since retired the regen job outright, so the observation is a dated receipt for the independence, not a live claim about either branch's current jobs). Then #8282 flips ready and the operator merges — one atomic cutover.
 
 ## Registration
 

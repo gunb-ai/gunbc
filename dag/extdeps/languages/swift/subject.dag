@@ -19,7 +19,14 @@ data swift_language_further_authority_1: ExternalAuthority = ExternalAuthority {
   }
 }
 
-data swift_language_subject_note: String = "SWIFT, cited to The Swift Programming Language (verified live 2026-08-04 by fetching the cited locator and confirming its title and publisher from the response, per the D0 verify-or-refuse rule): swift.org describes 'The Swift Programming Language' (TSPL) as 'the authoritative reference for Swift', offering a guided tour, a comprehensive guide, and a formal reference of the language; Swift is maintained by Apple Inc. and published through swift.org. WHY swift.org AND NOT docs.swift.org: the docs.swift.org book pages render their content through JavaScript and returned no readable title to this fetch, so the locator carried here is the one that actually verified."
+// SWIFT, cited to The Swift Programming Language (verified live 2026-08-04 by fetching the cited
+// locator and confirming its title and publisher from the response, per the D0 verify-or-refuse
+// rule): swift.org describes 'The Swift Programming Language' (TSPL) as 'the authoritative
+// reference for Swift', offering a guided tour, a comprehensive guide, and a formal reference of
+// the language; Swift is maintained by Apple Inc. and published through swift.org. WHY swift.org
+// AND NOT docs.swift.org: the docs.swift.org book pages render their content through JavaScript and
+// returned no readable title to this fetch, so the locator carried here is the one that actually
+// verified.
 
 type Swift
   = | SwiftTarget

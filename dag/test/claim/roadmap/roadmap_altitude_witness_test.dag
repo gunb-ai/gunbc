@@ -17,7 +17,10 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-data roadmap_altitude_witness_note: String = "Composition slice 3's receipts: the attention law's derivations proven total and fail-closed, the fold/open decision proven over RENDERED fixtures (a routine section folds, one working member holds it open), the counts wire pinned, and the client expand chain proven derived — each by execution, with the REDs planted as fixtures the same predicates must refuse."
+// Composition slice 3's receipts: the attention law's derivations proven total and fail-closed, the
+// fold/open decision proven over RENDERED fixtures (a routine section folds, one working member
+// holds it open), the counts wire pinned, and the client expand chain proven derived — each by
+// execution, with the REDs planted as fixtures the same predicates must refuse.
 
 // The law's arms, pinned: finished work is routine, the working set holds, fail and loud expand — and the fail-closed arms are load-bearing, so they are asserted as REDs would be: an unmodeled status and an unmodeled band key must be anomalies, never quietly routine (the absorbing-fallback shape, refused).
 fn attention_key(a: RowAttention) -> String {
@@ -92,7 +95,15 @@ fn open_node() -> RoadmapNode {
   authored(identity: "rnfx_140ZV0QZTY3R9PTENK99", id: "alt-open", done: false, content: "working item")
 }
 
-data fold_by_statuses_note: String = "The fold decision proven over the RENDERED page, not the predicate alone: an all-routine section serializes its details WITHOUT the open attribute (folded — the summary band still carries the counts, so nothing is hidden silently), and adding one working member to the same section flips the SAME serialization to open. The two fixtures differ by exactly that member, so the discrimination is located in the status data — hand-curation has no input to reach. Fixture lesson, kept: a done-but-UNSIGNED node renders review (the sign-off gate), and review is WORKING under the law — the operator's pending gesture holds a section open, which is the attention law agreeing with the sign-off discipline rather than a coincidence. Routine therefore requires the signed fixture."
+// The fold decision proven over the RENDERED page, not the predicate alone: an all-routine section
+// serializes its details WITHOUT the open attribute (folded — the summary band still carries the
+// counts, so nothing is hidden silently), and adding one working member to the same section flips
+// the SAME serialization to open. The two fixtures differ by exactly that member, so the
+// discrimination is located in the status data — hand-curation has no input to reach. Fixture
+// lesson, kept: a done-but-UNSIGNED node renders review (the sign-off gate), and review is WORKING
+// under the law — the operator's pending gesture holds a section open, which is the attention law
+// agreeing with the sign-off discipline rather than a coincidence. Routine therefore requires the
+// signed fixture.
 
 test fn altitude_routine_section_folds() -> Bool {
   let folded = doc_html(nodes: [done_signed_node()])

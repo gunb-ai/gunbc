@@ -21,7 +21,8 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // prove that any call site uses these producers -- a hand-spelled ["env", ...] elsewhere in the
 // corpus is invisible to this file, and the instrument for that is a construction wall, not an
 // assertion in a module that must compile.
-data env_execution_authority_witness_scope_note: String = "Serialization witness for extdeps.tools.env. Call-site adoption is not in scope and is not evidenced here."
+// Serialization witness for extdeps.tools.env. Call-site adoption is not in scope and is not
+// evidenced here.
 
 test fn an_assignment_occupies_one_argv_element() -> Bool {
   env_binding_argv(binding: EnvSet { name: "A", value: "b" }) == ["A=b"]

@@ -50,7 +50,22 @@ type CommitPolicy
   = CommitRequired { consumer: RepoConsumer }
   | NotCommitted
 
-data artifact_location_note: String = "THE PATH IS A PROJECTION OF ITS PARTS, NOT THE OTHER WAY ROUND. Every row below CONSTRUCTS its path from a directory and an entry name -- some literal, some computed from a spec host or a plan slug -- and the joined string was the only thing this module published. A consumer that must LIST the directory and look for the entry inside that listing therefore had to split the string on its last separator, re-deriving by parsing exactly what the construction already knew. That is decompose-after-compose: redundant by DESIGN section 2, and asymmetric in failure, because a parse has error cases a construction does not. So artifact_location is the single match and artifact_path is derived from it. THE PATH BYTES ARE UNCHANGED and that is load-bearing rather than incidental: artifact_path feeds the drift gate's committed-file read, so a change here would silently repoint every adjudicated artifact.\n\nWHY THE ROOT DIRECTORY IS `.` AND NOT THE EMPTY STRING. A root-level artifact's directory is the repository root, which is a real directory that can be listed; the empty string is not a directory at all and would have to be special-cased at every consumer that wants to observe one. Carrying `.` means a listing consumer needs no arm for `this artifact has no directory`, and the join is the only place that knows the root renders without a prefix."
+// THE PATH IS A PROJECTION OF ITS PARTS, NOT THE OTHER WAY ROUND. Every row below CONSTRUCTS its
+// path from a directory and an entry name -- some literal, some computed from a spec host or a plan
+// slug -- and the joined string was the only thing this module published. A consumer that must LIST
+// the directory and look for the entry inside that listing therefore had to split the string on its
+// last separator, re-deriving by parsing exactly what the construction already knew. That is
+// decompose-after-compose: redundant by DESIGN section 2, and asymmetric in failure, because a
+// parse has error cases a construction does not. So artifact_location is the single match and
+// artifact_path is derived from it. THE PATH BYTES ARE UNCHANGED and that is load-bearing rather
+// than incidental: artifact_path feeds the drift gate's committed-file read, so a change here would
+// silently repoint every adjudicated artifact.
+//
+// WHY THE ROOT DIRECTORY IS `.` AND NOT THE EMPTY STRING. A root-level artifact's directory is the
+// repository root, which is a real directory that can be listed; the empty string is not a
+// directory at all and would have to be special-cased at every consumer that wants to observe one.
+// Carrying `.` means a listing consumer needs no arm for `this artifact has no directory`, and the
+// join is the only place that knows the root renders without a prefix.
 
 // THE ROW IS KEYED BY HOST IDENTITY, NOT BY THE DEPLOY ROW, AND THAT IS AN ACYCLICITY FACT RATHER
 // THAN A PREFERENCE. gunbc.runner_host_deploy reaches this module transitively
@@ -168,7 +183,13 @@ fn committed_generated_artifact_paths() -> List<String> {
   map(committed_generated_artifacts(), a => artifact_path(a: a))
 }
 
-data artifact_eq_disposition_reference_note: String = "Disposition authority (reference only; do not fork the lifecycle here): gunbc.non_fold_residue.non_fold_residue_frontier enrolls dag/gunbc/generated_artifact.dag::artifact_eq with the typed nfr_reason_land_red_era reason and nfr_dissolve_owning_fold trigger. The live non_fold_residue_clean_holds witness refuses both an unrostered predicate and a stale roster row; its synthetic malformed-row RED witnesses that reason without a dissolution trigger is invalid. This equality residue therefore grows only under that one bounded census row and deletes when the owning fold derives equality from inhabitance."
+// Disposition authority (reference only; do not fork the lifecycle here):
+// gunbc.non_fold_residue.non_fold_residue_frontier enrolls
+// dag/gunbc/generated_artifact.dag::artifact_eq with the typed nfr_reason_land_red_era reason and
+// nfr_dissolve_owning_fold trigger. The live non_fold_residue_clean_holds witness refuses both an
+// unrostered predicate and a stale roster row; its synthetic malformed-row RED witnesses that
+// reason without a dissolution trigger is invalid. This equality residue therefore grows only under
+// that one bounded census row and deletes when the owning fold derives equality from inhabitance.
 
 fn artifact_eq(a: GeneratedArtifact, b: GeneratedArtifact) -> Bool {
   match a {

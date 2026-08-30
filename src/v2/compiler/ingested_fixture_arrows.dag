@@ -33,7 +33,12 @@ import v2.std.node {
 }
 import v2.std.node_query { find_arrow_body_child }
 
-data ingested_fixture_arrows_note: String = "Wave 1 Gate 1 Stage D: census-ingest Arrow fixtures replacing produce_* flat-token MVP producers. Every arrow is tokenize→parse_module→normalize→resolve→extract. dissolve-on: general body producer fully subsumes produce_* and flat-token StampBinding tables (wave-2). Well-formedness + behavior-kind: long/wave1_gate1_d_mvp_subsumption_witness_test.dag; ingested bind/loop execution+RED: long/wave1_gate1_d_ingested_bind_loop_eval_witness_test.dag; add/pick/match execution: long/wave1_gate1_general_body_producer_witness_test.dag and execution/pick_ingested_*."
+// Wave 1 Gate 1 Stage D: census-ingest Arrow fixtures replacing produce_* flat-token MVP producers.
+// Every arrow is tokenize→parse_module→normalize→resolve→extract. dissolve-on: general body
+// producer fully subsumes produce_* and flat-token StampBinding tables (wave-2). Well-formedness +
+// behavior-kind: long/wave1_gate1_d_mvp_subsumption_witness_test.dag; ingested bind/loop
+// execution+RED: long/wave1_gate1_d_ingested_bind_loop_eval_witness_test.dag; add/pick/match
+// execution: long/wave1_gate1_general_body_producer_witness_test.dag and execution/pick_ingested_*.
 
 data ingested_add_module_source: String = "module m\n\nfn add(x: Int, y: Int) -> Int { x + y }\n"
 data ingested_add_swapped_operands_module_source: String = "module m\n\nfn add(x: Int, y: Int) -> Int { y + x }\n"
@@ -75,7 +80,12 @@ fn ingested_find_arrow_in_module(root: Node) -> Optional<Node> {
   }
 }
 
-data ingested_resolved_module_projection_note: String = "THIS IS NOW A PROJECTION, NOT AN IMPLEMENTATION. The tokenize -> parse -> normalize -> resolve order it used to spell as a nest of bind_outcome lives in v2.compiler.staged_front_end, which mints per-stage evidence; this arrow folds that staged run back to the single Outcome<Node> its callers have always received. It does not re-run a stage, does not re-derive the answer by a second route, and has no order of its own to drift from the one it projects — which is the whole reason the front end moved rather than being copied (DESIGN section 3)."
+// THIS IS NOW A PROJECTION, NOT AN IMPLEMENTATION. The tokenize -> parse -> normalize -> resolve
+// order it used to spell as a nest of bind_outcome lives in v2.compiler.staged_front_end, which
+// mints per-stage evidence; this arrow folds that staged run back to the single Outcome<Node> its
+// callers have always received. It does not re-run a stage, does not re-derive the answer by a
+// second route, and has no order of its own to drift from the one it projects — which is the whole
+// reason the front end moved rather than being copied (DESIGN section 3).
 
 fn ingested_resolved_module_from_source(source: String, file: Symbol) -> Outcome<Node> {
   front_end_run_outcome(run: run_front_end(source: source, file: file))

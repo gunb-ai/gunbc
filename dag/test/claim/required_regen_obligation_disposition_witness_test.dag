@@ -85,9 +85,8 @@ test fn witness_transfer_admits_host_deletion_but_not_carrier_deletion() -> Bool
 // successor AUTHORITY whose carrier deletion answered false, so the carrier's own terminal state
 // left two definitions answering for one operation. Asserting the authority arm's admission alone
 // would stay green if the arms were re-fused with carrier deletion widened to both; asserting the
-// realization arm's refusal alone would stay green if they were re-fused the other way. Only the
-// arms DIFFERING distinguishes the split from either fusion, which is why the two are compared
-// rather than checked.
+// realization arm's refusal alone would stay green if re-fused the other way. Only the arms
+// DIFFERING distinguishes the split from either fusion, so the two are compared, not checked.
 test fn witness_the_two_transfers_disagree_on_carrier_deletion() -> Bool {
   carrier_deletion_admitted(lifecycle: authority_transferred_example)
     != carrier_deletion_admitted(lifecycle: realization_transferred_example)
@@ -107,9 +106,9 @@ test fn witness_fully_discharged_retirement_admits_both_deletions() -> Bool {
 
 // A RETIREMENT WHOSE OBLIGATIONS ARE NOT ALL DISCHARGED ADMITS NOTHING, and it is now a separate
 // ARM rather than a Retired value that has to be inspected. Two earlier revisions could not test
-// this at all: a String receipt could claim discharge without exhibiting it, and a discharge LIST
-// made "retired" and "not actually retired" the same constructor. It is the exact shape the
-// finding is about -- naming a disposition is not proving it.
+// this: a String receipt could claim discharge without exhibiting it, and a discharge LIST made
+// "retired" and "not actually retired" the same constructor -- the exact shape the finding is
+// about: naming a disposition is not proving it.
 test fn witness_partial_retirement_admits_neither_deletion() -> Bool {
   host_deletion_admitted(lifecycle: partially_retired_example) == false
     && carrier_deletion_admitted(lifecycle: partially_retired_example) == false
@@ -131,9 +130,9 @@ test fn witness_active_admits_neither_deletion() -> Bool {
 
 // GUARD AGAINST THIS RECUT'S OWN FAILURE MODE. An earlier revision concluded the class could not
 // climb on the strength of ONE refuted route. If routes are marked refuted one at a time, each
-// step looking locally reasonable, that impossibility claim returns silently -- so the census must
-// go red instead. The exact count also keeps the receipts honest in the other direction: dropping
-// the refuted route would erase real measured evidence.
+// step locally reasonable, that impossibility claim returns silently -- so the census must go red
+// instead. The exact count also keeps the receipts honest the other way: dropping the refuted
+// route would erase real measured evidence.
 test fn witness_no_impossibility_claim_is_reachable() -> Bool {
   some_derivation_route_remains_unexamined()
 }
@@ -143,11 +142,11 @@ test fn witness_exactly_one_route_is_refuted() -> Bool {
 }
 
 // THE FINDING ITSELF, ASSERTED SO IT EXPIRES LOUDLY. If a conformance relation later lands, this
-// goes RED and the census must be revisited rather than standing as a claim about a state that has
-// ended. A prior revision asserted this over five transcribed counts; the counts are gone, and the
-// claim they were supposed to support is unchanged -- which is the evidence they were not carrying
-// it. What replaces them is not a smaller number but a state that cannot go stale, because it
-// asserts that nothing relates the two realizations rather than describing how far apart they are.
+// goes RED and the census must be revisited rather than stand as a claim about an ended state. A
+// prior revision asserted this over five transcribed counts; the counts are gone and the claim
+// they supported is unchanged -- evidence they were not carrying it. What replaces them is a state
+// that cannot go stale: it asserts that nothing relates the two realizations rather than
+// describing how far apart they are.
 test fn witness_conformance_relation_remains_unobserved() -> Bool {
   conformance_is_observed(c: required_regen_realization_conformance) == false
 }
@@ -180,9 +179,9 @@ test fn witness_control_table_populates_both_arms() -> Bool {
     && length(xs: required_regen_closure_membership_controls |> filter(o => o.seed_reachable)) > 0
 }
 
-// ABSORPTION'S PREPARED ARM IS WHAT MAKES THE SPLIT A WALL, and this is the witness that would
-// have gone red against the naive version. A COMPLETED absorption shares its deletion truth table
-// with an authority transfer -- both files go -- so no assertion over the completed arm alone can
+// ABSORPTION'S PREPARED ARM IS WHAT MAKES THE SPLIT A WALL, and this witness would have gone red
+// against the naive version. A COMPLETED absorption shares its deletion truth table with an
+// authority transfer -- both files go -- so no assertion over the completed arm alone can
 // discriminate the two. The INCOMPLETE arm does: an absorption whose coverage is not demonstrated
 // admits neither deletion, which authority transfer never does. Asserted as a disagreement for the
 // same reason the two transfers are: a pair answering false to everything would satisfy separate
@@ -218,9 +217,9 @@ test fn witness_no_absorption_gap_admits_any_deletion() -> Bool {
 // signature written as `fn g()` then `  -> Bool {` refuses with "expected return type annotation
 // (-> Type)", and the whole module goes unparseable. Executed both ways by warm-hawk-909 on a
 // controlled pair -- a ONE-CHARACTER name with the break refuses, and the same name with the arrow
-// on one line compiles clean -- so LENGTH IS NOT THE TRIGGER, the break is. The name is therefore
-// short in order to keep the ARROW on one line, which is the only fact that makes this form parse;
-// stating it as "keep names short" would be false and would send the next author looking at naming.
+// on one line compiles clean -- so LENGTH IS NOT THE TRIGGER, the break is. The name is short to
+// keep the ARROW on one line, the only fact that makes this form parse; "keep names short" would
+// be false and would send the next author looking at naming.
 test fn witness_unproven_and_refuted_absorption_differ_only_on_refutation() -> Bool {
   host_deletion_admitted(lifecycle: absorption_unproven_example)
       == host_deletion_admitted(lifecycle: absorption_refuted_example)

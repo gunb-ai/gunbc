@@ -24,7 +24,15 @@ import gunbc.endpoint_authority_replacement_cut { endpoint_authority_cut_registr
 // COMPLETE: nothing walks the corpus for authored ReplacementCut values absent from this list, so a
 // cut authored and never registered is invisible to the join, in exactly the way an omitted consumer
 // is invisible to plan admission. That completeness producer is the declared next rung.
-data replacement_cut_registry_note: String = "Two registrations, and they are deliberately in different arms. cut-router-endpoint-authority is RegisteredExactCut: authored at declaration grain, its plan admissible or refusable on its own terms. cut-v1-interpreter is RegisteredCutRemeasureRequired: its survey was authored at module-or-binary grain over a ten-of-125 sample, which the re-grounding of BoundaryConsumer onto declaration-grain relations made structurally unable to inhabit the exact carrier. Keeping both under one identity space is what lets a future descent name the interpreter boundary and refuse as RegistryParentRemeasureRequired -- the boundary was noticed, no exact plan exists at it -- rather than as RegistryParentAbsent, which would say the boundary is unknown. Those are different facts with different remedies and the registry is the only place they are distinguishable."
+// Two registrations, and they are deliberately in different arms. cut-router-endpoint-authority is
+// RegisteredExactCut: authored at declaration grain, its plan admissible or refusable on its own
+// terms. cut-v1-interpreter is RegisteredCutRemeasureRequired: its survey was authored at
+// module-or-binary grain over a ten-of-125 sample, which the re-grounding of BoundaryConsumer onto
+// declaration-grain relations made structurally unable to inhabit the exact carrier. Keeping both
+// under one identity space is what lets a future descent name the interpreter boundary and refuse
+// as RegistryParentRemeasureRequired -- the boundary was noticed, no exact plan exists at it --
+// rather than as RegistryParentAbsent, which would say the boundary is unknown. Those are different
+// facts with different remedies and the registry is the only place they are distinguishable.
 
 fn production_replacement_cuts() -> List<CutRegistration> {
   [

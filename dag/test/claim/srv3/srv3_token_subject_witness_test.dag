@@ -22,7 +22,8 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // admission check, so its discriminating red is a source that FAILS TO COMPILE and therefore
 // cannot be an assertion in a module that must compile. The wall's evidence is the required floor
 // refusing such a caller, which is a different instrument from this one.
-data srv3_token_subject_witness_scope_note: String = "Serialization witness for Srv3TokenSubject. The admission wall on srv3_transport_token is evidenced by the floor's own refusal, not here."
+// Serialization witness for Srv3TokenSubject. The admission wall on srv3_transport_token is
+// evidenced by the floor's own refusal, not here.
 
 fn expected_uid_argv() -> List<String> {
   ["/usr/bin/id", "-u"]

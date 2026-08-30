@@ -33,7 +33,14 @@ import extdeps.instrument.pip_boy_3000_mk_v {
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-data reference_instrument_witness_note: String = "Receipts for the two cited Pip-Boy products and the join over them, RECUT against a direct read of both manuals (2026-08-04). The prior witness set was ten green claims over an inverted attribution, and it is the reason these claims are shaped differently: they read the product rosters and the evidence rows, and the evidence rows point INTO the product modules, so a wrong setting can no longer be consistent with a right attribution. What no in-repo witness can establish is that a quoted wording matches the upstream document — that is a read-path fact, carried as a SourceReadReceipt, and the lesson recorded rather than papered over is that ten structural greens did not make the upstream claim true."
+// Receipts for the two cited Pip-Boy products and the join over them, RECUT against a direct read
+// of both manuals (2026-08-04). The prior witness set was ten green claims over an inverted
+// attribution, and it is the reason these claims are shaped differently: they read the product
+// rosters and the evidence rows, and the evidence rows point INTO the product modules, so a wrong
+// setting can no longer be consistent with a right attribution. What no in-repo witness can
+// establish is that a quoted wording matches the upstream document — that is a read-path fact,
+// carried as a SourceReadReceipt, and the lesson recorded rather than papered over is that ten
+// structural greens did not make the upstream claim true.
 
 fn setting_present(wanted: String) -> Bool {
   fold(pip_boy_3000_settings, init: false, f: (acc, row) =>
@@ -129,7 +136,12 @@ test fn witness_buoyant_drift_is_originated_not_cited() -> Bool {
     && !axis_is_cited_on(axis: BuoyantDrift, subject: pip_boy_mk_v_subject)
 }
 
-data provenance_control_note: String = "PERMANENT REGRESSION CONTROL, not a validator. The XOR that this claim's predecessor checked is now unwritable — axis_provenance is an exhaustive match over a closed coproduct, so an axis with both provenance kinds or with none has no constructor — and DESIGN section 4b(4) keeps the evidence enrolled when the production check dissolves, because deleting it would recreate specification-without-execution one rung up. What it asserts now is the READ: which arm each axis actually lands on."
+// PERMANENT REGRESSION CONTROL, not a validator. The XOR that this claim's predecessor checked is
+// now unwritable — axis_provenance is an exhaustive match over a closed coproduct, so an axis with
+// both provenance kinds or with none has no constructor — and DESIGN section 4b(4) keeps the
+// evidence enrolled when the production check dissolves, because deleting it would recreate
+// specification-without-execution one rung up. What it asserts now is the READ: which arm each axis
+// actually lands on.
 
 test fn witness_each_axis_lands_on_its_expected_provenance_arm() -> Bool {
   return provenance_is_cited(a: OpticalInstability)

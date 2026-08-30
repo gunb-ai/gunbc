@@ -29,18 +29,18 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
 }
 
 // THE THREE KINDS ARE THE KERNEL'S, NOT OURS. cgroup-v2 documents each memory interface file with a
-// distinct temporal meaning, and a carrier storing every one as a bare ByteSize would erase the
-// distinction that decides whether a number may be compared, summed, or differenced at all:
+// distinct temporal meaning; storing every one as a bare ByteSize would erase the distinction that
+// decides whether a number may be compared, summed, or differenced at all:
 //
 //   Instantaneous       -- true at the moment of the read and at no other moment.
 //   LifetimeEpochScoped -- an extremum accumulated since the cgroup was created or the value reset.
-//                          It is NOT "the maximum during my observation window" unless the epoch is
+//                          NOT "the maximum during my observation window" unless the epoch is
 //                          carried beside it, which is why the epoch is a field rather than prose.
 //   CumulativeCounter   -- monotone since cgroup creation. A single end snapshot is not an interval
 //                          measurement; only a start/end pair yields a delta.
 //
-// Grounding the kinds here rather than in the consumer is DESIGN 3: the upstream spec already draws
-// this line, so re-coining it downstream would nickname a fact the kernel owns.
+// Grounding the kinds here rather than in the consumer is DESIGN 3: the upstream spec draws this
+// line, so re-coining it downstream would nickname a fact the kernel owns.
 type CgroupMemoryMetricKind
   = Instantaneous
   | LifetimeEpochScoped
@@ -79,10 +79,10 @@ fn cgroup_memory_metric_kind(f: CgroupMemoryInterfaceFile) -> CgroupMemoryMetric
 }
 
 // A NEGATIVE BODY IS MALFORMED, NOT A MAGNITUDE. parse_int admits negatives, and every file modeled
-// here is documented as a non-negative byte count, so a leading minus is a malformed read rather
-// than a value to take the absolute value of. nat_magnitude is applied only AFTER the sign is
-// excluded, where it is the identity -- using it as the crossing on an unguarded Int would silently
-// turn "-1" into 1.
+// here is documented as a non-negative byte count, so a leading minus is a malformed read, not a
+// value to take the absolute value of. nat_magnitude is applied only AFTER the sign is excluded,
+// where it is the identity -- as the crossing on an unguarded Int it would silently turn "-1"
+// into 1.
 fn parse_cgroup_nonnegative_bytes(text: String) -> ByteSize? {
   match parse_int(s: trim(text)) {
     Present { value: n } =>
@@ -96,10 +96,9 @@ fn parse_cgroup_nonnegative_bytes(text: String) -> ByteSize? {
 }
 
 // THE `max` SENTINEL IS A THIRD STATE, NOT A LARGE NUMBER. memory.max and memory.high hold either a
-// byte count or the literal string "max", which the kernel documents as "no limit". Rendering that
-// as a huge ByteSize would fabricate a limit the host does not have, and rendering it as absent
-// would conflate it with a read that failed -- so it is its own arm, and an unparseable body is a
-// fourth.
+// byte count or the literal "max", which the kernel documents as "no limit". A huge ByteSize would
+// fabricate a limit the host does not have; absent would conflate it with a failed read -- so it is
+// its own arm, and an unparseable body is a fourth.
 type CgroupMemoryLimitValue
   = CgroupMemoryLimited { bytes: ByteSize }
   | CgroupMemoryUnlimited
@@ -117,9 +116,9 @@ fn parse_cgroup_memory_limit(body: String) -> CgroupMemoryLimitValue {
 }
 
 // A COUNT FILE HAS NO `max` ARM. memory.current, memory.peak and memory.swap.current are documented
-// as byte counts with no sentinel, so admitting one here would widen the parse past what the
-// authority says the file can hold. Two arms, not three -- and a body of "max" in a count file is
-// therefore Unparseable, which is the correct reading of a kernel that should never have written it.
+// as byte counts with no sentinel, so admitting one would widen the parse past what the authority
+// says the file can hold. Two arms, not three -- a body of "max" in a count file is Unparseable,
+// the correct reading of a kernel that should never have written it.
 type CgroupMemoryCountValue
   = CgroupMemoryCount { bytes: ByteSize }
   | CgroupMemoryCountUnparseable { body: String }

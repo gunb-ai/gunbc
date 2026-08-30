@@ -1,11 +1,11 @@
 # Dispatch + maintain Claude Code sessions from the srv1 roadmap (simple MVP)
 
-Operator brief (2026-07-03). A button per READY roadmap item that actually spawns a `claude`
-session on srv1 to work it, plus a minimal panel to see/stop live sessions. This supersedes the
-"ctrl bridge lane" of [roadmap-spawner.md](roadmap-spawner.md) Stage 1: the actuator is the
-srv1 gunbhub/roadmap server itself — no ctrl dashboard in the loop. The structure/runtime split
-and the spawn-request contract from that doc still hold (graph readiness comes from
-`roadmap_spawner.dag`; the actuator adds only runtime dedup + execution).
+Operator brief (2026-07-03). A button per READY roadmap item that spawns a `claude` session on
+srv1 to work it, plus a minimal panel to see/stop live sessions. Supersedes the "ctrl bridge
+lane" of [roadmap-spawner.md](roadmap-spawner.md) Stage 1: the actuator is the srv1
+gunbhub/roadmap server itself — no ctrl dashboard in the loop. That doc's structure/runtime split
+and spawn-request contract still hold (graph readiness comes from `roadmap_spawner.dag`; the
+actuator adds only runtime dedup + execution).
 
 ## What exists (verified against the live tree, 2026-07-03)
 
@@ -25,12 +25,12 @@ and the spawn-request contract from that doc still hold (graph readiness comes f
 - **Double-spawn gate**: `dag/gunbc/session_lease.dag` — observation→verdict→plan
   (`Start` / `DrainMatchingStaleThenStart` / `RefuseForeignOwner`) over `std.upsert_decision`.
   Reuse the same shape keyed on tmux session name per node_id (a session lease, not a port
-  lease — same classifier discipline: observation carries facts, classifier decides).
+  lease; same discipline: observation carries facts, classifier decides).
 - **Lifecycle binding** (`dag/gunbc/code_change_workflow.dag`): phase 2, explicitly out of MVP.
 
 ## The crux: how `claude` is invoked (studied from ctrl `scripts/session-dashboard`)
 
-ctrl's claude provider (`providers/claude.mjs`) is the actuator template. The load-bearing facts:
+ctrl's claude provider (`providers/claude.mjs`) is the actuator template. Load-bearing facts:
 
 - Spawn shape (inside a detached tmux session, cwd = the worktree):
 
@@ -75,7 +75,7 @@ ctrl's claude provider (`providers/claude.mjs`) is the actuator template. The lo
 
 ## How it lands in the substrate (model-before-implement)
 
-The server is emitted from `.dag`; the actuator must be too — no hand-written server.js patch.
+The server is emitted from `.dag`; so must the actuator be — no hand-written server.js patch.
 
 - **M1 — dynamic-route emit lane** (the substrate piece; everything else hangs off it).
   A `ServedDynamicRoute` row: method + path template (with params) + a modeled host command
@@ -122,8 +122,8 @@ worktree GC on stop · no resume/restore of dead sessions · no acceptance autom
 ## Roadmap placement
 
 "session dashboard + roadmap-as-spawner" sits in ROADMAP §4 shelved; this brief un-shelves the
-actuator slice. This doc lands with the ROADMAP.md edit moving a sized node into the active
+actuator slice, landing with the ROADMAP.md edit that moves a sized node into the active
 sections (operator-directed 2026-07-03), per the reset rule that un-shelving is a PR with a
-displaced-cost justification. Displaced cost: every dispatch today is the operator hand-writing
+displaced-cost justification. Displaced cost: today every dispatch is the operator hand-writing
 a brief and hand-spawning a session; the READY frontier already computes what to work next —
-the missing piece is only the actuator.
+only the actuator is missing.

@@ -17,6 +17,15 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   }
 }
 
+// AMI MEGARAC, THE PROPRIETARY BMC FIRMWARE STACK - subject authority:
+// extdeps.firmware.megarac.subject. SCOPE DISCIPLINE, PER GRAIN: rows in this module answer at the
+// FAMILY grain and each states its basis - a published vendor default, or the
+// guaranteed-across-builds floor. Anything observed on one shipping build only (Redfish absence,
+// firmware revision, service roster) is a BUILD-scoped fact and lives with the build binding
+// (extdeps.ampere.mt_collins_product_brief.bmc for the Foxconn Mt. Collins build), never promoted
+// here. The REST operation rows below are the SP-X interface shape as executed on that build - the
+// one place a single-build execution grounds a family-grain row - and carry that provenance
+// explicitly.
 data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
   subject: ExternalSubjectRef {
     declaration: DeclarationRef {
@@ -31,7 +40,6 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
 
 data megarac_vendor: Vendor<Hardware> = ami
 
-data megarac_scope_note: String = "AMI MEGARAC, THE PROPRIETARY BMC FIRMWARE STACK - subject authority: extdeps.firmware.megarac.subject. SCOPE DISCIPLINE, PER GRAIN: rows in this module answer at the FAMILY grain and each states its basis - a published vendor default, or the guaranteed-across-builds floor. Anything observed on one shipping build only (Redfish absence, firmware revision, service roster) is a BUILD-scoped fact and lives with the build binding (extdeps.ampere.mt_collins_product_brief.bmc for the Foxconn Mt. Collins build), never promoted here. The REST operation rows below are the SP-X interface shape as executed on that build - the one place a single-build execution grounds a family-grain row - and carry that provenance explicitly."
 
 // The family answer is the PUBLISHED default - which is what FactoryLogin's
 // published_password field means - admin/admin being AMI's widely published MegaRAC
@@ -99,6 +107,14 @@ data megarac_op_media_status: MegaRacApiOperation = MegaRacApiOperation {
   contract_note: "one row per media instance: media_type, image_name, session_index, redirection_status",
 }
 
+// THE EXECUTED HEADLESS BOOT-FROM-ISO SEQUENCE (Foxconn Mt. Collins build, 2026-08-29): export the
+// ISO directory over NFS to the BMC address; PUT media config; wait for the rmedia retry to mount
+// (images listing goes from refusal to listing); POST start-media WITH image_redirection:1;
+// ipmitool chassis bootdev cdrom then power reset. Execution receipts available without any screen:
+// the NFS server's read counter (bulk reads then quiet = image loaded), the configurations row
+// (redirection_status/session_index), and the boot CPU's power rails rising while the second socket
+// idles.
+
 data megarac_api_operations: List<MegaRacApiOperation> = [
   megarac_op_session_login,
   megarac_op_media_config,
@@ -108,7 +124,13 @@ data megarac_api_operations: List<MegaRacApiOperation> = [
   megarac_op_media_status,
 ]
 
-data megarac_virtual_cd_boot_recipe_note: String = "THE EXECUTED HEADLESS BOOT-FROM-ISO SEQUENCE (Foxconn Mt. Collins build, 2026-08-29): export the ISO directory over NFS to the BMC address; PUT media config; wait for the rmedia retry to mount (images listing goes from refusal to listing); POST start-media WITH image_redirection:1; ipmitool chassis bootdev cdrom then power reset. Execution receipts available without any screen: the NFS server's read counter (bulk reads then quiet = image loaded), the configurations row (redirection_status/session_index), and the boot CPU's power rails rising while the second socket idles."
+// THE EXECUTED HEADLESS BOOT-FROM-ISO SEQUENCE (Foxconn Mt. Collins build, 2026-08-29).
+// export the ISO directory over NFS to the BMC address; PUT media config; wait for the rmedia
+// retry to mount (images listing goes from refusal to listing); POST start-media WITH
+// image_redirection:1; ipmitool chassis bootdev cdrom then power reset. Execution receipts
+// available without any screen: the NFS server's read counter (bulk reads then quiet = image
+// loaded), the configurations row (redirection_status/session_index), and the boot CPU's power
+// rails rising while the second socket idles.
 
 // THE PARAMETER THE START-MEDIA CONTRACT CALLS REQUIRED, AS A TYPE. megarac_op_media_start
 // says the body MUST carry image_redirection:1 or the firmware refuses with opaque codes;

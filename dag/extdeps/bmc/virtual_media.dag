@@ -14,7 +14,13 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   }
 }
 
-data virtual_media_fork_reconciliation: String = "§3 single-authority: 'present a block source (ISO) to a host as USB storage' is ONE concept — VirtualMediaIntent — with N transport realizations named centrally in VirtualMediaTransport (the dispatch axis). ConfigfsGadgetTransport (nbd-server → nbd-client → configfs mass_storage gadget; realized in gunbc.bmc_virtual_media) and NbdProxyWebsocatTransport (nbdkit → websocat → bmcweb WebUI nbd wss; realized in extdeps.bmc.webui.nbd_proxy_serve) were two independent virtual-media concepts; they now consume this shared intent. Per §3 the dispatch that selects a realization is itself realization, so each transport's concrete plan binds in its peripheral module, not here."
+// §3 single-authority: 'present a block source (ISO) to a host as USB storage' is ONE concept —
+// VirtualMediaIntent — with N transport realizations named centrally in VirtualMediaTransport (the
+// dispatch axis). ConfigfsGadgetTransport (nbd-server → nbd-client → configfs mass_storage gadget;
+// realized in gunbc.bmc_virtual_media) and NbdProxyWebsocatTransport (nbdkit → websocat → bmcweb
+// WebUI nbd wss; realized in extdeps.bmc.webui.nbd_proxy_serve) were two independent virtual-media
+// concepts; they now consume this shared intent. Per §3 the dispatch that selects a realization is
+// itself realization, so each transport's concrete plan binds in its peripheral module, not here.
 
 type VirtualMediaSource {
   iso_path: NonEmptyStr

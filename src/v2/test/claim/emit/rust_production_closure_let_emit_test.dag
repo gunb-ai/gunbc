@@ -24,9 +24,21 @@ import v2.std.text { String }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-data rust_production_closure_let_note: String = "Closes the closure and bind-let value-expression families on the PRODUCTION Rust target. Both shapes are already self-closing - TargetClosureShape carries its own body_open and body_close, TargetBindLetShape needs no bracketing - so what was missing was spellings on the production lex, not structure. The two families that are NOT closed here, conditional and loop, are excluded deliberately: their shapes carry no closing token at all, and the fixtures only appear to emit them because a hand-authored declaration scaffold ends in two rbrace and supplies the brace the expression left open. Production block close is a single rbrace, so those two would emit unbalanced Rust and are held for the shape change."
+// Closes the closure and bind-let value-expression families on the PRODUCTION Rust target. Both
+// shapes are already self-closing - TargetClosureShape carries its own body_open and body_close,
+// TargetBindLetShape needs no bracketing - so what was missing was spellings on the production lex,
+// not structure. Conditional and loop are NOT closed here, deliberately: their shapes carry no
+// closing token, and the fixtures only appear to emit them because a hand-authored declaration
+// scaffold ends in two rbrace and supplies the brace the expression left open. Production block
+// close is a single rbrace, so those two would emit unbalanced Rust and are held for the shape
+// change.
 
-data rust_production_golden_provenance_note: String = "Both goldens were fixed by compiling them with rustc BEFORE the emitter was pointed at them, and the compile executed rather than only typechecked: a closure returning its first parameter applied to (3,4) yields 3, and a let rebinding x to y with (5,6) yields 6. That is what keeps the golden from sharing an ancestor with the code that produces it. A golden read back off the emitter would agree with the emitter by construction and would have proven nothing - the exact defect that let the conditional fixture pass while emitting a brace it could not close."
+// Both goldens were fixed by compiling them with rustc BEFORE the emitter was pointed at them, and
+// the compile executed rather than only typechecked: a closure returning its first parameter
+// applied to (3,4) yields 3, and a let rebinding x to y with (5,6) yields 6. That keeps the golden
+// from sharing an ancestor with the code that produces it; a golden read back off the emitter would
+// agree by construction and prove nothing - the defect that let the conditional fixture pass while
+// emitting a brace it could not close.
 
 data rust_production_closure_golden: String = "|x, y| { x }"
 
@@ -118,14 +130,12 @@ fn rpcl_refuses_class(token_class: Symbol) -> Bool {
   }
 }
 
-// The fail-closed property this slice must not spend. A token class with no lex
-// rule still refuses on the production target, typed and located, rather than
-// serializing to nothing - which is exactly what an empty spelling would look
-// like if absence and emptiness were conflated. closure_nop is the positive
-// control precisely because it IS spelled empty: it must ACCEPT and produce the
-// empty string, while an unspelled class REFUSES. If those two collapsed into
-// one answer, adding the closure spellings would have silently made every
-// unspelled class emit nothing at all.
+// The fail-closed property this slice must not spend. A token class with no lex rule still refuses
+// on the production target, typed and located, rather than serializing to nothing - exactly what an
+// empty spelling would look like if absence and emptiness were conflated. closure_nop is the
+// positive control precisely because it IS spelled empty: it must ACCEPT and produce the empty
+// string, while an unspelled class REFUSES. If those collapsed into one answer, adding the closure
+// spellings would have silently made every unspelled class emit nothing.
 test fn rust_production_refuses_unspelled_token_class() -> Bool {
   rpcl_refuses_class(token_class: ^rust_token_unwired_loop)
     && rpcl_refuses_class(token_class: ^rust_token_never_spelled_anywhere)
