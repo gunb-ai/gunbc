@@ -4,9 +4,16 @@ import v2.std.algebra { Cons, Empty, list_flat_map, any }
 import v2.std.collection { List }
 import v2.std.text { String }
 
-// THE OVER-COST WITHHOLDING MECHANISM, CARRYING 274 IDENTITIES.
+// THE OVER-COST WITHHOLDING MECHANISM. ITS POPULATION IS NOT STATED HERE -- ASK
+// `floor_cost_debt_population_report`, WHICH FOLDS THE SAME CHUNKS THE ROSTER DOES.
 //
-// The count is stated once, here, and derived nowhere else in this file's prose. An earlier
+// The count used to be stated here, and it rotted twice: "CARRYING NO IDENTITIES" against a
+// populated roster, then 274 in this header and 225 + 51 = 276 in the population block against a
+// roster that held 290. Three figures, no two agreeing, none of them the roster's length -- and
+// the roster itself was correct throughout. A number transcribed beside its producer decays
+// without anyone touching either end, so this file stopped transcribing it rather than correcting
+// it a third time. The producer and the reason it carries no size witness are at
+// `floor_cost_debt_population_report` below. An earlier
 // revision of this header read "CURRENTLY CARRYING NO IDENTITIES" -- true of the empty carrier
 // that landed first, false from the moment the roster was enrolled, and it then stood in direct
 // contradiction with the population block below on the same authority. Caught by review 57235.
@@ -176,8 +183,109 @@ import v2.std.text { String }
 // Nothing here needs to be re-measured to release a row, and nothing may be added to release
 // one.
 
-// THE ROSTER CARRIES 274 IDENTITIES, IN TWO POPULATIONS THAT ARE ENROLLED FOR DIFFERENT REASONS
-// AND MUST NOT BE READ AS ONE.
+// RELEASED 2026-08-29, ONE ROW, ON A PRODUCER RECEIPT RATHER THAN ON A COST READING.
+//
+// `v2.test.languages_consumer_census.corpus.per_language_row_ratchet.corpus_per_language_row_ratchet_holds`
+// leaves the proven roster. It is released because the cost it was enrolled for is now PAID
+// SOMEWHERE ELSE, not because it was re-measured and found cheap -- and the distinction is the
+// whole of the receipt.
+//
+// WHAT IT WAS ENROLLED FOR. The block above records it at cpu 645ms with "none" recorded fill in
+// either `[floor-shared-fill]` format. That "none" was the tell and was read at the time as the
+// row owning its cost: the row builds `languages_decl_records_cached`, a process-wide `OnceLock`
+// over a token scan of every `.dag` and `.rs` file in the tree, and that build was NOT bracketed
+// by `record_shared_artifact_fill_cpu`, so `run_claim_measured` could neither net it nor report
+// it. An unbracketed shared build is INVISIBLE to the marginal basis this roster is defined
+// against -- it reads exactly like own work. This is the class the file already declares as its
+// known bounded impurity, met a second time on a second artifact.
+//
+// WHY IT IS NOW ZERO. gunbc#9680 added `LanguagesConsumerCensusBuild` to `FloorPreparationPhase`
+// and `required_floor_runner.rs` warms it by calling the declared producer once, after the
+// prepared authority is installed and BEFORE any claim window opens, adjudicated by the same
+// three limits as the other preparation phases. The artifact moved into the PREPARATION-FORCEABLE
+// arm that the successor paragraph below names, so no claim is billed for it at all.
+//
+// THE RECEIPT IS AN EXECUTED PREPARATION LINE, NOT A COST COLUMN. Main run 33263972922, at
+// 6515d6fb816 -- the first main run carrying gunbc#9680 -- announces
+// `[floor-phase] phase=languages-consumer-census-warm state=completed cpu_ms=460 wall_ms=464
+// rss_growth_bytes=0 decl_rows=72 provenance=built-by-preparation`. `built-by-preparation` is the
+// load-bearing field: it says preparation found the memo COLD and paid the build, which is the
+// only state in which this release is sound. Had it read `already-warm-on-entry` the fill would
+// still have been paid by some claim and this row's release would have moved the bill rather than
+// removed it.
+//
+// AND ITS OWN 0ms READINGS ARE NOT THE EVIDENCE, deliberately. The row reads cpu 0ms on main runs
+// 33141550579 and 33145062452 and 642ms `completed_over_budget` on 33191118450, and NONE of those
+// three figures is its marginal cost -- the 0s are borrowed from whichever row built the census
+// first, and the 642 is the whole build billed to it for touching first. Measured in isolation on
+// this branch, where it must be the first toucher, it costs 679ms; that number is the SIZE OF THE
+// FILL, not the cost of the row. Releasing on a 0ms reading would have been the charged-basis
+// error this file was rebuilt once to correct, in mirror image: there a real number belonged to
+// another row, here a real zero does.
+
+// THE 45 test.claim.live_deploy ROWS ARE HELD, AND THEIR TRIGGER IS NOT A COST MEASUREMENT.
+//
+// This paragraph is where their trigger lives because the roster is a `List<String>` and carries
+// no per-row field to hang one on; that is a real limitation of this carrier, stated rather than
+// worked around.
+//
+// WHY THEY CANNOT BE RELEASED THE ORDINARY WAY. The exit above -- delete the line, let the floor
+// run it under the 500ms ceiling -- presumes the floor RUNS it. After the 2026-08-29 gate cut
+// these identities are outside the gate closure, so preparation never offers them, and the
+// disposition projection now says so at identity grain (`DeclinedOutsideGateClosure`). There is
+// also no full-corpus floor left in CI to measure them elsewhere: `.github/workflows/witnesses.yml`
+// invokes `claim_executor --required-ci` twice, once per lane, and nothing else runs a floor. So
+// their marginal cost is not observable by any instrument this repository currently runs, and a
+// release would be bookkeeping rather than a measured shrink.
+//
+// WHAT IS KNOWN ABOUT THEIR COST, measured off-lane and recorded so the next reader does not
+// re-derive it: the apply-script witnesses cost ~3.4s and the retract ones ~1.3s, and that is
+// ~21ms per DISTINCT emitted bash command over a ~100ms base rather than anything about their
+// byte sizes. The re-derivable form of that model is
+// `v2.test.floor.bash_command_serialization_cost_model`, whose four K-varying rows carry it in
+// `required_floor_claim_cost.tsv`. The 21 apply witnesses emit a BYTE-IDENTICAL script, so a
+// cache surviving across claims collapses them to one payer -- which is why the repair is a
+// same-key emission cache at the production owner and never a smaller fixture: the emitted
+// command set IS what these witnesses assert, so shrinking it to buy the budget would shrink the
+// subject.
+//
+// TRIGGER, and it is a CAPABILITY rather than a PR: a required population that reaches these
+// identities -- the restoration of the DESIGN section 4b(3) rung drop "Required gate reduced to
+// the compiler floor", by a change-derived required population rather than a static prefix
+// roster. Until then they are held here, reported by the roster-standing line as
+// `outside_this_runs_universe`, and explicitly NOT counted as debt. Deleting them on the strength
+// of a cheap off-lane re-measurement would be the same error in the other direction as releasing
+// a 0ms first-toucher row: a number that is real and is not the row's standing on the lane that
+// owns the contract.
+
+// NOT RELEASED, AND ITS TRIGGER NAMED SO THE ROW IS NOT RE-EXAMINED FROM SCRATCH.
+//
+// `v2.test.lens_inert_carrier.inert_carrier_test.inert_carrier_universe_is_nonempty` was examined
+// in the same pass, on the same reasoning, and STAYS. It presents identically -- 0-1ms on runs
+// 33141550579 and 33145062452, 1183ms `completed_over_budget` on 33191118450 -- and measures
+// 1270ms in isolation on this branch. But its artifact, `inert_carrier_data`, has NO preparation
+// warm: the block above already follows it across two runs by its `cache=inert_carrier_data
+// paid_by=...` line, and the payer is simply whichever inert-carrier claim runs first. Deleting
+// this line would not make the fill stop being paid; it would hand the 1.2s to a sibling that is
+// under the ceiling today, which is precisely the regeneration this file measured once before
+// (withholding 266 rows left 16 others tripping the same conjuncts, 9 of them under the ceiling
+// on main, one at 1ms).
+//
+// TRIGGER, and it is a CAPABILITY rather than an artifact, per DESIGN section 4b(3): the row is
+// released when `inert_carrier_data` is built and adjudicated in preparation -- a
+// `FloorPreparationPhase` member warmed by calling its declared producer once before any claim
+// window opens, reporting its own `provenance=built-by-preparation` -- OR when the build is
+// bracketed by `record_shared_artifact_fill_cpu` so the marginal basis can net it. Either arm
+// makes the row's own marginal cost knowable; nothing short of one of them does, and a re-measure
+// on its own is not sufficient, because every figure the instrument can currently produce for
+// this row is either borrowed or over-attributed. That build is not this lane's work.
+
+// THE ROSTER CARRIES TWO POPULATIONS, ENROLLED FOR DIFFERENT REASONS AND NOT TO BE READ AS ONE.
+// The figures in the two paragraphs below (225 and 51) are the counts AT ENROLMENT, not present
+// sizes: each paragraph records what ONE measurement enrolled and why, so the number is part of
+// that provenance and is correct as history. For the present sizes ask
+// `floor_cost_debt_population_report`; re-pointing these two paragraphs at today's roster would
+// destroy the provenance and create two more numbers to rot.
 //
 // POPULATION A -- 225 EXPENSIVE PASSES. Claims that REACHED A VERDICT, PASSED, and whose measured
 // CPU exceeded `required_floor_claim_cpu_safety_limit_ms`. Read from main run 33141550579's
@@ -593,7 +701,7 @@ fn floor_cost_debt_proven_chunk_10() -> List<String> {
 }
 
 fn floor_cost_debt_proven_chunk_11() -> List<String> {
-  Cons { head: "v2.test.realization_vocabulary_containment.cli_vocabulary.rest_path_reaches_no_cli.widened_scans_actually_read_the_tree", tail: Cons { head: "test.claim.operation_argv_corpus_witness.operation_argv_corpus_every_row_is_materialized_or_counted", tail: Cons { head: "v2.test.lens_inert_carrier.inert_carrier_test.inert_carrier_universe_is_nonempty", tail: Cons { head: "v2.test.languages_consumer_census.corpus.per_language_row_ratchet.corpus_per_language_row_ratchet_holds", tail: Cons { head: "dag.test.claim.lifecycle_survivor_corpus_census.scan_denominator_is_a_real_corpus", tail: Empty {} } } } } }
+  Cons { head: "v2.test.realization_vocabulary_containment.cli_vocabulary.rest_path_reaches_no_cli.widened_scans_actually_read_the_tree", tail: Cons { head: "test.claim.operation_argv_corpus_witness.operation_argv_corpus_every_row_is_materialized_or_counted", tail: Cons { head: "v2.test.lens_inert_carrier.inert_carrier_test.inert_carrier_universe_is_nonempty", tail: Cons { head: "dag.test.claim.lifecycle_survivor_corpus_census.scan_denominator_is_a_real_corpus", tail: Empty {} } } } }
 }
 
 fn floor_cost_debt_censored_chunk_00() -> List<String> {
@@ -720,5 +828,59 @@ fn floor_cost_debt_roster() -> List<String> {
 
 fn floor_cost_debt_holds(name: String) -> Bool {
   any(xs: floor_cost_debt_roster(), predicate: fn(row) { row == name })
+}
+
+// THE POPULATION, ASKED RATHER THAN BELIEVED.
+//
+// This exists because the count in this file's prose rotted twice. The header once read
+// "CARRYING NO IDENTITIES" against a populated roster; it later read 274, and the population
+// block 225 + 51 = 276, against a roster that actually held 290 -- three figures, no two
+// agreeing, none of them the roster's length. Nothing was ever wrong with the roster. Every
+// wrong figure was prose copied beside it and never re-read, and correcting the number a third
+// time would only reset the same decay.
+//
+// So the number is not stated in this file any more. DESIGN section 6 rules that a measurement is
+// cited by NAMING THE PRODUCER THAT RE-DERIVES IT, and that if a measurement is worth re-deriving
+// it is worth an entry point. These three functions are that entry point: they fold the same
+// chunks `floor_cost_debt_roster` folds, so they cannot disagree with the roster the floor
+// actually consults -- there is no second representation to drift.
+//
+// NO WITNESS PINS THESE AGAINST A LITERAL, and that is deliberate rather than an omission. A
+// merge-blocking assertion that the population equals some number copied from this same tree is
+// the change detector DESIGN section 5 forbids: automating the literal's update collapses it to
+// `measure() == measure()`. What guards this roster is the monotone debt contract stated above --
+// identity-grain membership, shrink-only, a stale row refusing -- and a size assertion would add
+// nothing to it while breaking on every legitimate release.
+//
+// HOW TO ASK IT, so the entry point is reachable and not just declared:
+//
+//   gunbc run --source-root dag --source-root src/v2 \
+//     --entry src/v2/workflow/floor_cost_debt.dag \
+//     --function floor_cost_debt_population_report
+//
+// The run REFUSES, because the host maps a verdict to an exit code and only `ProcessExit` carries
+// one -- and it prints the returned String in the refusal, which is the reading. That refusal is
+// the correct behaviour rather than a workaround: a report is not a verdict, and this file
+// deliberately does not mint one (see the paragraph above on why no witness pins the size).
+fn floor_cost_debt_proven_population() -> Int {
+  list_length(items: floor_cost_debt_proven_roster())
+}
+
+fn floor_cost_debt_censored_population() -> Int {
+  list_length(items: floor_cost_debt_censored_roster())
+}
+
+fn floor_cost_debt_population_report() -> String {
+  join(
+    [
+      "floor_cost_debt population: proven=",
+      to_string(floor_cost_debt_proven_population()),
+      " censored=",
+      to_string(floor_cost_debt_censored_population()),
+      " total=",
+      to_string(list_length(items: floor_cost_debt_roster())),
+    ],
+    ""
+  )
 }
 
