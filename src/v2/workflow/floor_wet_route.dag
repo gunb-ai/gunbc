@@ -3,6 +3,7 @@ module v2.workflow.floor_wet_route
 import v2.std.algebra { fold_list, length, list_append }
 import v2.std.collection { List }
 import std.types { Int, EpochSecs, Seconds, Milliseconds, NonEmptyStr }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
 import gunbc.explicit_witness_admission { known_red_probe_execution_roster }
 import std.witness_admission {
   WitnessExpectedVerdict, ExpectWitnessHolds, ExpectAssertionFalse, ExpectTypedPreVerdictRefusal,
@@ -525,15 +526,22 @@ fn wet_route_identity_reds_block(
   length(xs: unexpected_red) != 0 || length(xs: now_passing) != 0 || length(xs: no_verdict) != 0
 }
 
-// The one sanctioned bridge from a refined time scalar to plain Int arithmetic: the
-// interpreter has no `as` cast in either direction for refined scalars (measured on this
-// change: `EpochSecs as Int` refuses at eval exactly like the roadmap witness note's
+// THE ONE SANCTIONED BRIDGE from a refined time scalar to plain Int arithmetic, and a
+// DECLARED WORKAROUND (§5 unmarked_workaround is the failure mode this marking preempts):
+// the interpreter has no `as` cast in either direction for refined scalars (measured on
+// this change: `EpochSecs as Int` refuses at eval exactly like the roadmap witness note's
 // `2 as Seconds`), but parameter positions admit a refined value where Int is declared —
-// the same mechanism `roadmap_forecast` uses passing an EpochMs difference into
-// `millisecond(count:)`. One named identity keeps every use greppable.
+// the SAME mechanism and the SAME debt `gunbc.roadmap_forecast` rides passing an EpochMs
+// difference into `millisecond(count:)`; that precedent is cited as one class, not a second
+// authority. Every arithmetic site in this module routes through this ONE identity so the
+// census counts one row, and its dissolution names the capability, not an artifact.
 fn wet_time_scalar(x: Int) -> Int {
   x
 }
+
+data wet_time_scalar_dissolve_on: DissolutionCondition = unbound_dissolution(
+  description: "🟡 workaround: wet_time_scalar parameter-position identity bridging refined time scalars (EpochSecs/Seconds) to Int arithmetic. dissolve-on: refined-scalar coercion is modeled in the interpreter — an `as` cast (or subtype-widening rule) from a where-refined scalar to its base Int that evaluates, sufficient for `EpochSecs as Int` and `Seconds as Int` to run under gunbc run — at which point every wet_time_scalar call site converts to the modeled coercion and this function deletes; the roadmap_forecast EpochMs-difference-into-millisecond(count:) site is the same debt and dissolves on the same capability." as NonEmptyStr,
+)
 
 // THE ENVELOPE-LEVEL BLOCKING POLARITY, STATED ONCE: exactly one standing is clean. The
 // per-identity polarity is `wet_route_identity_reds_block` above, decided from the same
