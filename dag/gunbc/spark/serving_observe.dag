@@ -585,6 +585,19 @@ type SparkServingHostObservation sole_constructor {
 // it. What the caller no longer supplies is the HOST those probes are about, because there is only
 // one host in this carrier and it comes from the readback. A projection about a different machine
 // is now unconstructible rather than merely discouraged.
+// THE MINT IS SEALED, SO A HOST OBSERVATION CANNOT BE ASSEMBLED WITHOUT A TRANSACTION BEHIND IT.
+//
+// sole_constructor stopped an outside module writing the record literal. It did not stop this
+// general-purpose factory from being called with independently supplied readback, runtime, store,
+// unit and linger values -- which is the old free-standing route, still production-equivalent, and
+// the reason a downstream consumer could not tell an observation projected from an admitted
+// transaction apart from one somebody assembled. The provenance field made that distinction
+// STATABLE; admit_callers is what makes it TRUE.
+//
+// Three callers: the transaction projector, the refused-transaction projector beside it, and one
+// hermetic fixture. The fixture is admitted deliberately and by name -- hermetic witnesses need to
+// build observations without an SSH transport -- but it is a named exception rather than an open
+// door, so a new production caller cannot appear without editing this list.
 fn spark_serving_host_observation(
   readback: SparkServingReadback,
   account: SparkManagedAccountObservation,
@@ -593,7 +606,22 @@ fn spark_serving_host_observation(
   observed_unit: SparkServingObservedUnit,
   linger: SparkServingObservedLingerState,
   provenance: SparkServingObservationProvenance,
-) -> SparkServingHostObservation {
+) -> SparkServingHostObservation
+  admit_callers: [
+    decl_ref(
+      module_path: "gunbc.spark.serving_observe",
+      decl_name: "spark_serving_host_observation_from_transaction",
+    ),
+    decl_ref(
+      module_path: "gunbc.spark.serving_observe",
+      decl_name: "spark_serving_host_observation_from_refused_transaction",
+    ),
+    decl_ref(
+      module_path: "test.claim.spark.spark_serving_observe_witness_test",
+      decl_name: "ho_from",
+    ),
+  ]
+{
   SparkServingHostObservation {
     readback: readback,
     observation: derive_spark_serving_observation(readback: readback),
