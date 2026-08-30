@@ -45,6 +45,7 @@ pub enum HostRealizationReason {
     KernelMintedType,
     GenericTypeParameter,
     HostContainer,
+    UnnamedSynthesizedType,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -387,3 +388,5 @@ pub struct KernelMintedType;
 pub struct GenericTypeParameter;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct HostContainer;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct UnnamedSynthesizedType;
