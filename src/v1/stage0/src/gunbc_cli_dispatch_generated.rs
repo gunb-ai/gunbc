@@ -176,7 +176,7 @@ pub fn dispatch<H: CliDispatchHost>(
             },
             _,
         ) => __gunbc_dispatch_executor_0.run_verb(source_roots, function, entry, claim_run, args),
-        (Commands::Build { program }, true) => {
+        (Commands::Build { .. }, true) => {
             eprintln!("REFUSED: --dry-run cannot execute a bootstrap successor operation");
             std::process::exit(2);
         }

@@ -15004,7 +15004,7 @@ fn emit_bootstrap_dag_operation_match_arm(sub: CliSubcommandRow, binding: CliBoo
     BootstrapSuccessorOperation {} => if operation.field != WholeDeclaration {
       "compile_error!(\"REFUSED: bootstrap CLI operation binding must name a whole declaration\");"
     } else { concat(
-      "(Commands::", sub.variant, " { ", binds, " }, true) => { eprintln!(\"REFUSED: --dry-run cannot execute a bootstrap successor operation\"); std::process::exit(2); },\n",
+      "(Commands::", sub.variant, " { .. }, true) => { eprintln!(\"REFUSED: --dry-run cannot execute a bootstrap successor operation\"); std::process::exit(2); },\n",
       "        (Commands::", sub.variant, " { ", binds, " }, false) => crate::cli_run::run_bootstrap_dag_operation(\n",
       "            &[", roots, "],\n",
       "            \"", binding.entry_path, "\",\n",
