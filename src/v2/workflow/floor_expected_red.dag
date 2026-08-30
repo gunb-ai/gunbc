@@ -557,8 +557,16 @@ fn floor_expected_red_chunk_13() -> List<String> {
 // worth leaving on the record rather than editing out: it read the two halves of its own trigger as
 // one event. The mechanical repair and the literal-introduction model are independent, and only the
 // first is a predicate repair.
+// RETIRED BY ITS TRIGGER (XL-0N, adhoc-aec65f93-b00): the expected-type-directed literal
+// introduction judgment is std.literal_elaboration, consumed by v1.compiler.infer at every typed
+// boundary, and the ruling (2026-08-30) admits the kernel numeral at the Peano Nat THROUGH its
+// declared homomorphism rather than refusing it. The row's witness is renamed to the ruled claim
+// (w_kernel_numeric_at_the_peano_nat_is_admitted_through_its_homomorphism) and stays enrolled as
+// a permanent control beside the emitted-bytes falsifier in
+// test.claim.self_host_peano_literal_operator_realization_witness_test. The chunk stays so the
+// roster's shape is unchanged; it carries nothing.
 fn floor_expected_red_chunk_14() -> List<String> {
-  Cons { head: "test.claim.declared_type_inhabitance_direct_call_witness.w_kernel_numeric_at_the_peano_nat_is_refused", tail: Empty {} }
+  Empty {}
 }
 
 // THE LIST-ELEMENT ARM OF THE DIRECT-CALL INHABITANCE WITNESS. It asserts that a wrong element
