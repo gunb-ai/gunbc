@@ -1,4 +1,4 @@
-module test.claim.duplicate_definition_binding_probe
+module test.claim.duplicate_definition_binding_probe_test
 
 import gunbc.compile_diagnostic_census {
   CompileDiagnosticCensus,

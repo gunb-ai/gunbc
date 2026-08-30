@@ -1,0 +1,33 @@
+module test.manual.roadmap_launch_canary_oracle
+
+import std.types { String, NonEmptyStr, Bool }
+import gunbc.roadmap_launch_canary_sentinel { roadmap_launch_canary_sentinel }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE PINNED VALIDATION ORACLE OF THE ROADMAP LAUNCH CANARY (RLM-0, docs/plans/roadmap-launch-mvp-plan.md).
+// It lives under dag/test/manual, OUTSIDE gunbc.ci_layer_roots witness_discovery_scan_dirs, on
+// purpose: it is RED on base by construction (the sentinel is `pending:` until the one authorized
+// task flips it), so it is the attempt's pinned oracle -- reached by
+// `gunbc run --claim-run --entry <this file> --function roadmap_launch_canary_oracle_completed`
+// through gunbc.roadmap_launch_canary roadmap_launch_canary_execution_contract -- and never a
+// required-floor row. The nonce is authored HERE, in the file the pin covers, so an agent cannot
+// green the oracle by editing the expected value: any edit to this file moves the pinned identity
+// (gunbc.roadmap_validation_oracle validation_oracle_source_identity) and the verification refuses.
+// The regression controls over the predicate (red on pending, red on a wrong or missing nonce,
+// green on exactly the expected value) execute on the required floor at
+// test.claim.roadmap_launch_canary_witness; this file carries the live judgment only.
+data roadmap_launch_canary_nonce: NonEmptyStr = "FRYKV2DT7ZMYQ6NCMZSQ"
+
+fn roadmap_launch_canary_expected_sentinel() -> String {
+  join(["completed:", roadmap_launch_canary_nonce as String], "")
+}
+
+fn roadmap_launch_canary_sentinel_completed(value: String) -> Bool {
+  value == roadmap_launch_canary_expected_sentinel()
+}
+
+test fn roadmap_launch_canary_oracle_completed() -> Bool {
+  roadmap_launch_canary_sentinel_completed(value: roadmap_launch_canary_sentinel as String)
+}

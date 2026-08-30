@@ -1,0 +1,28 @@
+module gunbc.fabric_ci_program
+
+import std.types { List, NonEmptyStr }
+
+// THE LIVING FABRIC-CI-1 AUTHORITY. These are gate predicates, not progress claims. There is no
+// Done/green/status field: a gate may acquire standing only from an executed receipt, and no such
+// receipt join exists at FCI-0. Keeping the predicate while omitting standing is the honest state.
+type FabricCiGate {
+  id: NonEmptyStr
+  owned_question: NonEmptyStr
+  exit_predicate: NonEmptyStr
+  positive_control: NonEmptyStr
+  discriminating_mutations: List<NonEmptyStr>
+  frozen_output_identities: List<NonEmptyStr>
+  non_goals: List<NonEmptyStr>
+}
+
+fn fabric_ci_gates() -> List<FabricCiGate> {
+  [
+    FabricCiGate { id: "FCI-0", owned_question: "What exactly will the fabric run?", exit_predicate: "The fabric possesses one exact required-witnesses-build Work carrying every execution-defining coordinate; moving or incomplete subjects refuse.", positive_control: "Identical semantic inputs derive the identical WorkKey.", discriminating_mutations: ["command-word", "environment-entry", "verified-tree", "toolchain-identity", "output-declaration"], frozen_output_identities: ["WorkKey", "source-tree-digest", "environment-materialization-digest"], non_goals: ["ExecutionGrant", "executor", "process-start", "cell-realization", "workflow-cutover"] },
+    FabricCiGate { id: "FCI-1", owned_question: "What bounded owned cell will realize this Work?", exit_predicate: "The exact Work realizes in exactly one bounded cell whose resources and ownership are explicit.", positive_control: "One exact Work realizes one bounded owned cell.", discriminating_mutations: ["unbounded-cell", "unowned-cell", "multiple-cells", "work-mismatch"], frozen_output_identities: ["cell-identity", "cell-resource-envelope", "cell-owner"], non_goals: ["ExecutionGrant", "process-start", "multi-host-scheduling"] },
+    FabricCiGate { id: "FCI-2", owned_question: "Which sole grant authorizes this Work?", exit_predicate: "Selection, reservation and commitment yield exactly one fenced ExecutionGrant for the exact Work.", positive_control: "One admitted offer yields one committed grant.", discriminating_mutations: ["duplicate-grant", "expired-reservation", "work-mismatch"], frozen_output_identities: ["ExecutionGrant", "lease-epoch"], non_goals: ["process-start", "GitHub-conclusion"] },
+    FabricCiGate { id: "FCI-3", owned_question: "What causes the target process?", exit_predicate: "A persistent executor re-reads the committed Grant before starting; absent, corrupt or expired Grant yields zero target processes.", positive_control: "One live committed grant starts exactly one target process.", discriminating_mutations: ["grant-removed", "grant-corrupt", "grant-expired"], frozen_output_identities: ["attempt-identity", "process-observation"], non_goals: ["GitHub-conclusion", "multiple-host-scheduling"] },
+    FabricCiGate { id: "FCI-4", owned_question: "How is execution admitted once, deduplicated, released and sanitized?", exit_predicate: "One fenced Receipt is admitted at most once; duplicate delivery cannot duplicate standing, and the cell is released only after per-attempt sanitation is confirmed.", positive_control: "One matching Receipt is admitted once and its sanitized cell returns to supply.", discriminating_mutations: ["duplicate-receipt", "foreign-receipt", "release-before-sanitation", "failed-sanitation"], frozen_output_identities: ["admitted-receipt", "deduplication-key", "release-receipt", "sanitation-receipt"], non_goals: ["shadow-GitHub-job", "required-check-cutover"] },
+    FabricCiGate { id: "FCI-5", owned_question: "Can the fabric path run as the shadow GitHub job?", exit_predicate: "A deployed shadow job submits the exact Work and derives its shadow conclusion only from the admitted Receipt without becoming a merge-admission dependency.", positive_control: "The shadow job completes from one admitted successful Receipt.", discriminating_mutations: ["receipt-absent", "receipt-refused", "receipt-subject-mismatch"], frozen_output_identities: ["shadow-job", "shadow-conclusion"], non_goals: ["required-check-cutover", "direct-invocation-removal"] },
+    FabricCiGate { id: "FCI-6", owned_question: "Has required-witnesses-build authority cut over to fabric?", exit_predicate: "The fabric-derived result is the required merge-admission dependency and the direct required-witnesses-build invocation is removed.", positive_control: "One required build reaches its conclusion only through the admitted fabric Receipt.", discriminating_mutations: ["direct-invocation-present", "fabric-result-not-required", "receipt-absent"], frozen_output_identities: ["required-check-authority", "cutover-census"], non_goals: ["other-CI-lanes", "multiple-host-scheduling"] },
+  ]
+}

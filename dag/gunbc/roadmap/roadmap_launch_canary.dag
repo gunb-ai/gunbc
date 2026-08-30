@@ -1,0 +1,94 @@
+module gunbc.roadmap_launch_canary
+
+import std.types { String, NonEmptyStr, FilePath, List }
+import std.content_hash { Fnv1a64Structural }
+import gunbc.roadmap_model { RoadmapNodeId, RoadmapNodeIdentity, RoadmapEdge, roadmap_criteria_digest }
+import gunbc.roadmap_status { TicketFields }
+import gunbc.roadmap_execution_contract { WorkItemExecutionContract, gunbc_claim_execution_contract }
+
+// THE TWO-NODE CANARY OF THE ROADMAP LAUNCH MVP, DECLARED INERT (RLM-0 of
+// docs/plans/roadmap-launch-mvp-plan.md). Nothing here is a row of gunbc.roadmap_authority: the
+// identities, contract and edge are declared once, here, and consumed by the synthetic fixture
+// graph at test.claim.roadmap_launch_canary_witness today and by the live authority at RLM-3.
+// The identities are minted per gunbc.roadmap_model roadmap_node_identity_law, so RLM-3 adds the
+// nodes by reference rather than re-minting them, and every RLM-4..6 receipt binds these values.
+data roadmap_launch_canary_parent_id: NonEmptyStr = "roadmap-launch-canary"
+
+data roadmap_launch_canary_child_id: NonEmptyStr = "roadmap-launch-canary-followup"
+
+data roadmap_launch_canary_parent_identity: RoadmapNodeIdentity = "rn_P4UMNTRMXFT7BE4N4GHKSR5KYM" as RoadmapNodeIdentity
+
+data roadmap_launch_canary_child_identity: RoadmapNodeIdentity = "rn_TC2FEPPHJV6C4T5QSV32YRVLYY" as RoadmapNodeIdentity
+
+fn roadmap_launch_canary_nid(s: String) -> RoadmapNodeId { s }
+
+fn roadmap_launch_canary_parent_node_id() -> RoadmapNodeId {
+  roadmap_launch_canary_nid(s: roadmap_launch_canary_parent_id as String)
+}
+
+fn roadmap_launch_canary_child_node_id() -> RoadmapNodeId {
+  roadmap_launch_canary_nid(s: roadmap_launch_canary_child_id as String)
+}
+
+// The one dependency of the MVP: the child depends on the parent's ACCEPTED completion, decided
+// by the same gunbc.roadmap_spawner predicates the live page and belt consume (node_dep_done over
+// node_closes_dependency) -- never re-implemented beside them.
+fn roadmap_launch_canary_edge() -> RoadmapEdge {
+  RoadmapEdge {
+    child: roadmap_launch_canary_child_node_id(),
+    parent: roadmap_launch_canary_parent_node_id(),
+  }
+}
+
+// THE PINNED ORACLE. The entry is the file the pin's digest covers; the function is the claim the
+// verifier runs. Both are literals here because a ValidationOperation carries a path and a name,
+// not a declaration reference -- the verifier's declaration scan
+// (gunbc.roadmap_validation_oracle validation_oracle_declaration_count) is what joins the name to
+// exactly one declaration at verification time.
+data roadmap_launch_canary_oracle_entry: FilePath = "dag/test/manual/roadmap_launch_canary_oracle_test.dag" as FilePath
+
+data roadmap_launch_canary_oracle_function: NonEmptyStr = "roadmap_launch_canary_oracle_completed" as NonEmptyStr
+
+fn roadmap_launch_canary_execution_contract() -> WorkItemExecutionContract {
+  gunbc_claim_execution_contract(
+    entry: roadmap_launch_canary_oracle_entry,
+    function: roadmap_launch_canary_oracle_function,
+  )
+}
+
+// THE ONE ALLOWED CHANGED PATH. Recorded as a typed row because the brief fixes it as part of
+// the contract, and recorded as a FINDING because gunbc.roadmap_execution_contract has no field
+// for it: a WorkItemExecutionContract names validations and capabilities, nothing about the extent
+// of the change it admits, so no consumer today refuses an attempt that touches a second path.
+// Its consumer is RLM-5's publication refusal ("extra path" falsifier); until that lands this row
+// is declared scope, not an enforced wall, and the plan's serial gating is what keeps that honest.
+data roadmap_launch_canary_allowed_change_paths: List<FilePath> = [
+  "dag/gunbc/roadmap/roadmap_launch_canary_sentinel.dag" as FilePath,
+]
+
+// The acceptance criteria of the parent, in the ticket carrier the live authority uses, so the
+// criteria digest RLM-3..6 bind is gunbc.roadmap_model roadmap_criteria_digest over exactly these
+// fields (brief, red_control, handback) -- one producer, no transcribed number.
+fn roadmap_launch_canary_ticket() -> TicketFields {
+  TicketFields {
+    headline: "Roadmap launch canary: flip one sentinel",
+    brief: "In dag/gunbc/roadmap/roadmap_launch_canary_sentinel.dag change the value of roadmap_launch_canary_sentinel from `pending:FRYKV2DT7ZMYQ6NCMZSQ` to `completed:FRYKV2DT7ZMYQ6NCMZSQ`. Change nothing else in that file and touch no other path.",
+    displaced_cost: "Proves, on the production launch path, that one operator click produces exactly one attempt that performs exactly one bounded change which the pinned oracle verifies and publication offers.",
+    current_state: "Inert: declared in the synthetic fixture graph only; not a row of gunbc.roadmap_authority until RLM-3.",
+    first_slice: "The single edit named in the brief.",
+    red_control: "test.manual.roadmap_launch_canary_oracle roadmap_launch_canary_oracle_completed is red on base (sentinel pending), green only when the sentinel equals `completed:` followed by the exact nonce, and red on a wrong or missing nonce; the predicate controls execute at test.claim.roadmap_launch_canary_witness.",
+    out_of_scope: "Any change outside roadmap_launch_canary_sentinel.dag; any change to the oracle entry; any change to the nonce.",
+    handback: "One attempt head whose diff is exactly the sentinel flip, a passing verification receipt against the pinned oracle, and a publication receipt for that head.",
+    updates: [],
+    authored_on: "2026-08-29",
+    last_verified_on: "2026-08-29",
+  }
+}
+
+fn roadmap_launch_canary_criteria_digest() -> Fnv1a64Structural {
+  roadmap_criteria_digest(t: roadmap_launch_canary_ticket())
+}
+
+fn roadmap_launch_canary_criteria_digest_hex() -> String {
+  roadmap_launch_canary_criteria_digest().digest as String
+}
