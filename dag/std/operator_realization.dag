@@ -46,6 +46,17 @@ type HostRealizationReason
   | GenericTypeParameter
   | HostContainer
 
+// AN OPERAND WITHOUT A READABLE DECLARATION decides BY OPERATOR CLASS, never by guessing a
+// declaration. Equality and the connectives do not depend on the declaration at all: every
+// structural declaration realizes equality structurally and every host value realizes it natively,
+// and on the target these are one token (the emitted enum derives PartialEq), so `==`/`!=`/`&&`/
+// `||`/`??` on such an operand are the host token by construction -- the same bytes a known
+// declaration would produce. Ordering and arithmetic DO depend on the declaration (a declared
+// comparison, or a refusal), so on an unreadable declaration they refuse, carrying the facts below.
+// Measured on the v1 closure (XL-0N regen18, 50 sites / 139 refusals): every unreadable-declaration
+// operand in the seed is under `==` or `!=` -- field-access and method-return type nodes inference
+// synthesizes without a span -- and none is under an ordering or arithmetic operator.
+//
 // WHAT THE CALLER SAW when it could not read the operand's declaration -- carried on the refusal so
 // a miss returns the shape, not a token rustc refuses later under E0369 (DESIGN section 5: a failure
 // arm refuses, never widens; the seed's host-token fallback here was the absorbing arm that hid this
@@ -203,7 +214,22 @@ fn operator_realization_for(
     HostNumericOperand => HostOperator
     HostRealizedOperand { reason: _ } => HostOperator
     OperandIdentityUnavailable { facts: f } =>
-      OperatorRealizationRefused { cause: OperandIdentityUnavailableAt { operator: binop_label(op: op), facts: f } }
+      match op {
+        Eq => HostOperator
+        Ne => HostOperator
+        And => HostOperator
+        Or => HostOperator
+        NullCoalesce => HostOperator
+        Lt => OperatorRealizationRefused { cause: OperandIdentityUnavailableAt { operator: binop_label(op: op), facts: f } }
+        Gt => OperatorRealizationRefused { cause: OperandIdentityUnavailableAt { operator: binop_label(op: op), facts: f } }
+        Le => OperatorRealizationRefused { cause: OperandIdentityUnavailableAt { operator: binop_label(op: op), facts: f } }
+        Ge => OperatorRealizationRefused { cause: OperandIdentityUnavailableAt { operator: binop_label(op: op), facts: f } }
+        Add => OperatorRealizationRefused { cause: OperandIdentityUnavailableAt { operator: binop_label(op: op), facts: f } }
+        Sub => OperatorRealizationRefused { cause: OperandIdentityUnavailableAt { operator: binop_label(op: op), facts: f } }
+        Mul => OperatorRealizationRefused { cause: OperandIdentityUnavailableAt { operator: binop_label(op: op), facts: f } }
+        Div => OperatorRealizationRefused { cause: OperandIdentityUnavailableAt { operator: binop_label(op: op), facts: f } }
+        Mod => OperatorRealizationRefused { cause: OperandIdentityUnavailableAt { operator: binop_label(op: op), facts: f } }
+      }
     StructuralOperand { declaration: d } =>
       match op {
         Eq => StructuralEquality { declaration: d }
