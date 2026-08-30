@@ -1720,6 +1720,9 @@ pub fn clear_cross_claim_pure_memos() {
     CROSS_CLAIM_FN_KEEPALIVE.with(|k| k.borrow_mut().clear());
     CROSS_CLAIM_PURE_ROSTER.with(|r| r.borrow_mut().clear());
     CROSS_CLAIM_SHARE_OBSERVER.with(|o| *o.borrow_mut() = None);
+    // The retained refusal is tier state too: leaving it across a reset is how a stale path
+    // outlives the store that produced it (review 57554).
+    CROSS_CLAIM_LAST_UNPORTABLE.with(|c| *c.borrow_mut() = None);
 }
 
 /// Install the declared producer roster as RESOLVED fn nodes (the caller resolves each
@@ -1935,6 +1938,79 @@ fn try_cross_claim_pure_memo(
 /// reported to the ledger) by the guard's `Drop`, and only when the store actually lands —
 /// an overflow-refused store leaves the cost genuinely the caller's, because every later
 /// caller recomputes it too.
+/// What one cross-claim publication attempt did. A BOOLEAN CONFLATED TWO DIFFERENT FACTS
+/// and #9721 is the receipt: `AlreadyPresent` — the value is in the tier under this exact
+/// key with a structurally equal argument row — SATISFIES the warm's obligation, because
+/// the obligation is "later claims can serve this", not "this particular call is the one
+/// that put it there". A rostered producer reachable from an earlier rostered producer is
+/// stored by that traversal, so its own warm legitimately finds its work already done.
+/// The `Refused*` arms are the opposite: nothing is servable, so a warm that hits one
+/// would relocate its fill onto the first toucher and must stop the line. Reporting both
+/// as `stored=false` made the floor refuse a correctly populated tier and print a
+/// three-way disjunction ("duplicate key, entry cap, or byte budget") in place of the
+/// cause — the `diagnostic_name_mechanism_silent` failure mode, named in DESIGN.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum CrossClaimStoreOutcome {
+    /// This call published the entry.
+    Stored,
+    /// An entry for this key with a structurally equal argument row was already retained.
+    /// Servable, and therefore not a refusal.
+    AlreadyPresent,
+    /// The producer is not on the installed roster (or its identity does not match).
+    NotAdmitted,
+    /// The argument row is not content-hashable, so no key exists to store under.
+    RefusedArgsNotHashable,
+    /// The argument row failed TOTAL reification.
+    RefusedArgsNotPortable,
+    /// The VALUE failed TOTAL reification. THE LOCATED REFUSAL IS CARRIED ON THE VARIANT,
+    /// not fetched from a side channel: review 57554 found that reading the retained
+    /// `CROSS_CLAIM_LAST_UNPORTABLE` slot for EVERY non-servable outcome would decorate a
+    /// byte-budget or entry-cap refusal with a stale path and kind left by some earlier
+    /// producer, since only this arm ever writes that slot and no reset clears it. Naming
+    /// one cause and then attaching another cause's evidence is the fabrication this type
+    /// exists to remove. Binding the detail to the arm that owns it makes the mismatch
+    /// UNCONSTRUCTIBLE rather than guarded (DESIGN section 5: construction over validation).
+    RefusedValueNotPortable(ServeCacheValueNotPortable),
+    /// The key population is at `CROSS_CLAIM_PURE_MEMO_ENTRY_CAP`.
+    RefusedEntryCap,
+    /// Landing the entry would push retention past `CROSS_CLAIM_PURE_MEMO_BYTE_BUDGET`.
+    RefusedByteBudget,
+}
+
+impl CrossClaimStoreOutcome {
+    /// Whether the value is retained and servable to later claims after this attempt —
+    /// true for a fresh store AND for one that found its entry already present.
+    pub fn is_servable(&self) -> bool {
+        matches!(
+            self,
+            CrossClaimStoreOutcome::Stored | CrossClaimStoreOutcome::AlreadyPresent
+        )
+    }
+
+    /// The located detail for the ONE arm that has any, so a caller cannot pair a cause with
+    /// another cause's evidence.
+    pub fn not_portable_detail(&self) -> Option<&ServeCacheValueNotPortable> {
+        match self {
+            CrossClaimStoreOutcome::RefusedValueNotPortable(refusal) => Some(refusal),
+            _ => None,
+        }
+    }
+
+    /// The cause, for a refusal's located line-stop message.
+    pub fn cause(&self) -> &'static str {
+        match self {
+            CrossClaimStoreOutcome::Stored => "Stored",
+            CrossClaimStoreOutcome::AlreadyPresent => "AlreadyPresent",
+            CrossClaimStoreOutcome::NotAdmitted => "NotAdmitted",
+            CrossClaimStoreOutcome::RefusedArgsNotHashable => "ArgumentRowNotHashable",
+            CrossClaimStoreOutcome::RefusedArgsNotPortable => "ArgumentRowNotPortable",
+            CrossClaimStoreOutcome::RefusedValueNotPortable(_) => "ServeCacheValueNotPortable",
+            CrossClaimStoreOutcome::RefusedEntryCap => "EntryCapReached",
+            CrossClaimStoreOutcome::RefusedByteBudget => "ByteBudgetExceeded",
+        }
+    }
+}
+
 fn store_cross_claim_pure_memo(
     ctx: &InterpContext,
     fn_node: &Rc<Node>,
@@ -1942,16 +2018,16 @@ fn store_cross_claim_pure_memo(
     args: &[(Option<String>, Value)],
     result: &Value,
     fill_guard: Option<&CrossClaimFillGuard>,
-) {
+) -> CrossClaimStoreOutcome {
     if !cross_claim_pure_admitted(fn_node, func_name) {
-        return;
+        return CrossClaimStoreOutcome::NotAdmitted;
     }
     let Some(args_hash) = cross_claim_args_hash(ctx, args) else {
-        return;
+        return CrossClaimStoreOutcome::RefusedArgsNotHashable;
     };
     let memo_key = (Rc::as_ptr(fn_node) as usize, args_hash);
     let Some(portable_args) = portable_args_from_ctx(ctx, args) else {
-        return;
+        return CrossClaimStoreOutcome::RefusedArgsNotPortable;
     };
     let portable = match portable_value_from_ctx_at(ctx, result, &mut String::new()) {
         Ok(p) => p,
@@ -1960,23 +2036,23 @@ fn store_cross_claim_pure_memo(
             // typed and located, and is retained so the warm path can stop the line with the
             // exact path instead of a bare "not stored".
             CROSS_CLAIM_LAST_UNPORTABLE
-                .with(|c| *c.borrow_mut() = Some((func_name.to_string(), refusal)));
+                .with(|c| *c.borrow_mut() = Some((func_name.to_string(), refusal.clone())));
             CROSS_CLAIM_PURE_MEMO.with(|m| m.borrow_mut().unportable_refusals += 1);
-            return;
+            return CrossClaimStoreOutcome::RefusedValueNotPortable(refusal);
         }
     };
-    let stored = CROSS_CLAIM_PURE_MEMO.with(|m| {
+    let outcome = CROSS_CLAIM_PURE_MEMO.with(|m| {
         let mut m = m.borrow_mut();
         if let Some(bucket) = m.map.get(&memo_key) {
             if bucket.iter().any(|(stored_args, _)| {
                 cross_claim_portable_args_match(stored_args, &portable_args)
             }) {
-                return false;
+                return CrossClaimStoreOutcome::AlreadyPresent;
             }
         }
         if m.map.len() >= CROSS_CLAIM_PURE_MEMO_ENTRY_CAP {
             m.overflow += 1;
-            return false;
+            return CrossClaimStoreOutcome::RefusedEntryCap;
         }
         // Byte budget on the retained representation, charged for the WHOLE entry —
         // argument row and value, collision-bucket entries included — before it lands.
@@ -1987,31 +2063,35 @@ fn store_cross_claim_pure_memo(
                 .sum::<usize>();
         if m.bytes.saturating_add(entry_bytes) > cross_claim_byte_budget() {
             m.overflow += 1;
-            return false;
+            return CrossClaimStoreOutcome::RefusedByteBudget;
         }
         m.bytes += entry_bytes;
         m.map
             .entry(memo_key)
             .or_default()
             .push((portable_args, portable));
-        true
+        CrossClaimStoreOutcome::Stored
     });
-    if stored {
+    // Only a FRESH store bills a fill: an already-present entry did no work to charge, and
+    // marking the guard would double-count the fill that actually landed the value.
+    if outcome == CrossClaimStoreOutcome::Stored {
         keep_cross_claim_fn(fn_node);
         if let Some(guard) = fill_guard {
             guard.mark_stored();
         }
     }
+    outcome
 }
 
 /// Evaluate one rostered NULLARY producer in `ctx` and seed the cross-claim tier with its
 /// value, running the same guard protocol a claim-forced fill runs — so a preparation warm
-/// lands in the ledger as an outside-fold fill rather than on the first claim. Returns
-/// whether the value was actually stored (`false`: unportable result, duplicate key, cap).
+/// lands in the ledger as an outside-fold fill rather than on the first claim. Returns the
+/// TYPED outcome, so the caller can tell a servable tier (`Stored`, `AlreadyPresent`) from
+/// each distinct refusal by name rather than from one boolean.
 pub fn warm_cross_claim_pure_producer(
     ctx: &InterpContext,
     qualified_fn: &str,
-) -> Result<bool, String> {
+) -> Result<CrossClaimStoreOutcome, String> {
     with_active_ctx(ctx, || {
         let fn_node = ctx
             .lookup_fn(qualified_fn)
@@ -2027,8 +2107,14 @@ pub fn warm_cross_claim_pure_producer(
         let env = Env::empty();
         let value = with_lexical_base_env(&env, || call_function(ctx, &fn_node, &[], &env))
             .map_err(|e| format!("{qualified_fn}: {e}"))?;
-        store_cross_claim_pure_memo(ctx, &fn_node, bare, &[], &value, Some(&guard));
-        Ok(guard.stored.get())
+        Ok(store_cross_claim_pure_memo(
+            ctx,
+            &fn_node,
+            bare,
+            &[],
+            &value,
+            Some(&guard),
+        ))
     })
 }
 
@@ -2236,6 +2322,188 @@ mod cross_claim_memo_tests {
             try_cross_claim_pure_memo(&ctx, &rostered, "tm_shared_name", &args).is_some(),
             "control: the resolved roster identity stores and serves"
         );
+        super::clear_cross_claim_pure_memos();
+    }
+
+    // RED (#9721): AN ALREADY-PRESENT ENTRY IS SERVABLE AND IS NOT A REFUSAL, and each
+    // decline names its OWN cause. The boolean this replaced reported a correctly
+    // populated tier as `stored=false`, which the required floor turned into
+    // "PureProducerShareWarmNotStored ... duplicate key, entry cap, or byte budget" —
+    // one line for three causes, and the wrong verdict for the fourth state. That is
+    // exactly what refused #9721's floor run: `rust_target_model_staging` is reachable
+    // from `rust_target_model`, so warming the first stored it and its own warm found
+    // the entry already there.
+    //
+    // The discriminating pair is the point: AlreadyPresent and RefusedByteBudget both
+    // decline to write, and the OLD boolean could not tell them apart. Here one is
+    // servable and one is not, so a regression that re-conflates them reds.
+    #[test]
+    fn an_already_present_entry_is_servable_while_a_declined_one_is_not() {
+        use super::{store_cross_claim_pure_memo, CrossClaimStoreOutcome};
+        super::clear_cross_claim_pure_memos();
+        let ctx = fresh_ctx();
+        let fn_node = make_expr_node(
+            Rc::new(crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic),
+            Rc::new(ExprData::NoExprData),
+            Rc::new(im_vec![]),
+            None,
+            no_span(),
+        );
+        let args = [(None, list_value(vec![Value::Int(7)]))];
+        let value = Value::Str(RcStr::from("shared"));
+
+        let first =
+            store_cross_claim_pure_memo(&ctx, &fn_node, "prepare_grammar", &args, &value, None);
+        assert_eq!(first, CrossClaimStoreOutcome::Stored);
+        assert!(first.is_servable());
+
+        // The SECOND publication of the same key with a structurally equal argument row.
+        let second =
+            store_cross_claim_pure_memo(&ctx, &fn_node, "prepare_grammar", &args, &value, None);
+        assert_eq!(
+            second,
+            CrossClaimStoreOutcome::AlreadyPresent,
+            "a duplicate must be named as already-present, not lumped with the refusals"
+        );
+        assert!(
+            second.is_servable(),
+            "the value IS retained, so the warm's obligation is satisfied"
+        );
+        let (_, overflow) = super::cross_claim_pure_memo_counts();
+        assert_eq!(overflow, 0, "an already-present entry is not an overflow");
+
+        // The discriminating half: a genuine decline is NOT servable and names its cause.
+        super::CROSS_CLAIM_BYTE_BUDGET_TEST_OVERRIDE.with(|c| c.set(Some(512)));
+        let big_args = [(None, list_value(vec![Value::Int(8)]))];
+        let big = Value::Str(RcStr::from("x".repeat(4096)));
+        let refused =
+            store_cross_claim_pure_memo(&ctx, &fn_node, "prepare_grammar", &big_args, &big, None);
+        assert_eq!(refused, CrossClaimStoreOutcome::RefusedByteBudget);
+        assert!(
+            !refused.is_servable(),
+            "nothing is retained, so a warm hitting this must stop the line"
+        );
+        assert_eq!(refused.cause(), "ByteBudgetExceeded");
+        assert_ne!(
+            refused.cause(),
+            second.cause(),
+            "the two declines must not report the same cause"
+        );
+        super::CROSS_CLAIM_BYTE_BUDGET_TEST_OVERRIDE.with(|c| c.set(None));
+        super::clear_cross_claim_pure_memos();
+    }
+
+    // RED (review 57554): A CAUSE MUST NEVER CARRY ANOTHER CAUSE'S EVIDENCE. The located
+    // path/kind lives on the RefusedValueNotPortable arm, so a later byte-budget or
+    // entry-cap refusal has no detail to borrow. The defect this controls was real and
+    // subtle: `CROSS_CLAIM_LAST_UNPORTABLE` is written ONLY by the unportable arm and was
+    // cleared by nothing, so a runner that read it for every non-servable outcome would
+    // print a stale `path=.produced_decl_support.render kind=OriginBoundNode` beside a
+    // ByteBudgetExceeded cause — naming one cause and proving another.
+    //
+    // The ORDER is the discriminator: the unportable refusal happens FIRST and leaves the
+    // slot populated, then the budget refusal must still report no detail.
+    #[test]
+    fn a_budget_refusal_after_an_unportable_one_carries_no_borrowed_detail() {
+        use super::{store_cross_claim_pure_memo, CrossClaimStoreOutcome};
+        super::clear_cross_claim_pure_memos();
+        let ctx = fresh_ctx();
+        let fn_node = make_expr_node(
+            Rc::new(crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic),
+            Rc::new(ExprData::NoExprData),
+            Rc::new(im_vec![]),
+            None,
+            no_span(),
+        );
+
+        // A fn-carrying record refuses reification and populates the retained slot.
+        let unportable = Value::Record {
+            type_name: ctx.sym("TargetModelish"),
+            fields: Rc::new(vec![(
+                ctx.sym("transform"),
+                Value::Fn {
+                    node: fn_node.clone(),
+                },
+            )]),
+        };
+        let first_args = [(None, list_value(vec![Value::Int(1)]))];
+        let first = store_cross_claim_pure_memo(
+            &ctx,
+            &fn_node,
+            "prepare_grammar",
+            &first_args,
+            &unportable,
+            None,
+        );
+        assert_eq!(first.cause(), "ServeCacheValueNotPortable");
+        let carried = first
+            .not_portable_detail()
+            .expect("the unportable arm carries its own located refusal");
+        assert_eq!(carried.path_into_value, ".transform");
+        assert_eq!(carried.encountered_kind, "OriginBoundNode");
+
+        // Now a DIFFERENT refusal, with the slot still populated by the one above.
+        super::CROSS_CLAIM_BYTE_BUDGET_TEST_OVERRIDE.with(|c| c.set(Some(512)));
+        let big_args = [(None, list_value(vec![Value::Int(2)]))];
+        let big = Value::Str(RcStr::from("x".repeat(4096)));
+        let second =
+            store_cross_claim_pure_memo(&ctx, &fn_node, "prepare_grammar", &big_args, &big, None);
+        assert_eq!(second, CrossClaimStoreOutcome::RefusedByteBudget);
+        assert_eq!(second.cause(), "ByteBudgetExceeded");
+        assert!(
+            second.not_portable_detail().is_none(),
+            "a byte-budget refusal must not borrow the unportable arm's path and kind"
+        );
+        super::CROSS_CLAIM_BYTE_BUDGET_TEST_OVERRIDE.with(|c| c.set(None));
+        super::clear_cross_claim_pure_memos();
+    }
+
+    // RED (#9721): an already-present publication must not bill a second fill. The guard
+    // marks stored only on a FRESH write, so the value's cost is charged once, to the
+    // call that actually did the work.
+    #[test]
+    fn an_already_present_publication_bills_no_second_fill() {
+        use super::{store_cross_claim_pure_memo, CrossClaimFillGuard, CrossClaimStoreOutcome};
+        super::clear_cross_claim_pure_memos();
+        let ctx = fresh_ctx();
+        let fn_node = make_expr_node(
+            Rc::new(crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic),
+            Rc::new(ExprData::NoExprData),
+            Rc::new(im_vec![]),
+            None,
+            no_span(),
+        );
+        let args = [(None, list_value(vec![Value::Int(9)]))];
+        let value = Value::Str(RcStr::from("once"));
+
+        let first_guard = CrossClaimFillGuard::enter("prepare_grammar");
+        let first = store_cross_claim_pure_memo(
+            &ctx,
+            &fn_node,
+            "prepare_grammar",
+            &args,
+            &value,
+            Some(&first_guard),
+        );
+        assert_eq!(first, CrossClaimStoreOutcome::Stored);
+        assert!(first_guard.stored.get(), "the fresh store bills its fill");
+        drop(first_guard);
+
+        let second_guard = CrossClaimFillGuard::enter("prepare_grammar");
+        let second = store_cross_claim_pure_memo(
+            &ctx,
+            &fn_node,
+            "prepare_grammar",
+            &args,
+            &value,
+            Some(&second_guard),
+        );
+        assert_eq!(second, CrossClaimStoreOutcome::AlreadyPresent);
+        assert!(
+            !second_guard.stored.get(),
+            "an already-present entry did no work, so it must not bill a fill"
+        );
+        drop(second_guard);
         super::clear_cross_claim_pure_memos();
     }
 
@@ -6464,7 +6732,17 @@ fn eval_pure_named_call(
         let result = call_function(ctx, fn_node, args, env);
         if let Ok(v) = &result {
             if ctx.effect_dispatch_count.get() == effects_before {
-                store_cross_claim_pure_memo(ctx, fn_node, func_name, args, v, fill_guard.as_ref());
+                // The ordinary call path publishes opportunistically: every outcome,
+                // servable or refused, is already counted inside the store, and this
+                // call recomputes on a refusal exactly as if never enrolled.
+                let _ = store_cross_claim_pure_memo(
+                    ctx,
+                    fn_node,
+                    func_name,
+                    args,
+                    v,
+                    fill_guard.as_ref(),
+                );
             }
         }
         return result;
@@ -6498,7 +6776,8 @@ fn eval_pure_named_call(
     let result = call_function(ctx, fn_node, args, env);
     if let Ok(v) = &result {
         if ctx.effect_dispatch_count.get() == effects_before {
-            store_cross_claim_pure_memo(ctx, fn_node, func_name, args, v, fill_guard.as_ref());
+            let _ =
+                store_cross_claim_pure_memo(ctx, fn_node, func_name, args, v, fill_guard.as_ref());
         }
     }
     if memo_on && ctx.effect_dispatch_count.get() == effects_before {

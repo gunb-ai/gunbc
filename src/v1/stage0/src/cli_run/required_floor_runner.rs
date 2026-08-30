@@ -2451,22 +2451,30 @@ pub(crate) fn install_pure_producer_share(prepared: &PreparedRepository) -> Resu
         let producer_frame = &resolution_frames[&module];
         let warm_started = std::time::Instant::now();
         match v1_interpreter::warm_cross_claim_pure_producer(producer_frame, qualified) {
-            Ok(stored) => {
-                // `stored=false` means the value was refused by the store (unportable,
-                // duplicate, cap) — the roster promised a servable producer, so a silent
-                // decline would relocate the fill onto the first toucher. Stop the line.
-                if !stored {
-                    let detail = match v1_interpreter::cross_claim_take_last_unportable() {
-                        Some((_, refusal)) => format!(
-                            "ServeCacheValueNotPortable path={} kind={}",
+            Ok(outcome) => {
+                // A NON-SERVABLE outcome means nothing is retained for later claims, so a
+                // silent decline would relocate the fill onto the first toucher: stop the
+                // line, naming the ONE cause rather than a disjunction of three. An
+                // `AlreadyPresent` outcome is servable and therefore not a refusal — a
+                // rostered producer reachable from an earlier rostered producer is stored
+                // by that traversal, and its own warm correctly finds the work done.
+                if !outcome.is_servable() {
+                    // The located detail comes from the OUTCOME, so a cause can only ever be
+                    // paired with its own evidence. Reading the retained slot here instead
+                    // would decorate a byte-budget or entry-cap refusal with a stale path
+                    // left by an earlier producer's unportable value (review 57554).
+                    let detail = match outcome.not_portable_detail() {
+                        Some(refusal) => format!(
+                            "{} path={} kind={}",
+                            outcome.cause(),
                             if refusal.path_into_value.is_empty() {
-                                "<root>".to_string()
+                                "<root>"
                             } else {
-                                refusal.path_into_value
+                                refusal.path_into_value.as_str()
                             },
                             refusal.encountered_kind
                         ),
-                        None => "duplicate key, entry cap, or byte budget".to_string(),
+                        None => outcome.cause().to_string(),
                     };
                     return Err(format!(
                         "REQUIRED-FLOOR REFUSAL cause=PureProducerShareWarmNotStored \
@@ -2476,7 +2484,8 @@ pub(crate) fn install_pure_producer_share(prepared: &PreparedRepository) -> Resu
                 }
                 eprintln!(
                     "[floor-phase] phase=pure-producer-share-warm state=completed \
-                     producer={qualified} wall_ms={}",
+                     producer={qualified} disposition={} wall_ms={}",
+                    outcome.cause(),
                     warm_started.elapsed().as_millis()
                 );
             }
