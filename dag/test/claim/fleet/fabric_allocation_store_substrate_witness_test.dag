@@ -1,0 +1,54 @@
+module test.claim.fabric_allocation_store_substrate_witness
+
+import std.types { Bool, String }
+import gunbc.fabric_allocation_store_substrate {
+  fabric_allocation_store_substrate_spec,
+  AllocationStoreRootWriterOnly,
+}
+import gunbc.fabric_cell_effect { CellSubstrateRootOwned, CellAttemptWriterOwned }
+import gunbc.fleet_intent_network { operator_host_srv3 }
+import gunbc.fleet_converge_plan {
+  fleet_converge_allocation_store_plan_artifact,
+  FabricAllocationStoreOnly,
+  fleet_converge_scope_matches,
+}
+
+fn string_contains(s: String, pattern: String) -> Bool {
+  s.contains(pattern)
+}
+
+test fn witness_allocation_store_substrate_is_exact_root_only_desired_state() -> Bool {
+  let spec = fabric_allocation_store_substrate_spec()
+  spec.path as String == "/var/lib/gunbc/fabric/allocation"
+    && spec.mode as String == "0700"
+    && match spec.owner { CellSubstrateRootOwned => true CellAttemptWriterOwned => false }
+    && match spec.writer_standing {
+      AllocationStoreRootWriterOnly { live_caller: caller, rederive_trigger: trigger } =>
+        caller as String != "" && trigger as String != ""
+    }
+}
+
+test fn witness_allocation_store_scope_is_distinct() -> Bool {
+  fleet_converge_scope_matches(planned: FabricAllocationStoreOnly, observed: FabricAllocationStoreOnly)
+}
+
+// Rendering regression net: positive exact content is required before absence checks, so a
+// renderer vocabulary change refuses rather than making the negative checks vacuously green.
+test fn witness_allocation_store_plan_names_exact_substrate_without_cell_or_host_families() -> Bool {
+  match fleet_converge_allocation_store_plan_artifact(host: operator_host_srv3, prior_generation: 0) {
+    Absent => false
+    Present { value: artifact } =>
+      fleet_converge_scope_matches(planned: artifact.subject.scope, observed: FabricAllocationStoreOnly)
+        && string_contains(s: artifact.plan_body, pattern: "subject_scope:scope:fabric-allocation-store-only")
+        && string_contains(s: artifact.plan_body, pattern: "# allocation-store")
+        && string_contains(s: artifact.plan_body, pattern: "ensure-directory:path=/var/lib/gunbc/fabric/allocation")
+        && string_contains(s: artifact.plan_body, pattern: "ensure-directory:mode=0700")
+        && string_contains(s: artifact.plan_body, pattern: "ensure-directory:owner=CellSubstrateRootOwned")
+        && string_contains(s: artifact.plan_body, pattern: "# allocation-store-refusals=0")
+        && string_contains(s: artifact.plan_body, pattern: "apply-admission:ready")
+        && !string_contains(s: artifact.plan_body, pattern: "# fabric-cell")
+        && !string_contains(s: artifact.plan_body, pattern: "# timer-retirement")
+        && !string_contains(s: artifact.plan_body, pattern: "# cap-axis")
+        && !string_contains(s: artifact.plan_body, pattern: "# runner-slot")
+  }
+}
