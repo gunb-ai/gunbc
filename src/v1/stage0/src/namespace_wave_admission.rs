@@ -389,68 +389,18 @@ pub struct TransitionAdmission {
 /// on main, the merge base and head both carry it, no run can produce these deltas, and all
 /// four report stale -- which refuses every unrelated PR in the repository, exactly the shape
 /// the three shrinks above record. Remove them by that trigger, not by reinterpreting it.
-pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
-    TransitionAdmission {
-        label: "DeclaredCallableIdentity hoist to v1.std.core 2026-08-29",
-        subject: AdmissionSubject::Binding {
-            module: "v1.compiler.infer_lookup",
-            in_declaration: "borrowed_census_callable_candidate",
-            spelling: "DeclaredCallableIdentity",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: "DeclaredCallableIdentity hoist to v1.std.core 2026-08-29",
-        subject: AdmissionSubject::Binding {
-            module: "v1.compiler.infer_lookup",
-            in_declaration: "callable_lookup_over_candidates",
-            spelling: "DeclaredCallableIdentity",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: "DeclaredCallableIdentity hoist to v1.std.core 2026-08-29",
-        subject: AdmissionSubject::Binding {
-            module: "v1.compiler.infer_lookup",
-            in_declaration: "func_sig_from_global_bare",
-            spelling: "DeclaredCallableIdentity",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: "DeclaredCallableIdentity hoist to v1.std.core 2026-08-29",
-        subject: AdmissionSubject::Binding {
-            module: "v1.compiler.infer_lookup",
-            in_declaration: "resolved_declaration_call_target",
-            spelling: "DeclaredCallableIdentity",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    // THE DECLARING MODULE REBINDS TOO, which the first four rows missed. `v1.compiler.infer_sigs`
-    // used to DECLARE `DeclaredCallableIdentity`, so its own two construction sites resolved
-    // locally and produced no delta; now that the declaration lives in `v1.std.core` and this
-    // module imports it, those sites rebind exactly like the consumers in `infer_lookup`. Missing
-    // them was an enumeration error on my part, not a second transition: same subject, same
-    // trigger, same dissolve.
-    TransitionAdmission {
-        label: "DeclaredCallableIdentity hoist to v1.std.core 2026-08-29",
-        subject: AdmissionSubject::Binding {
-            module: "v1.compiler.infer_sigs",
-            in_declaration: "lookup_resolved_sig",
-            spelling: "DeclaredCallableIdentity",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: "DeclaredCallableIdentity hoist to v1.std.core 2026-08-29",
-        subject: AdmissionSubject::Binding {
-            module: "v1.compiler.infer_sigs",
-            in_declaration: "parent_closure_callable_candidates",
-            spelling: "DeclaredCallableIdentity",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-];
+/// FOURTH SHRINK, SAME RULE (2026-08-30). The six `DeclaredCallableIdentity hoist to
+/// v1.std.core 2026-08-29` rows dissolved on the trigger written above: #9665 merged as
+/// ecdeb492, so on every pull_request build the merge commit and its base both carry the
+/// hoist, no run can produce the deltas those rows named, and all six were reported stale
+/// (measured on #9689 @ bfd9524881: `0 unadjudicated delta(s), 6 stale admission(s)`) --
+/// refusing every unrelated PR in the repository, the fourth time this roster has reproduced
+/// that shape. Main's own push build at ecdeb492 stayed green, because its base is pre-#9665
+/// and the deltas exist there: the block is PR-only but universal, which is the reason the
+/// shrink cannot wait for a PR that would otherwise touch this file. Removed by the trigger they were authored with. The roster is EMPTY and empty
+/// is not permissive: a run carrying a real namespace delta still refuses it as UNADJUDICATED
+/// until its author adds a row here.
+pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[];
 
 /// The denominators a green must name (DESIGN §5). A run that cannot say what it covered is
 /// an instrument failure wearing coverage's clothes.
