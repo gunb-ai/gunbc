@@ -981,3 +981,59 @@ test fn w_live_slot_shape_is_admitted() -> Bool {
     RunnerSlotShapeRefusedZeroMemoryMax => false
   }
 }
+
+// THE RATIO'S REFUSAL, RED AND POSITIVE CONTROL. The shape this replaces mapped every refusing
+// memory-per-vCPU reading to byte_size(0) and let the zero travel: through cores-per-slot, through
+// the CPU axis, into a fleet-wide deployment=refused cause=zero_runner_width that named neither the
+// ratio nor the conversion that broke it. That is an absorbing arm, not a refusal, and it hid a
+// real defect for a full CI cycle -- the reading is quoted in the vendor's own unit and was being
+// read as a byte count, making the per-core figure 3 BYTES.
+//
+// Each refusing arm is now handed to the derivation directly, which is only possible because
+// runner_memory_per_core_of takes the reading as a parameter.
+fn basisless_uniform_reading() -> MemoryPerVcpuReading {
+  UniformMemoryPerVcpu {
+    per_vcpu: QuotedWithoutBasis { numeral: 3, unit_label: "GB" },
+    sizes_agreeing: 5,
+  }
+}
+
+test fn w_basisless_ratio_refuses_rather_than_answering_zero() -> Bool {
+  match runner_memory_per_core_of(reading: basisless_uniform_reading()) {
+    MemoryPerCoreUnresolved { cause: _ } => true
+    MemoryPerCoreResolved { bytes: _ } => false
+  }
+}
+
+test fn w_absent_survey_refuses_rather_than_answering_zero() -> Bool {
+  match runner_memory_per_core_of(reading: NoShapesForProviderArchitecture) {
+    MemoryPerCoreUnresolved { cause: _ } => true
+    MemoryPerCoreResolved { bytes: _ } => false
+  }
+}
+
+// THE POSITIVE CONTROL, and it is also the unit-conversion regression control: the live survey is
+// ubicloud aarch64, whose catalog states decimal gigabytes, so the resolved figure must be the
+// vendor's 3 GB in bytes. Reading that numeral as gibibytes, or failing to convert it at all,
+// both go red here.
+test fn w_live_ratio_resolves_to_the_vendors_decimal_gigabytes() -> Bool {
+  match gunbc_runner_memory_per_core() {
+    MemoryPerCoreResolved { bytes: b } => byte_size_count(b: b) == 3000000000
+    MemoryPerCoreUnresolved { cause: _ } => false
+  }
+}
+
+// AND THE SLOT WIDTH THE RATIO IMPLIES, asserted as the derivation rather than as its current
+// answer: 128 cores over a per-slot core count that is itself derived from the slot's memory
+// ceiling and the surveyed ratio.
+test fn w_cpu_axis_admits_a_width_from_the_resolved_ratio() -> Bool {
+  match gunbc_runner_cores_per_slot() {
+    CoresPerSlotUnresolved { cause: _ } => false
+    CoresPerSlotResolved { threads: t } =>
+      hardware_thread_count_value(t: t) > 0
+        && (match host_cpu_admitted_width(host: operator_host_srv1) {
+             CpuAdmitsWidth { slots: n } => n == altra_max_m12830_catalog.cores / hardware_thread_count_value(t: t)
+             CpuWidthUnresolved { cause: _ } => false
+           })
+  }
+}

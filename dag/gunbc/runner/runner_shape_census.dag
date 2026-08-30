@@ -1,13 +1,15 @@
 module gunbc.runner_shape_census
 
 import std.types { Bool, List, NonEmptyStr }
-import std.measure { hardware_thread_count_value }
+import std.measure { gibibyte, gigabyte, hardware_thread_count_value }
 import std.nat { Nat }
 import std.decl_ref { DeclarationRef, declaration_ref_eq }
 import extdeps.toolchain.types { Aarch64, Architecture, X86_64 }
 import extdeps.ci_runner.types {
   CpuEntitlement,
+  QuotedBinaryGibibytes,
   QuotedByteMagnitude,
+  QuotedDecimalGigabytes,
   QuotedWithoutBasis,
   quoted_numeral,
   quoted_unit_label,
@@ -123,13 +125,13 @@ fn memory_per_vcpu(
         SampleUnitLabelUniform { label } =>
           if count(acc.divergent) != 0 {
             RatioNotUniformAcrossSizes {
-              first_per_vcpu: per_vcpu_magnitude(numeral: acc.first, unit_label: label),
+              first_per_vcpu: per_vcpu_magnitude(numeral: acc.first, unit_label: label, basis: sample_quoted_basis(rows: selected)),
               divergent_label: first_label(rows: acc.divergent),
-              divergent_per_vcpu: per_vcpu_magnitude(numeral: first_ratio(rows: acc.divergent), unit_label: label),
+              divergent_per_vcpu: per_vcpu_magnitude(numeral: first_ratio(rows: acc.divergent), unit_label: label, basis: sample_quoted_basis(rows: selected)),
             }
           } else {
             UniformMemoryPerVcpu {
-              per_vcpu: per_vcpu_magnitude(numeral: acc.first, unit_label: label),
+              per_vcpu: per_vcpu_magnitude(numeral: acc.first, unit_label: label, basis: sample_quoted_basis(rows: selected)),
               sizes_agreeing: acc.seen,
             }
           }
@@ -143,8 +145,82 @@ fn memory_per_vcpu(
 // quotient of two figures is a figure per vCPU in that same unit, and
 // promoting it to a decimal magnitude here would assert a basis the census
 // never needed and cannot check across a mixed sample.
-fn per_vcpu_magnitude(numeral: Nat, unit_label: NonEmptyStr) -> QuotedByteMagnitude {
-  QuotedWithoutBasis { numeral: numeral, unit_label: unit_label }
+fn per_vcpu_magnitude(numeral: Nat, unit_label: NonEmptyStr, basis: SampleQuotedBasis) -> QuotedByteMagnitude {
+  match basis {
+    SampleBasisDecimalGigabytes => QuotedDecimalGigabytes { value: gigabyte(count: numeral) }
+    SampleBasisBinaryGibibytes => QuotedBinaryGibibytes { value: gibibyte(count: numeral) }
+    SampleBasisUnstated => QuotedWithoutBasis { numeral: numeral, unit_label: unit_label }
+    SampleBasisMixed => QuotedWithoutBasis { numeral: numeral, unit_label: unit_label }
+  }
+}
+
+// THE SAMPLE'S BASIS, FOLDED THE SAME WAY ITS UNIT WORD IS. A quotient of two figures a vendor
+// quoted in one basis is a figure per vCPU in THAT basis, so discarding the basis here was not
+// caution -- it manufactured an unresolvable magnitude out of rows that had already stated their
+// answer, and every consumer wanting bytes then had to re-guess what the census had thrown away.
+// One did, and read decimal gigabytes as gibibytes.
+//
+// The unstated and mixed arms still degrade to the basis-less magnitude, which is the honest
+// reading when the sample genuinely does not agree; quoted_magnitude_bytes refuses on it, so a
+// consumer cannot silently substitute a basis of its own choosing.
+type SampleQuotedBasis
+  = SampleBasisDecimalGigabytes
+  | SampleBasisBinaryGibibytes
+  | SampleBasisUnstated
+  | SampleBasisMixed
+
+fn row_quoted_basis(row: RunnerShapeRow) -> SampleQuotedBasis {
+  match row.memory {
+    QuotedDecimalGigabytes { value } => SampleBasisDecimalGigabytes
+    QuotedBinaryGibibytes { value } => SampleBasisBinaryGibibytes
+    QuotedWithoutBasis { numeral, unit_label } => SampleBasisUnstated
+  }
+}
+
+fn sample_quoted_basis_step(acc: SampleBasisAccum, row: RunnerShapeRow) -> SampleBasisAccum {
+  let b = row_quoted_basis(row: row)
+  if !acc.seen {
+    SampleBasisAccum { seen: true, basis: b }
+  } else {
+    if sample_quoted_basis_eq(a: acc.basis, b: b) { acc } else { SampleBasisAccum { seen: true, basis: SampleBasisMixed } }
+  }
+}
+
+type SampleBasisAccum {
+  seen: Bool
+  basis: SampleQuotedBasis
+}
+
+fn sample_quoted_basis_eq(a: SampleQuotedBasis, b: SampleQuotedBasis) -> Bool {
+  match a {
+    SampleBasisDecimalGigabytes =>
+      match b {
+        SampleBasisDecimalGigabytes => true
+        SampleBasisBinaryGibibytes => false
+        SampleBasisUnstated => false
+        SampleBasisMixed => false
+      }
+    SampleBasisBinaryGibibytes =>
+      match b {
+        SampleBasisDecimalGigabytes => false
+        SampleBasisBinaryGibibytes => true
+        SampleBasisUnstated => false
+        SampleBasisMixed => false
+      }
+    SampleBasisUnstated =>
+      match b {
+        SampleBasisDecimalGigabytes => false
+        SampleBasisBinaryGibibytes => false
+        SampleBasisUnstated => true
+        SampleBasisMixed => false
+      }
+    SampleBasisMixed => false
+  }
+}
+
+fn sample_quoted_basis(rows: List<RunnerShapeRow>) -> SampleQuotedBasis {
+  let acc = fold(rows, init: SampleBasisAccum { seen: false, basis: SampleBasisUnstated }, f: (a, r) => sample_quoted_basis_step(acc: a, row: r))
+  acc.basis
 }
 
 // THE SAMPLE'S UNIT WORD, checked for unanimity rather than taken from

@@ -10,7 +10,13 @@ import extdeps.github.actions { RunnerSpec }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import gunbc.runner_spec_from_offer { runner_spec_from_offer }
-import gunbc.runner_slot_allocation { gunbc_runner_slot_desired, gunbc_runner_slots_per_host, gunbc_runner_cores_per_slot }
+import gunbc.runner_slot_allocation {
+  CoresPerSlotResolved,
+  CoresPerSlotUnresolved,
+  gunbc_runner_slot_desired,
+  gunbc_runner_slots_per_host,
+  gunbc_runner_cores_per_slot,
+}
 import gunbc.session_reservation_policy {
   SessionReservationCharged, SessionReservationUnsized,
   SessionReservationNotApplicable, SessionReservationAuthorityDisagreement,
@@ -209,6 +215,7 @@ type HostRunnerDeploymentRefusal
   | ZeroRunnerWidth
   | JobserverCitationAbsent { cause: String }
   | HostCpuAllocationUnchargeable { cause: String }
+  | RunnerCoreRatioUnresolved { cause: String }
   | HostNotEnrolledInFleet
 
 type RefusedHostDeployment {
@@ -504,7 +511,16 @@ fn host_deployment_refusal_text(c: HostRunnerDeploymentRefusal) -> String {
     ZeroRunnerWidth => "zero_runner_width"
     JobserverCitationAbsent { cause: t } => concat("jobserver_citation_absent ", t)
     HostCpuAllocationUnchargeable { cause: t } => concat("host_cpu_allocation_unchargeable ", t)
+    RunnerCoreRatioUnresolved { cause: t } => concat("runner_core_ratio_unresolved ", t)
     HostNotEnrolledInFleet => "host_not_enrolled_in_fleet"
+  }
+}
+
+fn admit_or_refuse_zero_width(dep: RunnerHostDeployment, host_id: HostIdentity) -> HostRunnerDeploymentStanding {
+  if dep.runner_count == 0 {
+    refuse_host(host: host_id, cause: ZeroRunnerWidth)
+  } else {
+    HostRunnerDeploymentDerived { deployment: dep }
   }
 }
 
@@ -586,28 +602,30 @@ fn host_standing_with_session_slice(
                     cause: concat("no cited jobserver configuration, so the compile-token budget has no derivation and the host cannot be told a bound it did not compute: ", host_id)
                   })
                 JobserverCited { config: jcfg, provenance: _ } =>
-                  match runner_cpu_boundary_for(
-                    placement: gunbc_compile_pool_placement,
-                    per_slot: gunbc_runner_cores_per_slot()
-                  ) {
-                    RunnerCpuBoundaryUnchargeable { reason: cr } =>
-                      refuse_host(host: host_id, cause: HostCpuAllocationUnchargeable { cause: cr })
-                    RunnerCpuBoundaryDerived { boundary: cpub } => {
-              let dep = conservation_host_deployment(
-                offer: offer,
-                build_tokens: derive_jobserver_tokens(
-                  nproc: cpu_facts_threads(cpu: cpu),
-                  mem_total: host_ram,
-                  cfg: jcfg
-                ),
-                cpu_boundary: cpub
-              )
-              if dep.runner_count == 0 {
-                refuse_host(host: host_id, cause: ZeroRunnerWidth)
-              } else {
-                HostRunnerDeploymentDerived { deployment: dep }
-              }
-            }
+                  match gunbc_runner_cores_per_slot() {
+                    CoresPerSlotUnresolved { cause: rc } =>
+                      refuse_host(host: host_id, cause: RunnerCoreRatioUnresolved { cause: rc })
+                    CoresPerSlotResolved { threads: per_slot_threads } =>
+                      match runner_cpu_boundary_for(
+                        placement: gunbc_compile_pool_placement,
+                        per_slot: per_slot_threads
+                      ) {
+                        RunnerCpuBoundaryUnchargeable { reason: cr } =>
+                          refuse_host(host: host_id, cause: HostCpuAllocationUnchargeable { cause: cr })
+                        RunnerCpuBoundaryDerived { boundary: cpub } =>
+                          admit_or_refuse_zero_width(
+                            dep: conservation_host_deployment(
+                              offer: offer,
+                              build_tokens: derive_jobserver_tokens(
+                                nproc: cpu_facts_threads(cpu: cpu),
+                                mem_total: host_ram,
+                                cfg: jcfg
+                              ),
+                              cpu_boundary: cpub
+                            ),
+                            host_id: host_id
+                          )
+                      }
                   }
               }
           }

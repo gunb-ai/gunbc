@@ -29,7 +29,10 @@ test fn witness_live_plan_is_conservation_sound() -> Bool {
     && all(hosts, h =>
         h.runner_count == gunbc_runner_slots_per_host(host: h.identity)
           && h.runner_count <= host_memory_admitted_width(host: h.identity)
-          && h.runner_count <= host_cpu_admitted_width(host: h.identity)
+          && (match host_cpu_admitted_width(host: h.identity) {
+               CpuAdmitsWidth { slots: c } => h.runner_count <= c
+               CpuWidthUnresolved { cause: _ } => false
+             })
           && byte_size_count(b: h.per_runner_memory_cap) == byte_size_count(b: gunbc_ci_runner_cgroup_memory_cap)
           && byte_size_count(b: h.runner_slice_cap) == byte_size_count(b: gunbc_runner_pool_budget_for(host: h.identity))
           && hardware_thread_count_value(t: h.build_tokens) > 0
@@ -281,6 +284,7 @@ test fn a_refused_host_does_not_erase_a_derived_one() -> Bool {
         ZeroRunnerWidth => false
         JobserverCitationAbsent { cause: _ } => false
         HostCpuAllocationUnchargeable { cause: _ } => false
+        RunnerCoreRatioUnresolved { cause: _ } => false
         HostNotEnrolledInFleet => false
       }
     HostRunnerDeploymentDerived { deployment: _ } => false

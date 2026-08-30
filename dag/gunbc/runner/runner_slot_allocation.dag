@@ -2,7 +2,7 @@ module gunbc.runner_slot_allocation
 
 import std.types { Int, String, List, Bool }
 import std.nat { Nat, nat_range_inclusive }
-import std.measure { ByteSize, byte_size, byte_size_count, gibibyte, HardwareThreadCount, hardware_thread_count, hardware_thread_count_value }
+import std.measure { ByteSize, byte_size, byte_size_count, HardwareThreadCount, hardware_thread_count, hardware_thread_count_value }
 import std.disposition { Disposition, Terminal, SingleAuthority, Scaffold }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import product.placement_supply { HostIdentity }
@@ -18,7 +18,7 @@ import gunbc.session_reservation_policy {
 import gunbc.ci_failure_class { FloorOutcome, NoFailure, FloorFailed, Structural, floor_outcome_blocks_merge }
 import extdeps.cpu.ampere { altra_max_m12830_catalog }
 import extdeps.toolchain.types { Aarch64 }
-import extdeps.ci_runner.types { quoted_numeral }
+import extdeps.ci_runner.types { QuotedBasisUnresolved, ResolvedBytes, quoted_magnitude_bytes }
 import extdeps.cloud.ubicloud { ubicloud_provider_identity }
 import gunbc.runner_shape_census {
   memory_per_vcpu,
@@ -211,10 +211,19 @@ fn host_disk_admitted_width(host: HostIdentity) -> HostDiskWidthConstraint {
 // host-and-session CPU residency series, at which point this subtracts a reserve exactly as the
 // memory axis already does.
 
-fn host_cpu_admitted_width(host: HostIdentity) -> Int {
-  let cores = altra_max_m12830_catalog.cores
-  let per_slot = hardware_thread_count_value(t: gunbc_runner_cores_per_slot())
-  if per_slot == 0 { 0 } else { cores / per_slot }
+type CpuAdmittedWidth
+  = CpuAdmitsWidth { slots: Int }
+  | CpuWidthUnresolved { cause: String }
+
+fn host_cpu_admitted_width(host: HostIdentity) -> CpuAdmittedWidth {
+  match gunbc_runner_cores_per_slot() {
+    CoresPerSlotUnresolved { cause: c } => CpuWidthUnresolved { cause: c }
+    CoresPerSlotResolved { threads: t } => {
+      let cores = altra_max_m12830_catalog.cores
+      let per_slot = hardware_thread_count_value(t: t)
+      CpuAdmitsWidth { slots: cores / per_slot }
+    }
+  }
 }
 
 data width_minimum_now_spans_three_axes_note: String = "THE MINIMUM IS OVER THREE AXES AND THE THIRD ONE IS WHY THIS CHANGE IS SAFE. Memory admits 29 on the upgraded hosts, CPU admits 21, disk admits nothing numeric, so the commitment is 21 -- and the two answers coexist under their own names instead of one of them being suppressed to keep the other honest. width_is_a_minimum_over_axes_note records what happens when they are collapsed: gunbc_runner_slots_per_host once returned the memory verdict under a name that read as the full commitment, and srv4's roster and its prose disagreed as a result.\n\nSo host_memory_admitted_width saying 29 is not a claim that 29 runners may exist. It is the true answer to the question that function asks, and it is the minimum's job -- not the literal's -- to keep the fleet from acting on it."
@@ -278,9 +287,10 @@ fn host_width_axes(host: HostIdentity) -> List<WidthAxisStanding> {
       reason: "session reservation unestablished on this host, so the memory subtraction has no denominator and states no width" as NonEmptyStr,
     }
   }
-  let cpu = AxisAdmits {
-    axis: "cores" as NonEmptyStr,
-    slots: host_cpu_admitted_width(host: host),
+  let cpu = match host_cpu_admitted_width(host: host) {
+    CpuAdmitsWidth { slots: n } => AxisAdmits { axis: "cores" as NonEmptyStr, slots: n }
+    CpuWidthUnresolved { cause: c } =>
+      AxisUnmeasured { axis: "cores" as NonEmptyStr, reason: c as NonEmptyStr }
   }
   let disk = match host_disk_admitted_width(host: host) {
     DiskAdmitsWidth { slots: d, provenance: _ } =>
@@ -388,8 +398,8 @@ fn host_held_runner_width(host: HostIdentity) -> Int? {
 // tree the source can express.
 //
 // The derived path would still refuse without this: cores_per_slot ceilings memory_max against the
-// surveyed memory-per-vCPU convention, so a zero ceiling yields zero cores per slot, and
-// host_cpu_admitted_width returns zero rather than dividing. THE HELD PATH WOULD NOT. It is consulted
+// surveyed memory-per-vCPU convention, so a zero ceiling yields zero cores per slot. THE HELD PATH
+// WOULD NOT. It is consulted
 // first and answers with an authored number that never consults the slot shape at all, so srv2's held
 // five would survive a slot shape admitting nothing -- committing five runners on a ceiling of zero
 // bytes. That is the one place the accidental refusal was load-bearing, and it is why the standing is
@@ -414,18 +424,32 @@ fn gunbc_runner_slots_per_host(host: HostIdentity) -> Int {
     RunnerSlotShapeAdmitted =>
       match host_held_runner_width(host: host) {
         Present { value: held } => held
-        Absent => gunbc_derived_runner_slots_per_host(host: host)
+        Absent =>
+          match gunbc_derived_runner_slots_per_host(host: host) {
+            DerivedRunnerWidthSlots { slots: n } => n
+            DerivedRunnerWidthUnresolved { cause: _ } => 0
+          }
       }
   }
 }
 
-fn gunbc_derived_runner_slots_per_host(host: HostIdentity) -> Int {
-  let by_memory = host_memory_admitted_width(host: host)
-  let by_cpu = host_cpu_admitted_width(host: host)
-  let by_mem_cpu = if by_cpu < by_memory { by_cpu } else { by_memory }
-  match host_disk_admitted_width(host: host) {
-    DiskAdmitsWidth { slots: d, provenance: _ } => if d < by_mem_cpu { d } else { by_mem_cpu }
-    DiskWidthUnconstrained { reason: _ } => by_mem_cpu
+type DerivedRunnerWidth
+  = DerivedRunnerWidthSlots { slots: Int }
+  | DerivedRunnerWidthUnresolved { cause: String }
+
+fn gunbc_derived_runner_slots_per_host(host: HostIdentity) -> DerivedRunnerWidth {
+  match host_cpu_admitted_width(host: host) {
+    CpuWidthUnresolved { cause: c } => DerivedRunnerWidthUnresolved { cause: c }
+    CpuAdmitsWidth { slots: by_cpu } => {
+      let by_memory = host_memory_admitted_width(host: host)
+      let by_mem_cpu = if by_cpu < by_memory { by_cpu } else { by_memory }
+      DerivedRunnerWidthSlots {
+        slots: match host_disk_admitted_width(host: host) {
+          DiskAdmitsWidth { slots: d, provenance: _ } => if d < by_mem_cpu { d } else { by_mem_cpu }
+          DiskWidthUnconstrained { reason: _ } => by_mem_cpu
+        }
+      }
+    }
   }
 }
 
@@ -442,13 +466,13 @@ fn gunbc_derived_runner_slots_per_host(host: HostIdentity) -> Int {
 // one adopted; the survey's disagreement is a typed refusal on the other providers, not noise
 // to be smoothed away.
 //
-// THE BASIS IS A GUNBC ADOPTION AND THE CENSUS REFUSES TO GUESS IT. QuotedByteMagnitude is
-// QuotedWithoutBasis because no surveyed vendor page says whether its "GB" is decimal or
-// binary. The fleet reads the convention as GIBIBYTES (operator ruling 2026-08-30). The
-// deleted literal read it as decimal; at the current 16 GiB slot anchor both yield 6 cores
-// per slot, so nothing moves today -- they diverge at other anchors, and the slot anchor is
-// itself declared temporary, which is exactly why the basis is recorded here instead of
-// being left to survive as an accident of the current number.
+// THE BASIS IS THE VENDOR'S AND THE CENSUS NOW CARRIES IT. An earlier revision of this block
+// asserted that no surveyed page states whether its "GB" is decimal or binary and then adopted
+// GIBIBYTES on that basis. Both halves were wrong: extdeps.cloud.ubicloud quotes its catalog as
+// QuotedDecimalGigabytes, so the basis was stated all along and the census was discarding it, and
+// the adoption cited an operator ruling that does not exist. The conversion is now the extdeps
+// authority's own quoted_magnitude_bytes, which refuses rather than guessing when a sample really
+// has no stated basis.
 fn gunbc_runner_memory_per_core_reading() -> MemoryPerVcpuReading {
   memory_per_vcpu(
     rows: surveyed_runner_shapes(),
@@ -457,28 +481,73 @@ fn gunbc_runner_memory_per_core_reading() -> MemoryPerVcpuReading {
   )
 }
 
-// A CONVENTION THE SURVEY CANNOT STATE YIELDS ZERO, AND ZERO IS A REFUSAL RATHER THAN A
-// PERMISSIVE DEFAULT. Zero bytes per core drives gunbc_runner_cores_per_slot to zero, which
-// drives host_cpu_admitted_width to zero, which reaches the ZeroRunnerWidth arm the placement
-// refusal roster already carries -- so an ungrounded ratio admits NO runners instead of
-// silently admitting every core on the host.
-fn gunbc_runner_memory_per_core() -> ByteSize {
-  match gunbc_runner_memory_per_core_reading() {
-    UniformMemoryPerVcpu { per_vcpu: q, sizes_agreeing: _ } => gibibyte(quoted_numeral(quoted: q))
-    RatioNotUniformAcrossSizes { first_per_vcpu: _, divergent_label: _, divergent_per_vcpu: _ } => byte_size(0)
-    NonIntegralRatioInSizes { label: _ } => byte_size(0)
-    UnitLabelNotUniformAcrossSizes { first_label: _, divergent_label: _ } => byte_size(0)
-    NoShapesForProviderArchitecture => byte_size(0)
+// AN UNGROUNDED RATIO REFUSES BY NAME INSTEAD OF ANSWERING ZERO. The shape this replaces mapped
+// every refusing reading to byte_size(0) and relied on the zero travelling through
+// gunbc_runner_cores_per_slot and host_cpu_admitted_width until the placement called it
+// ZeroRunnerWidth. That is the absorbing arm DESIGN forbids: it is a degradation wearing a
+// refusal's name, and it was measured -- a missing unit conversion made the per-core figure 3
+// BYTES, which drove cores-per-slot to 5,726,623,062, the CPU axis to zero, and the whole fleet
+// to deployment=refused cause=zero_runner_width, a diagnostic that named neither the ratio nor
+// the conversion. The cause now travels with the refusal.
+type RunnerMemoryPerCoreResolution
+  = MemoryPerCoreResolved { bytes: ByteSize }
+  | MemoryPerCoreUnresolved { cause: String }
+
+fn gunbc_runner_memory_per_core() -> RunnerMemoryPerCoreResolution {
+  runner_memory_per_core_of(reading: gunbc_runner_memory_per_core_reading())
+}
+
+// THE READING IS A PARAMETER SO THE REFUSAL HAS AN AUTHORABLE RED. A zero-argument derivation over
+// the live census can only ever be exercised on whatever the survey currently says, so its refusing
+// arms would be permanently unreachable and the check on them would be a decoration. Taking the
+// reading lets a fixture hand this function each arm it claims to refuse.
+fn runner_memory_per_core_of(reading: MemoryPerVcpuReading) -> RunnerMemoryPerCoreResolution {
+  match reading {
+    UniformMemoryPerVcpu { per_vcpu: q, sizes_agreeing: _ } =>
+      match quoted_magnitude_bytes(quoted: q) {
+        ResolvedBytes { bytes: b } => MemoryPerCoreResolved { bytes: b }
+        QuotedBasisUnresolved { numeral: _, unit_label: l } =>
+          MemoryPerCoreUnresolved {
+            cause: concat("the surveyed memory-per-vCPU ratio is uniform but carries no stated byte basis, so its numeral cannot be read as bytes without gunbc choosing a basis the vendor did not publish; unit label: ", l)
+          }
+      }
+    RatioNotUniformAcrossSizes { first_per_vcpu: _, divergent_label: dl, divergent_per_vcpu: _ } =>
+      MemoryPerCoreUnresolved {
+        cause: concat("the surveyed provider's sizes do not agree on a memory-per-vCPU ratio, so there is no convention to adopt; first divergent size: ", dl)
+      }
+    NonIntegralRatioInSizes { label: l } =>
+      MemoryPerCoreUnresolved {
+        cause: concat("a surveyed size divides memory by vCPUs non-integrally, so the provider states no whole ratio; size: ", l)
+      }
+    UnitLabelNotUniformAcrossSizes { first_label: fl, divergent_label: dl } =>
+      MemoryPerCoreUnresolved {
+        cause: concat(concat("the surveyed sizes are quoted in more than one unit word, so their quotient is not a ratio: ", fl), concat(" against ", dl))
+      }
+    NoShapesForProviderArchitecture =>
+      MemoryPerCoreUnresolved {
+        cause: "the survey holds no shapes for the cited provider and architecture, so no ratio was read at all"
+      }
   }
 }
 
-fn gunbc_runner_cores_per_slot() -> HardwareThreadCount {
-  let want = byte_size_count(b: gunbc_runner_slot_desired().memory_max)
-  let per = byte_size_count(b: gunbc_runner_memory_per_core())
-  if per == 0 {
-    hardware_thread_count(count: 0)
-  } else {
-    hardware_thread_count(count: (want + per - 1) / per)
+type RunnerCoresPerSlotResolution
+  = CoresPerSlotResolved { threads: HardwareThreadCount }
+  | CoresPerSlotUnresolved { cause: String }
+
+fn gunbc_runner_cores_per_slot() -> RunnerCoresPerSlotResolution {
+  match gunbc_runner_memory_per_core() {
+    MemoryPerCoreUnresolved { cause: c } => CoresPerSlotUnresolved { cause: c }
+    MemoryPerCoreResolved { bytes: per_core } => {
+      let want = byte_size_count(b: gunbc_runner_slot_desired().memory_max)
+      let per = byte_size_count(b: per_core)
+      if per == 0 {
+        CoresPerSlotUnresolved {
+          cause: "the surveyed memory-per-vCPU ratio resolved to zero bytes, which would admit every core on the host against no memory at all"
+        }
+      } else {
+        CoresPerSlotResolved { threads: hardware_thread_count(count: (want + per - 1) / per) }
+      }
+    }
   }
 }
 
