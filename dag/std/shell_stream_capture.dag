@@ -1,6 +1,6 @@
 module std.shell_stream_capture
 
-import std.types { String, Bool }
+import std.types { String, Bool, Int }
 import std.measure { byte_size, byte_size_count, measure_le, ByteSize }
 import std.dissolution { DissolutionCondition, dissolution_description, unbound_dissolution }
 
@@ -12,6 +12,13 @@ import std.dissolution { DissolutionCondition, dissolution_description, unbound_
 // predicate helpers for witness tests — NOT a parallel constant authority.
 
 data seed_host_shell_stream_bounded_drain_dissolve_on: DissolutionCondition = unbound_dissolution(description: "dissolve-on: roadmap-serve-emitted-realization emit-on-demand native serve lands AND bounded shell stream capture is enforced on the production host-effect seam with CapturedProcessStream evidence consumed by the channel provider adapter — then delete this scaffold module and the v1_interpreter bounded_shell_host_drain child module.")
+
+// Per-invocation stderr retention is a caller-owned cost decision. Complete retains
+// the entire stream or refuses at the active GUNBC_MEMORY_BUDGET_BYTES authority;
+// it never denotes an unmarked truncation.
+type WitnessStderrCapturePolicy
+  = BoundedTail { bytes: Int }
+  | Complete
 
 fn seed_host_stderr_tail_within_bound(
   total_bytes: ByteSize,

@@ -17,14 +17,14 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data artifact_line: String = "\{\"reason\":\"compiler-artifact\",\"target\":\{\"name\":\"probe\"\},\"executable\":null\}"
 
-data e0308_line: String = "\{\"reason\":\"compiler-message\",\"message\":\{\"code\":\{\"code\":\"E0308\"\},\"level\":\"error\",\"spans\":[\{\"file_name\":\"src/a.rs\",\"line_start\":12,\"is_primary\":true\}]\}\}"
+data e0308_line: String = "\{\"reason\":\"compiler-message\",\"message\":\{\"code\":\{\"code\":\"E0308\"\},\"level\":\"error\",\"message\":\"probe diagnostic\",\"spans\":[\{\"file_name\":\"src/a.rs\",\"line_start\":12,\"column_start\":7,\"is_primary\":true\}]\}\}"
 
 // A NON-PRIMARY SPAN FIRST. A decode that read spans[0] would answer src/secondary.rs:1 here; the
 // claim asserts src/a.rs:12, so the is_primary read is what the claim is about rather than an
 // accident of ordering.
-data e0599_line_secondary_first: String = "\{\"reason\":\"compiler-message\",\"message\":\{\"code\":\{\"code\":\"E0599\"\},\"level\":\"error\",\"spans\":[\{\"file_name\":\"src/secondary.rs\",\"line_start\":1,\"is_primary\":false\},\{\"file_name\":\"src/a.rs\",\"line_start\":12,\"is_primary\":true\}]\}\}"
+data e0599_line_secondary_first: String = "\{\"reason\":\"compiler-message\",\"message\":\{\"code\":\{\"code\":\"E0599\"\},\"level\":\"error\",\"message\":\"probe diagnostic\",\"spans\":[\{\"file_name\":\"src/secondary.rs\",\"line_start\":1,\"column_start\":2,\"is_primary\":false\},\{\"file_name\":\"src/a.rs\",\"line_start\":12,\"column_start\":7,\"is_primary\":true\}]\}\}"
 
-data uncoded_line: String = "\{\"reason\":\"compiler-message\",\"message\":\{\"code\":null,\"level\":\"error\",\"spans\":[]\}\}"
+data uncoded_line: String = "\{\"reason\":\"compiler-message\",\"message\":\{\"code\":null,\"level\":\"error\",\"message\":\"probe diagnostic\",\"spans\":[]\}\}"
 
 data build_finished_line: String = "\{\"reason\":\"build-finished\",\"success\":false\}"
 
@@ -35,12 +35,12 @@ data not_json_line: String = "warning: this line is not json"
 // A MALFORMED `is_primary`. Well-formed in every other respect; the flag is a string where a bool
 // is documented. An earlier decode answered `false` for this and so reported the diagnostic with no
 // location at all -- the malformed flag and a genuine `is_primary: false` reaching one answer.
-data e0308_line_primary_flag_malformed: String = "\{\"reason\":\"compiler-message\",\"message\":\{\"code\":\{\"code\":\"E0308\"\},\"level\":\"error\",\"spans\":[\{\"file_name\":\"src/a.rs\",\"line_start\":12,\"is_primary\":\"yes\"\}]\}\}"
+data e0308_line_primary_flag_malformed: String = "\{\"reason\":\"compiler-message\",\"message\":\{\"code\":\{\"code\":\"E0308\"\},\"level\":\"error\",\"message\":\"probe diagnostic\",\"spans\":[\{\"file_name\":\"src/a.rs\",\"line_start\":12,\"column_start\":7,\"is_primary\":\"yes\"\}]\}\}"
 
 // THE CONTROL FOR IT: the same diagnostic with a WELL-FORMED `is_primary: false` and no primary
 // span anywhere. This one is an ordinary reading and must still answer `(no span)`, which is what
 // makes the refusal above a discriminator rather than a blanket refusal of unlocated findings.
-data e0308_line_no_primary_span: String = "\{\"reason\":\"compiler-message\",\"message\":\{\"code\":\{\"code\":\"E0308\"\},\"level\":\"error\",\"spans\":[\{\"file_name\":\"src/a.rs\",\"line_start\":12,\"is_primary\":false\}]\}\}"
+data e0308_line_no_primary_span: String = "\{\"reason\":\"compiler-message\",\"message\":\{\"code\":\{\"code\":\"E0308\"\},\"level\":\"error\",\"message\":\"probe diagnostic\",\"spans\":[\{\"file_name\":\"src/a.rs\",\"line_start\":12,\"column_start\":7,\"is_primary\":false\}]\}\}"
 
 fn stream_of(lines: List<String>) -> String {
   concat(join(lines, "\n"), "\n")
@@ -60,12 +60,12 @@ fn scanned_rows(lines: List<String>) -> List<String> {
 
 test fn cargo_population_carries_identity_and_location_per_finding() -> Bool {
   scanned_rows(lines: [artifact_line, e0308_line, build_finished_line])
-    == ["E0308\terror\tsrc/a.rs:12"]
+    == ["src/a.rs:12:7\tE0308\tprobe diagnostic"]
 }
 
 test fn the_primary_span_is_selected_by_its_flag_not_by_position() -> Bool {
   scanned_rows(lines: [e0599_line_secondary_first, build_finished_line])
-    == ["E0599\terror\tsrc/a.rs:12"]
+    == ["E0599\terror\tsrc/a.rs:12:7\tprobe diagnostic"]
 }
 
 // RED: an UNREADABLE primary flag is not a well-formed `false`. The pair below is the whole point:
@@ -78,12 +78,12 @@ test fn an_unreadable_primary_flag_refuses_rather_than_reading_as_not_primary() 
 
 test fn a_well_formed_false_primary_flag_still_reads_as_an_unlocated_finding() -> Bool {
   scanned_rows(lines: [e0308_line_no_primary_span, build_finished_line])
-    == ["E0308\terror\t(no span)"]
+    == ["(no span)\tE0308\tprobe diagnostic"]
 }
 
 test fn an_uncoded_diagnostic_is_a_member_not_an_absence() -> Bool {
   scanned_rows(lines: [uncoded_line, build_finished_line])
-    == ["uncoded\terror\t(no span)"]
+    == ["uncoded\terror\t(no span)\tprobe diagnostic"]
 }
 
 test fn every_message_is_kept_so_two_findings_are_two_rows() -> Bool {
@@ -441,6 +441,12 @@ data clean_specimen: EmissionMeasurement = EmissionMeasured {
   subject: specimen_subject,
   emitted_files: FilesEmitted { count: 177 },
   emit_diagnostics: [],
+  emitted_artifact_identity: specimen_subject.compiler,
+  rustfmt_parse_observation: RustfmtParseObservation {
+    producer: "rustfmt --emit stdout --edition 2021",
+    files_observed: 1,
+    refused_files: []
+  },
   cargo_clean: true,
   cargo_diagnostics: [],
   cargo_lines_scanned: 4
@@ -463,6 +469,10 @@ test fn an_unreached_report_names_the_stage_and_carries_no_counts() -> Bool {
 test fn a_measured_report_states_both_populations() -> Bool {
   string_contains(s: emission_report_text(m: clean_specimen), pattern: "emit_population\t0")
     && string_contains(s: emission_report_text(m: clean_specimen), pattern: "cargo_population\t0")
+    && string_contains(
+      s: emission_report_text(m: clean_specimen),
+      pattern: "cargo_error_population\t0\tcoded\t0\tcodeless\t0\treconciliation\tcoded+codeless=total"
+    )
 }
 
 // PROVENANCE, ASSERTED RATHER THAN CLAIMED IN PROSE. A population is attributable only if the
