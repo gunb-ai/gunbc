@@ -4,10 +4,10 @@ import std.types { Bool, Int, String, List }
 import std.algebra { Ordering, Less, Equal, Greater }
 import std.decl_ref { decl_ref }
 import std.literal_elaboration {
-  KernelIntLiteral, KernelStringLiteral,
+  KernelIntLiteral, KernelStringLiteral, KernelBoolLiteral,
   LiteralHomomorphismFound, LiteralHomomorphismAbsent, LiteralHomomorphismAmbiguous,
   DirectLiteral, ViaHomomorphism, LiteralElaborationRefused,
-  PeanoUnfold,
+  PeanoUnfold, BooleanUnfold,
   literal_homomorphism_for, elaborate_literal_at
 }
 import std.operator_realization {
@@ -116,6 +116,7 @@ test fn peano_row_is_found_by_exact_destination() -> Bool {
       match r.producer {
         PeanoUnfold { zero: z, succ: s, prev_field: p } =>
           (z.decl_name as String) == "Zero" && (s.decl_name as String) == "Succ" && (p as String) == "prev"
+        BooleanUnfold { true_variant: _, false_variant: _ } => false
       }
     LiteralHomomorphismAbsent => false
     LiteralHomomorphismAmbiguous { row_count: _ } => false
@@ -143,6 +144,40 @@ test fn peano_destination_elaborates_via_the_homomorphism() -> Bool {
 // kernel digit, which against an Rc<Nat> parameter is precisely the E0308 shape the census held.
 test fn removing_the_row_returns_the_literal_to_direct() -> Bool {
   match elaborate_literal_at(rows: [], source_kind: KernelIntLiteral, destination: decl_ref(module_path: "v2.std.nat", decl_name: "Nat"), destination_realizes_natively: false) {
+    DirectLiteral => true
+    ViaHomomorphism { homomorphism: _ } => false
+    LiteralElaborationRefused { cause: _ } => false
+  }
+}
+
+// THE BOOL ROW (kernel true/false -> v2.std.logic.Bool, the structural coproduct): found by exact
+// destination, Direct with the row removed, and Direct at the prelude std.types.Bool, which realizes
+// natively and has no row. No Bool VARIANT is matched by name in this interpreter-run module -- the
+// interpreter realizes Bool natively and has no runtime form for `True` patterns -- so the image
+// (Bool::True / Bool::False in the emitted bytes) is asserted only on the emitted path, in
+// test.claim.self_host_peano_literal_operator_realization_witness_test.
+test fn bool_row_is_found_by_exact_destination() -> Bool {
+  match literal_homomorphism_for(rows: literal_homomorphism_rows, source_kind: KernelBoolLiteral, destination: decl_ref(module_path: "v2.std.logic", decl_name: "Bool")) {
+    LiteralHomomorphismFound { row: r } =>
+      match r.producer {
+        BooleanUnfold { true_variant: t, false_variant: f } => (t.decl_name as String) == "True" && (f.decl_name as String) == "False"
+        PeanoUnfold { zero: _, succ: _, prev_field: _ } => false
+      }
+    LiteralHomomorphismAbsent => false
+    LiteralHomomorphismAmbiguous { row_count: _ } => false
+  }
+}
+
+test fn removing_the_bool_row_returns_the_literal_to_direct() -> Bool {
+  match elaborate_literal_at(rows: [], source_kind: KernelBoolLiteral, destination: decl_ref(module_path: "v2.std.logic", decl_name: "Bool"), destination_realizes_natively: false) {
+    DirectLiteral => true
+    ViaHomomorphism { homomorphism: _ } => false
+    LiteralElaborationRefused { cause: _ } => false
+  }
+}
+
+test fn prelude_bool_destination_is_direct() -> Bool {
+  match elaborate_literal_at(rows: literal_homomorphism_rows, source_kind: KernelBoolLiteral, destination: decl_ref(module_path: "std.types", decl_name: "Bool"), destination_realizes_natively: true) {
     DirectLiteral => true
     ViaHomomorphism { homomorphism: _ } => false
     LiteralElaborationRefused { cause: _ } => false

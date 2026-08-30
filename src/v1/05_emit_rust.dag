@@ -11929,13 +11929,14 @@ fn rust_operand_realization(operand: Node, scope: InferScope) -> OperandRealizat
 }
 
 // AN ALIAS OR REFINEMENT DECLARATION REALIZES AS ITS TARGET. `type NonEmptyStr = String where
-// non_empty`, `type Char = Int where unicode_scalar, brand("Char")` and their like are bare-leaf
-// declarations (NoConnective, no children, an inferred right-hand side) whose Rust realization IS
-// the right-hand side's -- the type renderer already renders them that way -- so the operand
-// decision hops to the right-hand side before judging, exactly as the derive lane's alias hop does
-// (v1.compiler.trait_derive_emit v1_item_alias_hop_type_exprs). The seed's own semver and unicode
-// modules compare NonEmptyStr and add to Char; without the hop those were refused as structural.
-// Fuel bounds an alias chain; a chain longer than it is judged at its last declaration.
+// non_empty`, `type Char = Int where unicode_scalar, brand("Char")` and their like are alias items
+// (is_type_alias_item: a bare-leaf item whose resolved type is a type-alias return node) whose Rust
+// realization IS the right-hand side's -- the type renderer already renders them that way -- so the
+// operand decision hops to the right-hand side (resolved_type of the declaration) before judging,
+// exactly as the derive lane's alias hop does (v1.compiler.trait_derive_emit
+// v1_item_alias_hop_type_exprs). The seed's own semver and unicode modules compare NonEmptyStr and
+// add to Char; without the hop those were refused as structural. Fuel bounds an alias chain; a
+// chain longer than it is judged at its last declaration.
 fn rust_operand_realization_of_type(rt: Node, scope: InferScope, fuel: Int) -> OperandRealization {
   match type_reference_declaration_ref(n: rt, source_indices: scope.type_env.source_indices, env: scope.type_env) {
     Absent => OperandIdentityUnavailable
@@ -11947,12 +11948,8 @@ fn rust_operand_realization_of_type(rt: Node, scope: InferScope, fuel: Int) -> O
           Present { value: Resolved { node: r } } => r
           _ => rt
         }
-        let is_bare_leaf_alias = decl.connective == NoConnective && decl.children |> count == 0 && decl.inferred != none
-        if is_bare_leaf_alias && fuel > 0 {
-          match decl.inferred {
-            Present { value: Resolved { node: target } } => rust_operand_realization_of_type(rt: target, scope: scope, fuel: fuel - 1)
-            _ => StructuralOperand { declaration: d }
-          }
+        if fuel > 0 && is_type_alias_item(item: decl, source_indices: scope.type_env.source_indices) {
+          rust_operand_realization_of_type(rt: resolved_type(n: decl), scope: scope, fuel: fuel - 1)
         } else {
           StructuralOperand { declaration: d }
         }

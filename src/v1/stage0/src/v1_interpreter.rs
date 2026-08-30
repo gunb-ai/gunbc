@@ -4657,16 +4657,14 @@ fn eval_expr_inner(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> Inter
     match (*node.expr_data).clone() {
         ExprData::ExprLiteral { value } => eval_literal(&value),
 
-        // An elaborated literal evaluates as its image under the selected homomorphism
-        // (std.literal_elaboration): the child is ordinary constructor nodes of the destination,
-        // which the interpreter's own numeric grounding folds exactly as authored ones.
-        ExprData::ExprElaboratedLiteral { .. } => match node.children.get(0) {
-            Some(image) => eval_expr(image, env, ctx),
-            None => Err(InterpError::TypeError {
-                msg: "elaborated literal carries no image (v1.compiler.infer unfold_literal_image)"
-                    .to_string(),
-            }),
-        },
+        // An elaborated literal (std.literal_elaboration) evaluates as the kernel value: this
+        // interpreter realizes the structural destinations natively by its own grounding
+        // (Zero/Succ as Int per #5428, v2.std.logic Bool as bool), so the image of the literal
+        // under that grounding IS the literal, and evaluating the constructor tree instead would
+        // route a natively-realized Bool through variant patterns that have no runtime form here.
+        // The structural image is consumed by emission, which is where the destination is
+        // structural; the emitted-bytes witnesses exercise that path.
+        ExprData::ExprElaboratedLiteral { value, .. } => eval_literal(&value),
 
         ExprData::ExprVar { binding_kind } => eval_var(node, binding_kind.as_deref(), env, ctx),
 
