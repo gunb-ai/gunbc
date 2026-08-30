@@ -14,7 +14,7 @@ import std.upsert_decision { Converged }
 import gunbc.roadmap_belt { SpawnMode, ManualReady, BeltCapacity }
 import gunbc.roadmap_launch_admission {
   LaunchHostStanding, LaunchHostObserved, LaunchHostUnobserved,
-  LaunchSessionsStanding, LaunchSessionsObserved, LaunchSessionsUnobserved,
+  LaunchSessionsStanding, LaunchSessionsObserved, LaunchSessionsUnobserved, LaunchSessionsPending,
   LaunchCause, LaunchIdentity,
   launch_host_halt_transition, launch_host_stage_revision, HostRevisionHalted, HostRevisionConverged,
 }
@@ -167,3 +167,16 @@ fn launch_fixture_standing_sessions_unobserved(mode: SpawnMode) -> LaunchHostSta
 fn launch_fixture_identity(node_id: String, cause: LaunchCause, mode: SpawnMode) -> LaunchIdentity {
   LaunchIdentity { node_id: node_id, cause: cause, mode: mode, instance_id: launch_fixture_instance_id, revision: launch_fixture_desired_hex }
 }
+
+fn launch_fixture_standing_pending(mode: SpawnMode) -> LaunchHostStanding {
+  LaunchHostObserved {
+    instance_id: launch_fixture_instance_id,
+    actuation: DashboardActuating,
+    transition: ActuationAdmitted,
+    revision: launch_fixture_revision_converged(),
+    sessions: LaunchSessionsPending,
+    capacity: BeltCapacity { max_concurrent: 3 },
+    mode: mode,
+  }
+}
+

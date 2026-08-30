@@ -35,6 +35,8 @@ import gunbc.roadmap_launch_admission {
   LaunchAdmission, LaunchAdmitted, LaunchRefused, LaunchIdentity, launch_cause_label,
   LaunchHostStanding, LaunchHostObserveOnly, LaunchHostHalted, HostTransitionGate, HostRevisionGate,
   launch_host_refusal,
+  LaunchStagedAdmission, LaunchStageDecided, LaunchStageNeedsSessions, launch_admission_staged,
+  LaunchSessionsObserved, launch_host_with_sessions,
   LaunchGraphStanding, LaunchGraphProjected, LaunchGraphUnobserved,
   LaunchGateVerdict, GatePassed, GateRefused, GateNotReached,
   LaunchGateLedger, launch_gate_ledger, launch_admission_of_ledger,
@@ -58,6 +60,7 @@ import test.claim.roadmap.roadmap_launch_admission_fixture {
   launch_fixture_revision_converged, launch_fixture_revision_drifted,
   launch_fixture_session,
   launch_fixture_standing_halt_transition, launch_fixture_standing_halt_drift, launch_fixture_standing_sessions_unobserved,
+  launch_fixture_standing_pending,
   launch_fixture_identity,
 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -740,4 +743,48 @@ test fn witness_tick_receipt_round_trips_launch_identities() -> Bool {
     BeltTickReceiptAbsent => false
     BeltTickReceiptUnreadable { reason: _ } => false
   }
+}
+
+data pre_session_stage_note: String = "Review 5059681676 finding 2: the decision is staged so session observation sits behind the node, contract and dependency gates. A PENDING session set answers every model-only refusal WITHOUT sessions (LaunchStageDecided), answers LaunchStageNeedsSessions only for a node that passed every pre-session gate, and a pending standing that reaches the full decision refuses fail-closed at the live gate rather than reading pending as empty."
+
+fn staged(standing: LaunchHostStanding, g: LaunchGraphStanding, node_id: String) -> LaunchStagedAdmission {
+  launch_admission_staged(cause: Operator, standing: standing, graph: g, merged: [], node_id: node_id, reserved: 0)
+}
+
+fn stage_refused_as(st: LaunchStagedAdmission, label: String) -> Bool {
+  match st {
+    LaunchStageDecided { admission } => refused_as(a: admission, label: label)
+    LaunchStageNeedsSessions => false
+  }
+}
+
+test fn witness_pending_sessions_unknown_node_decided_without_sessions() -> Bool {
+  stage_refused_as(st: staged(standing: launch_fixture_standing_pending(mode: ManualReady), g: graph(), node_id: "no-such-node"), label: "node_not_found")
+}
+
+test fn witness_pending_sessions_contract_missing_decided_without_sessions() -> Bool {
+  stage_refused_as(st: staged(standing: launch_fixture_standing_pending(mode: ManualReady), g: graph(), node_id: child_id()), label: "execution_contract_missing")
+}
+
+test fn witness_pending_sessions_blocked_child_decided_without_sessions() -> Bool {
+  stage_refused_as(st: staged(standing: launch_fixture_standing_pending(mode: ManualReady), g: graph_child_contracted(), node_id: child_id()), label: "dependencies_blocked")
+}
+
+test fn witness_pending_sessions_ready_parent_needs_sessions() -> Bool {
+  match staged(standing: launch_fixture_standing_pending(mode: ManualReady), g: graph(), node_id: parent_id()) {
+    LaunchStageNeedsSessions => true
+    LaunchStageDecided { admission: _ } => false
+  }
+}
+
+test fn witness_pending_sessions_completed_admits_ready_parent() -> Bool {
+  let completed = launch_host_with_sessions(standing: launch_fixture_standing_pending(mode: ManualReady), sessions: LaunchSessionsObserved { live: [] })
+  match staged(standing: completed, g: graph(), node_id: parent_id()) {
+    LaunchStageDecided { admission: LaunchAdmitted { identity } } => identity.node_id == parent_id()
+    _ => false
+  }
+}
+
+test fn witness_pending_sessions_reaching_full_decision_refuses_live_gate() -> Bool {
+  refused_as(a: decide(cause: Operator, standing: launch_fixture_standing_pending(mode: ManualReady), g: graph(), node_id: parent_id()), label: "gate_not_evaluated")
 }

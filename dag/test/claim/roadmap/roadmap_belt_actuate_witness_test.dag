@@ -130,6 +130,8 @@ import gunbc.roadmap_belt_actuate {
   belt_tick_receipt_from_result,
   belt_tick_empty_reconcile,
   BeltTickResult,
+  BeltTickWholesale, TickPassesRun, TickPassesWithheld,
+  belt_dispatch_node_staged_over,
   srv1_live_dashboard_instance,
 }
 import gunbc.roadmap_belt { ManualReady }
@@ -144,7 +146,18 @@ import gunbc.roadmap_launch_admission {
   LaunchGateVerdict, GatePassed, GateRefused, GateNotReached,
   launch_gate_live, launch_gate_revision,
   launch_identity_exemplar,
+  LaunchRevisionDrift, LaunchNodeUnknown, LaunchExecutionContractMissing, LaunchDependenciesBlocked,
+  LaunchHostStanding, LaunchGraphStanding, LaunchGraphProjected,
 }
+import test.claim.roadmap.roadmap_launch_admission_fixture {
+  launch_fixture_standing_pending, launch_fixture_standing_halt_transition,
+}
+import gunbc.roadmap_launch_canary {
+  roadmap_launch_canary_child_identity, roadmap_launch_canary_child_node_id,
+  roadmap_launch_canary_edge, roadmap_launch_canary_execution_contract,
+}
+import test.claim.roadmap_launch_canary_witness { canary_node, canary_parent, canary_child, canary_doc }
+import gunbc.roadmap_status { Unsigned }
 import gunbc.roadmap_dashboard_instance {
   DashboardInstanceResolved,
   DashboardInstanceRootUnknown,
@@ -1210,6 +1223,7 @@ data belt_tick_decouple_witness_note: String = "RED control (operator P1, 2026-0
 
 test fn observe_refused_spawn_does_not_zero_verify_pass() -> Bool {
   let result = BeltTickResult {
+    wholesale: TickPassesRun,
     host_refusal: Present { value: LaunchSessionsUnobservable { reason: "belt_observe: tmux ls failed; session containers are unknowable" } },
     reconcile: belt_tick_empty_reconcile(state: ManualReady),
     spawn_outcomes: [],
@@ -1239,6 +1253,7 @@ test fn observe_refused_spawn_does_not_zero_verify_pass() -> Bool {
 
 test fn observe_refused_with_empty_verify_is_deferred_not_recorded() -> Bool {
   let result = BeltTickResult {
+    wholesale: TickPassesRun,
     host_refusal: Present { value: LaunchSessionsUnobservable { reason: "tmux refused" } },
     reconcile: belt_tick_empty_reconcile(state: ManualReady),
     spawn_outcomes: [],
@@ -1283,6 +1298,7 @@ test fn verification_presentation_unreadable_receipt_is_blocked() -> Bool {
 test fn verification_presentation_decouples_verify_from_spawn_observe_refusal() -> Bool {
   let receipt = belt_tick_receipt_from_result(
     result: BeltTickResult {
+      wholesale: TickPassesRun,
       host_refusal: Present { value: LaunchSessionsUnobservable { reason: "belt_observe: tmux ls failed; session containers are unknowable" } },
       reconcile: belt_tick_empty_reconcile(state: ManualReady),
       spawn_outcomes: [],
@@ -2078,5 +2094,120 @@ test fn an_observation_refusal_still_outranks_the_spawn_summary() -> Bool {
     BeltPassFailed { reason: _ } => false
     BeltPassRecorded => false
     BeltPassDeferred { reason: _ } => false
+  }
+}
+
+data review_5059681676_controls_note: String = "Controls for review 5059681676 on #9696. (1) A transition-halted tick writes a receipt whose FOUR passes are Refused with the transition reason -- never Recorded for the verify/publish passes the driver did not run; a non-transition host refusal (revision drift) withholds only the launch passes and verification still records on its own evidence. (2) The route's decision path after the staged observation refuses an unknown node and a contractless node WITHOUT listing tmux: under the hermetic route a tmux effect is a route refusal rather than a verdict, so the green verdict is the effect-order receipt."
+
+fn pass_refused_with(o: BeltPassOutcome, pattern: String) -> Bool {
+  match o {
+    BeltPassRefused { reason } => string_contains(s: reason, pattern: pattern)
+    BeltPassRecorded => false
+    BeltPassDeferred { reason: _ } => false
+    BeltPassFailed { reason: _ } => false
+  }
+}
+
+fn all_four_refused_with(receipt: BeltTickReceipt, pattern: String) -> Bool {
+  pass_refused_with(o: receipt.spawn_pass, pattern: pattern)
+    && pass_refused_with(o: receipt.teardown_pass, pattern: pattern)
+    && pass_refused_with(o: receipt.verify_pass, pattern: pattern)
+    && pass_refused_with(o: receipt.publish_pass, pattern: pattern)
+}
+
+test fn transition_halted_tick_refuses_all_four_passes() -> Bool {
+  let refusal = LaunchTransitionInhibited { reason: "deployment transition in force on this host" }
+  let receipt = belt_tick_receipt_from_result(
+    result: BeltTickResult {
+      wholesale: TickPassesWithheld { refusal: refusal },
+      host_refusal: Present { value: refusal },
+      reconcile: belt_tick_empty_reconcile(state: ManualReady),
+      spawn_outcomes: [],
+      teardown_outcomes: [],
+      verify_outcomes: [],
+      publish_outcomes: [],
+    },
+    observed_at: "2026-08-30T02:00:00Z",
+  )
+  all_four_refused_with(receipt: receipt, pattern: "deployment transition in force")
+}
+
+test fn revision_refusal_keeps_verify_independently_recorded() -> Bool {
+  let receipt = belt_tick_receipt_from_result(
+    result: BeltTickResult {
+      wholesale: TickPassesRun,
+      host_refusal: Present { value: LaunchRevisionDrift { desired: "1111", local: "2222" } },
+      reconcile: belt_tick_empty_reconcile(state: ManualReady),
+      spawn_outcomes: [],
+      teardown_outcomes: [],
+      verify_outcomes: [ VerifyRecorded { node_id: "n", verdict_key: "pass", detail: "ok" } ],
+      publish_outcomes: [],
+    },
+    observed_at: "2026-08-30T02:00:00Z",
+  )
+  (match receipt.spawn_pass { BeltPassRefused { reason } => string_contains(s: reason, pattern: "not the admitted fleet revision") _ => false })
+    && (match receipt.teardown_pass { BeltPassRefused { reason: _ } => true _ => false })
+    && (match receipt.verify_pass { BeltPassRecorded => true _ => false })
+    && (match receipt.publish_pass { BeltPassRecorded => true _ => false })
+}
+
+fn launch_fixture_canary_graph() -> LaunchGraphStanding {
+  LaunchGraphProjected { doc: canary_doc(nodes: [canary_parent(signoff: Unsigned), canary_child()], edges: [roadmap_launch_canary_edge()]) }
+}
+
+fn launch_fixture_canary_graph_child_contracted() -> LaunchGraphStanding {
+  LaunchGraphProjected { doc: canary_doc(
+    nodes: [
+      canary_parent(signoff: Unsigned),
+      canary_node(
+        identity: roadmap_launch_canary_child_identity,
+        id: roadmap_launch_canary_child_node_id(),
+        execution: roadmap_launch_canary_execution_contract(),
+        signoff: Unsigned,
+      ),
+    ],
+    edges: [roadmap_launch_canary_edge()],
+  ) }
+}
+
+fn staged_post_over_canary(graph: LaunchGraphStanding, standing: LaunchHostStanding, node_id: String) -> BeltSpawnOutcome {
+  belt_dispatch_node_staged_over(
+    instance: srv1_live_dashboard_instance(),
+    standing: standing,
+    graph: graph,
+    merged: [],
+    node_id: node_id,
+  )
+}
+
+// The route's real decision path (belt_dispatch_node_staged_over is what belt_dispatch_node_staged
+// calls with the live projection) over the RLM-0 canary graph and a pending session set. Each of
+// these refuses at a model-only gate, so tmux is never listed: under claim_batch's hermetic route a
+// tmux effect would be a route refusal, not a verdict.
+test fn staged_post_refuses_unknown_node_without_listing_tmux() -> Bool {
+  match staged_post_over_canary(graph: launch_fixture_canary_graph(), standing: launch_fixture_standing_pending(mode: ManualReady), node_id: "no-such-node-anywhere") {
+    SpawnNotAdmitted { node_id, refusal: LaunchNodeUnknown } => node_id == "no-such-node-anywhere"
+    _ => false
+  }
+}
+
+test fn staged_post_refuses_contractless_node_without_listing_tmux() -> Bool {
+  match staged_post_over_canary(graph: launch_fixture_canary_graph(), standing: launch_fixture_standing_pending(mode: ManualReady), node_id: roadmap_launch_canary_child_node_id() as String) {
+    SpawnNotAdmitted { node_id: _, refusal: LaunchExecutionContractMissing { reason: _ } } => true
+    _ => false
+  }
+}
+
+test fn staged_post_refuses_blocked_child_without_listing_tmux() -> Bool {
+  match staged_post_over_canary(graph: launch_fixture_canary_graph_child_contracted(), standing: launch_fixture_standing_pending(mode: ManualReady), node_id: roadmap_launch_canary_child_node_id() as String) {
+    SpawnNotAdmitted { node_id: _, refusal: LaunchDependenciesBlocked { blockers: _ } } => true
+    _ => false
+  }
+}
+
+test fn staged_post_transition_halt_refuses_without_listing_tmux() -> Bool {
+  match staged_post_over_canary(graph: launch_fixture_canary_graph(), standing: launch_fixture_standing_halt_transition(), node_id: roadmap_launch_canary_child_node_id() as String) {
+    SpawnNotAdmitted { node_id: _, refusal: LaunchTransitionInhibited { reason: _ } } => true
+    _ => false
   }
 }
