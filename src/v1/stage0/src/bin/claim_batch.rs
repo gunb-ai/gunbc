@@ -19,12 +19,15 @@ use v1_compiler::v1_std_core::NewlineIndex;
 
 type ResolvedEntry = (Rc<ResolvedGraph>, Rc<HashMap<String, Rc<NewlineIndex>>>);
 
+/// The batch's running ledger — counts, clocks, and the verdict flag — one value threaded
+/// through every witness so no caller can carry a clock without the verdict it belongs to.
 #[derive(Default)]
 struct ResolveTimings {
     resolves: u64,
     resolve_ms: u128,
     witnesses: u64,
     witness_ms: u128,
+    any_failed: bool,
 }
 
 fn peak_rss_lines() -> String {
@@ -169,34 +172,6 @@ fn require_path_value(args: &[String], idx: usize, flag: &str) -> Result<String,
 struct EntryGroup {
     entry: String,
     functions: Vec<String>,
-}
-
-/// The per-run interpreter options every entry's eval context is built from — one value,
-/// built once from the parsed args, consumed identically by the single-entry and the
-/// grouped path so the two cannot drift apart in what they hand the interpreter.
-struct WitnessRunOptions {
-    execution_mode: ExecutionMode,
-    fixture_store: Option<Rc<RecordedFixtureStore>>,
-    whole_tree_published_keys: Option<Rc<std::collections::HashSet<String>>>,
-    eval_budget_ms: Option<u64>,
-}
-
-impl WitnessRunOptions {
-    fn eval_context(
-        &self,
-        graph: &ResolvedGraph,
-        source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    ) -> InterpContext {
-        let ctx = make_eval_context_with_runtime_options(
-            graph,
-            source_indices,
-            self.execution_mode,
-            self.fixture_store.clone(),
-            self.whole_tree_published_keys.clone(),
-        );
-        ctx.set_witness_eval_budget(self.eval_budget_ms);
-        ctx
-    }
 }
 
 struct ParsedArgs {
@@ -475,11 +450,10 @@ fn run_claim_timed(
     ctx: &InterpContext,
     closure_subject: &str,
     function: &str,
-    any_failed: &mut bool,
     timings: &mut ResolveTimings,
 ) {
     let (outcome, receipt) = run_claim_measured(ctx, closure_subject, function);
-    report_outcome(function, outcome, any_failed);
+    report_outcome(function, outcome, &mut timings.any_failed);
     eprintln!("{}", witness_report_line(function, &receipt));
     print_eval_profile(function);
     timings.witnesses += 1;
@@ -547,8 +521,10 @@ fn validate_fixture_flags(
 fn run_witnesses(
     index: &MultiEntryIndex,
     group: &EntryGroup,
-    options: &WitnessRunOptions,
-    any_failed: &mut bool,
+    execution_mode: ExecutionMode,
+    fixture_store: Option<Rc<RecordedFixtureStore>>,
+    whole_tree_published_keys: Option<Rc<std::collections::HashSet<String>>>,
+    eval_budget_ms: Option<u64>,
     timings: &mut ResolveTimings,
 ) -> Result<(), ExitCode> {
     let (graph, source_indices) = resolve_timed(index, &group.entry, timings)?;
@@ -556,9 +532,16 @@ fn run_witnesses(
         eprintln!("claim_batch: closure subject for {}: {e}", group.entry);
         ExitCode::from(1)
     })?;
-    let ctx = options.eval_context(&graph, source_indices);
+    let ctx = make_eval_context_with_runtime_options(
+        &graph,
+        source_indices,
+        execution_mode,
+        fixture_store,
+        whole_tree_published_keys,
+    );
+    ctx.set_witness_eval_budget(eval_budget_ms);
     for function in &group.functions {
-        run_claim_timed(&ctx, &closure_subject, function, any_failed, timings);
+        run_claim_timed(&ctx, &closure_subject, function, timings);
         // The eval-call memo's eviction scope is the witness frame, not this
         // shared per-entry ctx — ctx-lifetime retention of argument+result
         // values across witnesses is byte-unbounded (20GiB-class kills).
@@ -761,14 +744,7 @@ fn run() -> Result<ExitCode, ExitCode> {
     let flatten_baseline = v1_compiler::v1_interpreter::flatten_counters_snapshot();
     let stats_requested = std::env::var_os("GUNBC_INTERP_STATS").is_some_and(|v| v != "0");
 
-    let mut any_failed = false;
     let mut timings = ResolveTimings::default();
-    let options = WitnessRunOptions {
-        execution_mode,
-        fixture_store,
-        whole_tree_published_keys,
-        eval_budget_ms,
-    };
 
     if entry_groups.len() == 1 {
         let group = &entry_groups[0];
@@ -790,15 +766,16 @@ fn run() -> Result<ExitCode, ExitCode> {
             eprintln!("claim_batch: closure subject for {}: {e}", group.entry);
             ExitCode::from(1)
         })?;
-        let ctx = options.eval_context(&graph, source_indices);
+        let ctx = make_eval_context_with_runtime_options(
+            &graph,
+            source_indices,
+            execution_mode,
+            fixture_store.clone(),
+            whole_tree_published_keys.clone(),
+        );
+        ctx.set_witness_eval_budget(eval_budget_ms);
         for function in &group.functions {
-            run_claim_timed(
-                &ctx,
-                &closure_subject,
-                function,
-                &mut any_failed,
-                &mut timings,
-            );
+            run_claim_timed(&ctx, &closure_subject, function, &mut timings);
             // Witness frame exit on the single-entry fast path too — this is
             // the exact path the 6-witness 20GiB-kill recipe runs (the memo
             // must not retain values across witnesses sharing this ctx).
@@ -820,11 +797,21 @@ fn run() -> Result<ExitCode, ExitCode> {
             // any_failed). Aborting the whole batch on the first red entry
             // truncated the measurement: each run revealed only the NEXT red
             // class, and everything alphabetically after it went unmeasured.
-            if run_witnesses(&index, group, &options, &mut any_failed, &mut timings).is_err() {
+            if run_witnesses(
+                &index,
+                group,
+                execution_mode,
+                fixture_store.clone(),
+                whole_tree_published_keys.clone(),
+                eval_budget_ms,
+                &mut timings,
+            )
+            .is_err()
+            {
                 for function in &group.functions {
                     println!("FAIL {} (entry resolve failed: {})", function, group.entry);
                 }
-                any_failed = true;
+                timings.any_failed = true;
             }
         }
         if stats_requested {
@@ -942,7 +929,7 @@ fn run() -> Result<ExitCode, ExitCode> {
         );
     }
 
-    if any_failed {
+    if timings.any_failed {
         return Ok(ExitCode::from(1));
     }
 
