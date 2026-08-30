@@ -42,79 +42,41 @@ fn changed_standing_of(reading: ChangedWitnessDispositionReading) -> ChangedWitn
   changed_witness_execution_standing(reading: reading)
 }
 
-fn is_planned_and_passed(s: ChangedWitnessExecutionStanding) -> Bool {
+// One exhaustive observation surface for the standing shape. Tests compare its answer instead
+// of each growing a Boolean predicate that recursively restates the coproduct.
+fn standing_kind(s: ChangedWitnessExecutionStanding) -> String {
   match s {
-    PlannedAndPassed => true
-    PlannedAndKnownRedHeld => false
-    PlannedWithoutTerminalVerdict => false
-    Declined { disposition: _ } => false
-    MissingDisposition => false
-  }
-}
-
-fn is_planned_without_terminal_verdict(s: ChangedWitnessExecutionStanding) -> Bool {
-  match s {
-    PlannedAndPassed => false
-    PlannedAndKnownRedHeld => false
-    PlannedWithoutTerminalVerdict => true
-    Declined { disposition: _ } => false
-    MissingDisposition => false
-  }
-}
-
-fn is_declined(s: ChangedWitnessExecutionStanding) -> Bool {
-  match s {
-    PlannedAndPassed => false
-    PlannedAndKnownRedHeld => false
-    PlannedWithoutTerminalVerdict => false
-    Declined { disposition: _ } => true
-    MissingDisposition => false
-  }
-}
-
-fn is_missing_disposition(s: ChangedWitnessExecutionStanding) -> Bool {
-  match s {
-    PlannedAndPassed => false
-    PlannedAndKnownRedHeld => false
-    PlannedWithoutTerminalVerdict => false
-    Declined { disposition: _ } => false
-    MissingDisposition => true
-  }
-}
-
-fn is_planned_and_known_red_held(s: ChangedWitnessExecutionStanding) -> Bool {
-  match s {
-    PlannedAndPassed => false
-    PlannedAndKnownRedHeld => true
-    PlannedWithoutTerminalVerdict => false
-    Declined { disposition: _ } => false
-    MissingDisposition => false
+    PlannedAndPassed => "planned-and-passed"
+    PlannedAndKnownRedHeld => "planned-and-known-red-held"
+    PlannedWithoutTerminalVerdict => "planned-without-terminal-verdict"
+    Declined { disposition: _ } => "declined"
+    MissingDisposition => "missing-disposition"
   }
 }
 
 // A planned identity whose terminal outcome is Passed carries the passed green standing.
 test fn planned_with_passed_verdict_stands_green() -> Bool {
-  is_planned_and_passed(
+  standing_kind(
     s: changed_standing_of(
       reading: DispositionRow {
         disposition: Planned {},
         terminal: TerminalOutcome { outcome: Passed {} }
       }
     )
-  )
+  ) == "planned-and-passed"
 }
 
 // The changed-witness sublane is a second planning mechanism, not an admission exception.
 // Its terminal verdict is judged identically while its distinct disposition preserves why it ran.
 test fn changed_sublane_with_passed_verdict_stands_green() -> Bool {
-  is_planned_and_passed(
+  standing_kind(
     s: changed_standing_of(
       reading: DispositionRow {
         disposition: PlannedAsChangedWitness {},
         terminal: TerminalOutcome { outcome: Passed {} }
       }
     )
-  )
+  ) == "planned-and-passed"
 }
 
 test fn changed_selector_replaces_an_ordinary_decline_with_its_own_planned_arm() -> Bool {
@@ -151,91 +113,91 @@ test fn unchanged_identity_keeps_its_ordinary_disposition() -> Bool {
 
 // A planned identity the receipt records as never executed is nonterminal — red.
 test fn planned_but_not_executed_is_nonterminal() -> Bool {
-  is_planned_without_terminal_verdict(
+  standing_kind(
     s: changed_standing_of(
       reading: DispositionRow {
         disposition: Planned {},
         terminal: NotExecuted {}
       }
     )
-  )
+  ) == "planned-without-terminal-verdict"
 }
 
 // An enrolled expected-red failing exactly as enrolled reached the terminal verdict the run
 // holds green for it — the sanctioned add-a-discriminating-RED move is not vetoed here.
 test fn planned_with_known_red_held_verdict_stands_green() -> Bool {
-  is_planned_and_known_red_held(
+  standing_kind(
     s: changed_standing_of(
       reading: DispositionRow {
         disposition: Planned {},
         terminal: TerminalOutcome { outcome: KnownRedHeld {} }
       }
     )
-  )
+  ) == "planned-and-known-red-held"
 }
 
 // A planned identity with a non-Passed terminal outcome carries no passing verdict — red at
 // this grain too, whatever its own mechanism already did to the floor.
 test fn planned_with_failed_verdict_is_nonterminal() -> Bool {
-  is_planned_without_terminal_verdict(
+  standing_kind(
     s: changed_standing_of(
       reading: DispositionRow {
         disposition: Planned {},
         terminal: TerminalOutcome { outcome: Failed {} }
       }
     )
-  )
+  ) == "planned-without-terminal-verdict"
 }
 
 test fn planned_with_route_gap_verdict_is_nonterminal() -> Bool {
-  is_planned_without_terminal_verdict(
+  standing_kind(
     s: changed_standing_of(
       reading: DispositionRow {
         disposition: Planned {},
         terminal: TerminalOutcome { outcome: RouteGapBeforeVerdict {} }
       }
     )
-  )
+  ) == "planned-without-terminal-verdict"
 }
 
 // THE INCIDENT ARM: a changed identity declined because its module name is outside the gate
 // closure classifies Declined — the exact state PRs #9672/#9675 shipped green.
 test fn declined_outside_gate_closure_is_declined() -> Bool {
-  is_declined(
+  standing_kind(
     s: changed_standing_of(
       reading: DispositionRow {
         disposition: DeclinedOutsideGateClosure {},
         terminal: NotExecuted {}
       }
     )
-  )
+  ) == "declined"
 }
 
 test fn declined_long_module_is_declined() -> Bool {
-  is_declined(
+  standing_kind(
     s: changed_standing_of(
       reading: DispositionRow {
         disposition: DeclinedLongModule { matched_prefix: "test.claim.long." },
         terminal: NotExecuted {}
       }
     )
-  )
+  ) == "declined"
 }
 
 test fn declined_cost_debt_is_declined() -> Bool {
-  is_declined(
+  standing_kind(
     s: changed_standing_of(
       reading: DispositionRow {
         disposition: DeclinedCostDebt {},
         terminal: NotExecuted {}
       }
     )
-  )
+  ) == "declined"
 }
 
 // A changed identity with no disposition row at all is a fact the receipt cannot speak for.
 test fn absent_row_is_missing_disposition() -> Bool {
-  is_missing_disposition(s: changed_standing_of(reading: NoDispositionRow {}))
+  standing_kind(s: changed_standing_of(reading: NoDispositionRow {})) == "missing-disposition"
 }
 
 // Blocking polarity: the passed and enrolled-held standings are green.
