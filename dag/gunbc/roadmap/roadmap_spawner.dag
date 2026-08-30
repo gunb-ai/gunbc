@@ -71,7 +71,24 @@ fn doc_all_edges(doc: RoadmapDocument) -> List<RoadmapEdge> {
   fold(doc.sections, init: lane_edges, f: (acc, s) => concat(acc, section_edges(s: s)))
 }
 
-data roadmap_rendered_containment_note: String = "RENDERED IS CONTAINED IN DECLARED-OR-DERIVED, witnessed — membership is the WHOLE NODE VALUE, never the identity alone, and the traversal is doc_all_nodes, the one canonical document walker. The 2026-07-31 operator verdict on gunbc#7489 found the guarantee-ladder nodes rendered from a section-local list outside declared_roadmap_nodes() — a second roadmap universe: uncounted, receipt-unreachable, invisible to active_roadmap_nodes() and the identity/endpoint/acyclicity witnesses. The section was deleted and the nodes joined the declared graph; these predicates close the CLASS: every node any rendered document carries must be value-equal to a declared node or a projection-derived closing-contract task. Two refused first cuts are recorded because each was a review catch of this wall violating the laws it enforces: identity-only membership (review 45406 — an altered copy reusing a declared identity would pass as sanctioned while forking content, the drifting duplicate authority DESIGN 3 forbids) and a hand-rolled document walker beside doc_all_nodes (review 45412 — a traversal fork; the predicates live HERE, in the walker's module, because roadmap_spawner already imports roadmap_authority and the reverse import would cycle). Two RED probes, each a synthetic document the wall must red: a fresh-identity ghost, and an altered copy of a real declared node (same identity, one field changed — derived from the canonical node so the probe duplicates no literals). Neither probe node enters the declared graph; the altered-copy probe returns 0 if its anchor node disappears, failing its witness loudly rather than vacuously passing."
+// RENDERED IS CONTAINED IN DECLARED-OR-DERIVED, witnessed — membership is the WHOLE NODE VALUE,
+// never the identity alone, and the traversal is doc_all_nodes, the one canonical document walker.
+// The 2026-07-31 operator verdict on gunbc#7489 found the guarantee-ladder nodes rendered from a
+// section-local list outside declared_roadmap_nodes() — a second roadmap universe: uncounted,
+// receipt-unreachable, invisible to active_roadmap_nodes() and the identity/endpoint/acyclicity
+// witnesses. The section was deleted and the nodes joined the declared graph; these predicates
+// close the CLASS: every node any rendered document carries must be value-equal to a declared node
+// or a projection-derived closing-contract task. Two refused first cuts are recorded because each
+// was a review catch of this wall violating the laws it enforces: identity-only membership (review
+// 45406 — an altered copy reusing a declared identity would pass as sanctioned while forking
+// content, the drifting duplicate authority DESIGN 3 forbids) and a hand-rolled document walker
+// beside doc_all_nodes (review 45412 — a traversal fork; the predicates live HERE, in the walker's
+// module, because roadmap_spawner already imports roadmap_authority and the reverse import would
+// cycle). Two RED probes, each a synthetic document the wall must red: a fresh-identity ghost, and
+// an altered copy of a real declared node (same identity, one field changed — derived from the
+// canonical node so the probe duplicates no literals). Neither probe node enters the declared
+// graph; the altered-copy probe returns 0 if its anchor node disappears, failing its witness loudly
+// rather than vacuously passing.
 
 fn roadmap_rendered_ghost_count(doc: RoadmapDocument) -> Int {
   match closing_contract_task_pairs_projection() {
@@ -131,7 +148,12 @@ fn roadmap_altered_copy_red_probe_count() -> Int {
   }
 }
 
-data spawn_frontier_completion_note: String = "Work-item acceptance is separate from implementation evidence. A merged PR or authored/ticket checkbox moves the page status to review, but never completes the node, removes its dispatch action, or unblocks a dependent node. Only an accepting operator sign-off completes work. Supersession is a separate terminal disposition: it never enters the done bucket, but it closes dependency edges because the named successor owns the work. The same acceptance and dependency-closure predicates drive ready, upcoming, done, and unmet-parent projections."
+// Work-item acceptance is separate from implementation evidence. A merged PR or authored/ticket
+// checkbox moves the page status to review, but never completes the node, removes its dispatch
+// action, or unblocks a dependent node. Only an accepting operator sign-off completes work.
+// Supersession is a separate terminal disposition: it never enters the done bucket, but it closes
+// dependency edges because the named successor owns the work. The same acceptance and
+// dependency-closure predicates drive ready, upcoming, done, and unmet-parent projections.
 
 fn node_is_accepted(n: RoadmapNode) -> Bool {
   signoff_accepts(s: n.signoff)
