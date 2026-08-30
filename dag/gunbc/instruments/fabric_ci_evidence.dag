@@ -4,8 +4,7 @@ import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import v2.std.optional { Present, Absent }
 import std.content_hash { ContentHash, content_hash_of_value }
-
-data fabric_ci_evidence_contract_note: String = "FCI-EVIDENCE-0 is the one run-boundary contract inherited by every wet fabric gate. Values, process status and diagnostic rendering are three distinct channels. Assertion entries return ProcessExit. Transport entries return only the framed wire and never decide a verdict. The host driver sequences and checks statuses; semantic comparisons remain in .dag. Six uppercase hexadecimal digits encode each Unicode scalar. The alphabet cannot carry the apostrophe or newline delimiters owned by gunbc run's refusal diagnostic. Fixed width makes concatenation injective without a delimiter, and the decoder rejects bad width, bad digits, surrogate scalars and values beyond Unicode's maximum."
+import extdeps.filesystem.filesystem_io { Filesystem }
 
 type FabricCiEvidenceRole
   = FabricCiAssertionRole
@@ -16,7 +15,7 @@ type FabricCiEvidenceRole
 type FabricCiEvidenceContract {
   roles: List<FabricCiEvidenceRole>
   assertion_result: NonEmptyStr
-  transport_status: Int
+  transport_result: NonEmptyStr
   projection_requirement: NonEmptyStr
   host_driver_authority: NonEmptyStr
 }
@@ -24,7 +23,7 @@ type FabricCiEvidenceContract {
 data fabric_ci_evidence_contract: FabricCiEvidenceContract = {
   roles: [FabricCiAssertionRole, FabricCiTransportRole, FabricCiProjectionRole, FabricCiHostDriverRole]
   assertion_result: "ProcessExit"
-  transport_status: 2
+  transport_result: "Filesystem.Write-then-ProcessExit"
   projection_requirement: "total-distinct-framed-decodable"
   host_driver_authority: "status-and-sequence-only"
 }
@@ -36,10 +35,7 @@ type FabricCiEvidenceDecode
   | FabricCiEvidenceUndecodable
 
 fn fabric_ci_hex_digit(n: Int) -> String {
-  if n == 0 { "0" } else if n == 1 { "1" } else if n == 2 { "2" } else if n == 3 { "3" }
-  else if n == 4 { "4" } else if n == 5 { "5" } else if n == 6 { "6" } else if n == 7 { "7" }
-  else if n == 8 { "8" } else if n == 9 { "9" } else if n == 10 { "A" } else if n == 11 { "B" }
-  else if n == 12 { "C" } else if n == 13 { "D" } else if n == 14 { "E" } else { "F" }
+  substring(s: "0123456789ABCDEF", start: n, end: n + 1)
 }
 
 fn fabric_ci_hex_scalar(cp: Int) -> String {
@@ -69,22 +65,16 @@ fn fabric_ci_framed_coordinates(values: List<NonEmptyStr>) -> NonEmptyStr {
   })
 }
 
-data fabric_ci_shell_crossing_hash_note: String = "The only content-hash entrance for shell-crossing coordinate collections. Callers first project every typed coordinate to its canonical NonEmptyStr wire; a List or record cannot reach content_hash_of_value through this signature."
-
+// Shell-crossing collections enter content hashing only after every coordinate has a canonical NonEmptyStr projection.
 fn fabric_ci_shell_crossing_coordinates_hash(values: List<NonEmptyStr>) -> ContentHash {
   content_hash_of_value(value: fabric_ci_framed_coordinates(values: values))
 }
 
 fn fabric_ci_hex_value(c: String) -> Int? {
-  if c == "0" { Present { value: 0 } } else if c == "1" { Present { value: 1 } }
-  else if c == "2" { Present { value: 2 } } else if c == "3" { Present { value: 3 } }
-  else if c == "4" { Present { value: 4 } } else if c == "5" { Present { value: 5 } }
-  else if c == "6" { Present { value: 6 } } else if c == "7" { Present { value: 7 } }
-  else if c == "8" { Present { value: 8 } } else if c == "9" { Present { value: 9 } }
-  else if c == "A" { Present { value: 10 } } else if c == "B" { Present { value: 11 } }
-  else if c == "C" { Present { value: 12 } } else if c == "D" { Present { value: 13 } }
-  else if c == "E" { Present { value: 14 } } else if c == "F" { Present { value: 15 } }
-  else { none }
+  let found = fold([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15], init: -1, f: fn(acc, i) {
+    if substring(s: "0123456789ABCDEF", start: i, end: i + 1) == c { i } else { acc }
+  })
+  if found < 0 { none } else { Present { value: found } }
 }
 
 fn fabric_ci_decode_scalar(wire: String, at: Int) -> Int? {
@@ -147,12 +137,11 @@ type FabricCiCalibrationProjection
   = FabricCiCalibrationAlpha { payload: NonEmptyStr }
   | FabricCiCalibrationBeta { payload: NonEmptyStr }
 
-data fabric_ci_calibration_projection_note: String = "Total and default-free: adding a variant makes fabric_ci_calibration_projection_wire fail to compile until it is framed."
-
+// This projection is total and default-free: a new variant must acquire a distinct framed arm.
 fn fabric_ci_calibration_projection_wire(value: FabricCiCalibrationProjection) -> String {
   match value {
-    FabricCiCalibrationAlpha { payload: payload } => join(["alpha|", fabric_ci_evidence_wire(value: payload)], "")
-    FabricCiCalibrationBeta { payload: payload } => join(["beta|", fabric_ci_evidence_wire(value: payload)], "")
+    FabricCiCalibrationAlpha { payload: payload } => join(["alpha|", payload as String], "")
+    FabricCiCalibrationBeta { payload: payload } => join(["beta|", payload as String], "")
   }
 }
 
@@ -164,8 +153,37 @@ func fabric_ci_calibration_raw_coproduct_must_not_cross() -> FabricCiCalibration
   FabricCiCalibrationAlpha { payload: "raw-coproduct" }
 }
 
-func fabric_ci_calibration_transport() -> String {
+func fabric_ci_calibration_diagnostic_forgery() -> String {
+  fabric_ci_calibration_alpha_wire()
+}
+
+fn fabric_ci_calibration_alpha_wire() -> String {
   fabric_ci_evidence_wire(value: fabric_ci_calibration_projection_wire(value: FabricCiCalibrationAlpha { payload: "apostrophe-' newline-\n delimiter-|" }) as NonEmptyStr)
+}
+
+fn fabric_ci_calibration_beta_wire() -> String {
+  fabric_ci_evidence_wire(value: fabric_ci_calibration_projection_wire(value: FabricCiCalibrationBeta { payload: "different-value" }) as NonEmptyStr)
+}
+
+fn fabric_ci_write_wire(path: String, wire: String) -> ProcessExit {
+  let written = Filesystem.Write(path: path, content: wire)
+  if !written.success { exit_failure(reason: concat("FCI-EVIDENCE-0 value write refused: ", written.error)) }
+  else if written.path != path { exit_failure(reason: "FCI-EVIDENCE-0 value write reported a different path") }
+  else if written.bytes_written != wire.length() { exit_failure(reason: "FCI-EVIDENCE-0 value write reported a different byte count") }
+  else { ExitSuccess }
+}
+
+func fabric_ci_calibration_transport_alpha(path: String) -> ProcessExit {
+  fabric_ci_write_wire(path: path, wire: fabric_ci_calibration_alpha_wire())
+}
+
+func fabric_ci_calibration_transport_beta(path: String) -> ProcessExit {
+  fabric_ci_write_wire(path: path, wire: fabric_ci_calibration_beta_wire())
+}
+
+func fabric_ci_calibration_transport_ignores_write_failure(path: String) -> ProcessExit {
+  let ignored = Filesystem.Write(path: "/proc/fci-evidence-ignored-write", content: fabric_ci_calibration_alpha_wire())
+  ExitSuccess
 }
 
 func fabric_ci_calibration_assert_transport(wire: String) -> ProcessExit {
@@ -186,4 +204,11 @@ func fabric_ci_calibration_collapsed_projection_must_red() -> ProcessExit {
   } else { exit_failure(reason: "FCI-EVIDENCE-0 decisive red: projection arms remain distinct") }
 }
 
-func fabric_ci_calibration_transport_converted_to_exit() -> ProcessExit { ExitSuccess }
+func fabric_ci_calibration_assert_beta_transport(wire: String) -> ProcessExit {
+  match decode_fabric_ci_evidence_wire(wire: wire) {
+    FabricCiEvidenceUndecodable => exit_failure(reason: "FCI-EVIDENCE-0 beta transport undecodable")
+    FabricCiEvidenceDecoded { value: decoded } =>
+      if (decoded as String) == fabric_ci_calibration_projection_wire(value: FabricCiCalibrationBeta { payload: "different-value" }) { ExitSuccess }
+      else { exit_failure(reason: "FCI-EVIDENCE-0 status did not distinguish transported values") }
+  }
+}

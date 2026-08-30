@@ -111,6 +111,11 @@ jobs:
           rustup toolchain list || echo "rustup toolchain list: no answer"
           rustup default || echo "rustup default: no answer"
         if: "!cancelled()"
+      - name: Calibrate fabric CI evidence boundary
+        run: |
+          bash tools/fabric_ci_evidence_calibration.sh
+        if: "!cancelled() && steps.build_witness_fold.outcome == 'success'"
+        timeout-minutes: 20
       - name: "Required CI: witnesses lane (parse, witness floor)"
         run: |
           ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)

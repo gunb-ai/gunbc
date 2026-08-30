@@ -651,6 +651,24 @@ fn build_lane_run_step() -> Step {
   }
 }
 
+// FCI-EVIDENCE-0 is enrolled here, after this job builds the exact-tree gunbc and before any
+// later wet fabric gate can cite its run-boundary contract. The shell is the manager-approved
+// sequencing carrier; its dissolve-on is modeled lifecycle actuation sufficient to sequence a
+// wet gate from .dag. Fabric facts remain ProcessExit assertions and named Filesystem.Write values.
+fn fabric_ci_evidence_calibration_step() -> Step {
+  RunStep {
+    name: Present { value: "Calibrate fabric CI evidence boundary" },
+    id: none,
+    run: "bash tools/fabric_ci_evidence_calibration.sh\n",
+    shell: none,
+    env: none,
+    working_directory: none,
+    if_condition: Present { value: witness_floor_precondition() },
+    continue_on_error: none,
+    timeout_minutes: Present { value: 20 }
+  }
+}
+
 fn witness_floor_run_step() -> Step {
   RunStep {
     name: Present { value: "Required CI: witnesses lane (parse, witness floor)" },
@@ -929,6 +947,11 @@ fn witness_floor_bound_steps() -> List<WitnessFloorBoundStep> {
         step: witness_toolchain_environment_probe_step(),
         role: capability_neutral,
         step_name: "Record the toolchain environment",
+      },
+      WitnessFloorBoundStep {
+        step: fabric_ci_evidence_calibration_step(),
+        role: capability_neutral,
+        step_name: "Calibrate fabric CI evidence boundary",
       },
       WitnessFloorBoundStep {
         step: witness_floor_run_step(),
