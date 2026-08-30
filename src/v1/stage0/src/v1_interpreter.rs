@@ -16518,7 +16518,7 @@ pub fn list_cons_tail_split_snapshot() -> (u64, u64) {
     )
 }
 
-pub const EXPR_VARIANT_COUNT: usize = 22;
+pub const EXPR_VARIANT_COUNT: usize = 23;
 
 fn expr_variant_index(d: &ExprData) -> usize {
     match d {
