@@ -12,7 +12,9 @@ import extdeps.github.log_annotations {
   annotation_stop_commands_prefix
 }
 import extdeps.languages.yaml.types { YamlValue, YamlKeyValue }
-import std.types { NonEmptyStr, SecretName, Unit }
+import std.types { NonEmptyStr, SecretName, Unit, String, List }
+import std.os.types { KernelFamily }
+import extdeps.toolchain.types { Architecture }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 
@@ -183,6 +185,48 @@ type RunnerSpec
   | SelfHosted { labels: List<String> }
 
   | RunsOnExpression { expression: String }
+
+// SELF-HOSTED RUNNER LABEL VOCABULARY - GitHub's names, cited, one authority.
+// The runner agent applies DEFAULT labels automatically at registration: "self-hosted"
+// on every self-hosted runner, an OS label, and an architecture label
+// (docs.github.com/en/actions/hosting-your-own-runners/managing-self-hosted-runners/
+// using-labels-with-self-hosted-runners, read 2026-08-30). runs-on requires a runner
+// carrying ALL listed labels (AND semantics), and label matching is case-insensitive;
+// the wire strings below are the lowercase forms our registered fleet observably
+// matches. CUSTOM labels (host names like srv1) are user-applied FLEET facts - they are
+// deliberately not enumerated here (an upstream module may not enumerate our hosts, and
+// the typed-topology question is owned by the fabric recut's Cut D program), so
+// self_hosted_labels takes them as an ordinary list.
+data self_hosted_provenance_label: String = "self-hosted"
+
+fn runner_os_label(kernel: KernelFamily) -> String {
+  match kernel {
+    Linux => "linux"
+    Darwin => "macos"
+    WindowsNt => "windows"
+    LinuxGuestOnWindows => "linux"
+  }
+}
+
+fn runner_arch_label(arch: Architecture) -> String {
+  match arch {
+    Aarch64 => "arm64"
+    X86_64 => "x64"
+    X86 => "x86"
+    Arm => "arm"
+    Armv7 => "arm"
+    Riscv64 => "riscv64"
+    Wasm32 => "wasm32"
+    Mips => "mips"
+    Mipsel => "mipsel"
+    Mips64 => "mips64"
+    Mips64el => "mips64el"
+  }
+}
+
+fn self_hosted_labels(kernel: KernelFamily, arch: Architecture, custom: List<String>) -> List<String> {
+  concat(concat([self_hosted_provenance_label, runner_os_label(kernel: kernel)], [runner_arch_label(arch: arch)]), custom)
+}
 
 type RunnerLabel
   = UbuntuLatest
