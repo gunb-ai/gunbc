@@ -872,7 +872,7 @@ mod roadmap_acceptance_history_projection_tests {
 
     #[test]
     #[ignore = "live-corpus: prepares or builds over the live tree (minutes per test); the receipts lane runs these with --ignored, the required unit run does not"]
-    fn merge_base_authority_projection_matches_jsonl_carrier() {
+    fn bootstrap_authority_projection_is_jsonl_carrier_prefix() {
         let authority = std::process::Command::new("git")
             .args(["show", "9ce6526c528:dag/gunbc/roadmap_authority.dag"])
             .output()

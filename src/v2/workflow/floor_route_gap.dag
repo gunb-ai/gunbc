@@ -173,9 +173,9 @@ fn floor_route_gap_chunk_00() -> List<String> {
       head: "test.claim.generated_artifact_merge_driver_real_execution.divergent_generated_artifact_merge_under_true_driver_silently_drops_theirs_red_control_by_real_execution",
       tail: Cons {
       head: "test.claim.generated_artifact_merge_driver_real_execution.one_sided_generated_artifact_change_merges_clean_by_real_execution",
-      tail: Empty {
-    
-    
+      tail: Empty {}
+    }
+    }
     }
     }
     }
@@ -659,9 +659,6 @@ fn floor_route_gap_expectation_chunk_03() -> List<FloorRouteGapExpectation> {
     tail: Cons {
     head: FloorRouteGapExpectation { identity: "v2.test.manual.emit_source_store.emit_source_store_mutated_emitter_misses_holds", operation: "Write", ground: NoMockResponse {} },
     tail: Empty {}
-  }
-  }
-  }
   }
   }
   }
