@@ -355,6 +355,22 @@ test fn w_qualified_type_reference_earns_the_leaf_use_line() -> Bool {
   )
 }
 
+// THE SYMBOL IMPORT COLLISION, the byte-level falsifier test.claim.symbol_identity_binding specifies
+// for the exact path (symbol_import_collision_fixture_source there is this source). v2.std.node
+// `type Symbol` is opaque and bound by declaration to RustStdString; v2.std.text `String` is the
+// structural text carrier, and this module imports both. Under the spelling-keyed path Symbol
+// rendered the bare token `String`, which the v2_std_text use-line captured (the XL-0A E0308
+// population); under the exact path the declaration-keyed spelling is fully qualified and no
+// use-line can shadow it.
+test fn w_symbol_reference_renders_the_exact_qualified_spelling() -> Bool {
+  compile_dag_rust_emit_check(
+    "module test.claim.symbol_import_collision\nimport v2.std.node { Symbol }\nimport v2.std.text { String }\n\nfn takes_symbol(identity: Symbol) -> Symbol {\n  identity\n}\n\nfn takes_text(text: String) -> String {\n  text\n}\n",
+    "src/test_claim_symbol_import_collision.rs",
+    ["identity: std::string::String) -> std::string::String"],
+    ["identity: String", "identity: Symbol"]
+  )
+}
+
 // QUALIFIED VALUE HEAD, THE OTHER DIRECTION. `v2.std.nat.Succ { prev: .. }` is a variant record
 // literal; the value route imports it through its parent enum, and this route must synthesize
 // nothing for it (E0603 `variant import is private`, sixteen sites on the first regeneration).
