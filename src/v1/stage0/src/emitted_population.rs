@@ -18,6 +18,7 @@
 // src/extdeps_languages_rust_capabilities.rs
 // src/extdeps_languages_rust_derive_contracts.rs
 // src/extdeps_languages_rust_emit.rs
+// src/extdeps_languages_rust_representation.rs
 // src/extdeps_languages_rust_syntax.rs
 // src/extdeps_languages_rust_types.rs
 // src/extdeps_units_dimensionless.rs
@@ -31,6 +32,7 @@
 // src/gunbc_cli_dispatch_surface.rs
 // src/gunbc_namespace_reference_derived_closure_admission.rs
 // src/gunbc_rust_decl_type_overlay.rs
+// src/gunbc_rust_source_type_bindings.rs
 // src/gunbc_stage0_crate_layout_generated.rs
 // src/gunbc_stage0_crate_partition_generated.rs
 // src/gunbc_stage0_emitted_population_manifest.rs
@@ -74,6 +76,7 @@
 // src/std_serialization.rs
 // src/std_source_annotation.rs
 // src/std_syntax.rs
+// src/std_target_representation.rs
 // src/std_termination.rs
 // src/std_trait_derive_shape.rs
 // src/std_types.rs

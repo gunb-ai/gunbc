@@ -1,6 +1,70 @@
 module test.claim.executor_privileged_operation_witness
 
+import gunbc.generated_artifact {
+  GeneratedArtifact,
+  RunnerHostSudoersArtifact,
+  registry_contains,
+  artifact_path,
+  artifact_is_committed,
+}
+import gunbc.generated_artifact_emit {
+  artifact_generate,
+  ArtifactGenerated,
+  ArtifactGenerationRefused,
+}
+import gunbc.fleet_intent_network { operator_host_srv1, operator_host_srv3 }
+import product.placement_supply { HostIdentity }
+
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE HOST'S SUDOERS FILE IS REACHED THE WAY EVERY OTHER GENERATED FILE IS REACHED, and that is
+// the claim rather than a convenience: these assertions used to call a per-host wrapper function
+// that existed only to be called from here, so they proved the RENDERER worked while the file an
+// operator installs had no path, no ignore rule, and no row in the artifact population. Routing
+// them through gunbc.generated_artifact_emit artifact_generate means the same bytes are asserted
+// AND the enrollment is executed: unenroll the row and generation has no arm to reach.
+//
+// A REFUSAL RENDERS THE EMPTY STRING, WHICH FAILS EVERY CONTAINMENT CLAIM BELOW rather than
+// greening one. The no-wildcard claim is the one that would pass on empty bytes, so it carries a
+// positive conjunct that only real content satisfies.
+fn srv3_runner_host_sudoers_artifact() -> GeneratedArtifact {
+  RunnerHostSudoersArtifact { host: operator_host_srv3 }
+}
+
+fn runner_host_sudoers_bytes(host: HostIdentity) -> String {
+  match artifact_generate(a: RunnerHostSudoersArtifact { host: host }) {
+    ArtifactGenerated { content } => content
+    ArtifactGenerationRefused { reason: _ } => ""
+  }
+}
+
+fn srv3_runner_host_sudoers() -> String {
+  runner_host_sudoers_bytes(host: operator_host_srv3)
+}
+
+// THE ENROLLMENT ITSELF, AND IT IS THE COMMITTED ARM THAT MATTERS. A registry row alone would give
+// the file a path and an ignore rule; CommitRequired is what puts it in the population main_wet
+// writes and the drift gate adjudicates, which is the whole reason the stale drop-in installed on
+// srv3 could diverge from the grant constructors with nothing in the repository able to say so.
+// RED IS AUTHORABLE in three directions: drop the row from generated_artifact_registry, move its
+// commit policy to NotCommitted, or change the location, and one of these conjuncts goes false.
+test fn witness_srv3_sudoers_is_an_enrolled_generated_artifact() -> Bool {
+  registry_contains(a: srv3_runner_host_sudoers_artifact())
+    && artifact_path(a: srv3_runner_host_sudoers_artifact())
+      == "provisioning/srv3/gunbc-ghrunner.sudoers"
+    && artifact_is_committed(a: srv3_runner_host_sudoers_artifact())
+}
+
+// THE HEADER NAMES THIS HOST'S OWN PATH, which is what the derived header buys: srv1's file cannot
+// tell a reader to reproduce it with srv3's recipe, because neither header carries an authored
+// entry-point string any more.
+test fn witness_rendered_header_names_the_hosts_own_artifact_path() -> Bool {
+  string_contains(s: srv3_runner_host_sudoers(), pattern: "provisioning/srv3/gunbc-ghrunner.sudoers")
+    && !string_contains(
+      s: runner_host_sudoers_bytes(host: operator_host_srv1),
+      pattern: "provisioning/srv3/",
+    )
+}
 
 // THE ANTI-DRIFT WALL, ASSERTED AT ITS SEAM. The sudoers command match is DERIVED from the same argv
 // the host executes, so a grant that fails to authorize its own command has no spelling. This
@@ -31,7 +95,9 @@ test fn witness_run_as_is_root_not_all() -> Bool {
 // `rm -rf /opt/actions-runner/..`. Every managed path is named in full instead.
 test fn witness_rendered_grants_carry_no_wildcard() -> Bool {
   let body = srv3_runner_host_sudoers()
-  !string_contains(s: body, pattern: "*") && !string_contains(s: body, pattern: "?")
+  string_contains(s: body, pattern: "ALL=(root) NOPASSWD:")
+    && !string_contains(s: body, pattern: "*")
+    && !string_contains(s: body, pattern: "?")
 }
 
 // THE POPULATION IS DERIVED FROM THE SLOT ROSTER, so every managed slot contributes exactly the

@@ -5,6 +5,8 @@ import gunbc.os_install { HostAutoinstall, fleet_autoinstall_specs, InstallServe
 import gunbc.plan { Plan, plan_doc_directory, plan_doc_name, PlanProjectsCommittedMarkdown, PlanIsAuthorityOnly }
 import gunbc.plan_registry { all_plans }
 import gunbc.generated_artifact_merge_driver { generated_artifact_merge_driver_script_directory, generated_artifact_merge_driver_script_name }
+import gunbc.fleet_intent { ComputeHost, fleet_intent_known_hosts }
+import product.placement_supply { HostIdentity }
 
 type GeneratedArtifact
   = WitnessFloorYamlArtifact
@@ -25,6 +27,7 @@ type GeneratedArtifact
   | V1InterpreterDispatchGeneratedRsArtifact
   | AutoinstallUserDataArtifact { spec: HostAutoinstall }
   | ProxyDhcpDnsmasqArtifact { spec: InstallServerSpec }
+  | RunnerHostSudoersArtifact { host: HostIdentity }
   | PlanArtifact { plan: Plan }
 
 data generated_artifact_registry: List<GeneratedArtifact> = concat(
@@ -33,7 +36,10 @@ data generated_artifact_registry: List<GeneratedArtifact> = concat(
       [WitnessFloorYamlArtifact, FleetConvergeYamlArtifact, FleetDesiredAdmissionYamlArtifact, GitignoreArtifact, GitattributesArtifact, RoadmapArtifact, DesignArtifact, DesignLedgersArtifact, GithooksPrePushArtifact, GithooksPreCommitArtifact, GeneratedArtifactMergeDriverArtifact, RunnerDeployArtifact, Stage0CrateLayoutGeneratedDagArtifact, Stage0CrateLayoutGeneratedRsArtifact, Stage0CratePartitionGeneratedDagArtifact, V1InterpreterDispatchGeneratedRsArtifact],
       map(fleet_autoinstall_specs, s => AutoinstallUserDataArtifact { spec: s })
     ),
-    map(fleet_install_server_specs, s => ProxyDhcpDnsmasqArtifact { spec: s })
+    concat(
+      map(fleet_install_server_specs, s => ProxyDhcpDnsmasqArtifact { spec: s }),
+      map(fleet_intent_known_hosts, h => RunnerHostSudoersArtifact { host: h.identity })
+    )
   ),
   map(all_plans, pl => PlanArtifact { plan: pl })
 )
@@ -49,6 +55,22 @@ type CommitPolicy
   | NotCommitted
 
 data artifact_location_note: String = "THE PATH IS A PROJECTION OF ITS PARTS, NOT THE OTHER WAY ROUND. Every row below CONSTRUCTS its path from a directory and an entry name -- some literal, some computed from a spec host or a plan slug -- and the joined string was the only thing this module published. A consumer that must LIST the directory and look for the entry inside that listing therefore had to split the string on its last separator, re-deriving by parsing exactly what the construction already knew. That is decompose-after-compose: redundant by DESIGN section 2, and asymmetric in failure, because a parse has error cases a construction does not. So artifact_location is the single match and artifact_path is derived from it. THE PATH BYTES ARE UNCHANGED and that is load-bearing rather than incidental: artifact_path feeds the drift gate's committed-file read, so a change here would silently repoint every adjudicated artifact.\n\nWHY THE ROOT DIRECTORY IS `.` AND NOT THE EMPTY STRING. A root-level artifact's directory is the repository root, which is a real directory that can be listed; the empty string is not a directory at all and would have to be special-cased at every consumer that wants to observe one. Carrying `.` means a listing consumer needs no arm for `this artifact has no directory`, and the join is the only place that knows the root renders without a prefix."
+
+// THE ROW IS KEYED BY HOST IDENTITY, NOT BY THE DEPLOY ROW, AND THAT IS AN ACYCLICITY FACT RATHER
+// THAN A PREFERENCE. gunbc.runner_host_deploy reaches this module transitively
+// (runner_host_deploy -> runner_slot_allocation -> ci_failure_class -> merge_admission ->
+// commit_workflow -> generated_artifact), so importing the deploy roster here closes the one
+// structural law the import graph has (DESIGN section 3) and the compiler refuses it. The identity
+// is the same key the deploy dispatch already resolves on, so nothing is lost: the registry names
+// the population from the enrollment authority (gunbc.fleet_intent, which is also what decides
+// whether a host takes fleet work at all), and gunbc.generated_artifact_emit -- which sits above
+// both -- resolves the identity to its deploy row and REFUSES by name for a host that has none.
+//
+// THE ENTRY NAME IS THE DROP-IN THE OPERATOR INSTALLS, carried with a .sudoers suffix so a rendered
+// file sitting in a provisioning directory is not mistaken for a live system file. It is a literal
+// here because every location row in this module is a literal here; the drop-in installs as
+// /etc/sudoers.d/gunbc-ghrunner on the executor fleet.
+data runner_host_sudoers_artifact_name: String = "gunbc-ghrunner.sudoers"
 
 type ArtifactLocation {
   directory: String
@@ -81,6 +103,11 @@ fn artifact_location(a: GeneratedArtifact) -> ArtifactLocation {
       ArtifactLocation { directory: concat("provisioning/", spec.host), name: "user-data" }
     ProxyDhcpDnsmasqArtifact { spec } =>
       ArtifactLocation { directory: concat("provisioning/", spec.host), name: "dnsmasq.conf" }
+    RunnerHostSudoersArtifact { host } =>
+      ArtifactLocation {
+        directory: concat("provisioning/", host as String),
+        name: runner_host_sudoers_artifact_name
+      }
     PlanArtifact { plan } =>
       ArtifactLocation { directory: plan_doc_directory, name: plan_doc_name(slug: plan.slug) }
   }
@@ -129,6 +156,7 @@ fn artifact_commit_policy(a: GeneratedArtifact) -> CommitPolicy {
     V1InterpreterDispatchGeneratedRsArtifact => CommitRequired { consumer: GitProtocol }
     AutoinstallUserDataArtifact { spec: _ } => NotCommitted
     ProxyDhcpDnsmasqArtifact { spec: _ } => NotCommitted
+    RunnerHostSudoersArtifact { host: _ } => CommitRequired { consumer: HostReconciler }
   }
 }
 
@@ -169,6 +197,7 @@ fn artifact_eq(a: GeneratedArtifact, b: GeneratedArtifact) -> Bool {
     V1InterpreterDispatchGeneratedRsArtifact => match b { V1InterpreterDispatchGeneratedRsArtifact => true  _ => false }
     AutoinstallUserDataArtifact { spec } => match b { AutoinstallUserDataArtifact { spec: spec2 } => spec.host == spec2.host  _ => false }
     ProxyDhcpDnsmasqArtifact { spec } => match b { ProxyDhcpDnsmasqArtifact { spec: spec2 } => spec.host == spec2.host  _ => false }
+    RunnerHostSudoersArtifact { host } => match b { RunnerHostSudoersArtifact { host: host2 } => (host as String) == (host2 as String)  _ => false }
     PlanArtifact { plan } => match b { PlanArtifact { plan: plan2 } => plan.slug == plan2.slug  _ => false }
   }
 }
