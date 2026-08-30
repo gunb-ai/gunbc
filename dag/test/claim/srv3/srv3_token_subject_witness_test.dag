@@ -8,6 +8,7 @@ import gunbc.host_effect_realize {
   Srv3EffectiveGroupId,
   Srv3PathOwnerUser,
   Srv3PathOwnerGroup,
+  Srv3PathMode,
   srv3_token_argv,
 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -43,6 +44,8 @@ test fn path_owner_subjects_derive_the_cited_stat_argv() -> Bool {
       == ["/usr/bin/stat", "-c", "%u", "/opt/gunbc/bin"]
     && srv3_token_argv(subject: Srv3PathOwnerGroup { path: "/opt/gunbc/bin" })
       == ["/usr/bin/stat", "-c", "%g", "/opt/gunbc/bin"]
+    && srv3_token_argv(subject: Srv3PathMode { path: "/opt/gunbc/bin" })
+      == ["/usr/bin/stat", "-c", "%a", "--", "/opt/gunbc/bin"]
 }
 
 // THE DISCRIMINATING PAIR. The user and group subjects differ by one flag character, which is
@@ -60,4 +63,6 @@ test fn owner_halves_do_not_derive_the_same_command() -> Bool {
 test fn the_path_subject_carries_its_own_path() -> Bool {
   srv3_token_argv(subject: Srv3PathOwnerUser { path: "/a" })
     != srv3_token_argv(subject: Srv3PathOwnerUser { path: "/b" })
+    && srv3_token_argv(subject: Srv3PathMode { path: "/a" })
+      != srv3_token_argv(subject: Srv3PathMode { path: "/b" })
 }
