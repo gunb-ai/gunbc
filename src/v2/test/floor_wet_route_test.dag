@@ -6,7 +6,14 @@ import v2.workflow.floor_wet_route {
   WetReceiptIdentityRow, WetReceiptEnvelope,
   WetLaneReceiptStanding,
   ReceiptFreshExactSubject, ReceiptMissing, ReceiptExpired, ReceiptSubjectMismatch,
-  ReceiptContractMismatch, ReceiptRosterInexact,
+  ReceiptContractMismatch, ReceiptRosterInexact, ReceiptExecutorSnapshotDifferent,
+  BootstrapExecutorSnapshotReceipt,
+  WetSeedBootstrapAdmission, BootstrapLeaseAdmitted, BootstrapLeaseExpired,
+  BootstrapLeaseNotApplicable,
+  wet_seed_bootstrap_admission, wet_seed_bootstrap_lease_window_secs,
+  WetFloorGateDisposition, WetFloorAdmittedFresh, WetFloorAdmittedUnderBootstrapLease,
+  WetFloorRefused,
+  wet_route_gate_disposition, wet_route_disposition_blocks_floor,
   wet_lane_receipt_standing,
   wet_route_standing_blocks_floor,
   wet_receipt_unexpected_red_identities,
@@ -100,6 +107,7 @@ test fn wet_route_fresh_exact_receipt_is_the_one_clean_standing() -> Bool {
     ReceiptMissing => false
     ReceiptExpired { age_secs: _ } => false
     ReceiptSubjectMismatch { axis: _, receipt_digest: _, computed_digest: _ } => false
+    ReceiptExecutorSnapshotDifferent { receipt_digest: _, computed_digest: _ } => false
     ReceiptContractMismatch { detail: _ } => false
     ReceiptRosterInexact { detail: _ } => false
   }
@@ -172,6 +180,7 @@ test fn wet_route_missing_envelope_blocks() -> Bool {
     ReceiptFreshExactSubject { age_secs: _ } => false
     ReceiptExpired { age_secs: _ } => false
     ReceiptSubjectMismatch { axis: _, receipt_digest: _, computed_digest: _ } => false
+    ReceiptExecutorSnapshotDifferent { receipt_digest: _, computed_digest: _ } => false
     ReceiptContractMismatch { detail: _ } => false
     ReceiptRosterInexact { detail: _ } => false
   }
@@ -189,6 +198,7 @@ test fn wet_route_expired_envelope_blocks() -> Bool {
     ReceiptFreshExactSubject { age_secs: _ } => false
     ReceiptMissing => false
     ReceiptSubjectMismatch { axis: _, receipt_digest: _, computed_digest: _ } => false
+    ReceiptExecutorSnapshotDifferent { receipt_digest: _, computed_digest: _ } => false
     ReceiptContractMismatch { detail: _ } => false
     ReceiptRosterInexact { detail: _ } => false
   }
@@ -207,6 +217,7 @@ test fn wet_route_envelope_at_exact_budget_is_fresh() -> Bool {
     ReceiptMissing => false
     ReceiptExpired { age_secs: _ } => false
     ReceiptSubjectMismatch { axis: _, receipt_digest: _, computed_digest: _ } => false
+    ReceiptExecutorSnapshotDifferent { receipt_digest: _, computed_digest: _ } => false
     ReceiptContractMismatch { detail: _ } => false
     ReceiptRosterInexact { detail: _ } => false
   }
@@ -233,6 +244,7 @@ test fn wet_route_subject_mismatch_blocks_and_carries_both_digests() -> Bool {
     ReceiptFreshExactSubject { age_secs: _ } => false
     ReceiptMissing => false
     ReceiptExpired { age_secs: _ } => false
+    ReceiptExecutorSnapshotDifferent { receipt_digest: _, computed_digest: _ } => false
     ReceiptContractMismatch { detail: _ } => false
     ReceiptRosterInexact { detail: _ } => false
   }
@@ -254,6 +266,7 @@ test fn wet_route_roster_inexact_blocks() -> Bool {
     ReceiptMissing => false
     ReceiptExpired { age_secs: _ } => false
     ReceiptSubjectMismatch { axis: _, receipt_digest: _, computed_digest: _ } => false
+    ReceiptExecutorSnapshotDifferent { receipt_digest: _, computed_digest: _ } => false
     ReceiptContractMismatch { detail: _ } => false
   }
 }
@@ -281,13 +294,15 @@ test fn wet_route_publication_beyond_skew_is_contract_mismatch() -> Bool {
     ReceiptMissing => false
     ReceiptExpired { age_secs: _ } => false
     ReceiptSubjectMismatch { axis: _, receipt_digest: _, computed_digest: _ } => false
+    ReceiptExecutorSnapshotDifferent { receipt_digest: _, computed_digest: _ } => false
     ReceiptRosterInexact { detail: _ } => false
   }
 }
 
-// THE EXECUTOR-CONTRACT AXIS (residual-A repair, parent ruling 2026-08-30): a receipt whose
-// semantic subject matches but whose executor contract does not — a candidate that changed
-// the seed executor without a wet rerun — blocks on the second axis, named in the refusal.
+// THE EXECUTOR-CONTRACT AXIS (residual-A repair, parent ruling 2026-08-30; arm split by the
+// lease ruling): a receipt whose semantic subject matches but whose executor contract does
+// not — a candidate that changed the seed executor without a wet rerun — lands on its OWN
+// standing arm, named by both digests, and blocks under the leaseless gate.
 test fn wet_route_executor_contract_mismatch_blocks_on_its_own_axis() -> Bool {
   let standing = wet_lane_receipt_standing(
     envelope: Present { value: fixture_envelope(rows: fixture_rows(alpha: WetPass {}, beta: WetPass {})) },
@@ -297,16 +312,141 @@ test fn wet_route_executor_contract_mismatch_blocks_on_its_own_axis() -> Bool {
     evaluated_tree_commit_unix_secs: 1000001
   )
   match standing {
-    ReceiptSubjectMismatch { axis: a, receipt_digest: r, computed_digest: c } =>
-      a == "executor-contract"
-        && r == fixture_executor_digest
+    ReceiptExecutorSnapshotDifferent { receipt_digest: r, computed_digest: c } =>
+      r == fixture_executor_digest
         && c == "a-different-executor-digest"
         && wet_route_standing_blocks_floor(standing: standing)
+    ReceiptSubjectMismatch { axis: _, receipt_digest: _, computed_digest: _ } => false
     ReceiptFreshExactSubject { age_secs: _ } => false
     ReceiptMissing => false
     ReceiptExpired { age_secs: _ } => false
     ReceiptContractMismatch { detail: _ } => false
     ReceiptRosterInexact { detail: _ } => false
+  }
+}
+
+// THE ONE-SHOT BOOTSTRAP LEASE (parent ruling 2026-08-30), executed arm by arm. A fixture
+// lease naming exactly the fixture envelope, inside its fixed window, admits the
+// executor-different standing — visibly, on the lease arm, never as fresh — and every
+// deviation refuses: a different envelope digest is not applicable, a window overrun is
+// expired, and a semantic-subject mismatch is never admitted by any lease.
+fn fixture_lease() -> BootstrapExecutorSnapshotReceipt {
+  BootstrapExecutorSnapshotReceipt {
+    exact_envelope_digest: "fixture-envelope-digest",
+    exact_attempt_seq: 1,
+    exact_semantic_subject_digest: fixture_digest,
+    exact_roster_digest: "fixture-roster-digest",
+    executed_at_unix_secs: 1000000,
+    not_after_unix_secs: 1000000 + wet_seed_bootstrap_lease_window_secs()
+  }
+}
+
+fn fixture_admission_at(tree_secs: EpochSecs) -> WetSeedBootstrapAdmission {
+  wet_seed_bootstrap_admission(
+    lease: Present { value: fixture_lease() },
+    envelope_digest: "fixture-envelope-digest",
+    attempt_seq: 1,
+    semantic_subject_digest: fixture_digest,
+    roster_digest: "fixture-roster-digest",
+    evaluated_tree_commit_unix_secs: tree_secs
+  )
+}
+
+fn executor_different_standing() -> WetLaneReceiptStanding {
+  ReceiptExecutorSnapshotDifferent {
+    receipt_digest: fixture_executor_digest,
+    computed_digest: "a-superseding-executor-digest"
+  }
+}
+
+test fn wet_lease_admits_exactly_its_envelope_inside_the_window() -> Bool {
+  let disposition = wet_route_gate_disposition(
+    standing: executor_different_standing(),
+    admission: fixture_admission_at(tree_secs: 1000000 + wet_seed_bootstrap_lease_window_secs())
+  )
+  match disposition {
+    WetFloorAdmittedUnderBootstrapLease { not_after_unix_secs: n } =>
+      wet_time_scalar(x: n) == wet_time_scalar(x: 1000000) + wet_time_scalar(x: wet_seed_bootstrap_lease_window_secs())
+        && !wet_route_disposition_blocks_floor(disposition: disposition)
+    WetFloorAdmittedFresh { age_secs: _ } => false
+    WetFloorRefused { standing: _ } => false
+  }
+}
+
+test fn wet_lease_beyond_its_fixed_window_is_expired_and_blocks() -> Bool {
+  let admission = fixture_admission_at(tree_secs: 1000001 + wet_seed_bootstrap_lease_window_secs())
+  let expired = match admission {
+    BootstrapLeaseExpired { detail: _ } => true
+    BootstrapLeaseAdmitted { exact_envelope_digest: _, exact_attempt_seq: _, exact_semantic_subject_digest: _, exact_roster_digest: _, executed_at_unix_secs: _, not_after_unix_secs: _ } => false
+    BootstrapLeaseNotApplicable => false
+  }
+  expired
+    && wet_route_disposition_blocks_floor(
+      disposition: wet_route_gate_disposition(standing: executor_different_standing(), admission: admission)
+    )
+}
+
+test fn wet_lease_naming_a_different_envelope_is_not_applicable_and_blocks() -> Bool {
+  let admission = wet_seed_bootstrap_admission(
+    lease: Present { value: fixture_lease() },
+    envelope_digest: "some-other-envelope-digest",
+    attempt_seq: 1,
+    semantic_subject_digest: fixture_digest,
+    roster_digest: "fixture-roster-digest",
+    evaluated_tree_commit_unix_secs: 1000001
+  )
+  let not_applicable = match admission {
+    BootstrapLeaseNotApplicable => true
+    BootstrapLeaseAdmitted { exact_envelope_digest: _, exact_attempt_seq: _, exact_semantic_subject_digest: _, exact_roster_digest: _, executed_at_unix_secs: _, not_after_unix_secs: _ } => false
+    BootstrapLeaseExpired { detail: _ } => false
+  }
+  not_applicable
+    && wet_route_disposition_blocks_floor(
+      disposition: wet_route_gate_disposition(standing: executor_different_standing(), admission: admission)
+    )
+}
+
+// The non-widening half: an ADMITTED lease still refuses every standing that is not the
+// executor-snapshot arm — the semantic-subject mismatch stays blocked, so the lease can never
+// launder a different program.
+test fn wet_lease_never_admits_a_semantic_subject_mismatch() -> Bool {
+  let admission = fixture_admission_at(tree_secs: 1000001)
+  let semantic = ReceiptSubjectMismatch {
+    axis: "semantic-subject",
+    receipt_digest: fixture_digest,
+    computed_digest: "a-different-subject-digest"
+  }
+  wet_route_disposition_blocks_floor(
+    disposition: wet_route_gate_disposition(standing: semantic, admission: admission)
+  )
+    && wet_route_disposition_blocks_floor(
+      disposition: wet_route_gate_disposition(standing: ReceiptMissing {}, admission: admission)
+    )
+}
+
+// A tampered declared row — a not_after that is not exactly executed_at plus the fixed
+// window — is not applicable: the window is derived and checked, never trusted.
+test fn wet_lease_with_slid_window_is_not_applicable() -> Bool {
+  let slid = BootstrapExecutorSnapshotReceipt {
+    exact_envelope_digest: "fixture-envelope-digest",
+    exact_attempt_seq: 1,
+    exact_semantic_subject_digest: fixture_digest,
+    exact_roster_digest: "fixture-roster-digest",
+    executed_at_unix_secs: 1000000,
+    not_after_unix_secs: 1000001 + wet_seed_bootstrap_lease_window_secs()
+  }
+  let admission = wet_seed_bootstrap_admission(
+    lease: Present { value: slid },
+    envelope_digest: "fixture-envelope-digest",
+    attempt_seq: 1,
+    semantic_subject_digest: fixture_digest,
+    roster_digest: "fixture-roster-digest",
+    evaluated_tree_commit_unix_secs: 1000001
+  )
+  match admission {
+    BootstrapLeaseNotApplicable => true
+    BootstrapLeaseAdmitted { exact_envelope_digest: _, exact_attempt_seq: _, exact_semantic_subject_digest: _, exact_roster_digest: _, executed_at_unix_secs: _, not_after_unix_secs: _ } => false
+    BootstrapLeaseExpired { detail: _ } => false
   }
 }
 

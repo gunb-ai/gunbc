@@ -1,0 +1,20 @@
+module gunbc.wet_seed_bootstrap_lease
+
+import v2.workflow.floor_wet_route { BootstrapExecutorSnapshotReceipt }
+import v2.std.optional { Optional, Absent, Present }
+
+// THE DECLARED ONE-SHOT BOOTSTRAP LEASE ROW (parent lease ruling 2026-08-30), homed OUTSIDE
+// the wet semantic closure on purpose: `v2.workflow.floor_wet_route` is inside its own wet
+// subject digest, so a lease row declared there would move the semantic digest when flipped
+// Absent→Present and invalidate the very envelope it exists to admit. This module imports
+// the route authority (downward edge only — no routed witness closure imports this module),
+// so flipping this row, like a receipt-pair refresh, moves neither digest.
+//
+// Absent is the standing state. A Present row is authored ONLY in the same push as the
+// envelope it names, beside its `gunbc.rung_drop` BootstrapLivenessLease row, and deletes in
+// the same transaction as the first exact-main receipt (the rung-drop row's restoration).
+// The admission semantics — exact envelope-digest/attempt-seq/subject/roster join, the fixed
+// executed_at + 28,800s window with `not_after` derived and checked — are owned by
+// `v2.workflow.floor_wet_route.wet_seed_bootstrap_admission`, which takes this row as a
+// parameter; this module carries only the declaration.
+data wet_seed_bootstrap_lease_declared: Optional<BootstrapExecutorSnapshotReceipt> = Absent {}

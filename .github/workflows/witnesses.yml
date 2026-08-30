@@ -279,7 +279,7 @@ jobs:
         if: "!cancelled() && steps.wet_receipts_run.outcome != 'skipped'"
       - name: Commit the receipt and open its pull request
         run: |
-          # dissolve-on: wet_receipts_pr_script -- orch-emitted foreign-executor step committing the lane's generated receipt pair to its refresh branch and opening the carrying pull request. Leaf git/gh strings remain until a typed repository-write effect lands on host_effect_apply (shell-to-intent Phase 2), the same terminal construction the toolchain isolation steps above wait on; the receipt pair itself is the modeled artifact (v2.workflow.floor_wet_route: JSON envelope authority, TSV canonical projection, floor-refused on drift).
+          # dissolve-on: wet_receipts_pr_script -- hand-shell `run:` carrier committing the lane's generated receipt pair to its refresh branch and opening the carrying pull request. The git/gh body is a foreign-executor shell string. DISSOLVES WHEN the orchestration-to-shell bash emission (v2.workflow.ci_workflow_run_emit ci_workflow_run_emit_pipeline) renders a modeled Pipeline step for this sequence AND a typed repository-write effect lands on host_effect_apply (shell-to-intent Phase 2), the same terminal construction the toolchain isolation steps above wait on -- at which point this data row, wet_receipts_pr_body and the concat below delete together. The receipt pair itself is the modeled artifact (v2.workflow.floor_wet_route: JSON envelope authority, TSV canonical projection, floor-refused on drift).
           set -eu
           ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
           cd "$ROOT"

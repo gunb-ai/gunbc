@@ -1,0 +1,127 @@
+{
+  "schema_version": 1,
+  "subject_digest": "1a94499945257329710414c5a8302b4c27b04609027e0d38a6aa5787bba044c5",
+  "executor_contract_digest": "02335d529fa33f0cde6f99491c52a6a19b64d7c71511a79f5565389337954b65",
+  "attempt_seq": 1,
+  "executed_at_unix_secs": 1788119878,
+  "published_at_unix_secs": 1788126368,
+  "run_id": "33332101871",
+  "head_sha": "b63e16ea1b37db8295a06d3cf27c6a64578ab3c0",
+  "rows": [
+    {
+      "identity": "test.claim.self_host_00_compile_behavioral_witness.self_host_00_compile_behavioral_receipt_holds",
+      "outcome": "assertion-false",
+      "wall_ms": 478462
+    },
+    {
+      "identity": "test.claim.self_host_01_tokenize_behavioral_witness.self_host_01_tokenize_behavioral_receipt_holds",
+      "outcome": "assertion-false",
+      "wall_ms": 300617
+    },
+    {
+      "identity": "test.claim.self_host_02_parse_behavioral_witness.self_host_02_parse_behavioral_receipt_holds",
+      "outcome": "assertion-false",
+      "wall_ms": 347392
+    },
+    {
+      "identity": "test.claim.self_host_03_ingest_behavioral_witness.self_host_03_ingest_behavioral_receipt_holds",
+      "outcome": "assertion-false",
+      "wall_ms": 467444
+    },
+    {
+      "identity": "test.claim.self_host_03_normalize_behavioral_witness.self_host_03_normalize_behavioral_receipt_holds",
+      "outcome": "assertion-false",
+      "wall_ms": 340423
+    },
+    {
+      "identity": "test.claim.self_host_03_resolve_behavioral_witness.self_host_03_resolve_behavioral_receipt_holds",
+      "outcome": "assertion-false",
+      "wall_ms": 348672
+    },
+    {
+      "identity": "test.claim.self_host_04_infer_behavioral_witness.self_host_04_infer_behavioral_receipt_holds",
+      "outcome": "assertion-false",
+      "wall_ms": 464818
+    },
+    {
+      "identity": "test.claim.self_host_artifact_materialization_real_execution_witness.a_real_cargo_build_materializes_through_the_real_digest",
+      "outcome": "pass",
+      "wall_ms": 246
+    },
+    {
+      "identity": "test.claim.self_host_artifact_materialization_real_execution_witness.a_target_the_build_never_produced_refuses_and_does_not_materialize",
+      "outcome": "pass",
+      "wall_ms": 251
+    },
+    {
+      "identity": "test.claim.self_host_artifact_materialization_real_execution_witness.changing_only_the_source_bytes_names_exactly_the_artifact_axis",
+      "outcome": "pass",
+      "wall_ms": 409
+    },
+    {
+      "identity": "test.claim.self_host_artifact_materialization_real_execution_witness.rebuilding_identical_source_in_place_moves_no_axis",
+      "outcome": "pass",
+      "wall_ms": 420
+    },
+    {
+      "identity": "test.claim.self_host_artifact_materialization_real_execution_witness.the_digest_is_of_the_file_cargo_named_not_of_some_other_real_file",
+      "outcome": "pass",
+      "wall_ms": 250
+    },
+    {
+      "identity": "test.claim.self_host_artifact_materialization_real_execution_witness.the_materialized_path_is_the_one_the_real_cargo_stream_named",
+      "outcome": "pass",
+      "wall_ms": 245
+    },
+    {
+      "identity": "test.claim.self_host_body_producer_behavioral_witness.self_host_body_producer_behavioral_receipt_holds",
+      "outcome": "assertion-false",
+      "wall_ms": 326622
+    },
+    {
+      "identity": "test.claim.self_host_discovery_enumeration_behavioral_witness.self_host_discovery_enumeration_behavioral_receipt_holds",
+      "outcome": "assertion-false",
+      "wall_ms": 373437
+    },
+    {
+      "identity": "test.claim.self_host_logic_behavioral_witness.self_host_logic_behavioral_receipt_holds",
+      "outcome": "pass",
+      "wall_ms": 177834
+    },
+    {
+      "identity": "test.claim.self_host_materialization_carriers_behavioral_witness.self_host_materialization_carriers_behavioral_receipt_holds",
+      "outcome": "assertion-false",
+      "wall_ms": 308325
+    },
+    {
+      "identity": "test.claim.self_host_parse_engine_hooks_behavioral_witness.self_host_parse_engine_hooks_behavioral_receipt_holds",
+      "outcome": "pass",
+      "wall_ms": 376294
+    },
+    {
+      "identity": "test.claim.self_host_program_assembly_behavioral_witness.self_host_program_assembly_behavioral_receipt_holds",
+      "outcome": "assertion-false",
+      "wall_ms": 422439
+    },
+    {
+      "identity": "test.claim.self_host_program_partition_behavioral_witness.self_host_program_partition_behavioral_receipt_holds",
+      "outcome": "assertion-false",
+      "wall_ms": 383227
+    },
+    {
+      "identity": "test.claim.self_host_source_authority_behavioral_witness.self_host_source_authority_behavioral_receipt_holds",
+      "outcome": "assertion-false",
+      "wall_ms": 412727
+    },
+    {
+      "identity": "test.claim.self_host_target_carriers_behavioral_witness.self_host_target_carriers_behavioral_receipt_holds",
+      "outcome": "assertion-false",
+      "wall_ms": 443299
+    },
+    {
+      "identity": "test.claim.self_host_use_site_verdict_behavioral_witness.self_host_use_site_verdict_behavioral_receipt_holds",
+      "outcome": "assertion-false",
+      "wall_ms": 438118
+    }
+  ]
+}
