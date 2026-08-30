@@ -389,9 +389,17 @@ pub struct TransitionAdmission {
 /// on main, the merge base and head both carry it, no run can produce these deltas, and all
 /// four report stale -- which refuses every unrelated PR in the repository, exactly the shape
 /// the three shrinks above record. Remove them by that trigger, not by reinterpreting it.
-/// FOURTH SHRINK, SAME RULE (2026-08-30). #9665 merged, so the six rows above went stale by
-/// their own trigger and are removed here, in the first merge of main that carried the hoist
-/// on both sides.
+/// FOURTH SHRINK, SAME RULE (2026-08-30). The six `DeclaredCallableIdentity hoist to
+/// v1.std.core 2026-08-29` rows dissolved on the trigger written above: #9665 merged as
+/// ecdeb492, so on every pull_request build the merge commit and its base both carry the
+/// hoist, no run can produce the deltas those rows named, and all six were reported stale
+/// (measured on #9689 @ bfd9524881: `0 unadjudicated delta(s), 6 stale admission(s)`) --
+/// refusing every unrelated PR in the repository, the fourth time this roster has reproduced
+/// that shape. Main's own push build at ecdeb492 stayed green, because its base is pre-#9665
+/// and the deltas exist there: the block is PR-only but universal, which is the reason the
+/// shrink cannot wait for a PR that would otherwise touch this file. Removed by the trigger they were authored with. The roster is EMPTY and empty
+/// is not permissive: a run carrying a real namespace delta still refuses it as UNADJUDICATED
+/// until its author adds a row here.
 /// FIFTH POPULATION, SAME RULE (2026-08-29, #9698). Two rows for the `RequiredCiLane` move:
 /// `BuildLane` and `WitnessesLane` moved (not duplicated) from
 /// `gunbc.required_ci_host_verdict_census` to the new `gunbc.required_ci_phase_roster` --
