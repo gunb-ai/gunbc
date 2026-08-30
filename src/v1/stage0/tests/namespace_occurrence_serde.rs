@@ -287,8 +287,8 @@ fn list_slice_parser_does_not_reuse_authored_identity() {
 #[test]
 fn parser_lists_publish_accepted_child_identity() {
     let parsed = parse_source(
-        include_str!("../../../../dag/examples/cost_estimate/cost_estimate.dag"),
-        "dag/examples/cost_estimate/cost_estimate.dag",
+        include_str!("../../../../dag/extdeps/cache/materialization.dag"),
+        "dag/extdeps/cache/materialization.dag",
         occurrence_id_allocator_initial(),
     );
     assert!(parsed.result.error.is_none(), "{:?}", parsed.result.error);
@@ -318,7 +318,7 @@ fn authored_identity_allocator_crosses_real_module_boundary() {
     let digest = parse_source(
         include_str!("../../../../dag/extdeps/container/oci/digest.dag"),
         "dag/extdeps/container/oci/digest.dag",
-        materialization.occurrence_allocator.clone(),
+        materialization.occurrence_allocator,
     );
     assert!(digest.result.error.is_none(), "{:?}", digest.result.error);
     let left: HashSet<i64> = materialization

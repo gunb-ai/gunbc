@@ -54,15 +54,15 @@ pub mod declaration_index;
 mod required_floor_runner;
 pub(crate) use required_floor_runner::*;
 pub use required_floor_runner::{
-    make_eval_context, make_eval_context_with_runtime_options, run_claim_measured,
-    run_required_floor,
+    floor_discovery_path_excluded, make_eval_context, make_eval_context_with_runtime_options,
+    run_claim_measured, run_required_floor,
 };
 mod entry_resolve;
 pub(crate) use active_workset::*;
 pub(crate) use entry_resolve::*;
 pub use entry_resolve::{
-    process_shared_index, resolve_entry_graph, resolve_entry_with_index, resolve_stage_totals,
-    source_root_ingest_content_hash_fnv1a64,
+    load_sources_for_entry, process_shared_index, resolve_entry_graph, resolve_entry_with_index,
+    resolve_stage_totals, source_root_ingest_content_hash_fnv1a64, whole_tree_resolved_ctx,
 };
 mod live_read_decode;
 pub(crate) use live_read_decode::*;
@@ -74,6 +74,7 @@ mod fallback_arm_census;
 pub(crate) use census_heads::*;
 pub(crate) use fallback_arm_census::*;
 mod declared_refs;
+pub use declared_refs::declared_import_closure_binding_observation_from_resolved;
 pub(crate) use declared_refs::*;
 mod doc_graph;
 pub(crate) use doc_graph::*;
@@ -84,7 +85,10 @@ pub(crate) use emit_host::*;
 pub use emit_host::{
     compile_dag_diagnostic_census_memo_counts, compile_dag_rust_emit_check_memo_counts,
 };
-pub use emit_host::{emit_module_storage_binding_manifest, emit_source_root_ingest_manifest};
+pub use emit_host::{
+    compile_dag_multi_module_fixture, emit_module_storage_binding_manifest,
+    emit_source_root_ingest_manifest,
+};
 mod witness_gates;
 pub use witness_gates::witness_exclusion_substrings;
 pub use witness_gates::witness_layer_roots;
@@ -100,6 +104,7 @@ pub(crate) use class_b_census::*;
 mod non_fold_residue;
 pub(crate) use non_fold_residue::*;
 mod compile_clean;
+pub use compile_clean::compile_clean_diagnostic_is_hard;
 pub(crate) use compile_clean::*;
 mod test_migration;
 pub(crate) use test_migration::*;
