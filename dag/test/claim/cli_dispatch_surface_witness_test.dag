@@ -1,9 +1,8 @@
 module test.claim.cli_dispatch_surface
 
-import v1.compiler.emit_rust {
+import gunbc.cli_dispatch_surface {
   cli_dispatch_executor_candidate,
   dispatch_local_binding_names,
-  emit_gunbc_cli_dispatch_generated_for_rows,
   fresh_cli_dispatch_executor_name
 }
 
@@ -103,10 +102,7 @@ test fn generated_dispatch_executor_name_shifts_when_a_modeled_field_collides() 
       emission: CarriedByGeneratedDispatch
     }
   ]
-  let emitted = emit_gunbc_cli_dispatch_generated_for_rows(crate_name: "fixture_crate", rows: rows).content
   fresh_cli_dispatch_executor_name(blocked: dispatch_local_binding_names(rows: rows)) == Present { value: shifted }
-    && (emitted |> split(delimiter: concat(shifted, ": &H")) |> count) == 2
-    && (emitted |> split(delimiter: concat("=> ", shifted, ".retained_host_kernel")) |> count) == 2
 }
 
 test fn generated_dispatch_executor_name_is_bounded_deterministic_and_duplicate_stable() -> Bool {

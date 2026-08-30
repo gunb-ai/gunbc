@@ -5,6 +5,15 @@ import std.types { Bool, CommitSha, Int, List, Port, String }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 
+// One-consumer realization helper: only the generated dispatch emitter consumes this spelling,
+// and the spelling never enters CLI identity, build identity, receipts, cache keys, or product
+// output. The blocked population is derived from the same operand/option projections that produce
+// the pattern bindings. N blocked identities produce N+1 valid numeric candidates in deterministic
+// order. Dissolve into a general Rust value-identifier allocation authority when one exists.
+data cli_dispatch_executor_name_construction_note: String = "The generated CLI dispatch consumes one collision-free executor binding spelling derived from its modeled local-binding population."
+
+data cli_dispatch_executor_binding_collision_rung: String = "Class: generated dispatch executor binding collision. Current rung: structurally guaranteed — the N+1 allocator cannot return a blocked name and its unreachable Absent arm refuses rather than fabricating. Ceiling: a total signature backed by a substrate nonempty-list carrier whose first returns the element type. When that capability exists, make fresh_cli_dispatch_executor_name total and delete the Absent arm and this row together."
+
 // THE gunbc CLI'S OWN DISPATCH SURFACE, AS ROWS.
 //
 // This is a PRODUCT fact -- which verbs gunbc offers, which options each takes, and what each
@@ -219,6 +228,26 @@ type CliSubcommandRow {
   options: List<CliOptionRow>
   realization: CliArmRealization
   emission: CliSurfaceEmission
+}
+
+fn modeled_subcommand_bound_fields(sub: CliSubcommandRow) -> List<String> {
+  let operands = cli_subcommand_generated_dispatch_operands(sub: sub) |> map(operand => operand.field)
+  let options = cli_subcommand_generated_dispatch_options(sub: sub) |> map(option => option.field)
+  concat(operands, options)
+}
+
+fn dispatch_local_binding_names(rows: List<CliSubcommandRow>) -> List<String> {
+  concat(["command"], rows |> flat_map(sub => modeled_subcommand_bound_fields(sub: sub)))
+}
+
+fn cli_dispatch_executor_candidate(index: Int) -> String {
+  concat("__gunbc_dispatch_executor_", to_string(index))
+}
+
+fn fresh_cli_dispatch_executor_name(blocked: List<String>) -> String? {
+  let first_n = enumerate(blocked) |> map(pair => cli_dispatch_executor_candidate(index: pair.first))
+  let candidates = concat(first_n, [cli_dispatch_executor_candidate(index: count(blocked))])
+  candidates |> filter(name => !(blocked |> any(local => local == name))) |> first
 }
 
 fn gunbc_cli_binary_name() -> String {

@@ -26,6 +26,24 @@ use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
 use std::rc::Rc;
 
+pub fn cli_dispatch_executor_name_construction_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "The generated CLI dispatch consumes one collision-free executor binding spelling derived from its modeled local-binding population.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn cli_dispatch_executor_binding_collision_rung() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "Class: generated dispatch executor binding collision. Current rung: structurally guaranteed — the N+1 allocator cannot return a blocked name and its unreachable Absent arm refuses rather than fabricating. Ceiling: a total signature backed by a substrate nonempty-list carrier whose first returns the element type. When that capability exists, make fresh_cli_dispatch_executor_name total and delete the Absent arm and this row together.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
 #[derive(
     Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
 )]
@@ -189,6 +207,105 @@ pub struct CliSubcommandRow {
     pub options: Rc<Vec<Rc<CliOptionRow>>>,
     pub realization: Rc<CliArmRealization>,
     pub emission: CliSurfaceEmission,
+}
+
+pub fn modeled_subcommand_bound_fields(sub: Rc<CliSubcommandRow>) -> Rc<Vec<String>> {
+    {
+        let operands = Rc::new({
+            let mut __result = Vec::new();
+            for operand in cli_subcommand_generated_dispatch_operands(sub.clone())
+                .iter()
+                .cloned()
+            {
+                __result.push(operand.field.clone());
+            }
+            __result
+        });
+        let options = Rc::new({
+            let mut __result = Vec::new();
+            for option in cli_subcommand_generated_dispatch_options(sub.clone())
+                .iter()
+                .cloned()
+            {
+                __result.push(option.field.clone());
+            }
+            __result
+        });
+        v1_rt::concat(operands.clone(), options.clone())
+    }
+}
+
+pub fn dispatch_local_binding_names(rows: Rc<Vec<Rc<CliSubcommandRow>>>) -> Rc<Vec<String>> {
+    v1_rt::concat(
+        Rc::new(vec!["command".to_string()]),
+        Rc::new({
+            let mut __result = Vec::new();
+            for sub in rows.iter().cloned() {
+                __result.extend(
+                    (*modeled_subcommand_bound_fields(sub.clone()))
+                        .iter()
+                        .cloned(),
+                );
+            }
+            __result
+        }),
+    )
+}
+
+pub fn cli_dispatch_executor_candidate(index: i64) -> String {
+    v1_rt::concat(
+        "__gunbc_dispatch_executor_".to_string(),
+        (index.clone()).to_string(),
+    )
+}
+
+pub fn fresh_cli_dispatch_executor_name(blocked: Rc<Vec<String>>) -> Option<String> {
+    {
+        let first_n = Rc::new({
+            let mut __result = Vec::new();
+            for pair in Rc::new(
+                blocked
+                    .clone()
+                    .iter()
+                    .cloned()
+                    .enumerate()
+                    .map(|(i, v)| (i as i64, v))
+                    .collect::<Vec<_>>(),
+            )
+            .iter()
+            .cloned()
+            {
+                __result.push(cli_dispatch_executor_candidate(pair.0.clone()));
+            }
+            __result
+        });
+        let candidates = v1_rt::concat(
+            first_n.clone(),
+            Rc::new(vec![cli_dispatch_executor_candidate(
+                (blocked.clone().len() as i64),
+            )]),
+        );
+        Rc::new({
+            let mut __result = Vec::new();
+            for name in candidates.iter().cloned() {
+                if !{
+                    let mut __found = false;
+                    for local in blocked.iter().cloned() {
+                        if (local.clone() == name.clone()) {
+                            __found = true;
+                            break;
+                        }
+                    }
+                    __found
+                } {
+                    __result.push(name);
+                }
+            }
+            __result
+        })
+        .first()
+        .cloned()
+    }
 }
 
 pub fn gunbc_cli_binary_name() -> String {
