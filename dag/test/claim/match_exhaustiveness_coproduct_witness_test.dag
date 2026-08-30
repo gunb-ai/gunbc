@@ -9,6 +9,11 @@ import gunbc.compile_diagnostic_census {
   census_total_count,
 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import tools.multi_module_compile_fixture {
+  MultiModuleCompileFixtureOutcome, FixtureInstrumentRefused, FixtureCompileRefused,
+  FixtureCompileCompleted, MultiModuleCompileFixture, fixture_source, compile_fixture,
+  fixture_blocking_rows, fixture_rows_of_class,
+}
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -17,6 +22,17 @@ data match_exhaustiveness_coproduct_witness_note: String = "Paired control for v
 data exhaustive_coproduct_source: String = "module exhaust_exhaustive\ntype Trio = Red | Green | Blue\nfn f(c: Trio) -> Bool {\n  match c {\n    Red => true\n    Green => false\n    Blue => true\n  }\n}\n"
 
 data missing_arm_coproduct_source: String = "module exhaust_missing\ntype Trio = Red | Green | Blue\nfn f(c: Trio) -> Bool {\n  match c {\n    Red => true\n    Green => false\n  }\n}\n"
+
+// THE IMPORTED, RECORD-PROJECTED SHAPE IS THE REGRESSION CONTROL. The direct-parameter fixture
+// above was already green while `gunbc.discovery_census` compiled two matches that omitted
+// `DeclinedOutsideRequiredGate`: a field projection retained the nominal imported type name, but
+// exhaustiveness lookup asked only the current module's local type environment for its declaration.
+// The negative omits exactly `DeclinedOutsideRequiredGate`; the positive differs only by
+// including it. Both name every later arm so growth in the imported authority makes these
+// controls fail closed instead of changing which omission the negative measures.
+data imported_projected_missing_arm_source: String = "module exhaust_imported_projected_missing\nimport v2.workflow.required_floor { RequiredFloorDisposition, Planned, DeclinedLongModule, DeclinedFixtureMember, DeclinedOutsideRequiredGate, DeclinedCostDebt, DeclinedOutsideGateClosure, DeclinedDiscoveryExcluded }\ntype Row { disposition: RequiredFloorDisposition }\nfn f(row: Row) -> Bool {\n  match row.disposition {\n    Planned => true\n    DeclinedLongModule { matched_prefix: _ } => false\n    DeclinedFixtureMember { matched_prefix: _ } => false\n    DeclinedCostDebt => false\n    DeclinedOutsideGateClosure => false\n    DeclinedDiscoveryExcluded { matched_substring: _ } => false\n  }\n}\n"
+
+data imported_projected_exhaustive_source: String = "module exhaust_imported_projected_complete\nimport v2.workflow.required_floor { RequiredFloorDisposition, Planned, DeclinedLongModule, DeclinedFixtureMember, DeclinedOutsideRequiredGate, DeclinedCostDebt, DeclinedOutsideGateClosure, DeclinedDiscoveryExcluded }\ntype Row { disposition: RequiredFloorDisposition }\nfn f(row: Row) -> Bool {\n  match row.disposition {\n    Planned => true\n    DeclinedLongModule { matched_prefix: _ } => false\n    DeclinedFixtureMember { matched_prefix: _ } => false\n    DeclinedOutsideRequiredGate => false\n    DeclinedCostDebt => false\n    DeclinedOutsideGateClosure => false\n    DeclinedDiscoveryExcluded { matched_substring: _ } => false\n  }\n}\n"
 
 fn non_exhaustive_blocking_count(source: String) -> Int {
   match compile_dag_diagnostic_census(source) {
@@ -32,4 +48,76 @@ test fn w_exhaustive_coproduct_match_observes_zero_non_exhaustive() -> Bool {
 
 test fn w_missing_coproduct_arm_reports_one_non_exhaustive() -> Bool {
   non_exhaustive_blocking_count(source: missing_arm_coproduct_source) == 1
+}
+
+test fn w_imported_projected_missing_arm_reports_one_non_exhaustive() -> Bool {
+  non_exhaustive_blocking_count(source: imported_projected_missing_arm_source) == 1
+}
+
+test fn w_imported_projected_exhaustive_match_observes_zero_non_exhaustive() -> Bool {
+  non_exhaustive_blocking_count(source: imported_projected_exhaustive_source) == 0
+}
+
+data cross_module_trio_provider: String = "module exhaust.provider\ntype Trio = A | B | C\n"
+data cross_module_quartet_provider: String = "module exhaust.provider\ntype Trio = A | B | C | D\n"
+data cross_module_missing_consumer: String = "module exhaust.consumer\nimport exhaust.provider { Trio, A, B, C }\ntype Row { disposition: Trio }\nfn f(row: Row) -> Bool { match row.disposition { A => true B => false } }\n"
+data cross_module_complete_consumer: String = "module exhaust.consumer\nimport exhaust.provider { Trio, A, B, C }\ntype Row { disposition: Trio }\nfn f(row: Row) -> Bool { match row.disposition { A => true B => false C => true } }\n"
+data cross_module_catch_all_consumer: String = "module exhaust.consumer\nimport exhaust.provider { Trio, A, B, C }\ntype Row { disposition: Trio }\nfn f(row: Row) -> Bool { match row.disposition { A => true _ => false } }\n"
+data unresolved_scrutinee_consumer: String = "module exhaust.unresolved\nfn f(x: MissingType) -> Bool { match x { A => true } }\n"
+
+fn cross_module_run(provider: String, consumer: String) -> MultiModuleCompileFixtureOutcome {
+  compile_fixture(MultiModuleCompileFixture {
+    sources: [
+      fixture_source("exhaust/provider.dag", provider),
+      fixture_source("exhaust/consumer.dag", consumer)
+    ],
+    entry: "exhaust/consumer.dag"
+  })
+}
+
+fn fixture_blocking_class_count(o: MultiModuleCompileFixtureOutcome, wanted: String) -> Int {
+  match o {
+    FixtureCompileRefused { module_count: _, diagnostics: rows, source_digest: _, compiler_digest: _ } =>
+      census_total_count(rows: fixture_blocking_rows(rows: fixture_rows_of_class(rows: rows, wanted: wanted)))
+    FixtureCompileCompleted { module_count: _, emitted_files: _, diagnostics: rows, source_digest: _, compiler_digest: _ } =>
+      census_total_count(rows: fixture_blocking_rows(rows: fixture_rows_of_class(rows: rows, wanted: wanted)))
+    FixtureInstrumentRefused { cause: _ } => -1
+  }
+}
+
+test fn w_cross_module_missing_c_reports_one_non_exhaustive() -> Bool {
+  fixture_blocking_class_count(
+    o: cross_module_run(provider: cross_module_trio_provider, consumer: cross_module_missing_consumer),
+    wanted: "NonExhaustiveMatch"
+  ) == 1
+}
+
+test fn w_cross_module_complete_match_is_clean() -> Bool {
+  fixture_blocking_class_count(
+    o: cross_module_run(provider: cross_module_trio_provider, consumer: cross_module_complete_consumer),
+    wanted: "NonExhaustiveMatch"
+  ) == 0
+}
+
+test fn w_cross_module_catch_all_is_permitted() -> Bool {
+  fixture_blocking_class_count(
+    o: cross_module_run(provider: cross_module_trio_provider, consumer: cross_module_catch_all_consumer),
+    wanted: "NonExhaustiveMatch"
+  ) == 0
+}
+
+// THE CONSUMER IS UNCHANGED: widening only the provider adds D, and the same match must red.
+test fn w_cross_module_provider_growth_reports_one_non_exhaustive() -> Bool {
+  fixture_blocking_class_count(
+    o: cross_module_run(provider: cross_module_quartet_provider, consumer: cross_module_complete_consumer),
+    wanted: "NonExhaustiveMatch"
+  ) == 1
+}
+
+test fn w_unresolved_scrutinee_refuses_instead_of_becoming_not_a_coproduct() -> Bool {
+  let run = compile_fixture(MultiModuleCompileFixture {
+    sources: [fixture_source("exhaust/unresolved.dag", unresolved_scrutinee_consumer)],
+    entry: "exhaust/unresolved.dag"
+  })
+  fixture_blocking_class_count(o: run, wanted: "UnresolvedType") > 0
 }
