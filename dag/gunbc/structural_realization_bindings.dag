@@ -4,9 +4,6 @@ import std.types { List, String, Bool, NonEmptyStr }
 import std.decl_ref { DeclarationRef, decl_ref }
 import std.literal_elaboration { LiteralHomomorphism, LiteralSourceKind, KernelIntLiteral, KernelBoolLiteral, LiteralUnfolding, PeanoUnfold, BooleanUnfold }
 import std.operator_realization { StructuralOrderingBinding }
-import gunbc.guarantee_rung_drop {
-  GuaranteeStall, Mitigatable, MechanicallyPreventable, AwaitsOneGrounding, BoundedPopulation
-}
 
 // THE CORPUS'S HALF OF LITERAL ELABORATION AND OPERATOR REALIZATION (std.literal_elaboration,
 // std.operator_realization): which of THIS corpus's structural declarations supply a kernel literal,
@@ -65,34 +62,3 @@ fn structural_ordering_binding(carrier_module: String, carrier: String, compare_
 data structural_ordering_rows: List<StructuralOrderingBinding> = [
   structural_ordering_binding(carrier_module: "v2.std.nat", carrier: "Nat", compare_module: "v2.std.nat", compare: "nat_compare", ordering_module: "std.algebra", ordering: "Ordering")
 ]
-
-// THE CONNECTIVE GAP, DECLARED RATHER THAN CLAIMED (DESIGN section 4b(2): a class below its ceiling
-// names its next-rung trigger). Ordering and arithmetic on a structural operand are decided by this
-// roster -- a declared comparison, or a typed refusal. The logical connectives are NOT: inference
-// constrains only the RESULT of `&&`/`||` to Bool (v1.compiler.types infer_binop_type_node), so a
-// structural operand under a connective is authorable and renders as the host token. Found by
-// review (claude/claude-opus-4-7 on gunbc#9719, 2026-08-30) reading the arm against its own prose.
-//
-// WHY THE OBVIOUS REPAIR IS THE WRONG ONE, measured before it was rejected: refusing every
-// structural operand under a connective would refuse v2.std.logic Bool, which 593 modules import as
-// their ordinary Bool -- the false-refusal cost the namespace wall's own doctrine names, and it
-// would land as a corpus-wide red rather than as a wall. The repair is one more row FAMILY of the
-// shape this roster already carries for ordering: the declaration names the operation that realizes
-// its conjunction and disjunction, connectives on a declaration with a row realize through it, and
-// only a declaration with NO row refuses -- at which point the refusal population is enumerable
-// instead of being the whole corpus.
-data structural_connective_stall: GuaranteeStall = GuaranteeStall {
-  subject: "std.operator_realization -- a logical connective (&&, ||) applied to a STRUCTURAL operand renders as the host token, because no declared-connective row family exists to realize or refuse it",
-  current: Mitigatable,
-  ceiling: MechanicallyPreventable,
-  blocker: AwaitsOneGrounding {
-    grounding: "a StructuralConnectiveBinding row family in std.operator_realization keyed on the operand's exact DeclarationRef (the shape StructuralOrderingBinding already has), plus its rows for the declarations this corpus uses under a connective -- v2.std.logic Bool first",
-  },
-  population: BoundedPopulation {
-    members: [
-      "a connective whose operand is a structural declaration with no host realization (v2.std.logic Bool: renders as the host token today and is the corpus's ordinary conjunction)",
-      "a connective whose operand is a structural declaration that is not a Boolean algebra at all (a Peano-shaped operand: authorable because inference constrains only the result type)",
-    ],
-  },
-  next_rung_trigger: "std.operator_realization declaring StructuralConnectiveBinding and operator_realization_for routing And/Or through it -- realizing where a row exists and refusing, typed and located, where none does; retired by that capability and by nothing less, since a roster with no consumer would leave the host token exactly where it is today"
-}
