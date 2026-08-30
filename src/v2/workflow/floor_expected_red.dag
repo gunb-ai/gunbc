@@ -429,7 +429,7 @@ fn floor_expected_red_chunk_07() -> List<String> {
 }
 
 fn floor_expected_red_chunk_08() -> List<String> {
-   Empty {}
+   Cons { head: "v2.test.execution.dag_add_emit_round_trip.dag_add_domain_coerce_accepts_holds", tail: Cons { head: "v2.test.execution.dag_add_emit_round_trip.dag_add_domain_translate_accepts_holds", tail: Empty {} } }
 }
 
 fn floor_expected_red_chunk_09() -> List<String> {
@@ -445,7 +445,7 @@ fn floor_expected_red_chunk_11() -> List<String> {
 }
 
 fn floor_expected_red_chunk_12() -> List<String> {
-  Cons { head: "v2.test.lens_mock_totality.shell_mock_totality.shell_mock_consumer_is_total_holds", tail: Cons { head: "v2.test.lens_mock_totality.shell_mock_totality.shell_mock_omitted_member_is_red_holds", tail: Empty {} } }
+  Cons { head: "v2.test.lens_mock_totality.shell_mock_totality.shell_mock_consumer_is_total_holds", tail: Cons { head: "v2.test.lens_mock_totality.shell_mock_totality.shell_mock_omitted_member_is_red_holds", tail: Cons { head: "v2.test.manual.english_emit_add.english_emit_add_ingest_round_trip_holds", tail: Empty {} } } }
 }
 
 // Enrolled per deep-ant-102's 2026-08-20 ruling on gunbc#8625/#8627: the witness is

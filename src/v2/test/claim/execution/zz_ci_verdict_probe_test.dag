@@ -419,3 +419,61 @@ test fn ciprobe_meet_ok_compile_skipped() -> Bool {
     Rejected { diagnostics: _ } => false
   }
 }
+
+test fn ciprobe_english_serialize_ok() -> Bool {
+  english_emit_add_matches_serialize_holds()
+}
+
+test fn ciprobe_english_grammar_ok() -> Bool {
+  english_emit_add_grammar_inverse_holds()
+}
+
+fn ciprobe_english_parse() -> Outcome<ParseTree> {
+  match english_emit_add_receipt {
+    Rejected { diagnostics: ds } => Rejected { diagnostics: ds }
+    Accepted { value: source, diagnostics: _ } => english_emit_add_ingest_parse(source: source)
+  }
+}
+
+test fn ciprobe_english_parse_accepted() -> Bool {
+  match ciprobe_english_parse() {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn ciprobe_english_parse_no_diags() -> Bool {
+  match ciprobe_english_parse() {
+    Accepted { value: _, diagnostics: d } => d == None
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn ciprobe_english_parse_diag_is_overlap_residue() -> Bool {
+  match ciprobe_english_parse() {
+    Accepted { value: _, diagnostics: Some { diagnostics: ds } } => ds.head.reason == ^parse_grammar_choice_overlap_residue
+    _ => false
+  }
+}
+
+test fn ciprobe_english_parse_rejected_reason_is_overlap_residue() -> Bool {
+  match ciprobe_english_parse() {
+    Rejected { diagnostics: ds } => ds.head.reason == ^parse_grammar_choice_overlap_residue
+    _ => false
+  }
+}
+
+test fn ciprobe_english_identity_ok() -> Bool {
+  match ciprobe_english_parse() {
+    Accepted { value: tree, diagnostics: _ } =>
+      english_emit_add_parse_identity_matches(root: tree, expected: english_emit_add_emitted_root)
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn ciprobe_english_grammar_has_choice_ambiguity() -> Bool {
+  match english_add_fn_paragraph_grammar() {
+    ModeledGrammar { root: r } => grammar_has_choice_ambiguity(root: r)
+    _ => false
+  }
+}
