@@ -15,6 +15,7 @@ import extdeps.languages.json.parse {
   JsonMemberNotAnObject
 }
 import extdeps.shell.credentials { env_credential }
+import extdeps.github.org_admin_auth { RunnerGroupsRead, RunnerGroupRepositoriesRead }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import gunbc.clock_read { clock_now_probed_at_or_unknown }
 import gunbc.auth.org_admin_credential {
@@ -41,6 +42,7 @@ import gunbc.fleet.org_actions_standing {
 data org_admin_token_env_name: NonEmptyStr = "GUNBC_ORG_ADMIN_TOKEN"
 data org_actions_validation_receipt_path: String = "target/org-actions-credential-validation-receipt.txt"
 data org_actions_organization: NonEmptyStr = "gunb-ai"
+data observe_github_runner_groups: NonEmptyStr = "ObserveGitHubRunnerGroups"
 
 type OrgActionsConvergeRefusal
   = OrgActionsCredentialRefused { cause: OrgAdminCredentialRefusal }
@@ -60,6 +62,7 @@ fn org_actions_converge_phase(
   match admit_org_admin_credential(
     material: material,
     reader: FleetOrgActionsObserveLane,
+    required_capabilities: [RunnerGroupsRead, RunnerGroupRepositoriesRead],
     observed_at: observed_at
   ) {
     OrgAdminCredentialRefused { cause } =>

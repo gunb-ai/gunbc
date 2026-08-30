@@ -45,37 +45,29 @@ only one repository runs the actuator. For an operator session, use a named loca
 profile and expose it to only the validation or converge process. Do not put a token in argv, a
 worktree file, committed configuration, a receipt, or this plan.
 
-Bytes-present and working-credential are intentionally different facts. `SecretMaterial.store`
-answers custody. `CredentialStanding` answers whether executed evidence supports use:
-
-- `CredentialCurrent` names the evidence digest, exact receipt producer, and validity horizon.
-- `CredentialProvisionallyUsable` is explicit but is not admitted to org convergence.
-- `CredentialStale` carries either time expiry or an earlier event invalidation: revocation,
-  organization-owner change, or scope edit.
-- `CredentialMissing` admits nothing.
-
-`admit_org_admin_credential` refuses absent material, unauthorized readers, incomplete capability,
-non-current/stale standing, missing validation, and receipt/credential identity mismatch. No arm
-turns absence into a skip.
+Bytes-present and working-credential are intentionally different facts. `SecretMaterial.store` and
+`CredentialCustodyStanding` answer custody. `CredentialOperationStanding` answers whether an
+executed probe proves one exact capability on one target through the required horizon. A runner-
+groups read receipt never authorizes mutation. `admit_org_admin_credential` refuses absent or
+wrong-principal material, incomplete genealogy, a due probe, insufficient exact capability, and an
+expired operation horizon. No arm turns absence into a skip.
 
 ## Acquisition genealogy and runtime dependency
 
-`CredentialAcquisitionGenealogy` recursively records how the credential became obtainable. Every
-constructible chain has one `HumanCredentialBootstrap` root: a GitHub organization owner or app
-manager uses a token/settings, OAuth-consent/device, or app-registration web surface and records the
-bootstrap receipt and its staleness horizon. `CredentialAcquiredFrom` records each later derivation
-and whether it can renew without another human interaction. A stale human root creates a scheduled
-operator renewal obligation; a programmatic link can re-execute automatically.
+`CredentialAcquisitionTransaction` is multi-input over a closed `AcquisitionRequirement` sum:
+credential proofs, human authorization ceremonies, authority resources, grants, approvals,
+authenticator bindings, attestations, and custody use. `CredentialGenealogyStanding` is immutable
+audit history and is complete only with explicit roots, including the human ceremony and external
+account-recovery boundary for privileged GitHub bootstrap. A ceremony receipt records the
+authenticator classes GitHub accepted; it never records passwords/OTPs and never becomes current
+authentication merely because it is recent.
 
-This history is deliberately not the runtime dependency graph. For example, the browser session
-that registered and installed a GitHub App is acquisition history, while the app private key is the
-parent that must remain current whenever an installation token is minted. That live relationship is
-`CredentialRuntimeDependency`. `runtime_dependency_standing` propagates missing, revoked, expired,
-owner-changed, and scope-changed standing from the real parent to every descendant. Fleet converge
-admits the material only when both the genealogy is structurally complete and the whole live chain
-is current at the phase's observation time. A `CredentialCurrent` tag whose `valid_until` is already
-past, or a human-bootstrap receipt past `stale_after`, derives `TimeExpiry` and refuses; the tag
-cannot override its own horizon.
+Present use is a separate `CurrentUseRequires` graph with a typed
+`DependencyInvalidationEffect`; historical edges are `HistoricalOnly`, app-key loss can
+`BlocksFutureMinting`, and only provider-evidenced relationships `InvalidatesCurrentUse`.
+`RenewalRequires`, `CredentialRenewalCandidate`, and `CredentialContinuityStanding` form a third
+graph, so an operator renewal obligation is not confused with an outage. This prevents an expired
+browser session or revoked creation-time PAT from poisoning an otherwise usable app credential.
 
 ## Fleet-converge consumer
 
@@ -108,12 +100,12 @@ performs the live read without a code-path switch.
    self-hosted-runner read scope without changing the subject. The later actuator must separately
    require the write grants declared by the credential shape; a successful read is not fabricated
    proof of write access.
-4. The probe writes an `OrgAdminCredentialValidationReceipt` containing only material identity,
-   credential kind, endpoint, organization, and validation time. `CredentialCurrent` binds its
-   evidence digest and exact producer to the validity horizon. It contains no token, response body,
-   headers, or recoverable token fingerprint.
+4. The observer writes a `CredentialCapabilityProbeReceipt` containing only material identity,
+   credential kind, exact read capability, endpoint, organization, producer, effects, and
+   observation time. `CredentialOperationUsable` binds it to the target and validity horizon. It
+   contains no token, response body, headers, or recoverable token fingerprint.
 5. Expiry, revocation, owner change, scope change, a missing receipt, or a receipt outside its
-   horizon changes standing away from `CredentialCurrent`; observe and apply both refuse before
+   horizon changes standing away from `CredentialOperationUsable`; observe and apply both refuse before
    mutation. Rotation repeats steps 2–4 and then deletes/revokes the prior material according to
    the selected store's deletion semantics.
 
