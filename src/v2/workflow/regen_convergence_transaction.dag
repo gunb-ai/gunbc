@@ -505,6 +505,15 @@ fn regen_admit_generation_progress(
   }
 }
 
+fn regen_generation_progress_admission_label(admission: RegenGenerationProgressAdmission) -> String {
+  match admission {
+    RegenGenerationProgressAdmitted => "Admitted"
+    RegenGenerationProgressRefused { refusal: GenerationCycleDetected { seed_digest: _, candidate_tree_digest: _ } } => "CycleRefused"
+    RegenGenerationProgressRefused { refusal: GenerationBoundExceeded { bound: _ } } => "BoundRefused"
+    RegenGenerationProgressRefused { refusal: _ } => "Refused"
+  }
+}
+
 fn regen_fixture_build_refusal(ordinal: Int, terminal: RegenStageBuildTerminal) -> List<RegenConvergenceRefusal> {
   match terminal {
     RegenStageBuildPassed => []

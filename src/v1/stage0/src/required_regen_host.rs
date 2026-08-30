@@ -3066,6 +3066,8 @@ fn convergence_plan_from_model(
     bootstrap_sources: &BTreeSet<String>,
     bootstrap_products: &BTreeSet<String>,
     affected_bound: &RegenEmissionScope,
+    seen_state_keys: &[String],
+    seed_digest: &str,
 ) -> Result<(String, Vec<String>), String> {
     use crate::v1_interpreter::{self, str_value, ExecutionMode, Value};
     let entry = source_roots
@@ -3080,6 +3082,59 @@ fn convergence_plan_from_model(
     let (graph, indices) = super::resolve_entry_with_index_for_discovery_corpus(&index, &entry)
         .map_err(|e| format!("refusal: convergence planner did not resolve: {e}"))?;
     let ctx = super::make_eval_context(&graph, indices, ExecutionMode::Hermetic);
+    let progress_args = vec![
+        (
+            Some("seen_state_keys".to_string()),
+            Value::List(Rc::new(
+                seen_state_keys
+                    .iter()
+                    .map(|key| str_value(key))
+                    .collect::<Vec<_>>()
+                    .into(),
+            )),
+        ),
+        (Some("seed_digest".to_string()), str_value(seed_digest)),
+        (
+            Some("candidate_tree_digest".to_string()),
+            str_value(candidate_tree_digest),
+        ),
+        (
+            Some("ordinal".to_string()),
+            Value::Int((ordinal - 1) as i64),
+        ),
+        (
+            Some("bound".to_string()),
+            Value::Int(REGEN_CONVERGENCE_BOUND as i64),
+        ),
+    ];
+    let progress = v1_interpreter::with_active_context(&ctx, || {
+        v1_interpreter::run_in_context_with_args(
+            &ctx,
+            "regen_admit_generation_progress",
+            &progress_args,
+            false,
+        )
+    })
+    .map_err(|e| format!("refusal: generation progress admission did not answer: {e}"))?;
+    let progress_label = v1_interpreter::with_active_context(&ctx, || {
+        v1_interpreter::run_in_context_with_args(
+            &ctx,
+            "regen_generation_progress_admission_label",
+            &[(Some("admission".to_string()), progress)],
+            false,
+        )
+    })
+    .map_err(|e| format!("refusal: generation progress projection failed: {e}"))?;
+    match progress_label {
+        Value::Str(label) if label.as_ref() == "Admitted" => {}
+        Value::Str(label) => return Err(format!("generation progress {label}")),
+        other => {
+            return Err(format!(
+                "refusal: generation progress projection returned {}",
+                other.type_label_public()
+            ))
+        }
+    }
     let changed = drifted
         .iter()
         .map(|basename| {
@@ -3437,16 +3492,8 @@ pub fn run_regen_round_cost(
     }
 
     while !drifted.is_empty() {
-        if generation_ordinal >= REGEN_CONVERGENCE_BOUND {
-            let failure = format!("generation bound exceeded: {}", REGEN_CONVERGENCE_BOUND);
-            restore_regen_convergence_journal(&workspace)?;
-            return Err(failure);
-        }
         let state = format!("{current_seed_digest}:{candidate_digest}");
-        if !seen_states.insert(state.clone()) {
-            restore_regen_convergence_journal(&workspace)?;
-            return Err(format!("generation cycle detected at {state}"));
-        }
+        let seen_state_keys = seen_states.iter().cloned().collect::<Vec<_>>();
         let (kind, install_set) = convergence_plan_from_model(
             source_roots,
             generation_ordinal + 1,
@@ -3459,7 +3506,10 @@ pub fn run_regen_round_cost(
             &bootstrap_sources,
             &bootstrap_products,
             &scope,
+            &seen_state_keys,
+            &current_seed_digest,
         )?;
+        seen_states.insert(state);
         let stage_kind = match kind.as_str() {
             "PromoteGenerationInputs" => RegenConvergenceStageKindReceipt::PromoteGenerationInputs,
             "InstallSeedCompatibilityCut" => {
