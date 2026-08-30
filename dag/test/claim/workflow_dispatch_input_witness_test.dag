@@ -142,15 +142,15 @@ test fn workflow_dispatch_choice_input_projects_options_list() -> Bool {
   entry.key == "workflow_dispatch" && mode_input_has_choice_options(v: entry.value)
 }
 
-// THE COUNT IS KEPT BESIDE THE NAMES DELIBERATELY; it moved from 2 to 3 because a
-// `dashboard-deploy` job was added, not because the check was in the way. Names without the total
-// let a fourth job appear unobserved; the total without names passes for any three jobs. Together
-// they are an exact partition — the identity join DESIGN section 5 asks for, not a count standing
-// in for one.
+// THE COUNT IS KEPT BESIDE THE NAMES DELIBERATELY, and it moved from 2 to 3 because a
+// `dashboard-deploy` job was added -- not because the check was in the way. Naming each job without
+// pinning the total would let a fourth job appear unobserved; pinning the total without naming them
+// would pass for any three jobs at all. Together they are an exact partition, which is the identity
+// join DESIGN section 5 asks for rather than a count standing in for one.
 //
-// BOTH DEPLOYING JOBS NEED `build`, the property this witness is really about: release binaries are
-// produced once and consumed by everything that installs them, so a job mutating a host without
-// that edge would install whatever happened to be lying around.
+// BOTH DEPLOYING JOBS NEED `build`, and that is the property this witness is really about: the
+// release binaries are produced once and consumed by everything that installs them, so a job that
+// mutates a host without that edge would be installing whatever happened to be lying around.
 test fn fleet_converge_workflow_has_build_job_needs_release_bins() -> Bool {
   fleet_converge_workflow.jobs.length() == 3
     && fleet_converge_workflow.jobs[0].id == "build"

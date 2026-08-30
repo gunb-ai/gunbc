@@ -24,28 +24,11 @@ import gunbc.v1_complexity_capability_census {
   asymptotic_class_and_dominance,
 }
 
-// The exact half of C0(b1) citation hygiene, in the long lane because each witness pays a full
-// witness-layer decl_facts scan — the same reason
-// test.claim.long.cited_symbol_resolution_witness_test lives here (operator 5s fast-lane rule).
-// This replaces the previous revision's string_contains check, which could green when a name
-// survived only inside a note, appeared as a substring of another declaration, was ambiguous across
-// modules, or named a declaration of the wrong kind. Resolution here is the repository's single
-// resolution authority: a typed DeclarationRef resolves to exactly one declaration_identity or
-// refuses with one of five typed arms.
+data resolution_witness_note: String = "The exact half of C0(b1) citation hygiene, in the long lane because each witness pays a full witness-layer decl_facts scan — the same reason test.claim.long.cited_symbol_resolution_witness_test lives here (operator 5s fast-lane rule). This replaces the previous revision's string_contains check, which could green when a name survived only inside a note, appeared as a substring of another declaration, was ambiguous across modules, or named a declaration of the wrong kind. Resolution here is the repository's single resolution authority: a typed DeclarationRef resolves to exactly one declaration_identity or refuses with one of five typed arms."
 
-// The census no longer authors a file path beside each symbol. A resolved declaration_identity
-// carries rel_path as an OBSERVED property, so the file a capability lives in is derived from
-// resolution rather than being a second authored identity that can drift from the first. That was
-// the operator's structural point: CitedSymbol { symbol, file } is two identities for one
-// declaration.
+data file_is_observed_not_authored_note: String = "The census no longer authors a file path beside each symbol. A resolved declaration_identity carries rel_path as an OBSERVED property, so the file a capability lives in is derived from resolution rather than being a second authored identity that can drift from the first. That was the operator's structural point: CitedSymbol { symbol, file } is two identities for one declaration."
 
-// The pool must contain the seed, because half of every row's citations point into
-// v1.compiler.complexity — the module this census is ABOUT. witness_layer_roots is [dag, src/v2]
-// and deliberately excludes src/v1, so resolving against it would refuse every v1 carrier with
-// DeclarationRefModuleAbsent and the witness would be measuring its own pool rather than the
-// citations. The wider envelope follows the precedent ci_layer_roots already sets for v1-subject
-// witnesses (compile_clean_source_roots appends src/v1; v1_claim_scoped_witness_batch runs at [dag,
-// src/v1]), and it is scoped to this witness rather than widening the shared roster.
+data census_resolution_pool_note: String = "The pool must contain the seed, because half of every row's citations point into v1.compiler.complexity — the module this census is ABOUT. witness_layer_roots is [dag, src/v2] and deliberately excludes src/v1, so resolving against it would refuse every v1 carrier with DeclarationRefModuleAbsent and the witness would be measuring its own pool rather than the citations. The wider envelope follows the precedent ci_layer_roots already sets for v1-subject witnesses (compile_clean_source_roots appends src/v1; v1_claim_scoped_witness_batch runs at [dag, src/v1]), and it is scoped to this witness rather than widening the shared roster."
 
 data census_resolution_pool_roots: List<String> = ["dag", "src/v2", "src/v1"]
 
@@ -61,11 +44,7 @@ test fn census_every_declaration_ref_resolves_exactly() -> Bool {
   ) == 0
 }
 
-// Three planted refusals, one per failure mode the substring check could not see. A declaration
-// that does not exist must refuse with DeclarationRefDeclarationAbsent rather than greening because
-// the spelling appears in a note; a module that does not exist must refuse with
-// DeclarationRefModuleAbsent. Both are controlled fixtures authored here, which is the oracle form
-// the repository sanctions — this witness authors the input and the expected verdict.
+data census_resolution_red_controls_note: String = "Three planted refusals, one per failure mode the substring check could not see. A declaration that does not exist must refuse with DeclarationRefDeclarationAbsent rather than greening because the spelling appears in a note; a module that does not exist must refuse with DeclarationRefModuleAbsent. Both are controlled fixtures authored here, which is the oracle form the repository sanctions — this witness authors the input and the expected verdict."
 
 test fn census_absent_declaration_refuses() -> Bool {
   match resolve_declaration_ref(
@@ -133,15 +112,7 @@ test fn census_shared_substrate_carrier_resolves() -> Bool {
   }
 }
 
-// CENSUS FINDING, moved here from the fast lane because its imports were measurably expensive (see
-// closure_cost_note in the fast-lane companion: this control's v2.lens closure cost an unrelated
-// witness ~1.1s of its 5s budget). The control itself is unchanged and strengthened from the
-// original: asserting that complexity_variables_admits EXISTS establishes nothing, since a real
-// implementation satisfies that too. This uses the tree's own typed admission — v2.lens.complexity
-// declares complexity_variables_vacuous_validation as a VacuousValidation carrying
-// vacuous_admits_marker, which IS the module stating its predicate admits everything — and executes
-// the predicate beside it. Synthesizing a rejected input is not available as a control precisely
-// because the predicate rejects nothing; that is the finding.
+data w_admission_predicate_is_vacuous_note: String = "CENSUS FINDING, moved here from the fast lane because its imports were measurably expensive (see closure_cost_note in the fast-lane companion: this control's v2.lens closure cost an unrelated witness ~1.1s of its 5s budget). The control itself is unchanged and strengthened from the original: asserting that complexity_variables_admits EXISTS establishes nothing, since a real implementation satisfies that too. This uses the tree's own typed admission — v2.lens.complexity declares complexity_variables_vacuous_validation as a VacuousValidation carrying vacuous_admits_marker, which IS the module stating its predicate admits everything — and executes the predicate beside it. Synthesizing a rejected input is not available as a control precisely because the predicate rejects nothing; that is the finding."
 
 test fn census_complexity_admission_predicate_is_vacuous_by_execution() -> Bool {
   complexity_variables_admits(xs: []) &&
