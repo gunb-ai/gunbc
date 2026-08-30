@@ -1,4 +1,4 @@
-module test.claim.generation_admission_changed_successor_witness
+module test.claim.self_host_generation_admission_changed_successor_witness
 
 import v2.compiler.self_host.generation {
   ArtifactMaterialized,
