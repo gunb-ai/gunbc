@@ -7139,6 +7139,7 @@ mod changed_witness_projection_tests {
                 RequiredFloorDisposition::PlannedAsChangedWitness,
             )],
             &[terminal("m.a", ClaimOutcome::Pass)],
+            false,
         );
         assert_eq!(rows.len(), 1);
         assert_eq!(rows[0].standing, "planned-and-passed");
