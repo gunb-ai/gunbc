@@ -444,7 +444,7 @@ test fn ciprobe_english_parse_accepted() -> Bool {
 
 test fn ciprobe_english_parse_no_diags() -> Bool {
   match ciprobe_english_parse() {
-    Accepted { value: _, diagnostics: d } => d == None
+    Accepted { value: _, diagnostics: d } => d == v2.std.diagnostic.None
     Rejected { diagnostics: _ } => false
   }
 }
