@@ -1,0 +1,55 @@
+module gunbc.stage0_partition_package_graph
+
+import std.types { String, List, Bool }
+import gunbc.stage0_crate_partition_generated {
+  GeneratedEmitCoreCrate,
+  GeneratedFoundationCrate,
+  GeneratedLayeredCoreCrate,
+  GeneratedPartitionCrateRow,
+  generated_partition_crate_rows
+}
+
+// THE PACKAGE DEPENDENCY GRAPH OF THE STAGE0 PARTITION, in one place, as package NAMES.
+//
+// Two consumers ask the same question and must not answer it twice. v1.compiler.stage0_crates
+// renders each partition crate's Cargo manifest from these edges, and
+// gunbc.stage0_partition_rebuild_scope walks them in reverse to decide which packages one changed
+// mirror forces cargo to recompile. If the renderer kept its own copy, the selector could compute
+// a closure over edges cargo was never handed -- and the failure direction is the dangerous one:
+// a missing edge NARROWS the closure, so a package that must recompile is skipped and the next
+// pass runs stale code. One authority makes that state unwritable rather than checked.
+//
+// NAMES, NOT MANIFEST ROWS, because the two consumers need different things from an edge: the
+// renderer needs a LocalPathDep carrying the sibling path it resolves from the row's crate_dir,
+// and the selector needs only the identity of the package on the other end. Publishing the
+// manifest row here would push the renderer's transport into the graph (DESIGN section 3:
+// interface, realization and policy are three facts), and publishing the path would make the
+// selector carry a directory it has no use for.
+//
+// THE KIND DECIDES THE EDGES, and each arm is the rule the partition already lives by:
+// a foundation crate is the bottom of the layering and depends on no partition package; a
+// layered core crate depends on exactly the packages it re-exports, which is what makes the
+// `crate::` references in its included mirrors keep resolving; and the emit shell re-exports a
+// SURFACE assembled from every module-bearing package, so it depends on all of them regardless
+// of which modules it names.
+fn stage0_partition_row_is_module_bearing_package(row: GeneratedPartitionCrateRow) -> Bool {
+  match row.kind {
+    GeneratedEmitCoreCrate => false
+    GeneratedFoundationCrate => true
+    GeneratedLayeredCoreCrate => true
+  }
+}
+
+fn stage0_partition_module_bearing_package_names() -> List<String> {
+  generated_partition_crate_rows
+    |> filter(row => stage0_partition_row_is_module_bearing_package(row: row))
+    |> map(row => row.package_name)
+}
+
+fn stage0_partition_package_dependency_names(row: GeneratedPartitionCrateRow) -> List<String> {
+  match row.kind {
+    GeneratedFoundationCrate => []
+    GeneratedLayeredCoreCrate => row.reexport_packages
+    GeneratedEmitCoreCrate => stage0_partition_module_bearing_package_names()
+  }
+}

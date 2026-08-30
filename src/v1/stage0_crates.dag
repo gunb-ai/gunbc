@@ -6,6 +6,10 @@ import v1.std.core { TextFile }
 import v1.compiler.emit_rust { emit_non_empty_wrappers, emit_cargo_dep }
 import extdeps.cargo { CargoDependency, CargoFeature, RegistryDep, LocalPathDep }
 import extdeps.cargo_version { render_cargo_package_header_prefix }
+import gunbc.stage0_partition_package_graph {
+  stage0_partition_package_dependency_names,
+  stage0_partition_row_is_module_bearing_package
+}
 import gunbc.stage0_crate_partition_generated {
   GeneratedEmitCoreCrate,
   GeneratedFoundationCrate,
@@ -99,14 +103,6 @@ fn stage0_crate_dir_to_sibling_dep_path(crate_dir: String) -> String {
   replace(crate_dir, "src/v1/", "../")
 }
 
-fn stage0_partition_row_is_module_bearing(row: GeneratedPartitionCrateRow) -> Bool {
-  match row.kind {
-    GeneratedEmitCoreCrate => false
-    GeneratedFoundationCrate => true
-    GeneratedLayeredCoreCrate => true
-  }
-}
-
 type Stage0ModuleOwnerRefusalCause
   = Stage0ModuleOwnerMissing { module_basename: String }
 
@@ -156,7 +152,7 @@ type Stage0CrateBoundaryEmitOutcome
 fn stage0_lookup_module_owner_package_name(module_basename: String) -> Stage0ModuleOwnerLookup {
   let matches = generated_partition_crate_rows
     |> filter(row =>
-      stage0_partition_row_is_module_bearing(row: row)
+      stage0_partition_row_is_module_bearing_package(row: row)
         && (row.modules |> any(m => m == module_basename))
     )
   let package_name = matches
@@ -231,14 +227,6 @@ fn stage0_foundation_runtime_dependencies() -> List<CargoDependency> {
   ]
 }
 
-fn stage0_emit_shell_registry_dependencies() -> List<CargoDependency> {
-  [
-    CargoDependency { name: "stacker", source: RegistryDep { version: "0.1", features: [] } },
-    CargoDependency { name: "im", source: RegistryDep { version: "15.1", features: ["serde"] } },
-    CargoDependency { name: "serde", source: RegistryDep { version: "1", features: ["derive", "rc"] } }
-  ]
-}
-
 fn stage0_reexport_path_dependencies_outcome(
   reexport_packages: List<String>
 ) -> Stage0ReexportPathDepsOutcome {
@@ -267,17 +255,6 @@ fn stage0_reexport_path_dependencies_outcome(
     })
 }
 
-fn stage0_emit_shell_path_dependencies() -> List<CargoDependency> {
-  generated_partition_crate_rows
-    |> filter(row => stage0_partition_row_is_module_bearing(row: row))
-    |> map(row =>
-      CargoDependency {
-        name: row.package_name,
-        source: LocalPathDep { path: stage0_crate_dir_to_sibling_dep_path(crate_dir: row.crate_dir) }
-      }
-    )
-}
-
 fn stage0_partition_row_kind(row: GeneratedPartitionCrateRow) -> Stage0CrateKind {
   match row.kind {
     GeneratedFoundationCrate => FoundationCrate
@@ -294,26 +271,24 @@ fn stage0_partition_row_header_doc(row: GeneratedPartitionCrateRow) -> String {
   }
 }
 
+// EVERY PARTITION CRATE'S MANIFEST IS THE SAME TWO PARTS: the registry dependencies every stage0
+// crate carries, then one LocalPathDep per package edge. Which packages those are is not decided
+// here -- gunbc.stage0_partition_package_graph owns the edges, and this function is the transport
+// that turns each package name into the sibling path cargo reads. The three kinds used to fork
+// here with the emit shell's rule written out a second time; they no longer differ at all, which
+// is what having one graph means.
 fn stage0_partition_row_dependencies_outcome(
   row: GeneratedPartitionCrateRow
 ) -> Stage0PartitionRowDepsOutcome {
-  match row.kind {
-    GeneratedFoundationCrate =>
-      Stage0PartitionRowDepsOk { deps: stage0_foundation_runtime_dependencies() }
-    GeneratedLayeredCoreCrate =>
-      match stage0_reexport_path_dependencies_outcome(reexport_packages: row.reexport_packages) {
-        Stage0ReexportPathDepsOk { deps: reexport_deps } =>
-          Stage0PartitionRowDepsOk {
-            deps: stage0_foundation_runtime_dependencies() |> concat(reexport_deps)
-          }
-        Stage0ReexportPathDepsRefused { cause: cause } =>
-          Stage0PartitionRowDepsRefused { cause: cause }
-      }
-    GeneratedEmitCoreCrate =>
+  match stage0_reexport_path_dependencies_outcome(
+    reexport_packages: stage0_partition_package_dependency_names(row: row)
+  ) {
+    Stage0ReexportPathDepsOk { deps: path_deps } =>
       Stage0PartitionRowDepsOk {
-        deps: stage0_foundation_runtime_dependencies()
-          |> concat(stage0_emit_shell_path_dependencies())
+        deps: stage0_foundation_runtime_dependencies() |> concat(path_deps)
       }
+    Stage0ReexportPathDepsRefused { cause: cause } =>
+      Stage0PartitionRowDepsRefused { cause: cause }
   }
 }
 

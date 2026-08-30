@@ -11,16 +11,18 @@ import gunbc.stage0_partition_rebuild_scope {
   ExecutableAssemblyNotCovered,
   MirrorHasMultipleOwningPackages,
   MirrorHasNoOwningPackage,
-  MonolithicExecutableRetained,
+  ExecutableAssemblyUnavailable,
   PackageDependencyClosureUnderivable,
   PartitionAssembledExecutable,
   PartitionGenerationAuthorityChanged,
-  PartitionRebuild,
   PartitionRebuildDecision,
+  PartitionRebuildScopeDerived,
+  PartitionedClaimExecutorAssembly,
   RebuildScopeRefused,
   SharedCompilerBuildInputChanged,
   WholeCompilerRebuildRequired,
   rebuild_scope_excluded_packages,
+  stage0_partition_rebuild_is_actuatable,
   stage0_partition_rebuild_decision,
   stage0_partition_rebuild_decision_today,
   stage0_next_pass_executable_assembly
@@ -37,9 +39,10 @@ import gunbc.stage0_partition_rebuild_scope {
 // 3. Silence on an input every package is built from. Two rosters, two arms.
 // 4/5. Ownership that cannot answer. A mirror with no owner and a mirror with two owners must
 //    refuse with DIFFERENT causes -- collapsing them would hide which way the roster is wrong.
-// 6. The monolith accepted as the next-pass executable. witness_today_refuses_monolithic_assembly
-//    goes red the moment stage0_next_pass_executable_assembly claims a partition assembly that
-//    does not exist, which is the exact inflation the acceptance bar forbids.
+// 6. A derived scope spent as a rebuild. The live decision derives real packages while its
+//    executable assembly is unavailable, so the pair witness_today_derives_scope_with_unavailable
+//    _assembly / witness_today_scope_is_not_actuatable holds those two facts apart, against a
+//    positive actuatability control so the predicate cannot be a constant false.
 //
 // The fixture executable below is a PARTITION-ASSEMBLED one because the positive arm has no live
 // inhabitant yet (see rebuild_scope_executable_assembly_dissolve_on). It is a fixture handed to
@@ -63,7 +66,7 @@ fn witness_decide(changed: List<String>) -> PartitionRebuildDecision {
 
 fn witness_closure_of(changed: List<String>) -> List<String> {
   match witness_decide(changed: changed) {
-    PartitionRebuild { changed_mirrors: _, owning_packages: _, rebuilt_package_closure: c, executable_package: _ } => c
+    PartitionRebuildScopeDerived { changed_mirrors: _, owning_packages: _, package_closure: c, executable_assembly: _ } => c
     WholeCompilerRebuildRequired { cause: _ } => []
     RebuildScopeRefused { cause: _ } => []
   }
@@ -77,7 +80,7 @@ fn witness_has(items: List<String>, item: String) -> Bool {
 // relink; two named unrelated packages stay uncompiled.
 test fn witness_leaf_edit_compiles_owner_and_downstream_holds() -> Bool {
   match witness_decide(changed: ["std_effects.rs"]) {
-    PartitionRebuild { changed_mirrors: _, owning_packages: o, rebuilt_package_closure: c, executable_package: e } =>
+    PartitionRebuildScopeDerived { changed_mirrors: _, owning_packages: o, package_closure: c, executable_assembly: assembly } =>
       (count(o) == 1)
         && witness_has(items: o, item: "v1-stage0-std-surface")
         && witness_has(items: c, item: "v1-stage0-std-surface")
@@ -85,7 +88,10 @@ test fn witness_leaf_edit_compiles_owner_and_downstream_holds() -> Bool {
         && witness_has(items: c, item: "v1-stage0-v1-artifact")
         && witness_has(items: c, item: "v1-stage0-v1-infer")
         && witness_has(items: c, item: "v1-stage0-emit-core")
-        && (e == "v1-stage0-emit-core")
+        && (match assembly {
+              PartitionAssembledExecutable { package_name: p, bin_name: _ } => p == "v1-stage0-emit-core"
+              ExecutableAssemblyUnavailable { trigger: _, detail: _ } => false
+            })
     WholeCompilerRebuildRequired { cause: _ } => false
     RebuildScopeRefused { cause: _ } => false
   }
@@ -124,7 +130,7 @@ test fn witness_partition_generation_edit_requires_whole_rebuild_holds() -> Bool
   match witness_decide(changed: ["gunbc_stage0_crate_partition_generated.rs"]) {
     WholeCompilerRebuildRequired { cause: PartitionGenerationAuthorityChanged { mirrors: ms } } => count(ms) == 1
     WholeCompilerRebuildRequired { cause: SharedCompilerBuildInputChanged { mirrors: _ } } => false
-    PartitionRebuild { changed_mirrors: _, owning_packages: _, rebuilt_package_closure: _, executable_package: _ } => false
+    PartitionRebuildScopeDerived { changed_mirrors: _, owning_packages: _, package_closure: _, executable_assembly: _ } => false
     RebuildScopeRefused { cause: _ } => false
   }
 }
@@ -133,7 +139,7 @@ test fn witness_shared_build_input_edit_requires_whole_rebuild_holds() -> Bool {
   match witness_decide(changed: ["v1_compiler_workspace_members.rs"]) {
     WholeCompilerRebuildRequired { cause: SharedCompilerBuildInputChanged { mirrors: ms } } => count(ms) == 1
     WholeCompilerRebuildRequired { cause: PartitionGenerationAuthorityChanged { mirrors: _ } } => false
-    PartitionRebuild { changed_mirrors: _, owning_packages: _, rebuilt_package_closure: _, executable_package: _ } => false
+    PartitionRebuildScopeDerived { changed_mirrors: _, owning_packages: _, package_closure: _, executable_assembly: _ } => false
     RebuildScopeRefused { cause: _ } => false
   }
 }
@@ -149,7 +155,7 @@ test fn witness_unowned_mirror_refuses_holds() -> Bool {
     RebuildScopeRefused { cause: PackageDependencyClosureUnderivable { package_name: _, detail: _ } } => false
     RebuildScopeRefused { cause: ExecutableAssemblyNotCovered { executable_package: _, detail: _ } } => false
     WholeCompilerRebuildRequired { cause: _ } => false
-    PartitionRebuild { changed_mirrors: _, owning_packages: _, rebuilt_package_closure: _, executable_package: _ } => false
+    PartitionRebuildScopeDerived { changed_mirrors: _, owning_packages: _, package_closure: _, executable_assembly: _ } => false
   }
 }
 
@@ -191,7 +197,7 @@ test fn witness_duplicate_owner_refuses_holds() -> Bool {
     RebuildScopeRefused { cause: PackageDependencyClosureUnderivable { package_name: _, detail: _ } } => false
     RebuildScopeRefused { cause: ExecutableAssemblyNotCovered { executable_package: _, detail: _ } } => false
     WholeCompilerRebuildRequired { cause: _ } => false
-    PartitionRebuild { changed_mirrors: _, owning_packages: _, rebuilt_package_closure: _, executable_package: _ } => false
+    PartitionRebuildScopeDerived { changed_mirrors: _, owning_packages: _, package_closure: _, executable_assembly: _ } => false
   }
 }
 
@@ -210,7 +216,7 @@ test fn witness_unlocatable_changed_path_refuses_holds() -> Bool {
     RebuildScopeRefused { cause: PackageDependencyClosureUnderivable { package_name: _, detail: _ } } => false
     RebuildScopeRefused { cause: ExecutableAssemblyNotCovered { executable_package: _, detail: _ } } => false
     WholeCompilerRebuildRequired { cause: _ } => false
-    PartitionRebuild { changed_mirrors: _, owning_packages: _, rebuilt_package_closure: _, executable_package: _ } => false
+    PartitionRebuildScopeDerived { changed_mirrors: _, owning_packages: _, package_closure: _, executable_assembly: _ } => false
   }
 }
 
@@ -229,30 +235,46 @@ test fn witness_unreached_executable_package_refuses_holds() -> Bool {
     RebuildScopeRefused { cause: ChangedMirrorUnlocatable { mirrors: _, reason: _ } } => false
     RebuildScopeRefused { cause: PackageDependencyClosureUnderivable { package_name: _, detail: _ } } => false
     WholeCompilerRebuildRequired { cause: _ } => false
-    PartitionRebuild { changed_mirrors: _, owning_packages: _, rebuilt_package_closure: _, executable_package: _ } => false
+    PartitionRebuildScopeDerived { changed_mirrors: _, owning_packages: _, package_closure: _, executable_assembly: _ } => false
   }
 }
 
-// CONTROL 6 -- the rung-honesty control. Today's live executable is the monolith, so today's live
-// decision REFUSES for an ordinary leaf edit. This test is the wall against inflating the class:
-// it goes red the moment the module claims a partition-assembled executable the tree does not
-// build, and it is the row that must be deleted (not edited) when the monolith cut lands.
-test fn witness_today_refuses_monolithic_assembly_holds() -> Bool {
+// CONTROL 6 -- the rung-honesty pair, and the reason it is a PAIR. Today's live decision DERIVES
+// the scope (the packages are a real answer, and the round-cost projection reports them) while
+// carrying ExecutableAssemblyUnavailable, so one arm alone cannot separate "we derived a scope"
+// from "we rebuilt from it". The first test fixes the derived shape; the second fixes that the
+// same decision is NOT actuatable. Both go red the moment this module claims an assembly the tree
+// does not build -- which is exactly the inflation the acceptance bar forbids -- and both are
+// edited, not deleted, when the executable cut lands: the shape survives, the expected arm flips.
+test fn witness_today_derives_scope_with_unavailable_assembly_holds() -> Bool {
   match stage0_partition_rebuild_decision_today(changed_mirrors: ["std_effects.rs"], unlocatable: []) {
-    RebuildScopeRefused { cause: ExecutableAssemblyNotCovered { executable_package: p, detail: _ } } => p == "v1-compiler"
-    RebuildScopeRefused { cause: MirrorHasNoOwningPackage { mirror: _ } } => false
-    RebuildScopeRefused { cause: MirrorHasMultipleOwningPackages { mirror: _, packages: _ } } => false
-    RebuildScopeRefused { cause: ChangedMirrorUnlocatable { mirrors: _, reason: _ } } => false
-    RebuildScopeRefused { cause: PackageDependencyClosureUnderivable { package_name: _, detail: _ } } => false
+    PartitionRebuildScopeDerived { changed_mirrors: _, owning_packages: o, package_closure: c, executable_assembly: assembly } =>
+      witness_has(items: o, item: "v1-stage0-std-surface")
+        && (count(c) > 1)
+        && (match assembly {
+              ExecutableAssemblyUnavailable { trigger: PartitionedClaimExecutorAssembly, detail: _ } => true
+              PartitionAssembledExecutable { package_name: _, bin_name: _ } => false
+            })
     WholeCompilerRebuildRequired { cause: _ } => false
-    PartitionRebuild { changed_mirrors: _, owning_packages: _, rebuilt_package_closure: _, executable_package: _ } => false
+    RebuildScopeRefused { cause: _ } => false
   }
 }
 
-test fn witness_next_pass_executable_is_declared_monolithic_holds() -> Bool {
+test fn witness_today_scope_is_not_actuatable_holds() -> Bool {
+  !stage0_partition_rebuild_is_actuatable(
+    decision: stage0_partition_rebuild_decision_today(changed_mirrors: ["std_effects.rs"], unlocatable: [])
+  )
+}
+
+// The positive control for actuatability: without it, the predicate above could be a constant
+// false and nothing would notice.
+test fn witness_assembled_executable_scope_is_actuatable_holds() -> Bool {
+  stage0_partition_rebuild_is_actuatable(decision: witness_decide(changed: ["std_effects.rs"]))
+}
+
+test fn witness_next_pass_executable_assembly_is_unavailable_holds() -> Bool {
   match stage0_next_pass_executable_assembly() {
-    MonolithicExecutableRetained { package_name: p, bin_name: b, duplicated_population: _ } =>
-      (p == "v1-compiler") && (b == "claim_executor")
+    ExecutableAssemblyUnavailable { trigger: PartitionedClaimExecutorAssembly, detail: _ } => true
     PartitionAssembledExecutable { package_name: _, bin_name: _ } => false
   }
 }
