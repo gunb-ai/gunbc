@@ -607,7 +607,7 @@ pub fn is_rt_function(name: String) -> bool {
 pub fn rt_bridge_name(name: String) -> String {
     match v1_rt::map_get(&rt_bridge_function_names(), name.clone()) {
         Some(bridge) => bridge.clone(),
-        None => name.clone(),
+        std::option::Option::None => name.clone(),
     }
 }
 
@@ -926,7 +926,7 @@ pub fn rust_pair_completion_impl_render(
     } else {
         "(self) -> Self::Output ".to_string()
     }), rust_pair_completion_body_render(row.body.clone())), "}\n".to_string()),
-    None => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("compile_error!(\"gunbc: a pair-completion row carries a capability key with no ".to_string(), "rust_pair_completion_spellings entry. The spelled keys are: ".to_string()), Rc::new({ let mut __result = Vec::new(); for sp in rust_pair_completion_spellings().iter().cloned() { __result.push(sp.method.clone()); } __result }).join(&", ".to_string())), ". std.trait_derive_shape.pair_completion_op_rows ".to_string()), "and the Rust spelling table have drifted; the operator impl cannot be rendered.\");\n".to_string()),
+    std::option::Option::None => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("compile_error!(\"gunbc: a pair-completion row carries a capability key with no ".to_string(), "rust_pair_completion_spellings entry. The spelled keys are: ".to_string()), Rc::new({ let mut __result = Vec::new(); for sp in rust_pair_completion_spellings().iter().cloned() { __result.push(sp.method.clone()); } __result }).join(&", ".to_string())), ". std.trait_derive_shape.pair_completion_op_rows ".to_string()), "and the Rust spelling table have drifted; the operator impl cannot be rendered.\");\n".to_string()),
 }
 }
 

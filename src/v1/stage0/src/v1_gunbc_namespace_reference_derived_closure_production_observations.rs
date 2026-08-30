@@ -117,11 +117,11 @@ pub fn same_file_neighbour_observation(
     gap: ReferenceBindingProductionGap::ReferenceBindingParserTransportRefused,
 }),
     NrdfcParsed::NrdfcParsedReady { transport, inputs, .. } => match crate::v1_gunbc_occurrence_binding_parser_walk::reference_named(transport.clone(), neighbour_name.clone()) {
-    None => Rc::new(ReferenceBindingObservation::SameFileNeighbourProductionRefused {
+    std::option::Option::None => Rc::new(ReferenceBindingObservation::SameFileNeighbourProductionRefused {
     gap: ReferenceBindingProductionGap::ReferenceBindingNamedReferenceAbsent,
 }),
     Some(reference) => match crate::v1_gunbc_occurrence_binding_parser_walk::declarations_named(transport.clone(), neighbour_name.clone()).first().cloned() {
-    None => Rc::new(ReferenceBindingObservation::SameFileNeighbourProductionRefused {
+    std::option::Option::None => Rc::new(ReferenceBindingObservation::SameFileNeighbourProductionRefused {
     gap: ReferenceBindingProductionGap::ReferenceBindingNamedDeclarationAbsent,
 }),
     Some(neighbour) => Rc::new(ReferenceBindingObservation::SameFileNeighbourObservation {
@@ -157,15 +157,15 @@ pub fn sibling_branch_observation(
                     branch_binder_name.clone(),
                 );
             match branch_declarations.clone().first().cloned() {
-    None => Rc::new(ReferenceBindingObservation::SiblingBranchProductionRefused {
+    std::option::Option::None => Rc::new(ReferenceBindingObservation::SiblingBranchProductionRefused {
     gap: ReferenceBindingProductionGap::ReferenceBindingNamedDeclarationAbsent,
 }),
     Some(then_branch_binder) => match v1_rt::reverse(branch_declarations.clone()).first().cloned() {
-    None => Rc::new(ReferenceBindingObservation::SiblingBranchProductionRefused {
+    std::option::Option::None => Rc::new(ReferenceBindingObservation::SiblingBranchProductionRefused {
     gap: ReferenceBindingProductionGap::ReferenceBindingNamedDeclarationAbsent,
 }),
     Some(else_branch_binder) => match v1_rt::reverse(branch_references.clone()).first().cloned() {
-    None => Rc::new(ReferenceBindingObservation::SiblingBranchObservation {
+    std::option::Option::None => Rc::new(ReferenceBindingObservation::SiblingBranchObservation {
     own_branch_declaration: else_branch_binder.occurrence.clone(),
     sibling_branch_declaration: then_branch_binder.occurrence.clone(),
     resolution: Rc::new(StructuralBindingResolution::StructuralBindingProductionRefused {
@@ -193,11 +193,11 @@ pub fn later_declaration_observation(
     gap: ReferenceBindingProductionGap::ReferenceBindingParserTransportRefused,
 }),
     NrdfcParsed::NrdfcParsedReady { transport, inputs, .. } => match crate::v1_gunbc_occurrence_binding_parser_walk::reference_named(transport.clone(), later_name.clone()) {
-    None => Rc::new(ReferenceBindingObservation::LaterDeclarationProductionRefused {
+    std::option::Option::None => Rc::new(ReferenceBindingObservation::LaterDeclarationProductionRefused {
     gap: ReferenceBindingProductionGap::ReferenceBindingNamedReferenceAbsent,
 }),
     Some(reference) => match crate::v1_gunbc_occurrence_binding_parser_walk::declarations_named(transport.clone(), later_name.clone()).first().cloned() {
-    None => Rc::new(ReferenceBindingObservation::LaterDeclarationProductionRefused {
+    std::option::Option::None => Rc::new(ReferenceBindingObservation::LaterDeclarationProductionRefused {
     gap: ReferenceBindingProductionGap::ReferenceBindingNamedDeclarationAbsent,
 }),
     Some(later_declaration) => Rc::new(ReferenceBindingObservation::LaterDeclarationObservation {
@@ -230,7 +230,7 @@ pub fn distinct_homonym_observation(
         .first()
         .cloned()
         {
-            None => Rc::new(
+            std::option::Option::None => Rc::new(
                 ReferenceBindingObservation::DistinctHomonymProductionRefused {
                     gap: ReferenceBindingProductionGap::ReferenceBindingNamedReferenceAbsent,
                 },
@@ -241,11 +241,11 @@ pub fn distinct_homonym_observation(
                     homonym_name.clone(),
                 );
                 match homonyms.clone().first().cloned() {
-    None => Rc::new(ReferenceBindingObservation::DistinctHomonymProductionRefused {
+    std::option::Option::None => Rc::new(ReferenceBindingObservation::DistinctHomonymProductionRefused {
     gap: ReferenceBindingProductionGap::ReferenceBindingNamedDeclarationAbsent,
 }),
     Some(first_homonym) => match v1_rt::reverse(homonyms.clone()).first().cloned() {
-    None => Rc::new(ReferenceBindingObservation::DistinctHomonymProductionRefused {
+    std::option::Option::None => Rc::new(ReferenceBindingObservation::DistinctHomonymProductionRefused {
     gap: ReferenceBindingProductionGap::ReferenceBindingNamedDeclarationAbsent,
 }),
     Some(second_homonym) => Rc::new(ReferenceBindingObservation::DistinctHomonymObservation {

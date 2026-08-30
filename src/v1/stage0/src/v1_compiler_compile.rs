@@ -218,7 +218,7 @@ pub fn extract_func_entries(typed: Rc<ResolvedGraph>) -> Rc<Vec<Rc<FuncEntry>>> 
                 if {
                     let mut __found = false;
                     for item in m.items.clone().iter().cloned() {
-                        if (item.body.clone() != None) {
+                        if (item.body.clone() != std::option::Option::None) {
                             __found = true;
                             break;
                         }
@@ -239,7 +239,7 @@ pub fn extract_func_entries(typed: Rc<ResolvedGraph>) -> Rc<Vec<Rc<FuncEntry>>> 
                     for item in Rc::new({
                         let mut __result = Vec::new();
                         for item in m.items.clone().iter().cloned() {
-                            if (item.body.clone() != None) {
+                            if (item.body.clone() != std::option::Option::None) {
                                 __result.push(item);
                             }
                         }
@@ -280,7 +280,7 @@ pub fn module_ownership_proofs(m: Rc<TypedModule>) -> Rc<Vec<Rc<OwnershipProof>>
         for item in Rc::new({
             let mut __result = Vec::new();
             for item in m.items.clone().iter().cloned() {
-                if (item.body.clone() != None) {
+                if (item.body.clone() != std::option::Option::None) {
                     __result.push(item);
                 }
             }
@@ -312,7 +312,7 @@ pub fn extract_ownership_proofs(typed: Rc<ResolvedGraph>) -> Rc<Vec<Rc<Ownership
                 if {
                     let mut __found = false;
                     for item in m.items.clone().iter().cloned() {
-                        if (item.body.clone() != None) {
+                        if (item.body.clone() != std::option::Option::None) {
                             __found = true;
                             break;
                         }
@@ -475,7 +475,7 @@ pub fn json_list(items: Rc<Vec<String>>) -> String {
 pub fn json_optional_string(value: Option<String>) -> String {
     match value.clone() {
         Some(inner) => crate::v1_compiler_dag_collect_support::json_quote(inner.clone()),
-        None => "null".to_string(),
+        std::option::Option::None => "null".to_string(),
     }
 }
 
@@ -504,7 +504,7 @@ pub fn dag_emit_check_ref_target(
         crate::v1_compiler_dag_collect::dag_node_key(node.clone()),
     ) {
         Some(_) => Rc::new(vec![]),
-        None => Rc::new(vec![dag_node_missing_ref_error(node.clone())]),
+        std::option::Option::None => Rc::new(vec![dag_node_missing_ref_error(node.clone())]),
     }
 }
 
@@ -514,7 +514,7 @@ pub fn dag_emit_check_optional_ref_target(
 ) -> Rc<Vec<Rc<ErrorNode>>> {
     match value.clone() {
         Some(inner) => dag_emit_check_ref_target(inner.clone(), key_to_id.clone()),
-        None => Rc::new(vec![]),
+        std::option::Option::None => Rc::new(vec![]),
     }
 }
 
@@ -676,7 +676,7 @@ pub fn serialize_node_ref(node: Rc<Node>, key_to_id: Rc<HashMap<String, String>>
             ),
             "}".to_string(),
         ),
-        None => "{\"$ref\": null}".to_string(),
+        std::option::Option::None => "{\"$ref\": null}".to_string(),
     }
 }
 
@@ -686,7 +686,7 @@ pub fn json_optional_node_ref(
 ) -> String {
     match value.clone() {
         Some(inner) => serialize_node_ref(inner.clone(), key_to_id.clone()),
-        None => "null".to_string(),
+        std::option::Option::None => "null".to_string(),
     }
 }
 
@@ -696,14 +696,14 @@ pub fn json_optional_inferred_node_ref(
 ) -> String {
     match value.clone() {
         Some(inner) => serialize_inferred_node_ref(inner.clone(), key_to_id.clone()),
-        None => "null".to_string(),
+        std::option::Option::None => "null".to_string(),
     }
 }
 
 pub fn json_optional_span(value: Option<Rc<SourceSpan>>) -> String {
     match value.clone() {
         Some(inner) => serialize_span(inner.clone()),
-        None => "null".to_string(),
+        std::option::Option::None => "null".to_string(),
     }
 }
 
@@ -1159,7 +1159,7 @@ pub fn serialize_call_semantics(value: Option<Rc<CallSemantics>>) -> String {
         Some(CallSemantics::FunctionValueCallSemantics) => {
             "{\"kind\": \"FunctionValueCallSemantics\"}".to_string()
         }
-        None => "null".to_string(),
+        std::option::Option::None => "null".to_string(),
     }
 }
 
@@ -1220,7 +1220,7 @@ pub fn serialize_method_semantics(
             ),
             "}".to_string(),
         ),
-        None => "null".to_string(),
+        std::option::Option::None => "null".to_string(),
     }
 }
 
@@ -1376,7 +1376,7 @@ pub fn serialize_descent_evidence(de: Option<Rc<Vec<Rc<SubValueRelation>>>>) -> 
             }
             __result
         })),
-        None => "null".to_string(),
+        std::option::Option::None => "null".to_string(),
     }
 }
 
@@ -1448,7 +1448,7 @@ pub fn serialize_expr_data(
                             ),
                             "}".to_string(),
                         ),
-                        None => "null".to_string(),
+                        std::option::Option::None => "null".to_string(),
                     },
                 ),
                 "}".to_string(),
@@ -1475,7 +1475,7 @@ pub fn serialize_expr_data(
                                 ),
                                 match summary.clone() {
                                     Some(inner) => serialize_field_summary(inner.clone()),
-                                    None => "null".to_string(),
+                                    std::option::Option::None => "null".to_string(),
                                 },
                             ),
                             ", \"children\": ".to_string(),
@@ -1597,7 +1597,7 @@ pub fn serialize_expr_data(
                                         f.clone(),
                                     ),
                                 ),
-                                None => "null".to_string(),
+                                std::option::Option::None => "null".to_string(),
                             },
                         ),
                         ", \"children\": ".to_string(),
@@ -2378,7 +2378,7 @@ pub fn emittable_graph(resolved: Rc<ResolvedPipelineResult>) -> Option<Rc<Emitta
                 Some(typed) => Some(Rc::new(EmittableGraph {
                     graph: typed.clone(),
                 })),
-                None => std::option::Option::None,
+                std::option::Option::None => std::option::Option::None,
             }
         }
     }
@@ -2444,7 +2444,7 @@ pub fn collect_diagnostics(parse_results: Rc<Vec<Rc<ParseResult>>>) -> Rc<Vec<Rc
         Rc::new(vec![]),
         |acc: Rc<Vec<Rc<ErrorNode>>>, pr: Rc<ParseResult>| match pr.error.clone() {
             Some(diag) => v1_rt::rc_list_push(acc.clone(), diag.clone()),
-            None => acc.clone(),
+            std::option::Option::None => acc.clone(),
         },
     )
 }
@@ -2465,7 +2465,7 @@ pub fn resolve_frontend_occurrence_transport(
                 "".to_string(),
             )]),
         }),
-        None => {
+        std::option::Option::None => {
             let graph = crate::v1_compiler_resolve::resolve_modules_with_occurrence_transport(
                 module_inputs.clone(),
                 source_indices.clone(),
@@ -2547,7 +2547,7 @@ pub fn front_end_sources(sources: Rc<Vec<Rc<SourceFile>>>) -> Rc<FrontendResult>
                                 parsed.occurrence_transport.clone(),
                             ),
                         ),
-                        None => acc.module_inputs.clone(),
+                        std::option::Option::None => acc.module_inputs.clone(),
                     },
                     newline_indices: v1_rt::rc_list_push(
                         acc.newline_indices.clone(),
@@ -2699,7 +2699,7 @@ pub fn parse_census_fill_sources(sources: Rc<Vec<Rc<SourceFile>>>) -> Rc<CensusF
                                 parsed.occurrence_transport.clone(),
                             ),
                         ),
-                        None => acc.module_inputs.clone(),
+                        std::option::Option::None => acc.module_inputs.clone(),
                     },
                     newline_indices: v1_rt::rc_list_push(
                         acc.newline_indices.clone(),
@@ -2901,7 +2901,7 @@ pub fn compile_to_resolved_with_options(
         let _ = v1_rt::trace_mark("compile.frontend.done".to_string());
         let newline_indices = frontend.newline_indices.clone();
         match frontend.graph.clone() {
-            None => Rc::new(ResolvedPipelineResult {
+            std::option::Option::None => Rc::new(ResolvedPipelineResult {
                 graph: std::option::Option::None,
                 diagnostics: frontend.diagnostics.clone(),
                 source_indices: v1_rt::rc_empty_map::<String, Rc<NewlineIndex>>(),
@@ -2982,7 +2982,7 @@ pub fn emit_resolved_for_target(
     target: RenderTarget,
 ) -> Rc<PipelineResult> {
     match emittable_graph(resolved.clone()) {
-        None => Rc::new(PipelineResult {
+        std::option::Option::None => Rc::new(PipelineResult {
             files: Rc::new(vec![]),
             diagnostics: resolved.diagnostics.clone(),
             complexity: resolved.complexity.clone(),

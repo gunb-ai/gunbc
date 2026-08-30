@@ -110,7 +110,7 @@ pub fn can_cast(target: RenderTarget, source_type: String, target_type: String) 
             }
             __found
         }
-        None => false,
+        std::option::Option::None => false,
     }
 }
 
@@ -118,7 +118,7 @@ pub fn render_cast(expr_str: String, type_str: String, target: RenderTarget) -> 
     {
         let syntax = match target_cast_syntax(target.clone()) {
             Some(s) => s.clone(),
-            None => Rc::new(CastSyntax {
+            std::option::Option::None => Rc::new(CastSyntax {
                 template: "{expr}".to_string(),
                 cast_rules: Rc::new(vec![]),
             }),
@@ -138,7 +138,7 @@ pub fn render_cast(expr_str: String, type_str: String, target: RenderTarget) -> 
 pub fn decl_identity_file(item: Rc<Node>) -> String {
     match item.ident_span.clone() {
         Some(sp) => sp.file.clone(),
-        None => "".to_string(),
+        std::option::Option::None => "".to_string(),
     }
 }
 
@@ -287,7 +287,7 @@ pub fn type_realization_decision(
                     Some(cp) => Rc::new(TypeRealizationDecision::Realized {
                         checkpoint: cp.clone(),
                     }),
-                    None => {
+                    std::option::Option::None => {
                         let native = if (target.clone() == RenderTarget::Rust) {
                             rust_seed_host_numeric_alias(dag_name.clone(), decl_file.clone())
                         } else {
@@ -304,7 +304,9 @@ pub fn type_realization_decision(
                                     literal_suffix: std::option::Option::None,
                                 }),
                             }),
-                            None => Rc::new(TypeRealizationDecision::Unrealized),
+                            std::option::Option::None => {
+                                Rc::new(TypeRealizationDecision::Unrealized)
+                            }
                         }
                     }
                 }
@@ -358,7 +360,7 @@ pub fn rust_exact_realization_decision(
     Some(cp) => Rc::new(TypeRealizationDecision::Realized {
     checkpoint: cp.clone(),
 }),
-    None => Rc::new(TypeRealizationDecision::Refused {
+    std::option::Option::None => Rc::new(TypeRealizationDecision::Refused {
     cause: v1_rt::concat(v1_rt::concat("declaration '".to_string(), b.source.clone().decl_name.clone()), "' is bound to a Rust representation with no realization row".to_string()),
 }),
 },
@@ -383,7 +385,7 @@ pub fn rust_checkpoint_row_keeps_bare_row(dag_name: String) -> bool {
             Some(m) => crate::std_target_representation::checkpoint_row_disposition_keeps_bare_row(
                 m.disposition.clone(),
             ),
-            None => true,
+            std::option::Option::None => true,
         }
     }
 }
@@ -400,14 +402,14 @@ pub fn coerce_primitive_type_dotted_fallback_note() -> String {
 pub fn coerce_primitive_type(target: RenderTarget, dag_name: String, decl_file: String) -> String {
     match lookup_checkpoint(target.clone(), dag_name.clone(), decl_file.clone()) {
         Some(cp) => cp.target_type.clone(),
-        None => crate::v1_std_core::qualified_last_segment(dag_name.clone()),
+        std::option::Option::None => crate::v1_std_core::qualified_last_segment(dag_name.clone()),
     }
 }
 
 pub fn is_copy(target: RenderTarget, dag_name: String, decl_file: String) -> Option<bool> {
     match lookup_checkpoint(target.clone(), dag_name.clone(), decl_file.clone()) {
         Some(cp) => cp.is_copy.clone(),
-        None => std::option::Option::None,
+        std::option::Option::None => std::option::Option::None,
     }
 }
 
@@ -415,9 +417,9 @@ pub fn literal_suffix(target: RenderTarget, dag_name: String, decl_file: String)
     match lookup_checkpoint(target.clone(), dag_name.clone(), decl_file.clone()) {
         Some(cp) => match cp.literal_suffix.clone() {
             Some(s) => Some(s.clone()),
-            None => Some("".to_string()),
+            std::option::Option::None => Some("".to_string()),
         },
-        None => std::option::Option::None,
+        std::option::Option::None => std::option::Option::None,
     }
 }
 
@@ -439,9 +441,9 @@ pub fn coerce_container_template(target: RenderTarget, container_name: String) -
     match crate::std_types::container_template_algebra(container_name.clone()) {
         Some(algebra) => match lookup_inhabitant(target.clone(), algebra.clone()) {
             Some(inh) => Some(inh.template.clone()),
-            None => std::option::Option::None,
+            std::option::Option::None => std::option::Option::None,
         },
-        None => std::option::Option::None,
+        std::option::Option::None => std::option::Option::None,
     }
 }
 
@@ -544,7 +546,7 @@ pub fn inhabitant_tests(target: RenderTarget) -> Rc<Vec<Rc<CoercionTestEntry>>> 
                                 expected_template: tmpl.clone(),
                             })])
                         }
-                        None => Rc::new(vec![]),
+                        std::option::Option::None => Rc::new(vec![]),
                     })
                     .iter()
                     .cloned(),
@@ -579,7 +581,7 @@ pub fn copy_tests() -> Rc<Vec<Rc<CoercionTestEntry>>> {
                             dag_name: cp.dag_name.clone(),
                             expected_copy: v.clone(),
                         })]),
-                        None => Rc::new(vec![]),
+                        std::option::Option::None => Rc::new(vec![]),
                     })
                     .iter()
                     .cloned(),

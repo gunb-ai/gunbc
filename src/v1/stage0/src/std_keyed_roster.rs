@@ -132,7 +132,7 @@ pub fn keyed_roster_locate_first_row<K: Clone, V: Clone>(
         std::option::Option::None,
         |acc: _, row: Rc<KeyedRow<K, V>>| match acc.clone() {
             Some(_) => acc.clone(),
-            None => {
+            std::option::Option::None => {
                 if key_eq(row.row_key.clone(), wanted_key.clone()) {
                     Some(row.clone())
                 } else {
@@ -151,7 +151,7 @@ pub fn keyed_roster_locate_duplicate<K: Clone, V: Clone>(
         std::option::Option::None,
         |acc: _, row: Rc<KeyedRow<K, V>>| match acc.clone() {
             Some(_) => acc.clone(),
-            None => {
+            std::option::Option::None => {
                 if (keyed_occurrence_count(rows.clone(), row.row_key.clone(), key_eq.clone()) > 1) {
                     match keyed_roster_locate_first_row(
                         rows.clone(),
@@ -170,9 +170,9 @@ pub fn keyed_roster_locate_duplicate<K: Clone, V: Clone>(
                                 duplicate: duplicate.clone(),
                                 _phantom: std::marker::PhantomData,
                             })),
-                            None => acc.clone(),
+                            std::option::Option::None => acc.clone(),
                         },
-                        None => acc.clone(),
+                        std::option::Option::None => acc.clone(),
                     }
                 } else {
                     acc.clone()
@@ -211,7 +211,7 @@ pub fn keyed_roster_insert<K: Clone, V: Clone>(
             first: evidence.first.clone(),
             duplicate: evidence.duplicate.clone(),
         }),
-        None => match crate::std_keyed_row::keyed_row_find(
+        std::option::Option::None => match crate::std_keyed_row::keyed_row_find(
             rows.clone(),
             incoming.row_key.clone(),
             key_eq.clone(),
@@ -221,7 +221,7 @@ pub fn keyed_roster_insert<K: Clone, V: Clone>(
                 existing: existing.clone(),
                 incoming: incoming.clone(),
             }),
-            None => Rc::new(KeyedRosterInsert::KeyedRosterInserted {
+            std::option::Option::None => Rc::new(KeyedRosterInsert::KeyedRosterInserted {
                 rows: v1_rt::concat(rows.clone(), Rc::new(vec![incoming.clone()])),
             }),
         },
@@ -243,7 +243,7 @@ pub fn keyed_roster_insert_into_unique<K: Clone, V: Clone>(
             existing: existing.clone(),
             incoming: incoming.clone(),
         }),
-        None => Rc::new(KeyedRosterInsert::KeyedRosterInserted {
+        std::option::Option::None => Rc::new(KeyedRosterInsert::KeyedRosterInserted {
             rows: v1_rt::concat(rows.clone(), Rc::new(vec![incoming.clone()])),
         }),
     }
