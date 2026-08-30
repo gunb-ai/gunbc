@@ -184,8 +184,10 @@ fn onboarding_quarantine_hits(lexemes: List<String>, spellings: Set<String>) -> 
 // intake spellings are probed only for a declaration that already names the onboarding
 // lifecycle — a bridge is defined as consuming AND naming, so a non-consumer's intake hits
 // decide nothing and are not computed. Each required-CI
-// witness evaluates this fold alone (no cross-witness memoization), under the 500ms migration
-// threshold gunbc.witness_row_cost derives, so the fold's cost is a fact about the wall.
+// witness evaluates this fold alone (no cross-witness memoization), under the 500ms required-floor
+// CPU safety limit (a refusal, distinct from the gunbc.witness_row_cost migration disclosure whose
+// value happens to coincide), so the fold's cost is a fact about the wall. Hits are returned in
+// lexeme order, not vocabulary order; every consumer reads emptiness or membership.
 fn onboarding_quarantine_examine(
   fact: DeclFact,
   subject: OnboardingQuarantineSubject,
