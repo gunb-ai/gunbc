@@ -11,6 +11,7 @@ import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.crypto.hash { Digest }
 import extdeps.tools.rustfmt
 import std.measure { byte_size }
+import std.shell_stream_capture { Complete }
 import extdeps.tools.sha256sum {
   Sha256FileDigest,
   Sha256FileDigestUnavailable,
@@ -718,7 +719,12 @@ fn measure_with_subject(
   let emit = gunbc.WitnessBin.Run(
     workdir: root,
     bin_path: gunbc_bin,
-    args: emission_compile_args(scope: subject.scope, render_target: subject.render_target, out_dir: out_dir)
+    args: emission_compile_args(scope: subject.scope, render_target: subject.render_target, out_dir: out_dir),
+    // The 00_compile closure produced 299,662 stderr bytes on 2026-08-30. Its
+    // scope anchor is near the head, so the default 16 KiB tail cannot decode
+    // the population. Complete is still bounded by GUNBC_MEMORY_BUDGET_BYTES
+    // and refuses rather than truncating when that authority is exceeded.
+    stderr_capture: Complete
   )
   let read = read_emit_diagnostics(
     stderr: emit.stderr,

@@ -1,6 +1,7 @@
 module extdeps.gunbc
 
 import std.types { FilePath, String }
+import std.shell_stream_capture { WitnessStderrCapturePolicy, BoundedTail }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 
@@ -91,7 +92,12 @@ data packages: List<WorkspacePackage> = [
 
 service gunbc.WitnessBin {
   operation Run {
-    input { workdir: FilePath, bin_path: FilePath, args: List<String> = [] }
+    input {
+      workdir: FilePath
+      bin_path: FilePath
+      args: List<String> = []
+      stderr_capture: WitnessStderrCapturePolicy = BoundedTail { bytes: 16384 }
+    }
     output {
       success: Bool from "exit_success"
       exit_code: Int from "exit_code"
