@@ -17,6 +17,9 @@ import gunbc.stage0_rust_host_observation {
 }
 import gunbc.generated_artifact { GeneratedArtifact, artifact_path, generated_artifact_registry }
 import gunbc.seed_growth_admission { seed_growth_roster_well_formed_gate_holds }
+import gunbc.rust_item_host_observation {
+  rust_source_prefix_test_harness, rust_source_prefix_stage0_test, rust_source_prefix_stage0_example, rust_source_prefix_tooling
+}
 import std.content_hash { Fnv1a64Structural }
 import std.keyed_roster { path_occurrence_count }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
@@ -289,14 +292,6 @@ fn rust_source_manifest_state_verdict(observation: RustSourceHostObservation) ->
       }
   }
 }
-
-data rust_source_prefix_test_harness: String = "src/v1/tests/"
-
-data rust_source_prefix_stage0_test: String = "src/v1/stage0/tests/"
-
-data rust_source_prefix_stage0_example: String = "src/v1/stage0/examples/"
-
-data rust_source_prefix_tooling: String = "dag/gunbc/instruments/"
 
 data rust_source_discovery_prefix_hints: List<String> = [
   rust_source_prefix_test_harness,
