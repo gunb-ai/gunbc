@@ -46,11 +46,6 @@ The operator holds the copies Lotes delivered on 2026-08-22; their locators live
 for the STEP), and are not repeated here. Access is governed by the holder's sharing setting, not
 by this repository.
 
-The operator holds the copies Lotes delivered on 2026-08-22; their locators live in one place,
-`extdeps.cpu_attachment.lotes_azifa072` `azifa072_held_copies` (one row for the drawing PDF, one
-for the STEP), and are not repeated here. Access is governed by the holder's sharing setting, not
-by this repository.
-
 ## The land pattern
 
 Extracted from the sheet-3 pad view, whose vector content draws every pad individually.
