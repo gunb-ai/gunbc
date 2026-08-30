@@ -365,9 +365,11 @@ test fn w_rostered_identity_declines_for_cost_debt() -> Bool {
 // fact is only that it is NOT `DeclinedCostDebt`: a module-grain reading of the fourth arm
 // would decline the sibling for cost too, and this row would go red. An earlier revision of
 // this witness expected `Planned`, a claim about the GATE the fixture never satisfied; the
-// witness had never executed (its match went non-exhaustive when `PlannedAsChangedWitness`
-// landed, so the module refused compile and the row read outcome=absent), and the first real
-// execution surfaced the wrong expectation, not a disposition regression.
+// witness had never executed: on main this module sits outside the gate closure, so its rows
+// read disposition=declined_outside_gate_closure outcome=not_executed in the disposition
+// receipt — no population hole, just a lawful decline. This branch pulled the module into the
+// closure, it compiled (then refused on the non-exhaustive match) for the first time, and the
+// first real execution surfaced the wrong expectation, not a disposition regression.
 test fn w_unrostered_sibling_keeps_its_home_disposition_not_cost_debt() -> Bool {
   match required_floor_site_disposition(
     module_path: "dag.test.claim.lifecycle_survivor_corpus_census",
