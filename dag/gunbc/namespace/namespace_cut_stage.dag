@@ -1,0 +1,233 @@
+module gunbc.namespace_cut_stage
+
+import std.types { String, NonEmptyStr, Bool, List }
+import gunbc.compiler_frontend_program_interlock {
+  ProgramMilestone,
+  SelfHostRatchetGateEnrolled,
+  NamespaceWaveAdmissionEnrolled,
+  NamespaceBaselineObservationComplete,
+}
+
+// THE NAMESPACE-XL SERIAL CHAIN, AS A CLOSED VARIANT WITH A TOTAL PREREQUISITE FUNCTION.
+// This is the namespace cut's own stage grain -- finer than the interlock's ProgramMilestone rows
+// and NOT a second spelling of them: the interlock braids the namespace program against self-host
+// at milestone grain, while this chain sequences the cut's own execution. The two join where the
+// operator ruled they join (act0_release_milestones below, at ACT-0's RELEASE grain), and nowhere
+// else.
+//
+// NAMING: these stages are the NAMESPACE-XL chain. An unrelated self-host chain also spells its
+// work items XL-N (gunbc#9669/#9672-#9675); the variants here are namespaced (StageXL5Waves, not
+// XL5) so the two vocabularies cannot collide in one corpus.
+//
+// The same construction rule as milestone_prerequisites applies and is restated because it is the
+// whole point of the carrier: prerequisites are a TOTAL function over a CLOSED variant, so a newly
+// declared stage refuses to compile until its prerequisites are stated -- an unstated-prerequisite
+// stage is unwritable rather than checked. And the standing obligation the interlock records
+// transfers with it: before adding a variant, ask whether it carries two facts that would state
+// different prerequisites if separated; if it does, it is two variants.
+type NamespaceCutStage
+  = StageF0
+  | StageXL0Denominator
+  | StageXL1BaselineCapture
+  | StageXL2RootDeletionRehearsal
+  | StageXL3DeclaringIdentitySpelling
+  | StageXL4ReferenceDerivedGraph
+  | StageAct0ActivationGate
+  | StageXL5Waves
+  | StageXL6AtomicCutover
+  | StageXL7GrammarDeletion
+
+fn namespace_cut_stage_label(s: NamespaceCutStage) -> NonEmptyStr {
+  match s {
+    StageF0 => "F-0: truthful namespace control plane -- stage chain, subject roster, derived wave-wall enrolment" as NonEmptyStr
+    StageXL0Denominator => "XL-0: the CARRIER-ORIGIN denominator -- emitting module x imported target or member x producer origin, over one base, before any disposition is asked" as NonEmptyStr
+    StageXL1BaselineCapture => "XL-1: complete baseline capture -- what the legacy resolver actually selected over one exact base, persisted before anything is deleted" as NonEmptyStr
+    StageXL2RootDeletionRehearsal => "XL-2: root-deletion rehearsal -- the cut executed in a throwaway tree, its failure roster captured as the census" as NonEmptyStr
+    StageXL3DeclaringIdentitySpelling => "XL-3: declaring-identity spelling -- every reference spelled as the fully qualified declaring identity" as NonEmptyStr
+    StageXL4ReferenceDerivedGraph => "XL-4: reference-derived graph -- dependency edges derived from resolved reference targets, never declared" as NonEmptyStr
+    StageAct0ActivationGate => "ACT-0: activation gate -- collecting activation evidence may BEGIN once XL-4 delivers; RELEASING the waves additionally requires the interlock triple and every digest re-executed against the pinned base B" as NonEmptyStr
+    StageXL5Waves => "XL-5: the semantic waves -- exact occurrence and import-declaration rewrites under the wave-admission wall, while the legacy semantic root still stands" as NonEmptyStr
+    StageXL6AtomicCutover => "XL-6: atomic cutover -- every root authority deleted in ONE motion, the whole semantic transition" as NonEmptyStr
+    StageXL7GrammarDeletion => "XL-7: grammar deletion, LAST -- import becomes a typed, located parse error (gunbc.namespace_cut_landing_order namespace_cut_grammar_last_ruling)" as NonEmptyStr
+  }
+}
+
+// DIRECT EDGES ONLY; the closure is derived, never restated. The chain is serial by operator
+// design -- each stage's evidence is an input to the next -- so each row names its predecessor
+// and nothing else. StageXL7GrammarDeletion last realizes the grammar-last ruling structurally:
+// its position in this chain is DERIVED from these edges, and a reordering is an edit to exactly
+// one row rather than a prose migration.
+fn stage_prerequisites(s: NamespaceCutStage) -> List<NamespaceCutStage> {
+  match s {
+    StageF0 => []
+    StageXL0Denominator => [StageF0]
+    StageXL1BaselineCapture => [StageXL0Denominator]
+    StageXL2RootDeletionRehearsal => [StageXL1BaselineCapture]
+    StageXL3DeclaringIdentitySpelling => [StageXL2RootDeletionRehearsal]
+    StageXL4ReferenceDerivedGraph => [StageXL3DeclaringIdentitySpelling]
+    StageAct0ActivationGate => [StageXL4ReferenceDerivedGraph]
+    StageXL5Waves => [StageAct0ActivationGate]
+    StageXL6AtomicCutover => [StageXL5Waves]
+    StageXL7GrammarDeletion => [StageXL6AtomicCutover]
+  }
+}
+
+// WHERE THE CHAIN JOINS THE INTERLOCK, AND AT WHICH OF ACT-0'S TWO FACTS.
+//
+// This used to be stage_milestone_prerequisites: the interlock triple stated as ACT-0's
+// PREREQUISITE, which made the gate unstartable until three program milestones cleared. That
+// fused two facts the gate keeps apart, and the fusion had a direction -- it said nobody may
+// COLLECT activation evidence until the interlock is clear, when what the ruling actually
+// requires is that nobody may RELEASE THE WAVES until it is.
+//
+// "May begin collecting evidence" and "may release the waves" are two facts, so they are two
+// derivations over two populations. Startability is the chain edge alone (ACT-0 becomes startable
+// when XL-4 delivers). RELEASE is ACT-0's own STANDING, over the union of this roster and the
+// activation receipts below -- read by gunbc.compiler_frontend_program_status's ACT-0 arm, which
+// is the module that can evaluate a milestone. A milestone in this roster whose standing is
+// itself unanswerable makes ACT-0 unanswerable rather than merely outstanding: the two are kept
+// apart there for the same reason they are kept apart here.
+//
+// The roster is DATA and not a per-stage total function, because exactly one stage has this join
+// and a total function over the chain would have returned the empty list for nine stages -- a
+// fold permanently green on nine of ten inputs, which DESIGN section 4b calls a decoration rather
+// than a weak wall. The stage it belongs to is named in its own name.
+data act0_release_milestones: List<ProgramMilestone> = [
+  SelfHostRatchetGateEnrolled,
+  NamespaceWaveAdmissionEnrolled,
+  NamespaceBaselineObservationComplete,
+]
+
+data namespace_cut_stages: List<NamespaceCutStage> = [
+  StageF0,
+  StageXL0Denominator,
+  StageXL1BaselineCapture,
+  StageXL2RootDeletionRehearsal,
+  StageXL3DeclaringIdentitySpelling,
+  StageXL4ReferenceDerivedGraph,
+  StageAct0ActivationGate,
+  StageXL5Waves,
+  StageXL6AtomicCutover,
+  StageXL7GrammarDeletion,
+]
+
+fn namespace_cut_stage_is(a: NamespaceCutStage, b: NamespaceCutStage) -> Bool {
+  (namespace_cut_stage_label(s: a) as String) == (namespace_cut_stage_label(s: b) as String)
+}
+
+// ---------------------------------------------------------------------------------------------
+// TWO KINDS OF EVIDENCE, AND CONFLATING THEM MADE THE CHAIN CIRCULAR.
+//
+// XL-2 and XL-4 used to clear on ACT-0's activation receipts. ACT-0 runs AFTER XL-4, and an
+// activation receipt is by definition produced against a base the manager pins at ACT-0, so those
+// two stages could only clear after the stage they precede had already run. A serial chain whose
+// earlier stages are gated on a later stage's output is not a strong ordering, it is a chain that
+// can never start, and it read as ordinary Outstanding work the whole time.
+//
+// The repair is that a stage's deliverable and a gate's evidence are DIFFERENT FACTS about the
+// same instrument:
+//
+//   STAGE DELIVERY EVIDENCE -- the instrument exists and has been discriminated once, anywhere.
+//     This is what a stage OWES. It is ordinary engineering output, it survives main moving, and
+//     it is what clears XL-2 and XL-4.
+//   ACTIVATION EVIDENCE -- that same instrument re-executed against ONE pinned activation base,
+//     digested. This is what the GATE owes, it is consumed by ACT-0 and by nothing else, and it
+//     does not survive main moving.
+//
+// The delivery receipt is therefore NOT a weaker activation receipt and must never be accepted in
+// its place: it carries no base, because it makes no claim about one. That is the whole
+// distinction, expressed as a missing field rather than as a rule about when to trust a field.
+// ---------------------------------------------------------------------------------------------
+type StageDeliveryEvidenceKind
+  = RehearsalInstrumentDelivered
+  | ReferenceGraphInstrumentDelivered
+
+fn stage_delivery_evidence_label(k: StageDeliveryEvidenceKind) -> String {
+  match k {
+    RehearsalInstrumentDelivered => "XL-2 rehearsal instrument delivered and discriminated once"
+    ReferenceGraphInstrumentDelivered => "XL-4 reference-graph instrument delivered and discriminated once"
+  }
+}
+
+// A delivery receipt names the producer a reader re-runs -- DESIGN section 6, name the instrument
+// rather than transcribing its output -- and the discriminating run that showed it can report the
+// wrong answer. It carries NO base: see above.
+type StageDeliveryReceipt {
+  kind: StageDeliveryEvidenceKind
+  producer: NonEmptyStr
+  discriminated_by: NonEmptyStr
+}
+
+data required_stage_delivery_evidence_kinds: List<StageDeliveryEvidenceKind> = [
+  RehearsalInstrumentDelivered,
+  ReferenceGraphInstrumentDelivered,
+]
+
+// Empty by construction today: neither instrument exists. A row lands here when the stage that
+// owes it delivers it.
+data held_stage_delivery_receipts: List<StageDeliveryReceipt> = []
+
+fn stage_delivery_outstanding(held: List<StageDeliveryReceipt>) -> List<String> {
+  required_stage_delivery_evidence_kinds
+    |> filter(k => !any(held, r => stage_delivery_evidence_label(k: r.kind) == stage_delivery_evidence_label(k: k)))
+    |> map(k => stage_delivery_evidence_label(k: k))
+}
+
+// One kind's outstanding view, for the stage that owes exactly that delivery.
+fn stage_delivery_kind_outstanding(kind: StageDeliveryEvidenceKind, held: List<StageDeliveryReceipt>) -> List<String> {
+  stage_delivery_outstanding(held: held)
+    |> filter(label => label == stage_delivery_evidence_label(k: kind))
+}
+
+// ---------------------------------------------------------------------------------------------
+// ACT-0'S POPULATION: THE RECEIPTS THE GATE MUST HOLD TO RELEASE. The activation gate is not a
+// deletion stage and carries no subjects; whether it may RELEASE is derived from whether each
+// required receipt is held against the pinned activation base, joined with act0_release_milestones
+// above. The receipt kinds are closed so the gate's denominator is a total fold, and the
+// held-roster below is the SINGLE home a receipt lands in -- reading it empty is an observation of
+// the carrier, not a guess about the world.
+//
+// RE-RUN, NEVER UPDATE: any source-relevant movement of main invalidates a pinned base, so a
+// stale receipt is retired by deleting its row and re-running the producing stage against the
+// new base. A receipt row is immutable once written; there is no arm for amending one.
+// ---------------------------------------------------------------------------------------------
+type ActivationReceiptKind
+  = DenominatorRosterDigest
+  | BaselineCaptureReceipt
+  | RehearsalFailureRosterDigest
+  | ReferenceGraphDigest
+
+fn activation_receipt_kind_label(k: ActivationReceiptKind) -> String {
+  match k {
+    DenominatorRosterDigest => "XL-0 denominator roster digest over the activation base"
+    BaselineCaptureReceipt => "XL-1 baseline capture receipt over the activation base"
+    RehearsalFailureRosterDigest => "XL-2 rehearsal failure-roster digest over the activation base"
+    ReferenceGraphDigest => "XL-4 reference-graph digest over the activation base"
+  }
+}
+
+type ActivationReceipt {
+  kind: ActivationReceiptKind
+  activation_base_commit: NonEmptyStr
+  digest: NonEmptyStr
+}
+
+data required_activation_receipt_kinds: List<ActivationReceiptKind> = [
+  DenominatorRosterDigest,
+  BaselineCaptureReceipt,
+  RehearsalFailureRosterDigest,
+  ReferenceGraphDigest,
+]
+
+// Empty by construction today: no activation base has been pinned. A row lands here only when
+// the manager executes ACT-0.
+data held_activation_receipts: List<ActivationReceipt> = []
+
+// The gate's outstanding receipt population, at receipt-kind identity grain: every required kind
+// not held. Parameterized on the held roster so a witness can author both the complete and the
+// incomplete population (the fixture boundary is the boundary that decides, DESIGN 4b).
+fn activation_receipts_outstanding(held: List<ActivationReceipt>) -> List<String> {
+  required_activation_receipt_kinds
+    |> filter(k => !any(held, r => activation_receipt_kind_label(k: r.kind) == activation_receipt_kind_label(k: k)))
+    |> map(k => activation_receipt_kind_label(k: k))
+}

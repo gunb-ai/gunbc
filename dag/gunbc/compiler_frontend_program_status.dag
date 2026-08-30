@@ -34,6 +34,42 @@ import v2.workflow.legacy_baseline_capture {
   CaptureAvailable,
   CaptureBlocked,
   legacy_baseline_capture_capability,
+  capture_blocked_reason,
+}
+import gunbc.required_ci_phase_roster {
+  RequiredCiPhase,
+  NamespaceWaveAdmissionPhase,
+  required_ci_phases,
+  required_ci_phase_enrolled,
+}
+import gunbc.namespace_cut_stage {
+  NamespaceCutStage,
+  StageF0,
+  StageXL0Denominator,
+  StageXL1BaselineCapture,
+  StageXL2RootDeletionRehearsal,
+  StageXL3DeclaringIdentitySpelling,
+  StageXL4ReferenceDerivedGraph,
+  StageAct0ActivationGate,
+  StageXL5Waves,
+  StageXL6AtomicCutover,
+  StageXL7GrammarDeletion,
+  namespace_cut_stages,
+  namespace_cut_stage_label,
+  stage_prerequisites,
+  act0_release_milestones,
+  StageDeliveryEvidenceKind,
+  RehearsalInstrumentDelivered,
+  ReferenceGraphInstrumentDelivered,
+  stage_delivery_kind_outstanding,
+  held_stage_delivery_receipts,
+  activation_receipts_outstanding,
+  held_activation_receipts,
+}
+import gunbc.namespace_cut_subject_roster {
+  subjects_deleted_at,
+  subject_probe_list,
+  probe_render,
 }
 
 // WHY THIS IS A SEPARATE MODULE FROM THE INTERLOCK IT READS. The interlock carries a RELATION --
@@ -109,24 +145,36 @@ fn observe_outstanding(subject: NonEmptyStr, outstanding: List<String>) -> Miles
 // module computes even now that it keeps them.
 // That distinction is invisible on a ledger, which renders every such row as "pending" and invites
 // a reader to hear "in progress".
+// THREE ROWS RETIRED BY DELIVERY, ONE SPLIT, ONE ADDED (F-0, 2026-08-29). RequiredCiPhaseRoster,
+// NamespaceWaveAdmissionWall and NamespaceStepSubjectRoster are DELETED because the instruments
+// now exist -- gunbc.required_ci_phase_roster, the wave-admission phase it enrols (landed #9365
+// and until now still reported here as unbuilt: this carrier's own stale reading was the rung
+// inflation in the opposite direction, a built wall reported absent), and
+// gunbc.namespace_cut_subject_roster. Their awaiting milestones are now DERIVED from those
+// carriers below. What SelfHostCargoPhaseEnrolled still awaits is narrower than the roster and
+// gets its own row: the roster carries phase identity and lane, not whether a phase executes
+// cargo. DeclaringIdentitySpellingCensus is awaited by the stage chain (XL-3), not by any
+// milestone -- stages_awaiting joins it.
 type MissingInstrument
   = WholeCorpusEmissionBoard
-  | RequiredCiPhaseRoster
+  | PhaseCargoExecutionFact
   | RatchetGateEnrolmentFact
-  | NamespaceWaveAdmissionWall
   | PersistedLegacyBaselineObservation
-  | NamespaceStepSubjectRoster
+  | DeclaringIdentitySpellingCensus
+  | CarrierOriginRosterProducer
+  | ExactOccurrenceResidualCensus
   | PersistedBehavioralReceipt
   | PersistedPromotionOutcome
 
 fn missing_instrument_label(i: MissingInstrument) -> String {
   match i {
     WholeCorpusEmissionBoard => "a persisted whole-corpus emission measurement at identity grain"
-    RequiredCiPhaseRoster => "the --required-ci phase roster as a substrate carrier"
+    PhaseCargoExecutionFact => "a per-phase cargo-execution fact on gunbc.required_ci_phase_roster"
     RatchetGateEnrolmentFact => "the ratchet's merge-blocking enrolment as a fact distinct from its cadence"
-    NamespaceWaveAdmissionWall => "the wave-admission wall, classifying deltas"
     PersistedLegacyBaselineObservation => "an admitted CompleteLegacyObservation persisted against a named base"
-    NamespaceStepSubjectRoster => "the namespace cut's remaining per-step subjects as rows"
+    DeclaringIdentitySpellingCensus => "a census of occurrences not spelled at their declaring identity (XL-3's population)"
+    CarrierOriginRosterProducer => "a carrier-origin roster producer: emitting module x imported target or member x producer origin, over one base, before any disposition is asked (XL-0's population)"
+    ExactOccurrenceResidualCensus => "the exact occurrence and import-declaration residual an XL-2 rehearsal produces (XL-5's population)"
     PersistedBehavioralReceipt => "a persisted behavioral receipt over a discriminating corpus"
     PersistedPromotionOutcome => "a persisted PromotionOutcome over a named candidate"
   }
@@ -204,11 +252,12 @@ fn missing_instrument_obstacle(i: MissingInstrument) -> InstrumentObstacle {
         ),
         falsified_by: "THE REFUSAL THIS ARM USED TO CARRY HAS BEEN FALSIFIED BY EXECUTION, on exactly the terms it demanded. It said the predicate is a function of the HOST, that it had refused on the hosts its receipts were taken on, that it had NOT been attempted on one whose budget it admits, and that the falsification must record EXIT STATUS AND PEAK RESIDENT SET TOGETHER because a SIGKILL and a clean empty population are the same bytes.\n\nAttempted 2026-08-28 on srv1 (502 GiB total, ~334 GiB available, aarch64 -- a host the predicate admits by three orders of magnitude), three whole-corpus runs under /usr/bin/time -v with the exit status captured beside the peak: --target dag EXIT=1 peak 13008052 kB wall 25:04; --target rust EXIT=1 peak 13005964 kB wall 27:44; --target rust with the parameter-default gate cleared EXIT=1 peak 12986524 kB wall 25:05. NONE was SIGKILLed and NONE was refused by admission -- each ran frontend, normalize and reconcile and reached emit, then refused on DIAGNOSTICS. So the compile is not memory-refused on an admitting host, and the sentence three milestones were waiting on is answered.\n\nWHAT IS STILL MISSING IS THE BOARD, AND THAT IS WHY THIS IS STILL A NOT-BUILT. No completing whole-corpus run has been obtained on the rust route: clearing the three parameter-default sites revealed EIGHT anonymous-record refusals behind them, reproducing the three-then-eight prefix gunbc.emit_stage_blocking_population_census already records, so the blocking population is still unbounded. And no typed measurement is persisted anywhere a consumer can read, which is the condition milestone_status states in its own words. The remedy is now to WRITE THE INSTRUMENT AND ITS CARRIER -- two constructions, not one -- rather than to find a bigger machine.\n\nWHY THE OLD REFUSAL TEXT IS DELETED RATHER THAN KEPT BESIDE THIS. It argued that the instrument is not unbuilt and that the remedy is not to write a tool. Both halves are now false, and a superseded explanation retained next to its refutation is two accounts of one fact (DESIGN section 3). Its two corrections -- the routing story and the wall-clock authority substitution -- are preserved in this type's header, because those were lessons about how the row went wrong rather than claims about the compile." as NonEmptyStr
       }
-    RequiredCiPhaseRoster => NotBuilt
+    PhaseCargoExecutionFact => NotBuilt
     RatchetGateEnrolmentFact => NotBuilt
-    NamespaceWaveAdmissionWall => NotBuilt
     PersistedLegacyBaselineObservation => NotBuilt
-    NamespaceStepSubjectRoster => NotBuilt
+    DeclaringIdentitySpellingCensus => NotBuilt
+    CarrierOriginRosterProducer => NotBuilt
+    ExactOccurrenceResidualCensus => NotBuilt
     PersistedBehavioralReceipt => NotBuilt
     PersistedPromotionOutcome => NotBuilt
   }
@@ -323,6 +372,54 @@ fn ratchet_observation_outstanding(cadence: WitnessConsumerCadence) -> List<Stri
   }
 }
 
+// Parameterized on the roster so a witness can author the un-enrolled population; the live call
+// hands it required_ci_phases, the same declaration the workflow emission consumes.
+fn wave_admission_enrolment_outstanding(phases: List<RequiredCiPhase>) -> List<String> {
+  if required_ci_phase_enrolled(p: NamespaceWaveAdmissionPhase, phases: phases) {
+    []
+  } else {
+    ["gunbc.required_ci_phase_roster required_ci_phases does not enrol the namespace-wave-admission phase"]
+  }
+}
+
+// The declared deletion subjects of one stage, at probe-identity grain.
+fn stage_subject_outstanding(stage: NamespaceCutStage) -> List<String> {
+  subjects_deleted_at(stage: stage)
+    |> flat_map(s => subject_probe_list(s: s))
+    |> map(p => probe_render(p: p))
+}
+
+// DEFINITIONAL SINCE F-0, AND THE PREVIOUS ARM WAS THIS CARRIER'S OWN STALE READING: the wall
+// landed as the required namespace-wave-admission phase in #9365 (2026-08-26) and this arm
+// kept reporting it unbuilt -- rung DEFLATION, which is the same defect as inflation because a
+// manager planning against it dispatches work that is already done. The population is
+// membership of the phase in gunbc.required_ci_phase_roster required_ci_phases -- the roster
+// the workflow emission consumes -- and the reading cannot silently outrun the executor,
+// because every --required-ci run joins the host phase enum against that declaration's
+// variant set in both directions and refuses on any divergence. Enrolment truth survives a
+// lane divergence by construction: both lanes run in every required CI, so lane ownership can
+// move a phase between jobs but cannot un-enrol it.
+// THE BLOCKED ARM IS OUTSTANDING, NOT NOT-DERIVABLE, since F-0: the capability fold IS the
+// milestone's readable population while a capture cannot complete -- each blocked reason is a
+// named, observed piece of outstanding work, and reporting it unanswerable hid real known
+// work behind the missing-instrument label. The AVAILABLE arm stays NotDerivable on purpose:
+// v2.workflow.legacy_baseline_capture rules out a receipts roster in its own words (a plain
+// row is not a relabel-safe durable form, and the question is re-asked per base), so once a
+// capture CAN complete, whether one HAS completed against the CURRENT base has no population
+// here until the persisted-observation instrument exists.
+// THE THREE DELETION MILESTONES, DERIVED FROM THE SUBJECT ROSTER SINCE F-0 -- at DECLARED-ROW
+// grain, stated at exactly that strength. gunbc.namespace_cut_subject_roster carries every
+// authority scheduled to disappear as string-identity probes (not authored citations, which
+// would refuse at ingestion the moment a wave deletes a target -- the old absence-is-not-a-
+// population limit, solved by moving resolution to run time). The outstanding population is
+// the probe identities of the subjects each stage deletes; a wave retires a row WITH ITS
+// TYPED DISPOSITION as it deletes the subject, so Clear is reached by row retirement. What
+// this fold does NOT verify is that a retired row's declarations are really gone -- that
+// verification is the roster's own live observation instrument
+// (gunbc.namespace_cut_subject_observation subject_roster_report), which resolves every probe
+// against the tree and reports PRESENT/ABSENT/UNOBSERVABLE per identity. Rung: mechanically
+// preventable at best, and only while that instrument executes; a row pruned without its
+// subject dying is invisible to this fold alone.
 fn milestone_status(m: ProgramMilestone) -> MilestoneStanding {
   match m {
     SelfHostWholeCorpusPopulationDerived =>
@@ -332,8 +429,8 @@ fn milestone_status(m: ProgramMilestone) -> MilestoneStanding {
       }
     SelfHostCargoPhaseEnrolled =>
       NotDerivable {
-        why: "the --required-ci phase roster lives in host Rust (RequiredCiPhase) and gunbc.witness_floor_workflow models LANES, not phases, so no .dag authority states which phases a lane owns. Derivable once the phase roster is a substrate carrier the workflow emission reads." as NonEmptyStr,
-        cause: needs(i: RequiredCiPhaseRoster)
+        why: "gunbc.required_ci_phase_roster now carries phase identity and lane ownership, but WHETHER A PHASE EXECUTES CARGO is a fact about its host body that the roster does not model, and deriving this milestone from mere phase existence would let any phase's enrolment read as the cargo phase's. Derivable once the roster carries a per-phase cargo-execution fact." as NonEmptyStr,
+        cause: needs(i: PhaseCargoExecutionFact)
       }
     SelfHostRatchetObservationEnrolled =>
       standing_from_evidence(
@@ -348,38 +445,46 @@ fn milestone_status(m: ProgramMilestone) -> MilestoneStanding {
         cause: MissingInstruments { first: WholeCorpusEmissionBoard, rest: [RatchetGateEnrolmentFact] }
       }
     NamespaceWaveAdmissionEnrolled =>
-      NotDerivable {
-        why: "the wave-admission wall does not exist yet, so there is nothing to cite. gunbc.compiler_frontend_program_interlock records the admission partition as prose precisely because a partition with no consumer is a guess. Derivable once the wall exists and classifies deltas, at which point its unadjudicated-delta population is this milestone's own." as NonEmptyStr,
-        cause: needs(i: NamespaceWaveAdmissionWall)
-      }
+      standing_from_evidence(
+        e: observe_outstanding(
+          subject: "namespace: the wave-admission wall enrolled as a required-ci phase" as NonEmptyStr,
+          outstanding: wave_admission_enrolment_outstanding(phases: required_ci_phases)
+        )
+      )
     NamespaceBaselineObservationComplete =>
       match legacy_baseline_capture_capability() {
-        CaptureBlocked { phase: _, cause: _ } =>
-          NotDerivable {
-            why: "v2.workflow.legacy_baseline_capture can PROVE a binding observation was taken during the materialization of a named commit -- head, worktree and subject are checked in order and refuse before promotion -- but its accepted arm is unreachable while R_X(B) has no admission envelope. A complete BINDING observation must not stand in for a complete REPAIR observation. Derivable once the repair census carries an independent denominator and a capture can complete." as NonEmptyStr,
-            cause: needs(i: PersistedLegacyBaselineObservation)
-          }
+        CaptureBlocked { phase: p, cause: c } =>
+          standing_from_evidence(
+            e: observe_outstanding(
+              subject: "namespace Step 0.5 / XL-1: baseline capture against the current pre-cut base" as NonEmptyStr,
+              outstanding: capture_blocked_reason(c: CaptureBlocked { phase: p, cause: c })
+            )
+          )
         CaptureAvailable =>
           NotDerivable {
-            why: "a capture can now complete, but no capture has been taken against the current pre-cut base. Any movement of that base invalidates a prior enrolment, so this is asked per base rather than accumulated." as NonEmptyStr,
+            why: "a capture can now complete, but no capture has been taken against the current pre-cut base. Any movement of that base invalidates a prior enrolment, so this is asked per base rather than accumulated -- and the capture module itself rules out a receipts roster as a relabel-unsafe durable form." as NonEmptyStr,
             cause: needs(i: PersistedLegacyBaselineObservation)
           }
       }
     NamespaceFirstSemanticWave =>
       NotDerivable {
-        why: "the milestone is the DELETION of the import-name universe, and absence of a symbol is not a population this module can read -- a citation to a deleted declaration refuses at ingestion rather than answering false. Derivable once gunbc.namespace_cut_landing_order carries the remaining per-step subject population as rows." as NonEmptyStr,
-        cause: needs(i: NamespaceStepSubjectRoster)
+        why: "a wave is an EXACT CORPUS REWRITE while the legacy semantic root still exists, so its population is the occurrence and import-declaration residual an XL-2 rehearsal produces -- not a root-authority probe. gunbc.namespace_cut_subject_roster deliberately assigns no subject to XL-5 for that reason, and deriving this milestone from that empty set would fold to CLEAR and report a wave nobody has run as complete. Derivable once the rehearsal residual has a producer this module can read." as NonEmptyStr,
+        cause: needs(i: ExactOccurrenceResidualCensus)
       }
     NamespaceFixForwardComplete =>
-      NotDerivable {
-        why: "same shape as the first wave: Steps 2-4 are fix-forward over a class-grain population that no carrier enumerates. Derivable once the unrepaired classes are rows rather than a description." as NonEmptyStr,
-        cause: needs(i: NamespaceStepSubjectRoster)
-      }
+      standing_from_evidence(
+        e: observe_outstanding(
+          subject: "namespace: host/emit machinery, repoints and fix-forward subjects" as NonEmptyStr,
+          outstanding: stage_subject_outstanding(stage: StageXL6AtomicCutover)
+        )
+      )
     NamespaceGrammarRetired =>
-      NotDerivable {
-        why: "the milestone is a grammar and parse deletion, and the same absence-is-not-a-population limit applies. Derivable once the grammar productions scheduled for deletion are an enumerated roster whose members refuse when they stop being reachable." as NonEmptyStr,
-        cause: needs(i: NamespaceStepSubjectRoster)
-      }
+      standing_from_evidence(
+        e: observe_outstanding(
+          subject: "namespace: grammar and parse deletion subjects, LAST" as NonEmptyStr,
+          outstanding: stage_subject_outstanding(stage: StageXL7GrammarDeletion)
+        )
+      )
     SelfHostCorpusEmitsCleanly =>
       NotDerivable {
         why: "this is S2's population driven to zero, and S2 has no producer. Any figure quoted for the current rustc population today is unsourced -- the 2026-08-24 measurement bankruptcy deleted the boards and the instrument was restored without one. Derivable exactly when S2 is." as NonEmptyStr,
@@ -575,11 +680,12 @@ fn join_names(names: List<String>) -> String {
 // ---------------------------------------------------------------------------------------------
 data all_missing_instruments: List<MissingInstrument> = [
   WholeCorpusEmissionBoard,
-  RequiredCiPhaseRoster,
+  PhaseCargoExecutionFact,
   RatchetGateEnrolmentFact,
-  NamespaceWaveAdmissionWall,
   PersistedLegacyBaselineObservation,
-  NamespaceStepSubjectRoster,
+  DeclaringIdentitySpellingCensus,
+  CarrierOriginRosterProducer,
+  ExactOccurrenceResidualCensus,
   PersistedBehavioralReceipt,
   PersistedPromotionOutcome,
 ]
@@ -595,6 +701,17 @@ fn milestone_missing_instruments(m: ProgramMilestone) -> List<MissingInstrument>
     NotDerivable { why: _, cause } => underivability_instruments(u: cause)
   }
 }
+
+// AN INSTRUMENT CAN BE AWAITED CONDITIONALLY: PersistedLegacyBaselineObservation is the
+// CaptureAvailable arm's contract on NamespaceBaselineObservationComplete, and while capture is
+// BLOCKED that arm is not live, so the awaited-by join over live standings counts it zero. Zero
+// here is not death -- deleting the row would delete the very contract the capability's
+// transition lands on -- so the conditional citation is declared once, and the liveness witness
+// admits exactly this roster's members beside the live join. A row in this list whose citing
+// arm is deleted outright IS dead, and pruning it means editing both the arm and this row.
+data conditionally_awaited_instruments: List<MissingInstrument> = [
+  PersistedLegacyBaselineObservation,
+]
 
 fn milestones_awaiting(i: MissingInstrument) -> List<String> {
   fold(program_milestones, init: [], f: fn(acc, m) {
@@ -651,6 +768,194 @@ fn milestone_report_line(m: ProgramMilestone) -> String {
   concat(milestone_label(m: m),
   concat("\n    ", concat(standing_detail(s: s),
   concat("\n    ", startability_label(s: milestone_startability(m: m)))))))))
+}
+
+// ---------------------------------------------------------------------------------------------
+// THE NAMESPACE-XL STAGE CHAIN, RENDERED WITH THE SAME VOCABULARY AS THE MILESTONES. The chain
+// itself (variants, labels, serial prerequisites, the ACT-0 receipt gate) is
+// gunbc.namespace_cut_stage's; this section derives a STANDING per stage from the same
+// populations the milestone arms read, and where a stage IS a milestone's own question the arm
+// DELEGATES to milestone_status rather than spelling the derivation twice (DESIGN section 3).
+//
+// The derivations, stated so a reader knows which population moves each row:
+//   F-0    -- the wave-admission enrolment fold (Clear when the phase roster enrols the wall).
+//   XL-0   -- the unrealized-observation-rule population: the denominator stage stays
+//             outstanding while some subject's pulse cannot be taken (today: every host Rust
+//             probe, which awaits a host-item observation authority).
+//   XL-1   -- delegation to NamespaceBaselineObservationComplete.
+//   XL-2   -- the rehearsal digest read out of ACT-0's receipt carrier.
+//   XL-3   -- NotDerivable: no carrier censuses occurrences not spelled at their declaring
+//             identity, and fabricating a population would be worse than naming the gap.
+//   XL-4   -- the reference-graph digest read out of ACT-0's receipt carrier.
+//   ACT-0  -- the full required-receipt set (all four kinds outstanding today).
+//   XL-5/6/7 -- delegation to the three deletion milestones.
+// ---------------------------------------------------------------------------------------------
+// ACT-0'S TWO FACTS, AND THIS FUNCTION DERIVES ONLY THE SECOND.
+//
+// "May begin collecting activation evidence" is STARTABILITY, and it is the chain edge from XL-4
+// alone -- see stage_startability, which no longer reads any milestone. "May RELEASE the waves"
+// is this: the interlock triple clear AND every activation receipt held against the pinned base.
+// The gate used to state the triple as a PREREQUISITE, which made collecting evidence unstartable
+// until the whole self-host interlock cleared; that is a stricter chain than the ruling, and a
+// stricter chain is not a safer one -- it stalls the stage whose output the gate needs.
+//
+// A NOT-DERIVABLE MILESTONE IN THE TRIPLE MAKES THE GATE NOT-DERIVABLE, NOT OUTSTANDING. Folding
+// an unanswerable milestone's name into an outstanding list would report an unknown as ordinary
+// pending work, which is the state-space conflation the startability classifier above exists to
+// prevent -- committed at standing grain instead. So the unanswerable half is checked first and
+// carries the union of the causes, and the receipts are only reached once the triple can answer.
+fn act0_release_milestone_names(want: MilestoneStandingClass) -> List<String> {
+  fold(act0_release_milestones, init: [], f: fn(acc, m) {
+    if standing_class_label(c: standing_class(s: milestone_status(m: m)))
+       == standing_class_label(c: want) {
+      concat(acc, [milestone_label(m: m) as String])
+    } else {
+      acc
+    }
+  })
+}
+
+fn act0_release_instruments() -> List<MissingInstrument> {
+  fold(act0_release_milestones, init: [], f: fn(acc, m) {
+    concat(acc, match milestone_status(m: m) {
+      Clear { evidence: _ } => []
+      Outstanding { evidence: _ } => []
+      NotDerivable { why: _, cause } => underivability_instruments(u: cause)
+    })
+  })
+}
+
+fn act0_release_standing() -> MilestoneStanding {
+  let unanswerable = act0_release_milestone_names(want: ClassNotDerivable)
+  match unanswerable |> first {
+    Present { value: _ } =>
+      match act0_release_instruments() |> first {
+        Present { value: i } =>
+          NotDerivable {
+            why: concat(
+              "ACT-0 may not be judged releasable: a release milestone is itself unanswerable -- ",
+              concat(join_names(names: unanswerable),
+              ". The activation receipts are not reached, because a gate cannot be reported as merely awaiting receipts while one of its release conditions has no producer.")
+            ) as NonEmptyStr,
+            cause: MissingInstruments { first: i, rest: [] }
+          }
+        Absent =>
+          NotDerivable {
+            why: "ACT-0 may not be judged releasable: a release milestone is unanswerable through its own prerequisites, which name no instrument of their own." as NonEmptyStr,
+            cause: DerivableOnlyViaPrerequisites
+          }
+      }
+    Absent =>
+      standing_from_evidence(
+        e: observe_outstanding(
+          subject: "ACT-0 RELEASE: the interlock triple clear and every activation receipt held against the pinned base" as NonEmptyStr,
+          outstanding: concat(
+            act0_release_milestone_names(want: ClassOutstanding),
+            activation_receipts_outstanding(held: held_activation_receipts))
+        )
+      )
+  }
+}
+
+fn stage_status(s: NamespaceCutStage) -> MilestoneStanding {
+  match s {
+    StageF0 =>
+      standing_from_evidence(
+        e: observe_outstanding(
+          subject: "F-0: the control plane's own deliverable -- wall enrolment derived from the phase roster" as NonEmptyStr,
+          outstanding: wave_admission_enrolment_outstanding(phases: required_ci_phases)
+        )
+      )
+    StageXL0Denominator =>
+      NotDerivable {
+        why: "XL-0 is the CARRIER-ORIGIN DENOMINATOR -- emitting module x imported target or member x producer origin, over one base, recording which source carriers existed BEFORE any disposition was asked. Nothing in this tree produces that population. The arm that used to stand here read gunbc.namespace_cut_subject_roster's unobservable host probes instead, which answered a different question entirely: the subject roster is the cut's ROOT-AUTHORITY denominator, one row per family, and probe observability is a property of the instrument rather than a measure of the denominator's completeness. Deriving XL-0 from it let a join repair (see the roster's host probes, now joined) read as the denominator being produced. Derivable once a carrier-origin roster producer exists." as NonEmptyStr,
+        cause: needs(i: CarrierOriginRosterProducer)
+      }
+    StageXL1BaselineCapture =>
+      standing_from_evidence(
+        e: observe_outstanding(
+          subject: "XL-1: the capture-and-disposition transaction is CAPABLE of succeeding" as NonEmptyStr,
+          outstanding: capture_blocked_reason(c: legacy_baseline_capture_capability())
+        )
+      )
+    StageXL2RootDeletionRehearsal =>
+      standing_from_evidence(
+        e: observe_outstanding(
+          subject: "XL-2: the rehearsal instrument delivered and discriminated once" as NonEmptyStr,
+          outstanding: stage_delivery_kind_outstanding(kind: RehearsalInstrumentDelivered, held: held_stage_delivery_receipts)
+        )
+      )
+    StageXL3DeclaringIdentitySpelling =>
+      NotDerivable {
+        why: "no carrier censuses occurrences not yet spelled at their declaring identity. The wave wall's binding channel keys on leaf segments, deliberately invariant under requalification, so it cannot answer this either. Derivable once the spelling census exists." as NonEmptyStr,
+        cause: needs(i: DeclaringIdentitySpellingCensus)
+      }
+    StageXL4ReferenceDerivedGraph =>
+      standing_from_evidence(
+        e: observe_outstanding(
+          subject: "XL-4: the reference-graph instrument delivered and discriminated once" as NonEmptyStr,
+          outstanding: stage_delivery_kind_outstanding(kind: ReferenceGraphInstrumentDelivered, held: held_stage_delivery_receipts)
+        )
+      )
+    StageAct0ActivationGate => act0_release_standing()
+    StageXL5Waves => milestone_status(m: NamespaceFirstSemanticWave)
+    StageXL6AtomicCutover => milestone_status(m: NamespaceFixForwardComplete)
+    StageXL7GrammarDeletion => milestone_status(m: NamespaceGrammarRetired)
+  }
+}
+
+fn stage_missing_instruments(s: NamespaceCutStage) -> List<MissingInstrument> {
+  match stage_status(s: s) {
+    Clear { evidence: _ } => []
+    Outstanding { evidence: _ } => []
+    NotDerivable { why: _, cause } => underivability_instruments(u: cause)
+  }
+}
+
+// The stage half of the shared-demand join, so an instrument awaited only by a stage (XL-3's
+// spelling census) is visible in the instrument report rather than reading as dead.
+fn stages_awaiting(i: MissingInstrument) -> List<String> {
+  fold(namespace_cut_stages, init: [], f: fn(acc, s) {
+    if any(stage_missing_instruments(s: s), other => missing_instrument_eq(a: other, b: i)) {
+      concat(acc, [namespace_cut_stage_label(s: s) as String])
+    } else {
+      acc
+    }
+  })
+}
+
+// STARTABILITY IS THE CHAIN EDGE, AND ONLY THE CHAIN EDGE. It used to union a stage's chain
+// predecessors with interlock milestone prerequisites, which existed for exactly one stage --
+// ACT-0 -- and made "may begin collecting activation evidence" wait on the whole self-host
+// interlock. That conflated ACT-0's two facts; the release condition now lives in
+// act0_release_standing above, at STANDING grain where it belongs, and this fold reads one edge
+// kind. Same fail-closed law as the milestone classifier, through the same
+// startability_from_populations.
+fn stage_prerequisite_names_by_class(s: NamespaceCutStage, want: MilestoneStandingClass) -> List<String> {
+  fold(stage_prerequisites(s: s), init: [], f: fn(acc, p) {
+    if standing_class_label(c: standing_class(s: stage_status(s: p)))
+       == standing_class_label(c: want) {
+      concat(acc, [namespace_cut_stage_label(s: p) as String])
+    } else {
+      acc
+    }
+  })
+}
+
+fn stage_startability(s: NamespaceCutStage) -> Startability {
+  startability_from_populations(
+    unanswerable: stage_prerequisite_names_by_class(s: s, want: ClassNotDerivable),
+    blocking: stage_prerequisite_names_by_class(s: s, want: ClassOutstanding))
+}
+
+fn stage_report_line(s: NamespaceCutStage) -> String {
+  let st = stage_status(s: s)
+  concat("- [",
+  concat(standing_class_label(c: standing_class(s: st)),
+  concat("] ",
+  concat(namespace_cut_stage_label(s: s) as String,
+  concat("\n    ", concat(standing_detail(s: st),
+  concat("\n    ", startability_label(s: stage_startability(s: s)))))))))
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -744,7 +1049,7 @@ fn census_line(c: StandingCensus) -> String {
 }
 
 fn instrument_report_line(i: MissingInstrument) -> String {
-  let waiting = milestones_awaiting(i: i)
+  let waiting = concat(milestones_awaiting(i: i), stages_awaiting(i: i))
   let obstacle = missing_instrument_obstacle(i: i)
   concat("- (",
   concat(to_string(n: count(waiting)),
@@ -763,11 +1068,16 @@ fn report() -> String {
     fold(program_milestones, init: "", f: fn(acc, m) {
       concat(acc, concat(milestone_report_line(m: m), "\n"))
     }),
-  concat("\nmissing instruments, by how many milestones AWAIT each\n\n",
+  concat("\nnamespace cut stages (gunbc.namespace_cut_stage, serial; standings derived)\n\n",
+  concat(
+    fold(namespace_cut_stages, init: "", f: fn(acc, s) {
+      concat(acc, concat(stage_report_line(s: s), "\n"))
+    }),
+  concat("\nmissing instruments, by how many milestones and stages AWAIT each\n\n",
     fold(all_missing_instruments, init: "", f: fn(acc, i) {
       concat(acc, concat(instrument_report_line(i: i), "\n"))
     })
-  ))))
+  ))))))
 }
 
 fn where_are_we(out: String) -> ProcessExit {

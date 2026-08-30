@@ -8,7 +8,7 @@ import gunbc.host_budget_source {
   HostBudgetResolved,
   HostBudgetUnreadable,
   BudgetSourceCgroupMemoryMax,
-  BudgetSourceMemTotal,
+  BudgetSourceEnvOverride,
 }
 import gunbc.typed_module_cache_capacity {
   TypedModuleCacheCap,
@@ -34,11 +34,11 @@ fn ordinary_budget() -> HostBudgetResolution {
 }
 
 fn tiny_budget() -> HostBudgetResolution {
-  HostBudgetResolved { source: BudgetSourceMemTotal, bytes: byte_size(count: 1048576) }
+  HostBudgetResolved { source: BudgetSourceEnvOverride, bytes: byte_size(count: 1048576) }
 }
 
 fn huge_budget() -> HostBudgetResolution {
-  HostBudgetResolved { source: BudgetSourceMemTotal, bytes: byte_size(count: 107374182400) }
+  HostBudgetResolved { source: BudgetSourceEnvOverride, bytes: byte_size(count: 107374182400) }
 }
 
 fn unreadable_budget() -> HostBudgetResolution {

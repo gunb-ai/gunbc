@@ -8,7 +8,7 @@ import gunbc.spark.serving_observed_members {
 import std.types { String, List, Bool, NonEmptyStr, Int }
 import std.content_hash { content_hash_of_value, content_hash_atom, serialize_content_hash }
 import product.placement_supply { HostIdentity }
-import gunbc.fleet_intent_network { operator_host_srv5, operator_host_srv6 }
+import gunbc.fleet_intent_network { operator_host_srv5 }
 import gunbc.membership_reconcile {
   MembershipPlan,
   MemberAction,
@@ -38,12 +38,14 @@ import gunbc.spark.serving_membership {
   spark_serving_executor_linger_state_digest,
   spark_serving_executor_linger_disabled_state_digest,
   spark_serving_membership_reconcile,
+  spark_serving_baseline_members,
   spark_serving_membership_noop,
   spark_serving_desired_members,
 }
 import gunbc.spark.serving_release { SparkServingOccurrence, SparkServingRelease }
 import gunbc.spark.serving_converge_realize {
   realize_spark_serving_install_effect_command,
+  realize_spark_serving_retirement_effect_command,
   SparkServingInstallRemoteCommandsPresent,
   SparkServingInstallRemoteCommandsRefused,
 }
@@ -55,10 +57,21 @@ import gunbc.spark.serving_desired {
   spark_serving_occurrence,
 }
 import gunbc.spark.serving_member_realization {
-  spark_serving_install_effects_for_member_action,
+  spark_serving_realization_for_member_action,
+  SparkServingMemberRealization,
+  SparkServingMemberInstalls,
+  SparkServingMemberRetires,
   spark_serving_install_effects_include,
 }
-import gunbc.spark.serving_realization { ServingInstallEffect, EnableLingerForOwnAccount }
+import gunbc.spark.cell_role {
+  SparkCellRole, SparkServingCell, SparkTrainingCell, spark_cell_role_of,
+  SparkCellRoleLookup, SparkCellRoleAbsent, SparkCellRoleUnique, SparkCellRoleAmbiguous,
+}
+import gunbc.spark.serving_realization {
+  ServingInstallEffect, EnableLingerForOwnAccount,
+  SparkServingRetirementEffect,
+  SparkServingPlannedEffect, PlannedInstallEffect, PlannedRetirementEffect,
+}
 import gunbc.runner_slot_provision { RunnerSlotMember }
 import gunbc.fabric_cell_observation_admission {
   FabricCellObservationDecision,
@@ -93,10 +106,6 @@ import gunbc.fleet_converge_plan {
   fleet_converge_spark_serving_row_effects,
 }
 data spark_serving_converge_plan_authority_note: String = "Seam 2 vertical slice — Spark serving membership frozen into FleetConvergePlanArtifact typed rows. First member kind: Ensured linger (SparkServingLingerAddress → EnableLingerForOwnAccount). Plan observes linger state, runs membership_reconcile once, serializes MemberAction + install_effects into typed_action_rows on the artifact; apply MUST read those frozen rows (never re-derive). Spark actuation is typed argv via spark_serving_converge_realize + typed_argv_exec — NOT merged into apply_shell. Change arm (disable-linger) is NOT claimed proven — sudoers grants enable-linger only."
-
-fn spark_serving_converge_host_is_spark(host: NonEmptyStr) -> Bool {
-  host == (operator_host_srv5 as NonEmptyStr) || host == (operator_host_srv6 as NonEmptyStr)
-}
 
 fn spark_serving_desired_linger_member(host: HostIdentity) -> SparkServingMember {
   spark_serving_member(
@@ -163,10 +172,10 @@ fn fleet_converge_spark_serving_action_at(
 fn fleet_converge_spark_serving_typed_action(
   action: MemberAction<SparkServingMember, SparkServingMemberAt>,
 ) -> FleetConvergeSparkServingTypedAction? {
-  match spark_serving_install_effects_for_member_action(action: action) {
+  match spark_serving_realization_for_member_action(action: action) {
     Absent => Absent
-    Present { value: effects } =>
-      match spark_serving_planned_effect_executions(effects: effects) {
+    Present { value: realization } =>
+      match spark_serving_planned_realization_executions(realization: realization) {
         Absent => Absent
         Present { value: executions } =>
           match executions.first() {
@@ -193,6 +202,52 @@ fn fleet_converge_spark_serving_typed_action(
 //
 // One effect refusing refuses the whole row, unchanged from the fold it replaces -- a partially
 // realizable member must not produce a row that applies the half that worked.
+// ONE FOLD, TWO REALIZERS, SELECTED ONCE AT THE TOP.
+//
+// The install and retirement folds are the same fold: accumulate executions, refuse the whole row if
+// any single effect cannot realize. Writing it twice would fork the partial-realization law -- the
+// one that says a member which half-translates must not produce a row that applies the half that
+// worked -- into two copies that could drift. So the direction is chosen once, by matching the
+// realization, and the shared fold takes the per-effect realizer as its only difference.
+fn spark_serving_planned_realization_executions(
+  realization: SparkServingMemberRealization,
+) -> List<PlannedEffectExecution>? {
+  match realization {
+    SparkServingMemberInstalls { effects: es } =>
+      spark_serving_planned_effect_executions(effects: es)
+    SparkServingMemberRetires { effects: es } =>
+      spark_serving_planned_retirement_executions(effects: es)
+  }
+}
+
+fn spark_serving_planned_retirement_executions(
+  effects: List<SparkServingRetirementEffect>,
+) -> List<PlannedEffectExecution>? {
+  fold(effects, init: Present { value: [] }, f: fn(acc, effect) {
+    match acc {
+      Absent => none
+      Present { value: prior } =>
+        match realize_spark_serving_retirement_effect_command(effect: effect) {
+          SparkServingInstallRemoteCommandsRefused { reason: _ } => none
+          SparkServingInstallRemoteCommandsPresent { steps: steps } =>
+            match steps.first() {
+              Absent => none
+              Present { value: head } =>
+                Present {
+                  value: concat(prior, [
+                    PlannedEffectExecution {
+                      effect: PlannedRetirementEffect { retirement: effect },
+                      first_step: head,
+                      further_steps: steps.skip(n: 1),
+                    },
+                  ]),
+                }
+            }
+        }
+    }
+  })
+}
+
 fn spark_serving_planned_effect_executions(
   effects: List<ServingInstallEffect>,
 ) -> List<PlannedEffectExecution>? {
@@ -212,7 +267,7 @@ fn spark_serving_planned_effect_executions(
                 Present {
                   value: concat(prior, [
                     PlannedEffectExecution {
-                      effect: effect,
+                      effect: PlannedInstallEffect { install: effect },
                       first_step: head,
                       further_steps: steps.skip(n: 1),
                     },
@@ -347,26 +402,20 @@ fn spark_serving_fleet_converge_plan_artifact(
   observed_caps: List<CapMember>,
   projection: SparkServingObservedMemberProjection,
 ) -> SparkServingPlanArtifactVerdict {
-  if !spark_serving_converge_host_is_spark(host: host) {
-    SparkServingPlanArtifactRefused {
-      cause: join(["plan-refused host-not-spark host=", host as String], ""),
-    }
-  } else {
-    match spark_serving_desired_admission {
-      SparkServingDesiredRefused { cause: why } =>
-        SparkServingPlanArtifactRefused {
-          cause: join(["plan-refused desired-release-unadmitted ", why as String], ""),
-        }
-      SparkServingDesiredAdmitted { serving_release: admitted_release } =>
-        spark_serving_fleet_converge_plan_artifact_for_release(
-          host: host,
-          prior_generation: prior_generation,
-          observed_timers: observed_timers,
-          observed_caps: observed_caps,
-          projection: projection,
-          serving_release: admitted_release,
-        )
-    }
+  match spark_serving_desired_admission {
+    SparkServingDesiredRefused { cause: why } =>
+      SparkServingPlanArtifactRefused {
+        cause: join(["plan-refused desired-release-unadmitted ", why as String], ""),
+      }
+    SparkServingDesiredAdmitted { serving_release: admitted_release } =>
+      spark_serving_fleet_converge_plan_artifact_for_release(
+        host: host,
+        prior_generation: prior_generation,
+        observed_timers: observed_timers,
+        observed_caps: observed_caps,
+        projection: projection,
+        serving_release: admitted_release,
+      )
   }
 }
 
@@ -590,6 +639,65 @@ fn spark_serving_frozen_linger_effect(row: FleetConvergeSparkServingTypedAction)
 //
 // Each cause names its own subject: a single "incomplete observation" sentence would send an
 // operator looking in the wrong place, and these two have different probes and different remedies.
+// DESIRED STATE IS SCOPED BY THE HOST'S ROLE, WHICH IS THE JOIN THIS PLANNER DID NOT HAVE.
+//
+// The role authority landed and the production planner never consulted it. Two paths existed and
+// neither retires anything: iterate the desired-serving hosts and srv6 is simply absent from the
+// loop, so no retirement is ever planned; or invoke the planner for srv6 directly and it constructs
+// the FULL serving desired state, so serving is retained or restored on the machine that was
+// supposed to stop serving. The witness above builds the right plan by filtering a fixture, which
+// proves the scope partition and proves nothing about production.
+//
+// A training cell's desired state is the baseline members alone. The four service members leave
+// desired state, the reconcile emits four removals, and the teardown schedule orders them -- the
+// same set difference the fixture exercises, now reached from the role rather than from a filter the
+// caller remembered to apply.
+//
+// A HOST WITH NO SPARK ROLE REFUSES rather than defaulting to serving. This planner is reachable with
+// any HostIdentity, and answering "full serving desired state" for a machine nobody assigned is how a
+// convergence installs a model server on the wrong box.
+type SparkServingRoleScopedDesired
+  = SparkServingRoleScopedDesiredReady { members: List<SparkServingMember> }
+  | SparkServingRoleScopedDesiredRefused { cause: String }
+
+fn spark_serving_role_scoped_desired_members(
+  occurrence: SparkServingOccurrence,
+  serving_release: SparkServingRelease,
+) -> SparkServingRoleScopedDesired {
+  match spark_cell_role_of(host: occurrence.host) {
+    SparkCellRoleAbsent =>
+      SparkServingRoleScopedDesiredRefused {
+        cause: "spark serving plan refused: the host holds no Spark cell role, and a machine nobody assigned must not receive serving desired state by default",
+      }
+    SparkCellRoleAmbiguous { assignments: rows } =>
+      SparkServingRoleScopedDesiredRefused {
+        cause: join([
+          "spark serving plan refused: ", to_string(length(rows)),
+          " Spark cell role assignments name this host, so the roster does not decide whether it serves or trains",
+        ], ""),
+      }
+    SparkCellRoleUnique { role: role } =>
+      match role {
+        SparkServingCell =>
+          SparkServingRoleScopedDesiredReady {
+            members: spark_serving_desired_members(
+              occurrence: occurrence,
+              serving_release: serving_release,
+            ),
+          }
+        SparkTrainingCell =>
+          SparkServingRoleScopedDesiredReady {
+            members: spark_serving_baseline_members(
+              members: spark_serving_desired_members(
+                occurrence: occurrence,
+                serving_release: serving_release,
+              ),
+            ),
+          }
+      }
+  }
+}
+
 fn spark_serving_full_membership_plan(
   occurrence: SparkServingOccurrence,
   serving_release: SparkServingRelease,
@@ -614,23 +722,25 @@ fn spark_serving_full_membership_plan(
           cause: "spark serving plan refused: the model store was not observed, and an unobserved store must not be planned as an absent one — that would pull a multi-gigabyte artifact onto a host that may already hold it, on the strength of a failed probe",
         }
       } else {
+      match spark_serving_role_scoped_desired_members(
+        occurrence: occurrence,
+        serving_release: serving_release,
+      ) {
+        SparkServingRoleScopedDesiredRefused { cause: why } =>
+          SparkServingFullMembershipPlanRefused { cause: why }
+        SparkServingRoleScopedDesiredReady { members: desired } =>
       SparkServingFullMembershipPlanReady {
         plan: spark_serving_membership_reconcile(
-          desired: spark_serving_desired_members(
-            occurrence: occurrence,
-            serving_release: serving_release,
-          ),
+          desired: desired,
           observed: observed,
         ),
-        desired_members: spark_serving_desired_members(
-          occurrence: occurrence,
-          serving_release: serving_release,
-        ),
+        desired_members: desired,
         unit_observed: unit_observed,
         enablement_observed: enablement_observed,
         activity_observed: activity_observed,
         linger_observed: linger_observed,
         observed_members: observed,
+      }
       }
       }
   }

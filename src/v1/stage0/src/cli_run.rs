@@ -5040,7 +5040,7 @@ fn entry_file_touched_via_import_closure(
 }
 
 /// Receipted Rust mirror of the single authority `v2.std.live_read.live_read_carrier_homes_v0`
-/// (`src/v2/std/live_read.dag`) — the module names of the 8 declared live-read carrier homes.
+/// (`src/v2/std/live_read.dag`) — the module names of the declared live-read carrier homes.
 /// Kept in lockstep with that `.dag` roster by hand; a drift here under-approximates axis (iv)
 /// fail-closed-safe direction only if this list is a SUPERSET of the `.dag` roster, so any
 /// addition to the `.dag` roster must be mirrored here — the drift gate below
@@ -5063,6 +5063,7 @@ const LIVE_READ_CARRIER_HOME_MODULES_V0: &[&str] = &[
     "v2.lens.module_graph",
     "tools.dag_compile_clean_shard_roster",
     "tools.dag_compile_clean_scope",
+    "gunbc.namespace_cut_subject_observation",
 ];
 
 fn runtime_data_dependency_touched_via_carrier_closure(
@@ -9929,9 +9930,9 @@ pub struct MultiEntryIndex {
     typed_cache_evictions: Cell<u64>,
     /// Host-budget-derived typed-cache entry cap, sampled ONCE for this index's
     /// lifetime — a run-start fact, never re-read per insert. Re-deriving the cap
-    /// from a live, host-shared signal (`/proc/meminfo MemAvailable`, the fallback
-    /// when no private cgroup memory limit is discoverable) on every insert was the
-    /// 2026-07-21 fleet OOM incident: the cap chased the host's real-time noise
+    /// from a live, host-shared signal (`/proc/meminfo MemAvailable`, then the fallback
+    /// when no private cgroup memory limit was discoverable — since deleted, such a host
+    /// now refuses) on every insert was the 2026-07-21 fleet OOM incident: the cap chased the host's real-time noise
     /// across every co-resident session, and each eviction's recompute-on-miss
     /// added the exact memory pressure the cap exists to relieve — a thrashing
     /// feedback loop, not a bound. `OnceCell` gives lazy single-sample semantics
@@ -22482,8 +22483,8 @@ pub fn emit_realize_advisory_for_rows(source_roots: &[String], rows: &[Discovery
         }
     };
     // Host budget: the SAME single authority the MemoryGovernor schedules against
-    // (env -> cgroup memory.high -> memory.max -> meminfo). Unreadable -> the modeled
-    // law refuses (BudgetRefused), never a fabricated width.
+    // (env -> cgroup memory.high -> memory.max -> Darwin hw.memsize). Unreadable -> the
+    // modeled law refuses (BudgetRefused), never a fabricated width.
     let (budget_opt, budget_source) = crate::memory_governor::read_host_budget_bytes();
     let budget_bytes: Option<i64> = budget_opt.map(|b| b as i64);
     let independence: i64 = std::thread::available_parallelism()
@@ -36830,6 +36831,10 @@ pub enum RequiredFloorDisposition {
     /// per identity, carried by the claim that runs it, so there is no second vocabulary here
     /// restating what the claim already says.
     Planned,
+    /// Selected by the required CI run's per-change sublane. This is distinct from `Planned`:
+    /// the static compiler-floor gate did not admit the identity; the exact changed-witness
+    /// identity set did. It nevertheless executes in the same fold and terminal ledger.
+    PlannedAsChangedWitness,
     /// Declined because the module's AUTHORED name (read from its own source, never its path)
     /// matches a `long_home_prefixes()` entry. Carries the exact prefix that matched, which the
     /// former bare `long_declined` counter discarded.
@@ -37172,6 +37177,16 @@ pub struct RequiredFloorOutcome {
     /// Per-identity `LongHomeStorageAgreement`, a storage/name-hygiene diagnostic that never
     /// feeds admission. See the type's doc comment.
     pub long_home_storage_agreement: Vec<LongHomeStorageAgreementRow>,
+    /// CHANGED witness identities this run's diff observation attributed (added/modified test
+    /// declarations vs the resolved comparison baseline), at the same qualified
+    /// `module.function` grain the disposition receipt is keyed by. Zero on a diff that
+    /// touches no witness declaration.
+    pub changed_witness_rows: usize,
+    /// The changed identities whose `ChangedWitnessExecutionStanding`
+    /// (`v2.workflow.floor_changed_witness`) BLOCKS — declined, missing from the disposition
+    /// receipt, or planned without a terminal Passed verdict. Non-empty reds the required
+    /// context; see `required_floor_outcome_is_clean` in `claim_executor`.
+    pub changed_witness_blocking: Vec<String>,
 }
 
 fn str_list(items: impl IntoIterator<Item = String>) -> v1_interpreter::Value {
@@ -37586,6 +37601,7 @@ fn write_required_floor_disposition_tsv(
     let mut file = std::fs::File::create(path)
         .map_err(|e| format!("write_required_floor_disposition_tsv: create {path}: {e}"))?;
     let mut planned = 0usize;
+    let mut planned_as_changed_witness = 0usize;
     let mut declined_long = 0usize;
     let mut declined_fixture = 0usize;
     let mut declined_cost_debt = 0usize;
@@ -37595,6 +37611,7 @@ fn write_required_floor_disposition_tsv(
     for row in rows {
         match &row.disposition {
             RequiredFloorDisposition::Planned => planned += 1,
+            RequiredFloorDisposition::PlannedAsChangedWitness => planned_as_changed_witness += 1,
             RequiredFloorDisposition::DeclinedLongModule { .. } => declined_long += 1,
             RequiredFloorDisposition::DeclinedFixtureMember { .. } => declined_fixture += 1,
             RequiredFloorDisposition::DeclinedOutsideRequiredGate => declined_outside_gate += 1,
@@ -37607,11 +37624,12 @@ fn write_required_floor_disposition_tsv(
     }
     writeln!(
         file,
-        "# summary\ttotal={}\tplanned={}\tdeclined_long_module={}\tdeclined_fixture_member={}\
+        "# summary\ttotal={}\tplanned={}\tplanned_as_changed_witness={}\tdeclined_long_module={}\tdeclined_fixture_member={}\
          \tdeclined_outside_required_gate={}\tdeclined_outside_gate_closure={}\
          \tdeclined_discovery_excluded={}\tdeclined_cost_debt={}",
         rows.len(),
         planned,
+        planned_as_changed_witness,
         declined_long,
         declined_fixture,
         declined_outside_gate,

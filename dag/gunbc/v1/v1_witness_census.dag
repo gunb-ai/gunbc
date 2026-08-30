@@ -1,0 +1,242 @@
+module gunbc.v1_witness_census
+
+import std.types { List, String, NonEmptyStr, Bool, Int }
+import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_eq }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
+import gunbc.replacement_cut { EvidenceDisposition, ReenrollAgainstY, ReplaceEvidence, RetireEvidence }
+import v2.workflow.required_floor {
+  RequiredFloorDisposition, Planned, PlannedAsChangedWitness, DeclinedLongModule, DeclinedFixtureMember, DeclinedOutsideRequiredGate,
+  DeclinedOutsideGateClosure, DeclinedDiscoveryExcluded, DeclinedCostDebt
+}
+
+// XL-5's SECOND DELIVERABLE: the wall that stops the bankruptcy transaction greening by LOSING
+// SUBJECTS. It is a separate carrier from the consumer census because it answers a different
+// question in the opposite direction. The consumer census asks what still reaches v1, and its
+// success condition is an EMPTY population. This one asks what the v1-hosted floor currently
+// establishes, and its success condition is a TOTAL ONE-TO-ONE ACCOUNTING -- an empty population
+// here would mean every guarantee in the repository had been dropped.
+//
+// WHY THIS IS THE FAILURE MODE WORTH BUILDING A WALL FOR. Today every claim identity in this
+// repository is executed inside a v1-hosted binary; both required lanes are claim_executor. So the
+// cutover moves the ENTIRE claim corpus at once, and the cheapest possible green is a native fold
+// that runs a subset and reports success. Nothing in a pass/fail summary distinguishes that from a
+// complete run: DESIGN section 5 states the general form -- completeness is an identity join, not
+// a count equality -- and a claim count is exactly the count-equality oracle it forbids. The floor
+// cut measured the specific instance: 16 of 42 deleted witnesses there were peers dying with their
+// subsystem, and the two that mattered were GUARDS deleted alongside what they constrained, which
+// produced no artifact and which an artifact-keyed ledger was structurally blind to.
+//
+// TWO AXES, KEPT APART BY RULING (XL-N Manager, 2026-08-29). FLOOR STANDING is what the required
+// floor's scheduler decided about a claim -- Planned, or one of the Declined arms -- and it is the
+// authority's own RequiredFloorDisposition, imported rather than re-spelled. CUTOVER DISPOSITION
+// is what XL-5 decides about the claim's future. A declined claim is not a retired claim: XL-1
+// measured that DeclinedLongModule is assigned by AUTHORED MODULE NAME, not by cost, and the corpus
+// records long/-relocated witnesses that measured 192ms total against a 5000ms budget. So "floor
+// declined" is a fact the join carries and the disposition may not read as evidence.
+
+data v1_claim_disposition_note: String = "THE THREE ARMS THE RULING NAMES, each carrying what makes it checkable rather than the assertion that it holds, and there is no fourth. An undecided claim at cutover time is a lost subject wearing a plan; the population type below is where not-yet-measured is spelled, at the grain of the whole roster rather than per row.\n\nRetired carries the deleted subject and the evidence the deletion was measured, not merely performed. Deleting the OLD RUNNER does not retire a claim -- the claim's subject is what it asserts about, and the runner was only where it executed. This is the arm that removes evidence, so it is the arm that must be hardest to file.\n\nReplacedByStronger carries the replacement identity, the COVERING RELATION stated explicitly, and an EXECUTED red proving the replacement detects the class the old claim detected. 'Stronger' is the word a cutover is most tempted to use for 'different', and an unstated strengthening is how a required subject leaves the tree wearing an upgrade. The red control is the entire content of the arm: DESIGN section 4b says to ask whether a check's RED is authorable before writing the check, and a replacement that cannot go red on the old class is a decoration cited as coverage.\n\nStillRequired carries the surviving subject and the native identity it enters the roster under -- regardless of floor cost policy, per the ruling. This is the arm XL-1 joins into the native implementation roster, so its target identity is a DeclarationRef and not a description.\n\nEACH ARM PROJECTS ONTO gunbc.replacement_cut EvidenceDisposition -- Retired to RetireEvidence, ReplacedByStronger to ReplaceEvidence, StillRequired to ReenrollAgainstY -- so the exact cut's evidence rows are DERIVED from this census rather than authored beside it. The arms here are strictly richer than the authority's (an executed red, a covering relation, a typed target) because the authority's rows are what an admission reads and these are what a reviewer must be able to audit; the projection is lossy in the direction that is safe."
+
+type ClaimCutoverDisposition
+  = Retired { deleted_subject: DeclarationRef, evidence: String }
+  | ReplacedByStronger { replacement: DeclarationRef, covering_relation: String, executed_red: DeclarationRef }
+  | StillRequired { surviving_subject: DeclarationRef, native_identity: DeclarationRef }
+
+fn claim_disposition_key(d: ClaimCutoverDisposition) -> String {
+  match d {
+    Retired { deleted_subject: _, evidence: _ } => "retired"
+    ReplacedByStronger { replacement: _, covering_relation: _, executed_red: _ } => "replaced-by-stronger"
+    StillRequired { surviving_subject: _, native_identity: _ } => "still-required"
+  }
+}
+
+fn v1_claim_identity_key(r: DeclarationRef) -> String {
+  concat(concat(r.module_path as String, "::"), r.decl_name as String)
+}
+
+fn claim_disposition_native_targets(d: ClaimCutoverDisposition) -> List<DeclarationRef> {
+  match d {
+    Retired { deleted_subject: _, evidence: _ } => []
+    ReplacedByStronger { replacement: r, covering_relation: _, executed_red: _ } => [r]
+    StillRequired { surviving_subject: _, native_identity: n } => [n]
+  }
+}
+
+fn claim_disposition_red_controls(d: ClaimCutoverDisposition) -> List<DeclarationRef> {
+  match d {
+    Retired { deleted_subject: _, evidence: _ } => []
+    ReplacedByStronger { replacement: _, covering_relation: _, executed_red: c } => [c]
+    StillRequired { surviving_subject: _, native_identity: _ } => []
+  }
+}
+
+fn v1wc_nes(s: String) -> NonEmptyStr { s as NonEmptyStr }
+
+fn claim_cutover_evidence_disposition(identity: DeclarationRef, d: ClaimCutoverDisposition) -> EvidenceDisposition {
+  match d {
+    Retired { deleted_subject: s, evidence: e } =>
+      RetireEvidence { evidence: v1wc_nes(s: v1_claim_identity_key(r: identity)), retired_subject: v1wc_nes(s: v1_claim_identity_key(r: s)), retirement_reason: v1wc_nes(s: e) }
+    ReplacedByStronger { replacement: r, covering_relation: _, executed_red: _ } =>
+      ReplaceEvidence { old_evidence: v1wc_nes(s: v1_claim_identity_key(r: identity)), new_evidence: v1wc_nes(s: v1_claim_identity_key(r: r)) }
+    StillRequired { surviving_subject: s, native_identity: _ } =>
+      ReenrollAgainstY { evidence: v1wc_nes(s: v1_claim_identity_key(r: identity)), surviving_claim: v1wc_nes(s: v1_claim_identity_key(r: s)) }
+  }
+}
+
+type V1ClaimCutoverRow {
+  pre_cutover_identity: DeclarationRef
+  floor_standing: RequiredFloorDisposition
+  disposition: ClaimCutoverDisposition
+}
+
+fn floor_standing_is_fixture_member(s: RequiredFloorDisposition) -> Bool {
+  match s {
+    Planned => false
+    PlannedAsChangedWitness => false
+    DeclinedLongModule { matched_prefix: _ } => false
+    DeclinedFixtureMember { matched_prefix: _ } => true
+    DeclinedOutsideRequiredGate => false
+    DeclinedOutsideGateClosure => false
+    DeclinedDiscoveryExcluded { matched_substring: _ } => false
+    DeclinedCostDebt => false
+  }
+}
+
+data v1_claim_population_note: String = "THE PRE-CUTOVER ROSTER IS SUPPLIED, NEVER AUTHORED HERE, and that is the difference between this carrier and a list of claims somebody remembered. The roster's authority is the required floor's own discovery -- the identities the floor run executes or declines, joined by XL-1 with each one's RequiredFloorDisposition -- and this module joins against it. A census that wrote down its own denominator would be satisfiable by shortening the denominator, which is precisely the loss it exists to refuse.\n\nTHE ROSTER IS UNMEASURED IN THIS CARRIER TODAY, filed as Unmeasured rather than as an empty Complete. Reading it requires a full-tree floor run, which XL-5 is not released to perform; the fixtures beside this module drive every assertion over CONTROLLED populations, which is what makes the assertions executable now instead of aspirational. Unmeasured and Complete both carry zero rows and answer the conservation gate OPPOSITELY -- the distinction a bare List cannot make and a note beside it cannot enforce."
+
+type ClaimPopulation
+  = ClaimRosterComplete { rows: List<V1ClaimCutoverRow>, roster_producer: String }
+  | ClaimRosterUnmeasured { reason: String, what_would_settle_it: String }
+
+fn claim_population_rows(p: ClaimPopulation) -> List<V1ClaimCutoverRow> {
+  match p {
+    ClaimRosterComplete { rows: r, roster_producer: _ } => r
+    ClaimRosterUnmeasured { reason: _, what_would_settle_it: _ } => []
+  }
+}
+
+fn claim_population_is_complete(p: ClaimPopulation) -> Bool {
+  match p {
+    ClaimRosterComplete { rows: _, roster_producer: _ } => true
+    ClaimRosterUnmeasured { reason: _, what_would_settle_it: _ } => false
+  }
+}
+
+data v1_claim_live_population: ClaimPopulation = ClaimRosterUnmeasured {
+  reason: "the pre-cutover claim roster is the set of identities the required floor executes or declines, joined with each one's floor standing; reading it means a full-tree floor run. XL-5 is model-work until its gate releases, so the roster is honestly absent rather than estimated. An estimate here would be worse than an absence: the conservation gate reads this field, and a guessed roster would produce a join that passes against a denominator nobody measured",
+  what_would_settle_it: "XL-1's joined claim population (full-tree floor claim identities x claim_scope_for x RequiredFloorDisposition) at a named run and revision, landed here as ClaimRosterComplete with that run named as roster_producer, and one disposition per row authored by XL-5",
+}
+
+// THE JOIN IS ON DeclarationRef, NEVER ON A RENDERED SPELLING. XL-1's producer keys its rows on
+// identity_ref: DeclarationRef and derives the dotted string from it; a roster of module::decl
+// strings here would be a second spelling of one identity on the join key, the hollow-alias class.
+// v1_claim_identity_key survives only as a display projection for the evidence rows the exact cut
+// carries as NonEmptyStr, and as the occurrence key for the distinctness folds.
+fn v1_claim_ref_in(needle: DeclarationRef, xs: List<DeclarationRef>) -> Bool {
+  xs |> any(x => declaration_ref_eq(a: x, b: needle))
+}
+
+fn v1_claim_row_refs(rows: List<V1ClaimCutoverRow>) -> List<DeclarationRef> {
+  rows |> map(r => r.pre_cutover_identity)
+}
+
+fn v1_claim_key_in(needle: String, xs: List<String>) -> Bool {
+  xs |> any(x => x == needle)
+}
+
+// THE CONSERVATION WALL, IN FIVE DIRECTIONS, AT IDENTITY GRAIN.
+//
+// Direction one: every identity the pre-cutover roster contains has exactly one row. This is the
+// one that catches a lost subject -- a claim that simply stops being executed by the native fold
+// leaves no artifact, produces no red, and shortens no number a reader is looking at.
+fn v1_claims_unaccounted(roster: List<DeclarationRef>, rows: List<V1ClaimCutoverRow>) -> List<DeclarationRef> {
+  roster |> filter(id => !v1_claim_ref_in(needle: id, xs: v1_claim_row_refs(rows: rows)))
+}
+
+fn v1_every_claim_accounted(roster: List<DeclarationRef>, rows: List<V1ClaimCutoverRow>) -> Bool {
+  count(v1_claims_unaccounted(roster: roster, rows: rows)) == 0
+}
+
+// Direction two: every row names an identity the roster contains. A row for a claim that does not
+// exist pre-cutover is a fabricated subject, and it inflates the accounting in the one place a
+// reader checks -- the same row count, with a real subject swapped for an invented one.
+fn v1_claim_rows_outside_roster(roster: List<DeclarationRef>, rows: List<V1ClaimCutoverRow>) -> List<V1ClaimCutoverRow> {
+  rows |> filter(r => !v1_claim_ref_in(needle: r.pre_cutover_identity, xs: roster))
+}
+
+fn v1_every_claim_row_is_in_roster(roster: List<DeclarationRef>, rows: List<V1ClaimCutoverRow>) -> Bool {
+  count(v1_claim_rows_outside_roster(roster: roster, rows: rows)) == 0
+}
+
+// Direction three, the one a count-based accounting cannot express at all: a surviving claim must
+// land on a DISTINCT native identity. Two pre-cutover claims both mapped onto one native identity
+// is a merge, and a merge is a loss wearing a port -- the accounting stays total, every row has a
+// disposition, and one subject has quietly stopped being checked. This is why the join is on
+// identities rather than on counts.
+fn v1_claim_native_target_keys(rows: List<V1ClaimCutoverRow>) -> List<String> {
+  rows |> flat_map(r => claim_disposition_native_targets(d: r.disposition)) |> map(n => v1_claim_identity_key(r: n))
+}
+
+fn v1_claim_key_occurrences(needle: String, xs: List<String>) -> Int {
+  count(xs |> filter(x => x == needle))
+}
+
+fn v1_claim_native_targets_are_distinct(rows: List<V1ClaimCutoverRow>) -> Bool {
+  let targets = v1_claim_native_target_keys(rows: rows)
+  targets |> all(t => v1_claim_key_occurrences(needle: t, xs: targets) == 1)
+}
+
+// Direction four: a replacement's executed red must be a DIFFERENT declaration from both the old
+// claim and the replacement. A row naming the replacement, or the old claim, as its own red control
+// makes the strongest claim in this census -- 'the replacement detects the old class' -- true by
+// writing it, and it is one keystroke away from the honest form.
+fn v1_claim_red_control_is_distinct(row: V1ClaimCutoverRow) -> Bool {
+  let own = v1_claim_identity_key(r: row.pre_cutover_identity)
+  let targets = v1_claim_native_target_keys(rows: [row])
+  claim_disposition_red_controls(d: row.disposition) |> all(c =>
+    v1_claim_identity_key(r: c) != own && !v1_claim_key_in(needle: v1_claim_identity_key(r: c), xs: targets)
+  )
+}
+
+fn v1_every_claim_red_control_is_distinct(rows: List<V1ClaimCutoverRow>) -> Bool {
+  rows |> all(r => v1_claim_red_control_is_distinct(row: r))
+}
+
+// Direction five, from the ruling: a FIXTURE OR SUPPORT MODULE IS NOT A CLAIM AND TAKES NO
+// DISPOSITION. The floor already names that population structurally -- DeclinedFixtureMember is
+// assigned by the module's relation to claims, not by anything about its cost -- so a row carrying
+// that standing is a support module folded into the accounting to close a count, and it is refused
+// rather than dispositioned. The exclusion is by structural relation, never by disposition.
+fn v1_claim_rows_that_are_fixture_members(rows: List<V1ClaimCutoverRow>) -> List<V1ClaimCutoverRow> {
+  rows |> filter(r => floor_standing_is_fixture_member(s: r.floor_standing))
+}
+
+fn v1_no_fixture_member_carries_a_disposition(rows: List<V1ClaimCutoverRow>) -> Bool {
+  count(v1_claim_rows_that_are_fixture_members(rows: rows)) == 0
+}
+
+// THE GATE. Conservation is all five directions over a COMPLETE roster; any of them dropped is a
+// different and weaker claim, and the completeness arm is first for the same reason it is first in
+// the consumer census -- a join over an unmeasured roster is vacuously total.
+fn v1_claim_conservation_holds(population: ClaimPopulation, roster: List<DeclarationRef>) -> Bool {
+  let rows = claim_population_rows(p: population)
+  claim_population_is_complete(p: population)
+    && v1_every_claim_accounted(roster: roster, rows: rows)
+    && v1_every_claim_row_is_in_roster(roster: roster, rows: rows)
+    && v1_claim_native_targets_are_distinct(rows: rows)
+    && v1_every_claim_red_control_is_distinct(rows: rows)
+    && v1_no_fixture_member_carries_a_disposition(rows: rows)
+}
+
+// THE NATIVE ROSTER XL-1 JOINS: every StillRequired and ReplacedByStronger target, regardless of
+// floor standing. Derived, so it cannot drift from the dispositions that justify it.
+fn v1_native_roster(rows: List<V1ClaimCutoverRow>) -> List<DeclarationRef> {
+  rows |> flat_map(r => claim_disposition_native_targets(d: r.disposition))
+}
+
+fn v1_claim_evidence_rows(rows: List<V1ClaimCutoverRow>) -> List<EvidenceDisposition> {
+  rows |> map(r => claim_cutover_evidence_disposition(identity: r.pre_cutover_identity, d: r.disposition))
+}
+
+data v1_claim_census_rung_note: String = "RUNG. The CLASS -- 'the cutover drops a claim subject and greens' -- sits at MITIGATABLE on the live tree, because the live roster is unmeasured and no gate consumes this carrier yet. Saying that first matters: a conservation wall beside an unmeasured roster is exactly the artifact a reader mistakes for conservation.\n\nWHAT IS CONSTRUCTED: the three-arm disposition has no undecided variant, so a claim cannot be carried through the cutover without an answer; a replacement has no constructor without an executed red and a covering relation; a retirement has none without a named deleted subject and its evidence; a surviving claim has none without a typed native identity; floor standing is the floor's own type, so a standing the floor cannot assign cannot be written here; and the gate cannot be satisfied by an unmeasured roster, because completeness is a field it reads rather than an assumption it makes.\n\nWHAT IS VALIDATED RATHER THAN CONSTRUCTED, and is therefore weaker: distinctness of native targets, distinctness of red controls, and the absence of fixture-member rows are folds over a List, so all three bad states are writable and are caught by an executing witness rather than being unwritable. A Set-keyed carrier would construct the first; nothing available constructs the second, since 'different enough to discriminate' is not decidable from the reference alone -- which is why that arm is a distinctness check and is described as one rather than as proof the control discriminates."
+
+data v1_claim_census_next_rung_trigger: DissolutionCondition = unbound_dissolution(description: "dissolve-on: the required gate consumes v1_claim_conservation_holds against the roster the floor run itself emits, so a claim identity that stops being executed refuses the merge rather than shortening a summary line. The capability named is a required gate whose denominator is produced by the run being gated -- NOT the landing of a roster file, and NOT this carrier being imported by a test: a roster committed beside the run is the second representation whose drift this census exists to refuse, and an importing test that supplies its own roster proves only that the join function works.")

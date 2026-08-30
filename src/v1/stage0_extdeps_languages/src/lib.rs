@@ -56,6 +56,9 @@ pub mod extdeps_languages_rust_capabilities;
 #[path = "../../stage0/src/extdeps_languages_rust_emit.rs"]
 pub mod extdeps_languages_rust_emit;
 #[rustfmt::skip]
+#[path = "../../stage0/src/extdeps_languages_rust_representation.rs"]
+pub mod extdeps_languages_rust_representation;
+#[rustfmt::skip]
 #[path = "../../stage0/src/extdeps_languages_rust_syntax.rs"]
 pub mod extdeps_languages_rust_syntax;
 #[rustfmt::skip]

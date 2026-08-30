@@ -12,7 +12,7 @@ import gunbc.build_target {
 }
 import v2.workflow.required_floor {
   RequiredFloorDisposition,
-  Planned, DeclinedLongModule, DeclinedFixtureMember, DeclinedCostDebt,
+  Planned, PlannedAsChangedWitness, DeclinedLongModule, DeclinedFixtureMember, DeclinedCostDebt,
   DeclinedOutsideRequiredGate, DeclinedOutsideGateClosure, DeclinedDiscoveryExcluded,
   required_floor_site_disposition,
 }
@@ -192,6 +192,7 @@ fn census_fold_site(state: CensusFoldState, site: DiscoveredSite) -> CensusFoldS
     SiteLabelParseRefused { cause: c } => census_state_refuse(state: state, cause: c)
     SiteLabelParsed { label: l } => {
       let identity = render_label(l: l)
+      let qualified_identity = concat(concat(site.module_path, "."), site.function)
       if map_contains_key(state.seen, identity) {
         census_state_refuse(state: state, cause: DuplicateSiteIdentity { identity: identity })
       } else {
@@ -201,7 +202,7 @@ fn census_fold_site(state: CensusFoldState, site: DiscoveredSite) -> CensusFoldS
               label: l,
               disposition: required_floor_site_disposition(
                 module_path: site.module_path,
-                identity: identity
+                identity: qualified_identity
               )
             }
           ], state.rows_reversed),
@@ -251,6 +252,7 @@ type CensusPartition {
 fn census_partition_step(acc: CensusPartition, row: CensusRow) -> CensusPartition {
   match row.disposition {
     Planned => CensusPartition { planned: concat([row], acc.planned), declined: acc.declined }
+    PlannedAsChangedWitness => CensusPartition { planned: concat([row], acc.planned), declined: acc.declined }
     DeclinedLongModule { matched_prefix: _ } =>
       CensusPartition { planned: acc.planned, declined: concat([row], acc.declined) }
     DeclinedFixtureMember { matched_prefix: _ } =>
@@ -322,16 +324,11 @@ fn required_aggregate_from_census(census: SiteCensus) -> RequiredAggregateDeriva
 // written out rather than counted as "planned and everything else": a new decline reason
 // silently joining the non-planned remainder would leave the census reporting a population it no
 // longer distinguishes.
-// THE "MUST FAIL TO COMPILE" CLAIM ABOVE WAS FALSE WHEN THIS ROW WAS WRITTEN, and the correction
-// is recorded here rather than silently applied. `DeclinedOutsideRequiredGate` was added to
-// `RequiredFloorDisposition` and NEITHER of this module's two wildcard-free matches acquired an
-// arm for it; nothing refused, so the census counted a population it no longer distinguished for
-// as long as that arm existed — exactly the outcome the paragraph promises is unwritable. The
-// three arms below close that gap and the missing one, but the claim is now stated at its honest
-// rung: match exhaustiveness over an imported coproduct is NOT enforced for this module on any
-// executing path, because its own witness sits outside the required gate's import closure. NEXT
-// TRIGGER: the required gate reaching this module (or any executing consumer typechecking it),
-// at which point the omission fails the build instead of being found by a reader.
+// THE "MUST FAIL TO COMPILE" CLAIM ABOVE WAS FALSE WHEN THIS ROW WAS WRITTEN. The compiler's
+// exhaustiveness producer discarded imported binding identity for a record-field projection,
+// then treated the unresolved nominal leaf as a non-coproduct and emitted no diagnostic. The
+// identity-aware lookup and its cross-module controls now close that fail-open path; all current
+// disposition arms are explicit below.
 type CensusCounts {
   offered: Int
   planned: Int
@@ -359,6 +356,17 @@ fn census_counts_zero() -> CensusCounts {
 fn census_counts_add(counts: CensusCounts, d: RequiredFloorDisposition) -> CensusCounts {
   match d {
     Planned =>
+      CensusCounts {
+        offered: counts.offered + 1,
+        planned: counts.planned + 1,
+        declined_long_module: counts.declined_long_module,
+        declined_fixture_member: counts.declined_fixture_member,
+        declined_cost_debt: counts.declined_cost_debt,
+        declined_outside_required_gate: counts.declined_outside_required_gate,
+        declined_outside_gate_closure: counts.declined_outside_gate_closure,
+        declined_discovery_excluded: counts.declined_discovery_excluded
+      }
+    PlannedAsChangedWitness =>
       CensusCounts {
         offered: counts.offered + 1,
         planned: counts.planned + 1,
