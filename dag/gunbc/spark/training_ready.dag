@@ -32,9 +32,12 @@ data spark_training_ready_authority_note: String = "SPARK-PAIR-0 P0. The gate be
 // server still holding the unified pool -- and the symptom would be an out-of-memory failure inside
 // a training run, attributed to the recipe.
 //
-// So absence is a POSITIVE observation with its own arms. A refused connection is evidence. A probe
-// that never ran, or that answered, is not -- and answering is the loud case: something is still
-// serving.
+// So absence is a POSITIVE observation with its own arms, and what counts as evidence is decided per
+// subject rather than by any general rule about failure. NO CONNECTION FAILURE ESTABLISHES ENDPOINT
+// ABSENCE: endpoint absence requires a completed host-local listener enumeration whose exact target
+// population is empty, and a failed or unreached enumeration establishes nothing. A probe that never
+// ran is not evidence either, and a probe that answered with a population is the loud case --
+// something is still serving.
 type SparkServingAbsence
   = ServingAbsenceUnobserved { cause: NonEmptyStr }
   | ServingStillPresent { evidence: NonEmptyStr }
@@ -85,7 +88,10 @@ fn spark_serving_absence_refusal(a: SparkServingAbsence) -> NonEmptyStr? {
 // TOOL rather than of this module. The three subjects answer in two different shapes, which is
 // exactly why one rule could not cover them:
 //
-//   - a dial exits 7 and only 7 to mean nothing is listening (curl(1) "Failed to connect to host")
+//   - a listener enumeration COMPLETES and prints one line per listening socket, so the empty
+//     completed answer is the absence and no status code is asked to carry it. A dial's exit code
+//     cannot: curl(1) 7 is "failed to connect to host or proxy", one status for every reason a
+//     connect failed, so it establishes that curl did not connect and nothing about what is there
 //   - a process scan exits 1 and only 1 to mean nothing matched (pgrep(1), where 2 and 3 mean the
 //     question was never answered)
 //   - a unit query exits ZERO and answers `not-found` on stdout; systemd's own authority records
@@ -211,7 +217,22 @@ fn spark_serving_absence_from_probe(
 // loosened constructor.
 //
 // Each subject is decoded from its own capture by the same decoder, so the three axes cannot come to
-// disagree about what a refused connection means, and no axis can be asserted directly.
+// disagree about what a failed probe means, and no axis can be asserted directly.
+// WHAT THIS DECODER DOES NOT ESTABLISH, STATED SO IT IS NOT OVERGRADED.
+//
+// SparkServingProbeCapture carries a completion status and stdout, and nothing about where the text
+// came from. So the decoder's semantics are correct -- an empty completed enumeration is absence, a
+// connect failure is not -- while the PROVENANCE of any particular capture is not modelled here at
+// all: nothing in this type says the enumeration ran on srv6, filtered the serving port, ran the
+// argv this module names, or ran after the retirement it is being read against. A dry witness can
+// therefore author ProbeAnswered { stdout: "" } and have it read as an empty ss listing, which is
+// exactly what makes the decoder testable and exactly what the decoder cannot vouch for.
+//
+// That is a boundary obligation rather than a gap to paper over: it belongs to P0-WET, where the
+// generic capture is replaced by a typed executed receipt carrying host, operation identity, the
+// selected port, completion status, stdout, and the retirement generation it followed -- for the
+// pgrep and systemd axes too. Until that lands the honest statement is that the endpoint
+// observation's SEMANTICS are correct and its PRODUCER PROVENANCE is unmodelled.
 fn spark_serving_retirement_observation_from_probes(
   host: HostIdentity,
   endpoint_capture: SparkServingProbeCapture,
