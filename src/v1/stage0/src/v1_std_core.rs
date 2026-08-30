@@ -191,8 +191,8 @@ pub enum InferredNode {
 pub fn inferred_to_node(inferred: Rc<InferredNode>) -> Option<Rc<Node>> {
     match (*inferred.clone()).clone() {
         InferredNode::Resolved { node: n, .. } => Some(n.clone()),
-        InferredNode::CompilerError { .. } => None,
-        InferredNode::TypeVariable { id: _, .. } => None,
+        InferredNode::CompilerError { .. } => std::option::Option::None,
+        InferredNode::TypeVariable { id: _, .. } => std::option::Option::None,
     }
 }
 
@@ -205,7 +205,7 @@ pub fn is_compiler_error(inferred: Rc<InferredNode>) -> bool {
 }
 
 pub fn has_inferred(n: Rc<Node>) -> bool {
-    (n.inferred.clone() != None)
+    (n.inferred.clone() != std::option::Option::None)
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -919,7 +919,7 @@ pub fn diagnostic_frontier_occurrence_key(
             method: m.clone(),
             receiver_shape: t.clone(),
         })),
-        _ => None,
+        _ => std::option::Option::None,
     }
 }
 
@@ -1060,7 +1060,7 @@ pub struct Node {
 
 pub fn default_ident_span(name: String, span: Rc<SourceSpan>) -> Option<Rc<SourceSpan>> {
     if (name.clone() == "".to_string()) {
-        None
+        std::option::Option::None
     } else {
         Some(span.clone())
     }
@@ -1088,20 +1088,20 @@ pub fn make_expr_node(
         occurrence_identity: occurrence_identity.clone(),
         name: "".to_string(),
         span: span.clone(),
-        ident_span: None,
+        ident_span: std::option::Option::None,
         children: children.clone(),
         connective: Connective::NoConnective,
         params: Rc::new(vec![]),
         inferred: inferred.clone(),
         return_cardinality: Cardinality::Required,
         uses: Rc::new(vec![]),
-        body: None,
-        transport: None,
+        body: std::option::Option::None,
+        transport: std::option::Option::None,
         properties: Rc::new(vec![]),
-        type_annotation: None,
+        type_annotation: std::option::Option::None,
         is_self_recursive: false,
         has_non_tail_self_call: false,
-        match_pattern: None,
+        match_pattern: std::option::Option::None,
         expr_data: expr_data.clone(),
         ident: None,
     })
@@ -1127,13 +1127,13 @@ pub fn make_named_expr_node(
         inferred: inferred.clone(),
         return_cardinality: Cardinality::Required,
         uses: Rc::new(vec![]),
-        body: None,
-        transport: None,
+        body: std::option::Option::None,
+        transport: std::option::Option::None,
         properties: Rc::new(vec![]),
-        type_annotation: None,
+        type_annotation: std::option::Option::None,
         is_self_recursive: false,
         has_non_tail_self_call: false,
-        match_pattern: None,
+        match_pattern: std::option::Option::None,
         expr_data: expr_data.clone(),
         ident: None,
     })
@@ -1149,7 +1149,7 @@ pub fn make_pattern_binder_declaration_node(
         name.clone(),
         Rc::new(ExprData::NoExprData),
         Rc::new(vec![]),
-        None,
+        std::option::Option::None,
         span.clone(),
         span.clone(),
     )
@@ -1165,7 +1165,7 @@ pub fn make_expr_error_node(
         occurrence_identity: occurrence_identity.clone(),
         name: "".to_string(),
         span: span.clone(),
-        ident_span: None,
+        ident_span: std::option::Option::None,
         children: Rc::new(vec![]),
         connective: Connective::NoConnective,
         params: Rc::new(vec![]),
@@ -1175,13 +1175,13 @@ pub fn make_expr_error_node(
         })),
         return_cardinality: Cardinality::Required,
         uses: Rc::new(vec![]),
-        body: None,
-        transport: None,
+        body: std::option::Option::None,
+        transport: std::option::Option::None,
         properties: Rc::new(vec![]),
-        type_annotation: None,
+        type_annotation: std::option::Option::None,
         is_self_recursive: false,
         has_non_tail_self_call: false,
-        match_pattern: None,
+        match_pattern: std::option::Option::None,
         expr_data: Rc::new(ExprData::ExprError {
             kind: kind.clone(),
             message: message.clone(),
@@ -1210,16 +1210,16 @@ pub fn make_arg_node(
             children: Rc::new(vec![value.clone()]),
             connective: Connective::NoConnective,
             params: Rc::new(vec![]),
-            inferred: None,
+            inferred: std::option::Option::None,
             return_cardinality: Cardinality::Required,
             uses: Rc::new(vec![]),
-            body: None,
-            transport: None,
+            body: std::option::Option::None,
+            transport: std::option::Option::None,
             properties: Rc::new(vec![]),
-            type_annotation: None,
+            type_annotation: std::option::Option::None,
             is_self_recursive: false,
             has_non_tail_self_call: false,
-            match_pattern: None,
+            match_pattern: std::option::Option::None,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
         })
@@ -1242,17 +1242,17 @@ pub fn make_arm_node(
             occurrence_identity: occurrence_identity.clone(),
             name: "".to_string(),
             span: span.clone(),
-            ident_span: None,
+            ident_span: std::option::Option::None,
             children: children.clone(),
             connective: Connective::NoConnective,
             params: Rc::new(vec![]),
-            inferred: None,
+            inferred: std::option::Option::None,
             return_cardinality: Cardinality::Required,
             uses: Rc::new(vec![]),
-            body: None,
-            transport: None,
+            body: std::option::Option::None,
+            transport: std::option::Option::None,
             properties: Rc::new(vec![]),
-            type_annotation: None,
+            type_annotation: std::option::Option::None,
             is_self_recursive: false,
             has_non_tail_self_call: false,
             match_pattern: Some(pattern.clone()),
@@ -1277,16 +1277,16 @@ pub fn make_resource_use_node(
         children: Rc::new(vec![resource.clone()]),
         connective: Connective::NoConnective,
         params: Rc::new(vec![]),
-        inferred: None,
+        inferred: std::option::Option::None,
         return_cardinality: Cardinality::Required,
         uses: Rc::new(vec![]),
-        body: None,
-        transport: None,
+        body: std::option::Option::None,
+        transport: std::option::Option::None,
         properties: Rc::new(vec![]),
-        type_annotation: None,
+        type_annotation: std::option::Option::None,
         is_self_recursive: false,
         has_non_tail_self_call: false,
-        match_pattern: None,
+        match_pattern: std::option::Option::None,
         expr_data: Rc::new(ExprData::NoExprData),
         ident: None,
     })
@@ -1326,16 +1326,16 @@ pub fn make_field_init_node(
         children: Rc::new(vec![value.clone()]),
         connective: Connective::NoConnective,
         params: Rc::new(vec![]),
-        inferred: None,
+        inferred: std::option::Option::None,
         return_cardinality: Cardinality::Required,
         uses: Rc::new(vec![]),
-        body: None,
-        transport: None,
+        body: std::option::Option::None,
+        transport: std::option::Option::None,
         properties: Rc::new(vec![]),
-        type_annotation: None,
+        type_annotation: std::option::Option::None,
         is_self_recursive: false,
         has_non_tail_self_call: false,
-        match_pattern: None,
+        match_pattern: std::option::Option::None,
         expr_data: Rc::new(ExprData::NoExprData),
         ident: None,
     })
@@ -1356,13 +1356,13 @@ pub fn make_field_binding_node(
         children: Rc::new(vec![]),
         connective: Connective::NoConnective,
         params: Rc::new(vec![]),
-        inferred: None,
+        inferred: std::option::Option::None,
         return_cardinality: Cardinality::Required,
         uses: Rc::new(vec![]),
-        body: None,
-        transport: None,
+        body: std::option::Option::None,
+        transport: std::option::Option::None,
         properties: Rc::new(vec![]),
-        type_annotation: None,
+        type_annotation: std::option::Option::None,
         is_self_recursive: false,
         has_non_tail_self_call: false,
         match_pattern: Some(binding.clone()),
@@ -1394,20 +1394,20 @@ pub fn make_text_part_node(
         occurrence_identity: occurrence_identity.clone(),
         name: "".to_string(),
         span: span.clone(),
-        ident_span: None,
+        ident_span: std::option::Option::None,
         children: Rc::new(vec![]),
         connective: Connective::NoConnective,
         params: Rc::new(vec![]),
-        inferred: None,
+        inferred: std::option::Option::None,
         return_cardinality: Cardinality::Required,
         uses: Rc::new(vec![]),
-        body: None,
-        transport: None,
+        body: std::option::Option::None,
+        transport: std::option::Option::None,
         properties: Rc::new(vec![]),
-        type_annotation: None,
+        type_annotation: std::option::Option::None,
         is_self_recursive: false,
         has_non_tail_self_call: false,
-        match_pattern: None,
+        match_pattern: std::option::Option::None,
         expr_data: Rc::new(ExprData::ExprLiteral {
             value: Rc::new(LiteralValue::LitStr {
                 value: text.clone(),
@@ -1426,20 +1426,20 @@ pub fn make_interp_part_node(
         occurrence_identity: occurrence_identity.clone(),
         name: "".to_string(),
         span: span.clone(),
-        ident_span: None,
+        ident_span: std::option::Option::None,
         children: Rc::new(vec![expr.clone()]),
         connective: Connective::NoConnective,
         params: Rc::new(vec![]),
-        inferred: None,
+        inferred: std::option::Option::None,
         return_cardinality: Cardinality::Required,
         uses: Rc::new(vec![]),
-        body: None,
-        transport: None,
+        body: std::option::Option::None,
+        transport: std::option::Option::None,
         properties: Rc::new(vec![]),
-        type_annotation: None,
+        type_annotation: std::option::Option::None,
         is_self_recursive: false,
         has_non_tail_self_call: false,
-        match_pattern: None,
+        match_pattern: std::option::Option::None,
         expr_data: Rc::new(ExprData::NoExprData),
         ident: None,
     })
@@ -1466,16 +1466,16 @@ pub fn make_param_node(
             children: children.clone(),
             connective: Connective::NoConnective,
             params: Rc::new(vec![]),
-            inferred: None,
+            inferred: std::option::Option::None,
             return_cardinality: Cardinality::Required,
             uses: Rc::new(vec![]),
-            body: None,
-            transport: None,
+            body: std::option::Option::None,
+            transport: std::option::Option::None,
             properties: Rc::new(vec![]),
-            type_annotation: None,
+            type_annotation: std::option::Option::None,
             is_self_recursive: false,
             has_non_tail_self_call: false,
-            match_pattern: None,
+            match_pattern: std::option::Option::None,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
         })
@@ -1509,13 +1509,13 @@ pub fn make_resolved_param_node(
             })),
             return_cardinality: Cardinality::Required,
             uses: Rc::new(vec![]),
-            body: None,
-            transport: None,
+            body: std::option::Option::None,
+            transport: std::option::Option::None,
             properties: properties.clone(),
-            type_annotation: None,
+            type_annotation: std::option::Option::None,
             is_self_recursive: false,
             has_non_tail_self_call: false,
-            match_pattern: None,
+            match_pattern: std::option::Option::None,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
         })
@@ -1586,7 +1586,7 @@ pub fn find_child_named(
     .cloned()
     {
         Some(ch) => Some(ch.clone()),
-        None => None,
+        None => std::option::Option::None,
     }
 }
 
@@ -1623,7 +1623,7 @@ pub fn param_node_default_value(n: Rc<Node>) -> Option<Rc<Node>> {
     if ((n.children.clone().len() as i64) > 1) {
         n.children.clone().iter().cloned().skip(1 as usize).next()
     } else {
-        None
+        std::option::Option::None
     }
 }
 
@@ -1654,16 +1654,16 @@ pub fn make_field_node(
             children: children.clone(),
             connective: Connective::NoConnective,
             params: Rc::new(vec![]),
-            inferred: None,
+            inferred: std::option::Option::None,
             return_cardinality: cardinality.clone(),
             uses: Rc::new(vec![]),
-            body: None,
-            transport: None,
+            body: std::option::Option::None,
+            transport: std::option::Option::None,
             properties: v1_rt::concat(from_key_properties.clone(), type_expr.properties.clone()),
-            type_annotation: None,
+            type_annotation: std::option::Option::None,
             is_self_recursive: false,
             has_non_tail_self_call: false,
-            match_pattern: None,
+            match_pattern: std::option::Option::None,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
         })
@@ -1697,7 +1697,7 @@ pub fn field_node_default_value(n: Rc<Node>) -> Option<Rc<Node>> {
     if ((n.children.clone().len() as i64) > 1) {
         n.children.clone().iter().cloned().skip(1 as usize).next()
     } else {
-        None
+        std::option::Option::None
     }
 }
 
@@ -1711,7 +1711,7 @@ pub fn field_node_from_key(
         source_indices.clone(),
     ) {
         Some(p) => Some(authored_name_at(source_indices.clone(), p.clone())),
-        None => None,
+        None => std::option::Option::None,
     }
 }
 
@@ -1734,16 +1734,16 @@ pub fn make_variant_node(
         children: fields.clone(),
         connective: Connective::NoConnective,
         params: Rc::new(vec![]),
-        inferred: None,
+        inferred: std::option::Option::None,
         return_cardinality: Cardinality::Required,
         uses: Rc::new(vec![]),
-        body: None,
-        transport: None,
+        body: std::option::Option::None,
+        transport: std::option::Option::None,
         properties: Rc::new(vec![]),
-        type_annotation: None,
+        type_annotation: std::option::Option::None,
         is_self_recursive: false,
         has_non_tail_self_call: false,
-        match_pattern: None,
+        match_pattern: std::option::Option::None,
         expr_data: Rc::new(ExprData::NoExprData),
         ident: None,
     })
@@ -1977,7 +1977,7 @@ pub fn arg_name_at(
     {
         let name = authored_name_at(source_indices.clone(), n.clone());
         if (name.clone() == "".to_string()) {
-            None
+            std::option::Option::None
         } else {
             Some(name.clone())
         }
@@ -2007,7 +2007,7 @@ pub fn arm_guard(n: Rc<Node>) -> Option<Rc<Node>> {
     if ((n.children.clone().len() as i64) == 2) {
         n.children.clone().first().cloned()
     } else {
-        None
+        std::option::Option::None
     }
 }
 
@@ -2076,7 +2076,7 @@ pub fn call_named_arg_string_optional(
     .cloned()
     {
         Some(arg) => expr_literal_string_optional(arg_value(arg.clone())),
-        None => None,
+        None => std::option::Option::None,
     }
 }
 
@@ -2092,7 +2092,7 @@ pub fn decl_ref_coords_from_call_expr(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Option<Rc<DeclRefCoords>> {
     if (expr_call_func_at(expr.clone(), source_indices.clone()) != "decl_ref".to_string()) {
-        None
+        std::option::Option::None
     } else {
         match call_named_arg_string_optional(
             expr.clone(),
@@ -2108,9 +2108,9 @@ pub fn decl_ref_coords_from_call_expr(
                     module_path: mp.clone(),
                     decl_name: dn.clone(),
                 })),
-                None => None,
+                None => std::option::Option::None,
             },
-            None => None,
+            None => std::option::Option::None,
         }
     }
 }
@@ -2272,7 +2272,7 @@ pub fn field_access_field_at(
 pub fn expr_field_access_summary(texpr: Rc<Node>) -> Option<Rc<FieldSummary>> {
     match (*texpr.expr_data.clone()).clone() {
         ExprData::ExprFieldAccess { summary: s, .. } => s.clone(),
-        _ => None,
+        _ => std::option::Option::None,
     }
 }
 
@@ -2306,10 +2306,10 @@ pub fn field_access_spine(
                             field_access_field_at(texpr.clone(), source_indices.clone()),
                         ),
                     })),
-                    None => None,
+                    None => std::option::Option::None,
                 }
             }
-            _ => None,
+            _ => std::option::Option::None,
         }
     })
 }
@@ -2327,7 +2327,7 @@ pub fn expr_call_descent_evidence(texpr: Rc<Node>) -> Option<Rc<Vec<Rc<SubValueR
             descent_evidence: de,
             ..
         } => de.clone(),
-        _ => None,
+        _ => std::option::Option::None,
     }
 }
 
@@ -2360,7 +2360,7 @@ pub fn expr_method_call_semantics(texpr: Rc<Node>) -> Option<Rc<MethodSemantics>
             method_semantics: ms,
             ..
         } => ms.clone(),
-        _ => None,
+        _ => std::option::Option::None,
     }
 }
 
@@ -2471,7 +2471,7 @@ pub fn record_lit_type_name_at(
     {
         let name = authored_name_at(source_indices.clone(), texpr.clone());
         if (name.clone() == "".to_string()) {
-            None
+            std::option::Option::None
         } else {
             Some(name.clone())
         }
@@ -2624,20 +2624,20 @@ pub fn make_transport_node(
         occurrence_identity: occurrence_identity.clone(),
         name: "".to_string(),
         span: span.clone(),
-        ident_span: None,
+        ident_span: std::option::Option::None,
         children: children.clone(),
         connective: Connective::NoConnective,
         params: Rc::new(vec![]),
-        inferred: None,
+        inferred: std::option::Option::None,
         return_cardinality: Cardinality::Required,
         uses: Rc::new(vec![]),
         body: body.clone(),
-        transport: None,
+        transport: std::option::Option::None,
         properties: properties.clone(),
-        type_annotation: None,
+        type_annotation: std::option::Option::None,
         is_self_recursive: false,
         has_non_tail_self_call: false,
-        match_pattern: None,
+        match_pattern: std::option::Option::None,
         expr_data: Rc::new(ExprData::NoExprData),
         ident: None,
     })
@@ -2651,7 +2651,7 @@ pub fn local_transport_node(
         occurrence_identity.clone(),
         Rc::new(vec![]),
         Rc::new(vec![]),
-        None,
+        std::option::Option::None,
         span.clone(),
     )
 }
@@ -2753,7 +2753,7 @@ pub fn rest_transport_node(
             occurrence_identity.clone(),
             props.clone(),
             Rc::new(vec![]),
-            None,
+            std::option::Option::None,
             span.clone(),
         )
     }
@@ -2771,20 +2771,20 @@ pub fn shell_transport_node(
             occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
             name: "".to_string(),
             span: span.clone(),
-            ident_span: None,
+            ident_span: std::option::Option::None,
             children: Rc::new(vec![]),
             connective: Connective::NoConnective,
             params: Rc::new(vec![]),
-            inferred: None,
+            inferred: std::option::Option::None,
             return_cardinality: Cardinality::Required,
             uses: Rc::new(vec![]),
-            body: None,
-            transport: None,
+            body: std::option::Option::None,
+            transport: std::option::Option::None,
             properties: Rc::new(vec![]),
-            type_annotation: None,
+            type_annotation: std::option::Option::None,
             is_self_recursive: false,
             has_non_tail_self_call: false,
-            match_pattern: None,
+            match_pattern: std::option::Option::None,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
         });
@@ -2804,20 +2804,20 @@ pub fn shell_transport_node(
             occurrence_identity: occurrence_identity.clone(),
             name: "".to_string(),
             span: span.clone(),
-            ident_span: None,
+            ident_span: std::option::Option::None,
             children: argv.clone(),
             connective: Connective::NoConnective,
             params: Rc::new(vec![]),
-            inferred: None,
+            inferred: std::option::Option::None,
             return_cardinality: Cardinality::Required,
             uses: Rc::new(vec![]),
             body: Some(shell_marker.clone()),
-            transport: None,
+            transport: std::option::Option::None,
             properties: all_props.clone(),
-            type_annotation: None,
+            type_annotation: std::option::Option::None,
             is_self_recursive: false,
             has_non_tail_self_call: false,
-            match_pattern: None,
+            match_pattern: std::option::Option::None,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
         })
@@ -2855,7 +2855,7 @@ pub fn file_transport_node(
             occurrence_identity.clone(),
             props.clone(),
             Rc::new(vec![]),
-            None,
+            std::option::Option::None,
             span.clone(),
         )
     }
@@ -2879,7 +2879,7 @@ pub fn find_property(
     .cloned()
     {
         Some(fi) => Some(field_init_node_value(fi.clone())),
-        None => None,
+        None => std::option::Option::None,
     }
 }
 
@@ -2890,7 +2890,7 @@ pub fn find_property_string(
 ) -> Option<String> {
     match find_property(props.clone(), prop_name.clone(), source_indices.clone()) {
         Some(n) => expr_literal_string_optional(n.clone()),
-        None => None,
+        None => std::option::Option::None,
     }
 }
 
@@ -2899,16 +2899,16 @@ pub fn expr_literal_int_optional(expr: Rc<Node>) -> Option<i64> {
         match (*expr.expr_data.clone()).clone() {
             ExprData::ExprLiteral { value: lit, .. } => match (*lit.clone()).clone() {
                 LiteralValue::LitInt { value: v, .. } => Some(v.clone()),
-                _ => None,
+                _ => std::option::Option::None,
             },
             ExprData::ExprUnaryOp {
                 op: UnaryOpKind::Neg,
                 ..
             } => match expr_literal_int_optional(unaryop_operand(expr.clone())) {
                 Some(v) => Some((0 - v.clone())),
-                None => None,
+                None => std::option::Option::None,
             },
-            _ => None,
+            _ => std::option::Option::None,
         }
     })
 }
@@ -2917,9 +2917,9 @@ pub fn expr_literal_string_optional(expr: Rc<Node>) -> Option<String> {
     match (*expr.expr_data.clone()).clone() {
         ExprData::ExprLiteral { value: lit, .. } => match (*lit.clone()).clone() {
             LiteralValue::LitStr { value: v, .. } => Some(v.clone()),
-            _ => None,
+            _ => std::option::Option::None,
         },
-        _ => None,
+        _ => std::option::Option::None,
     }
 }
 
@@ -2927,9 +2927,9 @@ pub fn expr_literal_symbol_optional(expr: Rc<Node>) -> Option<String> {
     match (*expr.expr_data.clone()).clone() {
         ExprData::ExprLiteral { value: lit, .. } => match (*lit.clone()).clone() {
             LiteralValue::LitSymbol { value: v, .. } => Some(v.clone()),
-            _ => None,
+            _ => std::option::Option::None,
         },
-        _ => None,
+        _ => std::option::Option::None,
     }
 }
 
@@ -2962,7 +2962,7 @@ pub fn expr_is_any_literal(mut expr: Rc<Node>) -> bool {
 pub fn record_lit_expr_optional(expr: Rc<Node>) -> Option<Rc<Node>> {
     match (*expr.expr_data.clone()).clone() {
         ExprData::ExprRecordLit { parent_enum: _, .. } => Some(expr.clone()),
-        _ => None,
+        _ => std::option::Option::None,
     }
 }
 
@@ -2985,9 +2985,9 @@ pub fn record_lit_named_field_value_optional(
         .cloned()
         {
             Some(fi) => Some(field_init_node_value(fi.clone())),
-            None => None,
+            None => std::option::Option::None,
         },
-        None => None,
+        None => std::option::Option::None,
     }
 }
 
@@ -3021,23 +3021,23 @@ pub fn is_rest_transport(
     t: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
-    (transport_base_url(t.clone(), source_indices.clone()) != None)
+    (transport_base_url(t.clone(), source_indices.clone()) != std::option::Option::None)
 }
 
 pub fn is_shell_transport(t: Rc<Node>) -> bool {
-    (t.body.clone() != None)
+    (t.body.clone() != std::option::Option::None)
 }
 
 pub fn is_file_transport(
     t: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
-    (transport_base_path(t.clone(), source_indices.clone()) != None)
+    (transport_base_path(t.clone(), source_indices.clone()) != std::option::Option::None)
 }
 
 pub fn is_bare_transport(t: Rc<Node>) -> bool {
     ((((t.properties.clone().len() as i64) == 0) && ((t.children.clone().len() as i64) == 0))
-        && (t.body.clone() == None))
+        && (t.body.clone() == std::option::Option::None))
 }
 
 pub fn classify_transport(
@@ -3056,7 +3056,7 @@ pub fn classify_transport(
                 if is_bare_transport(t.clone()) {
                     Some(TransportKind::LocalTransport)
                 } else {
-                    None
+                    std::option::Option::None
                 }
             }
         }
@@ -3088,7 +3088,7 @@ pub fn field_init_operation_modifier(
                 if (fi_name.clone() == "hermetic".to_string()) {
                     Some(OperationModifier::Hermetic)
                 } else {
-                    None
+                    std::option::Option::None
                 }
             }
         }
@@ -3818,16 +3818,16 @@ pub fn module_node(
         children: items.clone(),
         connective: Connective::NoConnective,
         params: imports.clone(),
-        inferred: None,
+        inferred: std::option::Option::None,
         return_cardinality: Cardinality::Required,
         uses: Rc::new(vec![]),
-        body: None,
-        transport: None,
+        body: std::option::Option::None,
+        transport: std::option::Option::None,
         properties: Rc::new(vec![]),
-        type_annotation: None,
+        type_annotation: std::option::Option::None,
         is_self_recursive: false,
         has_non_tail_self_call: false,
-        match_pattern: None,
+        match_pattern: std::option::Option::None,
         expr_data: Rc::new(ExprData::NoExprData),
         ident: None,
     })
@@ -3847,25 +3847,25 @@ pub fn import_node(
                 occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
                 name: "".to_string(),
                 span: span.clone(),
-                ident_span: None,
+                ident_span: std::option::Option::None,
                 children: Rc::new(vec![]),
                 connective: Connective::NoConnective,
                 params: Rc::new(vec![]),
-                inferred: None,
+                inferred: std::option::Option::None,
                 return_cardinality: Cardinality::Required,
                 uses: Rc::new(vec![]),
-                body: None,
-                transport: None,
+                body: std::option::Option::None,
+                transport: std::option::Option::None,
                 properties: Rc::new(vec![]),
-                type_annotation: None,
+                type_annotation: std::option::Option::None,
                 is_self_recursive: false,
                 has_non_tail_self_call: false,
-                match_pattern: None,
+                match_pattern: std::option::Option::None,
                 expr_data: Rc::new(ExprData::NoExprData),
                 ident: None,
             }))
         } else {
-            None
+            std::option::Option::None
         };
         Rc::new(Node {
             occurrence_identity: occurrence_identity.clone(),
@@ -3875,16 +3875,16 @@ pub fn import_node(
             children: specific_names.clone(),
             connective: Connective::NoConnective,
             params: Rc::new(vec![]),
-            inferred: None,
+            inferred: std::option::Option::None,
             return_cardinality: Cardinality::Required,
             uses: Rc::new(vec![]),
             body: wildcard_marker.clone(),
-            transport: None,
+            transport: std::option::Option::None,
             properties: Rc::new(vec![]),
-            type_annotation: None,
+            type_annotation: std::option::Option::None,
             is_self_recursive: false,
             has_non_tail_self_call: false,
-            match_pattern: None,
+            match_pattern: std::option::Option::None,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
         })
@@ -3892,7 +3892,7 @@ pub fn import_node(
 }
 
 pub fn import_is_all(n: Rc<Node>) -> bool {
-    (n.body.clone() != None)
+    (n.body.clone() != std::option::Option::None)
 }
 
 pub fn import_specific_names_at(
@@ -3929,16 +3929,16 @@ pub fn leaf_node_with_span(
         children: Rc::new(vec![]),
         connective: Connective::NoConnective,
         params: Rc::new(vec![]),
-        inferred: None,
+        inferred: std::option::Option::None,
         return_cardinality: Cardinality::Required,
         uses: Rc::new(vec![]),
-        body: None,
-        transport: None,
+        body: std::option::Option::None,
+        transport: std::option::Option::None,
         properties: Rc::new(vec![]),
-        type_annotation: None,
+        type_annotation: std::option::Option::None,
         is_self_recursive: false,
         has_non_tail_self_call: false,
-        match_pattern: None,
+        match_pattern: std::option::Option::None,
         expr_data: Rc::new(ExprData::NoExprData),
         ident: None,
     })
@@ -3966,16 +3966,16 @@ pub fn unit_type() -> Rc<Node> {
         children: Rc::new(vec![]),
         connective: Connective::Conj,
         params: Rc::new(vec![]),
-        inferred: None,
+        inferred: std::option::Option::None,
         return_cardinality: Cardinality::Required,
         uses: Rc::new(vec![]),
-        body: None,
-        transport: None,
+        body: std::option::Option::None,
+        transport: std::option::Option::None,
         properties: Rc::new(vec![]),
-        type_annotation: None,
+        type_annotation: std::option::Option::None,
         is_self_recursive: false,
         has_non_tail_self_call: false,
-        match_pattern: None,
+        match_pattern: std::option::Option::None,
         expr_data: Rc::new(ExprData::NoExprData),
         ident: None,
     })
@@ -3995,16 +3995,16 @@ pub fn bool_type() -> Rc<Node> {
         children: Rc::new(vec![]),
         connective: Connective::NoConnective,
         params: Rc::new(vec![]),
-        inferred: None,
+        inferred: std::option::Option::None,
         return_cardinality: Cardinality::Required,
         uses: Rc::new(vec![]),
-        body: None,
-        transport: None,
+        body: std::option::Option::None,
+        transport: std::option::Option::None,
         properties: Rc::new(vec![]),
-        type_annotation: None,
+        type_annotation: std::option::Option::None,
         is_self_recursive: false,
         has_non_tail_self_call: false,
-        match_pattern: None,
+        match_pattern: std::option::Option::None,
         expr_data: Rc::new(ExprData::NoExprData),
         ident: None,
     })
@@ -4024,16 +4024,16 @@ pub fn string_type() -> Rc<Node> {
         children: Rc::new(vec![]),
         connective: Connective::NoConnective,
         params: Rc::new(vec![]),
-        inferred: None,
+        inferred: std::option::Option::None,
         return_cardinality: Cardinality::Required,
         uses: Rc::new(vec![]),
-        body: None,
-        transport: None,
+        body: std::option::Option::None,
+        transport: std::option::Option::None,
         properties: Rc::new(vec![]),
-        type_annotation: None,
+        type_annotation: std::option::Option::None,
         is_self_recursive: false,
         has_non_tail_self_call: false,
-        match_pattern: None,
+        match_pattern: std::option::Option::None,
         expr_data: Rc::new(ExprData::NoExprData),
         ident: None,
     })
@@ -4053,16 +4053,16 @@ pub fn hash_type() -> Rc<Node> {
         children: Rc::new(vec![]),
         connective: Connective::NoConnective,
         params: Rc::new(vec![]),
-        inferred: None,
+        inferred: std::option::Option::None,
         return_cardinality: Cardinality::Required,
         uses: Rc::new(vec![]),
-        body: None,
-        transport: None,
+        body: std::option::Option::None,
+        transport: std::option::Option::None,
         properties: Rc::new(vec![]),
-        type_annotation: None,
+        type_annotation: std::option::Option::None,
         is_self_recursive: false,
         has_non_tail_self_call: false,
-        match_pattern: None,
+        match_pattern: std::option::Option::None,
         expr_data: Rc::new(ExprData::NoExprData),
         ident: None,
     })
@@ -4082,16 +4082,16 @@ pub fn int_type() -> Rc<Node> {
         children: Rc::new(vec![]),
         connective: Connective::NoConnective,
         params: Rc::new(vec![]),
-        inferred: None,
+        inferred: std::option::Option::None,
         return_cardinality: Cardinality::Required,
         uses: Rc::new(vec![]),
-        body: None,
-        transport: None,
+        body: std::option::Option::None,
+        transport: std::option::Option::None,
         properties: Rc::new(vec![]),
-        type_annotation: None,
+        type_annotation: std::option::Option::None,
         is_self_recursive: false,
         has_non_tail_self_call: false,
-        match_pattern: None,
+        match_pattern: std::option::Option::None,
         expr_data: Rc::new(ExprData::NoExprData),
         ident: None,
     })
@@ -4111,16 +4111,16 @@ pub fn float_type() -> Rc<Node> {
         children: Rc::new(vec![]),
         connective: Connective::NoConnective,
         params: Rc::new(vec![]),
-        inferred: None,
+        inferred: std::option::Option::None,
         return_cardinality: Cardinality::Required,
         uses: Rc::new(vec![]),
-        body: None,
-        transport: None,
+        body: std::option::Option::None,
+        transport: std::option::Option::None,
         properties: Rc::new(vec![]),
-        type_annotation: None,
+        type_annotation: std::option::Option::None,
         is_self_recursive: false,
         has_non_tail_self_call: false,
-        match_pattern: None,
+        match_pattern: std::option::Option::None,
         expr_data: Rc::new(ExprData::NoExprData),
         ident: None,
     })
@@ -4140,16 +4140,16 @@ pub fn none_type() -> Rc<Node> {
         children: Rc::new(vec![]),
         connective: Connective::NoConnective,
         params: Rc::new(vec![]),
-        inferred: None,
+        inferred: std::option::Option::None,
         return_cardinality: Cardinality::Required,
         uses: Rc::new(vec![]),
-        body: None,
-        transport: None,
+        body: std::option::Option::None,
+        transport: std::option::Option::None,
         properties: Rc::new(vec![]),
-        type_annotation: None,
+        type_annotation: std::option::Option::None,
         is_self_recursive: false,
         has_non_tail_self_call: false,
-        match_pattern: None,
+        match_pattern: std::option::Option::None,
         expr_data: Rc::new(ExprData::NoExprData),
         ident: None,
     })
@@ -4174,7 +4174,7 @@ pub fn error_type() -> Rc<Node> {
         occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
         name: "".to_string(),
         span: no_span(),
-        ident_span: None,
+        ident_span: std::option::Option::None,
         children: Rc::new(vec![]),
         connective: Connective::NoConnective,
         params: Rc::new(vec![]),
@@ -4184,13 +4184,13 @@ pub fn error_type() -> Rc<Node> {
     })),
         return_cardinality: Cardinality::Required,
         uses: Rc::new(vec![]),
-        body: None,
-        transport: None,
+        body: std::option::Option::None,
+        transport: std::option::Option::None,
         properties: Rc::new(vec![]),
-        type_annotation: None,
+        type_annotation: std::option::Option::None,
         is_self_recursive: false,
         has_non_tail_self_call: false,
-        match_pattern: None,
+        match_pattern: std::option::Option::None,
         expr_data: Rc::new(ExprData::ExprError {
         kind: ExprErrorKind::SemanticExprError,
         message: "unresolved type".to_string(),
@@ -4413,7 +4413,7 @@ pub fn intern_str(table: Rc<InternTable>, id: i64) -> String {
 pub fn intern_find(table: Rc<InternTable>, s: String) -> Option<i64> {
     match v1_rt::map_get(&table.index.clone(), s.clone()) {
         Some(id) => Some(id.clone()),
-        None => None,
+        None => std::option::Option::None,
     }
 }
 
@@ -4583,7 +4583,7 @@ pub fn known_container_leaf(name: String) -> Option<String> {
         let leaf = qualified_last_segment(name.clone());
         match crate::std_types::container_expected_arity(leaf.clone()) {
             Some(_) => Some(leaf.clone()),
-            None => None,
+            None => std::option::Option::None,
         }
     }
 }

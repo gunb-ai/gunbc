@@ -13,7 +13,7 @@ import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
-data equality_admission_witness_charter_note: String = "DISCRIMINATING EVIDENCE for the equality admission wall (XL-0E ruling 2026-08-30: equality on function-bearing values is an ACCEPTANCE defect, not an emitter formatting error). Before the wall, every red source below COMPILED CLEAN: infer_binop_type_node answered Eq/Ne with bool_type unconditionally, and the refusal lived below the floor as rustc E0369 in the emitted crate. The reds are the two REAL subjects ('==' on v2.std.runtime InterpretationAlgebra and RuntimeValue, compiled against the live pool), a planted structural equivalent of each (a record with a function member; a coproduct with a function-bearing arm), and the open-support carrier (PartialFunction). The greens are the admissions the wall must NOT widen into: Peano v2.std.nat.Nat (recursive coproduct -- the visited-set control), a local recursive Peano equivalent, ordinary closed structural data with kernel and finite-container members, and the '== none' presence idiom. Severity is asserted as BLOCKING through census_blocking_rows, not merely present: an advisory equality refusal would still emit the unrealizable comparison. These witnesses prove the wall's behaviour on the v1-pipeline synthetic-single-module path the census measures; the corpus-wide census is the floor compile itself."
+data equality_admission_witness_charter_note: String = "DISCRIMINATING EVIDENCE for the equality admission wall (XL-0E ruling 2026-08-30: equality on function-bearing values is an ACCEPTANCE defect, not an emitter formatting error). Before the wall, every red source below COMPILED CLEAN: infer_binop_type_node answered Eq/Ne with bool_type unconditionally, and the refusal lived below the floor as rustc E0369 in the emitted crate. The reds are the real subject that still carries function members ('==' on v2.std.runtime InterpretationAlgebra, compiled against the live pool), a planted structural equivalent of each original subject (a record with a function member; a coproduct with a function-bearing arm), and the open-support carrier (PartialFunction). The other original subject, RuntimeValue, was re-modeled by #9724 onto finite Map bindings and now ADMITS by the same type-derived rule -- see runtime_value_admission_ruling_note. The greens are the admissions the wall must NOT widen into: Peano v2.std.nat.Nat (recursive coproduct -- the visited-set control), a local recursive Peano equivalent, ordinary closed structural data with kernel and finite-container members, and the '== none' presence idiom. Severity is asserted as BLOCKING through census_blocking_rows, not merely present: an advisory equality refusal would still emit the unrealizable comparison. These witnesses prove the wall's behaviour on the v1-pipeline synthetic-single-module path the census measures; the corpus-wide census is the floor compile itself."
 
 fn eq_census_of(source: String) -> CompileDiagnosticCensus {
   compile_dag_diagnostic_census(source)
@@ -41,7 +41,9 @@ fn eq_census_clean(source: String) -> Bool {
 
 data interpretation_algebra_eq_red_source: String = "module eq_probe_interpretation_algebra\nimport v2.std.runtime { InterpretationAlgebra }\nfn same(a: InterpretationAlgebra, b: InterpretationAlgebra) -> Bool { a == b }\n"
 
-data runtime_value_eq_red_source: String = "module eq_probe_runtime_value\nimport v2.std.runtime { RuntimeValue }\nfn same(a: RuntimeValue, b: RuntimeValue) -> Bool { a == b }\n"
+data runtime_value_eq_model_derived_source: String = "module eq_probe_runtime_value\nimport v2.std.runtime { RuntimeValue }\nfn same(a: RuntimeValue, b: RuntimeValue) -> Bool { a == b }\n"
+
+data runtime_value_admission_ruling_note: String = "MODEL-DERIVED VERDICT, re-judged after #9724 (A1-R). When this witness was authored, RuntimeValue carried a function-valued member transitively: RuntimeClosureValue.environment.bindings was PartialFunction<EnvironmentBindingKey, RuntimeValue>, an open-support carrier, so '==' on RuntimeValue refused. #9724 re-modeled closure environments as finite Map bindings, and the wall's admission is derived from the COMPLETE RESOLVED TYPE, never from a leaf spelling or a remembered ruling -- so on the current model RuntimeValue is closed structural data (Node code, byte lists, finite maps) and '==' on it ADMITS. This row therefore asserts the ADMISSION, as the live-subject control against over-refusal: it goes red either if the wall wrongly widens, or if a function-valued member is reintroduced into the RuntimeValue closure without this verdict being re-judged. The refusal semantics for running closure VALUES stays where it belongs: v2.std.runtime runtime_value_equality answers RuntimeValueEqualityUnavailable on closures at evaluation grain, independent of this type-grain admission."
 
 data fn_member_record_eq_red_source: String = "module eq_probe_fn_record\ntype Ops {\n  step: fn(Int) -> Int\n}\nfn same(a: Ops, b: Ops) -> Bool { a == b }\n"
 
@@ -61,8 +63,8 @@ test fn interpretation_algebra_equality_refuses_blocking() -> Bool {
   eq_wall_refusal_count(source: interpretation_algebra_eq_red_source) >= 1
 }
 
-test fn runtime_value_equality_refuses_blocking() -> Bool {
-  eq_wall_refusal_count(source: runtime_value_eq_red_source) >= 1
+test fn runtime_value_equality_admits_on_the_finite_map_model() -> Bool {
+  eq_census_clean(source: runtime_value_eq_model_derived_source)
 }
 
 test fn fn_member_record_equality_refuses_blocking() -> Bool {
