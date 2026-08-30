@@ -1,6 +1,6 @@
 module v2.workflow.floor_wet_route
 
-import v2.std.algebra { fold_list, length, list_append }
+import v2.std.algebra { any, filter, fold_list, length, list_append }
 import v2.std.collection { List }
 import std.types { Int, EpochSecs, Seconds, Milliseconds, NonEmptyStr }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
@@ -8,7 +8,6 @@ import gunbc.explicit_witness_admission { known_red_probe_execution_roster }
 import std.witness_admission {
   WitnessExpectedVerdict, ExpectWitnessHolds, ExpectAssertionFalse, ExpectTypedPreVerdictRefusal,
 }
-import v2.std.algebra { any }
 import v2.std.logic { Bool }
 import v2.std.optional { Optional, Absent, Present }
 import v2.std.text { String }
@@ -380,22 +379,14 @@ fn wet_route_list_contains(xs: List<String>, needle: String) -> Bool {
 // projection grows an arm when one does, and until then the outcome blocks.
 
 fn wet_route_expected_assertion_false_identities() -> List<String> {
-  fold_list(
-    xs: floor_wet_route_roster(),
-    empty: [],
-    cons: fn(acc, row) {
-      if any(
-        xs: known_red_probe_execution_roster(),
-        predicate: fn(entry) {
-          (entry.entry as String) == row.entry_rel && entry.function == row.function
-        }
-      ) {
-        list_append(left: acc, right: [row.identity])
-      } else {
-        acc
+  floor_wet_route_roster()
+    |> filter(row => any(
+      xs: known_red_probe_execution_roster(),
+      predicate: fn(entry) {
+        (entry.entry as String) == row.entry_rel && entry.function == row.function
       }
-    }
-  )
+    ))
+    |> map(row => row.identity)
 }
 
 fn wet_receipt_unexpected_red_identities(
