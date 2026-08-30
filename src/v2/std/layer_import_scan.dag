@@ -12,6 +12,11 @@ import v2.std.text { String }
 // v2.lens.realization_vocabulary_containment, v2.lens.meta_exec_confinement (re-homed here from the
 // deleted direction lens v2.lens.layering_imports, 2026-07-25).
 
+// 🟡 dissolve-on: host layer_import_facts stamps LayerImportFact.layer via
+// CLI_RUN_LAYER_PREFIX_FROM_DOTTED_MODULE_SCAFFOLD_MARKER — a Rust mirror of
+// v2.std.cross_tree.resolution.layer_prefix_from_dotted_qualified_name. Deletes when the builtin
+// routes layer through that .dag authority (or a shared host projection beside
+// reference_resolution_facts).
 // THE LIVE IMPORT-FACT SCAN, SEGREGATED FROM THE LAYER VOCABULARY IT PRODUCES.
 //
 // layer_import_facts_live is a host seam: its whole body is a self-call answered by the
@@ -47,9 +52,3 @@ fn layer_import_facts_live(
 ) -> List<LayerImportFact> {
   layer_import_facts(std_roots: std_roots, extdeps_roots: extdeps_roots)
 }
-
-// 🟡 dissolve-on: host layer_import_facts stamps LayerImportFact.layer via
-// CLI_RUN_LAYER_PREFIX_FROM_DOTTED_MODULE_SCAFFOLD_MARKER — a Rust mirror of
-// v2.std.cross_tree.resolution.layer_prefix_from_dotted_qualified_name. Deletes when the builtin
-// routes layer through that .dag authority (or a shared host projection beside
-// reference_resolution_facts).

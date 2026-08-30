@@ -20,6 +20,13 @@ data ieee_754_2019: Ieee754Standard = Ieee7542019 {}
 // owns standard-governed interchange binary format and default rounding facts only — not gunbc
 // execution receipts.
 
+// IEEE 754 binary64 interchange format: 64-bit double-precision radix-2 floating-point as cited at
+// the anchor.
+// Default rounding attribute roundTiesToEven (round to nearest, ties to even) for binary
+// floating-point arithmetic as cited at the anchor.
+// For binary64 roundTiesToEven interchange addition, triple (1e16, 1.0, 1.0) yields the same left
+// fold 1e16 and right fold 1e16+2 under both the 2008 and 2019 revisions at this locator family —
+// interchange binary addition semantics did not change between them.
 data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
   subject: ExternalSubjectRef {
     declaration: DeclarationRef {
@@ -31,13 +38,3 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
   first_citation: extdeps.standards.ieee_754_2019.extdeps_external_authority_anchor,
   further_citations: []
 }
-
-// IEEE 754 binary64 interchange format: 64-bit double-precision radix-2 floating-point as cited at
-// the anchor.
-
-// Default rounding attribute roundTiesToEven (round to nearest, ties to even) for binary
-// floating-point arithmetic as cited at the anchor.
-
-// For binary64 roundTiesToEven interchange addition, triple (1e16, 1.0, 1.0) yields the same left
-// fold 1e16 and right fold 1e16+2 under both the 2008 and 2019 revisions at this locator family —
-// interchange binary addition semantics did not change between them.

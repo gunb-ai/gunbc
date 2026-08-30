@@ -480,15 +480,6 @@ fn names_a_board_layout_document() -> Bool {
 // category error with plausible numbers attached, which is why the boundary is stated here rather
 // than left to be inferred from what is absent.
 
-fn board_layout_document_is_reachable() -> Bool {
-  any(altra_platform_referenced_documents, d =>
-    referenced_document_is_board_layout(d: d)
-      && match d.reach {
-        ReferencedDocumentPublic => true
-        ReferencedDocumentAccessGated { gate: _ } => false
-      })
-}
-
 // WHAT THIS MODULE MODELS AND WHAT IT DOES NOT, so absence is never read as a claim about the
 // document. MODELLED, from running text: the memory topologies and slot ordering (2.2), the
 // root-complex structure and admitted lane groupings (2.3.1), the reference-clock inputs (2.3.2),
@@ -512,3 +503,11 @@ fn board_layout_document_is_reachable() -> Bool {
 // untranscribed here, and some may exist only in the unretrieved 1.20 revision; the land pattern is
 // a different case and must not be filed with them, because waiting for a transcription that can
 // never arrive is indistinguishable from progress.
+fn board_layout_document_is_reachable() -> Bool {
+  any(altra_platform_referenced_documents, d =>
+    referenced_document_is_board_layout(d: d)
+      && match d.reach {
+        ReferencedDocumentPublic => true
+        ReferencedDocumentAccessGated { gate: _ } => false
+      })
+}

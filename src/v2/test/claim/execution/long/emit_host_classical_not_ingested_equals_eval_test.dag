@@ -666,12 +666,6 @@ test fn ingested_classical_not_match_only_param_scrutinee_infer_refuses_holds() 
 // composed DerivedGrounding on every lookup so emit accepts and eval admits facts — never enrolled
 // per-PR and never masquerades as canonical infer output.
 
-test fn ingested_classical_not_arrow_empty_domain_infer_refuses_holds() -> Bool {
-  ingested_classical_not_param_scrutinee_domain_unresolved_infer_refuses(
-    tree: ingested_classical_not_arrow_empty_domain_fixture()
-  )
-}
-
 // KERNEL-D TESTING RE-STEER (operator direction, 2026-07-24): per-PR layer-boundary mock proof for
 // the classical_not cutover's emit-to-text half — ingested_emit_shape_frontier_tree_from_source
 // (orch-emit-compatible empty facts map) -> assert emitted Rust TEXT (string compare, no compile).
@@ -682,3 +676,10 @@ test fn ingested_classical_not_arrow_empty_domain_infer_refuses_holds() -> Bool 
 // ingested_wet_emit_eval_composed_tree_from_source (composed facts on every lookup — emit accepts,
 // eval admits); shape-frontier stays emit-only. Deliberately excludes wet legs from per-PR
 // CommitCheckEnrollment.
+
+test fn ingested_classical_not_arrow_empty_domain_infer_refuses_holds() -> Bool {
+  ingested_classical_not_param_scrutinee_domain_unresolved_infer_refuses(
+    tree: ingested_classical_not_arrow_empty_domain_fixture()
+  )
+}
+

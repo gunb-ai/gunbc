@@ -168,9 +168,8 @@ data ampere_smpro_error_queue_interfaces: List<AmpereDiagnosticInterface> = [
 // there is intentionally no token-to-meaning function here, because with no codebook obtained every
 // implementation of one would be invention.
 
+// Deliberately absent: any function from a token to a verdict, a severity, or
+// a description. There is no codebook, so no such function can be honest.
 fn scp_token_is_error_class(token: AmpereScpConsoleToken) -> Bool {
   token.class == ScpECode
 }
-
-// Deliberately absent: any function from a token to a verdict, a severity, or
-// a description. There is no codebook, so no such function can be honest.

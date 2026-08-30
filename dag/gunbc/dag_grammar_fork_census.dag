@@ -141,13 +141,8 @@ fn lhs_symbol_reach_inside_module_invocation(c: SymbolReachCensus) -> List<Strin
 // rows have zero consumers outside the language module; only the fn_add row is reached from
 // elsewhere, and by 4 references across 3 modules.
 
-fn flat_production_roster_invocation() -> List<String> {
-  ["grep", "-n", "^fn dag_formal_production_", "src/v2/extdeps/languages/dag.dag"]
-}
-
 // Bounding a population is not scoping a migration. This receipt says how many and which; it says
 // nothing about what the seven become, and it authorises nothing.
-
 // WHAT A ZERO IN THE RIGHT-HAND COLUMN DOES AND DOES NOT LICENSE, stated here because the
 // attractive misreading is the one this repository keeps recording. Zero references outside the
 // language module is a real and useful bound: it says the flat table's IDENTITIES are confined,
@@ -163,7 +158,6 @@ fn flat_production_roster_invocation() -> List<String> {
 // asymmetric result and the most actionable thing in this census: the fn_add row is the only one
 // anything else reaches, so the population that a cut must adjudicate is far smaller than the
 // population that a cut must delete.
-
 // WHAT THIS CENSUS DOES NOT ANSWER, enumerated so a reader does not take a bounded population for
 // a scoped migration. It does not say what the seven productions should become; the target state
 // is demonstrated in-tree by the python language model, which uses grammar_formal_terminal and
@@ -171,3 +165,6 @@ fn flat_production_roster_invocation() -> List<String> {
 // dag can converge onto that substrate is a separate measurement, not a corollary of this one.
 // And it does not authorise a cut: the language module is named load-bearing by DESIGN, and this
 // receipt is input to that decision rather than a substitute for it.
+fn flat_production_roster_invocation() -> List<String> {
+  ["grep", "-n", "^fn dag_formal_production_", "src/v2/extdeps/languages/dag.dag"]
+}

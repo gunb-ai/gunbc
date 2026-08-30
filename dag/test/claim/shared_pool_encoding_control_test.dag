@@ -140,13 +140,6 @@ test fn witness_duplicated_pool_encoding_is_writable_and_double_counts() -> Bool
 // stable and cannot be satisfied by a cache or register level -- is a real obligation on the
 // repair.
 
-// CONTROL 3: the honest shared encodings sum to the pool ONCE. Paired with control 2 this shows the
-// carrier can express the correct answer and does not require it.
-test fn witness_shared_encodings_sum_the_pool_once() -> Bool {
-  summed_capacity_bytes(s: encoding_pool_under_cpu()) == pool_bytes
-    && summed_capacity_bytes(s: encoding_pool_under_gpu()) == pool_bytes
-}
-
 // WITHDRAWN CONTROL, recorded rather than silently dropped. An orientation-stability check over
 // machine_shape_device_level_capacity was authored here and removed: it looked reassuring and
 // discriminated nothing. That helper takes the first level of the first NONEMPTY domain, and both
@@ -160,3 +153,9 @@ test fn witness_shared_encodings_sum_the_pool_once() -> Bool {
 // cannot change the selected pool, and that cache and register levels cannot satisfy a
 // model-residency demand. None of those are provable against the present carrier, which is the
 // finding itself.
+// CONTROL 3: the honest shared encodings sum to the pool ONCE. Paired with control 2 this shows the
+// carrier can express the correct answer and does not require it.
+test fn witness_shared_encodings_sum_the_pool_once() -> Bool {
+  summed_capacity_bytes(s: encoding_pool_under_cpu()) == pool_bytes
+    && summed_capacity_bytes(s: encoding_pool_under_gpu()) == pool_bytes
+}

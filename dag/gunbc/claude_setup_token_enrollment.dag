@@ -892,6 +892,9 @@ fn claude_enrollment_standing_bundle_from_paired_probe_verdict(
 // SetupTokenRotationSemanticsUnobserved until measured. Host binding realization remains a declared
 // scaffold until gunbc.auth.materialized_secret host effects land.
 
+// One account credential has exactly one writer lease epoch. admit_enrollment_writer_lease_publish
+// refuses when holder_epoch < current_epoch so a stale writer cannot publish after another lease
+// epoch advanced. Concurrent holder and newer-binding refusals remain independent axes.
 fn claude_enrollment_provider_standing_from_bundle(
   session: ClaudeEnrollmentSession,
   bundle: ProviderStandingBundle,
@@ -920,7 +923,3 @@ fn claude_enrollment_provider_standing_from_bundle(
     bundle: bundle,
   )
 }
-
-// One account credential has exactly one writer lease epoch. admit_enrollment_writer_lease_publish
-// refuses when holder_epoch < current_epoch so a stale writer cannot publish after another lease
-// epoch advanced. Concurrent holder and newer-binding refusals remain independent axes.

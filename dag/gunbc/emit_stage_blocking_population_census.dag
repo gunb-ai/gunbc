@@ -521,6 +521,12 @@ data layer_three_census: CensusReading = NoPopulation {
 // remains a REQUIRED PHASE THAT EMITS OVER CLOSURES. This receipt is not that phase and does not
 // claim to be one: it executes on no push, refuses nothing, and describes one revision on one host.
 
+// ---------------------------------------------------------------------------------------------
+// THE STANDING THIS RECEIPT LEAVES THE CLASS IN.
+//
+// It is deliberately three statements and not one number, because the one number does not exist
+// and writing one would close a row that is still open.
+// ---------------------------------------------------------------------------------------------
 data src_v2_root_census: CensusReading = PopulationRead {
   run: CensusRun {
     source_revision: census_revision,
@@ -642,10 +648,3 @@ data src_v2_root_census: CensusReading = PopulationRead {
   ],
   advisory_total: 10574
 }
-
-// ---------------------------------------------------------------------------------------------
-// THE STANDING THIS RECEIPT LEAVES THE CLASS IN.
-//
-// It is deliberately three statements and not one number, because the one number does not exist
-// and writing one would close a row that is still open.
-// ---------------------------------------------------------------------------------------------

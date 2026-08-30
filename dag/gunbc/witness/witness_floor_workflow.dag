@@ -1682,24 +1682,10 @@ data witness_floor_capability_closure_refusal_reason: String = "REFUSED gunbc.wi
 // nothing is cheaper than one that executed 9,000 witnesses for reasons unrelated to the fold's
 // design.
 
-fn expected_witness_floor_yml() -> WitnessFloorGenerationOutcome {
-  match admit_workflow_toolchain_homes(workflow: witness_floor_workflow) {
-    WorkflowToolchainHomeRefused { job_id: j, refusal: r } =>
-      WitnessFloorGenerationRefused { reason: toolchain_home_refusal_reason(job_id: j, refusal: r) }
-    WorkflowToolchainHomesAdmitted =>
-      if witness_floor_capability_closure_holds() && build_lane_capability_closure_holds() && rust_unit_tests_capability_closure_holds() && required_lanes_gate_is_renderable() {
-        WitnessFloorGenerated { content: serialize_yaml(v: project_workflow_to_yaml(workflow: witness_floor_workflow)) }
-      } else {
-        WitnessFloorGenerationRefused { reason: witness_floor_capability_closure_refusal_reason }
-      }
-  }
-}
-
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 // FIRST-EXECUTION FINDINGS (2026-08-15). Three rulings, recorded here beside the emission they
 // are about rather than in a plan document that would drift from it.
 // ═══════════════════════════════════════════════════════════════════════════════════════════
-
 // WHAT THE REFUSAL ACTUALLY DISCOVERED: this repository has never been whole-tree
 // strict-typechecked. The old floor prepared PER-ENTRY closures, so a broken module reddened only
 // the closures importing it and was invisible elsewhere; a module nothing imported was never
@@ -1709,7 +1695,6 @@ fn expected_witness_floor_yml() -> WitnessFloorGenerationOutcome {
 // lane's own verification: `gunbc compile --target dag` resolves a transitive import closure and
 // reports the remaining 1,135 modules as census-only, which is why this cut's own six orphaned
 // importers passed a whole-corpus compile and were caught only by the fold.
-
 // ALL-OR-NOTHING PREPARATION IS UPHELD (ruling 2026-08-15), recorded because the temptation to
 // relax it recurs. The subject IS the corpus. Admitting a partially-typechecking subject while
 // reporting a whole-corpus verdict is the empty-observation narrow — rendering 'I could not admit
@@ -1717,7 +1702,6 @@ fn expected_witness_floor_yml() -> WitnessFloorGenerationOutcome {
 // widen section 5 already forbids: a widen is merely expensive, a narrow is silently uncovered.
 // The ordering consequence is real and owned by the operator, not this lane: the fold's first
 // green day requires the last pre-existing defect to be fixed.
-
 // THE FOLD'S MEMORY ENVELOPE IS A FIRST-CLASS PROPERTY, measured rather than estimated. One run was
 // OOM-KILLED (exit 137 at 537s, during strict preparation — a kill, not a refusal). The next run,
 // sampled: RSS climbed 3.9 -> 4.8 -> 5.8 -> 6.3 GiB over 90 seconds and PEAKED AT 9.37 GiB. The
@@ -1731,7 +1715,6 @@ fn expected_witness_floor_yml() -> WitnessFloorGenerationOutcome {
 // prepared subject is precisely what the fold exists to be. The 9.37 GiB peak is a cost-shape
 // defect to root-cause (the repository already carries that lane: schedule-derived per-module
 // retention, and the carrier/interning roots), not a reason to change the shape.
-
 // THE FOLD'S MEMORY ENVELOPE IS A FIRST-CLASS PROPERTY, measured rather than estimated. One run was
 // OOM-KILLED (exit 137 at 537s, during strict preparation — a kill, not a refusal). The next run
 // was sampled: RSS climbed 3.9 -> 4.8 -> 5.8 -> 6.3 GiB over 90 seconds and PEAKED AT 9.37 GiB. The
@@ -1746,3 +1729,15 @@ fn expected_witness_floor_yml() -> WitnessFloorGenerationOutcome {
 // The 9.37 GiB peak is a cost-shape defect to root-cause (the repository already carries that lane:
 // schedule-derived per-module retention, and the carrier/interning roots), not a reason to change
 // the shape.
+fn expected_witness_floor_yml() -> WitnessFloorGenerationOutcome {
+  match admit_workflow_toolchain_homes(workflow: witness_floor_workflow) {
+    WorkflowToolchainHomeRefused { job_id: j, refusal: r } =>
+      WitnessFloorGenerationRefused { reason: toolchain_home_refusal_reason(job_id: j, refusal: r) }
+    WorkflowToolchainHomesAdmitted =>
+      if witness_floor_capability_closure_holds() && build_lane_capability_closure_holds() && rust_unit_tests_capability_closure_holds() && required_lanes_gate_is_renderable() {
+        WitnessFloorGenerated { content: serialize_yaml(v: project_workflow_to_yaml(workflow: witness_floor_workflow)) }
+      } else {
+        WitnessFloorGenerationRefused { reason: witness_floor_capability_closure_refusal_reason }
+      }
+  }
+}

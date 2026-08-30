@@ -1061,16 +1061,15 @@ fn fleet_automation_allocations() -> List<FleetAutomationAllocationStanding> {
 // deploy_access_check_observed rather than by hand-editing numbers, which would satisfy the letter
 // of the contradiction row while bypassing the grounding it exists to require.
 
-fn automation_allocation_is_applied(a: FleetAutomationAllocationStanding) -> Bool {
-  match a {
-    AutomationAllocationApplied { host: _, user: _, source: _ } => true
-    AutomationAllocationPending { host: _, cause: _ } => false
-  }
-}
-
 // THE NUMERIC COINCIDENCE, carried because it is a reading hazard rather than a defect. gunbc-fleet
 // landed on uid 1001 because 1001 was the next free id on those hosts -- and 1001/1001 is exactly
 // what the ghrunner row WRONGLY claims. Two rows now read 1001 for different accounts on the same
 // host. The numbers are not identity, so nothing is broken; but a reader comparing uids to decide
 // which account a file belongs to would fuse them, and that is precisely why the ghrunner
 // contradiction must be resolved by observation rather than left standing.
+fn automation_allocation_is_applied(a: FleetAutomationAllocationStanding) -> Bool {
+  match a {
+    AutomationAllocationApplied { host: _, user: _, source: _ } => true
+    AutomationAllocationPending { host: _, cause: _ } => false
+  }
+}

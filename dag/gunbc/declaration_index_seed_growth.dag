@@ -663,57 +663,6 @@ data declaration_index_seed_growth_justification: SeedGrowthJustification = Seed
 // stall. The next rung would be an occurrence ordinal within the declaration -- representable in
 // the record, needed by no measured site today.
 
-// THE ENROLLED ROWS ARE NOT DISTINGUISHED BETWEEN DELIBERATE-ABSENT AND STALE, AND THAT IS A STALL
-// RATHER THAN A SETTLED BOUNDARY. Two of the thirty-one are decidable by inspection and are named
-// in the carrier prose; the twenty-nine below are not, and a permanently-enrolled unclassified row
-// is exactly where a real defect sits unseen -- which is not a hypothetical, because two were found
-// there. The blocker is AwaitsOneGrounding rather than ClimbableButUnbuilt because what is missing
-// is a DECIDABLE CRITERION, not effort: nothing in the corpus today distinguishes a citation whose
-// author meant it to refuse from one that rotted, and guessing is what turns a stale citation into
-// a confidently wrong one.
-data declaration_index_fixture_exemption_classification_stall: GuaranteeStall = GuaranteeStall {
-  subject: "v1_compiler.declaration_index FIXTURE_CARRIER_CITATION_EXEMPTIONS -- enrolled identities are not distinguished between deliberately-absent (a witness's planted control, permanent by design) and genuinely stale (a citation that rotted and should be repaired)",
-  current: Mitigatable,
-  ceiling: MechanicallyPreventable,
-  blocker: AwaitsOneGrounding {
-    grounding: "no witness declares its planted controls as typed rows, so the deliberate half of this roster is not derivable from anything; the distinction exists only in the authoring intent, which no Accepted program can read",
-  },
-  population: BoundedPopulation {
-    members: [
-      "extdeps.languages.nonexistent.subject nonexistent_language",
-      "extdeps.network.mac already_deleted_frontier_unit",
-      "extdeps.network.mac parse_mac_addres",
-      "extdeps.network.max parse_mac_address",
-      "gunbc.capability_binding x",
-      "gunbc.publication_policy G1_planted_instance_gap_producer_control_RED",
-      "product.altra_motherboard.minimal_design some_other_board",
-      "std.primitive_identity missing_handler",
-      "synthetic.g1_module_absent_RED any",
-      "synthetic.mod HostConfig",
-      "synthetic.mod HostConfig field memory_swap",
-      "test.claim.dissolution_census_mechanism_witness_test absent_subject_row",
-      "test.claim.dissolution_census_mechanism_witness_test planted_bound_target",
-      "test.claim.dissolution_census_mechanism_witness_test planted_retires_target",
-      "test.claim.dissolution_census_mechanism_witness_test planted_unbound_target",
-      "test.claim.dissolution_census_mechanism_witness_test present_subject_row",
-      "test.claim.repository_census_observation_witness census_witness_classifier field rows",
-      "test.fixture planted",
-      "test.fixture.decl_facts_reflection.specimens named_field_anchor field dissolves_to",
-      "test.fixture.dissolution_live_discriminator.subject absent_subject_declaration",
-      "test.fixture.scaffold_disposition_census.pool.specimens no_such_declaration_G1_dangling_bind_control_RED",
-      "v1.compiler.complexity Derived",
-      "v1.compiler.complexity this_declaration_does_not_exist_in_the_seed",
-      "v1.compiler.this_module_does_not_exist classify_complexity",
-      "v2.compiler.parse G1_planted_instance_gap_caller_control_RED",
-      "v2.std.node NoSuchDecl_G1_RED",
-      "v2.std.node NodeKind field NoSuchField_G1_RED",
-      "v2.std.node g1_ambiguous",
-      "v2.test.lens_cost.valuation unmodelled_effect_specimen",
-    ],
-  },
-  next_rung_trigger: "a witness declares each citation it plants to refuse as a typed row beside the citation -- at which point the deliberate half of this roster is DERIVED rather than enrolled, this roster shrinks to the genuinely stale remainder, and that remainder becomes ordinary debt with a terminal state of empty. Until then a new stale citation authored inside a fixture carrier is caught by the wall, but an existing enrolled one is indistinguishable from a control",
-}
-
 // THE REFERENCE CHANNEL BECAME SELECTIVE BY NODE KIND (gunbc, this change). Recorded here rather
 // than only in the Rust doc comment, because the previous behaviour was DECLARED SOUND on this
 // carrier's own construction -- record_from_module collected every authored name in a module's tree
@@ -770,7 +719,6 @@ data declaration_index_fixture_exemption_classification_stall: GuaranteeStall = 
 // rather than duplicated, and no other declaration is added. The three test arms live in the wave
 // wall's fixture file, whose carrier gunbc.namespace_wave_admission enumerates lib declarations
 // rather than test arms.
-
 // TWO AUTHORED REFERENCES THE INDEX COULD NOT REACH, AND THE FALSE GREEN THEY PRODUCED (gunbc, this
 // change). Recorded beside the selectivity note above rather than only in the Rust doc comment,
 // because the two are the SAME FUNCTION moving in OPPOSITE DIRECTIONS -- that one removed
@@ -851,3 +799,53 @@ data declaration_index_fixture_exemption_classification_stall: GuaranteeStall = 
 // authored_type_references_from_transport, enumerated in the roster above; the pattern-head block
 // sits inside collect_reference_occurrences which the roster already enumerates, and
 // record_from_module gains one parameter rather than a declaration.
+// THE ENROLLED ROWS ARE NOT DISTINGUISHED BETWEEN DELIBERATE-ABSENT AND STALE, AND THAT IS A STALL
+// RATHER THAN A SETTLED BOUNDARY. Two of the thirty-one are decidable by inspection and are named
+// in the carrier prose; the twenty-nine below are not, and a permanently-enrolled unclassified row
+// is exactly where a real defect sits unseen -- which is not a hypothetical, because two were found
+// there. The blocker is AwaitsOneGrounding rather than ClimbableButUnbuilt because what is missing
+// is a DECIDABLE CRITERION, not effort: nothing in the corpus today distinguishes a citation whose
+// author meant it to refuse from one that rotted, and guessing is what turns a stale citation into
+// a confidently wrong one.
+data declaration_index_fixture_exemption_classification_stall: GuaranteeStall = GuaranteeStall {
+  subject: "v1_compiler.declaration_index FIXTURE_CARRIER_CITATION_EXEMPTIONS -- enrolled identities are not distinguished between deliberately-absent (a witness's planted control, permanent by design) and genuinely stale (a citation that rotted and should be repaired)",
+  current: Mitigatable,
+  ceiling: MechanicallyPreventable,
+  blocker: AwaitsOneGrounding {
+    grounding: "no witness declares its planted controls as typed rows, so the deliberate half of this roster is not derivable from anything; the distinction exists only in the authoring intent, which no Accepted program can read",
+  },
+  population: BoundedPopulation {
+    members: [
+      "extdeps.languages.nonexistent.subject nonexistent_language",
+      "extdeps.network.mac already_deleted_frontier_unit",
+      "extdeps.network.mac parse_mac_addres",
+      "extdeps.network.max parse_mac_address",
+      "gunbc.capability_binding x",
+      "gunbc.publication_policy G1_planted_instance_gap_producer_control_RED",
+      "product.altra_motherboard.minimal_design some_other_board",
+      "std.primitive_identity missing_handler",
+      "synthetic.g1_module_absent_RED any",
+      "synthetic.mod HostConfig",
+      "synthetic.mod HostConfig field memory_swap",
+      "test.claim.dissolution_census_mechanism_witness_test absent_subject_row",
+      "test.claim.dissolution_census_mechanism_witness_test planted_bound_target",
+      "test.claim.dissolution_census_mechanism_witness_test planted_retires_target",
+      "test.claim.dissolution_census_mechanism_witness_test planted_unbound_target",
+      "test.claim.dissolution_census_mechanism_witness_test present_subject_row",
+      "test.claim.repository_census_observation_witness census_witness_classifier field rows",
+      "test.fixture planted",
+      "test.fixture.decl_facts_reflection.specimens named_field_anchor field dissolves_to",
+      "test.fixture.dissolution_live_discriminator.subject absent_subject_declaration",
+      "test.fixture.scaffold_disposition_census.pool.specimens no_such_declaration_G1_dangling_bind_control_RED",
+      "v1.compiler.complexity Derived",
+      "v1.compiler.complexity this_declaration_does_not_exist_in_the_seed",
+      "v1.compiler.this_module_does_not_exist classify_complexity",
+      "v2.compiler.parse G1_planted_instance_gap_caller_control_RED",
+      "v2.std.node NoSuchDecl_G1_RED",
+      "v2.std.node NodeKind field NoSuchField_G1_RED",
+      "v2.std.node g1_ambiguous",
+      "v2.test.lens_cost.valuation unmodelled_effect_specimen",
+    ],
+  },
+  next_rung_trigger: "a witness declares each citation it plants to refuse as a typed row beside the citation -- at which point the deliberate half of this roster is DERIVED rather than enrolled, this roster shrinks to the genuinely stale remainder, and that remainder becomes ordinary debt with a terminal state of empty. Until then a new stale citation authored inside a fixture carrier is caught by the wall, but an existing enrolled one is indistinguishable from a control",
+}
