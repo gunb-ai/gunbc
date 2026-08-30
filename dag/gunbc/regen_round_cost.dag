@@ -316,4 +316,18 @@ data regen_affected_set_disposition: AffectedSetDisposition = DerivableNow {
 // target/stage0-regen-rustfmt-cache whose entries are honoured only when the stored raw input
 // is byte-equal to the request. rustfmt_spawns on the receipt is the count the fixed-point
 // control is checked against.
-data regen_round_cost_shape_note: String = "The instrument, not the number: re-run `claim_executor --regen-round-cost --source-root dag --source-root src/v2` on a tree and read its receipt (target/stage0-regen-round-cost.txt). A change-denominated regen is bounded above by the reverse closure (regen_affected_set_disposition); a change-denominated REBUILD is bounded below by one whole-crate compile until the stage0 partition (gunbc.stage0_crate_partition_generated) carries the mirrors, which is the larger of the two costs on every measured host."
+data regen_round_cost_shape_note: String = "The instrument, not the number: re-run `claim_executor --regen-round-cost --source-root dag --source-root src/v2` on a tree and read its receipt (target/stage0-regen-round-cost.txt), and add `--regen-affected-scope` for the same round with the bound consumed. A change-denominated regen is bounded above by the reverse closure (regen_affected_set_disposition); a change-denominated REBUILD is bounded below by one whole-crate compile until the stage0 partition (gunbc.stage0_crate_partition_generated) carries the mirrors, which is the larger of the two costs on every measured host."
+
+// THE BOUND IS CONSUMED, AND BY EXACTLY WHICH PHASES -- so a reader does not price the scope
+// against phases it does not touch. `v2.workflow.required_regen` `RegenEmissionScope` selects
+// which mirrors' BYTES a round reads, normalizes, compares, digests and writes, which is the
+// mirror_write, candidate_verify, adjudicate, hand_verify and digest rows on this receipt.
+// Install was ALREADY change-denominated (the regen's own drift answer is its install set), and
+// compile.emit is NOT: `v1.compiler.emit_rust` `emit_rust` renders every module before any
+// selection is consulted, and four aggregates in that same fold -- lib.rs, the emitted-population
+// manifest, and the two closure-stub decisions, which scan module file CONTENT -- are denominated
+// in the whole module population, so a per-module skip there is not byte-identical without also
+// threading the prior generation's population into the fold. That is the emit phase's own next
+// step and it is not this carrier's to claim: until it lands, a scoped round pays the same
+// compile.emit an unscoped one does, and the receipt shows it.
+data regen_round_scope_consumer_note: String = "claim_executor --regen-round-cost --regen-affected-scope; the selection is v2.workflow.required_regen regen_scope_select over the gunbc.regen_affected_set bound for the floor's own diff range, and an unlocatable edited path refuses the round rather than widening it."
