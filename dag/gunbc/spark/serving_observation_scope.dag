@@ -38,6 +38,30 @@ fn spark_serving_observation_scope() -> List<HostIdentity> {
   dgx_spark_reserved_identities()
 }
 
+// ENROLLMENT IS ONE FACT, SO IT IS CLASSIFIED ONCE AND READ TWICE.
+//
+// The plan CLI and the apply CLI each need to know whether the subject is an enrolled Spark that
+// nobody observed, and each of them first grew its own `host_in(spark_serving_observation_scope())`
+// test. Two derivations of one fact is the §3 violation in miniature: they agree today and there is
+// nothing that makes them agree tomorrow, so narrowing the scope in one place would silently leave
+// the other actuating. This is the single authority; the two CLIs map its arms onto their own
+// dispositions and neither re-derives the predicate.
+//
+// It is a coproduct rather than a Bool because the arms are read for different reasons and a bare
+// Bool would need a comment to say which way round it points. The unobserved arm carries the host
+// so the refusal it becomes can name the subject without a second lookup.
+type SparkServingEnrollment
+  = SparkServingHostEnrolledUnobserved { host: HostIdentity }
+  | SparkServingHostNotEnrolled { host: HostIdentity }
+
+fn spark_serving_enrollment(host: HostIdentity) -> SparkServingEnrollment {
+  if host_in(hosts: spark_serving_observation_scope(), host: host) {
+    SparkServingHostEnrolledUnobserved { host: host }
+  } else {
+    SparkServingHostNotEnrolled { host: host }
+  }
+}
+
 fn host_in(hosts: List<HostIdentity>, host: HostIdentity) -> Bool {
   length(filter(hosts, h => host_identity_eq(a: h, b: host))) > 0
 }

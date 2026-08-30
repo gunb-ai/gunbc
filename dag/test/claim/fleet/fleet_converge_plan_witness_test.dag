@@ -2095,3 +2095,40 @@ test fn a_non_spark_host_still_yields_an_apply_request() -> Bool {
     FleetConvergeApplySparkUnobserved { host: _, cause: _ } => false
   }
 }
+
+// ENROLLMENT IS CLASSIFIED ONCE, SO NARROWING IT MOVES BOTH CLIS TOGETHER.
+//
+// The plan arm and the apply interlock used to run their own copy of the scope test. This claim
+// pins them to the one authority: the same host must be classified the same way by both, for both
+// answers. If a future edit narrows the scope for one caller only, one side of this goes red while
+// the other stays green, which is exactly the divergence the shared authority exists to prevent.
+test fn plan_and_apply_read_one_enrollment_classification() -> Bool {
+  let spark_plan_refuses =
+    match spark_axis_for_unobserved_cli(host: "srv6" as HostIdentity) {
+      SparkServingAxisUnobserved { host: _ } => true
+      SparkServingAxisNotApplicable { host: _ } => false
+      SparkServingAxisRefused { host: _, cause: _ } => false
+      SparkServingAxisPlanned { host: _, observed_members: _, rows: _ } => false
+    }
+  let spark_apply_refuses =
+    match fleet_converge_apply_spark_admission(host: "srv6" as HostIdentity) {
+      ApplySparkAxisUnobserved { host: _, cause: _ } => true
+      ApplySparkAxisAdmitted => false
+    }
+  let plain_plan_refuses =
+    match spark_axis_for_unobserved_cli(host: operator_host_srv3) {
+      SparkServingAxisUnobserved { host: _ } => true
+      SparkServingAxisNotApplicable { host: _ } => false
+      SparkServingAxisRefused { host: _, cause: _ } => false
+      SparkServingAxisPlanned { host: _, observed_members: _, rows: _ } => false
+    }
+  let plain_apply_refuses =
+    match fleet_converge_apply_spark_admission(host: operator_host_srv3) {
+      ApplySparkAxisUnobserved { host: _, cause: _ } => true
+      ApplySparkAxisAdmitted => false
+    }
+  spark_plan_refuses == spark_apply_refuses
+    && plain_plan_refuses == plain_apply_refuses
+    && spark_plan_refuses
+    && !plain_plan_refuses
+}

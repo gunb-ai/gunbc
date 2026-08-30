@@ -72,7 +72,11 @@ import gunbc.spark.serving_execution_schedule {
   SparkServingAxisDisposition,
   scheduled_rows_list,
 }
-import gunbc.spark.serving_observation_scope { spark_serving_observation_scope, host_in }
+import gunbc.spark.serving_observation_scope {
+  spark_serving_enrollment,
+  SparkServingHostEnrolledUnobserved,
+  SparkServingHostNotEnrolled,
+}
 
 // THE CLI DOES NOT RUN THE SERVING OBSERVER YET, AND THE HONEST WAY TO SAY THAT IS NOT "NotApplicable".
 //
@@ -97,7 +101,9 @@ type FleetConvergeApplySparkAdmission
   | ApplySparkAxisUnobserved { host: HostIdentity, cause: NonEmptyStr }
 
 fn fleet_converge_apply_spark_admission(host: HostIdentity) -> FleetConvergeApplySparkAdmission {
-  if host_in(hosts: spark_serving_observation_scope(), host: host) {
+  match spark_serving_enrollment(host: host) {
+    SparkServingHostNotEnrolled { host: _ } => ApplySparkAxisAdmitted
+    SparkServingHostEnrolledUnobserved { host: _ } =>
     ApplySparkAxisUnobserved {
       host: host,
       cause: join([
@@ -109,8 +115,6 @@ fn fleet_converge_apply_spark_admission(host: HostIdentity) -> FleetConvergeAppl
         " silent. Refusing here until the observer is wired.",
       ], "") as NonEmptyStr,
     }
-  } else {
-    ApplySparkAxisAdmitted
   }
 }
 
@@ -159,10 +163,9 @@ fn fleet_converge_apply_observed_request(
 fn spark_axis_for_unobserved_cli(
   host: HostIdentity,
 ) -> SparkServingAxisDisposition<FleetConvergeSparkServingTypedAction> {
-  if host_in(hosts: spark_serving_observation_scope(), host: host) {
-    SparkServingAxisUnobserved { host: host }
-  } else {
-    SparkServingAxisNotApplicable { host: host }
+  match spark_serving_enrollment(host: host) {
+    SparkServingHostEnrolledUnobserved { host: h } => SparkServingAxisUnobserved { host: h }
+    SparkServingHostNotEnrolled { host: h } => SparkServingAxisNotApplicable { host: h }
   }
 }
 
