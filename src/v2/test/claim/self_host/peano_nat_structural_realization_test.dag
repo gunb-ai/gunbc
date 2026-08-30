@@ -7,7 +7,7 @@ import std.literal_elaboration {
   KernelIntLiteral, KernelStringLiteral, KernelBoolLiteral,
   LiteralHomomorphismFound, LiteralHomomorphismAbsent, LiteralHomomorphismAmbiguous,
   DirectLiteral, ViaHomomorphism, LiteralElaborationRefused,
-  PeanoUnfold, BooleanUnfold,
+  PeanoUnfold, BooleanUnfold, UnicodeScalarSequenceUnfold,
   literal_homomorphism_for, elaborate_literal_at
 }
 import std.operator_realization {
@@ -117,6 +117,7 @@ test fn peano_row_is_found_by_exact_destination() -> Bool {
         PeanoUnfold { zero: z, succ: s, prev_field: p } =>
           (z.decl_name as String) == "Zero" && (s.decl_name as String) == "Succ" && (p as String) == "prev"
         BooleanUnfold { true_variant: _, false_variant: _ } => false
+        UnicodeScalarSequenceUnfold => false
       }
     LiteralHomomorphismAbsent => false
     LiteralHomomorphismAmbiguous { row_count: _ } => false
@@ -162,6 +163,7 @@ test fn bool_row_is_found_by_exact_destination() -> Bool {
       match r.producer {
         BooleanUnfold { true_variant: t, false_variant: f } => (t.decl_name as String) == "True" && (f.decl_name as String) == "False"
         PeanoUnfold { zero: _, succ: _, prev_field: _ } => false
+        UnicodeScalarSequenceUnfold => false
       }
     LiteralHomomorphismAbsent => false
     LiteralHomomorphismAmbiguous { row_count: _ } => false
