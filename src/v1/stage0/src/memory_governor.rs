@@ -424,8 +424,11 @@ pub const MEMORY_STALL_VERDICT_WINDOW_MINIMUM_WALL_MS: u64 = 30000;
 /// execution (`memory_stall_admitted_under_pressure_receipt_note`): the floor runner
 /// sustained 12431 majflt/min through a 13-minute CPU-bound typecheck under a memory.high
 /// reclaim throttle — over the rate line and demonstrably completing, so rate alone
-/// over-refuses. A window is a treadmill only if the process's own CPU is also below this
-/// share of the wall.
+/// over-refuses. A window is a treadmill only if the process's own USER CPU is also below
+/// this share of the wall — utime alone, never stime, because the measured treadmill
+/// (invocation dd090164-9f2b-45fe-93bc-789cdd4ef9c4: 178795 majflt/min, utime 0.8% of
+/// wall, stime 34%) shows the kernel billing its reclaim labour to the faulting process
+/// as system time, so a utime+stime share reads a pure treadmill as one-third computing.
 pub const MEMORY_STALL_PROGRESS_CPU_SHARE_PERCENT_FLOOR: u64 = 20;
 
 /// Seed mirror of `gunbc.memory_stall_refusal` `MemoryStallObservation`: one windowed
@@ -436,7 +439,7 @@ pub const MEMORY_STALL_PROGRESS_CPU_SHARE_PERCENT_FLOOR: u64 = 20;
 pub struct MemoryStallObservation {
     pub window_wall_ms: u64,
     pub major_faults_in_window: u64,
-    pub self_cpu_ms_in_window: u64,
+    pub self_user_cpu_ms_in_window: u64,
     pub cache_evictions_in_window: u64,
     pub cache_readmissions_in_window: u64,
 }
@@ -473,7 +476,7 @@ pub fn memory_stall_major_faults_per_minute(o: &MemoryStallObservation) -> u64 {
 
 /// Mirror of `memory_stall_self_cpu_share_percent` — the progress half of the conjunction.
 pub fn memory_stall_self_cpu_share_percent(o: &MemoryStallObservation) -> u64 {
-    o.self_cpu_ms_in_window.saturating_mul(100) / o.window_wall_ms.max(1)
+    o.self_user_cpu_ms_in_window.saturating_mul(100) / o.window_wall_ms.max(1)
 }
 
 /// Mirror of `gunbc.memory_stall_refusal` `memory_stall_verdict`: the refusal is a
@@ -529,7 +532,7 @@ pub fn memory_stall_refusal_pressure_text(v: &MemoryStallVerdict) -> String {
              {major_faults_per_minute} major faults/minute while computing for only \
              {self_cpu_share_percent}% of the wall, over the last {} ms ({} major faults; \
              rate line {threshold_per_minute}/minute, CPU-share floor \
-             {cpu_share_percent_floor}%; source /proc/self/stat majflt and utime+stime; \
+             {cpu_share_percent_floor}%; source /proc/self/stat majflt and utime; \
              typed-cache evictions in window {}, readmissions {}). The wall clock is being \
              spent re-reading resident pages the kernel evicted, not computing: the machine \
              underneath cannot deliver the admitted budget beside its own page cache, and \
@@ -556,18 +559,23 @@ pub fn self_major_faults() -> Option<u64> {
     after_comm.split_whitespace().nth(9)?.parse().ok()
 }
 
-/// This process's own cumulative CPU milliseconds — utime + stime (`/proc/self/stat`
-/// fields 14 and 15, indexes 11 and 12 after comm), deliberately WITHOUT the reaped-child
-/// fields `v1_rt::trace_process_tree_cpu_ms` adds: the stall verdict asks whether THIS
-/// process is computing, and a child's CPU landing at reap time would spike the share of a
-/// window the parent spent waiting. Same `None`-when-unreadable discipline as
-/// `self_major_faults`.
-pub fn self_cpu_ms() -> Option<u64> {
+/// This process's own cumulative USER-CPU milliseconds — utime alone (`/proc/self/stat`
+/// field 14, index 11 after comm). Deliberately WITHOUT stime: the measured treadmill
+/// runs 34% stime while computing nothing, because the kernel bills reclaim and
+/// fault-handling labour to the faulting process as system time — utime is the only
+/// component that measures this program's own instructions retiring. And deliberately
+/// WITHOUT the reaped-child fields `v1_rt::trace_process_tree_cpu_ms` adds: a child's CPU
+/// landing at reap time would spike the share of a window the parent spent waiting. Same
+/// `None`-when-unreadable discipline as `self_major_faults`.
+pub fn self_user_cpu_ms() -> Option<u64> {
     let stat = std::fs::read_to_string("/proc/self/stat").ok()?;
     let after_comm = stat.rsplit(')').next()?;
-    let fields: Vec<&str> = after_comm.split_whitespace().collect();
-    let tick = |i: usize| fields.get(i).and_then(|v| v.parse::<u64>().ok());
-    Some((tick(11)? + tick(12)?) * 1000 / 100)
+    after_comm
+        .split_whitespace()
+        .nth(11)?
+        .parse::<u64>()
+        .ok()
+        .map(|t| t * 1000 / 100)
 }
 
 /// The typed budget SOURCE — the seed mirror of `gunbc.host_budget_source`
@@ -1091,7 +1099,7 @@ mod tests {
         let verdict = memory_stall_verdict(MemoryStallObservation {
             window_wall_ms: 120_000,
             major_faults_in_window: 120_000,
-            self_cpu_ms_in_window: 4_800,
+            self_user_cpu_ms_in_window: 4_800,
             cache_evictions_in_window: 4_213,
             cache_readmissions_in_window: 388,
         });
@@ -1121,7 +1129,7 @@ mod tests {
         let verdict = memory_stall_verdict(MemoryStallObservation {
             window_wall_ms: 788_140,
             major_faults_in_window: 163_296,
-            self_cpu_ms_in_window: 552_000,
+            self_user_cpu_ms_in_window: 552_000,
             cache_evictions_in_window: 0,
             cache_readmissions_in_window: 0,
         });
@@ -1146,7 +1154,7 @@ mod tests {
         let slow = memory_stall_verdict(MemoryStallObservation {
             window_wall_ms: 3_600_000,
             major_faults_in_window: 60,
-            self_cpu_ms_in_window: 3_200_000,
+            self_user_cpu_ms_in_window: 3_200_000,
             cache_evictions_in_window: 0,
             cache_readmissions_in_window: 0,
         });
@@ -1162,7 +1170,7 @@ mod tests {
         let burst = memory_stall_verdict(MemoryStallObservation {
             window_wall_ms: MEMORY_STALL_VERDICT_WINDOW_MINIMUM_WALL_MS - 1,
             major_faults_in_window: 1_000_000,
-            self_cpu_ms_in_window: 0,
+            self_user_cpu_ms_in_window: 0,
             cache_evictions_in_window: 0,
             cache_readmissions_in_window: 0,
         });
@@ -1178,7 +1186,7 @@ mod tests {
         let at_rate_line = memory_stall_verdict(MemoryStallObservation {
             window_wall_ms: 60_000,
             major_faults_in_window: MEMORY_STALL_MAJOR_FAULT_RATE_PER_MINUTE_THRESHOLD,
-            self_cpu_ms_in_window: 0,
+            self_user_cpu_ms_in_window: 0,
             cache_evictions_in_window: 0,
             cache_readmissions_in_window: 0,
         });
@@ -1189,7 +1197,7 @@ mod tests {
         let over_rate_line = memory_stall_verdict(MemoryStallObservation {
             window_wall_ms: 60_000,
             major_faults_in_window: MEMORY_STALL_MAJOR_FAULT_RATE_PER_MINUTE_THRESHOLD + 1,
-            self_cpu_ms_in_window: 0,
+            self_user_cpu_ms_in_window: 0,
             cache_evictions_in_window: 0,
             cache_readmissions_in_window: 0,
         });
@@ -1200,7 +1208,7 @@ mod tests {
         let at_cpu_floor = memory_stall_verdict(MemoryStallObservation {
             window_wall_ms: 100_000,
             major_faults_in_window: 100_000,
-            self_cpu_ms_in_window: MEMORY_STALL_PROGRESS_CPU_SHARE_PERCENT_FLOOR * 1_000,
+            self_user_cpu_ms_in_window: MEMORY_STALL_PROGRESS_CPU_SHARE_PERCENT_FLOOR * 1_000,
             cache_evictions_in_window: 0,
             cache_readmissions_in_window: 0,
         });
@@ -1211,7 +1219,8 @@ mod tests {
         let under_cpu_floor = memory_stall_verdict(MemoryStallObservation {
             window_wall_ms: 100_000,
             major_faults_in_window: 100_000,
-            self_cpu_ms_in_window: MEMORY_STALL_PROGRESS_CPU_SHARE_PERCENT_FLOOR * 1_000 - 1_000,
+            self_user_cpu_ms_in_window: MEMORY_STALL_PROGRESS_CPU_SHARE_PERCENT_FLOOR * 1_000
+                - 1_000,
             cache_evictions_in_window: 0,
             cache_readmissions_in_window: 0,
         });

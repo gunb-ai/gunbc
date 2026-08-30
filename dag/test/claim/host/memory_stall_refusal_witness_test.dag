@@ -21,13 +21,13 @@ import gunbc.memory_stall_refusal {
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-data thrash_fixture_grounding_note: String = "BOTH PRESSURED FIXTURES ARE MEASURED SPECIMENS, and the pair is the module's whole content: rate alone cannot separate them. The RED is the 2026-08-30 default-VM treadmill shape (gunbc.memory_stall_refusal memory_stall_observed_receipt_note): a swapless machine smaller than the working set, thousands of refaults per second, CPU share near zero because the wall is disk wait. The ADMITTED control is the CI floor runner specimen that the rate-only form of this verdict wrongly refused on its own first execution (memory_stall_admitted_under_pressure_receipt_note, gunbc run 33319823294): 163296 major faults over a 788140 ms window -- 12431/minute, over the rate line -- during one 13-minute CPU-bound typecheck under a memory.high reclaim throttle, a configuration that completes green on main daily. The CPU-share conjunct is what admits the second while refusing the first, and these two rows are the executable form of that distinction. The SLOW control is the other acceptance boundary: an hour of wall with the fault counter flat is merely slow, and no verdict may refuse it however long it runs -- time enters this decision only as a rate denominator."
+data thrash_fixture_grounding_note: String = "BOTH PRESSURED FIXTURES ARE MEASURED SPECIMENS, and the pair is the module's whole content: rate alone cannot separate them. The RED is the 2026-08-30 default-VM treadmill shape, MEASURED on the reproduction trace (gunbc.memory_stall_refusal memory_stall_progress_cpu_share_percent_floor's receipt, invocation dd090164-9f2b-45fe-93bc-789cdd4ef9c4): a swapless machine smaller than the working set sustained 178795 major faults/minute with user CPU flat at 0.8% of wall, because the wall is disk wait; the fixture's 60000/minute at 4% is the same shape at conservative magnitude -- a verdict that needs the full measured extremity to fire would be tuned to one specimen. The ADMITTED control is the CI floor runner specimen that the rate-only form of this verdict wrongly refused on its own first execution (memory_stall_admitted_under_pressure_receipt_note, gunbc run 33319823294): 163296 major faults over a 788140 ms window -- 12431/minute, over the rate line -- during one 13-minute CPU-bound typecheck under a memory.high reclaim throttle, a configuration that completes green on main daily. The CPU-share conjunct is what admits the second while refusing the first, and these two rows are the executable form of that distinction. The SLOW control is the other acceptance boundary: an hour of wall with the fault counter flat is merely slow, and no verdict may refuse it however long it runs -- time enters this decision only as a rate denominator."
 
 fn treadmill_window() -> MemoryStallObservation {
   MemoryStallObservation {
     window_wall_ms: 120000,
     major_faults_in_window: 120000,
-    self_cpu_ms_in_window: 4800,
+    self_user_cpu_ms_in_window: 4800,
     cache_evictions_in_window: 4213,
     cache_readmissions_in_window: 388,
   }
@@ -37,7 +37,7 @@ fn ci_progressing_under_pressure_window() -> MemoryStallObservation {
   MemoryStallObservation {
     window_wall_ms: 788140,
     major_faults_in_window: 163296,
-    self_cpu_ms_in_window: 552000,
+    self_user_cpu_ms_in_window: 552000,
     cache_evictions_in_window: 0,
     cache_readmissions_in_window: 0,
   }
@@ -47,7 +47,7 @@ fn slow_but_progressing_hour() -> MemoryStallObservation {
   MemoryStallObservation {
     window_wall_ms: 3600000,
     major_faults_in_window: 60,
-    self_cpu_ms_in_window: 3200000,
+    self_user_cpu_ms_in_window: 3200000,
     cache_evictions_in_window: 0,
     cache_readmissions_in_window: 0,
   }
@@ -108,7 +108,7 @@ test fn a_burst_below_the_minimum_window_is_an_open_window_not_a_verdict() -> Bo
   match memory_stall_verdict(o: MemoryStallObservation {
     window_wall_ms: memory_stall_verdict_window_minimum_wall_ms - 1,
     major_faults_in_window: 1000000,
-    self_cpu_ms_in_window: 0,
+    self_user_cpu_ms_in_window: 0,
     cache_evictions_in_window: 0,
     cache_readmissions_in_window: 0,
   }) {
@@ -134,28 +134,28 @@ test fn the_refusal_is_tight_at_both_declared_lines() -> Bool {
   let at_rate_line = memory_stall_verdict(o: MemoryStallObservation {
     window_wall_ms: 60000,
     major_faults_in_window: memory_stall_major_fault_rate_per_minute_threshold,
-    self_cpu_ms_in_window: 0,
+    self_user_cpu_ms_in_window: 0,
     cache_evictions_in_window: 0,
     cache_readmissions_in_window: 0,
   })
   let over_rate_line = memory_stall_verdict(o: MemoryStallObservation {
     window_wall_ms: 60000,
     major_faults_in_window: memory_stall_major_fault_rate_per_minute_threshold + 1,
-    self_cpu_ms_in_window: 0,
+    self_user_cpu_ms_in_window: 0,
     cache_evictions_in_window: 0,
     cache_readmissions_in_window: 0,
   })
   let at_cpu_floor = memory_stall_verdict(o: MemoryStallObservation {
     window_wall_ms: 100000,
     major_faults_in_window: 100000,
-    self_cpu_ms_in_window: memory_stall_progress_cpu_share_percent_floor * 1000,
+    self_user_cpu_ms_in_window: memory_stall_progress_cpu_share_percent_floor * 1000,
     cache_evictions_in_window: 0,
     cache_readmissions_in_window: 0,
   })
   let under_cpu_floor = memory_stall_verdict(o: MemoryStallObservation {
     window_wall_ms: 100000,
     major_faults_in_window: 100000,
-    self_cpu_ms_in_window: memory_stall_progress_cpu_share_percent_floor * 1000 - 1000,
+    self_user_cpu_ms_in_window: memory_stall_progress_cpu_share_percent_floor * 1000 - 1000,
     cache_evictions_in_window: 0,
     cache_readmissions_in_window: 0,
   })
@@ -179,7 +179,7 @@ test fn only_the_refusal_carries_pressure_text() -> Bool {
     && memory_stall_refusal_pressure_text(v: memory_stall_verdict(o: MemoryStallObservation {
       window_wall_ms: 1000,
       major_faults_in_window: 0,
-      self_cpu_ms_in_window: 0,
+      self_user_cpu_ms_in_window: 0,
       cache_evictions_in_window: 0,
       cache_readmissions_in_window: 0,
     })) == ""

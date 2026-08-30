@@ -28,19 +28,26 @@ data memory_stall_major_fault_rate_per_minute_threshold: Int = 6000
 data memory_stall_verdict_window_minimum_wall_ms: Int = 30000
 
 // The progress floor of the conjunction: a window is a treadmill only if the process's
-// own CPU (utime+stime) accounts for less than this percentage of the window's wall.
-// The measured CI progressing-under-pressure specimen runs its 13-minute typecheck
-// CPU-bound between faults; the measured treadmill's CPU share is near zero because the
-// wall is disk wait. Twenty percent sits far above the treadmill and far below any
-// computing phase, and a phase that genuinely computes for less than a fifth of its wall
-// while refaulting past the rate line has no measured specimen -- if one appears, it is
-// a receipt to file here, not a reason to widen silently.
+// own USER CPU (utime alone, never stime) accounts for less than this percentage of the
+// window's wall. utime-only is measured, not stylistic: the reproduction's own trace
+// (invocation dd090164-9f2b-45fe-93bc-789cdd4ef9c4, default VM, 2026-08-30) shows the
+// treadmill at 2183987 major faults over 733 s -- 178795/minute -- with utime FLAT at
+// 0.8% of wall while stime ran at 34%: the kernel bills its reclaim and fault-handling
+// labour to the faulting process as system time, so a utime+stime share reads a pure
+// treadmill as one-third "computing" and the conjunction never fires. User time is the
+// only component that measures THIS PROGRAM's own instructions retiring. The healthy
+// phase of the same trace ran 90% utime with majflt=0, and a compute-bound typecheck
+// under reclaim pressure (the admitted CI specimen) is utime-dominant; twenty percent
+// sits far above the measured treadmill's 0.8% and far below any computing phase. A
+// phase that genuinely computes for less than a fifth of its wall while refaulting past
+// the rate line has no measured specimen -- if one appears, it is a receipt to file
+// here, not a reason to widen silently.
 data memory_stall_progress_cpu_share_percent_floor: Int = 20
 
 type MemoryStallObservation = MemoryStallObservation {
   window_wall_ms: Int,
   major_faults_in_window: Int,
-  self_cpu_ms_in_window: Int,
+  self_user_cpu_ms_in_window: Int,
   cache_evictions_in_window: Int,
   cache_readmissions_in_window: Int,
 }
@@ -67,7 +74,7 @@ fn memory_stall_major_faults_per_minute(o: MemoryStallObservation) -> Int {
     MemoryStallObservation {
       window_wall_ms: wall,
       major_faults_in_window: faults,
-      self_cpu_ms_in_window: _,
+      self_user_cpu_ms_in_window: _,
       cache_evictions_in_window: _,
       cache_readmissions_in_window: _,
     } => faults * 60000 / wall
@@ -79,7 +86,7 @@ fn memory_stall_self_cpu_share_percent(o: MemoryStallObservation) -> Int {
     MemoryStallObservation {
       window_wall_ms: wall,
       major_faults_in_window: _,
-      self_cpu_ms_in_window: cpu,
+      self_user_cpu_ms_in_window: cpu,
       cache_evictions_in_window: _,
       cache_readmissions_in_window: _,
     } => cpu * 100 / wall
@@ -91,7 +98,7 @@ fn memory_stall_verdict(o: MemoryStallObservation) -> MemoryStallVerdict {
     MemoryStallObservation {
       window_wall_ms: wall,
       major_faults_in_window: _,
-      self_cpu_ms_in_window: _,
+      self_user_cpu_ms_in_window: _,
       cache_evictions_in_window: _,
       cache_readmissions_in_window: _,
     } =>
@@ -154,7 +161,7 @@ fn memory_stall_refusal_pressure_text(v: MemoryStallVerdict) -> String {
         MemoryStallObservation {
           window_wall_ms: wall,
           major_faults_in_window: faults,
-          self_cpu_ms_in_window: _,
+          self_user_cpu_ms_in_window: _,
           cache_evictions_in_window: evictions,
           cache_readmissions_in_window: readmissions,
         } =>
@@ -173,7 +180,7 @@ fn memory_stall_refusal_pressure_text(v: MemoryStallVerdict) -> String {
             to_string(cpu_floor),
             "%; source ",
             procfs_path_literal(p: ProcSelfStat) as String,
-            " majflt and utime+stime; typed-cache evictions in window ",
+            " majflt and utime; typed-cache evictions in window ",
             to_string(evictions),
             ", readmissions ",
             to_string(readmissions),
