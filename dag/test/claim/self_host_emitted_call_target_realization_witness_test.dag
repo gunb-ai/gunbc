@@ -396,6 +396,33 @@ test fn w_generic_arrow_return_renders_the_fn_scope_generic() -> Bool {
   )
 }
 
+// A VARIANT NESTED INSIDE AN OPTIONAL PATTERN IS QUALIFIED BY ITS OWN ENUM. `Present { value: U { .. } }`
+// rendered `Some(Optional::U { .. })` (four sites in v2.std.symbol_index, E0599 no variant named U in
+// Option): the Some payload inherited the OUTER scrutinee's enum. The payload's parent is the
+// enum that declares the variant, never the Optional around it.
+test fn w_variant_nested_in_an_optional_pattern_is_qualified_by_its_own_enum() -> Bool {
+  compile_dag_rust_emit_check(
+    "module test.claim.optional_nested_variant_probe\nimport std.types { Int, Bool }\ntype State = Unique { n: Int } | Ambiguous\nfn probe(s: State?) -> Bool {\n  match s {\n    Present { value: Unique { n: k } } => k == 0\n    Present { value: Ambiguous } => false\n    Absent => false\n  }\n}\n",
+    "src/test_claim_optional_nested_variant_probe.rs",
+    ["Some(State::Unique {", "Some(State::Ambiguous)"],
+    ["Optional::Unique", "Option::Unique"]
+  )
+}
+
+// A GENERIC PARAMETER FORWARDED BY THE RETURNED CLOSURE CARRIES CLONE. An arrow-returning fn
+// realizes as `Rc::new(move |x| f(x.clone()))`, so a generic that reaches an arrow-typed parameter
+// needs `Clone` (E0277 `A: Clone` not satisfied, v2.std.staging then_outcome and
+// v2.compiler.materialization_carriers cached_stage_governed). The structural rules read what a
+// value is; this obligation comes from what the realization does with it.
+test fn w_generic_forwarded_by_a_returned_closure_carries_clone() -> Bool {
+  compile_dag_rust_emit_check(
+    "module test.claim.returned_closure_clone_probe\nfn compose<A, B, C>(f: fn(A) -> B, g: fn(B) -> C) -> fn(A) -> C {\n  fn(x) { g(f(x)) }\n}\n",
+    "src/test_claim_returned_closure_clone_probe.rs",
+    ["pub fn compose<A: Clone, B: Clone, C: Clone>("],
+    ["pub fn compose<A, B"]
+  )
+}
+
 // SERVICE OP WITHOUT A REALIZATION, THE DISCRIMINATING RED. `Filesystem.Read(path:)` inside a fn
 // the signature authority judged service-free emitted `filesystem.read(path).await?` -- an unbound
 // name in a non-async fn, the only `.await?` in the whole closure. It is a host seam with no

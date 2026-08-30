@@ -8245,7 +8245,7 @@ fn emit_variant_pattern(name: String, parent_enum: String?, field_bindings: List
         if is_string_lit_pattern(p: fb_pat) {
           "Some(ref __some_val)"
         } else {
-          let inner_pat = emit_pattern(pattern: fb_pat, path_prefix: list_push(path_prefix, rust_name), shared_types: shared_types, scrut_type: scrut_type, source_indices: source_indices, emit_info: emit_info)
+          let inner_pat = emit_pattern(pattern: fb_pat, path_prefix: list_push(path_prefix, rust_name), shared_types: shared_types, scrut_type: "", source_indices: source_indices, emit_info: emit_info)
           concat("Some(", inner_pat, ")")
         }
       Absent => qualified

@@ -9232,9 +9232,9 @@ fn target_type_expr_emitted_validate_positional_arity(
       }
     TargetTypeExprArrow =>
       match target_type_expr_arrow_wire_shape(node: node) {
-        Accepted { value: TargetTypeExprArrowPositionalWire, diagnostics: None } =>
-          Accepted { value: true, diagnostics: None }
-        Accepted { value: TargetTypeExprArrowLabeledWire, diagnostics: None } =>
+        Accepted { value: TargetTypeExprArrowPositionalWire, diagnostics: d } =>
+          Accepted { value: true, diagnostics: d }
+        Accepted { value: TargetTypeExprArrowLabeledWire, diagnostics: _ } =>
           outcome_rejected(target_type_expr_emitted_shape_malformed_diagnostic(node: node))
         Rejected { diagnostics: r } => Rejected { diagnostics: r }
       }
@@ -9261,6 +9261,8 @@ fn target_type_expr_emitted_validate_positional_wire(
                   match target_type_expr_emitted_validate_positional_arity(node: node, kind: kind) {
                     Accepted { value: true, diagnostics: d2 } =>
                       Accepted { value: true, diagnostics: diagnostics_merge(outer: d, inner: d2) }
+                    Accepted { value: false, diagnostics: _ } =>
+                      outcome_rejected(target_type_expr_emitted_shape_malformed_diagnostic(node: node))
                     Rejected { diagnostics: r } => Rejected { diagnostics: r }
                   }
                 } else {
@@ -9335,18 +9337,24 @@ fn target_type_expr_emitted_validate_wire_shape(
       )
     TargetTypeExprArrow =>
       match target_type_expr_arrow_wire_shape(node: node) {
-        Accepted { value: TargetTypeExprArrowLabeledWire, diagnostics: None } =>
-          target_type_expr_emitted_validate_labeled_wire(
+        Accepted { value: TargetTypeExprArrowLabeledWire, diagnostics: d } =>
+          match target_type_expr_emitted_validate_labeled_wire(
             node: node,
             kind: kind,
             projection: projection
-          )
-        Accepted { value: TargetTypeExprArrowPositionalWire, diagnostics: None } =>
-          target_type_expr_emitted_validate_positional_wire(
+          ) {
+            Accepted { value: v, diagnostics: d2 } => Accepted { value: v, diagnostics: diagnostics_merge(outer: d, inner: d2) }
+            Rejected { diagnostics: r } => Rejected { diagnostics: r }
+          }
+        Accepted { value: TargetTypeExprArrowPositionalWire, diagnostics: d } =>
+          match target_type_expr_emitted_validate_positional_wire(
             node: node,
             kind: kind,
             projection: projection
-          )
+          ) {
+            Accepted { value: v, diagnostics: d2 } => Accepted { value: v, diagnostics: diagnostics_merge(outer: d, inner: d2) }
+            Rejected { diagnostics: r } => Rejected { diagnostics: r }
+          }
         Rejected { diagnostics: r } => Rejected { diagnostics: r }
       }
     _ =>
