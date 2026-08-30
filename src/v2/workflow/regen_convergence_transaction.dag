@@ -164,32 +164,61 @@ fn regen_deferred(row: RegenChangedSurface, reason: RegenDeferredReason) -> Rege
   RegenDeferredSurface { identity: row.identity, reason: reason }
 }
 
-fn regen_surface_has_generation_role(row: RegenChangedSurface, kind: RegenStageKind) -> Bool {
+type RegenSurfaceStageDisposition
+  = SurfacePlannedForStage
+  | SurfaceDeferredFromStage { reason: RegenDeferredReason }
+
+type RegenStagePartition {
+  planned: List<RegenChangedSurface>
+  deferred: List<RegenDeferredSurface>
+}
+
+// One typed classification surface. Planning consumes the arm and retains its reason; no Bool
+// predicate aliases the coproduct membership or walks the same row again for deferral.
+fn regen_surface_stage_disposition(
+  row: RegenChangedSurface,
+  kind: RegenStageKind
+) -> RegenSurfaceStageDisposition {
   match kind {
     PromoteGenerationInputs => match row.generation_role {
-      GenerationInput => true
-      BootstrapSourceMirror => true
-      GenerationSubject => false
-      NonSeedGeneratedOutput => false
-      UnresolvedGenerationRole { reason: _ } => false
+      GenerationInput => SurfacePlannedForStage
+      BootstrapSourceMirror => SurfacePlannedForStage
+      GenerationSubject => SurfaceDeferredFromStage { reason: AwaitingPromotedProducer }
+      NonSeedGeneratedOutput => SurfaceDeferredFromStage { reason: AwaitingPromotedProducer }
+      UnresolvedGenerationRole { reason: _ } => SurfaceDeferredFromStage { reason: AwaitingPromotedProducer }
     }
     InstallSeedCompatibilityCut => match row.generation_role {
-      GenerationInput => false
-      BootstrapSourceMirror => false
+      GenerationInput => SurfaceDeferredFromStage { reason: AwaitingSeedCompatibilityCut }
+      BootstrapSourceMirror => SurfaceDeferredFromStage { reason: AwaitingSeedCompatibilityCut }
       GenerationSubject => match row.seed_membership {
-        SeedEmbedded => true
-        OutsideSeed => false
-        UnresolvedSeedMembership { reason: _ } => false
+        SeedEmbedded => SurfacePlannedForStage
+        OutsideSeed => SurfaceDeferredFromStage { reason: AwaitingSeedCompatibilityCut }
+        UnresolvedSeedMembership { reason: _ } => SurfaceDeferredFromStage { reason: AwaitingSeedCompatibilityCut }
       }
-      NonSeedGeneratedOutput => false
-      UnresolvedGenerationRole { reason: _ } => false
+      NonSeedGeneratedOutput => SurfaceDeferredFromStage { reason: AwaitingSeedCompatibilityCut }
+      UnresolvedGenerationRole { reason: _ } => SurfaceDeferredFromStage { reason: AwaitingSeedCompatibilityCut }
     }
     PublishNonSeedOutputs => match row.seed_membership {
-      OutsideSeed => true
-      SeedEmbedded => false
-      UnresolvedSeedMembership { reason: _ } => false
+      OutsideSeed => SurfacePlannedForStage
+      SeedEmbedded => SurfaceDeferredFromStage { reason: AwaitingBuildableSeedGeneration }
+      UnresolvedSeedMembership { reason: _ } => SurfaceDeferredFromStage { reason: AwaitingBuildableSeedGeneration }
     }
   }
+}
+
+fn regen_partition_stage(rows: List<RegenChangedSurface>, kind: RegenStageKind) -> RegenStagePartition {
+  rows |> fold(init: RegenStagePartition { planned: [], deferred: [] }, f: fn(acc, row) {
+    match regen_surface_stage_disposition(row: row, kind: kind) {
+      SurfacePlannedForStage => RegenStagePartition {
+        planned: list_push(acc.planned, row),
+        deferred: acc.deferred
+      }
+      SurfaceDeferredFromStage { reason: reason } => RegenStagePartition {
+        planned: acc.planned,
+        deferred: list_push(acc.deferred, regen_deferred(row: row, reason: reason))
+      }
+    }
+  })
 }
 
 fn regen_first_unresolved(rows: List<RegenChangedSurface>) -> List<RegenConvergenceRefusal> {
@@ -219,14 +248,6 @@ fn regen_first_unresolved(rows: List<RegenChangedSurface>) -> List<RegenConverge
   })
 }
 
-fn regen_stage_deferred_reason(kind: RegenStageKind) -> RegenDeferredReason {
-  match kind {
-    PromoteGenerationInputs => AwaitingPromotedProducer
-    InstallSeedCompatibilityCut => AwaitingSeedCompatibilityCut
-    PublishNonSeedOutputs => AwaitingBuildableSeedGeneration
-  }
-}
-
 fn regen_stage_closure_id(rows: List<RegenChangedSurface>) -> String {
   fold(rows, init: "", f: fn(acc, row) {
     if acc == "" { row.dependency_closure_id } else { acc }
@@ -253,13 +274,10 @@ fn regen_plan_stage(
       )
     }
   } else {
-    let planned = changed |> filter(row => regen_surface_has_generation_role(row: row, kind: kind))
-    if count(planned) == 0 {
+    let partition = regen_partition_stage(rows: changed, kind: kind)
+    if count(partition.planned) == 0 {
       RegenConvergenceTerminal
     } else {
-      let deferred = changed
-        |> filter(row => !regen_surface_has_generation_role(row: row, kind: kind))
-        |> map(row => regen_deferred(row: row, reason: regen_stage_deferred_reason(kind: kind)))
       RegenStagePlanned {
         stage: RegenStagePlan {
           ordinal: ordinal,
@@ -267,9 +285,9 @@ fn regen_plan_stage(
           producer_generation_id: producer_generation_id,
           candidate_tree_id: candidate_tree_id,
           candidate_tree_digest: candidate_tree_digest,
-          planned_surfaces: planned,
-          deferred_surfaces: deferred,
-          dependency_closure_id: regen_stage_closure_id(rows: planned),
+          planned_surfaces: partition.planned,
+          deferred_surfaces: partition.deferred,
+          dependency_closure_id: regen_stage_closure_id(rows: partition.planned),
           build_target: build_target,
           build_invocation: build_invocation
         }
