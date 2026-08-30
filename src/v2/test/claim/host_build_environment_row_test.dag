@@ -23,9 +23,11 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // run_host_process_admitted site; (f) build_environment is a required field of
 // HostTransportDescriptor -- a descriptor without an environment decision is unconstructible.
 // (c) -- admitting RUSTFLAGS on the Rust row changes the identity and reproduces the
-// dead-code failure -- has no frame-independent oracle until the receipt carries the
-// build-context identity; it is measured in this PR's two frames, not enrolled, and that
-// carrier is its trigger.
+// dead-code failure -- has no frame-independent oracle today. TRIGGER: EmitHostRunReceipt
+// carries the resolved build-context identity (or its admitted-environment segment); then an
+// enrolled pair proves that changing a PRESENT ADMITTED variable changes the identity while
+// changing an UNADMITTED ambient variable does not. Until then (c) is measured in this PR's
+// two frames, not enrolled.
 
 fn row_names(d: HostTransportDescriptor) -> List<String> {
   d.build_environment.ambient_names
