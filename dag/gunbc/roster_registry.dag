@@ -252,7 +252,7 @@ data roster_registry: List<RosterRegistration> = [
     roster: roster_decl(module_path: "gunbc.stage0_rust_source_lifecycle_scaffold", decl_name: "rust_source_lifecycle_residue_rows"),
     unit_kind: "tracked .rs path outside derived authority joins (file-grain residue)",
     membership: DeclaredFrontier {
-      reason: "file-grain paths tracked on disk that no authority join classifies yet — bootstrap copies, hand-retained harness kernels, module_path_index files, frontier layout lag, and authority contradictions (stage0_core lib.rs vs partition rows); each row carries reason and dissolve_on. Cargo [[bin]] paths are host-derived (gunbc.stage0_cargo_manifest), not residue rows",
+      reason: "file-grain paths tracked on disk that no authority join classifies yet — bootstrap copies, hand-retained harness kernels, module_path_index files, and frontier layout lag; each row carries reason and dissolve_on. Cargo [[bin]] paths are host-derived (gunbc.stage0_cargo_manifest), not residue rows",
       dissolution: unbound_dissolution(description: "per row: the path derives from the observed generated population (gunbc.stage0_rust_source_lifecycle_scaffold derived_generated_stage0_repo_paths), hand_maintained_stage0_filenames, stage0_cargo_bin_paths_observed (PR B host boundary), or stage0_partition_crate_rows and the row deletes; roster-wide, rust_source_host_observation_note host boundary supplies path evidence and promotes the scaffold to ZeroHandMaintainedRust acceptance (V1FinishLine, dag/gunbc/v1/v1_deletion_plan.dag)")
     }
   },
