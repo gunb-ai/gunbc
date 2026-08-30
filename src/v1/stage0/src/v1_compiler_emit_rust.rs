@@ -1321,6 +1321,9 @@ pub fn is_host_text_carrier_type(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
     {
+        if (n.connective.clone() == Connective::Arrow) {
+            return false;
+        }
         let nm = crate::v1_std_core::authored_name_at(source_indices.clone(), n.clone());
         if (nm.clone() == "String".to_string()) {
             true
@@ -15350,27 +15353,38 @@ pub fn rust_field_carrier_final_type(
     recursive_types: Rc<BTreeSet<String>>,
     shared_types: Rc<BTreeSet<String>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    env: Rc<TypeEnv>,
 ) -> String {
-    if needs_box_wrapping(
-        rt_field.clone(),
-        recursive_types.clone(),
-        shared_types.clone(),
-        source_indices.clone(),
-    ) {
-        v1_rt::concat(
-            v1_rt::concat("Box<".to_string(), ty.clone()),
-            ">".to_string(),
-        )
-    } else {
-        if (rust_carrier_is_at_shared_layer(
+    {
+        let native_scalar = crate::v1_compiler_coercion::rust_seed_host_numeric_alias(
+            rust_fn_sig_leaf_name(source_indices.clone(), rt_field.clone()),
+            type_reference_decl_file_in_env(rt_field.clone(), env.clone(), source_indices.clone()),
+        );
+        if needs_box_wrapping(
             rt_field.clone(),
-            source_indices.clone(),
+            recursive_types.clone(),
             shared_types.clone(),
-        ) && !rust_type_is_rc_wrapped(ty.clone()))
-        {
-            crate::v1_compiler_languages::wrap_shared_type(RenderTarget::Rust, ty.clone())
+            source_indices.clone(),
+        ) {
+            v1_rt::concat(
+                v1_rt::concat("Box<".to_string(), ty.clone()),
+                ">".to_string(),
+            )
         } else {
-            ty.clone()
+            if (native_scalar.clone() != std::option::Option::None) {
+                ty.clone()
+            } else {
+                if (rust_carrier_is_at_shared_layer(
+                    rt_field.clone(),
+                    source_indices.clone(),
+                    shared_types.clone(),
+                ) && !rust_type_is_rc_wrapped(ty.clone()))
+                {
+                    crate::v1_compiler_languages::wrap_shared_type(RenderTarget::Rust, ty.clone())
+                } else {
+                    ty.clone()
+                }
+            }
         }
     }
 }
@@ -15513,6 +15527,7 @@ pub fn emit_struct_field_from_child(
             recursive_types.clone(),
             shared_types.clone(),
             env.source_indices.clone(),
+            env.clone(),
         );
         let needs_serde = struct_needs_serde(struct_name.clone(), emit_info.clone());
         let rename_attr = if !needs_serde.clone() {
@@ -16496,6 +16511,7 @@ pub fn emit_variant_from_child(
                                             recursive_types.clone(),
                                             shared_types.clone(),
                                             env.source_indices.clone(),
+                                            env.clone(),
                                         );
                                         emit_rust_field_definition(
                                             crate::v1_compiler_infer_env::authored_name(
@@ -16550,6 +16566,7 @@ pub fn emit_variant_from_child(
                                     recursive_types.clone(),
                                     shared_types.clone(),
                                     env.source_indices.clone(),
+                                    env.clone(),
                                 );
                                 emit_rust_field_definition(
                                     crate::v1_compiler_infer_env::authored_name(
@@ -26469,7 +26486,9 @@ pub fn freemonoid_match_arm_for(arms: Rc<Vec<Rc<Node>>>, variant: String) -> Opt
         let mut __result = Vec::new();
         for arm in arms.iter().cloned() {
             if match (*crate::v1_std_core::arm_pattern(arm.clone())).clone() {
-                MatchPattern::VariantPattern { name: n, .. } => (n.clone() == variant.clone()),
+                MatchPattern::VariantPattern { name: n, .. } => {
+                    (crate::v1_std_core::qualified_last_segment(n.clone()) == variant.clone())
+                }
                 _ => false,
             } {
                 __result.push(arm);
@@ -26539,7 +26558,9 @@ pub fn arm_resolved_parent_enum(
 
 pub fn parent_enum_is_freemonoid(p: Option<String>) -> bool {
     match p.clone() {
-        Some(nm) => (nm.clone() == "FreeMonoid".to_string()),
+        Some(nm) => {
+            (crate::v1_std_core::qualified_last_segment(nm.clone()) == "FreeMonoid".to_string())
+        }
         std::option::Option::None => false,
     }
 }
