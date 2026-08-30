@@ -65,7 +65,12 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-data orch_retry_golden_note: String = "ci_cargo_eagain_retry_core_golden below is the HAND-AUTHORED spelling of the CI EAGAIN-retry construct, moved here verbatim when production gunbc.ci_spec cut over to emit(Retry, Bash). It is deliberately independent of the grammar rows and segment spellings: the byte tests compare the emitter (and the production seam) against this golden, so a row/segment/emitter regression cannot go green by perturbing both sides at once. The committed .github/workflows/ci.yml drift gate is the corpus-level twin of this oracle."
+// ci_cargo_eagain_retry_core_golden below is the HAND-AUTHORED spelling of the CI EAGAIN-retry
+// construct, moved here verbatim when production gunbc.ci_spec cut over to emit(Retry, Bash). It is
+// deliberately independent of the grammar rows and segment spellings: the byte tests compare the
+// emitter (and the production seam) against this golden, so a row/segment/emitter regression cannot
+// go green by perturbing both sides at once. The committed .github/workflows/ci.yml drift gate is
+// the corpus-level twin of this oracle.
 
 fn ci_cargo_eagain_retry_core_golden(command: String) -> String {
   concat(
@@ -429,7 +434,9 @@ fn orch_retry_3level_intent() -> PipelineStep {
   }
 }
 
-data orch_retry_3level_refuse_note: String = "Three-level Retry previously emitted via orch_emit_retry_multilevel, which silently dropped level1.env (E1) and the final level's LogMatches.pattern. review 43629 — refuse (^orch_emit_retry_multilevel_unsupported) until a faithful N-level template lands."
+// Three-level Retry previously emitted via orch_emit_retry_multilevel, which silently dropped
+// level1.env (E1) and the final level's LogMatches.pattern. review 43629 — refuse
+// (^orch_emit_retry_multilevel_unsupported) until a faithful N-level template lands.
 
 test fn orch_retry_3level_refused_holds() -> Bool {
   match orch_emit_step(s: orch_retry_3level_intent(), medium: bash_orchestration_emit_medium()) {

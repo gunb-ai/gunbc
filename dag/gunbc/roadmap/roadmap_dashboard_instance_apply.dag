@@ -105,11 +105,55 @@ import gunbc.roadmap_dashboard_instance {
   dashboard_instance_dispatch_attempt_state_root,
 }
 
-data dashboard_instance_apply_note: String = "The wet path is an interpreter of HostDashboardInstance, not a parallel provisioning script. Its high-level provision plan is pure and browser-visible; this module projects each operation to typed argv, executes locally or through the instance's explicit SSH transport, records a typed receipt, and performs a second independent observation before claiming convergence. Preflight resolves the modeled controller ref once and carries that exact CommitSha through initial observation and post-apply read-back; a target checkout that is clean against its own origin but stale against the requested commit derives Apply, never false convergence. Codex runtime identity (`--version` must realize `codex-cli`) and OAuth state (`login status`) are separate observations and provision steps, so a broken npm/Node launcher cannot masquerade as an auth refusal; successful stderr is retained in receipts rather than dropping runtime warnings. Source transport has no handoff gap: inspect shallow state -> hydrate from the modeled remote when needed -> mktemp directory -> git bundle -> metadata verify -> import into a new empty bare repository -> scp to .next -> target mv -> local cleanup. The empty-repository import is the closure proof; target mutation does not begin until it succeeds. A matching ownership-marker filename gates every mutation of an existing isolated source clone. Production is read before mutation and again after; repo HEAD plus /healthz must remain byte-identical. Recursive deletion is confined to the fresh controller-side mktemp directory minted by this invocation; no instance or target state is recursively deleted by apply."
+// The wet path is an interpreter of HostDashboardInstance, not a parallel provisioning script. Its
+// high-level provision plan is pure and browser-visible; this module projects each operation to
+// typed argv, executes locally or through the instance's explicit SSH transport, records a typed
+// receipt, and performs a second independent observation before claiming convergence. Preflight
+// resolves the modeled controller ref once and carries that exact CommitSha through initial
+// observation and post-apply read-back; a target checkout that is clean against its own origin but
+// stale against the requested commit derives Apply, never false convergence. Codex runtime identity
+// (`--version` must realize `codex-cli`) and OAuth state (`login status`) are separate observations
+// and provision steps, so a broken npm/Node launcher cannot masquerade as an auth refusal;
+// successful stderr is retained in receipts rather than dropping runtime warnings. Source transport
+// has no handoff gap: inspect shallow state -> hydrate from the modeled remote when needed ->
+// mktemp directory -> git bundle -> metadata verify -> import into a new empty bare repository ->
+// scp to .next -> target mv -> local cleanup. The empty-repository import is the closure proof;
+// target mutation does not begin until it succeeds. A matching ownership-marker filename gates
+// every mutation of an existing isolated source clone. Production is read before mutation and again
+// after; repo HEAD plus /healthz must remain byte-identical. Recursive deletion is confined to the
+// fresh controller-side mktemp directory minted by this invocation; no instance or target state is
+// recursively deleted by apply.
 
-data dashboard_host_program_literal_scaffold_note: String = "DECLARED SCAFFOLD (review 44058, DESIGN 6). This module pins ~42 absolute /usr/bin/* program literals while the SAME programs are already realized once, with identity probes and Ensure policies, in gunbc.roadmap_dashboard_instance.dashboard_execution_environment — a DESIGN 3 fork. It is marked rather than substituted because the substitution is not mechanical: the sites split across TWO hosts (dashboard_local_exec runs on the controller, dashboard_target_exec on the instance) and only the target host has an environment to resolve against, while the controller-side residue (cp, scp, mv, test, sleep, nc, sudo, chown) names provisioning tools that are deliberately NOT dispatch capabilities — adding them to ExecutionCapability would put provisioning tools on the roster dispatch admission requires. Picking the right carrier is a model decision (which layer owns a host program token: the tool's extdeps model, the OS/host-layout layer, or a second CapabilityRealization environment for the controller), and DESIGN 6 says that lands model-first, not improvised inside this change. DISSOLVES ON: a controller DispatchHostEnvironment resolved through the existing dispatch_capability_program — one concept at both breadths (DESIGN 2 horizontal) — at which point every literal here becomes a resolver call and this row deletes."
+// DECLARED SCAFFOLD (review 44058, DESIGN 6). This module pins ~42 absolute /usr/bin/* program
+// literals while the SAME programs are already realized once, with identity probes and Ensure
+// policies, in gunbc.roadmap_dashboard_instance.dashboard_execution_environment — a DESIGN 3 fork.
+// It is marked rather than substituted because the substitution is not mechanical: the sites split
+// across TWO hosts (dashboard_local_exec runs on the controller, dashboard_target_exec on the
+// instance) and only the target host has an environment to resolve against, while the
+// controller-side residue (cp, scp, mv, test, sleep, nc, sudo, chown) names provisioning tools that
+// are deliberately NOT dispatch capabilities — adding them to ExecutionCapability would put
+// provisioning tools on the roster dispatch admission requires. Picking the right carrier is a
+// model decision (which layer owns a host program token: the tool's extdeps model, the
+// OS/host-layout layer, or a second CapabilityRealization environment for the controller), and
+// DESIGN 6 says that lands model-first, not improvised inside this change. DISSOLVES ON: a
+// controller DispatchHostEnvironment resolved through the existing dispatch_capability_program —
+// one concept at both breadths (DESIGN 2 horizontal) — at which point every literal here becomes a
+// resolver call and this row deletes.
 
-data dashboard_exec_result_carrier_note: String = "DECLARED SCAFFOLD (review 44058, DESIGN 5). DashboardExecResult carries failure as success: Bool plus prose, and every stage dispatches on `if !r.success` and repackages through dashboard_exec_refused(detail: String). That is a Bool where the typed refusal carriers this same PR introduces (gunbc.ensure's UpsertDecision/Refuse, DashboardApplyRefused) already exist — a parallel error representation, not a missing one. It is marked rather than migrated because the carrier threads through every stage of the apply pipeline in one piece: the fold is sequential and each stage returns the previous result on failure, so converting the carrier converts the pipeline, and doing that inside this change would bury the recursive-workflow model it exists to land. What is NOT deferred is fail-closedness: no arm fabricates success, every refusal carries its own located detail, and the refusal reaches the caller as DashboardApplyRefused. DISSOLVES ON: the apply pipeline folding over a typed step outcome — Converged, or Refused carrying its cause — instead of a Bool, with dashboard_exec_refused deleted and the per-cause arms named — the same shape roadmap_dispatch_environment already uses for admission. dispatch_capability_program's unrealized-capability marker (roadmap_dispatch_actuator) closes with it."
+// DECLARED SCAFFOLD (review 44058, DESIGN 5). DashboardExecResult carries failure as success: Bool
+// plus prose, and every stage dispatches on `if !r.success` and repackages through
+// dashboard_exec_refused(detail: String). That is a Bool where the typed refusal carriers this same
+// PR introduces (gunbc.ensure's UpsertDecision/Refuse, DashboardApplyRefused) already exist — a
+// parallel error representation, not a missing one. It is marked rather than migrated because the
+// carrier threads through every stage of the apply pipeline in one piece: the fold is sequential
+// and each stage returns the previous result on failure, so converting the carrier converts the
+// pipeline, and doing that inside this change would bury the recursive-workflow model it exists to
+// land. What is NOT deferred is fail-closedness: no arm fabricates success, every refusal carries
+// its own located detail, and the refusal reaches the caller as DashboardApplyRefused. DISSOLVES
+// ON: the apply pipeline folding over a typed step outcome — Converged, or Refused carrying its
+// cause — instead of a Bool, with dashboard_exec_refused deleted and the per-cause arms named — the
+// same shape roadmap_dispatch_environment already uses for admission. dispatch_capability_program's
+// unrealized-capability marker (roadmap_dispatch_actuator) closes with it.
 
 type DashboardExecResult {
   success: Bool
@@ -226,14 +270,32 @@ fn dashboard_run_target_argvs(
   )
 }
 
-data path_observation_preserves_refusal_note: String = "THE THREE-VALUED PROBE THE TWO-VALUED ONE COLLAPSED. `test -d` exiting non-zero means the path is absent; a transport that could not deliver the test at all means nothing is known. dashboard_target_path_present returned .success for both, so the second became the first.\\n\\nThe SSH arm distinguishes them already — TypedArgvExecRefused carries a reason — and the local arm distinguishes them through the same program-availability question belt_exec asks before running anything: a probe whose own binary is missing has not observed a negative, it has failed to observe. Both are recoverable here because dashboard_exec_refused marks a refusal with empty stdout and a populated stderr, which is the signal the collapse discarded.\\n\\nTHIS OBSERVATION IS NOW THE ONLY WAY TO ASK. The first version of this fix left the collapsing predicate in place for callers that wanted a Bool, on the reasoning that the refusal was recorded on a channel those callers could consult — and review 45213 found the two that did not, in the preflight paths that produce operator instructions. A discipline nothing enforces is not a wall, and the leak reappeared one layer below the one it was introduced to close. See observation_present_bit_scope_note for what survived and why."
+// THE THREE-VALUED PROBE THE TWO-VALUED ONE COLLAPSED. `test -d` exiting non-zero means the path is
+// absent; a transport that could not deliver the test at all means nothing is known.
+// dashboard_target_path_present returned .success for both, so the second became the first.\n\nThe
+// SSH arm distinguishes them already — TypedArgvExecRefused carries a reason — and the local arm
+// distinguishes them through the same program-availability question belt_exec asks before running
+// anything: a probe whose own binary is missing has not observed a negative, it has failed to
+// observe. Both are recoverable here because dashboard_exec_refused marks a refusal with empty
+// stdout and a populated stderr, which is the signal the collapse discarded.\n\nTHIS OBSERVATION IS
+// NOW THE ONLY WAY TO ASK. The first version of this fix left the collapsing predicate in place for
+// callers that wanted a Bool, on the reasoning that the refusal was recorded on a channel those
+// callers could consult — and review 45213 found the two that did not, in the preflight paths that
+// produce operator instructions. A discipline nothing enforces is not a wall, and the leak
+// reappeared one layer below the one it was introduced to close. See
+// observation_present_bit_scope_note for what survived and why.
 
 type DashboardPathObservation
   = PathObservedPresent
   | PathObservedAbsent
   | PathObservationRefused { reason: String }
 
-data exec_refusal_reason_note: String = "The same distinction the path observation makes, applied to the probes that are not path tests. A provider runtime or auth probe whose transport refused produces empty stdout with populated stderr — the dashboard_exec_refused signature — and that is categorically different from `codex login status` running and reporting no session. Without the split, an unreachable host and an unauthenticated provider are the same value, and the operator is told to log in on a machine they cannot reach."
+// The same distinction the path observation makes, applied to the probes that are not path tests. A
+// provider runtime or auth probe whose transport refused produces empty stdout with populated
+// stderr — the dashboard_exec_refused signature — and that is categorically different from `codex
+// login status` running and reporting no session. Without the split, an unreachable host and an
+// unauthenticated provider are the same value, and the operator is told to log in on a machine they
+// cannot reach.
 
 fn dashboard_exec_refusal_reason(label: String, r: DashboardExecResult) -> List<String> {
   if r.success {
@@ -279,7 +341,21 @@ fn dashboard_path_observation_refusal(obs: DashboardPathObservation) -> List<Str
   }
 }
 
-data observation_present_bit_scope_note: String = "THE ONE PERMITTED COLLAPSE, named for what it is and scoped to the one place it is sound. This projection answers false for absent AND for refused, which is the exact loss review 45153 was raised about — so it exists only to fill the Bool fields of DashboardInstanceObservation, whose refusal channel is populated by the SAME fold that fills them and which consumers must read first.\\n\\nAN EARLIER VERSION OF THIS MODULE KEPT A SECOND, UNSCOPED COLLAPSE BESIDE IT (review 45213). dashboard_target_path_present probed and returned .success, never constructing an observation at all, and two preflight consumers read it bare: a refused transport made a required executable report as missing, and made a bootstrap parent report as not writable. Both then produced actionable remediation for a condition nobody observed — the same fabricated-verdict shape as 45153, one layer down, in the fix for 45153.\\n\\nThe note that shipped with that version said callers wanting a Bool could keep the collapsing predicate because the refusal was recorded on a channel elsewhere. That was documenting a leak rather than closing it: nothing made a caller consult the channel, and the two that mattered did not. The predicate is deleted, the preflight consumers take the observation and carry its refusal, and what remains is this projection with the word bit in its name, so a future use outside the record fold reads as the collapse it is."
+// THE ONE PERMITTED COLLAPSE, named for what it is and scoped to the one place it is sound. This
+// projection answers false for absent AND for refused, which is the exact loss review 45153 was
+// raised about — so it exists only to fill the Bool fields of DashboardInstanceObservation, whose
+// refusal channel is populated by the SAME fold that fills them and which consumers must read
+// first.\n\nAN EARLIER VERSION OF THIS MODULE KEPT A SECOND, UNSCOPED COLLAPSE BESIDE IT (review
+// 45213). dashboard_target_path_present probed and returned .success, never constructing an
+// observation at all, and two preflight consumers read it bare: a refused transport made a required
+// executable report as missing, and made a bootstrap parent report as not writable. Both then
+// produced actionable remediation for a condition nobody observed — the same fabricated-verdict
+// shape as 45153, one layer down, in the fix for 45153.\n\nThe note that shipped with that version
+// said callers wanting a Bool could keep the collapsing predicate because the refusal was recorded
+// on a channel elsewhere. That was documenting a leak rather than closing it: nothing made a caller
+// consult the channel, and the two that mattered did not. The predicate is deleted, the preflight
+// consumers take the observation and carry its refusal, and what remains is this projection with
+// the word bit in its name, so a future use outside the record fold reads as the collapse it is.
 
 fn dashboard_observation_present_bit(obs: DashboardPathObservation) -> Bool {
   match obs {
@@ -451,7 +527,18 @@ fn dashboard_stage_bundle(
   )
 }
 
-data serve_binary_copy_refusal_note: String = "THE SOURCE IS CHECKED BEFORE THE COPY so a missing build refuses by its own path rather than through cp's error. An absent target/release/gunbc is the ordinary state of a fresh controller checkout — nobody has built yet — and it is the single most likely reason this step fails, so it earns a refusal that names the file it looked for instead of a generic copy failure the reader has to decode.\\n\\nThe destination directory is created first because the instance's bin/ has no other creator: serve_binary is derived as a child of the instance root, and every other ensured directory in the plan is a sibling. Relying on the copy to imply its parent would fail on a fresh instance in a way that reads like a permissions problem.\\n\\nThe executable bit is set explicitly rather than inherited. cp preserves mode from the source, which is correct today and silently wrong the moment the build lands non-executable or the copy path changes — and a serve binary that exists but cannot execute produces a service that fails to start with no indication the provisioner is why."
+// THE SOURCE IS CHECKED BEFORE THE COPY so a missing build refuses by its own path rather than
+// through cp's error. An absent target/release/gunbc is the ordinary state of a fresh controller
+// checkout — nobody has built yet — and it is the single most likely reason this step fails, so it
+// earns a refusal that names the file it looked for instead of a generic copy failure the reader
+// has to decode.\n\nThe destination directory is created first because the instance's bin/ has no
+// other creator: serve_binary is derived as a child of the instance root, and every other ensured
+// directory in the plan is a sibling. Relying on the copy to imply its parent would fail on a fresh
+// instance in a way that reads like a permissions problem.\n\nThe executable bit is set explicitly
+// rather than inherited. cp preserves mode from the source, which is correct today and silently
+// wrong the moment the build lands non-executable or the copy path changes — and a serve binary
+// that exists but cannot execute produces a service that fails to start with no indication the
+// provisioner is why.
 
 fn dashboard_ensure_serve_binary(
   instance: HostDashboardInstance,
@@ -668,7 +755,13 @@ fn dashboard_read_instance_health(
   )
 }
 
-data dashboard_health_identity_note: String = "Health readback identifies the served document POSITIONALLY, never by scanning it: the body must parse as one JSON value and START with the emitter's own schema+instance_id prefix (gunbc.roadmap_dashboard_instance.dashboard_instance_health_identity_prefix). The scan this replaces accepted the fragment from any nested value, so a foreign or stale server answering the polled port — or a document merely mentioning the instance id — could report a converged apply that never happened (DESIGN 5). Same rule as the dispatch admission receipt; one reading, two consumers."
+// Health readback identifies the served document POSITIONALLY, never by scanning it: the body must
+// parse as one JSON value and START with the emitter's own schema+instance_id prefix
+// (gunbc.roadmap_dashboard_instance.dashboard_instance_health_identity_prefix). The scan this
+// replaces accepted the fragment from any nested value, so a foreign or stale server answering the
+// polled port — or a document merely mentioning the instance id — could report a converged apply
+// that never happened (DESIGN 5). Same rule as the dispatch admission receipt; one reading, two
+// consumers.
 
 fn dashboard_health_names_instance(
   instance: HostDashboardInstance,
@@ -955,7 +1048,21 @@ fn dashboard_production_snapshots_equal(
     && before.health == after.health
 }
 
-data dashboard_production_peer_note: String = "PRODUCTION IS A PEER ON THE APPLYING HOST, and until this type existed the parameter forced every apply to name one whether the host had one or not. Both uses assume locality without saying so: the isolation check compares owned paths on one filesystem, and the liveness read-back curls 127.0.0.1 at production's declared port. Passing a remote instance satisfies neither — it compares this machine's paths against another machine's declarations, then probes a loopback port nobody here is serving.\\n\\nThat is exactly how srv2's first apply failed. srv1-live was passed as production because the parameter demanded an instance; its repo_root happened to exist here as a hand-made symlink so the git half of the probe SUCCEEDED, and the refusal surfaced only as a curl connection error against port 8080 — a true message about a check that should never have run. The remedy for that refusal is not to start a server; it is to stop claiming srv1 is a peer of anything on srv2.\\n\\nNoProductionPeer is a DECLARATION, not a skipped check. A host with no production dashboard has nothing to be disjoint from and nothing whose liveness could be disturbed, so both obligations are discharged by the shape of the argument rather than silently bypassed inside the checks — and the reading below stays type-distinct across before and after, so an apply cannot pair a real snapshot with an absent one and call the difference untouched."
+// PRODUCTION IS A PEER ON THE APPLYING HOST, and until this type existed the parameter forced every
+// apply to name one whether the host had one or not. Both uses assume locality without saying so:
+// the isolation check compares owned paths on one filesystem, and the liveness read-back curls
+// 127.0.0.1 at production's declared port. Passing a remote instance satisfies neither — it
+// compares this machine's paths against another machine's declarations, then probes a loopback port
+// nobody here is serving.\n\nThat is exactly how srv2's first apply failed. srv1-live was passed as
+// production because the parameter demanded an instance; its repo_root happened to exist here as a
+// hand-made symlink so the git half of the probe SUCCEEDED, and the refusal surfaced only as a curl
+// connection error against port 8080 — a true message about a check that should never have run. The
+// remedy for that refusal is not to start a server; it is to stop claiming srv1 is a peer of
+// anything on srv2.\n\nNoProductionPeer is a DECLARATION, not a skipped check. A host with no
+// production dashboard has nothing to be disjoint from and nothing whose liveness could be
+// disturbed, so both obligations are discharged by the shape of the argument rather than silently
+// bypassed inside the checks — and the reading below stays type-distinct across before and after,
+// so an apply cannot pair a real snapshot with an absent one and call the difference untouched.
 
 type DashboardProductionPeer
   = ProductionPeer { instance: HostDashboardInstance }
@@ -1201,7 +1308,21 @@ fn dashboard_instance_observe(
   }
 }
 
-data preflight_provider_deadlock_note: String = "A FRESH HOST COULD NOT REACH THE STEP THAT UNBLOCKS IT. Preflight ran in full before any plan operation, and it refuses when the provider is unauthenticated — but the operation that CREATES the state root a login writes into is a plan operation. So on a genuinely new instance the sequence was: preflight refuses at provider-auth, the ensure-state-root op never runs, the operator types codex login, and the CLI exits with 'that path does not exist'. The only way out was to create the directory by hand, which is the workaround this repository treats as a line-stop (review, 2026-07-30).\\n\\nsrv2 did not hit it because the login had already happened before the ensure op existed. That is precisely the masking condition worth recording: the deadlock is invisible on every host that was provisioned by hand first, and appears only on the first host that was not.\\n\\nDashboardApplyPreflightBootstrapPending is the third outcome the two-valued result could not express. Everything a deployment can do WITHOUT a credential — directories, the state root itself, the serve binary — is genuinely ready; only the provider is not. Reporting that as a flat refusal conflates 'this cannot proceed' with 'this can proceed up to the point a human is required', and those have different next actions: one is a defect, the other is an escalation."
+// A FRESH HOST COULD NOT REACH THE STEP THAT UNBLOCKS IT. Preflight ran in full before any plan
+// operation, and it refuses when the provider is unauthenticated — but the operation that CREATES
+// the state root a login writes into is a plan operation. So on a genuinely new instance the
+// sequence was: preflight refuses at provider-auth, the ensure-state-root op never runs, the
+// operator types codex login, and the CLI exits with 'that path does not exist'. The only way out
+// was to create the directory by hand, which is the workaround this repository treats as a
+// line-stop (review, 2026-07-30).\n\nsrv2 did not hit it because the login had already happened
+// before the ensure op existed. That is precisely the masking condition worth recording: the
+// deadlock is invisible on every host that was provisioned by hand first, and appears only on the
+// first host that was not.\n\nDashboardApplyPreflightBootstrapPending is the third outcome the
+// two-valued result could not express. Everything a deployment can do WITHOUT a credential —
+// directories, the state root itself, the serve binary — is genuinely ready; only the provider is
+// not. Reporting that as a flat refusal conflates 'this cannot proceed' with 'this can proceed up
+// to the point a human is required', and those have different next actions: one is a defect, the
+// other is an escalation.
 
 type DashboardApplyPreflightResult
   = DashboardApplyPreflightReady {
@@ -1349,7 +1470,16 @@ fn dashboard_required_target_executables(
   )
 }
 
-data executable_survey_note: String = "ABSENT AND UNOBSERVED ARE DIFFERENT ANSWERS ABOUT A REQUIRED EXECUTABLE, and this survey is the fold that stopped conflating them (review 45213). The predecessor filtered the required paths on a Bool that was false for both, so a refused transport reported every required executable as missing — a list of real paths, each of which may well exist, handed to an operator as the thing to go install.\\n\\nThe survey refuses on the FIRST unobservable path rather than continuing, because the refusal is a property of the transport and not of the path: once a probe could not be delivered, the remaining probes carry no information either, and a partial missing-list assembled from the ones that happened to answer is exactly the partial observation that looks complete. Carrying the path alongside the reason keeps the refusal located — which probe stopped the line — rather than reporting only that something went wrong."
+// ABSENT AND UNOBSERVED ARE DIFFERENT ANSWERS ABOUT A REQUIRED EXECUTABLE, and this survey is the
+// fold that stopped conflating them (review 45213). The predecessor filtered the required paths on
+// a Bool that was false for both, so a refused transport reported every required executable as
+// missing — a list of real paths, each of which may well exist, handed to an operator as the thing
+// to go install.\n\nThe survey refuses on the FIRST unobservable path rather than continuing,
+// because the refusal is a property of the transport and not of the path: once a probe could not be
+// delivered, the remaining probes carry no information either, and a partial missing-list assembled
+// from the ones that happened to answer is exactly the partial observation that looks complete.
+// Carrying the path alongside the reason keeps the refusal located — which probe stopped the line —
+// rather than reporting only that something went wrong.
 
 type DashboardExecutableSurvey
   = ExecutablesSurveyed { missing: List<FilePath> }
@@ -1384,7 +1514,18 @@ fn dashboard_survey_target_executables(
   }
 }
 
-data bootstrap_unobserved_is_its_own_verdict_note: String = "THE THIRD VERDICT, because absent, unwritable and unobservable call for three different actions (review 45213). This decision took three Bools, and the writability one came from the collapsing predicate, so a refused transport arrived here as bootstrap_writable: false and the operator was told the nearest modeled bootstrap parent is not writable — a claim about permissions on a directory nobody managed to stat.\\n\\nBoth pre-existing arms are ACTIONABLE and that is what made the collapse harmful rather than merely imprecise: absent says create it, not-writable says fix its mode, and each sends someone to do something specific on evidence that was never gathered. The new arm deliberately carries no instruction at all, only the path whose observation failed and the reason it failed, because nothing about the bootstrap parent is known when the probe did not run.\\n\\nIt is a separate variant rather than a reason string on the existing refusal so that consumers must decide what to do with it — a match that forgot the case does not compile, which is the wall the Bool never was."
+// THE THIRD VERDICT, because absent, unwritable and unobservable call for three different actions
+// (review 45213). This decision took three Bools, and the writability one came from the collapsing
+// predicate, so a refused transport arrived here as bootstrap_writable: false and the operator was
+// told the nearest modeled bootstrap parent is not writable — a claim about permissions on a
+// directory nobody managed to stat.\n\nBoth pre-existing arms are ACTIONABLE and that is what made
+// the collapse harmful rather than merely imprecise: absent says create it, not-writable says fix
+// its mode, and each sends someone to do something specific on evidence that was never gathered.
+// The new arm deliberately carries no instruction at all, only the path whose observation failed
+// and the reason it failed, because nothing about the bootstrap parent is known when the probe did
+// not run.\n\nIt is a separate variant rather than a reason string on the existing refusal so that
+// consumers must decide what to do with it — a match that forgot the case does not compile, which
+// is the wall the Bool never was.
 
 type DashboardBootstrapPreflight
   = DashboardBootstrapReady { bootstrap_root: FilePath }
@@ -1910,7 +2051,19 @@ fn dashboard_instance_apply_after_preflight(
   }
 }
 
-data bootstrap_then_escalate_note: String = "THE ARM THAT BREAKS THE DEADLOCK: run everything a credential is not required for, then stop and say what a human must do. The credential-free prefix is exactly the operations whose absence blocked the login — the instance root, the attempts and attempt-state directories, the provider state root, and the serve binary — none of which reads or writes a secret.\\n\\nIt is an ESCALATION, not a success and not a defect. dashboard_apply_refused is reused as the carrier because the deployment did not converge and must not report that it did, but the step name and the remediation say plainly that the remaining work is a human's device-code login rather than a broken deployment. Returning Converged here would be the fabricated verdict; returning a bare refusal is what created the deadlock, because it left the directory uncreated.\\n\\nThe receipts from the bootstrap operations are carried through, so a reader can see WHICH prerequisites were satisfied before the stop. That distinguishes 'stopped at the credential with everything else in place' from 'stopped early for an unrelated reason', which a refusal with an empty receipt list cannot."
+// THE ARM THAT BREAKS THE DEADLOCK: run everything a credential is not required for, then stop and
+// say what a human must do. The credential-free prefix is exactly the operations whose absence
+// blocked the login — the instance root, the attempts and attempt-state directories, the provider
+// state root, and the serve binary — none of which reads or writes a secret.\n\nIt is an
+// ESCALATION, not a success and not a defect. dashboard_apply_refused is reused as the carrier
+// because the deployment did not converge and must not report that it did, but the step name and
+// the remediation say plainly that the remaining work is a human's device-code login rather than a
+// broken deployment. Returning Converged here would be the fabricated verdict; returning a bare
+// refusal is what created the deadlock, because it left the directory uncreated.\n\nThe receipts
+// from the bootstrap operations are carried through, so a reader can see WHICH prerequisites were
+// satisfied before the stop. That distinguishes 'stopped at the credential with everything else in
+// place' from 'stopped early for an unrelated reason', which a refusal with an empty receipt list
+// cannot.
 
 // dashboard_apply_plan takes the two controller-side temp paths because its bundle operations need them; the bootstrap subset contains no bundle operation, so neither value is ever read. Passing a named marker rather than a plausible-looking /tmp path is deliberate — a realistic path would read as though a temp directory had been created and was being used, and the next reader would look for the mktemp that never ran. If a bundle op ever reaches this fold, the marker appears in the emitted argv and fails loudly instead of silently writing somewhere real.
 data dashboard_bootstrap_unused_temp_path: FilePath = "/nonexistent/gunbc-bootstrap-has-no-temp-dir" as FilePath
@@ -2045,7 +2198,23 @@ func srv1_lab_dashboard_apply_wet() -> ProcessExit {
   }
 }
 
-data srv2_lab_apply_entry_note: String = "BEFORE THIS BLOCK THIS MODULE CONTAINED THE STRING srv2 ZERO TIMES. Roughly sixteen hundred lines of observe/preflight/apply/converge with typed refusals throughout, and every wet entry bound srv1's lab — so srv2's declared instance had no provisioner anywhere in the tree. Its directories could not be created by anything, which is why every git and tmux observation on that page refused against paths naming a source root, an attempts root and a tmux socket that no code was able to bring into existence.\\n\\nThat is the coverage-by-illusion shape one level up from a witness: the mechanism was real, general, and complete, and it was simply never bound to the second instance. An instance row declared without an actuation entry reads exactly like one that has been provisioned and is refusing for a good reason, and the page cannot tell the operator which it is looking at.\\n\\nsrv1's lab passes srv1_live as its peer; srv2's lab passes NoProductionPeer, and the difference is not a convenience. An earlier draft of this very row asserted the opposite — that srv1_live was the right peer for both labs because /opt/gunbc exists on this machine too — and that reasoning was wrong in the way dashboard_production_peer_note now records: the paths here are hand-made symlinks, not a production dashboard, so the isolation check compared srv2's paths against srv1's declarations and the liveness probe curled a loopback port nobody serves. Being disjoint from something that is not there is not a property worth checking; declaring that it is not there is."
+// BEFORE THIS BLOCK THIS MODULE CONTAINED THE STRING srv2 ZERO TIMES. Roughly sixteen hundred lines
+// of observe/preflight/apply/converge with typed refusals throughout, and every wet entry bound
+// srv1's lab — so srv2's declared instance had no provisioner anywhere in the tree. Its directories
+// could not be created by anything, which is why every git and tmux observation on that page
+// refused against paths naming a source root, an attempts root and a tmux socket that no code was
+// able to bring into existence.\n\nThat is the coverage-by-illusion shape one level up from a
+// witness: the mechanism was real, general, and complete, and it was simply never bound to the
+// second instance. An instance row declared without an actuation entry reads exactly like one that
+// has been provisioned and is refusing for a good reason, and the page cannot tell the operator
+// which it is looking at.\n\nsrv1's lab passes srv1_live as its peer; srv2's lab passes
+// NoProductionPeer, and the difference is not a convenience. An earlier draft of this very row
+// asserted the opposite — that srv1_live was the right peer for both labs because /opt/gunbc exists
+// on this machine too — and that reasoning was wrong in the way dashboard_production_peer_note now
+// records: the paths here are hand-made symlinks, not a production dashboard, so the isolation
+// check compared srv2's paths against srv1's declarations and the liveness probe curled a loopback
+// port nobody serves. Being disjoint from something that is not there is not a property worth
+// checking; declaring that it is not there is.
 
 fn srv2_lab_dashboard_apply() -> DashboardInstanceApplyResult {
   dashboard_instance_apply(
@@ -2103,9 +2272,40 @@ func srv2_lab_dashboard_apply_wet() -> ProcessExit {
   }
 }
 
-data provider_readiness_readback_note: String = "THE PAGE SHOWED WHAT WAS DESIRED AND NEVER WHAT WAS TRUE. /instance.json renders desired_provision_plan, which INCLUDES the verify-provider-auth row — so a reader saw that authentication is required and nothing about whether it holds. The first anyone learned of a missing login was a shell error in an operator's terminal, which is the observation gap DESIGN 5 calls specification-without-execution: the check existed, was correct, and was bound to no surface (operator, 2026-07-30: 'the roadmap website can just send me the status/details to log in').\\n\\nTHE THREE STATES ARE SEPARATE BECAUSE THEIR REMEDIES ARE. An absent state root is fixed by creating a directory; an unavailable runtime is a packaging or PATH problem; an unauthenticated runtime needs an interactive OAuth flow only a human can complete. Collapsing them into one ready: Bool would report 'not ready' for all three and leave the reader to guess which — the state-space conflation this repository names, and the reason the apply already keeps runtime and auth as independent probes so a broken npm launcher cannot masquerade as an auth refusal.\\n\\nTHE REMEDIATION COMMAND IS DERIVED FROM THE SAME SHAPE THE PROBE RUNS, never spelled a second time. A hand-written instruction string is a parallel representation of the invocation: it drifts the moment the env var, the program path, or the state root changes, and it drifts silently because nothing executes prose. Building it from shape_codex_login_status_env_args_for_program's own inputs means the line the page prints and the line the model checks cannot disagree about where the credentials live."
+// THE PAGE SHOWED WHAT WAS DESIRED AND NEVER WHAT WAS TRUE. /instance.json renders
+// desired_provision_plan, which INCLUDES the verify-provider-auth row — so a reader saw that
+// authentication is required and nothing about whether it holds. The first anyone learned of a
+// missing login was a shell error in an operator's terminal, which is the observation gap DESIGN 5
+// calls specification-without-execution: the check existed, was correct, and was bound to no
+// surface (operator, 2026-07-30: 'the roadmap website can just send me the status/details to log
+// in').\n\nTHE THREE STATES ARE SEPARATE BECAUSE THEIR REMEDIES ARE. An absent state root is fixed
+// by creating a directory; an unavailable runtime is a packaging or PATH problem; an
+// unauthenticated runtime needs an interactive OAuth flow only a human can complete. Collapsing
+// them into one ready: Bool would report 'not ready' for all three and leave the reader to guess
+// which — the state-space conflation this repository names, and the reason the apply already keeps
+// runtime and auth as independent probes so a broken npm launcher cannot masquerade as an auth
+// refusal.\n\nTHE REMEDIATION COMMAND IS DERIVED FROM THE SAME SHAPE THE PROBE RUNS, never spelled
+// a second time. A hand-written instruction string is a parallel representation of the invocation:
+// it drifts the moment the env var, the program path, or the state root changes, and it drifts
+// silently because nothing executes prose. Building it from
+// shape_codex_login_status_env_args_for_program's own inputs means the line the page prints and the
+// line the model checks cannot disagree about where the credentials live.
 
-data codex_probe_stream_note: String = "codex SPLITS ITS VERDICTS ACROSS STREAMS, and reading one of them reported a ready provider with no evidence attached. `codex --version` writes codex-cli 0.145.0 to stdout; `codex login status` writes 'Logged in using ChatGPT' to STDERR. Verified per-stream on srv2 by redirecting each independently: stdout alone is empty for login status, stderr alone carries the line.\\n\\nThe way this hid is worth recording, because it is the same error twice in one session. The first check of the login ran `login status 2>&1 | tail -3`, which MERGES the streams — so the verdict appeared, the probe looked correct, and which stream it came from was exactly the fact the merge destroyed. A verification that erases the distinction the code depends on cannot detect the code getting it wrong; the same shape as confirming an HTTP fix with a client that never exercises the failing path.\\n\\nSo the detail is read from whichever stream carried it, and an empty result stays visibly empty rather than being reported as a successful probe with nothing to show. This is not leniency about failure — success is still decided by the exit status alone, exactly as before; only the human-readable evidence is gathered from both places, which is what dashboard_instance_apply_note already requires when it says successful stderr is retained rather than dropped."
+// codex SPLITS ITS VERDICTS ACROSS STREAMS, and reading one of them reported a ready provider with
+// no evidence attached. `codex --version` writes codex-cli 0.145.0 to stdout; `codex login status`
+// writes 'Logged in using ChatGPT' to STDERR. Verified per-stream on srv2 by redirecting each
+// independently: stdout alone is empty for login status, stderr alone carries the line.\n\nThe way
+// this hid is worth recording, because it is the same error twice in one session. The first check
+// of the login ran `login status 2>&1 | tail -3`, which MERGES the streams — so the verdict
+// appeared, the probe looked correct, and which stream it came from was exactly the fact the merge
+// destroyed. A verification that erases the distinction the code depends on cannot detect the code
+// getting it wrong; the same shape as confirming an HTTP fix with a client that never exercises the
+// failing path.\n\nSo the detail is read from whichever stream carried it, and an empty result
+// stays visibly empty rather than being reported as a successful probe with nothing to show. This
+// is not leniency about failure — success is still decided by the exit status alone, exactly as
+// before; only the human-readable evidence is gathered from both places, which is what
+// dashboard_instance_apply_note already requires when it says successful stderr is retained rather
+// than dropped.
 
 fn codex_probe_detail(out: String, err: String) -> String {
   let o = trim(out)
@@ -2113,7 +2313,28 @@ fn codex_probe_detail(out: String, err: String) -> String {
   if o == "" { e } else if e == "" { o } else { join([o, e], " | ") }
 }
 
-data readiness_refusal_is_not_a_negative_note: String = "AN UNREACHABLE HOST WAS PRODUCING REMEDIATION ADVICE (review 45153). Every branch of this readiness fold asked a two-valued question of a three-valued observation. dashboard_target_directory_present answers false for an absent path AND for a probe that could not run — this module's own path_observation_preserves_refusal_note says so in as many words — so an SSH transport refusal became ProviderStateRootAbsent, complete with a device-login command for the operator to type. The two probe branches did the same through the success Bool: a refused runtime probe became ProviderRuntimeUnavailable naming an executable nobody managed to ask about, and a refused auth probe became ProviderUnauthenticated telling someone to log in on a machine they cannot reach.\n\nThat is the fabricated-verdict shape rather than a missing feature, and it is worse than a wrong status because it is ACTIONABLE: the reader is handed a specific command that addresses a condition never observed. exec_refusal_reason_note in this same module already states the rule for the probe case — an unreachable host and an unauthenticated provider are the same value without the split — and the readiness fold was the caller that ignored it.\n\nThe fix is the fourth arm, and it deliberately carries NO remediation. Nothing is known about the provider when the transport did not deliver the question, so there is no correct instruction to give; what the operator needs is the reason the observation failed, which is what the arm carries. The vocabulary was already here — DashboardPathObservation's refused variant and dashboard_exec_refusal_reason — so this is the fold consuming the discrimination the module already made rather than new machinery."
+// AN UNREACHABLE HOST WAS PRODUCING REMEDIATION ADVICE (review 45153). Every branch of this
+// readiness fold asked a two-valued question of a three-valued observation.
+// dashboard_target_directory_present answers false for an absent path AND for a probe that could
+// not run — this module's own path_observation_preserves_refusal_note says so in as many words — so
+// an SSH transport refusal became ProviderStateRootAbsent, complete with a device-login command for
+// the operator to type. The two probe branches did the same through the success Bool: a refused
+// runtime probe became ProviderRuntimeUnavailable naming an executable nobody managed to ask about,
+// and a refused auth probe became ProviderUnauthenticated telling someone to log in on a machine
+// they cannot reach.
+//
+// That is the fabricated-verdict shape rather than a missing feature, and it is worse than a wrong
+// status because it is ACTIONABLE: the reader is handed a specific command that addresses a
+// condition never observed. exec_refusal_reason_note in this same module already states the rule
+// for the probe case — an unreachable host and an unauthenticated provider are the same value
+// without the split — and the readiness fold was the caller that ignored it.
+//
+// The fix is the fourth arm, and it deliberately carries NO remediation. Nothing is known about the
+// provider when the transport did not deliver the question, so there is no correct instruction to
+// give; what the operator needs is the reason the observation failed, which is what the arm
+// carries. The vocabulary was already here — DashboardPathObservation's refused variant and
+// dashboard_exec_refusal_reason — so this is the fold consuming the discrimination the module
+// already made rather than new machinery.
 
 type DashboardProviderReadiness
   = ProviderReady {
@@ -2138,7 +2359,16 @@ type DashboardProviderReadiness
       reason: String,
     }
 
-data provider_login_command_projects_the_shaper_note: String = "THIS PROJECTS extdeps.llm.cli's DEVICE-AUTH SHAPER AND USED TO CONTRADICT IT. The readiness surface hand-concatenated `CODEX_HOME=… codex login` — the plain browser flow — in the same change that modeled shape_codex_device_login_env_args_for_program and recorded that a headless host MUST use --device-auth because the plain flow's callback resolves to localhost on the server rather than the operator's machine (review, 2026-07-30).\\n\\nSo the emitted instruction was the one proven not to work, spelled a second time beside the shaper built to prevent exactly that. Two representations of one invocation, and the prose one drifts silently because nothing executes it.\\n\\nJoining the shaper's own argv keeps the printed line and the modeled invocation the same object. If the env var, the program path or the flag changes, both move together — and the operator is never handed a command this repository has already established cannot complete."
+// THIS PROJECTS extdeps.llm.cli's DEVICE-AUTH SHAPER AND USED TO CONTRADICT IT. The readiness
+// surface hand-concatenated `CODEX_HOME=… codex login` — the plain browser flow — in the same
+// change that modeled shape_codex_device_login_env_args_for_program and recorded that a headless
+// host MUST use --device-auth because the plain flow's callback resolves to localhost on the server
+// rather than the operator's machine (review, 2026-07-30).\n\nSo the emitted instruction was the
+// one proven not to work, spelled a second time beside the shaper built to prevent exactly that.
+// Two representations of one invocation, and the prose one drifts silently because nothing executes
+// it.\n\nJoining the shaper's own argv keeps the printed line and the modeled invocation the same
+// object. If the env var, the program path or the flag changes, both move together — and the
+// operator is never handed a command this repository has already established cannot complete.
 
 fn dashboard_provider_device_login_command(
   instance: HostDashboardInstance,
@@ -2153,7 +2383,13 @@ fn dashboard_provider_device_login_command(
   )
 }
 
-data state_root_remediation_is_now_the_apply_note: String = "The remediation no longer tells the operator to mkdir. Creating the state root is DashboardEnsureProviderStateRoot's job and the apply reaches it now that provider absence yields BootstrapPending instead of a refusal — so instructing a human to run mkdir would be asking them to perform a step the deployment already owns, and the hand-run directory would then differ in ownership from the one the plan creates.\\n\\nWhat remains is the part only a human can do: the device-code login. Both arms therefore project the same shaper, and the difference between them is which state the reader is in rather than which command they should type."
+// The remediation no longer tells the operator to mkdir. Creating the state root is
+// DashboardEnsureProviderStateRoot's job and the apply reaches it now that provider absence yields
+// BootstrapPending instead of a refusal — so instructing a human to run mkdir would be asking them
+// to perform a step the deployment already owns, and the hand-run directory would then differ in
+// ownership from the one the plan creates.\n\nWhat remains is the part only a human can do: the
+// device-code login. Both arms therefore project the same shaper, and the difference between them
+// is which state the reader is in rather than which command they should type.
 
 fn dashboard_probe_refused(r: DashboardExecResult) -> Bool {
   !r.success && trim(r.stdout) == "" && !(trim(r.stderr) == "")

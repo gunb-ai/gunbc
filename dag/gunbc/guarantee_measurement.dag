@@ -4,9 +4,43 @@ import std.types { String, NonEmptyStr, Bool, Int, List, CommitSha }
 import std.nat { Nat }
 import std.content_hash { Fnv1a64Structural, content_hash_atom, content_hash_tagged_structural, content_hash_combine_structural }
 
-data guarantee_measurement_charter_note: String = "STAGE 0 OF THE GUARANTEE SPINE: the vocabulary probes and claims meet through, and nothing else (operator spine verdict 2026-08-01; roadmap node ladder-measurement-schema; gap analysis sec 12 Stage 0). Without this stage the probe corpus and the claims carrier each invent the receipt shape and meet in a protocol cycle - probes cannot emit rows the carrier has not defined, the carrier cannot derive dispositions from receipts that do not exist. So this module carries identity brands, the path row, the receipt row, and the joins that make a receipt REFUSE when it names an unknown subject - and deliberately nothing that claims anything about the compiler: no class population, no probe executes here, no disposition, no rung. Those arrive with ladder-probe-corpus and ladder-claims-carrier, which consume this vocabulary instead of minting temporary string keys."
+// STAGE 0 OF THE GUARANTEE SPINE: the vocabulary probes and claims meet through, and nothing else
+// (operator spine verdict 2026-08-01; roadmap node ladder-measurement-schema; gap analysis sec 12
+// Stage 0). Without this stage the probe corpus and the claims carrier each invent the receipt
+// shape and meet in a protocol cycle - probes cannot emit rows the carrier has not defined, the
+// carrier cannot derive dispositions from receipts that do not exist. So this module carries
+// identity brands, the path row, the receipt row, and the joins that make a receipt REFUSE when it
+// names an unknown subject - and deliberately nothing that claims anything about the compiler: no
+// class population, no probe executes here, no disposition, no rung. Those arrive with
+// ladder-probe-corpus and ladder-claims-carrier, which consume this vocabulary instead of minting
+// temporary string keys.
 
-data guarantee_measurement_axis_discipline_note: String = "The axis enums are CLOSED AND MINIMAL, grounded on the paths real measurements exercise (DESIGN 4b names source-to-interpretation, source-to-each-emission-target, and phase-carrier-to-phase-carrier as independently measured paths): CompileAccept and RuntimeRun are the merged v1 walls' seams - RuntimeRun is deliberately realization-agnostic: the run happens IN the path's realization, so WHICH runtime (the interpreter arm or an emitted binary) is the realization axis's fact, never the boundary's, and an emitted-run path (the divergence probes' subject) is expressible rather than contradictory; InferToEval is the phase boundary gunbc#7485 landed (Eval refuses underived facts) and InferToTranslate is the boundary the containment workstream closes (operator verdict 2026-08-01: the fact stays grounding-was-not-derived, and the phase that consumes it is named by the PATH, never by a second diagnostic). A new variant lands WITH the first real path row that needs it, never speculatively - an earlier draft carried a generic PhaseCarrierAcceptance arm, deleted for exactly that reason: an unused axis variant is vocabulary claiming coverage nothing measures. The same rule deleted the compile_mode axis (review 46308): every landed control determines its pipeline from its boundary (the v1 walls' seams are v1, the phase boundaries are v2), so a stored mode was a second representation of a derivable fact (DESIGN 2) whose only writable novelty was the contradiction, and the axes that remain are fully orthogonal - the two constructible contradictions the review named are now unwritable, one dissolved by the RuntimeRun reading, one by this deletion. The axis returns as a stored fact WITH the first path row measured under two pipelines at one boundary, and enumerating valid families as a coproduct was rejected for that future: family rows restate the orthogonal axes per combination (the N-by-M shape DESIGN 2 folds into axes). GuaranteeTargetName is a receipt-vocabulary brand, not a language authority: it keeps a target name from being passed where a probe id belongs, and its grounding to the real per-language authority is deliberately deferred - dissolve-on the primitive-identity join reaching target-realization rows (v2-target-realization-gate lane), at which point this brand re-grounds on that authority and this sentence deletes."
+// The axis enums are CLOSED AND MINIMAL, grounded on the paths real measurements exercise (DESIGN
+// 4b names source-to-interpretation, source-to-each-emission-target, and
+// phase-carrier-to-phase-carrier as independently measured paths): CompileAccept and RuntimeRun are
+// the merged v1 walls' seams - RuntimeRun is deliberately realization-agnostic: the run happens IN
+// the path's realization, so WHICH runtime (the interpreter arm or an emitted binary) is the
+// realization axis's fact, never the boundary's, and an emitted-run path (the divergence probes'
+// subject) is expressible rather than contradictory; InferToEval is the phase boundary gunbc#7485
+// landed (Eval refuses underived facts) and InferToTranslate is the boundary the containment
+// workstream closes (operator verdict 2026-08-01: the fact stays grounding-was-not-derived, and the
+// phase that consumes it is named by the PATH, never by a second diagnostic). A new variant lands
+// WITH the first real path row that needs it, never speculatively - an earlier draft carried a
+// generic PhaseCarrierAcceptance arm, deleted for exactly that reason: an unused axis variant is
+// vocabulary claiming coverage nothing measures. The same rule deleted the compile_mode axis
+// (review 46308): every landed control determines its pipeline from its boundary (the v1 walls'
+// seams are v1, the phase boundaries are v2), so a stored mode was a second representation of a
+// derivable fact (DESIGN 2) whose only writable novelty was the contradiction, and the axes that
+// remain are fully orthogonal - the two constructible contradictions the review named are now
+// unwritable, one dissolved by the RuntimeRun reading, one by this deletion. The axis returns as a
+// stored fact WITH the first path row measured under two pipelines at one boundary, and enumerating
+// valid families as a coproduct was rejected for that future: family rows restate the orthogonal
+// axes per combination (the N-by-M shape DESIGN 2 folds into axes). GuaranteeTargetName is a
+// receipt-vocabulary brand, not a language authority: it keeps a target name from being passed
+// where a probe id belongs, and its grounding to the real per-language authority is deliberately
+// deferred - dissolve-on the primitive-identity join reaching target-realization rows
+// (v2-target-realization-gate lane), at which point this brand re-grounds on that authority and
+// this sentence deletes.
 
 type GuaranteeClassId = NonEmptyStr where brand("GuaranteeClassId")
 type GuaranteePathId = NonEmptyStr where brand("GuaranteePathId")
@@ -35,7 +69,25 @@ type GuaranteePath {
   realization_target: PathRealization
 }
 
-data probe_observation_note: String = "The RAW executed observation, never the judgment: dispositions (Unmeasured, BelowFloor, FrontierAccepted, OnLadder, OutsideModeledGuarantee) are DERIVED by the claims carrier from receipts, so storing one here would be the transcribed-rung defect the carrier stage exists to make unrepresentable. ProbeNotRunnable is a separate arm because could-not-measure is not a verdict about the subject (DESIGN 5: top-as-answer conflated with top-as-ignorance is the absorbing fallback) - a probe that failed to execute must never be readable as the subject passing or failing. diagnostic_class names a compiler diagnostic variant as prose at this stage; the diagnostic-taxonomy join is carrier-stage grounding, and a brand here would claim a join this stage does not own. On query shape (review 46075, review 46159): probe_observation_fold is the sum's canonical elimination (the std.change KeyedLeafVerdictFold idiom) and owns the ONLY match over ProbeObservation; observed_is_verdict derives through it, so a per-query hand-match has no form to accumulate - a new query is a ProbeObservationFold row. Review 46075's interim carry had named exactly this fold as its dissolution trigger with the claims carrier as second consumer; a catamorphism's shape is sum-determined, so the trigger executed with review 46159 rather than waiting, and the carrier's disposition derivation consumes the same fold when it lands. Counts are Nat because a diagnostic count is a cardinal fact (review 46287), measured with the same honesty as the brand seam: an executed control shows today's checker still ACCEPTING a negative at the Nat field, so the carrier states the cardinal and the refusal belongs to the numeric-refinement acceptance class the probe corpus carries - not yet a wall here."
+// The RAW executed observation, never the judgment: dispositions (Unmeasured, BelowFloor,
+// FrontierAccepted, OnLadder, OutsideModeledGuarantee) are DERIVED by the claims carrier from
+// receipts, so storing one here would be the transcribed-rung defect the carrier stage exists to
+// make unrepresentable. ProbeNotRunnable is a separate arm because could-not-measure is not a
+// verdict about the subject (DESIGN 5: top-as-answer conflated with top-as-ignorance is the
+// absorbing fallback) - a probe that failed to execute must never be readable as the subject
+// passing or failing. diagnostic_class names a compiler diagnostic variant as prose at this stage;
+// the diagnostic-taxonomy join is carrier-stage grounding, and a brand here would claim a join this
+// stage does not own. On query shape (review 46075, review 46159): probe_observation_fold is the
+// sum's canonical elimination (the std.change KeyedLeafVerdictFold idiom) and owns the ONLY match
+// over ProbeObservation; observed_is_verdict derives through it, so a per-query hand-match has no
+// form to accumulate - a new query is a ProbeObservationFold row. Review 46075's interim carry had
+// named exactly this fold as its dissolution trigger with the claims carrier as second consumer; a
+// catamorphism's shape is sum-determined, so the trigger executed with review 46159 rather than
+// waiting, and the carrier's disposition derivation consumes the same fold when it lands. Counts
+// are Nat because a diagnostic count is a cardinal fact (review 46287), measured with the same
+// honesty as the brand seam: an executed control shows today's checker still ACCEPTING a negative
+// at the Nat field, so the carrier states the cardinal and the refusal belongs to the
+// numeric-refinement acceptance class the probe corpus carries - not yet a wall here.
 
 type ProbeObservation
   = RefusedTyped { diagnostic_class: NonEmptyStr, count: Nat }
@@ -79,7 +131,11 @@ type MeasurementRevision
   = GitRevision { commit: CommitSha }
   | ContentFingerprint { digest: Fnv1a64Structural }
 
-data measurement_revision_note: String = "subject_revision and harness_revision name what was measured, not interchangeable commit-shaped strings. GitRevision carries a cited git commit (the baseline stage's anchor). ContentFingerprint carries an fnv1a64 structural digest of measured subject or harness material — honest for SyntheticProgram witnesses until real revision anchors land; it must never be cast to CommitSha. Downstream consumers discriminate by variant rather than inferring family from hex width."
+// subject_revision and harness_revision name what was measured, not interchangeable commit-shaped
+// strings. GitRevision carries a cited git commit (the baseline stage's anchor). ContentFingerprint
+// carries an fnv1a64 structural digest of measured subject or harness material — honest for
+// SyntheticProgram witnesses until real revision anchors land; it must never be cast to CommitSha.
+// Downstream consumers discriminate by variant rather than inferring family from hex width.
 
 type GuaranteeMeasurementReceipt {
   class: GuaranteeClassId
@@ -93,7 +149,20 @@ type GuaranteeMeasurementReceipt {
 
 data receipt_identity_note: String = "Every field is REQUIRED - no Optional arms - so a receipt missing an identity component or a revision is unwritable at construction rather than caught by a check (DESIGN 5 construction over validation; the roadmap node red_control names this). The three revisions answer the three-way ambiguity the baseline stage names: subject_revision names what compiler artifacts were measured, harness_revision names what probe harness ran, probe_set_digest is the content address of the exact probe set - a baseline is the anchor's subject under today's harness and probe set, and without all three 'the baseline at commit X' names three different measurements. Each revision is a MeasurementRevision coproduct (GitRevision | ContentFingerprint) so git commits and content fingerprints are not conflated at the type. Enforcement of required-field construction is itself an open census class (floor-record-construction-wall); this module states the intent by shape and the wall, when it lands, is what makes the shape load-bearing corpus-wide."
 
-data guarantee_registry_mechanism_note: String = "The registry MECHANISM without a registry POPULATION: uniqueness and exactly-one resolution are folds over caller-supplied rows, witnessed here against synthetic rows only. The real class and path populations arrive with the carrier and probe stages; this module supplying them would be Stage 0 claiming compiler coverage it does not have. Resolution mirrors gunbc.roadmap_identity: exactly-one, never first-pick - a duplicate registry answered with a plausible first row is the fabricated-output arm, and it fails at exactly the moment the registry is corrupt. The lookup key is the branded GuaranteePathId end-to-end, through the refusal variants, and join_receipt_to_path passes receipt.path without erasing it to String (review 46179). Measured honestly rather than assumed (DESIGN 4b: a brand is cosmetic until construction and acceptance enforce the distinction): today's checker ACCEPTS a bare String at both a branded parameter and a branded record field - two executed controls, both accepted - so this threading is model-correctness and erasure-removal, not yet a wall. Brand acceptance-enforcement is its own guarantee class for the probe corpus to carry (below floor, with those controls as its discriminating probes), and this seam hardens for free when that class climbs."
+// The registry MECHANISM without a registry POPULATION: uniqueness and exactly-one resolution are
+// folds over caller-supplied rows, witnessed here against synthetic rows only. The real class and
+// path populations arrive with the carrier and probe stages; this module supplying them would be
+// Stage 0 claiming compiler coverage it does not have. Resolution mirrors gunbc.roadmap_identity:
+// exactly-one, never first-pick - a duplicate registry answered with a plausible first row is the
+// fabricated-output arm, and it fails at exactly the moment the registry is corrupt. The lookup key
+// is the branded GuaranteePathId end-to-end, through the refusal variants, and join_receipt_to_path
+// passes receipt.path without erasing it to String (review 46179). Measured honestly rather than
+// assumed (DESIGN 4b: a brand is cosmetic until construction and acceptance enforce the
+// distinction): today's checker ACCEPTS a bare String at both a branded parameter and a branded
+// record field - two executed controls, both accepted - so this threading is model-correctness and
+// erasure-removal, not yet a wall. Brand acceptance-enforcement is its own guarantee class for the
+// probe corpus to carry (below floor, with those controls as its discriminating probes), and this
+// seam hardens for free when that class climbs.
 
 type GuaranteePathResolution
   = PathResolved { path: GuaranteePath }
@@ -145,7 +214,11 @@ fn guarantee_probe_ids_unique(ids: List<GuaranteeProbeId>) -> Bool {
   distinct_string_count(values: ids |> map(i => i as String)) == count(ids)
 }
 
-data probe_set_digest_note: String = "Content address of the exact probe set a receipt ran under, folded in the caller's list order: canonical ordering is the PROBE stage's obligation (it owns the probe roster and its canonical enumeration), so this fn is deterministic exactly when the caller's order is - stated rather than silently sorted here, because a sort would need an order authority this stage does not own and a host-order sort would be the determinism leak std.determinism refuses."
+// Content address of the exact probe set a receipt ran under, folded in the caller's list order:
+// canonical ordering is the PROBE stage's obligation (it owns the probe roster and its canonical
+// enumeration), so this fn is deterministic exactly when the caller's order is - stated rather than
+// silently sorted here, because a sort would need an order authority this stage does not own and a
+// host-order sort would be the determinism leak std.determinism refuses.
 
 fn probe_set_digest(probe_ids: List<GuaranteeProbeId>) -> Fnv1a64Structural {
   fold(probe_ids, init: content_hash_atom(value: "guarantee-probe-set" as NonEmptyStr), f: fn(acc, id) {

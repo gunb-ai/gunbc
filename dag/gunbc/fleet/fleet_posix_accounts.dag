@@ -36,7 +36,13 @@ type PosixSudoGrant {
   probe: SudoNopasswdProbeKind
 }
 
-data posix_sudo_grant_materialization_note: String = "PosixSudoGrant is the fleet-domain MATERIALIZATION carrier for std.effect_grant.Grant over ExecuteEffect: posix_sudo_grant_to_effect_grant projects command_path to filesystem_position and carries verb via verb_of_effect_shape(ExecuteEffect) -- never a parallel grant vocabulary (DESIGN 3). probe chooses the typed verification operation (execute-check, or grant-list when the binary may be absent); it is observation policy, not grant reach. WHO may sudo remains GroundedPosixPrincipal / std.access. dissolve-on = deploy-preflight envelope admits via admit_effect over projected grants."
+// PosixSudoGrant is the fleet-domain MATERIALIZATION carrier for std.effect_grant.Grant over
+// ExecuteEffect: posix_sudo_grant_to_effect_grant projects command_path to filesystem_position and
+// carries verb via verb_of_effect_shape(ExecuteEffect) -- never a parallel grant vocabulary (DESIGN
+// 3). probe chooses the typed verification operation (execute-check, or grant-list when the binary
+// may be absent); it is observation policy, not grant reach. WHO may sudo remains
+// GroundedPosixPrincipal / std.access. dissolve-on = deploy-preflight envelope admits via
+// admit_effect over projected grants.
 
 fn absolute_command_path_segments(path: NonEmptyStr) -> List<String> {
   filter(xs: split(s: path as String, delimiter: "/"), f: s => s != "")
@@ -62,7 +68,10 @@ type DeployRunnerPrincipal {
   job_user: NonEmptyStr
 }
 
-data deploy_runner_principal_note: String = "Two-phase runner principal (#6096 declared-vs-effective): unit_user is the systemd User= on the actions-runner unit (root on srv1); job_user is the deprivileged effective principal for workflow steps (ghrunner on srv1). Deploy authorization and sudoers roster ground on job_user only — never unit_user."
+// Two-phase runner principal (#6096 declared-vs-effective): unit_user is the systemd User= on the
+// actions-runner unit (root on srv1); job_user is the deprivileged effective principal for workflow
+// steps (ghrunner on srv1). Deploy authorization and sudoers roster ground on job_user only — never
+// unit_user.
 
 data srv1_ci_deploy_runner_principal: DeployRunnerPrincipal = DeployRunnerPrincipal {
   unit_user: "root",
@@ -172,7 +181,9 @@ fn fleet_posix_operator_sudo_grant_is_hostnamectl_only() -> Bool {
 // Precedent: fleet_posix_ci_runner_sudo_grants already carries both binaries for ghrunner —
 // that is a finding, not automatic justification for the operator account.
 // Receipt publication: gunbc.host_layout fleet_converge_receipt_atomic_publish_note.
-data fleet_converge_operator_privilege_hold_note: String = "b1 moved gunbc-roadmap-fleet-converge.service to User=briansrls. Whole-binary NOPASSWD install/systemctl on the operator roster is held — root-equivalent. MemoryMax is deploy-time only (gunbc.host_axis_caps); converge does not assert MemoryMax via set-property."
+// b1 moved gunbc-roadmap-fleet-converge.service to User=briansrls. Whole-binary NOPASSWD
+// install/systemctl on the operator roster is held — root-equivalent. MemoryMax is deploy-time only
+// (gunbc.host_axis_caps); converge does not assert MemoryMax via set-property.
 
 data fleet_apt_get_binary_path: NonEmptyStr = "/usr/bin/apt-get"
 
@@ -260,7 +271,6 @@ fn fleet_posix_ci_runner_sudo_grants() -> List<PosixSudoGrant> {
 fn fleet_posix_srv3_host_sudo_grants() -> List<PosixSudoGrant> {
   []
 }
-
 
 // ---------------------------------------------------------------------------------------------
 // NAME REQUIREMENTS -- what a name must BE, kept separate from what it must SPELL.
@@ -519,7 +529,6 @@ fn fleet_posix_publication_helper_sudo_grants() -> List<PosixSudoGrant> {
   []
 }
 
-
 // ---------------------------------------------------------------------------------------------
 // ALLOCATION -- the host-local handle, and the numeric identity, kept apart from both.
 // ---------------------------------------------------------------------------------------------
@@ -573,7 +582,11 @@ type PosixAccountAllocationStanding
 // GROUNDING -- six states, because Optional collapses six remedies into one absence.
 // ---------------------------------------------------------------------------------------------
 
-data grounding_outcome_note: String = "Absent cannot carry a remedy. Intent-absent, allocated-but-unapplied, applied-but-unobserved, observation-contradicts-allocation, drifted and grounded are six different situations with six different next actions, and an Optional answer makes them one. Only PrincipalGrounded may enter live SSH or deployment access -- that is the construction wall replacing the reverted commit's attempt to present a desired account as a grounded one."
+// Absent cannot carry a remedy. Intent-absent, allocated-but-unapplied, applied-but-unobserved,
+// observation-contradicts-allocation, drifted and grounded are six different situations with six
+// different next actions, and an Optional answer makes them one. Only PrincipalGrounded may enter
+// live SSH or deployment access -- that is the construction wall replacing the reverted commit's
+// attempt to present a desired account as a grounded one.
 
 type PosixAccountConflict
   = ObservedNameDiffersFromAllocation { observed: NonEmptyStr, allocated: NonEmptyStr }
@@ -755,8 +768,6 @@ fn spark_inference_realization_standing(host: HostIdentity) -> ServicePrincipalR
   ServicePrincipalRealizationUnselected
 }
 
-
-
 // TOTAL PER-ACCOUNT ACCESSORS for the four legacy principals. These exist because their accounts
 // WERE observed on srv1/srv3, so the question "what is this account" has an answer that needs no
 // host parameter and no optional. Callers asking about a legacy srv1 account use these; callers
@@ -793,7 +804,6 @@ fn fleet_posix_srv3_host_principal() -> GroundedPosixPrincipal {
     declared_probe: fleet_posix_srv3_host_declared_probe,
   }
 }
-
 
 // The legacy call sites all ask about an srv1/srv3 account that WAS observed. This keeps them total
 // without reintroducing a fabricated value: the four legacy keys are grounded, and the two
@@ -904,7 +914,6 @@ fn fleet_posix_account_exists(name: NonEmptyStr) -> Bool {
   }
 }
 
-
 // ── Reported contradiction of an authored row ─────────────────────────────────────────────
 // fleet_posix_ci_runner_user carries uid 1001 / gid 1001 and a declared_probe claiming
 // probe_command "id ghrunner" on srv1. A live readback of that exact command on that exact host
@@ -950,14 +959,30 @@ fn reported_contradiction_is_open(c: ReportedAccountContradiction) -> Bool {
   c.modeled_uid != c.reported_uid || c.modeled_gid != c.reported_gid
 }
 
-data fleet_account_contradiction_dissolve_on: String = "dissolve-on: fleet_posix_ci_runner_user carries authored uid/gid contradicted by a live readback on two hosts, and its declared_probe stamps a probe whose own command returns the contradicting values. DISSOLVES WHEN a PosixAccountObservation with a real ProcessReceipt grounds the ghrunner row through deploy_access_check_observed, at which point the observed values replace the authored ones and this contradiction row is deleted rather than kept beside them. Until then the model must not report the ghrunner account as grounded. FURTHER EVIDENCE 2026-08-22: `getent passwd ghrunner` returns nothing on srv5 and srv6 — the account is ABSENT there, not merely carrying different numbers, so the authored row is wrong on those hosts in a second and different way. This is recorded as EVIDENCE ONLY and deliberately does not correct the authored values: hand-editing observed numbers into the row would satisfy the letter of this condition while bypassing the ProcessReceipt grounding the condition exists to require, which is the failure mode the condition was written against. It also narrows what a corrected row must say — uid/gid alone cannot express an account that does not exist on a host, so grounding has to carry per-host presence rather than one fleet-wide pair."
+// dissolve-on: fleet_posix_ci_runner_user carries authored uid/gid contradicted by a live readback
+// on two hosts, and its declared_probe stamps a probe whose own command returns the contradicting
+// values. DISSOLVES WHEN a PosixAccountObservation with a real ProcessReceipt grounds the ghrunner
+// row through deploy_access_check_observed, at which point the observed values replace the authored
+// ones and this contradiction row is deleted rather than kept beside them. Until then the model
+// must not report the ghrunner account as grounded. FURTHER EVIDENCE 2026-08-22: `getent passwd
+// ghrunner` returns nothing on srv5 and srv6 — the account is ABSENT there, not merely carrying
+// different numbers, so the authored row is wrong on those hosts in a second and different way.
+// This is recorded as EVIDENCE ONLY and deliberately does not correct the authored values:
+// hand-editing observed numbers into the row would satisfy the letter of this condition while
+// bypassing the ProcessReceipt grounding the condition exists to require, which is the failure mode
+// the condition was written against. It also narrows what a corrected row must say — uid/gid alone
+// cannot express an account that does not exist on a host, so grounding has to carry per-host
+// presence rather than one fleet-wide pair.
 
 // The stale duplicate is a filesystem-grain second representation of one grant authority, and it
 // has a consequence beyond tidiness: srv1's effective privilege is the UNION of both files, so a
 // grant readback that reads one file reports a strict subset of real privilege and would classify
 // an over-granted host as exact.
-data srv1_duplicate_sudoers_dropin_note: String = "srv1 carries /etc/sudoers.d/gunbc-deploy.bak-wavec-verify-179889 duplicating the managed grant list, reported by witty-raven-412 (msg_051d4971). Effective privilege is the union of both files, so any effective-access observation that reads a single dropin under-reports it. An effective-grant readback must enumerate the whole sudoers.d population before classifying a host exact."
-
+// srv1 carries /etc/sudoers.d/gunbc-deploy.bak-wavec-verify-179889 duplicating the managed grant
+// list, reported by witty-raven-412 (msg_051d4971). Effective privilege is the union of both files,
+// so any effective-access observation that reads a single dropin under-reports it. An
+// effective-grant readback must enumerate the whole sudoers.d population before classifying a host
+// exact.
 
 // ── The applied FleetAccountAutomation allocation ─────────────────────────────────────────
 // Label gunbc-fleet, THE SAME ON EVERY HOST THIS PRINCIPAL COVERS -- srv1 through srv4. That
@@ -1025,6 +1050,17 @@ fn fleet_automation_allocations() -> List<FleetAutomationAllocationStanding> {
   ]
 }
 
+// gunbc-fleet is uid 1001 on srv1 and srv2 (next free id). fleet_posix_ci_runner_user also claims
+// 1001, wrongly -- ghrunner is 999/987 on both hosts. MEASURED 2026-08-22, a THIRD account reads
+// 1001: gunbc-automation on srv5 and srv6 (1001:1001, /bin/bash), and ghrunner is ABSENT on those
+// hosts entirely, so the ci-runner row is wrong there in a second way. Three accounts now read 1001
+// across four hosts. The hazard the earlier revision named got WORSE rather than different: uid is
+// host-local and is never fleet principal identity, but a reader who treats a uid as identity now
+// fuses three principals instead of two, and one of the three has disjoint sudo grants from the
+// other two. It raises the priority of grounding the ghrunner row through
+// deploy_access_check_observed rather than by hand-editing numbers, which would satisfy the letter
+// of the contradiction row while bypassing the grounding it exists to require.
+
 fn automation_allocation_is_applied(a: FleetAutomationAllocationStanding) -> Bool {
   match a {
     AutomationAllocationApplied { host: _, user: _, source: _ } => true
@@ -1038,4 +1074,3 @@ fn automation_allocation_is_applied(a: FleetAutomationAllocationStanding) -> Boo
 // host. The numbers are not identity, so nothing is broken; but a reader comparing uids to decide
 // which account a file belongs to would fuse them, and that is precisely why the ghrunner
 // contradiction must be resolved by observation rather than left standing.
-data automation_uid_coincidence_note: String = "gunbc-fleet is uid 1001 on srv1 and srv2 (next free id). fleet_posix_ci_runner_user also claims 1001, wrongly -- ghrunner is 999/987 on both hosts. MEASURED 2026-08-22, a THIRD account reads 1001: gunbc-automation on srv5 and srv6 (1001:1001, /bin/bash), and ghrunner is ABSENT on those hosts entirely, so the ci-runner row is wrong there in a second way. Three accounts now read 1001 across four hosts. The hazard the earlier revision named got WORSE rather than different: uid is host-local and is never fleet principal identity, but a reader who treats a uid as identity now fuses three principals instead of two, and one of the three has disjoint sudo grants from the other two. It raises the priority of grounding the ghrunner row through deploy_access_check_observed rather than by hand-editing numbers, which would satisfy the letter of the contradiction row while bypassing the grounding it exists to require."

@@ -19,13 +19,35 @@ import extdeps.languages.json.emit { JsonValue, JsonKeyValue, json_kv, json_obje
 import extdeps.http.server { media_type_wire_label, application_json_utf8 }
 import gunbc.roadmap_site_surface_types { RoadmapSiteSurfaceBundle, RoadmapSiteSurfaceArtifact, HealthzEffectiveRead, HealthzBodyRead, HealthzProbeRefused }
 
-data roadmap_site_surface_expect_note: String = "PURE bundle predicates for roadmap served-surface witnesses. Every function here takes an already-materialized RoadmapSiteSurfaceBundle (or a typed HTTP read) and performs no filesystem, Git, authority, or rendering observation."
+// PURE bundle predicates for roadmap served-surface witnesses. Every function here takes an
+// already-materialized RoadmapSiteSurfaceBundle (or a typed HTTP read) and performs no filesystem,
+// Git, authority, or rendering observation.
 
 fn roadmap_site_healthz_json_string_parses(body: String) -> Bool {
   json_text_parseable(s: json_text_trim_trailing_lf(body: body))
 }
 
-data healthz_surface_projection_note: String = "THE SURFACE COMPARISON PROJECTS MEMBERS BY KEY; IT DOES NOT COMPARE WHOLE BODIES, AND THE CHANGE IS FORCED RATHER THAN STYLISTIC. This was `observed == expected` over the entire document, which was correct for exactly as long as the served /healthz body contained nothing but the surface. The running process now also reports its release identity (gunbc.running_release_identity), so whole-body equality would compare surface AND identity in one string and refuse on every deploy — a check that can never pass is not a stricter check, it is a broken one, and it would have produced precisely the permanently-refusing shape this lane exists to remove.\\n\\nMore importantly, fusing them is wrong even where it would pass. revision and surface_bundle_identity are separate members because they fail independently and their remedies differ; a single string equality over both cannot say which half diverged, so the deploy could report 'stale surface' when the real fact was 'another candidate won the route'. Projecting the surface keys out and comparing only those keeps the surface verdict a statement about the surface, and leaves the revision verdict to the revision comparison that owns it.\\n\\nBOTH SIDES ARE ROUND-TRIPPED THROUGH THE SAME PARSER AND EMITTER, deliberately. Comparing a re-serialized observed document against a locally-emitted expected string would make the check sensitive to any asymmetry in escaping or number spelling between the wire and the emitter, and the resulting failure would look exactly like a stale surface. Normalizing both through parse-then-serialize makes the comparison a claim about the VALUES, which is what 'is the surface current' means, rather than about two independent spellings of them. An unparseable or structurally-missing projection is Absent and never equals anything — a document that cannot be projected has not proven it is current."
+// THE SURFACE COMPARISON PROJECTS MEMBERS BY KEY; IT DOES NOT COMPARE WHOLE BODIES, AND THE CHANGE
+// IS FORCED RATHER THAN STYLISTIC. This was `observed == expected` over the entire document,
+// correct only while the served /healthz body contained nothing but the surface. The running
+// process now also reports its release identity (gunbc.running_release_identity), so whole-body
+// equality would compare surface AND identity in one string and refuse on every deploy — a check
+// that can never pass is broken, not stricter, and precisely the permanently-refusing shape this
+// lane exists to remove.
+//
+// Fusing them is wrong even where it would pass. revision and surface_bundle_identity are separate
+// members because they fail independently with different remedies; one string equality cannot say
+// which half diverged, so the deploy could report 'stale surface' when the fact was 'another
+// candidate won the route'. Projecting the surface keys keeps the surface verdict about the surface
+// and leaves the revision verdict to the comparison that owns it.
+//
+// BOTH SIDES ARE ROUND-TRIPPED THROUGH THE SAME PARSER AND EMITTER, deliberately. Comparing a
+// re-serialized observed document against a locally-emitted expected string would make the check
+// sensitive to any escaping or number-spelling asymmetry between wire and emitter, and the failure
+// would look exactly like a stale surface. Normalizing both through parse-then-serialize makes the
+// comparison a claim about the VALUES — what 'is the surface current' means. An unparseable or
+// structurally-missing projection is Absent and never equals anything — a document that cannot be
+// projected has not proven it is current.
 
 data healthz_surface_status_key: String = "status"
 data healthz_surface_service_key: String = "service"
@@ -52,18 +74,17 @@ fn healthz_projected_members(doc: JsonValue) -> List<JsonKeyValue> {
 }
 
 // AT AN OPTIONAL, A FAILURE IS NOT MERELY UNREPORTED -- IT IS INDISTINGUISHABLE FROM THE ORDINARY
-// NEGATIVE RESULT, and that is a strictly worse position than the Bool sites this change also
-// repairs. `none` here meant BOTH "this body is not JSON" AND "this body is JSON and does not carry
-// the surface members", and the consumer below turned both into `false`, whose rendered cause is
-// ServedSurfaceStale. So an endpoint answering an HTML error page -- the wrong process bound to the
-// port, a proxy error, an empty 502 body -- was reported to the deploy operator as A STALE SURFACE:
-// a claim that the right process is serving the wrong tree. The remedy for that is to rebind the
-// graph; the actual remedy was to find out what was answering. One inference away is generous; it
-// points at a different machine.
+// NEGATIVE RESULT, strictly worse than the Bool sites this change also repairs. `none` meant BOTH
+// "this body is not JSON" AND "this body is JSON without the surface members", and the consumer
+// below turned both into `false`, rendered as ServedSurfaceStale. So an endpoint answering an HTML
+// error page -- the wrong process on the port, a proxy error, an empty 502 body -- was reported to
+// the deploy operator as A STALE SURFACE: the right process serving the wrong tree. That remedy is
+// to rebind the graph; the actual remedy was to find out what was answering. One inference away is
+// generous; it points at a different machine.
 //
 // HealthzSurfaceMembersIncomplete CARRIES THE COUNT because the surface member count is a constant
 // this module owns, so "2 of 3" locates a renamed or dropped member immediately, where a bare
-// refusal would send the reader back to re-derive which member is missing.
+// refusal sends the reader back to re-derive which is missing.
 type HealthzSurfaceProjection
   = HealthzSurfaceProjected { surface: String }
   | HealthzBodyUnreadable
@@ -87,11 +108,11 @@ fn healthz_surface_projection(body: String) -> HealthzSurfaceProjection {
 
 // THIS CONSUMER STILL ANSWERS Bool, AND THE REASON IS STATED HERE RATHER THAN ONLY IN A PR BODY.
 // Its question is genuinely two-valued -- is the observed surface the expected one -- and the two
-// sides are not symmetric, which is what makes collapsing honest on ONE side and not the other:
+// sides are asymmetric, which makes collapsing honest on ONE side and not the other:
 //
 //   the EXPECTED side is bundle.healthz_body, a document this repository renders itself. Its
-//   refusals are not observations at all; either would be a defect in our own emitter, and there is
-//   no verdict about the deployed service to preserve.
+//   refusals are not observations; either would be a defect in our own emitter, with no verdict
+//   about the deployed service to preserve.
 //
 //   the OBSERVED side is a wire body, and its refusals ARE observations with different remedies.
 //   They are NOT discarded here: this predicate is reached only after the readiness check has
@@ -99,7 +120,7 @@ fn healthz_surface_projection(body: String) -> HealthzSurfaceProjection {
 //   not (gunbc.live_deploy.readiness ground_service_ready_from_healthz_body, whose ordering note
 //   states parse-then-identity-then-revision-then-surface). So HealthzBodyUnreadable is unreachable
 //   FROM THAT CALLER -- reachable from this function, which is why it exists, and not occupied
-//   there. Answering false for it is correct rather than merely tolerable.
+//   there. Answering false for it is correct, not merely tolerable.
 //
 // A caller that reaches this predicate WITHOUT an upstream parse does not inherit that reasoning
 // and must consume healthz_surface_projection directly.

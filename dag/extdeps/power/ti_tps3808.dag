@@ -24,7 +24,17 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   }
 }
 
-data ti_tps3808_note: String = "THIS ROW IS A MECHANICAL CANDIDATE AND NOT A SELECTED PART. Nothing here says the device suits any board role; a selection is a functional-compatibility join done at the product layer, and this row supplies only the package authority that join consumes. WHAT THIS MODULE CARRIES AND WHAT IT DOES NOT. The TPS3808 is a supply voltage supervisor, and this row carries NONE of that: no threshold, no delay, no supply range. It carries the part's mechanical facts — the package body dimensions and the vendor's recommended land pattern — because those are the facts that were read from the document. A row naming a supervisor while carrying no supervision fact would be thin if it claimed to be a device model; it does not. It is the answer to one question, which is what a board has to etch to mount this part, and a later reader adding the electrical facts is adding to a cited row rather than correcting an invented one. THE PITCH IS AN ARITHMETIC READING OF THE DRAWING, and is recorded as such rather than taken from a family memory: the body drawing prints 1.9 across two pitches and the land pattern prints 0.95 twice, and 2 x 0.95 = 1.9, so the two pages of one drawing agree and neither number was supplied by the reader."
+// THIS ROW IS A MECHANICAL CANDIDATE AND NOT A SELECTED PART. Nothing here says the device suits
+// any board role; selection is a functional-compatibility join at the product layer, and this row
+// supplies only the package authority that join consumes. WHAT THIS MODULE CARRIES AND WHAT IT
+// DOES NOT. The TPS3808 is a supply voltage supervisor, and this row carries NONE of that: no
+// threshold, no delay, no supply range. It carries the mechanical facts read from the document —
+// package body dimensions and the vendor's recommended land pattern. It does not claim to be a
+// device model; it answers one question, what a board must etch to mount this part, and a later
+// reader adding electrical facts adds to a cited row rather than correcting an invented one. THE
+// PITCH IS AN ARITHMETIC READING OF THE DRAWING, not a family memory: the body drawing prints 1.9
+// across two pitches and the land pattern prints 0.95 twice, and 2 x 0.95 = 1.9, so the two pages
+// of one drawing agree and neither number was supplied by the reader.
 
 data tps3808_dbv0006a_drawing: PackageDrawingRef = PackageDrawingRef {
   drawing_number: "4214840/G",

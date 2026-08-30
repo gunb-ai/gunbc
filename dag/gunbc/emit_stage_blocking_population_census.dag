@@ -22,7 +22,18 @@ data emit_stage_blocking_population_census_disposition: Disposition = Terminal {
   reason: "THE RECEIPT OF ONE WHOLE-CORPUS EMIT-STAGE CENSUS, taken to satisfy the bounded-population requirement DESIGN section 4b(3) places on the declared drop titled A BLOCKING EMIT-STAGE DIAGNOSTIC CAN SIT ON MAIN INDEFINITELY WITH NO REQUIRED PHASE THAT FAILS. That row states its own defect plainly -- POPULATION: UNCOUNTED AND UNBOUNDED -- and names two specimens found by tripping over them rather than by searching. This module carries the measurement that replaces the word UNCOUNTED with a figure, and it carries nothing else: it is a receipt, not a gate, not an instrument, and not a repair."
 }
 
-data census_bounds_it_does_not_close_it_note: String = "WHAT A CENSUS BUYS AND WHAT IT DOES NOT, stated first because the neighbouring claim would be the rung inflation DESIGN section 4b(1) calls worse than sitting low. A census BOUNDS the population, which is exactly what that row lacks. It DOES NOT CLOSE THE CLASS: the row's restoration trigger is A REQUIRED PHASE THAT EMITS OVER CLOSURES, and one measurement taken by hand on one revision is not that phase. Nothing here executes on any push, nothing refuses, and the population this receipt bounds is free to grow the moment it is written -- which is the difference between knowing a number and having a wall.\n\nSO THE ROW'S RUNG DOES NOT MOVE. It stays outside the ladder, for the reason it already gives: an operation that lost its only route has nothing to mitigate. What changes is one clause of it -- the population is now measured, at a named revision, by a named command, with the run's termination and peak residency recorded beside the count."
+// WHAT A CENSUS BUYS AND WHAT IT DOES NOT, stated first because the neighbouring claim would be the
+// rung inflation DESIGN section 4b(1) calls worse than sitting low. A census BOUNDS the population,
+// which is exactly what that row lacks. It DOES NOT CLOSE THE CLASS: the row's restoration trigger
+// is A REQUIRED PHASE THAT EMITS OVER CLOSURES, and one measurement taken by hand on one revision
+// is not that phase. Nothing here executes on any push, nothing refuses, and the population this
+// receipt bounds is free to grow the moment it is written -- which is the difference between
+// knowing a number and having a wall.
+//
+// SO THE ROW'S RUNG DOES NOT MOVE. It stays outside the ladder, for the reason it already gives: an
+// operation that lost its only route has nothing to mitigate. What changes is one clause of it --
+// the population is now measured, at a named revision, by a named command, with the run's
+// termination and peak residency recorded beside the count.
 
 // ---------------------------------------------------------------------------------------------
 // THE CONSTRUCTION MOVE, AND IT IS THE WHOLE REASON THIS CARRIER HAS A SHAPE AT ALL.
@@ -265,7 +276,17 @@ fn census_population_bound(r: CensusReading) -> PopulationBound {
 
 data census_revision: CommitSha = "d198ff6eae007bfae4bb1d1796ec9162f6a03402"
 
-data census_subject_scope_note: String = "WHAT `--source-root dag --source-root src/v2` MEASURES, stated because it is narrower than the phrase WHOLE CORPUS suggests and a reader who assumes otherwise will over-read every figure below. The FIRST source root is the primary root and the rest are a dependency POOL: the compiler emits the primary root's whole population plus whatever the pool supplies to it. Measured on this run, that is 3006 resolved sources against 2785 `.dag` files under dag/ and 1278 under src/v2 -- so the census covers dag/ entire, plus the 221 src/v2 modules dag/ actually reaches, and leaves the rest of src/v2 unmeasured by THIS invocation.\n\nThe unmeasured remainder is named rather than elided: a census with src/v2 as the primary root is a second run of the same command with the roots exchanged, and it has not been taken here. Any claim about src/v2's own emit-stage population is therefore outside this receipt."
+// WHAT `--source-root dag --source-root src/v2` MEASURES, stated because it is narrower than the
+// phrase WHOLE CORPUS suggests and a reader who assumes otherwise will over-read every figure
+// below. The FIRST source root is the primary root and the rest are a dependency POOL: the compiler
+// emits the primary root's whole population plus whatever the pool supplies to it. Measured on this
+// run, that is 3006 resolved sources against 2785 `.dag` files under dag/ and 1278 under src/v2 --
+// so the census covers dag/ entire, plus the 221 src/v2 modules dag/ actually reaches, and leaves
+// the rest of src/v2 unmeasured by THIS invocation.
+//
+// The unmeasured remainder is named rather than elided: a census with src/v2 as the primary root is
+// a second run of the same command with the roots exchanged, and it has not been taken here. Any
+// claim about src/v2's own emit-stage population is therefore outside this receipt.
 
 // ── LAYER 1: THE PRISTINE TREE ────────────────────────────────────────────────────────────────
 //
@@ -456,7 +477,6 @@ data layer_three_census: CensusReading = NoPopulation {
   cause: "emit reached its code-generation body with both gates clear and had not returned after four hours and thirty-eight minutes inside that stage; no tree was written and no population was produced" as NonEmptyStr
 }
 
-
 // ── THE OTHER ROOT: src/v2 AS PRIMARY ─────────────────────────────────────────────────────────
 //
 // The first census covers dag/ entire and only the src/v2 modules dag/ reaches. This is the same
@@ -477,6 +497,29 @@ data layer_three_census: CensusReading = NoPopulation {
 // The refusal happened at emit with upstream causes already standing, so whether emit_rust's own
 // gates ran to any depth is unestablished -- the same masking question one stage up, and the
 // reason this reading's extent is completeness-unestablished like the others.
+
+// TWO ROOTS, TWO POPULATIONS, NEITHER OF THEM THE CORPUS. The command takes ONE primary root and
+// treats the rest as a dependency pool, so a census of both roots is two runs and two subjects; a
+// reader who unions them has invented a third population nobody measured.
+//
+// ROOT dag/ -- OBSERVABLE: three, all emit-produced. That is what the command answers on the
+// revision as it stands, and it is a lower bound rather than the population, because emit's first
+// gate returned ahead of every later check. LATENT: at least eleven. The eight the second gate
+// reports were standing on the pristine tree the whole time; clearing the first gate is what let
+// anyone see them. UPPER BOUND: NONE, with the cause named -- emit does not finish at whole-root
+// scale within five hours, so the route that would have bounded the population from above does not
+// return.
+//
+// ROOT src/v2 -- twenty hard diagnostics at the emit refusal, of which ZERO are emit-produced:
+// nineteen are one module's cascade behind an import of v1.compiler.ownership, which lies outside
+// both source roots, and the twentieth is a planted negative fixture doing exactly what it was
+// planted to do. Whether emit's own gates ran at all here is unestablished, so zero-observed is not
+// a clean bill.
+//
+// WHAT MOVED, precisely: the word UNCOUNTED. What did not move: UNBOUNDED, the rung, and the
+// trigger. The class keeps its DESIGN standing -- outside the ladder, and its restoration trigger
+// remains a REQUIRED PHASE THAT EMITS OVER CLOSURES. This receipt is not that phase and does not
+// claim to be one: it executes on no push, refuses nothing, and describes one revision on one host.
 
 data src_v2_root_census: CensusReading = PopulationRead {
   run: CensusRun {
@@ -606,5 +649,3 @@ data src_v2_root_census: CensusReading = PopulationRead {
 // It is deliberately three statements and not one number, because the one number does not exist
 // and writing one would close a row that is still open.
 // ---------------------------------------------------------------------------------------------
-
-data emit_stage_population_standing_note: String = "TWO ROOTS, TWO POPULATIONS, NEITHER OF THEM THE CORPUS. The command takes ONE primary root and treats the rest as a dependency pool, so a census of both roots is two runs and two subjects; a reader who unions them has invented a third population nobody measured.\n\nROOT dag/ -- OBSERVABLE: three, all emit-produced. That is what the command answers on the revision as it stands, and it is a lower bound rather than the population, because emit's first gate returned ahead of every later check. LATENT: at least eleven. The eight the second gate reports were standing on the pristine tree the whole time; clearing the first gate is what let anyone see them. UPPER BOUND: NONE, with the cause named -- emit does not finish at whole-root scale within five hours, so the route that would have bounded the population from above does not return.\n\nROOT src/v2 -- twenty hard diagnostics at the emit refusal, of which ZERO are emit-produced: nineteen are one module's cascade behind an import of v1.compiler.ownership, which lies outside both source roots, and the twentieth is a planted negative fixture doing exactly what it was planted to do. Whether emit's own gates ran at all here is unestablished, so zero-observed is not a clean bill.\n\nWHAT MOVED, precisely: the word UNCOUNTED. What did not move: UNBOUNDED, the rung, and the trigger. The class keeps its DESIGN standing -- outside the ladder, and its restoration trigger remains a REQUIRED PHASE THAT EMITS OVER CLOSURES. This receipt is not that phase and does not claim to be one: it executes on no push, refuses nothing, and describes one revision on one host."

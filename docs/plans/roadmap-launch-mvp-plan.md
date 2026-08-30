@@ -41,15 +41,15 @@ No substitute terminal counts: a unit test, synthetic fixture, successful deploy
 
 ### Prevents the MVP today
 
-- **No current exact-revision production receipt.** Repository evidence proves admission to `refs/fleet/desired`, not that srv1 is running the same revision now.
+- **No current exact-revision production receipt.** Repository evidence proves admission to `refs/fleet/desired`, not that srv1 is running that revision now.
 - **Two conflicting launch authorities.** The periodic belt consumes the ready frontier, but manual dispatch intentionally permits a node-ID override without proving dependency readiness.
-- **Unsafe activation posture.** The belt defaults to `Running` with capacity three, so adding a live canary before a manual-only mode could let the timer launch it before the operator test.
-- **No wet end-to-end proof.** There is no single receipt chain covering browser launch → exactly one attempt → exact work → verification → publication → acceptance → child unlock.
+- **Unsafe activation posture.** The belt defaults to `Running` with capacity three, so a live canary added before a manual-only mode could be timer-launched before the operator test.
+- **No wet end-to-end proof.** No single receipt chain covers browser launch → exactly one attempt → exact work → verification → publication → acceptance → child unlock.
 - **Fleet autonomy remains incomplete.** `refs/fleet/desired` advances automatically, but production convergence/dashboard deployment are still explicit workflow-dispatch operations.
 
 ### Explicitly off the critical path
 
-The compute-fabric / own-CI program is not required for this MVP. It now binds exact required build work, but still has no execution grant → process → result path. The roadmap belt already has a separate production provider/tmux execution path. Do not couple the first roadmap-launch proof to Fabric CI.
+The compute-fabric / own-CI program is not required for this MVP. It now binds exact required build work but still has no execution grant → process → result path; the roadmap belt already has a separate production provider/tmux execution path. Do not couple the first roadmap-launch proof to Fabric CI.
 
 ## 3. Serial gate chain
 
@@ -69,7 +69,7 @@ Only one gate may be mutating at a time. A downstream lane may author inert type
 
 **Suggested canary**
 
-A dedicated `.dag` module contains one sentinel value bound to a nonce, initially `pending:<nonce>`. The task may change only that value to `completed:<nonce>`. A direct validation claim is true only for the exact expected value and identity. The claim need not be enrolled in the global required floor; it is the attempt's pinned validation oracle.
+A dedicated `.dag` module holds one sentinel value bound to a nonce, initially `pending:<nonce>`. The task may change only that value to `completed:<nonce>`. A direct validation claim is true only for the exact expected value and identity. The claim need not be enrolled in the global required floor; it is the attempt's pinned validation oracle.
 
 **Exit receipt**
 
@@ -133,7 +133,7 @@ Set production to `ManualReady` for the MVP. In that mode:
 - timer launch is refused;
 - timer reconciliation, verification, publication, and cleanup continue.
 
-Remove ordinary `AvailableAsOverride` launch behavior from blocked/upcoming/unplanned/review rows. A future break-glass path, if retained, must have a separate type, endpoint, authorization, and receipt and is excluded from this project.
+Remove ordinary `AvailableAsOverride` launch behavior from blocked/upcoming/unplanned/review rows. A future break-glass path, if retained, needs a separate type, endpoint, authorization, and receipt, and is excluded from this project.
 
 **Exit receipt**
 
@@ -380,16 +380,16 @@ After RLM-6, the smallest honest continuation is:
 - **FC-D:** whole-fleet standing enumerates every host and every phase; absence is explicit, never silently omitted.
 - **FC-E:** dashboard deployment becomes an ordinary member of the same desired-state convergence closure, eliminating the remaining separate dispatch.
 
-Do not fold these into RLM unless the current manual plan/apply path cannot produce the exact RLM-2 receipt. The MVP should first prove the product loop using the existing reviewed actuator, then automate that actuator without changing the product acceptance test.
+Do not fold these into RLM unless the current manual plan/apply path cannot produce the exact RLM-2 receipt. First prove the product loop with the existing reviewed actuator, then automate that actuator without changing the product acceptance test.
 
 ## 8. First implementation slice
 
-The first live PR after the inert brief should be RLM-1: shared serial launch admission + `ManualReady`. It is the narrowest change that makes a live canary safe.
+The first live PR after the inert brief should be RLM-1: shared serial launch admission + `ManualReady` — the narrowest change that makes a live canary safe.
 
-It should not add the live canary, change fleet automation, or touch compute fabric. Its sole acceptance is that UI, manual POST, and timer share one launch decision; blocked work cannot be launched through the ordinary path; and production can reconcile completed attempts without autonomously starting new ones.
+It should not add the live canary, change fleet automation, or touch compute fabric. Its sole acceptance: UI, manual POST, and timer share one launch decision; blocked work cannot be launched through the ordinary path; production can reconcile completed attempts without autonomously starting new ones.
 
 ## Manager amendment — 2026-08-29 (RLM-0 review ruling)
 
-Recorded by the RLM manager (session tidy-swift-334) on the side-chat REQUEST_CHANGES review 5059303095 of PR #9694; this amendment is the only departure from the controlling artifact above.
+Recorded by the RLM manager (session tidy-swift-334) on the side-chat REQUEST_CHANGES review 5059303095 of PR #9694; the only departure from the controlling artifact above.
 
-**Child terminal state is structural Ready only.** The parent `roadmap-launch-canary` is the one execution canary. After the parent's explicit acceptance, the child `roadmap-launch-canary-followup` need only become structurally `SchedulingReady`; it does not need a complete execution contract or an admitted Launch action. The RLM-6 exit line "Child is now the sole canary launchable frontier item" is read under this ruling as "Child is the sole canary frontier item that is structurally Ready". This is sufficient to prove the acceptance ratchet, while the parent proves the launch/execute/verify/publish transaction. An unspecified execution contract must still never launch — that refusal is RLM-1's admission, not the child's readiness.
+**Child terminal state is structural Ready only.** The parent `roadmap-launch-canary` is the one execution canary. After the parent's explicit acceptance, the child `roadmap-launch-canary-followup` need only become structurally `SchedulingReady`; it needs neither a complete execution contract nor an admitted Launch action. The RLM-6 exit line "Child is now the sole canary launchable frontier item" is read under this ruling as "Child is the sole canary frontier item that is structurally Ready". This suffices to prove the acceptance ratchet; the parent proves the launch/execute/verify/publish transaction. An unspecified execution contract must still never launch — that refusal is RLM-1's admission, not the child's readiness.

@@ -63,7 +63,13 @@ import gunbc.measurement_provenance {
 // observation. That second claim is why the rows below carry BuildSubjects at all; before this
 // revision the bound arm had no subject to compare and the discriminating row was unwritable.
 
-data tree_hex_provenance_doc: String = "The two tree object ids below are REAL git tree oids, taken from the measured set in test.claim.devboot_subject_identity_witness rather than invented here — that witness read them out of this repository and records how. What these rows need of them is weaker than what that witness needs: only that they are two DISTINCT admissible tree oids, standing for an instrument built from one tree and an instrument built from another. Reusing measured values rather than minting plausible hex keeps the fixture falsifiable — an invented pair could not have failed to differ."
+// The two tree object ids below are REAL git tree oids, taken from the measured set in
+// test.claim.devboot_subject_identity_witness rather than invented here — that witness read them
+// out of this repository and records how. What these rows need of them is weaker than what that
+// witness needs: only that they are two DISTINCT admissible tree oids, standing for an instrument
+// built from one tree and an instrument built from another. Reusing measured values rather than
+// minting plausible hex keeps the fixture falsifiable — an invented pair could not have failed to
+// differ.
 
 data current_tree_hex: String = "4a712980497e1d0a45374185b2184a094cca4c8f"
 

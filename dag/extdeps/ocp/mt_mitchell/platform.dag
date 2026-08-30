@@ -38,7 +38,20 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
   further_citations: [internet_archive_mt_mitchell_capture_authority]
 }
 
-data mt_mitchell_ingestion_note: String = "READ, NOT RECALLED — AND READ FROM A CAPTURE, NOT FROM THE PUBLISHER. The publisher locator is the anchor because that is where the document lives, and an unauthenticated fetch of it returned HTTP 403 on 2026-08-14; the bytes behind every row here came from the dated Internet Archive capture of that same URL, which the subject module owns as internet_archive_mt_mitchell_capture_authority and this module cites rather than re-mints (review 51969). Saying we read Mt. Mitchell without that distinction would assert we read the publisher copy, which we did not. The licence is what makes carrying it admissible: usage is under the Open Web Foundation Modified Final Specification Agreement quoted in the document's own licence section, and that section states the licence does NOT apply to the Appendices, which are reference-only and non-normative. No row in this module is attributed to an appendix. The revision-table rows below are the document's section 3 and are carried because the subject module fixes ONE revision label: the series is what makes 0.80 the current one rather than a bare string, and a later revision would join against these rows instead of silently replacing a literal."
+// READ, NOT RECALLED — AND READ FROM A CAPTURE, NOT FROM THE PUBLISHER. The publisher locator is
+// the anchor because that is where the document lives, and an unauthenticated fetch of it returned
+// HTTP 403 on 2026-08-14; the bytes behind every row here came from the dated Internet Archive
+// capture of that same URL, which the subject module owns as
+// internet_archive_mt_mitchell_capture_authority and this module cites rather than re-mints (review
+// 51969). Saying we read Mt. Mitchell without that distinction would assert we read the publisher
+// copy, which we did not. The licence is what makes carrying it admissible: usage is under the Open
+// Web Foundation Modified Final Specification Agreement quoted in the document's own licence
+// section, and that section states the licence does NOT apply to the Appendices, which are
+// reference-only and non-normative. No row in this module is attributed to an appendix. The
+// revision-table rows below are the document's section 3 and are carried because the subject module
+// fixes ONE revision label: the series is what makes 0.80 the current one rather than a bare
+// string, and a later revision would join against these rows instead of silently replacing a
+// literal.
 
 // THIS DOCUMENT'S OWN PUBLICATION STATUS. An OCP contribution is public under
 // an explicit open licence its publisher wrote down, which is a different KIND
@@ -221,8 +234,22 @@ data mt_mitchell_board_width: Micrometer = micrometer(count: 424900)
 
 data mt_mitchell_board_depth: Micrometer = micrometer(count: 422900)
 
+// Section 7.2: the master CPU socket sits on the right side of the motherboard and is REQUIRED to
+// boot the system when a single CPU is populated. That is an asymmetry between the two sockets, so
+// a dual-socket board with one socket filled is not the one-socket architecture option — it is a
+// specific population of the dual-socket board, and which socket is filled decides whether it boots
+// at all.
+
 data mt_mitchell_chassis_height: RackUnit = rack_unit(count: 2)
 
-data mt_mitchell_master_socket_boot_note: String = "Section 7.2: the master CPU socket sits on the right side of the motherboard and is REQUIRED to boot the system when a single CPU is populated. That is an asymmetry between the two sockets, so a dual-socket board with one socket filled is not the one-socket architecture option — it is a specific population of the dual-socket board, and which socket is filled decides whether it boots at all."
-
-data mt_mitchell_coverage_note: String = "WHAT THIS MODULE MODELS AND WHAT IT LEAVES IN THE DOCUMENT. MODELLED: the revision table; the three architecture options and their memory generation, buffering and ECC requirement; the expansion generation; the MCIO and OCP NIC connector populations and host modes; the inter-processor link ports; BMC part and placement; board outline and chassis height. NOT MODELLED: the connector pin definition tables (7.5.2.1 through 7.5.2.5), the I2C network, GPIO and debug interface maps (7.6 through 7.8), clocks, reset and power-on sequencing (7.10), thermal requirements (8), the I/O and rear-side subsystems (9 and 10), the power delivery block diagram (12), environmental and prescribed-materials sections (13 and 14), and the appendices, which the licence itself excludes as non-normative. The per-pin tables are exactly the material a board bring-up will need; they are not carried on speculation, and the consumer that needs one is what earns its transcription."
+// WHAT THIS MODULE MODELS AND WHAT IT LEAVES IN THE DOCUMENT. MODELLED: the revision table; the
+// three architecture options and their memory generation, buffering and ECC requirement; the
+// expansion generation; the MCIO and OCP NIC connector populations and host modes; the
+// inter-processor link ports; BMC part and placement; board outline and chassis height. NOT
+// MODELLED: the connector pin definition tables (7.5.2.1 through 7.5.2.5), the I2C network, GPIO
+// and debug interface maps (7.6 through 7.8), clocks, reset and power-on sequencing (7.10), thermal
+// requirements (8), the I/O and rear-side subsystems (9 and 10), the power delivery block diagram
+// (12), environmental and prescribed-materials sections (13 and 14), and the appendices, which the
+// licence itself excludes as non-normative. The per-pin tables are exactly the material a board
+// bring-up will need; they are not carried on speculation, and the consumer that needs one is what
+// earns its transcription.

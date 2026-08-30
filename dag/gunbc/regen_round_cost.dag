@@ -267,6 +267,13 @@ type AffectedSetDisposition
   = DerivableNow { from: String, residual: String }
   | BlockedOn { fact: String }
 
+// The instrument, not the number: re-run `claim_executor --regen-round-cost --source-root dag
+// --source-root src/v2` on a tree and read its receipt (target/stage0-regen-round-cost.txt). A
+// change-denominated regen is bounded above by the reverse closure
+// (regen_affected_set_disposition); a change-denominated REBUILD is bounded below by one
+// whole-crate compile until the stage0 partition (gunbc.stage0_crate_partition_generated) carries
+// the mirrors, which is the larger of the two costs on every measured host.
+
 // Two planted edits, both measured by `claim_executor --regen-round-cost` on the tree named.
 //
 // (1) v1.compiler.runtime_rust (the runtime template): reverse import closure predicts nine
@@ -316,4 +323,3 @@ data regen_affected_set_disposition: AffectedSetDisposition = DerivableNow {
 // target/stage0-regen-rustfmt-cache whose entries are honoured only when the stored raw input
 // is byte-equal to the request. rustfmt_spawns on the receipt is the count the fixed-point
 // control is checked against.
-data regen_round_cost_shape_note: String = "The instrument, not the number: re-run `claim_executor --regen-round-cost --source-root dag --source-root src/v2` on a tree and read its receipt (target/stage0-regen-round-cost.txt). A change-denominated regen is bounded above by the reverse closure (regen_affected_set_disposition); a change-denominated REBUILD is bounded below by one whole-crate compile until the stage0 partition (gunbc.stage0_crate_partition_generated) carries the mirrors, which is the larger of the two costs on every measured host."

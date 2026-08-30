@@ -119,7 +119,13 @@ fn argv_words(command: ArgvCommand) -> List<String> {
   append([command.program as String], items: command.arguments)
 }
 
-data ssh_exec_interpretation_note: String = "SshExec now carries the target's RemoteExecCommandInterpretation as a field, not an inferred fact: DESIGN §5 construction-over-validation -- whether the far side hands the RFC 4254 command string to a POSIX shell is a per-deployment implementation fact (gunbc.remote_shell_command remote_exec_command_interpretation_note), so the caller who knows which deployment it is targeting must declare it rather than command_over_transport guessing from the target string. A target this module cannot classify names Unknown explicitly; command_over_transport then refuses rather than picking a default (operator directive, 2026-08-19)."
+// SshExec now carries the target's RemoteExecCommandInterpretation as a field, not an inferred
+// fact: DESIGN §5 construction-over-validation -- whether the far side hands the RFC 4254 command
+// string to a POSIX shell is a per-deployment implementation fact (gunbc.remote_shell_command
+// remote_exec_command_interpretation_note), so the caller who knows which deployment it is
+// targeting must declare it rather than command_over_transport guessing from the target string. A
+// target this module cannot classify names Unknown explicitly; command_over_transport then refuses
+// rather than picking a default (operator directive, 2026-08-19).
 
 type CommandTransport
   = LocalExec
@@ -132,7 +138,14 @@ data sshpass_authority: ExternalAuthority = ExternalAuthority {
   }
 }
 
-data ssh_host_key_verification_posture: String = "🟡 dissolve-on: ssh_host_key_override_opts — DECLARED SECURITY POSTURE, not an accident of argv building: StrictHostKeyChecking=no + UserKnownHostsFile=/dev/null disables SSH host-key verification for these fleet/BMC transports, so a LAN-position MITM would not be detected; accepted interim because the targets are LAN-scoped fleet members and BMCs whose host keys are not yet provisioned facts. sshpass (its own upstream, anchor above) feeds the password via -e (SSHPASS env), never argv. DISSOLVES WHEN known-hosts provisioning lands on gunbc.fleet_ssh_access (pinned host key per fleet member) and these options drop both overrides in favor of a pinned UserKnownHostsFile."
+// 🟡 dissolve-on: ssh_host_key_override_opts — DECLARED SECURITY POSTURE, not an accident of argv
+// building: StrictHostKeyChecking=no + UserKnownHostsFile=/dev/null disables SSH host-key
+// verification for these fleet/BMC transports, so a LAN-position MITM would not be detected;
+// accepted interim because the targets are LAN-scoped fleet members and BMCs whose host keys are
+// not yet provisioned facts. sshpass (its own upstream, anchor above) feeds the password via -e
+// (SSHPASS env), never argv. DISSOLVES WHEN known-hosts provisioning lands on
+// gunbc.fleet_ssh_access (pinned host key per fleet member) and these options drop both overrides
+// in favor of a pinned UserKnownHostsFile.
 
 // The transport's own program, split from its flags for the same reason ArgvCommand splits them:
 // sshpass is what gets executed, `-e` is what it is told.
@@ -181,7 +194,13 @@ fn command_over_transport(command: ArgvCommand, transport: CommandTransport) -> 
   }
 }
 
-data shell_quote_provenance_note: String = "shell_quote delegates to extdeps.posix.shell_command_language posix_single_quote (operator finding, 2026-08-19): this was an independently hand-rolled THIRD copy of the single-quote wrap-and-escape encoding already consolidated once from v2.extdeps.languages.bash into the POSIX authority, and cited there against IEEE 1003.1-2017 section 2.2.2 -- split(s, delimiter: \"'\") then join with \"'\\''\" is the same operation as replace(s, \"'\", \"'\\''\"), so this is a pure internal-implementation swap: byte-identical output, unchanged signature, no diff for any of shell_command_render's 13+ existing consumers. DESIGN §2/§3: one escaping fact, one authority."
+// shell_quote delegates to extdeps.posix.shell_command_language posix_single_quote (operator
+// finding, 2026-08-19): this was an independently hand-rolled THIRD copy of the single-quote
+// wrap-and-escape encoding already consolidated once from v2.extdeps.languages.bash into the POSIX
+// authority, and cited there against IEEE 1003.1-2017 section 2.2.2 -- split(s, delimiter: "'")
+// then join with "'\''" is the same operation as replace(s, "'", "'\''"), so this is a pure
+// internal-implementation swap: byte-identical output, unchanged signature, no diff for any of
+// shell_command_render's 13+ existing consumers. DESIGN §2/§3: one escaping fact, one authority.
 
 fn shell_quote(arg: String) -> String {
   posix_single_quote(spelling: arg)
@@ -193,7 +212,13 @@ fn shell_command_render(command: ArgvCommand) -> String {
 
 data program_spelling_is_an_observation_claim: String = "WHICH SPELLING OF A PROGRAM A BUILDER CARRIES IS A CLAIM, AND THE TWO FORMS ANSWER DIFFERENT QUESTIONS (still-seal-394, 2026-08-22 -- recorded here once rather than repeated at every row it governs). An ABSOLUTE PATH is a claim that this repository has OBSERVED the target's filesystem, and where that claim is true it is the STRONGER form and the one to prefer: it is what a sudoers NOPASSWD rule can name and what a preflight can test for. extdeps.tools.mkdir, extdeps.tools.chmod, extdeps.tools.stat, extdeps.tools.id, extdeps.tools.chown and extdeps.sudo.elevation carry absolute paths for exactly that reason, each with a consumer that needs the path. PATH RESOLUTION is correct where the host is UNOBSERVED -- a BMC, a fleet member, a runner image nobody has read -- because there an absolute path fabricates a host fact (DESIGN section 5), and it is what the hand-spelled call sites this seal converted were already doing. THE RULE IS NOT 'BARE IS THE SAFE DEFAULT', and an earlier revision of this lane got that backwards in both directions within one afternoon: nine new rows were first written with invented absolute paths on the reasoning that a bare name declines to say which binary, then reverted wholesale on the reasoning that PATH is safer. Neither is the rule. Each row states which question it answers, and a row is only as good as the observation behind it. THE COUNTER-EXAMPLE THAT MAKES THIS LOAD-BEARING, and it is why a wrong absolute path is not merely cosmetic: gunbc.roadmap_dashboard_instance_apply carried /usr/bin/chmod both as the program its install step execs and in the required-executable roster its preflight tests, while extdeps.tools.chmod records /bin/chmod for the same fleet -- so the preflight gated a path no sanctioned caller runs, and passed only because those hosts are usrmerged. NEXT-RUNG TRIGGER for every PATH-resolved row this lane landed: a real filesystem observation of the target -- a preflight receipt or a provisioning fact naming the binary -- at which point that row becomes an absolute path with the observation as its citation, and the class climbs from 'we did not look' to 'we looked and this is where it is'."
 
-data argv_builder_note: String = "Typed ArgvCommand builders (§2): each derives the argv for one tool operation so the opaque flags (dash-f, dash-p, --strip-components, ...) live in ONE place, not hand-spelled per call site. A caller names the operation (curl_download_command, tar_extract_command, ...); the flags are the derived realization, not a magic string the caller must remember. THE BUILDERS THEMSELVES ARE NOT HERE: each is homed in its tool's own extdeps module beside that tool's cited upstream authority, and admitted by name on argv_command above, because a generic hub may not enumerate concrete products (DESIGN §3). This module owns the SHAPE and the seal; the products own their flags."
+// Typed ArgvCommand builders (§2): each derives the argv for one tool operation so the opaque flags
+// (dash-f, dash-p, --strip-components, ...) live in ONE place, not hand-spelled per call site. A
+// caller names the operation (curl_download_command, tar_extract_command, ...); the flags are the
+// derived realization, not a magic string the caller must remember. THE BUILDERS THEMSELVES ARE NOT
+// HERE: each is homed in its tool's own extdeps module beside that tool's cited upstream authority,
+// and admitted by name on argv_command above, because a generic hub may not enumerate concrete
+// products (DESIGN §3). This module owns the SHAPE and the seal; the products own their flags.
 
 // THE ENV-PREFIXED INVOCATION LIVES HERE, IN THE CARRIER'S OWN MODULE, AND THE DEPENDENCY RUNS ONE
 // WAY ONLY. env(1) is modeled at extdeps.tools.env -- its binary path, its NAME=VALUE and -u

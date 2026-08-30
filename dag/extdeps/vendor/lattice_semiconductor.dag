@@ -30,7 +30,10 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 // on the filing cover page. Copying the normalised spelling would have made the citation look
 // tighter while making the fact less accurate, so the cited endpoint establishes WHICH registrant
 // this is and the cover-page spelling is what the name says.
-data lattice_registrant_note: String = "extdeps.vendor.lattice_semiconductor cites EDGAR submissions for CIK 0000855658 to establish the registrant. The endpoint's own name field reads LATTICE SEMICONDUCTOR CORP, an index normalisation to upper case with a truncated suffix; legal_name carries the cover-page spelling instead, because the normalised form is a property of that index rather than of the company."
+// extdeps.vendor.lattice_semiconductor cites EDGAR submissions for CIK 0000855658 to establish the
+// registrant. The endpoint's own name field reads LATTICE SEMICONDUCTOR CORP, an index
+// normalisation to upper case with a truncated suffix; legal_name carries the cover-page spelling
+// instead, because the normalised form is a property of that index rather than of the company.
 
 data lattice_semiconductor_vendor: Vendor<Hardware> = Vendor { legal_name: "Lattice Semiconductor Corporation" }
 

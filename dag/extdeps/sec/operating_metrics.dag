@@ -12,7 +12,12 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   }
 }
 
-data operating_metrics_shape_note: String = "Issuer-defined key performance indicators disclosed in 10-K Item 7 (MD&A) under the SEC's KPI interpretive guidance (Release 33-10751, anchor above). These are NOT XBRL-tagged facts -- they exist only in the filing narrative, so rows cite the disclosing filing via the same FiledFactCitation authority as monetary facts (period is FiledInstant at the metric's as-of date). SaaS issuers disclose net-revenue-retention and ARR-threshold customer counts under issuer-specific definitions; the definition belongs to the citing filing, not to this shape."
+// Issuer-defined key performance indicators disclosed in 10-K Item 7 (MD&A) under the SEC's KPI
+// interpretive guidance (Release 33-10751, anchor above). These are NOT XBRL-tagged facts -- they
+// exist only in the filing narrative, so rows cite the disclosing filing via the same
+// FiledFactCitation authority as monetary facts (period is FiledInstant at the metric's as-of
+// date). SaaS issuers disclose net-revenue-retention and ARR-threshold customer counts under
+// issuer-specific definitions; the definition belongs to the citing filing, not to this shape.
 
 // Issuers sometimes disclose a rate only as a floor (GitLab fiscal 2020 through 2023: Dollar-Based Net Retention Rate reported as 'above N%'), later as an exact point. RateLowerBoundPercent keeps the floor a floor -- collapsing it to an exact value would fabricate precision the filing never claimed (DESIGN section 5).
 type DisclosedPercentRate

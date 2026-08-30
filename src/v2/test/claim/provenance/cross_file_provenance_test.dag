@@ -2,15 +2,13 @@ module v2.test.claim.provenance.cross_file_provenance
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-// The closing check for the cross-file-provenance lane, authored before the
-// mechanism it closes. It answers ONE name across a module (file) boundary and
-// then derives the referencing module's dependencies from the resolution
-// ANSWERS ALONE -- module_dependencies_from_provenance receives no tree, no
-// import list and no reference spelling, so an edge it reports cannot have come
-// from anything but a resolved target's containment owner. The second witness is
-// the discriminating RED: a spelling whose module prefix names the producer but
-// which resolves nowhere must yield NO edge, which is exactly what separates a
-// resolution-derived edge from the segment-prefix match it replaces.
+// The closing check for the cross-file-provenance lane, authored before the mechanism it closes.
+// It answers ONE name across a module (file) boundary and derives the referencing module's
+// dependencies from the resolution ANSWERS ALONE -- module_dependencies_from_provenance receives no
+// tree, no import list and no reference spelling, so an edge it reports can only have come from a
+// resolved target's containment owner. The second witness is the discriminating RED: a spelling
+// whose module prefix names the producer but resolves nowhere must yield NO edge -- exactly what
+// separates a resolution-derived edge from the segment-prefix match it replaces.
 
 fn cfp_qn_spine(segments: FreeMonoid<Symbol>) -> Node {
   fold_list_node(

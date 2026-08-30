@@ -4,25 +4,25 @@
 //! (`v1_bridge_dispatch!`/`v1_bridge_family_arms!` in `v1_interpreter.rs`): a per-family generated
 //! enum (one variant per roster row) is matched with NO wildcard arm against a hand-authored
 //! `arm "<id>" { ... } => body` list, via `$arm_macro!($id)` where `$arm_macro` is itself generated
-//! from the roster. Neither direction of the bijection is representable as a `.dag`-level check --
-//! `.dag` has no ingest grammar for arbitrary Rust source, so reading v1_interpreter.rs text to
-//! re-derive what rustc's own exhaustiveness/macro-expansion checker already decides would be a
-//! second, fragile authority for a fact rustc already computes (DESIGN.md §6 "enforce with lenses,
-//! not grep"; §3 single authority). So this fixture reproduces the exact shape -- generated enum +
-//! generated arm-token macro + hand-authored match with no wildcard -- in an isolated temp-dir crate
-//! and drives a real `cargo build`, following the one existing precedent for this pattern in the
-//! tree (`cssl_seed_linked_closure_assembly.rs`'s `deliberate-red` cargo-subprocess controls). It
-//! does not touch the real dispatch generator or `v1_interpreter.rs`.
+//! from the roster. Neither direction is representable as a `.dag`-level check -- `.dag` has no
+//! ingest grammar for arbitrary Rust source, so re-deriving from v1_interpreter.rs text what
+//! rustc's exhaustiveness/macro-expansion checker already decides would be a second, fragile
+//! authority (DESIGN.md §6 "enforce with lenses, not grep"; §3 single authority). So this fixture
+//! reproduces the exact shape -- generated enum + generated arm-token macro + hand-authored match
+//! with no wildcard -- in an isolated temp-dir crate and drives a real `cargo build`, following
+//! the one precedent in the tree (`cssl_seed_linked_closure_assembly.rs`'s `deliberate-red`
+//! cargo-subprocess controls). It does not touch the real dispatch generator or
+//! `v1_interpreter.rs`.
 //!
 //! Not `#[ignore]`d, unlike the sibling `interpreter_dispatch_bijection_real_roster_red.rs`
-//! (review 48433): that file's tests clone the real workspace and regenerate through the real
-//! `gunbc` pipeline before a real `cargo build` of `v1-compiler` (~192s/test), so they are
-//! `#[ignore]`d for cost, not because a cargo subprocess must never sit in per-PR CI discovery --
-//! neither `cargo test` nor `cargo nextest` runs in per-PR CI at all (nextest removed 2026-07-11,
-//! DESIGN.md `commit_gate_rust_suite_removed_disposition`; the local suite is the only consumer
-//! either way). The fixtures here are a dependency-free temp-dir crate (no crates.io download, no
-//! network) and build in a few seconds each, so leaving them in the default local `cargo test`
-//! run is cheap and keeps the claim-A discriminator exercised without opt-in.
+//! (review 48433): that file clones the real workspace and regenerates through the real `gunbc`
+//! pipeline before a real `cargo build` of `v1-compiler` (~192s/test), so it is `#[ignore]`d for
+//! cost, not because a cargo subprocess must never sit in per-PR CI discovery -- neither
+//! `cargo test` nor `cargo nextest` runs in per-PR CI at all (nextest removed 2026-07-11,
+//! DESIGN.md `commit_gate_rust_suite_removed_disposition`; the local suite is the only consumer).
+//! The fixtures here are a dependency-free temp-dir crate (no crates.io download, no network)
+//! building in seconds, so leaving them in the default local `cargo test` run is cheap and keeps
+//! the claim-A discriminator exercised without opt-in.
 
 use std::fs;
 use std::path::PathBuf;
@@ -96,10 +96,10 @@ pub fn dispatch(arm: Arm) -> &'static str {
     );
 }
 
-/// RED — item TWO, direction 1: a roster row (generated enum variant `C`) with no corresponding
-/// hand-authored `arm` block. The inner match has no pattern for `Arm::C` and carries no wildcard,
-/// so rustc refuses with E0004 non-exhaustive-patterns. This is the real construction wall firing,
-/// not a stub: deleting the `arm_macro!(C)` line is the only way to make it compile, and doing so
+/// RED -- item TWO, direction 1: a roster row (generated enum variant `C`) with no corresponding
+/// hand-authored `arm` block. The inner match has no pattern for `Arm::C` and no wildcard, so
+/// rustc refuses with E0004 non-exhaustive-patterns -- the real construction wall firing, not a
+/// stub: deleting the `arm_macro!(C)` line is the only way to make it compile, and doing so
 /// reproduces the exact defect item ONE's wall exists to make unwritable.
 #[test]
 fn w_red_roster_row_with_no_handler_arm_refuses_compile() {
@@ -137,10 +137,10 @@ pub fn dispatch(arm: Arm) -> &'static str {
     );
 }
 
-/// RED — item TWO, direction 2: a hand-authored `arm` block whose identity has no corresponding
-/// roster row (the generated arm-token macro has no rule for it). The macro invocation
-/// `arm_macro!(D)` itself fails to expand, so rustc refuses at the macro-invocation site rather than
-/// at the match. This is the mirror defect: an orphan handler nobody's roster row names.
+/// RED -- item TWO, direction 2: a hand-authored `arm` block whose identity has no roster row
+/// (the generated arm-token macro has no rule for it). `arm_macro!(D)` fails to expand, so rustc
+/// refuses at the macro-invocation site rather than at the match. The mirror defect: an orphan
+/// handler nobody's roster row names.
 #[test]
 fn w_red_handler_arm_with_no_roster_row_refuses_compile() {
     let root = temp_fixture_root("orphan_handler");

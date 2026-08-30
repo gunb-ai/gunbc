@@ -191,22 +191,19 @@ fn execute_gate(
     }
 }
 
-/// The fmt gate's three outcomes — clean, drift, could-not-run — are partitioned
-/// by `gunbc.local_tidy_spec`, not here. This transport contributes only the
-/// observation (spawn result / exit status) and asks the plan to render it, so
-/// the rule that "only exit 1 reports drift" has one authority shared with the
-/// emitted hooks rather than a Rust restatement that can drift from them.
+/// The fmt gate's three outcomes — clean, drift, could-not-run — are partitioned by
+/// `gunbc.local_tidy_spec`, not here. This transport contributes only the observation (spawn
+/// result / exit status) and asks the plan to render it, so "only exit 1 reports drift" has one
+/// authority shared with the emitted hooks, not a Rust restatement that can drift.
 ///
-/// HAND-RUST GATE explicit deferral (review 45175): counted interim growth
-/// (net +57 LOC), NOT a census shrink, receipted at
-/// `gunbc.githooks_pre_push_fmt_transport_scaffold`. These three functions carry
-/// no policy — they replace an inline arm of the pre-existing `execute_gate`
-/// dispatch and exist only because `pre_push.rs` is the process-spawn boundary.
-/// They dissolve WITH this file on the lane `gunbc.githooks_pre_push_cli`
-/// already names: delete that module, `gunbc.githooks_pre_push_plan`,
-/// `pre_push.rs` and the `--pre-push` argv row together when the emitted crate
-/// partition lands (DESIGN open thread "emitted crate partition"). No new lane
-/// is opened and no new seed entry point is added here.
+/// HAND-RUST GATE explicit deferral (review 45175): counted interim growth (net +57 LOC), NOT a
+/// census shrink, receipted at `gunbc.githooks_pre_push_fmt_transport_scaffold`. These three
+/// functions carry no policy — they replace an inline arm of the pre-existing `execute_gate`
+/// dispatch and exist only because `pre_push.rs` is the process-spawn boundary. They dissolve
+/// WITH this file on the lane `gunbc.githooks_pre_push_cli` names: delete that module,
+/// `gunbc.githooks_pre_push_plan`, `pre_push.rs` and the `--pre-push` argv row together when the
+/// emitted crate partition lands (DESIGN open thread "emitted crate partition"). No new lane or
+/// seed entry point is added here.
 fn execute_cargo_fmt_gate(plan: &PlanCtx) -> Result<(), String> {
     eprintln!("[pre-push] cargo fmt --all --check");
     let spawned = Command::new("cargo")

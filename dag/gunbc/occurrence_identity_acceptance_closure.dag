@@ -26,7 +26,27 @@ type OccurrenceIdentityReceiptEnrollmentDebt {
   dissolution: DissolutionCondition
 }
 
-data occurrence_identity_consumer_red_debt_rehome_note: String = "PR 7530 rehomed five rows from namespace-canonical-binding to namespace-reference-derived-closure by their actual acceptance boundary. Four receipts are green by local execution in v1.tests.claim.occurrence_identity_debt_receipt_test, but their consumer debt rows remain until gunbc.ci_layer_roots.parser_transport_witness_entries exists on main and executes them per PR. rebuilt-reference-identity-preservation has a deliberately split load-bearing receipt: w_rebuilt_reference_identity_preservation_executes_holds proves identity reaches the canonical sidecar consumer, while the generated pipeline_occurrence_sidecar_serde_round_trip assertion proves the production compile/reconcile rebuild preserves the exact transport. occurrence_identity_receipt_enrollment_debts tracks both missing enrollment surfaces. inferred-target-anchor-identity still belongs to namespace-canonical-binding because its receipt cannot execute before the production projection sites switch over.\n\none-occurrence-collector-dedupe remains on namespace-reference-derived-closure but cannot yet climb: the rehome test asked whether it conceptually precedes production changeover and missed that no production occurrence-aware repeated-discovery collector exists to observe. merge_occurrence_transports concatenates complete authored transports and validation correctly refuses duplicate authored rows; std.occurrence_binding_resolve P1 correctly refuses duplicate supplied candidate ids; the open structural producer buckets each already-validated declaration once and exposes no repeated-observation seam. None is the collector this receipt requires. The retained row names that missing seam as its next-rung trigger rather than fabricating a test-local deduper."
+// PR 7530 rehomed five rows from namespace-canonical-binding to namespace-reference-derived-closure
+// by their actual acceptance boundary. Four receipts are green by local execution in
+// v1.tests.claim.occurrence_identity_debt_receipt_test, but their consumer debt rows remain until
+// gunbc.ci_layer_roots.parser_transport_witness_entries exists on main and executes them per PR.
+// rebuilt-reference-identity-preservation has a deliberately split load-bearing receipt:
+// w_rebuilt_reference_identity_preservation_executes_holds proves identity reaches the canonical
+// sidecar consumer, while the generated pipeline_occurrence_sidecar_serde_round_trip assertion
+// proves the production compile/reconcile rebuild preserves the exact transport.
+// occurrence_identity_receipt_enrollment_debts tracks both missing enrollment surfaces.
+// inferred-target-anchor-identity still belongs to namespace-canonical-binding because its receipt
+// cannot execute before the production projection sites switch over.
+//
+// one-occurrence-collector-dedupe remains on namespace-reference-derived-closure but cannot yet
+// climb: the rehome test asked whether it conceptually precedes production changeover and missed
+// that no production occurrence-aware repeated-discovery collector exists to observe.
+// merge_occurrence_transports concatenates complete authored transports and validation correctly
+// refuses duplicate authored rows; std.occurrence_binding_resolve P1 correctly refuses duplicate
+// supplied candidate ids; the open structural producer buckets each already-validated declaration
+// once and exposes no repeated-observation seam. None is the collector this receipt requires. The
+// retained row names that missing seam as its next-rung trigger rather than fabricating a
+// test-local deduper.
 
 data occurrence_identity_consumer_red_debts: List<OccurrenceIdentityConsumerRedDebt> = [
   OccurrenceIdentityConsumerRedDebt {
@@ -118,7 +138,23 @@ type OccurrenceIdentityClosingVerdict
   | OccurrenceIdentityClosingOpen { missing_law_ids: List<String> }
   | OccurrenceIdentityClosingRefused { refusals: List<OccurrenceIdentityClosingRefusal> }
 
-data occurrence_identity_closing_check_note: String = "Validation/workflow carrier for the namespace-reference-derived-closure node; execution outcomes, admitted deferrals, and node-closing verdicts deliberately do not live in the std.occurrence_identity identity authority. The closing verdict is derived from that authority's permanent occurrence_identity_acceptance_laws rows, scoped-batch execution observations, and admitted deferrals. The law population is not a caller parameter, so deleting a debt row or passing a narrowed list cannot delete a law. A receipt counts only when its law id and exact required_receipt still match and its execution observation is Passed; the scoped witness batch must supply that observation from execution, never from a roster entry asserting its own success. Unknown, duplicate, stale, non-green, and receipt-plus-deferral rows refuse. Covered with deferred_law_ids is an explicit deferred state, not completion; only Covered with an empty deferred population closes the node. The exact-denominator census is only a hand-maintained spec-growth tripwire; this derived unmatched-law-to-Open fold is the load-bearing guarantee, and the census must be deleted rather than automated into a self-comparison. This five-law occurrence-identity acceptance family is distinct from the six candidate-producer conformance laws owned by the namespace mechanism. Synthetic Passed rows are controls for this fold only and never evidence that a production receipt executed; production integration must replace them with the live scoped execution-observation join."
+// Validation/workflow carrier for the namespace-reference-derived-closure node; execution outcomes,
+// admitted deferrals, and node-closing verdicts deliberately do not live in the
+// std.occurrence_identity identity authority. The closing verdict is derived from that authority's
+// permanent occurrence_identity_acceptance_laws rows, scoped-batch execution observations, and
+// admitted deferrals. The law population is not a caller parameter, so deleting a debt row or
+// passing a narrowed list cannot delete a law. A receipt counts only when its law id and exact
+// required_receipt still match and its execution observation is Passed; the scoped witness batch
+// must supply that observation from execution, never from a roster entry asserting its own success.
+// Unknown, duplicate, stale, non-green, and receipt-plus-deferral rows refuse. Covered with
+// deferred_law_ids is an explicit deferred state, not completion; only Covered with an empty
+// deferred population closes the node. The exact-denominator census is only a hand-maintained
+// spec-growth tripwire; this derived unmatched-law-to-Open fold is the load-bearing guarantee, and
+// the census must be deleted rather than automated into a self-comparison. This five-law
+// occurrence-identity acceptance family is distinct from the six candidate-producer conformance
+// laws owned by the namespace mechanism. Synthetic Passed rows are controls for this fold only and
+// never evidence that a production receipt executed; production integration must replace them with
+// the live scoped execution-observation join.
 
 fn occurrence_identity_law_id_known(
   law_id: String

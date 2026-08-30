@@ -35,11 +35,30 @@ import v2.compiler.self_host.generation {
   observed_artifact_digest
 }
 
-data artifact_materialization_subject_note: String = "SH-C: turning a cargo build into the artifact axis of a compiler generation, with no step that predicts a path instead of observing one. The chain is build -> the path cargo NAMED -> a digest of THAT path -> GeneratedArtifactIdentity. The load-bearing property is that the digest and every later execution consume ONE path value, produced by extdeps.cargo_message from cargo's own --message-format=json output. A convention-derived path breaks that at both ends simultaneously: it digests one file while executing another, with each operation individually honest and the composition silently wrong, and it also makes the artifact axis a FUNCTION of the build-configuration axis, collapsing two of the six independent axes v2.compiler.self_host.generation keeps apart."
+// SH-C: turning a cargo build into the artifact axis of a compiler generation, with no step that
+// predicts a path instead of observing one. The chain is build -> the path cargo NAMED -> a digest
+// of THAT path -> GeneratedArtifactIdentity. The load-bearing property: the digest and every later
+// execution consume ONE path value, produced by extdeps.cargo_message from cargo's own
+// --message-format=json output. A convention-derived path breaks that at both ends: it digests one
+// file while executing another, each operation honest and the composition silently wrong, and it
+// makes the artifact axis a FUNCTION of the build-configuration axis, collapsing two of the six
+// independent axes v2.compiler.self_host.generation keeps apart.
 
-data artifact_materialization_decomposition_note: String = "The decision logic is deliberately split into two PURE folds with a thin wet composition between them, rather than one wet function. select_artifact_path decides what the build reported; materialization_from_digest decides what the digest observation means. Both are total folds over typed inputs, so both are witnessed hermetically on every PR, and the only part that needs a wet cadence is the three service calls that produce their inputs. The alternative — one wet function carrying the decisions — would put every refusal arm behind a cadence that does not run per PR, which is how a decision nobody executes reads as a decision that holds."
+// The decision logic is split into two PURE folds with a thin wet composition between them,
+// rather than one wet function. select_artifact_path decides what the build reported;
+// materialization_from_digest decides what the digest observation means. Both are total folds over
+// typed inputs, so both are witnessed hermetically on every PR, and only the three service calls
+// producing their inputs need a wet cadence. One wet function carrying the decisions would put
+// every refusal arm behind a cadence that does not run per PR, which is how a decision nobody
+// executes reads as a decision that holds.
 
-data artifact_materialization_unbuilt_note: String = "There is NO arm here that yields ArtifactMaterialized without a digest observation in hand. That is the whole point of the carrier: v2.compiler.self_host.generation makes ObservedArtifactDigest a sole_constructor over a validated Sha512Digest precisely so an artifact identity cannot be authored, and this module is the first producer that has to respect it. Every failure — build nonzero, no artifact message, ambiguous target, unreadable stream, digest refused — lands on its own arm and projects ArtifactNotMaterialized, which promotion admission already refuses BY NAME rather than treating as equivalent."
+// There is NO arm here that yields ArtifactMaterialized without a digest observation in hand.
+// v2.compiler.self_host.generation makes ObservedArtifactDigest a sole_constructor over a
+// validated Sha512Digest precisely so an artifact identity cannot be authored, and this module is
+// the first producer that has to respect it. Every failure — build nonzero, no artifact message,
+// ambiguous target, unreadable stream, digest refused — lands on its own arm and projects
+// ArtifactNotMaterialized, which promotion admission already refuses BY NAME rather than treating
+// as equivalent.
 
 type ArtifactPathOutcome
   = ArtifactPathReported { executable: FilePath }
@@ -58,11 +77,10 @@ type ArtifactMaterializationOutcome
       cause: NonEmptyStr
     }
 
-// A build that exited nonzero is its own arm and never reaches the stream decode.
-// The distinction matters downstream: "the candidate did not build" and "the candidate
-// built but we cannot say what it produced" have different remedies, and the brief this
-// lane answers requires build failure to stay separate from every other refusal so a
-// later behavioural comparison cannot read one as the other.
+// A build that exited nonzero is its own arm and never reaches the stream decode. "The
+// candidate did not build" and "the candidate built but we cannot say what it produced" have
+// different remedies, and the brief this lane answers requires build failure to stay separate
+// from every other refusal so a later behavioural comparison cannot read one as the other.
 fn select_artifact_path(
   build_success: Bool,
   build_stdout: String,
@@ -124,10 +142,10 @@ fn select_artifact_path(
 }
 
 // Takes the path the previous fold reported ALONGSIDE the observation made of that same
-// path. The two parameters are not independent inputs a caller may mix: the wet
-// composition below obtains the observation by digesting exactly this executable, and
-// the executable is carried into the result so a consumer can prove the digest and any
-// later invocation refer to one file.
+// path. The two parameters are not independent inputs a caller may mix: the wet composition
+// below obtains the observation by digesting exactly this executable, and the executable is
+// carried into the result so a consumer can prove the digest and any later invocation refer
+// to one file.
 fn materialization_from_digest(
   executable: FilePath,
   observation: Sha512FileObservation
@@ -154,17 +172,17 @@ fn materialization_outcome_from_path(
   }
 }
 
-// The wet composition, and the ONLY function here that reaches the host. It is thin on
-// purpose: it makes three service calls and carries no decision the two pure folds above
-// do not already make, so the per-PR hermetic corpus keeps every arm under execution and
-// the wet cadence only has to prove that the real cargo and the real sha512sum reach them.
+// The wet composition, and the ONLY function here that reaches the host. Thin on purpose: it
+// makes three service calls and carries no decision the two pure folds above do not already
+// make, so the per-PR hermetic corpus keeps every arm under execution and the wet cadence only
+// has to prove that the real cargo and the real sha512sum reach them.
 //
-// THE DIGEST IS TAKEN ONLY FOR A PATH CARGO REPORTED, and the match below is what makes
-// that structural rather than a discipline: the non-reported arms have no executable to
-// hand sha512sum, so they produce a refusal that says exactly that. Those arms discard it
-// — materialization_outcome_from_path answers from the path alone — but the cause is true
-// as written, so if a later edit ever did consult it the result stays fail-closed instead
-// of naming a file nothing observed.
+// THE DIGEST IS TAKEN ONLY FOR A PATH CARGO REPORTED, and the match below makes that
+// structural rather than a discipline: the non-reported arms have no executable to hand
+// sha512sum, so they produce a refusal saying exactly that. Those arms discard it —
+// materialization_outcome_from_path answers from the path alone — but the cause is true as
+// written, so if a later edit ever consulted it the result stays fail-closed instead of naming
+// a file nothing observed.
 fn materialize_artifact_wet(
   workdir: FilePath,
   manifest_path: FilePath,

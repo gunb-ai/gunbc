@@ -59,7 +59,14 @@ fn filed_amount(fact: FiledMonetaryFact) -> UsdWholeDollars? {
   }
 }
 
-data signed_usd_group_completion_note: String = "Credit-balance income-statement elements (OperatingIncomeLoss, NetIncomeLoss) file SIGNED values -- a loss is a negative companyconcept val, which the Nat-counted MoneyAmount magnitude cannot inhabit. The signed value is sign-as-sum over the same magnitude authority (the GroupCompletion-of-Nat shape): NonNegativeUsd carries the filed non-negative amount, NegativeUsd carries the strictly positive magnitude of a negative filed val (zero is always NonNegativeUsd). FiledMonetaryFact remains the refinement for lines verified non-negative at authoring time (revenue, costs, expense magnitudes). dissolve-on: std Int = GroupCompletion<Nat> grounding (DESIGN open thread), at which point this sum collapses onto the grounded signed carrier."
+// Credit-balance income-statement elements (OperatingIncomeLoss, NetIncomeLoss) file SIGNED values
+// -- a loss is a negative companyconcept val, which the Nat-counted MoneyAmount magnitude cannot
+// inhabit. The signed value is sign-as-sum over the same magnitude authority (the
+// GroupCompletion-of-Nat shape): NonNegativeUsd carries the filed non-negative amount, NegativeUsd
+// carries the strictly positive magnitude of a negative filed val (zero is always NonNegativeUsd).
+// FiledMonetaryFact remains the refinement for lines verified non-negative at authoring time
+// (revenue, costs, expense magnitudes). dissolve-on: std Int = GroupCompletion<Nat> grounding
+// (DESIGN open thread), at which point this sum collapses onto the grounded signed carrier.
 
 type SignedUsdWholeDollars
   = NonNegativeUsd { amount: UsdWholeDollars }

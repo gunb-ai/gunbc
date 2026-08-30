@@ -310,7 +310,28 @@ test fn witness_every_declared_row_is_complete_unsigned_ticket() -> Bool {
   all(nodes(), n => active_node_admissible(n: n))
 }
 
-data live_state_count_transcription_note: String = "NO LIVE-STATE COUNT PINS IN THIS FILE, deliberately, and the deleted ones are named so the class does not creep back. Removed: `count(accepted) == 8` here, and `\"63 declared · 8 accepted · 55 active\"` in test.claim.long.roadmap_page_witness. Both TRANSCRIBED a number nobody decided — they mirrored whatever the live authority happened to hold, so authoring any correct roadmap row redded them (observed twice; the second was PR #7463, whose only content was two new rows). A pin like that reports 'the roadmap changed', which is not a defect, while the reviewer's habit becomes editing the number to match — a check satisfied by editing the declaration, which DESIGN §5 names as the tell that validation stood where construction was available. THE DISTINCTION THAT DECIDES WHETHER A COUNT MAY STAY: does the number come from a fixture the test CONSTRUCTS, or from live corpus state? test.claim.roadmap_altitude_witness renders `doc_html(nodes: [done_signed_node(), open_node()])` and asserts `1 open · 1 done` — that is the renderer computing from two known inputs, so it is a specification and it stays; deleting it would remove real coverage. Same for the observation render witnesses over replayed fixture blocks, and for structural counts that encode a design fact rather than a population (two workflow lamps, three static routes). WHAT SURVIVED THE DELETION HERE, and why nothing was lost: this witness's actual invariant is the RELATIONSHIP `count(active_nodes()) == count(nodes()) - count(accepted)`, which is magnitude-independent and still asserted; the eight per-id acceptance assertions also stay, because they pin WHICH acceptances exist and a dropped one is real history loss (scm_prerequisite_acceptance_note). Only the magnitude went. Replacing it with `string_contains(page, roadmap_counts_label())` was considered and rejected as the vacuous form — both sides derive from the same function, so it asserts the page contains what the page computed (operator ruling 2026-07-30: no vacuous or tautological testing)."
+// NO LIVE-STATE COUNT PINS IN THIS FILE, deliberately, and the deleted ones are named so the class
+// does not creep back. Removed: `count(accepted) == 8` here, and `"63 declared · 8 accepted · 55
+// active"` in test.claim.long.roadmap_page_witness. Both TRANSCRIBED a number nobody decided — they
+// mirrored whatever the live authority happened to hold, so authoring any correct roadmap row
+// redded them (observed twice; the second was PR #7463, whose only content was two new rows). A pin
+// like that reports 'the roadmap changed', which is not a defect, while the reviewer's habit
+// becomes editing the number to match — a check satisfied by editing the declaration, which DESIGN
+// §5 names as the tell that validation stood where construction was available. THE DISTINCTION THAT
+// DECIDES WHETHER A COUNT MAY STAY: does the number come from a fixture the test CONSTRUCTS, or
+// from live corpus state? test.claim.roadmap_altitude_witness renders `doc_html(nodes:
+// [done_signed_node(), open_node()])` and asserts `1 open · 1 done` — that is the renderer
+// computing from two known inputs, so it is a specification and it stays; deleting it would remove
+// real coverage. Same for the observation render witnesses over replayed fixture blocks, and for
+// structural counts that encode a design fact rather than a population (two workflow lamps, three
+// static routes). WHAT SURVIVED THE DELETION HERE, and why nothing was lost: this witness's actual
+// invariant is the RELATIONSHIP `count(active_nodes()) == count(nodes()) - count(accepted)`, which
+// is magnitude-independent and still asserted; the eight per-id acceptance assertions also stay,
+// because they pin WHICH acceptances exist and a dropped one is real history loss
+// (scm_prerequisite_acceptance_note). Only the magnitude went. Replacing it with
+// `string_contains(page, roadmap_counts_label())` was considered and rejected as the vacuous form —
+// both sides derive from the same function, so it asserts the page contains what the page computed
+// (operator ruling 2026-07-30: no vacuous or tautological testing).
 
 test fn witness_active_set_is_declared_minus_accepted() -> Bool {
   match live_accepted_node_ids() {
@@ -386,7 +407,15 @@ test fn witness_receipt_for_unknown_node_accepts_nothing() -> Bool {
   all(nodes(), n => !node_accepted(receipts: [ghost], rn: n))
 }
 
-data acceptance_receipt_continuity_witness_note: String = "THE WALL AGAINST SILENT RECEIPT DELETION (acceptance_receipt_continuity_wall_note). roadmap_acceptance_event_history loads from dag/gunbc/roadmap/roadmap_acceptance_event_history.jsonl; roadmap_acceptance_receipts projects live receipts only. Live git-observed integrity executes in test.claim.roadmap_receipt_continuity_live_witness (ReadsLiveTree, bin_witness_wet_entries). RED controls in test.claim.roadmap_receipt_continuity_acceptance plant deleted events, prefix law, empty-prior bypass discriminant, digest-field mutation, wrong prior digest, revocation while live, duplicate revocations, exact revocation admit, criteria rewrite, git-refusal observation, and typed projection refusal chain."
+// THE WALL AGAINST SILENT RECEIPT DELETION (acceptance_receipt_continuity_wall_note).
+// roadmap_acceptance_event_history loads from
+// dag/gunbc/roadmap/roadmap_acceptance_event_history.jsonl; roadmap_acceptance_receipts projects
+// live receipts only. Live git-observed integrity executes in
+// test.claim.roadmap_receipt_continuity_live_witness (ReadsLiveTree, bin_witness_wet_entries). RED
+// controls in test.claim.roadmap_receipt_continuity_acceptance plant deleted events, prefix law,
+// empty-prior bypass discriminant, digest-field mutation, wrong prior digest, revocation while
+// live, duplicate revocations, exact revocation admit, criteria rewrite, git-refusal observation,
+// and typed projection refusal chain.
 
 fn live_acceptance_event_history() -> List<RoadmapAcceptanceEvent> {
   match roadmap_acceptance_event_history_load() {
@@ -553,7 +582,33 @@ test fn witness_new_generator_precedes_fixed_point_and_old_generator_deletion() 
     && edge_exists(child: "v1-interpreter-delete", parent: "v1-emitter-delete")
 }
 
-data native_cutover_edge_direction_note: String = "THE NATIVE EDGE POINTS THE OTHER WAY NOW, and this witness is what forced the change to be deliberate (2026-08-07). It previously required native-selected-witness-bundle to depend on the five-minute gate AND on warm-merge-admission. Both are now asserted ABSENT and the reverse edge is required instead, because the gate is an AGGREGATE OUTCOME: making the native cutover wait for it means the one step that removes the interpreter from the required path cannot start until the programme it contributes to has already succeeded. The warm-merge edge went with it because no input dependency was ever shown — the bundle needs a selected population, an emitter and a toolchain, none of which merge admission supplies.\n\nWHY THIS IS A REORDERING AND NOT A LOOSENING. The node is stale in a specific way: its first slice read 'merge #7599', #7599 is merged, and the cited production enrolment still ran none of its three selected members natively and fell back on all three. So the mechanism exists and the required path takes no benefit, which makes the cutover the first thing that should be startable rather than the last. With no parent, it is. The negatives are asserted rather than merely dropped so the old direction cannot return silently — a re-added dependency on the aggregate would red here, which is the property that was doing the work before and still is.\n\nSUPERSEDED IN PART BY THE CI2-0 STOP (operator ruling 2026-08-10). The reverse edge this note required — the gate depending on the native bundle — is now DELETED, not reversed again: gunbc.roadmap_authority five_minute_ci_gate_program_note records the measurement that decided it, a 3,290s floor carrying 97s of witness evaluation, so an infinitely fast evaluator leaves about 97 percent of the floor standing and native execution cannot be this gate's prerequisite. #8116 implemented the deletion in the authority and left this witness asserting the edge it removed, so the witness read main as broken while main was following the ruling. The clause is now a NEGATIVE on both directions: neither node depends on the other, and either edge returning would red here. What survives from this note unchanged is its reason for asserting absence rather than dropping the clause — a silent re-parenting is exactly what the negative exists to catch."
+// THE NATIVE EDGE POINTS THE OTHER WAY NOW, and this witness is what forced the change to be
+// deliberate (2026-08-07). It previously required native-selected-witness-bundle to depend on the
+// five-minute gate AND on warm-merge-admission. Both are now asserted ABSENT and the reverse edge
+// is required instead, because the gate is an AGGREGATE OUTCOME: making the native cutover wait for
+// it means the one step that removes the interpreter from the required path cannot start until the
+// programme it contributes to has already succeeded. The warm-merge edge went with it because no
+// input dependency was ever shown — the bundle needs a selected population, an emitter and a
+// toolchain, none of which merge admission supplies.
+//
+// WHY THIS IS A REORDERING AND NOT A LOOSENING. The node is stale in a specific way: its first
+// slice read 'merge #7599', #7599 is merged, and the cited production enrolment still ran none of
+// its three selected members natively and fell back on all three. So the mechanism exists and the
+// required path takes no benefit, which makes the cutover the first thing that should be startable
+// rather than the last. With no parent, it is. The negatives are asserted rather than merely
+// dropped so the old direction cannot return silently — a re-added dependency on the aggregate
+// would red here, which is the property that was doing the work before and still is.
+//
+// SUPERSEDED IN PART BY THE CI2-0 STOP (operator ruling 2026-08-10). The reverse edge this note
+// required — the gate depending on the native bundle — is now DELETED, not reversed again:
+// gunbc.roadmap_authority five_minute_ci_gate_program_note records the measurement that decided it,
+// a 3,290s floor carrying 97s of witness evaluation, so an infinitely fast evaluator leaves about
+// 97 percent of the floor standing and native execution cannot be this gate's prerequisite. #8116
+// implemented the deletion in the authority and left this witness asserting the edge it removed, so
+// the witness read main as broken while main was following the ruling. The clause is now a NEGATIVE
+// on both directions: neither node depends on the other, and either edge returning would red here.
+// What survives from this note unchanged is its reason for asserting absence rather than dropping
+// the clause — a silent re-parenting is exactly what the negative exists to catch.
 
 test fn witness_five_minute_ci_gate_program_chain_is_explicit() -> Bool {
   id_exists(id: "five-minute-ci-gate")
@@ -657,7 +712,11 @@ test fn witness_product_roots_have_no_false_roadmap_tool_dependency() -> Bool {
     && !edge_exists(child: "fleet-state-frontier", parent: "roadmap-runtime-identity-join")
 }
 
-data scm_prerequisite_witness_focus_note: String = "The accepted SCM sequence is checked against the authority rather than inferred from the focused markdown projection. P0 acceptance leaves the prerequisite spine as declared history; the operator-authored P1 node is the one active SCM slice and depends directly on P0. P2 and P3 remain absent rather than being implied by P1 activation. Carrier-path checks stay over the declared node population so accepting a node cannot erase its authority link."
+// The accepted SCM sequence is checked against the authority rather than inferred from the focused
+// markdown projection. P0 acceptance leaves the prerequisite spine as declared history; the
+// operator-authored P1 node is the one active SCM slice and depends directly on P0. P2 and P3
+// remain absent rather than being implied by P1 activation. Carrier-path checks stay over the
+// declared node population so accepting a node cannot erase its authority link.
 
 test fn witness_accepted_scm_sequence_activates_authored_p1_slice() -> Bool {
   match live_accepted_node_ids() {
@@ -741,7 +800,24 @@ test fn witness_v2_emitter_direct_rust_door_has_discriminating_contract() -> Boo
   }
 }
 
-data projection_active_only_focus_independence_note: String = "THIS CLAIM READS THE FOCUS-INDEPENDENT VIEW, and that is the whole point of it (2026-08-07). Its subject is the ACTIVE-SET DERIVATION — declared minus validly accepted — so its three controls have to be about acceptance. Against roadmap_authority(), which applies roadmap_focus_selection, they are not: both negative controls name ACCEPTED nodes (namespace-occurrence-transport and pderive-typesafe-nullary-reflection), so any focus that stops selecting the namespace and P-derive lanes makes them absent because they are HIDDEN, and the claim goes green while proving nothing about acceptance. That is not hypothetical — it happened the moment the focus moved to the infrastructure lanes, and the positive control caught it by failing loudly rather than the negatives passing quietly, which is only luck about which way the focus happened to move.\n\nSo the two facts are separated. Whether an accepted row leaves the active set is asserted here, against NoFocus, where absence can only mean accepted. Whether the focused page hides what the policy says it hides belongs to the focus mechanism's own claims. Binding both to one rendering made the stronger fact hostage to a projection policy row that is expected to move, and DESIGN 5 already names the shape: a check satisfiable by editing a declaration is validation standing where the real subject was available. The precedent is witness_rendered_nodes_are_declared_or_derived, which reads BOTH documents deliberately and says why in rendered_containment_witness_note."
+// THIS CLAIM READS THE FOCUS-INDEPENDENT VIEW, and that is the whole point of it (2026-08-07). Its
+// subject is the ACTIVE-SET DERIVATION — declared minus validly accepted — so its three controls
+// have to be about acceptance. Against roadmap_authority(), which applies roadmap_focus_selection,
+// they are not: both negative controls name ACCEPTED nodes (namespace-occurrence-transport and
+// pderive-typesafe-nullary-reflection), so any focus that stops selecting the namespace and
+// P-derive lanes makes them absent because they are HIDDEN, and the claim goes green while proving
+// nothing about acceptance. That is not hypothetical — it happened the moment the focus moved to
+// the infrastructure lanes, and the positive control caught it by failing loudly rather than the
+// negatives passing quietly, which is only luck about which way the focus happened to move.
+//
+// So the two facts are separated. Whether an accepted row leaves the active set is asserted here,
+// against NoFocus, where absence can only mean accepted. Whether the focused page hides what the
+// policy says it hides belongs to the focus mechanism's own claims. Binding both to one rendering
+// made the stronger fact hostage to a projection policy row that is expected to move, and DESIGN 5
+// already names the shape: a check satisfiable by editing a declaration is validation standing
+// where the real subject was available. The precedent is
+// witness_rendered_nodes_are_declared_or_derived, which reads BOTH documents deliberately and says
+// why in rendered_containment_witness_note.
 
 test fn witness_projection_is_active_only() -> Bool {
   let out = serialize_markdown_source(
@@ -759,7 +835,19 @@ test fn witness_projection_is_active_only() -> Bool {
     && !string_contains(s: out, pattern: "Operator TODO")
 }
 
-data execution_frontier_witness_note: String = "The execution-contract frontier is a COUNT, and these claims pin both of its halves. Before the first binding the count was zero — dispatch_environment_admit refused on every node, so nothing below Env in the workflow had ever executed end to end and the whole seven-segment strip was unreachable in production. A binding is therefore the gate for every downstream receipt, and an unwitnessed one could regress to zero silently (the way it already did once, when the 2026-07-27 authority refresh deleted the node that carried the prior contract and no claim noticed). The first claim proves the bound node yields a real contract rather than the fail-closed variant; the second proves the platform/task capability JOIN actually happens at admission — 8 fixed dispatch mechanics plus the one capability this contract's validation derives — which is the fact that turns a contract into an admissible environment; the third is the frontier itself, and it is the RED-shaped one: it fails if a binding is lost AND it fails if a second node is bound without this roster being updated, so the count in roadmap_execution_contract_frontier_note cannot silently drift from the authority it describes."
+// The execution-contract frontier is a COUNT, and these claims pin both of its halves. Before the
+// first binding the count was zero — dispatch_environment_admit refused on every node, so nothing
+// below Env in the workflow had ever executed end to end and the whole seven-segment strip was
+// unreachable in production. A binding is therefore the gate for every downstream receipt, and an
+// unwitnessed one could regress to zero silently (the way it already did once, when the 2026-07-27
+// authority refresh deleted the node that carried the prior contract and no claim noticed). The
+// first claim proves the bound node yields a real contract rather than the fail-closed variant; the
+// second proves the platform/task capability JOIN actually happens at admission — 8 fixed dispatch
+// mechanics plus the one capability this contract's validation derives — which is the fact that
+// turns a contract into an admissible environment; the third is the frontier itself, and it is the
+// RED-shaped one: it fails if a binding is lost AND it fails if a second node is bound without this
+// roster being updated, so the count in roadmap_execution_contract_frontier_note cannot silently
+// drift from the authority it describes.
 
 fn bound_execution_contract_for(id: String) -> WorkItemExecutionContract {
   match nodes()
@@ -827,7 +915,15 @@ test fn witness_bound_pair_covers_both_verify_directions() -> Bool {
     }
 }
 
-data rendered_containment_witness_note: String = "RENDERED NODES ARE DECLARED OR DERIVED — the wall against a second roadmap universe. The 2026-07-31 operator verdict on gunbc#7489 found a section rendering nodes from a section-local list that never entered declared_roadmap_nodes(): those nodes bypassed acceptance receipts, active-set derivation, and every witness in this file, while looking exactly like roadmap rows on the page. The first claim runs the containment predicate over BOTH real documents (the focus-independent authority view and the focused ROADMAP.md view — a ghost hidden by focus in one can render in the other). The second is the RED: a synthetic document carrying one undeclared node must count exactly one ghost, proving the predicate discriminates rather than vacuously passing whatever renders."
+// RENDERED NODES ARE DECLARED OR DERIVED — the wall against a second roadmap universe. The
+// 2026-07-31 operator verdict on gunbc#7489 found a section rendering nodes from a section-local
+// list that never entered declared_roadmap_nodes(): those nodes bypassed acceptance receipts,
+// active-set derivation, and every witness in this file, while looking exactly like roadmap rows on
+// the page. The first claim runs the containment predicate over BOTH real documents (the
+// focus-independent authority view and the focused ROADMAP.md view — a ghost hidden by focus in one
+// can render in the other). The second is the RED: a synthetic document carrying one undeclared
+// node must count exactly one ghost, proving the predicate discriminates rather than vacuously
+// passing whatever renders.
 
 test fn witness_rendered_nodes_are_declared_or_derived() -> Bool {
   roadmap_rendered_ghost_count(doc: roadmap_authority_for(focus: NoFocus)) == 0

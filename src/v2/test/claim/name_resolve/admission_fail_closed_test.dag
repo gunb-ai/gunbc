@@ -103,7 +103,14 @@ fn fc_qn(seg: Symbol) -> QualifiedName {
   Cons { head: seg, tail: Empty }
 }
 
-data fc_admitted_fixture_note: String = "These fixtures pass module roots to validate_module_roots / resolve_with_admission, which since BL-1 take FreeMonoid<NormalizedTree>. They therefore admit each synthetic root through the real door rather than casting past it -- a fixture that reached the sealed carrier without admission would be the wrapper-payload conflation the receipt in docs/plans/hollow-alias-construction-wall.md section 8.2 records, planted in the witness population. Admission is threaded as an Outcome and its refusal arm FAILS the witness: a fixture that cannot be admitted is a broken fixture, and reporting that as a passing verdict is the fabrication these witnesses exist to catch."
+// These fixtures pass module roots to validate_module_roots / resolve_with_admission, which since
+// BL-1 take FreeMonoid<NormalizedTree>. They therefore admit each synthetic root through the real
+// door rather than casting past it -- a fixture that reached the sealed carrier without admission
+// would be the wrapper-payload conflation the receipt in
+// docs/plans/hollow-alias-construction-wall.md section 8.2 records, planted in the witness
+// population. Admission is threaded as an Outcome and its refusal arm FAILS the witness: a fixture
+// that cannot be admitted is a broken fixture, and reporting that as a passing verdict is the
+// fabrication these witnesses exist to catch.
 
 fn fc_with_roots(
   o: Outcome<FreeMonoid<NormalizedTree>>,

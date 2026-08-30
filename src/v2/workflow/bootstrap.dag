@@ -134,7 +134,8 @@ data seed_honesty_decision: SeedHonestyDecision = FixedPointTrustSufficient {
 
 data independent_compiler_evidence_dissolve_on_note: DissolutionCondition = unbound_dissolution(description: "Dissolve-on: a future Available arm requires grounded independent-compiler provenance plus executed output bytes/digests under a separately ruled DDC/reference-compiler slice. Until then the evidence carrier is Unavailable-only, and the bootstrap discharge wall must refuse every current construction.")
 
-data bootstrap_seed_honesty_disconnected_digest_note: String = "The self_host_bytes_digest_source_perturb_teeth_holds witness stays green; this unavailable-only seed-honesty carrier is disconnected from canonical_emitted_bytes_digest in this PR."
+// The self_host_bytes_digest_source_perturb_teeth_holds witness stays green; this unavailable-only
+// seed-honesty carrier is disconnected from canonical_emitted_bytes_digest in this PR.
 
 fn independent_compiler_evidence_unavailable() -> IndependentCompilerEvidence {
   IndependentCompilerEvidenceUnavailable {

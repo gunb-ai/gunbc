@@ -31,7 +31,10 @@ import v2.std.logic { Bool }
 import v2.std.node { Node, Symbol }
 import v2.std.text { String }
 
-data bash_program_fold_support_note: String = "Shared bash fold tag helpers + real-program fixture builders for long/bash_program_real_probes_witness_test (review 43557 orphan fallout). Not a *_test.dag — module-local orphan hygiene would false-red cross-module-only helpers. Dissolve-on: rename remains honest as long as long/ is the consumer."
+// Shared bash fold tag helpers + real-program fixture builders for
+// long/bash_program_real_probes_witness_test (review 43557 orphan fallout). Not a *_test.dag —
+// module-local orphan hygiene would false-red cross-module-only helpers. Dissolve-on: rename
+// remains honest as long as long/ is the consumer.
 
 fn bash_program_fold_tagged(
   node: Node,

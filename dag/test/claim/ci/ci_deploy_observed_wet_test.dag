@@ -1,7 +1,14 @@
 module test.claim.ci_deploy_observed_wet
 
-
-data ci_deploy_observed_wet_note: String = "OFFLINE wet integration witness (hermetic-floor split, operator posture 2026-07-11: integration-style witnesses do not run regularly; CI runs hermetic/mocked variants). deploy_access_check_observed shells live whoami + sudo -n, so this half of test.claim.ci_deploy_witness moved here when the discovery corpus flipped Hermetic; the pure half (script pins, enrollment pins, and the mock-shaped deploy_access_check(access, actor) dual) stays discovered. Local recipe: claim_batch --wet --source-root dag --source-root src/v2 --entry dag/test/claim/ci/ci_deploy_observed_wet_test.dag. Dissolve-on: the scheduled (nightly) lane un-darkens and admits wet integration rows under its own budget — then enroll this entry there as a declared execution row."
+// OFFLINE wet integration witness (hermetic-floor split, operator posture 2026-07-11:
+// integration-style witnesses do not run regularly; CI runs hermetic/mocked variants).
+// deploy_access_check_observed shells live whoami + sudo -n, so this half of
+// test.claim.ci_deploy_witness moved here when the discovery corpus flipped Hermetic; the pure half
+// (script pins, enrollment pins, and the mock-shaped deploy_access_check(access, actor) dual) stays
+// discovered. Local recipe: claim_batch --wet --source-root dag --source-root src/v2 --entry
+// dag/test/claim/ci/ci_deploy_observed_wet_test.dag. Dissolve-on: the scheduled (nightly) lane
+// un-darkens and admits wet integration rows under its own budget — then enroll this entry there as
+// a declared execution row.
 
 fn ci_deploy_observed_runner_principal_name() -> String {
   grounded_posix_principal_name(p: ci_deploy_srv1_access.principal) as String

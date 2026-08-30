@@ -5,7 +5,6 @@ import v2.std.node_query { edge_field_type_name }
 import v2.std.diagnostic { node_locus, outcome_accepted, outcome_rejected }
 import v2.std.optional { optional_absent, optional_present, optional_prefer_first_present }
 
-
 type UnitFieldRow {
   field: Symbol
   carrier: Symbol
@@ -128,7 +127,9 @@ fn unit_modeling_diagnostic(carrier: Node, name: Symbol) -> Diagnostic {
   }
 }
 
-data unit_modeling_gate_cost_note: String = "Node-local predicate on the per-subtree-node roster (same grain as fact_density): carrier_first_unit_violation reads only the node's direct children. A subtree walk inside the gate would stack with run_required_lens_gates_on_subtree's fold_node and be O(n^2)."
+// Node-local predicate on the per-subtree-node roster (same grain as fact_density):
+// carrier_first_unit_violation reads only the node's direct children. A subtree walk inside the
+// gate would stack with run_required_lens_gates_on_subtree's fold_node and be O(n^2).
 
 fn unit_modeling_gate(node: Node) -> Outcome<Witness<Node>> {
   match carrier_first_unit_violation(carrier: node) {

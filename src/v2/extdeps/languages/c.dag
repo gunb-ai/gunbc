@@ -147,15 +147,24 @@ import v2.std.node {
   TypeNode,
 }
 
-data c_r3_interface_members_split_note: String = "C R3: CompilationUnit.interface renders to the unit .h (declarations only); CompilationUnit.members renders to the unit .c (implementation). partition_fold is the sole producer of interface/deps; this module only spells linkage paths and cross-unit #include lines."
+// C R3: CompilationUnit.interface renders to the unit .h (declarations only);
+// CompilationUnit.members renders to the unit .c (implementation). partition_fold is the sole
+// producer of interface/deps; this module only spells linkage paths and cross-unit #include lines.
 
-data c_r4_permissive_linkage_note: String = "C R4: permissive on module-SCC split across TUs, UnitGraphCycle, and LinkageCycle — mutually-recursive modules may live in different units; each .c #includes peer headers and links cyclically. Refuses only ByValueTypeCycle: an incomplete by-value type containment cycle that cannot be forward-declared (universal cause on home PartitionR4ValidityCause). SccSplit is Rust R4, not C R4."
+// C R4: permissive on module-SCC split across TUs, UnitGraphCycle, and LinkageCycle —
+// mutually-recursive modules may live in different units; each .c #includes peer headers and links
+// cyclically. Refuses only ByValueTypeCycle: an incomplete by-value type containment cycle that
+// cannot be forward-declared (universal cause on home PartitionR4ValidityCause). SccSplit is Rust
+// R4, not C R4.
 
 data c_by_value_type_cycle_detail: String = "incomplete by-value type containment cycle across partition units"
 
 data c_by_value_type_ambiguous_identity_detail: String = "ambiguous type identity across modules for by-value R4 lookup"
 
-data c_partition_fold_outcome_note: String = "C callers requiring receipt-bearing partition results MUST use c_partition_fold_outcome (routes partition_fold_outcome from home). Never treat partition_fold() -> [] as a refusal signal — that compat wrapper collapses PartitionFoldRefused to [] (§5 absorbing-fallback). Returns PartitionFoldOutcome directly — no parallel C-local coproduct."
+// C callers requiring receipt-bearing partition results MUST use c_partition_fold_outcome (routes
+// partition_fold_outcome from home). Never treat partition_fold() -> [] as a refusal signal — that
+// compat wrapper collapses PartitionFoldRefused to [] (§5 absorbing-fallback). Returns
+// PartitionFoldOutcome directly — no parallel C-local coproduct.
 
 fn c_partition_fold_outcome(
   module_dag: ModuleDag,
@@ -174,7 +183,20 @@ type CTranslationUnitSpelling {
   interface_nodes: List<Node>
 }
 
-data c_translation_unit_basename_note: String = "C-realization spelling authority for an agnostic CompilationUnitId (review 2026-08-01). CompilationUnitId is a branded NonEmptyStr: the brand gives nominal distinction but NO spelling law, so `../peer`, `a/b`, `a\\b`, an embedded CR/LF/NUL, and `\"` all inhabit it (the same class path_segment_is_safe records). Those values reached `.h`/`.c`/`.o` paths verbatim and were concatenated between #include \" and \", so a quote terminated the include string and a newline split the generated C source. Repair is a REVERSIBLE ENCODING, not sanitization and not a bare refusal: every codepoint outside [A-Za-z0-9._-] — and a LEADING '.', so the parent-directory segments '.' and '..' cannot be produced — renders as '%' + exactly 6 lowercase hex digits (all of Unicode fits in 6; max scalar 0x10FFFF). Because '%' is itself outside the allowlist it always escapes to %000025, so every '%' in the output opens an escape of fixed width 7 and decoding is unambiguous — that is the injectivity proof: distinct unit ids cannot collapse to one basename, so two units can never contend for one .o. Encoding rather than refusing keeps the realization TOTAL over the agnostic identity; the honesty boundary is that the emitted name is a target spelling, not the logical id."
+// C-realization spelling authority for an agnostic CompilationUnitId (review 2026-08-01).
+// CompilationUnitId is a branded NonEmptyStr: the brand gives nominal distinction but NO spelling
+// law, so `../peer`, `a/b`, `a\b`, an embedded CR/LF/NUL, and `"` all inhabit it (the same class
+// path_segment_is_safe records). Those values reached `.h`/`.c`/`.o` paths verbatim and were
+// concatenated between #include " and ", so a quote terminated the include string and a newline
+// split the generated C source. Repair is a REVERSIBLE ENCODING, not sanitization and not a bare
+// refusal: every codepoint outside [A-Za-z0-9._-] — and a LEADING '.', so the parent-directory
+// segments '.' and '..' cannot be produced — renders as '%' + exactly 6 lowercase hex digits (all
+// of Unicode fits in 6; max scalar 0x10FFFF). Because '%' is itself outside the allowlist it always
+// escapes to %000025, so every '%' in the output opens an escape of fixed width 7 and decoding is
+// unambiguous — that is the injectivity proof: distinct unit ids cannot collapse to one basename,
+// so two units can never contend for one .o. Encoding rather than refusing keeps the realization
+// TOTAL over the agnostic identity; the honesty boundary is that the emitted name is a target
+// spelling, not the logical id.
 
 fn c_basename_char_allowed(cp: Int) -> Bool {
   (cp >= 48 && cp <= 57)
@@ -736,7 +758,10 @@ fn c_validate_partition_r4(
   }
 }
 
-data c_stage0_emit_note: String = "Stage 0 C source emitter seeded on fn add (ISO/IEC 9899:2018 / C17 — extdeps.languages.c.emit extdeps_external_authority_anchor). Grammar relation rows + lex + binding_spellings live here; the smoke main harness suffix is the sole legitimate string scaffold (dissolves when a modeled main producer lands)."
+// Stage 0 C source emitter seeded on fn add (ISO/IEC 9899:2018 / C17 — extdeps.languages.c.emit
+// extdeps_external_authority_anchor). Grammar relation rows + lex + binding_spellings live here;
+// the smoke main harness suffix is the sole legitimate string scaffold (dissolves when a modeled
+// main producer lands).
 
 type CStage0EmitStandardEdition
   = | CStage0EmitStandardC17
@@ -817,7 +842,13 @@ fn c_bool_literal_host_runtime_row(literal: String) -> TargetEmitHostRuntimeRow 
   }
 }
 
-data c_cpp_realization_relationship_note: String = "C and C++ share the ISO C subset: cpp_target_model retains the C++ scalar/primitive-facts model (38+ fns) while c_target_model owns the C Stage-0 fn-add grammar + cc runtime_row. Intended end-state: C is the base realization; C++ extends/reuses the C bundle for shared C-syntax rows rather than forking parallel spellings (cpp_source_text and c_source_text currently agree on add — a §3 nicknaming risk until C++ dispatches through c rows or a shared c_subset home). DISSOLVES WHEN cpp_target_model re-homes shared C-syntax translation rules onto c_target_model (or a lifted c_subset authority) and cpp keeps only C++-only extensions."
+// C and C++ share the ISO C subset: cpp_target_model retains the C++ scalar/primitive-facts model
+// (38+ fns) while c_target_model owns the C Stage-0 fn-add grammar + cc runtime_row. Intended
+// end-state: C is the base realization; C++ extends/reuses the C bundle for shared C-syntax rows
+// rather than forking parallel spellings (cpp_source_text and c_source_text currently agree on add
+// — a §3 nicknaming risk until C++ dispatches through c rows or a shared c_subset home). DISSOLVES
+// WHEN cpp_target_model re-homes shared C-syntax translation rules onto c_target_model (or a lifted
+// c_subset authority) and cpp keeps only C++-only extensions.
 
 data c_source_text: String = "int add(int x, int y) { return x + y; }"
 
@@ -1010,7 +1041,6 @@ fn c_add_declared_inhabitants_root() -> Node {
     occurrence_id: OccurrenceSynthetic
   }
 }
-
 
 // C's minimal value-expression surface, enough to project the shared fixture body
 // (a binding-ref plus op_add). Forms C has not yet modeled carry token classes with
@@ -1298,7 +1328,6 @@ fn c_type_decl_target_model() -> TargetModel {
     runtime_row: c_type_decl_runtime_row()
   }
 }
-
 
 // C OWNS C'S SIGNATURE ORDER, DECLARED AS ROWS, AND IT IS NOT RUST'S: the return type
 // comes FIRST, each parameter is TYPE then NAME with no label separator, and there is

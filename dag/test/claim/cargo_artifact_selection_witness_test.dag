@@ -2,7 +2,15 @@ module test.claim.cargo_artifact_selection_witness
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-data cargo_artifact_selection_witness_note: String = "These claims exist because service cargo.Build reports success, stdout and stderr and NEVER the path of the artifact it produced, so a consumer had to assemble that path by convention — and a stale binary at the conventional location satisfies a convention-derived observation completely, giving a digest honestly computed over the wrong bytes. The decode under test reads the path cargo itself reported. The discriminating claims are the refusals, not the happy path: a first-wins selector, a last-wins member lookup, and a decoder that skips lines it cannot read all pass the selection claim below while being exactly the defects that would let a wrong or absent artifact read as a good one. Line numbers in the refusals are asserted as EXACT values rather than merely non-selection, because a decoder that refuses with the wrong location sends the reader to the wrong line of a build log."
+// These claims exist because service cargo.Build reports success, stdout and stderr and NEVER the
+// path of the artifact it produced, so a consumer assembled that path by convention — and a stale
+// binary at the conventional location satisfies a convention-derived observation completely, giving
+// a digest honestly computed over the wrong bytes. The decode under test reads the path cargo
+// itself reported. The discriminating claims are the refusals, not the happy path: a first-wins
+// selector, a last-wins member lookup, and a decoder that skips unreadable lines all pass the
+// selection claim below while being exactly the defects that let a wrong or absent artifact read as
+// good. Line numbers in the refusals are asserted as EXACT values, because a decoder refusing with
+// the wrong location sends the reader to the wrong line of a build log.
 
 data artifact_line_gunbc: String = "\{\"reason\":\"compiler-artifact\",\"package_id\":\"v1-compiler 0.1.0\",\"target\":\{\"name\":\"gunbc\",\"kind\":[\"bin\"]\},\"executable\":\"/w/target/debug/gunbc\",\"fresh\":false\}"
 
@@ -290,7 +298,22 @@ test fn an_empty_stream_is_absent_rather_than_a_parse_refusal() -> Bool {
   }
 }
 
-data recorded_real_stream_note: String = "The fixtures above are hand-authored, which proves the decode logic and proves nothing about whether it matches what cargo actually emits — a decoder can be perfectly self-consistent against a shape its upstream never produces. The rows below are RECORDED from a real run of `cargo build -p v1-compiler --bin claim_batch --message-format=json` (143 messages) and are verbatim except that absolute paths were rewritten to a neutral root, because the recording machine's home directory is not a fact about cargo and would make the claim environment-specific. Every structural property cargo produced is preserved: member names and their order, the nine members a real compiler-artifact carries against the three this module reads, the eight members inside target, and executable as a string on the binary while the libraries carry it as null. TWO THINGS THE RECORDING TAUGHT, both of which the hand fixtures had only guessed at. The real artifact carries SIX members this module ignores entirely (package_id, manifest_path, profile, features, filenames, fresh), so the claim that unmodelled members are skipped is now tested against the real member set rather than an imagined one. And the same-target-name collision is NOT hypothetical: one ordinary build emitted EIGHTEEN compiler-artifact messages all naming the target build-script-build, one per package with a build script. A first-wins selector would answer that with a confident wrong artifact on any workspace build; the ambiguity refusal fires on real bytes, which is why it is a refusal and not a preference."
+// The fixtures above are hand-authored, which proves the decode logic and nothing about whether it
+// matches what cargo emits — a decoder can be self-consistent against a shape its upstream never
+// produces. The rows below are RECORDED from a real run of `cargo build -p v1-compiler --bin
+// claim_batch --message-format=json` (143 messages), verbatim except that absolute paths were
+// rewritten to a neutral root, because the recording machine's home directory is not a fact about
+// cargo and would make the claim environment-specific. Every structural property cargo produced is
+// preserved: member names and order, the nine members a real compiler-artifact carries against the
+// three this module reads, the eight members inside target, and executable as a string on the
+// binary while the libraries carry null. TWO THINGS THE RECORDING TAUGHT that the hand fixtures had
+// only guessed at. The real artifact carries SIX members this module ignores (package_id,
+// manifest_path, profile, features, filenames, fresh), so the skipped-unmodelled-members claim is
+// now tested against the real member set. And the same-target-name collision is NOT hypothetical:
+// one ordinary build emitted EIGHTEEN compiler-artifact messages all naming the target
+// build-script-build, one per package with a build script. A first-wins selector would answer that
+// with a confident wrong artifact on any workspace build; the ambiguity refusal fires on real
+// bytes, which is why it is a refusal and not a preference.
 
 data real_cargo_artifact_claim_batch: String = "\{\"reason\":\"compiler-artifact\",\"package_id\":\"path+file:///w/src/v1/stage0#v1-compiler@0.1.0\",\"manifest_path\":\"/w/src/v1/stage0/Cargo.toml\",\"target\":\{\"kind\":[\"bin\"],\"crate_types\":[\"bin\"],\"name\":\"claim_batch\",\"src_path\":\"/w/src/v1/stage0/src/bin/claim_batch.rs\",\"edition\":\"2021\",\"doc\":true,\"doctest\":false,\"test\":true\},\"profile\":\{\"opt_level\":\"2\",\"debuginfo\":0,\"debug_assertions\":false,\"overflow_checks\":true,\"test\":false\},\"features\":[\"default\"],\"filenames\":[\"/w/target/debug/claim_batch\"],\"executable\":\"/w/target/debug/claim_batch\",\"fresh\":true\}"
 
@@ -363,7 +386,16 @@ test fn a_real_library_artifact_reports_no_executable() -> Bool {
   }
 }
 
-data absent_versus_null_executable_note: String = "THE DISCRIMINATING PAIR for the absent-vs-null split. Cargo documents executable as present-and-null for a target with no runnable binary, so an explicit null is a legitimate result while an absent member means the message does not satisfy the compiler-artifact shape at all. An earlier revision collapsed both into no-executable, which let a drifted or truncated message answer confidently as `this target has no binary` — this module's own thesis failing inside the module, since the point is that the path must be the one cargo NAMED. These two claims are stated together deliberately: either one alone passes under the collapse, and only the pair distinguishes the two upstream facts. Grounded in the recording rather than in argument: all 124 compiler-artifact messages in the 143-message capture carry the executable key (123 explicit null, one string), so absence is not a shape a healthy build produces."
+// THE DISCRIMINATING PAIR for the absent-vs-null split. Cargo documents executable as
+// present-and-null for a target with no runnable binary, so an explicit null is a legitimate result
+// while an absent member means the message does not satisfy the compiler-artifact shape at all. An
+// earlier revision collapsed both into no-executable, letting a drifted or truncated message answer
+// confidently as `this target has no binary` — this module's own thesis failing inside the module,
+// since the path must be the one cargo NAMED. The two claims are stated together deliberately:
+// either alone passes under the collapse; only the pair distinguishes the two upstream facts.
+// Grounded in the recording: all 124 compiler-artifact messages in the 143-message capture carry
+// the executable key (123 explicit null, one string), so absence is not a shape a healthy build
+// produces.
 
 test fn an_artifact_message_with_no_executable_member_refuses() -> Bool {
   match select_from(

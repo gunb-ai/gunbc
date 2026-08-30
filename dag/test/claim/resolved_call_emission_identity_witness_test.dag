@@ -4,7 +4,24 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-data resolved_call_emission_identity_witness_note: String = "PERMANENT REGRESSION CONTROL for post-resolution callable identity at Rust emission (v1.std.core CallTargetIdentity, v1.compiler.infer_lookup resolved_plain_call_target, v1.compiler.emit_rust emit_typed_call). THE DEFECT: a call's target was decided TWICE. Inference resolved the callee with the module's imports in hand; emission then re-decided it from the authored LEAF SPELLING -- map_contains_key(rt_functions(), func) -- at a grain where those imports no longer exist. An explicitly imported v2 declaration whose name collides with a v1_rt bridge name was therefore emitted as the unrelated primitive. That is DESIGN's authority-substitution class: resolution held the answer and a second mechanism answered for it. THE REPAIR: the resolver records what it chose, and emission reads it. WHAT MAKES THESE ROWS DISCRIMINATING RATHER THAN A SNAPSHOT: the positive traps and the negative traps differ only in whether the called name resolves to a declaration, so an emitter that reverted to name matching would flip the imported-declaration rows red while leaving the runtime-primitive rows green, and an emitter that stopped consulting the primitive projection roster at all would do the opposite. Neither direction can be satisfied by editing one arm. map_insert is deliberately unclassified here: v2.std.collection carries both a host-binding row and an authored modeled body and no authority decides which owns a call, so this control consumes the existing projection roster and does not reclassify that specimen. dissolve-on: never -- emission may change target SPELLING, but it may never reintroduce name lookup after source resolution."
+// PERMANENT REGRESSION CONTROL for post-resolution callable identity at Rust emission (v1.std.core
+// CallTargetIdentity, v1.compiler.infer_lookup resolved_plain_call_target, v1.compiler.emit_rust
+// emit_typed_call). THE DEFECT: a call's target was decided TWICE. Inference resolved the callee
+// with the module's imports in hand; emission then re-decided it from the authored LEAF SPELLING --
+// map_contains_key(rt_functions(), func) -- at a grain where those imports no longer exist. An
+// explicitly imported v2 declaration whose name collides with a v1_rt bridge name was therefore
+// emitted as the unrelated primitive. That is DESIGN's authority-substitution class: resolution
+// held the answer and a second mechanism answered for it. THE REPAIR: the resolver records what it
+// chose, and emission reads it. WHAT MAKES THESE ROWS DISCRIMINATING RATHER THAN A SNAPSHOT: the
+// positive traps and the negative traps differ only in whether the called name resolves to a
+// declaration, so an emitter that reverted to name matching would flip the imported-declaration
+// rows red while leaving the runtime-primitive rows green, and an emitter that stopped consulting
+// the primitive projection roster at all would do the opposite. Neither direction can be satisfied
+// by editing one arm. map_insert is deliberately unclassified here: v2.std.collection carries both
+// a host-binding row and an authored modeled body and no authority decides which owns a call, so
+// this control consumes the existing projection roster and does not reclassify that specimen.
+// dissolve-on: never -- emission may change target SPELLING, but it may never reintroduce name
+// lookup after source resolution.
 
 // BOUNDARY CONTROL 1. The real two-String substring primitive has no declaration to resolve to,
 // so it stays runtime-bound. This is the arm that would go red if the repair had made emission
