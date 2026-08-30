@@ -8,7 +8,15 @@ import std.content_hash {
   content_hash_validate_lower_hex_length,
 }
 import extdeps.container.oci.digest { oci_other_digest_algorithm, oci_other_digest_encoded }
-import std.syntax { Add, Sub, Mul, Div, Mod, Eq, Ne, Lt, Gt, Le, Ge, And, Or, NullCoalesce, BinOp, LitStr, LiteralValue }
+import std.syntax { Add, Sub, Mul, Div, Mod, Eq, Ne, Lt, Gt, Le, Ge, And, Or, NullCoalesce, BinOp, LitStr, LitInt, LitBool, LiteralValue }
+import std.decl_ref { DeclarationRef }
+import std.operator_realization { OperandDeclaration }
+import std.literal_elaboration {
+  LiteralElaboration, LiteralHomomorphism, LiteralUnfolding, PeanoUnfold, BooleanUnfold,
+  LiteralElaborationOutcome, DirectLiteral, ViaHomomorphism, LiteralElaborationRefused,
+  elaborate_literal_at, literal_source_kind_of, literal_elaboration_refusal_message
+}
+import gunbc.structural_realization_bindings { literal_homomorphism_rows }
 import std.coercion { dag_can_cast, is_dag_cast_domain_type }
 import v1.compiler.type_head_exposure {
   TypeHeadView, KernelScalarHead, ApplicationHead, ProductHead, CoproductHead, CallableHead,
@@ -26,7 +34,7 @@ import v1.std.core {
   field_node_type_expr, field_node_name_at,
   Connective, Conj, Disj, NoConnective, Arrow,
   ExprData, NoExprData,
-  ExprLiteral, ExprError, ExprVar, ExprFieldAccess, ExprCall, ExprMethodCall,
+  ExprLiteral, ExprElaboratedLiteral, ExprError, ExprVar, ExprFieldAccess, ExprCall, ExprMethodCall,
   ExprMatch, ExprIf, ExprLet, ExprRecordLit, ExprListLit,
   ExprBinOp, ExprUnaryOp, ExprLambda, ExprStringInterp, ExprBlock,
   ExprCast, ExprForEach, ExprIndex, ExprSlice, ExprReturn,
@@ -117,7 +125,7 @@ import v1.compiler.infer_env {
   qualify_borrowed_type_names, qualify_borrowed_inferred, qualified_all_but_last,
   env_with_type_variable_bindings, GlobalBareCandidate, node_with_inferred, node_with_children,
   ServiceCensusEntry, qualify_decl_reference_positions,
-  lookup_binding_by_name, binding_declares_name,
+  lookup_binding_by_name, binding_declares_name, type_reference_declaration_ref, type_reference_declaration,
   listed_import_required_bare_call_blocked,
   effective_visible_binding, unit_variant_index_shadow_insert,
   build_unit_variant_index, UnitVariantContribution
@@ -5179,11 +5187,201 @@ fn qualified_value_projection(texpr: Node, scope: InferScope, span: SourceSpan) 
 // which is exactly how the deleted `func_sig_if_resolved` came to erase the ambiguity in
 // the first place.
 
+
+// ---------------------------------------------------------------------------------------------
+// LITERAL ELABORATION AT A TYPED BOUNDARY (std.literal_elaboration; XL-0N, adhoc-aec65f93-b00).
+//
+// The literal arm below receives the boundary's expected type at every position that supplies one
+// -- call argument, declared return, record field, data initializer, annotated let, list element,
+// map value, block tail, and (via infer_binop_operands) the other operand of a binary operator --
+// and asks ONE judgment: does the destination declaration supply this kernel literal through a
+// declared homomorphism? When it does, the literal is REPLACED in the typed tree by an
+// ExprElaboratedLiteral whose record names the source kind, the exact destination and the selected
+// homomorphism, and whose single child is the literal's IMAGE under that homomorphism -- ordinary
+// constructor nodes of the destination (Zero / Succ { prev: ... } for the Peano unfolding), typed
+// as the destination. Emission renders the image the way it renders any constructor and never
+// re-decides from spelling, imports, or the host compiler's expectations.
+//
+// Identity, not spelling: the destination is read by type_reference_declaration_ref (the same
+// exact-identity reader the Rust renderer uses), so std.nat Nat and v2.std.nat Nat -- one spelling,
+// two declarations -- take different arms by construction. A destination the census cannot
+// identify, an optional-cardinality boundary, and a destination with no row all leave the literal
+// exactly as it was (DirectLiteral); the inhabitance judgment owns any refusal there.
+// ---------------------------------------------------------------------------------------------
+
+type LiteralBoundary
+  = LiteralBoundaryPlain
+  | LiteralBoundaryElaborated { elaboration: LiteralElaboration, destination_type: Node }
+  | LiteralBoundaryRefused { message: String }
+
+fn literal_boundary_elaboration(lit: LiteralValue, expected: Node?, scope: InferScope) -> LiteralBoundary {
+  match expected {
+    Absent => LiteralBoundaryPlain
+    Present { value: exp } =>
+      if exp.return_cardinality == CardOptional {
+        LiteralBoundaryPlain
+      } else {
+        match type_reference_declaration_ref(n: exp, source_indices: scope.type_env.source_indices, env: scope.type_env) {
+          Absent => LiteralBoundaryPlain
+          Present { value: destination } =>
+            let kind = literal_source_kind_of(value: lit)
+            let natively = decl_file_realizes_natively(decl_file: type_reference_decl_file(n: exp))
+            match elaborate_literal_at(rows: literal_homomorphism_rows, source_kind: kind, destination: destination, destination_realizes_natively: natively) {
+              DirectLiteral => LiteralBoundaryPlain
+              ViaHomomorphism { homomorphism: h } =>
+                LiteralBoundaryElaborated {
+                  elaboration: LiteralElaboration { source_kind: kind, destination: destination, homomorphism: h },
+                  destination_type: exp
+                }
+              LiteralElaborationRefused { cause: c } =>
+                LiteralBoundaryRefused { message: literal_elaboration_refusal_message(cause: c) }
+            }
+        }
+      }
+  }
+}
+
+// The image's nodes carry a synthetic ident_span whose file is not a source index, so every
+// name reader (authored_name_at) answers from the node's own name -- the constructor names come
+// from the homomorphism row, never from source text.
+fn elaborated_span(name: String) -> SourceSpan {
+  SourceSpan { file: "<elaborated>", start: 0, end: string_length(s: name) }
+}
+
+fn elaborated_expr_node(name: String, expr_data: ExprData, children: List<Node>, destination_type: Node, span: SourceSpan) -> Node {
+  Node {
+    occurrence_identity: OccurrenceSynthetic,
+    name: name, span: span, ident_span: Present { value: elaborated_span(name: name) }, children: children,
+    connective: NoConnective,
+    params: [], inferred: Present { value: Resolved { node: destination_type } }, return_cardinality: Required,
+    uses: [], body: none, transport: none, properties: [],
+    type_annotation: none, is_self_recursive: false,
+    has_non_tail_self_call: false, match_pattern: none, expr_data: expr_data
+  }
+}
+
+fn unfold_peano_image(n: Int, zero: String, succ: String, prev_field: String, parent: String, destination_type: Node, span: SourceSpan) -> Node {
+  if n <= 0 {
+    elaborated_expr_node(
+      name: zero,
+      expr_data: ExprVar { binding_kind: Present { value: VariantValueBinding { parent_enum: parent } } },
+      children: [], destination_type: destination_type, span: span
+    )
+  } else {
+    let prev = unfold_peano_image(n: n - 1, zero: zero, succ: succ, prev_field: prev_field, parent: parent, destination_type: destination_type, span: span)
+    let field = make_field_init_node(occurrence_identity: OccurrenceSynthetic, name: prev_field, value: prev, span: span, name_span: elaborated_span(name: prev_field))
+    elaborated_expr_node(
+      name: succ,
+      expr_data: ExprRecordLit { parent_enum: Present { value: parent } },
+      children: [field], destination_type: destination_type, span: span
+    )
+  }
+}
+
+fn unfold_literal_image(lit: LiteralValue, elaboration: LiteralElaboration, destination_type: Node, span: SourceSpan) -> Node {
+  match elaboration.homomorphism.producer {
+    PeanoUnfold { zero: zero, succ: succ, prev_field: prev_field } =>
+      match lit {
+        LitInt { value: n } =>
+          unfold_peano_image(
+            n: n,
+            zero: zero.decl_name as String, succ: succ.decl_name as String, prev_field: prev_field as String,
+            parent: elaboration.destination.decl_name as String,
+            destination_type: destination_type, span: span
+          )
+        _ => make_expr_error_node(occurrence_identity: OccurrenceSynthetic, kind: InternalExprError, message: "literal elaboration: a Peano unfolding row was selected for a non-integer literal (gunbc.structural_realization_bindings keys the row on KernelIntLiteral, so this row is malformed)", span: span)
+      }
+    BooleanUnfold { true_variant: t, false_variant: f } =>
+      match lit {
+        LitBool { value: b } =>
+          elaborated_expr_node(
+            name: if b { t.decl_name as String } else { f.decl_name as String },
+            expr_data: ExprVar { binding_kind: Present { value: VariantValueBinding { parent_enum: elaboration.destination.decl_name as String } } },
+            children: [], destination_type: destination_type, span: span
+          )
+        _ => make_expr_error_node(occurrence_identity: OccurrenceSynthetic, kind: InternalExprError, message: "literal elaboration: a Boolean unfolding row was selected for a non-boolean literal (gunbc.structural_realization_bindings keys the row on KernelBoolLiteral, so this row is malformed)", span: span)
+      }
+  }
+}
+
+// A binary operator's operands are a typed boundary for each other: a literal operand is
+// introduced at the OTHER operand's resolved type (`digit == 0` with digit: v2.std.nat.Nat asks
+// the Peano row for 0). Only a literal operand takes the other's type as expected -- every other
+// operand shape is inferred exactly as before -- and it takes it through infer_expr_body, not the
+// refinement-checking infer_expr wrapper, because comparing against a literal is not a refinement
+// boundary (`x == 0` with x refined positive is a legitimate test, not an assignment).
+type BinopOperands {
+  left: InferResult
+  right: InferResult
+}
+
+// THE LEFT OPERAND'S DECLARATION, read here where the reference's scoped binding is live, after
+// hopping a where-refinement to its base (`type Char = Int where ...` realizes as Int): the fact
+// std.operator_realization decides on, stamped on the ExprBinOp node for emission. Absent when the
+// operand's type node names no declaration (an inference-synthesized node), which emission answers
+// by operator class.
+fn operand_declaration_of_type(rt: Node, scope: InferScope, fuel: Int) -> OperandDeclaration? {
+  if fuel > 0 && is_where_refinement_type(ty: rt) {
+    match rt.children |> first {
+      Present { value: base } =>
+        let base_resolved = match lookup_type_for(env: scope.type_env, node: base) {
+          Present { value: r } => r
+          Absent => base
+        }
+        operand_declaration_of_type(rt: base_resolved, scope: scope, fuel: fuel - 1)
+      Absent => type_reference_declaration(n: rt, source_indices: scope.type_env.source_indices, env: scope.type_env)
+    }
+  } else {
+    type_reference_declaration(n: rt, source_indices: scope.type_env.source_indices, env: scope.type_env)
+  }
+}
+
+fn infer_operand_literal(lit_expr: Node, other: Node, scope: InferScope) -> InferResult {
+  let other_type = match other.inferred {
+    Present { value: Resolved { node: rt } } => Present { value: rt }
+    _ => none
+  }
+  infer_expr_body(texpr: lit_expr, scope: scope, expected: other_type)
+}
+
+fn infer_binop_operands(left_expr: Node, right_expr: Node, scope: InferScope) -> BinopOperands {
+  let left_is_literal = expr_is_any_literal(expr: left_expr)
+  let right_is_literal = expr_is_any_literal(expr: right_expr)
+  if right_is_literal && !left_is_literal {
+    let l = infer_expr(texpr: left_expr, scope: scope, expected: none)
+    BinopOperands { left: l, right: infer_operand_literal(lit_expr: right_expr, other: l.typed, scope: scope) }
+  } else if left_is_literal && !right_is_literal {
+    let r = infer_expr(texpr: right_expr, scope: scope, expected: none)
+    BinopOperands { left: infer_operand_literal(lit_expr: left_expr, other: r.typed, scope: scope), right: r }
+  } else {
+    BinopOperands {
+      left: infer_expr(texpr: left_expr, scope: scope, expected: none),
+      right: infer_expr(texpr: right_expr, scope: scope, expected: none)
+    }
+  }
+}
+
 fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
   match texpr.expr_data {
     ExprLiteral { value: lit } =>
       let span = texpr.span
-      ok_infer(texpr: make_expr_node(occurrence_identity: texpr.occurrence_identity, expr_data: ExprLiteral { value: lit }, children: [], inferred: Present { value: Resolved { node: infer_literal_node(lit: lit) } }, span: span))
+      let plain = make_expr_node(occurrence_identity: texpr.occurrence_identity, expr_data: ExprLiteral { value: lit }, children: [], inferred: Present { value: Resolved { node: infer_literal_node(lit: lit) } }, span: span)
+      match literal_boundary_elaboration(lit: lit, expected: expected, scope: scope) {
+        LiteralBoundaryPlain => ok_infer(texpr: plain)
+        LiteralBoundaryElaborated { elaboration: e, destination_type: dt } =>
+          ok_infer(texpr: make_expr_node(
+            occurrence_identity: texpr.occurrence_identity,
+            expr_data: ExprElaboratedLiteral { value: lit, elaboration: e },
+            children: [unfold_literal_image(lit: lit, elaboration: e, destination_type: dt, span: span)],
+            inferred: Present { value: Resolved { node: dt } },
+            span: span
+          ))
+        LiteralBoundaryRefused { message: m } =>
+          InferResult { typed: plain, diagnostics: [inference_error(message: m, span: span, module_name: scope.module_name)] }
+      }
+
+    ExprElaboratedLiteral { value: _, elaboration: _ } =>
+      ok_infer(texpr: texpr)
 
     ExprError { kind: kind, message: message } =>
       let span = texpr.span
@@ -6275,15 +6473,16 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
       let span = texpr.span
       let left_expr = binop_left(texpr: texpr)
       let right_expr = binop_right(texpr: texpr)
-      let left_result = infer_expr(texpr: left_expr, scope: scope, expected: none)
+      let operands = infer_binop_operands(left_expr: left_expr, right_expr: right_expr, scope: scope)
+      let left_result = operands.left
       let left_typed = left_result.typed
       let left_diags = left_result.diagnostics
-      let right_result = infer_expr(texpr: right_expr, scope: scope, expected: none)
+      let right_result = operands.right
       let right_typed = right_result.typed
       let right_diags = right_result.diagnostics
       let binop_info = infer_binop_type_node(op: op, left_type: resolved_type(n: left_typed), source_indices: scope.type_env.source_indices)
       let eq_wall_diags = equality_admission_diags(op: op, left_typed: left_typed, right_typed: right_typed, scope: scope, span: span)
-      let bo_texpr = make_expr_node(occurrence_identity: texpr.occurrence_identity, expr_data: ExprBinOp { op: op, algebra_field: binop_info.algebra_field }, children: [left_typed, right_typed], inferred: Present { value: Resolved { node: binop_info.result_type } }, span: span)
+      let bo_texpr = make_expr_node(occurrence_identity: texpr.occurrence_identity, expr_data: ExprBinOp { op: op, algebra_field: binop_info.algebra_field, operand: operand_declaration_of_type(rt: resolved_type(n: left_typed), scope: scope, fuel: 8) }, children: [left_typed, right_typed], inferred: Present { value: Resolved { node: binop_info.result_type } }, span: span)
       InferResult {
         typed: bo_texpr,
         diagnostics: concat(concat(left_diags, right_diags), eq_wall_diags)
