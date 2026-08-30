@@ -456,7 +456,7 @@ fn md_task_item(line: String, sp: MarkdownSpellings) -> MarkdownTaskItem {
 fn md_parse_code(block_lines: List<String>) -> MarkdownBlock {
   let inner = block_lines.skip(n: 1).take(n: block_lines.length() - 2)
   CodeBlock {
-    code: if inner == [] { "" } else { concat(join(inner, "\n"), "\n") },
+    code: if inner.length() == 0 { "" } else { concat(join(inner, "\n"), "\n") },
   }
 }
 
