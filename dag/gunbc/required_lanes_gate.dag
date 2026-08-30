@@ -212,14 +212,18 @@ fn required_lane_is_failure_test(var_name: String) -> Node {
 fn required_lanes_verdict_stmts(
   build_var: String,
   floor_var: String,
+  fabric_var: String,
   verdict_var: String
 ) -> List<Node> {
   [
     bash_build_assign_lit(name: verdict_var, text: floor_rendered_verdict_green_name),
     bash_build_if_from_stmts(
       cond: bash_build_or_else(
-        left: required_lane_not_success_test(var_name: build_var),
-        right: required_lane_not_success_test(var_name: floor_var)
+        left: bash_build_or_else(
+          left: required_lane_not_success_test(var_name: build_var),
+          right: required_lane_not_success_test(var_name: floor_var)
+        ),
+        right: required_lane_not_success_test(var_name: fabric_var)
       ),
       then_stmts: [
         bash_build_assign_lit(name: verdict_var, text: floor_rendered_verdict_unestablished_name)
@@ -227,8 +231,11 @@ fn required_lanes_verdict_stmts(
     ),
     bash_build_if_from_stmts(
       cond: bash_build_or_else(
-        left: required_lane_is_failure_test(var_name: build_var),
-        right: required_lane_is_failure_test(var_name: floor_var)
+        left: bash_build_or_else(
+          left: required_lane_is_failure_test(var_name: build_var),
+          right: required_lane_is_failure_test(var_name: floor_var)
+        ),
+        right: required_lane_is_failure_test(var_name: fabric_var)
       ),
       then_stmts: [
         bash_build_assign_lit(name: verdict_var, text: floor_rendered_verdict_red_name)
@@ -269,6 +276,7 @@ fn required_lanes_interruption_stmts(
 fn required_lanes_verdict_receipt_stmt(
   build_var: String,
   floor_var: String,
+  fabric_var: String,
   verdict_var: String,
   mechanism_var: String,
   attribution_var: String
@@ -282,6 +290,8 @@ fn required_lanes_verdict_receipt_stmt(
           bash_build_word_var(name: build_var),
           bash_build_word_lit(text: " floor="),
           bash_build_word_var(name: floor_var),
+          bash_build_word_lit(text: " fabric="),
+          bash_build_word_var(name: fabric_var),
           bash_build_word_lit(text: " verdict="),
           bash_build_word_var(name: verdict_var),
           bash_build_word_lit(text: " mechanism="),
@@ -298,6 +308,7 @@ fn required_lanes_error_stmt(
   text: String,
   build_var: String,
   floor_var: String,
+  fabric_var: String,
   mechanism_var: String,
   attribution_var: String
 ) -> Node {
@@ -311,6 +322,8 @@ fn required_lanes_error_stmt(
             bash_build_word_var(name: build_var),
             bash_build_word_lit(text: " floor="),
             bash_build_word_var(name: floor_var),
+            bash_build_word_lit(text: " fabric="),
+            bash_build_word_var(name: fabric_var),
             bash_build_word_lit(text: " mechanism="),
             bash_build_word_var(name: mechanism_var),
             bash_build_word_lit(text: " attribution="),
@@ -343,6 +356,7 @@ fn required_lanes_error_stmt(
 fn required_lanes_refusal_stmts(
   build_var: String,
   floor_var: String,
+  fabric_var: String,
   verdict_var: String,
   mechanism_var: String,
   attribution_var: String
@@ -358,6 +372,7 @@ fn required_lanes_refusal_stmts(
           text: "::error::a required lane concluded failure; that alone does not establish whether its subject was evaluated, so read the log before assuming a defect in the diff (build=",
           build_var: build_var,
           floor_var: floor_var,
+          fabric_var: fabric_var,
           mechanism_var: mechanism_var,
           attribution_var: attribution_var
         ),
@@ -374,6 +389,7 @@ fn required_lanes_refusal_stmts(
           text: "::error::a required lane produced no conclusion of its own, so this head's floor verdict is unobservable rather than failed; rerun it (build=",
           build_var: build_var,
           floor_var: floor_var,
+          fabric_var: fabric_var,
           mechanism_var: mechanism_var,
           attribution_var: attribution_var
         ),
@@ -419,6 +435,7 @@ fn required_lanes_refusal_stmts(
 fn required_lanes_gate_stmts(
   build_var: String,
   floor_var: String,
+  fabric_var: String,
   pull_request_var: String,
   event_name_var: String,
   measured_head_var: String,
@@ -451,6 +468,7 @@ fn required_lanes_gate_stmts(
     right: required_lanes_verdict_stmts(
       build_var: build_var,
       floor_var: floor_var,
+      fabric_var: fabric_var,
       verdict_var: verdict_var
     )
   )
@@ -467,6 +485,7 @@ fn required_lanes_gate_stmts(
       required_lanes_verdict_receipt_stmt(
         build_var: build_var,
         floor_var: floor_var,
+        fabric_var: fabric_var,
         verdict_var: verdict_var,
         mechanism_var: mechanism_var,
         attribution_var: attribution_var
@@ -478,6 +497,7 @@ fn required_lanes_gate_stmts(
     right: required_lanes_refusal_stmts(
       build_var: build_var,
       floor_var: floor_var,
+      fabric_var: fabric_var,
       verdict_var: verdict_var,
       mechanism_var: mechanism_var,
       attribution_var: attribution_var
