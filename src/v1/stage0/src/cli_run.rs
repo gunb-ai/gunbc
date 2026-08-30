@@ -9930,9 +9930,9 @@ pub struct MultiEntryIndex {
     typed_cache_evictions: Cell<u64>,
     /// Host-budget-derived typed-cache entry cap, sampled ONCE for this index's
     /// lifetime — a run-start fact, never re-read per insert. Re-deriving the cap
-    /// from a live, host-shared signal (`/proc/meminfo MemAvailable`, the fallback
-    /// when no private cgroup memory limit is discoverable) on every insert was the
-    /// 2026-07-21 fleet OOM incident: the cap chased the host's real-time noise
+    /// from a live, host-shared signal (`/proc/meminfo MemAvailable`, then the fallback
+    /// when no private cgroup memory limit was discoverable — since deleted, such a host
+    /// now refuses) on every insert was the 2026-07-21 fleet OOM incident: the cap chased the host's real-time noise
     /// across every co-resident session, and each eviction's recompute-on-miss
     /// added the exact memory pressure the cap exists to relieve — a thrashing
     /// feedback loop, not a bound. `OnceCell` gives lazy single-sample semantics
@@ -22483,8 +22483,8 @@ pub fn emit_realize_advisory_for_rows(source_roots: &[String], rows: &[Discovery
         }
     };
     // Host budget: the SAME single authority the MemoryGovernor schedules against
-    // (env -> cgroup memory.high -> memory.max -> meminfo). Unreadable -> the modeled
-    // law refuses (BudgetRefused), never a fabricated width.
+    // (env -> cgroup memory.high -> memory.max -> Darwin hw.memsize). Unreadable -> the
+    // modeled law refuses (BudgetRefused), never a fabricated width.
     let (budget_opt, budget_source) = crate::memory_governor::read_host_budget_bytes();
     let budget_bytes: Option<i64> = budget_opt.map(|b| b as i64);
     let independence: i64 = std::thread::available_parallelism()
@@ -37173,6 +37173,16 @@ pub struct RequiredFloorOutcome {
     /// Per-identity `LongHomeStorageAgreement`, a storage/name-hygiene diagnostic that never
     /// feeds admission. See the type's doc comment.
     pub long_home_storage_agreement: Vec<LongHomeStorageAgreementRow>,
+    /// CHANGED witness identities this run's diff observation attributed (added/modified test
+    /// declarations vs the resolved comparison baseline), at the same qualified
+    /// `module.function` grain the disposition receipt is keyed by. Zero on a diff that
+    /// touches no witness declaration.
+    pub changed_witness_rows: usize,
+    /// The changed identities whose `ChangedWitnessExecutionStanding`
+    /// (`v2.workflow.floor_changed_witness`) BLOCKS — declined, missing from the disposition
+    /// receipt, or planned without a terminal Passed verdict. Non-empty reds the required
+    /// context; see `required_floor_outcome_is_clean` in `claim_executor`.
+    pub changed_witness_blocking: Vec<String>,
 }
 
 fn str_list(items: impl IntoIterator<Item = String>) -> v1_interpreter::Value {

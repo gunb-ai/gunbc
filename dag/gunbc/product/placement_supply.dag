@@ -13,6 +13,17 @@ type RackIdentity = NonEmptyStr where brand("RackIdentity")
 type RackShelfIdentity = NonEmptyStr where brand("RackShelfIdentity")
 type ProcurementReceiptIdentity = NonEmptyStr where brand("ProcurementReceiptIdentity")
 
+// EQUALITY FOR THE BRANDED IDENTITY, BESIDE THE TYPE THAT DECLARES IT.
+//
+// Two hosts are the same host when their identities are the same string, and the brand is what
+// stops an arbitrary NonEmptyStr standing in for one. Callers were spelling this inline as
+// `x as String == y as String`, which the grammar does not accept in an `if` condition -- so the
+// choice was a helper here or a `let` at every site, and a comparison for a type belongs with the
+// type rather than being re-derived by each consumer.
+fn host_identity_eq(a: HostIdentity, b: HostIdentity) -> Bool {
+  a as String == b as String
+}
+
 // SPATIAL-0: physical placement and RF reachability — the product-layer authority for WHERE assets
 // sit, whether they share a rack, and whether a wireless bootstrap step is admissible. Logical
 // packet reach (extdeps.network.reach) and logical topology zones

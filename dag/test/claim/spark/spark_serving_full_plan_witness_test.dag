@@ -97,7 +97,20 @@ import gunbc.spark.serving_desired {
   spark_serving_occurrence,
 }
 
-data subject_host: HostIdentity = "srv6" as HostIdentity
+// THE SERVING SUBJECT IS THE SERVING CELL, AND AFTER SPARK-PAIR-0 THAT IS NO LONGER SRV6.
+//
+// This file's subject was srv6 throughout, from before any host was assigned a role. Every claim
+// below asks the production planner to install the full seven-member serving population on it. Once
+// gunbc.spark.cell_role made srv6 a training cell, the planner correctly answers three baseline
+// members for that host -- so these claims were not merely mis-aimed, they were asserting the
+// pre-role behaviour and would have gone red on the population the production path now produces.
+// That is the cross-PR integration surface a green new witness file does not cover: the defect was
+// in an existing direct consumer of the function that changed.
+//
+// The subject moves to srv5, where a seven-member serving install is what the role authority says
+// should happen. srv6's retirement claims live in the P0 retirement witness, over the production
+// artifact root, because they are claims about the OTHER role.
+data subject_host: HostIdentity = "srv5" as HostIdentity
 
 // The subject is the DECLARED release, so these claims move with the real authority rather than a
 // fixture that could drift from it. A refused admission has no release to plan against, and the
@@ -354,10 +367,22 @@ fn removal_refusing_plan() -> MembershipPlan<SparkServingMember, SparkServingMem
   )
 }
 
+// THE WALL MOVED UPSTREAM, AND THIS CLAIM MOVED WITH IT RATHER THAN BEING DELETED.
+//
+// This plan's single action is a `MemberRemovalRefused`, and the refusal it produces is no longer the
+// drop-count comparison downstream: the scheduler now refuses a plan carrying refusal actions before
+// any row is projected, because such a plan used to classify as EMPTY and freeze a "nothing to do"
+// schedule over a reconcile that had said "I could not answer". So the input still refuses, one stage
+// earlier and naming the actual reason.
+//
+// The downstream drop-count check is NOT thereby decoration: its remaining discriminating input is a
+// frozen row whose `at` the reorder fold cannot translate, which is a different failure than a
+// refusal action and is still authorable. What this claim can no longer reach is that comparison, so
+// it asserts the refusal it actually causes instead of a message it no longer produces.
 test fn a_plan_whose_member_cannot_translate_refuses_the_typed_projection() -> Bool {
   match fleet_converge_spark_serving_typed_actions(plan: removal_refusing_plan(), desired: []) {
     SparkServingTypedActionsRefused { cause: c } =>
-      string_contains(c, "dropped") && string_contains(c, "1 planned member actions")
+      string_contains(c, "refusal action") && !string_contains(c, "planned member actions projected")
     SparkServingTypedActionsProjected { rows: _ } => false
   }
 }
@@ -688,6 +713,11 @@ test fn a_refused_observation_refuses_the_artifact_with_its_own_cause() -> Bool 
 // A non-Spark host refuses, and says SO. Every refusal above used to render as the single word
 // "plan-refused", so a reader could not tell an unreachable host from a wrong one; the residue this
 // module declared for that is dissolved by the widened return type, and this pins it.
+//
+// The refusal now comes from the ROLE AUTHORITY rather than from a hardcoded srv5-or-srv6 predicate
+// that used to answer first. Those two agreed on today's fleet and would have diverged on the next
+// host added to the role roster -- the older list rejecting a cell the authority had assigned. This
+// claim's subject is therefore the authority, which is what it was always meant to be about.
 test fn a_non_spark_host_refuses_with_a_distinguishable_cause() -> Bool {
   let cause = artifact_refusal_cause(
     v: artifact_verdict(
@@ -701,7 +731,7 @@ test fn a_non_spark_host_refuses_with_a_distinguishable_cause() -> Bool {
       ),
     ),
   )
-  string_contains(cause, "host-not-spark")
+  string_contains(cause, "no Spark cell role")
 }
 
 // The four refusal causes are mutually distinguishable. Asserting each contains its own word is
