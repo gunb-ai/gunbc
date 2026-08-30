@@ -3344,15 +3344,6 @@ pub fn affected_set_bound_for(
     render_affected_set_bound(source_roots, edited, unlocatable, &edges, &compared)
 }
 
-/// THE BOUND AS A SCOPE, derived from the same edited population `run_regen_affected_set`
-/// reports — one producer of the selection, read by the report and by the round.
-///
-/// The three arms map one to one onto the model's, and the third is the point: `EditedSetUnlocatable`
-/// becomes `RegenEmissionScope::Unlocatable`, which REFUSES the round. It does not become
-/// `WholePopulation`. "Regenerate everything" and "the selection could not answer" are different
-/// states, and a fallback that widened here would be denominated in the corpus rather than in the
-/// change — the absorbing fallback DESIGN section 5 forbids, in the one place where its cost is
-/// unbounded.
 /// The model's own answer for one scope, over one committed roster.
 ///
 /// `v2.workflow.required_regen` `regen_scope_select` is the authority for what a scope selects;
@@ -3448,6 +3439,15 @@ fn required_regen_scope_entry(source_roots: &[String]) -> Result<String, String>
         })
 }
 
+/// THE BOUND AS A SCOPE, derived from the same edited population `run_regen_affected_set`
+/// reports — one producer of the selection, read by the report and by the round.
+///
+/// The three arms map one to one onto the model's, and the third is the point: `EditedSetUnlocatable`
+/// becomes `RegenEmissionScope::Unlocatable`, which REFUSES the round. It does not become
+/// `WholePopulation`. "Regenerate everything" and "the selection could not answer" are different
+/// states, and a fallback that widened here would be denominated in the corpus rather than in the
+/// change — the absorbing fallback DESIGN section 5 forbids, in the one place where its cost is
+/// unbounded.
 pub fn regen_emission_scope_for_diff(
     workspace: &Path,
     source_roots: &[String],
