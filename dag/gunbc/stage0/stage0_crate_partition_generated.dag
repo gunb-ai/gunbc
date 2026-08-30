@@ -51,7 +51,6 @@ data generated_partition_crate_rows: List<GeneratedPartitionCrateRow> = [
         "std_measure",
         "std_types",
         "std_unicode_types",
-        "std_lens_verdict",
         "std_algebra",
         "std_nat",
         "std_node",
@@ -71,6 +70,7 @@ data generated_partition_crate_rows: List<GeneratedPartitionCrateRow> = [
         "extdeps_units_iso_80000_3",
         "std_occurrence_identity",
         "std_source_annotation",
+        "std_target_representation",
         "v1_std_core"
       ],
       reexport_packages: [
@@ -114,6 +114,7 @@ data generated_partition_crate_rows: List<GeneratedPartitionCrateRow> = [
         "extdeps_languages_python_types",
         "extdeps_languages_rust_capabilities",
         "extdeps_languages_rust_emit",
+        "extdeps_languages_rust_representation",
         "extdeps_languages_rust_syntax",
         "extdeps_languages_rust_types"
       ],
@@ -145,6 +146,7 @@ data generated_partition_crate_rows: List<GeneratedPartitionCrateRow> = [
       crate_dir: "src/v1/stage0_v1_infer",
       kind: GeneratedLayeredCoreCrate,
       modules: [
+        "gunbc_rust_source_type_bindings",
         "v1_compiler_coercion",
         "v1_compiler_infer_emit_info",
         "v1_compiler_infer_env",

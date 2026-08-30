@@ -20,7 +20,8 @@ import std.coercion { dag_can_cast, is_dag_cast_domain_type }
 import v1.compiler.type_head_exposure {
   TypeHeadView, KernelScalarHead, ApplicationHead, ProductHead, CoproductHead, CallableHead,
   TypeHeadExposure, ExposedTypeHead, OpaqueTypeHead, StuckTypeHead, MalformedApplicationHead,
-  type_declaration_identity_key
+  type_declaration_identity_key,
+  type_head_exposure_is_kernel_scalar, type_head_exposure_is_product, type_head_exposure_is_coproduct
 }
 import v1.std.core {
   Node, InternTable,
@@ -2601,6 +2602,7 @@ type DeclaredTypePosition
 
 type DeclaredTypeObligation {
   position: DeclaredTypePosition
+  subject: String
   declared: Node
   produced: Node
   span: SourceSpan
@@ -2628,7 +2630,7 @@ type InhabitanceVerdict
   | InhabitanceRefused { reason: InhabitanceRefusalReason }
   | InhabitanceUndecidable { reason: InhabitanceUndecidableReason }
 
-fn declared_type_position_label(position: DeclaredTypePosition) -> String {
+fn declared_type_position_label(position: DeclaredTypePosition, subject: String) -> String {
   match position {
     PositionRecordLiteralField => "record literal field"
     PositionListElement => "list element"
@@ -2641,7 +2643,9 @@ fn declared_type_position_label(position: DeclaredTypePosition) -> String {
     PositionCastTarget => "cast target"
     PositionParameterDefault => "parameter default"
     PositionCallableReturn => "callable return"
-    PositionDirectCallArgument => "direct call argument"
+    PositionDirectCallArgument =>
+      if subject == "" { "direct call argument" }
+      else { concat("direct call argument for parameter '", subject, "'") }
   }
 }
 
@@ -2668,6 +2672,12 @@ fn declared_type_inhabitance(obligation: DeclaredTypeObligation, scope: InferSco
   } else if declared_realizes_as_kernel_numeric(
       declared: declared, produced: produced, source_indices: source_indices) {
     Inhabits
+  } else if collection_at_scalar_declared_type(declared: declared, produced: produced, scope: scope) {
+    InhabitanceRefused { reason: RefusedKernelAtStructured }
+  } else if record_at_scalar_needs_identity(declared: declared, produced: produced, scope: scope) {
+    InhabitanceUndecidable { reason: UndecidableProducedIdentityErased }
+  } else if coproduct_at_record_declared_type(declared: declared, produced: produced, scope: scope) {
+    InhabitanceRefused { reason: RefusedKernelAtStructured }
   } else if kernel_value_declared_type_mismatch(
       formal: declared, actual: produced,
       type_env: scope.type_env, source_indices: source_indices) {
@@ -2679,6 +2689,53 @@ fn declared_type_inhabitance(obligation: DeclaredTypeObligation, scope: InferSco
       Present { value: r } => InhabitanceRefused { reason: r }
       Absent => Inhabits
     }
+  }
+}
+
+// Collection spelling has a measured representation gap: FreeMonoid<T> can arrive as List<T>,
+// so collection-vs-noncollection is not itself a proof of disjointness. Peel the declared side
+// through the existing nominal-alias authority and refuse only when that established base is a
+// kernel scalar. This catches List<_> at NonEmptyStr (whose base is String) without treating an
+// algebraic collection spelling as a scalar merely because its outer node is not List.
+fn collection_at_scalar_declared_type(declared: Node, produced: Node, scope: InferScope) -> Bool {
+  if node_is_collection(n: produced, source_indices: scope.type_env.source_indices) == false {
+    false
+  } else {
+    let peeled = peel_nominal_alias_identity(n: declared, env: scope.type_env, module_name: scope.module_name)
+    let peeled_is_kernel = is_kernel_type(name: authored_name_at(source_indices: scope.type_env.source_indices, node: peeled))
+    let refinement_base_is_kernel = if is_where_refinement_type(ty: declared) {
+      match declared.children |> first {
+        Present { value: base } =>
+          is_kernel_type(name: authored_name_at(source_indices: scope.type_env.source_indices, node: child_type_node(ch: base)))
+        Absent => false
+      }
+    } else { false }
+    peeled_is_kernel || refinement_base_is_kernel
+  }
+}
+
+fn record_at_scalar_needs_identity(declared: Node, produced: Node, scope: InferScope) -> Bool {
+  type_head_exposure_is_kernel_scalar(exposure: expected_type_head_exposure(formal: declared, scope: scope))
+    && type_head_exposure_is_product(exposure: expected_type_head_exposure(formal: produced, scope: scope))
+}
+
+// Product-vs-coproduct is settled from exact type-head census identities. A second bare-name
+// declaration lookup can select a homonym and fabricate a refusal, so it is not an authority here.
+fn coproduct_at_record_declared_type(declared: Node, produced: Node, scope: InferScope) -> Bool {
+  let declared_name = authored_name_at(source_indices: scope.type_env.source_indices, node: declared)
+  let produced_name = authored_name_at(source_indices: scope.type_env.source_indices, node: produced)
+  let declared_head = expected_type_head_exposure(formal: declared, scope: scope)
+  let produced_head = expected_type_head_exposure(formal: produced, scope: scope)
+  if application_type_names_compatible(
+      formal_name: declared_name, lit_name: produced_name,
+      type_env: scope.type_env, module_name: scope.module_name,
+      source_indices: scope.type_env.source_indices)
+      || transparent_alias_identity_agrees(
+        index: scope.type_env.symbol_index, left: declared_name, right: produced_name) {
+    false
+  } else {
+    type_head_exposure_is_product(exposure: declared_head)
+      && type_head_exposure_is_coproduct(exposure: produced_head)
   }
 }
 
@@ -3013,7 +3070,7 @@ fn declared_type_obligation_diags(obligation: DeclaredTypeObligation, scope: Inf
     InhabitanceUndecidable { reason: r } =>
       [make_error_node(
         diagnostic: DeclaredTypeInhabitanceUndecided {
-          position: declared_type_position_label(position: obligation.position),
+          position: declared_type_position_label(position: obligation.position, subject: obligation.subject),
           reason: inhabitance_undecidable_reason_label(reason: r),
           span: obligation.span
         },
@@ -3022,7 +3079,7 @@ fn declared_type_obligation_diags(obligation: DeclaredTypeObligation, scope: Inf
     InhabitanceRefused { reason: _ } =>
       [make_error_node(
         diagnostic: DeclaredTypeNotInhabited {
-          position: declared_type_position_label(position: obligation.position),
+          position: declared_type_position_label(position: obligation.position, subject: obligation.subject),
           expected: node_type_shape(n: obligation.declared, source_indices: scope.type_env.source_indices),
           got: node_type_shape(n: obligation.produced, source_indices: scope.type_env.source_indices),
           span: obligation.span
@@ -3402,6 +3459,7 @@ fn direct_call_argument_inhabitance_diags(
             declared_type_obligation_diags(
               obligation: DeclaredTypeObligation {
                 position: PositionDirectCallArgument,
+                subject: app.param_name,
                 declared: app.formal_subst,
                 produced: resolved_type(n: actual_expr),
                 span: actual_expr.span
@@ -5899,6 +5957,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
             declared_type_obligation_diags(
               obligation: DeclaredTypeObligation {
                 position: PositionListElement,
+                subject: "",
                 declared: declared_elem,
                 produced: resolved_type(n: te),
                 span: te.span

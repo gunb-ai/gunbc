@@ -932,11 +932,20 @@ pub(crate) fn typed_module_cache_cap_derivation() -> (usize, String, bool) {
         }
         // Malformed override — fall through to derived cap (fail-closed).
     }
-    let (budget, source_label) = crate::memory_governor::read_host_budget_bytes();
-    // String-scan of read_host_budget_bytes' label — acceptable while that fn returns
-    // (Option<u64>, String); if it ever grows a typed source enum, ground this check on
-    // the enum instead of re-parsing its display label (§3, avoid a second representation).
-    let degraded = !(source_label.contains("memory.max") || source_label.contains("memory.high"));
+    let resolution = crate::memory_governor::read_host_budget_resolution();
+    let source_label = resolution.label();
+    // GROUNDED ON THE DISCRIMINANT, not on the rendering. This read
+    // `!(source_label.contains("memory.max") || source_label.contains("memory.high"))` and the
+    // comment beside it named the fix it was waiting for: "if it ever grows a typed source
+    // enum, ground this check on the enum instead of re-parsing its display label (§3, avoid
+    // a second representation)". It has one, so this does. The scan was not merely
+    // stylistically wrong — it graded the operator's own GUNBC_MEMORY_BUDGET_BYTES override
+    // as degraded, because that label mentions no cgroup file.
+    //
+    // An unreadable budget has no source, so `degraded_source` is `None` there and the
+    // question is not answered with a boolean; the refusal below runs first regardless.
+    let degraded = resolution.degraded_source().unwrap_or(true);
+    let budget = resolution.bytes();
     // REFUSE rather than widen when no budget is readable (operator ruling 2026-08-05;
     // authority `dag/gunbc/host/host_budget_source.dag` `HostBudgetUnreadable`).
     //
@@ -948,9 +957,14 @@ pub(crate) fn typed_module_cache_cap_derivation() -> (usize, String, bool) {
     // kernel ends the process. The deficit's frequency was zero by construction, so it never
     // ranked for fixing, and the cost arrived as a dead process instead of a diagnostic.
     //
-    // Every platform this runs on now has a modeled source — procfs on Linux, sysctl
-    // hw.memsize on Darwin — so reaching this arm means an unmodeled host, which is exactly
-    // when admitting against an invented bound is least defensible. Panicking here is a hard
+    // Reaching this arm means the host declared no bound this process can read: no cgroup
+    // memory.high or memory.max, no operator override, and no Darwin physical-memory read.
+    // That is the ordinary state on a remote-execution runner whose slot cap lives outside
+    // the container's cgroup namespace (BuildBuddy, measured 2026-08-30), and it used to be
+    // answered with the machine's MemAvailable capped at this fleet's own declared slot line
+    // — two substitutions stacked, and an rc=137 SIGKILL of `main_wet` with no diagnostic.
+    // The bound the executor knows and the process cannot see is exactly what the env
+    // override is for. Panicking here is a hard
     // stop by design: this runs inside resolution, there is no caller that could honour a
     // typed refusal without threading Result through the cache seam, and continuing is the
     // one option ruled out.
@@ -959,8 +973,10 @@ pub(crate) fn typed_module_cache_cap_derivation() -> (usize, String, bool) {
             "HostBudgetUnreadable: no modeled host memory source answered ({source_label}). \
              The typed-module cache cap bounds the memory used to RESOLVE the corpus, so an \
              unknown budget cannot be defaulted — the previous default was the ceiling, which \
-             OOM-killed this process rather than refusing. Declare one with \
-             GUNBC_MEMORY_BUDGET_BYTES, or model this platform's memory source \
+             OOM-killed this process rather than refusing, and the MemAvailable arm that \
+             replaced it substituted the MACHINE's memory for this slot's and was SIGKILLed \
+             at rc=137 instead. Declare this slot's bound with GUNBC_MEMORY_BUDGET_BYTES, or \
+             model this platform's memory source \
              (dag/gunbc/host/host_budget_source.dag)."
         );
     };
@@ -973,17 +989,25 @@ pub(crate) fn typed_module_cache_cap_derivation() -> (usize, String, bool) {
 
 /// The typed-cache cap for `index`, sampled exactly ONCE for this index's
 /// lifetime (a run-start fact, never re-read per insert). On first call, if
-/// the budget source is degraded (no private cgroup limit found), emits a
-/// typed, counted `[floor-drain] degraded_budget_source` diagnostic — an
-/// honesty arm, not a widened failure: the cap still derives from whatever
-/// source was found, it is simply named so the degraded case is observable
-/// and prioritizable rather than silent.
+/// the budget source is degraded — a real reading, but of the MACHINE rather
+/// than of a bound on this process — emits a typed, counted
+/// `[floor-drain] degraded_budget_source` diagnostic. An honesty arm, not a
+/// widened failure: the cap derives from a source the platform genuinely has,
+/// it is simply named so the degraded case is observable and prioritizable
+/// rather than silent.
+///
+/// Since the meminfo arms were deleted this is reachable only where the kernel
+/// has no private-limit mechanism at all (Darwin, `sysctl hw.memsize`). On a
+/// kernel that HAS cgroups, a missing limit is a missing bound and the
+/// derivation refuses instead of degrading — that path used to answer with the
+/// host's MemAvailable and got `main_wet` SIGKILLed at rc=137.
 pub(crate) fn typed_module_cache_cap(index: &MultiEntryIndex) -> usize {
     *index.typed_module_cache_cap.get_or_init(|| {
         let (cap, source, degraded) = typed_module_cache_cap_derivation();
         if degraded {
             eprintln!(
-                "[floor-drain] degraded_budget_source: cap={cap} source={source} (no private cgroup memory.max/memory.high found)"
+                "[floor-drain] degraded_budget_source: cap={cap} source={source} \
+                 (this kernel has no private-limit mechanism, so the reading is host-shared)"
             );
         }
         cap
