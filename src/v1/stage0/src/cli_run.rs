@@ -54,9 +54,10 @@ pub mod declaration_index;
 mod required_floor_runner;
 pub(crate) use required_floor_runner::*;
 pub use required_floor_runner::{
-    make_eval_context, make_eval_context_with_runtime_options, run_claim_measured,
-    run_required_floor, wet_executor_contract_digest, wet_route_lane_rows, wet_subject_digest,
-    write_wet_receipt_envelope, WetLaneExecutedReceipt, WetReceiptEnvelope, WetRouteLaneRow,
+    floor_discovery_path_excluded, make_eval_context, make_eval_context_with_runtime_options,
+    run_claim_measured, run_required_floor, wet_executor_contract_digest, wet_route_lane_rows,
+    wet_subject_digest, write_wet_receipt_envelope, WetLaneExecutedReceipt, WetReceiptEnvelope,
+    WetRouteLaneRow,
 };
 mod entry_resolve;
 pub(crate) use active_workset::*;
