@@ -2,6 +2,11 @@ module v1.compiler.emit_rust
 
 import std.occurrence_identity { OccurrenceSynthetic }
 import std.decl_ref { decl_ref }
+import std.repair_input_origin {
+  repair_input_origin_candidates,
+  repair_input_origin_compatibility_names,
+  qualified_item_emit_surface_compatibility_names,
+}
 import std.primitive_projection {
   primitive_identity_runtime_name, primitive_projection_row_for_declaration
 }
@@ -4180,7 +4185,16 @@ fn reference_derived_use_line_plan(items: List<Node>, unlisted_type_names: List<
     let emitted_source_tokens = rust_identifier_tokens(s: emitted_source)
     let emitted_source_token_set = emitted_source_tokens
       |> fold(init: empty_map(), f: (acc, t) => map_insert(acc, t, true))
-    let candidates = unique_strings(items: concat(concat(concat(concat(concat(unlisted_type_names, value_names), type_surface_names), field_surface_names), variant_payload_structs), realized_surface_names))
+    let origin_candidates = repair_input_origin_candidates(
+      emitting_module: this_module_name,
+      unlisted_type_names: unlisted_type_names,
+      value_reference_names: value_names,
+      item_emit_surface_names: type_surface_names,
+      field_import_surface_names: field_surface_names,
+      variant_payload_surface_names: variant_payload_structs,
+      rendered_type_surface_names: realized_surface_names,
+    )
+    let candidates = unique_strings(items: repair_input_origin_compatibility_names(candidates: origin_candidates))
       |> filter(name =>
         reference_derived_candidate_authored(module_source: module_source, name: name, type_summaries: emit_info.type_summaries, variant_to_enum: emit_info.variant_to_enum)
           || emitter_attested_anon_heads |> any(h => h == name)
@@ -4236,7 +4250,7 @@ fn reference_derived_use_line_plan(items: List<Node>, unlisted_type_names: List<
       concat(block_lines, fallback)
     )
     let names_already_in_lines = lines |> flat_map(l => imported_names_in_use_line(line: l))
-    let qualified_rows = qualified_type_reference_rows(names: type_surface_names |> filter(nm => emit_map_has(m: emitted_source_token_set, key: qualified_last_segment(name: nm))), this_module_name: this_module_name, already: already, names_already_in_lines: names_already_in_lines, registry: registry, export_sets: export_sets, typed_modules: typed_modules, source_indices: source_indices, module_index: module_index)
+    let qualified_rows = qualified_type_reference_rows(names: qualified_item_emit_surface_compatibility_names(candidates: origin_candidates) |> filter(nm => emit_map_has(m: emitted_source_token_set, key: qualified_last_segment(name: nm))), this_module_name: this_module_name, already: already, names_already_in_lines: names_already_in_lines, registry: registry, export_sets: export_sets, typed_modules: typed_modules, source_indices: source_indices, module_index: module_index)
     let qualified_lines = qualified_type_reference_use_lines(rows: qualified_rows, registry: registry)
     ReferenceDerivedUseLinePlan { lines: concat(lines, qualified_lines), rows: concat(rows, qualified_rows) }
   }

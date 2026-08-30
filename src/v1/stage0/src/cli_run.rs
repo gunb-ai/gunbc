@@ -38302,6 +38302,17 @@ pub fn run_required_regen_fixed_point(
     required_regen_host::run_required_regen_fixed_point(receipt_rel, pass1_digest)
 }
 
+pub use required_regen_host::RegenRoundCostOutcome;
+
+/// One priced regen round — see `required_regen_host::run_regen_round_cost`.
+pub fn run_regen_round_cost(
+    candidate_dir_rel: &str,
+    receipt_rel: &str,
+    source_roots: &[String],
+) -> Result<RegenRoundCostOutcome, String> {
+    required_regen_host::run_regen_round_cost(candidate_dir_rel, receipt_rel, source_roots)
+}
+
 /// The emitted generated surface, keyed by basename, off the SAME `measure_generated_surface`
 /// producer the regen path uses -- so the bytes a behavioural receipt compiles are the bytes
 /// regen compared. A second emit here would be a second producer of the candidate itself.
