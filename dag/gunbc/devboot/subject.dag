@@ -514,7 +514,7 @@ fn build_environment_digest(environment: BuildEnvironmentSpec) -> Fnv1a64Structu
 // It is not reachable today: this repository's stores are SHA-1, so one family is in play and the collision has no way to occur. That is a fact about the current population, not about the carrier, and the repository is explicitly moving toward SHA-256 object format -- the moment both exist, an identity that ignores which one it is becomes wrong silently.
 //
 // The fix mirrors the ref token, which already prefixes its family for the same reason, so the two places that turn a hash into an identity string now agree instead of one quietly being weaker. Found by review, and the argument that convinced me is that the adjacent note already made the case -- the code simply did not do what its own reasoning said.
-fn tree_oid_identity_atom(oid: GitObjectId) -> ContentHash {
+fn tree_oid_identity_atom(oid: GitObjectId) -> Fnv1a64Structural {
   content_hash_combine_structural(
     left: content_hash_atom(value: git_object_format_identity_tag(format: git_object_id_format(oid: oid))),
     right: content_hash_atom(value: git_object_id_wire_hex(oid: oid)),

@@ -36,6 +36,19 @@ type ProgramMilestone
   | SelfHostSuccessorPromotionAdmitted
   | SelfHostSeedRetirement
 
+// NamespaceFirstSemanticWave WAS "Step 1, deletion of the import-name universe", AND THAT LABEL
+// NAMED THE CUTOVER'S WORK, NOT A WAVE. The import-name universe is a ROOT AUTHORITY: deleting it
+// changes what live resolution and closure answer, which is the atomic transition DESIGN
+// section 3 requires to land in one motion. A milestone whose label schedules a root deletion
+// "first" invites exactly the leaves-upward migration the doctrine forbids, and
+// gunbc.namespace_cut_subject_roster was assigning five root authorities to the waves on the
+// strength of it.
+//
+// The wave is redefined at the grain a wave can actually hold: an EXACT CORPUS REWRITE performed
+// WHILE THE LEGACY SEMANTIC ROOT STILL EXISTS -- occurrences respelled, import declarations
+// rewritten, resolution answering identically at every step. The roots move at
+// NamespaceFixForwardComplete. What changed is the milestone's SUBJECT, not its position: the
+// prerequisite edges below are untouched.
 fn milestone_label(m: ProgramMilestone) -> NonEmptyStr {
   match m {
     SelfHostWholeCorpusPopulationDerived => "self-host S2: the exact whole-corpus population re-derived" as NonEmptyStr
@@ -44,7 +57,7 @@ fn milestone_label(m: ProgramMilestone) -> NonEmptyStr {
     SelfHostRatchetGateEnrolled => "self-host S4b: the ratchet enrolled as a GATE, merge-blocking, against S2's identity-grain population" as NonEmptyStr
     NamespaceWaveAdmissionEnrolled => "namespace: required wave-admission wall over subject-membership and occurrence-binding deltas, with closure delta carried as blast radius rather than as a third wall" as NonEmptyStr
     NamespaceBaselineObservationComplete => "namespace Step 0.5: the pre-deletion baseline -- a content-addressed, past-tense record of what the legacy resolver ACTUALLY SELECTED over one exact base" as NonEmptyStr
-    NamespaceFirstSemanticWave => "namespace: first semantic wave (Step 1, deletion of the import-name universe)" as NonEmptyStr
+    NamespaceFirstSemanticWave => "namespace: first semantic wave -- the first exact corpus-rewrite wave landed while the legacy semantic root still exists" as NonEmptyStr
     NamespaceFixForwardComplete => "namespace: Steps 2-4 complete (host and emit machinery, repoints, fix-forward at class grain)" as NonEmptyStr
     NamespaceGrammarRetired => "namespace: Step 5, the LAST step -- grammar and parse deletion, a no-op over a corpus that already spells nothing that way" as NonEmptyStr
     SelfHostCorpusEmitsCleanly => "self-host S5 terminal: the whole v2 corpus emits Rust that cargo builds with zero blocking diagnostics" as NonEmptyStr
