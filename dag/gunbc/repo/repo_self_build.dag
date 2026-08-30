@@ -2,6 +2,8 @@ module gunbc.repo_self_build
 
 import std.types { String, List, NonEmptyStr }
 import gunbc.stage0_crate_partition_generated { generated_partition_crate_rows }
+import extdeps.cargo_build { cargo_clippy_command }
+import extdeps.exec.command { argv_words }
 
 // THE SINGLE POINT THROUGH WHICH THIS REPOSITORY BUILDS ITS OWN BINARIES.
 // Before this module the same operation was spelled independently in three
@@ -77,6 +79,30 @@ fn repo_self_build_all_bins_command() -> String {
 fn repo_self_test_command() -> String {
   join(
     ["cargo test", repo_self_build_profile_flag, "-p", repo_self_build_package as String, "--lib"],
+    " "
+  )
+}
+
+// THE LINT PASS OVER EVERY TARGET, as the one invocation DESIGN's "Building & checks" names.
+// `--all-targets` is the whole point: the test and example targets outside `--lib` and `--bins`
+// are compiled by no build command above and executed by no test command, so before this row
+// they were compiled by nobody -- and on 2026-08-30 twelve of them were red on main (E0603s from
+// the cli_run decomposition, an E0063 from a Node field, an include_str! of a deleted fixture,
+// a retired dispatch family, two lints) while every required phase stayed green. This is the
+// workspace-wide form, not `-p v1-compiler`: the partition crates and the receipt fixture are
+// targets too, and a lint gate scoped to one package would re-open exactly the blind spot the
+// partition-crates command below closes for the build.
+// NO CARGO ARGV WORD IS SPELLED HERE, which repo_self_build_authority_note requires of any NEW
+// command this module renders: the verb, the program and the `--` lint separator come from
+// extdeps.cargo_build cargo_clippy_command, and this module contributes only the two facts that are
+// genuinely its own -- that the lint pass covers every target, and that a warning is an error. The
+// String is the workflow-text realization of that node, derived by the shared argv_words fold, not
+// a second spelling of it.
+fn repo_self_clippy_command() -> String {
+  join(
+    argv_words(
+      command: cargo_clippy_command(extra_args: ["--all-targets"], lint_args: ["-D", "warnings"])
+    ),
     " "
   )
 }
