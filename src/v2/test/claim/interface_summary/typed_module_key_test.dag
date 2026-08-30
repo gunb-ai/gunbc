@@ -7,9 +7,8 @@ import std.interface_summary {
   typed_module_key,
   interface_summary_rollup
 }
-import std.content_hash { content_hash_atom }
+import std.content_hash { Fnv1a64Structural, content_hash_atom }
 import std.types { NonEmptyStr }
-import std.content_hash { ContentHash }
 import v2.std.logic { Bool }
 
 data purpose_note: NonEmptyStr = "RED controls proving each term of typed_module_key is load-bearing: vary compiler_identity alone -> key changes; vary interface_key alone -> key changes; drop neither -> extends the interface key. Synthetic inputs only; no store, no live tree."
@@ -32,11 +31,11 @@ fn interface_key_b() -> ModuleKey {
   )
 }
 
-fn compiler_id_x() -> ContentHash {
+fn compiler_id_x() -> Fnv1a64Structural {
   content_hash_atom(value: "compiler-identity-x")
 }
 
-fn compiler_id_y() -> ContentHash {
+fn compiler_id_y() -> Fnv1a64Structural {
   content_hash_atom(value: "compiler-identity-y")
 }
 

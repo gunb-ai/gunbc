@@ -82,38 +82,60 @@ fn spark_cell_role_eq(a: SparkCellRole, b: SparkCellRole) -> Bool {
   spark_cell_role_wire(role: a) == spark_cell_role_wire(role: b)
 }
 
-// ABSENT IS "NOT A SPARK CELL", WHICH IS NOT A ROLE.
+// ABSENT IS "NOT A SPARK CELL", WHICH IS NOT A ROLE -- AND TWO ROWS FOR ONE HOST IS NEITHER.
 //
-// Answering a role for an unassigned host would make every non-Spark machine in the fleet a
-// candidate for whichever arm the default picked. The lookup therefore returns an optional, and the
-// callers that project host rosters never see it -- they walk the assignments and filter, so a host
-// can only appear in a roster by having been assigned.
-fn spark_cell_role_of(host: HostIdentity) -> SparkCellRole? {
-  fold(spark_cell_role_assignments, init: none, f: fn(acc, a) {
-    if host_identity_eq(a: a.host, b: host) { Present { value: a.role } } else { acc }
-  })
+// Answering a role for an unassigned host would make every non-Spark machine in the fleet a candidate
+// for whichever arm the default picked. So the lookup is a sum, and it has three arms rather than an
+// optional's two.
+//
+// The third arm is the one worth explaining. Each ROW carries a sum-valued role, so no single row can
+// say a cell both serves and trains -- but the ROSTER is an ordinary list, and two rows naming one
+// host can. An earlier fold answered the last match and called it the role: last-row-wins, in a
+// lookup the training offer and the production planner both authorize against. That the current
+// roster has no duplicate is a fact about today's data, checked by a claim that is outside the
+// required gate; it is not a property of the lookup. Ambiguity is therefore an ANSWER here, carrying
+// the rows that conflict, and every authorization consumer must match it and refuse.
+type SparkCellRoleLookup
+  = SparkCellRoleAbsent
+  | SparkCellRoleUnique { role: SparkCellRole }
+  | SparkCellRoleAmbiguous { assignments: List<SparkCellRoleAssignment> }
+
+fn spark_cell_role_of(host: HostIdentity) -> SparkCellRoleLookup {
+  let matched = filter(spark_cell_role_assignments, a => host_identity_eq(a: a.host, b: host))
+  if length(matched) > 1 {
+    SparkCellRoleAmbiguous { assignments: matched }
+  } else {
+    fold(matched, init: SparkCellRoleAbsent, f: fn(acc, a) { SparkCellRoleUnique { role: a.role } })
+  }
 }
 
 fn spark_hosts_with_role(role: SparkCellRole) -> List<HostIdentity> {
   flat_map(spark_cell_role_assignments, a =>
-    if spark_cell_role_eq(a: a.role, b: role) { [a.host] } else { [] })
+    match spark_cell_role_of(host: a.host) {
+      SparkCellRoleUnique { role: r } =>
+        if spark_cell_role_eq(a: r, b: role) { [a.host] } else { [] }
+      SparkCellRoleAmbiguous { assignments: _ } => []
+      SparkCellRoleAbsent => []
+    })
 }
 
 fn spark_serving_cell_hosts() -> List<HostIdentity> {
   spark_hosts_with_role(role: SparkServingCell)
 }
 
+// THE OFFER ROSTER, AND THERE IS NO PREDICATE BESIDE IT.
+//
+// A `spark_host_offerable_for_training(host) -> Bool` stood below this, matching the lookup sum into
+// true/false. It had exactly one caller: its own claim. The justification offered for keeping it was
+// that P3's supply module would consume it -- which is the authored-ahead-of-its-consumer shape
+// trimmed from the curl, pgrep and ss rows earlier in this same stack, and it is no better for being
+// a function rather than a constant.
+//
+// This roster is the canonical surface and answers the same question without a second vocabulary: a
+// host is offerable exactly when it appears here, and this list already excludes serving cells,
+// unassigned hosts, and hosts the roster cannot decide. When P3 needs the offer population it takes
+// the list; if it then needs membership of one host, that question gets its answer when a caller
+// actually exists to ask it.
 fn spark_training_cell_hosts() -> List<HostIdentity> {
   spark_hosts_with_role(role: SparkTrainingCell)
-}
-
-// A HOST WHOSE ROLE IS SERVING IS UNAVAILABLE TO THE TRAINING FABRIC BY CONSTRUCTION, and this is
-// the predicate the later offer roster consumes rather than re-deriving. It is stated here, beside
-// the assignment, so that "srv5 never enters the offer roster" is a fact about the role authority
-// and not a filter somebody remembered to write in the supply module.
-fn spark_host_offerable_for_training(host: HostIdentity) -> Bool {
-  match spark_cell_role_of(host: host) {
-    Absent => false
-    Present { value: r } => spark_cell_role_eq(a: r, b: SparkTrainingCell)
-  }
 }
