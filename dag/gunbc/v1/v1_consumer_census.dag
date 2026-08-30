@@ -219,9 +219,9 @@ data v1_consumer_census_population_dissolution: DissolutionCondition = unbound_d
 // THE PRODUCERS. One declaration per instrument, so a row cites a producer rather than restating a
 // command, and re-deriving the whole census is reading the commands below rather than every row.
 
-data v1_census_revision: String = "f1f9dd8a077f976c48d389201a2c41e54ccd0c15"
+data v1_census_revision: String = "4012c89dcbccc0307430e965e5637dc01f4ddf0e"
 
-data v1_census_tree: String = "d806b7d086efa5e2599060076d4ee8dd61a1168c"
+data v1_census_tree: String = "a47ed8804543badf16f157e8002ba18d1e5f3ba9"
 
 data producer_workflow_argv: DiscoveryProducer = discovery_producer(
   instrument: "argv and cargo invocations in the emitted workflow surface, traced back to the .dag step declaration that emits each one",
@@ -550,7 +550,7 @@ fn v1_consumer_population_for(rows: List<RustSourceNamespaceRow>) -> ConsumerPop
   PopulationMeasuredLowerBound {
     rows: list_append(left: v1_static_consumers, right: partition.cited),
     uncitable: partition.uncitable,
-    missing_basis: "seven per-medium sweeps, unjoined. Three named holes, each of which would produce a row this roster does not have: (1) no producer classifies the .dag argv rows -- 85 .dag files name a v1 binary in a string position and only the two ci_release_bins rosters were traced to a consumer; (2) the deletion-set blind spot the floor cut measured has one row here (workspace_members) and no instrument -- a consumer defined inside src/v1 and consumed inside src/v1 cannot refuse when both go, and only a per-deleted-file question finds the rest; (3) reachability is not measured for any row: every disposition above is a PRESENCE claim, and presence over-approximates demand, which is the reachability_read_as_occupancy class this repository rosters and XL-1 tripped on in its own first census. The uncitable column is NOT a fourth hole any more: under the live namespace table it is empty by construction, and the tooling row that made it so was necessary for Complete, not sufficient.",
+    missing_basis: "seven per-medium sweeps, unjoined. Three named holes, each of which would produce a row this roster does not have: (1) no producer classifies the .dag argv rows -- 88 .dag files name a v1 binary in a string position and only the two ci_release_bins rosters were traced to a consumer; (2) the deletion-set blind spot the floor cut measured has one row here (workspace_members) and no instrument -- a consumer defined inside src/v1 and consumed inside src/v1 cannot refuse when both go, and only a per-deleted-file question finds the rest; (3) reachability is not measured for any row: every disposition above is a PRESENCE claim, and presence over-approximates demand, which is the reachability_read_as_occupancy class this repository rosters and XL-1 tripped on in its own first census. The uncitable column is NOT a fourth hole any more: under the live namespace table it is empty by construction, and the tooling row that made it so was necessary for Complete, not sufficient.",
   }
 }
 

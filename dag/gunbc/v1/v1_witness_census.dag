@@ -5,7 +5,8 @@ import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_eq }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import gunbc.replacement_cut { EvidenceDisposition, ReenrollAgainstY, ReplaceEvidence, RetireEvidence }
 import v2.workflow.required_floor {
-  RequiredFloorDisposition, Planned, DeclinedLongModule, DeclinedFixtureMember, DeclinedOutsideRequiredGate, DeclinedCostDebt
+  RequiredFloorDisposition, Planned, DeclinedLongModule, DeclinedFixtureMember, DeclinedOutsideRequiredGate,
+  DeclinedOutsideGateClosure, DeclinedDiscoveryExcluded, DeclinedCostDebt
 }
 
 // XL-5's SECOND DELIVERABLE: the wall that stops the bankruptcy transaction greening by LOSING
@@ -93,6 +94,8 @@ fn floor_standing_is_fixture_member(s: RequiredFloorDisposition) -> Bool {
     DeclinedLongModule { matched_prefix: _ } => false
     DeclinedFixtureMember { matched_prefix: _ } => true
     DeclinedOutsideRequiredGate => false
+    DeclinedOutsideGateClosure => false
+    DeclinedDiscoveryExcluded { matched_substring: _ } => false
     DeclinedCostDebt => false
   }
 }
