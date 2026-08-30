@@ -538,3 +538,16 @@ test fn w_fn_field_record_header_keeps_the_bound_a_field_type_demands() -> Bool 
     ["pub struct ReceiptX<Subj, A> {"]
   )
 }
+
+// The same capture in PATTERN position: `Absent =>` over an optional scrutinee spells the host
+// variant, and a bare `None` pattern in a module that emits `pub struct None;` binds the unit
+// struct instead of the variant (E0308 "`None` is interpreted as a unit struct", five arms in
+// std.cache_interface on the first regen after the keyword row was qualified).
+test fn w_absent_pattern_survives_a_module_declaring_a_none_variant() -> Bool {
+  compile_dag_rust_emit_check(
+    "module test.claim.none_pattern_probe\nimport std.types { Int }\ntype ScopeX = None | Keyed\nfn unwrap_or_zero(x: Int?) -> Int { match x { Present { value: v } => v\n Absent => 0 } }\n",
+    "src/test_claim_none_pattern_probe.rs",
+    ["std::option::Option::None => 0"],
+    ["    None => 0"]
+  )
+}
