@@ -262,12 +262,24 @@ pub fn transform_content_digest() -> Hash {
     static DIGEST: OnceLock<Hash> = OnceLock::new();
     DIGEST
         .get_or_init(|| {
-            let exe = std::env::current_exe().unwrap_or_else(|e| {
-                panic!(
-                    "resolve cache: cannot locate compiler executable to content-address \
-                     the transform: {e}"
-                )
-            });
+            // THE RUNNING IMAGE, NOT THE PATH IT WAS STARTED FROM. On Linux `current_exe()`
+            // is the start path, and once a cargo build has re-linked that file it reads
+            // `<path> (deleted)` -- unreadable, while the mapped image is still exactly the
+            // compiler executing this line. Measured 2026-08-30 (BuildBuddy, regen round
+            // cost): the in-round seed build re-linked a byte-identical binary and this read
+            // panicked on the stale path. `/proc/self/exe` resolves to the mapped image even
+            // after the directory entry is replaced, so it is the reading that names THIS
+            // transform; elsewhere the start path is the only spelling available.
+            let exe = if cfg!(target_os = "linux") {
+                std::path::PathBuf::from("/proc/self/exe")
+            } else {
+                std::env::current_exe().unwrap_or_else(|e| {
+                    panic!(
+                        "resolve cache: cannot locate compiler executable to content-address \
+                         the transform: {e}"
+                    )
+                })
+            };
             let bytes = fs::read(&exe).unwrap_or_else(|e| {
                 panic!(
                     "resolve cache: cannot read compiler executable {:?} to content-address \
