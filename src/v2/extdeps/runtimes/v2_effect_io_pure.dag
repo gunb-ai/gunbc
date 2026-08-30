@@ -204,10 +204,10 @@ fn effect_io_pure_store_lookup(
 ) -> Outcome<RuntimeValue> {
   if effect_io_pure_backends_match(left: locator.backend, right: store.backend) {
     match map_get(m: store.entries, key: locator.identity) {
-      Accepted { value: opt, diagnostics: None } =>
+      Accepted { value: opt, diagnostics: d } =>
         match opt {
           Present { value: payload } =>
-            Accepted { value: payload, diagnostics: None }
+            Accepted { value: payload, diagnostics: d }
           Absent =>
             outcome_rejected(
               d: Diagnostic {
