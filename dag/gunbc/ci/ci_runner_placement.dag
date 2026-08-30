@@ -10,7 +10,7 @@ import extdeps.github.actions { RunnerSpec }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import gunbc.runner_spec_from_offer { runner_spec_from_offer }
-import gunbc.runner_slot_allocation { gunbc_runner_slot_desired }
+import gunbc.runner_slot_allocation { gunbc_runner_slot_desired, gunbc_runner_slots_per_host }
 import gunbc.session_reservation_policy {
   SessionReservationCharged, SessionReservationUnsized,
   SessionReservationNotApplicable, SessionReservationAuthorityDisagreement,
@@ -26,7 +26,6 @@ import gunbc.fleet_host_budget {
   HostAllocationConserves,
   HostAllocationOversubscribed,
   HostAllocationUnchargeable,
-  declared_runner_count_for,
   oomd_actuation_floor,
   CompilePoolResolution,
   CompilePoolDerived,
@@ -224,7 +223,7 @@ fn host_overhead_or_refusal(host: HostIdentity, o: HostFixedOverhead) -> HostOve
 fn conservation_host_deployment(offer: ComputeOffer, nproc: HardwareThreadCount) -> RunnerHostDeployment {
   RunnerHostDeployment {
     identity: offer.supply.physical.identity,
-    runner_count: declared_runner_count_for(host: offer.supply.physical.identity),
+    runner_count: gunbc_runner_slots_per_host(host: offer.supply.physical.identity),
     runner_slice_cap: gunbc_runner_pool_budget_for(host: offer.supply.physical.identity),
     per_runner_memory_cap: gunbc_ci_runner_cgroup_memory_cap,
     per_runner_memory_swap_cap: gunbc_runner_slot_desired().memory_swap_max,

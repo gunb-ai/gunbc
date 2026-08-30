@@ -6,7 +6,6 @@ import std.measure {
   Memory, One, Time, Nano,
   time_measure, watt,
   measure_scale_fraction_floor,
-  measure_fit_count_floor,
   HardwareThreadCount, hardware_thread_count,
 }
 import std.realization_width { byte_size_saturating_sub, cpu_cores_available }
@@ -59,7 +58,6 @@ import gunbc.ci_floor_measurement {
   RunnerSliceCapEffectiveness,
   CapEffective,
   CapUnbounded,
-  gunbc_ci_runner_cgroup_memory_cap,
 }
 import gunbc.runner_slot_allocation {
   gunbc_runner_slot_desired,
@@ -347,13 +345,6 @@ fn host_allocation_verdict_charged(
 // coherent. The old note admitted the difference: it said 80 ÷ 16 = 5 was 'coherent with
 // slots_per_host by construction at these values', which is a coincidence with a caveat attached,
 // and the caveat was doing the work.
-
-fn declared_runner_count_for(host: HostIdentity) -> Int {
-  measure_fit_count_floor(
-    capacity: gunbc_runner_pool_budget_for(host: host),
-    each: gunbc_ci_runner_cgroup_memory_cap
-  )
-}
 
 fn runner_slice_cap(host: ByteSize, overhead: ByteSize, session_slice: ByteSize, headroom: ByteSize, compile_pool: ByteSize) -> ByteSize {
   let after_overhead = byte_size_saturating_sub(total: host, reserved: overhead)
