@@ -558,6 +558,22 @@ type PositiveCelsiusDelta
 
 type RevolutionsPerMinute = Measure<RotationalSpeed, One, Nat>
 
+// A per-minute count of discrete events -- a frequency-family rate whose period marker is
+// part of the type, at the same non-decimal Sixty the time table uses for
+// seconds-per-minute. Sibling of RevolutionsPerMinute (whose per-minute period rode into
+// its Quantity) and MegatransfersPerSecond (frequency at Mega): a per-second and a
+// per-minute figure can never be compared or assigned across without a modeled
+// conversion. First consumer: gunbc.memory_stall_refusal's major-fault rate.
+type EventsPerMinute = Measure<Frequency, Sixty, Nat>
+
+fn events_per_minute(count: Nat) -> EventsPerMinute {
+  Measure { count: count }
+}
+
+fn events_per_minute_count(r: EventsPerMinute) -> Nat {
+  measure_count(r)
+}
+
 fn watt(count: Nat) -> Watt {
   Measure { count: count }
 }

@@ -9,6 +9,7 @@ import std.measure {
   millisecond,
   millisecond_count,
   basis_point_count,
+  events_per_minute_count,
 }
 import gunbc.memory_stall_refusal {
   MemoryStallObservation,
@@ -16,8 +17,6 @@ import gunbc.memory_stall_refusal {
   StallWindowOpen,
   ProgressUnderMemoryAdmissible,
   StallRefusedPageThrash,
-  MajorFaultsPerMinute,
-  major_faults_per_minute_count,
   memory_stall_verdict,
   memory_stall_verdict_refuses,
   memory_stall_major_fault_rate,
@@ -83,7 +82,7 @@ test fn RED_a_treadmill_window_refuses_and_names_the_pressure() -> Bool {
 test fn the_ci_runner_progressing_under_pressure_specimen_is_admitted() -> Bool {
   match memory_stall_verdict(o: ci_progressing_under_pressure_window()) {
     ProgressUnderMemoryAdmissible { major_fault_rate: rate, self_cpu_share: share } =>
-      major_faults_per_minute_count(r: rate) == 12431 && basis_point_count(bp: share) == 7003
+      events_per_minute_count(r: rate) == 12431 && basis_point_count(bp: share) == 7003
     StallWindowOpen { window_wall: _, minimum_wall: _ } => false
     StallRefusedPageThrash {
       major_fault_rate: _,
@@ -98,7 +97,7 @@ test fn the_ci_runner_progressing_under_pressure_specimen_is_admitted() -> Bool 
 test fn a_slow_but_progressing_resolve_is_admitted_however_long_it_runs() -> Bool {
   match memory_stall_verdict(o: slow_but_progressing_hour()) {
     ProgressUnderMemoryAdmissible { major_fault_rate: rate, self_cpu_share: _ } =>
-      major_faults_per_minute_count(r: rate) == 1
+      events_per_minute_count(r: rate) == 1
     StallWindowOpen { window_wall: _, minimum_wall: _ } => false
     StallRefusedPageThrash {
       major_fault_rate: _,
@@ -142,14 +141,14 @@ test fn a_burst_below_the_minimum_window_is_an_open_window_not_a_verdict() -> Bo
 test fn the_refusal_is_tight_at_both_declared_lines() -> Bool {
   let at_rate_line = memory_stall_verdict(o: MemoryStallObservation {
     window_wall: millisecond(count: 60000),
-    major_faults_in_window: major_faults_per_minute_count(r: memory_stall_major_fault_rate_threshold),
+    major_faults_in_window: events_per_minute_count(r: memory_stall_major_fault_rate_threshold),
     self_user_cpu_in_window: millisecond(count: 0),
     cache_evictions_in_window: 0,
     cache_readmissions_in_window: 0,
   })
   let over_rate_line = memory_stall_verdict(o: MemoryStallObservation {
     window_wall: millisecond(count: 60000),
-    major_faults_in_window: major_faults_per_minute_count(r: memory_stall_major_fault_rate_threshold) + 1,
+    major_faults_in_window: events_per_minute_count(r: memory_stall_major_fault_rate_threshold) + 1,
     self_user_cpu_in_window: millisecond(count: 0),
     cache_evictions_in_window: 0,
     cache_readmissions_in_window: 0,
@@ -175,9 +174,9 @@ test fn the_refusal_is_tight_at_both_declared_lines() -> Bool {
 }
 
 test fn the_projections_are_per_minute_and_basis_points_of_wall() -> Bool {
-  major_faults_per_minute_count(r: memory_stall_major_fault_rate(o: treadmill_window())) == 60000
+  events_per_minute_count(r: memory_stall_major_fault_rate(o: treadmill_window())) == 60000
     && basis_point_count(bp: memory_stall_self_cpu_share(o: treadmill_window())) == 400
-    && major_faults_per_minute_count(r: memory_stall_major_fault_rate(o: ci_progressing_under_pressure_window())) == 12431
+    && events_per_minute_count(r: memory_stall_major_fault_rate(o: ci_progressing_under_pressure_window())) == 12431
     && basis_point_count(bp: memory_stall_self_cpu_share(o: ci_progressing_under_pressure_window())) == 7003
 }
 

@@ -5,10 +5,9 @@ import std.disposition { Disposition, Terminal }
 import extdeps.linux.procfs { ProcSelfStat, procfs_path_literal }
 import std.nat { Nat }
 import std.measure {
-  Measure,
-  Frequency,
-  Sixty,
-  measure_count,
+  EventsPerMinute,
+  events_per_minute,
+  events_per_minute_count,
   Millisecond,
   millisecond,
   millisecond_count,
@@ -53,25 +52,11 @@ data memory_stall_admitted_under_pressure_receipt_note: String = "THE MEASURED C
 // here, not a reason to widen silently.
 data memory_stall_progress_cpu_share_floor: BasisPoint = basis_point(count: 2000)
 
-// A per-minute event rate, carried as a Measure rather than a bare Int (DESIGN §3: the
-// unit is a fact, and a raw scalar forks it into every consumer). The quantity is
-// Frequency (events per unit time) at the Sixty scale — the same non-decimal 60 the time
-// table uses for seconds-per-minute, and the same shape precedent as
-// RevolutionsPerMinute and MegatransfersPerSecond in std.measure: a frequency-family
-// rate whose period marker is part of the type, so a per-second and a per-minute figure
-// can never be compared or assigned across without a modeled conversion.
-type MajorFaultsPerMinute = Measure<Frequency, Sixty, Nat>
-
-fn major_faults_per_minute_rate(count: Nat) -> MajorFaultsPerMinute {
-  Measure { count: count }
-}
-
-fn major_faults_per_minute_count(r: MajorFaultsPerMinute) -> Nat {
-  measure_count(r)
-}
-
-data memory_stall_major_fault_rate_threshold: MajorFaultsPerMinute =
-  major_faults_per_minute_rate(count: 6000)
+// The rate rides std.measure's EventsPerMinute (DESIGN §3: the unit system is one
+// authority; a per-minute alias minted here would fork it -- review 57629). The DOMAIN
+// half (that the events are this process's major page faults) lives in this module's
+// field and fn names, not in the unit.
+data memory_stall_major_fault_rate_threshold: EventsPerMinute = events_per_minute(count: 6000)
 
 data memory_stall_verdict_window_minimum_wall: Millisecond = millisecond(count: 30000)
 
@@ -92,18 +77,18 @@ type MemoryStallObservation = MemoryStallObservation {
 type MemoryStallVerdict
   = StallWindowOpen { window_wall: Millisecond, minimum_wall: Millisecond }
   | ProgressUnderMemoryAdmissible {
-      major_fault_rate: MajorFaultsPerMinute,
+      major_fault_rate: EventsPerMinute,
       self_cpu_share: BasisPoint,
     }
   | StallRefusedPageThrash {
-      major_fault_rate: MajorFaultsPerMinute,
-      rate_threshold: MajorFaultsPerMinute,
+      major_fault_rate: EventsPerMinute,
+      rate_threshold: EventsPerMinute,
       self_cpu_share: BasisPoint,
       cpu_share_floor: BasisPoint,
       observation: MemoryStallObservation,
     }
 
-fn memory_stall_major_fault_rate(o: MemoryStallObservation) -> MajorFaultsPerMinute {
+fn memory_stall_major_fault_rate(o: MemoryStallObservation) -> EventsPerMinute {
   match o {
     MemoryStallObservation {
       window_wall: wall,
@@ -111,7 +96,7 @@ fn memory_stall_major_fault_rate(o: MemoryStallObservation) -> MajorFaultsPerMin
       self_user_cpu_in_window: _,
       cache_evictions_in_window: _,
       cache_readmissions_in_window: _,
-    } => major_faults_per_minute_rate(count: faults * 60000 / millisecond_count(m: wall))
+    } => events_per_minute(count: faults * 60000 / millisecond_count(m: wall))
   }
 }
 
@@ -142,10 +127,11 @@ fn memory_stall_verdict(o: MemoryStallObservation) -> MemoryStallVerdict {
           minimum_wall: memory_stall_verdict_window_minimum_wall,
         }
       } else {
-        if major_faults_per_minute_count(r: memory_stall_major_fault_rate(o: o))
-            > major_faults_per_minute_count(r: memory_stall_major_fault_rate_threshold)
-          && basis_point_count(bp: memory_stall_self_cpu_share(o: o))
-            < basis_point_count(bp: memory_stall_progress_cpu_share_floor) {
+        let rate_count = events_per_minute_count(r: memory_stall_major_fault_rate(o: o))
+        let line_count = events_per_minute_count(r: memory_stall_major_fault_rate_threshold)
+        let share_count = basis_point_count(bp: memory_stall_self_cpu_share(o: o))
+        let floor_count = basis_point_count(bp: memory_stall_progress_cpu_share_floor)
+        if rate_count > line_count && share_count < floor_count {
           StallRefusedPageThrash {
             major_fault_rate: memory_stall_major_fault_rate(o: o),
             rate_threshold: memory_stall_major_fault_rate_threshold,
@@ -205,7 +191,7 @@ fn memory_stall_refusal_pressure_text(v: MemoryStallVerdict) -> String {
         } =>
           join([
             "MemoryStallRefusedPageThrash: this process refaulted its own evicted pages at ",
-            to_string(major_faults_per_minute_count(r: rate)),
+            to_string(events_per_minute_count(r: rate)),
             " major faults/minute while computing for only ",
             to_string(basis_point_count(bp: cpu_share) / 100),
             "% of the wall, over the last ",
@@ -213,7 +199,7 @@ fn memory_stall_refusal_pressure_text(v: MemoryStallVerdict) -> String {
             " ms (",
             to_string(faults),
             " major faults; rate line ",
-            to_string(major_faults_per_minute_count(r: line)),
+            to_string(events_per_minute_count(r: line)),
             "/minute, CPU-share floor ",
             to_string(basis_point_count(bp: cpu_floor) / 100),
             "%; source ",
