@@ -1,0 +1,111 @@
+module v2.test.claim.repair_input_origin_split_witness_test
+
+import std.types { String, Bool, List }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.repair_input_origin {
+  RepairInputOriginCandidate,
+  SourceCarrierCandidate,
+  RenderedTargetVocabularyCarrier,
+  repair_input_origin_candidates,
+  repair_input_origin_compatibility_names,
+  qualified_item_emit_surface_compatibility_names,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn is_rendered(candidate: RepairInputOriginCandidate, want: String) -> Bool {
+  match candidate {
+    RenderedTargetVocabularyCarrier { identity } => identity.rendered_identifier == want
+    SourceCarrierCandidate { identity: _ } => false
+  }
+}
+
+fn is_source(candidate: RepairInputOriginCandidate, want: String) -> Bool {
+  match candidate {
+    SourceCarrierCandidate { identity } =>
+      repair_input_origin_compatibility_names(candidates: [SourceCarrierCandidate { identity: identity }]) |> any(name => name == want)
+    RenderedTargetVocabularyCarrier { identity: _ } => false
+  }
+}
+
+// XL-0A RED 1: a target-only token is born in the rendered partition. A producer that unions
+// strings before tagging cannot establish the negative half (there is no source row for Vec).
+test fn realized_only_token_has_one_rendered_origin_and_no_source_origin() -> Bool {
+  let candidates = repair_input_origin_candidates(
+    emitting_module: "fixture.consumer",
+    unlisted_type_names: [],
+    value_reference_names: [],
+    item_emit_surface_names: [],
+    field_import_surface_names: [],
+    variant_payload_surface_names: [],
+    rendered_type_surface_names: ["Vec"],
+  )
+  (candidates |> filter(candidate => is_rendered(candidate: candidate, want: "Vec")) |> count) == 1
+    && (candidates |> filter(candidate => is_source(candidate: candidate, want: "Vec")) |> count) == 0
+    && repair_input_origin_compatibility_names(candidates: candidates) == ["Vec"]
+}
+
+// XL-0A RED 2: emitted text is qualification evidence, never a seventh origin. With every ruled
+// producer channel empty, an emitted-text-only spelling has no constructor in this population.
+test fn emitted_text_only_token_is_not_an_origin() -> Bool {
+  repair_input_origin_candidates(
+    emitting_module: "fixture.consumer",
+    unlisted_type_names: [],
+    value_reference_names: [],
+    item_emit_surface_names: [],
+    field_import_surface_names: [],
+    variant_payload_surface_names: [],
+    rendered_type_surface_names: [],
+  ) |> count == 0
+}
+
+// The qualified route is an item-surface projection, not a dotted-spelling filter over every
+// origin. A value reference with the same spelling remains in the compatibility population but
+// cannot keep this route alive after the item-surface contribution is removed.
+test fn qualified_item_surface_route_is_origin_derived() -> Bool {
+  let both = repair_input_origin_candidates(
+    emitting_module: "fixture.consumer",
+    unlisted_type_names: [],
+    value_reference_names: ["authored.Member"],
+    item_emit_surface_names: ["authored.Member"],
+    field_import_surface_names: [],
+    variant_payload_surface_names: [],
+    rendered_type_surface_names: [],
+  )
+  let value_only = repair_input_origin_candidates(
+    emitting_module: "fixture.consumer",
+    unlisted_type_names: [],
+    value_reference_names: ["authored.Member"],
+    item_emit_surface_names: [],
+    field_import_surface_names: [],
+    variant_payload_surface_names: [],
+    rendered_type_surface_names: [],
+  )
+  qualified_item_emit_surface_compatibility_names(candidates: both) == ["authored.Member"]
+    && qualified_item_emit_surface_compatibility_names(candidates: value_only) == []
+    && repair_input_origin_compatibility_names(candidates: value_only) == ["authored.Member"]
+}
+
+fn unique_compatibility_names(names: List<String>) -> List<String> {
+  names |> fold(init: [], f: (acc, name) =>
+    if acc |> any(existing => existing == name) { acc } else { concat(acc, [name]) }
+  )
+}
+
+// Origin identity is conserved before the old boundary's spelling deduplication: the same text
+// from all five source origins and the rendered branch is six rows, then one compatibility name.
+test fn partition_conservation_keeps_six_origins_before_compatibility_dedup() -> Bool {
+  let candidates = repair_input_origin_candidates(
+    emitting_module: "fixture.consumer",
+    unlisted_type_names: ["Shared"],
+    value_reference_names: ["Shared"],
+    item_emit_surface_names: ["Shared"],
+    field_import_surface_names: ["Shared"],
+    variant_payload_surface_names: ["Shared"],
+    rendered_type_surface_names: ["Shared"],
+  )
+  let compatibility = repair_input_origin_compatibility_names(candidates: candidates)
+  (candidates |> count) == 6
+    && (compatibility |> count) == 6
+    && unique_compatibility_names(names: compatibility) == ["Shared"]
+}
