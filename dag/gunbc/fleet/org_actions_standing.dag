@@ -113,15 +113,6 @@ fn repo_access_standing(r: RepoRunnerAccess) -> OrgAccessStanding {
   standing_from(obs: settings_observation_current, r: r)
 }
 
-fn standing_is_observed(s: OrgAccessStanding) -> Bool {
-  match s {
-    HoldsBySettingsRead { observed_on } => true,
-    RefusedBySettingsRead { observed_on } => true,
-    HoldsByBehavior { run_id, observed_on } => true,
-    Unobserved => false,
-  }
-}
-
 // The public-fork policy row has its own standing because a behavioral receipt cannot
 // observe it at all - only a settings read can, and deriving a green from its absence
 // would be the reachability-read-as-occupancy failure.

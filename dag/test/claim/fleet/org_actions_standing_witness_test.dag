@@ -5,7 +5,7 @@ import gunbc.fleet.org_actions_standing {
   RepoRunnerAccess, desired_repo_access, access_gunbc_private, access_gunbc,
   OrgSettingsObservation, SettingsRead, SettingsReadRefusedTokenScope,
   OrgAccessStanding, HoldsBySettingsRead, RefusedBySettingsRead, HoldsByBehavior, Unobserved,
-  standing_from, repo_access_standing, standing_is_observed,
+  standing_from, repo_access_standing,
   PublicForkPolicyStanding, MatchesDesired, DivergesFromDesired, UnobservableUntilSettingsRead,
   public_fork_policy_standing, desired_allows_public_repositories,
 }
@@ -29,6 +29,18 @@ data probe_read_public_forks_open: OrgSettingsObservation = SettingsRead {
   admitted_repositories: ["gunb-ai/gunbc", "gunb-ai/gunbc-private"],
   allows_public_repositories: true,
   observed_on: "2026-08-30",
+}
+
+// The variant-to-Bool helpers below are witness-local assertion instruments - the
+// corpus-standard shape for pinning one arm of a coproduct (pareto_selection_witness,
+// model_artifact_identity_witness use it the same way) - not substrate query surfaces.
+fn standing_is_observed(s: OrgAccessStanding) -> Bool {
+  match s {
+    HoldsBySettingsRead { observed_on } => true,
+    RefusedBySettingsRead { observed_on } => true,
+    HoldsByBehavior { run_id, observed_on } => true,
+    Unobserved => false,
+  }
 }
 
 fn holds_by_behavior(s: OrgAccessStanding) -> Bool {
