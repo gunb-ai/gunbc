@@ -182,7 +182,7 @@ jobs:
           cargo test --release -p v1-compiler --lib
   fabric-evidence:
     runs-on: [self-hosted, linux, arm64]
-    timeout-minutes: 60
+    timeout-minutes: 70
     steps:
       - name: Checkout
         uses: actions/checkout@v5

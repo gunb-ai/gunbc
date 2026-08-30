@@ -662,6 +662,13 @@ fn build_lane_run_step() -> Step {
 // per-row wall interval of 169 seconds: 13 * 169 * 1.5 = 3295.5 seconds, rounded up. Distinct
 // gunbc host processes are the process-edge subject, so reducing their count would remove the
 // boundary rather than reduce the cost of observing it.
+data fabric_ci_evidence_calibration_timeout_minutes: Int = 55
+
+// Checkout, isolated toolchain setup and the exact-tree release build took 3.5 minutes on the
+// measured warm run. Fifteen minutes is that observation rounded up and given more than fourfold
+// cold-run headroom; the job cap derives it beside the calibration wall rather than overriding it.
+data fabric_ci_evidence_prelude_allowance_minutes: Int = 15
+
 fn fabric_ci_evidence_calibration_step() -> Step {
   RunStep {
     name: Present { value: "Calibrate fabric CI evidence boundary" },
@@ -672,7 +679,7 @@ fn fabric_ci_evidence_calibration_step() -> Step {
     working_directory: none,
     if_condition: Present { value: witness_floor_precondition() },
     continue_on_error: none,
-    timeout_minutes: Present { value: 55 }
+    timeout_minutes: Present { value: fabric_ci_evidence_calibration_timeout_minutes }
   }
 }
 
@@ -1350,7 +1357,7 @@ fn fabric_evidence_job() -> Job {
     env: none,
     outputs: none,
     if_condition: none,
-    timeout_minutes: 60,
+    timeout_minutes: fabric_ci_evidence_calibration_timeout_minutes + fabric_ci_evidence_prelude_allowance_minutes,
     continue_on_error: none,
     concurrency: none,
     permissions: none
