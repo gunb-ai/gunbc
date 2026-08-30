@@ -126,5 +126,8 @@ pub mod std_source_annotation;
 #[path = "../../stage0/src/std_target_representation.rs"]
 pub mod std_target_representation;
 #[rustfmt::skip]
+#[path = "../../stage0/src/std_literal_elaboration.rs"]
+pub mod std_literal_elaboration;
+#[rustfmt::skip]
 #[path = "../../stage0/src/v1_std_core.rs"]
 pub mod v1_std_core;

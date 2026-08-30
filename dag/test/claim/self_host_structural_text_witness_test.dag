@@ -105,6 +105,26 @@ test fn w_literal_at_symbol_boundary_still_emits_host_string() -> Bool {
   )
 }
 
+// RESTORATION PROBE FOR THE DECLARED RUNG DROP gunbc.rung_drop text_boundary_identity_wall --
+// THIS ROW ASSERTS THE GAP, NOT THE GUARANTEE. A NON-LITERAL kernel-String value (the result of
+// the kernel concat builtin) offered at an exact v2.std.text.String return boundary is PRESENTLY
+// ACCEPTED by same-leaf-name compatibility, with no homomorphism row and no refusal. That
+// acceptance is the drop's bounded observation: deleting this row would turn the bounded gap into
+// an unobserved one. WHEN the declared-boundary conformance peeling capability lands and the
+// identity wall is re-landed under the row's two-direction A/B, this probe REDS (the fixture
+// refuses); it is then flipped to the discriminating refusal control -- asserting the typed
+// refusal via the diagnostic census -- and the literal rows above plus the grounded-identity
+// controls must stay green in the same run. Passing the flip by restoring the roadmap_page
+// false positive is not the trigger.
+test fn w_nonliteral_kernel_string_at_text_boundary_is_presently_accepted_declared_drop() -> Bool {
+  compile_dag_rust_emit_check(
+    "module test.claim.text_nonliteral_probe\nimport v2.std.text { String }\nfn probe() -> String { concat(\"x\", \"y\") }\n",
+    "src/test_claim_text_nonliteral_probe.rs",
+    ["pub fn probe"],
+    []
+  )
+}
+
 // OP REALIZATION OVER THE STRUCTURAL CARRIER IS THE DECLARED BODIES: the emitted v2_std_text
 // module carries no host string method on the structural carrier -- the four name-keyed body
 // overrides (string_is_empty/string_head/string_tail/fold_source as .chars()/.is_empty() host
