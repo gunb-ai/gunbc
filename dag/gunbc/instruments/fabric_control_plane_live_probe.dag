@@ -222,7 +222,7 @@ fn cp_probe_demand() -> Demand<NonEmptyStr> {
 data fci1_work_source_commit: NonEmptyStr = "e9eaa579ed0b6585a48965842b43ee09af5671a1"
 data fci1_work_source_tree: NonEmptyStr = "c8983a3d8412a5e37a309b2d90ceafc698856619"
 data fci1_installed_sudoers_path: NonEmptyStr = "/etc/sudoers.d/gunbc-ghrunner"
-data fci1_installed_sudoers_digest: NonEmptyStr = "c80f6c02f9c157f4c8bc8006053e4cccde158d97e3d00a51202ee7b844e619f5"
+data fci1_projected_sudoers_path: NonEmptyStr = "provisioning/srv3/gunbc-ghrunner.sudoers"
 
 fn fci1_root_owner() -> PosixOwnerSpec {
   PosixOwnerSpec { user: PosixUserId { value: 0 }, group: PosixGroupId { value: 0 } }
@@ -246,8 +246,11 @@ func fci1_assert_host_preconditions() -> ProcessExit {
   match sha256sum_file_digest_via_shell(path: fci1_installed_sudoers_path) {
     Sha256FileDigestUnavailable { path: _, reason: _ } => exit_failure(reason: "FCI-1 sudoers readback unavailable")
     Sha256FileDigest { digest: observed_digest } =>
-      if (observed_digest.hex as String) != (fci1_installed_sudoers_digest as String) {
-        exit_failure(reason: "FCI-1 installed sudoers digest mismatch")
+      match sha256sum_file_digest_via_shell(path: fci1_projected_sudoers_path) {
+        Sha256FileDigestUnavailable { path: _, reason: _ } => exit_failure(reason: "FCI-1 projected sudoers artifact unavailable")
+        Sha256FileDigest { digest: projected_digest } =>
+      if (observed_digest.hex as String) != (projected_digest.hex as String) {
+        exit_failure(reason: "FCI-1 installed sudoers differs from the exact-tree generated projection")
       } else {
         match srv3_observe_path_owner(path: "/home/ghrunner", transport: LocalShell) {
           PathOwnerUnobserved { reason: _ } => exit_failure(reason: "FCI-1 ghrunner owner identity unavailable")
@@ -266,6 +269,7 @@ func fci1_assert_host_preconditions() -> ProcessExit {
               }
             }
         }
+      }
       }
   }
 }
