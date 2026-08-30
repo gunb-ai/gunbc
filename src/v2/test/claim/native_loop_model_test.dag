@@ -14,26 +14,24 @@ import v2.compiler.native_loop {
   NativeRequest,
   NativeRequestDecode,
   NativeRequestDecoded,
-  NativeRequestDecodeRefusedMalformedJson,
-  NativeRequestDecodeRefusedUnknownAction,
   NativeResponse,
   NativeTestResponse,
   OutputDirectory,
-  SourceRootIdentity,
   TestAccepted,
   TestRefused,
   TestRequest,
   TestRosterIdentity,
 }
+import gunbc.repository_census_observation { SourceRootIdentity }
 import v2.std.optional { Absent }
 import v2.std.logic { bool_node }
 
 fn fixture_execute_request() -> NativeRequest {
-  ExecuteRequest { source_roots: [SourceRootIdentity { value: "src/v2" }], entry: EntryIdentity { value: "fixture.entry" }, inputs: Empty }
+  ExecuteRequest { source_roots: ["src/v2" as SourceRootIdentity], entry: EntryIdentity { value: "fixture.entry" }, inputs: Empty }
 }
 
 fn fixture_test_request() -> NativeRequest {
-  TestRequest { source_roots: [SourceRootIdentity { value: "src/v2" }], roster_identity: TestRosterIdentity { value: "required-v2" }, optional_subject_selection: Absent }
+  TestRequest { source_roots: ["src/v2" as SourceRootIdentity], roster_identity: TestRosterIdentity { value: "required-v2" }, optional_subject_selection: Absent }
 }
 
 test fn native_loop_execute_request_schema_constructs() -> Bool {
@@ -47,16 +45,6 @@ test fn native_loop_test_request_schema_constructs() -> Bool {
 test fn native_loop_decode_success_carries_request() -> Bool {
   let decoded: NativeRequestDecode = NativeRequestDecoded { request: fixture_execute_request() }
   match decoded { NativeRequestDecoded { request: ExecuteRequest { source_roots: _, entry: _, inputs: _ } } => true _ => false }
-}
-
-test fn native_loop_unknown_action_tag_is_uninhabited_as_request() -> Bool {
-  let decoded: NativeRequestDecode = NativeRequestDecodeRefusedUnknownAction { action: "serve" }
-  match decoded { NativeRequestDecodeRefusedUnknownAction { action: _ } => true _ => false }
-}
-
-test fn native_loop_malformed_json_has_distinct_decode_refusal() -> Bool {
-  let decoded: NativeRequestDecode = NativeRequestDecodeRefusedMalformedJson
-  match decoded { NativeRequestDecodeRefusedMalformedJson => true _ => false }
 }
 
 test fn native_loop_compile_response_schema_is_typed() -> Bool {

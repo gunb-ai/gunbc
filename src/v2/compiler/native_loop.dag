@@ -6,12 +6,12 @@ import v2.std.collection { List }
 import v2.std.compilers.target_model { TargetModel }
 import v2.std.node { Node }
 import v2.std.optional { Optional }
+import gunbc.repository_census_observation { SourceRootIdentity }
 
 // XL-2 schema only: the typed request, response, and decode boundary of the
 // minimal native compile/test/execute loop. Admission and realization are
 // deliberately absent; this module owns no effect-operation identity, effect
 // evidence, or caller-authorable admission arm.
-type SourceRootIdentity { value: NonEmptyStr }
 type EntryIdentity { value: NonEmptyStr }
 type TestRosterIdentity { value: NonEmptyStr }
 type OutputDirectory { value: NonEmptyStr }
