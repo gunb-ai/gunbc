@@ -68,7 +68,7 @@ fn rung_drop_blocks() -> List<MarkdownBlock> {
       flat_map(rung_drop_roster, d => concat([
         h3(text: concat(concat(d.subject, " — declared "), d.declared)),
         p(text: d.authored),
-      ], if d.identity as String == "measurement_bankruptcy" {
+      ], if (d.identity as String) == "measurement_bankruptcy" {
         compile_phase_frontier_blocks()
       } else { [] })),
     ],
