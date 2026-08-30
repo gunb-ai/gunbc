@@ -301,6 +301,6 @@ pub fn infer_builtin_call_type(name: String) -> Option<Rc<Node>> {
 pub fn resolve_builtin_call_type(name: String) -> Rc<Node> {
     match infer_builtin_call_type(name.clone()) {
         Some(v) => v.clone(),
-        None => unit_type(),
+        std::option::Option::None => unit_type(),
     }
 }

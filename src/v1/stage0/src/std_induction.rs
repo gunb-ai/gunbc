@@ -579,7 +579,7 @@ pub enum CostBound {
 
 pub fn sum_bound(terms: Rc<Vec<Rc<CostBound>>>) -> Rc<CostBound> {
     match terms.clone().first().cloned() {
-        None => Rc::new(CostBound::ErrorBound),
+        std::option::Option::None => Rc::new(CostBound::ErrorBound),
         Some(_) => Rc::new(CostBound::SumBound {
             terms: terms.clone(),
         }),
@@ -633,7 +633,7 @@ pub fn cost_poly(param: String, degree: i64) -> Rc<CostBound> {
                         }),
                     }),
                 }),
-                None => Rc::new(CostBound::ErrorBound),
+                std::option::Option::None => Rc::new(CostBound::ErrorBound),
             }
         }
     }
@@ -653,7 +653,7 @@ pub fn cost_root(param: String, k: i64) -> Rc<CostBound> {
                     }),
                 }),
             }),
-            None => Rc::new(CostBound::ErrorBound),
+            std::option::Option::None => Rc::new(CostBound::ErrorBound),
         }
     }
 }
@@ -728,7 +728,7 @@ pub fn int_pow_bounded(base: i64, exp: i64) -> Option<i64> {
         512 * 1024,
         2 * 1024 * 1024,
         || match bounded_int_pow_exponent(exp.clone()) {
-            None => std::option::Option::None,
+            std::option::Option::None => std::option::Option::None,
             Some(e) => {
                 if (e.clone() == 0) {
                     Some(1)
@@ -758,10 +758,10 @@ pub fn int_pow_bounded(base: i64, exp: i64) -> Option<i64> {
                                             ),
                                         ) {
                                             Some(prod) => Some(prod.clone()),
-                                            None => std::option::Option::None,
+                                            std::option::Option::None => std::option::Option::None,
                                         }
                                     }
-                                    None => std::option::Option::None,
+                                    std::option::Option::None => std::option::Option::None,
                                 }
                             }
                         }
@@ -788,14 +788,14 @@ pub fn ceil_log_iter(mut base: i64, mut argument: i64, mut k: i64, mut power: i6
             match crate::std_checked_arithmetic::checked_int_optional(
                 crate::std_checked_arithmetic::checked_int_multiply(power.clone(), base.clone()),
             ) {
-                None => {
+                std::option::Option::None => {
                     break std::option::Option::None;
                 }
                 Some(next_power) => {
                     match crate::std_checked_arithmetic::checked_int_optional(
                         crate::std_checked_arithmetic::checked_int_add(k.clone(), 1),
                     ) {
-                        None => {
+                        std::option::Option::None => {
                             break std::option::Option::None;
                         }
                         Some(k1) => {
@@ -822,9 +822,9 @@ pub fn master_theorem(form: Rc<RecurrenceForm>) -> Rc<CostBound> {
             Rc::new(CostBound::ErrorBound)
         } else {
             match bounded_int_pow_exponent(d.clone()) {
-                None => Rc::new(CostBound::ErrorBound),
+                std::option::Option::None => Rc::new(CostBound::ErrorBound),
                 Some(d_ok) => match int_pow_bounded(b.clone(), d_ok.clone()) {
-                    None => Rc::new(CostBound::ErrorBound),
+                    std::option::Option::None => Rc::new(CostBound::ErrorBound),
                     Some(b_to_d) => {
                         if (a.clone() < b_to_d.clone()) {
                             match d_ok.clone() {
@@ -846,7 +846,7 @@ pub fn master_theorem(form: Rc<RecurrenceForm>) -> Rc<CostBound> {
     param: n.clone(),
 })]),
 }),
-    None => Rc::new(CostBound::ErrorBound),
+    std::option::Option::None => Rc::new(CostBound::ErrorBound),
 },
 }
                             } else {
@@ -861,9 +861,9 @@ pub fn master_theorem(form: Rc<RecurrenceForm>) -> Rc<CostBound> {
 }),
 }),
 }),
-    None => Rc::new(CostBound::ErrorBound),
+    std::option::Option::None => Rc::new(CostBound::ErrorBound),
 },
-    None => Rc::new(CostBound::ErrorBound),
+    std::option::Option::None => Rc::new(CostBound::ErrorBound),
 }
                             }
                         }
@@ -896,7 +896,7 @@ pub fn derive_bound(
         Rc::new(CostBound::ErrorBound)
     } else {
         match bounded_int_pow_exponent(work_exponent.clone()) {
-            None => Rc::new(CostBound::ErrorBound),
+            std::option::Option::None => Rc::new(CostBound::ErrorBound),
             Some(_) => match (*factor.clone()).clone() {
                 ShrinkFactor::UnitShrink => {
                     if (branches.clone() <= 1) {

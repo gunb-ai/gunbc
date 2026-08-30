@@ -115,7 +115,7 @@ pub fn binding_unit_variant_contributions(
                                         variant: prev.variant.clone(),
                                     }),
                                 ),
-                                None => v1_rt::rc_map_insert(
+                                std::option::Option::None => v1_rt::rc_map_insert(
                                     acc.clone(),
                                     vname.clone(),
                                     Rc::new(UnitVariantContribution {
@@ -147,7 +147,7 @@ pub fn contributions_without_key(
             } else {
                 match v1_rt::map_get(&contribs, k.clone()) {
                     Some(c) => v1_rt::rc_map_insert(acc.clone(), k.clone(), c.clone()),
-                    None => acc.clone(),
+                    std::option::Option::None => acc.clone(),
                 }
             }
         },
@@ -174,7 +174,7 @@ pub fn unit_variant_index_remove_binding(
                 vname.clone(),
                 contributions_without_key(contribs.clone(), binding.name.clone()),
             ),
-            None => acc.clone(),
+            std::option::Option::None => acc.clone(),
         },
     )
 }
@@ -198,7 +198,9 @@ pub fn unit_variant_index_add_binding(
                     Some(contribution) => {
                         let contribs = match v1_rt::map_get(&acc, vname.clone()) {
                             Some(existing) => existing.clone(),
-                            None => v1_rt::rc_empty_map::<String, Rc<UnitVariantContribution>>(),
+                            std::option::Option::None => {
+                                v1_rt::rc_empty_map::<String, Rc<UnitVariantContribution>>()
+                            }
                         };
                         v1_rt::rc_map_insert(
                             acc.clone(),
@@ -210,7 +212,7 @@ pub fn unit_variant_index_add_binding(
                             ),
                         )
                     }
-                    None => acc.clone(),
+                    std::option::Option::None => acc.clone(),
                 },
             )
     }
@@ -223,7 +225,7 @@ pub fn effective_visible_binding(
 ) -> Option<Rc<TypeBinding>> {
     match v1_rt::map_get(&str_bindings, name.clone()) {
         Some(b) => Some(b.clone()),
-        None => parents.iter().cloned().fold(
+        std::option::Option::None => parents.iter().cloned().fold(
             std::option::Option::None,
             |acc: _, parent: Rc<TypeEnv>| {
                 if (acc.clone() != std::option::Option::None) {
@@ -249,7 +251,7 @@ pub fn unit_variant_index_shadow_insert(
                 old.clone(),
                 source_indices.clone(),
             ),
-            None => unit_variant_index.clone(),
+            std::option::Option::None => unit_variant_index.clone(),
         };
         unit_variant_index_add_binding(cleared.clone(), binding.clone(), source_indices.clone())
     }
@@ -454,7 +456,7 @@ pub fn symbol_index_track_global_bare(
                 )
             }
         }
-        None => v1_rt::rc_map_insert(
+        std::option::Option::None => v1_rt::rc_map_insert(
             global_bare.clone(),
             binding.name.clone(),
             Rc::new(GlobalBareLookupState::GlobalBareUniqueBinding {
@@ -662,9 +664,9 @@ pub fn guarded_union_str_bindings_into_acc(
             &overlay,
             name.clone(),
         ) {
-            None => state.clone(),
+            std::option::Option::None => state.clone(),
             Some(incoming) => match v1_rt::map_get(&state.bindings.clone(), name.clone()) {
-                None => Rc::new(GuardedStrBindingsUnion {
+                std::option::Option::None => Rc::new(GuardedStrBindingsUnion {
                     bindings: v1_rt::rc_map_insert(
                         state.bindings.clone(),
                         name.clone(),
@@ -730,9 +732,9 @@ pub fn guarded_union_str_bindings_into_overlay(
         }),
         |state: Rc<GuardedStrBindingsUnion>, name: String| match v1_rt::map_get(&acc, name.clone())
         {
-            None => state.clone(),
+            std::option::Option::None => state.clone(),
             Some(accumulated) => match v1_rt::map_get(&state.bindings.clone(), name.clone()) {
-                None => Rc::new(GuardedStrBindingsUnion {
+                std::option::Option::None => Rc::new(GuardedStrBindingsUnion {
                     bindings: v1_rt::rc_map_insert(
                         state.bindings.clone(),
                         name.clone(),
@@ -820,9 +822,11 @@ pub fn union_deps_map_into_acc(
             &overlay,
             name.clone(),
         ) {
-            None => m.clone(),
+            std::option::Option::None => m.clone(),
             Some(incoming) => match v1_rt::map_get(&m, name.clone()) {
-                None => v1_rt::rc_map_insert(m.clone(), name.clone(), incoming.clone()),
+                std::option::Option::None => {
+                    v1_rt::rc_map_insert(m.clone(), name.clone(), incoming.clone())
+                }
                 Some(existing) => {
                     if (existing.clone() == incoming.clone()) {
                         m.clone()
@@ -845,9 +849,11 @@ pub fn union_deps_map_into_overlay(
             &acc,
             name.clone(),
         ) {
-            None => m.clone(),
+            std::option::Option::None => m.clone(),
             Some(accumulated) => match v1_rt::map_get(&m, name.clone()) {
-                None => v1_rt::rc_map_insert(m.clone(), name.clone(), accumulated.clone()),
+                std::option::Option::None => {
+                    v1_rt::rc_map_insert(m.clone(), name.clone(), accumulated.clone())
+                }
                 Some(_incoming) => m.clone(),
             },
         },
@@ -873,9 +879,9 @@ pub fn union_bool_set_into_acc(
         acc.clone(),
         |m: Rc<HashMap<String, bool>>, name: String| match v1_rt::map_get(&m, name.clone()) {
             Some(_) => m.clone(),
-            None => match v1_rt::map_get(&overlay, name.clone()) {
+            std::option::Option::None => match v1_rt::map_get(&overlay, name.clone()) {
                 Some(v) => v1_rt::rc_map_insert(m.clone(), name.clone(), v.clone()),
-                None => m.clone(),
+                std::option::Option::None => m.clone(),
             },
         },
     )
@@ -888,9 +894,11 @@ pub fn union_bool_set_into_overlay(
     Rc::new(v1_rt::map_keys(&acc)).iter().cloned().fold(
         overlay.clone(),
         |m: Rc<HashMap<String, bool>>, name: String| match v1_rt::map_get(&acc, name.clone()) {
-            None => m.clone(),
+            std::option::Option::None => m.clone(),
             Some(accumulated) => match v1_rt::map_get(&m, name.clone()) {
-                None => v1_rt::rc_map_insert(m.clone(), name.clone(), accumulated.clone()),
+                std::option::Option::None => {
+                    v1_rt::rc_map_insert(m.clone(), name.clone(), accumulated.clone())
+                }
                 Some(incoming) => {
                     if (incoming.clone() == accumulated.clone()) {
                         m.clone()
@@ -924,9 +932,11 @@ pub fn union_variant_locals_into_acc(
             &overlay,
             name.clone(),
         ) {
-            None => m.clone(),
+            std::option::Option::None => m.clone(),
             Some(incoming) => match v1_rt::map_get(&m, name.clone()) {
-                None => v1_rt::rc_map_insert(m.clone(), name.clone(), incoming.clone()),
+                std::option::Option::None => {
+                    v1_rt::rc_map_insert(m.clone(), name.clone(), incoming.clone())
+                }
                 Some(_existing) => v1_rt::rc_map_insert(m.clone(), name.clone(), incoming.clone()),
             },
         },
@@ -943,9 +953,11 @@ pub fn union_variant_locals_into_overlay(
             &acc,
             name.clone(),
         ) {
-            None => m.clone(),
+            std::option::Option::None => m.clone(),
             Some(accumulated) => match v1_rt::map_get(&m, name.clone()) {
-                None => v1_rt::rc_map_insert(m.clone(), name.clone(), accumulated.clone()),
+                std::option::Option::None => {
+                    v1_rt::rc_map_insert(m.clone(), name.clone(), accumulated.clone())
+                }
                 Some(_incoming) => m.clone(),
             },
         },
@@ -1016,9 +1028,9 @@ pub fn lookup_binding_local_by_name(env: Rc<TypeEnv>, name: String) -> Option<Rc
     match crate::v1_std_core::intern_find(env.intern_table.clone(), name.clone()) {
         Some(ident) => match v1_rt::map_get(&env.bindings.clone(), ident.clone()) {
             Some(binding) => Some(binding.clone()),
-            None => None,
+            std::option::Option::None => std::option::Option::None,
         },
-        None => None,
+        std::option::Option::None => std::option::Option::None,
     }
 }
 
@@ -1036,13 +1048,17 @@ pub fn str_bindings_from_bindings(
 pub fn lookup_binding_by_name_local(env: Rc<TypeEnv>, name: String) -> Option<Rc<TypeBinding>> {
     match v1_rt::map_get(&env.str_bindings.clone(), name.clone()) {
         Some(binding) => Some(binding.clone()),
-        None => match v1_rt::map_get(&env.ancestry_str_bindings.clone(), name.clone()) {
-            Some(binding) => Some(binding.clone()),
-            None => match crate::v1_std_core::intern_find(env.intern_table.clone(), name.clone()) {
-                Some(id) => v1_rt::map_get(&env.bindings.clone(), id.clone()),
-                None => None,
-            },
-        },
+        std::option::Option::None => {
+            match v1_rt::map_get(&env.ancestry_str_bindings.clone(), name.clone()) {
+                Some(binding) => Some(binding.clone()),
+                std::option::Option::None => {
+                    match crate::v1_std_core::intern_find(env.intern_table.clone(), name.clone()) {
+                        Some(id) => v1_rt::map_get(&env.bindings.clone(), id.clone()),
+                        std::option::Option::None => std::option::Option::None,
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -1055,7 +1071,7 @@ pub fn lookup_binding_by_name(env: Rc<TypeEnv>, name: String) -> Option<Rc<TypeB
                 Some(binding.clone())
             }
         }
-        None => lookup_binding_after_global_bare(env.clone(), name.clone()),
+        std::option::Option::None => lookup_binding_after_global_bare(env.clone(), name.clone()),
     }
 }
 
@@ -1075,7 +1091,7 @@ pub fn bare_free_call_requires_listed_import(name: String) -> bool {
 pub fn import_visible_name(env: Rc<TypeEnv>, name: String) -> bool {
     match v1_rt::map_get(&env.source_visible_names.clone(), name.clone()) {
         Some(vis) => vis.clone(),
-        None => false,
+        std::option::Option::None => false,
     }
 }
 
@@ -1094,7 +1110,9 @@ pub fn lookup_binding_after_global_bare(env: Rc<TypeEnv>, name: String) -> Optio
     } else {
         match global_bare_lookup(env.clone(), name.clone()) {
             Some(binding) => Some(binding.clone()),
-            None => lookup_qualified_module_projection(env.clone(), name.clone()),
+            std::option::Option::None => {
+                lookup_qualified_module_projection(env.clone(), name.clone())
+            }
         }
     }
 }
@@ -1104,14 +1122,14 @@ pub fn lookup_qualified_module_projection(
     name: String,
 ) -> Option<Rc<TypeBinding>> {
     match v1_rt::contains(name.clone(), ".".to_string()) {
-        false => None,
+        false => std::option::Option::None,
         true => match symbol_index_lookup(env.symbol_index.clone(), name.clone()) {
             Some(resolved) => Some(Rc::new(TypeBinding {
                 name: name.clone(),
                 resolved: resolved.clone(),
                 provenance: Rc::new(SubValueRelation::SubValueUnknown),
             })),
-            None => None,
+            std::option::Option::None => std::option::Option::None,
         },
     }
 }
@@ -1156,7 +1174,7 @@ pub fn segment_lcp_len(a: Rc<Vec<String>>, b: Rc<Vec<String>>) -> i64 {
                                 })
                             }
                         }
-                        None => Rc::new(SegmentLcpScan {
+                        std::option::Option::None => Rc::new(SegmentLcpScan {
                             remaining: acc.remaining.clone(),
                             matched: acc.matched.clone(),
                             live: false,
@@ -1222,7 +1240,7 @@ pub fn global_bare_nearest_ancestor_candidate(
             },
         );
         match scan.tie.clone() {
-            true => None,
+            true => std::option::Option::None,
             false => scan.best.clone(),
         }
     }
@@ -1234,7 +1252,7 @@ pub fn global_bare_nearest_ancestor(
 ) -> Option<Rc<TypeBinding>> {
     match global_bare_nearest_ancestor_candidate(env_module_path.clone(), candidates.clone()) {
         Some(cand) => Some(cand.binding.clone()),
-        None => None,
+        std::option::Option::None => std::option::Option::None,
     }
 }
 
@@ -1298,8 +1316,10 @@ pub fn global_bare_unique_chain_candidate(
             })
             .first()
             .cloned(),
-            ModulePathBindingProjection::ModulePathBindingMiss => None,
-            ModulePathBindingProjection::ModulePathBindingAmbiguous { owners: _, .. } => None,
+            ModulePathBindingProjection::ModulePathBindingMiss => std::option::Option::None,
+            ModulePathBindingProjection::ModulePathBindingAmbiguous { owners: _, .. } => {
+                std::option::Option::None
+            }
         }
     }
 }
@@ -1381,7 +1401,7 @@ pub fn global_bare_owner_module(
             ..
         }) => match binding_declares_name(b.clone(), name.clone(), env.source_indices.clone()) {
             true => Some(mp.clone()),
-            false => None,
+            false => std::option::Option::None,
         },
         Some(GlobalBareLookupState::GlobalBareAmbiguousBinding {
             candidates: cands, ..
@@ -1392,11 +1412,11 @@ pub fn global_bare_owner_module(
                 env.source_indices.clone(),
             ) {
                 true => Some(cand.module_path.clone()),
-                false => None,
+                false => std::option::Option::None,
             },
-            None => None,
+            std::option::Option::None => std::option::Option::None,
         },
-        None => None,
+        std::option::Option::None => std::option::Option::None,
     }
 }
 
@@ -1554,7 +1574,7 @@ pub fn qualify_borrowed_type_names(
                     }
                 }
             }
-            None => node_with_children(n.clone(), qualified_children.clone()),
+            std::option::Option::None => node_with_children(n.clone(), qualified_children.clone()),
         }
     })
 }
@@ -1669,7 +1689,7 @@ pub fn record_global_bare_ambiguous_silent_pick(
             cand_count.clone(),
             cand.module_path.clone(),
         ),
-        None => v1_rt::resolution_silent_pick_record_global_bare_lcp_tie(
+        std::option::Option::None => v1_rt::resolution_silent_pick_record_global_bare_lcp_tie(
             env_module_path.clone(),
             name.clone(),
             cand_count.clone(),
@@ -1691,7 +1711,7 @@ pub fn global_bare_lookup(env: Rc<TypeEnv>, name: String) -> Option<Rc<TypeBindi
             if v1_rt::name_resolution_policy_is_namespace_only() {
                 match global_bare_unique_chain_candidate(env.module_path.clone(), cands.clone()) {
                     Some(cand) => Some(cand.binding.clone()),
-                    None => None,
+                    std::option::Option::None => std::option::Option::None,
                 }
             } else {
                 {
@@ -1708,7 +1728,7 @@ pub fn global_bare_lookup(env: Rc<TypeEnv>, name: String) -> Option<Rc<TypeBindi
                 }
             }
         }
-        None => None,
+        std::option::Option::None => std::option::Option::None,
     }
 }
 
@@ -1736,14 +1756,14 @@ pub fn global_bare_is_ambiguous(env: Rc<TypeEnv>, name: String) -> bool {
             }
         }
         Some(GlobalBareLookupState::GlobalBareUniqueBinding { .. }) => false,
-        None => false,
+        std::option::Option::None => false,
     }
 }
 
 pub fn lookup_binding(env: Rc<TypeEnv>, ident: i64) -> Option<Rc<TypeBinding>> {
     match v1_rt::map_get(&env.bindings.clone(), ident.clone()) {
         Some(binding) => Some(binding.clone()),
-        None => {
+        std::option::Option::None => {
             let name = crate::v1_std_core::intern_str(env.intern_table.clone(), ident.clone());
             lookup_binding_by_name(env.clone(), name.clone())
         }
@@ -1753,21 +1773,21 @@ pub fn lookup_binding(env: Rc<TypeEnv>, ident: i64) -> Option<Rc<TypeBinding>> {
 pub fn is_recursive_type(env: Rc<TypeEnv>, ident: i64) -> bool {
     match v1_rt::map_get(&env.recursive_type_set.clone(), ident.clone()) {
         Some(_) => true,
-        None => false,
+        std::option::Option::None => false,
     }
 }
 
 pub fn is_recursive_type_by_name(env: Rc<TypeEnv>, name: String) -> bool {
     match crate::v1_std_core::intern_find(env.intern_table.clone(), name.clone()) {
         Some(id) => is_recursive_type(env.clone(), id.clone()),
-        None => false,
+        std::option::Option::None => false,
     }
 }
 
 pub fn lookup_type(env: Rc<TypeEnv>, ident: i64) -> Option<Rc<Node>> {
     match lookup_binding(env.clone(), ident.clone()) {
         Some(binding) => Some(binding.resolved.clone()),
-        None => None,
+        std::option::Option::None => std::option::Option::None,
     }
 }
 
@@ -1783,10 +1803,10 @@ pub fn lookup_type_by_name(env: Rc<TypeEnv>, name: String) -> Option<Rc<Node>> {
                 name.clone(),
             ) {
                 Some(arm) => Some(arm.clone()),
-                None => Some(binding.resolved.clone()),
+                std::option::Option::None => Some(binding.resolved.clone()),
             },
         },
-        None => None,
+        std::option::Option::None => std::option::Option::None,
     }
 }
 
@@ -1832,7 +1852,7 @@ pub fn type_ref_measure_binding_authority(env: Rc<TypeEnv>, name: String) -> boo
                 ) {
                     match symbol_index_lookup(env.symbol_index.clone(), name.clone()) {
                         Some(_) => true,
-                        None => false,
+                        std::option::Option::None => false,
                     }
                 } else {
                     false
@@ -1857,11 +1877,11 @@ pub fn variant_arm_type_projection(
         ) {
             Some(arm) => match ((arm.children.clone().len() as i64) == 0) {
                 true => Some(arm.clone()),
-                false => None,
+                false => std::option::Option::None,
             },
-            None => None,
+            std::option::Option::None => std::option::Option::None,
         },
-        _ => None,
+        _ => std::option::Option::None,
     }
 }
 
@@ -1886,21 +1906,25 @@ pub fn lookup_type_for(env: Rc<TypeEnv>, node: Rc<Node>) -> Option<Rc<Node>> {
                         name.clone(),
                     ) {
                         Some(arm) => Some(arm.clone()),
-                        None => Some(resolved.clone()),
+                        std::option::Option::None => Some(resolved.clone()),
                     },
                     false => Some(resolved.clone()),
                 }
             }
-            None => None,
+            std::option::Option::None => std::option::Option::None,
         },
-        None => lookup_type_by_name(env.clone(), authored_name(env.clone(), node.clone())),
+        std::option::Option::None => {
+            lookup_type_by_name(env.clone(), authored_name(env.clone(), node.clone()))
+        }
     }
 }
 
 pub fn is_recursive_type_for(env: Rc<TypeEnv>, node: Rc<Node>) -> bool {
     match node.ident.clone() {
         Some(id) => is_recursive_type(env.clone(), id.clone()),
-        None => is_recursive_type_by_name(env.clone(), authored_name(env.clone(), node.clone())),
+        std::option::Option::None => {
+            is_recursive_type_by_name(env.clone(), authored_name(env.clone(), node.clone()))
+        }
     }
 }
 
@@ -1908,7 +1932,7 @@ pub fn inductive_fields_for(env: Rc<TypeEnv>, type_name: String) -> Rc<Vec<Rc<In
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         let local = match v1_rt::map_get(&env.inductive_fields.clone(), type_name.clone()) {
             Some(fields) => fields.clone(),
-            None => Rc::new(vec![]),
+            std::option::Option::None => Rc::new(vec![]),
         };
         if ((local.clone().len() as i64) > 0) {
             local.clone()
@@ -1989,7 +2013,7 @@ pub fn put_inductive_field(
     {
         let existing = match v1_rt::map_get(&fields, type_name.clone()) {
             Some(fs) => fs.clone(),
-            None => Rc::new(vec![]),
+            std::option::Option::None => Rc::new(vec![]),
         };
         v1_rt::rc_map_insert(
             fields.clone(),
@@ -2019,7 +2043,7 @@ pub fn put_inductive_field_cross(
     {
         let existing = match v1_rt::map_get(&fields, type_name.clone()) {
             Some(fs) => fs.clone(),
-            None => Rc::new(vec![]),
+            std::option::Option::None => Rc::new(vec![]),
         };
         v1_rt::rc_map_insert(
             fields.clone(),
@@ -2121,9 +2145,11 @@ pub fn merge_inductive_fields(
                             }
                         }
                     }
-                    None => v1_rt::rc_map_insert(acc.clone(), type_name.clone(), incoming.clone()),
+                    std::option::Option::None => {
+                        v1_rt::rc_map_insert(acc.clone(), type_name.clone(), incoming.clone())
+                    }
                 },
-                None => acc.clone(),
+                std::option::Option::None => acc.clone(),
             }
         },
     )
@@ -2137,7 +2163,7 @@ pub fn inductive_fields_list_to_map(
         |acc: Rc<HashMap<String, Rc<Vec<Rc<InductiveField>>>>>, field: Rc<InductiveField>| {
             let existing = match v1_rt::map_get(&acc, field.type_name.clone()) {
                 Some(fs) => fs.clone(),
-                None => Rc::new(vec![]),
+                std::option::Option::None => Rc::new(vec![]),
             };
             v1_rt::rc_map_insert(
                 acc.clone(),

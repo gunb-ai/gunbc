@@ -337,10 +337,10 @@ pub fn keyed_annotation_rows(
                     Some(empty_keyed_rows()),
                     |acc: Option<Rc<Vec<Rc<KeyedAnnotationRow>>>>,
                      row: Rc<SourceAnnotationDebt>| match acc.clone() {
-                        None => std::option::Option::None,
+                        std::option::Option::None => std::option::Option::None,
                         Some(rows) => {
                             match authored_name_among(eligible.clone(), row.subject.clone()) {
-                                None => std::option::Option::None,
+                                std::option::Option::None => std::option::Option::None,
                                 Some(name) => Some(v1_rt::rc_list_push(
                                     rows.clone(),
                                     Rc::new(KeyedAnnotationRow {

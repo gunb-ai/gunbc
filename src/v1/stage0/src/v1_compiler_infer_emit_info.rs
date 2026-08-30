@@ -312,7 +312,7 @@ pub fn emit_graph_records_type_decl(
 ) -> bool {
     match build_type_summary(item.clone(), source_indices.clone()) {
         Some(_) => true,
-        None => {
+        std::option::Option::None => {
             ((((item.connective.clone() == Connective::NoConnective)
                 && ((item.children.clone().len() as i64) == 0))
                 && ((item.params.clone().len() as i64) == 0))
@@ -361,7 +361,7 @@ pub fn derive_variant_to_enum(
                                 Some(_) => {
                                     v1_rt::rc_map_insert(inner.clone(), vn.clone(), "".to_string())
                                 }
-                                None => v1_rt::rc_map_insert(
+                                std::option::Option::None => v1_rt::rc_map_insert(
                                     inner.clone(),
                                     vn.clone(),
                                     summary.name.clone(),
@@ -413,7 +413,7 @@ pub fn variant_belongs_to_enum(
             }
             _ => false,
         },
-        None => false,
+        std::option::Option::None => false,
     }
 }
 
@@ -426,7 +426,7 @@ pub fn is_enum_in_summaries(
             TypeRepr::EnumRepr { unit_only: _, .. } => true,
             _ => false,
         },
-        None => false,
+        std::option::Option::None => false,
     }
 }
 
@@ -535,9 +535,9 @@ pub fn find_first_enum_field_node(
             source_indices.clone(),
         ) {
             Some(field_child) => Some(field_child.clone()),
-            None => std::option::Option::None,
+            std::option::Option::None => std::option::Option::None,
         },
-        None => std::option::Option::None,
+        std::option::Option::None => std::option::Option::None,
     }
 }
 
@@ -581,7 +581,7 @@ pub fn enum_field_type_consistent(
                     expected.clone(),
                     source_indices.clone(),
                 ),
-                None => false,
+                std::option::Option::None => false,
             }) {
                 __all = false;
                 break;
@@ -607,7 +607,7 @@ pub fn build_enum_field_summaries(
                 }
                 __result
             }),
-            None => Rc::new(vec![]),
+            std::option::Option::None => Rc::new(vec![]),
         };
         let shared = Rc::new({
             let mut __result = Vec::new();
@@ -636,7 +636,7 @@ pub fn build_enum_field_summaries(
                         crate::v1_compiler_infer_types::child_type_node(first_field.clone()),
                         source_indices.clone(),
                     ),
-                    None => false,
+                    std::option::Option::None => false,
                 } {
                     __result.push(field_name);
                 }
@@ -663,7 +663,7 @@ pub fn build_enum_field_summaries(
                             ),
                         }),
                     ),
-                    None => acc.clone(),
+                    std::option::Option::None => acc.clone(),
                 }
             },
         )
@@ -918,7 +918,7 @@ pub fn type_summary_or_structural_alias_reaches_fn(
                             __found
                         })
                     }
-                    None => {
+                    std::option::Option::None => {
                         (v1_rt::set_contains(&structural_alias_direct_fn_names, name.clone())
                             || match v1_rt::map_get(
                                 &structural_alias_fn_surface_names,
@@ -940,7 +940,7 @@ pub fn type_summary_or_structural_alias_reaches_fn(
                                     }
                                     __found
                                 }
-                                None => false,
+                                std::option::Option::None => false,
                             })
                     }
                 }
@@ -988,7 +988,7 @@ pub fn close_fn_fields(
                     acc.clone()
                 }
             }
-            None => acc.clone(),
+            std::option::Option::None => acc.clone(),
         },
     )
 }
@@ -1030,7 +1030,7 @@ pub fn add_emit_item_summary(
                 item_decl_file.clone(),
             ) {
                 Some(_) => false,
-                None => true,
+                std::option::Option::None => true,
             }
         } else {
             false
@@ -1177,7 +1177,7 @@ pub fn add_emit_item_summary(
                         .clone(),
                 })
             }
-            None => state.clone(),
+            std::option::Option::None => state.clone(),
         }
     }
 }

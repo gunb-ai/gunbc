@@ -163,7 +163,7 @@ pub fn canonical_template_name(
             crate::v1_std_core::qualified_last_segment(nm.clone()),
         ) {
             Some(algebra) => algebra.clone(),
-            None => nm.clone(),
+            std::option::Option::None => nm.clone(),
         }
     }
 }
@@ -173,7 +173,7 @@ pub fn is_declared_container_alias_spelling(name: String) -> bool {
         crate::v1_std_core::qualified_last_segment(name.clone()),
     ) {
         Some(_) => true,
-        None => false,
+        std::option::Option::None => false,
     }
 }
 
@@ -184,16 +184,18 @@ pub fn container_alias_canonical_spelling(algebra: String) -> Option<String> {
         .fold(std::option::Option::None, |acc: _, k: String| {
             match acc.clone() {
                 Some(_) => acc.clone(),
-                None => match v1_rt::map_get(&container_template_alias_rows(), k.clone()) {
-                    Some(v) => {
-                        if (v.clone() == algebra.clone()) {
-                            Some(k.clone())
-                        } else {
-                            std::option::Option::None
+                std::option::Option::None => {
+                    match v1_rt::map_get(&container_template_alias_rows(), k.clone()) {
+                        Some(v) => {
+                            if (v.clone() == algebra.clone()) {
+                                Some(k.clone())
+                            } else {
+                                std::option::Option::None
+                            }
                         }
+                        std::option::Option::None => std::option::Option::None,
                     }
-                    None => std::option::Option::None,
-                },
+                }
             }
         })
 }
@@ -203,13 +205,15 @@ pub fn container_kind_canonical(name: String) -> String {
         let last = crate::v1_std_core::qualified_last_segment(name.clone());
         match v1_rt::map_get(&kernel_algebra_profile(), last.clone()) {
             Some(_) => last.clone(),
-            None => match crate::std_types::container_template_algebra(last.clone()) {
-                Some(algebra) => match container_alias_canonical_spelling(algebra.clone()) {
-                    Some(canonical) => canonical.clone(),
-                    None => last.clone(),
-                },
-                None => last.clone(),
-            },
+            std::option::Option::None => {
+                match crate::std_types::container_template_algebra(last.clone()) {
+                    Some(algebra) => match container_alias_canonical_spelling(algebra.clone()) {
+                        Some(canonical) => canonical.clone(),
+                        std::option::Option::None => last.clone(),
+                    },
+                    std::option::Option::None => last.clone(),
+                }
+            }
         }
     }
 }
@@ -346,7 +350,7 @@ pub fn type_resolution_verdict(
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         let self_is_type_var = match n.inferred.clone() {
             Some(inf) => is_type_variable(inf.clone()),
-            None => false,
+            std::option::Option::None => false,
         };
         if self_is_type_var.clone() {
             Rc::new(TypeResolutionVerdict::UnderResolved)
@@ -483,9 +487,9 @@ pub fn bare_map_node() -> Option<Rc<Node>> {
                 expr_data: Rc::new(ExprData::NoExprData),
                 ident: None,
             })),
-            None => std::option::Option::None,
+            std::option::Option::None => std::option::Option::None,
         },
-        None => std::option::Option::None,
+        std::option::Option::None => std::option::Option::None,
     }
 }
 
@@ -534,7 +538,7 @@ pub fn bare_set_node() -> Option<Rc<Node>> {
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
         })),
-        None => std::option::Option::None,
+        std::option::Option::None => std::option::Option::None,
     }
 }
 
@@ -703,7 +707,7 @@ pub fn make_container_type(kind_name: String, element: Rc<Node>) -> Rc<KernelTyp
             }),
             diagnostics: Rc::new(vec![]),
         }),
-        None => Rc::new(KernelTypeBuild {
+        std::option::Option::None => Rc::new(KernelTypeBuild {
             ty: missing_kernel_container_profile_type(kind_name.clone()),
             diagnostics: Rc::new(vec![kernel_container_profile_miss_diagnostic(
                 kind_name.clone(),
@@ -788,14 +792,14 @@ pub fn make_map_type(key: Rc<Node>, value: Rc<Node>) -> Rc<KernelTypeBuild> {
                 }),
                 diagnostics: Rc::new(vec![]),
             }),
-            None => Rc::new(KernelTypeBuild {
+            std::option::Option::None => Rc::new(KernelTypeBuild {
                 ty: missing_kernel_container_profile_type("Map".to_string()),
                 diagnostics: Rc::new(vec![kernel_container_profile_miss_diagnostic(
                     "Map".to_string(),
                 )]),
             }),
         },
-        None => Rc::new(KernelTypeBuild {
+        std::option::Option::None => Rc::new(KernelTypeBuild {
             ty: missing_kernel_container_profile_type("Map".to_string()),
             diagnostics: Rc::new(vec![kernel_container_profile_miss_diagnostic(
                 "Map".to_string(),
@@ -1050,7 +1054,7 @@ pub fn algebra_child_or_placeholder(
     .cloned()
     {
         Some(child) => child_type_node(child.clone()),
-        None => type_variable_node(placeholder.clone()),
+        std::option::Option::None => type_variable_node(placeholder.clone()),
     }
 }
 
@@ -1289,7 +1293,7 @@ pub fn enrich_kernel_type(
                     diagnostics: field_diags.clone(),
                 })
             }
-            None => Rc::new(KernelTypeBuild {
+            std::option::Option::None => Rc::new(KernelTypeBuild {
                 ty: base.clone(),
                 diagnostics: Rc::new(vec![]),
             }),
@@ -1328,7 +1332,7 @@ pub fn unify_template(
                             )
                         }
                     }
-                    None => subst.clone(),
+                    std::option::Option::None => subst.clone(),
                 };
                 match concrete
                     .children
@@ -1351,7 +1355,7 @@ pub fn unify_template(
                             )
                         }
                     }
-                    None => s1.clone(),
+                    std::option::Option::None => s1.clone(),
                 }
             }
             AlgebraTypeTemplate::ReceiverKey => {
@@ -1415,7 +1419,7 @@ pub fn unify_template(
                             subst.clone(),
                             source_indices.clone(),
                         ),
-                        None => subst.clone(),
+                        std::option::Option::None => subst.clone(),
                     }
                 }
             }
@@ -1430,7 +1434,7 @@ pub fn unify_template(
                     subst.clone(),
                     source_indices.clone(),
                 ),
-                None => subst.clone(),
+                std::option::Option::None => subst.clone(),
             },
             AlgebraTypeTemplate::TupleOf {
                 first: ft,
@@ -1445,7 +1449,7 @@ pub fn unify_template(
                         subst.clone(),
                         source_indices.clone(),
                     ),
-                    None => subst.clone(),
+                    std::option::Option::None => subst.clone(),
                 };
                 match concrete
                     .children
@@ -1462,7 +1466,7 @@ pub fn unify_template(
                         s2.clone(),
                         source_indices.clone(),
                     ),
-                    None => s2.clone(),
+                    std::option::Option::None => s2.clone(),
                 }
             }
             _ => subst.clone(),
@@ -1487,7 +1491,7 @@ pub fn build_type_substitution(
     {
         let first_is_self = match param_templates.clone().first().cloned() {
             Some(t) => is_receiver_self(t.clone()),
-            None => false,
+            std::option::Option::None => false,
         };
         let non_receiver_templates = if first_is_self.clone() {
             Rc::new(
@@ -1557,7 +1561,7 @@ pub fn build_type_substitution(
                 .cloned()
                 {
                     Some(a) => a.clone(),
-                    None => error_type(),
+                    std::option::Option::None => error_type(),
                 };
                 unify_template(
                     pair.1.clone(),
@@ -1585,7 +1589,7 @@ pub fn apply_type_substitution(
                         ty: resolved.clone(),
                         diagnostics: Rc::new(vec![]),
                     }),
-                    None => Rc::new(KernelTypeBuild {
+                    std::option::Option::None => Rc::new(KernelTypeBuild {
                         ty: type_variable_node(var_id.clone()),
                         diagnostics: Rc::new(vec![]),
                     }),
@@ -1628,11 +1632,13 @@ pub fn apply_type_substitution(
                                     let val = match v1_rt::map_get(&subst, "__value__".to_string())
                                     {
                                         Some(v) => v.clone(),
-                                        None => type_variable_node("V".to_string()),
+                                        std::option::Option::None => {
+                                            type_variable_node("V".to_string())
+                                        }
                                     };
                                     make_map_type(key.clone(), val.clone())
                                 }
-                                None => Rc::new(KernelTypeBuild {
+                                std::option::Option::None => Rc::new(KernelTypeBuild {
                                     ty: receiver.clone(),
                                     diagnostics: Rc::new(vec![]),
                                 }),
@@ -1644,7 +1650,7 @@ pub fn apply_type_substitution(
                                         container_kind_canonical(receiver_name_str.clone()),
                                         elem.clone(),
                                     ),
-                                    None => Rc::new(KernelTypeBuild {
+                                    std::option::Option::None => Rc::new(KernelTypeBuild {
                                         ty: receiver.clone(),
                                         diagnostics: Rc::new(vec![]),
                                     }),
@@ -1670,31 +1676,33 @@ pub fn apply_type_substitution(
                         ty: child_type_node(child.clone()),
                         diagnostics: Rc::new(vec![]),
                     }),
-                    None => match v1_rt::map_get(&subst, "__element__".to_string()) {
-                        Some(elem) => Rc::new(KernelTypeBuild {
-                            ty: elem.clone(),
-                            diagnostics: Rc::new(vec![]),
-                        }),
-                        None => {
-                            let rname =
-                                container_kind_canonical(crate::v1_std_core::authored_name_at(
-                                    source_indices.clone(),
-                                    receiver.clone(),
-                                ));
-                            match crate::std_types::container_param_name(rname.clone(), 0) {
-                                Some(n) => Rc::new(KernelTypeBuild {
-                                    ty: type_variable_node(n.clone()),
-                                    diagnostics: Rc::new(vec![]),
-                                }),
-                                None => Rc::new(KernelTypeBuild {
-                                    ty: missing_kernel_container_profile_type(rname.clone()),
-                                    diagnostics: Rc::new(vec![
-                                        kernel_container_profile_miss_diagnostic(rname.clone()),
-                                    ]),
-                                }),
+                    std::option::Option::None => {
+                        match v1_rt::map_get(&subst, "__element__".to_string()) {
+                            Some(elem) => Rc::new(KernelTypeBuild {
+                                ty: elem.clone(),
+                                diagnostics: Rc::new(vec![]),
+                            }),
+                            std::option::Option::None => {
+                                let rname =
+                                    container_kind_canonical(crate::v1_std_core::authored_name_at(
+                                        source_indices.clone(),
+                                        receiver.clone(),
+                                    ));
+                                match crate::std_types::container_param_name(rname.clone(), 0) {
+                                    Some(n) => Rc::new(KernelTypeBuild {
+                                        ty: type_variable_node(n.clone()),
+                                        diagnostics: Rc::new(vec![]),
+                                    }),
+                                    std::option::Option::None => Rc::new(KernelTypeBuild {
+                                        ty: missing_kernel_container_profile_type(rname.clone()),
+                                        diagnostics: Rc::new(vec![
+                                            kernel_container_profile_miss_diagnostic(rname.clone()),
+                                        ]),
+                                    }),
+                                }
                             }
                         }
-                    },
+                    }
                 }
             }
             AlgebraTypeTemplate::ReceiverKey => match receiver.children.clone().first().cloned() {
@@ -1702,12 +1710,12 @@ pub fn apply_type_substitution(
                     ty: child_type_node(child.clone()),
                     diagnostics: Rc::new(vec![]),
                 }),
-                None => match v1_rt::map_get(&subst, "__key__".to_string()) {
+                std::option::Option::None => match v1_rt::map_get(&subst, "__key__".to_string()) {
                     Some(key) => Rc::new(KernelTypeBuild {
                         ty: key.clone(),
                         diagnostics: Rc::new(vec![]),
                     }),
-                    None => {
+                    std::option::Option::None => {
                         let rname = container_kind_canonical(crate::v1_std_core::authored_name_at(
                             source_indices.clone(),
                             receiver.clone(),
@@ -1717,7 +1725,7 @@ pub fn apply_type_substitution(
                                 ty: type_variable_node(n.clone()),
                                 diagnostics: Rc::new(vec![]),
                             }),
-                            None => Rc::new(KernelTypeBuild {
+                            std::option::Option::None => Rc::new(KernelTypeBuild {
                                 ty: missing_kernel_container_profile_type(rname.clone()),
                                 diagnostics: Rc::new(vec![
                                     kernel_container_profile_miss_diagnostic(rname.clone()),
@@ -1739,30 +1747,33 @@ pub fn apply_type_substitution(
                     ty: child_type_node(child.clone()),
                     diagnostics: Rc::new(vec![]),
                 }),
-                None => match v1_rt::map_get(&subst, "__value__".to_string()) {
-                    Some(val) => Rc::new(KernelTypeBuild {
-                        ty: val.clone(),
-                        diagnostics: Rc::new(vec![]),
-                    }),
-                    None => {
-                        let rname = container_kind_canonical(crate::v1_std_core::authored_name_at(
-                            source_indices.clone(),
-                            receiver.clone(),
-                        ));
-                        match crate::std_types::container_param_name(rname.clone(), 1) {
-                            Some(n) => Rc::new(KernelTypeBuild {
-                                ty: type_variable_node(n.clone()),
-                                diagnostics: Rc::new(vec![]),
-                            }),
-                            None => Rc::new(KernelTypeBuild {
-                                ty: missing_kernel_container_profile_type(rname.clone()),
-                                diagnostics: Rc::new(vec![
-                                    kernel_container_profile_miss_diagnostic(rname.clone()),
-                                ]),
-                            }),
+                std::option::Option::None => {
+                    match v1_rt::map_get(&subst, "__value__".to_string()) {
+                        Some(val) => Rc::new(KernelTypeBuild {
+                            ty: val.clone(),
+                            diagnostics: Rc::new(vec![]),
+                        }),
+                        std::option::Option::None => {
+                            let rname =
+                                container_kind_canonical(crate::v1_std_core::authored_name_at(
+                                    source_indices.clone(),
+                                    receiver.clone(),
+                                ));
+                            match crate::std_types::container_param_name(rname.clone(), 1) {
+                                Some(n) => Rc::new(KernelTypeBuild {
+                                    ty: type_variable_node(n.clone()),
+                                    diagnostics: Rc::new(vec![]),
+                                }),
+                                std::option::Option::None => Rc::new(KernelTypeBuild {
+                                    ty: missing_kernel_container_profile_type(rname.clone()),
+                                    diagnostics: Rc::new(vec![
+                                        kernel_container_profile_miss_diagnostic(rname.clone()),
+                                    ]),
+                                }),
+                            }
                         }
                     }
-                },
+                }
             },
             AlgebraTypeTemplate::NamedTemplate { name: n, .. } => Rc::new(KernelTypeBuild {
                 ty: nominal_type_ref(n.clone()),
@@ -1966,7 +1977,7 @@ pub fn callable_inferred(n: Rc<Node>) -> Rc<Node> {
                         make_callable_type(n.params.clone(), ret.clone())
                     }
                 }
-                None => error_type(),
+                std::option::Option::None => error_type(),
                 _ => error_type(),
             }
         } else {
@@ -2031,7 +2042,7 @@ pub fn normalize_access_type_node(mut n: Rc<Node>) -> Rc<Node> {
                 n = __tco_0;
                 continue;
             }
-            None => {
+            std::option::Option::None => {
                 break n;
             }
         }
@@ -2065,7 +2076,7 @@ pub fn node_type_shape_argument_list(
                     )
                 }
             }
-            None => "".to_string(),
+            std::option::Option::None => "".to_string(),
         }
     })
 }
@@ -2149,7 +2160,7 @@ pub fn node_type_shape(
                                             child_type_node(el.clone()),
                                             source_indices.clone(),
                                         ),
-                                        None => "?".to_string(),
+                                        std::option::Option::None => "?".to_string(),
                                     };
                                     v1_rt::concat(
                                         v1_rt::concat(
@@ -2295,12 +2306,12 @@ pub fn node_type_compatible(
                                                     }
                                                 }
                                             }
-                                            None => {
+                                            std::option::Option::None => {
                                                 break true;
                                             }
                                         }
                                     }
-                                    None => {
+                                    std::option::Option::None => {
                                         break true;
                                     }
                                 }
@@ -2352,12 +2363,12 @@ pub fn node_type_compatible(
                                                     }
                                                 }
                                             }
-                                            None => {
+                                            std::option::Option::None => {
                                                 break true;
                                             }
                                         }
                                     }
-                                    None => {
+                                    std::option::Option::None => {
                                         break true;
                                     }
                                 }
@@ -2424,7 +2435,7 @@ pub fn prefer_specific_type(
                     let el_is_unit = is_unit_like(el.clone());
                     el_is_unit.clone()
                 }
-                None => false,
+                std::option::Option::None => false,
             }
         } else {
             if left_is_optional.clone() {
@@ -2602,7 +2613,7 @@ pub fn node_type_equals_core(
                                             right_child.clone(),
                                             source_indices.clone(),
                                         ),
-                                        None => false,
+                                        std::option::Option::None => false,
                                     }) {
                                         __all = false;
                                         break;
@@ -2640,10 +2651,10 @@ pub fn node_type_equals_core(
                                                     child_type_node(right_ch.clone()),
                                                     source_indices.clone(),
                                                 ),
-                                                None => false,
+                                                std::option::Option::None => false,
                                             }
                                         }
-                                        None => false,
+                                        std::option::Option::None => false,
                                     }
                                 }
                             } else {
@@ -2697,14 +2708,14 @@ pub fn node_type_equals_core(
                                                                         source_indices.clone(),
                                                                     ))
                                                                 }
-                                                                None => false,
+                                                                std::option::Option::None => false,
                                                             },
-                                                            None => false,
+                                                            std::option::Option::None => false,
                                                         },
-                                                        None => false,
+                                                        std::option::Option::None => false,
                                                     }
                                                 }
-                                                None => false,
+                                                std::option::Option::None => false,
                                             }
                                         } else {
                                             false
@@ -2735,7 +2746,7 @@ pub fn node_type_equals_core(
                                                         {
                                                             if !(match right.params.clone().iter().cloned().skip(pair.0.clone() as usize).next() {
     Some(right_param) => node_type_equals(crate::v1_std_core::param_node_type_expr(pair.1.clone()), crate::v1_std_core::param_node_type_expr(right_param.clone()), source_indices.clone()),
-    None => false,
+    std::option::Option::None => false,
 }) { __all = false; break; }
                                                         }
                                                         __all
@@ -2766,10 +2777,10 @@ pub fn node_type_equals_core(
                                                                     right_ret.clone(),
                                                                     source_indices.clone(),
                                                                 ),
-                                                                None => false,
+                                                                std::option::Option::None => false,
                                                                 _ => false,
                                                             },
-                                                            None => {
+                                                            std::option::Option::None => {
                                                                 (right.inferred.clone()
                                                                     == std::option::Option::None)
                                                             }
@@ -2936,7 +2947,7 @@ pub fn method_receiver_element_node(
                 .next()
             {
                 Some(ch) => Some(child_type_node(ch.clone())),
-                None => std::option::Option::None,
+                std::option::Option::None => std::option::Option::None,
             }
         } else {
             if ((normed.connective.clone() == Connective::NoConnective)
@@ -2944,7 +2955,7 @@ pub fn method_receiver_element_node(
             {
                 match normed.children.clone().first().cloned() {
                     Some(ch) => Some(child_type_node(ch.clone())),
-                    None => std::option::Option::None,
+                    std::option::Option::None => std::option::Option::None,
                 }
             } else {
                 std::option::Option::None
@@ -2952,7 +2963,7 @@ pub fn method_receiver_element_node(
         };
         match maybe_element.clone() {
             Some(el) => el.clone(),
-            None => receiver_type.clone(),
+            std::option::Option::None => receiver_type.clone(),
         }
     }
 }
@@ -2968,7 +2979,7 @@ pub fn extract_optional_inner_node(n: Rc<Node>) -> Rc<Node> {
             {
                 match n.children.clone().first().cloned() {
                     Some(inner) => inner.clone(),
-                    None => n,
+                    std::option::Option::None => n,
                 }
             } else {
                 n
@@ -3025,7 +3036,7 @@ pub fn first_matching_algebra_field(
 ) -> Option<Rc<AlgebraFieldMatch>> {
     loop {
         match candidates.clone().first().cloned() {
-            None => {
+            std::option::Option::None => {
                 break std::option::Option::None;
             }
             Some(kind) => {
@@ -3040,7 +3051,7 @@ pub fn first_matching_algebra_field(
                             field_node: f.clone(),
                         }));
                     }
-                    None => {
+                    std::option::Option::None => {
                         let __tco_0 = Rc::new(
                             candidates
                                 .iter()
@@ -3141,7 +3152,7 @@ pub fn infer_binop_type_node(
                             algebra_field: std::option::Option::None,
                         }),
                     },
-                    None => Rc::new(BinOpInferred {
+                    std::option::Option::None => Rc::new(BinOpInferred {
                         result_type: left_type.clone(),
                         algebra_field: std::option::Option::None,
                     }),
@@ -3167,14 +3178,14 @@ pub fn for_each_element_type_node(
         let extracted = if is_single_child.clone() {
             match normed.children.clone().first().cloned() {
                 Some(ch) => Some(child_type_node(ch.clone())),
-                None => std::option::Option::None,
+                std::option::Option::None => std::option::Option::None,
             }
         } else {
             std::option::Option::None
         };
         match extracted.clone() {
             Some(el) => el.clone(),
-            None => {
+            std::option::Option::None => {
                 if ((((normed.connective.clone() == Connective::NoConnective)
                     && ((normed.children.clone().len() as i64) == 0))
                     && ((normed.properties.clone().len() as i64) == 0))
@@ -3195,6 +3206,6 @@ pub fn for_each_element_type_node(
 pub fn emit_map_has(m: Rc<HashMap<String, bool>>, key: String) -> bool {
     match v1_rt::map_get(&m, key.clone()) {
         Some(_) => true,
-        None => false,
+        std::option::Option::None => false,
     }
 }

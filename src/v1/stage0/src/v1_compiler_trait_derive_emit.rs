@@ -196,7 +196,7 @@ pub fn rust_symbol_wrapped_ord_carrier_shape_eligible(
                 crate::v1_compiler_infer_types::child_type_node(child.clone()),
                 source_indices.clone(),
             ),
-            None => false,
+            std::option::Option::None => false,
         }
     }
 }
@@ -284,7 +284,7 @@ pub fn v1_keyed_map_verdict_from_algebra(
                 Rc::new(KeyedMapVerdict::NotKeyedMap)
             }
         }
-        None => Rc::new(KeyedMapVerdict::NotKeyedMap),
+        std::option::Option::None => Rc::new(KeyedMapVerdict::NotKeyedMap),
     }
 }
 
@@ -312,7 +312,7 @@ pub fn v1_map_key_head_names_in_type_expr(
                     source_indices.clone(),
                     crate::v1_compiler_infer_types::child_type_node(key_child.clone()),
                 )]),
-                None => Rc::new(vec![]),
+                std::option::Option::None => Rc::new(vec![]),
             },
             KeyedMapVerdict::NotKeyedMap => Rc::new(vec![]),
             KeyedMapVerdict::KeyedMapUndecidable { name: _, .. } => Rc::new(vec![]),
@@ -441,7 +441,7 @@ pub fn v1_map_key_propagate_round(
                                     )
                             },
                         ),
-                    None => acc.clone(),
+                    std::option::Option::None => acc.clone(),
                 }
             }
         },
@@ -451,7 +451,7 @@ pub fn v1_map_key_propagate_round(
 pub fn map_has_declared_type(type_decl_items: Rc<HashMap<String, Rc<Node>>>, name: String) -> bool {
     match v1_rt::map_get(&type_decl_items, name.clone()) {
         Some(_) => true,
-        None => false,
+        std::option::Option::None => false,
     }
 }
 
@@ -571,7 +571,7 @@ pub fn v1_freemonoid_row_route(
         RustCapability::RustDeserialize => {
             Some(V1FreeMonoidSupplementalRoute::FreeMonoidSerdeBoundAttr)
         }
-        _ => None,
+        _ => std::option::Option::None,
     }
 }
 
@@ -585,7 +585,7 @@ pub fn v1_freemonoid_unroutable_row_refusal() -> String {
             {
                 if match v1_freemonoid_row_route(row.clone()) {
                     Some(_) => false,
-                    None => true,
+                    std::option::Option::None => true,
                 } {
                     __result.push(row);
                 }
@@ -951,7 +951,7 @@ pub fn v1_set_unroutable_row_refusal() -> String {
             {
                 if match v1_freemonoid_row_route(row.clone()) {
                     Some(_) => false,
-                    None => true,
+                    std::option::Option::None => true,
                 } {
                     __result.push(row);
                 }
@@ -1955,9 +1955,9 @@ pub fn v1_ord_propagated_zip_loop(
 ) -> bool {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         match decl_params.clone().first().cloned() {
-            None => false,
+            std::option::Option::None => false,
             Some(decl_param) => match type_args.clone().first().cloned() {
-                None => false,
+                std::option::Option::None => false,
                 Some(type_arg) => {
                     let slot_name = crate::v1_std_core::generic_param_name_at(
                         decl_param.clone(),
@@ -2019,7 +2019,7 @@ pub fn v1_field_type_expr_ord_propagated_for_param(
         let decl_name =
             crate::v1_std_core::authored_name_at(source_indices.clone(), type_expr.clone());
         match v1_rt::map_get(&type_decl_items, decl_name.clone()) {
-            None => false,
+            std::option::Option::None => false,
             Some(decl) => v1_ord_propagated_zip_loop(
                 param_name.clone(),
                 decl.params.clone(),
@@ -2520,7 +2520,7 @@ pub fn v1_item_phantom_only_param_names(
         {
             if match v1_rt::map_get(&bounds, item_name.clone()) {
                 Some(s) => !v1_rt::set_contains(&s, p.clone()),
-                None => true,
+                std::option::Option::None => true,
             } {
                 __result.push(p);
             }
@@ -2553,9 +2553,9 @@ pub fn v1_declared_type_app_mentions_param_non_phantom_loop(
 ) -> bool {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         match decl_params.clone().first().cloned() {
-            None => false,
+            std::option::Option::None => false,
             Some(decl_param) => match type_args.clone().first().cloned() {
-                None => false,
+                std::option::Option::None => false,
                 Some(type_arg) => {
                     let slot_name = crate::v1_std_core::generic_param_name_at(
                         decl_param.clone(),
@@ -2678,7 +2678,7 @@ pub fn v1_type_expr_mentions_param_non_phantom(
                             type_decl_items.clone(),
                             source_indices.clone(),
                         ),
-                        None => {
+                        std::option::Option::None => {
                             let mut __found = false;
                             for c in type_expr.children.clone().iter().cloned() {
                                 if v1_type_expr_mentions_param_non_phantom(
@@ -2827,11 +2827,11 @@ pub fn v1_fn_generic_clone_bound_via_referenced_decl(
                                     }
                                 }
                             }
-                            None => false,
+                            std::option::Option::None => false,
                         }
                     }
                 }
-                None => false,
+                std::option::Option::None => false,
             } {
                 __found = true;
                 break;
@@ -2865,7 +2865,7 @@ pub fn v1_fn_generic_clone_bound_via_bounded_container_element(
                             );
                             match v1_rt::map_get(&clone_bounds, head.clone()) {
                                 Some(bounded) => v1_rt::set_contains(&bounded, param_name.clone()),
-                                None => false,
+                                std::option::Option::None => false,
                             }
                         } {
                             __found = true;
@@ -3289,7 +3289,7 @@ pub fn v1_type_expr_clone_impl_needs_param(
                         type_decl_items.clone(),
                         source_indices.clone(),
                     ),
-                    None => {
+                    std::option::Option::None => {
                         let mut __found = false;
                         for c in type_expr.children.clone().iter().cloned() {
                             if v1_type_expr_clone_impl_needs_param(
@@ -3322,9 +3322,9 @@ pub fn v1_declared_type_app_clone_impl_needs_param_loop(
 ) -> bool {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         match decl_params.clone().first().cloned() {
-            None => false,
+            std::option::Option::None => false,
             Some(decl_param) => match type_args.clone().first().cloned() {
-                None => false,
+                std::option::Option::None => false,
                 Some(type_arg) => {
                     let slot_name = crate::v1_std_core::generic_param_name_at(
                         decl_param.clone(),
@@ -3412,9 +3412,9 @@ pub fn v1_declared_arg_positions_need_clone_param(
 ) -> bool {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         match decl_params.clone().first().cloned() {
-            None => false,
+            std::option::Option::None => false,
             Some(decl_param) => match type_args.clone().first().cloned() {
-                None => false,
+                std::option::Option::None => false,
                 Some(type_arg) => {
                     let here = (v1_rt::set_contains(
                         &bound_params,
@@ -3516,7 +3516,7 @@ pub fn v1_type_expr_wf_needs_clone_param(
                     Some(decl) => {
                         let bound_params = match v1_rt::map_get(&bounds, name.clone()) {
                             Some(s) => s.clone(),
-                            None => v1_rt::rc_empty_set::<String>(),
+                            std::option::Option::None => v1_rt::rc_empty_set::<String>(),
                         };
                         (nested.clone()
                             || v1_declared_arg_positions_need_clone_param(
@@ -3529,7 +3529,7 @@ pub fn v1_type_expr_wf_needs_clone_param(
                                 source_indices.clone(),
                             ))
                     }
-                    None => nested.clone(),
+                    std::option::Option::None => nested.clone(),
                 }
             }
         }
@@ -3563,9 +3563,11 @@ pub fn v1_item_alias_hop_type_exprs(
                 decl_file.clone(),
             ) {
                 Some(_) => Rc::new(vec![]),
-                None => Rc::new(vec![crate::v1_compiler_infer_types::resolved_type(
-                    item.clone(),
-                )]),
+                std::option::Option::None => {
+                    Rc::new(vec![crate::v1_compiler_infer_types::resolved_type(
+                        item.clone(),
+                    )])
+                }
             }
         }
     } else {
@@ -3749,7 +3751,7 @@ pub fn v1_clone_bound_round_add(
     {
         let current = match v1_rt::map_get(&round.bounds.clone(), type_name.clone()) {
             Some(s) => s.clone(),
-            None => v1_rt::rc_empty_set::<String>(),
+            std::option::Option::None => v1_rt::rc_empty_set::<String>(),
         };
         if v1_rt::set_contains(&current, param_name.clone()) {
             round.clone()
@@ -3853,7 +3855,7 @@ pub fn v1_clone_bound_fixpoint_loop(
                         type_decl_items.clone(),
                         source_indices.clone(),
                     ),
-                    None => acc.clone(),
+                    std::option::Option::None => acc.clone(),
                 },
             );
             if (round.added.clone() == 0) {
@@ -3879,7 +3881,7 @@ pub fn v1_generic_declared_type_names(
         for n in Rc::new(v1_rt::map_keys(&type_decl_items)).iter().cloned() {
             if match v1_rt::map_get(&type_decl_items, n.clone()) {
                 Some(item) => ((item.params.clone().len() as i64) > 0),
-                None => false,
+                std::option::Option::None => false,
             } {
                 __result.push(n);
             }
@@ -3909,7 +3911,7 @@ pub fn v1_clone_bounded_type_params(
                     item.clone(),
                     source_indices.clone(),
                 ),
-                None => acc.clone(),
+                std::option::Option::None => acc.clone(),
             },
         );
         v1_clone_bound_fixpoint_loop(
@@ -3979,7 +3981,7 @@ pub fn v1_clone_impl_required_type_params(
                     item.clone(),
                     source_indices.clone(),
                 ),
-                None => acc.clone(),
+                std::option::Option::None => acc.clone(),
             },
         );
         v1_clone_bound_fixpoint_loop(
@@ -4007,7 +4009,7 @@ pub fn v1_item_clone_bounded_param_names(
             }
             __result
         }),
-        None => Rc::new(vec![]),
+        std::option::Option::None => Rc::new(vec![]),
     }
 }
 
@@ -4040,7 +4042,7 @@ pub fn v1_emit_type_params_with_bounds(
                                     )
                                 }
                             }
-                            None => pascal.clone(),
+                            std::option::Option::None => pascal.clone(),
                         }
                     });
                 }

@@ -328,7 +328,7 @@ pub fn primitive_projection_row_for_declaration(
         std::option::Option::None,
         |acc: _, row: Rc<PrimitiveProjection>| match acc.clone() {
             Some(_) => acc.clone(),
-            None => {
+            std::option::Option::None => {
                 if crate::std_decl_ref::declaration_ref_eq(
                     row.declaration.clone(),
                     declaration.clone(),
