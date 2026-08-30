@@ -3672,6 +3672,7 @@ pub enum DeclaredTypePosition {
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct DeclaredTypeObligation {
     pub position: DeclaredTypePosition,
+    pub subject: String,
     pub declared: Rc<Node>,
     pub produced: Rc<Node>,
     pub span: Rc<SourceSpan>,
@@ -3711,7 +3712,7 @@ pub enum InhabitanceVerdict {
     },
 }
 
-pub fn declared_type_position_label(position: DeclaredTypePosition) -> String {
+pub fn declared_type_position_label(position: DeclaredTypePosition, subject: String) -> String {
     match position.clone() {
         DeclaredTypePosition::PositionRecordLiteralField => "record literal field".to_string(),
         DeclaredTypePosition::PositionListElement => "list element".to_string(),
@@ -3724,7 +3725,19 @@ pub fn declared_type_position_label(position: DeclaredTypePosition) -> String {
         DeclaredTypePosition::PositionCastTarget => "cast target".to_string(),
         DeclaredTypePosition::PositionParameterDefault => "parameter default".to_string(),
         DeclaredTypePosition::PositionCallableReturn => "callable return".to_string(),
-        DeclaredTypePosition::PositionDirectCallArgument => "direct call argument".to_string(),
+        DeclaredTypePosition::PositionDirectCallArgument => {
+            if (subject.clone() == "".to_string()) {
+                "direct call argument".to_string()
+            } else {
+                v1_rt::concat(
+                    v1_rt::concat(
+                        "direct call argument for parameter '".to_string(),
+                        subject.clone(),
+                    ),
+                    "'".to_string(),
+                )
+            }
+        }
     }
 }
 
@@ -3770,36 +3783,67 @@ pub fn declared_type_inhabitance(
                         ) {
                             Rc::new(InhabitanceVerdict::Inhabits)
                         } else {
-                            if kernel_value_declared_type_mismatch(
+                            if collection_at_scalar_declared_type(
                                 declared.clone(),
                                 produced.clone(),
-                                scope.type_env.clone(),
-                                source_indices.clone(),
+                                scope.clone(),
                             ) {
                                 Rc::new(InhabitanceVerdict::InhabitanceRefused {
                                     reason: InhabitanceRefusalReason::RefusedKernelAtStructured,
                                 })
                             } else {
-                                if coproduct_payload_where_parent_required(
+                                if record_at_scalar_needs_identity(
                                     declared.clone(),
                                     produced.clone(),
                                     scope.clone(),
                                 ) {
-                                    Rc::new(InhabitanceVerdict::InhabitanceRefused {
-                                        reason: InhabitanceRefusalReason::RefusedPayloadAtParent,
-                                    })
+                                    Rc::new(InhabitanceVerdict::InhabitanceUndecidable {
+    reason: InhabitanceUndecidableReason::UndecidableProducedIdentityErased,
+})
                                 } else {
-                                    match nominal_product_inhabitance_refusal(
+                                    if coproduct_at_record_declared_type(
                                         declared.clone(),
                                         produced.clone(),
                                         scope.clone(),
                                     ) {
-                                        Some(r) => {
+                                        Rc::new(InhabitanceVerdict::InhabitanceRefused {
+                                            reason:
+                                                InhabitanceRefusalReason::RefusedKernelAtStructured,
+                                        })
+                                    } else {
+                                        if kernel_value_declared_type_mismatch(
+                                            declared.clone(),
+                                            produced.clone(),
+                                            scope.type_env.clone(),
+                                            source_indices.clone(),
+                                        ) {
                                             Rc::new(InhabitanceVerdict::InhabitanceRefused {
-                                                reason: r.clone(),
-                                            })
+    reason: InhabitanceRefusalReason::RefusedKernelAtStructured,
+})
+                                        } else {
+                                            if coproduct_payload_where_parent_required(
+                                                declared.clone(),
+                                                produced.clone(),
+                                                scope.clone(),
+                                            ) {
+                                                Rc::new(InhabitanceVerdict::InhabitanceRefused {
+    reason: InhabitanceRefusalReason::RefusedPayloadAtParent,
+})
+                                            } else {
+                                                match nominal_product_inhabitance_refusal(
+                                                    declared.clone(),
+                                                    produced.clone(),
+                                                    scope.clone(),
+                                                ) {
+                                                    Some(r) => Rc::new(
+                                                        InhabitanceVerdict::InhabitanceRefused {
+                                                            reason: r.clone(),
+                                                        },
+                                                    ),
+                                                    None => Rc::new(InhabitanceVerdict::Inhabits),
+                                                }
+                                            }
                                         }
-                                        None => Rc::new(InhabitanceVerdict::Inhabits),
                                     }
                                 }
                             }
@@ -3807,6 +3851,161 @@ pub fn declared_type_inhabitance(
                     }
                 }
             }
+        }
+    }
+}
+
+pub fn collection_at_scalar_declared_type(
+    declared: Rc<Node>,
+    produced: Rc<Node>,
+    scope: Rc<InferScope>,
+) -> bool {
+    if (crate::v1_compiler_infer_types::node_is_collection(
+        produced.clone(),
+        scope.type_env.clone().source_indices.clone(),
+    ) == false)
+    {
+        false
+    } else {
+        {
+            let peeled = crate::v1_compiler_infer_resolve::peel_nominal_alias_identity(
+                declared.clone(),
+                scope.type_env.clone(),
+                scope.module_name.clone(),
+            );
+            let peeled_is_kernel =
+                crate::std_types::is_kernel_type(crate::v1_std_core::authored_name_at(
+                    scope.type_env.clone().source_indices.clone(),
+                    peeled.clone(),
+                ));
+            let refinement_base_is_kernel = if is_where_refinement_type(declared.clone()) {
+                match declared.children.clone().first().cloned() {
+                    Some(base) => {
+                        crate::std_types::is_kernel_type(crate::v1_std_core::authored_name_at(
+                            scope.type_env.clone().source_indices.clone(),
+                            crate::v1_compiler_infer_types::child_type_node(base.clone()),
+                        ))
+                    }
+                    None => false,
+                }
+            } else {
+                false
+            };
+            (peeled_is_kernel.clone() || refinement_base_is_kernel.clone())
+        }
+    }
+}
+
+pub fn record_at_scalar_needs_identity(
+    declared: Rc<Node>,
+    produced: Rc<Node>,
+    scope: Rc<InferScope>,
+) -> bool {
+    {
+        let declared_shape = crate::v1_compiler_infer_types::node_type_shape(
+            declared.clone(),
+            scope.type_env.clone().source_indices.clone(),
+        );
+        let produced_shape = crate::v1_compiler_infer_types::node_type_shape(
+            produced.clone(),
+            scope.type_env.clone().source_indices.clone(),
+        );
+        (v1_rt::starts_with(declared_shape.clone(), "Primitive(".to_string())
+            && v1_rt::starts_with(produced_shape.clone(), "Product(".to_string()))
+    }
+}
+
+pub fn coproduct_at_record_declared_type(
+    declared: Rc<Node>,
+    produced: Rc<Node>,
+    scope: Rc<InferScope>,
+) -> bool {
+    {
+        let declared_name = crate::v1_std_core::authored_name_at(
+            scope.type_env.clone().source_indices.clone(),
+            declared.clone(),
+        );
+        let produced_name = crate::v1_std_core::authored_name_at(
+            scope.type_env.clone().source_indices.clone(),
+            produced.clone(),
+        );
+        let declared_head_is_product = match v1_rt::map_get(
+            &scope
+                .type_env
+                .clone()
+                .symbol_index
+                .clone()
+                .type_head_exposures
+                .clone(),
+            type_reference_identity(
+                declared.clone(),
+                scope.type_env.clone().source_indices.clone(),
+            ),
+        )
+        .as_deref()
+        .cloned()
+        {
+            Some(TypeHeadExposure::ExposedTypeHead { ref view, .. })
+                if matches!(view.as_ref(), TypeHeadView::ProductHead { .. }) =>
+            {
+                let TypeHeadView::ProductHead {
+                    type_identity: _, ..
+                } = view.as_ref()
+                else {
+                    unreachable!()
+                };
+                true
+            }
+            None => false,
+            _ => false,
+        };
+        let produced_identity = type_reference_identity(
+            produced.clone(),
+            scope.type_env.clone().source_indices.clone(),
+        );
+        let produced_head = match v1_rt::map_get(
+            &scope
+                .type_env
+                .clone()
+                .symbol_index
+                .clone()
+                .type_head_exposures
+                .clone(),
+            produced_identity.clone(),
+        ) {
+            Some(head) => head.clone(),
+            None => Rc::new(TypeHeadExposure::StuckTypeHead {
+                cause: "produced declaration identity absent from head census".to_string(),
+            }),
+        };
+        if (application_type_names_compatible(
+            declared_name.clone(),
+            produced_name.clone(),
+            scope.type_env.clone(),
+            scope.module_name.clone(),
+            scope.type_env.clone().source_indices.clone(),
+        ) || transparent_alias_identity_agrees(
+            scope.type_env.clone().symbol_index.clone(),
+            declared_name.clone(),
+            produced_name.clone(),
+        )) {
+            false
+        } else {
+            (declared_head_is_product.clone()
+                && match (*produced_head.clone()).clone() {
+                    TypeHeadExposure::ExposedTypeHead { ref view, .. }
+                        if matches!(view.as_ref(), TypeHeadView::CoproductHead { .. }) =>
+                    {
+                        let TypeHeadView::CoproductHead {
+                            type_identity: _, ..
+                        } = view.as_ref()
+                        else {
+                            unreachable!()
+                        };
+                        true
+                    }
+                    _ => false,
+                })
         }
     }
 }
@@ -4110,7 +4309,10 @@ pub fn declared_type_obligation_diags(
         InhabitanceVerdict::InhabitanceUndecidable { reason: r, .. } => {
             Rc::new(vec![crate::v1_std_core::make_error_node(
                 Rc::new(CompilerDiagnostic::DeclaredTypeInhabitanceUndecided {
-                    position: declared_type_position_label(obligation.position.clone()),
+                    position: declared_type_position_label(
+                        obligation.position.clone(),
+                        obligation.subject.clone(),
+                    ),
                     reason: inhabitance_undecidable_reason_label(r.clone()),
                     span: obligation.span.clone(),
                 }),
@@ -4120,7 +4322,10 @@ pub fn declared_type_obligation_diags(
         InhabitanceVerdict::InhabitanceRefused { reason: _, .. } => {
             Rc::new(vec![crate::v1_std_core::make_error_node(
                 Rc::new(CompilerDiagnostic::DeclaredTypeNotInhabited {
-                    position: declared_type_position_label(obligation.position.clone()),
+                    position: declared_type_position_label(
+                        obligation.position.clone(),
+                        obligation.subject.clone(),
+                    ),
                     expected: crate::v1_compiler_infer_types::node_type_shape(
                         obligation.declared.clone(),
                         scope.type_env.clone().source_indices.clone(),
@@ -4890,6 +5095,7 @@ pub fn direct_call_argument_inhabitance_diags(
                                 declared_type_obligation_diags(
                                     Rc::new(DeclaredTypeObligation {
                                         position: DeclaredTypePosition::PositionDirectCallArgument,
+                                        subject: app.param_name.clone(),
                                         declared: app.formal_subst.clone(),
                                         produced: crate::v1_compiler_infer_types::resolved_type(
                                             actual_expr.clone(),
@@ -9513,6 +9719,7 @@ crate::v1_compiler_infer_types::resolve_type_variables_from_template(t.clone(), 
                             (*declared_type_obligation_diags(
                                 Rc::new(DeclaredTypeObligation {
                                     position: DeclaredTypePosition::PositionListElement,
+                                    subject: "".to_string(),
                                     declared: declared_elem.clone(),
                                     produced: crate::v1_compiler_infer_types::resolved_type(
                                         te.clone(),
