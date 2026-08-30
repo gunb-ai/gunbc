@@ -9,7 +9,7 @@ type LensExecutionCadence
   | SubstrateLongLane
   | WetFalsifier
   | PrePushHook
-  | OfflineLocalRecipe
+  | OfflineLocalRecipeCadence
   | KnownRedQuarantine
 
 type SchedulingDisposition
@@ -142,11 +142,8 @@ fn scheduling_disposition_for_primary_cadence(
       disposition_when_bool(enrolled: primary == QuarantineProbeExpectRed)
     SubstrateLongLane =>
       disposition_when_bool(enrolled: primary == FalsifierSubstrateLongLane)
-    OfflineLocalRecipe =>
-      match primary {
-        OfflineLocalRecipe => SchedulingEnrolled
-        _ => SchedulingExcluded
-      }
+    OfflineLocalRecipeCadence =>
+      disposition_when_bool(enrolled: primary == OfflineLocalRecipe)
     ScheduledFalsifier =>
       scheduled_falsifier_scheduling_disposition(primary: primary)
   }
@@ -213,9 +210,9 @@ fn cadence_scheduling_rows_for_primary(
       )
     },
     CadenceSchedulingRow {
-      cadence: OfflineLocalRecipe,
+      cadence: OfflineLocalRecipeCadence,
       disposition: scheduling_disposition_for_primary_cadence(
-        target: OfflineLocalRecipe,
+        target: OfflineLocalRecipeCadence,
         primary: primary,
         ci_enrolled: ci_enrolled,
         prepush_enrolled: prepush_enrolled
@@ -262,7 +259,7 @@ fn cadence_rows_unbound() -> List<CadenceSchedulingRow> {
     CadenceSchedulingRow { cadence: SubstrateLongLane, disposition: SchedulingExcluded },
     CadenceSchedulingRow { cadence: WetFalsifier, disposition: SchedulingExcluded },
     CadenceSchedulingRow { cadence: PrePushHook, disposition: SchedulingExcluded },
-    CadenceSchedulingRow { cadence: OfflineLocalRecipe, disposition: SchedulingExcluded },
+    CadenceSchedulingRow { cadence: OfflineLocalRecipeCadence, disposition: SchedulingExcluded },
     CadenceSchedulingRow { cadence: KnownRedQuarantine, disposition: SchedulingExcluded }
   ]
 }
@@ -614,7 +611,7 @@ fn cadence_row_is_main_push_floor(row: CadenceSchedulingRow) -> Bool {
 }
 
 fn cadence_row_is_offline_local_recipe(row: CadenceSchedulingRow) -> Bool {
-  match row.cadence { OfflineLocalRecipe => true _ => false }
+  match row.cadence { OfflineLocalRecipeCadence => true _ => false }
 }
 
 fn scheduling_disposition_is_enrolled(disposition: SchedulingDisposition) -> Bool {
