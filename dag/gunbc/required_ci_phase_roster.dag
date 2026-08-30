@@ -1,0 +1,97 @@
+module gunbc.required_ci_phase_roster
+
+import std.types { String, Bool, List }
+
+// THE SUBSTRATE AUTHORITY FOR WHICH PHASES REQUIRED CI RUNS, AND WHICH LANE OWNS EACH.
+// gunbc.required_ci_host_verdict_census recorded the gap this module closes, in its own words:
+// "Phase existence and lane ownership are themselves host facts: RequiredCiPhase, its exhaustive
+// lane match, and REQUIRED_CI_PHASES have no substrate authority" -- and named this exact carrier
+// as its next rung (required_ci_phase_roster_next_rung). This module is that carrier: phase
+// identity and lane ownership as one roster, consumed by the workflow emission
+// (gunbc.fabric_witness_run takes its lane vocabulary from required_ci_lane_name) and by the
+// program-standing derivation (gunbc.compiler_frontend_program_status derives
+// NamespaceWaveAdmissionEnrolled from membership in required_ci_phases, never from a status row).
+//
+// THE HOST REALIZATION IS A DECLARED PARALLEL REPRESENTATION WITH AN EXECUTING JOIN, NOT A TWIN
+// LEFT TO DRIFT. claim_executor's RequiredCiPhase enum realizes this coproduct, and every
+// --required-ci run joins the two BEFORE running any phase: set equality over this declaration's
+// variant names, in both directions, so "declared here and not realized" and "realized and not
+// declared" are separate refusals that stop the line (the same join shape
+// v1_compiler.namespace_wave_admission vocabulary_findings executes against its disposition
+// authority). What the join deliberately does NOT cover is lane ownership -- the host lane match
+// is not readable from the declaration index -- and that residue is honest rather than dangerous
+// for enrolment truth: both lanes execute in every required run, so a lane divergence can move a
+// phase between two jobs that both run; it cannot un-enrol one. The terminal state is the one the
+// census's dissolution row already names: the workflow emission consumes this roster whole and
+// the host enum, lane match and REQUIRED_CI_PHASES list delete atomically. Until that fires, the
+// parallel representation is this module's declared debt and the per-run join is its wall.
+type RequiredCiLane
+  = BuildLane
+  | WitnessesLane
+
+fn required_ci_lane_name(l: RequiredCiLane) -> String {
+  match l {
+    BuildLane => "build"
+    WitnessesLane => "witnesses"
+  }
+}
+
+// THE PHASE IDENTITIES ARE A CLOSED VOCABULARY. Adding a phase means adding a variant, at which
+// point required_ci_phase_name and required_ci_phase_lane refuse to compile until the new phase
+// states its CLI word and its lane -- construction, not a list a phase can be omitted from.
+// The four phases are the post-bankruptcy roster (gunbc.rung_drop required_gate_bankruptcy,
+// 2026-08-29): parse, namespace-wave-admission, regen, floor.
+type RequiredCiPhase
+  = ParsePhase
+  | NamespaceWaveAdmissionPhase
+  | RegenPhase
+  | FloorPhase
+
+fn required_ci_phase_name(p: RequiredCiPhase) -> String {
+  match p {
+    ParsePhase => "parse"
+    NamespaceWaveAdmissionPhase => "namespace-wave-admission"
+    RegenPhase => "regen"
+    FloorPhase => "floor"
+  }
+}
+
+// Lane ownership, total. Parse and the wave wall share the witnesses lane because the wall
+// consumes the index the parse phase builds -- one acquisition, two consumers.
+fn required_ci_phase_lane(p: RequiredCiPhase) -> RequiredCiLane {
+  match p {
+    ParsePhase => WitnessesLane
+    NamespaceWaveAdmissionPhase => WitnessesLane
+    RegenPhase => BuildLane
+    FloorPhase => WitnessesLane
+  }
+}
+
+// THE ROSTER IS THE DENOMINATOR every enrolment question folds over. A variant absent from this
+// list is declared and not enrolled -- a representable state on purpose, because that is exactly
+// what a deliberate un-enrolment (a bankruptcy) looks like, and it must be a visible row edit
+// here rather than a silent host edit. The per-run host join keeps the two from diverging
+// silently in either direction.
+data required_ci_phases: List<RequiredCiPhase> = [
+  ParsePhase,
+  NamespaceWaveAdmissionPhase,
+  RegenPhase,
+  FloorPhase,
+]
+
+fn required_ci_phase_is(a: RequiredCiPhase, b: RequiredCiPhase) -> Bool {
+  required_ci_phase_name(p: a) == required_ci_phase_name(p: b)
+}
+
+// Membership at identity grain. Parameterized on the roster rather than closing over
+// required_ci_phases so a witness can author both the enrolled and the un-enrolled population --
+// the RED is authorable at the fixture boundary, which is the boundary that decides (DESIGN 4b).
+fn required_ci_phase_enrolled(p: RequiredCiPhase, phases: List<RequiredCiPhase>) -> Bool {
+  any(phases, x => required_ci_phase_is(a: x, b: p))
+}
+
+fn lane_phase_names(lane: RequiredCiLane, phases: List<RequiredCiPhase>) -> List<String> {
+  phases
+    |> filter(p => required_ci_lane_name(l: required_ci_phase_lane(p: p)) == required_ci_lane_name(l: lane))
+    |> map(p => required_ci_phase_name(p: p))
+}

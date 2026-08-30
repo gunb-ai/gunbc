@@ -52,7 +52,8 @@ data live_read_carrier_homes_v0: List<LiveReadCarrierHome> = [
   LiveReadCarrierHome { module: "v2.std.decl_index", kind: DeclFactsReflectionCarrier },
   LiveReadCarrierHome { module: "v2.lens.module_graph", kind: ModuleDeclarationFactsCarrier },
   LiveReadCarrierHome { module: "tools.dag_compile_clean_shard_roster", kind: ModuleDeclarationFactsCarrier },
-  LiveReadCarrierHome { module: "tools.dag_compile_clean_scope", kind: ModuleDeclarationFactsCarrier }
+  LiveReadCarrierHome { module: "tools.dag_compile_clean_scope", kind: ModuleDeclarationFactsCarrier },
+  LiveReadCarrierHome { module: "gunbc.namespace_cut_subject_observation", kind: DeclFactsReflectionCarrier }
 ]
 
 data live_read_carrier_callee_symbols_v0: List<String> = [
