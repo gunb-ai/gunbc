@@ -7,10 +7,12 @@ use self::DescentSizeExpr::*;
 use self::InhabitanceRefusalReason::*;
 use self::InhabitanceUndecidableReason::*;
 use self::InhabitanceVerdict::*;
+use self::LiteralBoundary::*;
 use self::ServiceConfigFieldJudgment::*;
 pub use crate::extdeps_container_oci_digest::{
     oci_other_digest_algorithm, oci_other_digest_encoded,
 };
+pub use crate::gunbc_structural_realization_bindings::literal_homomorphism_rows;
 pub use crate::std_algebra::AlgebraFieldTemplate;
 use crate::std_algebra::CollectionSizeEffect::ShrinkEffect;
 pub use crate::std_algebra::{CollectionSizeEffect, FreeMonoid};
@@ -23,6 +25,7 @@ pub use crate::std_content_hash::{
     content_hash_validate_lower_hex_length,
 };
 pub use crate::std_content_hash::{ContentHash, Fnv1a64Structural};
+pub use crate::std_decl_ref::DeclarationRef;
 pub use crate::std_dissolution::DissolutionCondition;
 use crate::std_dissolution::DissolutionCondition::*;
 pub use crate::std_dissolution::{dissolution_description, unbound_dissolution};
@@ -41,14 +44,24 @@ pub use crate::std_induction::{InductiveField, RecursionShape, SubValueRelation}
 use crate::std_interface_summary::ExportKind::{ExportData, ExportFn, ExportService, ExportType};
 pub use crate::std_interface_summary::{interface_summary_rollup, signature_contract};
 pub use crate::std_interface_summary::{ExportEntry, ExportKind, InterfaceSummary};
+use crate::std_literal_elaboration::LiteralElaborationOutcome::{
+    DirectLiteral, LiteralElaborationRefused, ViaHomomorphism,
+};
+use crate::std_literal_elaboration::LiteralUnfolding::{BooleanUnfold, PeanoUnfold};
+pub use crate::std_literal_elaboration::{
+    elaborate_literal_at, literal_elaboration_refusal_message, literal_source_kind_of,
+};
+pub use crate::std_literal_elaboration::{
+    LiteralElaboration, LiteralElaborationOutcome, LiteralHomomorphism, LiteralUnfolding,
+};
 pub use crate::std_node::{compiler_inductive_fields, compiler_recursive_types};
 pub use crate::std_occurrence_identity::NodeOccurrenceIdentity;
 use crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic;
 pub use crate::std_occurrence_identity::OccurrenceId;
 use crate::std_syntax::BinOp::Add;
 use crate::std_syntax::BinOp::{And, Div, Eq, Ge, Gt, Le, Lt, Mod, Mul, Ne, NullCoalesce, Or, Sub};
-use crate::std_syntax::LiteralValue::LitStr;
-use crate::std_syntax::LiteralValue::{LitBool, LitFloat, LitInt, LitNull};
+use crate::std_syntax::LiteralValue::{LitBool, LitInt, LitStr};
+use crate::std_syntax::LiteralValue::{LitFloat, LitNull};
 pub use crate::std_syntax::{BinOp, LiteralValue};
 pub use crate::std_termination::PositiveDescentAmount;
 use crate::std_termination::PositiveDescentAmount::OneStep;
@@ -86,7 +99,8 @@ pub use crate::v1_compiler_infer_env::{
     node_with_inferred, put_inductive_field, put_inductive_field_cross, qualified_all_but_last,
     qualify_borrowed_inferred, qualify_borrowed_type_names, qualify_decl_reference_positions,
     str_bindings_from_bindings, symbol_index_insert, symbol_index_insert_decl,
-    symbol_index_insert_service, symbol_index_lookup, unit_variant_index_shadow_insert,
+    symbol_index_insert_service, symbol_index_lookup, type_reference_declaration_ref,
+    unit_variant_index_shadow_insert,
 };
 pub use crate::v1_compiler_infer_env::{
     GlobalBareCandidate, GlobalBareLookupState, GuardedTypeEnvCacheMerge, ServiceCensusEntry,
@@ -206,9 +220,10 @@ use crate::v1_std_core::CompilerDiagnostic::{
 };
 use crate::v1_std_core::Connective::{Arrow, Conj, Disj, NoConnective};
 use crate::v1_std_core::ExprData::{
-    ExprBinOp, ExprBlock, ExprCall, ExprCast, ExprError, ExprFieldAccess, ExprForEach, ExprIf,
-    ExprIndex, ExprLambda, ExprLet, ExprListLit, ExprLiteral, ExprMatch, ExprMethodCall,
-    ExprRecordLit, ExprReturn, ExprSlice, ExprStringInterp, ExprUnaryOp, ExprVar, NoExprData,
+    ExprBinOp, ExprBlock, ExprCall, ExprCast, ExprElaboratedLiteral, ExprError, ExprFieldAccess,
+    ExprForEach, ExprIf, ExprIndex, ExprLambda, ExprLet, ExprListLit, ExprLiteral, ExprMatch,
+    ExprMethodCall, ExprRecordLit, ExprReturn, ExprSlice, ExprStringInterp, ExprUnaryOp, ExprVar,
+    NoExprData,
 };
 use crate::v1_std_core::ExprErrorKind::{
     CensusHeadsBodyStripped, InternalExprError, ParseRecoveryError, SemanticExprError,
@@ -7771,6 +7786,247 @@ pub fn qualified_value_projection(
     }
 }
 
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "_variant")]
+pub enum LiteralBoundary {
+    LiteralBoundaryPlain,
+    LiteralBoundaryElaborated {
+        elaboration: Rc<LiteralElaboration>,
+        destination_type: Rc<Node>,
+    },
+    LiteralBoundaryRefused {
+        message: String,
+    },
+}
+
+pub fn literal_boundary_elaboration(
+    lit: Rc<LiteralValue>,
+    expected: Option<Rc<Node>>,
+    scope: Rc<InferScope>,
+) -> Rc<LiteralBoundary> {
+    match expected.clone() {
+        None => Rc::new(LiteralBoundary::LiteralBoundaryPlain),
+        Some(exp) => {
+            if (exp.return_cardinality.clone() == Cardinality::CardOptional) {
+                Rc::new(LiteralBoundary::LiteralBoundaryPlain)
+            } else {
+                match crate::v1_compiler_infer_env::type_reference_declaration_ref(
+                    exp.clone(),
+                    scope.type_env.clone().source_indices.clone(),
+                    scope.type_env.clone(),
+                ) {
+                    None => Rc::new(LiteralBoundary::LiteralBoundaryPlain),
+                    Some(destination) => {
+                        let kind =
+                            crate::std_literal_elaboration::literal_source_kind_of(lit.clone());
+                        let natively = crate::v1_compiler_coercion::decl_file_realizes_natively(
+                            crate::v1_compiler_coercion::type_reference_decl_file(exp.clone()),
+                        );
+                        match (*crate::std_literal_elaboration::elaborate_literal_at(literal_homomorphism_rows(), kind.clone(), destination.clone(), natively.clone())).clone() {
+    LiteralElaborationOutcome::DirectLiteral => Rc::new(LiteralBoundary::LiteralBoundaryPlain),
+    LiteralElaborationOutcome::ViaHomomorphism { homomorphism: h, .. } => Rc::new(LiteralBoundary::LiteralBoundaryElaborated {
+    elaboration: Rc::new(LiteralElaboration {
+    source_kind: kind.clone(),
+    destination: destination.clone(),
+    homomorphism: h.clone(),
+}),
+    destination_type: exp.clone(),
+}),
+    LiteralElaborationOutcome::LiteralElaborationRefused { cause: c, .. } => Rc::new(LiteralBoundary::LiteralBoundaryRefused {
+    message: crate::std_literal_elaboration::literal_elaboration_refusal_message(c.clone()),
+}),
+}
+                    }
+                }
+            }
+        }
+    }
+}
+
+pub fn elaborated_span(name: String) -> Rc<SourceSpan> {
+    Rc::new(SourceSpan {
+        file: "<elaborated>".to_string(),
+        start: 0,
+        end: v1_rt::string_length(&name),
+    })
+}
+
+pub fn elaborated_expr_node(
+    name: String,
+    expr_data: Rc<ExprData>,
+    children: Rc<Vec<Rc<Node>>>,
+    destination_type: Rc<Node>,
+    span: Rc<SourceSpan>,
+) -> Rc<Node> {
+    Rc::new(Node {
+        occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
+        name: name.clone(),
+        span: span.clone(),
+        ident_span: Some(elaborated_span(name.clone())),
+        children: children.clone(),
+        connective: Connective::NoConnective,
+        params: Rc::new(vec![]),
+        inferred: Some(Rc::new(InferredNode::Resolved {
+            node: destination_type.clone(),
+        })),
+        return_cardinality: Cardinality::Required,
+        uses: Rc::new(vec![]),
+        body: std::option::Option::None,
+        transport: std::option::Option::None,
+        properties: Rc::new(vec![]),
+        type_annotation: std::option::Option::None,
+        is_self_recursive: false,
+        has_non_tail_self_call: false,
+        match_pattern: std::option::Option::None,
+        expr_data: expr_data.clone(),
+        ident: None,
+    })
+}
+
+pub fn unfold_peano_image(
+    n: i64,
+    zero: String,
+    succ: String,
+    prev_field: String,
+    parent: String,
+    destination_type: Rc<Node>,
+    span: Rc<SourceSpan>,
+) -> Rc<Node> {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+        if (n.clone() <= 0) {
+            elaborated_expr_node(
+                zero.clone(),
+                Rc::new(ExprData::ExprVar {
+                    binding_kind: Some(Rc::new(VarBindingKind::VariantValueBinding {
+                        parent_enum: parent.clone(),
+                    })),
+                }),
+                Rc::new(vec![]),
+                destination_type.clone(),
+                span.clone(),
+            )
+        } else {
+            {
+                let prev = unfold_peano_image(
+                    (n.clone() - 1),
+                    zero.clone(),
+                    succ.clone(),
+                    prev_field.clone(),
+                    parent.clone(),
+                    destination_type.clone(),
+                    span.clone(),
+                );
+                let field = crate::v1_std_core::make_field_init_node(
+                    Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
+                    prev_field.clone(),
+                    prev.clone(),
+                    span.clone(),
+                    elaborated_span(prev_field.clone()),
+                );
+                elaborated_expr_node(
+                    succ.clone(),
+                    Rc::new(ExprData::ExprRecordLit {
+                        parent_enum: Some(parent.clone()),
+                    }),
+                    Rc::new(vec![field.clone()]),
+                    destination_type.clone(),
+                    span.clone(),
+                )
+            }
+        }
+    })
+}
+
+pub fn unfold_literal_image(
+    lit: Rc<LiteralValue>,
+    elaboration: Rc<LiteralElaboration>,
+    destination_type: Rc<Node>,
+    span: Rc<SourceSpan>,
+) -> Rc<Node> {
+    match (*elaboration.homomorphism.clone().producer.clone()).clone() {
+    LiteralUnfolding::PeanoUnfold { zero, succ, prev_field, .. } => match (*lit.clone()).clone() {
+    LiteralValue::LitInt { value: n, .. } => unfold_peano_image(n.clone(), zero.decl_name.clone(), succ.decl_name.clone(), prev_field.clone(), elaboration.destination.clone().decl_name.clone(), destination_type.clone(), span.clone()),
+    _ => crate::v1_std_core::make_expr_error_node(Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic), ExprErrorKind::InternalExprError, "literal elaboration: a Peano unfolding row was selected for a non-integer literal (gunbc.structural_realization_bindings keys the row on KernelIntLiteral, so this row is malformed)".to_string(), span.clone()),
+},
+    LiteralUnfolding::BooleanUnfold { true_variant: t, false_variant: f, .. } => match (*lit.clone()).clone() {
+    LiteralValue::LitBool { value: b, .. } => elaborated_expr_node(if b.clone() {
+        t.decl_name.clone()
+    } else {
+        f.decl_name.clone()
+    }, Rc::new(ExprData::ExprVar {
+    binding_kind: Some(Rc::new(VarBindingKind::VariantValueBinding {
+    parent_enum: elaboration.destination.clone().decl_name.clone(),
+})),
+}), Rc::new(vec![]), destination_type.clone(), span.clone()),
+    _ => crate::v1_std_core::make_expr_error_node(Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic), ExprErrorKind::InternalExprError, "literal elaboration: a Boolean unfolding row was selected for a non-boolean literal (gunbc.structural_realization_bindings keys the row on KernelBoolLiteral, so this row is malformed)".to_string(), span.clone()),
+},
+}
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct BinopOperands {
+    pub left: Rc<InferResult>,
+    pub right: Rc<InferResult>,
+}
+
+pub fn infer_operand_literal(
+    lit_expr: Rc<Node>,
+    other: Rc<Node>,
+    scope: Rc<InferScope>,
+) -> Rc<InferResult> {
+    {
+        let other_type = match other.inferred.clone().as_deref().cloned() {
+            Some(InferredNode::Resolved { node: rt, .. }) => Some(rt.clone()),
+            _ => std::option::Option::None,
+        };
+        infer_expr_body(lit_expr.clone(), scope.clone(), other_type.clone())
+    }
+}
+
+pub fn infer_binop_operands(
+    left_expr: Rc<Node>,
+    right_expr: Rc<Node>,
+    scope: Rc<InferScope>,
+) -> Rc<BinopOperands> {
+    {
+        let left_is_literal = expr_is_any_literal(left_expr.clone());
+        let right_is_literal = expr_is_any_literal(right_expr.clone());
+        if (right_is_literal.clone() && !left_is_literal.clone()) {
+            {
+                let l = infer_expr(left_expr.clone(), scope.clone(), std::option::Option::None);
+                Rc::new(BinopOperands {
+                    left: l.clone(),
+                    right: infer_operand_literal(
+                        right_expr.clone(),
+                        l.typed.clone(),
+                        scope.clone(),
+                    ),
+                })
+            }
+        } else {
+            if (left_is_literal.clone() && !right_is_literal.clone()) {
+                {
+                    let r =
+                        infer_expr(right_expr.clone(), scope.clone(), std::option::Option::None);
+                    Rc::new(BinopOperands {
+                        left: infer_operand_literal(
+                            left_expr.clone(),
+                            r.typed.clone(),
+                            scope.clone(),
+                        ),
+                        right: r.clone(),
+                    })
+                }
+            } else {
+                Rc::new(BinopOperands {
+                    left: infer_expr(left_expr.clone(), scope.clone(), std::option::Option::None),
+                    right: infer_expr(right_expr.clone(), scope.clone(), std::option::Option::None),
+                })
+            }
+        }
+    }
+}
+
 pub fn infer_expr_body(
     texpr: Rc<Node>,
     scope: Rc<InferScope>,
@@ -7779,7 +8035,7 @@ pub fn infer_expr_body(
     match (*texpr.expr_data.clone()).clone() {
         ExprData::ExprLiteral { value: lit, .. } => {
             let span = texpr.span.clone();
-            ok_infer(crate::v1_std_core::make_expr_node(
+            let plain = crate::v1_std_core::make_expr_node(
                 texpr.occurrence_identity.clone(),
                 Rc::new(ExprData::ExprLiteral { value: lit.clone() }),
                 Rc::new(vec![]),
@@ -7787,8 +8043,43 @@ pub fn infer_expr_body(
                     node: crate::v1_compiler_infer_types::infer_literal_node(lit.clone()),
                 })),
                 span.clone(),
-            ))
+            );
+            match (*literal_boundary_elaboration(lit.clone(), expected.clone(), scope.clone()))
+                .clone()
+            {
+                LiteralBoundary::LiteralBoundaryPlain => ok_infer(plain.clone()),
+                LiteralBoundary::LiteralBoundaryElaborated {
+                    elaboration: e,
+                    destination_type: dt,
+                    ..
+                } => ok_infer(crate::v1_std_core::make_expr_node(
+                    texpr.occurrence_identity.clone(),
+                    Rc::new(ExprData::ExprElaboratedLiteral {
+                        value: lit.clone(),
+                        elaboration: e.clone(),
+                    }),
+                    Rc::new(vec![unfold_literal_image(
+                        lit.clone(),
+                        e.clone(),
+                        dt.clone(),
+                        span.clone(),
+                    )]),
+                    Some(Rc::new(InferredNode::Resolved { node: dt.clone() })),
+                    span.clone(),
+                )),
+                LiteralBoundary::LiteralBoundaryRefused { message: m, .. } => {
+                    Rc::new(InferResult {
+                        typed: plain.clone(),
+                        diagnostics: Rc::new(vec![inference_error(
+                            m.clone(),
+                            span.clone(),
+                            scope.module_name.clone(),
+                        )]),
+                    })
+                }
+            }
         }
+        ExprData::ExprElaboratedLiteral { .. } => ok_infer(texpr.clone()),
         ExprData::ExprError { kind, message, .. } => {
             let span = texpr.span.clone();
             let diagnostics = match kind.clone() {
@@ -9782,12 +10073,12 @@ crate::v1_compiler_infer_types::resolve_type_variables_from_template(t.clone(), 
             let span = texpr.span.clone();
             let left_expr = crate::v1_std_core::binop_left(texpr.clone());
             let right_expr = crate::v1_std_core::binop_right(texpr.clone());
-            let left_result =
-                infer_expr(left_expr.clone(), scope.clone(), std::option::Option::None);
+            let operands =
+                infer_binop_operands(left_expr.clone(), right_expr.clone(), scope.clone());
+            let left_result = operands.left.clone();
             let left_typed = left_result.typed.clone();
             let left_diags = left_result.diagnostics.clone();
-            let right_result =
-                infer_expr(right_expr.clone(), scope.clone(), std::option::Option::None);
+            let right_result = operands.right.clone();
             let right_typed = right_result.typed.clone();
             let right_diags = right_result.diagnostics.clone();
             let binop_info = crate::v1_compiler_infer_types::infer_binop_type_node(

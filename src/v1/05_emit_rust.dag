@@ -11629,7 +11629,8 @@ fn emit_field_value_with_context(field_value: Node, struct_node: Node, outer_typ
               } else { pe }
             Absent => pe
           }
-          let raw = emit_typed_record_lit(type_name: tn, fields: inner_fields, parent_enum: corrected_parent, resolved_type: resolved_type(n: field_value), registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
+          let nested_rt = expand_type_for_field_access(n: resolved_type(n: field_value), env: scope.type_env, module_name: scope.module_name).resolved
+          let raw = emit_typed_record_lit(type_name: tn, fields: inner_fields, parent_enum: corrected_parent, resolved_type: nested_rt, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
           let rc_name = match corrected_parent {
             Present { value: en } => en
             Absent => variant_name
