@@ -2,7 +2,10 @@ module test.claim.spark.spark_cell_role_retirement_witness_test
 
 import std.types { String, Bool, List, NonEmptyStr, Int }
 import product.placement_supply { HostIdentity }
-import gunbc.spark.serving_observation_transaction { SparkServingObservationProvenance }
+import gunbc.spark.serving_observation_transaction {
+  SparkServingObservationProvenance,
+  spark_serving_observation_provenance_of,
+}
 import gunbc.fleet_intent_network { operator_host_srv5, operator_host_srv6 }
 import gunbc.spark.cell_role {
   SparkCellRole,
@@ -174,11 +177,11 @@ fn w_retirement_effects(address: SparkServingResourceAddress) -> List<SparkServi
 // the ASSIGNMENT, where the same host appearing in both rosters is still writable. It is the
 // assignment, not the type, that this checks.
 fn witness_provenance(host: HostIdentity) -> SparkServingObservationProvenance {
-  SparkServingObservationProvenance {
+  spark_serving_observation_provenance_of(
     host: host,
     attempt: "witness-attempt" as NonEmptyStr,
     locus: "witness-locus" as NonEmptyStr,
-  }
+  )
 }
 
 test fn w_spark_roles_are_disjoint_over_the_assignment() -> Bool {

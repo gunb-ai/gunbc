@@ -121,6 +121,14 @@ type SparkServingObservationProvenance sole_constructor {
   locus: NonEmptyStr
 }
 
+fn spark_serving_observation_provenance_of(
+  host: HostIdentity,
+  attempt: NonEmptyStr,
+  locus: NonEmptyStr,
+) -> SparkServingObservationProvenance {
+  SparkServingObservationProvenance { host: host, attempt: attempt, locus: locus }
+}
+
 fn spark_serving_transaction_capture(
   txn: SparkServingObservationTransaction,
   leg: SparkServingProbeLeg,
