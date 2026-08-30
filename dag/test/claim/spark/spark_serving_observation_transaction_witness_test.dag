@@ -6,20 +6,50 @@ import extdeps.ssh.session { SshSessionExecResult }
 import gunbc.spark.serving_observation_transaction {
   SparkServingObservationTransaction,
   SparkServingProbeLegCapture,
+  SparkServingProbeRequest,
+  SparkServingProbeOutcome,
+  SparkServingProbeExecuted,
+  SparkServingProbeTransportRefused,
+  SparkServingProbePrerequisiteRefused,
   SparkServingTransactionAdmission,
-  SparkServingProbeLeg,
+  SparkServingTransactionAdmitted,
+  SparkServingTransactionRefused,
+  LoadStateRequest,
+  IsActiveRequest,
+  VersionRequest,
+  TagsRequest,
+  NvidiaDriverRequest,
+  RuntimeReceiptRequest,
+  ActiveEnterRequest,
+  DefaultTargetEnterRequest,
+  UptimeRequest,
+  GrantsRequest,
+  PasswdRequest,
+  AuthorizedKeysRequest,
+  LingerRequest,
+  ModelManifestRequest,
+  ModelBlobsListingRequest,
+  ModelManifestDigestRequest,
+  ModelBlobDigestsRequest,
+  UserUnitReadRequest,
+  UserUnitIsEnabledRequest,
+  RuntimeRootRequest,
+  RuntimeExecutableRequest,
+  RuntimeExecutableBitRequest,
+  RuntimeRootListingRequest,
   ProbeIsActive,
   ProbeLoadState,
-  ProbeUserUnitRead,
+  ProbeModelBlobDigests,
+  spark_serving_probe_request_leg,
   spark_serving_probe_leg_key,
-  spark_serving_probe_leg_eq,
+  spark_serving_capture_leg,
+  spark_serving_probe_leg_capture_of,
+  spark_serving_observation_transaction_of,
   spark_serving_transaction_capture,
   spark_serving_transaction_result,
   spark_serving_transaction_duplicated_legs,
-  spark_serving_probe_leg_capture_of,
-  spark_serving_observation_transaction_of,
-  SparkServingTransactionAdmitted,
-  SparkServingTransactionRefused,
+  spark_serving_transaction_missing_legs,
+  spark_serving_required_probe_legs,
 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
@@ -27,29 +57,47 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data subject_host: HostIdentity = "srv5" as HostIdentity
 
-fn ok(out: String) -> SshSessionExecResult {
-  SshSessionExecResult { exit_code: 0, success: true, stdout: out, stderr: "" }
+fn ok(out: String) -> SparkServingProbeOutcome {
+  SparkServingProbeExecuted {
+    result: SshSessionExecResult { exit_code: 0, success: true, stdout: out, stderr: "" },
+  }
 }
 
-fn capture(leg: SparkServingProbeLeg, out: String) -> SparkServingProbeLegCapture {
-  spark_serving_probe_leg_capture_of(
-    leg: leg,
-    argv: ["systemctl", "is-active"],
-    result: ok(out: out),
-  )
+fn capture(request: SparkServingProbeRequest, out: String) -> SparkServingProbeLegCapture {
+  spark_serving_probe_leg_capture_of(request: request, outcome: ok(out: out))
+}
+
+// THE COMPLETE POPULATION, BECAUSE A TRANSACTION MISSING ONE OF THEM IS NOT A TRANSACTION.
+//
+// Coverage is checked at identity grain against the required roster rather than by counting, so
+// this fixture enumerates the requests rather than asserting a number: a count would go green for
+// any twenty-three captures, including twenty-three copies of the wrong one.
+fn every_request() -> List<SparkServingProbeRequest> {
+  [
+    LoadStateRequest, IsActiveRequest, VersionRequest, TagsRequest, NvidiaDriverRequest,
+    RuntimeReceiptRequest, ActiveEnterRequest, DefaultTargetEnterRequest, UptimeRequest,
+    GrantsRequest, PasswdRequest, AuthorizedKeysRequest, LingerRequest,
+    ModelManifestRequest, ModelBlobsListingRequest, ModelManifestDigestRequest,
+    ModelBlobDigestsRequest { digests: ["deadbeef" as NonEmptyStr] },
+    UserUnitReadRequest, UserUnitIsEnabledRequest,
+    RuntimeRootRequest, RuntimeExecutableRequest, RuntimeExecutableBitRequest,
+    RuntimeRootListingRequest,
+  ]
+}
+
+fn complete_captures() -> List<SparkServingProbeLegCapture> {
+  map(every_request(), r => capture(request: r, out: "fixture"))
 }
 
 fn admission(captures: List<SparkServingProbeLegCapture>) -> SparkServingTransactionAdmission {
   spark_serving_observation_transaction_of(
     host: subject_host,
     attempt: "witness-attempt" as NonEmptyStr,
-    locus: "fleet-automation" as NonEmptyStr,
+    locus: "witness-locus" as NonEmptyStr,
     captures: captures,
   )
 }
 
-// The witness reads through the admitted arm exactly as production must: there is no other way to
-// obtain a transaction, so a claim cannot test a shape the mint would have refused.
 fn txn_of(captures: List<SparkServingProbeLegCapture>) -> SparkServingObservationTransaction? {
   match admission(captures: captures) {
     SparkServingTransactionAdmitted { txn: t } => Present { value: t }
@@ -57,81 +105,167 @@ fn txn_of(captures: List<SparkServingProbeLegCapture>) -> SparkServingObservatio
   }
 }
 
-test fn every_leg_has_a_distinct_key() -> Bool {
-  !spark_serving_probe_leg_eq(a: ProbeIsActive, b: ProbeLoadState)
-    && spark_serving_probe_leg_eq(a: ProbeIsActive, b: ProbeIsActive)
-    && spark_serving_probe_leg_key(leg: ProbeIsActive) == ("is_active" as NonEmptyStr)
-}
-
-test fn a_captured_leg_is_readable_and_an_uncaptured_one_is_absent() -> Bool {
-  match txn_of(captures: [capture(leg: ProbeIsActive, out: "active")]) {
-    Absent => false
-    Present { value: t } =>
-  match spark_serving_transaction_result(txn: t, leg: ProbeIsActive) {
-    Absent => false
-    Present { value: r } =>
-      r.stdout == "active"
-        && match spark_serving_transaction_result(txn: t, leg: ProbeUserUnitRead) {
-          Absent => true
-          Present { value: _ } => false
-        }
-  }
-  }
-}
-
-// A DERIVATION CANNOT MANUFACTURE A LEG NOBODY RAN.
+// THE LEG IS PROJECTED FROM THE REQUEST, SO A MISLABELLED CAPTURE IS NOT WRITABLE.
 //
-// This is the property that makes the carrier a wall rather than a convention: an uncaptured leg
-// reads Absent, and there is no transport in scope for a derivation to reach for, so a missing leg
-// surfaces as a refusal instead of becoming an extra round trip nobody counted.
-test fn an_uncaptured_leg_cannot_be_answered_from_a_neighbouring_one() -> Bool {
-  match txn_of(captures: [capture(leg: ProbeIsActive, out: "active")]) {
+// The previous version of this witness was itself the counterexample the review found: its capture
+// helper supplied ["systemctl","is-active"] as the argv for every leg it named, including
+// ProbeLoadState, and the transaction admitted that as a well-formed capture. There is no argv
+// parameter now and no leg parameter either -- one request goes in, and both the label and the
+// command are read off it -- so the mislabelling this claim used to demonstrate has no expression.
+test fn the_leg_is_projected_from_the_request_not_supplied_beside_it() -> Bool {
+  spark_serving_probe_leg_key(leg: spark_serving_probe_request_leg(request: IsActiveRequest))
+    == ("is_active" as NonEmptyStr)
+    && spark_serving_probe_leg_key(leg: spark_serving_capture_leg(c: capture(request: LoadStateRequest, out: "loaded")))
+      == ("load_state" as NonEmptyStr)
+}
+
+test fn a_captured_leg_is_readable_from_a_complete_transaction() -> Bool {
+  match txn_of(captures: complete_captures()) {
     Absent => false
     Present { value: t } =>
-      match spark_serving_transaction_capture(txn: t, leg: ProbeLoadState) {
-        Absent => true
-        Present { value: _ } => false
+      match spark_serving_transaction_result(txn: t, leg: ProbeIsActive) {
+        Absent => false
+        Present { value: r } => r.stdout == "fixture"
       }
+  }
+}
+
+// A MISSING CAPTURE REFUSES, AND THE EMPTY TRANSACTION IS THE STRONGEST CASE OF IT.
+//
+// The first admission checked duplicates only, so an EMPTY transaction was admitted and this
+// witness used it as a positive fixture -- coverage enforced in one direction while the invariant
+// claimed both. Every downstream reader would have read Absent for every fact and honestly reported
+// unobserved, so the host would have looked measured-and-empty rather than never-acquired.
+test fn an_empty_transaction_cannot_be_admitted() -> Bool {
+  match admission(captures: []) {
+    SparkServingTransactionRefused { cause: _ } => true
+    SparkServingTransactionAdmitted { txn: _ } => false
+  }
+}
+
+test fn dropping_one_required_capture_refuses_and_names_it() -> Bool {
+  let without_linger = filter(
+    complete_captures(),
+    c => !(spark_serving_probe_leg_key(leg: spark_serving_capture_leg(c: c)) == ("linger" as NonEmptyStr)),
+  )
+  match admission(captures: without_linger) {
+    SparkServingTransactionAdmitted { txn: _ } => false
+    SparkServingTransactionRefused { cause: _ } =>
+      length(
+        filter(
+          spark_serving_transaction_missing_legs(
+            txn: SparkServingObservationTransaction {
+              host: subject_host,
+              attempt: "x" as NonEmptyStr,
+              locus: "y" as NonEmptyStr,
+              captures: without_linger,
+            },
+          ),
+          k => k == ("linger" as NonEmptyStr),
+        ),
+      ) == 1
+  }
+}
+
+// The positive control for both directions: the complete roster admits, so the refusals above
+// discriminate on coverage rather than rejecting everything.
+test fn the_complete_roster_admits() -> Bool {
+  match admission(captures: complete_captures()) {
+    SparkServingTransactionAdmitted { txn: t } =>
+      length(spark_serving_transaction_missing_legs(txn: t)) == 0
+        && length(spark_serving_transaction_duplicated_legs(txn: t)) == 0
+        && length(spark_serving_required_probe_legs()) == length(t.captures)
+    SparkServingTransactionRefused { cause: _ } => false
   }
 }
 
 // THE DUPLICATE READ IS REFUSED, NOT TIE-BROKEN.
 //
 // is_active was genuinely executed twice per host before the carrier -- once for the readback and
-// again inside the user-unit observer -- so this is the regression control for the class, expressed
-// at the grain where it can be detected rather than at the call sites where it was invisible.
+// again inside the user-unit observer -- so this is the regression control for that class, at the
+// grain where it is detectable rather than at the call sites where it was invisible.
 test fn a_leg_captured_twice_refuses_the_transaction() -> Bool {
-  match admission(captures: [
-    capture(leg: ProbeIsActive, out: "active"),
-    capture(leg: ProbeIsActive, out: "inactive"),
-  ]) {
+  match admission(captures: concat(complete_captures(), [capture(request: IsActiveRequest, out: "again")])) {
     SparkServingTransactionRefused { cause: _ } => true
     SparkServingTransactionAdmitted { txn: _ } => false
   }
 }
 
-// The positive control: distinct legs are not duplicates, so the refusal above discriminates rather
-// than rejecting every transaction with more than one capture.
-test fn distinct_legs_admit_the_transaction() -> Bool {
-  match admission(captures: [
-    capture(leg: ProbeIsActive, out: "active"),
-    capture(leg: ProbeLoadState, out: "loaded"),
-  ]) {
-    SparkServingTransactionAdmitted { txn: t } =>
-      length(spark_serving_transaction_duplicated_legs(txn: t)) == 0 && t.host == subject_host
-    SparkServingTransactionRefused { cause: _ } => false
+// A TRANSPORT REFUSAL IS NOT A REMOTE EXIT 127.
+//
+// The first cut manufactured an exec result with exit_code 127 when the transport refused, so "we
+// never reached the host" and "the host ran it and it exited 127" were one value. A reader asking
+// what happened got a number the far side never produced. The refusal arms read as no result at
+// all, which is what every unobserved arm downstream is built to receive.
+test fn a_transport_refusal_is_not_a_remote_exit_code() -> Bool {
+  let refused = spark_serving_probe_leg_capture_of(
+    request: IsActiveRequest,
+    outcome: SparkServingProbeTransportRefused { cause: "no route" as NonEmptyStr },
+  )
+  let exited_127 = spark_serving_probe_leg_capture_of(
+    request: IsActiveRequest,
+    outcome: SparkServingProbeExecuted {
+      result: SshSessionExecResult { exit_code: 127, success: false, stdout: "", stderr: "no such" },
+    },
+  )
+  match txn_of(captures: swap_is_active(with: refused)) {
+    Absent => false
+    Present { value: t_refused } =>
+      match txn_of(captures: swap_is_active(with: exited_127)) {
+        Absent => false
+        Present { value: t_127 } =>
+          match spark_serving_transaction_result(txn: t_refused, leg: ProbeIsActive) {
+            Present { value: _ } => false
+            Absent =>
+              match spark_serving_transaction_result(txn: t_127, leg: ProbeIsActive) {
+                Absent => false
+                Present { value: r } => r.exit_code == 127
+              }
+          }
+      }
+  }
+}
+
+fn swap_is_active(with: SparkServingProbeLegCapture) -> List<SparkServingProbeLegCapture> {
+  concat(
+    filter(
+      complete_captures(),
+      c => !(spark_serving_probe_leg_key(leg: spark_serving_capture_leg(c: c)) == ("is_active" as NonEmptyStr)),
+    ),
+    [with],
+  )
+}
+
+// A prerequisite refusal is its own arm: the blob-digest leg with no digests to verify never ran,
+// and it is not the same fact as a digest command that ran and failed.
+test fn a_prerequisite_refusal_reads_as_no_result() -> Bool {
+  let blocked = spark_serving_probe_leg_capture_of(
+    request: ModelBlobDigestsRequest { digests: [] },
+    outcome: SparkServingProbePrerequisiteRefused { cause: "manifest named none" as NonEmptyStr },
+  )
+  let rest = filter(
+    complete_captures(),
+    c => !(spark_serving_probe_leg_key(leg: spark_serving_capture_leg(c: c))
+      == ("model_blob_digests" as NonEmptyStr)),
+  )
+  match txn_of(captures: concat(rest, [blocked])) {
+    Absent => false
+    Present { value: t } =>
+      match spark_serving_transaction_result(txn: t, leg: ProbeModelBlobDigests) {
+        Absent => true
+        Present { value: _ } => false
+      }
   }
 }
 
 // The transaction names its host, attempt and locus, so a value derived from it can state which
-// credential path produced it and which instant it belongs to. Joining facts across two attempts is
-// the thing the carrier exists to make visible.
+// credential path produced it and which instant it belongs to.
 test fn the_transaction_names_its_host_attempt_and_locus() -> Bool {
-  match txn_of(captures: []) {
+  match txn_of(captures: complete_captures()) {
     Absent => false
     Present { value: t } =>
       t.host == subject_host
         && t.attempt == ("witness-attempt" as NonEmptyStr)
-        && t.locus == ("fleet-automation" as NonEmptyStr)
+        && t.locus == ("witness-locus" as NonEmptyStr)
   }
 }
