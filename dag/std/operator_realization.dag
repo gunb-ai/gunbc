@@ -76,7 +76,16 @@ fn ordering_test_for(op: BinOp) -> OrderingTest? {
     Gt => Present { value: OrderingIs { variant: "Greater" as NonEmptyStr } }
     Le => Present { value: OrderingIsNot { variant: "Greater" as NonEmptyStr } }
     Ge => Present { value: OrderingIsNot { variant: "Less" as NonEmptyStr } }
-    _ => none
+    Add => none
+    Sub => none
+    Mul => none
+    Div => none
+    Mod => none
+    Eq => none
+    Ne => none
+    And => none
+    Or => none
+    NullCoalesce => none
   }
 }
 
@@ -84,7 +93,18 @@ fn binop_is_equality(op: BinOp) -> Bool {
   match op {
     Eq => true
     Ne => true
-    _ => false
+    Add => false
+    Sub => false
+    Mul => false
+    Div => false
+    Mod => false
+    Lt => false
+    Gt => false
+    Le => false
+    Ge => false
+    And => false
+    Or => false
+    NullCoalesce => false
   }
 }
 
@@ -153,24 +173,40 @@ fn operator_realization_for(
     HostNumericOperand => HostOperator
     OperandIdentityUnavailable => HostOperator
     StructuralOperand { declaration: d } =>
-      if binop_is_equality(op: op) {
-        StructuralEquality { declaration: d }
-      } else {
-        match ordering_test_for(op: op) {
-          Present { value: test } =>
-            match structural_ordering_for(rows: ordering_rows, carrier: d) {
-              StructuralOrderingFound { row: row } => StructuralComparison { declaration: d, binding: row, test: test }
-              StructuralOrderingAbsent => OperatorRealizationRefused { cause: NoStructuralOperationDeclared { declaration: d, operator: binop_label(op: op) } }
-              StructuralOrderingAmbiguous { row_count: n } => OperatorRealizationRefused { cause: StructuralOrderingDuplicated { declaration: d, row_count: n } }
-            }
-          Absent =>
-            match op {
-              And => HostOperator
-              Or => HostOperator
-              NullCoalesce => HostOperator
-              _ => OperatorRealizationRefused { cause: NoStructuralOperationDeclared { declaration: d, operator: binop_label(op: op) } }
-            }
-        }
+      match op {
+        Eq => StructuralEquality { declaration: d }
+        Ne => StructuralEquality { declaration: d }
+        Lt => structural_ordering_realization(op: op, declaration: d, ordering_rows: ordering_rows)
+        Gt => structural_ordering_realization(op: op, declaration: d, ordering_rows: ordering_rows)
+        Le => structural_ordering_realization(op: op, declaration: d, ordering_rows: ordering_rows)
+        Ge => structural_ordering_realization(op: op, declaration: d, ordering_rows: ordering_rows)
+        And => HostOperator
+        Or => HostOperator
+        NullCoalesce => HostOperator
+        Add => structural_arithmetic_refusal(op: op, declaration: d)
+        Sub => structural_arithmetic_refusal(op: op, declaration: d)
+        Mul => structural_arithmetic_refusal(op: op, declaration: d)
+        Div => structural_arithmetic_refusal(op: op, declaration: d)
+        Mod => structural_arithmetic_refusal(op: op, declaration: d)
+      }
+  }
+}
+
+fn structural_arithmetic_refusal(op: BinOp, declaration: DeclarationRef) -> OperatorRealization {
+  OperatorRealizationRefused { cause: NoStructuralOperationDeclared { declaration: declaration, operator: binop_label(op: op) } }
+}
+
+// An ordering operator on a structural operand: the declared comparison, or the refusal. Reached
+// only from the four ordering arms above, so an op with no ordering test is a refusal here too --
+// that arm is unreachable by construction, not a wildcard.
+fn structural_ordering_realization(op: BinOp, declaration: DeclarationRef, ordering_rows: List<StructuralOrderingBinding>) -> OperatorRealization {
+  match ordering_test_for(op: op) {
+    Absent => structural_arithmetic_refusal(op: op, declaration: declaration)
+    Present { value: test } =>
+      match structural_ordering_for(rows: ordering_rows, carrier: declaration) {
+        StructuralOrderingFound { row: row } => StructuralComparison { declaration: declaration, binding: row, test: test }
+        StructuralOrderingAbsent => structural_arithmetic_refusal(op: op, declaration: declaration)
+        StructuralOrderingAmbiguous { row_count: n } => OperatorRealizationRefused { cause: StructuralOrderingDuplicated { declaration: declaration, row_count: n } }
       }
   }
 }
