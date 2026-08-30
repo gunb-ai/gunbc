@@ -92,6 +92,12 @@ import gunbc.roadmap_launch_deployment_receipt {
 }
 import gunbc.generated_artifact { artifact_path, FleetConvergeYamlArtifact }
 
+// The one fleet workflow file, named through the generated-artifact authority so the subject and
+// every witness cite the same path.
+fn rlm_workflow_file_path() -> String {
+  artifact_path(a: FleetConvergeYamlArtifact)
+}
+
 // THE RECEIPT MODE'S WET ENTRY (fleet-converge mode rlm_launch_deployment_receipt). It is the
 // fourth run of the RLM-2 transaction and it MUTATES NOTHING on the host except the receipt it
 // persists: every other read is an observation. Order: bind this run (repository, workflow, run id,
@@ -433,7 +439,7 @@ func rlm_launch_deployment_receipt_bound(
     active_instance: instance.instance_id as String,
     service_principal: spec.service.service_user as String,
     repository: run.repository,
-    workflow_path: artifact_path(a: FleetConvergeYamlArtifact),
+    workflow_path: rlm_workflow_file_path(),
     plan_run_id: plan_run_id,
     apply_run_id: apply_run_id,
     dashboard_run_id: dashboard_run_id,

@@ -40,7 +40,7 @@ fn rlm_subject() -> RoadmapLaunchDeploymentSubject {
     active_instance: "srv1-live",
     service_principal: rlm_service_principal(),
     repository: "gunb-ai/gunbc",
-    workflow_path: artifact_path(a: FleetConvergeYamlArtifact),
+    workflow_path: rlm_workflow_file_path(),
     plan_run_id: "1001",
     apply_run_id: "1002",
     dashboard_run_id: "1003",
