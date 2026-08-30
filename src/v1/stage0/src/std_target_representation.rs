@@ -64,12 +64,10 @@ pub fn resolve_exact_binding<R: Clone>(
     rows: Rc<Vec<Rc<SourceTypeTargetBinding<R>>>>,
 ) -> Rc<ExactBindingResolution<R>> {
     match source.clone() {
-        std::option::Option::None => {
-            Rc::new(ExactBindingResolution::ExactSourceIdentityUnavailable {
-                cause: "the caller reached the declaration-keyed resolver with no DeclarationRef"
-                    .to_string(),
-            })
-        }
+        None => Rc::new(ExactBindingResolution::ExactSourceIdentityUnavailable {
+            cause: "the caller reached the declaration-keyed resolver with no DeclarationRef"
+                .to_string(),
+        }),
         Some(s) => {
             let hits = exact_binding_candidates(s.clone(), rows.clone());
             let candidate_count = (hits.clone().len() as i64);
@@ -81,9 +79,7 @@ pub fn resolve_exact_binding<R: Clone>(
                         Some(b) => Rc::new(ExactBindingResolution::ResolvedExactBinding {
                             binding: b.clone(),
                         }),
-                        std::option::Option::None => {
-                            Rc::new(ExactBindingResolution::ExactBindingAbsent)
-                        }
+                        None => Rc::new(ExactBindingResolution::ExactBindingAbsent),
                     }
                 } else {
                     Rc::new(ExactBindingResolution::ExactBindingAmbiguous {

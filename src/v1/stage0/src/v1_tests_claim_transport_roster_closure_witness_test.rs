@@ -53,7 +53,7 @@ pub fn kind_name(t: Rc<Node>) -> String {
         Some(TransportKind::ShellTransport) => "shell".to_string(),
         Some(TransportKind::FileTransport) => "file".to_string(),
         Some(TransportKind::LocalTransport) => "local".to_string(),
-        std::option::Option::None => "no-roster-member".to_string(),
+        None => "no-roster-member".to_string(),
     }
 }
 

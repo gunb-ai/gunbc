@@ -94,9 +94,10 @@ use crate::v1_std_core::Cardinality::CardOptional;
 use crate::v1_std_core::CompilerDiagnostic::TransportEmissionNotModeled;
 use crate::v1_std_core::Connective::{Arrow, Conj, Disj, NoConnective};
 use crate::v1_std_core::ExprData::{
-    ExprBinOp, ExprBlock, ExprCall, ExprCast, ExprError, ExprFieldAccess, ExprForEach, ExprIf,
-    ExprIndex, ExprLambda, ExprLet, ExprListLit, ExprLiteral, ExprMatch, ExprMethodCall,
-    ExprRecordLit, ExprReturn, ExprSlice, ExprStringInterp, ExprUnaryOp, ExprVar, NoExprData,
+    ExprBinOp, ExprBlock, ExprCall, ExprCast, ExprElaboratedLiteral, ExprError, ExprFieldAccess,
+    ExprForEach, ExprIf, ExprIndex, ExprLambda, ExprLet, ExprListLit, ExprLiteral, ExprMatch,
+    ExprMethodCall, ExprRecordLit, ExprReturn, ExprSlice, ExprStringInterp, ExprUnaryOp, ExprVar,
+    NoExprData,
 };
 use crate::v1_std_core::FieldAccessStyle::{TupleFirst, TupleSecond};
 use crate::v1_std_core::InferredNode::{CompilerError, Resolved, TypeVariable};
@@ -319,7 +320,7 @@ pub fn emit_simple_expr(
                         Some(svc_name) => {
                             crate::v1_compiler_emit_core_support::service_var_name(svc_name.clone())
                         }
-                        std::option::Option::None => v1_rt::concat(
+                        None => v1_rt::concat(
                             v1_rt::concat(
                                 emit_simple_expr(b.clone(), target.clone(), source_indices.clone()),
                                 ".".to_string(),
@@ -677,7 +678,7 @@ pub fn lookup_func_sig_in_scope(
     .clone()
     {
         DerivedCalleeSig::DerivedFromSig { sig: sig, .. } => Some(sig.clone()),
-        DerivedCalleeSig::NoDerivableSig { reason: _, .. } => std::option::Option::None,
+        DerivedCalleeSig::NoDerivableSig { reason: _, .. } => None,
     }
 }
 
@@ -705,7 +706,7 @@ pub fn order_typed_call_args(
             args.clone()
         } else {
             match lookup_func_sig_in_scope(scope.clone(), func.clone()) {
-                std::option::Option::None => args.clone(),
+                None => args.clone(),
                 Some(sig) => {
                     let arg_map = args.iter().cloned().fold(
                         v1_rt::rc_empty_map::<String, Rc<Node>>(),
@@ -761,7 +762,7 @@ pub fn order_typed_call_args(
                                             __result.extend(
                                                 (*match v1_rt::map_get(&arg_map, label.clone()) {
                                                     Some(arg) => Rc::new(vec![arg.clone()]),
-                                                    std::option::Option::None => Rc::new(vec![]),
+                                                    None => Rc::new(vec![]),
                                                 })
                                                 .iter()
                                                 .cloned(),
@@ -771,7 +772,7 @@ pub fn order_typed_call_args(
                                     });
                                     match matching.clone().first().cloned() {
                                         Some(arg) => Rc::new(vec![arg.clone()]),
-                                        std::option::Option::None => Rc::new(vec![]),
+                                        None => Rc::new(vec![]),
                                     }
                                 })
                                 .iter()
@@ -843,7 +844,7 @@ pub fn has_nested_records_node(
                             n = __tco_0;
                             continue;
                         }
-                        std::option::Option::None => {
+                        None => {
                             break false;
                         }
                     }
@@ -856,7 +857,7 @@ pub fn has_nested_records_node(
                                 n = __tco_0;
                                 continue;
                             }
-                            std::option::Option::None => {
+                            None => {
                                 break false;
                             }
                         }
@@ -1106,7 +1107,7 @@ pub fn to_camel(name: String) -> String {
                         __result
                     })
                     .join(&"".to_string()),
-                    std::option::Option::None => "".to_string(),
+                    None => "".to_string(),
                 };
                 let rest_parts = Rc::new({
                     let mut __result = Vec::new();
@@ -1176,7 +1177,7 @@ pub fn test_file_path(module_name: String, target: RenderTarget) -> String {
         let conventions = crate::v1_compiler_languages::test_conventions_for_target(target.clone());
         let file_dir = match conventions.file_dir.clone() {
             Some(dir) => dir.clone(),
-            std::option::Option::None => "".to_string(),
+            None => "".to_string(),
         };
         let filename =
             crate::v1_compiler_emit_core_support::module_to_filename(module_name.clone());
@@ -1341,7 +1342,7 @@ pub fn emit_literal(value: Rc<LiteralValue>, target: RenderTarget) -> String {
                 "".to_string(),
             ) {
                 Some(sfx) => sfx.clone(),
-                std::option::Option::None => emit_error_expr(
+                None => emit_error_expr(
                     "missing TypeCheckpoint for String literal suffix".to_string(),
                     target.clone(),
                 ),
@@ -1367,13 +1368,13 @@ pub fn emit_literal(value: Rc<LiteralValue>, target: RenderTarget) -> String {
                 "".to_string(),
             ) {
                 Some(sfx) => sfx.clone(),
-                std::option::Option::None => match crate::v1_compiler_coercion::literal_suffix(
+                None => match crate::v1_compiler_coercion::literal_suffix(
                     target.clone(),
                     "String".to_string(),
                     "".to_string(),
                 ) {
                     Some(sfx) => sfx.clone(),
-                    std::option::Option::None => emit_error_expr(
+                    None => emit_error_expr(
                         "missing TypeCheckpoint for Symbol literal suffix".to_string(),
                         target.clone(),
                     ),
@@ -1395,7 +1396,7 @@ pub fn emit_bin_op_symbol(
         algebra_field.clone(),
     ) {
         Some(sym) => sym.clone(),
-        std::option::Option::None => emit_error_expr(
+        None => emit_error_expr(
             "missing OperatorSpec for BinOp in target language".to_string(),
             target.clone(),
         ),
@@ -1419,7 +1420,7 @@ pub fn emit_container(name: String, inner: String, target: RenderTarget) -> Stri
                     template.clone(),
                     inner.clone(),
                 ),
-                std::option::Option::None => {
+                None => {
                     let spec = crate::v1_compiler_emit_core_support::language_spec(target.clone());
                     v1_rt::concat(
                         v1_rt::concat(
@@ -1442,7 +1443,7 @@ pub fn emit_map_type(key_type: String, val_type: String, target: RenderTarget) -
             key_type.clone(),
             val_type.clone(),
         ),
-        std::option::Option::None => v1_rt::concat(
+        None => v1_rt::concat(
             v1_rt::concat(
                 v1_rt::concat(
                     v1_rt::concat("Map<".to_string(), key_type.clone()),
@@ -1634,7 +1635,7 @@ pub fn render_node_type(
                         "{return}".to_string(),
                         ret_str.clone(),
                     ),
-                    std::option::Option::None => {
+                    None => {
                         if (ret_str.clone() == "".to_string()) {
                             {
                                 let void_template = v1_rt::replace(
@@ -1720,13 +1721,11 @@ pub fn render_node_type(
                                 shared_types.clone(),
                                 source_indices.clone(),
                             ),
-                            std::option::Option::None => {
-                                crate::v1_compiler_coercion::coerce_primitive_type(
-                                    target.clone(),
-                                    "Refined".to_string(),
-                                    "".to_string(),
-                                )
-                            }
+                            None => crate::v1_compiler_coercion::coerce_primitive_type(
+                                target.clone(),
+                                "Refined".to_string(),
+                                "".to_string(),
+                            ),
                         };
                         return refined_str;
                     }
@@ -1754,7 +1753,7 @@ pub fn render_node_type(
                                     )
                                 }
                             }
-                            std::option::Option::None => "_".to_string(),
+                            None => "_".to_string(),
                         };
                         let second_child =
                             match n.children.clone().iter().cloned().skip(1 as usize).next() {
@@ -1777,7 +1776,7 @@ pub fn render_node_type(
                                         )
                                     }
                                 }
-                                std::option::Option::None => "_".to_string(),
+                                None => "_".to_string(),
                             };
                         let tuple_str = render_tuple_parts(
                             Rc::new(vec![first_child.clone(), second_child.clone()]),
@@ -1872,7 +1871,7 @@ pub fn render_node_type(
                                         shared_types.clone(),
                                         source_indices.clone(),
                                     ),
-                                    std::option::Option::None => "_".to_string(),
+                                    None => "_".to_string(),
                                 };
                                 emit_container(tn.clone(), inner.clone(), target.clone())
                             }
@@ -1933,7 +1932,7 @@ pub fn render_node_type(
                         shared_types.clone(),
                         source_indices.clone(),
                     ),
-                    std::option::Option::None => "_".to_string(),
+                    None => "_".to_string(),
                 };
                 let v = match n.children.clone().iter().cloned().skip(1 as usize).next() {
                     Some(vn) => render_node_type(
@@ -1942,7 +1941,7 @@ pub fn render_node_type(
                         shared_types.clone(),
                         source_indices.clone(),
                     ),
-                    std::option::Option::None => "_".to_string(),
+                    None => "_".to_string(),
                 };
                 let base = emit_map_type(k.clone(), v.clone(), target.clone());
                 let map_str = if shared.clone() {
@@ -1962,7 +1961,7 @@ pub fn render_node_type(
                         shared_types.clone(),
                         source_indices.clone(),
                     ),
-                    std::option::Option::None => "_".to_string(),
+                    None => "_".to_string(),
                 };
                 let is_container = crate::v1_compiler_infer_types::node_is_collection(
                     n.clone(),
@@ -2049,19 +2048,15 @@ pub fn render_tuple_parts(parts: Rc<Vec<String>>, target: RenderTarget) -> Strin
                             p0.clone(),
                             p1.clone(),
                         ),
-                        std::option::Option::None => {
-                            crate::v1_compiler_emit_core_support::apply_type_template1(
-                                ts.multi_template.clone(),
-                                parts.clone().join(&ts.separator.clone()),
-                            )
-                        }
-                    },
-                    std::option::Option::None => {
-                        crate::v1_compiler_emit_core_support::apply_type_template1(
+                        None => crate::v1_compiler_emit_core_support::apply_type_template1(
                             ts.multi_template.clone(),
                             parts.clone().join(&ts.separator.clone()),
-                        )
-                    }
+                        ),
+                    },
+                    None => crate::v1_compiler_emit_core_support::apply_type_template1(
+                        ts.multi_template.clone(),
+                        parts.clone().join(&ts.separator.clone()),
+                    ),
                 }
             } else {
                 crate::v1_compiler_emit_core_support::apply_type_template1(
@@ -2111,7 +2106,7 @@ pub fn service_fallback_transport(item: Rc<Node>) -> Rc<Node> {
 pub fn effective_operation_transport(op_node: Rc<Node>, fallback: Rc<Node>) -> Rc<Node> {
     match op_node.transport.clone() {
         Some(op_transport) => op_transport.clone(),
-        std::option::Option::None => fallback,
+        None => fallback,
     }
 }
 
@@ -2260,7 +2255,7 @@ pub fn extract_modifier_names(
                     Some(modifier) => Rc::new(vec![crate::v1_std_core::operation_modifier_name(
                         modifier.clone(),
                     )]),
-                    std::option::Option::None => Rc::new(vec![]),
+                    None => Rc::new(vec![]),
                 })
                 .iter()
                 .cloned(),
@@ -2481,7 +2476,7 @@ pub fn bind_file_verb(
                 }
             }
         }
-        std::option::Option::None => {
+        None => {
             if file_operation_has_content_input(op_node.clone(), source_indices.clone()) {
                 FileVerb::FileWrite
             } else {
@@ -2503,7 +2498,7 @@ pub fn bind_file_result_field(
             channel: c.clone(),
             optional: (ch.return_cardinality.clone() == Cardinality::CardOptional),
         })),
-        std::option::Option::None => std::option::Option::None,
+        None => std::option::Option::None,
     }
 }
 
@@ -2516,47 +2511,45 @@ pub fn bind_file_operation(
         Some(r) => Rc::new(BoundOperation::BindingRefused {
             cause: Rc::new(TransportBindingRefusal::FileBindingRefused { refusal: r.clone() }),
         }),
-        std::option::Option::None => {
-            match crate::v1_std_core::transport_base_path(t.clone(), source_indices.clone()) {
-                std::option::Option::None => Rc::new(BoundOperation::BindingRefused {
-                    cause: Rc::new(TransportBindingRefusal::FileBindingRefused {
-                        refusal: Rc::new(FileEmissionRefusal::FilePathNotStaticallyRenderable),
-                    }),
+        None => match crate::v1_std_core::transport_base_path(t.clone(), source_indices.clone()) {
+            None => Rc::new(BoundOperation::BindingRefused {
+                cause: Rc::new(TransportBindingRefusal::FileBindingRefused {
+                    refusal: Rc::new(FileEmissionRefusal::FilePathNotStaticallyRenderable),
                 }),
-                Some(path_tpl) => {
-                    let declared = file_output_channel_fields(op_node.clone());
-                    let fields = Rc::new({
-                        let mut __result = Vec::new();
-                        for ch in declared.iter().cloned() {
-                            __result.extend((*match bind_file_result_field(ch.clone(), source_indices.clone()) {
-    Some(f) => Rc::new(vec![f.clone()]),
-    std::option::Option::None => Rc::new(vec![]),
-}).iter().cloned());
-                        }
-                        __result
-                    });
-                    let bound_count = (fields.clone().len() as i64);
-                    let declared_count = (declared.clone().len() as i64);
-                    if (bound_count.clone() != declared_count.clone()) {
-                        Rc::new(BoundOperation::BindingRefused {
-                            cause: Rc::new(TransportBindingRefusal::FileBindingRefused {
-                                refusal: Rc::new(FileEmissionRefusal::FileOutputShapeNotModeled),
-                            }),
-                        })
-                    } else {
-                        Rc::new(BoundOperation::FileBound {
-                            verb: bind_file_verb(
-                                t.clone(),
-                                op_node.clone(),
-                                source_indices.clone(),
-                            ),
-                            path_template: path_tpl.clone(),
-                            result_fields: fields.clone(),
-                        })
+            }),
+            Some(path_tpl) => {
+                let declared = file_output_channel_fields(op_node.clone());
+                let fields = Rc::new({
+                    let mut __result = Vec::new();
+                    for ch in declared.iter().cloned() {
+                        __result.extend(
+                            (*match bind_file_result_field(ch.clone(), source_indices.clone()) {
+                                Some(f) => Rc::new(vec![f.clone()]),
+                                None => Rc::new(vec![]),
+                            })
+                            .iter()
+                            .cloned(),
+                        );
                     }
+                    __result
+                });
+                let bound_count = (fields.clone().len() as i64);
+                let declared_count = (declared.clone().len() as i64);
+                if (bound_count.clone() != declared_count.clone()) {
+                    Rc::new(BoundOperation::BindingRefused {
+                        cause: Rc::new(TransportBindingRefusal::FileBindingRefused {
+                            refusal: Rc::new(FileEmissionRefusal::FileOutputShapeNotModeled),
+                        }),
+                    })
+                } else {
+                    Rc::new(BoundOperation::FileBound {
+                        verb: bind_file_verb(t.clone(), op_node.clone(), source_indices.clone()),
+                        path_template: path_tpl.clone(),
+                        result_fields: fields.clone(),
+                    })
                 }
             }
-        }
+        },
     }
 }
 
@@ -2576,7 +2569,7 @@ pub fn bind_operation_transport(
             bind_file_operation(t.clone(), op_node.clone(), source_indices.clone())
         }
         Some(TransportKind::LocalTransport) => Rc::new(BoundOperation::LocalBound),
-        std::option::Option::None => Rc::new(BoundOperation::BindingRefused {
+        None => Rc::new(BoundOperation::BindingRefused {
             cause: Rc::new(TransportBindingRefusal::TransportMatchesNoRosterMember),
         }),
     }
@@ -2825,6 +2818,7 @@ pub enum ExprCategory {
 pub fn classify_expr(texpr: Rc<Node>) -> ExprCategory {
     match (*texpr.expr_data.clone()).clone() {
         ExprData::ExprLiteral { value: _, .. } => ExprCategory::ExprCatLeaf,
+        ExprData::ExprElaboratedLiteral { .. } => ExprCategory::ExprCatLeaf,
         ExprData::ExprError { .. } => ExprCategory::ExprCatLeaf,
         ExprData::ExprVar {
             binding_kind: _, ..
@@ -2992,7 +2986,7 @@ pub fn is_tco_eligible(
         Some(info) => {
             (info.is_self_recursive.clone() && (info.has_non_tail_self_call.clone() == false))
         }
-        std::option::Option::None => {
+        None => {
             (crate::v1_std_core::expr_has_self_call(
                 body.clone(),
                 name.clone(),
@@ -3015,7 +3009,7 @@ pub fn is_self_recursive(
 ) -> bool {
     match lookup_item(registry.clone(), name.clone()) {
         Some(info) => info.is_self_recursive.clone(),
-        std::option::Option::None => crate::v1_std_core::expr_has_self_call(
+        None => crate::v1_std_core::expr_has_self_call(
             body.clone(),
             name.clone(),
             source_indices.clone(),
@@ -3273,7 +3267,7 @@ pub fn shared_tco_if(
                             v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("if ".to_string(), cond_str.clone()), syntax.block_open.clone()), crate::v1_compiler_emit_core_support::make_indent((frame.depth.clone() + 1))), then_str.clone()), "\n".to_string()), syntax.else_clause.clone()), crate::v1_compiler_emit_core_support::make_indent((frame.depth.clone() + 1))), else_str.clone()), "\n".to_string()), syntax.block_close.clone())
                         }
                     }
-                    std::option::Option::None => {
+                    None => {
                         if syntax.significant_whitespace.clone() {
                             v1_rt::concat(
                                 v1_rt::concat(
@@ -3344,7 +3338,7 @@ pub fn shared_tco_let(
                     v1_rt::concat(let_line.clone(), "\n".to_string()),
                     recurse_tco(b.clone(), next_scope.clone(), frame.depth.clone()),
                 ),
-                std::option::Option::None => let_line.clone(),
+                None => let_line.clone(),
             }
         }
         _ => emit_error_expr(
@@ -3378,7 +3372,7 @@ pub fn shared_tco_block(
                             init_state.scope.clone(),
                             frame.depth.clone(),
                         ),
-                        std::option::Option::None => spec.tco.clone().break_return.clone(),
+                        None => spec.tco.clone().break_return.clone(),
                     };
                     if ((init_state.text.clone().len() as i64) == 0) {
                         last_str
@@ -4038,7 +4032,7 @@ pub fn emit_unified_typed_func_body(
                             depth.clone(),
                         ),
                     ),
-                    std::option::Option::None => let_line.clone(),
+                    None => let_line.clone(),
                 }
             }
             ExprData::ExprBlock => {
@@ -4082,7 +4076,7 @@ pub fn emit_unified_typed_func_body(
                                 ),
                                 es.return_suffix.clone(),
                             ),
-                            std::option::Option::None => v1_rt::concat(
+                            None => v1_rt::concat(
                                 v1_rt::concat(prefix.clone(), "return ".to_string()),
                                 es.empty_return_value.clone(),
                             ),
@@ -4172,7 +4166,7 @@ pub fn is_tco_candidate(
                     Some(e) => {
                         is_tco_candidate(e.clone(), func_name.clone(), source_indices.clone())
                     }
-                    std::option::Option::None => false,
+                    None => false,
                 };
                 (then_cand.clone() || else_cand.clone())
             }
@@ -4195,7 +4189,7 @@ pub fn is_tco_candidate(
             }
             ExprData::ExprLet => match crate::v1_std_core::let_body(texpr.clone()) {
                 Some(b) => is_tco_candidate(b.clone(), func_name.clone(), source_indices.clone()),
-                std::option::Option::None => false,
+                None => false,
             },
             ExprData::ExprBlock => {
                 let mut __found = false;
@@ -4491,7 +4485,7 @@ pub fn apply_bridge_method_overrides(
 ) -> String {
     match v1_rt::lookup(&overrides, name.clone()) {
         Some(replacement) => replacement.clone(),
-        std::option::Option::None => name.clone(),
+        None => name.clone(),
     }
 }
 
@@ -4618,7 +4612,7 @@ pub fn child_from_key(
             }
             _ => std::option::Option::None,
         },
-        std::option::Option::None => std::option::Option::None,
+        None => std::option::Option::None,
     }
 }
 
@@ -4632,7 +4626,7 @@ pub fn unwrap_single_field_product(n: Rc<Node>) -> Rc<Node> {
                 Some(field_node) => {
                     crate::v1_compiler_infer_types::resolved_type(field_node.clone())
                 }
-                std::option::Option::None => n.clone(),
+                None => n.clone(),
             }
         } else {
             n.clone()
@@ -4705,7 +4699,7 @@ pub fn file_transport_declared_verb(
             }
             _ => std::option::Option::None,
         },
-        std::option::Option::None => std::option::Option::None,
+        None => std::option::Option::None,
     }
 }
 
@@ -4730,7 +4724,7 @@ pub fn file_operation_has_content_input(
 pub fn is_modeled_file_output_channel(key: String) -> bool {
     match file_result_channel_of_key(key.clone()) {
         Some(_) => true,
-        std::option::Option::None => false,
+        None => false,
     }
 }
 
@@ -4751,9 +4745,7 @@ pub fn file_output_channel_of_field(
 ) -> String {
     match child_from_key(ch.clone(), source_indices.clone()) {
         Some(k) => k.clone(),
-        std::option::Option::None => {
-            crate::v1_std_core::authored_name_at(source_indices.clone(), ch.clone())
-        }
+        None => crate::v1_std_core::authored_name_at(source_indices.clone(), ch.clone()),
     }
 }
 
@@ -4790,7 +4782,7 @@ pub fn file_transport_path_is_renderable(
             ExprData::ExprStringInterp => true,
             _ => false,
         },
-        std::option::Option::None => false,
+        None => false,
     }
 }
 
@@ -4821,7 +4813,7 @@ pub fn file_emission_verb_refusal(
                 }
             }
         }
-        std::option::Option::None => std::option::Option::None,
+        None => std::option::Option::None,
     }
 }
 
@@ -4849,7 +4841,7 @@ pub fn file_binding_refusal(
             match file_emission_verb_refusal(op_node.clone(), verb.clone(), source_indices.clone())
             {
                 Some(r) => Some(r.clone()),
-                std::option::Option::None => {
+                None => {
                     if !crate::v1_compiler_infer_types::is_product_type(
                         crate::v1_compiler_infer_types::resolved_type(op_node.clone()),
                     ) {
@@ -4878,7 +4870,7 @@ pub fn file_binding_refusal(
                                     key: k.clone(),
                                 }))
                             }
-                            std::option::Option::None => std::option::Option::None,
+                            None => std::option::Option::None,
                         }
                     }
                 }
@@ -4946,7 +4938,7 @@ pub fn unmodeled_file_transport_operation_diagnostics(
                                         module_name.clone(),
                                     )])
                                 }
-                                std::option::Option::None => Rc::new(vec![]),
+                                None => Rc::new(vec![]),
                             }
                         } else {
                             Rc::new(vec![])
@@ -5143,7 +5135,7 @@ pub fn emit_expr_field_access_shared(
             Some(svc_name) => {
                 crate::v1_compiler_emit_core_support::service_var_name(svc_name.clone())
             }
-            std::option::Option::None => emit_field(expr.clone()),
+            None => emit_field(expr.clone()),
         }
     } else {
         emit_field(expr.clone())
@@ -5366,7 +5358,7 @@ pub fn emit_typed_slice_shared(
                     start_str.clone(),
                     end_str.clone(),
                 ),
-                std::option::Option::None => emit_error_expr(
+                None => emit_error_expr(
                     "unsupported string slice for target".to_string(),
                     target.clone(),
                 ),
@@ -5379,9 +5371,7 @@ pub fn emit_typed_slice_shared(
                     start_str.clone(),
                     end_str.clone(),
                 ),
-                std::option::Option::None => {
-                    emit_error_expr("unsupported slice for target".to_string(), target.clone())
-                }
+                None => emit_error_expr("unsupported slice for target".to_string(), target.clone()),
             }
         }
     }
@@ -5413,6 +5403,14 @@ pub fn emit_shared_expr(
         ExprData::ExprLiteral { value: v, .. } => {
             wrap_result(emit_literal(v.clone(), target.clone()))
         }
+        ExprData::ExprElaboratedLiteral { .. } => match texpr.children.clone().first().cloned() {
+            Some(image) => recurse(image.clone()),
+            None => wrap_result(emit_error_expr(
+                "elaborated literal carries no image (v1.compiler.infer unfold_literal_image)"
+                    .to_string(),
+                target.clone(),
+            )),
+        },
         ExprData::ExprError { message, .. } => {
             wrap_result(emit_error_expr(message.clone(), target.clone()))
         }
@@ -5549,7 +5547,7 @@ pub fn emit_block_stmts_shared(
 ) -> Rc<BlockEmitState> {
     loop {
         match remaining.clone().first().cloned() {
-            std::option::Option::None => {
+            None => {
                 break Rc::new(BlockEmitState {
                     text: text.clone(),
                     scope: scope.clone(),
@@ -5596,7 +5594,7 @@ pub fn emit_init_block_stmts_shared(
 ) -> Rc<BlockEmitState> {
     loop {
         match remaining.clone().first().cloned() {
-            std::option::Option::None => {
+            None => {
                 break Rc::new(BlockEmitState {
                     text: text.clone(),
                     scope: scope.clone(),
@@ -5612,7 +5610,7 @@ pub fn emit_init_block_stmts_shared(
                         .collect::<Vec<_>>(),
                 );
                 match rest.clone().first().cloned() {
-                    std::option::Option::None => {
+                    None => {
                         break Rc::new(BlockEmitState {
                             text: text.clone(),
                             scope: scope.clone(),
@@ -5669,7 +5667,7 @@ pub fn emit_typed_let_shared(
                     recurse(bd.clone(), next_scope.clone()),
                 )
             }
-            std::option::Option::None => let_line.clone(),
+            None => let_line.clone(),
         }
     }
 }
@@ -5720,7 +5718,7 @@ pub fn emit_typed_if_shared(
                         Some(rt) => {
                             emit_node_type(rt.clone(), target.clone(), source_indices.clone())
                         }
-                        std::option::Option::None => emit_node_type(
+                        None => emit_node_type(
                             crate::v1_compiler_infer_types::resolved_type(then_branch.clone()),
                             target.clone(),
                             source_indices.clone(),
@@ -5731,7 +5729,7 @@ pub fn emit_typed_if_shared(
                     v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("func() ".to_string(), result_type.clone()), " { if ".to_string()), cond_str.clone()), bs.block_open.clone()), crate::v1_compiler_emit_core_support::make_indent((depth.clone() + 1))), "return ".to_string()), then_str.clone()), "\n".to_string()), crate::v1_compiler_emit_core_support::make_indent(depth.clone())), bs.else_clause.clone()), crate::v1_compiler_emit_core_support::make_indent((depth.clone() + 1))), "return ".to_string()), else_str.clone()), "\n".to_string()), crate::v1_compiler_emit_core_support::make_indent(depth.clone())), bs.block_close.clone()), " }()".to_string())
                 }
             },
-            std::option::Option::None => {
+            None => {
                 if bs.significant_whitespace.clone() {
                     {
                         let then_str = recurse(then_branch.clone(), depth.clone());
@@ -5913,9 +5911,9 @@ pub fn emit_algebra_method_template(
                     bindings.clone(),
                 ))
             }
-            std::option::Option::None => std::option::Option::None,
+            None => std::option::Option::None,
         },
-        std::option::Option::None => std::option::Option::None,
+        None => std::option::Option::None,
     }
 }
 
@@ -5926,9 +5924,7 @@ pub fn emit_typed_first_arg_shared(
 ) -> String {
     match args.clone().first().cloned() {
         Some(a) => recurse(crate::v1_std_core::arg_value(a.clone())),
-        std::option::Option::None => {
-            emit_error_expr("missing method argument".to_string(), target.clone())
-        }
+        None => emit_error_expr("missing method argument".to_string(), target.clone()),
     }
 }
 
@@ -6062,7 +6058,7 @@ pub fn emit_typed_record_lit_unified(
             .record_lit
             .clone();
         match type_name.clone() {
-            std::option::Option::None => {
+            None => {
                 if ((fields.clone().len() as i64) == 0) {
                     rls.anon_empty.clone()
                 } else {
@@ -6221,7 +6217,7 @@ pub fn emit_typed_call_unified(
                     Rc::new(vec![])
                 }
             }
-            std::option::Option::None => Rc::new(vec![]),
+            None => Rc::new(vec![]),
         };
         let all_args = v1_rt::concat(arg_strs.clone(), extra_args.clone());
         let args_str = all_args.clone().join(&", ".to_string());
@@ -6263,7 +6259,7 @@ pub fn emit_typed_call_unified(
                     call_str.clone()
                 }
             }
-            std::option::Option::None => call_str.clone(),
+            None => call_str.clone(),
         }
     }
 }
@@ -6297,7 +6293,7 @@ pub fn emit_algebra_method_call_unified(
             target.clone(),
         ) {
             Some(result) => result.clone(),
-            std::option::Option::None => {
+            None => {
                 let function_name = bridge_method_name_unified(method_name.clone(), target.clone());
                 let arg_strs = Rc::new({
                     let mut __result = Vec::new();
@@ -6473,7 +6469,7 @@ pub fn emit_typed_method_call_unified(
                             ")".to_string(),
                         )
                     }
-                    std::option::Option::None => {
+                    None => {
                         emit_error_expr("unsupported service receiver".to_string(), target.clone())
                     }
                 }
@@ -6520,7 +6516,7 @@ pub fn emit_unified_pattern(
 pub fn go_variant_case_type(name: String, parent_enum: Option<String>) -> String {
     match parent_enum.clone() {
         Some(parent) => v1_rt::concat(parent.clone(), name.clone()),
-        std::option::Option::None => name.clone(),
+        None => name.clone(),
     }
 }
 
@@ -6577,7 +6573,7 @@ pub fn emit_unified_variant_pattern(
                     }
                 }
             }
-            std::option::Option::None => match target.clone() {
+            None => match target.clone() {
                 RenderTarget::Go => go_variant_case_type(name.clone(), parent_enum.clone()),
                 _ => {
                     if ((field_bindings.clone().len() as i64) > 0) {
@@ -6622,9 +6618,7 @@ pub fn emit_match_arm_line(
         let case_kw = match (*pat.clone()).clone() {
             MatchPattern::Wildcard => match es.wildcard_case.clone() {
                 Some(wc) => wc.clone(),
-                std::option::Option::None => {
-                    v1_rt::concat(bs.case_keyword.clone(), render_pattern(pat.clone()))
-                }
+                None => v1_rt::concat(bs.case_keyword.clone(), render_pattern(pat.clone())),
             },
             _ => v1_rt::concat(bs.case_keyword.clone(), render_pattern(pat.clone())),
         };
@@ -6659,12 +6653,12 @@ pub fn emit_arm_guard(
         match crate::v1_std_core::arm_guard(arm.clone()) {
             Some(g) => match es.guard_prefix.clone() {
                 Some(prefix) => v1_rt::concat(prefix.clone(), render_guard_expr(g.clone())),
-                std::option::Option::None => emit_error_expr(
+                None => emit_error_expr(
                     "target does not support pattern guards".to_string(),
                     target.clone(),
                 ),
             },
-            std::option::Option::None => "".to_string(),
+            None => "".to_string(),
         }
     }
 }
@@ -6902,7 +6896,7 @@ pub fn emit_field_access_unified(
                     emit_export_ident(field.clone(), target.clone()),
                 ),
             },
-            std::option::Option::None => v1_rt::concat(
+            None => v1_rt::concat(
                 v1_rt::concat(base_str.clone(), ".".to_string()),
                 emit_export_ident(field.clone(), target.clone()),
             ),
@@ -6952,7 +6946,7 @@ pub fn emit_unified_typed_expr(
                         Some(svc_name) => {
                             crate::v1_compiler_emit_core_support::service_var_name(svc_name.clone())
                         }
-                        std::option::Option::None => {
+                        None => {
                             let base_str = emit_unified_typed_expr(
                                 crate::v1_std_core::field_access_base(expr.clone()),
                                 target.clone(),
@@ -7362,7 +7356,7 @@ pub fn emit_typed_tco_reassign_shared(
                         .next()
                     {
                         Some(v) => v.clone(),
-                        std::option::Option::None => pair.1.clone(),
+                        None => pair.1.clone(),
                     };
                     !is_tco_identity_passthrough(av.clone(), pname.clone(), source_indices.clone())
                 } {
@@ -7383,7 +7377,7 @@ pub fn emit_typed_tco_reassign_shared(
                         .next()
                     {
                         Some(v) => v.clone(),
-                        std::option::Option::None => pair.1.clone(),
+                        None => pair.1.clone(),
                     },
                 );
             }

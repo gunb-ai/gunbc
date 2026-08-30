@@ -174,7 +174,7 @@ pub fn content_hash_of_value(value: String) -> Rc<ContentHash> {
 pub fn content_hash_from_structural_digest(digest: String) -> Option<Rc<ContentHash>> {
     match fnv1a64_structural_hex_digest(digest.clone()) {
         Some(structural) => Some(as_content_hash_structural(structural.clone())),
-        std::option::Option::None => std::option::Option::None,
+        None => std::option::Option::None,
     }
 }
 

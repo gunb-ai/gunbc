@@ -78,7 +78,7 @@ pub fn generic_use_slot_bindings(
                     .next()
                 {
                     Some(arg) => v1_rt::rc_map_insert(acc.clone(), slot.clone(), arg.clone()),
-                    std::option::Option::None => acc.clone(),
+                    None => acc.clone(),
                 }
             },
         )
@@ -224,7 +224,7 @@ pub fn expand_scrut_from_type_name(scrut_node: Rc<Node>, env: Rc<TypeEnv>) -> Rc
                     }
                 }
             }
-            std::option::Option::None => scrut_node.clone(),
+            None => scrut_node.clone(),
         }
     }
 }
@@ -351,7 +351,7 @@ pub fn synthesize_witness_holds_variant(scrut: Rc<Node>) -> Rc<Node> {
     {
         let inner = match scrut.children.clone().first().cloned() {
             Some(child) => crate::v1_compiler_infer_types::child_type_node(child.clone()),
-            std::option::Option::None => error_type(),
+            None => error_type(),
         };
         let value_field = Rc::new(Node {
             occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
@@ -619,11 +619,9 @@ pub fn lookup_variant_in_type(
                                     source_indices.clone(),
                                 ) {
                                     Some(scrut_child) => node_lookup_resolved(scrut_child.clone()),
-                                    std::option::Option::None => {
-                                        node_lookup_resolved(variant_child.clone())
-                                    }
+                                    None => node_lookup_resolved(variant_child.clone()),
                                 },
-                                std::option::Option::None => variant_not_found_result(
+                                None => variant_not_found_result(
                                     scrut_node.clone(),
                                     variant_name.clone(),
                                     module_name.clone(),
@@ -634,7 +632,7 @@ pub fn lookup_variant_in_type(
                             node_lookup_resolved(resolved.clone())
                         }
                     }
-                    std::option::Option::None => variant_not_found_result(
+                    None => variant_not_found_result(
                         scrut_node.clone(),
                         variant_name.clone(),
                         module_name.clone(),
@@ -750,7 +748,7 @@ pub fn lookup_variant_in_type(
                                                 };
                                                 match direct_match.clone() {
                                                     Some(v) => node_lookup_resolved(v.clone()),
-                                                    std::option::Option::None => fallback,
+                                                    None => fallback,
                                                 }
                                             }
                                         }
@@ -794,19 +792,17 @@ pub fn lookup_field_in_variant(
                 let resolved = crate::v1_compiler_infer_types::child_type_node(field_child.clone());
                 node_lookup_resolved(resolved.clone())
             }
-            std::option::Option::None => {
-                node_lookup_failed(Rc::new(vec![crate::v1_std_core::make_error_node(
-                    Rc::new(CompilerDiagnostic::FieldNotFound {
-                        field: field_name.clone(),
-                        type_name: crate::v1_std_core::authored_name_at(
-                            source_indices.clone(),
-                            variant_node.clone(),
-                        ),
-                        span: variant_node.span.clone(),
-                    }),
-                    module_name.clone(),
-                )]))
-            }
+            None => node_lookup_failed(Rc::new(vec![crate::v1_std_core::make_error_node(
+                Rc::new(CompilerDiagnostic::FieldNotFound {
+                    field: field_name.clone(),
+                    type_name: crate::v1_std_core::authored_name_at(
+                        source_indices.clone(),
+                        variant_node.clone(),
+                    ),
+                    span: variant_node.span.clone(),
+                }),
+                module_name.clone(),
+            )])),
         },
     }
 }
@@ -846,7 +842,7 @@ pub fn check_match_exhaustiveness(
             match crate::v1_compiler_infer_env::lookup_type_for(env.clone(), scrutinee_type.clone())
             {
                 Some(def) => def.clone(),
-                std::option::Option::None => scrutinee_type.clone(),
+                None => scrutinee_type.clone(),
             }
         };
         let resolved = if scrut_is_optional.clone() {

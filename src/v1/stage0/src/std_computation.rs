@@ -242,7 +242,7 @@ pub fn type_iteration_dimension(type_name: String) -> Option<IterationDimension>
     } else {
         match v1_rt::map_get(&kernel_algebra_profile(), type_name.clone()) {
             Some(p) => algebra_profile_to_dimension(p.clone()),
-            std::option::Option::None => std::option::Option::None,
+            None => std::option::Option::None,
         }
     }
 }

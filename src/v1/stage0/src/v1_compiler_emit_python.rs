@@ -180,7 +180,7 @@ pub fn py_derive_attribute() -> String {
         .clone()
     {
         Some(attr) => attr.clone(),
-        std::option::Option::None => "@dataclass".to_string(),
+        None => "@dataclass".to_string(),
     }
 }
 
@@ -190,7 +190,7 @@ pub fn py_default_value() -> String {
         .clone()
     {
         Some(value) => value.clone(),
-        std::option::Option::None => "None".to_string(),
+        None => "None".to_string(),
     }
 }
 
@@ -237,7 +237,7 @@ pub fn emit_init_py(modules: Rc<Vec<Rc<TypedModule>>>) -> Rc<TextFile> {
                 .clone()
             {
                 Some(path) => path.clone(),
-                std::option::Option::None => "__init__.py".to_string(),
+                None => "__init__.py".to_string(),
             };
         Rc::new(TextFile {
             path: init_path.clone(),
@@ -1083,7 +1083,7 @@ pub fn emit_py_func_def(
         let service_names =
             match crate::v1_compiler_emit::lookup_item(registry.clone(), name.clone()) {
                 Some(info) => info.service_names.clone(),
-                std::option::Option::None => Rc::new(vec![]),
+                None => Rc::new(vec![]),
             };
         let params_str = emit_py_func_params(
             params.clone(),
@@ -1381,7 +1381,7 @@ pub fn emit_py_headers_dict(
                         source_indices.clone(),
                     ) {
                         Some(h) => h.clone(),
-                        std::option::Option::None => "Authorization".to_string(),
+                        None => "Authorization".to_string(),
                     };
                     v1_rt::concat(
                         v1_rt::concat("\"".to_string(), header_name.clone()),

@@ -774,8 +774,6 @@ pub fn compile_clean_diagnostic_histogram_key(d: &Rc<ErrorNode>) -> (String, Str
         CompilerDiagnostic::CallArgumentDuplicate { .. } => "CallArgumentDuplicate",
         CompilerDiagnostic::CallNamedArgOnFunctionValue { .. } => "CallNamedArgOnFunctionValue",
         CompilerDiagnostic::TypeArgumentArityMismatch { .. } => "TypeArgumentArityMismatch",
-        CompilerDiagnostic::EqualityOnFunctionMember { .. } => "EqualityOnFunctionMember",
-        CompilerDiagnostic::EqualityMemberUnjudgeable { .. } => "EqualityMemberUnjudgeable",
         CompilerDiagnostic::OccurrenceTransportViolation { .. } => "OccurrenceTransportViolation",
         CompilerDiagnostic::SourceAnnotationRefused { .. } => "SourceAnnotationRefused",
         CompilerDiagnostic::ContainerSpellingUnrecognized { .. } => "ContainerSpellingUnrecognized",
@@ -849,8 +847,6 @@ pub fn compile_clean_diagnostic_histogram_key(d: &Rc<ErrorNode>) -> (String, Str
         CompilerDiagnostic::CallArgumentDuplicate { argument, .. } => argument.clone(),
         CompilerDiagnostic::CallNamedArgOnFunctionValue { argument, .. } => argument.clone(),
         CompilerDiagnostic::TypeArgumentArityMismatch { type_name, .. } => type_name.clone(),
-        CompilerDiagnostic::EqualityOnFunctionMember { type_name, .. } => type_name.clone(),
-        CompilerDiagnostic::EqualityMemberUnjudgeable { type_name, .. } => type_name.clone(),
         CompilerDiagnostic::OccurrenceTransportViolation { .. } => {
             "(occurrence-transport-refusal)".to_string()
         }
