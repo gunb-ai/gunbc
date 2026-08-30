@@ -887,6 +887,11 @@ fn rust_witness_type_arg_from_fn_return(emit_info: EmitGraphInfo, shared_types: 
   }
 }
 
+// THE LITERAL'S OWN RESOLVED Witness CARRIER FIRST. A Violates literal inside a record field
+// or a let is typed by its position (`Witness<Node>`), not by the enclosing fn's return; asking
+// the return first spelled `Witness::<Rc<RuntimeValueAcceptanceWitness>>` for a field of that
+// record (E0308 x4 in v2.compiler.eval). The return type answers only when the literal's type
+// is not itself a resolved Witness.
 fn rust_witness_type_arg_for_variant(variant_name: String, resolved_type: Node, fields: List<Node>, shared_types: Set<String>, emit_info: EmitGraphInfo, source_indices: Map<String, NewlineIndex>) -> String? {
   if variant_name == "Holds" {
     match rust_witness_type_arg_from_holds_value_field(fields: fields, shared_types: shared_types, emit_info: emit_info, source_indices: source_indices) {
@@ -894,11 +899,6 @@ fn rust_witness_type_arg_for_variant(variant_name: String, resolved_type: Node, 
       Absent => rust_witness_type_arg_from_fn_return(emit_info: emit_info, shared_types: shared_types, source_indices: source_indices)
     }
   } else if variant_name == "Violates" {
-    // THE LITERAL'S OWN RESOLVED Witness CARRIER FIRST. A Violates literal inside a record field
-    // or a let is typed by its position (`Witness<Node>`), not by the enclosing fn's return; asking
-    // the return first spelled `Witness::<Rc<RuntimeValueAcceptanceWitness>>` for a field of that
-    // record (E0308 x4 in v2.compiler.eval). The return type answers only when the literal's type
-    // is not itself a resolved Witness.
     match rust_witness_type_arg_if_resolved_witness(resolved_type: resolved_type, shared_types: shared_types, emit_info: emit_info, source_indices: source_indices) {
       Present { value: arg } => Present { value: arg }
       Absent =>
@@ -6911,6 +6911,9 @@ fn find_shared_enum_fields(children: List<Node>, env: TypeEnv) -> List<String> {
   )
 }
 
+// THE ACCESSOR RETURNS T BY VALUE FROM &self, so `__val.clone()` must be T::clone, not the
+// reference's; without `T: Clone` on the impl rustc clones the `&T` (E0308 expected `T`, found
+// `&T`, six generic carriers). The bound is on the impl the accessor lives in, not on the enum.
 fn emit_enum_shared_accessors(name: String, type_params: String, generic_param_names: List<String>, children: List<Node>, recursive_types: Set<String>, shared_types: Set<String>, env: TypeEnv, emit_info: EmitGraphInfo) -> String {
   let all_shared = find_shared_enum_fields(children: children, env: env)
   if all_shared |> count == 0 { return "" }
@@ -6956,9 +6959,6 @@ fn emit_enum_shared_accessors(name: String, type_params: String, generic_param_n
   )
   let fns_str = accessor_fns |> join(separator: "\n")
   let type_application_params = emit_bare_type_params(generic_param_names: generic_param_names)
-  // THE ACCESSOR RETURNS T BY VALUE FROM &self, so `__val.clone()` must be T::clone, not the
-  // reference's; without `T: Clone` on the impl rustc clones the `&T` (E0308 expected `T`, found
-  // `&T`, six generic carriers). The bound is on the impl the accessor lives in, not on the enum.
   let impl_params = if (generic_param_names |> count) == 0 { type_params } else {
     concat("<", generic_param_names |> map(g => concat(to_pascal(name: g), ": Clone")) |> join(separator: ", "), ">")
   }
@@ -7248,6 +7248,11 @@ fn v1_fn_body_derived_clone_param_names(params: List<Node>, inferred: Node, body
   )
 }
 
+// A GENERIC STORED INTO A `dyn Fn` MUST OUTLIVE IT. The arrow carrier is `Rc<dyn Fn(..)>`, which
+// defaults to `'static`; a fn returning an arrow, or a record whose fields are arrows
+// (`Monoid { op: verdict_combine, .. }`), moves its generics into that object, so every generic
+// carries `'static` exactly when the param-side gate (`+ 'static` on `impl Fn`) fires
+// (E0310 on `Subj`, `T` at verdict_monoid). Same gate, both surfaces.
 // Joins the two derivations onto one per-param trait list so a param earning both renders
 // `K: Clone + PartialEq`. Clone is listed first so the Clone-only case is byte-identical to what
 // the previous single-trait renderer emitted, which is what lets the regen fixed point act as the
@@ -7271,11 +7276,6 @@ fn v1_fn_bounds_by_param(
       Absent => map_insert(m, n, rust_map_key_bound_traits())
     }
   )
-  // A GENERIC STORED INTO A `dyn Fn` MUST OUTLIVE IT. The arrow carrier is `Rc<dyn Fn(..)>`, which
-  // defaults to `'static`; a fn returning an arrow, or a record whose fields are arrows
-  // (`Monoid { op: verdict_combine, .. }`), moves its generics into that object, so every generic
-  // carries `'static` exactly when the param-side gate (`+ 'static` on `impl Fn`) fires
-  // (E0310 on `Subj`, `T` at verdict_monoid). Same gate, both surfaces.
   static_param_names |> fold(init: with_key, f: (m, n) =>
     match map_get(m, n) {
       Present { value: traits } => map_insert(m, n, concat(traits, ["'static"]))
@@ -8446,6 +8446,10 @@ fn field_needs_rc_ref(field_name: String, rc_analysis: RcPatternAnalysis) -> Boo
   rc_analysis.ref_bound_fields |> any(name => name == field_name)
 }
 
+// A RECORD PATTERN HAS NO PARENT ENUM, BUT ITS CARRIER IS STILL SHARED. `Record { f, .. }`
+// over a scrutinee that renders `Rc<Record>` needs the same deref a shared enum's variant
+// gets; without it the pattern met the Rc (E0308 expected `Rc<AdmitExportsFold>`, found
+// `AdmitExportsFold`, four record sites). The record is decided by the same shared set.
 fn analyze_rc_pattern(pattern: MatchPattern, scrut_type: String, shared_types: Set<String>, emit_info: EmitGraphInfo, source_indices: Map<String, NewlineIndex>) -> RcPatternAnalysis {
   match pattern {
     VariantPattern { name: n, parent_enum: parent_enum, field_bindings: fbs } =>
@@ -8466,10 +8470,6 @@ fn analyze_rc_pattern(pattern: MatchPattern, scrut_type: String, shared_types: S
         } else { empty_rc_pattern_analysis() }
       } else {
         let resolved_parent = pattern_parent_enum(name: bare_n, parent_enum: parent_enum, scrut_type: scrut_type, type_summaries: emit_info.type_summaries)
-        // A RECORD PATTERN HAS NO PARENT ENUM, BUT ITS CARRIER IS STILL SHARED. `Record { f, .. }`
-        // over a scrutinee that renders `Rc<Record>` needs the same deref a shared enum's variant
-        // gets; without it the pattern met the Rc (E0308 expected `Rc<AdmitExportsFold>`, found
-        // `AdmitExportsFold`, four record sites). The record is decided by the same shared set.
         let matches_rc_variant = match resolved_parent {
           Present { value: enum_name } => set_contains(shared_types, enum_name)
           Absent =>
