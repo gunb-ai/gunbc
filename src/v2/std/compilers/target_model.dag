@@ -129,11 +129,11 @@ import v2.std.witness {
 }
 import v2.std.node_query {
   arrow_domain_named_param_bindings,
-  coproduct_nullary_inhabitant_by_discriminant,
   find_arrow_body_child,
   find_named_child,
   node_labeled_child_edges,
-  node_positional_child_targets
+  node_positional_child_targets,
+  nullary_inhabitant_by_discriminant
 }
 import v2.std.qualified_name {
   QualifiedName,
@@ -163,7 +163,8 @@ import extdeps.external_authority {
 }
 import extdeps.uri {
   Uri,
-  UriScheme
+  UriScheme,
+  uri_scheme_inhabitants
 }
 
 // Produced-declaration support is a TARGET-owned rendering, opaque to the compiler.
@@ -9637,7 +9638,7 @@ type TargetDeriveSupplementalGenericBoundContractCatalog {
   contracts: Map<TargetCapabilityKey, TargetDeriveSupplementalGenericBoundContractAuthority>
 }
 
-data target_capability_key_wire_identity_note: String = "There is no key-to-wire projection here and there is deliberately no function for one. When the capability key was a closed coproduct this module carried target_grounding_derive_trait_discriminant (discriminant of the variant) and target_capability_key_for_derive_trait (a second name for the same call), and the node decoder recovered the variant with coproduct_nullary_inhabitant_by_discriminant. TargetCapabilityKey is now a branded Symbol, so the key IS its own wire identity and all three collapse to the identity function. THIS WAS NOT A TIDY-UP, IT WAS A DEFECT: the wrappers survived the carrier change and kept calling discriminant on a Symbol. gunbc compile reported zero blocking errors on every affected entry; under gunbc run the interpreter could not bridge discriminant for a non-coproduct, fell back to a free-function lookup, and NoSuchFunction discriminant then surfaced in UNRELATED modules whose closure reached this one -- because target_grounding_derive_trait_discriminant was also passed as a function VALUE to coproduct_nullary_inhabitant_by_discriminant, so it was resolved eagerly rather than only when called. Section 5: a typecheck is not a consumer."
+data target_capability_key_wire_identity_note: String = "There is no key-to-wire projection here and there is deliberately no function for one. When the capability key was a closed coproduct this module carried target_grounding_derive_trait_discriminant (discriminant of the variant) and target_capability_key_for_derive_trait (a second name for the same call), and the node decoder recovered the variant with the reflective coproduct_nullary_inhabitant_by_discriminant (since replaced by v2.std.node_query nullary_inhabitant_by_discriminant, which reads a declared inhabitant roster instead of the host type index). TargetCapabilityKey is now a branded Symbol, so the key IS its own wire identity and all three collapse to the identity function. THIS WAS NOT A TIDY-UP, IT WAS A DEFECT: the wrappers survived the carrier change and kept calling discriminant on a Symbol. gunbc compile reported zero blocking errors on every affected entry; under gunbc run the interpreter could not bridge discriminant for a non-coproduct, fell back to a free-function lookup, and NoSuchFunction discriminant then surfaced in UNRELATED modules whose closure reached this one -- because target_grounding_derive_trait_discriminant was also passed as a function VALUE to coproduct_nullary_inhabitant_by_discriminant, so it was resolved eagerly rather than only when called. Section 5: a typecheck is not a consumer."
 
 fn target_derive_supplemental_generic_bound_requirement_set_empty() -> TargetDeriveSupplementalGenericBoundRequirementSet {
   empty_map()
@@ -9733,10 +9734,11 @@ fn target_external_authority_from_node(node: Node) -> Outcome<ExternalAuthority>
           o: target_collection_node_atom_identity(node: scheme_node),
           f: fn(scheme_id) {
             bind_outcome(
-              o: coproduct_nullary_inhabitant_by_discriminant(
-                type_name: ^UriScheme,
+              o: nullary_inhabitant_by_discriminant(
+                inhabitants: uri_scheme_inhabitants(),
                 discriminant_of: target_uri_scheme_discriminant,
-                wanted: scheme_id
+                wanted: scheme_id,
+                at: scheme_node
               ),
               f: fn(scheme) {
                 bind_outcome(

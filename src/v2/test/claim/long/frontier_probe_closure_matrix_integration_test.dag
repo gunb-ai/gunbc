@@ -14,7 +14,9 @@ import v2.compiler.source_authority {
   SourceRef,
   SourceRootCoverage,
   SourceRootCoverageComplete,
-  frontier_probe_discovered_closure_seal,
+  frontier_probe_discovered_closure_seal
+}
+import v2.compiler.source_authority_read {
   source_ref_for_observed_storage_path
 }
 import std.algebra { Cons, Empty }
