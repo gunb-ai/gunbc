@@ -57,6 +57,30 @@ type BootstrapEdge {
   reason: String
 }
 
+type BootstrapSourceMirror {
+  source_module: String
+  reason: String
+}
+
+// Compiler substrate whose generated representation is itself an input to the next seed. These
+// are explicit bootstrap-source facts, not a std_ prefix: std.measure is seed-compiled and called
+// by the emitter but is not a compiler-transport mirror, which is the discriminator that forced
+// staged convergence to keep generation role separate from seed membership.
+data regen_bootstrap_source_mirrors: List<BootstrapSourceMirror> = [
+  BootstrapSourceMirror {
+    source_module: "std.decl_ref",
+    reason: "declaration identity is carried by resolver and emitter seed structures"
+  },
+  BootstrapSourceMirror {
+    source_module: "std.occurrence_identity",
+    reason: "parser-minted occurrence and constructor identities are carried by compiler seed structures"
+  },
+  BootstrapSourceMirror {
+    source_module: "std.repair_input_origin",
+    reason: "repair-input origin carriers are assembled by the emitter seed"
+  }
+]
+
 data regen_bootstrap_edges: List<BootstrapEdge> = [
   BootstrapEdge {
     source_module: "v1.compiler.runtime_rust",
@@ -104,6 +128,32 @@ fn regen_generation_inputs(edited: List<String>) -> List<String> {
   edited |> filter(m =>
     (regen_generation_input_prefixes |> any(prefix => starts_with(s: m, prefix: prefix)))
       && !(regen_bootstrap_edges |> any(edge => edge.source_module == m)))
+}
+
+fn regen_generation_role_modules(edges: List<DependencyEdge>, modules: List<String>) -> List<String> {
+  let roots = modules |> filter(m =>
+    (regen_generation_input_prefixes |> any(prefix => starts_with(s: m, prefix: prefix)))
+      && !(regen_bootstrap_edges |> any(edge => edge.source_module == m))
+  )
+  fold(regen_bootstrap_source_mirrors, init: roots, f: fn(acc, row) {
+    if regen_list_has(items: modules, item: row.source_module)
+      && !regen_list_has(items: acc, item: row.source_module) {
+      list_push(acc, row.source_module)
+    } else {
+      acc
+    }
+  })
+}
+
+fn regen_bootstrap_source_modules() -> List<String> {
+  concat(
+    regen_bootstrap_edges |> map(edge => edge.source_module),
+    regen_bootstrap_source_mirrors |> map(row => row.source_module)
+  )
+}
+
+fn regen_bootstrap_product_paths() -> List<String> {
+  regen_bootstrap_edges |> map(edge => edge.product)
 }
 
 fn regen_bootstrap_products(reached: List<String>) -> List<String> {

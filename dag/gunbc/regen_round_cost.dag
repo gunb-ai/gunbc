@@ -109,6 +109,7 @@ type RegenRoundCostReceipt {
   rustfmt_spawns: Nat
   marks: List<TraceMark>
   changed_paths: List<String>
+  convergence_stage_receipt_ids: List<String>
 }
 
 fn regen_round_phase_tag(phase: RegenRoundPhase) -> String {
@@ -241,6 +242,16 @@ fn regen_round_changed_paths_line(receipt: RegenRoundCostReceipt) -> String {
   )
 }
 
+fn regen_round_convergence_stages_line(receipt: RegenRoundCostReceipt) -> String {
+  let listed = fold(receipt.convergence_stage_receipt_ids, init: "", f: fn(acc, id) {
+    if acc == "" { id } else { concat(acc, concat(", ", id)) }
+  })
+  concat(
+    concat("regen-round-cost: convergence_stages=", to_string(count(receipt.convergence_stage_receipt_ids))),
+    concat(" [", concat(listed, "]"))
+  )
+}
+
 // The whole receipt as the lines the host prints, in ledger order. Rendered here and read by
 // the host through the interpreter, so there is no Rust mirror of this format to drift.
 fn regen_round_cost_render(receipt: RegenRoundCostReceipt) -> String {
@@ -249,7 +260,13 @@ fn regen_round_cost_render(receipt: RegenRoundCostReceipt) -> String {
   })
   concat(
     concat(concat(regen_round_header_line(receipt: receipt), "\n"), mark_lines),
-    concat(concat(regen_round_total_line(receipt: receipt), "\n"), concat(regen_round_changed_paths_line(receipt: receipt), "\n"))
+    concat(
+      concat(regen_round_total_line(receipt: receipt), "\n"),
+      concat(
+        concat(regen_round_changed_paths_line(receipt: receipt), "\n"),
+        concat(regen_round_convergence_stages_line(receipt: receipt), "\n")
+      )
+    )
   )
 }
 

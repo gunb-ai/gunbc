@@ -1,5 +1,12 @@
 module v2.workflow.required_regen
 
+import v2.workflow.regen_convergence_transaction {
+  RegenConvergenceTransactionReceipt,
+  RegenConvergenceRefusal,
+  RegenFixedPointReached,
+  RegenFixedPointRefused
+}
+
 import v2.std.algebra { Cons, Empty, fold_list, length, list_append }
 import v2.std.collection { List }
 import v2.std.logic { Bool }

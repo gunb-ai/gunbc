@@ -2301,6 +2301,217 @@ struct CargoBuildObservation {
     compiled_crates: u64,
 }
 
+const REGEN_CONVERGENCE_SCHEMA: &str = "gunbc.regen_convergence_transaction.v1";
+const REGEN_CONVERGENCE_BOUND: usize = 8;
+const REGEN_CONVERGENCE_JOURNAL_REL: &str = "target/regen-convergence-journal";
+const REGEN_CONVERGENCE_RECEIPT_REL: &str = "target/regen-convergence-transaction.json";
+
+#[derive(Debug, Serialize, serde::Deserialize)]
+struct RegenConvergenceJournalEntry {
+    relative_path: String,
+    backup_name: String,
+    existed: bool,
+    pre_stage_digest: String,
+}
+
+#[derive(Debug, Serialize, serde::Deserialize)]
+struct RegenConvergenceJournal {
+    schema: String,
+    starting_commit: String,
+    entries: Vec<RegenConvergenceJournalEntry>,
+}
+
+#[derive(Debug, Serialize)]
+struct RegenConvergenceSurfaceReceipt {
+    declaring_module: String,
+    projected_path: String,
+    pre_stage_digest: String,
+    candidate_digest: String,
+    installed_digest: String,
+    planned: bool,
+    executed: bool,
+    terminal: bool,
+    passed: bool,
+}
+
+#[derive(Debug, Clone, Serialize)]
+enum RegenConvergenceStageKindReceipt {
+    PromoteGenerationInputs,
+    InstallSeedCompatibilityCut,
+    PublishNonSeedOutputs,
+}
+
+#[derive(Debug, Serialize)]
+enum RegenConvergenceDeferredReasonReceipt {
+    AwaitingPromotedProducer,
+    AwaitingSeedCompatibilityCut,
+    AwaitingBuildableSeedGeneration,
+}
+
+#[derive(Debug, Serialize)]
+struct RegenConvergenceDeferredSurfaceReceipt {
+    projected_path: String,
+    reason: RegenConvergenceDeferredReasonReceipt,
+}
+
+#[derive(Debug, Serialize)]
+enum RegenConvergenceBuildTerminalReceipt {
+    Passed,
+}
+
+#[derive(Debug, Serialize)]
+enum RegenConvergenceFixedPointReceipt {
+    Reached,
+}
+
+#[derive(Debug, Serialize)]
+struct RegenConvergenceStageReceipt {
+    receipt_id: String,
+    ordinal: usize,
+    kind: RegenConvergenceStageKindReceipt,
+    input_seed_digest: String,
+    input_candidate_tree_id: String,
+    input_candidate_tree_digest: String,
+    producer_generation_id: String,
+    surfaces: Vec<RegenConvergenceSurfaceReceipt>,
+    deferred_surfaces: Vec<RegenConvergenceDeferredSurfaceReceipt>,
+    dependency_closure_id: String,
+    build_target: String,
+    build_invocation: String,
+    build_terminal: RegenConvergenceBuildTerminalReceipt,
+    output_seed_digest: String,
+    next_generation_receipt_id: String,
+}
+
+#[derive(Debug, Serialize)]
+struct RegenConvergenceReceipt {
+    schema_version: String,
+    starting_commit: String,
+    source_authority_digest: String,
+    starting_generated_surface_digest: String,
+    stage_plan_authority_digest: String,
+    generation_role_authority_digest: String,
+    ownership_authority_digest: String,
+    initial_seed_digest: String,
+    ordered_stage_receipt_ids: Vec<String>,
+    stages: Vec<RegenConvergenceStageReceipt>,
+    terminal_seed_digest: String,
+    terminal_surface_digest: String,
+    fixed_point_verdict: RegenConvergenceFixedPointReceipt,
+}
+
+fn bytes_digest(bytes: &[u8]) -> String {
+    format!("fnv1a64:{}", v1_rt::bytes_identity_hash(bytes))
+}
+
+fn path_digest(path: &Path) -> Result<String, String> {
+    fs::read(path)
+        .map(|bytes| bytes_digest(&bytes))
+        .map_err(|e| format!("read {} for digest: {e}", path.display()))
+}
+
+fn regen_convergence_journal_path(workspace: &Path) -> PathBuf {
+    workspace.join(REGEN_CONVERGENCE_JOURNAL_REL)
+}
+
+fn restore_regen_convergence_journal(workspace: &Path) -> Result<(), String> {
+    let root = regen_convergence_journal_path(workspace);
+    let manifest_path = root.join("journal.json");
+    if !manifest_path.is_file() {
+        return Ok(());
+    }
+    let manifest: RegenConvergenceJournal = serde_json::from_slice(
+        &fs::read(&manifest_path).map_err(|e| format!("read {}: {e}", manifest_path.display()))?,
+    )
+    .map_err(|e| format!("parse {}: {e}", manifest_path.display()))?;
+    if manifest.schema != REGEN_CONVERGENCE_SCHEMA {
+        return Err(format!(
+            "rollback/restore refuses: journal schema {} is not {}",
+            manifest.schema, REGEN_CONVERGENCE_SCHEMA
+        ));
+    }
+    for entry in &manifest.entries {
+        let destination = workspace.join(&entry.relative_path);
+        if entry.existed {
+            let backup = root.join(&entry.backup_name);
+            fs::copy(&backup, &destination).map_err(|e| {
+                format!(
+                    "rollback/restore refuses: copy {} -> {}: {e}",
+                    backup.display(),
+                    destination.display()
+                )
+            })?;
+            let restored = path_digest(&destination)?;
+            if restored != entry.pre_stage_digest {
+                return Err(format!(
+                    "rollback/restore refuses: {} restored as {} instead of {}",
+                    entry.relative_path, restored, entry.pre_stage_digest
+                ));
+            }
+        } else if destination.exists() {
+            fs::remove_file(&destination).map_err(|e| {
+                format!(
+                    "rollback/restore refuses: remove new {}: {e}",
+                    destination.display()
+                )
+            })?;
+        }
+    }
+    fs::remove_dir_all(&root)
+        .map_err(|e| format!("remove restored journal {}: {e}", root.display()))
+}
+
+fn journal_stage0_paths(
+    workspace: &Path,
+    stage0_src: &Path,
+    basenames: &[String],
+) -> Result<(), String> {
+    let root = regen_convergence_journal_path(workspace);
+    fs::create_dir_all(&root).map_err(|e| format!("create {}: {e}", root.display()))?;
+    let manifest_path = root.join("journal.json");
+    let mut journal = if manifest_path.is_file() {
+        serde_json::from_slice::<RegenConvergenceJournal>(
+            &fs::read(&manifest_path)
+                .map_err(|e| format!("read {}: {e}", manifest_path.display()))?,
+        )
+        .map_err(|e| format!("parse {}: {e}", manifest_path.display()))?
+    } else {
+        RegenConvergenceJournal {
+            schema: REGEN_CONVERGENCE_SCHEMA.to_string(),
+            starting_commit: git_head_sha(workspace)?,
+            entries: Vec::new(),
+        }
+    };
+    for basename in basenames {
+        let relative_path = format!("src/v1/stage0/src/{basename}");
+        if journal
+            .entries
+            .iter()
+            .any(|entry| entry.relative_path == relative_path)
+        {
+            continue;
+        }
+        let source = stage0_src.join(basename);
+        let backup_name = format!("surface-{}.bak", journal.entries.len());
+        let existed = source.is_file();
+        let pre_stage_digest = if existed {
+            fs::copy(&source, root.join(&backup_name))
+                .map_err(|e| format!("snapshot {}: {e}", source.display()))?;
+            path_digest(&source)?
+        } else {
+            "absent".to_string()
+        };
+        journal.entries.push(RegenConvergenceJournalEntry {
+            relative_path,
+            backup_name,
+            existed,
+            pre_stage_digest,
+        });
+    }
+    let bytes = serde_json::to_vec_pretty(&journal).map_err(|e| format!("encode journal: {e}"))?;
+    fs::write(&manifest_path, bytes).map_err(|e| format!("write {}: {e}", manifest_path.display()))
+}
+
 fn seed_cargo_build(workspace: &Path, label: &str) -> Result<CargoBuildObservation, String> {
     v1_rt::trace_mark(format!("{label}.begin"));
     let output = Command::new("cargo")
@@ -2429,6 +2640,7 @@ fn render_round_cost_receipt(
     rustfmt_spawns: u64,
     marks: &[v1_rt::TraceLedgerRow],
     changed_paths: &[String],
+    convergence_stage_receipt_ids: &[String],
 ) -> Result<String, String> {
     use crate::v1_interpreter::{self, str_value, ExecutionMode, Value};
     let entry = round_cost_entry(source_roots)?;
@@ -2498,6 +2710,10 @@ fn render_round_cost_receipt(
         })
         .collect();
     let path_values: Vec<Value> = changed_paths.iter().map(str_value).collect();
+    let stage_values: Vec<Value> = convergence_stage_receipt_ids
+        .iter()
+        .map(str_value)
+        .collect();
     let receipt = Value::Record {
         type_name: ctx.sym("RegenRoundCostReceipt"),
         fields: Rc::new(vec![
@@ -2519,6 +2735,10 @@ fn render_round_cost_receipt(
                 ctx.sym("changed_paths"),
                 Value::List(Rc::new(path_values.into())),
             ),
+            (
+                ctx.sym("convergence_stage_receipt_ids"),
+                Value::List(Rc::new(stage_values.into())),
+            ),
         ]),
     };
     let args = vec![(Some("receipt".to_string()), receipt)];
@@ -2535,6 +2755,369 @@ fn render_round_cost_receipt(
     }
 }
 
+fn read_first_generation_receipt(
+    path: &Path,
+) -> Result<(String, String, String, Vec<String>, String), String> {
+    let receipt: RegenReceipt = serde_json::from_slice(
+        &fs::read(path).map_err(|e| format!("read {}: {e}", path.display()))?,
+    )
+    .map_err(|e| format!("parse {}: {e}", path.display()))?;
+    match receipt {
+        RegenReceipt::FirstGeneration {
+            candidate_generated_digest,
+            committed_generated_digest,
+            changed_paths,
+            candidate_artifact,
+            authority_digest,
+            ..
+        } => Ok((
+            candidate_generated_digest,
+            committed_generated_digest,
+            candidate_artifact,
+            changed_paths,
+            authority_digest,
+        )),
+        RegenReceipt::Refused { reason, .. } => Err(format!(
+            "regen refused before convergence planning: {reason}"
+        )),
+        RegenReceipt::FixedPoint { .. } => Err(
+            "regen convergence expected a first-generation receipt, found fixed-point".to_string(),
+        ),
+    }
+}
+
+fn run_built_seed_regen(
+    workspace: &Path,
+    candidate_dir_rel: &str,
+    receipt_rel: &str,
+    source_roots: &[String],
+) -> Result<(String, String, String, Vec<String>, String), String> {
+    let exe = std::env::current_exe().map_err(|e| format!("current_exe: {e}"))?;
+    let shown = exe.to_string_lossy().into_owned();
+    let on_disk = PathBuf::from(shown.strip_suffix(" (deleted)").unwrap_or(&shown));
+    let mut command = Command::new(&on_disk);
+    command
+        .arg("--required-regen")
+        .arg("--regen-candidate-dir")
+        .arg(candidate_dir_rel)
+        .arg("--regen-receipt")
+        .arg(receipt_rel)
+        .current_dir(workspace);
+    for root in source_roots {
+        command.arg("--source-root").arg(root);
+    }
+    let output = command
+        .output()
+        .map_err(|e| format!("spawn rebuilt seed {}: {e}", on_disk.display()))?;
+    // Drift makes --required-regen exit one after it has written the candidate and receipt. The
+    // receipt, not the process code, distinguishes ordinary drift from a production refusal.
+    let receipt = read_first_generation_receipt(&workspace.join(receipt_rel));
+    match receipt {
+        Ok(value) => Ok(value),
+        Err(reason) => Err(format!(
+            "{reason}; rebuilt seed status={} stderr_tail={}",
+            output.status,
+            String::from_utf8_lossy(&output.stderr)
+                .lines()
+                .rev()
+                .take(12)
+                .collect::<Vec<_>>()
+                .into_iter()
+                .rev()
+                .collect::<Vec<_>>()
+                .join(" | ")
+        )),
+    }
+}
+
+fn convergence_surface_roles(
+    workspace: &Path,
+    source_roots: &[String],
+) -> Result<
+    (
+        HashMap<String, String>,
+        BTreeSet<String>,
+        BTreeSet<String>,
+        BTreeSet<String>,
+    ),
+    String,
+> {
+    let (edges, modules) = regen_module_edges(workspace)?;
+    // Ownership includes emitted-not-committed modules. Joining through the committed mirror
+    // population would erase exactly the new-module case the convergence transaction must
+    // install, so derive the projection from the complete module index instead.
+    let basename_to_module = modules
+        .iter()
+        .map(|module| (format!("{}.rs", module.replace('.', "_")), module.clone()))
+        .collect();
+    let (generation, bootstrap_sources, bootstrap_products) =
+        regen_generation_role_population(source_roots, &edges, &modules)?;
+    Ok((
+        basename_to_module,
+        generation,
+        bootstrap_sources,
+        bootstrap_products,
+    ))
+}
+
+fn convergence_plan_from_model(
+    source_roots: &[String],
+    ordinal: usize,
+    generation_id: &str,
+    candidate_tree_id: &str,
+    candidate_tree_digest: &str,
+    drifted: &[String],
+    basename_to_module: &HashMap<String, String>,
+    generation_modules: &BTreeSet<String>,
+    bootstrap_sources: &BTreeSet<String>,
+    bootstrap_products: &BTreeSet<String>,
+) -> Result<(String, Vec<String>), String> {
+    use crate::v1_interpreter::{self, str_value, ExecutionMode, Value};
+    let entry = source_roots
+        .iter()
+        .map(|root| Path::new(root).join("workflow/regen_convergence_transaction.dag"))
+        .find(|path| path.is_file())
+        .ok_or_else(|| {
+            "refusal: v2.workflow.regen_convergence_transaction is outside source roots".to_string()
+        })?;
+    let entry = entry.to_string_lossy().into_owned();
+    let index = super::process_shared_index(source_roots);
+    let (graph, indices) = super::resolve_entry_with_index_for_discovery_corpus(&index, &entry)
+        .map_err(|e| format!("refusal: convergence planner did not resolve: {e}"))?;
+    let ctx = super::make_eval_context(&graph, indices, ExecutionMode::Hermetic);
+    let changed = drifted
+        .iter()
+        .map(|basename| {
+            let module = basename_to_module
+                .get(basename)
+                .cloned()
+                .unwrap_or_else(|| format!("v1.compiler.emit_rust.product.{basename}"));
+            let role = if bootstrap_products.contains(basename) {
+                "BootstrapSourceMirror"
+            } else if generation_modules.contains(&module) {
+                "GenerationInput"
+            } else if bootstrap_sources.contains(&module) {
+                "BootstrapSourceMirror"
+            } else {
+                "GenerationSubject"
+            };
+            let identity = Value::Record {
+                type_name: ctx.sym("RegenSurfaceIdentity"),
+                fields: Rc::new(vec![
+                    (ctx.sym("declaring_module"), str_value(module)),
+                    (ctx.sym("projected_path"), str_value(basename.clone())),
+                ]),
+            };
+            let candidate = Value::Record {
+                type_name: ctx.sym("RegenCandidateIdentity"),
+                fields: Rc::new(vec![
+                    (ctx.sym("producer_generation_id"), str_value(generation_id)),
+                    (ctx.sym("candidate_tree_id"), str_value(candidate_tree_id)),
+                    (
+                        ctx.sym("candidate_tree_digest"),
+                        str_value(candidate_tree_digest),
+                    ),
+                    (ctx.sym("surface"), identity.clone()),
+                    (
+                        ctx.sym("candidate_digest"),
+                        str_value(format!("bound-by-host:{basename}")),
+                    ),
+                ]),
+            };
+            Value::Record {
+                type_name: ctx.sym("RegenChangedSurface"),
+                fields: Rc::new(vec![
+                    (ctx.sym("identity"), identity),
+                    (
+                        ctx.sym("generation_role"),
+                        Value::Variant {
+                            type_name: ctx.sym("RegenGenerationRole"),
+                            variant_name: ctx.sym(role),
+                            fields: Rc::new(vec![]),
+                        },
+                    ),
+                    (
+                        ctx.sym("seed_membership"),
+                        Value::Variant {
+                            type_name: ctx.sym("RegenSeedMembership"),
+                            variant_name: ctx.sym("SeedEmbedded"),
+                            fields: Rc::new(vec![]),
+                        },
+                    ),
+                    (
+                        ctx.sym("dependency_closure_id"),
+                        str_value("complete-seed-build"),
+                    ),
+                    (ctx.sym("pre_stage_digest"), str_value("observed-by-host")),
+                    (ctx.sym("candidate"), candidate),
+                ]),
+            }
+        })
+        .collect::<Vec<_>>();
+    let args = vec![
+        (Some("ordinal".to_string()), Value::Int(ordinal as i64)),
+        (
+            Some("producer_generation_id".to_string()),
+            str_value(generation_id),
+        ),
+        (
+            Some("candidate_tree_id".to_string()),
+            str_value(candidate_tree_id),
+        ),
+        (
+            Some("candidate_tree_digest".to_string()),
+            str_value(candidate_tree_digest),
+        ),
+        (
+            Some("changed".to_string()),
+            Value::List(Rc::new(changed.into())),
+        ),
+        (
+            Some("build_target".to_string()),
+            str_value("claim_executor"),
+        ),
+        (
+            Some("build_invocation".to_string()),
+            str_value("cargo build --release --bin claim_executor"),
+        ),
+    ];
+    let outcome = v1_interpreter::with_active_context(&ctx, || {
+        v1_interpreter::run_in_context_with_args(&ctx, "regen_plan_next_stage", &args, false)
+    })
+    .map_err(|e| format!("refusal: convergence planner did not answer: {e}"))?;
+    let outcome_arg = vec![(Some("outcome".to_string()), outcome)];
+    let kind = match v1_interpreter::with_active_context(&ctx, || {
+        v1_interpreter::run_in_context_with_args(
+            &ctx,
+            "regen_stage_plan_kind_label",
+            &outcome_arg,
+            false,
+        )
+    })
+    .map_err(|e| format!("refusal: convergence kind projection failed: {e}"))?
+    {
+        Value::Str(value) => value.to_string(),
+        other => {
+            return Err(format!(
+                "refusal: convergence kind projection returned {}",
+                other.type_label_public()
+            ))
+        }
+    };
+    let paths = match v1_interpreter::with_active_context(&ctx, || {
+        v1_interpreter::run_in_context_with_args(
+            &ctx,
+            "regen_stage_plan_surface_paths",
+            &outcome_arg,
+            false,
+        )
+    })
+    .map_err(|e| format!("refusal: convergence surface projection failed: {e}"))?
+    {
+        Value::List(values) => values
+            .iter()
+            .map(|value| match value {
+                Value::Str(path) => Ok(path.to_string()),
+                other => Err(format!(
+                    "refusal: convergence surface projection member is {}",
+                    other.type_label_public()
+                )),
+            })
+            .collect::<Result<Vec<_>, _>>()?,
+        other => {
+            return Err(format!(
+                "refusal: convergence surface projection returned {}",
+                other.type_label_public()
+            ))
+        }
+    };
+    if kind == "Refused" || kind == "Terminal" {
+        return Err(format!(
+            "convergence planner returned {kind} for non-empty drift {drifted:?}"
+        ));
+    }
+    Ok((kind, paths))
+}
+
+fn install_convergence_stage(
+    workspace: &Path,
+    stage0_src: &Path,
+    candidate_src: &Path,
+    basenames: &[String],
+    basename_to_module: &HashMap<String, String>,
+    ordinal: usize,
+    kind: RegenConvergenceStageKindReceipt,
+    seed_before: &str,
+    generation_id: &str,
+    candidate_tree_id: &str,
+    candidate_tree_digest: &str,
+    authority_digest: &str,
+) -> Result<RegenConvergenceStageReceipt, String> {
+    journal_stage0_paths(workspace, stage0_src, basenames)?;
+    let mut surfaces = Vec::new();
+    for basename in basenames {
+        let destination = stage0_src.join(basename);
+        let candidate = candidate_src.join(basename);
+        let pre = if destination.is_file() {
+            path_digest(&destination)?
+        } else {
+            "absent".to_string()
+        };
+        let candidate_digest = path_digest(&candidate)?;
+        fs::copy(&candidate, &destination).map_err(|e| {
+            format!(
+                "install {} -> {}: {e}",
+                candidate.display(),
+                destination.display()
+            )
+        })?;
+        let installed = path_digest(&destination)?;
+        if installed != candidate_digest {
+            return Err(format!(
+                "installed digest mismatch for {basename}: planned {candidate_digest}, observed {installed}"
+            ));
+        }
+        surfaces.push(RegenConvergenceSurfaceReceipt {
+            declaring_module: basename_to_module
+                .get(basename)
+                .cloned()
+                .unwrap_or_else(|| format!("bootstrap-product:{basename}")),
+            projected_path: format!("src/v1/stage0/src/{basename}"),
+            pre_stage_digest: pre,
+            candidate_digest,
+            installed_digest: installed,
+            planned: true,
+            executed: true,
+            terminal: false,
+            passed: false,
+        });
+    }
+    let build = seed_cargo_build(workspace, "round.rebuild_from_installed")?;
+    let _ = build.compiled_crates;
+    let seed_after = current_exe_digest()?;
+    for surface in &mut surfaces {
+        surface.terminal = true;
+        surface.passed = true;
+    }
+    Ok(RegenConvergenceStageReceipt {
+        receipt_id: format!("stage-{ordinal}"),
+        ordinal,
+        kind,
+        input_seed_digest: seed_before.to_string(),
+        input_candidate_tree_id: candidate_tree_id.to_string(),
+        input_candidate_tree_digest: candidate_tree_digest.to_string(),
+        producer_generation_id: generation_id.to_string(),
+        surfaces,
+        deferred_surfaces: Vec::new(),
+        dependency_closure_id: format!("authority:{authority_digest}"),
+        build_target: "claim_executor".to_string(),
+        build_invocation: "cargo build --release --bin claim_executor".to_string(),
+        build_terminal: RegenConvergenceBuildTerminalReceipt::Passed,
+        output_seed_digest: seed_after,
+        next_generation_receipt_id: format!("generation-{}", ordinal + 1),
+    })
+}
+
 pub fn run_regen_round_cost(
     candidate_dir_rel: &str,
     receipt_rel: &str,
@@ -2548,6 +3131,9 @@ pub fn run_regen_round_cost(
     let tree_dirty = git_tree_dirty(&workspace)?;
     let exe_before = current_exe_digest()?;
 
+    // Recover an interrupted transaction before attempting to build or observe a new subject.
+    restore_regen_convergence_journal(&workspace)?;
+
     v1_rt::trace_ledger_arm();
     let rustfmt_spawns_before = rustfmt_spawn_count();
     let seed_build = seed_cargo_build(&workspace, "round.seed_build")?;
@@ -2560,49 +3146,151 @@ pub fn run_regen_round_cost(
         ));
     }
 
-    let mut round_failures = Vec::new();
+    let (basename_to_module, generation_modules, bootstrap_sources, bootstrap_products) =
+        convergence_surface_roles(&workspace, source_roots)?;
     let regen = run_required_regen(candidate_dir_rel, receipt_rel)?;
-    for failure in &regen.failures {
-        round_failures.push(format!("regen: {failure}"));
+    let (
+        mut candidate_digest,
+        starting_surface_digest,
+        mut candidate_tree_id,
+        mut drifted,
+        mut authority_digest,
+    ) = read_first_generation_receipt(&workspace.join(receipt_rel))?;
+    let initial_seed_digest = current_exe_digest()?;
+    let mut current_seed_digest = initial_seed_digest.clone();
+    let mut stages = Vec::new();
+    let mut seen_states = BTreeSet::new();
+    let mut generation_ordinal = 0usize;
+    let mut round_failures = Vec::new();
+    if matches!(regen.receipt, RegenReceipt::Refused { .. }) {
+        round_failures.extend(
+            regen
+                .failures
+                .iter()
+                .map(|failure| format!("regen: {failure}")),
+        );
     }
-    // The install set is the regen's own drift answer — every generated path whose committed
-    // bytes differ from the candidate's. A refused regen has no such answer and the round stops
-    // at the emit: no install, no rebuild, no diff, and the receipt says which phases ran.
-    let drifted: Option<Vec<String>> = match &regen.receipt {
-        RegenReceipt::FirstGeneration { changed_paths, .. } => Some(changed_paths.clone()),
-        RegenReceipt::Refused { reason, .. } => {
-            round_failures.push(format!("regen refused, round stopped at emit: {reason}"));
-            None
-        }
-        RegenReceipt::FixedPoint { .. } => {
-            round_failures.push(
-                "regen returned a fixed-point receipt from a first-generation pass".to_string(),
-            );
-            None
-        }
-    };
 
-    let mut rebuild_compiled_crates = 0;
-    let mut changed_paths: Vec<String> = Vec::new();
-    if let Some(drifted) = drifted {
-        v1_rt::trace_mark("round.install.begin".to_string());
-        install_candidate_paths(&candidate_src, &stage0_src, &drifted)?;
-        v1_rt::trace_mark("round.install.done".to_string());
-        // A REBUILD THAT FAILS IS A MEASURED FACT ABOUT THE ROUND, NOT A REFUSAL OF THE
-        // MEASUREMENT: every phase before it was priced, and the receipt is the only record of
-        // that. Measured on 2026-08-30 (srv1 and BuildBuddy, same tree): the emitting seed was
-        // built with the OLD runtime template baked into its emitter mirror, so its emit
-        // installed the old `v1_rt.rs` over the hand-synced one and the rebuild refused --
-        // exactly the two-round bootstrap the merge-driver recipe's step 3 exists for. The
-        // receipt still renders; the failure is carried beside it and fails the exit code.
-        match seed_cargo_build(&workspace, "round.rebuild_from_installed") {
-            Ok(rebuild) => rebuild_compiled_crates = rebuild.compiled_crates,
-            Err(failure) => round_failures.push(format!("rebuild_from_installed: {failure}")),
+    while !drifted.is_empty() {
+        if generation_ordinal >= REGEN_CONVERGENCE_BOUND {
+            let failure = format!("generation bound exceeded: {}", REGEN_CONVERGENCE_BOUND);
+            restore_regen_convergence_journal(&workspace)?;
+            return Err(failure);
         }
-        v1_rt::trace_mark("round.diff.begin".to_string());
-        changed_paths = git_changed_stage0_paths(&workspace)?;
-        v1_rt::trace_mark("round.diff.done".to_string());
+        let state = format!("{current_seed_digest}:{candidate_digest}");
+        if !seen_states.insert(state.clone()) {
+            restore_regen_convergence_journal(&workspace)?;
+            return Err(format!("generation cycle detected at {state}"));
+        }
+        let (kind, install_set) = convergence_plan_from_model(
+            source_roots,
+            generation_ordinal + 1,
+            &format!("generation-{generation_ordinal}"),
+            &candidate_tree_id,
+            &candidate_digest,
+            &drifted,
+            &basename_to_module,
+            &generation_modules,
+            &bootstrap_sources,
+            &bootstrap_products,
+        )?;
+        let install_population: BTreeSet<String> = install_set.iter().cloned().collect();
+        let deferred = drifted
+            .iter()
+            .filter(|path| !install_population.contains(*path))
+            .cloned()
+            .collect::<Vec<_>>();
+        if install_set.is_empty() {
+            restore_regen_convergence_journal(&workspace)?;
+            return Err(format!(
+                "generation made no progress with drift {drifted:?}"
+            ));
+        }
+        v1_rt::trace_mark("round.install.begin".to_string());
+        let stage_result = install_convergence_stage(
+            &workspace,
+            &stage0_src,
+            &candidate_src,
+            &install_set,
+            &basename_to_module,
+            generation_ordinal + 1,
+            &kind,
+            &current_seed_digest,
+            &format!("generation-{generation_ordinal}"),
+            &candidate_tree_id,
+            &candidate_digest,
+            &authority_digest,
+        );
+        v1_rt::trace_mark("round.install.done".to_string());
+        let mut stage = match stage_result {
+            Ok(stage) => stage,
+            Err(failure) => {
+                restore_regen_convergence_journal(&workspace)?;
+                return Err(format!(
+                    "stage seed build refused; checkpoint restored: {failure}"
+                ));
+            }
+        };
+        stage.deferred_surfaces = deferred;
+        current_seed_digest = stage.output_seed_digest.clone();
+        stages.push(stage);
+        generation_ordinal += 1;
+        let next = run_built_seed_regen(&workspace, candidate_dir_rel, receipt_rel, source_roots);
+        match next {
+            Ok((next_candidate, _committed, next_tree, next_drifted, next_authority)) => {
+                candidate_digest = next_candidate;
+                candidate_tree_id = next_tree;
+                drifted = next_drifted;
+                authority_digest = next_authority;
+            }
+            Err(failure) => {
+                restore_regen_convergence_journal(&workspace)?;
+                return Err(format!(
+                    "next generation refused; checkpoint restored: {failure}"
+                ));
+            }
+        }
     }
+
+    let changed_paths = git_changed_stage0_paths(&workspace)?;
+    let terminal_surface_digest = candidate_digest.clone();
+    let ordered_stage_receipt_ids = stages
+        .iter()
+        .map(|stage| stage.receipt_id.clone())
+        .collect::<Vec<_>>();
+    let transaction_receipt = RegenConvergenceReceipt {
+        schema_version: REGEN_CONVERGENCE_SCHEMA.to_string(),
+        starting_commit: tree.clone(),
+        source_authority_digest: authority_digest.clone(),
+        starting_generated_surface_digest: starting_surface_digest,
+        stage_plan_authority_digest: path_digest(
+            &workspace.join("src/v2/workflow/regen_convergence_transaction.dag"),
+        )?,
+        generation_role_authority_digest: path_digest(
+            &workspace.join("dag/gunbc/regen_affected_set.dag"),
+        )?,
+        ownership_authority_digest: path_digest(&workspace.join("src/v1/05_emit_rust.dag"))?,
+        initial_seed_digest,
+        ordered_stage_receipt_ids: ordered_stage_receipt_ids.clone(),
+        stages,
+        terminal_seed_digest: current_seed_digest,
+        terminal_surface_digest,
+        fixed_point_verdict: "RegenFixedPointReached".to_string(),
+    };
+    fs::write(
+        workspace.join(REGEN_CONVERGENCE_RECEIPT_REL),
+        serde_json::to_vec_pretty(&transaction_receipt)
+            .map_err(|e| format!("encode convergence receipt: {e}"))?,
+    )
+    .map_err(|e| format!("write convergence receipt: {e}"))?;
+    let completed_journal = regen_convergence_journal_path(&workspace);
+    if completed_journal.exists() {
+        fs::remove_dir_all(&completed_journal)
+            .map_err(|e| format!("remove completed convergence journal: {e}"))?;
+    }
+
+    let rebuild_compiled_crates = 0;
+    let convergence_stage_receipt_ids = ordered_stage_receipt_ids;
 
     // The runtime's `Vec` is the persistent vector its emitted programs use; the receipt
     // renderer takes a slice, so the rows are collected once here.
@@ -2623,6 +3311,7 @@ pub fn run_regen_round_cost(
         rustfmt_spawn_count() - rustfmt_spawns_before,
         &marks,
         &changed_paths,
+        &convergence_stage_receipt_ids,
     )?;
     let receipt_path = workspace.join(REGEN_ROUND_COST_RECEIPT_REL);
     if let Some(parent) = receipt_path.parent() {
@@ -2675,6 +3364,7 @@ mod regen_round_cost_tests {
             7,
             &marks,
             &["v1_rt.rs".to_string()],
+            &["stage-1".to_string()],
         )
         .expect("the model renders a host-built receipt");
         assert_eq!(
@@ -2685,7 +3375,8 @@ mod regen_round_cost_tests {
              regen-round-cost: phase=seed_build wall_ms=1500 cpu_ms=9000\n\
              regen-round-cost: phase=compile.emit wall_ms=300000 cpu_ms=na\n\
              regen-round-cost: total wall_ms=301500 cpu_ms=na\n\
-             regen-round-cost: changed_paths=1 [v1_rt.rs]\n"
+             regen-round-cost: changed_paths=1 [v1_rt.rs]\n\
+             regen-round-cost: convergence_stages=1 [stage-1]\n"
         );
     }
 
@@ -2895,6 +3586,73 @@ pub fn compared_mirror_rows(
                 .then(|| (module.clone(), basename))
         })
         .collect())
+}
+
+/// The generation-role population, asked of `gunbc.regen_affected_set` rather than reproduced
+/// as a Rust prefix test. The model starts from its existing generation-input roots and follows
+/// the same complete dependency edge population forward, so compiler substrate modules outside
+/// the root prefixes retain their real role.
+pub fn regen_generation_role_population(
+    source_roots: &[String],
+    edges: &[(String, String)],
+    modules: &[String],
+) -> Result<(BTreeSet<String>, BTreeSet<String>, BTreeSet<String>), String> {
+    use crate::v1_interpreter::{self, str_value, ExecutionMode, Value};
+    let entry = affected_set_entry(source_roots)?;
+    let index = super::process_shared_index(source_roots);
+    let (graph, indices) = super::resolve_entry_with_index_for_discovery_corpus(&index, &entry)
+        .map_err(|e| format!("refusal: {entry} did not resolve for generation roles: {e}"))?;
+    let ctx = super::make_eval_context(&graph, indices, ExecutionMode::Hermetic);
+    let edge_values: Vec<Value> = edges
+        .iter()
+        .map(|(from, to)| Value::Record {
+            type_name: ctx.sym("DependencyEdge"),
+            fields: Rc::new(vec![
+                (ctx.sym("from"), str_value(from.clone())),
+                (ctx.sym("to"), str_value(to.clone())),
+            ]),
+        })
+        .collect();
+    let strings = |items: &[String]| {
+        Value::List(Rc::new(
+            items.iter().map(str_value).collect::<Vec<_>>().into(),
+        ))
+    };
+    let list_result = |function: &str, args: Vec<(Option<String>, Value)>| {
+        match v1_interpreter::with_active_context(&ctx, || {
+            v1_interpreter::run_in_context_with_args(&ctx, function, &args, false)
+        })
+        .map_err(|e| format!("refusal: {function} did not answer: {e}"))?
+        {
+            Value::List(items) => items
+                .iter()
+                .map(|item| match item {
+                    Value::Str(s) => Ok(s.to_string()),
+                    other => Err(format!(
+                        "refusal: {function} returned a {} list member",
+                        other.type_label_public()
+                    )),
+                })
+                .collect::<Result<BTreeSet<_>, _>>(),
+            other => Err(format!(
+                "refusal: {function} returned {} instead of List",
+                other.type_label_public()
+            )),
+        }
+    };
+    let generation = list_result(
+        "regen_generation_role_modules",
+        vec![
+            (
+                Some("edges".to_string()),
+                Value::List(Rc::new(edge_values.into())),
+            ),
+            (Some("modules".to_string()), strings(modules)),
+        ],
+    )?;
+    let bootstrap_sources = list_result("regen_bootstrap_source_modules", vec![])?;
+    let bootstrap_products = list_result("regen_bootstrap_product_paths", vec![])?;
+    Ok((generation, bootstrap_sources, bootstrap_products))
 }
 
 fn affected_set_entry(source_roots: &[String]) -> Result<String, String> {
